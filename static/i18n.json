@@ -127,10 +127,10 @@
     "share_text": "Shared via Flash Share:",
     "ico": "ICO Favicon",
     "ico_desc": "Convert image to multi-resolution ICO favicon (16-256px).",
-    "ico_standard": "All Sizes (16-256px)",
-    "ico_web": "Web (16-48px)",
-    "ico_app": "App (64-256px)",
-    "ico_single": "Single 256px"
+    "ico_web": "Web",
+    "ico_app": "App",
+    "ico_all": "All",
+    "ico_256": "256px"
   },
   "zh": {
     "title": "Flash Share",
@@ -260,10 +260,10 @@
     "share_text": "Flash Share 文件：",
     "ico": "图标生成",
     "ico_desc": "将图片转换为多尺寸 ICO 图标（16-256px），用于浏览器标签页。",
-    "ico_standard": "全尺寸 (16-256px)",
-    "ico_web": "网页 (16-48px)",
-    "ico_app": "应用 (64-256px)",
-    "ico_single": "单尺寸 256px"
+    "ico_web": "网页",
+    "ico_app": "应用",
+    "ico_all": "全部",
+    "ico_256": "256px"
   },
   "ja": {
     "title": "Flash Share",
@@ -393,10 +393,10 @@
     "share_text": "Flash Share ファイル：",
     "ico": "ICO作成",
     "ico_desc": "画像を多解像度ICOアイコンに変換（16-256px）。",
-    "ico_standard": "全サイズ (16-256px)",
-    "ico_web": "Web (16-48px)",
-    "ico_app": "アプリ (64-256px)",
-    "ico_single": "単一 256px"
+    "ico_web": "Web",
+    "ico_app": "アプリ",
+    "ico_all": "全て",
+    "ico_256": "256px"
   },
   "ko": {
     "title": "Flash Share",
@@ -526,10 +526,10 @@
     "share_text": "Flash Share 파일: ",
     "ico": "ICO 만들기",
     "ico_desc": "이미지를 다중 해상도 ICO 아이콘으로 변환 (16-256px).",
-    "ico_standard": "전체 크기 (16-256px)",
-    "ico_web": "웹 (16-48px)",
-    "ico_app": "앱 (64-256px)",
-    "ico_single": "단일 256px)"
+    "ico_web": "웹",
+    "ico_app": "앱",
+    "ico_all": "전체",
+    "ico_256": "256px"
   },
   "es": {
     "title": "Flash Share",
@@ -659,10 +659,10 @@
     "share_text": "Archivo compartido con Flash Share:",
     "ico": "ICO Favicon",
     "ico_desc": "Convierte imagen a ICO favicon multi-resolución (16-256px).",
-    "ico_standard": "Todos (16-256px)",
-    "ico_web": "Web (16-48px)",
-    "ico_app": "App (64-256px)",
-    "ico_single": "Single 256px"
+    "ico_web": "Web",
+    "ico_app": "App",
+    "ico_all": "Todos",
+    "ico_256": "256px"
   },
   "ar": {
     "title": "Flash Share",
@@ -792,10 +792,10 @@
     "share_text": "ملف مشترك عبر Flash Share: ",
     "ico": "أيقونة ICO",
     "ico_desc": "تحويل الصورة إلى أيقونة ICO متعددة الدقة (16-256px).",
-    "ico_standard": "كل المقاسات (16-256px)",
-    "ico_web": "ويب (16-48px)",
-    "ico_app": "تطبيق (64-256px)",
-    "ico_single": "مفرد 256px"
+    "ico_web": "ويب",
+    "ico_app": "تطبيق",
+    "ico_all": "الكل",
+    "ico_256": "256px"
   },
   "de": {
     "title": "Flash Share",
@@ -925,9 +925,9 @@
     "share_text": "Datei geteilt mit Flash Share:",
     "ico": "ICO Favicon",
     "ico_desc": "Bild zu ICO-Favicon konvertieren (16-256px).",
-    "ico_standard": "Alle (16-256px)",
-    "ico_web": "Web (16-48px)",
-    "ico_app": "App (64-256px)",
-    "ico_single": "Einzel 256px"
+    "ico_web": "Web",
+    "ico_app": "App",
+    "ico_all": "Alle",
+    "ico_256": "256px"
   }
 }

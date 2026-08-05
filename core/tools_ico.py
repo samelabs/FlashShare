@@ -20,10 +20,10 @@ ICO_SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
 
 # ICO output size presets
 ICO_PRESETS = {
-    "ico_standard": [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    "ico_all": [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
     "ico_web":      [(16, 16), (32, 32), (48, 48)],
     "ico_app":      [(64, 64), (128, 128), (256, 256)],
-    "ico_single":   [(256, 256)],
+    "ico_256":   [(256, 256)],
 }
 
 
@@ -62,8 +62,8 @@ def ico_handler(tool_input, params):
         img = img.crop((left, top, left + side, top + side))
 
     # Resolve preset
-    preset = params.get("preset", "ico_standard")
-    sizes = ICO_PRESETS.get(preset, ICO_PRESETS["ico_standard"])
+    preset = params.get("preset", "ico_all")
+    sizes = ICO_PRESETS.get(preset, ICO_PRESETS["ico_all"])
 
     # Generate ICO
     out = io.BytesIO()
@@ -102,10 +102,10 @@ register(
     match=lambda upload: upload.get("content_type", "") in ACCEPT_MIMES,
     accept=ACCEPT_MIMES,
     presets=[
-        {"id": "ico_standard", "label": {"en": "All Sizes (16-256px)", "zh": "全尺寸 (16-256px)", "ja": "全サイズ (16-256px)", "ko": "전체 크기 (16-256px)", "es": "Todos (16-256px)", "ar": "كل المقاسات (16-256px)", "de": "Alle (16-256px)"}, "default": True},
-        {"id": "ico_web", "label": {"en": "Web (16-48px)", "zh": "网页 (16-48px)", "ja": "Web (16-48px)", "ko": "웹 (16-48px)", "es": "Web (16-48px)", "ar": "ويب (16-48px)", "de": "Web (16-48px)"}, "default": False},
-        {"id": "ico_app", "label": {"en": "App (64-256px)", "zh": "应用 (64-256px)", "ja": "アプリ (64-256px)", "ko": "앱 (64-256px)", "es": "App (64-256px)", "ar": "تطبيق (64-256px)", "de": "App (64-256px)"}, "default": False},
-        {"id": "ico_single", "label": {"en": "Single 256px", "zh": "单尺寸 256px", "ja": "単一 256px", "ko": "단일 256px", "es": "Single 256px", "ar": "مفرد 256px", "de": "Einzel 256px"}, "default": False},
+        {"id": "ico_all", "label": {"en": "All", "zh": "全部", "ja": "全て", "ko": "전체", "es": "Todos", "ar": "الكل", "de": "Alle"}, "default": True},
+        {"id": "ico_web", "label": {"en": "Web", "zh": "网页", "ja": "Web", "ko": "웹", "es": "Web", "ar": "ويب", "de": "Web"}, "default": False},
+        {"id": "ico_app", "label": {"en": "App", "zh": "应用", "ja": "アプリ", "ko": "앱", "es": "App", "ar": "تطبيق", "de": "App"}, "default": False},
+        {"id": "ico_256", "label": {"en": "256px", "zh": "256px", "ja": "256px", "ko": "256px", "es": "256px", "ar": "256px", "de": "256px"}, "default": False},
     ],
     handler=ico_handler,
 )

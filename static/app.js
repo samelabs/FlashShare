@@ -188,6 +188,10 @@ function applyI18n() {
   renderAccount();
   loadHistory();
   if (activeUpload) renderModal(activeUpload);
+  // Re-render result card if visible (uses t() for all labels)
+  if (lastUploadResult && result && !result.classList.contains("hidden")) {
+    showShareResult(lastUploadResult);
+  }
 }
 function renderLanguageMenu() {
   langButton.textContent = LANG_LABELS[lang] || "English";
@@ -298,6 +302,7 @@ form.addEventListener("submit", async (event) => {
         showToolError(toolData.error === "auth_required" ? t("signIn") : toolData.error, data.file);
         return;
       }
+      lastUploadResult = toolData.result;
       showShareResult(toolData.result);
       form.reset();
       fileLabel.textContent = t("dropEmpty");
@@ -750,9 +755,7 @@ function showShareResult(file) {
   const copyId = `copy-${Date.now()}`;
   const qrId = `qr-${Date.now()}`;
   const shareImgId = `shareimg-${Date.now()}`;
-  const origSz = file.origSize || file.origSz;
-  const meta = origSz ? `${fmtSize(origSz)} → ${fmtSize(file.size)}` : fmtSize(file.size);
-  const exp = file.expireAt ? t("expiresAt", { date: fmtDate(file.expireAt) }) : "";
+  const meta = fmtSize(file.size);
   const isImage = file.contentType ? file.contentType.startsWith("image/") : (file.filename || file.name || "").match(/\.(png|jpe?g|webp|gif|bmp|tiff?)$/i);
 
   // Image files: two groups — image actions + link actions
@@ -768,7 +771,7 @@ function showShareResult(file) {
     `<div class="result-card">` +
     `<div class="result-check">${svgIcon("check")}</div>` +
     `<div class="result-card-title">${t("ready")}</div>` +
-    `<div class="result-meta">${escapeHtml(meta)}${exp ? " · " + escapeHtml(exp) : ""}</div>` +
+    `<div class="result-meta">${escapeHtml(meta)}</div>` +
     `<div class="file-actions">${actions}</div>` +
     `</div>`
   );
