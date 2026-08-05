@@ -1,0 +1,7 @@
+# FlashShare Runtime Dependencies
+#
+# flashshare runs on system Python 3 (/usr/bin/python3, currently 3.12 on Ubuntu 24.04).
+# NOT a venv project — dependencies are installed via apt system packages.
+# Install: sudo apt install python3-pil
+
+Pillow>=10.0,<11.0

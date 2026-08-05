@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.registerTitle }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="auth-page">
+  <h1 data-i18n="registerTitle">{{ texts.registerTitle }}</h1>
+  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+  <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
+  <div class="auth-divider"><span>or</span></div>
+  <form method="post" action="/auth/register" class="auth-form" id="registerForm">
+    <label>
+      <span data-i18n="usernameHint">{{ texts.usernameHint }}</span>
+      <input type="text" name="username" id="regUsername" required autocomplete="username" minlength="5" maxlength="32" pattern="[A-Za-z0-9_-]{5,32}">
+    </label>
+    <label>
+      <span data-i18n="emailLabel">{{ texts.emailLabel }}</span>
+      <input type="email" name="email" id="regEmail" required autocomplete="email" maxlength="254">
+    </label>
+    <label>
+      <span data-i18n="newPassword">{{ texts.newPassword }}</span>
+      <input type="password" name="password" id="regPassword" required autocomplete="new-password" minlength="8" maxlength="128">
+    </label>
+    <label>
+      <span data-i18n="confirmPasswordLabel">{{ texts.confirmPasswordLabel }}</span>
+      <input type="password" name="password_confirm" id="regPasswordConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+    </label>
+    <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
+    <button type="submit" class="primary full" id="regSubmit"><span data-i18n="signUp">{{ texts.signUp }}</span></button>
+  </form>
+  <p class="auth-hint"><span data-i18n="registerHint">{{ texts.registerHint }}</span> <a href="/auth/login" data-i18n="signIn">{{ texts.signIn }}</a></p>
+</section>
+{% endblock %}
+
+{% block script %}
+const _pw = document.getElementById('regPassword');
+const _pwc = document.getElementById('regPasswordConfirm');
+const _hint = document.getElementById('pwMismatch');
+const _form = document.getElementById('registerForm');
+function checkPw() {
+  if (_pwc.value && _pw.value !== _pwc.value) {
+    _hint.hidden = false;
+    _pwc.setCustomValidity('x');
+  } else {
+    _hint.hidden = true;
+    _pwc.setCustomValidity('');
+  }
+}
+_pw.addEventListener('input', checkPw);
+_pwc.addEventListener('input', checkPw);
+_form.addEventListener('submit', function(e) {
+  if (_pw.value !== _pwc.value) { e.preventDefault(); _hint.hidden = false; }
+});
+{% endblock %}

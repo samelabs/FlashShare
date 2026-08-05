@@ -1,0 +1,9 @@
+{# shared_footer: copyright + language switcher JS #}
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span class="footer-copy">© {{ year }} <strong style="font-weight:800;letter-spacing:-0.02em;">518<span style="color:var(--accent);">.</span>PLUS</strong></span>
+  </div>
+</footer>
+<script>
+if(typeof SUPPORTED_LANGS==="undefined"){var SUPPORTED_LANGS=["en","zh","ja","ko","es","ar","de","ru","pt","fr"];var LANG_LABELS={"en":"English","zh":"简体中文","ja":"日本語","ko":"한국어","es":"Español","ar":"العربية","de":"Deutsch","ru":"Русский","pt":"Português","fr":"Français"};var currentLang="{{ lang }}";var langButton=document.getElementById("langButton");var langMenu=document.getElementById("langMenu");if(langButton&&langMenu){langButton.textContent=LANG_LABELS[currentLang]||"English";langMenu.innerHTML=SUPPORTED_LANGS.map(c=>`<button class="lang-option${c===currentLang?" active":""}" type="button" role="option" aria-selected="${c===currentLang}" data-lang="${c}">${LANG_LABELS[c]}</button>`).join("");langButton.addEventListener("click",()=>{const h=langMenu.classList.toggle("hidden");langButton.setAttribute("aria-expanded",h?"false":"true")});langMenu.addEventListener("click",e=>{const o=e.target.closest("[data-lang]");if(!o)return;const lang=SUPPORTED_LANGS.includes(o.dataset.lang)?o.dataset.lang:"en";document.cookie="flashshare_lang="+lang+";Path=/;Max-Age=31536000;SameSite=Lax";location.reload()});document.addEventListener("click",e=>{if(e.target===langButton||langMenu.contains(e.target))return;langMenu.classList.add("hidden");langButton.setAttribute("aria-expanded","false")})}}
+</script>

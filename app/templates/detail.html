@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}{{ file_name }} — Flash Share{% endblock %}
+{% block desc %}{{ file_name }} · {{ texts.card_expires }}: {{ card_date }}{% endblock %}
+
+{% block meta %}
+<link rel="canonical" href="{{ escaped_url }}">
+<meta name="robots" content="noindex, follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{ file_name }}">
+<meta property="og:description" content="{{ texts.card_expires }}: {{ card_date }} · {{ texts.card_downloads }}: {{ downloads }}">
+<meta property="og:url" content="{{ escaped_url }}">
+<meta property="og:image" content="{{ SOCIAL_IMAGE_URL }}">
+<meta property="og:image:secure_url" content="{{ SOCIAL_IMAGE_URL }}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{ file_name }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ file_name }}">
+<meta name="twitter:description" content="{{ texts.card_expires }}: {{ card_date }}">
+<meta name="twitter:image" content="{{ SOCIAL_IMAGE_URL }}">
+<meta name="twitter:image:alt" content="{{ file_name }}">
+{% endblock %}
+
+{% block content %}
+<section class="file-page">
+  <div class="file-card">
+    <div class="file-card-head">
+      {{ file_format_icon() }}
+      <div class="file-card-info">
+        <h1 id="fileName">{{ file_name }}</h1>
+        <dl class="file-facts">
+          <div>{{ file_size_icon }}<dd>{{ size_text }}</dd></div>
+          <div>{{ expiry_icon }}<dd>{{ expire_text }}</dd></div>
+          <div>{{ download_count_icon }}<dd>{{ downloads }}</dd></div>
+        </dl>
+      </div>
+    </div>
+    <div class="workspace-tools" id="workspaceTools" data-pid="{{ public_id }}">
+      {% if is_owner %}
+      <div class="tools-bar" id="ownerTools">
+        <button class="tool-btn" id="renameBtn">{{ icon_svg("edit") }}<span>{{ texts.rename }}</span></button>
+        <button class="tool-btn danger" id="deleteBtn">{{ icon_svg("trash") }}<span>{{ texts.delete }}</span></button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="file-actions">
+    <a class="action-btn primary" href="{{ dl_url }}" download aria-label="Download">{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+    <button class="action-btn" id="shareImgBtn" type="button" aria-label="Share">{{ icon_svg("share") }}</button>
+    <span class="action-sep"></span>
+    <button class="action-btn" id="copyBtn" type="button" aria-label="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
+    <button class="action-btn" id="qrBtn" type="button" aria-label="QR">{{ icon_svg("qr") }}</button>
+    <a class="action-btn" href="{{ share_url }}" target="_blank" rel="noreferrer" aria-label="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
+    <input id="landingUrl" value="{{ escaped_url }}" readonly type="hidden">
+  </div>
+</section>
+{% endblock %}
+
+{% block modals %}
+<div class="modal hidden" id="qrModal" role="dialog" aria-modal="true">
+  <div class="modal-panel qr-modal-panel">
+    <button class="modal-close" id="qrModalClose" type="button" aria-label="Close">{{ close_icon }}</button>
+    <img id="qrModalImg" src="/f/{{ public_id }}/qr.svg" alt="QR" width="200" height="200">
+  </div>
+</div>
+<div class="modal hidden" id="toolModal" role="dialog" aria-modal="true">
+  <div class="modal-panel">
+    <button class="modal-close" id="toolModalClose" type="button" aria-label="Close">{{ close_icon }}</button>
+    <div id="toolModalBody"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+// User dropdown menu (same as app.js)
+const userMenuBtn = document.getElementById("userMenuBtn");
+const userDropdown = document.getElementById("userDropdown");
+if (userMenuBtn && userDropdown) {
+  userMenuBtn.addEventListener("click", (e) => {
+    const hidden = userDropdown.classList.toggle("hidden");
+    userMenuBtn.setAttribute("aria-expanded", hidden ? "false" : "true");
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target === userMenuBtn || userDropdown.contains(e.target)) return;
+    userDropdown.classList.add("hidden");
+    userMenuBtn.setAttribute("aria-expanded", "false");
+  });
+}
+
+// Copy link
+const copyBtn = document.getElementById("copyBtn");
+const landingUrl = document.getElementById("landingUrl");
+copyBtn.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(landingUrl.value);
+  const orig = copyBtn.innerHTML;
+  copyBtn.innerHTML = '{{ icon_svg("check") }}';
+  copyBtn.style.color = "var(--accent)";
+  copyBtn.style.borderColor = "var(--accent)";
+  setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);
+});
+
+const shareImgBtn = document.getElementById("shareImgBtn");
+shareImgBtn.addEventListener("click", async () => {
+  const imgUrl = "{{ dl_url }}";
+  const fname = "{{ file_name }}";
+  try {
+    const res = await fetch(imgUrl);
+    if (!res.ok) throw new Error("fetch failed");
+    const blob = await res.blob();
+    const file = new File([blob], fname || "image.png", { type: blob.type || "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: fname || "image" });
+      return;
+    }
+  } catch(e) {
+    if (e.name === "AbortError") return; // user cancelled — do nothing
+    console.warn("share failed:", e.message);
+  }
+  window.location.href = "{{ dl_url }}";
+});
+
+const qrBtn = document.getElementById("qrBtn");
+const qrModal = document.getElementById("qrModal");
+const qrModalClose = document.getElementById("qrModalClose");
+qrBtn.addEventListener("click", () => qrModal.classList.remove("hidden"));
+qrModalClose.addEventListener("click", () => qrModal.classList.add("hidden"));
+qrModal.addEventListener("click", (e) => { if (e.target === qrModal) qrModal.classList.add("hidden"); });
+
+const wsContainer = document.getElementById("workspaceTools");
+const pid = wsContainer ? wsContainer.dataset.pid : "";
+const toolModal = document.getElementById("toolModal");
+const toolModalBody = document.getElementById("toolModalBody");
+function openToolModal(html) { toolModalBody.innerHTML = html; toolModal.classList.remove("hidden"); }
+function closeToolModal() { toolModal.classList.add("hidden"); toolModalBody.innerHTML = ""; }
+document.getElementById("toolModalClose").addEventListener("click", closeToolModal);
+toolModal.addEventListener("click", (e) => { if (e.target === toolModal) closeToolModal(); });
+
+function toolLoading() { return '<div class="tool-loading">{{ texts.get("loading", "Loading...") }}</div>'; }
+function toolError(msg) { return '<p class="tool-error">' + (msg || "error") + '</p>'; }
+
+const renameBtn = document.getElementById("renameBtn");
+if (renameBtn) renameBtn.addEventListener("click", () => openRename(pid));
+const deleteBtn = document.getElementById("deleteBtn");
+if (deleteBtn) deleteBtn.addEventListener("click", () => openDelete(pid));
+
+function openRename(pid) {
+  const h1 = document.getElementById("fileName");
+  const oldName = h1.textContent.trim();
+  const dotIdx = oldName.lastIndexOf(".");
+  const stem = dotIdx > 0 ? oldName.substring(0, dotIdx) : oldName;
+  openToolModal('<div class="tool-panel"><h3>{{ texts.rename }}</h3><input type="text" id="renameInput" value="' + stem.replace(/"/g, '&quot;') + '" maxlength="200"><div class="tool-panel-actions"><button class="action-btn primary" id="renameConfirm">✓</button></div></div>');
+  const input = document.getElementById("renameInput");
+  input.focus(); input.select();
+  document.getElementById("renameConfirm").addEventListener("click", async () => {
+    const v = input.value.trim();
+    if (!v || v === stem) { closeToolModal(); return; }
+    openToolModal(toolLoading());
+    try {
+      const r = await fetch(`/api/v1/uploads/${pid}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({name:v}) });
+      const data = await r.json();
+      if (data.ok) { h1.textContent = data.name; document.title = data.name; closeToolModal(); }
+      else openToolModal(toolError(data.error));
+    } catch(e) { openToolModal(toolError(e.message)); }
+  });
+}
+
+function openDelete(pid) {
+  openToolModal('<div class="tool-panel"><h3>{{ texts.delete }}</h3><p class="tool-confirm-text">{{ texts.confirmDelete }}</p><div class="tool-panel-actions"><button class="action-btn" id="delCancel">✕</button><button class="action-btn primary" id="delConfirm">✓</button></div></div>');
+  document.getElementById("delCancel").addEventListener("click", closeToolModal);
+  document.getElementById("delConfirm").addEventListener("click", async () => {
+    openToolModal(toolLoading());
+    try {
+      const r = await fetch(`/api/v1/uploads/${pid}`, { method:"DELETE" });
+      const data = await r.json();
+      if (data.ok) window.location.href = "/";
+      else openToolModal(toolError(data.error));
+    } catch(e) { openToolModal(toolError(e.message)); }
+  });
+}
+{% endblock %}

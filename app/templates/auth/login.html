@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.loginTitle }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="auth-page">
+  <h1 data-i18n="loginTitle">{{ texts.loginTitle }}</h1>
+  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+  <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
+  <div class="auth-divider"><span>or</span></div>
+  <form method="post" action="/auth/login" class="auth-form">
+    <label>
+      <span data-i18n="loginLabel">{{ texts.loginLabel }}</span>
+      <input type="text" name="login" required autocomplete="username" maxlength="254">
+    </label>
+    <label>
+      <span data-i18n="passwordLabel">{{ texts.passwordLabel }}</span>
+      <input type="password" name="password" required autocomplete="current-password" maxlength="128">
+    </label>
+    <button type="submit" class="primary full"><span data-i18n="signIn">{{ texts.signIn }}</span></button>
+  </form>
+  <p class="auth-hint"><span data-i18n="loginHint">{{ texts.loginHint }}</span> <a href="/auth/register" data-i18n="signUp">{{ texts.signUp }}</a></p>
+</section>
+{% endblock %}

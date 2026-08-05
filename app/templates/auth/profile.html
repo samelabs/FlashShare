@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.settings }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="auth-page">
+  <h1 data-i18n="settings">{{ texts.settings }}</h1>
+  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+
+  <div class="profile-section">
+    <h2 data-i18n="basicInfo">{{ texts.basicInfo }}</h2>
+    <form method="post" action="/auth/profile" class="auth-form">
+      <label>
+        <span data-i18n="username">{{ texts.username }}</span>
+        <input type="text" value="{{ u.username }}" disabled>
+      </label>
+      <label>
+        <span data-i18n="email">{{ texts.email }}</span>
+        <input type="email" name="email" value="{{ u.email or '' }}" required maxlength="254">
+      </label>
+      <label>
+        <span data-i18n="displayName">{{ texts.displayName }}</span>
+        <input type="text" name="display_name" value="{{ u.displayName or '' }}" maxlength="64">
+      </label>
+      <label>
+        <span data-i18n="bio">{{ texts.bio }}</span>
+        <textarea name="bio" rows="3" maxlength="500">{{ u.bio or '' }}</textarea>
+      </label>
+      <button type="submit" class="primary"><span data-i18n="save">{{ texts.save }}</span></button>
+    </form>
+  </div>
+
+  {% if user_has_password %}
+  <div class="profile-section">
+    <h2 data-i18n="changePassword">{{ texts.changePassword }}</h2>
+    <form method="post" action="/auth/password" class="auth-form">
+      <label>
+        <span data-i18n="currentPassword">{{ texts.currentPassword }}</span>
+        <input type="password" name="old_password" required autocomplete="current-password" maxlength="128">
+      </label>
+      <label>
+        <span data-i18n="newPassword">{{ texts.newPassword }}</span>
+        <input type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <label>
+        <span data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
+        <input type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
+      <button type="submit" class="primary"><span data-i18n="updatePassword">{{ texts.updatePassword }}</span></button>
+    </form>
+  </div>
+  {% else %}
+  <div class="profile-section">
+    <h2 data-i18n="setPassword">{{ texts.setPassword }}</h2>
+    <p class="profile-unbound" data-i18n="noPasswordHint">{{ texts.noPasswordHint }}</p>
+    <form method="post" action="/auth/password" class="auth-form">
+      <label>
+        <span data-i18n="newPassword">{{ texts.newPassword }}</span>
+        <input type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <label>
+        <span data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
+        <input type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
+      <button type="submit" class="primary"><span data-i18n="setPassword">{{ texts.setPassword }}</span></button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="profile-section">
+    <h2>X</h2>
+    {% if x_bound %}
+    <p class="profile-bound"><span data-i18n="xBound">{{ texts.xBound }}</span> <a href="{{ u.xProfileUrl or '' }}" target="_blank" rel="noreferrer">@{{ u.xUsername or '' }}</a></p>
+    <button type="button" class="btn-secondary" id="unbindX"><span data-i18n="xUnbind">{{ texts.xUnbind }}</span></button>
+    {% else %}
+    <p class="profile-unbound" data-i18n="xUnbound">{{ texts.xUnbound }}</p>
+    <a class="btn-secondary" href="/auth/x/login?bind=1" data-i18n="xBinding">{{ texts.xBinding }}</a>
+    {% endif %}
+  </div>
+
+  <div class="profile-section">
+    <form method="post" action="/auth/logout">
+      <button type="submit" class="btn-danger"><span data-i18n="logout">{{ texts.logout }}</span></button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+document.getElementById('unbindX')?.addEventListener('click', async () => {
+  if (!confirm('{{ texts.confirmUnbindX }}')) return;
+  const r = await fetch('/auth/x/unbind', { method: 'POST' });
+  if (r.ok) location.reload();
+  else { const d = await r.json(); alert(d.error || 'error'); }
+});
+const _pw = document.getElementById('newPw');
+const _pwc = document.getElementById('newPwConfirm');
+const _hint = document.getElementById('pwMismatch');
+function checkPw() {
+  if (_pwc.value && _pw.value !== _pwc.value) { _hint.hidden = false; _pwc.setCustomValidity('x'); }
+  else { _hint.hidden = true; _pwc.setCustomValidity(''); }
+}
+if (_pw && _pwc) { _pw.addEventListener('input', checkPw); _pwc.addEventListener('input', checkPw); }
+{% endblock %}

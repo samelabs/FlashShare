@@ -1,0 +1,169 @@
+"""FlashShare FastAPI application entry point.
+
+Architecture:
+    Cloudflare → Nginx → Uvicorn (this app)
+                              ├── Jinja2: page rendering
+                              ├── API routes: /api/v1/*
+                              ├── Auth routes: /auth/*
+                              ├── Proxy routes: file download / QR
+                              └── Worker pool: tool processing (subprocess isolation)
+"""
+
+import sys
+from pathlib import Path
+
+# Core modules (zero-change from legacy, now in ../core/)
+_BASE_DIR = Path(__file__).resolve().parent.parent
+_CORE_DIR = _BASE_DIR / "core"
+sys.path.insert(0, str(_CORE_DIR))
+
+import json
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse
+
+from config import APP_NAME, ADDR, COOKIE_NAME, SESSION_SECRET, SESSION_TTL
+from database import init_db
+from security import token_hash
+from i18n import language_from_code, language_from_header
+from utils import now
+import tools_registry  # noqa: F401 — registers share + privacy tools
+import tools_beautify  # noqa: F401 — registers beautify tool
+import tools_compress  # noqa: F401 — registers compress tool
+import tools_ico       # noqa: F401 — registers ico favicon tool
+
+# ── Logging ──
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+logger = logging.getLogger("flashshare")
+
+# ── App ──
+app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None)
+
+_STATIC_DIR = _BASE_DIR / "static"
+_TEMPLATES_DIR = _BASE_DIR / "app" / "templates"
+_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+# Starlette forces autoescape=True by default. We disable it because
+# icon_svg() and other helpers return raw HTML that must not be escaped.
+# All escaping is handled manually via html_escape() in Python, matching
+# the legacy views.py behavior exactly.
+templates.env.autoescape = False
+# Also override the select_autoescape policy
+import jinja2
+templates.env.override = True
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+
+# ── Auth helpers (reuse core/security.py + core/database.py) ──
+
+def get_user_from_request(request: Request):
+    """Extract and validate session from cookie. Returns user dict or None."""
+    from database import db
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        return None
+    try:
+        with db() as con:
+            row = con.execute(
+                "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?",
+                (token_hash(token), now()),
+            ).fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def create_session(user_id: int) -> str:
+    """Create session token, store hash in DB, return raw token for cookie."""
+    import secrets
+    from database import db
+    from utils import b64url
+    token = b64url(secrets.token_bytes(32))
+    with db() as con:
+        con.execute(
+            "INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(?,?,?,?)",
+            (token_hash(token), user_id, now() + SESSION_TTL, now()),
+        )
+    return token
+
+
+def make_session_cookie(token: str) -> str:
+    return f"{COOKIE_NAME}={token}; Path=/; Max-Age={SESSION_TTL}; HttpOnly; Secure; SameSite=Lax"
+
+
+def clear_session_cookie() -> str:
+    return f"{COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
+
+
+def detect_lang(request: Request) -> str:
+    """Detect preferred language: query > cookie > Accept-Language."""
+    # Query param
+    for param in ("lang", "x"):
+        val = request.query_params.get(param, "")
+        code = language_from_code(val)
+        if code:
+            return code
+    # Cookie
+    cookie_lang = request.cookies.get("flashshare_lang", "")
+    code = language_from_code(cookie_lang)
+    if code:
+        return code
+    # Header
+    return language_from_header(request.headers.get("accept-language", ""))
+
+
+# ── Middleware ──
+
+import asyncio
+from contextlib import asynccontextmanager
+
+# Concurrency limiter — max 8 simultaneous request handlers.
+# Excess requests queue in Uvicorn's event loop without blocking.
+_concurrency = asyncio.Semaphore(8)
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    request.state.user = get_user_from_request(request)
+    request.state.lang = detect_lang(request)
+    async with _concurrency:
+        response = await call_next(request)
+    return response
+
+
+# ── Health check ──
+
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "status": "healthy"}
+
+
+# ── Global exception handler ──
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        {"ok": False, "error": "internal_error"},
+        status_code=500,
+    )
+
+
+# ── Routes ──
+
+from app.routes import pages, api, auth_route, proxy  # noqa: E402
+
+app.include_router(pages.router)
+app.include_router(api.router, prefix="/api/v1")
+app.include_router(auth_route.router, prefix="/auth")
+app.include_router(proxy.router)
+
+
+@app.on_event("startup")
+async def startup():
+    init_db()
+    logger.info("%s started", APP_NAME)

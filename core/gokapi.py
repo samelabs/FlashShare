@@ -1,0 +1,123 @@
+import http.client
+import json
+import secrets
+import urllib.parse
+
+from config import GOKAPI_URL, GOKAPI_KEY
+
+
+def _gokapi_connection(timeout=30):
+    parsed = urllib.parse.urlparse(GOKAPI_URL)
+    conn_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    return conn_cls(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), timeout=timeout), parsed
+
+
+def _gokapi_path(path: str) -> str:
+    parsed = urllib.parse.urlparse(GOKAPI_URL)
+    base = parsed.path.rstrip("/")
+    return f"{base}{path if path.startswith('/') else '/' + path}"
+
+
+def upload_to_gokapi(file_obj, filename: str, content_type: str, expiry_days: int, allowed_downloads: int, file_size: int) -> dict:
+    """Upload a file to Gokapi. Streams from file_obj, never loads full file into memory.
+
+    Args:
+        file_obj: seekable file-like object (SpooledTemporaryFile)
+        filename: sanitized filename
+        content_type: MIME type
+        expiry_days: expiry in days
+        allowed_downloads: max downloads
+        file_size: size in bytes (for Content-Length header)
+    """
+    if not GOKAPI_KEY:
+        raise RuntimeError("Gokapi API key not configured")
+    boundary = "----FlashShare" + secrets.token_hex(16)
+
+    # Calculate total body size for Content-Length
+    fields = {
+        "allowedDownloads": str(allowed_downloads),
+        "expiryDays": str(expiry_days),
+    }
+    header_parts = bytearray()
+    for key, value in fields.items():
+        header_parts.extend(f"--{boundary}\r\n".encode())
+        header_parts.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
+    header_parts.extend(f"--{boundary}\r\n".encode())
+    safe_name = filename.replace('"', "_")
+    header_parts.extend(f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'.encode())
+    header_parts.extend(f"Content-Type: {content_type}\r\n\r\n".encode())
+    footer = f"\r\n--{boundary}--\r\n".encode()
+    total_size = len(header_parts) + file_size + len(footer)
+
+    conn, _parsed = _gokapi_connection(timeout=300)
+    conn.connect()
+    conn.putrequest("POST", _gokapi_path("/api/files/add"))
+    conn.putheader("Content-Type", f"multipart/form-data; boundary={boundary}")
+    conn.putheader("Content-Length", str(total_size))
+    conn.putheader("apikey", GOKAPI_KEY)
+    conn.endheaders()
+
+    # Stream: headers → file chunks → footer
+    sock = conn.sock
+    sock.sendall(bytes(header_parts))
+    file_obj.seek(0)
+    while True:
+        chunk = file_obj.read(64 * 1024)
+        if not chunk:
+            break
+        sock.sendall(chunk)
+    sock.sendall(footer)
+
+    resp = conn.getresponse()
+    data = resp.read()
+    conn.close()
+    try:
+        payload = json.loads(data.decode("utf-8"))
+    except Exception:
+        payload = {"raw": data.decode("utf-8", "replace")}
+    if resp.status != 200 or payload.get("Result") != "OK":
+        raise RuntimeError(payload.get("ErrorMessage") or f"Gokapi upload failed HTTP {resp.status}")
+    return payload
+
+
+def get_gokapi_file(file_id: str):
+    if not GOKAPI_KEY or not file_id:
+        return None
+    conn, _parsed = _gokapi_connection(timeout=5)
+    conn.request("GET", _gokapi_path(f"/api/files/list/{urllib.parse.quote(file_id)}"), headers={"apikey": GOKAPI_KEY})
+    resp = conn.getresponse()
+    data = resp.read()
+    conn.close()
+    if resp.status != 200:
+        return None
+    try:
+        return json.loads(data.decode("utf-8"))
+    except Exception:
+        return None
+
+
+def delete_gokapi_file(file_id: str) -> None:
+    if not GOKAPI_KEY or not file_id:
+        raise RuntimeError("delete_not_configured")
+    conn, _parsed = _gokapi_connection(timeout=30)
+    conn.request("POST", _gokapi_path("/api/files/delete"), headers={"apikey": GOKAPI_KEY, "id": file_id})
+    resp = conn.getresponse()
+    data = resp.read()
+    conn.close()
+    if resp.status == 200:
+        return
+    try:
+        payload = json.loads(data.decode("utf-8"))
+        message = payload.get("ErrorMessage") or payload.get("error") or f"delete_failed_{resp.status}"
+    except Exception:
+        message = data.decode("utf-8", "replace") or f"delete_failed_{resp.status}"
+    raise RuntimeError(message)
+
+
+def open_gokapi_download(file_id: str):
+    if not file_id:
+        raise RuntimeError("missing_file_id")
+    conn, _parsed = _gokapi_connection(timeout=300)
+    conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(file_id)}"))
+    resp = conn.getresponse()
+    return resp.status, resp.getheaders(), resp

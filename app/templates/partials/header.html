@@ -1,0 +1,41 @@
+{# shared_header: brand + auth controls + language switch + X share #}
+<header class="topbar">
+  <a class="brand" href="/" aria-label="518.PLUS">
+    <span class="brand-logo">518.PLUS</span>
+  </a>
+  <div class="top-actions">
+    {% if user %}
+    <div class="user-menu">
+      <button class="topbar-profile" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
+              aria-label="{{ texts.settings }}">
+        {% if user.avatarUrl %}
+        <img src="{{ user.avatarUrl }}" alt="">
+        {% else %}
+        <span class="avatar-fallback">{{ (user.displayName or user.username or '?')[:1].upper() }}</span>
+        {% endif %}
+      </button>
+      <div class="user-dropdown hidden" id="userDropdown" role="menu">
+        <div class="user-info">
+          <span class="user-name">{{ user.displayName or user.username }}</span>
+          {% if user.email %}<span class="user-email">{{ user.email }}</span>{% endif %}
+        </div>
+        <a href="/auth/profile" role="menuitem" data-i18n="settings">{{ texts.settings }}</a>
+        <form method="post" action="/auth/logout">
+          <button type="submit" class="logout-link" data-i18n="logout">{{ texts.logout }}</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <a class="topbar-login" href="/auth/login" data-i18n="signIn">{{ texts.signIn }}</a>
+    <a class="topbar-register" href="/auth/register" data-i18n="signUp">{{ texts.signUp }}</a>
+    {% endif %}
+    <div class="lang-switch" id="langSwitch">
+      <button class="lang-button" id="langButton" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+      <div class="lang-menu hidden" id="langMenu" role="listbox" aria-label="Language"></div>
+    </div>
+    {% if share_url %}
+    <a class="topbar-share" href="{{ share_url }}" target="_blank" rel="noreferrer"
+       aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
+    {% endif %}
+  </div>
+</header>

@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}{{ texts.seo_title }} — Free Temporary File Sharing{% endblock %}
+{% block desc %}{{ texts.seo_desc }}{% endblock %}
+
+{% block meta %}
+<meta name="application-name" content="{{ texts.seo_title }}">
+<meta name="keywords" content="file sharing, temporary links, QR code, file upload, image compression, screenshot beautify, 临时文件分享">
+<meta name="robots" content="index, follow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="{{ texts.seo_title }}">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<link rel="canonical" href="{{ BASE_URL }}/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{ texts.seo_title }}">
+<meta property="og:description" content="{{ texts.seo_desc }}">
+<meta property="og:url" content="{{ BASE_URL }}/">
+<meta property="og:image" content="{{ SOCIAL_IMAGE_URL }}">
+<meta property="og:image:secure_url" content="{{ SOCIAL_IMAGE_URL }}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{ texts.seo_title }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ texts.seo_title }}">
+<meta name="twitter:description" content="{{ texts.seo_desc }}">
+<meta name="twitter:image" content="{{ SOCIAL_IMAGE_URL }}">
+<meta name="twitter:image:alt" content="{{ texts.seo_title }}">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"Flash Share","url":"{{ BASE_URL }}/","description":"{{ texts.seo_desc }}","applicationCategory":"Utilities","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
+{% endblock %}
+
+{% block content %}
+<section class="workspace">
+  <div class="intro">
+    <h1 data-i18n="title">Flash Share</h1>
+    <p class="hero-subtitle" data-i18n="subtitle">{{ texts.subtitle }}</p>
+
+    <div class="limit-grid">
+      <div class="limit" title="Max file size">{{ file_size_icon }}<strong>{{ max_mb }}MB</strong></div>
+      <div class="limit" title="Daily uploads">{{ upload_count_icon }}<strong>{{ daily_uploads }}</strong></div>
+      <div class="limit" title="Daily bandwidth">{{ bandwidth_icon }}<strong>{{ daily_mb }}MB</strong></div>
+      <div class="limit" title="Max expiry">{{ expiry_icon }}<strong>7d</strong></div>
+      <div class="limit" title="Max downloads">{{ download_count_icon }}<strong>200</strong></div>
+    </div>
+
+    {% if not user %}
+    <div class="home-x-login">
+      <a class="x-login" href="/auth/x/login">
+        <span class="x-glyph" aria-hidden="true">𝕏</span>
+        <span data-i18n="login">{{ texts.login }}</span>
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <section class="tool" aria-label="Upload">
+    <div class="home-tools{% if not tools %} hidden{% endif %}" id="homeTools">
+      {% for t in tools %}
+      <div class="tool-tab" data-tool-id="{{ t.id }}" role="button" tabindex="0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path(t.icon) }}</svg>
+        <span data-i18n="{{ t.id }}">{{ texts.get(t.id, t.label.get(lang, t.label.get('en', t.id))) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="tool-desc hidden" id="toolDesc"></p>
+
+    <form id="uploadForm" class="upload" enctype="multipart/form-data">
+      <label class="drop" id="dropZone">
+        <input id="file" name="file" type="file" required accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.ico,.heic,.heif,.tiff,.tif,.avif,.svg,.pdf,.txt,.csv,.md,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.zip,.rar,.7z,.gz,.tar,.bz2,.xz,.tgz,.json,.xml,.yaml,.yml,.py,.js,.mjs,.ts,.html,.htm,.css,.go,.rs,.java,.c,.cpp,.h,.rb,.php,.sh,.sql">
+        <span class="drop-icon" aria-hidden="true">{{ upload_icon }}</span>
+        <span id="fileLabel" data-i18n="dropTitle">Drop file</span>
+        <span class="drop-hint" data-i18n="dropHint">or click to browse</span>
+        <div class="drop-formats">
+          <span>IMG</span><span>PDF</span><span>DOC</span><span>XLS</span><span>PPT</span><span>TXT</span><span>ZIP</span><span>CODE</span>
+        </div>
+      </label>
+      <div class="controls">
+        <label><span data-i18n="expiry">Expires</span>
+          <select name="expiryDays">
+            <option value="1" data-i18n="oneDay">1 day</option>
+            <option value="3" data-i18n="threeDays">3 days</option>
+            <option value="7" data-i18n="sevenDays">7 days</option>
+          </select>
+        </label>
+        <label><span data-i18n="downloads">Downloads</span>
+          <select name="allowedDownloads">
+            <option value="1" data-i18n="oneDownload">1 time</option>
+            <option value="10" data-i18n="tenDownloads">10 times</option>
+            <option value="50" data-i18n="fiftyDownloads" selected>50 times</option>
+            <option value="100" data-i18n="hundredDownloads">100 times</option>
+            <option value="200" data-i18n="twohundredDownloads">200 times</option>
+          </select>
+        </label>
+        <button id="submitBtn" class="primary" type="submit">
+          <span class="button-icon" aria-hidden="true">{{ icon_svg("upload") }}</span>
+          <span data-i18n="create">Upload</span>
+        </button>
+      </div>
+    </form>
+    <div id="result" class="result hidden" aria-live="polite"></div>
+  </section>
+</section>
+
+<section class="history">
+  <div class="section-title">
+    <div class="title-row">
+      <h2 data-i18n="recent">Recent</h2>
+      <span class="history-count" id="historyCount"></span>
+    </div>
+    <button id="refreshBtn" class="icon-button" type="button" aria-label="Refresh">{{ refresh_icon }}</button>
+  </div>
+  <div id="historyList" class="history-list" data-empty=""></div>
+</section>
+{% endblock %}
+
+{% block modals %}
+<div class="tool-overlay hidden" id="toolOverlay" role="dialog" aria-modal="true">
+  <div class="tool-overlay-panel">
+    <button class="tool-overlay-close" id="toolOverlayClose" type="button" aria-label="Close">{{ close_icon }}</button>
+    <div id="toolOverlayBody"></div>
+  </div>
+</div>
+<div class="modal hidden" id="uploadModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-panel">
+    <button class="modal-close" id="modalClose" type="button" aria-label="Close">{{ close_icon }}</button>
+    <h2 id="modalTitle"></h2>
+    <p id="modalMeta" class="modal-meta"></p>
+    <img id="modalQr" class="qr-code modal-qr" alt="QR code">
+    <div class="urlrow">
+      <input id="modalUrl" readonly>
+      <button id="modalCopy" type="button" data-i18n="copy">Copy</button>
+    </div>
+    <div class="modal-actions">
+      <a id="modalOpen" class="modal-action" target="_blank" rel="noreferrer"></a>
+      <a id="modalShare" class="modal-action accent-action" target="_blank" rel="noreferrer"></a>
+      <a id="modalSaveQr" class="modal-action" download></a>
+      <button id="modalDelete" class="modal-action danger-button" type="button"></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script_head %}
+window.__USER__ = {{ user_json|safe }};
+window.__LIMITS__ = {{ limits_json|safe }};
+window.__I18N__ = {{ i18n_json|safe }};
+window.__TOOLS__ = {{ tools_json|safe }};
+window.__ICONS__ = {{ icons_json|safe }};
+{% endblock %}
+
+{% block script %}{{ JS|safe }}{% endblock %}
+
+{% block script_tail %}
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=58", { updateViaCache:"none" }).catch(() => {}));
+}
+{% endblock %}

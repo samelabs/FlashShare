@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.seo_title }}{% endblock %}
+{% block desc %}{{ texts.subtitle }}{% endblock %}
+{% block content %}
+<section class="file-page">
+  <div class="file-mark" aria-hidden="true">OFF</div>
+  <h1>{{ texts.seo_title }}</h1>
+  <p class="file-note">{{ texts.subtitle }}</p>
+  <a class="primary download-button" href="/">Reload</a>
+</section>
+{% endblock %}

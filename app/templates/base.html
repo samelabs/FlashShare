@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="{{ locale }}" dir="{{ direction }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1419">
+  <meta name="author" content="518.PLUS">
+  <meta property="og:site_name" content="{{ APP_NAME }}">
+  <meta property="og:locale" content="{{ locale }}">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+  <meta name="description" content="{% block desc %}{{ texts.subtitle }}{% endblock %}">
+  {% block meta %}{% endblock %}
+  <style>{{ CSS|safe }}</style>
+</head>
+<body>
+  <main class="shell {{ shell_class }}">
+    {% include "partials/header.html" %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block modals %}{% endblock %}
+
+  <script>
+    {% block script_head %}{% endblock %}
+    {% block script %}{% endblock %}
+    {% block script_tail %}{% endblock %}
+  </script>
+
+  {% include "partials/footer.html" %}
+</body>
+</html>
