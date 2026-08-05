@@ -6,7 +6,7 @@ to output bytes. The handler never touches storage, database, or HTTP.
 
 Tool lifecycle:
     CP1 Register  — tool declares its contract at startup
-    CP2 List      — GET /drop-api/tools returns declarations to frontend
+    CP2 List      — GET /api/v1/tools returns declarations to frontend
     CP3 Select    — frontend binds accept to <input>, updates UI
     CP4 Upload    — existing security pipeline (whitelist + sniff + quota)
     CP5 Gate      — handle_execute_tool checks existence + auth + CSRF
@@ -112,7 +112,7 @@ def list_all_tools():
 def get_tools_for_upload(upload: dict) -> list:
     """Return tools whose match() returns True for this upload.
 
-    Used by the detail page (GET /drop-api/tools/<public_id>).
+    Used by the detail page (GET /api/v1/tools/{public_id}).
     Strips handler and match from the output.
     """
     result = []

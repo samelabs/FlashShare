@@ -13,7 +13,7 @@ self.addEventListener("fetch", event => {
   const request = event.request;
   const url = new URL(request.url);
   if (url.origin !== location.origin || request.method !== "GET") return;
-  if (url.pathname.startsWith("/drop-api/") || url.pathname.startsWith("/auth/")) return;
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) return;
 
   // Navigation: network-first, only fallback to cache when offline.
   // Do NOT cache HTML responses — CSS/JS are inlined and must always be fresh.
