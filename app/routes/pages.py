@@ -138,7 +138,7 @@ async def home(request: Request):
     max_mb = MAX_UPLOAD_BYTES // 1024 // 1024
     home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
         "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
-        "url": f"{BASE_URL}/?{urllib.parse.urlencode({'x': lang})}",
+        "url": BASE_URL,
     })
 
     ctx.update({

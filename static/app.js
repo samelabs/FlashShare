@@ -164,7 +164,7 @@ function renderModalActions() {
 }
 function renderHomeShare() {
   if (!homeShare) return;
-  const shareUrl = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("homeShareText"), url: `${location.origin}/?x=${encodeURIComponent(lang)}` });
+  const shareUrl = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("homeShareText"), url: location.origin });
   homeShare.innerHTML = ICONS.share;
   homeShare.href = shareUrl;
   homeShare.setAttribute("aria-label", t("shareX"));
