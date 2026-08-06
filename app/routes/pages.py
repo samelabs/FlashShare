@@ -26,7 +26,7 @@ from gokapi import get_gokapi_file
 from utils import (
     html_escape, format_bytes, format_ts, format_share_date, compact_filename,
     brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,
-    bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg, refresh_icon_svg,
+    bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
     close_icon_svg, file_format_icon, public_file_url,
 )
 
@@ -162,7 +162,6 @@ async def home(request: Request):
         "expiry_icon": expiry_icon_svg(),
         "download_count_icon": download_count_icon_svg(),
         "upload_icon": upload_icon_svg(),
-        "refresh_icon": refresh_icon_svg(),
     })
     return templates.TemplateResponse("home.html", ctx)
 

@@ -186,7 +186,6 @@ function applyI18n() {
   });
   renderLanguageMenu();
   renderHomeShare();
-  document.getElementById("refreshBtn").setAttribute("aria-label", t("refresh"));
   modalCopy.textContent = t("copy");
   renderModalActions();
   if (!file.files[0]) fileLabel.textContent = t("dropEmpty");
@@ -458,18 +457,6 @@ async function deleteUpload(upload, triggerButton = null) {
   }
 }
 modalDelete.addEventListener("click", () => deleteUpload(activeUpload, modalDelete));
-document.getElementById("refreshBtn").addEventListener("click", async () => {
-  const btn = document.getElementById("refreshBtn");
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = `<div class="btn-spinner"></div>`;
-  try {
-    await loadHistory();
-  } catch (e) {} finally {
-    btn.disabled = false;
-    btn.innerHTML = orig;
-  }
-});
 langButton.addEventListener("click", () => {
   const hidden = langMenu.classList.toggle("hidden");
   langButton.setAttribute("aria-expanded", hidden ? "false" : "true");

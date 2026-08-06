@@ -181,7 +181,7 @@ button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke
 .drop input { position: absolute; opacity: 0; pointer-events: none; }
 .drop-icon { width: 56px; height: 56px; border-radius: var(--r); display: inline-flex; align-items: center; justify-content: center; color: var(--accent); background: transparent; border: 2px solid var(--accent); margin-bottom: var(--s3); flex: 0 0 auto; transition: background var(--ease), color var(--ease), transform var(--ease), box-shadow var(--ease); }
 .drop:hover .drop-icon, .drop.dragover .drop-icon { background: var(--accent); color: var(--button-ink); border-color: var(--accent); transform: scale(1.05); }
-.drop-icon svg, .icon-button svg, .modal-close svg { width: 28px; height: 28px; display: block; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.drop-icon svg, .modal-close svg { width: 28px; height: 28px; display: block; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 .drop span:not(.drop-icon) { display: block; font-size: var(--text-base); font-weight: 600; color: var(--ink); }
 .drop small { display: block; color: var(--muted); margin-top: 9px; line-height: 1.5; }
 .drop-formats { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s1); margin-top: var(--s3); max-width: 400px; }
@@ -243,9 +243,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .section-title h2 { font-size: var(--text-base); margin: 0; font-weight: 800; color: var(--ink); text-transform: uppercase; letter-spacing: 0.5px; }
 .title-row { display: inline-flex; align-items: baseline; gap: var(--s2); }
 .history-count { font-size: var(--text-sm); color: var(--muted); font-weight: 600; line-height: 1; background: var(--soft); padding: 2px 8px; border-radius: var(--r-full); }
-.icon-button { width: 34px; height: 34px; min-height: 34px; padding: 0; background: var(--soft); color: var(--muted); border: 1px solid var(--line); border-radius: 50%; transition: background var(--ease), color var(--ease), border-color var(--ease), transform var(--ease); }
-.icon-button:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); transform: rotate(180deg); }
-.icon-button:active { transform: rotate(180deg) scale(0.92); }
+
 .history-list { display: flex; flex-direction: column; gap: var(--s2); }
 .history-list:empty::after { content: attr(data-empty); display: block; text-align: center; padding: var(--s6) 0; color: var(--muted); font-size: var(--text-sm); }
 .item { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s2) var(--s3); display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--s3); align-items: center; background: var(--bg); transition: border-color var(--ease), box-shadow var(--ease); }
