@@ -73,9 +73,11 @@ async def file_route(public_id: str, request: Request):
                     dl_path += "?" + hot_query
 
             safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
+            from urllib.parse import quote
             from fastapi.responses import RedirectResponse
             resp = RedirectResponse(url=dl_path, status_code=302)
-            resp.headers["Content-Disposition"] = f'attachment; filename="{safe_name}"'
+            ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "download"
+            resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
             return resp
         # Fallback: stream via Python if no hotlink
         from gokapi import open_gokapi_download
