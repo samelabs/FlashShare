@@ -1317,7 +1317,7 @@ SERVER_I18N = {
         "intensity": "強度",
         "supportedFormats": "対応形式",
         "tool_failed": "処理に失敗しました",
-        "err_format_notsupported": "サポートされていない形式",
+        "err_format_not_supported": "サポートされていない形式",
         "useOriginal": "元の画像を使用",
         "retry": "再試行",
         "uploading": "アップロード中",
