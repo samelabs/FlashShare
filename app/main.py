@@ -19,6 +19,7 @@ sys.path.insert(0, str(_CORE_DIR))
 
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -36,7 +37,14 @@ import tools_compress  # noqa: F401 — registers compress tool
 import tools_ico       # noqa: F401 — registers ico favicon tool
 
 # ── Logging ──
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+import os as _os
+_LOG_DIR = "/var/log/flashshare"
+_os.makedirs(_LOG_DIR, exist_ok=True)
+_file_handler = RotatingFileHandler(f"{_LOG_DIR}/app.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
+_file_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
+logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _stream_handler])
 logger = logging.getLogger("flashshare")
 
 # ── App ──
