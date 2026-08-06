@@ -7,7 +7,7 @@ import urllib.error
 
 from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET
 from database import db
-from security import hash_password, verify_password
+from security import hash_password, verify_password, needs_rehash
 from utils import now
 
 
@@ -88,6 +88,14 @@ def authenticate_local(login: str, password: str) -> int | None:
     if not verify_password(password, row["password_hash"]):
         return None
     ts = now()
+    # Auto-upgrade legacy SHA-256 hashes to bcrypt on successful login
+    if needs_rehash(row["password_hash"]):
+        new_hash = hash_password(password)
+        with db() as con:
+            con.execute(
+                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                (new_hash, ts, row["id"]),
+            )
     with db() as con:
         con.execute(
             "UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?",

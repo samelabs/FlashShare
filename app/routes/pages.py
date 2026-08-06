@@ -34,9 +34,9 @@ router = APIRouter()
 
 # Load static assets once
 _STATIC = _BASE / "static"
-with open(_STATIC / "style.css") as f:
+with open(_STATIC / "style.css", encoding="utf-8") as f:
     CSS = f.read()
-with open(_STATIC / "app.js") as f:
+with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 
 # i18n: single source of truth (core/i18n.py SERVER_I18N dict)

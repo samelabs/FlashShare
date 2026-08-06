@@ -40,10 +40,17 @@ def get_upload_by_public_id(public_id: str):
         ).fetchone()
 
 
+_gokapi_cache = {}  # {"data": {...}, "ts": epoch}
+_GOKAPI_CACHE_TTL = 30  # seconds
+
 def _get_all_gokapi_status():
-    """Fetch all file statuses from gokapi in a single HTTP request.
+    """Fetch all file statuses from gokapi, cached for 30 seconds.
     Returns a dict keyed by file Id. Returns empty dict on failure.
     """
+    import time
+    now_ts = time.time()
+    if _gokapi_cache and (now_ts - _gokapi_cache.get("ts", 0)) < _GOKAPI_CACHE_TTL:
+        return _gokapi_cache["data"]
     if not GOKAPI_KEY:
         return {}
     try:
@@ -55,7 +62,10 @@ def _get_all_gokapi_status():
         if resp.status != 200:
             return {}
         files = json.loads(data.decode("utf-8"))
-        return {f["Id"]: f for f in files} if isinstance(files, list) else {}
+        result = {f["Id"]: f for f in files} if isinstance(files, list) else {}
+        _gokapi_cache["data"] = result
+        _gokapi_cache["ts"] = now_ts
+        return result
     except Exception:
         return {}
 

@@ -4,6 +4,8 @@ import hmac
 import os
 import urllib.parse
 
+import bcrypt
+
 from config import ALLOWED_EXT, BLOCKED_EXT, BASE_URL, SESSION_SECRET
 from utils import b64url
 
@@ -58,12 +60,19 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
 
 
 def hash_password(password: str) -> str:
-    salt = os.urandom(16)
-    h = hashlib.sha256(salt + password.encode()).digest()
-    return base64.b64encode(salt).decode() + ":" + base64.b64encode(h).decode()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
 
 
 def verify_password(password: str, stored: str) -> bool:
+    if not stored:
+        return False
+    # bcrypt hashes start with $2
+    if stored.startswith("$2"):
+        try:
+            return bcrypt.checkpw(password.encode(), stored.encode())
+        except Exception:
+            return False
+    # Legacy SHA-256 format: "base64(salt):base64(hash)"
     try:
         salt_b64, hash_b64 = stored.split(":", 1)
         salt = base64.b64decode(salt_b64)
@@ -71,3 +80,8 @@ def verify_password(password: str, stored: str) -> bool:
         return base64.b64encode(h).decode() == hash_b64
     except Exception:
         return False
+
+
+def needs_rehash(stored: str) -> bool:
+    """Check if a password hash needs upgrading from SHA-256 to bcrypt."""
+    return bool(stored) and not stored.startswith("$2")
