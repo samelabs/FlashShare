@@ -19,7 +19,7 @@ from database import db
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import list_all_tools
-import tools_registry, tools_beautify, tools_compress  # noqa: F401
+import tools_registry, tools_beautify, tools_compress, tools_ico  # noqa: F401
 from auth import public_user
 from uploads import get_upload_by_public_id
 from gokapi import get_gokapi_file

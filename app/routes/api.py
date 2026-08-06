@@ -30,7 +30,11 @@ from gokapi import upload_to_gokapi
 from security import sniff_allowed
 from storage import read as storage_read, write as storage_write
 from tools import get_tool, get_default_preset, list_all_tools, get_tools_for_upload, TYPE_PRODUCE, ToolError
+from gokapi import upload_to_gokapi, get_gokapi_file
+from auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
+from app.models import ToolExecuteRequest, RenameRequest
+from app.worker import process_tool
 
 logger = logging.getLogger("flashshare")
 router = APIRouter()
@@ -141,7 +145,6 @@ async def execute_tool(request: Request):
 
     try:
         raw = await request.json()
-        from app.models import ToolExecuteRequest
         req = ToolExecuteRequest(**raw)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
@@ -155,8 +158,10 @@ async def execute_tool(request: Request):
     upload = get_upload_by_public_id(public_id)
     if not upload:
         # Tool flow: original was uploaded to gokapi but not recorded in DB.
-        # Reconstruct upload dict from gokapi metadata.
-        from gokapi import get_gokapi_file
+        # The gokapi_id was returned only to the uploader's frontend session.
+        # Verify the ID format matches gokapi's expected pattern (alphanumeric, 8-20 chars).
+        if not public_id.isalnum() or len(public_id) < 8 or len(public_id) > 20:
+            return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
         gokapi_info = get_gokapi_file(public_id)
         if not gokapi_info:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
@@ -203,7 +208,6 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
 
     # 2. Run handler in subprocess (memory isolation)
     loop = asyncio.get_event_loop()
-    from app.worker import process_tool
     result = await loop.run_in_executor(
         _get_pool(),
         process_tool,
@@ -360,7 +364,6 @@ async def rename_upload_route(public_id: str, request: Request):
 
     try:
         raw = await request.json()
-        from app.models import RenameRequest
         req = RenameRequest(**raw)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
@@ -384,5 +387,4 @@ async def get_me(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    from auth import public_user
     return {"ok": True, "user": public_user(user)}

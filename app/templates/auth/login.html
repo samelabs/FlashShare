@@ -6,7 +6,7 @@
 {% block content %}
 <section class="auth-page">
   <h1 data-i18n="loginTitle">{{ texts.loginTitle }}</h1>
-  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+  {% if error %}<p class="form-error">{{ error|e }}</p>{% endif %}
   <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
   <div class="auth-divider"><span>or</span></div>
   <form method="post" action="/auth/login" class="auth-form">

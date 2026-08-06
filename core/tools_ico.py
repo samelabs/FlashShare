@@ -40,7 +40,7 @@ def ico_handler(tool_input, params):
     """
     ct = tool_input.get("content_type", "")
     if ct not in ACCEPT_MIMES:
-        raise ToolError("unsupported_format")
+        raise ToolError("err_format_not_supported")
 
     stream = tool_input["stream"]
     stream.seek(0)
@@ -49,7 +49,7 @@ def ico_handler(tool_input, params):
         img = Image.open(stream)
         img.load()
     except Exception:
-        raise ToolError("invalid_image")
+        raise ToolError("err_format_unsupported")
 
     # Convert to RGBA for proper alpha channel in ICO
     if img.mode != "RGBA":

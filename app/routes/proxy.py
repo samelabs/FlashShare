@@ -119,7 +119,7 @@ async def file_route(public_id: str, request: Request):
         "shell_class": "file-shell",
         "share_url": share_url,
         "public_id": pid,
-        "file_name": html_escape(upload["file_name"]),
+        "file_name": upload["file_name"],
         "card_date": format_ts(expire_at),
         "size_text": format_bytes(upload["size_bytes"]),
         "expire_text": format_ts(expire_at),

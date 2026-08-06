@@ -49,12 +49,10 @@ _TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # Starlette forces autoescape=True by default. We disable it because
 # icon_svg() and other helpers return raw HTML that must not be escaped.
-# All escaping is handled manually via html_escape() in Python, matching
-# the legacy views.py behavior exactly.
+# Starlette forces autoescape=True by default. We disable it because
+# templates output raw HTML (icon_svg, CSS, JS) via |safe filters.
+# All user-supplied values are explicitly escaped with |e or |tojson.
 templates.env.autoescape = False
-# Also override the select_autoescape policy
-import jinja2
-templates.env.override = True
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
@@ -89,15 +87,6 @@ def create_session(user_id: int) -> str:
             (token_hash(token), user_id, now() + SESSION_TTL, now()),
         )
     return token
-
-
-def make_session_cookie(token: str) -> str:
-    return f"{COOKIE_NAME}={token}; Path=/; Max-Age={SESSION_TTL}; HttpOnly; Secure; SameSite=Lax"
-
-
-def clear_session_cookie() -> str:
-    return f"{COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
-
 
 def detect_lang(request: Request) -> str:
     """Detect preferred language: query > cookie > Accept-Language."""

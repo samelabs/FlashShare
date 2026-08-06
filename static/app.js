@@ -336,19 +336,20 @@ async function loadHistory() {
     const hc3 = document.getElementById("historyCount"); if (hc3) hc3.textContent = "";
     return;
   }
-  const res = await fetch("/api/uploads");
-  const data = await res.json();
-  if (!data.ok || !data.uploads.length) {
-    currentUploads = [];
-    historyList.innerHTML = "";
-    historyList.setAttribute("data-empty", t("noHistory"));
-    const hc2 = document.getElementById("historyCount"); if (hc2) hc2.textContent = "";
-    return;
-  }
-  currentUploads = data.uploads;
-  const hc = document.getElementById("historyCount");
-  if (hc) hc.textContent = data.uploads.length;
-  historyList.setAttribute("data-empty", "");
+  try {
+    const res = await fetch("/api/uploads");
+    const data = await res.json();
+    if (!data.ok || !data.uploads.length) {
+      currentUploads = [];
+      historyList.innerHTML = "";
+      historyList.setAttribute("data-empty", t("noHistory"));
+      const hc2 = document.getElementById("historyCount"); if (hc2) hc2.textContent = "";
+      return;
+    }
+    currentUploads = data.uploads;
+    const hc = document.getElementById("historyCount");
+    if (hc) hc.textContent = data.uploads.length;
+    historyList.setAttribute("data-empty", "");
   historyList.innerHTML = data.uploads.map((x, index) => {
     const share = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("shareText"), url: x.url_download });
     return `<div class="item"><a class="item-link" href="${escapeHtml(x.url_download)}"><span class="item-main"><span class="item-title">${fmtIcon(x.file_name)}<span class="item-name">${escapeHtml(x.file_name)}</span></span><span class="item-sub">${t("itemMeta", { size: fmtSize(x.size_bytes), days: x.expiry_days, date: fmtDate(x.expire_at) })} · ${downloadText(x)}</span></span></a><div class="item-actions"><a class="item-tool" href="${escapeHtml(x.url_download)}?download=1" download="${escapeHtml(x.file_name)}" aria-label="${t("downloadFile")}" title="${t("downloadFile")}">${ICONS.download}</a><button class="item-tool" type="button" data-copy-index="${index}" aria-label="${t("copy")}" title="${t("copy")}">${ICONS.copy}</button><a class="item-tool accent-action" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}" title="${t("shareX")}">${ICONS.x}</a><button class="item-tool" type="button" data-qr-index="${index}" aria-label="${t("qrCode")}" title="${t("qrCode")}">${ICONS.qr}</button><button class="item-tool danger-action" type="button" data-delete-index="${index}" aria-label="${t("delete")}" title="${t("delete")}">${ICONS.trash}</button></div></div>`;
@@ -372,6 +373,9 @@ async function loadHistory() {
   historyList.querySelectorAll("[data-delete-index]").forEach(button => {
     button.addEventListener("click", () => deleteUpload(currentUploads[Number(button.dataset.deleteIndex)], button));
   });
+  } catch (e) {
+    historyList.setAttribute("data-empty", t("noHistory"));
+  }
 }
 function downloadText(upload) {
   const total = upload.allowed_downloads;

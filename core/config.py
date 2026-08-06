@@ -20,6 +20,8 @@ GOKAPI_URL = os.environ.get("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53842").r
 GOKAPI_KEY = os.environ.get("FLASHSHARE_GOKAPI_KEY", "")
 
 SESSION_SECRET = os.environ.get("FLASHSHARE_SESSION_SECRET", "")
+if not SESSION_SECRET:
+    raise RuntimeError("FLASHSHARE_SESSION_SECRET environment variable must be set")
 
 MAX_UPLOAD_BYTES = int(os.environ.get("FLASHSHARE_MAX_UPLOAD_MB", "50")) * 1024 * 1024
 DAILY_UPLOADS = int(os.environ.get("FLASHSHARE_DAILY_UPLOADS", "100"))

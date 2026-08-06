@@ -109,7 +109,7 @@ async def x_callback(request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": _t(request, "err_x_state_expired")})
-        return HTMLResponse(templates.TemplateResponse("auth/login.html", ctx), 400)
+        resp = templates.TemplateResponse("auth/login.html", ctx); resp.status_code = 400; return resp
 
     try:
         token = exchange_x_token(code, row["verifier"])
@@ -119,7 +119,7 @@ async def x_callback(request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_login_incomplete")}: {exc}'})
-        return HTMLResponse(templates.TemplateResponse("auth/login.html", ctx), 400)
+        resp = templates.TemplateResponse("auth/login.html", ctx); resp.status_code = 400; return resp
 
     bind_user_id = row["bind_user_id"] if "bind_user_id" in row.keys() else None
     try:
@@ -129,7 +129,7 @@ async def x_callback(request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_bind_failed")}: {exc}'})
-        return HTMLResponse(templates.TemplateResponse("auth/login.html", ctx), 400)
+        resp = templates.TemplateResponse("auth/login.html", ctx); resp.status_code = 400; return resp
 
     if bind_user_id:
         return RedirectResponse("/auth/profile", 302)
@@ -206,13 +206,6 @@ async def register_submit(request: Request):
 
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
-
-
-@router.get("/logout")
-async def logout(request: Request):
-    resp = RedirectResponse("/", 302)
-    resp.delete_cookie(COOKIE_NAME)
-    return resp
 
 
 @router.post("/logout")
