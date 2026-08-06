@@ -7,8 +7,8 @@ SEO_DESC = "Upload, share, done. Fast temporary file links with QR codes."
 
 DB_PATH = os.environ.get("FLASHSHARE_DB", "/var/lib/flashshare/flashshare.sqlite")
 BASE_URL = os.environ.get("FLASHSHARE_BASE_URL", "http://localhost:53843").rstrip("/")
-ASSET_DIR = os.environ.get("FLASHSHARE_ASSET_DIR", "/opt/flashshare/static/icons")
-SOCIAL_IMAGE_PATH = "/flashshare.png"
+ASSET_DIR = os.environ.get("FLASHSHARE_ASSET_DIR", "/opt/flashshare/static/images")
+SOCIAL_IMAGE_PATH = "/static/images/og-image.png"
 SOCIAL_IMAGE_URL = f"{BASE_URL}{SOCIAL_IMAGE_PATH}"
 
 ADDR = os.environ.get("FLASHSHARE_ADDR", "127.0.0.1:53843")

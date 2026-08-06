@@ -11,13 +11,41 @@
   "theme_color": "#0f1419",
   "lang": "en",
   "dir": "ltr",
-  "categories": ["productivity", "utilities"],
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
   "icons": [
-    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
-    {"src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png"}
+    {
+      "src": "/static/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/images/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
   ],
   "shortcuts": [
-    {"name": "518.PLUS", "short_name": "Share", "url": "/", "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"}]}
+    {
+      "name": "518.PLUS",
+      "short_name": "Share",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/static/images/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }
