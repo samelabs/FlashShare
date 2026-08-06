@@ -839,7 +839,7 @@ function showShareResult(file) {
   showResult(
     `<div class="result-card">` +
     `<div class="result-check">${svgIcon("check")}</div>` +
-    `<div class="result-card-title">${t("ready")}</div>` +
+    `<div class="result-card-title" data-i18n="ready">${t("ready")}</div>` +
     `<div class="result-meta">${escapeHtml(meta)}</div>` +
     `<div class="file-actions">${actions}</div>` +
     `</div>`
