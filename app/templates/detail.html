@@ -101,6 +101,30 @@ copyBtn.addEventListener("click", async () => {
   setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);
 });
 
+const _pwa = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const dlBtn = document.querySelector('a.action-btn.primary[download]');
+if (dlBtn && _pwa) {
+  // PWA standalone: replace <a download> with shareFile to avoid trapping user
+  dlBtn.removeAttribute('href');
+  dlBtn.addEventListener('click', async () => {
+    const url = {{ dl_url|tojson }};
+    const fname = {{ file_name|tojson }};
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('fetch failed');
+      const blob = await res.blob();
+      const file = new File([blob], fname || 'download', { type: blob.type || 'application/octet-stream' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fname || 'download' });
+        return;
+      }
+    } catch(e) {
+      if (e.name === 'AbortError') return;
+      console.warn('download failed:', e.message);
+    }
+    window.location.href = {{ dl_url|tojson }};
+  });
+}
 const shareImgBtn = document.getElementById("shareImgBtn");
 shareImgBtn.addEventListener("click", async () => {
   const imgUrl = {{ dl_url|tojson }};
@@ -109,16 +133,16 @@ shareImgBtn.addEventListener("click", async () => {
     const res = await fetch(imgUrl);
     if (!res.ok) throw new Error("fetch failed");
     const blob = await res.blob();
-    const file = new File([blob], fname || "image.png", { type: blob.type || "image/png" });
+    const file = new File([blob], fname || "download", { type: blob.type || "application/octet-stream" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: fname || "image" });
+      await navigator.share({ files: [file], title: fname || "download" });
       return;
     }
   } catch(e) {
-    if (e.name === "AbortError") return; // user cancelled — do nothing
+    if (e.name === "AbortError") return;
     console.warn("share failed:", e.message);
   }
-  window.location.href = "{{ dl_url }}";
+  window.location.href = {{ dl_url|tojson }};
 });
 
 const qrBtn = document.getElementById("qrBtn");

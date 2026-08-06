@@ -354,7 +354,7 @@ async function loadHistory() {
     historyList.setAttribute("data-empty", "");
     historyList.innerHTML = data.uploads.map((x, index) => {
       const share = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("shareText"), url: x.url_download });
-      return `<div class="item"><a class="item-link" href="${escapeHtml(x.url_download)}"><span class="item-main"><span class="item-title">${fmtIcon(x.file_name)}<span class="item-name">${escapeHtml(x.file_name)}</span></span><span class="item-sub">${t("itemMeta", { size: fmtSize(x.size_bytes), days: x.expiry_days, date: fmtDate(x.expire_at) })} · ${downloadText(x)}</span></span></a><div class="item-actions"><a class="item-tool" href="${escapeHtml(x.url_download)}?download=1" download="${escapeHtml(x.file_name)}" aria-label="${t("downloadFile")}" title="${t("downloadFile")}">${ICONS.download}</a><button class="item-tool" type="button" data-copy-index="${index}" aria-label="${t("copy")}" title="${t("copy")}">${ICONS.copy}</button><a class="item-tool accent-action" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}" title="${t("shareX")}">${ICONS.x}</a><button class="item-tool" type="button" data-qr-index="${index}" aria-label="${t("qrCode")}" title="${t("qrCode")}">${ICONS.qr}</button><button class="item-tool danger-action" type="button" data-delete-index="${index}" aria-label="${t("delete")}" title="${t("delete")}">${ICONS.trash}</button></div></div>`;
+      return `<div class="item"><a class="item-link" href="${escapeHtml(x.url_download)}"><span class="item-main"><span class="item-title">${fmtIcon(x.file_name)}<span class="item-name">${escapeHtml(x.file_name)}</span></span><span class="item-sub">${t("itemMeta", { size: fmtSize(x.size_bytes), days: x.expiry_days, date: fmtDate(x.expire_at) })} · ${downloadText(x)}</span></span></a><div class="item-actions"><button class="item-tool" type="button" data-download-index="${index}" aria-label="${t("downloadFile")}" title="${t("downloadFile")}">${ICONS.download}</button><button class="item-tool" type="button" data-copy-index="${index}" aria-label="${t("copy")}" title="${t("copy")}">${ICONS.copy}</button><a class="item-tool accent-action" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}" title="${t("shareX")}">${ICONS.x}</a><button class="item-tool" type="button" data-qr-index="${index}" aria-label="${t("qrCode")}" title="${t("qrCode")}">${ICONS.qr}</button><button class="item-tool danger-action" type="button" data-delete-index="${index}" aria-label="${t("delete")}" title="${t("delete")}">${ICONS.trash}</button></div></div>`;
     }).join("");
     historyList.querySelectorAll("[data-copy-index]").forEach(button => {
       button.addEventListener("click", async () => {
@@ -374,6 +374,18 @@ async function loadHistory() {
     });
     historyList.querySelectorAll("[data-delete-index]").forEach(button => {
       button.addEventListener("click", () => deleteUpload(currentUploads[Number(button.dataset.deleteIndex)], button));
+    });
+    historyList.querySelectorAll("[data-download-index]").forEach(button => {
+      button.addEventListener("click", async () => {
+        const upload = currentUploads[Number(button.dataset.downloadIndex)];
+        const dlUrl = upload.url_download + "?download=1";
+        if (isStandalonePWA()) {
+          const ok = await shareFile(dlUrl, upload.file_name);
+          if (!ok) window.location.href = dlUrl;
+        } else {
+          window.location.href = dlUrl;
+        }
+      });
     });
   } catch (e) {
     historyList.setAttribute("data-empty", t("noHistory"));
@@ -755,21 +767,26 @@ async function retryTool() {
 
 // Stable icon paths via unified registry
 
-async function shareImageFile(url, filename) {
+async function shareFile(url, filename) {
   try {
     const res = await fetch(url);
     if (!res.ok) return false;
     const blob = await res.blob();
-    const file = new File([blob], filename || "image.png", { type: blob.type || "image/png" });
+    const file = new File([blob], filename || "download", { type: blob.type || "application/octet-stream" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: filename || "image" });
+      await navigator.share({ files: [file], title: filename || "download" });
       return true;
     }
   } catch (e) {
-    if (e.name === "AbortError") return true; // user cancelled — NOT a failure
+    if (e.name === "AbortError") return true;
     console.warn("share failed:", e.message);
   }
   return false;
+}
+
+function isStandalonePWA() {
+  return window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
 }
 
 function showQrModal(qrUrl) {
@@ -798,8 +815,17 @@ function showShareResult(file) {
   const qrId = `qr-${Date.now()}`;
   const shareImgId = `shareimg-${Date.now()}`;
   const meta = fmtSize(file.size);
+  const pwa = isStandalonePWA();
 
-  let actions = `<a class="action-btn primary" href="${escapeHtml(dlUrl)}" download aria-label="${t("downloadFile")}">${svgIcon("download")}<span>${t("downloadFile")}</span></a>`;
+  let actions;
+  if (pwa) {
+    // PWA standalone: <a download> navigates inside PWA and traps user.
+    // Use navigator.share so the system sheet handles file transfer.
+    const dlBtnId = `dlbtn-${Date.now()}`;
+    actions = `<button class="action-btn primary" id="${dlBtnId}" type="button" aria-label="${t("downloadFile")}">${svgIcon("download")}<span>${t("downloadFile")}</span></button>`;
+  } else {
+    actions = `<a class="action-btn primary" href="${escapeHtml(dlUrl)}" download aria-label="${t("downloadFile")}">${svgIcon("download")}<span>${t("downloadFile")}</span></a>`;
+  }
   actions += `<button class="action-btn" id="${shareImgId}" type="button" aria-label="${t("shareImg")}">${svgIcon("share")}</button>`;
   actions += `<span class="action-sep"></span>`;
   actions += `<button class="action-btn" id="${copyId}" type="button" aria-label="${t("copy")}">${svgIcon("copy")}</button>`;
@@ -824,10 +850,18 @@ function showShareResult(file) {
   });
   const qrBtn = document.getElementById(qrId);
   if (qrBtn) qrBtn.addEventListener("click", () => showQrModal(url + "/qr.svg"));
+  // PWA standalone: download button uses navigator.share instead of <a download>
+  if (pwa) {
+    const dlBtn = document.querySelector('.result-card .action-btn.primary');
+    if (dlBtn) dlBtn.addEventListener("click", async () => {
+      const ok = await shareFile(dlUrl, file.filename || file.name || "download");
+      if (!ok) window.location.href = dlUrl;
+    });
+  }
   const shareImgBtn = document.getElementById(shareImgId);
   if (shareImgBtn) shareImgBtn.addEventListener("click", async () => {
-    const ok = await shareImageFile(dlUrl, file.filename || file.name || "image.png");
-    if (!ok) window.location.href = dlUrl; // fallback to download
+    const ok = await shareFile(dlUrl, file.filename || file.name || "download");
+    if (!ok) window.location.href = dlUrl;
   });
 }
 

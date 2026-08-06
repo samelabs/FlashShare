@@ -155,6 +155,6 @@ window.__ICONS__ = {{ icons_json|safe }};
 
 {% block script_tail %}
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=58", { updateViaCache:"none" }).catch(() => {}));
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=59", { updateViaCache:"none" }).catch(() => {}));
 }
 {% endblock %}
