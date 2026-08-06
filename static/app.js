@@ -594,7 +594,7 @@ function openToolOverlay(tool, btn) {
   }
 
   // Actions — always show confirm/cancel, even when active (user can change preset)
-  html += `<div class="tool-overlay-actions"><button type="button" class="tool-btn muted" id="overlayCancel">${isActive ? t("cancelTool") : t("cancel")}</button><button type="button" class="tool-btn primary" id="overlayConfirm">${t("confirm")}</button></div>`;
+  html += `<div class="tool-overlay-actions"><button type="button" class="overlay-btn muted" id="overlayCancel">${isActive ? t("cancelTool") : t("cancel")}</button><button type="button" class="overlay-btn primary" id="overlayConfirm">${t("confirm")}</button></div>`;
 
   toolOverlayBody.innerHTML = html;
   toolOverlay.classList.remove("hidden");
@@ -733,8 +733,8 @@ function showToolProcessing(toolName) {
 
 function showToolError(message, originalFile) {
   const origUrl = originalFile && (originalFile.downloadUrl || originalFile.url) ? (originalFile.downloadUrl || originalFile.url) : "";
-  const origLink = origUrl ? `<a class="tool-btn primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
-  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(message)}</div><div class="result-buttons"><button class="tool-btn" id="toolRetry" type="button">${t("retry")}</button>${origLink}</div></div>`, true);
+  const origLink = origUrl ? `<a class="overlay-btn primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
+  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(message)}</div><div class="result-buttons"><button class="overlay-btn" id="toolRetry" type="button">${t("retry")}</button>${origLink}</div></div>`, true);
   const retryBtn = document.getElementById("toolRetry");
   if (retryBtn && lastUploadResult) {
     retryBtn.addEventListener("click", () => retryTool());
