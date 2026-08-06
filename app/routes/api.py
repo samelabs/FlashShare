@@ -103,7 +103,21 @@ async def execute_tool(request: Request):
         return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
     upload = get_upload_by_public_id(public_id)
     if not upload:
-        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        # Tool flow: original was uploaded to gokapi but not recorded in DB.
+        # Reconstruct upload dict from gokapi metadata.
+        from gokapi import get_gokapi_file
+        gokapi_info = get_gokapi_file(public_id)
+        if not gokapi_info:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        upload = {
+            "public_id": public_id,
+            "gokapi_id": public_id,
+            "file_name": gokapi_info.get("Name", "upload"),
+            "content_type": gokapi_info.get("ContentType", "application/octet-stream"),
+            "size_bytes": int(gokapi_info.get("SizeBytes", 0)),
+            "url_hotlink": gokapi_info.get("UrlHotlink", ""),
+            "url_download": gokapi_info.get("UrlDownload", ""),
+        }
     tool = get_tool(tool_id)
     if not tool:
         return JSONResponse({"ok": False, "error": "tool_not_found"}, 404)
@@ -309,9 +323,31 @@ async def create_upload(request: Request):
     if allowed_downloads not in (1, 10, 50, 100, 200):
         allowed_downloads = 50
 
+    has_tool = form.get("tool", "").strip()
     gokapi = upload_to_gokapi(io.BytesIO(content), filename, final_type,
                               expiry_days, allowed_downloads, size)
     info = gokapi.get("FileInfo", {})
+
+    # When a tool is selected, the original file is just a temporary intermediate.
+    # Only the tool output should get a DB record (written by _execute_and_share).
+    if has_tool and has_tool != "share":
+        return {
+            "ok": True,
+            "file": {
+                "name": filename,
+                "contentType": final_type,
+                "size": size,
+                "downloadUrl": "",
+                "hotlinkUrl": info.get("UrlHotlink", ""),
+                "publicId": info.get("Id", ""),
+                "gokapiId": info.get("Id", ""),
+                "expireAt": info.get("ExpireAt"),
+                "expiryDays": expiry_days,
+                "allowedDownloads": allowed_downloads,
+            },
+        }
+
+    # No tool (or share = default): save original as the shareable record
     with db() as con:
         public_id = generate_public_id(con)
         con.execute(
