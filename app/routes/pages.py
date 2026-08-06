@@ -38,8 +38,12 @@ with open(_STATIC / "style.css") as f:
     CSS = f.read()
 with open(_STATIC / "app.js") as f:
     JS = f.read()
-with open(_STATIC / "i18n.json") as f:
-    I18N_JSON = f.read()
+
+# i18n: single source of truth (core/i18n.py SERVER_I18N dict)
+# Browser receives the full dict as window.__I18N__
+import json as _json
+from i18n import SERVER_I18N as _SERVER_I18N
+I18N_JSON = _json.dumps(_SERVER_I18N, ensure_ascii=False)
 
 
 def _ctx_base(request: Request) -> dict:
