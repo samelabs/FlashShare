@@ -195,7 +195,7 @@ function applyI18n() {
   loadHistory();
   if (activeUpload) renderModal(activeUpload);
   // Re-render result card if visible (uses t() for all labels)
-  if (lastUploadResult && result && !result.classList.contains("hidden")) {
+  if (lastUploadResult) {
     showShareResult(lastUploadResult);
   }
   // Re-render error message if visible
