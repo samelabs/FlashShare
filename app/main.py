@@ -3,7 +3,7 @@
 Architecture:
     Cloudflare → Nginx → Uvicorn (this app)
                               ├── Jinja2: page rendering
-                              ├── API routes: /api/v1/*
+                              ├── API routes: /api/*
                               ├── Auth routes: /auth/*
                               ├── Proxy routes: file download / QR
                               └── Worker pool: tool processing (subprocess isolation)
