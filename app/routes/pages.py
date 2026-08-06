@@ -139,7 +139,7 @@ async def home(request: Request):
 
     ctx.update({
         "shell_class": "",
-        "share_url": home_share_url if not user else "",
+        "share_url": home_share_url,
         "max_mb": max_mb,
         "daily_uploads": DAILY_UPLOADS,
         "daily_mb": DAILY_BYTES // 1024 // 1024,

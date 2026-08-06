@@ -344,7 +344,7 @@ async function loadHistory() {
   historyList.setAttribute("data-empty", "");
   historyList.innerHTML = data.uploads.map((x, index) => {
     const share = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("shareText"), url: x.url_download });
-    return `<div class="item"><a class="item-link" href="${escapeHtml(x.url_download)}"><span class="item-main"><span class="item-title">${fmtIcon(x.file_name)}<span class="item-name">${escapeHtml(x.file_name)}</span></span><span class="item-sub">${t("itemMeta", { size: fmtSize(x.size_bytes), days: x.expiry_days, date: fmtDate(x.expire_at) })} · ${downloadText(x)}</span></span></a><div class="item-actions"><a class="item-tool" href="${escapeHtml(x.url_download)}?download=1" aria-label="${t("downloadFile")}" title="${t("downloadFile")}">${ICONS.download}</a><button class="item-tool" type="button" data-copy-index="${index}" aria-label="${t("copy")}" title="${t("copy")}">${ICONS.copy}</button><a class="item-tool accent-action" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}" title="${t("shareX")}">${ICONS.x}</a><button class="item-tool" type="button" data-qr-index="${index}" aria-label="${t("qrCode")}" title="${t("qrCode")}">${ICONS.qr}</button><button class="item-tool danger-action" type="button" data-delete-index="${index}" aria-label="${t("delete")}" title="${t("delete")}">${ICONS.trash}</button></div></div>`;
+    return `<div class="item"><a class="item-link" href="${escapeHtml(x.url_download)}"><span class="item-main"><span class="item-title">${fmtIcon(x.file_name)}<span class="item-name">${escapeHtml(x.file_name)}</span></span><span class="item-sub">${t("itemMeta", { size: fmtSize(x.size_bytes), days: x.expiry_days, date: fmtDate(x.expire_at) })} · ${downloadText(x)}</span></span></a><div class="item-actions"><a class="item-tool" href="${escapeHtml(x.url_download)}?download=1" download="${escapeHtml(x.file_name)}" aria-label="${t("downloadFile")}" title="${t("downloadFile")}">${ICONS.download}</a><button class="item-tool" type="button" data-copy-index="${index}" aria-label="${t("copy")}" title="${t("copy")}">${ICONS.copy}</button><a class="item-tool accent-action" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}" title="${t("shareX")}">${ICONS.x}</a><button class="item-tool" type="button" data-qr-index="${index}" aria-label="${t("qrCode")}" title="${t("qrCode")}">${ICONS.qr}</button><button class="item-tool danger-action" type="button" data-delete-index="${index}" aria-label="${t("delete")}" title="${t("delete")}">${ICONS.trash}</button></div></div>`;
   }).join("");
   historyList.querySelectorAll("[data-copy-index]").forEach(button => {
     button.addEventListener("click", async () => {
@@ -357,7 +357,25 @@ async function loadHistory() {
     });
   });
   historyList.querySelectorAll("[data-qr-index]").forEach(button => {
-    button.addEventListener("click", () => openModal(currentUploads[Number(button.dataset.qrIndex)]));
+    button.addEventListener("click", () => {
+      const upload = currentUploads[Number(button.dataset.qrIndex)];
+      const qrUrl = upload.url_download + "/qr.svg";
+      let qrModal = document.getElementById("homeQrModal");
+      if (!qrModal) {
+        qrModal = document.createElement("div");
+        qrModal.id = "homeQrModal";
+        qrModal.className = "modal hidden";
+        qrModal.setAttribute("role", "dialog");
+        qrModal.setAttribute("aria-modal", "true");
+        qrModal.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">' + svgIcon("close") + '</button><img alt="QR" width="200" height="200"></div>';
+        document.body.appendChild(qrModal);
+        const closeBtn = qrModal.querySelector(".modal-close");
+        closeBtn.addEventListener("click", () => qrModal.classList.add("hidden"));
+        qrModal.addEventListener("click", (e) => { if (e.target === qrModal) qrModal.classList.add("hidden"); });
+      }
+      qrModal.querySelector("img").src = qrUrl;
+      qrModal.classList.remove("hidden");
+    });
   });
   historyList.querySelectorAll("[data-delete-index]").forEach(button => {
     button.addEventListener("click", () => deleteUpload(currentUploads[Number(button.dataset.deleteIndex)], button));
@@ -552,11 +570,16 @@ function openToolOverlay(tool, btn) {
   // Presets section
   let defaultPreset = null;
   if (tool.presets && tool.presets.length > 0) {
-    const dp = tool.presets.find(p => p.default);
-    defaultPreset = dp ? dp.id : tool.presets[0].id;
+    // Use user's last selection if this tool is active, otherwise use registered default
+    if (isActive && activePreset) {
+      defaultPreset = activePreset;
+    } else {
+      const dp = tool.presets.find(p => p.default);
+      defaultPreset = dp ? dp.id : tool.presets[0].id;
+    }
     html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${t("intensity")}</div><div class="tool-overlay-presets">`;
     tool.presets.forEach((p) => {
-      const pname = t(p.id);
+      const pname = t(p.id) !== p.id ? t(p.id) : (p.label && p.label[lang] ? p.label[lang] : (p.label && p.label.en ? p.label.en : p.id));
       const sel = (p.id === defaultPreset) ? " active" : "";
       html += `<button type="button" class="tool-overlay-preset${sel}" data-preset="${p.id}">${escapeHtml(pname)}</button>`;
     });
@@ -630,37 +653,39 @@ toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) clo
 function applyToolSelection() {
   const formatTags = document.querySelector(".drop-formats");
 
+  // Clear all badges + set active state on ALL tabs
+  document.querySelectorAll(".tool-tab").forEach(b => {
+    const isActive = activeTool && b.dataset.toolId === activeTool.id;
+    b.classList.toggle("active", isActive);
+    const oldBadge = b.querySelector(".tool-preset-badge");
+    if (oldBadge) oldBadge.remove();
+  });
+
   if (!activeTool || activeTool.id === "share") {
-    // Restore defaults (Share = no tool / plain upload)
-    document.querySelectorAll(".tool-tab").forEach(b => {
-      b.classList.toggle("active", activeTool && b.dataset.toolId === activeTool.id);
-    });
-    if (!activeTool || activeTool.id === "share") {
-      file.accept = "";
-      if (formatTags) formatTags.innerHTML = "<span>IMG</span><span>PDF</span><span>DOC</span><span>XLS</span><span>PPT</span><span>TXT</span><span>ZIP</span><span>CODE</span>";
-    }
+    file.accept = "";
+    if (formatTags) formatTags.innerHTML = "<span>IMG</span><span>PDF</span><span>DOC</span><span>XLS</span><span>PPT</span><span>TXT</span><span>ZIP</span><span>CODE</span>";
     updateToolDescription();
     return;
   }
 
-  // Highlight active tool tab + show preset badge
-  document.querySelectorAll(".tool-tab").forEach(b => {
-    const isActive = b.dataset.toolId === activeTool.id;
-    b.classList.toggle("active", isActive);
-    // Remove old badge
-    const oldBadge = b.querySelector(".tool-preset-badge");
-    if (oldBadge) oldBadge.remove();
-    // Add preset badge if tool has a selected preset
-    if (isActive && activePreset) {
-      const presetLabel = t(activePreset);
+  // Add preset badge on active tool tab
+  if (activePreset) {
+    const activeTab = document.querySelector('.tool-tab.active');
+    if (activeTab) {
+      let presetLabel = t(activePreset);
+      if (presetLabel === activePreset) {
+        const pt = (homeToolsData.find(t => t.id === activeTool.id) || {}).presets || [];
+        const p = pt.find(p => p.id === activePreset);
+        if (p) presetLabel = (p.label && p.label[lang]) || (p.label && p.label.en) || activePreset;
+      }
       if (presetLabel && presetLabel !== activePreset) {
         const badge = document.createElement("span");
         badge.className = "tool-preset-badge";
         badge.textContent = " · " + presetLabel;
-        b.appendChild(badge);
+        activeTab.appendChild(badge);
       }
     }
-  });
+  }
 
   // Bind accept
   if (activeTool.accept && activeTool.accept.length > 0) {

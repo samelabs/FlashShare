@@ -20,10 +20,12 @@ ICO_SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
 
 # ICO output size presets
 ICO_PRESETS = {
-    "ico_all": [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
-    "ico_web":      [(16, 16), (32, 32), (48, 48)],
-    "ico_app":      [(64, 64), (128, 128), (256, 256)],
-    "ico_256":   [(256, 256)],
+    "ico_16":  [(16, 16)],
+    "ico_32":  [(32, 32)],
+    "ico_48":  [(48, 48)],
+    "ico_64":  [(64, 64)],
+    "ico_128": [(128, 128)],
+    "ico_256": [(256, 256)],
 }
 
 
@@ -62,12 +64,13 @@ def ico_handler(tool_input, params):
         img = img.crop((left, top, left + side, top + side))
 
     # Resolve preset
-    preset = params.get("preset", "ico_all")
-    sizes = ICO_PRESETS.get(preset, ICO_PRESETS["ico_all"])
+    preset = params.get("preset", "ico_32")
+    (tw, th) = ICO_PRESETS.get(preset, ICO_PRESETS["ico_32"])[0]
 
-    # Generate ICO
+    # Generate ICO — let Pillow resize from source in one step
+    # (pre-resizing then saving adds unwanted extra sizes + double-scaling blur)
     out = io.BytesIO()
-    img.save(out, format="ICO", sizes=sizes)
+    img.save(out, format="ICO", sizes=[(tw, th)])
     out.seek(0)
 
     # Derive output filename
@@ -102,10 +105,12 @@ register(
     match=lambda upload: upload.get("content_type", "") in ACCEPT_MIMES,
     accept=ACCEPT_MIMES,
     presets=[
-        {"id": "ico_all", "label": {"en": "All", "zh": "全部", "ja": "全て", "ko": "전체", "es": "Todos", "ar": "الكل", "de": "Alle"}, "default": True},
-        {"id": "ico_web", "label": {"en": "Web", "zh": "网页", "ja": "Web", "ko": "웹", "es": "Web", "ar": "ويب", "de": "Web"}, "default": False},
-        {"id": "ico_app", "label": {"en": "App", "zh": "应用", "ja": "アプリ", "ko": "앱", "es": "App", "ar": "تطبيق", "de": "App"}, "default": False},
-        {"id": "ico_256", "label": {"en": "256px", "zh": "256px", "ja": "256px", "ko": "256px", "es": "256px", "ar": "256px", "de": "256px"}, "default": False},
+        {"id": "ico_16", "label": {"en": "16x16", "zh": "16x16", "ja": "16x16", "ko": "16x16", "es": "16x16", "ar": "16x16", "de": "16x16"}, "default": False},
+        {"id": "ico_32", "label": {"en": "32x32", "zh": "32x32", "ja": "32x32", "ko": "32x32", "es": "32x32", "ar": "32x32", "de": "32x32"}, "default": True},
+        {"id": "ico_48", "label": {"en": "48x48", "zh": "48x48", "ja": "48x48", "ko": "48x48", "es": "48x48", "ar": "48x48", "de": "48x48"}, "default": False},
+        {"id": "ico_64", "label": {"en": "64x64", "zh": "64x64", "ja": "64x64", "ko": "64x64", "es": "64x64", "ar": "64x64", "de": "64x64"}, "default": False},
+        {"id": "ico_128", "label": {"en": "128x128", "zh": "128x128", "ja": "128x128", "ko": "128x128", "es": "128x128", "ar": "128x128", "de": "128x128"}, "default": False},
+        {"id": "ico_256", "label": {"en": "256x256", "zh": "256x256", "ja": "256x256", "ko": "256x256", "es": "256x256", "ar": "256x256", "de": "256x256"}, "default": False},
     ],
     handler=ico_handler,
 )
