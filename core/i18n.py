@@ -16,6 +16,7 @@ LOCALE_TAGS = {
 SERVER_I18N = {
     "fr": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS vous aide à traiter et partager vos fichiers facilement. Uploadez pour obtenir des liens temporaires et QR codes instantanés, avec des outils de compression, nettoyage et conversion. Suppression automatique à l'expiration.",
         "home_share_text": "518.PLUS — Traitez facilement, partagez vite",
         "subtitle": "Traitez facilement, partagez vos fichiers rapidement",
@@ -211,6 +212,7 @@ SERVER_I18N = {
     },
     "ko": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS는 파일 처리와 공유를 쉽게 해줍니다. 업로드하면 임시 링크와 QR 코드가 즉시 생성되며, 압축, 정화, 형식 변환 등의 도구를 제공합니다. 만료 시 자동 삭제됩니다.",
         "home_share_text": "518.PLUS — 쉽게 처리, 빠르게 파일 공유",
         "subtitle": "쉽게 처리, 빠르게 파일 공유",
@@ -406,6 +408,7 @@ SERVER_I18N = {
     },
     "ru": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS помогает легко обрабатывать и делиться файлами. Загрузите — получите временные ссылки и QR-коды мгновенно, с инструментами сжатия, очистки и конвертации форматов. Файлы удаляются автоматически по истечении срока.",
         "home_share_text": "518.PLUS — Легко обрабатывайте, быстро делитесь",
         "subtitle": "Легко обрабатывайте, быстро делитесь файлами",
@@ -601,6 +604,7 @@ SERVER_I18N = {
     },
     "ar": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS يساعدك على معالجة ومشاركة الملفات بسهولة. ارفع الملف للحصول على روابط مؤقتة ورموز QR فورية، مع أدوات للضغط والتنقية وتحويل الصيغ. تُحذف الملفات تلقائياً عند انتهاء الصلاحية.",
         "home_share_text": "518.PLUS — عالج بسهولة، شارك بسرعة",
         "subtitle": "عالج بسهولة، شارك ملفاتك بسرعة",
@@ -796,6 +800,7 @@ SERVER_I18N = {
     },
     "de": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS hilft dir, Dateien einfach zu verarbeiten und zu teilen. Upload erzeugt sofort temporäre Links und QR-Codes, mit Tools für Komprimierung, Bereinigung und Formatkonvertierung. Dateien werden bei Ablauf automatisch gelöscht.",
         "home_share_text": "518.PLUS — Einfach verarbeiten, schnell teilen",
         "subtitle": "Einfach verarbeiten, Dateien schnell teilen",
@@ -991,6 +996,7 @@ SERVER_I18N = {
     },
     "pt": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS ajuda você a processar e compartilhar arquivos facilmente. Faça upload para obter links temporários e QR codes instantâneos, com ferramentas de compressão, limpeza e conversão de formato. Arquivos são excluídos ao expirar.",
         "home_share_text": "518.PLUS — Processe fácil, compartilhe rápido",
         "subtitle": "Processe fácil, compartilhe seus arquivos rápido",
@@ -1186,6 +1192,7 @@ SERVER_I18N = {
     },
     "ja": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS はファイルの処理と共有を簡単にします。アップロードするだけで一時リンクとQRコードが生成され、圧縮・浄化・形式変換などのツールも利用できます。期限切れで自動削除。",
         "home_share_text": "518.PLUS — 簡単処理、素早くファイルを共有",
         "subtitle": "簡単処理、素早くファイルを共有",
@@ -1381,6 +1388,7 @@ SERVER_I18N = {
     },
     "zh": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS 帮你轻松处理和分享文件。上传即生成临时链接和二维码，提供压缩、净化、格式转换等文件工具，到期自动删除。",
         "home_share_text": "518.PLUS — 轻松处理、快速分享你的文件",
         "subtitle": "轻松处理、快速分享你的文件",
@@ -1576,6 +1584,7 @@ SERVER_I18N = {
     },
     "es": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS te ayuda a procesar y compartir archivos fácilmente. Sube para obtener enlaces temporales y códigos QR al instante, con herramientas de compresión, limpieza y conversión de formato. Los archivos se eliminan al caducar.",
         "home_share_text": "518.PLUS — Procesa fácil, comparte rápido",
         "subtitle": "Procesa fácil, comparte tus archivos rápido",
@@ -1771,6 +1780,7 @@ SERVER_I18N = {
     },
     "en": {
         "seo_title": "518.PLUS",
+        "hero_title": "Flash Share",
         "seo_desc": "518.PLUS helps you process and share files easily. Upload to get instant temporary links and QR codes, with tools for compression, cleaning, and format conversion. Files auto-delete on expiry.",
         "home_share_text": "518.PLUS — Process easily, share your files fast",
         "subtitle": "Process easily, share your files fast",
