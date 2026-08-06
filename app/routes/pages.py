@@ -137,7 +137,7 @@ async def home(request: Request):
     tools = list_all_tools()
     max_mb = MAX_UPLOAD_BYTES // 1024 // 1024
     home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
-        "text": texts.get("home_share_text", texts.get("seo_title", "Flash Share")),
+        "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
         "url": f"{BASE_URL}/?{urllib.parse.urlencode({'x': lang})}",
     })
 
@@ -154,7 +154,7 @@ async def home(request: Request):
         "tools_json": json.dumps(tools, ensure_ascii=False),
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "JS": JS,
-        "og_title": texts.get("home_share_text", texts.get("seo_title", "Flash Share")),
+        "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
         "og_desc": texts.get("subtitle", texts.get("seo_desc", "")),
         "file_size_icon": file_size_icon_svg(),
         "upload_count_icon": upload_count_icon_svg(),

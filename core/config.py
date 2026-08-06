@@ -1,8 +1,8 @@
 import os
 import re
 
-APP_NAME = "Flash Share"
-SEO_TITLE = "Flash Share"
+APP_NAME = "518.PLUS"
+SEO_TITLE = "518.PLUS"
 SEO_DESC = "Upload, share, done. Fast temporary file links with QR codes."
 
 DB_PATH = os.environ.get("FLASHSHARE_DB", "/var/lib/flashshare/flashshare.sqlite")

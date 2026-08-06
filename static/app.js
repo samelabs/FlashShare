@@ -78,16 +78,16 @@ const SUPPORTED_LANGS = ["en", "zh", "ja", "ko", "es", "ar", "de", "ru", "pt", "
 const LOCALE_MAP = { en:"en", zh:"zh-CN", ja:"ja-JP", ko:"ko-KR", es:"es-ES", ar:"ar", de:"de-DE", ru:"ru-RU", pt:"pt-BR", fr:"fr-FR" };
 const LANG_LABELS = { en:"English", zh:"简体中文", ja:"日本語", ko:"한국어", es:"Español", ar:"العربية", de:"Deutsch", ru:"Русский", pt:"Português", fr:"Français" };
 const CLIENT_META = {
-  en: { title: "Flash Share — Free File Tools & Sharing", desc: "Compress, clean, beautify, and share files instantly." },
-  zh: { title: "Flash Share — 免费文件工具与分享", desc: "压缩、净化、美化、分享，一步到位。" },
-  ja: { title: "Flash Share — 無料ファイルツール＆共有", desc: "圧縮・浄化・美化・共有を一瞬で。" },
-  ko: { title: "Flash Share — 무료 파일 도구 & 공유", desc: "압축, 정화, 미화, 공유를 한 번에." },
-  es: { title: "Flash Share — Herramientas y compartir gratis", desc: "Comprime, limpia, embellece y comparte al instante." },
-  ar: { title: "Flash Share — أدوات ومشاركة مجانية", desc: "ضغط، تنقية، تحسين، ومشاركة فورية." },
-  de: { title: "Flash Share — Kostenlose Tools & Sharing", desc: "Komprimieren, bereinigen, verschönern und sofort teilen." },
-  ru: { title: "Flash Share — Бесплатные инструменты", desc: "Сжимай, очищай, улучшай и делись мгновенно." },
-  pt: { title: "Flash Share — Ferramentas e compartilhar grátis", desc: "Comprima, limpe, embeleze e compartilhe instantaneamente." },
-  fr: { title: "Flash Share — Outils gratuits & partage", desc: "Compressez, nettoyez, embellissez et partagez instantanément." },
+  en: { title: "518.PLUS — File Processing & Sharing", desc: "Upload to get instant temporary links and QR codes, with tools for compression, cleaning, and format conversion." },
+  zh: { title: "518.PLUS — 文件处理与分享", desc: "上传即生成临时链接和二维码，提供压缩、净化、格式转换等文件工具。" },
+  ja: { title: "518.PLUS — ファイル処理＆共有", desc: "アップロードで一時リンクとQRコードが即時生成。圧縮・浄化・形式変換などのツールを提供。" },
+  ko: { title: "518.PLUS — 파일 처리 & 공유", desc: "업로드하면 임시 링크와 QR 코드가 즉시 생성됩니다. 압축, 정화, 형식 변환 도구 제공." },
+  es: { title: "518.PLUS — Procesamiento y compartir archivos", desc: "Sube para obtener enlaces temporales y QR al instante, con herramientas de compresión, limpieza y conversión." },
+  ar: { title: "518.PLUS — معالجة ومشاركة الملفات", desc: "ارفع الملف للحصول على روابط مؤقتة ورموز QR فورية، مع أدوات للضغط والتنقية وتحويل الصيغ." },
+  de: { title: "518.PLUS — Dateiverarbeitung & Sharing", desc: "Upload erzeugt sofort temporäre Links und QR-Codes, mit Tools für Komprimierung, Bereinigung und Konvertierung." },
+  ru: { title: "518.PLUS — Обработка и обмен файлами", desc: "Загрузите — получите временные ссылки и QR-коды, с инструментами сжатия, очистки и конвертации." },
+  pt: { title: "518.PLUS — Processamento e compartilhamento", desc: "Faça upload para obter links temporários e QR codes, com ferramentas de compressão, limpeza e conversão." },
+  fr: { title: "518.PLUS — Traitement et partage de fichiers", desc: "Uploadez pour obtenir des liens temporaires et QR codes, avec outils de compression, nettoyage et conversion." },
 };
 function getCookie(name) {
   const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]+)"));
