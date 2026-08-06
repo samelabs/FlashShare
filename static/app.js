@@ -339,13 +339,13 @@ form.addEventListener("submit", async (event) => {
       showResult(escapeHtml(err.message), true);
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = `${ICONS.upload}<span>${t("create")}</span>`;
+      submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
     }
   };
   xhr.onerror = () => {
     showResult(escapeHtml(t("failed")), true);
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `${ICONS.upload}<span>${t("create")}</span>`;
+    submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
   };
   xhr.send(formData);
 });

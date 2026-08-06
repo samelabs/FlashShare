@@ -328,7 +328,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .action-btn { height: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg); color: var(--ink); cursor: pointer; text-decoration: none; font-size: var(--text-base); font-weight: 700; transition: border-color var(--ease-in), background var(--ease-in), color var(--ease-in); }
 .action-btn svg { width: var(--text-xl); height: var(--text-xl); stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .action-btn:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.action-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--button-ink); padding: 0 var(--s5); }
+.action-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--button-ink); padding: 0 var(--s4); white-space: nowrap; flex-shrink: 0; }
 .action-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .action-btn .x-glyph { font-size: 18px; font-weight: 800; }
 .qr-modal-panel { width: fit-content; padding: var(--s5); text-align: center; }
