@@ -47,11 +47,8 @@ _TEMPLATES_DIR = _BASE_DIR / "app" / "templates"
 _TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-# Starlette forces autoescape=True by default. We disable it because
-# icon_svg() and other helpers return raw HTML that must not be escaped.
-# Starlette forces autoescape=True by default. We disable it because
-# templates output raw HTML (icon_svg, CSS, JS) via |safe filters.
-# All user-supplied values are explicitly escaped with |e or |tojson.
+# autoescape disabled — templates output raw HTML (icon_svg, CSS, JS).
+# All user-supplied values are escaped with |e or |tojson.
 templates.env.autoescape = False
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 

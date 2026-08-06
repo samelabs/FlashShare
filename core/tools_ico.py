@@ -101,7 +101,7 @@ register(
         "pt": "ICO Favicon",
         "fr": "ICO Favicon",
     },
-    icon="convert",
+    icon="favicon",
     match=lambda upload: upload.get("content_type", "") in ACCEPT_MIMES,
     accept=ACCEPT_MIMES,
     presets=[

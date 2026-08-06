@@ -23,7 +23,7 @@ TYPE_PRODUCE = "produce"
 # Icon identifiers (matched in frontend SVG sprite)
 VALID_ICONS = {
     "shield", "image", "archive", "edit", "crop",
-    "compress", "convert", "info", "hash", "upload", "wand",
+    "compress", "convert", "favicon", "info", "hash", "upload", "wand",
 }
 
 
