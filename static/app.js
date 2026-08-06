@@ -198,6 +198,10 @@ function applyI18n() {
   if (lastUploadResult && result && !result.classList.contains("hidden")) {
     showShareResult(lastUploadResult);
   }
+  // Re-render error message if visible
+  if (lastErrorKey && result && result.classList.contains("error")) {
+    showError(lastErrorKey);
+  }
 }
 function renderLanguageMenu() {
   langButton.textContent = LANG_LABELS[lang] || "English";
@@ -220,16 +224,21 @@ function renderAccount() {
   }
   submitBtn.disabled = false;
 }
+let lastErrorKey = null;
 function showResult(html, isError=false) {
   result.className = "result" + (isError ? " error" : "");
   result.innerHTML = html;
+}
+function showError(errorKey) {
+  lastErrorKey = errorKey;
+  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(t(errorKey))}</div></div>`, true);
 }
 file.addEventListener("change", () => {
   if (!window.__USER__) { location.href = "/auth/x/login"; return; }
   if (file.files[0]) {
     const ext = file.files[0].name.toLowerCase().match(/\.(\w+)$/);
     if (ext && !EXT_TO_TYPE[ext[1]]) {
-      showResult(t("err_format_unsupported"), true);
+      showError("err_format_unsupported");
       file.value = "";
       fileLabel.textContent = t("dropEmpty");
       return;
@@ -806,6 +815,7 @@ function showQrModal(qrUrl) {
 }
 
 function showShareResult(file) {
+  lastErrorKey = null;
   const url = file.downloadUrl || file.url;
   const dlUrl = url + (url.includes("?") ? "&" : "?") + "download=1";
   const share = "https://x.com/intent/tweet?" + new URLSearchParams({ text: t("shareText"), url });
