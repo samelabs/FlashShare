@@ -1,6 +1,7 @@
-"""API routes: /api/v1/*
+"""Internal API routes: /api/*
 
-RESTful JSON endpoints for uploads, tools, and user data.
+These endpoints are called exclusively by the frontend (app.js + detail.html).
+Not for external consumption — no version prefix, no public documentation.
 
 Response format (all endpoints):
     Success: {"ok": true, ...data}
@@ -86,10 +87,16 @@ def _save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
 
 def _validate_lifecycle(params):
     """Extract and validate expiry_days + allowed_downloads from params."""
-    expiry_days = params.get("expiry_days", 1)
+    try:
+        expiry_days = int(params.get("expiry_days", 1))
+    except (ValueError, TypeError):
+        expiry_days = 1
     if expiry_days not in (1, 3, 7):
         expiry_days = 1
-    allowed_downloads = params.get("allowed_downloads", 50)
+    try:
+        allowed_downloads = int(params.get("allowed_downloads", 50))
+    except (ValueError, TypeError):
+        allowed_downloads = 50
     if allowed_downloads not in (1, 10, 50, 100, 200):
         allowed_downloads = 50
     return expiry_days, allowed_downloads
@@ -104,17 +111,21 @@ async def get_tools():
 
 
 @router.get("/tools/{public_id}")
-async def get_tools_for_file(public_id: str):
-    """List tools applicable to a specific file."""
+async def get_tools_for_file(public_id: str, request: Request):
+    """List tools applicable to a specific file (owner only)."""
+    user, err = _require_auth(request)
+    if err:
+        return err
     if not PUBLIC_ID_RE.match(public_id):
         return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
     upload = get_upload_by_public_id(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    if upload["user_id"] != user["id"]:
+        return JSONResponse({"ok": False, "error": "forbidden"}, 403)
     upload_dict = dict(upload)
-    upload_dict["is_owner"] = False
     tools = get_tools_for_upload(upload_dict)
-    return {"ok": True, "tools": tools, "is_owner": upload_dict["is_owner"]}
+    return {"ok": True, "tools": tools}
 
 
 @router.post("/tools/execute")
@@ -354,10 +365,9 @@ async def rename_upload_route(public_id: str, request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     new_name = req.name.strip()
-    import os as _os
-    original_ext = _os.path.splitext(upload["file_name"])[1]
+    original_ext = os.path.splitext(upload["file_name"])[1]
     clean_stem = sanitize_filename(new_name)
-    clean_stem = _os.path.splitext(clean_stem)[0]
+    clean_stem = os.path.splitext(clean_stem)[0]
     if not clean_stem or len(clean_stem) > 200:
         return JSONResponse({"ok": False, "error": "invalid_name"}, 400)
     final_name = clean_stem + original_ext

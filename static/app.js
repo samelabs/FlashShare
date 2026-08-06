@@ -259,7 +259,7 @@ form.addEventListener("submit", async (event) => {
   const fileSize = file.files[0].size;
   const startTime = Date.now();
   const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/api/v1/uploads");
+  xhr.open("POST", "/api/uploads");
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) {
       const pct = Math.min(99, Math.round(e.loaded / e.total * 100));
@@ -291,7 +291,7 @@ form.addEventListener("submit", async (event) => {
       showToolProcessing(toolName);
       const expirySelect = form.querySelector("[name=\"expiryDays\"]");
       const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
-      const toolRes = await fetch("/api/v1/tools/execute", {
+      const toolRes = await fetch("/api/tools/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -336,7 +336,7 @@ async function loadHistory() {
     const hc3 = document.getElementById("historyCount"); if (hc3) hc3.textContent = "";
     return;
   }
-  const res = await fetch("/api/v1/uploads");
+  const res = await fetch("/api/uploads");
   const data = await res.json();
   if (!data.ok || !data.uploads.length) {
     currentUploads = [];
@@ -417,7 +417,7 @@ async function deleteUpload(upload, triggerButton = null) {
     if (triggerButton === modalDelete) triggerButton.innerHTML = actionLabel("trash", t("deleting"));
   }
   try {
-    const res = await fetch(`/api/v1/uploads/${upload.public_id}`, {
+    const res = await fetch(`/api/uploads/${upload.public_id}`, {
       method: "DELETE",
     });
     const data = await res.json();
@@ -727,7 +727,7 @@ async function retryTool() {
   const expirySelect = form.querySelector("[name=\"expiryDays\"]");
   const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
   try {
-    const toolRes = await fetch("/api/v1/tools/execute", {
+    const toolRes = await fetch("/api/tools/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

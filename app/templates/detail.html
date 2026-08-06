@@ -158,7 +158,7 @@ function openRename(pid) {
     if (!v || v === stem) { closeToolModal(); return; }
     openToolModal(toolLoading());
     try {
-      const r = await fetch(`/api/v1/uploads/${pid}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({name:v}) });
+      const r = await fetch(`/api/uploads/${pid}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({name:v}) });
       const data = await r.json();
       if (data.ok) { h1.textContent = data.name; document.title = data.name; closeToolModal(); }
       else openToolModal(toolError(data.error));
@@ -172,7 +172,7 @@ function openDelete(pid) {
   document.getElementById("delConfirm").addEventListener("click", async () => {
     openToolModal(toolLoading());
     try {
-      const r = await fetch(`/api/v1/uploads/${pid}`, { method:"DELETE" });
+      const r = await fetch(`/api/uploads/${pid}`, { method:"DELETE" });
       const data = await r.json();
       if (data.ok) window.location.href = "/";
       else openToolModal(toolError(data.error));
