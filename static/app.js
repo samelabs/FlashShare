@@ -194,10 +194,6 @@ function applyI18n() {
   renderAccount();
   loadHistory();
   if (activeUpload) renderModal(activeUpload);
-  // Re-render result card if visible (uses t() for all labels)
-  if (lastUploadResult) {
-    showShareResult(lastUploadResult);
-  }
   // Re-render error message if visible
   if (lastErrorKey && result && result.classList.contains("error")) {
     showError(lastErrorKey);
@@ -830,9 +826,9 @@ function showShareResult(file) {
     // PWA standalone: <a download> navigates inside PWA and traps user.
     // Use navigator.share so the system sheet handles file transfer.
     const dlBtnId = `dlbtn-${Date.now()}`;
-    actions = `<button class="action-btn primary" id="${dlBtnId}" type="button" aria-label="${t("downloadFile")}">${svgIcon("download")}<span>${t("downloadFile")}</span></button>`;
+    actions = `<button class="action-btn primary" id="${dlBtnId}" type="button" aria-label="${t("downloadFile")}">${svgIcon("download")}<span data-i18n="downloadFile">${t("downloadFile")}</span></button>`;
   } else {
-    actions = `<a class="action-btn primary" href="${escapeHtml(dlUrl)}" download aria-label="${t("downloadFile")}">${svgIcon("download")}<span>${t("downloadFile")}</span></a>`;
+    actions = `<a class="action-btn primary" href="${escapeHtml(dlUrl)}" download aria-label="${t("downloadFile")}">${svgIcon("download")}<span data-i18n="downloadFile">${t("downloadFile")}</span></a>`;
   }
   actions += `<button class="action-btn" id="${shareImgId}" type="button" aria-label="${t("shareImg")}">${svgIcon("share")}</button>`;
   actions += `<span class="action-sep"></span>`;
