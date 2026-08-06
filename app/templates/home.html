@@ -37,7 +37,11 @@
 <section class="workspace">
   <div class="intro">
     <h1 data-i18n="hero_title">Flash Share</h1>
-    <p class="hero-subtitle" data-i18n="subtitle">{{ texts.subtitle }}</p>
+    <div class="hero-subtitle-row">
+      <p class="hero-subtitle" data-i18n="subtitle">{{ texts.subtitle }}</p>
+      <a class="hero-share" id="homeShare" href="{{ share_url }}" target="_blank" rel="noreferrer"
+         aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
+    </div>
 
     <div class="limit-grid">
       <div class="limit" title="Max file size">{{ file_size_icon }}<strong>{{ max_mb }}MB</strong></div>

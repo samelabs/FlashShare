@@ -491,7 +491,7 @@ document.addEventListener("click", event => {
   langButton.setAttribute("aria-expanded", "false");
 });
 
-// ── Home Tools ──────────────────────────────────────────────
+// ── Home Tools ──────────────────────────────────────────────────────────────
 const homeTools = document.getElementById("homeTools");
 const toolOverlay = document.getElementById("toolOverlay");
 const toolOverlayBody = document.getElementById("toolOverlayBody");
