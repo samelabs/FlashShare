@@ -165,7 +165,6 @@ function renderModalActions() {
 function renderHomeShare() {
   if (!homeShare) return;
   const shareUrl = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("homeShareText"), url: location.origin });
-  homeShare.innerHTML = ICONS.share;
   homeShare.href = shareUrl;
   homeShare.setAttribute("aria-label", t("shareX"));
   homeShare.setAttribute("title", t("shareX"));
@@ -491,21 +490,6 @@ document.addEventListener("click", event => {
   langMenu.classList.add("hidden");
   langButton.setAttribute("aria-expanded", "false");
 });
-// User dropdown menu
-const userMenuBtn = document.getElementById("userMenuBtn");
-const userDropdown = document.getElementById("userDropdown");
-if (userMenuBtn && userDropdown) {
-  userMenuBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const hidden = userDropdown.classList.toggle("hidden");
-    userMenuBtn.setAttribute("aria-expanded", hidden ? "false" : "true");
-  });
-  document.addEventListener("click", (e) => {
-    if (e.target === userMenuBtn || userDropdown.contains(e.target)) return;
-    userDropdown.classList.add("hidden");
-    userMenuBtn.setAttribute("aria-expanded", "false");
-  });
-}
 
 // ── Home Tools ──────────────────────────────────────────────
 const homeTools = document.getElementById("homeTools");

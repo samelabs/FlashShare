@@ -74,20 +74,6 @@
 {% endblock %}
 
 {% block script %}
-// User dropdown menu (same as app.js)
-const userMenuBtn = document.getElementById("userMenuBtn");
-const userDropdown = document.getElementById("userDropdown");
-if (userMenuBtn && userDropdown) {
-  userMenuBtn.addEventListener("click", (e) => {
-    const hidden = userDropdown.classList.toggle("hidden");
-    userMenuBtn.setAttribute("aria-expanded", hidden ? "false" : "true");
-  });
-  document.addEventListener("click", (e) => {
-    if (e.target === userMenuBtn || userDropdown.contains(e.target)) return;
-    userDropdown.classList.add("hidden");
-    userMenuBtn.setAttribute("aria-expanded", "false");
-  });
-}
 
 // Copy link
 const copyBtn = document.getElementById("copyBtn");
