@@ -66,10 +66,7 @@
 /* ── Reset ────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; overflow-x: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; position: relative; }
-body::before { content: ""; position: fixed; top: -20%; left: -10%; width: 50vw; height: 50vw; max-width: 600px; max-height: 600px; background: radial-gradient(circle, rgba(255,107,107,0.10) 0%, transparent 70%); pointer-events: none; z-index: 0; border-radius: 50%; }
-body::after { content: ""; position: fixed; bottom: -20%; right: -10%; width: 50vw; height: 50vw; max-width: 600px; max-height: 600px; background: radial-gradient(circle, rgba(72,219,191,0.10) 0%, transparent 70%); pointer-events: none; z-index: 0; border-radius: 50%; }
-.shell, .site-footer { position: relative; z-index: 1; }
+body { margin: 0; overflow-x: hidden; font-family: var(--font); background: #f5f5f7; color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 a { color: var(--accent); }
 .shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: var(--s4) 0 0; }
 h1, h2 { letter-spacing: -0.02em; }

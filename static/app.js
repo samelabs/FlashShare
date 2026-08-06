@@ -226,7 +226,18 @@ function showResult(html, isError=false) {
 }
 file.addEventListener("change", () => {
   if (!window.__USER__) { location.href = "/auth/x/login"; return; }
-  fileLabel.textContent = file.files[0] ? t("dropSelected", { name: file.files[0].name, size: fmtSize(file.files[0].size) }) : t("dropEmpty");
+  if (file.files[0]) {
+    const ext = file.files[0].name.toLowerCase().match(/\.(\w+)$/);
+    if (ext && !EXT_TO_TYPE[ext[1]]) {
+      showResult(t("err_format_unsupported"), true);
+      file.value = "";
+      fileLabel.textContent = t("dropEmpty");
+      return;
+    }
+    fileLabel.textContent = t("dropSelected", { name: file.files[0].name, size: fmtSize(file.files[0].size) });
+  } else {
+    fileLabel.textContent = t("dropEmpty");
+  }
 });
 ["dragenter", "dragover"].forEach(name => dropZone.addEventListener(name, event => {
   event.preventDefault();
@@ -277,7 +288,7 @@ form.addEventListener("submit", async (event) => {
     if (fill) fill.style.width = "100%";
     try {
       const data = JSON.parse(xhr.responseText);
-      if (xhr.status >= 400 || !data.ok) throw new Error(data.error || t("failed"));
+      if (xhr.status >= 400 || !data.ok) { const ek = data.error || "failed"; throw new Error(t(ek) !== ek ? t(ek) : t("failed")); }
       // No tool (or default share tool) → show result directly
       if (!activeTool || activeTool.id === "share") {
         showShareResult(data.file);
@@ -438,7 +449,7 @@ async function deleteUpload(upload, triggerButton = null) {
       method: "DELETE",
     });
     const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || t("failed"));
+    if (!res.ok || !data.ok) { const ek = data.error || "failed"; throw new Error(t(ek) !== ek ? t(ek) : t("failed")); }
     if (activeUpload && Number(activeUpload.id) === Number(upload.id)) closeModal();
     showResult(escapeHtml(t("deleted")));
     await loadHistory();

@@ -162,7 +162,13 @@ document.getElementById("toolModalClose").addEventListener("click", closeToolMod
 toolModal.addEventListener("click", (e) => { if (e.target === toolModal) closeToolModal(); });
 
 function toolLoading() { return '<div class="tool-loading">{{ texts.get("loading", "Loading...") }}</div>'; }
-function toolError(msg) { return '<p class="tool-error">' + (msg || "error") + '</p>'; }
+const _errMap = {{ texts|tojson }};
+function toolError(msg) {
+  if (msg && _errMap[msg]) msg = _errMap[msg];
+  msg = msg || _errMap.tool_failed || "error";
+  msg = String(msg).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  return '<p class="tool-error">' + msg + '</p>';
+}
 
 const renameBtn = document.getElementById("renameBtn");
 if (renameBtn) renameBtn.addEventListener("click", () => openRename(pid));
