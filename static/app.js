@@ -54,25 +54,29 @@ function fmtIcon(name) {
 }
 
 const _IC = window.__ICONS__ || {};
+function svgIcon(name) {
+  const path = _IC[name] || _IC.info || "";
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+}
 const ICONS = {
-  upload: `<span class="button-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true">${_IC.upload || ""}</svg></span>`,
-  open: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.open || ""}</svg>`,
+  upload: `<span class="button-icon" aria-hidden="true">${svgIcon("upload")}</span>`,
+  open: svgIcon("open"),
   x: `<span class="x-glyph" aria-hidden="true">𝕏</span>`,
-  copy: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.copy || ""}</svg>`,
-  download: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.download || ""}</svg>`,
-  qr: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.qr || ""}</svg>`,
-  logout: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.logout || ""}</svg>`,
-  link: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.link || ""}</svg>`,
-  check: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.check || ""}</svg>`,
-  share: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.share || ""}</svg>`,
-  trash: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.trash || ""}</svg>`,
-  settings: `<svg viewBox="0 0 24 24" aria-hidden="true">${_IC.settings || ""}</svg>`
+  copy: svgIcon("copy"),
+  download: svgIcon("download"),
+  qr: svgIcon("qr"),
+  logout: svgIcon("logout"),
+  link: svgIcon("link"),
+  check: svgIcon("check"),
+  share: svgIcon("share"),
+  trash: svgIcon("trash"),
+  settings: svgIcon("settings"),
 };
 
 const I18N = window.__I18N__ || { en: {} };
-const SUPPORTED_LANGS = ["en", "zh", "ja", "ko", "es", "ar", "de"];
-const LOCALE_MAP = { en:"en", zh:"zh-CN", ja:"ja-JP", ko:"ko-KR", es:"es-ES", ar:"ar", de:"de-DE" };
-const LANG_LABELS = { en:"English", zh:"简体中文", ja:"日本語", ko:"한국어", es:"Español", ar:"العربية", de:"Deutsch" };
+const SUPPORTED_LANGS = ["en", "zh", "ja", "ko", "es", "ar", "de", "ru", "pt", "fr"];
+const LOCALE_MAP = { en:"en", zh:"zh-CN", ja:"ja-JP", ko:"ko-KR", es:"es-ES", ar:"ar", de:"de-DE", ru:"ru-RU", pt:"pt-BR", fr:"fr-FR" };
+const LANG_LABELS = { en:"English", zh:"简体中文", ja:"日本語", ko:"한국어", es:"Español", ar:"العربية", de:"Deutsch", ru:"Русский", pt:"Português", fr:"Français" };
 const CLIENT_META = {
   en: { title: "Flash Share — Free File Tools & Sharing", desc: "Compress, clean, beautify, and share files instantly." },
   zh: { title: "Flash Share — 免费文件工具与分享", desc: "压缩、净化、美化、分享，一步到位。" },
@@ -81,6 +85,9 @@ const CLIENT_META = {
   es: { title: "Flash Share — Herramientas y compartir gratis", desc: "Comprime, limpia, embellece y comparte al instante." },
   ar: { title: "Flash Share — أدوات ومشاركة مجانية", desc: "ضغط، تنقية، تحسين، ومشاركة فورية." },
   de: { title: "Flash Share — Kostenlose Tools & Sharing", desc: "Komprimieren, bereinigen, verschönern und sofort teilen." },
+  ru: { title: "Flash Share — Бесплатные инструменты", desc: "Сжимай, очищай, улучшай и делись мгновенно." },
+  pt: { title: "Flash Share — Ferramentas e compartilhar grátis", desc: "Comprima, limpe, embeleze e compartilhe instantaneamente." },
+  fr: { title: "Flash Share — Outils gratuits & partage", desc: "Compressez, nettoyez, embellissez et partagez instantanément." },
 };
 function getCookie(name) {
   const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]+)"));
@@ -359,22 +366,7 @@ async function loadHistory() {
   historyList.querySelectorAll("[data-qr-index]").forEach(button => {
     button.addEventListener("click", () => {
       const upload = currentUploads[Number(button.dataset.qrIndex)];
-      const qrUrl = upload.url_download + "/qr.svg";
-      let qrModal = document.getElementById("homeQrModal");
-      if (!qrModal) {
-        qrModal = document.createElement("div");
-        qrModal.id = "homeQrModal";
-        qrModal.className = "modal hidden";
-        qrModal.setAttribute("role", "dialog");
-        qrModal.setAttribute("aria-modal", "true");
-        qrModal.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">' + svgIcon("close") + '</button><img alt="QR" width="200" height="200"></div>';
-        document.body.appendChild(qrModal);
-        const closeBtn = qrModal.querySelector(".modal-close");
-        closeBtn.addEventListener("click", () => qrModal.classList.add("hidden"));
-        qrModal.addEventListener("click", (e) => { if (e.target === qrModal) qrModal.classList.add("hidden"); });
-      }
-      qrModal.querySelector("img").src = qrUrl;
-      qrModal.classList.remove("hidden");
+      showQrModal(upload.url_download + "/qr.svg");
     });
   });
   historyList.querySelectorAll("[data-delete-index]").forEach(button => {
@@ -499,12 +491,6 @@ const homeTools = document.getElementById("homeTools");
 const toolOverlay = document.getElementById("toolOverlay");
 const toolOverlayBody = document.getElementById("toolOverlayBody");
 const toolOverlayClose = document.getElementById("toolOverlayClose");
-// Unified icons from server (Heroicons v2). Single source of truth.
-const ICONS_SVG = window.__ICONS__ || {};
-function svgIcon(name) {
-  const path = ICONS_SVG[name] || ICONS_SVG.info || "";
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
-}
 const ACCEPT_TAGS = {
   "image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF",
   "image/bmp": "BMP", "image/tiff": "TIFF", "image/svg+xml": "SVG", "image/avif": "AVIF",
@@ -725,8 +711,9 @@ function showToolProcessing(toolName) {
 }
 
 function showToolError(message, originalFile) {
-  const origUrl = originalFile ? (originalFile.downloadUrl || originalFile.url) : "#";
-  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(message)}</div><div class="result-buttons"><button class="tool-btn" id="toolRetry" type="button">${t("retry")}</button><a class="tool-btn primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a></div></div>`, true);
+  const origUrl = originalFile && (originalFile.downloadUrl || originalFile.url) ? (originalFile.downloadUrl || originalFile.url) : "";
+  const origLink = origUrl ? `<a class="tool-btn primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
+  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(message)}</div><div class="result-buttons"><button class="tool-btn" id="toolRetry" type="button">${t("retry")}</button>${origLink}</div></div>`, true);
   const retryBtn = document.getElementById("toolRetry");
   if (retryBtn && lastUploadResult) {
     retryBtn.addEventListener("click", () => retryTool());
@@ -737,6 +724,8 @@ async function retryTool() {
   if (!activeTool || !lastUploadResult) return;
   const toolName = t(activeTool.id);
   showToolProcessing(toolName);
+  const expirySelect = form.querySelector("[name=\"expiryDays\"]");
+  const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
   try {
     const toolRes = await fetch("/api/v1/tools/execute", {
       method: "POST",
@@ -744,7 +733,11 @@ async function retryTool() {
       body: JSON.stringify({
         tool_id: activeTool.id,
         public_id: lastUploadResult.publicId,
-        params: { preset: activePreset },
+        params: {
+          preset: activePreset,
+          expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
+          allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
+        },
       }),
     });
     const toolData = await toolRes.json();
@@ -773,6 +766,24 @@ async function shareImageFile(url, filename) {
   return false;
 }
 
+function showQrModal(qrUrl) {
+  let qrModal = document.getElementById("homeQrModal");
+  if (!qrModal) {
+    qrModal = document.createElement("div");
+    qrModal.id = "homeQrModal";
+    qrModal.className = "modal hidden";
+    qrModal.setAttribute("role", "dialog");
+    qrModal.setAttribute("aria-modal", "true");
+    qrModal.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">' + svgIcon("close") + '</button><img alt="QR" width="200" height="200"></div>';
+    document.body.appendChild(qrModal);
+    const closeBtn = qrModal.querySelector(".modal-close");
+    closeBtn.addEventListener("click", () => qrModal.classList.add("hidden"));
+    qrModal.addEventListener("click", (e) => { if (e.target === qrModal) qrModal.classList.add("hidden"); });
+  }
+  qrModal.querySelector("img").src = qrUrl;
+  qrModal.classList.remove("hidden");
+}
+
 function showShareResult(file) {
   const url = file.downloadUrl || file.url;
   const dlUrl = url + (url.includes("?") ? "&" : "?") + "download=1";
@@ -781,10 +792,7 @@ function showShareResult(file) {
   const qrId = `qr-${Date.now()}`;
   const shareImgId = `shareimg-${Date.now()}`;
   const meta = fmtSize(file.size);
-  const isImage = file.contentType ? file.contentType.startsWith("image/") : (file.filename || file.name || "").match(/\.(png|jpe?g|webp|gif|bmp|tiff?)$/i);
 
-  // Image files: two groups — image actions + link actions
-  // Non-image: single group
   let actions = `<a class="action-btn primary" href="${escapeHtml(dlUrl)}" download aria-label="${t("downloadFile")}">${svgIcon("download")}<span>${t("downloadFile")}</span></a>`;
   actions += `<button class="action-btn" id="${shareImgId}" type="button" aria-label="${t("shareImg")}">${svgIcon("share")}</button>`;
   actions += `<span class="action-sep"></span>`;
@@ -809,24 +817,7 @@ function showShareResult(file) {
     setTimeout(() => { copyBtn.innerHTML = svgIcon("copy"); copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 2000);
   });
   const qrBtn = document.getElementById(qrId);
-  if (qrBtn) qrBtn.addEventListener("click", () => {
-    // Inline QR modal — same pattern as detail page
-    let qrModal = document.getElementById("homeQrModal");
-    if (!qrModal) {
-      qrModal = document.createElement("div");
-      qrModal.id = "homeQrModal";
-      qrModal.className = "modal";
-      qrModal.setAttribute("role", "dialog");
-      qrModal.setAttribute("aria-modal", "true");
-      qrModal.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">' + svgIcon("close") + '</button><img alt="QR" width="200" height="200"></div>';
-      document.body.appendChild(qrModal);
-      const closeBtn = qrModal.querySelector(".modal-close");
-      closeBtn.addEventListener("click", () => qrModal.classList.add("hidden"));
-      qrModal.addEventListener("click", (e) => { if (e.target === qrModal) qrModal.classList.add("hidden"); });
-    }
-    qrModal.querySelector("img").src = url + "/qr.svg";
-    qrModal.classList.remove("hidden");
-  });
+  if (qrBtn) qrBtn.addEventListener("click", () => showQrModal(url + "/qr.svg"));
   const shareImgBtn = document.getElementById(shareImgId);
   if (shareImgBtn) shareImgBtn.addEventListener("click", async () => {
     const ok = await shareImageFile(dlUrl, file.filename || file.name || "image.png");
