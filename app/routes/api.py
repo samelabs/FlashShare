@@ -8,7 +8,9 @@ Response format (all endpoints):
 """
 
 import io
+import os
 import sys
+import json
 import asyncio
 import logging
 from pathlib import Path
@@ -53,6 +55,44 @@ def _require_auth(request: Request):
     if not user:
         return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
     return user, None
+
+
+def _save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
+                         expiry_days, allowed_downloads, expire_at,
+                         url_download, url_hotlink):
+    """Insert a DB record for an upload and return the response dict."""
+    with db() as con:
+        public_id = generate_public_id(con)
+        con.execute(
+            """INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
+               expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (user_id, ip, public_id, gokapi_id, filename, content_type, size,
+             expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, now()),
+        )
+    return {
+        "type": "share_link",
+        "name": filename,
+        "downloadUrl": public_file_url(public_id),
+        "filename": filename,
+        "contentType": content_type,
+        "size": size,
+        "publicId": public_id,
+        "expireAt": expire_at,
+        "expiryDays": expiry_days,
+        "allowedDownloads": allowed_downloads,
+    }
+
+
+def _validate_lifecycle(params):
+    """Extract and validate expiry_days + allowed_downloads from params."""
+    expiry_days = params.get("expiry_days", 1)
+    if expiry_days not in (1, 3, 7):
+        expiry_days = 1
+    allowed_downloads = params.get("allowed_downloads", 50)
+    if allowed_downloads not in (1, 10, 50, 100, 200):
+        allowed_downloads = 50
+    return expiry_days, allowed_downloads
 
 
 # ── Tools ──
@@ -139,82 +179,18 @@ async def execute_tool(request: Request):
 
 
 async def _execute_and_share(request: Request, tool: dict, upload, params: dict, user: dict) -> dict:
-    """Orchestration layer.
+    """Orchestration: read source → run tool handler → write result → DB record.
 
-    Two modes:
-    - LOCAL (default): storage.read → subprocess handler → storage.write → DB
-    - REMOTE (WORKER_URL set): HTTP to remote worker → worker pulls/pushes gokapi → DB only
+    LOCAL mode only (REMOTE WORKER_URL not deployed).
     """
-    import os
-    WORKER_URL = os.environ.get("FLASHSHARE_WORKER_URL", "")
     upload_dict = dict(upload)
+    expiry_days, allowed_downloads = _validate_lifecycle(params)
 
-    # ── Lifecycle params (shared by both modes) ──
-    expiry_days = params.get("expiry_days", 1)
-    if expiry_days not in (1, 3, 7):
-        expiry_days = 1
-    allowed_downloads = params.get("allowed_downloads", 50)
-    if allowed_downloads not in (1, 10, 50, 100, 200):
-        allowed_downloads = 50
-
-    if WORKER_URL:
-        # ── REMOTE WORKER: main server never touches file bytes ──
-        import http.client, urllib.parse
-        from config import GOKAPI_URL, GOKAPI_KEY
-
-        payload = json.dumps({
-            "tool_id": tool["id"],
-            "gokapi_id": upload_dict["gokapi_id"],
-            "gokapi_url": GOKAPI_URL,
-            "gokapi_key": GOKAPI_KEY,
-            "filename": upload_dict["file_name"],
-            "content_type": upload_dict["content_type"],
-            "size": upload_dict["size_bytes"],
-            "params": {**params, "expiry_days": expiry_days, "allowed_downloads": allowed_downloads},
-        })
-        parsed = urllib.parse.urlparse(WORKER_URL)
-        conn = http.client.HTTPConnection(parsed.hostname, parsed.port or 9000, timeout=120)
-        conn.request("POST", "/process", body=payload, headers={"Content-Type": "application/json"})
-        resp = conn.getresponse()
-        resp_data = resp.read()
-        conn.close()
-        if resp.status != 200:
-            raise RuntimeError(f"worker error: {resp_data.decode('utf-8', 'replace')[:200]}")
-        wr = json.loads(resp_data.decode("utf-8"))
-        if not wr.get("ok"):
-            raise RuntimeError(f"worker failed: {wr.get('error', 'unknown')}")
-
-        result = wr["result"]
-        # Write DB record only — file already in gokapi
-        ip = _client_ip(request)
-        with db() as con:
-            new_public_id = generate_public_id(con)
-            con.execute(
-                """INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
-                   expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (user["id"], ip, new_public_id, result["gokapi_id"],
-                 result["filename"], result["content_type"], result["size"],
-                 expiry_days, allowed_downloads, result.get("expire_at"),
-                 result.get("url_download", ""), result.get("url_hotlink", ""), now()),
-            )
-        return {
-            "type": "share_link",
-            "url": public_file_url(new_public_id),
-            "filename": result["filename"],
-            "contentType": result["content_type"],
-            "size": result["size"],
-            "origSize": result.get("orig_size", upload_dict["size_bytes"]),
-            "publicId": new_public_id,
-            "expireAt": result.get("expire_at"),
-            "expiryDays": expiry_days,
-            "allowedDownloads": allowed_downloads,
-        }
-
-    # ── LOCAL WORKER: subprocess (current logic) ──
+    # 1. Read source from storage
     status, headers, stream = storage_read(upload_dict["gokapi_id"])
     source_bytes = stream.read()
 
+    # 2. Run handler in subprocess (memory isolation)
     loop = asyncio.get_event_loop()
     from app.worker import process_tool
     result = await loop.run_in_executor(
@@ -226,7 +202,7 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
 
     output_bytes = result["output_bytes"]
 
-    # Write to storage
+    # 3. Write result to storage
     gokapi_result = storage_write(
         io.BytesIO(output_bytes),
         result["filename"],
@@ -236,33 +212,17 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
         len(output_bytes),
     )
 
-    # DB record
+    # 4. DB record
     ip = _client_ip(request)
     info = gokapi_result.get("FileInfo", {})
-    with db() as con:
-        new_public_id = generate_public_id(con)
-        con.execute(
-            """INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
-               expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (user["id"], ip, new_public_id, info.get("Id", ""),
-             result["filename"], result["content_type"], len(output_bytes),
-             expiry_days, allowed_downloads, info.get("ExpireAt"),
-             info.get("UrlDownload", ""), info.get("UrlHotlink", ""), now()),
-        )
-
-    return {
-        "type": "share_link",
-        "url": public_file_url(new_public_id),
-        "filename": result["filename"],
-        "contentType": result["content_type"],
-        "size": len(output_bytes),
-        "origSize": upload_dict["size_bytes"],
-        "publicId": new_public_id,
-        "expireAt": info.get("ExpireAt"),
-        "expiryDays": expiry_days,
-        "allowedDownloads": allowed_downloads,
-    }
+    record = _save_upload_record(
+        user["id"], ip, info.get("Id", ""),
+        result["filename"], result["content_type"], len(output_bytes),
+        expiry_days, allowed_downloads,
+        info.get("ExpireAt"), info.get("UrlDownload", ""), info.get("UrlHotlink", ""),
+    )
+    record["origSize"] = upload_dict["size_bytes"]
+    return record
 
 
 # ── Uploads ──
@@ -310,18 +270,10 @@ async def create_upload(request: Request):
         return JSONResponse({"ok": False, "error": final_type}, 400)
 
     # Form fields (from <select> elements)
-    try:
-        expiry_days = int(form.get("expiryDays", "1"))
-    except (ValueError, TypeError):
-        expiry_days = 1
-    if expiry_days not in (1, 3, 7):
-        expiry_days = 1
-    try:
-        allowed_downloads = int(form.get("allowedDownloads", "50"))
-    except (ValueError, TypeError):
-        allowed_downloads = 50
-    if allowed_downloads not in (1, 10, 50, 100, 200):
-        allowed_downloads = 50
+    expiry_days, allowed_downloads = _validate_lifecycle({
+        "expiry_days": form.get("expiryDays", "1"),
+        "allowed_downloads": form.get("allowedDownloads", "50"),
+    })
 
     has_tool = form.get("tool", "").strip()
     gokapi = upload_to_gokapi(io.BytesIO(content), filename, final_type,
@@ -335,6 +287,7 @@ async def create_upload(request: Request):
             "ok": True,
             "file": {
                 "name": filename,
+                "filename": filename,
                 "contentType": final_type,
                 "size": size,
                 "downloadUrl": "",
@@ -348,30 +301,13 @@ async def create_upload(request: Request):
         }
 
     # No tool (or share = default): save original as the shareable record
-    with db() as con:
-        public_id = generate_public_id(con)
-        con.execute(
-            """INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
-               expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (user["id"], ip, public_id, info.get("Id", ""), filename, final_type, size,
-             expiry_days, allowed_downloads, info.get("ExpireAt"), info.get("UrlDownload", ""),
-             info.get("UrlHotlink", ""), now()),
-        )
-    return {
-        "ok": True,
-        "file": {
-            "name": filename,
-            "contentType": final_type,
-            "size": size,
-            "downloadUrl": public_file_url(public_id),
-            "hotlinkUrl": "",
-            "publicId": public_id,
-            "expireAt": info.get("ExpireAt"),
-            "expiryDays": expiry_days,
-            "allowedDownloads": allowed_downloads,
-        }
-    }
+    record = _save_upload_record(
+        user["id"], ip, info.get("Id", ""),
+        filename, final_type, size,
+        expiry_days, allowed_downloads,
+        info.get("ExpireAt"), info.get("UrlDownload", ""), info.get("UrlHotlink", ""),
+    )
+    return {"ok": True, "file": record}
 
 
 @router.delete("/uploads/{public_id}")
