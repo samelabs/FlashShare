@@ -761,12 +761,13 @@ async function shareFile(url, filename) {
     if (!res.ok) return false;
     const blob = await res.blob();
     const file = new File([blob], filename || "download", { type: blob.type || "application/octet-stream" });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    // Try navigator.share directly — iOS Safari supports share({files}) but not canShare.
+    if (navigator.share) {
       await navigator.share({ files: [file], title: filename || "download" });
       return true;
     }
   } catch (e) {
-    if (e.name === "AbortError") return true;
+    if (e.name === "AbortError") return true; // user cancelled
     console.warn("share failed:", e.message);
   }
   return false;
