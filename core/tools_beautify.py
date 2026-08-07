@@ -7,6 +7,15 @@ Architecture:
     Fixed pipeline: rounded corners + drop shadow + background container.
     The ONLY variable is the background generator (bg_func).
     Each preset selects a different bg_func.
+
+Background techniques (each preset uses a fundamentally different one):
+    _solid          — flat color
+    _gradient       — multi-stop vertical gradient
+    _mesh           — blurred multi-color blobs (mesh gradient)
+    _radial_glow    — bright center fading to dark edges
+    _grid_pattern   — graph paper lines
+    _dot_pattern    — polka dots
+    _wallpaper      — blurred + enhanced source image
 """
 
 import gc
@@ -14,7 +23,7 @@ import io
 import math
 import random
 
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageChops, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
 from tools import register, TYPE_PRODUCE, ToolError
 
@@ -27,7 +36,7 @@ SHADOW_OFFSET = 6
 
 
 # ── Background generators ──────────────────────────────────
-# Each: (size: (w,h)) → RGB Image. Pure computation, no I/O.
+# Each: (size: (w,h), src_img: Image) → RGB Image. Pure computation.
 
 def _gradient(size, colors):
     """Multi-stop vertical linear gradient."""
@@ -50,7 +59,6 @@ def _mesh(size, colors, seed=42, blobs=6):
     w, h = size
     scale = 4
     sw, sh = w // scale, h // scale
-    # Start with mid-tone average of all colors as base (not colors[0])
     base_r = sum(c[0] for c in colors) // len(colors)
     base_g = sum(c[1] for c in colors) // len(colors)
     base_b = sum(c[2] for c in colors) // len(colors)
@@ -66,7 +74,6 @@ def _mesh(size, colors, seed=42, blobs=6):
             [0, 0, r * 2 - 1, r * 2 - 1], fill=c + (180,))
         blob = blob.filter(ImageFilter.GaussianBlur(radius=r // 3))
         canvas.alpha_composite(blob, (cx - r, cy - r))
-    # Flatten: composite RGBA onto itself's RGB base
     flat = Image.new("RGBA", (sw, sh), (base_r, base_g, base_b, 255))
     flat.alpha_composite(canvas)
     return flat.convert("RGB").resize((w, h), Image.LANCZOS)
@@ -88,6 +95,40 @@ def _grid_pattern(size):
     return bg
 
 
+def _dot_pattern(size, bg_color, dot_color, spacing=36, dot_radius=3):
+    """Polka dot pattern on solid background."""
+    w, h = size
+    bg = Image.new("RGB", size, bg_color)
+    d = ImageDraw.Draw(bg)
+    for y in range(spacing // 2, h, spacing):
+        for x in range(spacing // 2, w, spacing):
+            d.ellipse([x - dot_radius, y - dot_radius,
+                       x + dot_radius, y + dot_radius], fill=dot_color)
+    return bg
+
+
+def _radial_glow(size, center_color, edge_color):
+    """Radial gradient: bright center fading to dark edges.
+
+    Renders at 1/4 scale for performance, upscaled with LANCZOS.
+    """
+    w, h = size
+    scale = 4
+    sw, sh = w // scale, h // scale
+    cx, cy = sw // 2, sh // 2
+    max_r = int(math.sqrt(cx * cx + cy * cy))
+    bg = Image.new("RGB", (sw, sh), edge_color)
+    d = ImageDraw.Draw(bg)
+    for r in range(max_r, 0, -1):
+        t = 1.0 - (r / max_r)
+        t = t * t  # ease-out for smoother glow
+        color = tuple(
+            int(edge_color[j] + (center_color[j] - edge_color[j]) * t)
+            for j in range(3))
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color)
+    return bg.resize((w, h), Image.LANCZOS)
+
+
 def _wallpaper(size, src_img):
     """Blurred + enhanced source image as wallpaper."""
     blurred = src_img.resize(size, Image.LANCZOS).filter(
@@ -100,15 +141,16 @@ def _wallpaper(size, src_img):
 # ── Preset definitions ─────────────────────────────────────
 
 PRESETS = {
-    "clean":     {"bg": lambda s, i: _solid(s, (242, 244, 247))},
-    "dark":      {"bg": lambda s, i: _solid(s, (22, 22, 28))},
-    "sunset":    {"bg": lambda s, i: _gradient(s, [(255, 94, 98), (255, 154, 0), (255, 218, 130)])},
-    "ocean":     {"bg": lambda s, i: _gradient(s, [(3, 4, 94), (0, 119, 182), (144, 224, 239)])},
+    "pure":      {"bg": lambda s, i: _solid(s, (245, 247, 250))},
+    "carbon":    {"bg": lambda s, i: _solid(s, (17, 17, 22))},
+    "dawn":      {"bg": lambda s, i: _gradient(s, [(255, 249, 235), (255, 224, 204), (255, 206, 193)])},
+    "ocean":     {"bg": lambda s, i: _gradient(s, [(8, 18, 48), (0, 80, 156), (0, 163, 178)])},
     "aurora":    {"bg": lambda s, i: _mesh(s, [(72, 49, 157), (0, 199, 255), (0, 229, 161), (255, 107, 107)])},
-    "noir":      {"bg": lambda s, i: _mesh(s, [(13, 13, 20), (30, 10, 60), (10, 30, 50), (60, 10, 40)])},
-    "royal":     {"bg": lambda s, i: _gradient(s, [(43, 12, 82), (135, 28, 135), (188, 28, 163)])},
+    "spotlight": {"bg": lambda s, i: _radial_glow(s, (29, 155, 240), (15, 15, 20))},
+    "sunset":    {"bg": lambda s, i: _gradient(s, [(255, 94, 98), (255, 154, 0), (255, 206, 84)])},
     "grid":      {"bg": lambda s, i: _grid_pattern(s)},
-    "wallpaper": {"bg": lambda s, i: _wallpaper(s, i)},
+    "dots":      {"bg": lambda s, i: _dot_pattern(s, (255, 250, 245), (229, 216, 200))},
+    "blur":      {"bg": lambda s, i: _wallpaper(s, i)},
 }
 
 
@@ -128,8 +170,8 @@ def beautify_handler(tool_input, params):
         raise ToolError("err_format_not_supported")
 
     # ---- CP6.2: Parameter resolution ----
-    preset = params.get("preset", "clean")
-    p = PRESETS.get(preset, PRESETS["clean"])
+    preset = params.get("preset", "aurora")
+    p = PRESETS.get(preset, PRESETS["aurora"])
 
     # ---- CP6.3: Decode + orient + downscale ----
     img = Image.open(tool_input["stream"])
@@ -194,15 +236,16 @@ def beautify_handler(tool_input, params):
 # ── Registration ───────────────────────────────────────────
 
 _PRESET_LABELS = {
-    "clean":     {"en": "Clean", "zh": "干净", "ja": "クリーン", "ko": "클린", "es": "Limpio", "ar": "نظيف", "de": "Sauber"},
-    "dark":      {"en": "Dark", "zh": "深色", "ja": "ダーク", "ko": "다크", "es": "Oscuro", "ar": "داكن", "de": "Dunkel"},
-    "sunset":    {"en": "Sunset", "zh": "日落", "ja": "サンセット", "ko": "선셋", "es": "Atardecer", "ar": "غروب", "de": "Sonnenuntergang"},
-    "ocean":     {"en": "Ocean", "zh": "海洋", "ja": "オーシャン", "ko": "오션", "es": "Océano", "ar": "محيط", "de": "Ozean"},
-    "aurora":    {"en": "Aurora", "zh": "极光", "ja": "オーロラ", "ko": "오로라", "es": "Aurora", "ar": "شفق", "de": "Aurora"},
-    "noir":      {"en": "Noir", "zh": "暗夜", "ja": "ノワール", "ko": "누아르", "es": "Noir", "ar": "نوار", "de": "Noir"},
-    "royal":     {"en": "Royal", "zh": "紫韵", "ja": "ロイヤル", "ko": "로열", "es": "Real", "ar": "ملكي", "de": "Königlich"},
-    "grid":      {"en": "Grid", "zh": "方格", "ja": "グリッド", "ko": "그리드", "es": "Cuadrícula", "ar": "شبكة", "de": "Raster"},
-    "wallpaper": {"en": "Wallpaper", "zh": "壁纸", "ja": "壁紙", "ko": "배경화면", "es": "Fondo", "ar": "خلفية", "de": "Hintergrund"},
+    "pure":      {"en": "Pure",      "zh": "纯白",   "ja": "ピュア",     "ko": "퓨어",      "es": "Puro",      "ar": "نقي",      "de": "Rein",      "ru": "Чистый",    "pt": "Puro",      "fr": "Pur"},
+    "carbon":    {"en": "Carbon",    "zh": "暗夜",   "ja": "カーボン",   "ko": "카본",      "es": "Carbón",    "ar": "فحمي",     "de": "Karbon",    "ru": "Карбон",    "pt": "Carbono",   "fr": "Carbone"},
+    "dawn":      {"en": "Dawn",      "zh": "晨光",   "ja": "朝光",       "ko": "새벽",      "es": "Alba",      "ar": "فجر",      "de": "Morgendämmerung", "ru": "Рассвет", "pt": "Amanhecer", "fr": "Aube"},
+    "ocean":     {"en": "Ocean",     "zh": "深海",   "ja": "オーシャン", "ko": "오션",      "es": "Océano",    "ar": "محيط",     "de": "Ozean",     "ru": "Океан",     "pt": "Oceano",    "fr": "Océan"},
+    "aurora":    {"en": "Aurora",    "zh": "极光",   "ja": "オーロラ",   "ko": "오로라",    "es": "Aurora",    "ar": "شفق",     "de": "Aurora",    "ru": "Аврора",    "pt": "Aurora",    "fr": "Aurore"},
+    "spotlight": {"en": "Spotlight", "zh": "聚光",   "ja": "スポット",   "ko": "스포트라이트", "es": "Foco",   "ar": "كشاف",    "de": "Spotlight", "ru": "Прожектор",  "pt": "Holofote",  "fr": "Projecteur"},
+    "sunset":    {"en": "Sunset",    "zh": "日落",   "ja": "サンセット", "ko": "선셋",      "es": "Atardecer", "ar": "غروب",     "de": "Sonnenuntergang", "ru": "Закат", "pt": "Pôr do sol", "fr": "Coucher"},
+    "grid":      {"en": "Grid",      "zh": "方格",   "ja": "グリッド",   "ko": "그리드",    "es": "Cuadrícula","ar": "شبكة",    "de": "Raster",    "ru": "Сетка",     "pt": "Grade",     "fr": "Grille"},
+    "dots":      {"en": "Dots",      "zh": "波点",   "ja": "ドット",     "ko": "도트",      "es": "Puntos",    "ar": "نقاط",    "de": "Punkte",    "ru": "Точки",     "pt": "Pontos",    "fr": "Points"},
+    "blur":      {"en": "Blur",      "zh": "模糊",   "ja": "ブラー",     "ko": "블러",      "es": "Desenfoque","ar": "ضبابي",   "de": "Unscharf",  "ru": "Размытие",  "pt": "Desfoque",  "fr": "Flou"},
 }
 
 register(
