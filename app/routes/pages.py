@@ -68,6 +68,7 @@ def _ctx_base(request: Request) -> dict:
         "icon_path": icon_path,
         "brand_icon": brand_icon_svg(),
         "close_icon": close_icon_svg(),
+        "history_icon_svg": history_icon_svg(),
     }
 
 
@@ -163,7 +164,6 @@ async def home(request: Request):
         "expiry_icon": expiry_icon_svg(),
         "download_count_icon": download_count_icon_svg(),
         "upload_icon": upload_icon_svg(),
-        "history_icon_svg": history_icon_svg(),
     })
     return templates.TemplateResponse("home.html", ctx)
 
