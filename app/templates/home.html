@@ -50,15 +50,6 @@
       <div class="limit" title="Max expiry">{{ expiry_icon }}<strong>7d</strong></div>
       <div class="limit" title="Max downloads">{{ download_count_icon }}<strong>200</strong></div>
     </div>
-
-    {% if not user %}
-    <div class="home-x-login">
-      <a class="x-login" href="/auth/x/login">
-        <span class="x-glyph" aria-hidden="true">𝕏</span>
-        <span data-i18n="login">{{ texts.login }}</span>
-      </a>
-    </div>
-    {% endif %}
   </div>
 
   <section class="tool" aria-label="Upload">
@@ -106,6 +97,14 @@
     </form>
     <div id="result" class="result hidden" aria-live="polite"></div>
   </section>
+  {% if not user %}
+  <div class="home-x-login">
+    <a class="x-login" href="/auth/x/login">
+      <span class="x-glyph" aria-hidden="true">𝕏</span>
+      <span data-i18n="login">{{ texts.login }}</span>
+    </a>
+  </div>
+  {% endif %}
 </section>
 
 <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-label="Recent uploads">
