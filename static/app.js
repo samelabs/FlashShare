@@ -472,6 +472,7 @@ async function deleteUpload(upload, triggerButton = null) {
   }
 }
 modalDelete.addEventListener("click", () => deleteUpload(activeUpload, modalDelete));
+window.__LANG_INIT__ = true;
 langButton.addEventListener("click", () => {
   const hidden = langMenu.classList.toggle("hidden");
   langButton.setAttribute("aria-expanded", hidden ? "false" : "true");
