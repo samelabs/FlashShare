@@ -71,7 +71,7 @@ a { color: var(--accent); }
 h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Layout ───────────────────────────────────────────────── */
-.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: var(--s4) 0 0; }
+.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: var(--s4) var(--s2) 0; }
 
 /* ── Topbar ───────────────────────────────────────────────── */
 .topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); margin-bottom: var(--s3); }
@@ -80,7 +80,7 @@ h1, h2 { letter-spacing: -0.02em; }
 .brand-dot { color: var(--accent); }
 .brand-verified { width: 16px; height: 16px; flex-shrink: 0; margin-left: 2px; align-self: center; }
 .brand strong { font: inherit; }
-.top-actions { display: flex; align-items: center; gap: var(--s1); flex: 0 0 auto; }
+.top-actions { display: flex; align-items: center; gap: var(--s3); flex: 0 0 auto; }
 
 /* Topbar: auth buttons */
 .topbar-login, .topbar-register { padding: var(--s2) var(--s4); border-radius: var(--r-full); font-size: var(--text-sm); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; transition: opacity var(--ease-in); }
@@ -97,8 +97,8 @@ h1, h2 { letter-spacing: -0.02em; }
 
 /* Topbar: language switch */
 .lang-switch { position: relative; display: flex; align-items: center; }
-.lang-button { height: 32px; border: none; background: transparent; color: var(--muted); padding: 0 var(--s4) 0 0; font-size: var(--text-sm); font-weight: 600; position: relative; cursor: pointer; transition: color var(--ease); display: inline-flex; align-items: center; white-space: nowrap; }
-.lang-button::after { content: ""; position: absolute; right: var(--s1); top: 50%; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-65%) rotate(45deg); opacity: .55; }
+.lang-button { height: 32px; min-width: 72px; border: none; background: transparent; color: var(--muted); padding: 0 var(--s5) 0 var(--s3); font-size: var(--text-sm); font-weight: 600; position: relative; cursor: pointer; transition: color var(--ease); display: inline-flex; align-items: center; white-space: nowrap; }
+.lang-button::after { content: ""; position: absolute; right: var(--s3); top: 50%; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-65%) rotate(45deg); opacity: .55; }
 .lang-button:hover, .lang-button[aria-expanded="true"] { color: var(--ink); }
 
 /* ── Dropdowns (shared) ───────────────────────────────────── */
@@ -112,7 +112,7 @@ h1, h2 { letter-spacing: -0.02em; }
   background: var(--bg);
   box-shadow: var(--sh-lg);
 }
-.lang-menu { width: 138px; }
+.lang-menu { width: 144px; }
 .user-dropdown { z-index: var(--z-modal); min-width: 180px; }
 .user-dropdown.hidden, .lang-menu.hidden { display: none; }
 
