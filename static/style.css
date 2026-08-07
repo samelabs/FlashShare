@@ -388,7 +388,8 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 /* ── Footer ───────────────────────────────────────────────── */
 .site-footer { border-top: 1px solid var(--line); margin-top: var(--s5); padding: var(--s4); }
 .footer-inner { max-width: 680px; margin: 0 auto; display: flex; align-items: center; justify-content: center; gap: var(--s3); flex-wrap: wrap; }
-.footer-copy { font-size: var(--text-sm); color: var(--muted); }
+.footer-copy { font-size: var(--text-xs); color: var(--muted); }
+.footer-copy .brand-logo { font-size: var(--text-xs); font-weight: 700; }
 
 /* ── Doc Pages ────────────────────────────────────────────── */
 .doc { line-height: 1.7; max-width: 760px; background: transparent; border: 0; border-radius: 0; padding: 0; }
