@@ -158,6 +158,10 @@ def download_count_icon_svg() -> str:
     return _icon_svg_wrapper("download_count")
 
 
+def history_icon_svg() -> str:
+    return _icon_svg_wrapper("history")
+
+
 def link_icon_svg() -> str:
     return _icon_svg_wrapper("link")
 

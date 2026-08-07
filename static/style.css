@@ -82,6 +82,12 @@ h1, h2 { letter-spacing: -0.02em; }
 .brand strong { font: inherit; }
 .top-actions { display: flex; align-items: center; gap: var(--s3); flex: 0 0 auto; }
 
+/* Nav icon buttons (history, etc.) */
+.nav-icon { width: 36px; height: 36px; min-height: 36px; padding: 0; border: none; background: transparent; color: var(--muted); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background var(--ease), color var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
+.nav-icon:hover { background: var(--soft); color: var(--ink); }
+.nav-icon:active { transform: scale(0.92); }
+.nav-icon svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+
 /* Topbar: auth buttons */
 .topbar-login, .topbar-register { padding: var(--s2) var(--s4); border-radius: var(--r-full); font-size: var(--text-sm); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; transition: opacity var(--ease-in); }
 .topbar-login { color: var(--ink); border: 1px solid var(--line-strong); }
@@ -228,14 +234,11 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .result-title { display: block; font-size: var(--text-base); font-weight: 700; line-height: 1.25; }
 .result-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--s1); margin-top: var(--s2); }
 
-/* ── History List ─────────────────────────────────────────── */
-.history { max-width: 760px; margin: var(--s8) auto 0; }
-.section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--s3); padding: 0 var(--s1); }
-.section-title h2 { font-size: var(--text-base); margin: 0; font-weight: 800; color: var(--ink); text-transform: uppercase; letter-spacing: 0.5px; }
-.title-row { display: inline-flex; align-items: baseline; gap: var(--s2); }
-.history-count { font-size: var(--text-sm); color: var(--muted); font-weight: 600; line-height: 1; background: var(--soft); padding: 2px 8px; border-radius: var(--r-full); }
-
-.history-list { display: flex; flex-direction: column; gap: var(--s2); }
+/* ── History (now in modal) ──────────────────────────────── */
+.history-panel { width: min(540px,100%); max-height: 70vh; overflow-y: auto; }
+.history-panel h2 { display: inline; margin: 0; font-size: var(--text-lg); font-weight: 800; }
+.history-count { font-size: var(--text-sm); color: var(--muted); font-weight: 600; line-height: 1; background: var(--soft); padding: 2px 8px; border-radius: var(--r-full); margin-left: var(--s2); }
+.history-list { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s3); }
 .history-list:empty::after { content: attr(data-empty); display: block; text-align: center; padding: var(--s6) 0; color: var(--muted); font-size: var(--text-sm); }
 .item { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s2) var(--s3); display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--s3); align-items: center; background: var(--bg); transition: border-color var(--ease), box-shadow var(--ease), transform var(--ease-in); }
 .item:active { transform: scale(0.99); }
@@ -504,6 +507,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
   .file-mark { width: 42px; height: 42px; border-radius: var(--r-sm); }
   .file-page h1 { font-size: var(--text-lg); }
   .auth-page { padding: 0 var(--s2); }
+  .site-footer { display: none; }
 }
 
 /* ── RTL: Arabic ──────────────────────────────────────────── */

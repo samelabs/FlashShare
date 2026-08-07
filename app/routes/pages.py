@@ -28,6 +28,7 @@ from utils import (
     brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,
     bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
     close_icon_svg, file_format_icon, public_file_url,
+    history_icon_svg,
 )
 
 router = APIRouter()
@@ -162,6 +163,7 @@ async def home(request: Request):
         "expiry_icon": expiry_icon_svg(),
         "download_count_icon": download_count_icon_svg(),
         "upload_icon": upload_icon_svg(),
+        "history_icon_svg": history_icon_svg(),
     })
     return templates.TemplateResponse("home.html", ctx)
 

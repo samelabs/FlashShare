@@ -452,6 +452,20 @@ modalClose.addEventListener("click", closeModal);
 uploadModal.addEventListener("click", event => {
   if (event.target === uploadModal) closeModal();
 });
+// History modal
+const historyBtn = document.getElementById("historyBtn");
+const historyModal = document.getElementById("historyModal");
+const historyModalClose = document.getElementById("historyModalClose");
+if (historyBtn && historyModal) {
+  historyBtn.addEventListener("click", () => {
+    historyModal.classList.remove("hidden");
+    loadHistory();
+  });
+  if (historyModalClose) historyModalClose.addEventListener("click", () => historyModal.classList.add("hidden"));
+  historyModal.addEventListener("click", event => {
+    if (event.target === historyModal) historyModal.classList.add("hidden");
+  });
+}
 modalCopy.addEventListener("click", async () => {
   if (!activeUpload) return;
   await navigator.clipboard.writeText(activeUpload.url_download);

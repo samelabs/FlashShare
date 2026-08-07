@@ -29,6 +29,9 @@
     <a class="topbar-login" href="/auth/login" data-i18n="signIn">{{ texts.signIn }}</a>
     <a class="topbar-register" href="/auth/register" data-i18n="signUp">{{ texts.signUp }}</a>
     {% endif %}
+    {% if user %}
+    <button class="nav-icon" id="historyBtn" type="button" aria-label="{{ texts.recent }}">{{ history_icon_svg }}</button>
+    {% endif %}
     <div class="lang-switch" id="langSwitch">
       <button class="lang-button" id="langButton" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
       <div class="lang-menu hidden" id="langMenu" role="listbox" aria-label="Language"></div>
