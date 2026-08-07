@@ -66,15 +66,15 @@
 /* ── Reset ────────────────────────────────────────────────── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
-body { margin: 0; overflow-x: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; }
+body { margin: 0; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; height: 100dvh; display: flex; flex-direction: column; }
 a { color: var(--accent); }
 h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Layout ───────────────────────────────────────────────── */
-.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: var(--s4) var(--s2) 0; padding-top: max(var(--s4), env(safe-area-inset-top)); }
+.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: var(--s2) var(--s2) 0; padding-top: max(var(--s2), env(safe-area-inset-top)); flex: 1; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ── Topbar ───────────────────────────────────────────────── */
-.topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); margin-bottom: var(--s3); }
+.topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); margin-bottom: var(--s3); flex-shrink: 0; position: sticky; top: 0; background: var(--bg); z-index: var(--z-dropdown); }
 .brand { display: inline-flex; align-items: center; gap: var(--s2); font-size: var(--text-xl); font-weight: 800; text-decoration: none; white-space: nowrap; color: var(--ink); }
 .brand-logo { font-size: var(--text-xl); font-weight: 900; letter-spacing: -0.04em; color: var(--ink); background: none; -webkit-text-fill-color: var(--ink); }
 .brand-dot { color: var(--accent); }
@@ -390,7 +390,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .tool-result-view .zip-list .zip-size { color: var(--muted); font-size: var(--text-sm); }
 
 /* ── Footer ───────────────────────────────────────────────── */
-.site-footer { border-top: 1px solid var(--line); margin-top: var(--s5); padding: var(--s4); padding-bottom: max(var(--s4), env(safe-area-inset-bottom)); }
+.site-footer { border-top: 1px solid var(--line); margin-top: var(--s5); padding: var(--s4); padding-bottom: max(var(--s4), env(safe-area-inset-bottom)); flex-shrink: 0; }
 .footer-inner { max-width: 680px; margin: 0 auto; display: flex; align-items: center; justify-content: center; gap: var(--s3); flex-wrap: wrap; }
 .footer-copy { font-size: var(--text-xs); color: var(--muted); }
 .footer-copy .brand-logo { font-size: var(--text-xs); font-weight: 700; }
@@ -469,7 +469,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 820px) {
-  .shell { width: min(calc(100vw - 24px), 720px); padding: var(--s3) var(--s2) 0; }
+  .shell { width: min(calc(100vw - 24px), 720px); padding: var(--s2) var(--s2) 0; }
   .topbar { margin-bottom: var(--s3); }
   .top-actions { gap: var(--s2); }
   .brand { font-size: var(--text-lg); gap: var(--s2); min-width: 0; }
