@@ -62,7 +62,7 @@ _ICONS = {
     "compress": '<path d="M4 9V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"></path><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path><path d="M9 9l3-3 3 3"></path><path d="M9 15l3 3 3-3"></path>',
     "convert": '<path d="M16 3l4 4-4 4"></path><path d="M20 7H4"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h16"></path>',
     "favicon": '<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M12 8l1.5 3 3 .5-2 2 .5 3-3-1.5-3 1.5.5-3-2-2 3-.5z"></path>',
-    "merge": '<path d="M7 3v6a3 3 0 003 3h4"></path><path d="M17 3v6a3 3 0 01-3 3h-4"></path><path d="M7 21v-6a3 3 0 013-3h4"></path><path d="M17 21v-6a3 3 0 00-3-3h-4"></path>',
+    "merge": '<path d="M8 3v5l4 3 4-3V3"></path><path d="M12 11v10"></path>',
     "hash": '<path d="M4 9h16"></path><path d="M4 15h16"></path><path d="M10 3L8 21"></path><path d="M16 3l-2 18"></path>',
 
     # ── Brand ──
