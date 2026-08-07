@@ -15,16 +15,19 @@ from tools import get_tool
 
 
 def process_tool(tool_id: str, source_bytes: bytes, filename: str,
-                 content_type: str, size: int, params: dict) -> dict:
+                 content_type: str, size: int, params: dict,
+                 multi_sources: list = None) -> dict:
     """Execute a tool handler in this subprocess.
 
     Args:
         tool_id: registered tool identifier
-        source_bytes: raw file bytes
+        source_bytes: raw file bytes (single-file mode)
         filename: original filename
         content_type: MIME type
         size: byte count
         params: tool parameters (preset, etc.)
+        multi_sources: list of (bytes, filename, content_type, size) tuples
+                       for multi-file tools (multi=True). Overrides single-file args.
 
     Returns:
         {"output_bytes": bytes, "content_type": str, "filename": str, "size": int}
@@ -33,6 +36,8 @@ def process_tool(tool_id: str, source_bytes: bytes, filename: str,
     import tools_registry  # noqa: F401
     import tools_beautify  # noqa: F401
     import tools_compress  # noqa: F401
+    import tools_ico       # noqa: F401
+    import tools_pdf       # noqa: F401
 
     tool = get_tool(tool_id)
     if not tool:
@@ -40,12 +45,25 @@ def process_tool(tool_id: str, source_bytes: bytes, filename: str,
 
     handler = tool["handler"]
 
-    tool_input = {
-        "stream": io.BytesIO(source_bytes),
-        "filename": filename,
-        "content_type": content_type,
-        "size": size,
-    }
+    if multi_sources and tool.get("multi"):
+        # Multi-file mode: build sources array
+        sources = []
+        for src_bytes, src_name, src_ct, src_size in multi_sources:
+            sources.append({
+                "stream": io.BytesIO(src_bytes),
+                "filename": src_name,
+                "content_type": src_ct,
+                "size": src_size,
+            })
+        tool_input = {"sources": sources}
+    else:
+        # Single-file mode (default, unchanged)
+        tool_input = {
+            "stream": io.BytesIO(source_bytes),
+            "filename": filename,
+            "content_type": content_type,
+            "size": size,
+        }
 
     tool_output = handler(tool_input, params)
 

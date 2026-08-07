@@ -230,15 +230,21 @@ function showError(errorKey) {
 }
 file.addEventListener("change", () => {
   if (!window.__USER__) { location.href = "/auth/x/login"; return; }
-  if (file.files[0]) {
-    const ext = file.files[0].name.toLowerCase().match(/\.(\w+)$/);
-    if (ext && !EXT_TO_TYPE[ext[1]]) {
-      showError("err_format_unsupported");
-      file.value = "";
-      fileLabel.textContent = t("dropEmpty");
-      return;
+  if (file.files.length > 0) {
+    for (let i = 0; i < file.files.length; i++) {
+      const ext = file.files[i].name.toLowerCase().match(/\.(\w+)$/);
+      if (ext && !EXT_TO_TYPE[ext[1]]) {
+        showError("err_format_unsupported");
+        file.value = "";
+        fileLabel.textContent = t("dropEmpty");
+        return;
+      }
     }
-    fileLabel.textContent = t("dropSelected", { name: file.files[0].name, size: fmtSize(file.files[0].size) });
+    if (file.files.length === 1) {
+      fileLabel.textContent = t("dropSelected", { name: file.files[0].name, size: fmtSize(file.files[0].size) });
+    } else {
+      fileLabel.textContent = file.files.length + " files · " + fmtSize(Array.from(file.files).reduce((s,f) => s+f.size, 0));
+    }
   } else {
     fileLabel.textContent = t("dropEmpty");
   }
@@ -264,6 +270,8 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!window.__USER__) return location.href = "/auth/x/login";
   if (!file.files[0]) return;
+  const isMulti = activeTool && activeTool.multi;
+  const numFiles = file.files.length;
   submitBtn.disabled = true;
   submitBtn.innerHTML = `<div class="btn-spinner"></div>`;
   showResult(`<div class="upload-progress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="progressFill"></div></div><div class="upload-progress-text" id="progressText">0%</div></div>`);
@@ -272,7 +280,7 @@ form.addEventListener("submit", async (event) => {
     formData.append("tool", activeTool.id);
     if (activePreset) formData.append("preset", activePreset);
   }
-  const fileSize = file.files[0].size;
+  const fileSize = Array.from(file.files).reduce((s,f) => s+f.size, 0);
   const startTime = Date.now();
   const xhr = new XMLHttpRequest();
   xhr.open("POST", "/api/uploads");
@@ -295,34 +303,42 @@ form.addEventListener("submit", async (event) => {
       if (xhr.status >= 400 || !data.ok) { const ek = data.error || "failed"; throw new Error(t(ek) !== ek ? t(ek) : t("failed")); }
       // No tool (or default share tool) → show result directly
       if (!activeTool || activeTool.id === "share") {
-        showShareResult(data.file);
+        if (data.files) {
+          data.files.forEach((f, i) => setTimeout(() => showShareResult(f), i * 100));
+        } else {
+          showShareResult(data.file);
+        }
         form.reset();
         fileLabel.textContent = t("dropEmpty");
         loadHistory();
         return;
       }
       // Tool active → Step 2: execute tool
-      lastUploadResult = data.file;
-      const toolName = t(activeTool.id);
-      showToolProcessing(toolName);
+      showToolProcessing(t(activeTool.id));
       const expirySelect = form.querySelector("[name=\"expiryDays\"]");
       const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
+      const toolBody = {
+        tool_id: activeTool.id,
+        params: {
+          preset: activePreset,
+          expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
+          allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
+        },
+      };
+      if (isMulti && data.files) {
+        toolBody.public_ids = data.files.map(f => f.publicId);
+      } else {
+        toolBody.public_id = data.file.publicId;
+      }
       const toolRes = await fetch("/api/tools/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tool_id: activeTool.id,
-          public_id: data.file.publicId,
-          params: {
-            preset: activePreset,
-            expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
-            allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
-          },
-        }),
+        body: JSON.stringify(toolBody),
       });
       const toolData = await toolRes.json();
       if (!toolData.ok) {
-        showToolError(toolData.error === "auth_required" ? t("signIn") : toolData.error, data.file);
+        const ref = (data.files ? data.files[0] : data.file);
+        showToolError(toolData.error === "auth_required" ? t("signIn") : toolData.error, ref);
         return;
       }
       lastUploadResult = toolData.result;
@@ -682,6 +698,13 @@ function applyToolSelection() {
   // Bind accept
   if (activeTool.accept && activeTool.accept.length > 0) {
     file.accept = activeTool.accept.join(",");
+  }
+
+  // Bind multiple (multi-file tools like pdf_merge)
+  if (activeTool.multi) {
+    file.setAttribute("multiple", "");
+  } else {
+    file.removeAttribute("multiple");
   }
 
   // Update format tags

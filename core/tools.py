@@ -23,7 +23,7 @@ TYPE_PRODUCE = "produce"
 # Icon identifiers (matched in frontend SVG sprite)
 VALID_ICONS = {
     "shield", "image", "archive", "edit", "crop",
-    "compress", "convert", "favicon", "info", "hash", "upload", "wand",
+    "compress", "convert", "favicon", "merge", "info", "hash", "upload", "wand",
 }
 
 
@@ -40,7 +40,7 @@ _registry = []
 
 
 def register(tool_id, tool_type, label, icon, match, handler,
-             accept=None, presets=None):
+             accept=None, presets=None, multi=False):
     """Register a tool.
 
     Args:
@@ -58,6 +58,9 @@ def register(tool_id, tool_type, label, icon, match, handler,
         presets: list of preset dicts or None. Each preset:
                  {"id": str, "label": {lang: name}, "default": bool}
                  Exactly one preset must have default=True if presets given.
+        multi: bool. If True, this tool accepts multiple input files
+               (e.g. PDF merge). Handler receives "sources" array.
+               If False, handler receives a single "stream" (default).
     """
     if tool_type not in (TYPE_VIEW, TYPE_PEEK, TYPE_PRODUCE):
         raise ValueError(f"Invalid tool type: {tool_type}")
@@ -81,6 +84,7 @@ def register(tool_id, tool_type, label, icon, match, handler,
         "handler": handler,
         "accept": accept,
         "presets": presets,
+        "multi": multi,
     })
 
 
@@ -99,6 +103,7 @@ def list_all_tools():
             "icon": tool["icon"],
             "accept": sorted(tool["accept"]) if tool["accept"] else None,
             "presets": None,
+            "multi": tool.get("multi", False),
         }
         if tool["presets"]:
             item["presets"] = [

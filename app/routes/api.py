@@ -132,12 +132,40 @@ async def get_tools_for_file(public_id: str, request: Request):
     return {"ok": True, "tools": tools}
 
 
+async def _resolve_upload(public_id: str):
+    """Resolve a public_id to an upload dict (DB or gokapi fallback)."""
+    return await asyncio.to_thread(_resolve_upload_sync, public_id)
+
+
+def _resolve_upload_sync(public_id: str):
+    """Resolve a public_id to an upload dict (DB or gokapi fallback)."""
+    upload = get_upload_by_public_id(public_id)
+    if upload:
+        return upload
+    # Tool flow: original in gokapi but not in DB
+    if not public_id.isalnum() or len(public_id) < 8 or len(public_id) > 20:
+        return None
+    gokapi_info = get_gokapi_file(public_id)
+    if not gokapi_info:
+        return None
+    return {
+        "public_id": public_id,
+        "gokapi_id": public_id,
+        "file_name": gokapi_info.get("Name", "upload"),
+        "content_type": gokapi_info.get("ContentType", "application/octet-stream"),
+        "size_bytes": int(gokapi_info.get("SizeBytes", 0)),
+        "url_hotlink": gokapi_info.get("UrlHotlink", ""),
+        "url_download": gokapi_info.get("UrlDownload", ""),
+    }
+
+
 @router.post("/tools/execute")
 async def execute_tool(request: Request):
-    """Execute a tool on an uploaded file.
+    """Execute a tool on one or more uploaded files.
 
     Body validated by Pydantic ToolExecuteRequest.
-    Runs handler in subprocess for memory isolation.
+    - Single-file: public_id (str) — existing tools (beautify, compress, etc.)
+    - Multi-file: public_ids (list) — multi tools (pdf_merge)
     """
     user, err = _require_auth(request)
     if err:
@@ -150,30 +178,7 @@ async def execute_tool(request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
 
     tool_id = req.tool_id
-    public_id = req.public_id
     params = req.params
-
-    if not PUBLIC_ID_RE.match(public_id):
-        return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
-    upload = get_upload_by_public_id(public_id)
-    if not upload:
-        # Tool flow: original was uploaded to gokapi but not recorded in DB.
-        # The gokapi_id was returned only to the uploader's frontend session.
-        # Verify the ID format matches gokapi's expected pattern (alphanumeric, 8-20 chars).
-        if not public_id.isalnum() or len(public_id) < 8 or len(public_id) > 20:
-            return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
-        gokapi_info = get_gokapi_file(public_id)
-        if not gokapi_info:
-            return JSONResponse({"ok": False, "error": "not_found"}, 404)
-        upload = {
-            "public_id": public_id,
-            "gokapi_id": public_id,
-            "file_name": gokapi_info.get("Name", "upload"),
-            "content_type": gokapi_info.get("ContentType", "application/octet-stream"),
-            "size_bytes": int(gokapi_info.get("SizeBytes", 0)),
-            "url_hotlink": gokapi_info.get("UrlHotlink", ""),
-            "url_download": gokapi_info.get("UrlDownload", ""),
-        }
     tool = get_tool(tool_id)
     if not tool:
         return JSONResponse({"ok": False, "error": "tool_not_found"}, 404)
@@ -185,7 +190,28 @@ async def execute_tool(request: Request):
             params["preset"] = default
 
     try:
-        result = await _execute_and_share(request, tool, upload, params, user)
+        if tool.get("multi") and req.public_ids:
+            # Multi-file tool (e.g. pdf_merge)
+            uploads = []
+            for pid in req.public_ids:
+                if not PUBLIC_ID_RE.match(pid):
+                    return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
+                upload = await _resolve_upload(pid)
+                if not upload:
+                    return JSONResponse({"ok": False, "error": "not_found"}, 404)
+                uploads.append(upload)
+            result = await _execute_multi_and_share(request, tool, uploads, params, user)
+        else:
+            # Single-file tool (existing behavior)
+            public_id = req.public_id
+            if not public_id:
+                return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
+            if not PUBLIC_ID_RE.match(public_id):
+                return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
+            upload = await _resolve_upload(public_id)
+            if not upload:
+                return JSONResponse({"ok": False, "error": "not_found"}, 404)
+            result = await _execute_and_share(request, tool, upload, params, user)
         return {"ok": True, "type": tool["type"], "result": result}
     except ToolError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 400)
@@ -240,6 +266,56 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
     return record
 
 
+async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, params: dict, user: dict) -> dict:
+    """Multi-file orchestration: read all sources → run handler → write result → DB record."""
+    expiry_days, allowed_downloads = _validate_lifecycle(params)
+
+    # 1. Read all sources from storage
+    multi_sources = []
+    for upload in uploads:
+        upload_dict = dict(upload) if not isinstance(upload, dict) else upload
+        status, headers, stream = storage_read(upload_dict["gokapi_id"])
+        source_bytes = stream.read()
+        multi_sources.append((
+            source_bytes,
+            upload_dict["file_name"],
+            upload_dict["content_type"],
+            upload_dict["size_bytes"],
+        ))
+
+    # 2. Run handler in subprocess with multi_sources
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        _get_pool(),
+        process_tool,
+        tool["id"], b"", "", "", 0, params,
+        multi_sources,
+    )
+
+    output_bytes = result["output_bytes"]
+
+    # 3. Write result to storage
+    gokapi_result = storage_write(
+        io.BytesIO(output_bytes),
+        result["filename"],
+        result["content_type"],
+        expiry_days,
+        allowed_downloads,
+        len(output_bytes),
+    )
+
+    # 4. DB record
+    ip = _client_ip(request)
+    info = gokapi_result.get("FileInfo", {})
+    record = _save_upload_record(
+        user["id"], ip, info.get("Id", ""),
+        result["filename"], result["content_type"], len(output_bytes),
+        expiry_days, allowed_downloads,
+        info.get("ExpireAt"), info.get("UrlDownload", ""), info.get("UrlHotlink", ""),
+    )
+    return record
+
+
 # ── Uploads ──
 
 @router.get("/uploads")
@@ -254,75 +330,96 @@ async def get_uploads(request: Request):
 
 @router.post("/uploads")
 async def create_upload(request: Request):
-    """Upload a file via multipart form.
+    """Upload one or more files via multipart form.
 
-    Form fields: file (required), expiryDays, allowedDownloads
+    Form fields: file (one or more), expiryDays, allowedDownloads, tool
+    Returns: {ok, files: [...]} for multi-file, {ok, file: {...}} for single-file (backward compat).
     """
     user, err = _require_auth(request)
     if err:
         return err
 
     form = await request.form()
-    file = form.get("file")
-    if not file or not file.filename:
+
+    # Collect all uploaded files (support both single and multi-file)
+    uploads = form.getlist("file")
+    if not uploads:
         return JSONResponse({"ok": False, "error": "err_select_file"}, 400)
 
-    content = await file.read()
-    size = len(content)
-    if size > MAX_UPLOAD_BYTES:
-        return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
-    if size == 0:
-        return JSONResponse({"ok": False, "error": "err_empty_file"}, 400)
-
     ip = _client_ip(request)
-    ok, reason = check_quota(user["id"], ip, size)
-    if not ok:
-        return JSONResponse({"ok": False, "error": reason}, 429)
 
-    filename = sanitize_filename(file.filename or "upload")
-    valid, final_type = sniff_allowed(filename, file.content_type or "", content[:512])
-    if not valid:
-        return JSONResponse({"ok": False, "error": final_type}, 400)
-
-    # Form fields (from <select> elements)
+    # Form fields (shared across all files)
     expiry_days, allowed_downloads = _validate_lifecycle({
         "expiry_days": form.get("expiryDays", "1"),
         "allowed_downloads": form.get("allowedDownloads", "50"),
     })
-
     has_tool = form.get("tool", "").strip()
-    gokapi = upload_to_gokapi(io.BytesIO(content), filename, final_type,
-                              expiry_days, allowed_downloads, size)
-    info = gokapi.get("FileInfo", {})
 
-    # When a tool is selected, the original file is just a temporary intermediate.
-    # Only the tool output should get a DB record (written by _execute_and_share).
+    files_result = []
+
+    for file in uploads:
+        if not file.filename:
+            continue
+
+        content = await file.read()
+        size = len(content)
+        if size > MAX_UPLOAD_BYTES:
+            return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
+        if size == 0:
+            return JSONResponse({"ok": False, "error": "err_empty_file"}, 400)
+
+        ok, reason = check_quota(user["id"], ip, size)
+        if not ok:
+            return JSONResponse({"ok": False, "error": reason}, 429)
+
+        filename = sanitize_filename(file.filename or "upload")
+        valid, final_type = sniff_allowed(filename, file.content_type or "", content[:512])
+        if not valid:
+            return JSONResponse({"ok": False, "error": final_type}, 400)
+
+        gokapi = upload_to_gokapi(io.BytesIO(content), filename, final_type,
+                                  expiry_days, allowed_downloads, size)
+        info = gokapi.get("FileInfo", {})
+
+        files_result.append({
+            "name": filename,
+            "filename": filename,
+            "contentType": final_type,
+            "size": size,
+            "downloadUrl": "",
+            "hotlinkUrl": info.get("UrlHotlink", ""),
+            "publicId": info.get("Id", ""),
+            "gokapiId": info.get("Id", ""),
+            "expireAt": info.get("ExpireAt"),
+            "expiryDays": expiry_days,
+            "allowedDownloads": allowed_downloads,
+        })
+
+    if not files_result:
+        return JSONResponse({"ok": False, "error": "err_select_file"}, 400)
+
+    # When a tool is selected, originals are intermediates (no DB record).
+    # Tool output gets its DB record via _execute_and_share.
     if has_tool and has_tool != "share":
-        return {
-            "ok": True,
-            "file": {
-                "name": filename,
-                "filename": filename,
-                "contentType": final_type,
-                "size": size,
-                "downloadUrl": "",
-                "hotlinkUrl": info.get("UrlHotlink", ""),
-                "publicId": info.get("Id", ""),
-                "gokapiId": info.get("Id", ""),
-                "expireAt": info.get("ExpireAt"),
-                "expiryDays": expiry_days,
-                "allowedDownloads": allowed_downloads,
-            },
-        }
+        if len(files_result) == 1:
+            return {"ok": True, "file": files_result[0]}
+        return {"ok": True, "files": files_result}
 
-    # No tool (or share = default): save original as the shareable record
-    record = _save_upload_record(
-        user["id"], ip, info.get("Id", ""),
-        filename, final_type, size,
-        expiry_days, allowed_downloads,
-        info.get("ExpireAt"), info.get("UrlDownload", ""), info.get("UrlHotlink", ""),
-    )
-    return {"ok": True, "file": record}
+    # No tool (or share): save each as a shareable DB record
+    records = []
+    for i, fr in enumerate(files_result):
+        record = _save_upload_record(
+            user["id"], ip, fr["gokapiId"],
+            fr["filename"], fr["contentType"], fr["size"],
+            expiry_days, allowed_downloads,
+            fr["expireAt"], fr["hotlinkUrl"], fr["hotlinkUrl"],
+        )
+        records.append(record)
+
+    # Single-file: return "file" key (backward compat with existing frontend)
+    if len(records) == 1:
+        return {"ok": True, "file": records[0]}
+    return {"ok": True, "files": records}
 
 
 @router.delete("/uploads/{public_id}")
