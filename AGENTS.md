@@ -167,7 +167,39 @@ FlashShare 是临时文件分享 + 工具处理平台，部署在 Oracle Cloud 1
 
 **规则**：
 - `AbortError`（用户取消）返回 `true`（不触发 fallback）
-- 只有 fetch 失败或 `canShare` 不支持才返回 `false`
+- 只有 fetch 失败或 `navigator.share` 不支持才返回 `false`
+- **不要用 `navigator.canShare` 做前置检查**——iOS Safari 支持 `share({files})` 但不支持 `canShare`，会导致误判 fallback 导航阻塞 PWA
+
+### 11. 语言包精简原则
+
+**问题**：每次加功能就新增 i18n key，导致语言包膨胀、翻译维护负担加重。
+
+**规则**：
+- 新功能优先用**视觉和交互**表达，而非文案——图标、数字、动画、布局变化
+- 避免增加**描述性文案**（如"正在处理"、"请稍候"），用 spinner/进度条/视觉反馈替代
+- 能复用已有 key 的不新增——`uploading`、`failed`、`delete` 等通用 key 跨场景复用
+- 新增 key 前**必须确认无法用视觉手段表达**
+- 纯数字/符号的 preset label（如 `16x16`、`≤ 2MB`）**不占 i18n key**——从注册 label 字典取
+
+### 12. 全局事件绑定唯一性
+
+**问题**：同一 DOM 元素在多个 `<script>` 块里注册了相同事件的监听器（如用户下拉菜单、语言切换），导致行为互相抵消。
+
+**规则**：
+- 共享交互（用户下拉菜单、语言切换）统一在 `footer.html` 的 `<script>` 里绑定——所有页面都加载 footer
+- 用 `window.__FLAG` 布尔标记防止重复绑定（如 `window.__LANG_INIT__`）
+- **不要**在 app.js 和 footer.html 里**各绑一次**同一事件
+- **不要**用 `typeof VAR !== "undefined"` 防重复——`var` 提升会使检查失效
+
+### 13. 脚本块独立性
+
+**问题**：一个 `<script>` 块里的 SyntaxError 或运行时错误会杀死该块后续代码，但开发者误以为后续独立 `<script>` 块也不执行。
+
+**规则**：
+- 多个 `<script>` 块是**独立执行**的——A 块报错不影响 B 块
+- 但 A 块里的错误会杀死 A 块内**该错误之后的所有代码**
+- 共享交互代码放在**可靠的独立 `<script>` 块**（footer.html）里，不依赖 app.js 是否成功执行
+- 排查"某功能在某些页面不工作"时，首先检查是否有 `const`/`var` 重复声明导致的 SyntaxError
 
 ---
 
