@@ -174,7 +174,7 @@ button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke
 .settings-link svg { width: var(--text-lg); height: var(--text-lg); stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 
 /* ── Upload Zone ──────────────────────────────────────────── */
-.tool { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s5) var(--s5) var(--s4); margin-top: var(--s1); text-align: center; box-shadow: var(--sh-sm); }
+.tool { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s3) var(--s5) var(--s4); margin-top: var(--s1); text-align: center; box-shadow: var(--sh-sm); }
 #uploadForm { text-align: center; }
 .upload { display: block; }
 .drop { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 180px; border: 2px dashed var(--line-strong); border-radius: var(--r-lg); padding: var(--s6) var(--s5); background: var(--bg); cursor: pointer; transition: border-color var(--ease), box-shadow var(--ease), transform .15s ease; width: 100%; position: relative; }
@@ -489,7 +489,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
   .controls .primary { min-height: 40px; padding: 0 var(--s4); font-size: var(--text-sm); }
   select { padding-left: var(--s2); padding-right: 28px; font-size: var(--text-sm); }
   .primary.full { width: fit-content; max-width: 100%; padding: 0 var(--s5); }
-  .tool { padding: var(--s5) var(--s4) var(--s4); }
+  .tool { padding: var(--s3) var(--s4) var(--s4); }
   .drop { min-height: 150px; padding: var(--s5) var(--s4); }
   .drop-icon { width: 48px; height: 48px; margin-bottom: var(--s2); }
   .drop-formats { gap: var(--s1); margin-top: var(--s2); }
