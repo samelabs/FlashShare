@@ -49,7 +49,7 @@ l.querySelectorAll("[data-rm]").forEach(function(b){b.addEventListener("click",f
 };
 
 var hb=document.getElementById("historyBtn"),hm=document.getElementById("historyModal"),hc2=document.getElementById("historyModalClose");
-if(hb&&hm){hb.addEventListener("click",function(){hm.classList.remove("hidden");window._loadHistory()});if(hc2)hc2.addEventListener("click",function(){hm.classList.add("hidden")});hm.addEventListener("click",function(e){if(e.target===hm)hm.classList.add("hidden")})}
+if(hb&&hm){hb.addEventListener("click",function(){hm.classList.remove("hidden");var h2=hm.querySelector("h2");if(h2)h2.textContent=_tx("recent");window._loadHistory()});if(hc2)hc2.addEventListener("click",function(){hm.classList.add("hidden")});hm.addEventListener("click",function(e){if(e.target===hm)hm.classList.add("hidden")})}
 })();
 // Language switch (shared across all pages)
 (function(){
