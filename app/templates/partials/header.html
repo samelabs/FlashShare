@@ -8,11 +8,8 @@
     <div class="user-menu">
       <button class="topbar-profile" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
               aria-label="{{ texts.settings }}">
-        {% set avatar_url = user.avatarUrl %}
-        {% if avatar_url and 'pbs.twimg.com' in avatar_url %}
-        <img src="/avatar/{{ avatar_url.replace('https://pbs.twimg.com/', '') }}" alt="" width="32" height="32" loading="eager" decoding="async">
-        {% elif avatar_url %}
-        <img src="{{ avatar_url }}" alt="" width="32" height="32" loading="eager" decoding="async">
+        {% if user.avatarUrl %}
+        <img src="{{ user.avatarUrl }}" alt="" width="32" height="32" loading="eager" decoding="async">
         {% else %}
         <span class="avatar-fallback">{{ (user.displayName or user.username or '?')[:1].upper() }}</span>
         {% endif %}
