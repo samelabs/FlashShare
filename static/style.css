@@ -83,10 +83,10 @@ h1, h2 { letter-spacing: -0.02em; }
 .top-actions { display: flex; align-items: center; gap: var(--s3); flex: 0 0 auto; }
 
 /* Nav icon buttons (history, etc.) */
-.nav-icon { width: 36px; height: 36px; min-height: 36px; padding: 0; border: none; background: transparent; color: var(--muted); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background var(--ease), color var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
+.nav-icon { width: 32px; height: 32px; min-height: 32px; padding: 0; border: none; background: transparent; color: var(--muted); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background var(--ease), color var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
 .nav-icon:hover { background: var(--soft); color: var(--ink); }
 .nav-icon:active { transform: scale(0.92); }
-.nav-icon svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.nav-icon svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 
 /* Topbar: auth buttons */
 .topbar-login, .topbar-register { padding: var(--s2) var(--s4); border-radius: var(--r-full); font-size: var(--text-sm); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; transition: opacity var(--ease-in); }

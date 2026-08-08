@@ -1,4 +1,4 @@
-const CACHE_NAME = "flashshare-pwa-v65";
+const CACHE_NAME = "flashshare-pwa-v66";
 const CORE_ASSETS = ["/offline", "/site.webmanifest", "/static/images/og-image.png", "/static/images/favicon.ico", "/static/images/apple-touch-icon.png"];
 
 self.addEventListener("install", event => {
