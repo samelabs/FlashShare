@@ -73,49 +73,10 @@ const ICONS = {
   settings: svgIcon("settings"),
 };
 
-const I18N = window.__I18N__ || { en: {} };
-const SUPPORTED_LANGS = ["en", "zh", "ja", "ko", "es", "ar", "de", "ru", "pt", "fr"];
-const LOCALE_MAP = { en:"en", zh:"zh-CN", ja:"ja-JP", ko:"ko-KR", es:"es-ES", ar:"ar", de:"de-DE", ru:"ru-RU", pt:"pt-BR", fr:"fr-FR" };
-const LANG_LABELS = { en:"English", zh:"简体中文", ja:"日本語", ko:"한국어", es:"Español", ar:"العربية", de:"Deutsch", ru:"Русский", pt:"Português", fr:"Français" };
-const CLIENT_META = {
-  en: { title: "518.PLUS — File Processing & Sharing", desc: "Upload to get instant temporary links and QR codes, with tools for compression, cleaning, and format conversion." },
-  zh: { title: "518.PLUS — 文件处理与分享", desc: "上传即生成临时链接和二维码，提供压缩、净化、格式转换等文件工具。" },
-  ja: { title: "518.PLUS — ファイル処理＆共有", desc: "アップロードで一時リンクとQRコードが即時生成。圧縮・浄化・形式変換などのツールを提供。" },
-  ko: { title: "518.PLUS — 파일 처리 & 공유", desc: "업로드하면 임시 링크와 QR 코드가 즉시 생성됩니다. 압축, 정화, 형식 변환 도구 제공." },
-  es: { title: "518.PLUS — Procesamiento y compartir archivos", desc: "Sube para obtener enlaces temporales y QR al instante, con herramientas de compresión, limpieza y conversión." },
-  ar: { title: "518.PLUS — معالجة ومشاركة الملفات", desc: "ارفع الملف للحصول على روابط مؤقتة ورموز QR فورية، مع أدوات للضغط والتنقية وتحويل الصيغ." },
-  de: { title: "518.PLUS — Dateiverarbeitung & Sharing", desc: "Upload erzeugt sofort temporäre Links und QR-Codes, mit Tools für Komprimierung, Bereinigung und Konvertierung." },
-  ru: { title: "518.PLUS — Обработка и обмен файлами", desc: "Загрузите — получите временные ссылки и QR-коды, с инструментами сжатия, очистки и конвертации." },
-  pt: { title: "518.PLUS — Processamento e compartilhamento", desc: "Faça upload para obter links temporários e QR codes, com ferramentas de compressão, limpeza e conversão." },
-  fr: { title: "518.PLUS — Traitement et partage de fichiers", desc: "Uploadez pour obtenir des liens temporaires et QR codes, avec outils de compression, nettoyage et conversion." },
-};
-function getCookie(name) {
-  const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]+)"));
-  return m ? m[1] : "";
-}
-function detectLang() {
-  const params = new URLSearchParams(location.search);
-  const requested = params.get("lang") || params.get("x");
-  const requestedCode = String(requested || "").toLowerCase().split("-")[0];
-  if (SUPPORTED_LANGS.includes(requestedCode)) return requestedCode;
-  const cookieLang = getCookie("flashshare_lang");
-  if (SUPPORTED_LANGS.includes(cookieLang)) return cookieLang;
-  const saved = localStorage.getItem("flashshare_lang");
-  if (SUPPORTED_LANGS.includes(saved)) return saved;
-  const languages = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "en"];
-  for (const item of languages) {
-    const code = String(item || "").toLowerCase().split("-")[0];
-    if (SUPPORTED_LANGS.includes(code)) return code;
-  }
-  return "en";
-}
-let lang = detectLang();
-
-function t(key, vars = {}) {
-  let value = (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
-  for (const [name, replacement] of Object.entries(vars)) value = value.replaceAll(`{${name}}`, replacement);
-  return value;
-}
+// i18n: t(), applyI18n(), detectLang(), lang data — all provided by footer.html global engine
+const lang = window.__LANG || "en";
+// Helper: lang-aware t() wrapper (delegates to global)
+function t(key, vars = {}) { return window.t(key, vars); }
 
 function fmtSize(n) {
   if (!n) return "0 B";
@@ -169,40 +130,20 @@ function renderHomeShare() {
   homeShare.setAttribute("aria-label", t("shareX"));
   homeShare.setAttribute("title", t("shareX"));
 }
-function applyI18n() {
-  document.documentElement.lang = LOCALE_MAP[lang] || "en";
-  document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-  const meta = CLIENT_META[lang] || CLIENT_META.en;
+// Home page i18n callback — called by global applyI18n() after data-i18n sweep
+window.__afterI18n = function() {
   document.title = t("title");
-  setMeta("description", meta.desc);
-  setMetaProperty("og:title", meta.title);
-  setMetaProperty("og:description", meta.desc);
-  setMeta("twitter:title", meta.title);
-  setMeta("twitter:description", meta.desc);
-  document.querySelectorAll("[data-i18n]").forEach(el => {
-    const key = el.getAttribute("data-i18n");
-    el.textContent = t(key);
-  });
-  renderLanguageMenu();
   renderHomeShare();
   modalCopy.textContent = t("copy");
   renderModalActions();
   if (!file.files[0]) fileLabel.textContent = t("dropEmpty");
-  // Refresh tool selection visual state (badge + format tags + description)
   applyToolSelection();
   renderAccount();
-  window._loadHistory && window._loadHistory();
   if (activeUpload) renderModal(activeUpload);
-  // Re-render error message if visible
   if (lastErrorKey && result && result.classList.contains("error")) {
     showError(lastErrorKey);
   }
-}
-function renderLanguageMenu() {
-  langButton.textContent = LANG_LABELS[lang] || "English";
-  langButton.setAttribute("aria-expanded", "false");
-  langMenu.innerHTML = SUPPORTED_LANGS.map(code => `<button class="lang-option${code === lang ? " active" : ""}" type="button" role="option" aria-selected="${code === lang}" data-lang="${code}">${LANG_LABELS[code]}</button>`).join("");
-}
+};
 function setMeta(name, value) {
   const el = document.querySelector(`meta[name="${name}"]`);
   if (el) el.setAttribute("content", value);
@@ -422,25 +363,6 @@ async function deleteUpload(upload, triggerButton = null) {
   }
 }
 modalDelete.addEventListener("click", () => deleteUpload(activeUpload, modalDelete));
-window.__LANG_INIT__ = true;
-langButton.addEventListener("click", () => {
-  const hidden = langMenu.classList.toggle("hidden");
-  langButton.setAttribute("aria-expanded", hidden ? "false" : "true");
-});
-langMenu.addEventListener("click", event => {
-  const option = event.target.closest("[data-lang]");
-  if (!option) return;
-  lang = SUPPORTED_LANGS.includes(option.dataset.lang) ? option.dataset.lang : "en";
-  localStorage.setItem("flashshare_lang", lang);
-  document.cookie = "flashshare_lang=" + lang + ";Path=/;Max-Age=31536000;SameSite=Lax";
-  langMenu.classList.add("hidden");
-  applyI18n();
-});
-document.addEventListener("click", event => {
-  if (event.target === langButton || langMenu.contains(event.target)) return;
-  langMenu.classList.add("hidden");
-  langButton.setAttribute("aria-expanded", "false");
-});
 
 // ── Home Tools ──────────────────────────────────────────────────────────────
 const homeTools = document.getElementById("homeTools");
@@ -814,4 +736,4 @@ function showShareResult(file) {
 
 // Load tools on page load
 loadHomeTools();
-applyI18n();
+window.applyI18n();

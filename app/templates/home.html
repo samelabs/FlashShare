@@ -138,7 +138,6 @@
 
 {% block script_head %}
 window.__LIMITS__ = {{ limits_json|safe }};
-window.__I18N__ = {{ i18n_json|safe }};
 window.__TOOLS__ = {{ tools_json|safe }};
 {% endblock %}
 
@@ -146,6 +145,6 @@ window.__TOOLS__ = {{ tools_json|safe }};
 
 {% block script_tail %}
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=67", { updateViaCache:"none" }).catch(() => {}));
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=68", { updateViaCache:"none" }).catch(() => {}));
 }
 {% endblock %}

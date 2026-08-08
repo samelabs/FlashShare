@@ -44,7 +44,7 @@ with open(_STATIC / "app.js", encoding="utf-8") as f:
 # Browser receives the full dict as window.__I18N__
 import json as _json
 from i18n import SERVER_I18N as _SERVER_I18N
-I18N_JSON = _json.dumps(_SERVER_I18N, ensure_ascii=False)
+
 
 
 def _ctx_base(request: Request) -> dict:
@@ -153,7 +153,6 @@ async def home(request: Request):
         "daily_mb": DAILY_BYTES // 1024 // 1024,
         "tools": tools,
         "limits_json": json.dumps({"maxMb": max_mb, "dailyUploads": DAILY_UPLOADS, "dailyMb": DAILY_BYTES // 1024 // 1024, "maxDays": 7, "maxDownloads": 50}),
-        "i18n_json": I18N_JSON,
         "tools_json": json.dumps(tools, ensure_ascii=False),
         "JS": JS,
         "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
