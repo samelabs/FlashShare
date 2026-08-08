@@ -42,9 +42,8 @@ with open(_STATIC / "app.js", encoding="utf-8") as f:
 
 # i18n: single source of truth (core/i18n.py SERVER_I18N dict)
 # Browser receives the full dict as window.__I18N__
-import json as _json
 from i18n import SERVER_I18N as _SERVER_I18N
-
+_I18N_FULL_JSON = json.dumps(_SERVER_I18N, ensure_ascii=False)
 
 
 def _ctx_base(request: Request) -> dict:
@@ -60,6 +59,7 @@ def _ctx_base(request: Request) -> dict:
         "user": public_user(user) if user else None,
         "user_json": json.dumps(public_user(user) if user else None, ensure_ascii=False),
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
+        "i18n_full_json": _I18N_FULL_JSON,
         "APP_NAME": APP_NAME,
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
