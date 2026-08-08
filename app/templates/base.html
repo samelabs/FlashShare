@@ -50,7 +50,6 @@
       document.documentElement.lang=window.__LOCALE_MAP[L]||"en";
       document.documentElement.dir=L==="ar"?"rtl":"ltr";
       document.querySelectorAll("[data-i18n]").forEach(function(el){el.textContent=window.t(el.getAttribute("data-i18n"))});
-      if(typeof window._loadHistory==="function")window._loadHistory();
       if(typeof window.__afterI18n==="function")window.__afterI18n();
     };
     // Language switcher
