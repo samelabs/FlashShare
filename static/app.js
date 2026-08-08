@@ -21,7 +21,7 @@ const langButton = document.getElementById("langButton");
 const langMenu = document.getElementById("langMenu");
 const homeShare = document.getElementById("homeShare");
 const limits = window.__LIMITS__ || {};
-let currentUploads = [];
+let currentUploads = []; // kept for modal deleteUpload compatibility
 let activeUpload = null;
 
 const EXT_TO_TYPE = {
@@ -191,7 +191,7 @@ function applyI18n() {
   // Refresh tool selection visual state (badge + format tags + description)
   applyToolSelection();
   renderAccount();
-  loadHistory();
+  window._loadHistory && window._loadHistory();
   if (activeUpload) renderModal(activeUpload);
   // Re-render error message if visible
   if (lastErrorKey && result && result.classList.contains("error")) {
@@ -310,7 +310,7 @@ form.addEventListener("submit", async (event) => {
         }
         form.reset();
         fileLabel.textContent = t("dropEmpty");
-        loadHistory();
+        window._loadHistory && window._loadHistory();
         return;
       }
       // Tool active → Step 2: execute tool
@@ -345,7 +345,7 @@ form.addEventListener("submit", async (event) => {
       showShareResult(toolData.result);
       form.reset();
       fileLabel.textContent = t("dropEmpty");
-      loadHistory();
+      window._loadHistory && window._loadHistory();
     } catch (err) {
       showResult(escapeHtml(err.message), true);
     } finally {
@@ -360,73 +360,7 @@ form.addEventListener("submit", async (event) => {
   };
   xhr.send(formData);
 });
-async function loadHistory() {
-  if (!window.__USER__) {
-    currentUploads = [];
-    historyList.innerHTML = "";
-    historyList.setAttribute("data-empty", t("noAuthHistory"));
-    const hc3 = document.getElementById("historyCount"); if (hc3) hc3.textContent = "";
-    return;
-  }
-  try {
-    const res = await fetch("/api/uploads");
-    const data = await res.json();
-    if (!data.ok || !data.uploads.length) {
-      currentUploads = [];
-      historyList.innerHTML = "";
-      historyList.setAttribute("data-empty", t("noHistory"));
-      const hc2 = document.getElementById("historyCount"); if (hc2) hc2.textContent = "";
-      return;
-    }
-    currentUploads = data.uploads;
-    const hc = document.getElementById("historyCount");
-    if (hc) hc.textContent = data.uploads.length;
-    historyList.setAttribute("data-empty", "");
-    historyList.innerHTML = data.uploads.map((x, index) => {
-      const share = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("shareText"), url: x.url_download });
-      return `<div class="item"><a class="item-link" href="${escapeHtml(x.url_download)}"><span class="item-main"><span class="item-title">${fmtIcon(x.file_name)}<span class="item-name">${escapeHtml(x.file_name)}</span></span><span class="item-sub">${t("itemMeta", { size: fmtSize(x.size_bytes), days: x.expiry_days, date: fmtDate(x.expire_at) })} · ${downloadText(x)}</span></span></a><div class="item-actions"><button class="item-tool" type="button" data-download-index="${index}" aria-label="${t("downloadFile")}" title="${t("downloadFile")}">${ICONS.download}</button><button class="item-tool" type="button" data-copy-index="${index}" aria-label="${t("copy")}" title="${t("copy")}">${ICONS.copy}</button><a class="item-tool accent-action" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}" title="${t("shareX")}">${ICONS.x}</a><button class="item-tool" type="button" data-qr-index="${index}" aria-label="${t("qrCode")}" title="${t("qrCode")}">${ICONS.qr}</button><button class="item-tool danger-action" type="button" data-delete-index="${index}" aria-label="${t("delete")}" title="${t("delete")}">${ICONS.trash}</button></div></div>`;
-    }).join("");
-    historyList.querySelectorAll("[data-copy-index]").forEach(button => {
-      button.addEventListener("click", async () => {
-        const upload = currentUploads[Number(button.dataset.copyIndex)];
-        await navigator.clipboard.writeText(upload.url_download);
-        const orig = button.innerHTML;
-        button.innerHTML = ICONS.check;
-        button.style.color = "var(--accent)";
-        setTimeout(() => { button.innerHTML = orig; button.style.color = ""; }, 1400);
-      });
-    });
-    historyList.querySelectorAll("[data-qr-index]").forEach(button => {
-      button.addEventListener("click", () => {
-        const upload = currentUploads[Number(button.dataset.qrIndex)];
-        showQrModal(upload.url_download + "/qr.svg");
-      });
-    });
-    historyList.querySelectorAll("[data-delete-index]").forEach(button => {
-      button.addEventListener("click", () => deleteUpload(currentUploads[Number(button.dataset.deleteIndex)], button));
-    });
-    historyList.querySelectorAll("[data-download-index]").forEach(button => {
-      button.addEventListener("click", async () => {
-        const upload = currentUploads[Number(button.dataset.downloadIndex)];
-        const dlUrl = upload.url_download + "?download=1";
-        if (isStandalonePWA()) {
-          const ok = await shareFile(dlUrl, upload.file_name);
-          if (!ok) window.location.href = dlUrl;
-        } else {
-          window.location.href = dlUrl;
-        }
-      });
-    });
-  } catch (e) {
-    historyList.setAttribute("data-empty", t("noHistory"));
-  }
-}
-function downloadText(upload) {
-  const total = upload.allowed_downloads;
-  if (Number.isFinite(upload.download_count)) return t("downloadsDetail", { used: upload.download_count, total });
-  if (Number.isFinite(upload.downloads_remaining)) return t("downloadsDetail", { used: Math.max(0, total - upload.downloads_remaining), total });
-  return t("downloadsUnknown", { total });
-}
+// loadHistory moved to footer.html (shared nav behavior)
 function renderModal(upload) {
   modalTitle.textContent = t("qrCode");
   modalMeta.innerHTML = `<span><strong>${escapeHtml(upload.file_name)}</strong></span><span>${t("expiresLabel")}<strong>${fmtDate(upload.expire_at)}</strong></span>`;
@@ -472,7 +406,7 @@ async function deleteUpload(upload, triggerButton = null) {
     if (!res.ok || !data.ok) { const ek = data.error || "failed"; throw new Error(t(ek) !== ek ? t(ek) : t("failed")); }
     if (activeUpload && Number(activeUpload.id) === Number(upload.id)) closeModal();
     showResult(escapeHtml(t("deleted")));
-    await loadHistory();
+    window._loadHistory && window._loadHistory();
   } catch (err) {
     if (activeUpload && Number(activeUpload.id) === Number(upload.id)) {
       modalMeta.textContent = err.message;
@@ -772,7 +706,7 @@ async function retryTool() {
     const toolData = await toolRes.json();
     if (!toolData.ok) { showToolError(toolData.error, lastUploadResult); return; }
     showShareResult(toolData.result);
-    loadHistory();
+    window._loadHistory && window._loadHistory();
   } catch (e) { showToolError(e.message, lastUploadResult); }
 }
 
