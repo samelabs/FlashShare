@@ -35,6 +35,7 @@
   {% endblock %}
 
   <script>
+    window.__USER__ = {{ user_json|safe }};
     {% block script_head %}{% endblock %}
     {% block script %}{% endblock %}
     {% block script_tail %}{% endblock %}
