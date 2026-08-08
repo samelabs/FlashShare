@@ -30,8 +30,9 @@ function _sh(url,fname){try{fetch(url).then(function(r){return r.blob()}).then(f
 window._loadHistory=function(){
 var l=document.getElementById("historyList");if(!l)return;
 var hc=document.getElementById("historyCount");
-if(!window.__USER__){l.innerHTML="";l.setAttribute("data-empty",_tx("noAuthHistory"));if(hc)hc.textContent="";return}
 l.innerHTML="";l.setAttribute("data-empty","");
+if(!window.__USER__){l.setAttribute("data-empty",_tx("noAuthHistory"));if(hc)hc.textContent="";return}
+l.setAttribute("data-empty","");
 fetch("/api/uploads").then(function(r){return r.json()}).then(function(d){
 if(!d||!d.ok||!d.uploads||!d.uploads.length){_uploads=[];l.setAttribute("data-empty",_tx("noHistory"));if(hc)hc.textContent="";return}
 _uploads=d.uploads;if(hc)hc.textContent=String(d.uploads.length);

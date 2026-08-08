@@ -41,33 +41,37 @@ def get_upload_by_public_id(public_id: str):
 
 
 _gokapi_cache = {}  # {"data": {...}, "ts": epoch}
-_GOKAPI_CACHE_TTL = 30  # seconds
+_GOKAPI_CACHE_TTL = 60  # seconds
+_GOKAPI_STALE_TTL = 300  # serve stale data up to 5min while refreshing
 
 def _get_all_gokapi_status():
-    """Fetch all file statuses from gokapi, cached for 30 seconds.
-    Returns a dict keyed by file Id. Returns empty dict on failure.
-    """
+    """Fetch all file statuses from gokapi, cached for 60 seconds.
+    Serves stale data (up to 5min) to avoid blocking on gokapi HTTP.
+    Returns empty dict on failure."""
     import time
     now_ts = time.time()
-    if _gokapi_cache and (now_ts - _gokapi_cache.get("ts", 0)) < _GOKAPI_CACHE_TTL:
-        return _gokapi_cache["data"]
+    age = now_ts - _gokapi_cache.get("ts", 0)
+    if age < _GOKAPI_CACHE_TTL:
+        return _gokapi_cache.get("data", {})
     if not GOKAPI_KEY:
         return {}
+    # Cache expired — try refresh, but serve stale if available
+    has_stale = age < _GOKAPI_STALE_TTL and _gokapi_cache.get("data")
     try:
-        conn, _ = _gokapi_connection(timeout=5)
+        conn, _ = _gokapi_connection(timeout=2)
         conn.request("GET", _gokapi_path("/api/files/list"), headers={"apikey": GOKAPI_KEY})
         resp = conn.getresponse()
         data = resp.read()
         conn.close()
         if resp.status != 200:
-            return {}
+            return _gokapi_cache.get("data", {})
         files = json.loads(data.decode("utf-8"))
         result = {f["Id"]: f for f in files} if isinstance(files, list) else {}
         _gokapi_cache["data"] = result
         _gokapi_cache["ts"] = now_ts
         return result
     except Exception:
-        return {}
+        return _gokapi_cache.get("data", {}) if has_stale else {}
 
 
 def list_uploads(user_id: int) -> list:
