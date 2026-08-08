@@ -361,7 +361,6 @@ form.addEventListener("submit", async (event) => {
   xhr.send(formData);
 });
 async function loadHistory() {
-  if (typeof window._loadHistory === "function") { window._loadHistory(); return; }
   if (!window.__USER__) {
     currentUploads = [];
     historyList.innerHTML = "";
