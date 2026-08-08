@@ -37,11 +37,7 @@
 <section class="workspace">
   <div class="intro">
     <h1 data-i18n="hero_title">Flash Share</h1>
-    <div class="hero-subtitle-row">
-      <p class="hero-subtitle" data-i18n="subtitle">{{ texts.subtitle }}</p>
-      <a class="hero-share" id="homeShare" href="{{ share_url }}" target="_blank" rel="noreferrer"
-         aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
-    </div>
+    <p class="hero-subtitle" data-i18n="subtitle">{{ texts.subtitle }}</p>
 
     <div class="limit-grid">
       <div class="limit" title="Max file size">{{ file_size_icon }}<strong>{{ max_mb }}MB</strong></div>
@@ -98,10 +94,18 @@
     <div id="result" class="result hidden" aria-live="polite"></div>
   </section>
   {% if not user %}
-  <div class="home-x-login">
+  <div class="home-x-row">
     <a class="x-login" href="/auth/x/login">
       <span class="x-glyph" aria-hidden="true">𝕏</span>
       <span data-i18n="login">{{ texts.login }}</span>
+    </a>
+  </div>
+  {% else %}
+  <div class="home-x-row">
+    <a class="x-share-btn" id="homeShare" href="{{ share_url }}" target="_blank" rel="noreferrer"
+       aria-label="{{ texts.shareX }}" title="{{ texts.shareX }}">
+      <span class="x-glyph" aria-hidden="true">𝕏</span>
+      <span data-i18n="shareX">{{ texts.shareX }}</span>
     </a>
   </div>
   {% endif %}
@@ -145,6 +149,6 @@ window.__TOOLS__ = {{ tools_json|safe }};
 
 {% block script_tail %}
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=68", { updateViaCache:"none" }).catch(() => {}));
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=69", { updateViaCache:"none" }).catch(() => {}));
 }
 {% endblock %}
