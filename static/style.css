@@ -130,7 +130,7 @@ h1, h2 { letter-spacing: -0.02em; }
 
 .user-info { padding: var(--s2) var(--s2) var(--s2); border-bottom: 1px solid var(--line); margin-bottom: var(--s1); }
 .user-name { display: block; font-size: var(--text-base); font-weight: 700; color: var(--ink); }
-.user-email { display: block; font-size: var(--text-sm); color: var(--muted); word-break: break-all; }
+.user-handle { font-weight: 400; color: var(--muted); }
 .user-dropdown a, .user-dropdown form button { display: block; width: 100%; padding: var(--s2) var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 600; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
 .user-dropdown a:hover, .user-dropdown form button:hover { background: var(--soft); }
 .user-dropdown form { margin: 0; padding: 0; }
