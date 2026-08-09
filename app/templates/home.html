@@ -150,6 +150,6 @@ window.__TOOLS__ = {{ tools_json|safe }};
 
 {% block script_tail %}
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=71", { updateViaCache:"none" }).catch(() => {}));
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=72", { updateViaCache:"none" }).catch(() => {}));
 }
 {% endblock %}
