@@ -235,6 +235,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 
 /* ── History (now in modal) ──────────────────────────────── */
 .history-panel { width: min(540px,100%); min-height: 280px; max-height: 70vh; overflow-y: auto; }
+.hist-loading { display: flex; justify-content: center; align-items: center; padding: var(--s6) 0; }
 .history-panel h2 { display: inline; margin: 0; font-size: var(--text-lg); font-weight: 800; }
 .history-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; font-size: var(--text-xs); font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: var(--r-full); margin-left: var(--s2); vertical-align: middle; }
 .history-list { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s3); }
