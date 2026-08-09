@@ -94,22 +94,6 @@
     </form>
     <div id="result" class="result hidden" aria-live="polite"></div>
   </section>
-  {% if not user %}
-  <div class="home-x-row">
-    <a class="x-login" href="/auth/x/login">
-      <span class="x-glyph" aria-hidden="true">𝕏</span>
-      <span data-i18n="login">{{ texts.login }}</span>
-    </a>
-  </div>
-  {% else %}
-  <div class="home-x-row">
-    <a class="x-share-btn" id="homeShare" href="{{ share_url }}" target="_blank" rel="noreferrer"
-       aria-label="{{ texts.shareX }}" title="{{ texts.shareX }}">
-      <span class="x-glyph" aria-hidden="true">𝕏</span>
-      <span data-i18n="shareX">{{ texts.shareX }}</span>
-    </a>
-  </div>
-  {% endif %}
 </section>
   {% endblock %}
 

@@ -349,10 +349,6 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .auth-divider span { position: relative; background: var(--bg); padding: 0 var(--s3); font-size: var(--text-sm); color: var(--muted); }
 .auth-hint { text-align: center; margin-top: var(--s4); font-size: var(--text-sm); color: var(--muted); }
 .auth-hint a { color: var(--accent); }
-.home-x-row { display: flex; justify-content: center; margin-top: var(--s4); }
-.x-share-btn { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; color: var(--muted); text-decoration: none; transition: color var(--ease); -webkit-tap-highlight-color: transparent; }
-.x-share-btn:hover { color: var(--accent); }
-.x-share-btn:active { opacity: .7; }
 
 /* ── Profile Page ─────────────────────────────────────────── */
 .profile-section { margin-bottom: var(--s6); padding-bottom: var(--s5); border-bottom: 1px solid var(--line); }
