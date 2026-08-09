@@ -324,8 +324,9 @@ async def get_uploads(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    uploads = list_uploads(user["id"])
-    return {"ok": True, "uploads": uploads}
+    offset = int(request.query_params.get("offset", "0"))
+    uploads = list_uploads(user["id"], offset=offset, limit=20)
+    return {"ok": True, "uploads": uploads, "has_more": len(uploads) == 20}
 
 
 @router.post("/uploads")

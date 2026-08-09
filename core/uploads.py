@@ -74,7 +74,7 @@ def _get_all_gokapi_status():
         return _gokapi_cache.get("data", {}) if has_stale else {}
 
 
-def list_uploads(user_id: int) -> list:
+def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
     with db() as con:
         rows = con.execute(
             """
@@ -83,9 +83,9 @@ def list_uploads(user_id: int) -> list:
             FROM uploads
             WHERE user_id = ? AND expire_at > ?
             ORDER BY created_at DESC
-            LIMIT 20
+            LIMIT ? OFFSET ?
             """,
-            (user_id, int(time.time())),
+            (user_id, int(time.time()), limit, offset),
         ).fetchall()
     # Single batch request — no N+1
     gokapi_map = _get_all_gokapi_status()
