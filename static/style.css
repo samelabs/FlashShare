@@ -474,7 +474,6 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 820px) {
   .shell { width: min(calc(100vw - 24px), 720px); padding: var(--s2) var(--s2) 0; }
-  .topbar { margin-bottom: var(--s3); }
   .top-actions { gap: var(--s2); }
   .brand { font-size: var(--text-lg); gap: var(--s2); min-width: 0; }
   .brand-logo { font-size: var(--text-lg); }
