@@ -1,7 +1,13 @@
 # FlashShare Runtime Dependencies
 #
-# flashshare runs on system Python 3 (/usr/bin/python3, currently 3.12 on Ubuntu 24.04).
-# NOT a venv project — dependencies are installed via apt system packages.
-# Install: sudo apt install python3-pil
+# System Python 3 (/usr/bin/python3, Ubuntu 24.04)
+# NOT a venv project — installed via apt system packages.
+#
+# Install:
+#   sudo apt install python3-fastapi python3-uvicorn python3-jinja2 \
+#     python3-multipart python3-bcrypt python3-pil python3-pypdf python3-pydantic
+#
+# Verify: /usr/bin/python3 -c "import fastapi, uvicorn, jinja2, multipart, bcrypt, PIL, pypdf, pydantic"
 
 Pillow>=10.0,<11.0
+pypdf>=4.0,<5.0
