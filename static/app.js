@@ -153,7 +153,7 @@ function showError(errorKey) {
   showResult(`<div class="result-card"><div class="result-error">${escapeHtml(t(errorKey))}</div></div>`, true);
 }
 file.addEventListener("change", () => {
-  if (!window.__USER__) { location.href = "/auth/x/login"; return; }
+  if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (file.files.length > 0) {
     for (let i = 0; i < file.files.length; i++) {
       const ext = file.files[i].name.toLowerCase().match(/\.(\w+)$/);
@@ -173,6 +173,9 @@ file.addEventListener("change", () => {
     fileLabel.textContent = t("dropEmpty");
   }
 });
+dropZone.addEventListener("click", (e) => {
+  if (!window.__USER__) { e.preventDefault(); location.href = "/auth/login"; }
+});
 ["dragenter", "dragover"].forEach(name => dropZone.addEventListener(name, event => {
   event.preventDefault();
   dropZone.classList.add("dragover");
@@ -182,7 +185,7 @@ file.addEventListener("change", () => {
   dropZone.classList.remove("dragover");
 }));
 dropZone.addEventListener("drop", event => {
-  if (!window.__USER__) { location.href = "/auth/x/login"; return; }
+  if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (event.dataTransfer.files.length) {
     file.files = event.dataTransfer.files;
     file.dispatchEvent(new Event("change"));
@@ -190,7 +193,7 @@ dropZone.addEventListener("drop", event => {
 });
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!window.__USER__) return location.href = "/auth/x/login";
+  if (!window.__USER__) return location.href = "/auth/login";
   if (!file.files[0]) return;
   const isMulti = activeTool && activeTool.multi;
   const numFiles = file.files.length;
