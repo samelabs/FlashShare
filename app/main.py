@@ -24,7 +24,7 @@ from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from config import APP_NAME, ADDR, COOKIE_NAME, SESSION_SECRET, SESSION_TTL
 from database import init_db
@@ -160,6 +160,14 @@ app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
 app.include_router(auth_route.router, prefix="/auth")
 app.include_router(proxy.router)
+
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: Exception):
+    path = request.url.path
+    if path.startswith("/api/"):
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    return RedirectResponse("/", status_code=302)
 
 
 @app.on_event("startup")
