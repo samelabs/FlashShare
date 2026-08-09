@@ -65,7 +65,8 @@
 
 /* ── Reset ────────────────────────────────────────────────── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; scrollbar-width: none; }
+*::-webkit-scrollbar { width: 0; height: 0; }
 body { margin: 0; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; height: 100dvh; display: flex; flex-direction: column; }
 a { color: var(--accent); }
 h1, h2 { letter-spacing: -0.02em; }
