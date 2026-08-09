@@ -39,13 +39,10 @@ logger = logging.getLogger("flashshare")
 router = APIRouter()
 
 # Worker pool for tool processing (subprocess isolation)
-_process_pool = None
+_process_pool = ProcessPoolExecutor(max_workers=2)
 
 
 def _get_pool():
-    global _process_pool
-    if _process_pool is None:
-        _process_pool = ProcessPoolExecutor(max_workers=2)
     return _process_pool
 
 
