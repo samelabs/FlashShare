@@ -222,16 +222,15 @@ async def execute_tool(request: Request):
 
 
 async def _execute_and_share(request: Request, tool: dict, upload, params: dict, user: dict) -> dict:
-    """Orchestration: read source → run tool handler → write result → DB record.
-
-    LOCAL mode only (REMOTE WORKER_URL not deployed).
-    """
+    """Orchestration: read source → run tool handler → write result → DB record → cleanup source."""
     upload_dict = dict(upload)
+    source_gokapi_id = upload_dict["gokapi_id"]
     expiry_days, allowed_downloads = _validate_lifecycle(params)
 
     # 1. Read source from storage
-    status, headers, stream = storage_read(upload_dict["gokapi_id"])
+    status, headers, stream = storage_read(source_gokapi_id)
     source_bytes = stream.read()
+    source_size = len(source_bytes)
 
     # 2. Run handler in subprocess (memory isolation)
     loop = asyncio.get_event_loop()
@@ -241,6 +240,7 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
         tool["id"], source_bytes, upload_dict["file_name"],
         upload_dict["content_type"], upload_dict["size_bytes"], params,
     )
+    del source_bytes  # free memory before write
 
     output_bytes = result["output_bytes"]
 
@@ -253,6 +253,7 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
         allowed_downloads,
         len(output_bytes),
     )
+    del output_bytes
 
     # 4. DB record
     ip = _client_ip(request)
@@ -263,18 +264,31 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
         expiry_days, allowed_downloads,
         info.get("ExpireAt"), info.get("UrlHotlink", ""),
     )
-    record["origSize"] = upload_dict["size_bytes"]
+    record["origSize"] = source_size
+
+    # 5. Cleanup: delete original from storage (it's an intermediate)
+    try:
+        delete_gokapi_file(source_gokapi_id)
+    except Exception:
+        logger.warning("Failed to cleanup source %s after tool execution", source_gokapi_id)
+
     return record
 
 
 async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, params: dict, user: dict) -> dict:
-    """Multi-file orchestration: read all sources → run handler → write result → DB record."""
+    """Multi-file orchestration: read all sources → run handler → write result → DB record → cleanup sources."""
     expiry_days, allowed_downloads = _validate_lifecycle(params)
+    MAX_MULTI_BYTES = 100 * 1024 * 1024  # 100MB total source limit
 
     # 1. Read all sources from storage
     multi_sources = []
+    source_gokapi_ids = []
+    total_size = 0
     for upload in uploads:
         upload_dict = dict(upload) if not isinstance(upload, dict) else upload
+        total_size += upload_dict["size_bytes"]
+        if total_size > MAX_MULTI_BYTES:
+            raise ToolError("err_file_too_large")
         status, headers, stream = storage_read(upload_dict["gokapi_id"])
         source_bytes = stream.read()
         multi_sources.append((
@@ -283,6 +297,7 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
             upload_dict["content_type"],
             upload_dict["size_bytes"],
         ))
+        source_gokapi_ids.append(upload_dict["gokapi_id"])
 
     # 2. Run handler in subprocess with multi_sources
     loop = asyncio.get_event_loop()
@@ -292,6 +307,7 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
         tool["id"], b"", "", "", 0, params,
         multi_sources,
     )
+    del multi_sources  # free memory
 
     output_bytes = result["output_bytes"]
 
@@ -304,6 +320,7 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
         allowed_downloads,
         len(output_bytes),
     )
+    del output_bytes
 
     # 4. DB record
     ip = _client_ip(request)
@@ -314,6 +331,14 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
         expiry_days, allowed_downloads,
         info.get("ExpireAt"), info.get("UrlHotlink", ""),
     )
+
+    # 5. Cleanup: delete all sources from storage (they're intermediates)
+    for gid in source_gokapi_ids:
+        try:
+            delete_gokapi_file(gid)
+        except Exception:
+            logger.warning("Failed to cleanup source %s after multi-tool execution", gid)
+
     return record
 
 
