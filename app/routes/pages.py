@@ -36,14 +36,10 @@ router = APIRouter()
 # Load static assets once
 _STATIC = _BASE / "static"
 with open(_STATIC / "style.css", encoding="utf-8") as f:
-    CSS = f.read()
-_CSS_VERSION = str(hash(CSS) % 100000)
+    _CSS = f.read()
+_CSS_VERSION = str(hash(_CSS) % 100000)
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
-
-# i18n: single source of truth (core/i18n.py SERVER_I18N dict)
-# Browser receives the full dict as window.__I18N__
-from i18n import SERVER_I18N as _SERVER_I18N
 
 
 def _ctx_base(request: Request) -> dict:
@@ -62,7 +58,7 @@ def _ctx_base(request: Request) -> dict:
         "APP_NAME": APP_NAME,
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
-        "CSS": CSS,
+        "CSS": _CSS,
         "css_version": _CSS_VERSION,
         "year": datetime.datetime.now().year,
         # icon helpers

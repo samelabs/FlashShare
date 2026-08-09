@@ -21,7 +21,6 @@ const langButton = document.getElementById("langButton");
 const langMenu = document.getElementById("langMenu");
 const homeShare = document.getElementById("homeShare");
 const limits = window.__LIMITS__ || {};
-let currentUploads = []; // kept for modal deleteUpload compatibility
 let activeUpload = null;
 
 const EXT_TO_TYPE = {
@@ -73,10 +72,9 @@ const ICONS = {
   settings: svgIcon("settings"),
 };
 
-// i18n: t(), applyI18n(), detectLang(), lang data — all provided by footer.html global engine
-const lang = window.__LANG || "en";
-// Helper: lang-aware t() wrapper (delegates to global)
+// i18n: t(), applyI18n(), lang data — all provided by base.html global engine
 function t(key, vars = {}) { return window.t(key, vars); }
+function currentLang() { return window.__LANG || "en"; }
 
 function fmtSize(n) {
   if (!n) return "0 B";
@@ -94,7 +92,8 @@ function formatSpeed(bytes, seconds) {
 }
 function fmtDate(ts) {
   if (!ts) return "-";
-  return new Date(ts * 1000).toLocaleString(LOCALE_MAP[lang] || "en", { hour12:false });
+  const lm = window.__LOCALE_MAP || {};
+  return new Date(ts * 1000).toLocaleString(lm[currentLang()] || "en", { hour12:false });
 }
 function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -443,7 +442,7 @@ function openToolOverlay(tool, btn) {
     }
     html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${t("intensity")}</div><div class="tool-overlay-presets">`;
     tool.presets.forEach((p) => {
-      const pname = t(p.id) !== p.id ? t(p.id) : (p.label && p.label[lang] ? p.label[lang] : (p.label && p.label.en ? p.label.en : p.id));
+      const pname = t(p.id) !== p.id ? t(p.id) : (p.label && p.label[currentLang()] ? p.label[currentLang()] : (p.label && p.label.en ? p.label.en : p.id));
       const sel = (p.id === defaultPreset) ? " active" : "";
       html += `<button type="button" class="tool-overlay-preset${sel}" data-preset="${p.id}">${escapeHtml(pname)}</button>`;
     });
@@ -540,7 +539,7 @@ function applyToolSelection() {
       if (presetLabel === activePreset) {
         const pt = (homeToolsData.find(t => t.id === activeTool.id) || {}).presets || [];
         const p = pt.find(p => p.id === activePreset);
-        if (p) presetLabel = (p.label && p.label[lang]) || (p.label && p.label.en) || activePreset;
+        if (p) presetLabel = (p.label && p.label[currentLang()]) || (p.label && p.label.en) || activePreset;
       }
       if (presetLabel && presetLabel !== activePreset) {
         const badge = document.createElement("span");
