@@ -330,7 +330,8 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .action-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--button-ink); padding: 0 var(--s4); white-space: nowrap; flex-shrink: 0; }
 .action-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .action-btn .x-glyph { font-size: 18px; font-weight: 800; }
-.qr-modal-panel { width: fit-content; padding-top: var(--s6); text-align: center; }
+.qr-modal-panel { width: fit-content; padding: var(--s3); text-align: center; }
+.qr-modal-panel .modal-close { position: relative; right: auto; top: auto; margin-left: auto; margin-bottom: var(--s2); display: block; }
 .qr-modal-panel img { border-radius: var(--r); border: 1px solid var(--line); }
 .file-note { color: var(--muted); font-size: var(--text-sm); margin: var(--s2) 0 0; }
 
