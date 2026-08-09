@@ -15,6 +15,9 @@
         {% endif %}
       </button>
       <div class="user-dropdown hidden" id="userDropdown" role="menu">
+        <div class="user-info">
+          <span class="user-name">{{ user.displayName or user.username }}</span>
+        </div>
         <a href="/auth/profile" role="menuitem" data-i18n="settings">{{ icon_svg("settings") }}<span>{{ texts.settings }}</span></a>
         <form method="post" action="/auth/logout">
           <button type="submit" class="logout-link" data-i18n="logout">{{ icon_svg("logout") }}<span>{{ texts.logout }}</span></button>
