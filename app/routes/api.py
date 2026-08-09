@@ -382,42 +382,39 @@ async def create_upload(request: Request):
     })
     has_tool = form.get("tool", "").strip()
 
-    files_result = []
-
+    # Pre-check: read all files, validate size, check total quota upfront
+    pending = []
+    total_incoming = 0
     for file in uploads:
         if not file.filename:
             continue
-
         content = await file.read()
         size = len(content)
         if size > MAX_UPLOAD_BYTES:
-            for fr in files_result:
-                try: delete_gokapi_file(fr["gokapiId"])
-                except Exception: pass
             return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
         if size == 0:
-            for fr in files_result:
-                try: delete_gokapi_file(fr["gokapiId"])
-                except Exception: pass
             return JSONResponse({"ok": False, "error": "err_empty_file"}, 400)
-
-        ok, reason = check_quota(user["id"], ip, size)
-        if not ok:
-            for fr in files_result:
-                try: delete_gokapi_file(fr["gokapiId"])
-                except Exception: pass
-            return JSONResponse({"ok": False, "error": reason}, 429)
-
         filename = sanitize_filename(file.filename or "upload")
         valid, final_type = sniff_allowed(filename, file.content_type or "", content[:512])
         if not valid:
-            for fr in files_result:
-                try: delete_gokapi_file(fr["gokapiId"])
-                except Exception: pass
             return JSONResponse({"ok": False, "error": final_type}, 400)
+        total_incoming += size
+        pending.append((content, size, filename, final_type))
 
+    if not pending:
+        return JSONResponse({"ok": False, "error": "err_select_file"}, 400)
+
+    # Single quota check for entire batch
+    ok, reason = check_quota(user["id"], ip, total_incoming)
+    if not ok:
+        return JSONResponse({"ok": False, "error": reason}, 429)
+
+    files_result = []
+
+    for content, size, filename, final_type in pending:
         gokapi = upload_to_gokapi(io.BytesIO(content), filename, final_type,
                                   expiry_days, allowed_downloads, size)
+        del content
         info = gokapi.get("FileInfo", {})
 
         files_result.append({
