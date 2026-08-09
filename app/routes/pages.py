@@ -2,6 +2,7 @@
 
 import sys
 import json
+import hashlib
 import datetime
 import urllib.parse
 from pathlib import Path
@@ -37,7 +38,7 @@ router = APIRouter()
 _STATIC = _BASE / "static"
 with open(_STATIC / "style.css", encoding="utf-8") as f:
     _CSS = f.read()
-_CSS_VERSION = str(hash(_CSS) % 100000)
+_CSS_VERSION = hashlib.md5(_CSS.encode()).hexdigest()[:8]
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 
