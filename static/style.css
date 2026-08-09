@@ -348,10 +348,10 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .auth-divider span { position: relative; background: var(--bg); padding: 0 var(--s3); font-size: var(--text-sm); color: var(--muted); }
 .auth-hint { text-align: center; margin-top: var(--s4); font-size: var(--text-sm); color: var(--muted); }
 .auth-hint a { color: var(--accent); }
-.home-x-row { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s3); }
-.x-share-btn { display: inline-flex; align-items: center; gap: var(--s2); padding: 11px 22px; border-radius: var(--r-full); font-size: var(--text-base); font-weight: 700; text-decoration: none; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); transition: opacity var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
-.x-share-btn:active { transform: scale(0.96); }
-.x-share-btn:hover { opacity: .85; }
+.home-x-row { display: flex; justify-content: center; margin-top: var(--s4); }
+.x-share-btn { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; color: var(--muted); text-decoration: none; transition: color var(--ease); -webkit-tap-highlight-color: transparent; }
+.x-share-btn:hover { color: var(--accent); }
+.x-share-btn:active { opacity: .7; }
 
 /* ── Profile Page ─────────────────────────────────────────── */
 .profile-section { margin-bottom: var(--s6); padding-bottom: var(--s5); border-bottom: 1px solid var(--line); }
