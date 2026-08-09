@@ -58,7 +58,6 @@ def _ctx_base(request: Request) -> dict:
         "APP_NAME": APP_NAME,
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
-        "CSS": _CSS,
         "css_version": _CSS_VERSION,
         "year": datetime.datetime.now().year,
         # icon helpers

@@ -30,7 +30,7 @@ from gokapi import upload_to_gokapi
 from security import sniff_allowed
 from storage import read as storage_read, write as storage_write
 from tools import get_tool, get_default_preset, list_all_tools, get_tools_for_upload, TYPE_PRODUCE, ToolError
-from gokapi import upload_to_gokapi, get_gokapi_file
+from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
 from auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
 from app.models import ToolExecuteRequest, RenameRequest
@@ -64,21 +64,23 @@ def _require_auth(request: Request):
 
 def _save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
                          expiry_days, allowed_downloads, expire_at,
-                         url_download, url_hotlink):
-    """Insert a DB record for an upload and return the response dict."""
+                         url_hotlink):
+    """Insert a DB record for an upload and return the response dict.
+    url_download is generated from public_id (not passed in)."""
     with db() as con:
         public_id = generate_public_id(con)
+        dl_url = public_file_url(public_id)
         con.execute(
             """INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
                expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (user_id, ip, public_id, gokapi_id, filename, content_type, size,
-             expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, now()),
+             expiry_days, allowed_downloads, expire_at, dl_url, url_hotlink, now()),
         )
     return {
         "type": "share_link",
         "name": filename,
-        "downloadUrl": public_file_url(public_id),
+        "downloadUrl": dl_url,
         "filename": filename,
         "contentType": content_type,
         "size": size,
@@ -260,7 +262,7 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
         user["id"], ip, info.get("Id", ""),
         result["filename"], result["content_type"], len(output_bytes),
         expiry_days, allowed_downloads,
-        info.get("ExpireAt"), info.get("UrlDownload", ""), info.get("UrlHotlink", ""),
+        info.get("ExpireAt"), info.get("UrlHotlink", ""),
     )
     record["origSize"] = upload_dict["size_bytes"]
     return record
@@ -311,7 +313,7 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
         user["id"], ip, info.get("Id", ""),
         result["filename"], result["content_type"], len(output_bytes),
         expiry_days, allowed_downloads,
-        info.get("ExpireAt"), info.get("UrlDownload", ""), info.get("UrlHotlink", ""),
+        info.get("ExpireAt"), info.get("UrlHotlink", ""),
     )
     return record
 
@@ -365,17 +367,29 @@ async def create_upload(request: Request):
         content = await file.read()
         size = len(content)
         if size > MAX_UPLOAD_BYTES:
+            for fr in files_result:
+                try: delete_gokapi_file(fr["gokapiId"])
+                except Exception: pass
             return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
         if size == 0:
+            for fr in files_result:
+                try: delete_gokapi_file(fr["gokapiId"])
+                except Exception: pass
             return JSONResponse({"ok": False, "error": "err_empty_file"}, 400)
 
         ok, reason = check_quota(user["id"], ip, size)
         if not ok:
+            for fr in files_result:
+                try: delete_gokapi_file(fr["gokapiId"])
+                except Exception: pass
             return JSONResponse({"ok": False, "error": reason}, 429)
 
         filename = sanitize_filename(file.filename or "upload")
         valid, final_type = sniff_allowed(filename, file.content_type or "", content[:512])
         if not valid:
+            for fr in files_result:
+                try: delete_gokapi_file(fr["gokapiId"])
+                except Exception: pass
             return JSONResponse({"ok": False, "error": final_type}, 400)
 
         gokapi = upload_to_gokapi(io.BytesIO(content), filename, final_type,
@@ -413,7 +427,7 @@ async def create_upload(request: Request):
             user["id"], ip, fr["gokapiId"],
             fr["filename"], fr["contentType"], fr["size"],
             expiry_days, allowed_downloads,
-            fr["expireAt"], fr["hotlinkUrl"], fr["hotlinkUrl"],
+            fr["expireAt"], fr["hotlinkUrl"],
         )
         records.append(record)
 

@@ -131,6 +131,7 @@ def get_tools_for_upload(upload: dict) -> list:
                     "icon": tool["icon"],
                     "accept": sorted(tool["accept"]) if tool["accept"] else None,
                     "presets": None,
+                    "multi": tool.get("multi", False),
                 }
                 if tool["presets"]:
                     item["presets"] = [

@@ -1,10 +1,8 @@
-const account = document.getElementById("account");
 const form = document.getElementById("uploadForm");
 const file = document.getElementById("file");
 const fileLabel = document.getElementById("fileLabel");
 const result = document.getElementById("result");
 const submitBtn = document.getElementById("submitBtn");
-const historyList = document.getElementById("historyList");
 const dropZone = document.getElementById("dropZone");
 const uploadModal = document.getElementById("uploadModal");
 const modalClose = document.getElementById("modalClose");
@@ -42,16 +40,6 @@ const EXT_TO_TYPE = {
   // archive
   zip:"archive",rar:"archive","7z":"archive",gz:"archive",tar:"archive",bz2:"archive",xz:"archive",tgz:"archive",
 };
-const FORMAT_SVG = {};
-function fmtIcon(name) {
-  const ext = (name||"").toLowerCase().match(/\.(\w+)$/);
-  if (!ext) return "";
-  const type = EXT_TO_TYPE[ext[1]];
-  const svgPath = (type && window.__ICONS__[type]) || window.__ICONS__.doc || window.__ICONS__.text || "";
-  const badge = type || "file";
-  return '<span class="fmt-badge fmt-'+badge+'" aria-hidden="true"><svg viewBox="0 0 24 24">'+svgPath+'</svg></span>';
-}
-
 const _IC = window.__ICONS__ || {};
 function svgIcon(name) {
   const path = _IC[name] || _IC.info || "";
@@ -97,10 +85,6 @@ function fmtDate(ts) {
 }
 function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
-}
-function avatarInitial(user) {
-  const source = (user.displayName || user.username || "V").trim();
-  return escapeHtml(source.slice(0, 1).toUpperCase());
 }
 function actionLabel(icon, label) {
   return `<span class="action-mark">${ICONS[icon]}</span><span class="action-text">${escapeHtml(label)}</span>`;
@@ -200,9 +184,7 @@ file.addEventListener("change", () => {
 dropZone.addEventListener("drop", event => {
   if (!window.__USER__) { location.href = "/auth/x/login"; return; }
   if (event.dataTransfer.files.length) {
-    const dt = new DataTransfer();
-    dt.items.add(event.dataTransfer.files[0]);
-    file.files = dt.files;
+    file.files = event.dataTransfer.files;
     file.dispatchEvent(new Event("change"));
   }
 });
@@ -633,20 +615,23 @@ async function retryTool() {
 
 // Stable icon paths via unified registry
 
-async function shareFile(url, filename) {
+async function shareFile(url, filename, btn) {
+  var orig = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="btn-spinner"></div>'; }
   try {
     const res = await fetch(url);
     if (!res.ok) return false;
     const blob = await res.blob();
     const file = new File([blob], filename || "download", { type: blob.type || "application/octet-stream" });
-    // Try navigator.share directly — iOS Safari supports share({files}) but not canShare.
     if (navigator.share) {
       await navigator.share({ files: [file], title: filename || "download" });
       return true;
     }
   } catch (e) {
-    if (e.name === "AbortError") return true; // user cancelled
+    if (e.name === "AbortError") return true;
     console.warn("share failed:", e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
   return false;
 }
@@ -722,13 +707,13 @@ function showShareResult(file) {
   if (pwa) {
     const dlBtn = document.querySelector('.result-card .action-btn.primary');
     if (dlBtn) dlBtn.addEventListener("click", async () => {
-      const ok = await shareFile(dlUrl, file.filename || file.name || "download");
+      const ok = await shareFile(dlUrl, file.filename || file.name || "download", dlBtn);
       if (!ok) window.location.href = dlUrl;
     });
   }
   const shareImgBtn = document.getElementById(shareImgId);
   if (shareImgBtn) shareImgBtn.addEventListener("click", async () => {
-    const ok = await shareFile(dlUrl, file.filename || file.name || "download");
+    const ok = await shareFile(dlUrl, file.filename || file.name || "download", shareImgBtn);
     if (!ok) window.location.href = dlUrl;
   });
 }
