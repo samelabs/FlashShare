@@ -17,9 +17,9 @@
   <link rel="stylesheet" href="/static/style.css?v={{ css_version }}">
 </head>
 <body>
-  <main class="shell {{ shell_class }}">
-    {% include "partials/header.html" %}
+  {% include "partials/header.html" %}
 
+  <main class="shell {{ shell_class }}">
     {% block content %}{% endblock %}
   </main>
 
