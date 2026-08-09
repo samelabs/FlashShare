@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from config import APP_NAME, ADDR, COOKIE_NAME, SESSION_SECRET, SESSION_TTL
+from config import APP_NAME, COOKIE_NAME, SESSION_TTL
 from database import init_db
 from security import token_hash
 from i18n import language_from_code, language_from_header
@@ -114,7 +114,6 @@ def detect_lang(request: Request) -> str:
 # ── Middleware ──
 
 import asyncio
-from contextlib import asynccontextmanager
 
 # Concurrency limiter — max 8 simultaneous request handlers.
 # Excess requests queue in Uvicorn's event loop without blocking.

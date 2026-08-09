@@ -26,11 +26,10 @@ sys.path.insert(0, str(_CORE))
 from config import MAX_UPLOAD_BYTES, PUBLIC_ID_RE
 from database import db
 from uploads import check_quota, get_upload_by_public_id, list_uploads, delete_upload
-from gokapi import upload_to_gokapi
+from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
 from security import sniff_allowed
 from storage import read as storage_read, write as storage_write
-from tools import get_tool, get_default_preset, list_all_tools, get_tools_for_upload, TYPE_PRODUCE, ToolError
-from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
+from tools import get_tool, get_default_preset, list_all_tools, get_tools_for_upload, ToolError
 from auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
 from app.models import ToolExecuteRequest, RenameRequest

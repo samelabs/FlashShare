@@ -3,7 +3,7 @@ import time
 
 from config import DAILY_UPLOADS, DAILY_BYTES
 from database import db
-from gokapi import get_gokapi_file, delete_gokapi_file, _gokapi_connection, _gokapi_path, GOKAPI_KEY
+from gokapi import delete_gokapi_file, _gokapi_connection, _gokapi_path, GOKAPI_KEY
 from utils import now, public_file_url
 
 

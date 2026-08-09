@@ -15,14 +15,12 @@ sys.path.insert(0, str(_BASE))
 from uploads import get_upload_by_public_id
 from gokapi import open_gokapi_download, get_gokapi_file
 from utils import (
-    public_file_url, format_bytes, format_ts, format_share_date, compact_filename,
+    public_file_url, format_bytes, format_ts,
     file_size_icon_svg, expiry_icon_svg, download_count_icon_svg, file_format_icon,
     html_escape,
 )
-from config import SOCIAL_IMAGE_URL
 from i18n import LOCALE_TAGS, server_text
-from icons import icon_svg, icon_path
-from auth import public_user
+from icons import icon_svg
 
 router = APIRouter()
 
@@ -52,7 +50,7 @@ async def file_route(public_id: str, request: Request):
         # url_hotlink format varies by gokapi version: /h/{id} or /downloadFile?id={id}
         hotlink = upload["url_hotlink"] if "url_hotlink" in upload.keys() else ""
         if hotlink:
-            from urllib.parse import urlparse, parse_qs
+            from urllib.parse import urlparse
             parsed = urlparse(hotlink)
             hot_path = parsed.path
             hot_query = parsed.query

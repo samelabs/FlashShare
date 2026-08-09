@@ -16,20 +16,15 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY_UPLOADS, DAILY_BYTES
-from database import db
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import list_all_tools
 import tools_registry, tools_beautify, tools_compress, tools_ico  # noqa: F401
 from auth import public_user
-from uploads import get_upload_by_public_id
-from gokapi import get_gokapi_file
 from utils import (
-    html_escape, format_bytes, format_ts, format_share_date, compact_filename,
     brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,
     bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
-    close_icon_svg, file_format_icon, public_file_url,
-    history_icon_svg,
+    close_icon_svg, history_icon_svg,
 )
 
 router = APIRouter()

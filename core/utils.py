@@ -1,14 +1,11 @@
 import base64
-import hashlib
-import hmac
 import json
-import mimetypes
 import os
 import secrets
 import time
 import urllib.parse
 
-from config import BASE_URL, SESSION_SECRET
+from config import BASE_URL
 
 
 def now() -> int:

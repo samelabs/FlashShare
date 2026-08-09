@@ -10,7 +10,7 @@ import secrets
 import urllib.parse
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Form
+from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 
 _BASE = Path(__file__).resolve().parent.parent.parent
@@ -29,7 +29,7 @@ from auth import (
     exchange_x_token, fetch_x_user, upsert_x_user,
     update_profile, change_password, unbind_x,
     validate_username, validate_email, validate_password,
-    username_taken, email_taken, has_password,
+    has_password,
 )
 from i18n import server_text
 from utils import now, b64url

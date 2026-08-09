@@ -7,7 +7,6 @@ import urllib.parse
 import bcrypt
 
 from config import ALLOWED_EXT, BLOCKED_EXT, BASE_URL, SESSION_SECRET
-from utils import b64url
 
 
 def token_hash(token: str) -> str:
