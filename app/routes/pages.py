@@ -37,6 +37,7 @@ router = APIRouter()
 _STATIC = _BASE / "static"
 with open(_STATIC / "style.css", encoding="utf-8") as f:
     CSS = f.read()
+_CSS_VERSION = str(hash(CSS) % 100000)
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 
@@ -62,6 +63,7 @@ def _ctx_base(request: Request) -> dict:
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
         "CSS": CSS,
+        "css_version": _CSS_VERSION,
         "year": datetime.datetime.now().year,
         # icon helpers
         "icon_svg": icon_svg,
