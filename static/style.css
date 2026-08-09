@@ -68,7 +68,7 @@
 html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
 .shell::-webkit-scrollbar, .history-panel::-webkit-scrollbar, .tool-result-view::-webkit-scrollbar { display: none; }
 .shell, .history-panel, .tool-result-view { scrollbar-width: none; -ms-overflow-style: none; }
-body { margin: 0; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; height: 100dvh; display: flex; flex-direction: column; }
+body { margin: 0; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 a { color: var(--accent); }
 h1, h2 { letter-spacing: -0.02em; }
 
