@@ -7,7 +7,7 @@
 <link rel="canonical" href="{{ escaped_url }}">
 <meta name="robots" content="noindex, follow">
 <meta property="og:type" content="website">
-<meta property="og:title" content="{{ file_name|e }}">
+<meta property="og:title" content="{{ file_name|e }} · {{ size_text }}">
 <meta property="og:description" content="{{ texts.card_expires }}: {{ card_date }} · {{ texts.card_downloads }}: {{ downloads }}">
 <meta property="og:url" content="{{ escaped_url }}">
 <meta property="og:image" content="{{ SOCIAL_IMAGE_URL }}">
@@ -16,9 +16,8 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="{{ file_name|e }}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="{{ file_name|e }}">
-<meta name="twitter:description" content="{{ texts.card_expires }}: {{ card_date }}">
+<meta name="twitter:title" content="{{ file_name|e }} · {{ size_text }}">
+<meta name="twitter:description" content="{{ texts.card_expires }}: {{ card_date }} · {{ texts.card_downloads }}: {{ downloads }}">
 <meta name="twitter:image" content="{{ SOCIAL_IMAGE_URL }}">
 <meta name="twitter:image:alt" content="{{ file_name|e }}">
 {% endblock %}
