@@ -15,6 +15,7 @@
   <meta name="description" content="{% block desc %}{{ texts.subtitle }}{% endblock %}">
   {% block meta %}{% endblock %}
   <style>{{ CSS|safe }}</style>
+  <script src="/static/i18n.js"></script>
 </head>
 <body>
   <main class="shell {{ shell_class }}">
@@ -38,7 +39,6 @@
     window.__USER__ = {{ user_json|safe }};
     window.__ICONS__ = {{ icons_json|safe }};
     // ── Global i18n engine (must run before page scripts) ──
-    window.__I18N__ = {{ i18n_full_json|safe }};
     window.__SUPPORTED_LANGS=["en","zh","ja","ko","es","ar","de","ru","pt","fr"];
     window.__LOCALE_MAP={en:"en",zh:"zh-CN",ja:"ja-JP",ko:"ko-KR",es:"es-ES",ar:"ar",de:"de-DE",ru:"ru-RU",pt:"pt-BR",fr:"fr-FR"};
     window.__LANG_LABELS={"en":"English","zh":"简体中文","ja":"日本語","ko":"한국어","es":"Español","ar":"العربية","de":"Deutsch","ru":"Русский","pt":"Português","fr":"Français"};
