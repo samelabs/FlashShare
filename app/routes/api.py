@@ -243,6 +243,7 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
     del source_bytes  # free memory before write
 
     output_bytes = result["output_bytes"]
+    output_size = len(output_bytes)
 
     # 3. Write result to storage
     gokapi_result = storage_write(
@@ -251,16 +252,15 @@ async def _execute_and_share(request: Request, tool: dict, upload, params: dict,
         result["content_type"],
         expiry_days,
         allowed_downloads,
-        len(output_bytes),
+        output_size,
     )
-    del output_bytes
 
     # 4. DB record
     ip = _client_ip(request)
     info = gokapi_result.get("FileInfo", {})
     record = _save_upload_record(
         user["id"], ip, info.get("Id", ""),
-        result["filename"], result["content_type"], len(output_bytes),
+        result["filename"], result["content_type"], output_size,
         expiry_days, allowed_downloads,
         info.get("ExpireAt"), info.get("UrlHotlink", ""),
     )
@@ -310,6 +310,7 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
     del multi_sources  # free memory
 
     output_bytes = result["output_bytes"]
+    output_size = len(output_bytes)
 
     # 3. Write result to storage
     gokapi_result = storage_write(
@@ -318,16 +319,15 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
         result["content_type"],
         expiry_days,
         allowed_downloads,
-        len(output_bytes),
+        output_size,
     )
-    del output_bytes
 
     # 4. DB record
     ip = _client_ip(request)
     info = gokapi_result.get("FileInfo", {})
     record = _save_upload_record(
         user["id"], ip, info.get("Id", ""),
-        result["filename"], result["content_type"], len(output_bytes),
+        result["filename"], result["content_type"], output_size,
         expiry_days, allowed_downloads,
         info.get("ExpireAt"), info.get("UrlHotlink", ""),
     )
