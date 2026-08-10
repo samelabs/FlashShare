@@ -264,7 +264,8 @@ form.addEventListener("submit", async (event) => {
       const toolData = await toolRes.json();
       if (!toolData.ok) {
         const ref = (data.files ? data.files[0] : data.file);
-        showToolError(toolData.error === "auth_required" ? t("signIn") : toolData.error, ref);
+        const ek = toolData.error || "failed";
+        showToolError(t(ek) !== ek ? t(ek) : t("failed"), ref);
         return;
       }
       lastUploadResult = toolData.result;
@@ -500,6 +501,10 @@ toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) clo
 
 // Apply tool selection to the upload zone
 function applyToolSelection() {
+  // Clear previously selected file when switching tools
+  file.value = "";
+  fileLabel.textContent = t("dropEmpty");
+
   const formatTags = document.querySelector(".drop-formats");
 
   // Clear all badges + set active state on ALL tabs
