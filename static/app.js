@@ -535,9 +535,10 @@ function applyToolSelection() {
     }
   }
 
-  // Bind accept
+  // Bind accept — use image/* for image-only tools (iOS opens photo picker)
   if (activeTool.accept && activeTool.accept.length > 0) {
-    file.accept = activeTool.accept.join(",");
+    var allImages = activeTool.accept.every(function(t){return t.indexOf("image/")===0});
+    file.accept = allImages ? "image/*" : activeTool.accept.join(",");
   }
 
   // Bind multiple (multi-file tools like pdf_merge)
