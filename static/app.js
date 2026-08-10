@@ -501,9 +501,13 @@ toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) clo
 
 // Apply tool selection to the upload zone
 function applyToolSelection() {
-  // Clear previously selected file when switching tools
+  // Full state reset on tool switch
   file.value = "";
   fileLabel.textContent = t("dropEmpty");
+  activePreset = null;
+  result.classList.add("hidden");
+  lastErrorKey = null;
+  lastUploadResult = null;
 
   const formatTags = document.querySelector(".drop-formats");
 
@@ -564,6 +568,15 @@ function applyToolSelection() {
 
   // Show description below tools
   updateToolDescription();
+
+  // Auto-select default preset if tool has one
+  if (activeTool && homeToolsData) {
+    const toolData = homeToolsData.find(t => t.id === activeTool.id);
+    if (toolData && toolData.presets) {
+      const def = toolData.presets.find(p => p.default);
+      if (def) activePreset = def.id;
+    }
+  }
 }
 
 function updateToolDescription() {
