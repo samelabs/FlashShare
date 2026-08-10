@@ -250,8 +250,9 @@ form.addEventListener("submit", async (event) => {
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
         },
       };
-      if (isMulti && data.files) {
-        toolBody.public_ids = data.files.map(f => f.publicId);
+      if (isMulti) {
+        var fileList = data.files || [data.file];
+        toolBody.public_ids = fileList.map(f => f.publicId);
       } else {
         toolBody.public_id = data.file.publicId;
       }
@@ -535,10 +536,12 @@ function applyToolSelection() {
     }
   }
 
-  // Bind accept — use image/* for image-only tools (iOS opens photo picker)
+  // Bind accept — image/* for photo picker, empty = all files
   if (activeTool.accept && activeTool.accept.length > 0) {
     var allImages = activeTool.accept.every(function(t){return t.indexOf("image/")===0});
     file.accept = allImages ? "image/*" : activeTool.accept.join(",");
+  } else {
+    file.removeAttribute("accept");
   }
 
   // Bind multiple (multi-file tools like pdf_merge)
