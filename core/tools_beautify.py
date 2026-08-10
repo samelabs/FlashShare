@@ -89,9 +89,9 @@ def _grid_pattern(size):
     bg = Image.new("RGB", size, (238, 242, 248))
     d = ImageDraw.Draw(bg)
     for x in range(0, w, 28):
-        d.line([(x, 0), (x, h)], fill=(205, 215, 226), width=1)
+        d.line([(x, 0), (x, h)], fill=(185, 200, 215), width=1)
     for y in range(0, h, 28):
-        d.line([(0, y), (w, y)], fill=(205, 215, 226), width=1)
+        d.line([(0, y), (w, y)], fill=(185, 200, 215), width=1)
     return bg
 
 
@@ -143,13 +143,13 @@ def _wallpaper(size, src_img):
 PRESETS = {
     "pure":      {"bg": lambda s, i: _solid(s, (252, 252, 254))},
     "carbon":    {"bg": lambda s, i: _solid(s, (17, 17, 22))},
-    "dawn":      {"bg": lambda s, i: _gradient(s, [(248, 233, 216), (255, 200, 175), (250, 170, 165)])},
+    "dawn":      {"bg": lambda s, i: _gradient(s, [(255, 248, 235), (255, 218, 185), (255, 183, 148)])},
     "ocean":     {"bg": lambda s, i: _gradient(s, [(8, 18, 48), (0, 80, 156), (0, 163, 178)])},
-    "aurora":    {"bg": lambda s, i: _mesh(s, [(72, 49, 157), (0, 199, 255), (0, 229, 161), (255, 107, 107)])},
-    "spotlight": {"bg": lambda s, i: _radial_glow(s, (120, 200, 255), (12, 12, 18))},
+    "aurora":    {"bg": lambda s, i: _mesh(s, [(72, 49, 157), (0, 199, 255), (0, 229, 161), (124, 77, 255)], seed=7, blobs=8)},
+    "spotlight": {"bg": lambda s, i: _radial_glow(s, (200, 225, 255), (8, 8, 14))},
     "sunset":    {"bg": lambda s, i: _gradient(s, [(255, 94, 98), (255, 154, 0), (255, 206, 84)])},
     "grid":      {"bg": lambda s, i: _grid_pattern(s)},
-    "dots":      {"bg": lambda s, i: _dot_pattern(s, (255, 250, 245), (229, 216, 200))},
+    "dots":      {"bg": lambda s, i: _dot_pattern(s, (252, 248, 242), (210, 192, 168), spacing=32, dot_radius=4)},
     "blur":      {"bg": lambda s, i: _wallpaper(s, i)},
 }
 
