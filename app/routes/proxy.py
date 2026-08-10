@@ -120,6 +120,8 @@ async def file_route(public_id: str, request: Request):
         "share_url": share_url,
         "public_id": pid,
         "file_name": upload["file_name"],
+        "content_type": upload["content_type"] or "",
+        "is_image": (upload["content_type"] or "").startswith("image/"),
         "card_date": format_ts(expire_at),
         "size_text": format_bytes(upload["size_bytes"]),
         "expire_text": format_ts(expire_at),

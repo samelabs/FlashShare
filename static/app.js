@@ -688,11 +688,15 @@ function showShareResult(file) {
   actions += `<button class="action-btn" id="${qrId}" type="button" aria-label="QR">${svgIcon("qr")}</button>`;
   actions += `<a class="action-btn" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}"><span class="x-glyph" aria-hidden="true">𝕏</span></a>`;
 
+  const isImg = file.contentType && file.contentType.startsWith("image/");
+  const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(url)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
+
   showResult(
     `<div class="result-card">` +
     `<div class="result-check">${svgIcon("check")}</div>` +
     `<div class="result-card-title" data-i18n="ready">${t("ready")}</div>` +
     `<div class="result-meta">${escapeHtml(meta)}</div>` +
+    preview +
     `<div class="file-actions">${actions}</div>` +
     `</div>`
   );
