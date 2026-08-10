@@ -631,7 +631,7 @@ async function shareFile(url, filename, btn) {
       return true;
     }
   } catch (e) {
-    if (e.name === "AbortError") return true;
+    if (e.name === "AbortError" || e.name === "NotAllowedError") return true;
     console.warn("share failed:", e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
