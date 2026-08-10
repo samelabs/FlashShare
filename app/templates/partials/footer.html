@@ -42,9 +42,10 @@ l.querySelectorAll("[data-rm]").forEach(function(b){b.addEventListener("click",f
 window._loadHistory=function(){
 var l=document.getElementById("historyList");if(!l)return;
 var hc=document.getElementById("historyCount");
-l.innerHTML='<div class="hist-loading"><div class="upload-spinner"></div></div>';l.setAttribute("data-empty","");
+l.innerHTML='<div class="upload-spinner"></div>';l.classList.add("loading");l.setAttribute("data-empty","");
 _uploads=[];_histOffset=0;
 fetch("/api/uploads?offset=0").then(function(r){return r.json()}).then(function(d){
+l.classList.remove("loading");
 if(!d||!d.ok||!d.uploads||!d.uploads.length){_uploads=[];l.innerHTML="";l.setAttribute("data-empty",_tx("noHistory"));if(hc)hc.textContent="";return}
 _uploads=d.uploads;_histOffset=d.uploads.length;if(hc)hc.textContent=String(d.uploads.length);
 l.innerHTML=d.uploads.map(function(x,i){return _renderItem(x,i)}).join("");
