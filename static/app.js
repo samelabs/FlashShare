@@ -691,12 +691,16 @@ function showShareResult(file) {
   const isImg = file.contentType && file.contentType.startsWith("image/");
   const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(url)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
 
+  const header = isImg ? "" :
+    `<div class="result-check">${svgIcon("check")}</div>` +
+    `<div class="result-card-title" data-i18n="ready">${t("ready")}</div>`;
+  const metaLine = isImg ? "" : `<div class="result-meta">${escapeHtml(meta)}</div>`;
+
   showResult(
     `<div class="result-card">` +
-    `<div class="result-check">${svgIcon("check")}</div>` +
-    `<div class="result-card-title" data-i18n="ready">${t("ready")}</div>` +
-    `<div class="result-meta">${escapeHtml(meta)}</div>` +
+    header +
     preview +
+    metaLine +
     `<div class="file-actions">${actions}</div>` +
     `</div>`
   );
