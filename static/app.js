@@ -689,7 +689,7 @@ function showShareResult(file) {
   actions += `<a class="action-btn" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}"><span class="x-glyph" aria-hidden="true">𝕏</span></a>`;
 
   const isImg = file.contentType && file.contentType.startsWith("image/");
-  const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(url)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
+  const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(dlUrl)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
 
   const header = isImg ? "" :
     `<div class="result-check">${svgIcon("check")}</div>` +
