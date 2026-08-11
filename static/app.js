@@ -502,9 +502,11 @@ toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) clo
 // Apply tool selection to the upload zone
 function applyToolSelection(skipPresetReset) {
   // Full state reset on tool switch (not on preset-only change)
-  file.value = "";
-  fileLabel.textContent = t("dropEmpty");
-  if (!skipPresetReset) activePreset = null;
+  if (!skipPresetReset) {
+    file.value = "";
+    fileLabel.textContent = t("dropEmpty");
+    activePreset = null;
+  }
   result.classList.add("hidden");
   lastErrorKey = null;
   lastUploadResult = null;

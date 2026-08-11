@@ -129,7 +129,7 @@ shareImgBtn.addEventListener("click", async () => {
       return;
     }
   } catch(e) {
-    if(e.name === 'AbortError' || e.name === 'NotAllowedError') return;
+    if(e.name === 'AbortError') return;
     console.warn('share failed:', e.message);
   }
   window.location.href = {{ dl_url|tojson }};
