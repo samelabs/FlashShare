@@ -275,7 +275,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .fmt-badge.fmt-archive { background: #fdf0ff; border-color: #f0d0ff; } .fmt-badge.fmt-archive svg { stroke: #8b5cf6; }
 
 /* ── Modal ────────────────────────────────────────────────── */
-.modal { position: fixed; inset: 0; z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; padding: var(--s4); background: rgba(15,20,25,.4); backdrop-filter: blur(4px); }
+.modal { position: fixed; inset: 0; z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; padding: var(--s4); background: rgba(15,20,25,.4); backdrop-filter: blur(4px); overscroll-behavior: contain; }
 .modal.hidden { display: none; }
 .modal:not(.hidden) .modal-panel { animation: modalIn var(--ease); }
 @keyframes modalIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
