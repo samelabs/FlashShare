@@ -463,7 +463,7 @@ function openToolOverlay(tool, btn) {
       // Save to localStorage
       localStorage.setItem("flashshare_tool", tool.id);
       if (selectedPreset) localStorage.setItem("flashshare_tool_preset", selectedPreset);
-      applyToolSelection();
+      applyToolSelection(true);
       closeToolOverlay();
     });
   }
@@ -500,11 +500,11 @@ toolOverlayClose.addEventListener("click", closeToolOverlay);
 toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) closeToolOverlay(); });
 
 // Apply tool selection to the upload zone
-function applyToolSelection() {
-  // Full state reset on tool switch
+function applyToolSelection(skipPresetReset) {
+  // Full state reset on tool switch (not on preset-only change)
   file.value = "";
   fileLabel.textContent = t("dropEmpty");
-  activePreset = null;
+  if (!skipPresetReset) activePreset = null;
   result.classList.add("hidden");
   lastErrorKey = null;
   lastUploadResult = null;
@@ -527,8 +527,8 @@ function applyToolSelection() {
     return;
   }
 
-  // Auto-select default preset if tool has one
-  if (activeTool && homeToolsData) {
+  // Auto-select default preset if tool has one (skip if preset already set)
+  if (!skipPresetReset && activeTool && homeToolsData) {
     const toolData = homeToolsData.find(t => t.id === activeTool.id);
     if (toolData && toolData.presets) {
       const def = toolData.presets.find(p => p.default);
