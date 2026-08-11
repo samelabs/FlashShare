@@ -526,6 +526,15 @@ function applyToolSelection() {
     return;
   }
 
+  // Auto-select default preset if tool has one
+  if (activeTool && homeToolsData) {
+    const toolData = homeToolsData.find(t => t.id === activeTool.id);
+    if (toolData && toolData.presets) {
+      const def = toolData.presets.find(p => p.default);
+      if (def) activePreset = def.id;
+    }
+  }
+
   // Add preset badge on active tool tab
   if (activePreset) {
     const activeTab = document.querySelector('.tool-tab.active');
@@ -568,15 +577,6 @@ function applyToolSelection() {
 
   // Show description below tools
   updateToolDescription();
-
-  // Auto-select default preset if tool has one
-  if (activeTool && homeToolsData) {
-    const toolData = homeToolsData.find(t => t.id === activeTool.id);
-    if (toolData && toolData.presets) {
-      const def = toolData.presets.find(p => p.default);
-      if (def) activePreset = def.id;
-    }
-  }
 }
 
 function updateToolDescription() {
