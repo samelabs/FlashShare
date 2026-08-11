@@ -444,7 +444,12 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .tool-tab svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .tool-tab:hover { color: var(--ink); border-color: var(--accent); }
 .tool-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.tool-tab[data-tool-id="privacy"] { color: var(--green); border-color: #c6f7d0; }
+.tool-tab[data-tool-id="privacy"]:hover { border-color: var(--green); background: #f0fff4; }
 .tool-tab[data-tool-id="privacy"].active { color: var(--green); border-color: var(--green); background: #f0fff4; }
+.tool-tab[data-tool-id="privacy"] .tool-preset-badge { color: var(--green); }
+body[data-tool="privacy"] .tool-desc { color: var(--green); border-color: #c6f7d0; }
+body[data-tool="privacy"] .tool-overlay-preset.active { color: var(--green); border-color: var(--green); }
 .tool-tab.active svg { stroke-width: 2; }
 .tool-tab .tool-preset-badge { font-size: 11px; font-weight: 500; color: var(--accent); opacity: 0.8; }
 .tool-desc { font-size: var(--text-sm); color: var(--accent); line-height: 1.5; margin: 0 0 var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--accent-soft); border-radius: var(--r-sm); background: var(--soft); }

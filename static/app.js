@@ -508,6 +508,7 @@ function applyToolSelection() {
   result.classList.add("hidden");
   lastErrorKey = null;
   lastUploadResult = null;
+  document.body.dataset.tool = activeTool ? activeTool.id : "";
 
   const formatTags = document.querySelector(".drop-formats");
 
