@@ -96,7 +96,9 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 
     # ---- CP6.7: Resample roundtrip (break watermark grid alignment) ----
     scale = p["scale"]
-    img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    tw = max(1, int(w * scale))
+    th = max(1, int(h * scale))
+    img = img.resize((tw, th), Image.LANCZOS)
     img = img.resize((w, h), Image.LANCZOS)
 
     # ---- CP6.8: Clean output (metadata stripped, brand injected) ----
