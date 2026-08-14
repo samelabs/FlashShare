@@ -12,6 +12,22 @@ def token_hash(token: str) -> str:
     return hmac.new(SESSION_SECRET.encode(), token.encode(), hashlib.sha256).hexdigest()
 
 
+def sign_source_token(user_id: int, file_id: str) -> str:
+    """Sign an intermediate (gokapi-only) file to its uploading user.
+
+    Tool flow uploads the original to gokapi without a DB record; this token
+    proves ownership at /api/tools/execute time without persisting state.
+    """
+    msg = f"src:{user_id}:{file_id}".encode()
+    return hmac.new(SESSION_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def verify_source_token(token: str, user_id: int, file_id: str) -> bool:
+    if not token:
+        return False
+    return hmac.compare_digest(sign_source_token(user_id, file_id), token)
+
+
 def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
     ext = os.path.splitext(filename.lower())[1]
     if ext in BLOCKED_EXT:

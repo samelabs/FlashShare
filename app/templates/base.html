@@ -35,7 +35,7 @@
   {% endblock %}
 
   <script>
-    window.__USER__ = {{ user_json|safe }};
+    window.__USER__ = {{ user_json|tojson }};
     window.__ICONS__ = {{ icons_json|safe }};
     // ── Global i18n engine ──
     window.__SUPPORTED_LANGS=["en","zh","ja","ko","es","ar","de","ru","pt","fr"];

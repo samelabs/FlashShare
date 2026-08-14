@@ -111,7 +111,16 @@ def delete_upload(upload_id: int, user_id: int) -> bool:
         ).fetchone()
     if not row:
         return False
-    delete_gokapi_file(row["gokapi_id"])
+    # DB first, then storage: a storage failure after the DB delete leaves an
+    # orphaned gokapi file that expires on its own (invisible, no record).
+    # The reverse order could leave a live DB record pointing at a dead file.
     with db() as con:
         con.execute("DELETE FROM uploads WHERE id = ? AND user_id = ?", (upload_id, user_id))
+    try:
+        delete_gokapi_file(row["gokapi_id"])
+    except Exception:
+        # Non-fatal: gokapi expiry is the backstop.
+        import logging
+        logging.getLogger("flashshare").warning(
+            "gokapi delete failed for %s (will expire naturally)", row["gokapi_id"])
     return True

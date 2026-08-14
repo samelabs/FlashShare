@@ -29,13 +29,6 @@ def read(file_id: str):
     return status, headers, io.BytesIO(data)
 
 
-def read_bytes(file_id: str) -> bytes:
-    """Read a file fully into memory. Use for small files only."""
-    status, headers, stream = read(file_id)
-    data = stream.read() if hasattr(stream, "read") else b""
-    return data
-
-
 def write(stream, filename: str, content_type: str,
           expiry_days: int, allowed_downloads: int, file_size: int) -> dict:
     """Write a file to storage.

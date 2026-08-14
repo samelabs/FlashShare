@@ -10,8 +10,6 @@ BASE_URL = os.environ.get("FLASHSHARE_BASE_URL", "http://localhost:53843").rstri
 SOCIAL_IMAGE_PATH = "/static/images/og-image.png"
 SOCIAL_IMAGE_URL = f"{BASE_URL}{SOCIAL_IMAGE_PATH}"
 
-ADDR = os.environ.get("FLASHSHARE_ADDR", "127.0.0.1:53843")
-
 X_CLIENT_ID = os.environ.get("FLASHSHARE_X_CLIENT_ID", "")
 X_CLIENT_SECRET = os.environ.get("FLASHSHARE_X_CLIENT_SECRET", "")
 
@@ -23,6 +21,8 @@ if not SESSION_SECRET:
     raise RuntimeError("FLASHSHARE_SESSION_SECRET environment variable must be set")
 
 MAX_UPLOAD_BYTES = int(os.environ.get("FLASHSHARE_MAX_UPLOAD_MB", "50")) * 1024 * 1024
+# Total size cap for one multi-file batch (upload + tool stages).
+MAX_BATCH_BYTES = int(os.environ.get("FLASHSHARE_MAX_BATCH_MB", "100")) * 1024 * 1024
 DAILY_UPLOADS = int(os.environ.get("FLASHSHARE_DAILY_UPLOADS", "100"))
 DAILY_BYTES = int(os.environ.get("FLASHSHARE_DAILY_MB", "1024")) * 1024 * 1024
 

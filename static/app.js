@@ -211,6 +211,8 @@ form.addEventListener("submit", async (event) => {
   const startTime = Date.now();
   const xhr = new XMLHttpRequest();
   xhr.open("POST", "/api/uploads");
+  // Bound the request so a stalled upload cannot leave the UI spinning forever
+  xhr.timeout = 900000;
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) {
       const pct = Math.min(99, Math.round(e.loaded / e.total * 100));
@@ -255,9 +257,15 @@ form.addEventListener("submit", async (event) => {
       if (isMulti) {
         var fileList = data.files || [data.file];
         toolBody.public_ids = fileList.map(f => f.publicId);
+        toolBody.source_tokens = fileList.map(f => f.sourceToken || "");
       } else {
         toolBody.public_id = data.file.publicId;
+        toolBody.source_token = data.file.sourceToken || "";
       }
+      // Keep source reference for retry (originals survive until tool succeeds)
+      lastToolSource = isMulti
+        ? { publicIds: toolBody.public_ids, sourceTokens: toolBody.source_tokens }
+        : { publicId: toolBody.public_id, sourceToken: toolBody.source_token };
       const toolRes = await fetch("/api/tools/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -283,6 +291,11 @@ form.addEventListener("submit", async (event) => {
     }
   };
   xhr.onerror = () => {
+    showResult(escapeHtml(t("failed")), true);
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
+  };
+  xhr.ontimeout = () => {
     showResult(escapeHtml(t("failed")), true);
     submitBtn.disabled = false;
     submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
@@ -366,6 +379,7 @@ const ACCEPT_TAGS = {
 let activeTool = null;
 let activePreset = null;
 let lastUploadResult = null;
+let lastToolSource = null;
 let homeToolsData = [];
 
 function loadHomeTools() {
@@ -512,6 +526,7 @@ function applyToolSelection(skipPresetReset) {
   result.classList.add("hidden");
   lastErrorKey = null;
   lastUploadResult = null;
+  lastToolSource = null;
   document.body.dataset.tool = activeTool ? activeTool.id : "";
 
   const formatTags = document.querySelector(".drop-formats");
@@ -617,7 +632,7 @@ function showToolError(message, originalFile) {
 }
 
 async function retryTool() {
-  if (!activeTool || !lastUploadResult) return;
+  if (!activeTool || !lastToolSource) return;
   const toolName = t(activeTool.id);
   showToolProcessing(toolName);
   const expirySelect = form.querySelector("[name=\"expiryDays\"]");
@@ -628,7 +643,10 @@ async function retryTool() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tool_id: activeTool.id,
-        public_id: lastUploadResult.publicId,
+        public_id: lastToolSource.publicId || "",
+        public_ids: lastToolSource.publicIds || [],
+        source_token: lastToolSource.sourceToken || "",
+        source_tokens: lastToolSource.sourceTokens || [],
         params: {
           preset: activePreset,
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
@@ -638,6 +656,7 @@ async function retryTool() {
     });
     const toolData = await toolRes.json();
     if (!toolData.ok) { showToolError(toolData.error, lastUploadResult); return; }
+    lastToolSource = null;
     showShareResult(toolData.result);
     window._loadHistory && window._loadHistory();
   } catch (e) { showToolError(e.message, lastUploadResult); }

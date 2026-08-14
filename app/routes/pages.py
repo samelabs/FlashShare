@@ -36,6 +36,10 @@ with open(_STATIC / "style.css", encoding="utf-8") as f:
 _CSS_VERSION = hashlib.md5(_CSS.encode()).hexdigest()[:8]
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
+# Separate cache-bust version for i18n.js — it changes independently of style.css
+with open(_STATIC / "i18n.js", encoding="utf-8") as f:
+    _I18N_JS = f.read()
+_I18N_VERSION = hashlib.md5(_I18N_JS.encode()).hexdigest()[:8]
 
 
 def _ctx_base(request: Request) -> dict:
@@ -49,12 +53,15 @@ def _ctx_base(request: Request) -> dict:
         "direction": "rtl" if lang == "ar" else "ltr",
         "texts": server_text(lang),
         "user": public_user(user) if user else None,
-        "user_json": json.dumps(public_user(user) if user else None, ensure_ascii=False),
+        # dict (not pre-dumped JSON) so base.html can apply |tojson,
+        # which escapes < > & — required inside a <script> block.
+        "user_json": public_user(user) if user else None,
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
         "css_version": _CSS_VERSION,
+        "i18n_version": _I18N_VERSION,
         "year": datetime.datetime.now().year,
         # icon helpers
         "icon_svg": icon_svg,
@@ -101,7 +108,7 @@ async def sitemap():
 async def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": "Terms", "doc_body": _load_doc("terms.html")})
+    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"), "doc_body": _load_doc("terms.html")})
     return templates.TemplateResponse("doc.html", ctx)
 
 
@@ -109,7 +116,7 @@ async def terms(request: Request):
 async def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": "Privacy", "doc_body": _load_doc("privacy.html")})
+    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html")})
     return templates.TemplateResponse("doc.html", ctx)
 
 
@@ -143,7 +150,7 @@ async def home(request: Request):
         "daily_uploads": DAILY_UPLOADS,
         "daily_mb": DAILY_BYTES // 1024 // 1024,
         "tools": tools,
-        "limits_json": json.dumps({"maxMb": max_mb, "dailyUploads": DAILY_UPLOADS, "dailyMb": DAILY_BYTES // 1024 // 1024, "maxDays": 7, "maxDownloads": 50}),
+        "limits_json": json.dumps({"maxMb": max_mb, "dailyUploads": DAILY_UPLOADS, "dailyMb": DAILY_BYTES // 1024 // 1024, "maxDays": 7, "maxDownloads": 200}),
         "tools_json": json.dumps(tools, ensure_ascii=False),
         "JS": JS,
         "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),

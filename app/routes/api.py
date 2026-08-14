@@ -23,13 +23,13 @@ from concurrent.futures import ProcessPoolExecutor
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
 sys.path.insert(0, str(_CORE))
 
-from config import MAX_UPLOAD_BYTES, PUBLIC_ID_RE
+from config import MAX_UPLOAD_BYTES, MAX_BATCH_BYTES, PUBLIC_ID_RE
 from database import db
 from uploads import check_quota, get_upload_by_public_id, list_uploads, delete_upload
 from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
-from security import sniff_allowed
+from security import sniff_allowed, sign_source_token, verify_source_token
 from storage import read as storage_read, write as storage_write
-from tools import get_tool, get_default_preset, list_all_tools, get_tools_for_upload, ToolError
+from tools import get_tool, get_default_preset, ToolError
 from auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
 from app.models import ToolExecuteRequest, RenameRequest
@@ -47,7 +47,10 @@ def _get_pool():
 
 
 def _client_ip(request: Request) -> str:
-    return request.headers.get("X-Forwarded-For", request.client.host if request.client else "").split(",")[0].strip()
+    # Nginx sets X-Real-IP from $remote_addr (overwritten, not appended),
+    # so it cannot be spoofed by the client. X-Forwarded-For is append-mode
+    # and its first segment is client-controlled — never trust it.
+    return request.headers.get("X-Real-IP", request.client.host if request.client else "").strip()
 
 
 def _require_auth(request: Request):
@@ -105,47 +108,36 @@ def _validate_lifecycle(params):
 
 
 # ── Tools ──
-
-@router.get("/tools")
-async def get_tools():
-    """List all registered tools."""
-    return {"ok": True, "tools": list_all_tools()}
+# (GET /api/tools and /api/tools/{public_id} were removed — the frontend uses
+#  server-rendered tools_json on the home page; the only consumer is the
+#  execute endpoint below.)
 
 
-@router.get("/tools/{public_id}")
-async def get_tools_for_file(public_id: str, request: Request):
-    """List tools applicable to a specific file (owner only)."""
-    user, err = _require_auth(request)
-    if err:
-        return err
-    if not PUBLIC_ID_RE.match(public_id):
-        return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
-    upload = get_upload_by_public_id(public_id)
-    if not upload:
-        return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    if upload["user_id"] != user["id"]:
-        return JSONResponse({"ok": False, "error": "forbidden"}, 403)
-    upload_dict = dict(upload)
-    tools = get_tools_for_upload(upload_dict)
-    return {"ok": True, "tools": tools}
+async def _resolve_upload(public_id: str, user: dict, token: str = ""):
+    """Resolve a public_id to an upload dict (DB or gokapi fallback).
+
+    Ownership: a DB record must belong to the requesting user. A gokapi-only
+    intermediate (tool flow, no DB record) requires a valid source token
+    signed for (user_id, file_id) at upload time.
+    Runs in a thread: the gokapi fallback is a blocking HTTP call.
+    """
+    return await asyncio.to_thread(_resolve_upload_sync, public_id, user, token)
 
 
-async def _resolve_upload(public_id: str):
-    """Resolve a public_id to an upload dict (DB or gokapi fallback)."""
-    return await asyncio.to_thread(_resolve_upload_sync, public_id)
-
-
-def _resolve_upload_sync(public_id: str):
-    """Resolve a public_id to an upload dict (DB or gokapi fallback)."""
+def _resolve_upload_sync(public_id: str, user: dict, token: str):
     upload = get_upload_by_public_id(public_id)
     if upload:
-        return upload
+        if upload["user_id"] != user["id"]:
+            return None, "forbidden"
+        return upload, None
     # Tool flow: original in gokapi but not in DB
     if not public_id.isalnum() or len(public_id) < 8 or len(public_id) > 20:
-        return None
+        return None, "not_found"
+    if not verify_source_token(token, user["id"], public_id):
+        return None, "forbidden"
     gokapi_info = get_gokapi_file(public_id)
     if not gokapi_info:
-        return None
+        return None, "not_found"
     return {
         "public_id": public_id,
         "gokapi_id": public_id,
@@ -154,7 +146,7 @@ def _resolve_upload_sync(public_id: str):
         "size_bytes": int(gokapi_info.get("SizeBytes", 0)),
         "url_hotlink": gokapi_info.get("UrlHotlink", ""),
         "url_download": gokapi_info.get("UrlDownload", ""),
-    }
+    }, None
 
 
 @router.post("/tools/execute")
@@ -190,13 +182,17 @@ async def execute_tool(request: Request):
     try:
         if tool.get("multi") and req.public_ids:
             # Multi-file tool (e.g. pdf_merge)
+            if len(req.public_ids) > 20:
+                return JSONResponse({"ok": False, "error": "err_too_many_files"}, 400)
             uploads = []
-            for pid in req.public_ids:
+            for i, pid in enumerate(req.public_ids):
                 if not PUBLIC_ID_RE.match(pid):
                     return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
-                upload = await _resolve_upload(pid)
-                if not upload:
-                    return JSONResponse({"ok": False, "error": "not_found"}, 404)
+                token = req.source_tokens[i] if i < len(req.source_tokens) else ""
+                upload, err = await _resolve_upload(pid, user, token)
+                if err or not upload:
+                    return JSONResponse({"ok": False, "error": err or "not_found"},
+                                        403 if err == "forbidden" else 404)
                 uploads.append(upload)
             result = await _execute_multi_and_share(request, tool, uploads, params, user)
         else:
@@ -206,9 +202,10 @@ async def execute_tool(request: Request):
                 return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
             if not PUBLIC_ID_RE.match(public_id):
                 return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
-            upload = await _resolve_upload(public_id)
-            if not upload:
-                return JSONResponse({"ok": False, "error": "not_found"}, 404)
+            upload, err = await _resolve_upload(public_id, user, req.source_token)
+            if err or not upload:
+                return JSONResponse({"ok": False, "error": err or "not_found"},
+                                    403 if err == "forbidden" else 404)
             result = await _execute_and_share(request, tool, upload, params, user)
         return {"ok": True, "type": tool["type"], "result": result}
     except ToolError as exc:
@@ -382,6 +379,15 @@ async def create_upload(request: Request):
     # Pre-check: read all files, validate size, check total quota upfront
     pending = []
     total_incoming = 0
+    if len(uploads) > 20:
+        return JSONResponse({"ok": False, "error": "err_too_many_files"}, 400)
+    # Early size gate from Content-Length (multipart overhead slack included)
+    try:
+        declared = int(request.headers.get("content-length", "0"))
+    except ValueError:
+        declared = 0
+    if declared > MAX_BATCH_BYTES + 1024 * 1024:
+        return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
     for file in uploads:
         if not file.filename:
             continue
@@ -396,6 +402,8 @@ async def create_upload(request: Request):
         if not valid:
             return JSONResponse({"ok": False, "error": final_type}, 400)
         total_incoming += size
+        if total_incoming > MAX_BATCH_BYTES:
+            return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
         pending.append((content, size, filename, final_type))
 
     if not pending:
@@ -423,6 +431,8 @@ async def create_upload(request: Request):
             "hotlinkUrl": info.get("UrlHotlink", ""),
             "publicId": info.get("Id", ""),
             "gokapiId": info.get("Id", ""),
+            # Ownership proof for tool execution on this gokapi-only intermediate
+            "sourceToken": sign_source_token(user["id"], info.get("Id", "")),
             "expireAt": info.get("ExpireAt"),
             "expiryDays": expiry_days,
             "allowedDownloads": allowed_downloads,
@@ -470,8 +480,9 @@ async def delete_upload_route(public_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "forbidden"}, 403)
     try:
         delete_upload(upload["id"], user["id"])
-    except Exception as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, 400)
+    except Exception:
+        logger.exception("delete failed for %s", public_id)
+        return JSONResponse({"ok": False, "error": "delete_failed"}, 500)
     return {"ok": True}
 
 

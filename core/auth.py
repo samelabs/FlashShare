@@ -56,11 +56,6 @@ def username_taken(username: str) -> bool:
         return con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone() is not None
 
 
-def email_taken(email: str) -> bool:
-    with db() as con:
-        return con.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone() is not None
-
-
 def register_user(username: str, email: str, password: str) -> int:
     """Create a new local account. Caller must validate inputs first."""
     ts = now()
@@ -209,16 +204,18 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             return bind_user_id
 
         # New user via X login — create account with X identity
-        username = x_username
+        # X guarantees username ≤15 chars and numeric ids, but external API
+        # data is not trusted: clamp to the 32-char column/validation limit.
+        username = (x_username or "")[:32]
         if not username or len(username) < 5:
-            username = f"x_{x_id}"
+            username = f"x_{x_id}"[:32]
         # Ensure username uniqueness
         base_name = username
         suffix = 1
         while con.execute(
             "SELECT 1 FROM users WHERE username = ?", (username,)
         ).fetchone():
-            username = f"{base_name}_{suffix}"
+            username = f"{base_name}_{suffix}"[:32]
             suffix += 1
 
         cur = con.execute(

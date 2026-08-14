@@ -81,19 +81,6 @@ def get_user_from_request(request: Request):
         return None
 
 
-def create_session(user_id: int) -> str:
-    """Create session token, store hash in DB, return raw token for cookie."""
-    import secrets
-    from database import db
-    from utils import b64url
-    token = b64url(secrets.token_bytes(32))
-    with db() as con:
-        con.execute(
-            "INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(?,?,?,?)",
-            (token_hash(token), user_id, now() + SESSION_TTL, now()),
-        )
-    return token
-
 def detect_lang(request: Request) -> str:
     """Detect preferred language: query > cookie > Accept-Language."""
     # Query param
@@ -115,10 +102,11 @@ def detect_lang(request: Request) -> str:
 
 import asyncio
 
-# Concurrency limiter — only for heavy operations (uploads, tool execution).
+# Concurrency limiter — for CPU/IO-heavy operations (uploads, tool execution,
+# auth endpoints running bcrypt ~250ms/attempt: login + register).
 # Page views and other lightweight requests are never throttled.
 _concurrency = asyncio.Semaphore(8)
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/")
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/auth/login", "/auth/register")
 
 
 @app.middleware("http")

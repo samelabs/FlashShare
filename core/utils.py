@@ -1,5 +1,4 @@
 import base64
-import json
 import os
 import secrets
 import time
@@ -14,19 +13,6 @@ def now() -> int:
 
 def b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def json_bytes(data, status=200):
-    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    return status, {"Content-Type": "application/json; charset=utf-8"}, body
-
-
-def text_response(text: str, status=200, content_type="text/html; charset=utf-8"):
-    return status, {"Content-Type": content_type}, text.encode("utf-8")
-
-
-def binary_response(body: bytes, content_type: str, status=200):
-    return status, {"Content-Type": content_type, "Cache-Control": "public, max-age=86400"}, body
 
 
 def sanitize_filename(name: str) -> str:
@@ -54,14 +40,6 @@ def public_file_url(public_id: str) -> str:
     return f"{BASE_URL}/f/{urllib.parse.quote(public_id)}"
 
 
-def parse_choice(value: str, allowed: set, default: int) -> int:
-    try:
-        parsed = int(value)
-    except ValueError:
-        return default
-    return parsed if parsed in allowed else default
-
-
 def html_escape(value: str) -> str:
     return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
 
@@ -82,23 +60,6 @@ def format_ts(ts) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.gmtime(int(ts)))
 
 
-def format_share_date(ts) -> str:
-    if not ts:
-        return "-"
-    value = time.gmtime(int(ts))
-    return f"{value.tm_mday}/{value.tm_mon}/{value.tm_year}"
-
-
-def compact_filename(name: str, limit: int = 10) -> str:
-    clean = os.path.basename(name or "file").strip() or "file"
-    if len(clean) <= limit:
-        return clean
-    stem, ext = os.path.splitext(clean)
-    if ext and len(ext) < limit:
-        return f"{stem[:max(1, limit - len(ext))]}{ext}"
-    return clean[:limit]
-
-
 def file_ext_label(name: str) -> str:
     ext = os.path.splitext(name or "")[1].strip(".").upper()
     return ext[:4] or "FILE"
@@ -111,20 +72,8 @@ def file_ext_label(name: str) -> str:
 from icons import icon_svg as _icon_svg_wrapper
 
 
-def qr_icon_svg() -> str:
-    return _icon_svg_wrapper("qr")
-
-
-def download_icon_svg() -> str:
-    return _icon_svg_wrapper("download")
-
-
 def upload_icon_svg() -> str:
     return _icon_svg_wrapper("upload")
-
-
-def refresh_icon_svg() -> str:
-    return _icon_svg_wrapper("refresh")
 
 
 def close_icon_svg() -> str:
@@ -157,14 +106,6 @@ def download_count_icon_svg() -> str:
 
 def history_icon_svg() -> str:
     return _icon_svg_wrapper("history")
-
-
-def link_icon_svg() -> str:
-    return _icon_svg_wrapper("link")
-
-
-def check_icon_svg() -> str:
-    return _icon_svg_wrapper("check")
 
 
 # ── Format category icons ──

@@ -5,8 +5,11 @@ GET routes render pages via Jinja2 templates, POST routes handle forms.
 """
 
 import sys
+import asyncio
 import hashlib
+import logging
 import secrets
+import sqlite3
 import urllib.parse
 from pathlib import Path
 
@@ -29,12 +32,38 @@ from auth import (
     exchange_x_token, fetch_x_user, upsert_x_user,
     update_profile, change_password, unbind_x,
     validate_username, validate_email, validate_password,
-    has_password,
+    has_password, username_taken,
 )
 from i18n import server_text
 from utils import now, b64url
 
 router = APIRouter()
+logger = logging.getLogger("flashshare")
+
+# ── Login failure throttle (in-process) ──
+# 10 failures per (ip, login) in 15 minutes → further attempts rejected
+# with the generic wrong-credentials message. In-process is sufficient:
+# single uvicorn worker; restart resets the window, which is acceptable.
+_LOGIN_FAIL_LIMIT = 10
+_LOGIN_FAIL_WINDOW = 15 * 60
+_login_failures: dict[tuple, list[int]] = {}
+
+
+def _login_throttled(key: tuple) -> bool:
+    ts = now()
+    hits = [t for t in _login_failures.get(key, []) if ts - t < _LOGIN_FAIL_WINDOW]
+    _login_failures[key] = hits
+    return len(hits) >= _LOGIN_FAIL_LIMIT
+
+
+def _record_login_failure(key: tuple) -> None:
+    _login_failures.setdefault(key, []).append(now())
+    if len(_login_failures) > 10000:  # opportunistic cleanup
+        cutoff = now() - _LOGIN_FAIL_WINDOW
+        for k in list(_login_failures):
+            _login_failures[k] = [t for t in _login_failures[k] if t >= cutoff]
+            if not _login_failures[k]:
+                del _login_failures[k]
 
 
 def _lang(request: Request) -> str:
@@ -163,12 +192,22 @@ async def login_submit(request: Request):
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_fill_login", "Please fill in all fields")})
         return templates.TemplateResponse("auth/login.html", ctx)
 
-    user_id = authenticate_local(login, password)
-    if not user_id:
+    ip = request.headers.get("X-Real-IP", request.client.host if request.client else "")
+    throttle_key = (ip, login.lower())
+    if _login_throttled(throttle_key):
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
         return templates.TemplateResponse("auth/login.html", ctx)
 
+    # bcrypt verification is CPU-heavy (~250ms) — keep it off the event loop
+    user_id = await asyncio.to_thread(authenticate_local, login, password)
+    if not user_id:
+        _record_login_failure(throttle_key)
+        ctx = _ctx_base(request)
+        ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
+        return templates.TemplateResponse("auth/login.html", ctx)
+
+    _login_failures.pop(throttle_key, None)
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
 
@@ -200,9 +239,16 @@ async def register_submit(request: Request):
         return _err(texts.get("passwordMismatch", "Passwords do not match"))
 
     try:
-        user_id = register_user(username, email, password)
-    except Exception as exc:
-        return _err(str(exc))
+        # bcrypt hashing is CPU-heavy — keep it off the event loop
+        user_id = await asyncio.to_thread(register_user, username, email, password)
+    except sqlite3.IntegrityError:
+        # Lost the race between validation and INSERT — map back to i18n keys
+        if username_taken(username):
+            return _err(texts.get("err_username_taken", "err_username_taken"))
+        return _err(texts.get("err_email_taken", "err_email_taken"))
+    except Exception:
+        logger.exception("register failed for username=%s", username)
+        return _err(texts.get("err_invalid_request", "err_invalid_request"))
 
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)

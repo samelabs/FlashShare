@@ -68,23 +68,10 @@ _OTHER_TABLES_SQL = """
     );
     CREATE INDEX IF NOT EXISTS uploads_user_created_idx ON uploads(user_id, created_at);
     CREATE INDEX IF NOT EXISTS uploads_ip_created_idx ON uploads(ip, created_at);
-    CREATE TABLE IF NOT EXISTS posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      public_id TEXT NOT NULL UNIQUE,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      parent_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
-      upload_id INTEGER REFERENCES uploads(id) ON DELETE SET NULL,
-      body TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'published',
-      reply_count INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS posts_user_created_idx ON posts(user_id, created_at);
-    CREATE INDEX IF NOT EXISTS posts_parent_created_idx ON posts(parent_id, created_at);
-    CREATE INDEX IF NOT EXISTS posts_status_created_idx ON posts(status, created_at);
 """
+
+# posts table (legacy, zero references since the tools refactor) is dropped at
+# init: its DDL was here and its indexes lived inside _OTHER_TABLES_SQL.
 
 
 def init_db() -> None:
@@ -173,3 +160,6 @@ def init_db() -> None:
         # Cleanup expired
         con.execute("DELETE FROM oauth_states WHERE expires_at < ?", (now(),))
         con.execute("DELETE FROM sessions WHERE expires_at < ?", (now(),))
+
+        # Drop legacy posts table (zero references since tools refactor)
+        con.execute("DROP TABLE IF EXISTS posts")
