@@ -2,23 +2,14 @@ import base64
 import hashlib
 import hmac
 import os
-import urllib.parse
 
 import bcrypt
 
-from config import ALLOWED_EXT, BLOCKED_EXT, BASE_URL, SESSION_SECRET
+from config import ALLOWED_EXT, BLOCKED_EXT, SESSION_SECRET
 
 
 def token_hash(token: str) -> str:
     return hmac.new(SESSION_SECRET.encode(), token.encode(), hashlib.sha256).hexdigest()
-
-
-def same_origin(origin: str) -> bool:
-    if not origin:
-        return True
-    expected = urllib.parse.urlparse(BASE_URL)
-    received = urllib.parse.urlparse(origin)
-    return received.scheme == expected.scheme and received.netloc == expected.netloc
 
 
 def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
@@ -26,7 +17,7 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
     if ext in BLOCKED_EXT:
         return False, "err_file_type_blocked"
     if ext not in ALLOWED_EXT:
-        return False, "err_format_unsupported"
+        return False, "err_format_not_supported"
 
     if ext in {".jpg", ".jpeg"} and not sample.startswith(b"\xff\xd8"):
         return False, "err_content_mismatch_image"

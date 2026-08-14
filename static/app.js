@@ -187,7 +187,9 @@ dropZone.addEventListener("click", (e) => {
 dropZone.addEventListener("drop", event => {
   if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (event.dataTransfer.files.length) {
-    file.files = event.dataTransfer.files;
+    const dt = new DataTransfer();
+    for (const f of event.dataTransfer.files) dt.items.add(f);
+    file.files = dt.files;
     file.dispatchEvent(new Event("change"));
   }
 });

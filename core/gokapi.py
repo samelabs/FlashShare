@@ -59,6 +59,8 @@ def upload_to_gokapi(file_obj, filename: str, content_type: str, expiry_days: in
 
     # Stream: headers → file chunks → footer
     sock = conn.sock
+    if sock is None:
+        raise RuntimeError("gokapi connection not established")
     sock.sendall(bytes(header_parts))
     file_obj.seek(0)
     while True:

@@ -115,20 +115,21 @@ def detect_lang(request: Request) -> str:
 
 import asyncio
 
-# Concurrency limiter — max 8 simultaneous request handlers.
-# Excess requests queue in Uvicorn's event loop without blocking.
+# Concurrency limiter — only for heavy operations (uploads, tool execution).
+# Page views and other lightweight requests are never throttled.
 _concurrency = asyncio.Semaphore(8)
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/")
 
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     request.state.user = get_user_from_request(request)
     request.state.lang = detect_lang(request)
-    # Lightweight requests bypass concurrency limit
     path = request.url.path
-    if path == "/healthz" or path.startswith("/static/") or path == "/sw.js" or path == "/site.webmanifest":
-        return await call_next(request)
-    async with _concurrency:
+    if any(path.startswith(p) for p in _HEAVY_PATHS):
+        async with _concurrency:
+            response = await call_next(request)
+    else:
         response = await call_next(request)
     return response
 

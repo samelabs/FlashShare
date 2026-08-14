@@ -304,7 +304,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .file-page { width: min(560px,100%); margin: auto; padding: var(--s4) var(--s2); text-align: center; }
 .file-card { border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s5); background: var(--bg); box-shadow: var(--sh-sm); }
 .file-preview { margin: var(--s4) 0; border-radius: var(--r); overflow: hidden; max-height: 480px; display: flex; justify-content: center; background: var(--soft); }
-.file-preview img { max-width: 100%; max-height: 480px; object-fit: contain; border-radius: var(--r); }
+.file-preview img { max-width: 100%; max-height: 480px; object-fit: contain; border-radius: var(--r); -webkit-user-select: none; user-select: none; -webkit-touch-callout: default; }
 .file-card-head { display: flex; align-items: center; gap: var(--s3); text-align: left; margin-bottom: 0; }
 .file-card-info { flex: 1; min-width: 0; }
 .file-mark { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 48px; height: 48px; border-radius: var(--r); border: 1px solid var(--line); background: var(--soft); flex: 0 0 auto; overflow: hidden; }
@@ -471,7 +471,7 @@ body[data-tool="privacy"] .tool-overlay-preset.active { color: var(--green); bor
 .result-card-title { font-size: var(--text-lg); font-weight: 800; text-align: center; }
 .result-meta { font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
 .result-preview { margin: 0; max-height: 320px; overflow: hidden; border-radius: var(--r); display: flex; justify-content: center; background: var(--soft); }
-.result-preview img { max-width: 100%; max-height: 320px; object-fit: contain; border-radius: var(--r); }
+.result-preview img { max-width: 100%; max-height: 320px; object-fit: contain; border-radius: var(--r); -webkit-user-select: none; user-select: none; -webkit-touch-callout: default; }
 .result-buttons { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; width: 100%; }
 .action-sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px var(--s1); flex-shrink: 0; }
 .result-note { margin: var(--s2) 0 0; color: var(--muted); font-size: var(--text-sm); line-height: 1.35; text-align: center; }

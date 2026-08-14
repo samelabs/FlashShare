@@ -85,14 +85,14 @@ async def offline_page(request: Request):
 
 @router.get("/robots.txt")
 async def robots():
-    body = "User-agent: *\nDisallow: /api/\nDisallow: /auth/\nDisallow: /f/\nDisallow: /d/\nDisallow: /dh/\nAllow: /\nSitemap: https://518.plus/sitemap.xml\n"
+    body = f"User-agent: *\nDisallow: /api/\nDisallow: /auth/\nDisallow: /f/\nDisallow: /d/\nDisallow: /dh/\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n"
     return Response(content=body, media_type="text/plain")
 
 @router.get("/sitemap.xml")
 async def sitemap():
     body = '<?xml version="1.0" encoding="UTF-8"?>\n'
     body += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    body += '<url><loc>https://518.plus/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n'
+    body += f'<url><loc>{BASE_URL}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n'
     body += '</urlset>'
     return Response(content=body, media_type="application/xml")
 

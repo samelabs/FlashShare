@@ -9,7 +9,7 @@ from typing import Dict, Any
 
 class ToolExecuteRequest(BaseModel):
     tool_id: str = Field(..., min_length=1, max_length=64)
-    public_id: str = Field(default="", max_length=32)
+    public_id: str = Field(default="", max_length=48)
     public_ids: list = Field(default_factory=list)
     params: Dict[str, Any] = Field(default_factory=dict)
 

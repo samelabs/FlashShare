@@ -49,7 +49,7 @@ def ico_handler(tool_input, params):
         img = Image.open(stream)
         img.load()
     except Exception:
-        raise ToolError("err_format_unsupported")
+        raise ToolError("err_format_not_supported")
 
     # Convert to RGBA for proper alpha channel in ICO
     if img.mode != "RGBA":
