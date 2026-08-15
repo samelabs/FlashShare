@@ -63,12 +63,18 @@ def img2pdf_handler(tool_input, params):
             # EXIF orientation → upright page (compress-tool convention)
             img = ImageOps.exif_transpose(img)
 
+            # Flatten alpha onto white (transparent logos must not land on
+            # black when the PDF encoder drops the alpha channel).
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                rgba = img.convert("RGBA")
+                base = Image.new("RGB", rgba.size, (255, 255, 255))
+                base.paste(rgba, mask=rgba.getchannel("A"))
+                img.close()
+                img = base
             # PDF encoder handles RGB/L/P natively; anything else (CMYK,
-            # 16-bit, LA…) normalizes to RGB to stay in known-good territory.
+            # 16-bit…) normalizes to RGB to stay in known-good territory.
             if img.mode not in ("RGB", "L", "P"):
                 img = img.convert("RGB")
-            if img.mode == "P":
-                img = img.convert("RGB") if "transparency" in img.info else img
 
             pages.append(img)
 
@@ -111,7 +117,7 @@ register(
         "fr": "Images en PDF",
     },
     icon="convert",
-    match=lambda upload: (upload.get("content_type") or "").startswith("image/"),
+    match=lambda upload: (upload.get("content_type") or "") in ACCEPTED,
     accept=ACCEPTED,
     handler=img2pdf_handler,
     multi=True,
