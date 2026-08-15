@@ -173,21 +173,30 @@ function ensureZipPreviewBtn() {
   });
   return zipPreviewBtnEl;
 }
+function isZipSelection() {
+  const f = file.files && file.files[0];
+  if (!f) return false;
+  return /\.zip$/i.test(f.name) || f.type === "application/zip" || f.type === "application/x-zip-compressed";
+}
 function updateZipPreviewBtn() {
   const btn = ensureZipPreviewBtn();
   if (!btn) return;
-  const f = file.files && file.files[0];
-  const isZip = !!f && window.zipPreview && window.zipPreview.isZipName(f.name, f.type);
+  if (isZipSelection() && !window.zipPreview) { ensureZipPreview(); return; }
+  const isZip = isZipSelection() && !!window.zipPreview;
   btn.classList.toggle("hidden", !isZip);
   if (isZip) btn.innerHTML = svgIcon("eye") + '<span data-i18n="zip_preview_btn">' + t("zip_preview_btn") + "</span>";
 }
-// lazy-load shared module on first need
-(function loadZipPreview() {
+// True lazy-load: module injected only when a zip is actually selected/uploaded.
+let zipPreviewLoading = false;
+function ensureZipPreview(cb) {
+  if (window.zipPreview) { if (cb) cb(); return; }
+  if (zipPreviewLoading) return;
+  zipPreviewLoading = true;
   const s = document.createElement("script");
   s.src = "/static/zip-preview.js";
-  s.onload = () => updateZipPreviewBtn();
+  s.onload = () => { updateZipPreviewBtn(); if (cb) cb(); };
   document.head.appendChild(s);
-})();
+}
 
 file.addEventListener("change", () => {
   if (!window.__USER__) { location.href = "/auth/login"; return; }
@@ -775,7 +784,9 @@ function showShareResult(file) {
 
   const isImg = file.contentType && file.contentType.startsWith("image/");
   const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(dlUrl)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
-  const isZip = !!(window.zipPreview && file.publicId && window.zipPreview.isZipName(file.filename || file.name || "", file.contentType || ""));
+  const zipCt = file.contentType || "";
+  const zipName = file.filename || file.name || "";
+  const isZip = !!file.publicId && (/\.zip$/i.test(zipName) || zipCt === "application/zip" || zipCt === "application/x-zip-compressed");
   if (isZip) {
     actions = `<button class="action-btn" id="${zipBtnId}" type="button" aria-label="${t("zip_preview_btn")}">${svgIcon("eye")}<span data-i18n="zip_preview_btn">${t("zip_preview_btn")}</span></button>` + actions;
   }
@@ -804,7 +815,7 @@ function showShareResult(file) {
   const qrBtn = document.getElementById(qrId);
   if (qrBtn) qrBtn.addEventListener("click", () => showQrModal(url + "/qr.svg"));
   const zipBtn = document.getElementById(zipBtnId);
-  if (zipBtn && window.zipPreview) window.zipPreview.wireRemotePreview(zipBtn, file.publicId);
+  if (zipBtn) ensureZipPreview(() => window.zipPreview && window.zipPreview.wireRemotePreview(zipBtn, file.publicId));
   // PWA standalone: download button uses navigator.share instead of <a download>
   if (pwa) {
     const dlBtn = document.querySelector('.result-card .action-btn.primary');
