@@ -38,6 +38,7 @@ def process_tool(tool_id: str, source_bytes: bytes, filename: str,
     import tools_compress  # noqa: F401
     import tools_ico       # noqa: F401
     import tools_pdf       # noqa: F401
+    import tools_zip        # noqa: F401
 
     tool = get_tool(tool_id)
     if not tool:

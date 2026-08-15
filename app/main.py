@@ -36,6 +36,7 @@ import tools_beautify  # noqa: F401 — registers beautify tool
 import tools_compress  # noqa: F401 — registers compress tool
 import tools_ico       # noqa: F401 — registers ico favicon tool
 import tools_pdf       # noqa: F401 — registers pdf merge tool
+import tools_zip        # noqa: F401 — registers zip pack tool
 
 # ── Logging ──
 import os as _os

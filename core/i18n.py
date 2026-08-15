@@ -15,6 +15,8 @@ LOCALE_TAGS = {
 
 SERVER_I18N = {
     "fr": {
+        "zip_pack": "Créer ZIP",
+        "zip_pack_desc": "Regroupez plusieurs fichiers dans une archive ZIP.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "Trop de fichiers sélectionnés",
         "err_pdf_too_large": "Le PDF dépasse la limite maximale de pages",
@@ -182,6 +184,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 fois",
     },
     "ko": {
+        "zip_pack": "ZIP 압축",
+        "zip_pack_desc": "여러 파일을 하나의 ZIP 아카이브로 묶습니다.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "선택한 파일 수가 너무 많습니다",
         "err_pdf_too_large": "PDF 페이지 수 제한을 초과했습니다",
@@ -349,6 +353,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200회",
     },
     "ru": {
+        "zip_pack": "Создать ZIP",
+        "zip_pack_desc": "Объедините несколько файлов в один ZIP-архив.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "Выбрано слишком много файлов",
         "err_pdf_too_large": "PDF превышает максимальный предел страниц",
@@ -516,6 +522,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 раз",
     },
     "ar": {
+        "zip_pack": "إنشاء ZIP",
+        "zip_pack_desc": "اجمع عدة ملفات في أرشيف ZIP واحد.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "تم اختيار عدد كبير جداً من الملفات",
         "err_pdf_too_large": "تجاوز ملف PDF الحد الأقصى للصفحات",
@@ -683,6 +691,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 مرة",
     },
     "de": {
+        "zip_pack": "ZIP erstellen",
+        "zip_pack_desc": "Mehrere Dateien zu einem ZIP-Archiv zusammenfassen.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "Zu viele Dateien ausgewählt",
         "err_pdf_too_large": "PDF überschtet das maximale Seitenlimit",
@@ -850,6 +860,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200-mal",
     },
     "pt": {
+        "zip_pack": "Compactar ZIP",
+        "zip_pack_desc": "Agrupe vários arquivos em um arquivo ZIP.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "Muitos arquivos selecionados",
         "err_pdf_too_large": "PDF excede o limite máximo de páginas",
@@ -1017,6 +1029,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 vezes",
     },
     "ja": {
+        "zip_pack": "ZIP圧縮",
+        "zip_pack_desc": "複数のファイルを1つのZIPアーカイブにまとめます。",
         "seo_title": "518.PLUS",
         "err_too_many_files": "選択したファイル数が多すぎます",
         "err_pdf_too_large": "PDFのページ数制限を超えています",
@@ -1184,6 +1198,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200回",
     },
     "zh": {
+        "zip_pack": "ZIP打包",
+        "zip_pack_desc": "将多个文件打包为一个ZIP压缩包。",
         "seo_title": "518.PLUS",
         "err_too_many_files": "选择的文件数量超限",
         "err_pdf_too_large": "PDF超过最大页数限制",
@@ -1351,6 +1367,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 次",
     },
     "es": {
+        "zip_pack": "Comprimir ZIP",
+        "zip_pack_desc": "Agrupa varios archivos en un archivo ZIP.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "Demasiados archivos seleccionados",
         "err_pdf_too_large": "El PDF excede el límite máximo de páginas",
@@ -1518,6 +1536,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 veces",
     },
     "en": {
+        "zip_pack": "Zip Files",
+        "zip_pack_desc": "Pack multiple files into one ZIP archive.",
         "seo_title": "518.PLUS",
         "err_too_many_files": "Too many files selected",
         "err_pdf_too_large": "PDF exceeds maximum page limit",
