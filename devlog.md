@@ -1,0 +1,24 @@
+# devlog — 改动摘要
+
+> 每次改动一条记录，新条目加在最上面。历史细节查 git log，此处不重复。
+
+格式：`- 日期 | commit | 摘要`
+
+---
+
+- 2026-08-14 | (本次) | 文档清理：删 7 份过时文档（AUDIT-REPORT、DESIGN-rebuild/-architecture-upgrade/-production/-zip/-tools、ROADMAP），DESIGN-architecture/tool-flow 修正死路由 drop-api→/api/*，新建本 devlog
+- 2026-08-14 | 1fe41db | Pillow 工具链审查修复：spotlight 暗角回归（radial_gradient+colorize 精确径向）、aurora mesh 1/2→1/4 scale（979→292ms 视觉等价）、mint 对角渐变改 AFFINE 消角落楔块、dots 4x 超采样抗锯齿、PNG optimize 关闭（省 500ms/张）、privacy 1px 崩溃守卫。E2E 15/15
+- 2026-08-14 | ffd0754 | 安全审计修复周期 100%：C-1 HMAC 源令牌+属主校验、C-2 XSS（|e/|tojson）、H-1..H-5（X-Real-IP/批量上限/登录节流/上限/i18n 映射）、M-1..M-7 死代码与规范化。回归 9/9 + E2E
+- 2026-08-11 | a3dc177 | 审计收口：NotAllowedError 残留 + preset 切换清空文件
+- 2026-08-10 | 8fc9b17 | 美化工具性能重构（后经 1fe41db 修正引入的质量回归）
+- 2026-08-09 | e21bf08 | 工具链路稳定性：孤儿文件清理 + 内存安全；多文件额度绕过修复（b5fbbac）
+- 2026-08-08 | 6ec907d | i18n 统一架构：1 数据源 + 1 引擎 + 1 遍历；历史记录逻辑归 footer.html
+- 2026-08-07 | 9477682 | PDF 合并工具 + 多文件输入支持；e047148 PWA 原生体感基础设施
+- 2026-08-07 | 552c4b6 | 截图美化预设重做：10 模式独立背景技术
+- 2026-08-06 | b3b1055 | 日志系统：RotatingFileHandler 写文件 + journal
+- 2026-08-06 | b0a88e6 | 品牌统一 518.PLUS + SEO/Meta 定稿；043f9c9 API 去掉 v1 前缀
+- 2026-08-05 | 2ebe994 | FlashShare FastAPI 全栈初版（自 ThreadingHTTPServer 架构重建）
+
+---
+
+*更早历史：`git log --oneline`*

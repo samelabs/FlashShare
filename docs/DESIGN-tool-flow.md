@@ -197,11 +197,11 @@ accept=None
 ### 4.3 两步串行编排
 
 ```
-Step 1: 上传（XHR POST /drop-api/upload）
+Step 1: 上传（XHR POST /api/uploads）
   → 进度条 + 百分比 + 速度
   → 完成后拿到 publicId + downloadUrl
 
-Step 2: 工具执行（fetch POST /drop-api/tool）
+Step 2: 工具执行（fetch POST /api/tools/execute）
   → spinner + "处理中..."
   → 完成后拿到新分享链
 ```

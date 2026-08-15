@@ -123,10 +123,12 @@ def privacy_handler(input, params):
 工具注册的信息天然可以暴露为公开 API：
 
 ```
-GET /drop-api/tools         → 工具清单（声明信息）
-GET /drop-api/tools/<id>    → 单个工具详情（声明信息）
-POST /drop-api/tool         → 执行工具
+GET /api/tools            → 工具清单（声明信息）
+GET /api/tools/{id}       → 单个工具详情（声明信息）
+POST /api/tools/execute   → 执行工具
 ```
+
+（注：GET /api/tools 与 /api/tools/{public_id} 已随前端改造移除，工具清单现由服务端渲染注入；execute 为现行唯一工具端点。）
 
 未来开放 REST API 时，第三方可以直接：
 1. 拉工具清单
