@@ -265,6 +265,7 @@ FlashShare 是临时文件分享 + 工具处理平台，部署在 Oracle Cloud 1
 3. `sudo systemctl restart flashshare-api.service`
 4. `curl` 验证页面渲染 + API 响应
 5. `git add -A && git commit -m "描述"`
+6. **更新 `devlog.md`**——根目录，每次改动一条摘要（日期 | commit | 摘要），新条目加在最上面
 
 ### 常用命令
 

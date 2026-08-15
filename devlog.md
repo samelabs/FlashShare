@@ -6,7 +6,7 @@
 
 ---
 
-- 2026-08-14 | (本次) | 文档清理：删 7 份过时文档（AUDIT-REPORT、DESIGN-rebuild/-architecture-upgrade/-production/-zip/-tools、ROADMAP），DESIGN-architecture/tool-flow 修正死路由 drop-api→/api/*，新建本 devlog
+- 2026-08-14 | 15eab49 | 文档清理：删 7 份过时文档（AUDIT-REPORT、DESIGN-rebuild/-architecture-upgrade/-production/-zip/-tools、ROADMAP）+ VISION（定位过时），DESIGN-architecture/tool-flow 修正死路由，新建本 devlog；AGENTS.md 修改后流程加 devlog 更新
 - 2026-08-14 | 1fe41db | Pillow 工具链审查修复：spotlight 暗角回归（radial_gradient+colorize 精确径向）、aurora mesh 1/2→1/4 scale（979→292ms 视觉等价）、mint 对角渐变改 AFFINE 消角落楔块、dots 4x 超采样抗锯齿、PNG optimize 关闭（省 500ms/张）、privacy 1px 崩溃守卫。E2E 15/15
 - 2026-08-14 | ffd0754 | 安全审计修复周期 100%：C-1 HMAC 源令牌+属主校验、C-2 XSS（|e/|tojson）、H-1..H-5（X-Real-IP/批量上限/登录节流/上限/i18n 映射）、M-1..M-7 死代码与规范化。回归 9/9 + E2E
 - 2026-08-11 | a3dc177 | 审计收口：NotAllowedError 残留 + preset 切换清空文件
