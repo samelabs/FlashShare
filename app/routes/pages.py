@@ -19,7 +19,7 @@ from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import list_all_tools
-import tools_registry, tools_beautify, tools_compress, tools_ico, tools_pdf, tools_zip, tools_img2pdf  # noqa: F401
+import tools_registry, tools_beautify, tools_compress, tools_ico, tools_pdf, tools_zip, tools_img2pdf, tools_crop  # noqa: F401
 from auth import public_user
 from utils import (
     brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,

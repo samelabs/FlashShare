@@ -15,6 +15,8 @@ LOCALE_TAGS = {
 
 SERVER_I18N = {
     "fr": {
+        "crop_white": "Rogner le blanc",
+        "crop_white_desc": "Supprime les marges blanches autour du contenu.",
     "img2pdf": "Images en PDF",
     "img2pdf_desc": "Combinez plusieurs images en un document PDF.",
     "zip_preview_title": "Contenu du ZIP",
@@ -194,6 +196,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 fois",
     },
     "ko": {
+        "crop_white": "흰색 자르기",
+        "crop_white_desc": "콘텐츠 주변의 흰 여백을 제거합니다.",
     "img2pdf": "이미지를 PDF로",
     "img2pdf_desc": "여러 이미지를 하나의 PDF 문서로 합칩니다.",
     "zip_preview_title": "ZIP 내용",
@@ -373,6 +377,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200회",
     },
     "ru": {
+        "crop_white": "Обрезать белые поля",
+        "crop_white_desc": "Удаляет белые поля вокруг содержимого.",
     "img2pdf": "Изображения в PDF",
     "img2pdf_desc": "Объедините несколько изображений в один PDF-документ.",
     "zip_preview_title": "Содержимое ZIP",
@@ -552,6 +558,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 раз",
     },
     "ar": {
+        "crop_white": "اقتصاص الأبيض",
+        "crop_white_desc": "يزيل الهوامش البيضاء حول المحتوى.",
     "img2pdf": "صور إلى PDF",
     "img2pdf_desc": "اجمع عدة صور في مستند PDF واحد.",
     "zip_preview_title": "محتويات ZIP",
@@ -731,6 +739,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 مرة",
     },
     "de": {
+        "crop_white": "Weiß abschneiden",
+        "crop_white_desc": "Entfernt weiße Ränder um den Inhalt.",
     "img2pdf": "Bilder zu PDF",
     "img2pdf_desc": "Mehrere Bilder in einem PDF-Dokument zusammenführen.",
     "zip_preview_title": "ZIP-Inhalt",
@@ -910,6 +920,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200-mal",
     },
     "pt": {
+        "crop_white": "Recortar branco",
+        "crop_white_desc": "Remove as margens brancas ao redor do conteúdo.",
     "img2pdf": "Imagens para PDF",
     "img2pdf_desc": "Combine várias imagens em um documento PDF.",
     "zip_preview_title": "Conteúdo do ZIP",
@@ -1089,6 +1101,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 vezes",
     },
     "ja": {
+        "crop_white": "白トリミング",
+        "crop_white_desc": "コンテンツ周囲の白い余白を切り取ります。",
     "img2pdf": "画像をPDFへ",
     "img2pdf_desc": "複数の画像を1つのPDFドキュメントに結合します。",
     "zip_preview_title": "ZIPの内容",
@@ -1268,6 +1282,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200回",
     },
     "zh": {
+        "crop_white": "裁白",
+        "crop_white_desc": "裁掉内容周围的白色边缘。",
     "img2pdf": "图片转PDF",
     "img2pdf_desc": "将多张图片合并为一个PDF文档。",
     "zip_preview_title": "ZIP 内容",
@@ -1447,6 +1463,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 次",
     },
     "es": {
+        "crop_white": "Recortar blanco",
+        "crop_white_desc": "Elimina los márgenes blancos alrededor del contenido.",
     "img2pdf": "Imágenes a PDF",
     "img2pdf_desc": "Combina varias imágenes en un documento PDF.",
     "zip_preview_title": "Contenido del ZIP",
@@ -1626,6 +1644,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 veces",
     },
     "en": {
+        "crop_white": "Crop White",
+        "crop_white_desc": "Removes white margins around the content.",
     "img2pdf": "Images to PDF",
     "img2pdf_desc": "Combine multiple images into one PDF document.",
     "zip_preview_title": "ZIP Contents",
