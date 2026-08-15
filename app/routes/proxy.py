@@ -1,11 +1,13 @@
-"""Proxy routes: file download + file detail page + QR."""
+"""Proxy routes: file download + file detail page + QR + zip preview."""
+
+import asyncio
 
 import sys
 import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse, Response, HTMLResponse
+from fastapi.responses import StreamingResponse, Response, HTMLResponse, JSONResponse
 
 _BASE = Path(__file__).resolve().parent.parent.parent
 _CORE = _BASE / "core"
@@ -122,6 +124,8 @@ async def file_route(public_id: str, request: Request):
         "file_name": upload["file_name"],
         "content_type": upload["content_type"] or "",
         "is_image": (upload["content_type"] or "").startswith("image/"),
+        "is_zip": ((upload["content_type"] or "") in ("application/zip", "application/x-zip-compressed"))
+                   or (upload["file_name"] or "").lower().endswith(".zip"),
         "card_date": format_ts(expire_at),
         "size_text": format_bytes(upload["size_bytes"]),
         "expire_text": format_ts(expire_at),
@@ -145,3 +149,63 @@ async def file_qr(public_id: str):
     url = public_file_url(public_id)
     svg = qr_svg(url)
     return Response(content=svg, media_type="image/svg+xml; charset=utf-8")
+
+
+@router.get("/f/{public_id}/zip-list")
+async def file_zip_list(public_id: str, request: Request):
+    """List ZIP archive contents without downloading the whole file.
+
+    Result-end preview capability (peer of image inline render):
+    pulls only the central directory from gokapi via HTTP Range and
+    returns a JSON entry list. Mirrors /f/{pid} visibility rules.
+    """
+    upload = get_upload_by_public_id(public_id)
+    if not upload:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    ct = (upload["content_type"] or "").lower()
+    name = (upload["file_name"] or "").lower()
+    if ct not in ("application/zip", "application/x-zip-compressed") and not name.endswith(".zip"):
+        return JSONResponse({"ok": False, "error": "not_zip"}, 400)
+
+    total = int(upload["size_bytes"] or 0)
+    if total <= 0:
+        live = get_gokapi_file(upload["gokapi_id"]) if upload["gokapi_id"] else None
+        total = int((live or {}).get("SizeBytes") or 0)
+
+    import http.client
+    import urllib.parse
+    from gokapi import _gokapi_connection, _gokapi_path
+
+    def fetch_range(start: int, length: int) -> bytes:
+        conn, _ = _gokapi_connection(timeout=30)
+        try:
+            conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(upload['gokapi_id'])}"),
+                         headers={"Range": f"bytes={start}-{start + length - 1}"})
+            resp = conn.getresponse()
+            if resp.status not in (200, 206):
+                raise ValueError("range_unavailable")
+            return resp.read()
+        finally:
+            conn.close()
+
+    from zip_preview import list_zip_remote
+    try:
+        entries = await asyncio.to_thread(list_zip_remote, fetch_range, total)
+    except ValueError as exc:
+        reason = str(exc)
+        if reason in ("zip64_unsupported",):
+            return JSONResponse({"ok": False, "error": "zip_unsupported"}, 422)
+        if reason in ("cd_too_large", "range_unavailable", "range_short_read"):
+            return JSONResponse({"ok": False, "error": "zip_too_complex"}, 422)
+        return JSONResponse({"ok": False, "error": "zip_invalid"}, 422)
+
+    files = [e for e in entries if not e["is_dir"]]
+    dirs = [e for e in entries if e["is_dir"]]
+    return JSONResponse({
+        "ok": True,
+        "total": len(entries),
+        "truncated": len(entries) >= 500,
+        "entries": entries,
+        "files": len(files),
+        "dirs": len(dirs),
+    })

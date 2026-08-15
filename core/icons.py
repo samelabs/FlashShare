@@ -42,6 +42,7 @@ _ICONS = {
 
     # ── File types ──
     "image": '<rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path>',
+    "eye": '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle>',
     "archive": '<path d="M21 8l-5-5H7a2 2 0 0 0-2 2v3"></path><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M5 12v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"></path>',
     "doc": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h6M8 16h6M8 19h4"></path>',
     "pdf": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path>',

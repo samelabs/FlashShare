@@ -52,6 +52,9 @@
   </div>
   <div class="file-actions">
     <a class="action-btn primary" href="{{ dl_url }}" download aria-label="Download">{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+    {% if is_zip %}
+    <button class="action-btn" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_title }}">{{ icon_svg("eye") }}<span>{{ texts.zip_preview_title }}</span></button>
+    {% endif %}
     <button class="action-btn" id="shareImgBtn" type="button" aria-label="Share">{{ icon_svg("share") }}</button>
     <span class="action-sep"></span>
     <button class="action-btn" id="copyBtn" type="button" aria-label="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
@@ -79,6 +82,7 @@
 {% endblock %}
 
 {% block script %}
+window.__ZIP_PID__ = {{ public_id|tojson }};
 
 // Copy link
 const copyBtn = document.getElementById("copyBtn");
@@ -164,6 +168,14 @@ const renameBtn = document.getElementById("renameBtn");
 if (renameBtn) renameBtn.addEventListener("click", () => openRename(pid));
 const deleteBtn = document.getElementById("deleteBtn");
 if (deleteBtn) deleteBtn.addEventListener("click", () => openDelete(pid));
+
+const zipPreviewBtn = document.getElementById("zipPreviewBtn");
+if (zipPreviewBtn) {
+  const s = document.createElement("script");
+  s.src = "/static/zip-preview.js";
+  s.onload = () => window.zipPreview && window.zipPreview.wireRemotePreview(zipPreviewBtn, window.__ZIP_PID__);
+  document.head.appendChild(s);
+}
 
 function openRename(pid) {
   const h1 = document.getElementById("fileName");

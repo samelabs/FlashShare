@@ -152,6 +152,43 @@ function showError(errorKey) {
   lastErrorKey = errorKey;
   showResult(`<div class="result-card"><div class="result-error">${escapeHtml(t(errorKey))}</div></div>`, true);
 }
+// ── ZIP local preview (before upload) ──
+let zipPreviewBtnEl = null;
+function ensureZipPreviewBtn() {
+  if (zipPreviewBtnEl) return zipPreviewBtnEl;
+  const zone = document.getElementById("dropZone");
+  if (!zone || !zone.parentElement) return null;
+  zipPreviewBtnEl = document.createElement("button");
+  zipPreviewBtnEl.type = "button";
+  zipPreviewBtnEl.id = "zipPreviewLocalBtn";
+  zipPreviewBtnEl.className = "action-btn zip-preview-trigger hidden";
+  zone.parentElement.insertBefore(zipPreviewBtnEl, zone.nextSibling);
+  zipPreviewBtnEl.addEventListener("click", () => {
+    const f = file.files && file.files[0];
+    if (!f || !window.zipPreview || !window.zipPreview.isZipName(f.name, f.type)) return;
+    window.zipPreview.parseLocalZip(f).then(
+      (entries) => window.zipPreview.showZipModal(entries, { truncated: entries.length >= 500 }),
+      (reason) => window.zipPreview.showZipError(reason)
+    );
+  });
+  return zipPreviewBtnEl;
+}
+function updateZipPreviewBtn() {
+  const btn = ensureZipPreviewBtn();
+  if (!btn) return;
+  const f = file.files && file.files[0];
+  const isZip = !!f && window.zipPreview && window.zipPreview.isZipName(f.name, f.type);
+  btn.classList.toggle("hidden", !isZip);
+  if (isZip) btn.innerHTML = svgIcon("eye") + '<span data-i18n="zip_preview_btn">' + t("zip_preview_btn") + "</span>";
+}
+// lazy-load shared module on first need
+(function loadZipPreview() {
+  const s = document.createElement("script");
+  s.src = "/static/zip-preview.js";
+  s.onload = () => updateZipPreviewBtn();
+  document.head.appendChild(s);
+})();
+
 file.addEventListener("change", () => {
   if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (file.files.length > 0) {
@@ -172,6 +209,7 @@ file.addEventListener("change", () => {
   } else {
     fileLabel.textContent = t("dropEmpty");
   }
+  updateZipPreviewBtn();
 });
 dropZone.addEventListener("click", (e) => {
   if (!window.__USER__) { e.preventDefault(); location.href = "/auth/login"; }
@@ -716,6 +754,7 @@ function showShareResult(file) {
   const copyId = `copy-${Date.now()}`;
   const qrId = `qr-${Date.now()}`;
   const shareImgId = `shareimg-${Date.now()}`;
+  const zipBtnId = `zipbtn-${Date.now()}`;
   const meta = fmtSize(file.size);
   const pwa = isStandalonePWA();
 
@@ -736,6 +775,10 @@ function showShareResult(file) {
 
   const isImg = file.contentType && file.contentType.startsWith("image/");
   const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(dlUrl)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
+  const isZip = !!(window.zipPreview && file.publicId && window.zipPreview.isZipName(file.filename || file.name || "", file.contentType || ""));
+  if (isZip) {
+    actions = `<button class="action-btn" id="${zipBtnId}" type="button" aria-label="${t("zip_preview_btn")}">${svgIcon("eye")}<span data-i18n="zip_preview_btn">${t("zip_preview_btn")}</span></button>` + actions;
+  }
 
   const header = isImg ? "" :
     `<div class="result-check">${svgIcon("check")}</div>` +
@@ -760,6 +803,8 @@ function showShareResult(file) {
   });
   const qrBtn = document.getElementById(qrId);
   if (qrBtn) qrBtn.addEventListener("click", () => showQrModal(url + "/qr.svg"));
+  const zipBtn = document.getElementById(zipBtnId);
+  if (zipBtn && window.zipPreview) window.zipPreview.wireRemotePreview(zipBtn, file.publicId);
   // PWA standalone: download button uses navigator.share instead of <a download>
   if (pwa) {
     const dlBtn = document.querySelector('.result-card .action-btn.primary');

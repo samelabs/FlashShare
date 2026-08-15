@@ -523,6 +523,21 @@ body[data-tool="privacy"] .tool-overlay-preset.active { color: var(--green); bor
 
 }
 
+
+/* ── ZIP preview modal ────────────────────────────────────── */
+.zip-preview-panel { width: min(480px,100%); display: flex; flex-direction: column; max-height: min(80vh, 640px); }
+.zip-preview-title { padding-right: 42px; overflow-wrap: anywhere; }
+.zip-preview-meta { margin: var(--s2) 0 var(--s3); color: var(--muted); font-size: var(--text-sm); flex-shrink: 0; }
+.zip-preview-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); flex: 1 1 auto; min-height: 0; }
+.zip-item { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
+.zip-item:last-child { border-bottom: 0; }
+.zip-item-icon { color: var(--muted); flex-shrink: 0; font-size: 12px; line-height: 1; }
+.zip-item.dir .zip-item-icon { color: var(--accent); }
+.zip-item-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.zip-item.dir .zip-item-name { color: var(--muted); }
+.zip-item-size { flex-shrink: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.zip-preview-trigger { margin-top: var(--s2); width: 100%; justify-content: center; }
+
 /* ── RTL: Arabic ──────────────────────────────────────────── */
 html[dir="rtl"] body { font-family: -apple-system, "Segoe UI", Tahoma, Roboto, Arial, sans-serif; }
 html[dir="rtl"] .topbar { direction: rtl; }
