@@ -15,6 +15,8 @@ LOCALE_TAGS = {
 
 SERVER_I18N = {
     "fr": {
+    "img2pdf": "Images en PDF",
+    "img2pdf_desc": "Combinez plusieurs images en un document PDF.",
     "zip_preview_title": "Contenu du ZIP",
     "zip_preview_btn": "Aperçu du ZIP",
     "zip_preview_meta": "{files} fichiers · {dirs} dossiers",
@@ -192,6 +194,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 fois",
     },
     "ko": {
+    "img2pdf": "이미지를 PDF로",
+    "img2pdf_desc": "여러 이미지를 하나의 PDF 문서로 합칩니다.",
     "zip_preview_title": "ZIP 내용",
     "zip_preview_btn": "ZIP 미리보기",
     "zip_preview_meta": "파일 {files}개 · 폴더 {dirs}개",
@@ -369,6 +373,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200회",
     },
     "ru": {
+    "img2pdf": "Изображения в PDF",
+    "img2pdf_desc": "Объедините несколько изображений в один PDF-документ.",
     "zip_preview_title": "Содержимое ZIP",
     "zip_preview_btn": "Просмотр ZIP",
     "zip_preview_meta": "Файлов: {files} · Папок: {dirs}",
@@ -546,6 +552,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 раз",
     },
     "ar": {
+    "img2pdf": "صور إلى PDF",
+    "img2pdf_desc": "اجمع عدة صور في مستند PDF واحد.",
     "zip_preview_title": "محتويات ZIP",
     "zip_preview_btn": "معاينة ZIP",
     "zip_preview_meta": "{files} ملفات · {dirs} مجلدات",
@@ -723,6 +731,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 مرة",
     },
     "de": {
+    "img2pdf": "Bilder zu PDF",
+    "img2pdf_desc": "Mehrere Bilder in einem PDF-Dokument zusammenführen.",
     "zip_preview_title": "ZIP-Inhalt",
     "zip_preview_btn": "ZIP Vorschau",
     "zip_preview_meta": "{files} Dateien · {dirs} Ordner",
@@ -900,6 +910,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200-mal",
     },
     "pt": {
+    "img2pdf": "Imagens para PDF",
+    "img2pdf_desc": "Combine várias imagens em um documento PDF.",
     "zip_preview_title": "Conteúdo do ZIP",
     "zip_preview_btn": "Pré-visualizar ZIP",
     "zip_preview_meta": "{files} arquivos · {dirs} pastas",
@@ -1077,6 +1089,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 vezes",
     },
     "ja": {
+    "img2pdf": "画像をPDFへ",
+    "img2pdf_desc": "複数の画像を1つのPDFドキュメントに結合します。",
     "zip_preview_title": "ZIPの内容",
     "zip_preview_btn": "ZIPをプレビュー",
     "zip_preview_meta": "ファイル {files} 個 · フォルダ {dirs} 個",
@@ -1254,6 +1268,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200回",
     },
     "zh": {
+    "img2pdf": "图片转PDF",
+    "img2pdf_desc": "将多张图片合并为一个PDF文档。",
     "zip_preview_title": "ZIP 内容",
     "zip_preview_btn": "预览 ZIP",
     "zip_preview_meta": "{files} 个文件 · {dirs} 个文件夹",
@@ -1431,6 +1447,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 次",
     },
     "es": {
+    "img2pdf": "Imágenes a PDF",
+    "img2pdf_desc": "Combina varias imágenes en un documento PDF.",
     "zip_preview_title": "Contenido del ZIP",
     "zip_preview_btn": "Previsualizar ZIP",
     "zip_preview_meta": "{files} archivos · {dirs} carpetas",
@@ -1608,6 +1626,8 @@ SERVER_I18N = {
         "twohundredDownloads": "200 veces",
     },
     "en": {
+    "img2pdf": "Images to PDF",
+    "img2pdf_desc": "Combine multiple images into one PDF document.",
     "zip_preview_title": "ZIP Contents",
     "zip_preview_btn": "Preview ZIP",
     "zip_preview_meta": "{files} files · {dirs} folders",
