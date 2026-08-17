@@ -100,8 +100,8 @@ h1, h2 { letter-spacing: -0.02em; }
 /* Topbar: avatar */
 .topbar-profile { background: none; border: none; padding: 0; cursor: pointer; border-radius: 50%; text-decoration: none; display: inline-flex; align-items: center; }
 .topbar-profile:hover { background: var(--soft); }
-.topbar-profile img, .topbar-profile .avatar-fallback { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1px solid var(--line-strong); display: block; }
-.topbar-profile .avatar-fallback { display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--button-ink); font-size: var(--text-base); font-weight: 700; flex-shrink: 0; }
+.topbar-profile { max-width: 160px; padding: var(--s1) var(--s3); border: none; background: var(--soft); color: var(--ink); font-size: var(--text-sm); font-weight: 700; border-radius: 999px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; }
+.topbar-profile:hover { background: var(--line); }
 
 /* Topbar: language switch */
 .lang-switch { position: relative; display: flex; align-items: center; }
@@ -131,7 +131,8 @@ h1, h2 { letter-spacing: -0.02em; }
 .user-info { padding: var(--s2) var(--s2) var(--s2); border-bottom: 1px solid var(--line); margin-bottom: var(--s1); }
 .user-name { display: block; font-size: var(--text-base); font-weight: 700; color: var(--ink); }
 .user-handle { font-weight: 400; color: var(--muted); }
-.user-dropdown a, .user-dropdown form button { display: block; width: 100%; padding: var(--s2) var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 600; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
+.user-dropdown a, .user-dropdown form button { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: var(--s2) var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 600; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
+.user-dropdown a svg, .user-dropdown form button svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
 .user-dropdown a:hover, .user-dropdown form button:hover { background: var(--soft); }
 .user-dropdown form { margin: 0; padding: 0; }
 .logout-link { color: var(--danger) !important; }
