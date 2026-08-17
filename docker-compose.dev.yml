@@ -1,0 +1,18 @@
+# 本地开发环境：只跑 gokapi 文件存储后端（生产同款镜像/端口）。
+# FlashShare 应用本身按生产方式原生运行（见 run-dev.sh），不进容器。
+services:
+  gokapi:
+    image: docker.io/f0rc3/gokapi:latest
+    container_name: flashshare-dev-gokapi
+    ports:
+      - "53842:53842"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - gokapi-dev-data:/app/data
+      - gokapi-dev-config:/app/config
+    restart: unless-stopped
+
+volumes:
+  gokapi-dev-data:
+  gokapi-dev-config:

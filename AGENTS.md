@@ -16,6 +16,30 @@ FlashShare 是临时文件分享 + 工具处理平台，部署在 Oracle Cloud 1
 - **用户**：`ubuntu`（不是 vibazzdrop）
 - **Git**：`/opt/flashshare/.git`，分支 `main`
 
+## 三端对齐与开发/部署流程（2026-08-17 起）
+
+三端 = 本地（macOS `/Users/tim/Desktop/518.plus`）+ GitHub（`samelabs/FlashShare`，私有）+ 生产（518server `/opt/flashshare`）。
+
+- **GitHub main 是开发管理中枢**。流程：本地开发 → push GitHub → 服务器 `git pull` → `sudo systemctl restart flashshare-api.service`。
+- 服务器仓库 origin 用只读 deploy key（`~/.ssh/flashshare_deploy`），**服务器不 push**，只 pull。
+- 旧 demo 历史存档在 GitHub `legacy-demo` 分支，不要合回 main。
+- 本地额外 remote：`server`（518server:/opt/flashshare），仅备查，日常走 origin。
+
+### 本地开发环境
+
+```bash
+# gokapi（生产同款镜像，端口一致）
+docker compose -f docker-compose.dev.yml up -d
+
+# 应用（.venv + python3.12，依赖见 requirements.txt，版本镜像生产）
+./run-dev.sh        # uvicorn --reload 127.0.0.1:8000
+```
+
+- 本地配置在 `.env`（gitignored）：SESSION_SECRET/DB/GOKAPI_URL/GOKAPI_KEY/LOG_DIR。
+- **依赖版本必须镜像生产**（fastapi 0.101.0 / starlette 0.31.1 / pydantic 1.10.x，安装方法见 requirements.txt 注释）。装最新版会因 Starlette 移除旧式 `TemplateResponse`、pydantic 2 不兼容而全站 500。
+- 本地没有 nginx，`/d`、`/dh/`、`/downloadFile` 等 gokapi 直通路由不存在，下载测试直接访问 gokapi（53842）。
+- gokapi 首次配置/建 API key 参考：admin 界面 `http://127.0.0.1:53842/admin`；API key 需含默认权限（curl 建 key 时 header 是 `basicPermissions: true`，注意驼峰）。
+
 ---
 
 ## 架构

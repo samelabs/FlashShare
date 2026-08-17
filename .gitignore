@@ -10,3 +10,7 @@ node_modules/
 *.log
 .DS_Store
 legacy/
+
+# 本地开发
+.venv/
+data/

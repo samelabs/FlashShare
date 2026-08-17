@@ -42,7 +42,7 @@ import tools_img2pdf   # noqa: F401 — registers img2pdf tool
 
 # ── Logging ──
 import os as _os
-_LOG_DIR = "/var/log/flashshare"
+_LOG_DIR = _os.environ.get("FLASHSHARE_LOG_DIR", "/var/log/flashshare")
 _os.makedirs(_LOG_DIR, exist_ok=True)
 _file_handler = RotatingFileHandler(f"{_LOG_DIR}/app.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
 _file_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))

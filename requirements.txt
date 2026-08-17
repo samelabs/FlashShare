@@ -1,13 +1,28 @@
 # FlashShare Runtime Dependencies
 #
-# System Python 3 (/usr/bin/python3, Ubuntu 24.04)
-# NOT a venv project — installed via apt system packages.
-#
-# Install:
+# 生产（Ubuntu 24.04 apt，/usr/bin/python3，不用 venv）：
 #   sudo apt install python3-fastapi python3-uvicorn python3-jinja2 \
 #     python3-multipart python3-bcrypt python3-pil python3-pypdf python3-pydantic
+#   当前版本：fastapi 0.101.0 / starlette 0.31.1 / jinja2 3.1.2 / uvicorn 0.27.1
+#             pillow 10.2.0 / pydantic 1.10.14（Python 3.12.3）
 #
-# Verify: /usr/bin/python3 -c "import fastapi, uvicorn, jinja2, multipart, bcrypt, PIL, pypdf, pydantic"
+# 本地开发（macOS，.venv + python3.12，见 run-dev.sh）：
+#   python3.12 -m venv .venv
+#   .venv/bin/pip install --no-deps fastapi==0.101.0 starlette==0.31.1
+#   .venv/bin/pip install -r requirements.txt
+#   两个版本对齐注意点：
+#   - fastapi/starlette 用 --no-deps：apt 的组合无视上游 pin（0.101 上游要求 starlette<0.28）
+#   - pydantic 用 1.10.22：1.10.14 与 Python 3.12.4+ 的 ForwardRef 内部变更不兼容
+#     （Ubuntu 24.04 是 3.12.3，生产不受影响）
+#
+# 验证：python -c "import fastapi, uvicorn, jinja2, multipart, bcrypt, PIL, pypdf, pydantic"
 
 Pillow>=10.0,<11.0
 pypdf>=4.0,<5.0
+fastapi==0.101.0
+starlette==0.31.1
+jinja2==3.1.2
+uvicorn==0.27.1
+pydantic==1.10.22
+python-multipart
+bcrypt
