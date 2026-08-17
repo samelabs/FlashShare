@@ -15,6 +15,7 @@ LOCALE_TAGS = {
 
 SERVER_I18N = {
     "fr": {
+        "doc2pdf": "Document en PDF",
         "doc2pdf_desc": "Convertissez Word/Excel/PPT et autres documents en un PDF propre, prêt à imprimer ou partager.",
         "print_btn": "Imprimer",
         "print_title": "Imprimer le document",
@@ -203,6 +204,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200 fois",
     },
     "ko": {
+        "doc2pdf": "문서를 PDF로",
         "doc2pdf_desc": "Word/Excel/PPT 등 문서를 정확한 PDF로 변환하여 바로 인쇄하거나 공유할 수 있습니다.",
         "print_btn": "인쇄",
         "print_title": "문서 인쇄",
@@ -391,6 +393,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200회",
     },
     "ru": {
+        "doc2pdf": "Документ в PDF",
         "doc2pdf_desc": "Конвертируйте Word/Excel/PPT и другие документы в аккуратный PDF — сразу печатайте или делитесь.",
         "print_btn": "Печать",
         "print_title": "Печать документа",
@@ -579,6 +582,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200 раз",
     },
     "ar": {
+        "doc2pdf": "مستند إلى PDF",
         "doc2pdf_desc": "حوّل مستندات Word/Excel/PPT وغيرها إلى PDF سليم جاهز للطباعة أو المشاركة.",
         "print_btn": "طباعة",
         "print_title": "طباعة المستند",
@@ -767,6 +771,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200 مرة",
     },
     "de": {
+        "doc2pdf": "Dokument zu PDF",
         "doc2pdf_desc": "Wandle Word/Excel/PPT und andere Dokumente in ein sauberes PDF um – fertig zum Drucken oder Teilen.",
         "print_btn": "Drucken",
         "print_title": "Dokument drucken",
@@ -955,6 +960,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200-mal",
     },
     "pt": {
+        "doc2pdf": "Documento para PDF",
         "doc2pdf_desc": "Converta Word/Excel/PPT e outros documentos em um PDF limpo, pronto para imprimir ou compartilhar.",
         "print_btn": "Imprimir",
         "print_title": "Imprimir documento",
@@ -1143,6 +1149,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200 vezes",
     },
     "ja": {
+        "doc2pdf": "ドキュメント→PDF変換",
         "doc2pdf_desc": "Word/Excel/PPT などのドキュメントを正確な PDF に変換。そのまま印刷・共有できます。",
         "print_btn": "印刷",
         "print_title": "ドキュメントを印刷",
@@ -1331,6 +1338,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200回",
     },
     "zh": {
+        "doc2pdf": "文档转PDF",
         "doc2pdf_desc": "上传Word/Excel/PPT等文档，在线转换为格式正确的PDF，可直接打印或分享。",
         "print_btn": "打印",
         "print_title": "打印文档",
@@ -1519,6 +1527,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200 次",
     },
     "es": {
+        "doc2pdf": "Documento a PDF",
         "doc2pdf_desc": "Convierte Word/Excel/PPT y otros documentos a un PDF limpio, listo para imprimir o compartir.",
         "print_btn": "Imprimir",
         "print_title": "Imprimir documento",
@@ -1707,6 +1716,7 @@ SERVER_I18N = {
         "twohundredDownloads": "200 veces",
     },
     "en": {
+        "doc2pdf": "Document to PDF",
         "doc2pdf_desc": "Convert Word/Excel/PPT and other documents to a clean PDF, ready to print or share.",
         "print_btn": "Print",
         "print_title": "Print document",
