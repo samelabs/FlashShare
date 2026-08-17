@@ -82,6 +82,30 @@ async def v1_tools(request: Request):
     return {"ok": True, "tools": out}
 
 
+def _upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) -> dict:
+    """Shared source-upload pipeline (v1 + MCP): sniff → quota → gokapi.
+    Raises ValueError with an i18n error key on rejection."""
+    from security import sniff_allowed
+    ok, reason = sniff_allowed(filename, ctype, body)
+    if not ok:
+        raise ValueError(reason)
+    ok, reason = check_quota(user["id"], ip, len(body))
+    if not ok:
+        raise ValueError(reason)
+    from security import sign_source_token
+    gokapi = upload_to_gokapi(io.BytesIO(body), filename, ctype, 1, 10, len(body))
+    info = gokapi.get("FileInfo", {})
+    fid = info.get("Id", "")
+    return {
+        "publicId": fid,
+        "gokapiId": fid,
+        "filename": filename,
+        "contentType": ctype,
+        "size": len(body),
+        "sourceToken": sign_source_token(user["id"], fid),
+    }
+
+
 @router.post("/uploads")
 async def v1_upload(request: Request):
     """Upload a source file. Returns the gokapi intermediate handle +
@@ -105,29 +129,13 @@ async def v1_upload(request: Request):
         if size <= 0 or size > MAX_UPLOAD_BYTES:
             return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
 
-    # Same security pipeline as web uploads
-    ok, reason = sniff_allowed(filename, ctype, body)
-    if not ok:
-        return JSONResponse({"ok": False, "error": reason}, 415)
     ip = request.headers.get("X-Real-IP", request.client.host if request.client else "").strip()
-    ok, reason = check_quota(user["id"], ip, size)
-    if not ok:
-        return JSONResponse({"ok": False, "error": reason}, 429)
-
-    from security import sign_source_token
-    expiry_days = 1
-    gokapi = upload_to_gokapi(io.BytesIO(body), filename, ctype,
-                              expiry_days, 10, size)
-    info = gokapi.get("FileInfo", {})
-    fid = info.get("Id", "")
-    return {"ok": True, "file": {
-        "publicId": fid,
-        "gokapiId": fid,
-        "filename": filename,
-        "contentType": ctype,
-        "size": size,
-        "sourceToken": sign_source_token(user["id"], fid),
-    }}
+    try:
+        return {"ok": True, "file": _upload_source(user, filename, ctype, body, ip)}
+    except ValueError as exc:
+        code = str(exc) or "err_upload_failed"
+        status = 429 if code.startswith("err_quota") else 415
+        return JSONResponse({"ok": False, "error": code}, status)
 
 
 @router.post("/execute")

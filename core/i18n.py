@@ -15,6 +15,9 @@ LOCALE_TAGS = {
 
 SERVER_I18N = {
     "fr": {
+        "err_insufficient_credits": "Crédits insufficients. Rechargez ou utilisez un pack.",
+        "tool_disabled": "Cet outil est temporairement indisponible",
+        "credits_balance": "Solde de crédits",
         "apiTokens": "Jetons API",
         "apiTokensDesc": "Pour les programmes et agents accédant à votre compte via l'API. Un jeton n'est affiché qu'une seule fois, à sa création.",
         "tokenNamePlaceholder": "Nom du jeton (ex. claude-agent)",
@@ -214,6 +217,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200 fois",
     },
     "ko": {
+        "err_insufficient_credits": "크레딧이 부족합니다. 충전하거나 패키지를 받으세요.",
+        "tool_disabled": "이 도구는 현재 사용할 수 없습니다",
+        "credits_balance": "크레딧 잔액",
         "apiTokens": "API 토큰",
         "apiTokensDesc": "프로그램과 에이전트가 API를 통해 계정에 접근하는 데 사용됩니다. 토큰은 생성 시 한 번만 표시됩니다.",
         "tokenNamePlaceholder": "토큰 이름 (예: claude-agent)",
@@ -413,6 +419,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200회",
     },
     "ru": {
+        "err_insufficient_credits": "Недостаточно кредитов. Пополните баланс или активируйте пакет.",
+        "tool_disabled": "Инструмент временно недоступен",
+        "credits_balance": "Баланс кредитов",
         "apiTokens": "API-токены",
         "apiTokensDesc": "Для программ и агентов, обращающихся к вашему аккаунту через API. Токен показывается только один раз — при создании.",
         "tokenNamePlaceholder": "Имя токена (напр. claude-agent)",
@@ -612,6 +621,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200 раз",
     },
     "ar": {
+        "err_insufficient_credits": "الرصيد غير كافٍ. يرجى الشحن أو استرداد حزمة.",
+        "tool_disabled": "هذه الأداة غير متاحة حاليًا",
+        "credits_balance": "رصيد النقاط",
         "apiTokens": "رموز API",
         "apiTokensDesc": "لبرامج والوكلاء للوصول إلى حسابك عبر واجهة البرمجة. يظهر الرمز مرة واحدة فقط عند الإنشاء.",
         "tokenNamePlaceholder": "اسم الرمز (مثل claude-agent)",
@@ -811,6 +823,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200 مرة",
     },
     "de": {
+        "err_insufficient_credits": "Nicht genug Guthaben. Bitte aufladen oder Paket einlösen.",
+        "tool_disabled": "Dieses Werkzeug ist derzeit nicht verfügbar",
+        "credits_balance": "Guthaben",
         "apiTokens": "API-Tokens",
         "apiTokensDesc": "Für Programme und Agenten, die über die API auf dein Konto zugreifen. Ein Token wird nur einmal bei der Erstellung angezeigt.",
         "tokenNamePlaceholder": "Token-Name (z.B. claude-agent)",
@@ -1010,6 +1025,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200-mal",
     },
     "pt": {
+        "err_insufficient_credits": "Créditos insuficientes. Recarregue ou resgate um pacote.",
+        "tool_disabled": "Esta ferramenta está temporariamente indisponível",
+        "credits_balance": "Saldo de créditos",
         "apiTokens": "Tokens de API",
         "apiTokensDesc": "Para programas e agentes acessarem sua conta via API. Cada token é mostrado apenas uma vez, na criação.",
         "tokenNamePlaceholder": "Nome do token (ex.: claude-agent)",
@@ -1209,6 +1227,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200 vezes",
     },
     "ja": {
+        "err_insufficient_credits": "クレジットが不足しています。チャージまたはパックの取得が必要です。",
+        "tool_disabled": "このツールは現在利用できません",
+        "credits_balance": "クレジット残高",
         "apiTokens": "APIトークン",
         "apiTokensDesc": "プログラムやエージェントがAPI経由でアカウントにアクセスするためのものです。トークンは作成時に一度だけ表示されます。",
         "tokenNamePlaceholder": "トークン名（例: claude-agent）",
@@ -1408,6 +1429,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200回",
     },
     "zh": {
+        "err_insufficient_credits": "积分余额不足，请充值或领取积分包",
+        "tool_disabled": "该工具暂不可用",
+        "credits_balance": "积分余额",
         "apiTokens": "API 令牌",
         "apiTokensDesc": "用于程序和智能体通过 API 访问你的账号。令牌只在创建时显示一次。",
         "tokenNamePlaceholder": "令牌名称（如 claude-agent）",
@@ -1607,6 +1631,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200 次",
     },
     "es": {
+        "err_insufficient_credits": "Créditos insuficientes. Recarga o canjea un paquete.",
+        "tool_disabled": "Esta herramienta no está disponible actualmente",
+        "credits_balance": "Saldo de créditos",
         "apiTokens": "Tokens de API",
         "apiTokensDesc": "Para que programas y agentes accedan a tu cuenta mediante la API. Cada token se muestra solo una vez al crearse.",
         "tokenNamePlaceholder": "Nombre del token (p. ej. claude-agent)",
@@ -1806,6 +1833,9 @@ SERVER_I18N = {
         "twohundredDownloads": "200 veces",
     },
     "en": {
+        "err_insufficient_credits": "Insufficient credits. Please top up or claim a credit pack.",
+        "tool_disabled": "This tool is currently unavailable",
+        "credits_balance": "Credit balance",
         "apiTokens": "API Tokens",
         "apiTokensDesc": "For programs and agents to access your account via API. Each token is shown only once at creation.",
         "tokenNamePlaceholder": "Token name (e.g. claude-agent)",

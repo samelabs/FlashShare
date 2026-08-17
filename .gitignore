@@ -1,16 +1,2 @@
 __pycache__/
 *.pyc
-*.pyo
-.env
-*.sqlite
-*.sqlite-wal
-*.sqlite-shm
-/tmp/
-node_modules/
-*.log
-.DS_Store
-legacy/
-
-# 本地开发
-.venv/
-data/

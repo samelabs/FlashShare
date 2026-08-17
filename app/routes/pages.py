@@ -191,6 +191,7 @@ async def profile_page(request: Request):
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from app.main import templates
     ctx = _ctx_base(request)
+    from billing import get_balance
     u = public_user(user)
     texts = ctx["texts"]
     ctx.update({
@@ -199,5 +200,6 @@ async def profile_page(request: Request):
         "u": u,
         "user_has_password": u.get("hasPassword", False),
         "x_bound": bool(u.get("xUsername")),
+        "credits_balance": get_balance(user["id"]),
     })
     return templates.TemplateResponse("auth/profile.html", ctx)
