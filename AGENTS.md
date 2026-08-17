@@ -20,8 +20,8 @@ FlashShare 是临时文件分享 + 工具处理平台，部署在 Oracle Cloud 1
 
 三端 = 本地（macOS `/Users/tim/Desktop/518.plus`）+ GitHub（`samelabs/FlashShare`，私有）+ 生产（518server `/opt/flashshare`）。
 
-- **GitHub main 是开发管理中枢**。流程：本地开发 → push GitHub → 服务器 `git pull` → `sudo systemctl restart flashshare-api.service`。
-- 服务器仓库 origin 用只读 deploy key（`~/.ssh/flashshare_deploy`），**服务器不 push**，只 pull。
+- **GitHub main 是开发管理中枢，唯一基准**。常规流程：本地开发 → push GitHub → 服务器 `git pull` → `sudo systemctl restart flashshare-api.service`。
+- 服务器 deploy key（`~/.ssh/flashshare_deploy`）为**可写**：服务器上直接开发/热修后 `git push origin main`，本地随后 `git pull` 同步。任何一端推送后，其余各端必须同步到同一提交再继续开发，禁止基于过期基线改代码。
 - 旧 demo 历史存档在 GitHub `legacy-demo` 分支，不要合回 main。
 - 本地额外 remote：`server`（518server:/opt/flashshare），仅备查，日常走 origin。
 
