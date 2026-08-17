@@ -29,13 +29,37 @@
     cursor: pointer; text-decoration: none; flex: none;
   }
   .btn.primary { background: #1652f0; border-color: #1652f0; color: #fff; }
-  main { flex: 1; min-height: 0; padding: 12px; }
+  .btn[disabled] { opacity: 0.55; cursor: default; pointer-events: none; }
+  main { flex: 1; min-height: 0; padding: 12px; position: relative; }
   iframe { width: 100%; height: 100%; border: 0; border-radius: 10px; background: #fff; }
+  #pages {
+    display: none; /* becomes flex once PDF.js renders */
+    flex-direction: column; align-items: center; gap: 12px;
+    height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  #pages canvas { max-width: 100%; background: #fff; border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .status {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    color: #66707a; font-size: 14px; text-align: center; padding: 0 24px;
+  }
+  .spin {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid #d5dae1; border-top-color: #1652f0;
+    animation: r 0.9s linear infinite;
+  }
+  @keyframes r { to { transform: rotate(360deg); } }
   p.hint { padding: 8px 16px 12px; font-size: 12px; color: #66707a; flex: none; }
   @media print {
-    header, p.hint { display: none; }
+    header, p.hint, .status { display: none !important; }
     main { padding: 0; }
     body { background: #fff; height: auto; }
+    #pages { display: flex !important; height: auto; overflow: visible; gap: 0; }
+    #pages canvas { max-width: none; box-shadow: none; border-radius: 0;
+      page-break-after: always; break-after: page; }
+    #pages canvas:last-child { page-break-after: auto; break-after: auto; }
+    iframe { display: none !important; }
   }
 </style>
 </head>
@@ -43,21 +67,80 @@
 <header>
   <span class="name">{{ file_name|e }}</span>
   <a class="btn" href="{{ download_url }}">{{ t.download_file if t.download_file else "Download" }}</a>
-  <button class="btn primary" type="button" id="printBtn">{{ t.print_btn }}</button>
+  <button class="btn primary" type="button" id="printBtn" disabled>{{ t.print_btn }}</button>
 </header>
 <main>
   <iframe id="pdfFrame" src="{{ inline_url }}" title="{{ file_name|e }}"></iframe>
+  <div id="pages" aria-hidden="true"></div>
+  <div class="status" id="status"><div class="spin"></div><span id="statusText">{{ t.print_loading }}</span></div>
 </main>
 <p class="hint">{{ t.print_hint }}</p>
-<script>
-  function doPrint() {
-    try {
-      var f = document.getElementById("pdfFrame");
-      f.contentWindow.focus();
-      f.contentWindow.print();
-    } catch (e) { window.print(); }
+<script type="module">
+  // Print strategy: mobile browsers cannot paginate embedded-PDF print()
+  // (they print only the first page). Render every page to a canvas with
+  // PDF.js and print the host document instead — pagination is then plain
+  // CSS page breaks and works everywhere. The <iframe> stays as a visual
+  // fallback for browsers where PDF.js fails to load.
+  var btn = document.getElementById("printBtn");
+  var box = document.getElementById("pages");
+  var statusEl = document.getElementById("status");
+
+  function ready() {
+    btn.disabled = false;
+    statusEl.style.display = "none";
   }
-  document.getElementById("printBtn").addEventListener("click", doPrint);
+  function fail() {
+    // PDF.js unavailable → fall back to iframe print (desktop-OK) and
+    // keep the download hint visible.
+    btn.disabled = false;
+    var st = document.getElementById("statusText");
+    if (st) st.textContent = "";
+    statusEl.style.display = "none";
+  }
+
+  try {
+    const { GlobalWorkerOptions, getDocument } = await import("/static/pdfjs/pdf.min.mjs");
+    GlobalWorkerOptions.workerSrc = "/static/pdfjs/pdf.worker.min.mjs";
+
+    const task = getDocument({ url: {{ inline_url | tojson }}, isEvalSupported: false });
+    const pdf = await task.promise;
+    const n = pdf.numPages;
+
+    const CON = document.createElement("canvas").getContext("2d");
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    // ~150 DPI: enough for print legibility without multi-hundred-MB canvases.
+    const SCALE = 150 / 72 * DPR > 2 ? 2 : (150 / 72) * DPR;
+    const jobs = [];
+    for (let i = 1; i <= n; i++) {
+      jobs.push(pdf.getPage(i).then(page => {
+        const vp = page.getViewport({ scale: SCALE });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        return page.render({ canvasContext: canvas.getContext("2d", { alpha: false }), viewport: vp }).promise.then(() => {
+          box.appendChild(canvas);
+        });
+      }));
+    }
+    await Promise.all(jobs);
+
+    if (n > 0) {
+      box.style.display = "flex";
+      var frame = document.getElementById("pdfFrame");
+      if (frame) frame.style.display = "none";
+    }
+    ready();
+    btn.addEventListener("click", function () { window.print(); });
+  } catch (e) {
+    fail();
+    btn.addEventListener("click", function () {
+      try {
+        var f = document.getElementById("pdfFrame");
+        f.contentWindow.focus();
+        f.contentWindow.print();
+      } catch (err) { window.print(); }
+    });
+  }
 </script>
 </body>
 </html>
