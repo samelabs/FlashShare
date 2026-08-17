@@ -97,11 +97,11 @@ h1, h2 { letter-spacing: -0.02em; }
 .topbar-register { background: var(--ink); color: var(--button-ink); }
 .topbar-register:hover { opacity: .85; }
 
-/* Topbar: avatar */
+/* Topbar: avatar (img if bound, same-size initial placeholder otherwise) */
 .topbar-profile { background: none; border: none; padding: 0; cursor: pointer; border-radius: 50%; text-decoration: none; display: inline-flex; align-items: center; }
 .topbar-profile:hover { background: var(--soft); }
-.topbar-profile { max-width: 160px; padding: var(--s1) var(--s3); border: none; background: var(--soft); color: var(--ink); font-size: var(--text-sm); font-weight: 700; border-radius: 999px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; }
-.topbar-profile:hover { background: var(--line); }
+.topbar-profile img, .topbar-profile .avatar-fallback { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1px solid var(--line-strong); display: block; }
+.topbar-profile .avatar-fallback { display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--button-ink); font-size: var(--text-base); font-weight: 700; flex-shrink: 0; }
 
 /* Topbar: language switch */
 .lang-switch { position: relative; display: flex; align-items: center; }
@@ -162,7 +162,7 @@ button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke
 
 /* ── Userbox (legacy compat) ──────────────────────────────── */
 .userbox { height: 44px; max-width: 330px; display: grid; grid-template-columns: 32px minmax(0,1fr) auto auto; align-items: center; gap: var(--s2); color: var(--muted); text-align: left; background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r-full); padding: var(--s1) var(--s2) var(--s1) var(--s1); }
-.userbox img, .avatar-fallback { width: 32px; height: 32px; border-radius: 50%; background: var(--soft); color: var(--ink); display: flex; align-items: center; justify-content: center; font-weight: 800; object-fit: cover; }
+.userbox img { width: 32px; height: 32px; border-radius: 50%; background: var(--soft); color: var(--ink); display: flex; align-items: center; justify-content: center; font-weight: 800; object-fit: cover; }
 .user-meta { min-width: 0; line-height: 1.15; }
 .userbox strong { color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); }
 .userbox span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); margin-top: 3px; }

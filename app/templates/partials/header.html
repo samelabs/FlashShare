@@ -6,16 +6,21 @@
   <div class="top-actions">
     {% if user %}
     <div class="user-menu">
-      <button class="topbar-profile" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false">
-        {{ (user.displayName or user.username or '?')|e }}
+      <button class="topbar-profile" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
+              aria-label="{{ texts.settings }}">
+        {% if user.avatarUrl %}
+        <img src="{{ user.avatarUrl }}" alt="" width="32" height="32" loading="eager" decoding="async">
+        {% else %}
+        <span class="avatar-fallback">{{ (user.displayName or user.username or '?')[:1].upper() }}</span>
+        {% endif %}
       </button>
       <div class="user-dropdown hidden" id="userDropdown" role="menu">
         <div class="user-info">
           <span class="user-name">{{ (user.displayName or user.username)|e }} <span class="user-handle">@{{ user.username|e }}</span></span>
         </div>
-        <a href="/auth/profile" role="menuitem" data-i18n="settings">{{ icon_svg("settings") }}<span>{{ texts.settings }}</span></a>
+        <a href="/auth/profile" role="menuitem"><span data-i18n="settings">{{ texts.settings }}</span></a>
         <form method="post" action="/auth/logout">
-          <button type="submit" class="logout-link" data-i18n="logout">{{ icon_svg("logout") }}<span>{{ texts.logout }}</span></button>
+          <button type="submit" class="logout-link"><span data-i18n="logout">{{ texts.logout }}</span></button>
         </form>
       </div>
     </div>

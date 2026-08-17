@@ -4,6 +4,7 @@
 {% block desc %}{{ file_name|e }} · {{ texts.card_expires }}: {{ card_date }}{% endblock %}
 
 {% block meta %}
+<script src="/static/i18n.js?v={{ i18n_version }}"></script>
 <link rel="canonical" href="{{ escaped_url }}">
 <meta name="robots" content="noindex, follow">
 <meta property="og:type" content="website">
