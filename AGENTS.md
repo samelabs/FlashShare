@@ -25,20 +25,19 @@ FlashShare 是临时文件分享 + 工具处理平台，部署在 Oracle Cloud 1
 - 旧 demo 历史存档在 GitHub `legacy-demo` 分支，不要合回 main。
 - 本地额外 remote：`server`（518server:/opt/flashshare），仅备查，日常走 origin。
 
-### 本地开发环境
+### 本地开发环境（全容器化）
 
 ```bash
-# gokapi（生产同款镜像，端口一致）
-docker compose -f docker-compose.dev.yml up -d
-
-# 应用（.venv + python3.12，依赖见 requirements.txt，版本镜像生产）
-./run-dev.sh        # uvicorn --reload 127.0.0.1:8000
+./run-dev.sh          # = docker compose -f docker-compose.dev.yml up -d --build
 ```
 
-- 本地配置在 `.env`（gitignored）：SESSION_SECRET/DB/GOKAPI_URL/GOKAPI_KEY/LOG_DIR。
-- **依赖版本必须镜像生产**（fastapi 0.101.0 / starlette 0.31.1 / pydantic 1.10.x，安装方法见 requirements.txt 注释）。装最新版会因 Starlette 移除旧式 `TemplateResponse`、pydantic 2 不兼容而全站 500。
+- **端口纪律：只用本项目专属段 53842-53844**（gokapi 53842 / app 53844→容器内 8000）。**禁止占用 8000 等通用端口**（宿主机上其他项目在用）。
+- app 容器：`Dockerfile.dev`（python:3.12-slim，依赖版本镜像生产，代码 bind mount + uvicorn --reload 热更新）。
+- 本地配置在 `.env`（gitignored，只放密钥：SESSION_SECRET/GOKAPI_KEY/X OAuth）；路径和地址由 compose 的 environment 覆盖为容器内视角。
+- **依赖版本必须镜像生产**（fastapi 0.101.0 / starlette 0.31.1 / pydantic 1.10.x；fastapi/starlette 需 `--no-deps` 安装并补 anyio/typing-extensions，细节见 requirements.txt 和 Dockerfile.dev 注释）。装最新版会因 Starlette 移除旧式 `TemplateResponse`、pydantic 2 不兼容而全站 500。
 - 本地没有 nginx，`/d`、`/dh/`、`/downloadFile` 等 gokapi 直通路由不存在，下载测试直接访问 gokapi（53842）。
-- gokapi 首次配置/建 API key 参考：admin 界面 `http://127.0.0.1:53842/admin`；API key 需含默认权限（curl 建 key 时 header 是 `basicPermissions: true`，注意驼峰）。
+- gokapi 首次配置/建 API key 参考：admin 界面 `http://127.0.0.1:53842/admin`；curl 建 key 时权限 header 是驼峰 `basicPermissions: true`（下划线版本会静默创建零权限 key）。
+- 登录表单字段是 `login`（不是 `username`），注册表单才是 `username`/`email`。
 
 ---
 

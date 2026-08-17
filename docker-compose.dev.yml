@@ -1,6 +1,29 @@
-# 本地开发环境：只跑 gokapi 文件存储后端（生产同款镜像/端口）。
-# FlashShare 应用本身按生产方式原生运行（见 run-dev.sh），不进容器。
+# 本地开发环境（全部容器化，使用本项目专属端口段 53842-53844，不占用通用端口）：
+#   flashshare  宿主 53844 → 容器 8000（生产内部端口不变）
+#   gokapi      宿主 53842（生产同款镜像/端口）
+# 生产部署不使用本文件（生产为 systemd + 系统 python，见 run.sh / AGENTS.md）。
 services:
+  flashshare:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: flashshare-dev-app
+    working_dir: /opt/flashshare
+    ports:
+      - "53844:8000"
+    env_file: .env
+    environment:
+      # 容器内视角：覆盖 .env 里的宿主机路径/地址
+      FLASHSHARE_DB: /opt/flashshare/data/flashshare.sqlite
+      FLASHSHARE_LOG_DIR: /opt/flashshare/data/logs
+      FLASHSHARE_GOKAPI_URL: http://gokapi:53842
+      FLASHSHARE_BASE_URL: http://localhost:53844
+    volumes:
+      - .:/opt/flashshare
+    depends_on:
+      - gokapi
+    restart: unless-stopped
+
   gokapi:
     image: docker.io/f0rc3/gokapi:latest
     container_name: flashshare-dev-gokapi

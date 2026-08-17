@@ -6,23 +6,26 @@
 #   当前版本：fastapi 0.101.0 / starlette 0.31.1 / jinja2 3.1.2 / uvicorn 0.27.1
 #             pillow 10.2.0 / pydantic 1.10.14（Python 3.12.3）
 #
-# 本地开发（macOS，.venv + python3.12，见 run-dev.sh）：
-#   python3.12 -m venv .venv
-#   .venv/bin/pip install --no-deps fastapi==0.101.0 starlette==0.31.1
-#   .venv/bin/pip install -r requirements.txt
-#   两个版本对齐注意点：
-#   - fastapi/starlette 用 --no-deps：apt 的组合无视上游 pin（0.101 上游要求 starlette<0.28）
-#   - pydantic 用 1.10.22：1.10.14 与 Python 3.12.4+ 的 ForwardRef 内部变更不兼容
-#     （Ubuntu 24.04 是 3.12.3，生产不受影响）
+# 本地开发（Docker：docker compose -f docker-compose.dev.yml up -d --build，
+# 依赖在 Dockerfile.dev 里安装；宿主端口 53844，勿占用他人端口）：
+#
+# ⚠️ fastapi/starlette 不在本列表内：apt 组合（0.101.0 + 0.31.1）违反上游
+#    pin（fastapi 0.101 要求 starlette<0.28），放进同一列表 pip 会报
+#    ResolutionImpossible。必须先 --no-deps 单独装（Dockerfile.dev 已处理）：
+#      pip install --no-deps fastapi==0.101.0 starlette==0.31.1
+#      pip install -r requirements.txt
+#    pydantic 用 1.10.22：1.10.14 与 Python 3.12.4+ 的 ForwardRef 内部变更
+#    不兼容（Ubuntu 24.04 是 3.12.3，生产不受影响）。
 #
 # 验证：python -c "import fastapi, uvicorn, jinja2, multipart, bcrypt, PIL, pypdf, pydantic"
 
-Pillow>=10.0,<11.0
-pypdf>=4.0,<5.0
-fastapi==0.101.0
-starlette==0.31.1
 jinja2==3.1.2
 uvicorn==0.27.1
 pydantic==1.10.22
+Pillow>=10.0,<11.0
+pypdf>=4.0,<5.0
 python-multipart
 bcrypt
+# fastapi/starlette 的 --no-deps 安装不带传递依赖，需补齐（版本镜像生产 apt）
+anyio==4.2.0
+typing-extensions==4.10.0

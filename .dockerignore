@@ -1,0 +1,10 @@
+.git
+.venv
+data
+__pycache__
+*.pyc
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+legacy
+.DS_Store
