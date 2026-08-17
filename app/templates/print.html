@@ -39,6 +39,7 @@
   }
   #pages canvas { max-width: 100%; background: #fff; border-radius: 4px;
     box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .page-slot { display: flex; justify-content: center; width: 100%; }
   .status {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
@@ -56,9 +57,9 @@
     main { padding: 0; }
     body { background: #fff; height: auto; }
     #pages { display: flex !important; height: auto; overflow: visible; gap: 0; }
-    #pages canvas { max-width: none; box-shadow: none; border-radius: 0;
-      page-break-after: always; break-after: page; }
-    #pages canvas:last-child { page-break-after: auto; break-after: auto; }
+    .page-slot { page-break-after: always; break-after: page; }
+    .page-slot:last-child { page-break-after: auto; break-after: auto; }
+    #pages canvas { max-width: none; box-shadow: none; border-radius: 0; }
     iframe { display: none !important; }
   }
 </style>
@@ -110,15 +111,28 @@
     const DPR = Math.min(window.devicePixelRatio || 1, 2);
     // ~150 DPI: enough for print legibility without multi-hundred-MB canvases.
     const SCALE = 150 / 72 * DPR > 2 ? 2 : (150 / 72) * DPR;
+    // Reserve one slot per page in page order BEFORE any render completes.
+    // Rendering runs in parallel and finishes out of order — appending
+    // canvases directly would make DOM order = race order (pages printed
+    // scrambled). Slots pin the order; each job fills its own slot.
+    const slots = [];
+    for (let i = 1; i <= n; i++) {
+      const slot = document.createElement("div");
+      slot.className = "page-slot";
+      slot.dataset.page = String(i);
+      box.appendChild(slot);
+      slots.push(slot);
+    }
     const jobs = [];
     for (let i = 1; i <= n; i++) {
       jobs.push(pdf.getPage(i).then(page => {
         const vp = page.getViewport({ scale: SCALE });
         const canvas = document.createElement("canvas");
+        canvas.dataset.page = String(i);
         canvas.width = Math.floor(vp.width);
         canvas.height = Math.floor(vp.height);
         return page.render({ canvasContext: canvas.getContext("2d", { alpha: false }), viewport: vp }).promise.then(() => {
-          box.appendChild(canvas);
+          slots[i - 1].appendChild(canvas);
         });
       }));
     }
