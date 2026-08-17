@@ -422,6 +422,16 @@ const ACCEPT_TAGS = {
   "image/bmp": "BMP", "image/tiff": "TIFF", "image/svg+xml": "SVG", "image/avif": "AVIF",
   "image/x-icon": "ICO", "image/vnd.microsoft.icon": "ICO",
   "application/pdf": "PDF", "application/zip": "ZIP", "text/plain": "TXT",
+  "application/msword": "DOC", "application/rtf": "RTF",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  "application/vnd.ms-excel": "XLS",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+  "application/vnd.ms-powerpoint": "PPT",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+  "application/vnd.oasis.opendocument.text": "ODT",
+  "application/vnd.oasis.opendocument.spreadsheet": "ODS",
+  "application/vnd.oasis.opendocument.presentation": "ODP",
+  "text/csv": "CSV", "text/html": "HTML",
 };
 let activeTool = null;
 let activePreset = null;
@@ -789,6 +799,10 @@ function showShareResult(file) {
   const isZip = !!file.publicId && (/\.zip$/i.test(zipName) || zipCt === "application/zip" || zipCt === "application/x-zip-compressed");
   if (isZip) {
     actions = `<button class="action-btn" id="${zipBtnId}" type="button" aria-label="${t("zip_preview_btn")}">${svgIcon("eye")}<span data-i18n="zip_preview_btn">${t("zip_preview_btn")}</span></button>` + actions;
+  }
+  const isPdf = !!file.publicId && (zipCt === "application/pdf" || /\.pdf$/i.test(zipName));
+  if (isPdf) {
+    actions = `<a class="action-btn" href="/f/${file.publicId}/print" target="_blank" rel="noopener" aria-label="${t("print_btn")}">${svgIcon("convert")}<span data-i18n="print_btn">${t("print_btn")}</span></a>` + actions;
   }
 
   const header = isImg ? "" :

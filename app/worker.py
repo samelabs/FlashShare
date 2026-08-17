@@ -33,14 +33,8 @@ def process_tool(tool_id: str, source_bytes: bytes, filename: str,
         {"output_bytes": bytes, "content_type": str, "filename": str, "size": int}
     """
     # Ensure tools are registered in this process (important for pool respawn)
-    import tools_registry  # noqa: F401
-    import tools_beautify  # noqa: F401
-    import tools_compress  # noqa: F401
-    import tools_ico       # noqa: F401
-    import tools_pdf       # noqa: F401
-    import tools_zip        # noqa: F401
-    import tools_img2pdf   # noqa: F401
-    import tools_crop      # noqa: F401
+    from tools import load_all
+    load_all()  # auto-discover every tools_*.py
 
     tool = get_tool(tool_id)
     if not tool:

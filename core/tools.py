@@ -15,6 +15,8 @@ Tool lifecycle:
     CP7 Output    — frontend renders share_link / image / text result
 """
 
+from pathlib import Path
+
 # Tool type constants
 TYPE_VIEW = "view"
 TYPE_PEEK = "peek"
@@ -161,3 +163,26 @@ def get_default_preset(tool_id: str):
         if p.get("default"):
             return p["id"]
     return None
+
+
+_loaded = False
+
+
+def load_all():
+    """Import every tools_*.py module in this directory (sorted for determinism).
+
+    Each module registers itself via register() at import time. Idempotent —
+    calling twice is a no-op. This replaces the hand-maintained import lists
+    that used to live in main.py / worker.py / pages.py (adding a tool = adding
+    one file, nothing else to update).
+    """
+    global _loaded
+    if _loaded:
+        return
+    import importlib
+    import pkgutil
+
+    for mod in sorted((m.name for m in pkgutil.iter_modules([str(Path(__file__).parent)])
+                       if m.name.startswith("tools_"))):
+        importlib.import_module(mod)
+    _loaded = True

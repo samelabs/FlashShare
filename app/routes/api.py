@@ -23,7 +23,7 @@ from concurrent.futures import ProcessPoolExecutor
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
 sys.path.insert(0, str(_CORE))
 
-from config import MAX_UPLOAD_BYTES, MAX_BATCH_BYTES, PUBLIC_ID_RE
+from config import MAX_UPLOAD_BYTES, MAX_BATCH_BYTES, PUBLIC_ID_RE, BASE_URL
 from database import db
 from uploads import check_quota, get_upload_by_public_id, list_uploads, delete_upload
 from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
@@ -80,6 +80,7 @@ def _save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
         "type": "share_link",
         "name": filename,
         "downloadUrl": dl_url,
+        "printUrl": (f"{BASE_URL}/f/{public_id}/print" if content_type == "application/pdf" else None),
         "filename": filename,
         "contentType": content_type,
         "size": size,

@@ -52,6 +52,9 @@
   </div>
   <div class="file-actions">
     <a class="action-btn primary" href="{{ dl_url }}" download aria-label="Download">{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+    {% if is_pdf %}
+    <a class="action-btn" href="/f/{{ public_id }}/print" target="_blank" rel="noopener" aria-label="{{ texts.print_btn }}">{{ icon_svg("convert") }}<span data-i18n="print_btn">{{ texts.print_btn }}</span></a>
+    {% endif %}
     {% if is_zip %}
     <button class="action-btn" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
     {% endif %}

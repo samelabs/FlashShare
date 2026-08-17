@@ -32,13 +32,9 @@ from security import token_hash
 from i18n import language_from_code, language_from_header
 from utils import now
 import tools_registry  # noqa: F401 — registers share + privacy tools
-import tools_beautify  # noqa: F401 — registers beautify tool
-import tools_compress  # noqa: F401 — registers compress tool
-import tools_ico       # noqa: F401 — registers ico favicon tool
-import tools_pdf       # noqa: F401 — registers pdf merge tool
-import tools_zip        # noqa: F401 — registers zip pack tool
-import tools_crop       # noqa: F401 — registers crop white tool
-import tools_img2pdf   # noqa: F401 — registers img2pdf tool
+from tools import load_all
+
+load_all()  # auto-discover every tools_*.py (incl. tools_registry itself)
 
 # ── Logging ──
 import os as _os

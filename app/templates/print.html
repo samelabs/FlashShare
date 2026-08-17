@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}" dir="{{ direction }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ t.print_btn }} · {{ file_name|e }}</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #f2f4f7; color: #1a1d21;
+    display: flex; flex-direction: column; height: 100vh; height: 100dvh;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e6eb;
+    flex: none;
+  }
+  header .name {
+    flex: 1; min-width: 0; font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 18px; border-radius: 8px; border: 1px solid #d5dae1;
+    background: #fff; color: #1a1d21; font-size: 14px; font-weight: 600;
+    cursor: pointer; text-decoration: none; flex: none;
+  }
+  .btn.primary { background: #1652f0; border-color: #1652f0; color: #fff; }
+  main { flex: 1; min-height: 0; padding: 12px; }
+  iframe { width: 100%; height: 100%; border: 0; border-radius: 10px; background: #fff; }
+  p.hint { padding: 8px 16px 12px; font-size: 12px; color: #66707a; flex: none; }
+  @media print {
+    header, p.hint { display: none; }
+    main { padding: 0; }
+    body { background: #fff; height: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="name">{{ file_name|e }}</span>
+  <a class="btn" href="{{ download_url }}">{{ t.download_file if t.download_file else "Download" }}</a>
+  <button class="btn primary" type="button" id="printBtn">{{ t.print_btn }}</button>
+</header>
+<main>
+  <iframe id="pdfFrame" src="{{ inline_url }}" title="{{ file_name|e }}"></iframe>
+</main>
+<p class="hint">{{ t.print_hint }}</p>
+<script>
+  function doPrint() {
+    try {
+      var f = document.getElementById("pdfFrame");
+      f.contentWindow.focus();
+      f.contentWindow.print();
+    } catch (e) { window.print(); }
+  }
+  document.getElementById("printBtn").addEventListener("click", doPrint);
+</script>
+</body>
+</html>

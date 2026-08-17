@@ -124,6 +124,7 @@ async def file_route(public_id: str, request: Request):
         "file_name": upload["file_name"],
         "content_type": upload["content_type"] or "",
         "is_image": (upload["content_type"] or "").startswith("image/"),
+        "is_pdf": (upload["content_type"] or "").lower() == "application/pdf",
         "is_zip": ((upload["content_type"] or "") in ("application/zip", "application/x-zip-compressed"))
                    or (upload["file_name"] or "").lower().endswith(".zip"),
         "card_date": format_ts(expire_at),
@@ -209,3 +210,79 @@ async def file_zip_list(public_id: str, request: Request):
         "files": len(files),
         "dirs": len(dirs),
     })
+
+
+@router.get("/f/{public_id}/inline")
+async def file_inline(public_id: str, request: Request):
+    """Stream a file inline (Content-Disposition: inline) for embedded display.
+
+    Same visibility rules as /f/{pid}. The nginx /dh/ path forces
+    attachment, so the print view (and future PDF embeds) stream through
+    here instead. Non-PDF requests are rejected — this endpoint exists
+    for print/embed, not as a general CORS-free viewer.
+    """
+    upload = get_upload_by_public_id(public_id)
+    if not upload:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    ct = (upload["content_type"] or "").lower()
+    if ct != "application/pdf":
+        return JSONResponse({"ok": False, "error": "not_pdf"}, 400)
+
+    from gokapi import open_gokapi_download
+    from urllib.parse import quote
+    status, headers, stream = open_gokapi_download(upload["gokapi_id"])
+    if status >= 400:
+        return HTMLResponse("File unavailable", status=status)
+
+    safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
+    ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "document"
+    disposition = f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
+
+    def generate():
+        try:
+            while True:
+                chunk = stream.read(1024 * 256)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            stream.close()
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
+    )
+
+
+@router.get("/f/{public_id}/print", response_class=HTMLResponse)
+async def file_print(public_id: str, request: Request):
+    """Minimal print view for PDF results: embedded PDF + print button.
+
+    No site navigation. Auto-triggers the print dialog where supported
+    (desktop); on mobile Safari/Chrome the explicit button opens the
+    system print panel via the embedded viewer.
+    """
+    from app.main import templates
+
+    upload = get_upload_by_public_id(public_id)
+    if not upload:
+        return HTMLResponse("Not found", status_code=404)
+    ct = (upload["content_type"] or "").lower()
+    if ct != "application/pdf":
+        return HTMLResponse("Not a PDF", status_code=400)
+
+    lang = request.state.lang
+    texts = server_text(lang)
+    direction = "rtl" if lang == "ar" else "ltr"
+    ctx = {
+        "request": request,
+        "lang": lang,
+        "locale": LOCALE_TAGS.get(lang, "en"),
+        "direction": direction,
+        "file_name": upload["file_name"],
+        "inline_url": f"/f/{urllib.parse.quote(public_id)}/inline",
+        "download_url": f"/f/{urllib.parse.quote(public_id)}?download=1",
+        "t": texts,
+    }
+    return templates.TemplateResponse("print.html", ctx)
