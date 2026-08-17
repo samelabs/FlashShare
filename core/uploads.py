@@ -11,11 +11,11 @@ def check_quota(user_id: int, ip: str, incoming_bytes: int) -> tuple:
     start = now() - 24 * 3600
     with db() as con:
         row = con.execute(
-            "SELECT COUNT(*) c, COALESCE(SUM(size_bytes), 0) b FROM uploads WHERE user_id = ? AND created_at > ?",
+            "SELECT COUNT(*) c, COALESCE(SUM(size_bytes), 0) b FROM uploads WHERE user_id = %s AND created_at > %s",
             (user_id, start),
         ).fetchone()
         ip_row = con.execute(
-            "SELECT COUNT(*) c FROM uploads WHERE ip = ? AND created_at > ?",
+            "SELECT COUNT(*) c FROM uploads WHERE ip = %s AND created_at > %s",
             (ip, start),
         ).fetchone()
     if row["c"] >= DAILY_UPLOADS:
@@ -34,7 +34,7 @@ def get_upload_by_public_id(public_id: str):
             SELECT id, public_id, gokapi_id, file_name, content_type, size_bytes, expiry_days,
                    allowed_downloads, expire_at, url_download, url_hotlink, created_at, user_id
             FROM uploads
-            WHERE public_id = ?
+            WHERE public_id = %s
             """,
             (public_id,),
         ).fetchone()
@@ -81,9 +81,9 @@ def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
             SELECT id, public_id, gokapi_id, file_name, size_bytes, expiry_days, allowed_downloads, expire_at,
                    url_download, url_hotlink, created_at
             FROM uploads
-            WHERE user_id = ? AND expire_at > ?
+            WHERE user_id = %s AND expire_at > %s
             ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
             """,
             (user_id, int(time.time()), limit, offset),
         ).fetchall()
@@ -106,7 +106,7 @@ def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
 def delete_upload(upload_id: int, user_id: int) -> bool:
     with db() as con:
         row = con.execute(
-            "SELECT id, gokapi_id FROM uploads WHERE id = ? AND user_id = ?",
+            "SELECT id, gokapi_id FROM uploads WHERE id = %s AND user_id = %s",
             (upload_id, user_id),
         ).fetchone()
     if not row:
@@ -115,7 +115,7 @@ def delete_upload(upload_id: int, user_id: int) -> bool:
     # orphaned gokapi file that expires on its own (invisible, no record).
     # The reverse order could leave a live DB record pointing at a dead file.
     with db() as con:
-        con.execute("DELETE FROM uploads WHERE id = ? AND user_id = ?", (upload_id, user_id))
+        con.execute("DELETE FROM uploads WHERE id = %s AND user_id = %s", (upload_id, user_id))
     try:
         delete_gokapi_file(row["gokapi_id"])
     except Exception:

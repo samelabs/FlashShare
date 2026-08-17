@@ -72,7 +72,7 @@ def get_user_from_request(request: Request):
     try:
         with db() as con:
             row = con.execute(
-                "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?",
+                "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = %s AND s.expires_at > %s",
                 (token_hash(token), now()),
             ).fetchone()
         return dict(row) if row else None

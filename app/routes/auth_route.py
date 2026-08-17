@@ -9,12 +9,13 @@ import asyncio
 import hashlib
 import logging
 import secrets
-import sqlite3
 import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
+
+import psycopg2
 
 _BASE = Path(__file__).resolve().parent.parent.parent
 _CORE = _BASE / "core"
@@ -78,7 +79,7 @@ def _create_session(user_id: int) -> str:
     token = b64url(secrets.token_bytes(32))
     with db() as con:
         con.execute(
-            "INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(?,?,?,?)",
+            "INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(%s,%s,%s,%s)",
             (token_hash(token), user_id, now() + SESSION_TTL, now()),
         )
     return token
@@ -106,7 +107,7 @@ async def x_login(request: Request):
     state = b64url(secrets.token_bytes(32))
     with db() as con:
         con.execute(
-            "INSERT INTO oauth_states(state, verifier, expires_at, created_at, bind_user_id) VALUES(?,?,?,?,?)",
+            "INSERT INTO oauth_states(state, verifier, expires_at, created_at, bind_user_id) VALUES(%s,%s,%s,%s,%s)",
             (state, verifier, now() + OAUTH_TTL, now(), bind_user_id),
         )
     params = {
@@ -131,8 +132,8 @@ async def x_callback(request: Request):
         return RedirectResponse("/", 302)
 
     with db() as con:
-        row = con.execute("SELECT * FROM oauth_states WHERE state = ? AND expires_at > ?", (state, now())).fetchone()
-        con.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+        row = con.execute("SELECT * FROM oauth_states WHERE state = %s AND expires_at > %s", (state, now())).fetchone()
+        con.execute("DELETE FROM oauth_states WHERE state = %s", (state,))
     if not row:
         from app.main import templates
         from app.routes.pages import _ctx_base
@@ -241,7 +242,7 @@ async def register_submit(request: Request):
     try:
         # bcrypt hashing is CPU-heavy — keep it off the event loop
         user_id = await asyncio.to_thread(register_user, username, email, password)
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         # Lost the race between validation and INSERT — map back to i18n keys
         if username_taken(username):
             return _err(texts.get("err_username_taken", "err_username_taken"))

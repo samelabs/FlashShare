@@ -72,7 +72,7 @@ def _save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
         con.execute(
             """INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
                expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (user_id, ip, public_id, gokapi_id, filename, content_type, size,
              expiry_days, allowed_downloads, expire_at, dl_url, url_hotlink, now()),
         )
@@ -517,7 +517,7 @@ async def rename_upload_route(public_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_name"}, 400)
     final_name = clean_stem + original_ext
     with db() as con:
-        con.execute("UPDATE uploads SET file_name = ? WHERE id = ?", (final_name, upload["id"]))
+        con.execute("UPDATE uploads SET file_name = %s WHERE id = %s", (final_name, upload["id"]))
     return {"ok": True, "name": final_name}
 
 

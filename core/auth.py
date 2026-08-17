@@ -5,6 +5,8 @@ import urllib.parse
 import urllib.request
 import urllib.error
 
+import psycopg2
+
 from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET
 from database import db
 from security import hash_password, verify_password, needs_rehash
@@ -53,7 +55,7 @@ def validate_password(password: str) -> str | None:
 
 def username_taken(username: str) -> bool:
     with db() as con:
-        return con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone() is not None
+        return con.execute("SELECT 1 FROM users WHERE username = %s", (username,)).fetchone() is not None
 
 
 def register_user(username: str, email: str, password: str) -> int:
@@ -61,21 +63,22 @@ def register_user(username: str, email: str, password: str) -> int:
     ts = now()
     pw_hash = hash_password(password)
     with db() as con:
-        cur = con.execute(
+        row = con.execute(
             """
             INSERT INTO users (username, email, password_hash, display_name, status, created_at, last_login_at, updated_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+            VALUES (%s, %s, %s, %s, 'active', %s, %s, %s)
+            RETURNING id
             """,
             (username, email, pw_hash, username, ts, ts, ts),
-        )
-        return cur.lastrowid
+        ).fetchone()
+        return row["id"]
 
 
 def authenticate_local(login: str, password: str) -> int | None:
     """Authenticate by username or email. Returns user id or None."""
     with db() as con:
         row = con.execute(
-            "SELECT id, password_hash FROM users WHERE username = ? OR email = ?",
+            "SELECT id, password_hash FROM users WHERE username = %s OR email = %s",
             (login, login),
         ).fetchone()
     if not row or not row["password_hash"]:
@@ -88,12 +91,12 @@ def authenticate_local(login: str, password: str) -> int | None:
         new_hash = hash_password(password)
         with db() as con:
             con.execute(
-                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                "UPDATE users SET password_hash = %s, updated_at = %s WHERE id = %s",
                 (new_hash, ts, row["id"]),
             )
     with db() as con:
         con.execute(
-            "UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?",
+            "UPDATE users SET last_login_at = %s, updated_at = %s WHERE id = %s",
             (ts, ts, row["id"]),
         )
     return row["id"]
@@ -165,7 +168,7 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
 
     with db() as con:
         existing = con.execute(
-            "SELECT id FROM users WHERE x_user_id = ?", (x_id,)
+            "SELECT id FROM users WHERE x_user_id = %s", (x_id,)
         ).fetchone()
 
         if existing:
@@ -176,10 +179,10 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             con.execute(
                 """
                 UPDATE users SET
-                    x_username = ?, x_display_name = ?, x_avatar_url = ?, x_profile_url = ?,
-                    avatar_url = COALESCE(avatar_url, ?),
-                    last_login_at = ?, updated_at = ?
-                WHERE id = ?
+                    x_username = %s, x_display_name = %s, x_avatar_url = %s, x_profile_url = %s,
+                    avatar_url = COALESCE(avatar_url, %s),
+                    last_login_at = %s, updated_at = %s
+                WHERE id = %s
                 """,
                 (x_username, x_display_name, x_avatar_url, x_profile_url,
                  x_avatar_url, ts, ts, user_id),
@@ -188,15 +191,15 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
 
         if bind_user_id:
             # Bind X to existing local account
-            row = con.execute("SELECT id FROM users WHERE id = ?", (bind_user_id,)).fetchone()
+            row = con.execute("SELECT id FROM users WHERE id = %s", (bind_user_id,)).fetchone()
             if not row:
                 raise ValueError("err_user_not_found")
             con.execute(
                 """
                 UPDATE users SET
-                    x_user_id = ?, x_username = ?, x_display_name = ?, x_avatar_url = ?,
-                    x_profile_url = ?, updated_at = ?
-                WHERE id = ?
+                    x_user_id = %s, x_username = %s, x_display_name = %s, x_avatar_url = %s,
+                    x_profile_url = %s, updated_at = %s
+                WHERE id = %s
                 """,
                 (x_id, x_username, x_display_name, x_avatar_url,
                  x_profile_url, ts, bind_user_id),
@@ -213,31 +216,32 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
         base_name = username
         suffix = 1
         while con.execute(
-            "SELECT 1 FROM users WHERE username = ?", (username,)
+            "SELECT 1 FROM users WHERE username = %s", (username,)
         ).fetchone():
             username = f"{base_name}_{suffix}"[:32]
             suffix += 1
 
-        cur = con.execute(
+        row = con.execute(
             """
             INSERT INTO users
               (username, display_name, avatar_url,
                x_user_id, x_username, x_display_name, x_avatar_url, x_profile_url,
                status, created_at, last_login_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
+            RETURNING id
             """,
             (username, x_display_name or username, x_avatar_url,
              x_id, x_username, x_display_name, x_avatar_url, x_profile_url,
              ts, ts, ts),
-        )
-        return cur.lastrowid
+        ).fetchone()
+        return row["id"]
 
 
 def unbind_x(user_id: int) -> None:
     """Remove X binding from user. User must have local credentials."""
     with db() as con:
         row = con.execute(
-            "SELECT password_hash, email FROM users WHERE id = ?", (user_id,)
+            "SELECT password_hash, email FROM users WHERE id = %s", (user_id,)
         ).fetchone()
         if not row:
             raise ValueError("err_user_not_found")
@@ -248,8 +252,8 @@ def unbind_x(user_id: int) -> None:
             UPDATE users SET
                 x_user_id = NULL, x_username = NULL, x_display_name = NULL,
                 x_avatar_url = NULL, x_profile_url = NULL,
-                updated_at = ?
-            WHERE id = ?
+                updated_at = %s
+            WHERE id = %s
             """,
             (now(), user_id),
         )
@@ -265,26 +269,26 @@ def update_profile(user_id: int, display_name: str | None = None,
             display_name = display_name.strip()[:64]
             if not display_name:
                 raise ValueError("err_display_name_empty")
-            con.execute("UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?",
+            con.execute("UPDATE users SET display_name = %s, updated_at = %s WHERE id = %s",
                         (display_name, ts, user_id))
         if bio is not None:
-            con.execute("UPDATE users SET bio = ?, updated_at = ? WHERE id = ?",
+            con.execute("UPDATE users SET bio = %s, updated_at = %s WHERE id = %s",
                         (bio.strip()[:500] or None, ts, user_id))
         if email is not None:
             email = email.strip().lower()[:254]
             if not email:
                 raise ValueError("err_email_empty")
-            existing = con.execute("SELECT id FROM users WHERE email = ? AND id != ?", (email, user_id)).fetchone()
+            existing = con.execute("SELECT id FROM users WHERE email = %s AND id != %s", (email, user_id)).fetchone()
             if existing:
                 raise ValueError("err_email_used")
-            con.execute("UPDATE users SET email = ?, updated_at = ? WHERE id = ?",
+            con.execute("UPDATE users SET email = %s, updated_at = %s WHERE id = %s",
                         (email, ts, user_id))
 
 
 def change_password(user_id: int, old_password: str, new_password: str) -> None:
     with db() as con:
         row = con.execute(
-            "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+            "SELECT password_hash FROM users WHERE id = %s", (user_id,)
         ).fetchone()
     if not row or not row["password_hash"]:
         raise ValueError("err_no_password_set")
@@ -295,7 +299,7 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
         raise ValueError(err)
     with db() as con:
         con.execute(
-            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+            "UPDATE users SET password_hash = %s, updated_at = %s WHERE id = %s",
             (hash_password(new_password), now(), user_id),
         )
 
@@ -304,7 +308,7 @@ def set_password(user_id: int, new_password: str) -> None:
     """Set password for OAuth-only users who have no password."""
     with db() as con:
         row = con.execute(
-            "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+            "SELECT password_hash FROM users WHERE id = %s", (user_id,)
         ).fetchone()
     if row and row["password_hash"]:
         raise ValueError("err_password_already_set")
@@ -313,7 +317,7 @@ def set_password(user_id: int, new_password: str) -> None:
         raise ValueError(err)
     with db() as con:
         con.execute(
-            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+            "UPDATE users SET password_hash = %s, updated_at = %s WHERE id = %s",
             (hash_password(new_password), now(), user_id),
         )
 
@@ -338,5 +342,5 @@ def public_user(row) -> dict:
 
 def has_password(user_id: int) -> bool:
     with db() as con:
-        row = con.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = con.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,)).fetchone()
     return bool(row and row["password_hash"])

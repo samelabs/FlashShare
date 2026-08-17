@@ -30,7 +30,7 @@ def sanitize_filename(name: str) -> str:
 def generate_public_id(con) -> str:
     for _ in range(20):
         public_id = b64url(secrets.token_bytes(9))
-        exists = con.execute("SELECT 1 FROM uploads WHERE public_id = ?", (public_id,)).fetchone()
+        exists = con.execute("SELECT 1 FROM uploads WHERE public_id = %s", (public_id,)).fetchone()
         if not exists:
             return public_id
     raise RuntimeError("public_id_generation_failed")
