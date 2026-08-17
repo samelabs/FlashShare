@@ -64,10 +64,22 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 # ── Auth helpers (reuse core/security.py + core/database.py) ──
 
 def get_user_from_request(request: Request):
-    """Extract and validate session from cookie. Returns user dict or None."""
+    """Extract and validate identity: session cookie first, then Bearer.
+
+    The Bearer path is the agent/MCP channel (api_tokens): same user dict,
+    same downstream authorization. Cookie keeps browser flows unchanged.
+    """
     from database import db
+    from apitokens import authenticate_token
     token = request.cookies.get(COOKIE_NAME)
     if not token:
+        # Bearer channel for programmatic clients
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            user = authenticate_token(auth[7:].strip())
+            if user:
+                request.state.auth_via = "token"
+            return user
         return None
     try:
         with db() as con:
@@ -75,6 +87,8 @@ def get_user_from_request(request: Request):
                 "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = %s AND s.expires_at > %s",
                 (token_hash(token), now()),
             ).fetchone()
+        if row:
+            request.state.auth_via = "session"
         return dict(row) if row else None
     except Exception:
         return None

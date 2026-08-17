@@ -530,3 +530,43 @@ async def get_me(request: Request):
     if err:
         return err
     return {"ok": True, "user": public_user(user)}
+
+
+# ── API tokens (agent/MCP channel management; session-authenticated) ──
+
+@router.get("/tokens")
+async def list_tokens_route(request: Request):
+    """List own tokens (prefix only, no secrets)."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from apitokens import list_tokens
+    return {"ok": True, "tokens": list_tokens(user["id"])}
+
+
+@router.post("/tokens")
+async def create_token_route(request: Request):
+    """Create a token. The plaintext is returned exactly once."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    try:
+        raw = await request.json()
+        name = str(raw.get("name") or "").strip()[:64]
+    except Exception:
+        name = ""
+    from apitokens import create_token
+    tok = create_token(user["id"], name or "token")
+    return {"ok": True, "token": tok}
+
+
+@router.post("/tokens/{token_id}/revoke")
+async def revoke_token_route(token_id: int, request: Request):
+    """Soft-revoke one of own tokens."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from apitokens import revoke_token
+    if not revoke_token(user["id"], token_id):
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True}
