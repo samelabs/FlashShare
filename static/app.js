@@ -802,7 +802,7 @@ function showShareResult(file) {
   }
   const isPdf = !!file.publicId && (zipCt === "application/pdf" || /\.pdf$/i.test(zipName));
   if (isPdf) {
-    actions = `<a class="action-btn" href="/f/${file.publicId}/print" target="_blank" rel="noopener" aria-label="${t("print_btn")}">${svgIcon("convert")}<span data-i18n="print_btn">${t("print_btn")}</span></a>` + actions;
+    actions = `<a class="action-btn" href="/f/${file.publicId}/print" target="_blank" rel="noopener" aria-label="${t("print_btn")}">${svgIcon("print")}<span data-i18n="print_btn">${t("print_btn")}</span></a>` + actions;
   }
 
   const header = isImg ? "" :
