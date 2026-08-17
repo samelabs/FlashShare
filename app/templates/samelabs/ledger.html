@@ -1,0 +1,27 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block samelabs_body %}
+<table class="samelabs-table">
+  <thead><tr><th>#</th><th>时间</th><th>用户</th><th>类型</th><th>变动</th><th>余额</th><th>关联</th><th>备注</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td>{{ e.id }}</td>
+      <td>{{ fmt_ts(e.created_at) }}</td>
+      <td>{{ e.username or e.user_id }}</td>
+      <td>{{ e.kind }}</td>
+      <td>{{ '+' if e.delta > 0 }}{{ e.delta }}</td>
+      <td>{{ e.balance_after }}</td>
+      <td>{{ e.ref_id or '—' }}</td>
+      <td>{{ e.note or '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8">暂无流水</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="samelabs-pager">
+  {% if page > 1 %}<a href="/samelabs/ledger?page={{ page - 1 }}">← 上一页</a>{% endif %}
+  <span>第 {{ page }} / {{ pages }} 页 · 共 {{ total }} 条</span>
+  {% if page < pages %}<a href="/samelabs/ledger?page={{ page + 1 }}">下一页 →</a>{% endif %}
+</div>
+{% endblock %}

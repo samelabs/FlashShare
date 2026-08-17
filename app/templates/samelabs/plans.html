@@ -1,0 +1,41 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block samelabs_body %}
+<div class="samelabs-panel">
+  <h2>订阅档位</h2>
+  <table class="samelabs-table">
+    <thead><tr><th>code</th><th>名称</th><th>月价(分)</th><th>月积分</th><th>状态</th></tr></thead>
+    <tbody>
+    {% for p in plans %}
+      <tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.price_cents }}</td><td>{{ p.monthly_credits }}</td><td>{{ '✓' if p.active else '✗' }}</td></tr>
+    {% else %}
+      <tr><td colspan="5">暂无档位</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <form id="planForm" class="token-create-row" style="margin-top: var(--s3);">
+    <input type="text" id="planCode" placeholder="code 如 pro" maxlength="32">
+    <input type="text" id="planName" placeholder="名称" maxlength="64">
+    <input type="number" id="planPrice" placeholder="月价(分)" min="0" style="width:110px">
+    <input type="number" id="planCredits" placeholder="月积分" min="0" style="width:110px">
+    <button type="button" class="btn-secondary" id="planCreate"><span>创建</span></button>
+  </form>
+</div>
+{% endblock %}
+
+{% block script %}
+document.getElementById('planCreate')?.addEventListener('click', async () => {
+  const r = await fetch('/samelabs/plans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code: document.getElementById('planCode').value,
+      name: document.getElementById('planName').value,
+      monthly_price: parseInt(document.getElementById('planPrice').value, 10) || 0,
+      monthly_credits: parseInt(document.getElementById('planCredits').value, 10) || 0,
+    })
+  });
+  const d = await r.json();
+  if (d.ok) location.reload();
+  else alert(d.error || 'error');
+});
+{% endblock %}

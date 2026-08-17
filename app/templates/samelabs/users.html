@@ -1,0 +1,50 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block samelabs_body %}
+<form method="get" action="/samelabs/users" class="token-create-row" style="margin-bottom: var(--s3);">
+  <input type="text" name="q" value="{{ q }}" placeholder="搜索用户名/显示名">
+  <button type="submit" class="btn-secondary"><span>搜索</span></button>
+</form>
+<table class="samelabs-table">
+  <thead><tr><th>ID</th><th>用户名</th><th>状态</th><th>余额</th><th>成功调用</th><th>注册</th><th>最近登录</th><th>调整积分</th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr data-uid="{{ u.id }}">
+      <td>{{ u.id }}</td>
+      <td>{{ u.username }}{% if u.display_name %} ({{ u.display_name }}){% endif %}</td>
+      <td>{{ u.status }}</td>
+      <td class="u-balance">{{ u.balance }}</td>
+      <td>{{ u.calls_ok }}</td>
+      <td>{{ fmt_ts(u.created_at) }}</td>
+      <td>{{ fmt_ts(u.last_login_at) }}</td>
+      <td>
+        <input type="number" class="adj-amount" data-uid="{{ u.id }}" style="width:80px" placeholder="±N">
+        <button type="button" class="btn-secondary btn-adjust" data-uid="{{ u.id }}"><span>调整</span></button>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8">无匹配用户</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block script %}
+document.querySelectorAll('.btn-adjust').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const uid = btn.dataset.uid;
+    const input = document.querySelector(`.adj-amount[data-uid="${uid}"]`);
+    const amount = parseInt(input.value, 10);
+    if (!amount) { alert('输入非零整数'); return; }
+    const r = await fetch(`/samelabs/users/${uid}/credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      document.querySelector(`tr[data-uid="${uid}"] .u-balance`).textContent = d.balance_after;
+      input.value = '';
+    } else { alert(d.error || 'error'); }
+  });
+});
+{% endblock %}

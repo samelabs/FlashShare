@@ -17,6 +17,10 @@ class ToolExecuteRequest(BaseModel):
     source_token: str = Field(default="", max_length=64)
     source_tokens: List[str] = Field(default_factory=list, max_items=20)
     params: Dict[str, Any] = Field(default_factory=dict)
+    # Idempotency ref for programmatic callers (/api/v1, MCP). Web UI
+    # omits it — each click is a fresh call. Replay with same ref
+    # returns the recorded result without re-charging.
+    client_ref: str = Field(default="", max_length=128)
 
 
 class RenameRequest(BaseModel):

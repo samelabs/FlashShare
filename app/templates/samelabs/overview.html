@@ -1,0 +1,46 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block samelabs_body %}
+<div class="stats-grid">
+  <div class="stat-card"><h3>{{ stats.users }}</h3><p>用户</p></div>
+  <div class="stat-card"><h3>{{ stats.uploads }}</h3><p>分享记录</p></div>
+  <div class="stat-card"><h3>{{ stats.calls_ok }}</h3><p>成功调用</p></div>
+  <div class="stat-card"><h3>{{ stats.calls_failed }}</h3><p>失败调用</p></div>
+  <div class="stat-card"><h3>{{ stats.credits_granted }}</h3><p>累计发放积分</p></div>
+  <div class="stat-card"><h3>{{ stats.credits_consumed }}</h3><p>累计消耗积分</p></div>
+</div>
+
+<div class="samelabs-cols">
+  <div class="samelabs-panel">
+    <h2>最近调用</h2>
+    <table class="samelabs-table">
+      <thead><tr><th>时间</th><th>用户</th><th>工具</th><th>状态</th><th>积分</th></tr></thead>
+      <tbody>
+      {% for r in recent %}
+        <tr>
+          <td>{{ fmt_ts(r.finished_at or r.started_at) }}</td>
+          <td>{{ r.username or r.user_id }}</td>
+          <td>{{ r.tool_id }}</td>
+          <td>{{ '✓' if r.status == 'ok' else r.status }}</td>
+          <td>{{ r.cost_snapshot }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">暂无</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="samelabs-panel">
+    <h2>工具热度</h2>
+    <table class="samelabs-table">
+      <thead><tr><th>工具</th><th>调用数</th></tr></thead>
+      <tbody>
+      {% for t in top_tools %}
+        <tr><td>{{ t.tool_id }}</td><td>{{ t.n }}</td></tr>
+      {% else %}
+        <tr><td colspan="2">暂无</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

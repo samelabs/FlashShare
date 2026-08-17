@@ -1,0 +1,52 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block samelabs_body %}
+<table class="samelabs-table">
+  <thead><tr><th>工具</th><th>名称</th><th>单价(积分)</th><th>启用</th><th>注册状态</th><th>操作</th></tr></thead>
+  <tbody>
+  {% for t in tools %}
+    <tr data-tool="{{ t.tool_id }}">
+      <td>{{ t.tool_id }}</td>
+      <td>{{ t.label }}</td>
+      <td><input type="number" min="0" class="tool-cost" data-tool="{{ t.tool_id }}" value="{{ t.cost }}" style="width:90px"></td>
+      <td class="tool-enabled">{{ '✓ 启用' if t.enabled else '✗ 停用' }}</td>
+      <td>{{ '已注册' if t.registered else '未注册(历史)' }}</td>
+      <td>
+        <button type="button" class="btn-secondary btn-save-pricing" data-tool="{{ t.tool_id }}"><span>保存</span></button>
+        <button type="button" class="btn-secondary btn-toggle-tool" data-tool="{{ t.tool_id }}" data-enabled="{{ 'true' if t.enabled else 'false' }}"><span>{{ '停用' if t.enabled else '启用' }}</span></button>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block script %}
+async function savePricing(tool, cost, enabled) {
+  const r = await fetch(`/samelabs/tools/${tool}/pricing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cost, enabled })
+  });
+  return r.json();
+}
+document.querySelectorAll('.btn-save-pricing').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const tool = btn.dataset.tool;
+    const cost = parseInt(document.querySelector(`.tool-cost[data-tool="${tool}"]`).value, 10) || 0;
+    const enabled = document.querySelector(`tr[data-tool="${tool}"] .tool-enabled`).textContent.includes('启用');
+    const d = await savePricing(tool, cost, enabled);
+    if (d.ok) alert(`已保存: ${tool} = ${d.pricing.cost} 积分`);
+    else alert(d.error || 'error');
+  });
+});
+document.querySelectorAll('.btn-toggle-tool').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const tool = btn.dataset.tool;
+    const nowEnabled = btn.dataset.enabled === 'true';
+    const cost = parseInt(document.querySelector(`.tool-cost[data-tool="${tool}"]`).value, 10) || 0;
+    const d = await savePricing(tool, cost, !nowEnabled);
+    if (d.ok) location.reload();
+    else alert(d.error || 'error');
+  });
+});
+{% endblock %}

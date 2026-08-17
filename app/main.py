@@ -155,11 +155,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Routes ──
 
-from app.routes import pages, api, auth_route, proxy  # noqa: E402
+from app.routes import pages, api, auth_route, proxy, apiv1, samelabs  # noqa: E402
 
 app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
+app.include_router(apiv1.router, prefix="/api/v1")
 app.include_router(auth_route.router, prefix="/auth")
+app.include_router(samelabs.router)
 app.include_router(proxy.router)
 
 
@@ -174,4 +176,15 @@ async def not_found_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 async def startup():
     init_db()
+    # Seed pricing rows for every registered tool (idempotent, default
+    # cost 0 = free until priced in /samelabs). Tools registry must be
+    # loaded first.
+    try:
+        from tools import load_all, _registry
+        load_all()
+        from pricing import seed_pricing
+        seeded = seed_pricing([t["id"] for t in _registry])
+        logger.info("pricing seeded: +%d rows", seeded["added"])
+    except Exception:
+        logger.exception("pricing seed failed (non-fatal)")
     logger.info("%s started", APP_NAME)

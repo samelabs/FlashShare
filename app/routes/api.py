@@ -14,6 +14,7 @@ import sys
 import json
 import asyncio
 import logging
+import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -44,6 +45,69 @@ _process_pool = ProcessPoolExecutor(max_workers=2)
 
 def _get_pool():
     return _process_pool
+
+
+# ── Metering helpers (single gate at execute_tool; see pricing.py/billing.py) ──
+
+def _finish_metered_call(user, tool, client_ref, cost, started,
+                         request, result, upload) -> dict:
+    """Record the successful call fact + return payload (with replay flag off)."""
+    try:
+        rid = None
+        if upload is not None:
+            rid = dict(upload).get("id")
+        with db() as con:
+            row = con.execute(
+                """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
+                   cost_snapshot, upload_id, result_public_id, params_json,
+                   result_json, started_at, finished_at)
+                   VALUES (%s, %s, %s, 'ok', %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (client_ref, user["id"], tool["id"], cost, rid,
+                 result.get("publicId"), None,
+                 json.dumps(result)[:4000], started, now()),
+            ).fetchone()
+            call_id = row["id"]
+    except Exception:
+        logger.exception("metering record failed (call still returned)")
+        call_id = None
+    out = {"ok": True, "type": tool["type"], "result": result}
+    if call_id:
+        out["call_id"] = call_id
+    return out
+
+
+def _record_failed_call(user, tool, client_ref, cost, started, error) -> None:
+    try:
+        with db() as con:
+            con.execute(
+                """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
+                   cost_snapshot, error, started_at, finished_at)
+                   VALUES (%s, %s, %s, 'failed', %s, %s, %s, %s)""",
+                (client_ref, user["id"], tool["id"], cost,
+                 str(error)[:500], started, now()))
+    except Exception:
+        logger.exception("failed-call record failed")
+
+
+def _refund_call(user, client_ref, tool_id, cost, reason) -> None:
+    """Refund a charged call that failed — new ledger row, never an UPDATE."""
+    from billing import refund
+    if cost <= 0:
+        return
+    try:
+        # Ordinal = rows recorded for this ref INCLUDING the just-failed one
+        with db() as con:
+            n = con.execute(
+                "SELECT COUNT(*) AS n FROM tool_calls WHERE user_id = %s AND client_ref = %s",
+                (user["id"], client_ref),
+            ).fetchone()["n"]
+        refund(user["id"], cost, ref_type="tool_call",
+               ref_id=client_ref,
+               idem_key=f"refund:call:{user['id']}:{client_ref}:{int(n) - 1}",
+               note=f"{tool_id}: {reason}"[:200])
+    except Exception:
+        logger.exception("refund failed for call %s", client_ref)
 
 
 def _client_ip(request: Request) -> str:
@@ -163,7 +227,10 @@ async def execute_tool(request: Request):
         return err
 
     try:
-        raw = await request.json()
+        if getattr(request.state, "_v1_raw", None) is not None:
+            raw = request.state._v1_raw  # dispatched from /api/v1/execute
+        else:
+            raw = await request.json()
         req = ToolExecuteRequest(**raw)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
@@ -173,6 +240,67 @@ async def execute_tool(request: Request):
     tool = get_tool(tool_id)
     if not tool:
         return JSONResponse({"ok": False, "error": "tool_not_found"}, 404)
+
+    # ── Metering gate (single point for ALL execution paths) ──
+    # pricing/enabled check + idempotent charge + tool_calls fact row.
+    # Web UI passes no client_ref: a random one (no replay protection,
+    # matching the UX of click-again-to-retry). /api/v1 + MCP pass
+    # client_ref: replay returns the original result without re-charging.
+    from pricing import get_pricing
+    from billing import consume, lazy_signup_grant, InsufficientCredits, SIGNUP_GRANT_CREDITS
+    price = get_pricing(tool_id)
+    if not price["enabled"]:
+        return JSONResponse({"ok": False, "error": "tool_disabled"}, 403)
+    client_ref = req.client_ref or secrets.token_hex(16)
+    attempt = 0  # set below after the prior check
+    idem_key = f"call:{user['id']}:{client_ref}"  # attempt appended post-check
+
+    # Replay check (idempotent consumers only)
+    with db() as con:
+        prior = con.execute(
+            "SELECT * FROM tool_calls WHERE user_id = %s AND client_ref = %s",
+            (user["id"], client_ref),
+        ).fetchone()
+        # Attempt ordinal: crash-safety + recharge-after-refund. If the
+        # process died between charge and tool_calls insert, the retry
+        # lands on the same attempt → consume idem replays (no double
+        # charge). A retry AFTER a recorded failure lands on attempt+1
+        # → fresh charge (the refund must not become a free pass).
+        attempt = con.execute(
+            "SELECT COUNT(*) AS n FROM tool_calls WHERE user_id = %s AND client_ref = %s",
+            (user["id"], client_ref),
+        ).fetchone()["n"]
+
+    if prior:
+        # Exact replay: return recorded result, no charge, no re-run
+        if prior["status"] == "ok" and prior["result_json"]:
+            return {"ok": True, "type": tool["type"],
+                    "result": json.loads(prior["result_json"]),
+                    "replay": True, "call_id": prior["id"]}
+        # Failed prior: allow retry with same ref (charge happens below)
+
+    idem_key = f"call:{user['id']}:{client_ref}:{attempt}"
+    cost = int(price["cost"])
+    started = now()
+    # Lazy signup grant at first billable need
+    if cost > 0:
+        with db() as con:
+            lazy_signup_grant(con, user["id"], SIGNUP_GRANT_CREDITS)
+        try:
+            charge = consume(user["id"], cost, "consume",
+                             ref_type="tool_call", idem_key=idem_key,
+                             note=f"{tool_id}")
+        except InsufficientCredits as exc:
+            con_execute = None
+            with db() as con:
+                con.execute(
+                    """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
+                       cost_snapshot, error, started_at, finished_at)
+                       VALUES (%s, %s, %s, 'insufficient', %s, %s, %s, %s)""",
+                    (client_ref, user["id"], tool_id, cost,
+                     f"balance:{exc.balance}", started, now()))
+            return JSONResponse({"ok": False, "error": "err_insufficient_credits",
+                                 "balance": exc.balance, "cost": exc.cost}, 402)
 
     # Resolve default preset if not specified
     if "preset" not in params:
@@ -196,6 +324,8 @@ async def execute_tool(request: Request):
                                         403 if err == "forbidden" else 404)
                 uploads.append(upload)
             result = await _execute_multi_and_share(request, tool, uploads, params, user)
+            return _finish_metered_call(user, tool, client_ref, cost, started,
+                                        request, result, None)
         else:
             # Single-file tool (existing behavior)
             public_id = req.public_id
@@ -208,11 +338,16 @@ async def execute_tool(request: Request):
                 return JSONResponse({"ok": False, "error": err or "not_found"},
                                     403 if err == "forbidden" else 404)
             result = await _execute_and_share(request, tool, upload, params, user)
-        return {"ok": True, "type": tool["type"], "result": result}
+        return _finish_metered_call(user, tool, client_ref, cost, started,
+                                    request, result, upload)
     except ToolError as exc:
+        _record_failed_call(user, tool, client_ref, cost, started, str(exc))
+        _refund_call(user, client_ref, tool_id, cost, str(exc))
         return JSONResponse({"ok": False, "error": str(exc)}, 400)
     except Exception:
         logger.exception("tool execution failed")
+        _record_failed_call(user, tool, client_ref, cost, started, "tool_failed")
+        _refund_call(user, client_ref, tool_id, cost, "tool_failed")
         return JSONResponse({"ok": False, "error": "tool_failed"}, 500)
 
 

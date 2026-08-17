@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}518.PLUS — Samelabs{% endblock %}
+{% block content %}
+<section class="auth-page">
+  <div class="samelabs-head">
+    <h1>Samelabs</h1>
+    <p class="profile-note">518.PLUS 运营后台 · {{ op.username }}</p>
+    <nav class="samelabs-nav">
+      <a href="/samelabs" class="{{ 'active' if page == 'overview' }}">概览</a>
+      <a href="/samelabs/users" class="{{ 'active' if page == 'users' }}">用户</a>
+      <a href="/samelabs/tools" class="{{ 'active' if page == 'tools' }}">工具</a>
+      <a href="/samelabs/plans" class="{{ 'active' if page == 'plans' }}">档位</a>
+      <a href="/samelabs/packages" class="{{ 'active' if page == 'packages' }}">积分包</a>
+      <a href="/samelabs/ledger" class="{{ 'active' if page == 'ledger' }}">流水</a>
+    </nav>
+  </div>
+  {% block samelabs_body %}{% endblock %}
+</section>
+{% endblock %}
