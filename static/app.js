@@ -326,6 +326,8 @@ form.addEventListener("submit", async (event) => {
         return;
       }
       lastUploadResult = toolData.result;
+      // Sync header credit chip after a metered tool call
+      if (window.__syncCredits && typeof toolData.balance === "number") window.__syncCredits(toolData.balance);
       showShareResult(toolData.result);
       form.reset();
       fileLabel.textContent = t("dropEmpty");

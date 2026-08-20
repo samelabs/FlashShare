@@ -47,6 +47,7 @@ def _ctx_base(request: Request) -> dict:
     """Base context for all pages."""
     lang = request.state.lang
     user = request.state.user
+    from billing import get_balance
     return {
         "request": request,
         "lang": lang,
@@ -57,6 +58,8 @@ def _ctx_base(request: Request) -> dict:
         # dict (not pre-dumped JSON) so base.html can apply |tojson,
         # which escapes < > & — required inside a <script> block.
         "user_json": public_user(user) if user else None,
+        # Header credit chip (None for anonymous)
+        "credits": get_balance(user["id"]) if user else None,
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
         "BASE_URL": BASE_URL,
@@ -119,6 +122,15 @@ async def privacy(request: Request):
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html")})
     return templates.TemplateResponse("doc.html", ctx)
+
+
+@router.get("/agents", response_class=HTMLResponse)
+async def agents_page(request: Request):
+    """Agent support surface: HTTP API + MCP server + skill."""
+    from app.main import templates
+    ctx = _ctx_base(request)
+    ctx.update({"shell_class": "", "share_url": ""})
+    return templates.TemplateResponse("agents.html", ctx)
 
 
 _DOCS_DIR = _BASE / "templates"

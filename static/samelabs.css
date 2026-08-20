@@ -31,6 +31,13 @@ body.sl-body {
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  /* 解除主站单屏 app 布局约束 (style.css body{overflow:hidden;height:100dvh}) —
+     后台是常规滚动文档流 */
+  overflow: visible;
+  height: auto;
+  min-height: 100%;
+  display: block;
+  padding-top: 0;
 }
 
 /* ── 独立壳: 左固定侧栏 + 右内容 ─────────────────────────── */

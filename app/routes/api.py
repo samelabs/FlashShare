@@ -74,6 +74,13 @@ def _finish_metered_call(user, tool, client_ref, cost, started,
     out = {"ok": True, "type": tool["type"], "result": result}
     if call_id:
         out["call_id"] = call_id
+    # Authoritative post-call balance for the UI credit chip
+    if cost > 0:
+        try:
+            from billing import get_balance
+            out["balance"] = get_balance(user["id"])
+        except Exception:
+            logger.exception("balance fetch failed for UI chip")
     return out
 
 
