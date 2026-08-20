@@ -24,6 +24,14 @@ router = APIRouter()
 
 BACKOFFICE_STATUSES = ("admin", "samelabs")
 
+# ── samelabs.css cache-busting (same pattern as pages.py _CSS_VERSION) ──
+import hashlib as _hashlib
+from pathlib import Path as _Path
+
+_SL_CSS_VERSION = _hashlib.md5(
+    (_Path(__file__).resolve().parent.parent.parent / "static" / "samelabs.css").read_bytes()
+).hexdigest()[:8]
+
 
 def is_operator(user: dict | None) -> bool:
     return bool(user) and user.get("status") in BACKOFFICE_STATUSES
@@ -38,11 +46,12 @@ def _gate(request: Request):
 
 
 def _ctx(request: Request, user: dict, **extra) -> dict:
-    """Full page context (base.html needs texts/lang/icons/...)."""
+    """Full page context: shared vars + samelabs.css version + operator row."""
     from app.routes.pages import _ctx_base
     ctx = _ctx_base(request)
     ctx["op"] = user
     ctx["fmt_ts"] = _fmt_ts
+    ctx["sl_css_version"] = _SL_CSS_VERSION
     ctx.update(extra)
     return ctx
 
@@ -52,6 +61,14 @@ def _fmt_ts(ts) -> str:
         return "—"
     import datetime
     return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
+
+
+def _fmt_num(v) -> str:
+    """Thousands separators for stat/table numbers ('' → 0)."""
+    try:
+        return f"{int(v or 0):,}"
+    except (TypeError, ValueError):
+        return str(v)
 
 
 @router.get("/samelabs")
@@ -83,7 +100,7 @@ async def samelabs_overview(request: Request):
     ctx = _ctx(request, user, stats=stats,
                recent=[dict(r) for r in recent],
                top_tools=[dict(r) for r in top_tools],
-               page="overview")
+               fmt_num=_fmt_num, page="overview")
     return templates.TemplateResponse("samelabs/overview.html", ctx)
 
 
@@ -97,7 +114,7 @@ async def samelabs_users(request: Request, q: str = ""):
         if q:
             rows = con.execute(
                 """SELECT u.id, u.username, u.display_name, u.status, u.created_at,
-                          u.last_login_at,
+                          u.last_login_at, u.avatar_url,
                           COALESCE((SELECT SUM(delta) FROM ledger l WHERE l.user_id=u.id), 0) balance,
                           (SELECT COUNT(*) FROM tool_calls tc WHERE tc.user_id=u.id
                              AND tc.status='ok') calls_ok
@@ -107,13 +124,13 @@ async def samelabs_users(request: Request, q: str = ""):
         else:
             rows = con.execute(
                 """SELECT u.id, u.username, u.display_name, u.status, u.created_at,
-                          u.last_login_at,
+                          u.last_login_at, u.avatar_url,
                           COALESCE((SELECT SUM(delta) FROM ledger l WHERE l.user_id=u.id), 0) balance,
                           (SELECT COUNT(*) FROM tool_calls tc WHERE tc.user_id=u.id
                              AND tc.status='ok') calls_ok
                    FROM users u ORDER BY u.id DESC LIMIT 100""").fetchall()
     ctx = _ctx(request, user, users=[dict(r) for r in rows],
-               q=q, page="users")
+               q=q, fmt_num=_fmt_num, page="users")
     return templates.TemplateResponse("samelabs/users.html", ctx)
 
 
@@ -135,7 +152,7 @@ async def samelabs_tools(request: Request):
             "label": (t["label"].get("zh") or t["label"].get("en")) if t else "",
             "icon": t["icon"] if t else "",
         })
-    ctx = _ctx(request, user, tools=rows, page="tools")
+    ctx = _ctx(request, user, tools=rows, fmt_num=_fmt_num, page="tools")
     return templates.TemplateResponse("samelabs/tools.html", ctx)
 
 
@@ -165,7 +182,7 @@ async def samelabs_plans(request: Request):
     from app.main import templates
     with db() as con:
         rows = con.execute("SELECT * FROM plans ORDER BY price_cents").fetchall()
-    ctx = _ctx(request, user, plans=[dict(r) for r in rows], page="plans")
+    ctx = _ctx(request, user, plans=[dict(r) for r in rows], fmt_num=_fmt_num, page="plans")
     return templates.TemplateResponse("samelabs/plans.html", ctx)
 
 
@@ -205,7 +222,7 @@ async def samelabs_packages(request: Request):
     from app.main import templates
     with db() as con:
         rows = con.execute("SELECT * FROM packages ORDER BY credits").fetchall()
-    ctx = _ctx(request, user, packages=[dict(r) for r in rows], page="packages")
+    ctx = _ctx(request, user, packages=[dict(r) for r in rows], fmt_num=_fmt_num, page="packages")
     return templates.TemplateResponse("samelabs/packages.html", ctx)
 
 
@@ -253,8 +270,8 @@ async def samelabs_ledger(request: Request, page: int = 1):
                ORDER BY l.id DESC LIMIT %s OFFSET %s""",
             (size, (page - 1) * size)).fetchall()
     ctx = _ctx(request, user, entries=[dict(r) for r in rows],
-               total=total, page=page, pages=(total + size - 1) // size,
-               nav_page="ledger")
+               total=total, pg=page, pages=(total + size - 1) // size,
+               fmt_num=_fmt_num, page="ledger")
     return templates.TemplateResponse("samelabs/ledger.html", ctx)
 
 

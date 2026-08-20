@@ -1,50 +1,116 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block samelabs_body %}
-<form method="get" action="/samelabs/users" class="token-create-row" style="margin-bottom: var(--s3);">
-  <input type="text" name="q" value="{{ q }}" placeholder="搜索用户名/显示名">
-  <button type="submit" class="btn-secondary"><span>搜索</span></button>
-</form>
-<table class="samelabs-table">
-  <thead><tr><th>ID</th><th>用户名</th><th>状态</th><th>余额</th><th>成功调用</th><th>注册</th><th>最近登录</th><th>调整积分</th></tr></thead>
-  <tbody>
-  {% for u in users %}
-    <tr data-uid="{{ u.id }}">
-      <td>{{ u.id }}</td>
-      <td>{{ u.username }}{% if u.display_name %} ({{ u.display_name }}){% endif %}</td>
-      <td>{{ u.status }}</td>
-      <td class="u-balance">{{ u.balance }}</td>
-      <td>{{ u.calls_ok }}</td>
-      <td>{{ fmt_ts(u.created_at) }}</td>
-      <td>{{ fmt_ts(u.last_login_at) }}</td>
-      <td>
-        <input type="number" class="adj-amount" data-uid="{{ u.id }}" style="width:80px" placeholder="±N">
-        <button type="button" class="btn-secondary btn-adjust" data-uid="{{ u.id }}"><span>调整</span></button>
-      </td>
-    </tr>
-  {% else %}
-    <tr><td colspan="8">无匹配用户</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+{% set page_title = "用户" %}
+{% block body %}
+
+<div class="sl-toolbar">
+  <form class="sl-search" method="get" action="/samelabs/users">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="sl-input" type="text" name="q" value="{{ q|e }}" placeholder="搜索用户名 / 显示名…">
+  </form>
+  {% if q %}<a class="sl-btn sl-btn-ghost sl-btn-sm" href="/samelabs/users">清除搜索</a>{% endif %}
+  <span class="sl-count">{{ users|length }} 条结果{% if not q %} · 最近 100 名{% endif %}</span>
+</div>
+
+<div class="sl-panel">
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>ID</th><th>用户</th><th>状态</th><th class="sl-num">余额</th><th class="sl-num">成功调用</th><th>注册</th><th>最近登录</th><th>调整积分</th></tr></thead>
+      <tbody>
+      {% for u in users %}
+        <tr data-uid="{{ u.id }}">
+          <td class="sl-mono sl-dim">{{ u.id }}</td>
+          <td>
+            <div class="sl-u">
+              {% if u.avatar_url %}
+                <span class="sl-u-avatar"><img src="{{ u.avatar_url|e }}" alt=""></span>
+              {% else %}
+                <span class="sl-u-avatar">{{ (u.display_name or u.username)[:1]|upper }}</span>
+              {% endif %}
+              <div class="sl-u-names">
+                <strong>{{ u.username|e }}</strong>
+                {% if u.display_name and u.display_name != u.username %}<span>{{ u.display_name|e }}</span>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td>
+            {% if u.status == 'samelabs' or u.status == 'admin' %}<span class="sl-badge sl-b-purple">{{ u.status|e }}</span>
+            {% else %}<span class="sl-badge sl-b-info">{{ u.status|e }}</span>{% endif %}
+          </td>
+          <td class="sl-num u-balance">{{ fmt_num(u.balance) }}</td>
+          <td class="sl-num">{{ fmt_num(u.calls_ok) }}</td>
+          <td class="sl-dim">{{ fmt_ts(u.created_at) }}</td>
+          <td class="sl-dim">{{ fmt_ts(u.last_login_at) }}</td>
+          <td>
+            <div class="sl-adj" data-uid="{{ u.id }}">
+              <input type="text" class="sl-adj-in" placeholder="±N" inputmode="numeric" aria-label="调整积分">
+              <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm adj-go">调整</button>
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="sl-dim">无匹配用户</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block script %}
-document.querySelectorAll('.btn-adjust').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const uid = btn.dataset.uid;
-    const input = document.querySelector(`.adj-amount[data-uid="${uid}"]`);
-    const amount = parseInt(input.value, 10);
-    if (!amount) { alert('输入非零整数'); return; }
-    const r = await fetch(`/samelabs/users/${uid}/credits`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount })
+/* ── 积分调整两态交互 ──
+   静默态: ±N 输入 + ghost [调整]
+   确认态: 合法非零 → 按钮变 "+N 确认"(primary) / "-N 确认"(danger), 输入框染语义色
+   确认 → loading → POST → toast + 余额行内更新 (无 reload) */
+document.querySelectorAll('.sl-adj').forEach(function (adj) {
+  var uid = adj.dataset.uid;
+  var input = adj.querySelector('.sl-adj-in');
+  var btn = adj.querySelector('.adj-go');
+  var balEl = document.querySelector('tr[data-uid="' + uid + '"] .u-balance');
+  var userEl = adj.closest('tr').querySelector('.sl-u-names strong');
+  var user = userEl ? userEl.textContent : '#' + uid;
+
+  function reset() {
+    input.value = '';
+    input.classList.remove('plus', 'minus');
+    btn.className = 'sl-btn sl-btn-ghost sl-btn-sm adj-go';
+    btn.textContent = '调整';
+  }
+
+  input.addEventListener('input', function () {
+    var v = parseInt(input.value, 10);
+    if (isNaN(v) || v === 0) { reset(); return; }
+    input.classList.toggle('plus', v > 0);
+    input.classList.toggle('minus', v < 0);
+    if (v > 0) { btn.className = 'sl-btn sl-btn-primary sl-btn-sm adj-go'; btn.textContent = '+' + v + ' 确认'; }
+    else { btn.className = 'sl-btn sl-btn-danger sl-btn-sm adj-go'; btn.textContent = v + ' 确认'; }
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
+    if (e.key === 'Escape') reset();
+  });
+
+  btn.addEventListener('click', function () {
+    var v = parseInt(input.value, 10);
+    if (isNaN(v) || v === 0) {
+      input.focus();
+      input.style.borderColor = 'var(--sl-err)';
+      setTimeout(function () { input.style.borderColor = ''; }, 600);
+      return;
+    }
+    var before = parseInt(balEl.textContent.replace(/,/g, ''), 10);
+    slBusy(btn, slPost('/samelabs/users/' + uid + '/credits', { amount: v })).then(function (r) {
+      if (r.ok && r.data.ok) {
+        balEl.textContent = slFmt(r.data.balance_after);
+        slToast('ok', '已' + (v > 0 ? '发放' : '扣除') + ' ' + Math.abs(v) + ' 积分',
+                user + ': ' + slFmt(before) + ' → ' + slFmt(r.data.balance_after));
+        reset();
+      } else {
+        var why = r.data && r.data.error ? r.data.error : '请求失败';
+        slToast('err', '调整失败', user + ' · ' + why);
+      }
     });
-    const d = await r.json();
-    if (d.ok) {
-      document.querySelector(`tr[data-uid="${uid}"] .u-balance`).textContent = d.balance_after;
-      input.value = '';
-    } else { alert(d.error || 'error'); }
   });
 });
 {% endblock %}

@@ -1,52 +1,91 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block samelabs_body %}
-<table class="samelabs-table">
-  <thead><tr><th>工具</th><th>名称</th><th>单价(积分)</th><th>启用</th><th>注册状态</th><th>操作</th></tr></thead>
-  <tbody>
-  {% for t in tools %}
-    <tr data-tool="{{ t.tool_id }}">
-      <td>{{ t.tool_id }}</td>
-      <td>{{ t.label }}</td>
-      <td><input type="number" min="0" class="tool-cost" data-tool="{{ t.tool_id }}" value="{{ t.cost }}" style="width:90px"></td>
-      <td class="tool-enabled">{{ '✓ 启用' if t.enabled else '✗ 停用' }}</td>
-      <td>{{ '已注册' if t.registered else '未注册(历史)' }}</td>
-      <td>
-        <button type="button" class="btn-secondary btn-save-pricing" data-tool="{{ t.tool_id }}"><span>保存</span></button>
-        <button type="button" class="btn-secondary btn-toggle-tool" data-tool="{{ t.tool_id }}" data-enabled="{{ 'true' if t.enabled else 'false' }}"><span>{{ '停用' if t.enabled else '启用' }}</span></button>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+{% set page_title = "工具" %}
+{% block body %}
+
+<div class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>工具定价</h2>
+    <span class="sl-panel-sub">单价单位: 积分 / 次</span>
+  </div>
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>工具</th><th>名称</th><th>单价(积分)</th><th>状态</th><th>注册</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for t in tools %}
+        <tr data-tool="{{ t.tool_id|e }}">
+          <td class="sl-mono">{{ t.tool_id|e }}</td>
+          <td>{{ t.label|e }}</td>
+          <td><input type="number" min="0" max="1000000" class="sl-adj-in tool-cost" data-tool="{{ t.tool_id|e }}" value="{{ t.cost }}" style="width:90px" aria-label="单价"></td>
+          <td class="tool-enabled">
+            {% if t.enabled %}<span class="sl-badge sl-b-ok">启用</span>
+            {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
+          </td>
+          <td>
+            {% if t.registered %}<span class="sl-badge sl-b-info">已注册</span>
+            {% else %}<span class="sl-badge sl-b-muted">未注册(历史)</span>{% endif %}
+          </td>
+          <td>
+            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-save-pricing" data-tool="{{ t.tool_id|e }}">保存单价</button>
+            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-toggle-tool" data-tool="{{ t.tool_id|e }}" data-enabled="{{ 'true' if t.enabled else 'false' }}">{{ '停用' if t.enabled else '启用' }}</button>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="sl-dim">暂无定价记录</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block script %}
-async function savePricing(tool, cost, enabled) {
-  const r = await fetch(`/samelabs/tools/${tool}/pricing`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cost, enabled })
-  });
-  return r.json();
+/* 保存单价 / 启停 — 行内更新, 不 reload */
+function savePricing(tool, cost, enabled) {
+  return slPost('/samelabs/tools/' + tool + '/pricing', { cost: cost, enabled: enabled });
 }
-document.querySelectorAll('.btn-save-pricing').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const tool = btn.dataset.tool;
-    const cost = parseInt(document.querySelector(`.tool-cost[data-tool="${tool}"]`).value, 10) || 0;
-    const enabled = document.querySelector(`tr[data-tool="${tool}"] .tool-enabled`).textContent.includes('启用');
-    const d = await savePricing(tool, cost, enabled);
-    if (d.ok) alert(`已保存: ${tool} = ${d.pricing.cost} 积分`);
-    else alert(d.error || 'error');
+
+document.querySelectorAll('.btn-save-pricing').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var tool = btn.dataset.tool;
+    var input = document.querySelector('.tool-cost[data-tool="' + tool + '"]');
+    var cost = parseInt(input.value, 10);
+    if (isNaN(cost) || cost < 0) {
+      slToast('err', '单价无效', tool + ' · 需为 0 – 1000000 的整数');
+      input.focus();
+      return;
+    }
+    var enabled = document.querySelector('tr[data-tool="' + tool + '"] .tool-enabled .sl-badge').textContent.indexOf('启用') !== -1;
+    slBusy(btn, savePricing(tool, cost, enabled)).then(function (r) {
+      if (r.ok && r.data.ok) {
+        slToast('ok', '单价已保存', tool + ' = ' + r.data.pricing.cost + ' 积分/次');
+      } else {
+        slToast('err', '保存失败', tool + ' · ' + (r.data.error || '请求失败'));
+      }
+    });
   });
 });
-document.querySelectorAll('.btn-toggle-tool').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const tool = btn.dataset.tool;
-    const nowEnabled = btn.dataset.enabled === 'true';
-    const cost = parseInt(document.querySelector(`.tool-cost[data-tool="${tool}"]`).value, 10) || 0;
-    const d = await savePricing(tool, cost, !nowEnabled);
-    if (d.ok) location.reload();
-    else alert(d.error || 'error');
+
+document.querySelectorAll('.btn-toggle-tool').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var tool = btn.dataset.tool;
+    var nowEnabled = btn.dataset.enabled === 'true';
+    var input = document.querySelector('.tool-cost[data-tool="' + tool + '"]');
+    var cost = parseInt(input.value, 10) || 0;
+    slBusy(btn, savePricing(tool, cost, !nowEnabled)).then(function (r) {
+      if (r.ok && r.data.ok) {
+        var row = document.querySelector('tr[data-tool="' + tool + '"]');
+        var badge = row.querySelector('.tool-enabled .sl-badge');
+        var on = r.data.pricing.enabled;
+        badge.className = 'sl-badge ' + (on ? 'sl-b-ok' : 'sl-b-muted');
+        badge.textContent = on ? '启用' : '停用';
+        btn.dataset.enabled = on ? 'true' : 'false';
+        btn.textContent = on ? '停用' : '启用';
+        slToast('ok', on ? '工具已启用' : '工具已停用', tool);
+      } else {
+        slToast('err', '操作失败', tool + ' · ' + (r.data.error || '请求失败'));
+      }
+    });
   });
 });
 {% endblock %}
