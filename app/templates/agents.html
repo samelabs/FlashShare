@@ -1,53 +1,77 @@
 {% extends "base.html" %}
 {% block title %}{{ texts.agents_title }} - {{ APP_NAME }}{% endblock %}
 {% block desc %}{{ texts.agents_intro }}{% endblock %}
+
 {% block content %}
-<section class="panel doc agents-panel">
-  <h1 data-i18n="agents_title">{{ texts.agents_title }}</h1>
-  <p class="agents-intro" data-i18n="agents_intro">{{ texts.agents_intro }}</p>
+<section class="panel doc agents-page">
+  <h1>{{ texts.agents_title }}</h1>
+  <p class="agents-intro">{{ texts.agents_intro }}</p>
 
-  <div class="agents-grid">
-    <div class="agent-card">
-      <h2 data-i18n="agents_api_h">{{ texts.agents_api_h }}</h2>
-      <p data-i18n="agents_api_desc">{{ texts.agents_api_desc }}</p>
-      <pre class="agent-code">curl -H "Authorization: Bearer &lt;TOKEN&gt;" https://518.plus/api/v1/tools</pre>
-      <p class="agent-note">{{ texts.apiTokensDesc }}</p>
-      <a class="btn-secondary" href="/auth/profile" data-i18n="apiTokens">{{ texts.apiTokens }}</a>
-    </div>
-
-    <div class="agent-card">
-      <h2 data-i18n="agents_mcp_h">{{ texts.agents_mcp_h }}</h2>
-      <p><span data-i18n="agents_mcp_url">{{ texts.agents_mcp_url }}</span></p>
-      <pre class="agent-code" id="mcpUrl">https://518.plus/mcp</pre>
-      <button type="button" class="btn-secondary" id="copyMcpUrl"><span data-i18n="copy">{{ texts.copy }}</span></button>
-      <p class="agent-note" data-i18n="agents_mcp_desc">{{ texts.agents_mcp_desc }}</p>
-    </div>
-
-    <div class="agent-card">
-      <h2 data-i18n="agents_skill_h">{{ texts.agents_skill_h }}</h2>
-      <p data-i18n="agents_skill_desc">{{ texts.agents_skill_desc }}</p>
-      <pre class="agent-code">hermes curator adopt 518plus</pre>
-    </div>
+  <div class="agents-quickstart">
+    <h2>{{ texts.agents_qs|default('Quick start') }}</h2>
+    <ol>
+      <li>{{ texts.agents_qs1|default('Create a token in Account → Tokens.') }}</li>
+      <li>{{ texts.agents_qs2|default('Call the API with Bearer auth.') }}</li>
+      <li>{{ texts.agents_qs3|default('Metered tools deduct credits per call.') }}</li>
+    </ol>
+    <a class="btn-secondary" href="/account/tokens">{{ texts.acct_tokens }}</a>
   </div>
 
-  <p><a href="/" data-i18n="home">{{ texts.home }}</a></p>
+  <h2>{{ texts.agents_api_h }}</h2>
+  <p>{{ texts.agents_api_desc }}</p>
+  <div class="agents-endpoints">
+    <table class="agents-table">
+      <thead><tr><th>Method</th><th>Endpoint</th><th>{{ texts.agents_ep_desc|default('Description') }}</th></tr></thead>
+      <tbody>
+        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/me</td><td>{{ texts.agents_ep_me|default('Account: id, username, balance') }}</td></tr>
+        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/tools</td><td>{{ texts.agents_ep_tools|default('Tool catalog with per-tool cost') }}</td></tr>
+        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/uploads</td><td>{{ texts.agents_ep_upload|default('Upload a source file') }}</td></tr>
+        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/execute</td><td>{{ texts.agents_ep_exec|default('Run a tool (idempotent via client_ref)') }}</td></tr>
+        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/uploads/{id}</td><td>{{ texts.agents_ep_fetch|default('Fetch output by public id') }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>{{ texts.agents_mcp_h }}</h2>
+  <p>{{ texts.agents_mcp_desc }}</p>
+  <div class="agents-copy">
+    <code id="mcpUrl">https://518.plus/mcp</code>
+    <button type="button" class="btn-secondary" id="copyMcp">{{ texts.copy }}</button>
+  </div>
+  <div class="agents-mcp-config">
+    <h3>{{ texts.agents_mcp_conf|default('Client config') }}</h3>
+<pre class="agents-pre"><code id="mcpConf">{
+  "mcpServers": {
+    "fives18plus": {
+      "url": "https://518.plus/mcp",
+      "headers": { "Authorization": "Bearer fsk_..." }
+    }
+  }
+}</code></pre>
+    <button type="button" class="btn-secondary" id="copyConf">{{ texts.copy }}</button>
+  </div>
+
+  <h2>{{ texts.agents_skill_h }}</h2>
+  <p>{{ texts.agents_skill_desc }}</p>
+  <div class="agents-copy">
+    <code id="skillCmd">hermes curator adopt 518plus</code>
+    <button type="button" class="btn-secondary" id="copySkill">{{ texts.copy }}</button>
+  </div>
+
+  <h2>{{ texts.agents_pricing_h|default('Pricing') }}</h2>
+  <p>{{ texts.agents_pricing_desc|default('Every tool call is metered in credits. Costs are listed per tool in /api/v1/tools.') }}</p>
+  <div class="agents-copy">
+    <code>GET /api/v1/tools → [{ tool, cost, … }]</code>
+  </div>
 </section>
 {% endblock %}
 
 {% block script %}
-<script>
-(function () {
-  var btn = document.getElementById("copyMcpUrl");
-  if (!btn) return;
-  btn.addEventListener("click", function () {
-    var url = document.getElementById("mcpUrl").textContent.trim();
-    navigator.clipboard.writeText(url).then(function () {
-      var t = btn.querySelector("span");
-      var orig = t.textContent;
-      t.textContent = (window.__I18N__ && window.__I18N__[window.__LANG__] && window.__I18N__[window.__LANG__].copied) || orig;
-      setTimeout(function () { t.textContent = orig; }, 1400);
-    });
+for (const [id, btn] of [["mcpUrl","copyMcp"],["mcpConf","copyConf"],["skillCmd","copySkill"]]) {
+  const el = document.getElementById(btn);
+  if (!el) continue;
+  el.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(document.getElementById(id).textContent); } catch (e) {}
   });
-})();
-</script>
+}
 {% endblock %}

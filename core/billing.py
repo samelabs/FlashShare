@@ -15,6 +15,8 @@ SELECT ... FOR UPDATE on the user row to serialize concurrent mutations
 per user. Cross-user concurrency is unaffected.
 """
 
+import time
+
 import psycopg2
 
 from database import db
@@ -179,6 +181,45 @@ def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
     return dict(row)
 
 
+def grant_daily_login(user_id: int, amount: int) -> dict | None:
+    """Once-per-UTC-day login bonus. Idem key daily:{uid}:{yyyymmdd}.
+
+    Returns the new ledger row, or None if already granted today.
+    """
+    day = time.strftime("%Y%m%d", time.gmtime())
+    idem = f"daily:{user_id}:{day}"
+    ts = now()
+    with db() as con:
+        prior = con.execute(
+            "SELECT * FROM ledger WHERE user_id = %s AND idem_key = %s",
+            (user_id, idem),
+        ).fetchone()
+        if prior:
+            return None
+        bal = _balance_for_update(con, user_id)
+        row = con.execute(
+            """
+            INSERT INTO ledger (user_id, delta, balance_after, kind,
+                                ref_type, ref_id, idem_key, note, created_at)
+            VALUES (%s, %s, %s, 'grant_daily', NULL, NULL, %s, %s, %s)
+            RETURNING *
+            """,
+            (user_id, amount, bal + amount, idem, None, ts),
+        ).fetchone()
+    return dict(row)
+
+
+def daily_granted_today(user_id: int) -> bool:
+    """True if the daily login bonus already landed for this UTC day."""
+    day = time.strftime("%Y%m%d", time.gmtime())
+    with db() as con:
+        prior = con.execute(
+            "SELECT 1 FROM ledger WHERE user_id = %s AND idem_key = %s",
+            (user_id, f"daily:{user_id}:{day}"),
+        ).fetchone()
+    return prior is not None
+
+
 def history(user_id: int, limit: int = 50, offset: int = 0) -> list:
     """Ledger rows newest-first (for profile + /samelabs)."""
     with db() as con:
@@ -192,6 +233,23 @@ def history(user_id: int, limit: int = 50, offset: int = 0) -> list:
     return [dict(r) for r in rows]
 
 
-# Config: signup grant size. Single source; /samelabs settings can override
-# at the metering point (batch C reads settings; this default is the floor).
+def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, int]:
+    """(rows_newest_first, total_count) for the account credits page."""
+    with db() as con:
+        total = con.execute(
+            "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s", (user_id,)
+        ).fetchone()["n"]
+        rows = con.execute(
+            """
+            SELECT * FROM ledger WHERE user_id = %s
+            ORDER BY id DESC LIMIT %s OFFSET %s
+            """,
+            (user_id, size, max(0, (page - 1) * size)),
+        ).fetchall()
+    return [dict(r) for r in rows], total
+
+
+# Config: grant sizes. Single source; /samelabs settings can override
+# at the metering point (batch C reads settings; these defaults are the floor).
 SIGNUP_GRANT_CREDITS = 100
+DAILY_LOGIN_CREDITS = 5

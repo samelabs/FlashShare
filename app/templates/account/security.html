@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.acct_security }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="acct-page">
+  <h1>{{ texts.acct_security }}</h1>
+  {% include "account/_nav.html" %}
+  {% if error %}<p class="form-error">{{ error|e }}</p>{% endif %}
+
+  {% if user_has_password %}
+  <div class="acct-card">
+    <h2 data-i18n="changePassword">{{ texts.changePassword }}</h2>
+    <form method="post" action="/account/password" class="auth-form">
+      <label>
+        <span data-i18n="currentPassword">{{ texts.currentPassword }}</span>
+        <input type="password" name="old_password" required autocomplete="current-password" maxlength="128">
+      </label>
+      <label>
+        <span data-i18n="newPassword">{{ texts.newPassword }}</span>
+        <input type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <label>
+        <span data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
+        <input type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
+      <button type="submit" class="primary"><span data-i18n="updatePassword">{{ texts.updatePassword }}</span></button>
+    </form>
+  </div>
+  {% else %}
+  <div class="acct-card">
+    <h2 data-i18n="setPassword">{{ texts.setPassword }}</h2>
+    <p class="profile-unbound" data-i18n="noPasswordHint">{{ texts.noPasswordHint }}</p>
+    <form method="post" action="/account/password" class="auth-form">
+      <label>
+        <span data-i18n="newPassword">{{ texts.newPassword }}</span>
+        <input type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <label>
+        <span data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
+        <input type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
+      <button type="submit" class="primary"><span data-i18n="setPassword">{{ texts.setPassword }}</span></button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block script %}
+const _pw = document.getElementById('newPw');
+const _pwc = document.getElementById('newPwConfirm');
+const _hint = document.getElementById('pwMismatch');
+function checkPw() {
+  if (_pwc.value && _pw.value !== _pwc.value) { _hint.hidden = false; _pwc.setCustomValidity('x'); }
+  else { _hint.hidden = true; _pwc.setCustomValidity(''); }
+}
+if (_pw && _pwc) { _pw.addEventListener('input', checkPw); _pwc.addEventListener('input', checkPw); }
+{% endblock %}

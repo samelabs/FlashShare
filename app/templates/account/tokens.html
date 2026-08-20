@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.acct_tokens }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="acct-page">
+  <h1>{{ texts.acct_tokens }}</h1>
+  {% include "account/_nav.html" %}
+
+  <div class="acct-card">
+    <h2 data-i18n="apiTokens">{{ texts.apiTokens }}</h2>
+    <p class="profile-note" data-i18n="apiTokensDesc">{{ texts.apiTokensDesc }}</p>
+    <div class="token-create-row">
+      <input type="text" id="newTokenName" maxlength="64" placeholder="{{ texts.tokenNamePlaceholder }}">
+      <button type="button" class="btn-secondary" id="createToken"><span data-i18n="createToken">{{ texts.createToken }}</span></button>
+    </div>
+    <div id="newTokenBox" hidden>
+      <p class="profile-bound" data-i18n="tokenShownOnce">{{ texts.tokenShownOnce }}</p>
+      <div class="token-reveal-row">
+        <code id="newTokenValue"></code>
+        <button type="button" class="btn-secondary" id="copyNewToken"><span data-i18n="copy">{{ texts.copy }}</span></button>
+      </div>
+    </div>
+    <div id="tokenList" class="token-list"></div>
+  </div>
+
+  <div class="acct-card acct-agents-link">
+    <p>{{ texts.agents_tokens_hint|default('Tokens power the HTTP API and MCP server.') }}</p>
+    <a class="btn-secondary" href="/agents">{{ texts.agents_title }}</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+// ── API tokens (agent/MCP channel) ──
+const _tokenList = document.getElementById('tokenList');
+const _newTokenBox = document.getElementById('newTokenBox');
+const _newTokenValue = document.getElementById('newTokenValue');
+
+async function loadTokens() {
+  const r = await fetch('/api/tokens');
+  const d = await r.json();
+  if (!d.ok) return;
+  _tokenList.innerHTML = '';
+  for (const t of d.tokens) {
+    const row = document.createElement('div');
+    row.className = 'token-item';
+    const status = t.status === 'active' ? 'token-active' : 'token-revoked';
+    const label = document.createElement('span');
+    label.className = 'token-name';
+    label.textContent = `${t.name} · fsk_${t.prefix}…`;
+    const badge = document.createElement('span');
+    badge.className = status;
+    badge.textContent = t.status === 'active' ? '{{ texts.active }}' : '{{ texts.revoked }}';
+    row.append(label, badge);
+    if (t.status === 'active') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-secondary btn-token-revoke';
+      const span = document.createElement('span');
+      span.setAttribute('data-i18n', 'revokeToken');
+      span.textContent = '{{ texts.revokeToken }}';
+      btn.appendChild(span);
+      btn.addEventListener('click', async () => {
+        if (!confirm('{{ texts.confirmRevokeToken }}')) return;
+        const rr = await fetch(`/api/tokens/${t.id}/revoke`, { method: 'POST' });
+        if (rr.ok) loadTokens();
+        else { const dd = await rr.json(); alert(dd.error || 'error'); }
+      });
+      row.appendChild(btn);
+    }
+    _tokenList.appendChild(row);
+  }
+}
+
+document.getElementById('createToken')?.addEventListener('click', async () => {
+  const name = document.getElementById('newTokenName').value.trim();
+  const r = await fetch('/api/tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  const d = await r.json();
+  if (!d.ok) { alert(d.error || 'error'); return; }
+  _newTokenValue.textContent = d.token.token;
+  _newTokenBox.hidden = false;
+  document.getElementById('newTokenName').value = '';
+  loadTokens();
+});
+
+document.getElementById('copyNewToken')?.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(_newTokenValue.textContent); } catch (e) {}
+});
+
+if (_tokenList) loadTokens();
+{% endblock %}

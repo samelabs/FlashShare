@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.acct_profile }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="acct-page">
+  <h1>{{ texts.acct_profile }}</h1>
+  {% include "account/_nav.html" %}
+  {% if error %}<p class="form-error">{{ error|e }}</p>{% endif %}
+
+  <div class="acct-card">
+    <h2 data-i18n="basicInfo">{{ texts.basicInfo }}</h2>
+    <form method="post" action="/account/profile" class="auth-form">
+      <label>
+        <span data-i18n="username">{{ texts.username }}</span>
+        <input type="text" value="{{ u.username }}" disabled>
+      </label>
+      <label>
+        <span data-i18n="email">{{ texts.email }}</span>
+        <input type="email" name="email" value="{{ (u.email or '')|e }}" required maxlength="254">
+      </label>
+      <label>
+        <span data-i18n="displayName">{{ texts.displayName }}</span>
+        <input type="text" name="display_name" value="{{ (u.displayName or '')|e }}" maxlength="64">
+      </label>
+      <label>
+        <span data-i18n="bio">{{ texts.bio }}</span>
+        <textarea name="bio" rows="3" maxlength="500">{{ (u.bio or '')|e }}</textarea>
+      </label>
+      <button type="submit" class="primary"><span data-i18n="save">{{ texts.save }}</span></button>
+    </form>
+  </div>
+
+  <div class="acct-card">
+    <h2>X</h2>
+    {% if x_bound %}
+    <p class="profile-bound"><span data-i18n="xBound">{{ texts.xBound }}</span> <a href="{{ u.xProfileUrl or '' }}" target="_blank" rel="noreferrer">@{{ u.xUsername or '' }}</a></p>
+    <button type="button" class="btn-secondary" id="unbindX"><span data-i18n="xUnbind">{{ texts.xUnbind }}</span></button>
+    {% else %}
+    <p class="profile-unbound" data-i18n="xUnbound">{{ texts.xUnbound }}</p>
+    <a class="btn-secondary" href="/auth/x/login?bind=1" data-i18n="xBinding">{{ texts.xBinding }}</a>
+    {% endif %}
+  </div>
+
+  <div class="acct-card">
+    <form method="post" action="/auth/logout">
+      <button type="submit" class="btn-danger"><span data-i18n="logout">{{ texts.logout }}</span></button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+document.getElementById('unbindX')?.addEventListener('click', async () => {
+  if (!confirm('{{ texts.confirmUnbindX }}')) return;
+  const r = await fetch('/auth/x/unbind', { method: 'POST' });
+  if (r.ok) location.reload();
+  else { const d = await r.json(); alert(d.error || 'error'); }
+});
+{% endblock %}

@@ -36,6 +36,7 @@ from auth import (
     has_password, username_taken,
 )
 from i18n import server_text
+from billing import grant_daily_login, DAILY_LOGIN_CREDITS
 from utils import now, b64url
 
 router = APIRouter()
@@ -83,6 +84,14 @@ def _create_session(user_id: int) -> str:
             (token_hash(token), user_id, now() + SESSION_TTL, now()),
         )
     return token
+
+
+def _grant_daily(uid: int) -> None:
+    """Daily login bonus at session creation (idempotent, own tx)."""
+    try:
+        grant_daily_login(uid, DAILY_LOGIN_CREDITS)
+    except Exception:
+        logger.exception("daily grant failed uid=%s", uid)
 
 
 def _redirect_with_cookie(url: str, token: str) -> RedirectResponse:
@@ -162,8 +171,9 @@ async def x_callback(request: Request):
         resp = templates.TemplateResponse("auth/login.html", ctx); resp.status_code = 400; return resp
 
     if bind_user_id:
-        return RedirectResponse("/auth/profile", 302)
+        return RedirectResponse("/account/profile", 302)
 
+    _grant_daily(user_id)
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
 
@@ -209,6 +219,7 @@ async def login_submit(request: Request):
         return templates.TemplateResponse("auth/login.html", ctx)
 
     _login_failures.pop(throttle_key, None)
+    _grant_daily(user_id)
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
 
@@ -251,6 +262,7 @@ async def register_submit(request: Request):
         logger.exception("register failed for username=%s", username)
         return _err(texts.get("err_invalid_request", "err_invalid_request"))
 
+    _grant_daily(user_id)
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
 
@@ -264,64 +276,5 @@ async def logout_post(request: Request):
 
 # ── Profile ──
 
-@router.post("/profile")
-async def update_profile_route(request: Request):
-    from app.main import templates
-    from app.routes.pages import _ctx_base
-    user = request.state.user
-    lang = _lang(request)
-    if not user:
-        return RedirectResponse("/auth/login", 302)
-
-    form = await request.form()
-    display_name = (form.get("display_name") or "").strip()
-    email = (form.get("email") or "").strip()
-    bio = (form.get("bio") or "").strip()
-
-    try:
-        update_profile(user["id"], display_name=display_name or None, email=email or None, bio=bio or None)
-    except Exception as exc:
-        u = public_user(user)
-        texts = server_text(lang)
-        ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": str(exc), "u": u, "user_has_password": u.get("hasPassword", False), "x_bound": bool(u.get("xUsername"))})
-        return templates.TemplateResponse("auth/profile.html", ctx)
-
-    return RedirectResponse("/auth/profile", 302)
-
-
-@router.post("/password")
-async def change_password_route(request: Request):
-    from app.main import templates
-    from app.routes.pages import _ctx_base
-    user = request.state.user
-    lang = _lang(request)
-    if not user:
-        return RedirectResponse("/auth/login", 302)
-
-    form = await request.form()
-    new_password = form.get("new_password") or ""
-    new_password_confirm = form.get("new_password_confirm") or ""
-    old_password = form.get("old_password") or ""
-
-    def _err(msg):
-        u = public_user(user)
-        ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": msg, "u": u, "user_has_password": u.get("hasPassword", False), "x_bound": bool(u.get("xUsername"))})
-        return templates.TemplateResponse("auth/profile.html", ctx)
-
-    if new_password != new_password_confirm:
-        return _err(server_text(lang).get("passwordMismatch", ""))
-
-    if has_password(user["id"]):
-        if not old_password:
-            return _err(server_text(lang).get("err_fill_login", ""))
-        try:
-            change_password(user["id"], old_password, new_password)
-        except Exception as exc:
-            return _err(str(exc))
-    else:
-        from auth import set_password
-        set_password(user["id"], new_password)
-
-    return RedirectResponse("/auth/profile", 302)
+# Legacy /auth/profile is intentionally gone (single-page account removed).
+# Profile/password POST handlers live in app/routes/pages.py (/account/* forms).

@@ -8,7 +8,7 @@ import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, RedirectResponse
 
 _BASE = Path(__file__).resolve().parent.parent.parent
 _CORE = _BASE / "core"
@@ -19,6 +19,13 @@ from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import list_all_tools, load_all
+
+
+def _fmt_ts(ts) -> str:
+    """Unix ts → local time string for templates."""
+    if not ts:
+        return "—"
+    return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
 
 load_all()  # auto-discover every tools_*.py
 from auth import public_user
@@ -66,6 +73,7 @@ def _ctx_base(request: Request) -> dict:
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
         "css_version": _CSS_VERSION,
         "i18n_version": _I18N_VERSION,
+        "fmt_ts": _fmt_ts,
         "year": datetime.datetime.now().year,
         # icon helpers
         "icon_svg": icon_svg,
@@ -196,22 +204,145 @@ async def register_page(request: Request, error: str = ""):
     return templates.TemplateResponse("auth/register.html", ctx)
 
 
-@router.get("/auth/profile", response_class=HTMLResponse)
-async def profile_page(request: Request):
+# ── Account pages: profile split into focused pages (/auth/profile removed) ──
+
+def _account_ctx(request: Request, page: str, **extra) -> dict:
+    from app.main import templates  # noqa: F401
+    from billing import get_balance
+    ctx = _ctx_base(request)
+    ctx.update({
+        "shell_class": "",
+        "acct_page": page,
+        "credits": get_balance(request.state.user["id"]) if request.state.user else 0,
+    })
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("/account/profile", response_class=HTMLResponse)
+async def account_profile(request: Request):
+    from app.main import templates
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from app.main import templates
-    ctx = _ctx_base(request)
-    from billing import get_balance
+    from auth import public_user
     u = public_user(user)
-    texts = ctx["texts"]
-    ctx.update({
-        "shell_class": "",
-        "share_url": "",
-        "u": u,
-        "user_has_password": u.get("hasPassword", False),
-        "x_bound": bool(u.get("xUsername")),
-        "credits_balance": get_balance(user["id"]),
-    })
-    return templates.TemplateResponse("auth/profile.html", ctx)
+    ctx = _account_ctx(request, "profile",
+                       u=u, user_has_password=u.get("hasPassword", False),
+                       x_bound=bool(u.get("xUsername")))
+    return templates.TemplateResponse("account/profile.html", ctx)
+
+
+@router.get("/account/security", response_class=HTMLResponse)
+async def account_security(request: Request):
+    from app.main import templates
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from auth import public_user
+    u = public_user(user)
+    ctx = _account_ctx(request, "security",
+                       u=u, user_has_password=u.get("hasPassword", False),
+                       x_bound=bool(u.get("xUsername")))
+    return templates.TemplateResponse("account/security.html", ctx)
+
+
+@router.get("/account/credits", response_class=HTMLResponse)
+async def account_credits(request: Request):
+    from app.main import templates
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from billing import get_balance, history_paged, daily_granted_today, DAILY_LOGIN_CREDITS
+    pg = 1
+    try:
+        pg = max(1, int(request.query_params.get("page", "1") or 1))
+    except ValueError:
+        pg = 1
+    size = 20
+    rows, total = history_paged(user["id"], page=pg, size=size)
+    ctx = _account_ctx(request, "credits",
+                       balance=get_balance(user["id"]),
+                       granted_today=daily_granted_today(user["id"]),
+                       daily_amount=DAILY_LOGIN_CREDITS,
+                       rows=rows, total=total, pg=pg,
+                       pages=(total + size - 1) // size)
+    return templates.TemplateResponse("account/credits.html", ctx)
+
+
+@router.get("/account/tokens", response_class=HTMLResponse)
+async def account_tokens(request: Request):
+    from app.main import templates
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    ctx = _account_ctx(request, "tokens")
+    return templates.TemplateResponse("account/tokens.html", ctx)
+
+
+# Legacy /auth/profile is intentionally gone (single-page account removed).
+# Profile/password POST handlers moved here from auth_route (account forms).
+
+@router.post("/account/profile")
+async def account_profile_save(request: Request):
+    from app.main import templates
+    from auth import update_profile, public_user
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+
+    form = await request.form()
+    display_name = (form.get("display_name") or "").strip()
+    email = (form.get("email") or "").strip()
+    bio = (form.get("bio") or "").strip()
+
+    try:
+        update_profile(user["id"], display_name=display_name or None, email=email or None, bio=bio or None)
+    except Exception as exc:
+        u = public_user(user)
+        ctx = _account_ctx(request, "profile", u=u,
+                           user_has_password=u.get("hasPassword", False),
+                           x_bound=bool(u.get("xUsername")), error=str(exc))
+        return templates.TemplateResponse("account/profile.html", ctx)
+
+    return RedirectResponse("/account/profile", 302)
+
+
+@router.post("/account/password")
+async def account_password_save(request: Request):
+    from app.main import templates
+    from auth import public_user, has_password, change_password, set_password
+    from i18n import server_text
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    lang = getattr(request.state, "lang", "en")
+
+    form = await request.form()
+    new_password = form.get("new_password") or ""
+    new_password_confirm = form.get("new_password_confirm") or ""
+    old_password = form.get("old_password") or ""
+
+    def _err(msg):
+        u = public_user(user)
+        ctx = _account_ctx(request, "security", u=u,
+                           user_has_password=u.get("hasPassword", False),
+                           x_bound=bool(u.get("xUsername")), error=msg)
+        return templates.TemplateResponse("account/security.html", ctx)
+
+    if new_password != new_password_confirm:
+        return _err(server_text(lang).get("passwordMismatch", ""))
+    if not new_password:
+        return _err(server_text(lang).get("err_fill_login", ""))
+
+    if has_password(user["id"]):
+        if not old_password:
+            return _err(server_text(lang).get("err_fill_login", ""))
+        try:
+            change_password(user["id"], old_password, new_password)
+        except Exception as exc:
+            return _err(str(exc))
+    else:
+        set_password(user["id"], new_password)
+
+    return RedirectResponse("/account/security", 302)
