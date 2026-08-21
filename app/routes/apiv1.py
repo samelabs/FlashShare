@@ -29,7 +29,7 @@ from security import sniff_allowed
 from uploads import check_quota
 from gokapi import upload_to_gokapi
 from storage import read as storage_read
-from tools import get_tool, _registry
+from tools import get_tool, list_all_tools
 from utils import now, sanitize_filename
 from auth import public_user
 
@@ -64,22 +64,9 @@ async def v1_tools(request: Request):
     user, err = _require_bearer(request)
     if err:
         return err
-    from pricing import get_pricing
-    out = []
-    for t in _registry:
-        p = get_pricing(t["id"])
-        if not p["enabled"]:
-            continue  # catalog hides disabled tools
-        out.append({
-            "id": t["id"],
-            "type": t["type"],
-            "label": t["label"],
-            "icon": t["icon"],
-            "accept": sorted(t["accept"]) if t["accept"] else None,
-            "multi": t.get("multi", False),
-            "cost": int(p["cost"]),
-        })
-    return {"ok": True, "tools": out}
+    # list_all_tools is the single catalog source (pricing overlay inside):
+    # cost included, disabled tools hidden — identical to web home and MCP.
+    return {"ok": True, "tools": list_all_tools()}
 
 
 def _upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) -> dict:

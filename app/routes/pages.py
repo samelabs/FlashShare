@@ -265,6 +265,7 @@ async def account_credits(request: Request):
                        balance=get_balance(user["id"]),
                        granted_today=daily_granted_today(user["id"]),
                        daily_amount=DAILY_LOGIN_CREDITS,
+                       priced_tools=[t for t in list_all_tools() if t["cost"] > 0],
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse("account/credits.html", ctx)

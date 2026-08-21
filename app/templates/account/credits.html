@@ -32,7 +32,32 @@
 
   <div class="acct-card">
     <div class="acct-card-head">
-      <h2 data-i18n="credits_history">{{ texts.credits_history }}</h2>
+    {% if priced_tools %}
+  <div class="acct-card">
+    <div class="acct-card-head">
+      <h2 data-i18n="credits_prices">{{ texts.credits_prices|default('Tool pricing') }}</h2>
+    </div>
+    <div class="acct-tablewrap">
+      <table class="acct-table">
+        <thead>
+          <tr><th data-i18n="credit_tool">{{ texts.credit_tool|default('Tool') }}</th><th class="ta-r" data-i18n="credit_cost">{{ texts.credit_cost|default('Cost') }}</th></tr>
+        </thead>
+        <tbody>
+          {% for t in priced_tools %}
+          <tr>
+            <td data-i18n="{{ t.id }}">{{ texts.get(t.id, t.label.get(lang, t.label.get('en', t.id))) }}</td>
+            <td class="ta-r mono"><span class="tool-cost">{{ t.cost }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="acct-card-sub" data-i18n="credits_prices_note">{{ texts.credits_prices_note|default('Free tools are not listed. Every call is charged once; failed calls are refunded automatically.') }}</p>
+  </div>
+  {% endif %}
+
+  <div class="acct-card">
+    <h2 data-i18n="credits_history">{{ texts.credits_history }}</h2>
       <span class="acct-card-sub">{{ texts.credit_detail_count|default('{n} records')|replace('{n}', total) }}</span>
     </div>
     {% if rows %}

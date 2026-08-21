@@ -492,6 +492,11 @@ function openToolOverlay(tool, btn) {
     html += `<p class="tool-overlay-desc">${escapeHtml(desc)}</p>`;
   }
 
+  // Metered cost badge (single catalog source: window.__TOOLS__ carries cost)
+  if (typeof tool.cost === "number" && tool.cost > 0) {
+    html += `<p class="tool-overlay-cost"><span class="tool-cost">${tool.cost}</span> ${t("credits_per_call")}</p>`;
+  }
+
   // Presets section
   let defaultPreset = null;
   if (tool.presets && tool.presets.length > 0) {

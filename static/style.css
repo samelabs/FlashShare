@@ -673,3 +673,9 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .agents-mcp-config h3 { font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--s1); }
 .agents-pre { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s2) var(--s3); overflow-x: auto; font-size: var(--text-xs); margin: 0 0 var(--s1); }
 .agents-pre code { font-family: var(--mono, monospace); }
+
+/* ── Tool cost badges (pricing surfaced in UI) ── */
+.tool-cost { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; padding: 0 6px; margin-left: auto; border-radius: 99px; font-size: var(--text-xs, 12px); font-weight: 700; background: rgba(29,155,240,.12); color: #1d9bf0; font-variant-numeric: tabular-nums; }
+.tool-tab .tool-cost { flex-shrink: 0; }
+.tool-overlay-cost { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--s2); font-size: var(--text-sm); color: var(--muted); }
+.tool-overlay-cost .tool-cost { margin-left: 0; }

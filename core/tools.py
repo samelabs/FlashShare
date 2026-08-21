@@ -90,14 +90,21 @@ def register(tool_id, tool_type, label, icon, match, handler,
     })
 
 
-def list_all_tools():
-    """Return all registered tools' declaration info for the homepage.
+def list_all_tools() -> list:
+    """Public tool catalog — single source for web home, /api/v1, MCP.
 
-    Strips handler and match (not needed by frontend).
-    Strips 'default' from presets (orchestrator handles defaults).
+    Pricing overlay happens HERE once: every channel gets the same
+    catalog (cost included, disabled tools hidden).
+    Strips handler/match and preset defaults (orchestrator's job).
     """
+    from pricing import list_pricing
+    prices = {r["tool_id"]: r for r in list_pricing()}
+
     result = []
     for tool in _registry:
+        p = prices.get(tool["id"]) or {"cost": 0, "enabled": True}
+        if not p["enabled"]:
+            continue
         item = {
             "id": tool["id"],
             "type": tool["type"],
@@ -106,6 +113,7 @@ def list_all_tools():
             "accept": sorted(tool["accept"]) if tool["accept"] else None,
             "presets": None,
             "multi": tool.get("multi", False),
+            "cost": int(p["cost"]),
         }
         if tool["presets"]:
             item["presets"] = [
@@ -113,36 +121,6 @@ def list_all_tools():
                 for p in tool["presets"]
             ]
         result.append(item)
-    return result
-
-
-def get_tools_for_upload(upload: dict) -> list:
-    """Return tools whose match() returns True for this upload.
-
-    Used by the detail page (GET /api/tools/{public_id}).
-    Strips handler and match from the output.
-    """
-    result = []
-    for tool in _registry:
-        try:
-            if tool["match"](upload):
-                item = {
-                    "id": tool["id"],
-                    "type": tool["type"],
-                    "label": tool["label"],
-                    "icon": tool["icon"],
-                    "accept": sorted(tool["accept"]) if tool["accept"] else None,
-                    "presets": None,
-                    "multi": tool.get("multi", False),
-                }
-                if tool["presets"]:
-                    item["presets"] = [
-                        {"id": p["id"], "label": p["label"]}
-                        for p in tool["presets"]
-                    ]
-                result.append(item)
-        except Exception:
-            pass
     return result
 
 

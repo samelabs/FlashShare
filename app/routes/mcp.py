@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from config import MAX_UPLOAD_BYTES
-from tools import _registry
+from tools import list_all_tools
 from utils import sanitize_filename
 
 router = APIRouter()
@@ -137,12 +137,10 @@ async def _dispatch(request: Request, user: dict, msg: dict):
 
 
 def _tool_specs() -> list:
-    from pricing import get_pricing
+    # list_all_tools: single catalog source (pricing overlay inside —
+    # disabled hidden, cost included), identical to web home and /api/v1.
     specs = []
-    for t in _registry:
-        p = get_pricing(t["id"])
-        if not p["enabled"]:
-            continue
+    for t in list_all_tools():
         multi = bool(t.get("multi"))
         if multi:
             props = {
@@ -182,8 +180,8 @@ def _tool_specs() -> list:
         desc = f"{label.get('en') or t['id']}"
         if label.get("zh"):
             desc += f" / {label['zh']}"
-        if int(p["cost"]) > 0:
-            desc += f" (cost: {int(p['cost'])} credits)"
+        if int(t["cost"]) > 0:
+            desc += f" (cost: {int(t['cost'])} credits)"
         specs.append({
             "name": t["id"],
             "description": desc,
@@ -201,7 +199,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from app.routes.apiv1 import _upload_source  # shared pipeline (v1 + MCP)
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
-    tool = next((t for t in _registry if t["id"] == tool_id), None)
+    tool = get_tool(tool_id)
     if not tool:
         return _err(mid, -32602, f"unknown tool: {tool_id}")
 

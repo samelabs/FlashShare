@@ -16,6 +16,11 @@ LOCALE_TAGS = {
 SERVER_I18N = {
     "fr": {
 
+    "credits_prices": "Tarifs des outils",
+    "credit_tool": "Outil",
+    "credit_cost": "Coût",
+    "credits_prices_note": "Les outils gratuits ne sont pas listés. Chaque appel est facturé une seule fois ; les échecs sont remboursés automatiquement.",
+    "credits_per_call": "crédits par appel",
     "agents_qs": "Démarrage rapide",
     "agents_qs1": "Créez un jeton dans Compte → Jetons",
     "agents_qs2": "Appelez l'API avec authentification Bearer",
@@ -249,6 +254,11 @@ SERVER_I18N = {
     },
     "ko": {
 
+    "credits_prices": "도구 단가",
+    "credit_tool": "도구",
+    "credit_cost": "비용",
+    "credits_prices_note": "무료 도구는 미기재. 호출당 1회 과금, 실패 시 자동 환불.",
+    "credits_per_call": "크레딧/회",
     "agents_qs": "빠른 시작",
     "agents_qs1": "계정 → 토큰에서 API 토큰 생성",
     "agents_qs2": "Bearer 인증으로 API 호출",
@@ -482,6 +492,11 @@ SERVER_I18N = {
     },
     "ru": {
 
+    "credits_prices": "Цены инструментов",
+    "credit_tool": "Инструмент",
+    "credit_cost": "Стоимость",
+    "credits_prices_note": "Бесплатные инструменты не указаны. Каждый вызов списывается один раз; неудачи возмещаются автоматически.",
+    "credits_per_call": "кредитов за вызов",
     "agents_qs": "Быстрый старт",
     "agents_qs1": "Создайте токен в Аккаунт → Токены",
     "agents_qs2": "Вызывайте API с авторизацией Bearer",
@@ -715,6 +730,11 @@ SERVER_I18N = {
     },
     "ar": {
 
+    "credits_prices": "أسعار الأدوات",
+    "credit_tool": "الأداة",
+    "credit_cost": "التكلفة",
+    "credits_prices_note": "لا تُدرج الأدوات المجانية. كل استدعاء يُخصم مرة واحدة؛ والفشل يُعاد تلقائيًا.",
+    "credits_per_call": "رصيد لكل استخدام",
     "agents_qs": "البداية السريعة",
     "agents_qs1": "أنشئ رمزًا في الحساب → الرموز",
     "agents_qs2": "استدعِ الواجهة بمصادقة Bearer",
@@ -948,6 +968,11 @@ SERVER_I18N = {
     },
     "de": {
 
+    "credits_prices": "Tool-Preise",
+    "credit_tool": "Tool",
+    "credit_cost": "Kosten",
+    "credits_prices_note": "Kostenlose Tools werden nicht aufgelistet. Jeder Aufruf wird einmal abgerechnet; Fehlgeschlagene werden automatisch erstattet.",
+    "credits_per_call": "Credits pro Aufruf",
     "agents_qs": "Schnellstart",
     "agents_qs1": "Token unter Konto → Tokens erstellen",
     "agents_qs2": "API mit Bearer-Authentifizierung aufrufen",
@@ -1181,6 +1206,11 @@ SERVER_I18N = {
     },
     "pt": {
 
+    "credits_prices": "Preços das ferramentas",
+    "credit_tool": "Ferramenta",
+    "credit_cost": "Custo",
+    "credits_prices_note": "Ferramentas gratuitas não são listadas. Cada uso é cobrado uma vez; falhas são reembolsadas automaticamente.",
+    "credits_per_call": "créditos por uso",
     "agents_qs": "Início rápido",
     "agents_qs1": "Crie um token em Conta → Tokens",
     "agents_qs2": "Chame a API com autenticação Bearer",
@@ -1414,6 +1444,11 @@ SERVER_I18N = {
     },
     "ja": {
 
+    "credits_prices": "ツール単価",
+    "credit_tool": "ツール",
+    "credit_cost": "単価",
+    "credits_prices_note": "無料ツールは掲載なし。呼び出しは1回のみ課金、失敗時は自動返金。",
+    "credits_per_call": "クレジット/回",
     "agents_qs": "クイックスタート",
     "agents_qs1": "アカウント → トークン でAPIトークンを作成",
     "agents_qs2": "Bearer認証でAPIを呼び出す",
@@ -1647,6 +1682,11 @@ SERVER_I18N = {
     },
     "zh": {
 
+    "credits_prices": "工具定价",
+    "credit_tool": "工具",
+    "credit_cost": "费用",
+    "credits_prices_note": "免费工具不列出。每次调用只扣一次费,失败的调用自动退还。",
+    "credits_per_call": "积分/次",
     "agents_qs": "快速开始",
     "agents_qs1": "在 账户 → 令牌 创建 API 令牌",
     "agents_qs2": "用 Bearer 认证调用 API",
@@ -1880,6 +1920,11 @@ SERVER_I18N = {
     },
     "es": {
 
+    "credits_prices": "Precios de herramientas",
+    "credit_tool": "Herramienta",
+    "credit_cost": "Coste",
+    "credits_prices_note": "Las herramientas gratuitas no se listan. Cada uso se cobra una vez; los fallos se reembolsan automáticamente.",
+    "credits_per_call": "créditos por uso",
     "agents_qs": "Inicio rápido",
     "agents_qs1": "Crea un token en Cuenta → Tokens",
     "agents_qs2": "Llama a la API con autenticación Bearer",
@@ -2113,6 +2158,11 @@ SERVER_I18N = {
     },
     "en": {
 
+    "credits_prices": "Tool pricing",
+    "credit_tool": "Tool",
+    "credit_cost": "Cost",
+    "credits_prices_note": "Free tools are not listed. Every call is charged once; failed calls are refunded automatically.",
+    "credits_per_call": "credits per call",
     "agents_qs": "Quick start",
     "agents_qs1": "Create a token in Account → Tokens",
     "agents_qs2": "Call the API with Bearer auth",
