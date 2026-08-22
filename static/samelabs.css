@@ -83,7 +83,7 @@ body.sl-body {
   transition: background var(--sl-ease), color var(--sl-ease);
 }
 .sl-sidenav a svg { width: 16px; height: 16px; flex: 0 0 auto; opacity: .75; }
-.sl-sidenav a:hover { background: var(--bg); color: var(--ink); }
+@media (hover:hover) and (pointer:fine) { .sl-sidenav a:hover { background: var(--bg); color: var(--ink); } }
 .sl-sidenav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .sl-sidenav a.active svg { opacity: 1; }
 
@@ -106,7 +106,7 @@ body.sl-body {
   font-family: inherit;
   transition: background var(--sl-ease), color var(--sl-ease);
 }
-.sl-exit:hover { background: var(--sl-err-soft); color: var(--sl-err); }
+@media (hover:hover) and (pointer:fine) { .sl-exit:hover { background: var(--sl-err-soft); color: var(--sl-err); } }
 
 /* ── 右侧内容区 ─────────────────────────────────────────── */
 .sl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -129,7 +129,7 @@ body.sl-body {
   display: flex; flex-direction: column; gap: var(--s2);
   transition: border-color var(--sl-ease), box-shadow var(--sl-ease);
 }
-.sl-stat:hover { border-color: var(--line-strong); box-shadow: 0 1px 3px rgba(15, 20, 25, .04); }
+@media (hover:hover) and (pointer:fine) { .sl-stat:hover { border-color: var(--line-strong); box-shadow: 0 1px 3px rgba(15, 20, 25, .04); } }
 .sl-stat-top { display: flex; align-items: center; justify-content: space-between; }
 .sl-stat-label { font-size: var(--text-sm); color: var(--muted); font-weight: 500; }
 .sl-stat-ico { width: 28px; height: 28px; border-radius: var(--r-sm); display: grid; place-items: center; flex: 0 0 auto; }
@@ -163,9 +163,9 @@ body.sl-body {
 }
 .sl-tbl td { padding: 9px var(--s4); border-bottom: 1px solid var(--sl-line); white-space: nowrap; }
 .sl-tbl tbody tr { transition: background var(--sl-ease); }
-.sl-tbl tbody tr:hover { background: var(--sl-row-hover); }
+@media (hover:hover) and (pointer:fine) { .sl-tbl tbody tr:hover { background: var(--sl-row-hover); } }
 .sl-tbl tbody tr:nth-child(even) { background: var(--sl-row-alt); }
-.sl-tbl tbody tr:nth-child(even):hover { background: var(--sl-row-hover); }
+@media (hover:hover) and (pointer:fine) { .sl-tbl tbody tr:nth-child(even):hover { background: var(--sl-row-hover); } }
 .sl-tbl tbody tr:last-child td { border-bottom: none; }
 .sl-num { text-align: right; font-variant-numeric: tabular-nums; }
 .sl-mono { font-family: var(--sl-mono); font-size: var(--text-sm); }
@@ -188,7 +188,7 @@ body.sl-body {
 /* 工具热度条 */
 .sl-heat { display: flex; align-items: center; gap: var(--s3); padding: 8px var(--s4); border-bottom: 1px solid var(--sl-line); }
 .sl-heat:last-child { border-bottom: none; }
-.sl-heat:hover { background: var(--sl-row-hover); }
+@media (hover:hover) and (pointer:fine) { .sl-heat:hover { background: var(--sl-row-hover); } }
 .sl-heat-name { width: 120px; font-weight: 500; }
 .sl-heat-track { flex: 1; height: 18px; background: #f0f2f5; border-radius: 4px; overflow: hidden; }
 .sl-heat-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), #71c4f7); }
@@ -234,11 +234,11 @@ body.sl-body {
 }
 .sl-btn:disabled { opacity: .55; cursor: not-allowed; }
 .sl-btn-primary { background: var(--accent); color: #fff; }
-.sl-btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+@media (hover:hover) and (pointer:fine) { .sl-btn-primary:hover:not(:disabled) { background: var(--accent-hover); } }
 .sl-btn-ghost { background: var(--sl-surface); border-color: var(--line-strong); color: var(--ink); }
-.sl-btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+@media (hover:hover) and (pointer:fine) { .sl-btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); } }
 .sl-btn-danger { background: var(--sl-surface); border-color: rgba(214, 69, 69, .4); color: var(--sl-err); }
-.sl-btn-danger:hover:not(:disabled) { background: var(--sl-err-soft); border-color: var(--sl-err); }
+@media (hover:hover) and (pointer:fine) { .sl-btn-danger:hover:not(:disabled) { background: var(--sl-err-soft); border-color: var(--sl-err); } }
 .sl-btn-sm { height: 28px; padding: 0 10px; font-size: var(--text-sm); }
 .sl-btn.loading { position: relative; color: transparent !important; pointer-events: none; }
 .sl-btn.loading::after {
@@ -287,14 +287,14 @@ body.sl-body {
 .sl-toast-body strong { display: block; font-size: var(--text-base); font-weight: 600; }
 .sl-toast-body span { display: block; color: var(--muted); font-size: var(--text-sm); margin-top: 2px; }
 .sl-toast-x { background: none; border: none; cursor: pointer; color: var(--sl-ink-faint); padding: 2px; border-radius: 4px; }
-.sl-toast-x:hover { color: var(--ink); background: var(--bg); }
+@media (hover:hover) and (pointer:fine) { .sl-toast-x:hover { color: var(--ink); background: var(--bg); } }
 .sl-toast-x svg { width: 14px; height: 14px; display: block; }
 
 /* ── 分页 ───────────────────────────────────────────────── */
 .sl-pager { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); font-size: var(--text-sm); color: var(--muted); border-top: 1px solid var(--sl-line); background: var(--sl-th-bg); }
 .sl-pager .grow { flex: 1; }
 .sl-pager a { padding: 4px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; font-weight: 500; }
-.sl-pager a:hover { background: var(--bg); color: var(--ink); }
+@media (hover:hover) and (pointer:fine) { .sl-pager a:hover { background: var(--bg); color: var(--ink); } }
 .sl-pager .cur { padding: 4px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .sl-pager .off { opacity: .4; pointer-events: none; }
 
