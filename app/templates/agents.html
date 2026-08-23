@@ -8,11 +8,11 @@
   <p class="agents-intro">{{ texts.agents_intro }}</p>
 
   <div class="agents-quickstart">
-    <h2>{{ texts.agents_qs|default('Quick start') }}</h2>
+    <h2>{{ texts.agents_qs }}</h2>
     <ol>
-      <li>{{ texts.agents_qs1|default('Create a token in Account → Tokens.') }}</li>
-      <li>{{ texts.agents_qs2|default('Call the API with Bearer auth.') }}</li>
-      <li>{{ texts.agents_qs3|default('Metered tools deduct credits per call.') }}</li>
+      <li>{{ texts.agents_qs1 }}</li>
+      <li>{{ texts.agents_qs2 }}</li>
+      <li>{{ texts.agents_qs3 }}</li>
     </ol>
     <a class="btn-secondary" href="/account/tokens">{{ texts.acct_tokens }}</a>
   </div>
@@ -21,13 +21,13 @@
   <p>{{ texts.agents_api_desc }}</p>
   <div class="agents-endpoints">
     <table class="agents-table">
-      <thead><tr><th>Method</th><th>Endpoint</th><th>{{ texts.agents_ep_desc|default('Description') }}</th></tr></thead>
+      <thead><tr><th>Method</th><th>Endpoint</th><th>{{ texts.agents_ep_desc }}</th></tr></thead>
       <tbody>
-        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/me</td><td>{{ texts.agents_ep_me|default('Account: id, username, balance') }}</td></tr>
-        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/tools</td><td>{{ texts.agents_ep_tools|default('Tool catalog with per-tool cost') }}</td></tr>
-        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/uploads</td><td>{{ texts.agents_ep_upload|default('Upload a source file') }}</td></tr>
-        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/execute</td><td>{{ texts.agents_ep_exec|default('Run a tool (idempotent via client_ref)') }}</td></tr>
-        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/uploads/{id}</td><td>{{ texts.agents_ep_fetch|default('Fetch output by public id') }}</td></tr>
+        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/me</td><td>{{ texts.agents_ep_me }}</td></tr>
+        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/tools</td><td>{{ texts.agents_ep_tools }}</td></tr>
+        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/uploads</td><td>{{ texts.agents_ep_upload }}</td></tr>
+        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/execute</td><td>{{ texts.agents_ep_exec }}</td></tr>
+        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/uploads/{id}</td><td>{{ texts.agents_ep_fetch }}</td></tr>
       </tbody>
     </table>
   </div>
@@ -39,7 +39,7 @@
     <button type="button" class="btn-secondary" id="copyMcp">{{ texts.copy }}</button>
   </div>
   <div class="agents-mcp-config">
-    <h3>{{ texts.agents_mcp_conf|default('Client config') }}</h3>
+    <h3>{{ texts.agents_mcp_conf }}</h3>
 <pre class="agents-pre"><code id="mcpConf">{
   "mcpServers": {
     "fives18plus": {
@@ -58,8 +58,8 @@
     <button type="button" class="btn-secondary" id="copySkill">{{ texts.copy }}</button>
   </div>
 
-  <h2>{{ texts.agents_pricing_h|default('Pricing') }}</h2>
-  <p>{{ texts.agents_pricing_desc|default('Every tool call is metered in credits. Costs are listed per tool in /api/v1/tools.') }}</p>
+  <h2>{{ texts.agents_pricing_h }}</h2>
+  <p>{{ texts.agents_pricing_desc }}</p>
   <div class="agents-copy">
     <code>GET /api/v1/tools → [{ tool, cost, … }]</code>
   </div>

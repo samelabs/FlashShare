@@ -16,6 +16,14 @@ LOCALE_TAGS = {
 SERVER_I18N = {
     "fr": {
 
+    "credit_time": "Heure",
+    "credit_type": "Type",
+    "credit_note": "Note",
+    "credit_delta": "Variation",
+    "credit_after": "Solde",
+    "credits_empty": "Aucune entrée pour le moment.",
+    "prev_page": "Précédent",
+    "next_page": "Suivant",
     "credit_detail_count": "{n} entrées",
     "daily_claim": "Récupérer",
     "daily_hint": "connecte-toi chaque jour ou récupère ici",
@@ -259,6 +267,14 @@ SERVER_I18N = {
     },
     "ko": {
 
+    "credit_time": "시간",
+    "credit_type": "유형",
+    "credit_note": "비고",
+    "credit_delta": "변동",
+    "credit_after": "잔액",
+    "credits_empty": "기록이 없습니다.",
+    "prev_page": "이전",
+    "next_page": "다음",
     "credit_detail_count": "{n}건",
     "daily_claim": "받기",
     "daily_hint": "매일 로그인하거나 여기서 받기",
@@ -502,6 +518,14 @@ SERVER_I18N = {
     },
     "ru": {
 
+    "credit_time": "Время",
+    "credit_type": "Тип",
+    "credit_note": "Примечание",
+    "credit_delta": "Изменение",
+    "credit_after": "Баланс",
+    "credits_empty": "Записей пока нет.",
+    "prev_page": "Назад",
+    "next_page": "Далее",
     "credit_detail_count": "{n} записей",
     "daily_claim": "Получить",
     "daily_hint": "входи каждый день или получи здесь",
@@ -745,6 +769,14 @@ SERVER_I18N = {
     },
     "ar": {
 
+    "credit_time": "الوقت",
+    "credit_type": "النوع",
+    "credit_note": "ملاحظة",
+    "credit_delta": "التغير",
+    "credit_after": "الرصيد",
+    "credits_empty": "لا سجلات بعد.",
+    "prev_page": "السابق",
+    "next_page": "التالي",
     "credit_detail_count": "{n} سجلات",
     "daily_claim": "استلام",
     "daily_hint": "سجّل الدخول يوميًا أو استلم هنا",
@@ -988,6 +1020,14 @@ SERVER_I18N = {
     },
     "de": {
 
+    "credit_time": "Zeit",
+    "credit_type": "Typ",
+    "credit_note": "Notiz",
+    "credit_delta": "Änderung",
+    "credit_after": "Guthaben",
+    "credits_empty": "Noch keine Einträge.",
+    "prev_page": "Zurück",
+    "next_page": "Weiter",
     "credit_detail_count": "{n} Einträge",
     "daily_claim": "Abholen",
     "daily_hint": "melde dich täglich an oder hole es hier ab",
@@ -1231,6 +1271,14 @@ SERVER_I18N = {
     },
     "pt": {
 
+    "credit_time": "Hora",
+    "credit_type": "Tipo",
+    "credit_note": "Nota",
+    "credit_delta": "Variação",
+    "credit_after": "Saldo",
+    "credits_empty": "Ainda sem registros.",
+    "prev_page": "Anterior",
+    "next_page": "Próxima",
     "credit_detail_count": "{n} registros",
     "daily_claim": "Resgatar",
     "daily_hint": "entre diariamente ou resgate aqui",
@@ -1474,6 +1522,14 @@ SERVER_I18N = {
     },
     "ja": {
 
+    "credit_time": "日時",
+    "credit_type": "種別",
+    "credit_note": "備考",
+    "credit_delta": "変動",
+    "credit_after": "残高",
+    "credits_empty": "記録はまだありません。",
+    "prev_page": "前へ",
+    "next_page": "次へ",
     "credit_detail_count": "{n} 件",
     "daily_claim": "受け取る",
     "daily_hint": "毎日ログインまたはここで受け取り",
@@ -1717,6 +1773,14 @@ SERVER_I18N = {
     },
     "zh": {
 
+    "credit_time": "时间",
+    "credit_type": "类型",
+    "credit_note": "备注",
+    "credit_delta": "变动",
+    "credit_after": "余额",
+    "credits_empty": "暂无记录。",
+    "prev_page": "上一页",
+    "next_page": "下一页",
     "credit_detail_count": "共 {n} 条",
     "daily_claim": "领取",
     "daily_hint": "每日登录或在此领取",
@@ -1960,6 +2024,14 @@ SERVER_I18N = {
     },
     "es": {
 
+    "credit_time": "Fecha",
+    "credit_type": "Tipo",
+    "credit_note": "Nota",
+    "credit_delta": "Cambio",
+    "credit_after": "Saldo",
+    "credits_empty": "Aún no hay registros.",
+    "prev_page": "Anterior",
+    "next_page": "Siguiente",
     "credit_detail_count": "{n} registros",
     "daily_claim": "Reclamar",
     "daily_hint": "inicia sesión a diario o reclama aquí",
@@ -2203,6 +2275,14 @@ SERVER_I18N = {
     },
     "en": {
 
+    "credit_time": "Time",
+    "credit_type": "Type",
+    "credit_note": "Note",
+    "credit_delta": "Change",
+    "credit_after": "Balance",
+    "credits_empty": "No records yet.",
+    "prev_page": "Previous",
+    "next_page": "Next",
     "credit_detail_count": "{n} records",
     "daily_claim": "Claim",
     "daily_hint": "log in daily or claim here",

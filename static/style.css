@@ -695,3 +695,13 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-daily { cursor: default; }
 .acct-daily-claim { margin-left: auto; }
 .acct-daily-claim .primary { white-space: nowrap; }
+
+/* ── QR modal image ── */
+.qr-code { display: block; width: 200px; height: 200px; margin: 0 auto; padding: var(--s2); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); }
+
+/* ── Layout hooks that carry meaning, not just JS anchors ── */
+.acct-daily-info { min-width: 0; }
+.acct-daily-info strong { display: block; }
+.acct-daily-info .acct-daily-sub { display: block; }
+.agents-endpoints { display: grid; gap: var(--s2); }
+.credit-note-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
