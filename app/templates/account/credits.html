@@ -18,29 +18,30 @@
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
       <div>
         <strong data-i18n="daily_done">{{ texts.daily_done }}</strong>
-        <span class="acct-daily-sub">+{{ daily_amount }} · {{ texts.daily_next_hint|default('come back tomorrow') }}</span>
+        <span class="acct-daily-sub">+{{ daily_amount }} · {{ texts.daily_next_hint }}</span>
       </div>
       {% else %}
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
-      <div>
+      <div class="acct-daily-info">
         <strong data-i18n="daily_avail">{{ texts.daily_avail }}</strong>
-        <span class="acct-daily-sub">+{{ daily_amount }} · {{ texts.daily_hint|default('log in daily') }}</span>
+        <span class="acct-daily-sub">+{{ daily_amount }} · {{ texts.daily_hint }}</span>
       </div>
+      <form method="post" action="/account/credits/claim" class="acct-daily-claim">
+        <button type="submit" class="primary"><span data-i18n="daily_claim">{{ texts.daily_claim }}</span></button>
+      </form>
       {% endif %}
     </div>
   </div>
 
+  {% if priced_tools %}
   <div class="acct-card">
     <div class="acct-card-head">
-    {% if priced_tools %}
-  <div class="acct-card">
-    <div class="acct-card-head">
-      <h2 data-i18n="credits_prices">{{ texts.credits_prices|default('Tool pricing') }}</h2>
+      <h2 data-i18n="credits_prices">{{ texts.credits_prices }}</h2>
     </div>
     <div class="acct-tablewrap">
       <table class="acct-table">
         <thead>
-          <tr><th data-i18n="credit_tool">{{ texts.credit_tool|default('Tool') }}</th><th class="ta-r" data-i18n="credit_cost">{{ texts.credit_cost|default('Cost') }}</th></tr>
+          <tr><th data-i18n="credit_tool">{{ texts.credit_tool }}</th><th class="ta-r" data-i18n="credit_cost">{{ texts.credit_cost }}</th></tr>
         </thead>
         <tbody>
           {% for t in priced_tools %}
@@ -52,19 +53,20 @@
         </tbody>
       </table>
     </div>
-    <p class="acct-card-sub" data-i18n="credits_prices_note">{{ texts.credits_prices_note|default('Free tools are not listed. Every call is charged once; failed calls are refunded automatically.') }}</p>
+    <p class="acct-card-sub" data-i18n="credits_prices_note">{{ texts.credits_prices_note }}</p>
   </div>
   {% endif %}
 
   <div class="acct-card">
-    <h2 data-i18n="credits_history">{{ texts.credits_history }}</h2>
-      <span class="acct-card-sub">{{ texts.credit_detail_count|default('{n} records')|replace('{n}', total) }}</span>
+    <div class="acct-card-head">
+      <h2 data-i18n="credits_history">{{ texts.credits_history }}</h2>
+      <span class="acct-card-sub">{{ texts.credit_detail_count|replace('{n}', total) }}</span>
     </div>
     {% if rows %}
     <div class="acct-tablewrap">
       <table class="acct-table">
         <thead>
-          <tr><th data-i18n="credit_time">{{ texts.credit_time|default('Time') }}</th><th data-i18n="credit_type">{{ texts.credit_type|default('Type') }}</th><th data-i18n="credit_note">{{ texts.credit_note|default('Note') }}</th><th class="ta-r" data-i18n="credit_delta">{{ texts.credit_delta|default('Change') }}</th><th class="ta-r" data-i18n="credit_after">{{ texts.credit_after|default('Balance') }}</th></tr>
+          <tr><th data-i18n="credit_time">{{ texts.credit_time }}</th><th data-i18n="credit_type">{{ texts.credit_type }}</th><th data-i18n="credit_note">{{ texts.credit_note }}</th><th class="ta-r" data-i18n="credit_delta">{{ texts.credit_delta }}</th><th class="ta-r" data-i18n="credit_after">{{ texts.credit_after }}</th></tr>
         </thead>
         <tbody>
           {% for r in rows %}
@@ -81,14 +83,14 @@
     </div>
     {% if pages > 1 %}
     <div class="acct-pager">
-      {% if pg > 1 %}<a href="/account/credits?page={{ pg - 1 }}">← {{ texts.prev_page|default('Prev') }}</a>{% else %}<span class="off">← {{ texts.prev_page|default('Prev') }}</span>{% endif %}
+      {% if pg > 1 %}<a href="/account/credits?page={{ pg - 1 }}">← {{ texts.prev_page }}</a>{% else %}<span class="off">← {{ texts.prev_page }}</span>{% endif %}
       <span class="grow">{{ pg }} / {{ pages }}</span>
-      {% if pg < pages %}<a href="/account/credits?page={{ pg + 1 }}">{{ texts.next_page|default('Next') }} →</a>{% else %}<span class="off">{{ texts.next_page|default('Next') }} →</span>{% endif %}
+      {% if pg < pages %}<a href="/account/credits?page={{ pg + 1 }}">{{ texts.next_page }} →</a>{% else %}<span class="off">{{ texts.next_page }} →</span>{% endif %}
     </div>
     {% endif %}
     {% else %}
     <div class="acct-empty">
-      <p data-i18n="credits_empty">{{ texts.credits_empty|default('No records yet.') }}</p>
+      <p data-i18n="credits_empty">{{ texts.credits_empty }}</p>
     </div>
     {% endif %}
   </div>

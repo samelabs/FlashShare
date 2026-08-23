@@ -26,8 +26,8 @@
   </div>
 
   <div class="acct-card acct-agents-link">
-    <p>{{ texts.agents_tokens_hint|default('Tokens power the HTTP API and MCP server.') }}</p>
-    <a class="btn-secondary" href="/agents">{{ texts.agents_title }}</a>
+    <p data-i18n="agents_tokens_hint">{{ texts.agents_tokens_hint }}</p>
+    <a class="btn-secondary" href="/agents" data-i18n="agents_title">{{ texts.agents_title }}</a>
   </div>
 </section>
 {% endblock %}

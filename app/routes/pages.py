@@ -271,6 +271,26 @@ async def account_credits(request: Request):
     return templates.TemplateResponse("account/credits.html", ctx)
 
 
+@router.post("/account/credits/claim")
+async def account_credits_claim(request: Request):
+    """Explicit daily-bonus claim button.
+
+    Closes the gap where a long-lived session crossing UTC midnight
+    never re-triggers the login-time grant: the user just clicks claim.
+    Idempotency is the same daily:{uid}:{yyyymmdd} key — clicking twice
+    in one day simply re-renders with 'already granted'.
+    """
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from billing import grant_daily_login, DAILY_LOGIN_CREDITS
+    try:
+        grant_daily_login(user["id"], DAILY_LOGIN_CREDITS)
+    except Exception:
+        logger.exception("daily claim failed")
+    return RedirectResponse("/account/credits", 303)
+
+
 @router.get("/account/tokens", response_class=HTMLResponse)
 async def account_tokens(request: Request):
     from app.main import templates

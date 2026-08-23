@@ -686,3 +686,12 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .tool-tab .tool-cost { flex-shrink: 0; }
 .tool-overlay-cost { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--s2); font-size: var(--text-sm); color: var(--muted); }
 .tool-overlay-cost .tool-cost { margin-left: 0; }
+
+/* ── Inline button variant: no margin inside flex rows (tokens page etc.) ── */
+.acct-row-btns .btn-secondary, .token-reveal-row .btn-secondary,
+.token-create-row .btn-secondary, .acct-daily-claim .primary { margin-top: 0; }
+.token-reveal-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.token-reveal-row code { flex: 1 1 240px; padding: var(--s2) var(--s3); background: var(--soft); border: 1px solid var(--line); border-radius: var(--r-sm); font-size: var(--text-sm); word-break: break-all; }
+.acct-daily { cursor: default; }
+.acct-daily-claim { margin-left: auto; }
+.acct-daily-claim .primary { white-space: nowrap; }
