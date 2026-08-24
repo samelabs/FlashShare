@@ -79,7 +79,7 @@ a.u-link, .prose a { text-decoration: underline; text-decoration-color: color-mi
 h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Layout ───────────────────────────────────────────────── */
-.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: 0 var(--s2); flex: 1; display: flex; flex-direction: column; overflow-y: auto; scrollbar-gutter: stable; -webkit-overflow-scrolling: touch; }
+.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: 0 var(--s2); flex: 1; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ── Topbar ───────────────────────────────────────────────── */
 .topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); padding: 0 max(var(--s2), calc((100vw - 880px) / 2 + var(--s2))); flex-shrink: 0; background: #fff; z-index: var(--z-dropdown); border-bottom: 1px solid var(--line); }
@@ -445,7 +445,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 @media (hover:hover) and (pointer:fine) { .footer-agents:hover { color: var(--accent); } }
 
 /* ── Doc Pages ────────────────────────────────────────────── */
-.doc { line-height: 1.7; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
+.doc { line-height: 1.7; width: 100%; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
 .doc h1 { font-size: var(--text-xl); }
 
 /* ── /agents (agent support surface) ─────────────────────── */
@@ -611,7 +611,7 @@ html[dir="rtl"] .tool-overlay-close { right: auto; left: var(--s3); }
 html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 
 /* ── Account pages (/account/*) ── */
-.acct-page { max-width: 720px; margin: 0 auto; padding: var(--s4) var(--s2) var(--s5); }
+.acct-page { width: 100%; max-width: 720px; margin: 0 auto; padding: var(--s4) var(--s2) var(--s5); }
 .acct-page h1 { font-size: var(--text-xl); margin-bottom: var(--s3); }
 .acct-nav { display: flex; gap: var(--s1); border-bottom: 1px solid var(--line); margin-bottom: var(--s3); overflow-x: auto; }
 .acct-tab { display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; color: var(--muted); border-bottom: 2px solid transparent; font-size: var(--text-sm); white-space: nowrap; }
