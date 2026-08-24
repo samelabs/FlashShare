@@ -205,7 +205,15 @@ button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke
 .controls { width: min(560px,100%); display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s4) auto 0; align-items: flex-end; justify-content: center; }
 .controls label { display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap; }
 .controls label > span { font-size: var(--text-sm); flex-shrink: 0; }
-.controls select { width: auto; margin-top: 0; }
+.controls /* ── Form control baseline (single source) ─────────────────────
+   16px floor: iOS/Android auto-zoom any focused input <16px;
+   font-family: inherit — UA default differs from page font otherwise. */
+input, select, textarea {
+  font-family: inherit;
+  font-size: 16px;
+}
+
+select { width: auto; margin-top: 0; }
 .controls .primary { flex: 0 0 auto; min-height: 42px; padding: 0 var(--s5); background: var(--accent); border-radius: var(--r); font-size: var(--text-sm); font-weight: 700; white-space: nowrap; box-shadow: var(--sh-accent); transition: background var(--ease), box-shadow var(--ease), transform var(--ease); }
 @media (hover:hover) and (pointer:fine) { .controls .primary:hover { background: var(--accent-hover); box-shadow: 0 4px 12px rgba(29,155,240,0.25); transform: translateY(-1px); } }
 .controls .primary:active { transform: translateY(0); }
@@ -214,7 +222,7 @@ select {
   width: 100%; margin-top: 7px;
   border: 1px solid var(--line-strong); border-radius: var(--r);
   padding: var(--s2) 32px var(--s2) var(--s3);
-  font-size: var(--text-sm); font-weight: 600; color: var(--ink);
+  font-weight: 600; color: var(--ink);
   background: var(--soft);
   appearance: none; -webkit-appearance: none; -moz-appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371767b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
@@ -238,7 +246,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 /* ── Result ───────────────────────────────────────────────── */
 .result-qr { display: block; margin: 0 auto var(--s3); width: 140px; height: 140px; border-radius: var(--r); border: 1px solid var(--line); padding: var(--s2); background: var(--bg); }
 .urlrow { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); min-width: 0; }
-.urlrow input { flex: 1; min-width: 0; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 11px var(--s3); font-size: var(--text-base); background: var(--bg); overflow: hidden; text-overflow: ellipsis; }
+.urlrow input { flex: 1; min-width: 0; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 11px var(--s3); background: var(--bg); overflow: hidden; text-overflow: ellipsis; }
 .urlrow input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .urlrow button, .share { background: var(--ink); white-space: nowrap; flex: 0 0 auto; }
 .result-title { display: block; font-size: var(--text-base); font-weight: 700; line-height: 1.25; }
@@ -356,7 +364,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .auth-form { display: flex; flex-direction: column; gap: var(--s3); }
 .auth-form label { display: flex; flex-direction: column; gap: var(--s1); }
 .auth-form label > span { font-size: var(--text-sm); color: var(--muted); }
-.auth-form input, .auth-form textarea { border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: var(--text-base); background: var(--bg); color: var(--ink); transition: border-color var(--ease-in); box-sizing: border-box; width: 100%; }
+.auth-form input, .auth-form textarea { border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s2) var(--s3); background: var(--bg); color: var(--ink); transition: border-color var(--ease-in); box-sizing: border-box; width: 100%; }
 .auth-form input:focus, .auth-form textarea:focus { outline: none; border-color: var(--accent); }
 .auth-form textarea { resize: vertical; font-family: inherit; }
 .auth-form .primary { width: 100%; }
@@ -374,17 +382,16 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .profile-section h2 { font-size: var(--text-lg); margin-bottom: var(--s3); }
 .profile-note { color: var(--ink-soft, #888); font-size: var(--text-sm); margin-bottom: var(--s3); }
 .token-create-row { display: flex; gap: var(--s2); flex-wrap: wrap; }
-.token-create-row input { flex: 1 1 220px; padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); font-size: var(--text-base); }
+.token-create-row input { flex: 1 1 220px; padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); }
 .token-reveal-row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin: var(--s2) 0; }
 .token-reveal-row code { flex: 1 1 260px; padding: var(--s2) var(--s3); background: var(--line, #eee); border-radius: var(--r-sm); font-size: var(--text-sm); word-break: break-all; }
-.token-reveal-row .btn-secondary { margin-top: 0; }
 .token-list { margin-top: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
 .token-item { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; padding: var(--s2) 0; border-bottom: 1px dashed var(--line); }
 .token-item:last-child { border-bottom: none; }
 .token-name { flex: 1 1 200px; font-size: var(--text-base); word-break: break-all; }
 .token-active { color: var(--green); font-size: var(--text-sm); }
 .token-revoked { color: var(--ink-soft, #999); font-size: var(--text-sm); text-decoration: line-through; }
-.btn-token-revoke { margin-top: 0; padding: var(--s1) var(--s3); font-size: var(--text-sm); }
+.btn-token-revoke { padding: var(--s1) var(--s3); font-size: var(--text-sm); }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s3); margin: var(--s4) 0; }
 .stat-card { padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); text-align: center; }
 .stat-card h3 { font-size: var(--text-lg); }
@@ -404,7 +411,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .profile-bound { color: var(--green); font-size: var(--text-base); }
 .profile-bound a { color: var(--accent); }
 .profile-unbound { color: var(--muted); font-size: var(--text-base); }
-.btn-secondary { display: inline-block; margin-top: var(--s2); padding: var(--s2) var(--s4); border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); font-size: var(--text-base); cursor: pointer; text-decoration: none; transition: border-color var(--ease-in); }
+.btn-secondary { display: inline-block; padding: var(--s2) var(--s4); white-space: nowrap; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); font-size: var(--text-base); cursor: pointer; text-decoration: none; transition: border-color var(--ease-in); }
 @media (hover:hover) and (pointer:fine) { .btn-secondary:hover { border-color: var(--accent); } }
 .btn-danger { padding: var(--s2) var(--s4); border-radius: var(--r-sm); border: 1px solid var(--danger); background: transparent; color: var(--danger); font-size: var(--text-base); cursor: pointer; transition: background var(--ease-in), color var(--ease-in); }
 @media (hover:hover) and (pointer:fine) { .btn-danger:hover { background: var(--danger); color: var(--button-ink); } }
@@ -425,7 +432,7 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .tool-loading { color: var(--muted); font-size: var(--text-sm); text-align: center; padding: var(--s5); }
 .tool-confirm-text { font-size: var(--text-base); color: var(--muted); margin: 0 0 var(--s4); }
 .tool-panel h3 { margin: 0 0 var(--s3); font-size: var(--text-lg); font-weight: 700; }
-.tool-panel input { width: 100%; border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: var(--text-base); color: var(--ink); background: var(--bg); box-sizing: border-box; }
+.tool-panel input { width: 100%; border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s2) var(--s3); color: var(--ink); background: var(--bg); box-sizing: border-box; }
 .tool-panel input:focus { outline: none; border-color: var(--accent); }
 .tool-panel-actions { display: flex; gap: var(--s2); justify-content: flex-end; margin-top: var(--s3); }
 .tool-result-view { max-height: 60vh; overflow: auto; }
@@ -689,7 +696,6 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 
 /* ── Inline button variant: no margin inside flex rows (tokens page etc.) ── */
 .acct-row-btns .btn-secondary, .token-reveal-row .btn-secondary,
-.token-create-row .btn-secondary, .acct-daily-claim .primary { margin-top: 0; }
 .token-reveal-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .token-reveal-row code { flex: 1 1 240px; padding: var(--s2) var(--s3); background: var(--soft); border: 1px solid var(--line); border-radius: var(--r-sm); font-size: var(--text-sm); word-break: break-all; }
 .acct-daily { cursor: default; }
