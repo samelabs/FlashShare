@@ -1,6 +1,7 @@
 # devlog — 改动摘要
 
 2026-08-15 | HEAD | feat: img2pdf 图片转PDF工具上线 (第8个工具, Pillow原生PDF编码器零新依赖, 多文件→单PDF, EXIF转正, E2E+回归全绿)
+- 2026-08-25 | EARN | MCP顶栏入口+发布工具命名统一+表单补全+收益提现闭环(earnings.py)
 - 2026-08-25 | 4PT | 四点方向: 工具暴露/首页平台化(能力条+检索)/agents转MCP叙事/检索即选择
 - 2026-08-25 | AUDIT2 | 全量审计: 修M10 output_url SSRF敞口+M11 MCP远程崩溃+M12 409+M18活动键族; i18n 13键; 验收脚本入库
 - 2026-08-25 | CSSFIX | 弹层黑块+iOS聚焦放大: 16px基线84450ac起被注释截selector失效(全站级); modal移入scoped作用域
