@@ -473,12 +473,105 @@ function loadHomeTools() {
     activePreset = savedTool.id === "share" ? null : (localStorage.getItem("flashshare_tool_preset") || null);
     applyToolSelection();
   }
+
+  initToolSearch();
 }
+
+// ── Tool search (search-as-select; 518-native, not a directory page) ──
+let _searchTimer = null;
+let _searchIdx = -1;
+
+function initToolSearch() {
+  const input = document.getElementById("toolSearch");
+  const pop = document.getElementById("toolSearchPop");
+  if (!input || !pop) return;
+
+  const closePop = () => { pop.classList.add("hidden"); _searchIdx = -1; };
+
+  const renderResults = (items) => {
+    if (!items.length) {
+      pop.innerHTML = `<div class="tool-search-empty">${escapeHtml(t("tool_search_none"))}</div>`;
+      pop.classList.remove("hidden");
+      return;
+    }
+    pop.innerHTML = items.map((x, i) => {
+      const name = x.id.includes("/")
+        ? (x.label[currentLang()] || x.label.en || x.id)
+        : t(x.id);
+      const by = x.id.includes("/") ? ` <em class="tool-tab-by">@${escapeHtml(x.id.split("/")[0])}</em>` : "";
+      const cost = x.cost > 0 ? `<span class="tool-cost">${x.cost}</span>` : "";
+      return `<button type="button" class="tool-search-item" role="option" data-idx="${i}" data-tool="${escapeHtml(x.id)}">
+        ${svgIcon(x.icon)}<span class="tool-tab-name">${escapeHtml(name)}${by}</span>${cost}
+      </button>`;
+    }).join("");
+    pop.classList.remove("hidden");
+    _searchIdx = -1;
+    pop.querySelectorAll(".tool-search-item").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const tool = homeToolsData.find(t => t.id === btn.dataset.tool)
+          || _lastSearchResults.find(t => t.id === btn.dataset.tool);
+        if (tool) selectToolFromSearch(tool);
+        closePop();
+      });
+    });
+  };
+
+  const selectToolFromSearch = (tool) => {
+    if (tool.id === "share") { closePop(); return; }
+    activeTool = tool;
+    activePreset = null;
+    localStorage.setItem("flashshare_tool", tool.id);
+    localStorage.removeItem("flashshare_tool_preset");
+    applyToolSelection();
+    openToolOverlay(tool, null);
+    input.value = "";
+    closePop();
+  };
+
+  input.addEventListener("input", () => {
+    clearTimeout(_searchTimer);
+    const q = input.value.trim();
+    if (!q) { closePop(); return; }
+    _searchTimer = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/tools/search?q=${encodeURIComponent(q)}`);
+        const d = await r.json();
+        if (d.ok) { _lastSearchResults = d.tools; renderResults(d.tools); }
+      } catch (e) { /* offline: keep pop closed */ }
+    }, 180);
+  });
+  input.addEventListener("keydown", (e) => {
+    const items = [...pop.querySelectorAll(".tool-search-item")];
+    if (e.key === "ArrowDown" && items.length) {
+      e.preventDefault();
+      _searchIdx = Math.min(_searchIdx + 1, items.length - 1);
+    } else if (e.key === "ArrowUp" && items.length) {
+      e.preventDefault();
+      _searchIdx = Math.max(_searchIdx - 1, 0);
+    } else if (e.key === "Enter") {
+      if (_searchIdx >= 0 && items[_searchIdx]) { e.preventDefault(); items[_searchIdx].click(); }
+      return;
+    } else if (e.key === "Escape") {
+      closePop();
+      return;
+    } else return;
+    items.forEach((el, i) => el.classList.toggle("active", i === _searchIdx));
+  });
+  document.addEventListener("click", (e) => {
+    if (!pop.contains(e.target) && e.target !== input) closePop();
+  });
+}
+
+let _lastSearchResults = [];
 
 // ── Tool Overlay (shared component) ─────────────────────────
 
 function openToolOverlay(tool, btn) {
-  const toolName = t(tool.id);
+  // Community tools have no i18n key (id 'owner/tool') — use their label
+  // directly; first-party tools keep the t(id) lookup.
+  const toolName = tool.id.includes("/")
+    ? (tool.label[currentLang()] || tool.label.en || tool.id)
+    : t(tool.id);
   const iconSvg = svgIcon(tool.icon);
   const isActive = activeTool && activeTool.id === tool.id;
 

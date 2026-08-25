@@ -117,6 +117,72 @@ def _row_to_item(row: dict, price: dict) -> dict:
 
 # ── Catalog (single source for web home, /api/v1/tools, MCP tools/list) ──
 
+def platform_stats() -> dict:
+    """Headline counts for the home capability panel (fast, no pricing join)."""
+    with db() as con:
+        row = con.execute(
+            """SELECT
+                 COUNT(*) FILTER (WHERE owner_id IS NULL AND execution = 'local') AS first_party,
+                 COUNT(*) FILTER (WHERE owner_id IS NOT NULL) AS community,
+                 COUNT(*) FILTER (WHERE execution IN ('http', 'mcp')) AS remote
+               FROM platform_tools
+               WHERE enabled AND visibility = %s""",
+            (VIS_PUBLIC,),
+        ).fetchone()
+    return {"first_party": row["first_party"], "community": row["community"],
+            "remote": row["remote"]}
+
+
+def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> list:
+    """518-native tool search: prefix/substring match across name (all label
+    langs) and tool key, self-operated + community in ONE result list.
+
+    NOT a directory page (that's the MCP-marketplace pattern) — the home
+    search box IS the tool selector: typing filters, clicking selects the
+    active tool, the upload flow is unchanged. Community rows carry a
+    provider badge so provenance is visible at a glance.
+    """
+    q = (q or "").strip().lower()
+    if not q:
+        return []
+    like = f"%{q}%"
+    with db() as con:
+        if viewer_id is None:
+            rows = con.execute(
+                """SELECT * FROM platform_tools
+                   WHERE enabled AND visibility = %s
+                     AND (LOWER(tool_key) LIKE %s
+                          OR LOWER(label_json)::jsonb::text LIKE %s)
+                   ORDER BY (owner_id IS NULL) DESC, id LIMIT %s""",
+                (VIS_PUBLIC, like, like, limit,),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                """SELECT * FROM platform_tools
+                   WHERE enabled AND (visibility = %s OR owner_id = %s)
+                     AND (LOWER(tool_key) LIKE %s
+                          OR LOWER(label_json)::jsonb::text LIKE %s)
+                   ORDER BY (owner_id IS NULL) DESC, id LIMIT %s""",
+                (VIS_PUBLIC, viewer_id, like, like, limit,),
+            ).fetchall()
+    out = []
+    for row in rows:
+        p = _price_of(row["tool_key"])
+        if p is None:
+            continue
+        out.append(_row_to_item(row, p))
+    return out
+
+
+def _price_of(tool_key: str) -> dict | None:
+    """pricing overlay for one row: None = disabled/hidden."""
+    from pricing import get_pricing
+    p = get_pricing(tool_key)
+    if not p or not p["enabled"]:
+        return None
+    return p
+
+
 def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> list:
     """Pricing-overlaid catalog, identical contract to the legacy
     tools.list_all_tools(): disabled tools hidden, cost included.

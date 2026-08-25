@@ -235,6 +235,16 @@ def _endpoint_decl(fields: dict, execution: str, existing: dict | None = None) -
     return decl
 
 
+@router.get("/api/tools/search")
+async def search_tools(request: Request, q: str = ""):
+    """Home tool search — one list, self-operated first, community next.
+    Anonymous: public rows only. Signed-in: own private/unlisted included."""
+    from catalog import search_catalog
+    user = request.state.user
+    viewer = user["id"] if user else None
+    return {"ok": True, "tools": search_catalog(q, viewer)}  # noqa: E501 (search_catalog caps at 30)
+
+
 @router.get("/api/usertools")
 async def list_user_tools(request: Request):
     """Owner's own tools with live stats."""

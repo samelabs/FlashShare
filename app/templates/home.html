@@ -50,11 +50,23 @@
   </div>
 
   <section class="tool" aria-label="Upload">
+    <div class="cap-bar">
+      <span class="cap-stat"><strong>{{ stats.first_party }}</strong> <span data-i18n="cap_first_party">{{ texts.cap_first_party }}</span></span>
+      <span class="cap-dot" aria-hidden="true">·</span>
+      <span class="cap-stat"><strong>{{ stats.community }}</strong> <span data-i18n="cap_community">{{ texts.cap_community }}</span></span>
+      <span class="cap-dot" aria-hidden="true">·</span>
+      <span class="cap-stat"><strong>{{ stats.remote + stats.first_party }}</strong> <span data-i18n="cap_mcp_ready">{{ texts.cap_mcp_ready }}</span></span>
+    </div>
+    <div class="tool-search" role="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
+      <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
+      <div class="tool-search-pop hidden" id="toolSearchPop" role="listbox"></div>
+    </div>
     <div class="home-tools{% if not tools %} hidden{% endif %}" id="homeTools">
       {% for t in tools %}
-      <div class="tool-tab" data-tool-id="{{ t.id }}" role="button" tabindex="0">
+      <div class="tool-tab{% if '/' in t.id %} community{% endif %}" data-tool-id="{{ t.id }}" role="button" tabindex="0">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path(t.icon) }}</svg>
-        <span data-i18n="{{ t.id }}">{{ texts.get(t.id, t.label.get(lang, t.label.get('en', t.id))) }}</span>
+        <span class="tool-tab-name">{{ texts.get(t.id) if '/' not in t.id else (t.label.get(lang, t.label.get('en', t.id))) }}{% if '/' in t.id %} <em class="tool-tab-by">@{{ t.id.split('/')[0] }}</em>{% endif %}</span>
         {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
       </div>
       {% endfor %}

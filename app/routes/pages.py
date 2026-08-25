@@ -19,7 +19,7 @@ from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
-from catalog import list_catalog, seed_from_registry
+from catalog import list_catalog, seed_from_registry, platform_stats
 
 
 def _fmt_ts(ts) -> str:
@@ -158,7 +158,8 @@ async def home(request: Request):
     user = request.state.user
     texts = ctx["texts"]
 
-    tools = list_catalog(None, include_remote=False)  # web grid: local-only for now
+    tools = list_catalog(user["id"] if user else None)  # grid: local + remote + community (public)
+    stats = platform_stats()
     max_mb = MAX_UPLOAD_BYTES // 1024 // 1024
     home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
         "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
@@ -172,6 +173,7 @@ async def home(request: Request):
         "daily_uploads": DAILY_UPLOADS,
         "daily_mb": DAILY_BYTES // 1024 // 1024,
         "tools": tools,
+        "stats": stats,
         "limits_json": json.dumps({"maxMb": max_mb, "dailyUploads": DAILY_UPLOADS, "dailyMb": DAILY_BYTES // 1024 // 1024, "maxDays": 7, "maxDownloads": 200}),
         "tools_json": json.dumps(tools, ensure_ascii=False),
         "JS": JS,

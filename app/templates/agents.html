@@ -1,24 +1,57 @@
 {% extends "base.html" %}
 {% block title %}{{ texts.agents_title }} - {{ APP_NAME }}{% endblock %}
-{% block desc %}{{ texts.agents_intro }}{% endblock %}
+{% block desc %}{{ texts.agents_mcp_desc }}{% endblock %}
 
 {% block content %}
 <section class="panel doc agents-page">
   <h1>{{ texts.agents_title }}</h1>
-  <p class="agents-intro">{{ texts.agents_intro }}</p>
+  <p class="agents-intro">{{ texts.agents_mcp_intro }}</p>
 
   <div class="agents-quickstart">
-    <h2>{{ texts.agents_qs }}</h2>
-    <ol>
-      <li>{{ texts.agents_qs1 }}</li>
-      <li>{{ texts.agents_qs2 }}</li>
-      <li>{{ texts.agents_qs3 }}</li>
-    </ol>
-    <a class="btn-secondary" href="/account/tokens">{{ texts.acct_tokens }}</a>
+    <h2>{{ texts.agents_mcp_h }}</h2>
+    <p>{{ texts.agents_mcp_desc }}</p>
+    <div class="agents-copy">
+      <code id="mcpUrl">https://518.plus/mcp</code>
+      <button type="button" class="btn-secondary" id="copyMcp">{{ texts.copy }}</button>
+    </div>
+    <div class="agents-mcp-config">
+      <h3>{{ texts.agents_mcp_conf }}</h3>
+<pre class="agents-pre"><code id="mcpConf">{
+  "mcpServers": {
+    "fives18plus": {
+      "url": "https://518.plus/mcp",
+      "headers": { "Authorization": "Bearer fsk_..." }
+    }
+  }
+}</code></pre>
+      <button type="button" class="btn-secondary" id="copyConf">{{ texts.copy }}</button>
+    </div>
   </div>
 
+  <h2>{{ texts.agents_clients_h }}</h2>
+  <p>{{ texts.agents_clients_desc }}</p>
+  <div class="agents-endpoints">
+    <table class="agents-table">
+      <thead><tr><th>Client</th><th>{{ texts.agents_client_how }}</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Claude / Cursor / Cherry Studio</td><td>{{ texts.agents_cl_generic }}</td></tr>
+        <tr><td class="mono">{{ texts.agents_cl_doubao }}</td><td>{{ texts.agents_cl_doubao_how }}</td></tr>
+        <tr><td class="mono">{{ texts.agents_cl_qwen }}</td><td>{{ texts.agents_cl_qwen_how }}</td></tr>
+        <tr><td class="mono">WorkBuddy / {{ texts.agents_cl_other }}</td><td>{{ texts.agents_cl_generic }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>{{ texts.agents_semantics_h }}</h2>
+  <ul class="agents-sem-list">
+    <li>{{ texts.agents_semi_1 }}</li>
+    <li>{{ texts.agents_semi_2 }}</li>
+    <li>{{ texts.agents_semi_3 }}</li>
+    <li>{{ texts.agents_semi_4 }}</li>
+  </ul>
+
   <h2>{{ texts.agents_api_h }}</h2>
-  <p>{{ texts.agents_api_desc }}</p>
+  <p>{{ texts.agents_api_desc2 }}</p>
   <div class="agents-endpoints">
     <table class="agents-table">
       <thead><tr><th>Method</th><th>Endpoint</th><th>{{ texts.agents_ep_desc }}</th></tr></thead>
@@ -32,36 +65,11 @@
     </table>
   </div>
 
-  <h2>{{ texts.agents_mcp_h }}</h2>
-  <p>{{ texts.agents_mcp_desc }}</p>
-  <div class="agents-copy">
-    <code id="mcpUrl">https://518.plus/mcp</code>
-    <button type="button" class="btn-secondary" id="copyMcp">{{ texts.copy }}</button>
-  </div>
-  <div class="agents-mcp-config">
-    <h3>{{ texts.agents_mcp_conf }}</h3>
-<pre class="agents-pre"><code id="mcpConf">{
-  "mcpServers": {
-    "fives18plus": {
-      "url": "https://518.plus/mcp",
-      "headers": { "Authorization": "Bearer fsk_..." }
-    }
-  }
-}</code></pre>
-    <button type="button" class="btn-secondary" id="copyConf">{{ texts.copy }}</button>
-  </div>
-
   <h2>{{ texts.agents_skill_h }}</h2>
   <p>{{ texts.agents_skill_desc }}</p>
   <div class="agents-copy">
     <code id="skillCmd">hermes curator adopt 518plus</code>
     <button type="button" class="btn-secondary" id="copySkill">{{ texts.copy }}</button>
-  </div>
-
-  <h2>{{ texts.agents_pricing_h }}</h2>
-  <p>{{ texts.agents_pricing_desc }}</p>
-  <div class="agents-copy">
-    <code>GET /api/v1/tools → [{ tool, cost, … }]</code>
   </div>
 </section>
 {% endblock %}

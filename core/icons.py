@@ -58,6 +58,7 @@ _ICONS = {
 
     # ── Tools ──
     "wand": '<rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><circle cx="6.5" cy="6" r="0.5" fill="currentColor"></circle><circle cx="9.5" cy="6" r="0.5" fill="currentColor"></circle><circle cx="12.5" cy="6" r="0.5" fill="currentColor"></circle>',
+    "search": '<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path>',
     "shield": '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path>',
     "crop": '<path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path>',
     "compress": '<path d="M4 9V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"></path><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path><path d="M9 9l3-3 3 3"></path><path d="M9 15l3 3 3-3"></path>',
