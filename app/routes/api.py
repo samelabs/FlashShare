@@ -30,7 +30,8 @@ from uploads import check_quota, get_upload_by_public_id, list_uploads, delete_u
 from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
 from security import sniff_allowed, sign_source_token, verify_source_token
 from storage import read as storage_read, write as storage_write
-from tools import get_tool, get_default_preset, ToolError
+from tools import ToolError
+from catalog import resolve as resolve_tool, get_default_preset
 from auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
 from app.models import ToolExecuteRequest, RenameRequest
@@ -244,9 +245,18 @@ async def execute_tool(request: Request):
 
     tool_id = req.tool_id
     params = req.params
-    tool = get_tool(tool_id)
-    if not tool:
+    # Single routing entry: DB registry row (contract) + local handler join.
+    # Bare id = first-party; 'owner/tool' = user namespace (Phase 3).
+    tool, terr = resolve_tool(tool_id, user["id"])
+    if terr:
+        # private tools are indistinguishable from missing ones (no leak)
+        if terr == "disabled":
+            return JSONResponse({"ok": False, "error": "tool_disabled"}, 403)
         return JSONResponse({"ok": False, "error": "tool_not_found"}, 404)
+    # Normalize to the legacy in-memory shape so downstream orchestration
+    # (metering, worker dispatch, result cards) is untouched.
+    tool["id"] = tool["tool_key"]
+    tool["type"] = tool["tool_type"]
 
     # ── Metering gate (single point for ALL execution paths) ──
     # pricing/enabled check + idempotent charge + tool_calls fact row.

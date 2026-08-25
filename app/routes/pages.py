@@ -18,7 +18,8 @@ sys.path.insert(0, str(_BASE))
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY_UPLOADS, DAILY_BYTES
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
-from tools import list_all_tools, load_all
+from tools import load_all
+from catalog import list_catalog, seed_from_registry
 
 
 def _fmt_ts(ts) -> str:
@@ -157,7 +158,7 @@ async def home(request: Request):
     user = request.state.user
     texts = ctx["texts"]
 
-    tools = list_all_tools()
+    tools = list_catalog(None)  # public grid; viewer scope is a later surface
     max_mb = MAX_UPLOAD_BYTES // 1024 // 1024
     home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
         "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
@@ -265,7 +266,7 @@ async def account_credits(request: Request):
                        balance=get_balance(user["id"]),
                        granted_today=daily_granted_today(user["id"]),
                        daily_amount=DAILY_LOGIN_CREDITS,
-                       priced_tools=[t for t in list_all_tools() if t["cost"] > 0],
+                       priced_tools=[t for t in list_catalog(user["id"]) if t["cost"] > 0],
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse("account/credits.html", ctx)

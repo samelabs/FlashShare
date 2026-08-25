@@ -141,8 +141,11 @@ async def samelabs_tools(request: Request):
         return resp
     from app.main import templates
     from pricing import list_pricing
-    from tools import _registry
-    reg = {t["id"]: t for t in _registry}
+    from catalog import list_catalog
+    # Registry truth is the data-state catalog (platform_tools + pricing
+    # overlay). 'registered' = present in the live catalog; retired rows
+    # show as unregistered so history stays interpretable.
+    reg = {t["id"]: t for t in list_catalog(None)}
     rows = []
     for p in list_pricing():
         t = reg.get(p["tool_id"])

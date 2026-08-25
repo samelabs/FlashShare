@@ -29,7 +29,8 @@ from security import sniff_allowed
 from uploads import check_quota
 from gokapi import upload_to_gokapi
 from storage import read as storage_read
-from tools import get_tool, list_all_tools
+from tools import get_tool
+from catalog import list_catalog
 from utils import now, sanitize_filename
 from auth import public_user
 
@@ -64,9 +65,10 @@ async def v1_tools(request: Request):
     user, err = _require_bearer(request)
     if err:
         return err
-    # list_all_tools is the single catalog source (pricing overlay inside):
-    # cost included, disabled tools hidden — identical to web home and MCP.
-    return {"ok": True, "tools": list_all_tools()}
+    # list_catalog is the single catalog source (data-state registry +
+    # pricing overlay inside): cost included, disabled tools hidden —
+    # identical to web home and MCP. Viewer-scoped (own private tools).
+    return {"ok": True, "tools": list_catalog(user["id"])}
 
 
 def _upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) -> dict:

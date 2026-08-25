@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from config import MAX_UPLOAD_BYTES
-from tools import list_all_tools
+from catalog import list_catalog, resolve as resolve_tool
 from utils import sanitize_filename
 
 router = APIRouter()
@@ -129,18 +129,19 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     if is_notification:
         return None  # any other notification: accept silently
     if method == "tools/list":
-        return _rpc(mid, {"tools": _tool_specs()})
+        return _rpc(mid, {"tools": _tool_specs(user)})
     if method == "tools/call":
         params = msg.get("params") or {}
         return await _call_tool(request, user, mid, params)
     return _err(mid, -32601, f"method not found: {method}")
 
 
-def _tool_specs() -> list:
-    # list_all_tools: single catalog source (pricing overlay inside —
-    # disabled hidden, cost included), identical to web home and /api/v1.
+def _tool_specs(user: dict) -> list:
+    # list_catalog: single catalog source (data-state registry + pricing
+    # overlay inside — disabled hidden, cost included), identical to web
+    # home and /api/v1. Viewer-scoped: own private/unlisted tools included.
     specs = []
-    for t in list_all_tools():
+    for t in list_catalog(user["id"]):
         multi = bool(t.get("multi"))
         if multi:
             props = {
@@ -199,12 +200,16 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from app.routes.apiv1 import _upload_source  # shared pipeline (v1 + MCP)
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
-    tool = get_tool(tool_id)
-    if not tool:
+    # MCP name projection inverse: 'sun__super-resolve' → 'sun/super-resolve'
+    tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
+    tool, terr = resolve_tool(tool_key, user["id"])
+    if terr or not tool:
         return _err(mid, -32602, f"unknown tool: {tool_id}")
+    tool = {"id": tool["tool_key"], "type": tool["tool_type"],
+            "multi": tool["multi"]}
 
     raw = {
-        "tool_id": tool_id,
+        "tool_id": tool_key,
         "params": args.get("params") or {},
         "client_ref": str(args.get("client_ref") or "").strip() or
                       f"mcp:{_secrets.token_hex(16)}",

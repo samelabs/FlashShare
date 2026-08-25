@@ -186,6 +186,13 @@ async def startup():
         from pricing import seed_pricing
         seeded = seed_pricing([t["id"] for t in _registry])
         logger.info("pricing seeded: +%d rows", seeded["added"])
+        # Data-state registry: compile register() declarations into
+        # platform_tools rows (runtime catalog source). Retired-in-code
+        # tools keep rows with enabled=false (history stays interpretable).
+        from catalog import seed_from_registry
+        sync = seed_from_registry()
+        logger.info("platform_tools seeded: +%d added, %d updated",
+                    sync["added"], sync["updated"])
     except Exception:
         logger.exception("pricing seed failed (non-fatal)")
     logger.info("%s started", APP_NAME)

@@ -308,6 +308,45 @@ _SCHEMA_SQL = (
       updated_by BIGINT
     )
     """,
+    # ── platform: platform_tools (tool registry — data-state rows) ──
+    # The runtime source of truth for the tool catalog. First-party tools are
+    # seeded here at startup from register() declarations (code = creation
+    # format, DB = runtime truth). Remote/http/mcp execution classes and
+    # namespaced user tools (owner/tool_id) land as data rows later —
+    # resolve() is execution-class-agnostic and origin-agnostic.
+    """
+    CREATE TABLE IF NOT EXISTS platform_tools (
+      id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      tool_key       TEXT NOT NULL,          -- 'beautify' | 'owner/tool'
+      owner_id       BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                                           -- NULL = first-party seed
+      tool_id        TEXT NOT NULL,          -- bare id within namespace
+      execution      TEXT NOT NULL DEFAULT 'local',
+                                           -- local | http | mcp (future)
+      tool_type      TEXT NOT NULL DEFAULT 'produce',
+                                           -- produce | view | peek
+      label_json     TEXT NOT NULL,          -- {lang: display_name}
+      icon           TEXT NOT NULL,
+      accept_json    TEXT,                   -- JSON array or NULL = any
+      presets_json   TEXT,                   -- JSON array or NULL
+      multi          BOOLEAN NOT NULL DEFAULT FALSE,
+      visibility     TEXT NOT NULL DEFAULT 'public',
+                                           -- public | unlisted | private
+      endpoint_json  TEXT,                   -- remote execution decl (future)
+      params_json    TEXT,                   -- typed params schema (future)
+      enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at     BIGINT NOT NULL,
+      updated_at     BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS platform_tools_key_idx
+      ON platform_tools(tool_key)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS platform_tools_owner_idx
+      ON platform_tools(owner_id)
+    """,
 )
 
 
