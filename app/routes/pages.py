@@ -158,7 +158,7 @@ async def home(request: Request):
     user = request.state.user
     texts = ctx["texts"]
 
-    tools = list_catalog(None)  # public grid; viewer scope is a later surface
+    tools = list_catalog(None, include_remote=False)  # web grid: local-only for now
     max_mb = MAX_UPLOAD_BYTES // 1024 // 1024
     home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
         "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),

@@ -91,3 +91,52 @@ def verify_password(password: str, stored: str) -> bool:
 def needs_rehash(stored: str) -> bool:
     """Check if a password hash needs upgrading from SHA-256 to bcrypt."""
     return bool(stored) and not stored.startswith("$2")
+
+
+# ── One-time signed source-fetch tokens (remote tool execution, phase 2) ──
+
+import time as _time
+
+
+def now_ts() -> int:
+    return int(_time.time())
+
+
+def _fetch_sig(user_id: int, gokapi_id: str, expires_at: int) -> str:
+    msg = f"fetch:{user_id}:{gokapi_id}:{expires_at}".encode()
+    return hmac.new(SESSION_SECRET.encode(), msg, hashlib.sha256).hexdigest()[:40]
+
+
+def sign_fetch_token(user_id: int, gokapi_id: str, expires_in: int = 600) -> str:
+    """HMAC token authorizing ONE fetch of a source file within expires_in.
+
+    Pull model: the remote endpoint fetches the input itself — the
+    platform never pushes user files out. Binds (user, file, expiry);
+    single-use is enforced by verify_fetch_token's redemption set
+    (single uvicorn worker per run.sh --workers 1)."""
+    expires_at = now_ts() + int(expires_in)
+    return f"{expires_at}.{_fetch_sig(user_id, gokapi_id, expires_at)}"
+
+
+_REDEEMED_FETCH = set()
+
+
+def verify_fetch_token(token: str, user_id: int, gokapi_id: str) -> bool:
+    """True exactly once per token. Expired or replayed tokens fail."""
+    try:
+        expires_at_str, sig = token.split(".", 1)
+        expires_at = int(expires_at_str)
+    except (ValueError, AttributeError):
+        return False
+    if expires_at < now_ts():
+        return False
+    if not hmac.compare_digest(sig, _fetch_sig(user_id, gokapi_id, expires_at)):
+        return False
+    if token in _REDEEMED_FETCH:
+        return False
+    _REDEEMED_FETCH.add(token)
+    # Bound the redemption set (defensive; tokens expire in minutes)
+    if len(_REDEEMED_FETCH) > 4096:
+        _REDEEMED_FETCH.clear()
+    return True
+

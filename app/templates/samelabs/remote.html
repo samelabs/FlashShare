@@ -1,0 +1,114 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "远程工具" %}
+{% block body %}
+
+<div class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>远程工具</h2>
+    <span class="sl-panel-sub">http / mcp 端点 · 平台受信（运营托管）</span>
+  </div>
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>tool_key</th><th>类型</th><th>端点</th><th>超时</th><th>鉴权</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for t in remote_tools %}
+        <tr data-tool="{{ t.tool_key|e }}">
+          <td class="sl-mono">{{ t.tool_key|e }}</td>
+          <td><span class="sl-badge sl-b-info">{{ t.execution|e }}</span></td>
+          <td class="sl-mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ t.url|e }}">{{ t.url|e }}</td>
+          <td>{{ t.timeout_s }}s</td>
+          <td>{{ 'Bearer' if t.has_auth else '—' }}</td>
+          <td>
+            {% if t.enabled %}<span class="sl-badge sl-b-ok">启用</span>
+            {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
+          </td>
+          <td>
+            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-del-remote" data-tool="{{ t.tool_key|e }}">删除</button>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="sl-dim">暂无远程工具</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>新增远程工具</h2>
+    <span class="sl-panel-sub">数据行即部署 · 定价在工具页管理</span>
+  </div>
+  <form id="remoteCreate" class="sl-form" style="padding:0 4px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+      <label>tool_id <input name="tool_id" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" required></label>
+      <label>执行类
+        <select name="execution">
+          <option value="http">http</option>
+          <option value="mcp">mcp</option>
+        </select>
+      </label>
+      <label>显示名 <input name="label" placeholder="超分辨率" required></label>
+      <label>图标 <input name="icon" value="wand" placeholder="wand"></label>
+      <label style="grid-column:span 2">端点 URL <input name="url" placeholder="https://api.example.com/process" required></label>
+      <label>超时(秒) <input name="timeout_s" type="number" min="5" max="300" value="60"></label>
+      <label>mcp 工具名 <input name="mcp_tool" placeholder="仅 mcp 类需要"></label>
+      <label>鉴权头 <input name="auth_header" placeholder="Authorization"></label>
+      <label>鉴权令牌 <input name="auth_token" type="password" placeholder="Bearer xxx"></label>
+      <label>accept (MIME, 逗号分隔) <input name="accept" placeholder="image/jpeg,image/png"></label>
+      <label>单价(积分, 0=免费) <input name="cost" type="number" min="0" value="0"></label>
+      <label>输出文件名 <input name="output_filename" placeholder="output.png"></label>
+      <label>输出类型 <input name="output_content_type" placeholder="image/png"></label>
+    </div>
+    <div style="margin-top:12px">
+      <button type="submit" class="sl-btn sl-btn-primary">创建</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block script %}
+document.getElementById('remoteCreate').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var f = e.target;
+  var payload = {
+    tool_id: f.tool_id.value.trim(),
+    execution: f.execution.value,
+    label: f.label.value.trim(),
+    icon: f.icon.value.trim() || 'wand',
+    url: f.url.value.trim(),
+    timeout_s: parseInt(f.timeout_s.value, 10) || 60,
+    mcp_tool: f.mcp_tool.value.trim(),
+    auth_header: f.auth_header.value.trim(),
+    auth_token: f.auth_token.value.trim(),
+    accept: f.accept.value.trim(),
+    cost: parseInt(f.cost.value, 10) || 0,
+    output_filename: f.output_filename.value.trim(),
+    output_content_type: f.output_content_type.value.trim(),
+  };
+  slBusy(f.querySelector('button[type=submit]'), slPost('/samelabs/remote/create', payload)).then(function (r) {
+    if (r.ok && r.data.ok) {
+      slToast('ok', '已创建', payload.tool_id + ' · 刷新页面查看');
+      setTimeout(function () { location.reload(); }, 600);
+    } else {
+      slToast('err', '创建失败', r.data.error || '请求失败');
+    }
+  });
+});
+
+document.querySelectorAll('.btn-del-remote').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var tool = btn.dataset.tool;
+    if (!confirm('删除远程工具 ' + tool + '？定价将停用。')) return;
+    slBusy(btn, slPost('/samelabs/remote/' + tool + '/delete', {})).then(function (r) {
+      if (r.ok && r.data.ok) {
+        slToast('ok', '已删除', tool);
+        setTimeout(function () { location.reload(); }, 400);
+      } else {
+        slToast('err', '删除失败', r.data.error || '请求失败');
+      }
+    });
+  });
+});
+{% endblock %}

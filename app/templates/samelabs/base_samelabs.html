@@ -42,6 +42,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0L12 5.36l-.77-.78a5.4 5.4 0 0 0-7.65 7.65l8.42 8.42 8.42-8.42a5.4 5.4 0 0 0 0-7.65z"/></svg>
         活动
       </a>
+      <a href="/samelabs/remote" {% if page == 'remote' %}class="active" aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        远程工具
+      </a>
       <a href="/samelabs/plans" {% if page == 'plans' %}class="active" aria-current="page"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
         档位
@@ -77,6 +81,7 @@
       <a href="/samelabs/users" {% if page == 'users' %}class="active"{% endif %}>用户</a>
       <a href="/samelabs/tools" {% if page == 'tools' %}class="active"{% endif %}>工具</a>
       <a href="/samelabs/activities" {% if page == 'activities' %}class="active"{% endif %}>活动</a>
+      <a href="/samelabs/remote" {% if page == 'remote' %}class="active"{% endif %}>远程工具</a>
       <a href="/samelabs/plans" {% if page == 'plans' %}class="active"{% endif %}>档位</a>
       <a href="/samelabs/packages" {% if page == 'packages' %}class="active"{% endif %}>积分包</a>
       <a href="/samelabs/ledger" {% if page == 'ledger' %}class="active"{% endif %}>流水</a>

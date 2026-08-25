@@ -18,7 +18,7 @@ import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from concurrent.futures import ProcessPoolExecutor
 
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
@@ -224,12 +224,6 @@ def _resolve_upload_sync(public_id: str, user: dict, token: str):
 
 @router.post("/tools/execute")
 async def execute_tool(request: Request):
-    """Execute a tool on one or more uploaded files.
-
-    Body validated by Pydantic ToolExecuteRequest.
-    - Single-file: public_id (str) — existing tools (beautify, compress, etc.)
-    - Multi-file: public_ids (list) — multi tools (pdf_merge)
-    """
     user, err = _require_auth(request)
     if err:
         return err
@@ -343,7 +337,10 @@ async def execute_tool(request: Request):
                     return JSONResponse({"ok": False, "error": err or "not_found"},
                                         403 if err == "forbidden" else 404)
                 uploads.append(upload)
-            result = await _execute_multi_and_share(request, tool, uploads, params, user)
+            if tool.get("execution") in ("http", "mcp"):
+                result = await _execute_remote_and_share(request, tool, uploads, params, user)
+            else:
+                result = await _execute_multi_and_share(request, tool, uploads, params, user)
             return _finish_metered_call(user, tool, client_ref, cost, started,
                                         request, result, None)
         else:
@@ -357,7 +354,10 @@ async def execute_tool(request: Request):
             if err or not upload:
                 return JSONResponse({"ok": False, "error": err or "not_found"},
                                     403 if err == "forbidden" else 404)
-            result = await _execute_and_share(request, tool, upload, params, user)
+            if tool.get("execution") in ("http", "mcp"):
+                result = await _execute_remote_and_share(request, tool, [upload], params, user)
+            else:
+                result = await _execute_and_share(request, tool, upload, params, user)
         return _finish_metered_call(user, tool, client_ref, cost, started,
                                     request, result, upload)
     except ToolError as exc:
@@ -490,6 +490,128 @@ async def _execute_multi_and_share(request: Request, tool: dict, uploads: list, 
             logger.warning("Failed to cleanup source %s after multi-tool execution", gid)
 
     return record
+
+
+async def _execute_remote_and_share(request: Request, tool: dict, uploads: list,
+                                    params: dict, user: dict) -> dict:
+    """Remote orchestration (execution=http|mcp), sync mode.
+
+    Same spine as the local paths — read sources, produce output bytes,
+    land via the share pipeline, cleanup sources — with the handler
+    replaced by a remote driver call:
+
+      1. Build one-time signed fetch URLs per source (pull model — the
+         endpoint fetches; the platform never pushes files out).
+      2. remote.drive_http / drive_mcp dispatch to the endpoint
+         (SSRF-guarded, timeout-bounded, auth headers from the registry
+         row — never from the caller).
+      3. Output bytes are validated (sniff whitelist, size cap) with ZERO
+         trust exemptions, then written through the normal pipeline.
+    """
+    import json as _json
+    import remote as _remote
+    from security import sign_fetch_token
+    decl = _json.loads(tool["endpoint_json"]) if tool.get("endpoint_json") else {}
+    if not decl.get("url"):
+        raise ToolError("err_tool_not_configured")
+    trusted = tool.get("owner_id") is None
+    sources = []
+    gokapi_ids = []
+    total_size = 0
+    for upload in uploads:
+        upload_dict = dict(upload) if not isinstance(upload, dict) else upload
+        total_size += upload_dict["size_bytes"]
+        if total_size > 100 * 1024 * 1024:
+            raise ToolError("err_file_too_large")
+        token = sign_fetch_token(user["id"], upload_dict["gokapi_id"])
+        sources.append({
+            "filename": upload_dict["file_name"],
+            "content_type": upload_dict["content_type"],
+            "size": upload_dict["size_bytes"],
+            # Self-contained pull URL: binding pair + HMAC token (the pair
+            # is signed, so neither element is a secret; forgery needs the
+            # session secret). Single-use + expiry live in the token.
+            "fetch_url": (f"{BASE_URL}/api/source/{upload_dict['gokapi_id']}"
+                          f"?u={user['id']}&t={token}"),
+        })
+        gokapi_ids.append(upload_dict["gokapi_id"])
+
+    auth_headers = {}
+    if decl.get("auth_header") and decl.get("auth_token"):
+        auth_headers[decl["auth_header"]] = decl["auth_token"]
+
+    loop = asyncio.get_event_loop()
+    try:
+        if tool["execution"] == "mcp":
+            out = await loop.run_in_executor(
+                None, _remote.drive_mcp, decl, sources, params, auth_headers, trusted)
+        else:
+            out = await loop.run_in_executor(
+                None, _remote.drive_http, decl, sources, params, auth_headers, trusted)
+    except _remote.RemoteError as exc:
+        logger.warning("remote tool %s failed: %s", tool["id"], exc)
+        code = {"ssrf_blocked": "err_endpoint_blocked",
+                "timeout": "err_endpoint_timeout"}.get(exc.code, "err_endpoint_failed")
+        raise ToolError(code) from exc
+
+    output_bytes = out["bytes"]
+    output_size = len(output_bytes)
+    expiry_days, allowed_downloads = _validate_lifecycle(params)
+    gokapi_result = storage_write(
+        io.BytesIO(output_bytes), out["filename"], out["content_type"],
+        expiry_days, allowed_downloads, output_size,
+    )
+    ip = _client_ip(request)
+    info = gokapi_result.get("FileInfo", {})
+    record = _save_upload_record(
+        user["id"], ip, info.get("Id", ""),
+        out["filename"], out["content_type"], output_size,
+        expiry_days, allowed_downloads,
+        info.get("ExpireAt"), info.get("UrlHotlink", ""),
+    )
+    for gid in gokapi_ids:
+        try:
+            delete_gokapi_file(gid)
+        except Exception:
+            logger.warning("Failed to cleanup source %s after remote execution", gid)
+    return record
+
+
+@router.get("/source/{gokapi_id}")
+async def fetch_source(request: Request, gokapi_id: str):
+    """Source-fetch endpoint for remote tools (delivery verb 2).
+
+    URL shape: /api/source/{gokapi_id}?u={user_id}&t={token}. The one-time
+    HMAC token (minted at dispatch) is the credential — no session/Bearer
+    semantics. It signs (user, file, expiry) and is single-use. Uniform
+    404 on any failure (no oracle about which check failed).
+    """
+    from security import verify_fetch_token
+    token = request.query_params.get("t", "")
+    user_id_raw = request.query_params.get("u", "")
+    if not token or len(token) > 128 or not user_id_raw.isdigit():
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    if not verify_fetch_token(token, int(user_id_raw), gokapi_id):
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    # gokapi returns 200 + HTML error page for missing files — verify the
+    # file exists via the metadata API before streaming (404 shape on miss)
+    info = get_gokapi_file(gokapi_id)
+    if not info:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    status, headers, stream = storage_read(gokapi_id)
+    if status >= 400:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    data = stream.read()
+    ctype = info.get("ContentType") or "application/octet-stream"
+    if ctype.startswith("text/html") or data[:15].lower().startswith(b"<!doctype html"):
+        # defensive: never hand an HTML error page to a remote endpoint
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return Response(
+        content=data,
+        media_type=ctype,
+        headers={"Content-Disposition": "attachment",
+                 "X-Content-Type-Options": "nosniff"},
+    )
 
 
 # ── Uploads ──

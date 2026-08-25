@@ -118,13 +118,16 @@ def _row_to_item(row: dict, price: dict) -> dict:
 
 # ── Catalog (single source for web home, /api/v1/tools, MCP tools/list) ──
 
-def list_catalog(viewer_id: int | None = None) -> list:
+def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> list:
     """Pricing-overlaid catalog, identical contract to the legacy
     tools.list_all_tools(): disabled tools hidden, cost included.
 
     viewer_id: when given, the result additionally includes the viewer's
     own private/unlisted tools (owner surface). Public listing (web home
     for anonymous) passes None → public rows only.
+    include_remote: False strips execution=http|mcp rows — the web home
+    grid is local-only until the remote-tool UX ships; /api/v1 and MCP
+    keep them (programmatic surfaces are the remote-first consumers).
     """
     from pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}
@@ -146,6 +149,8 @@ def list_catalog(viewer_id: int | None = None) -> list:
 
     result = []
     for row in rows:
+        if not include_remote and row["execution"] != "local":
+            continue
         p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
         if not p["enabled"]:
             continue

@@ -364,3 +364,141 @@ async def samelabs_set_activity(code: str, request: Request):
     return {"ok": True, "activity": {
         "code": row["code"], "amount": row["amount"], "active": row["active"],
         "starts_at": row["starts_at"], "ends_at": row["ends_at"]}}
+
+
+# ── Remote tools (execution http|mcp — operator-managed data rows) ──
+
+@router.get("/samelabs/remote")
+async def samelabs_remote(request: Request):
+    """Remote tool registry: trusted endpoints (owner_id NULL)."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from catalog import list_catalog
+    # remote rows only, all visibilities (operator view)
+    from database import db as _db
+    with _db() as con:
+        rows = con.execute(
+            """SELECT pt.*, u.username AS owner_name FROM platform_tools pt
+               LEFT JOIN users u ON u.id = pt.owner_id
+               WHERE pt.execution IN ('http','mcp') ORDER BY pt.id""").fetchall()
+    items = []
+    for r in rows:
+        decl = {}
+        try:
+            import json as _json
+            decl = _json.loads(r["endpoint_json"] or "{}")
+        except Exception:
+            pass
+        items.append({
+            "tool_key": r["tool_key"], "execution": r["execution"],
+            "label": (r["label_json"] or "{}").strip("{}")[:40],
+            "icon": r["icon"], "visibility": r["visibility"],
+            "enabled": r["enabled"], "owner": r["owner_name"] or "平台",
+            "url": decl.get("url", ""), "timeout_s": decl.get("timeout_s", 60),
+            "has_auth": bool(decl.get("auth_token")),
+        })
+    ctx = _ctx(request, user, remote_tools=items, page="remote")
+    return templates.TemplateResponse("samelabs/remote.html", ctx)
+
+
+@router.post("/samelabs/remote/create")
+async def samelabs_remote_create(request: Request):
+    """Create a trusted remote tool row. tool_key must be a bare id
+    (operator namespace = first-party)."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        tool_id = str(raw.get("tool_id", "")).strip()
+        execution = str(raw.get("execution", "http")).strip()
+        label = str(raw.get("label", "")).strip() or tool_id
+        icon = str(raw.get("icon", "wand")).strip()
+        url = str(raw.get("url", "")).strip()
+        timeout_s = int(raw.get("timeout_s", 60))
+        auth_header = str(raw.get("auth_header", "")).strip()
+        auth_token = str(raw.get("auth_token", "")).strip()
+        accept_raw = str(raw.get("accept", "")).strip()
+        cost = int(raw.get("cost", 0))
+        output_filename = str(raw.get("output_filename", "")).strip()
+        output_content_type = str(raw.get("output_content_type", "")).strip()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    import re as _re
+    if not _re.match(r"^[a-z][a-z0-9_]{1,40}$", tool_id):
+        return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
+    if execution not in ("http", "mcp"):
+        return JSONResponse({"ok": False, "error": "bad_execution"}, 422)
+    if not url.startswith(("http://", "https://")):
+        return JSONResponse({"ok": False, "error": "bad_url"}, 422)
+    if not (5 <= timeout_s <= 300):
+        return JSONResponse({"ok": False, "error": "bad_timeout"}, 422)
+    from tools import VALID_ICONS
+    if icon not in VALID_ICONS:
+        return JSONResponse({"ok": False, "error": "bad_icon"}, 422)
+    import json as _json
+    endpoint = {"url": url, "timeout_s": timeout_s}
+    if auth_header and auth_token:
+        endpoint["auth_header"] = auth_header
+        endpoint["auth_token"] = auth_token
+    if output_filename:
+        endpoint["output_filename"] = output_filename
+    if output_content_type:
+        endpoint["output_content_type"] = output_content_type
+    if execution == "mcp":
+        mcp_tool = str(raw.get("mcp_tool", "")).strip()
+        if not mcp_tool:
+            return JSONResponse({"ok": False, "error": "bad_mcp_tool"}, 422)
+        endpoint["mcp_tool"] = mcp_tool
+    accept = None
+    if accept_raw:
+        accept = sorted({x.strip() for x in accept_raw.split(",") if x.strip()})
+
+    from database import db as _db
+    from utils import now as _now
+    ts = _now()
+    try:
+        with _db() as con:
+            con.execute(
+                """INSERT INTO platform_tools
+                   (tool_key, owner_id, tool_id, execution, tool_type,
+                    label_json, icon, accept_json, presets_json, multi,
+                    visibility, endpoint_json, enabled, created_at, updated_at)
+                   VALUES (%s, NULL, %s, %s, 'produce', %s, %s, %s, NULL, FALSE,
+                           'public', %s, TRUE, %s, %s)""",
+                (tool_id, tool_id, execution,
+                 _json.dumps({"en": label, "zh": label}, ensure_ascii=False),
+                 icon,
+                 _json.dumps(accept) if accept else None,
+                 _json.dumps(endpoint), ts, ts),
+            )
+    except Exception:
+        return JSONResponse({"ok": False, "error": "duplicate_or_db"}, 409)
+    # seed pricing row so the metering gate can charge it
+    from pricing import seed_pricing
+    seed_pricing([tool_id])
+    if cost > 0:
+        from pricing import set_pricing
+        set_pricing(tool_id, cost, True, admin_user_id=user["id"])
+    return {"ok": True, "tool_key": tool_id}
+
+
+@router.post("/samelabs/remote/{tool_key}/delete")
+async def samelabs_remote_delete(tool_key: str, request: Request):
+    """Remove a remote tool row (platform-owned rows only)."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from database import db as _db
+    with _db() as con:
+        row = con.execute(
+            "SELECT id FROM platform_tools WHERE tool_key = %s AND owner_id IS NULL",
+            (tool_key,)).fetchone()
+        if not row:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        con.execute("DELETE FROM platform_tools WHERE id = %s", (row["id"],))
+    from pricing import set_pricing
+    set_pricing(tool_key, 0, False, admin_user_id=user["id"])
+    return {"ok": True}
