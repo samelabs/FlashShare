@@ -36,7 +36,8 @@ from auth import (
     has_password, username_taken,
 )
 from i18n import server_text
-from billing import grant_daily_login, DAILY_LOGIN_CREDITS
+from billing import grant_daily_login, DAILY_LOGIN_CREDITS  # noqa: F401 (fallback import kept)
+from activities import apply_activity
 from utils import now, b64url
 
 router = APIRouter()
@@ -87,9 +88,14 @@ def _create_session(user_id: int) -> str:
 
 
 def _grant_daily(uid: int) -> None:
-    """Daily login bonus at session creation (idempotent, own tx)."""
+    """Daily login bonus at session creation (idempotent, own tx).
+
+    Activities-driven: amount/active/window live in the activities
+    table (/samelabs/activities). apply_activity is best-effort — a
+    disabled activity is a clean skip, not an error path.
+    """
     try:
-        grant_daily_login(uid, DAILY_LOGIN_CREDITS)
+        apply_activity("daily_login", uid)
     except Exception:
         logger.exception("daily grant failed uid=%s", uid)
 

@@ -1,0 +1,91 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "活动" %}
+{% block body %}
+
+<div class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>积分活动</h2>
+    <span class="sl-panel-sub">发放额度 / 开关 / 生效窗口 · 单位: 积分</span>
+  </div>
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>代码</th><th>名称</th><th>类型</th><th>额度(积分)</th><th>状态</th><th>窗口</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for a in activities %}
+        <tr data-act="{{ a.code|e }}">
+          <td class="sl-mono">{{ a.code|e }}</td>
+          <td>{{ a.label|e }}</td>
+          <td>
+            {% if a.activity_type == 'daily' %}<span class="sl-badge sl-b-info">每日</span>
+            {% else %}<span class="sl-badge sl-b-muted">一次性</span>{% endif %}
+          </td>
+          <td><input type="number" min="0" max="1000000" class="sl-adj-in act-amount" data-act="{{ a.code|e }}" value="{{ a.amount }}" style="width:90px" aria-label="额度"></td>
+          <td class="act-active">
+            {% if a.active %}<span class="sl-badge sl-b-ok">启用</span>
+            {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
+          </td>
+          <td class="sl-dim act-window">
+            {% if a.starts_fmt or a.ends_fmt %}{{ a.starts_fmt or '…' }} → {{ a.ends_fmt or '…' }}{% else %}长期{% endif %}
+          </td>
+          <td>
+            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-save-act" data-act="{{ a.code|e }}">保存</button>
+            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-toggle-act" data-act="{{ a.code|e }}" data-enabled="{{ 'true' if a.active else 'false' }}">{{ '停用' if a.active else '启用' }}</button>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="sl-dim">暂无活动</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="sl-dim" style="margin:12px 4px 0">窗口设置(可选): 起止 epoch 秒，0 = 清除。改额度对之后的发放立即生效；已入账流水不变。</p>
+</div>
+
+{% endblock %}
+
+{% block script %}
+function saveAct(code, payload) {
+  return slPost('/samelabs/activities/' + code + '/config', payload);
+}
+
+document.querySelectorAll('.btn-save-act').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var code = btn.dataset.act;
+    var input = document.querySelector('.act-amount[data-act="' + code + '"]');
+    var amount = parseInt(input.value, 10);
+    if (isNaN(amount) || amount < 0) {
+      slToast('err', '额度无效', code + ' · 需为 0 – 1000000 的整数');
+      input.focus();
+      return;
+    }
+    slBusy(btn, saveAct(code, { amount: amount })).then(function (r) {
+      if (r.ok && r.data.ok) {
+        slToast('ok', '额度已保存', code + ' = ' + r.data.activity.amount + ' 积分');
+      } else {
+        slToast('err', '保存失败', code + ' · ' + (r.data.error || '请求失败'));
+      }
+    });
+  });
+});
+
+document.querySelectorAll('.btn-toggle-act').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var code = btn.dataset.act;
+    var nowEnabled = btn.dataset.enabled === 'true';
+    slBusy(btn, saveAct(code, { active: !nowEnabled })).then(function (r) {
+      if (r.ok && r.data.ok) {
+        var row = document.querySelector('tr[data-act="' + code + '"]');
+        var badge = row.querySelector('.act-active .sl-badge');
+        var on = r.data.activity.active;
+        badge.className = 'sl-badge ' + (on ? 'sl-b-ok' : 'sl-b-muted');
+        badge.textContent = on ? '启用' : '停用';
+        btn.dataset.enabled = on ? 'true' : 'false';
+        btn.textContent = on ? '停用' : '启用';
+        slToast('ok', on ? '活动已启用' : '活动已停用', code);
+      } else {
+        slToast('err', '操作失败', code + ' · ' + (r.data.error || '请求失败'));
+      }
+    });
+  });
+});
+{% endblock %}

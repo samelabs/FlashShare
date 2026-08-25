@@ -67,19 +67,19 @@ def balance():
     cur.execute("SELECT COALESCE(SUM(delta),0) FROM ledger WHERE user_id=(SELECT id FROM users WHERE username=%s)",(u,))
     v=cur.fetchone()[0]; con.close(); return v
 
-# 2. 首次带client_ref执行: 惰性发放100 + 扣5 = 95
+# 2. 首次带client_ref执行: 惰性发放100(注册每日5已在登录时落) + 扣5 = 100
 req=json.dumps({'tool_id':'doc2pdf','public_id':f['publicId'],'source_token':f['sourceToken'],'client_ref':'ref-e2e-001','params':{'preset':'auto'}}).encode()
 st,d=c.post('/api/tools/execute',req,'application/json')
 res=json.loads(d)
 assert res['ok'], d[:200]
-assert balance()==95, f"expected 95, got {balance()}"
+assert balance()==100, f"expected 100 (signup100+daily5-call5), got {balance()}"
 print(f"2. lazy grant 100 + charge 5 -> balance {balance()} OK (call_id={res.get('call_id')})")
 
 # 3. 同 client_ref 重放: 返回原结果不重扣
 st,d=c.post('/api/tools/execute',req,'application/json')
 res2=json.loads(d)
 assert res2['ok'] and res2.get('replay') and res2['result']['publicId']==res['result']['publicId']
-assert balance()==95
+assert balance()==100
 print("3. replay: same result, no re-charge OK")
 
 # 4. 失败自动退款: 损坏的docx(伪zip头) -> err + 退款
@@ -99,8 +99,8 @@ req_bad=json.dumps({'tool_id':'doc2pdf','public_id':fb['publicId'],'source_token
 st,d=c.post('/api/tools/execute',req_bad,'application/json')
 resb=json.loads(d)
 assert not resb['ok'], d[:200]
-assert balance()==95, f"expected 100-5(success)-5(fail)+5(refund)=95, got {balance()}"
-print(f"4. failed call auto-refunded -> balance {balance()} (100-5-5+5) OK")
+assert balance()==100, f"expected 100 (fail auto-refunded), got {balance()}"
+print(f"4. failed call auto-refunded -> balance {balance()} OK")
 
 # 5. 复用失败过的 client_ref 重试成功(新源文件, 旧源已耗尽)
 b,ct=mp({'expiryDays':'1','allowedDownloads':'10','tool':'doc2pdf'},[('r2.docx',minimal_docx('retry body'),'application/vnd.openxmlformats-officedocument.wordprocessingml.document')])
@@ -109,7 +109,7 @@ req_ok2=json.dumps({'tool_id':'doc2pdf','public_id':f2['publicId'],'source_token
 st,d=c.post('/api/tools/execute',req_ok2,'application/json')
 resr=json.loads(d)
 assert resr['ok'] and not resr.get('replay'), d[:200]
-assert balance()==90, f"retry charged 5 -> 90, got {balance()}"
+assert balance()==95, f"retry charged 5 -> 95, got {balance()}"
 print(f"5. retry-after-fail with same ref works, balance {balance()}")
 
 # 6. 定价归零(免费)后执行不扣费
@@ -120,7 +120,7 @@ req_f=json.dumps({'tool_id':'doc2pdf','public_id':f3['publicId'],'source_token':
 st,d=c.post('/api/tools/execute',req_f,'application/json')
 resf=json.loads(d)
 assert resf['ok']
-assert balance()==90, f"free call should not charge, got {balance()}"
+assert balance()==95, f"free call should not charge, got {balance()}"
 print("6. cost=0 free call OK")
 
 # 7. 工具禁用 -> 403

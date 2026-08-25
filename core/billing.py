@@ -160,13 +160,20 @@ def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
     credits land at first need, not at registration, so registration
     stays zero-write for economics.
 
-    Returns the new ledger row, or None if the user already has any
-    ledger activity (already granted).
+    The prior-activity check is kind='grant_signup' — NOT "any row".
+    Daily-login grants land at register/login time and must NOT short-
+    circuit the signup bonus (bug fixed 2026-08-25: fresh users never
+    received the 100-credit signup grant because the daily row existed).
+
+    Returns the new ledger row, or None if the signup grant already
+    landed, or when amount <= 0 (activity disabled → no-op, not error).
     """
     prior = con.execute(
-        "SELECT 1 FROM ledger WHERE user_id = %s LIMIT 1", (user_id,)
-    ).fetchone()
+        "SELECT 1 FROM ledger WHERE user_id = %s AND kind = 'grant_signup' LIMIT 1",
+        (user_id,)).fetchone()
     if prior:
+        return None
+    if amount <= 0:
         return None
     bal = _balance_for_update(con, user_id)
     row = con.execute(
@@ -184,8 +191,20 @@ def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
 def grant_daily_login(user_id: int, amount: int) -> dict | None:
     """Once-per-UTC-day login bonus. Idem key daily:{uid}:{yyyymmdd}.
 
+    Thin compatibility shim over activities.apply_activity('daily_login'):
+    the activities table is the amount source of truth; the `amount`
+    argument is only a pre-startup fallback. Callers should prefer
+    apply_activity directly.
+
     Returns the new ledger row, or None if already granted today.
     """
+    try:
+        from activities import apply_activity
+        row = apply_activity("daily_login", user_id)
+        if row is not None:
+            return row
+    except Exception:
+        pass
     day = time.strftime("%Y%m%d", time.gmtime())
     idem = f"daily:{user_id}:{day}"
     ts = now()
@@ -249,7 +268,20 @@ def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, in
     return [dict(r) for r in rows], total
 
 
-# Config: grant sizes. Single source; /samelabs settings can override
-# at the metering point (batch C reads settings; these defaults are the floor).
+# Config defaults — HISTORICAL migration values only. The live source of
+# truth is the activities table (seeded from these at first boot); the
+# metering point reads the table. Kept for pre-startup fallback paths.
 SIGNUP_GRANT_CREDITS = 100
 DAILY_LOGIN_CREDITS = 5
+
+
+def signup_amount() -> int:
+    """Live signup grant amount from the activities table (0 = disabled)."""
+    try:
+        from activities import get_activity
+        act = get_activity("signup")
+        if act and act["active"]:
+            return int(act["amount"])
+    except Exception:
+        pass
+    return SIGNUP_GRANT_CREDITS

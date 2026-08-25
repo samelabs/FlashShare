@@ -57,7 +57,7 @@ v=B(tok)
 # 1. me: 身份+余额
 st,d=v.get('/api/v1/me')
 me=json.loads(d)
-assert st==200 and me['ok'] and me['user']['username']==u and me['credits']==0,(st,d[:200])
+assert st==200 and me['ok'] and me['user']['username']==u and me['credits']==5,(st,d[:200])  # daily login landed at session bootstrap
 assert 'email' not in me['user']
 print(f"1. /me ok: {me['user']['username']} credits={me['credits']} (no email leak) OK")
 

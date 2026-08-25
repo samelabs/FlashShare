@@ -193,6 +193,10 @@ async def startup():
         sync = seed_from_registry()
         logger.info("platform_tools seeded: +%d added, %d updated",
                     sync["added"], sync["updated"])
+        # Activities (credit campaigns) — schema + idempotent seed.
+        from activities import ensure_schema_and_seed
+        act = ensure_schema_and_seed()
+        logger.info("activities seeded: +%d rows", act["seeded"])
     except Exception:
         logger.exception("pricing seed failed (non-fatal)")
     logger.info("%s started", APP_NAME)

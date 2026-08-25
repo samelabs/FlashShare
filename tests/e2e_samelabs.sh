@@ -69,10 +69,10 @@ print(f"2. users list + search OK (uid={uid})")
 # 3. 积分调整
 st,d=c2.post(f'/samelabs/users/{uid}/credits',json.dumps({'amount':50,'note':'c4-test'}).encode(),'application/json')
 r=json.loads(d)
-assert st==200 and r['ok'] and r['balance_after']==50, (st,d[:200])
+assert st==200 and r['ok'] and r['balance_after']==55, (st,d[:200])  # +5 daily landed at bootstrap login
 st,d=c2.post(f'/samelabs/users/{uid}/credits',json.dumps({'amount':-20}).encode(),'application/json')
 r=json.loads(d)
-assert st==200 and r['balance_after']==30, (st,d[:200])
+assert st==200 and r['balance_after']==35, (st,d[:200])
 print("3. credits adjust +50/-20 -> 30 OK")
 
 # 4. 工具页+定价改

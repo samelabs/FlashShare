@@ -254,7 +254,10 @@ async def account_credits(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from billing import get_balance, history_paged, daily_granted_today, DAILY_LOGIN_CREDITS
+    from billing import get_balance, history_paged
+    from activities import get_activity, granted_today
+    daily = get_activity("daily_login")
+    daily_amount = int(daily["amount"]) if daily and daily["active"] else 0
     pg = 1
     try:
         pg = max(1, int(request.query_params.get("page", "1") or 1))
@@ -264,8 +267,8 @@ async def account_credits(request: Request):
     rows, total = history_paged(user["id"], page=pg, size=size)
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
-                       granted_today=daily_granted_today(user["id"]),
-                       daily_amount=DAILY_LOGIN_CREDITS,
+                       granted_today=granted_today("daily_login", user["id"]) if daily_amount > 0 else True,
+                       daily_amount=daily_amount,
                        priced_tools=[t for t in list_catalog(user["id"]) if t["cost"] > 0],
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
@@ -284,9 +287,9 @@ async def account_credits_claim(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from billing import grant_daily_login, DAILY_LOGIN_CREDITS
+    from activities import apply_activity
     try:
-        grant_daily_login(user["id"], DAILY_LOGIN_CREDITS)
+        apply_activity("daily_login", user["id"])
     except Exception:
         logger.exception("daily claim failed")
     return RedirectResponse("/account/credits", 303)
