@@ -42,6 +42,11 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0L12 5.36l-.77-.78a5.4 5.4 0 0 0-7.65 7.65l8.42 8.42 8.42-8.42a5.4 5.4 0 0 0 0-7.65z"/></svg>
         活动
       </a>
+      <a href="/samelabs/withdrawals" {% if page == 'withdrawals' %}class="active" aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+        提现
+      </a>
+      <a href="/samelabs/withdrawals" {% if page == 'withdrawals' %}class="active"{% endif %}>提现</a>
       <a href="/samelabs/remote" {% if page == 'remote' %}class="active" aria-current="page"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         远程工具
@@ -81,6 +86,7 @@
       <a href="/samelabs/users" {% if page == 'users' %}class="active"{% endif %}>用户</a>
       <a href="/samelabs/tools" {% if page == 'tools' %}class="active"{% endif %}>工具</a>
       <a href="/samelabs/activities" {% if page == 'activities' %}class="active"{% endif %}>活动</a>
+      <a href="/samelabs/withdrawals" {% if page == 'withdrawals' %}class="active"{% endif %}>提现</a>
       <a href="/samelabs/remote" {% if page == 'remote' %}class="active"{% endif %}>远程工具</a>
       <a href="/samelabs/plans" {% if page == 'plans' %}class="active"{% endif %}>档位</a>
       <a href="/samelabs/packages" {% if page == 'packages' %}class="active"{% endif %}>积分包</a>

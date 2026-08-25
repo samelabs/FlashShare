@@ -368,6 +368,42 @@ async def samelabs_set_activity(code: str, request: Request):
 
 # ── Remote tools (execution http|mcp — operator-managed data rows) ──
 
+@router.get("/samelabs/withdrawals")
+async def samelabs_withdrawals(request: Request):
+    """Withdrawal queue: pending first, operator approve/reject."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from earnings import list_all_pending
+    rows = list_all_pending()
+    for r in rows:
+        r["created_fmt"] = _fmt_ts(r["created_at"])
+    ctx = _ctx(request, user, withdrawals=rows, page="withdrawals")
+    return templates.TemplateResponse("samelabs/withdrawals.html", ctx)
+
+
+@router.post("/samelabs/withdrawals/{wid}/process")
+async def samelabs_process_withdrawal(wid: int, request: Request):
+    """approve=1 → ledger consume + status approved (one tx); else reject."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = {}
+    approve = bool(raw.get("approve"))
+    from earnings import process_withdrawal
+    try:
+        row = process_withdrawal(wid, approve, admin_user_id=user["id"])
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    return {"ok": True, "status": row["status"]}
+
+
 @router.get("/samelabs/remote")
 async def samelabs_remote(request: Request):
     """Remote tool registry: trusted endpoints (owner_id NULL)."""

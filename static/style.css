@@ -762,3 +762,18 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .tool-tab.community { border-style: dashed; }
 .tool-tab-by { font-style: normal; font-size: var(--text-xs); color: var(--muted); }
 .tool-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── topbar MCP entry (primary service surface) ── */
+.topbar-agents { font-size: var(--text-sm); font-weight: 600; color: var(--ink); text-decoration: none; padding: 6px 10px; border-radius: var(--r-full); border: 1px solid var(--line-strong); white-space: nowrap; transition: background var(--ease), border-color var(--ease); }
+.topbar-agents:hover { background: var(--soft); border-color: var(--accent); }
+
+/* ── earnings panel (/account/tools — money view) ── */
+.acct-page .earn-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--s2); margin: var(--s3) 0; }
+.acct-page .earn-stat { display: flex; flex-direction: column; gap: 2px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
+.acct-page .earn-stat strong { font-size: 20px; font-weight: 800; }
+.acct-page .earn-stat span { font-size: var(--text-xs); color: var(--ink-soft); }
+.acct-page .earn-stat.avail strong { color: var(--ok, #16a34a); }
+.acct-page .earn-hist-wrap h3 { font-size: var(--text-sm); margin: var(--s3) 0 var(--s1); }
+.acct-page .earn-hist { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.acct-page .earn-hist td { padding: 6px 10px 6px 0; border-bottom: 1px dashed var(--line); }
+.acct-page .earn-hist td:first-child { font-weight: 700; }

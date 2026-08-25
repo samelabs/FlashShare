@@ -42,12 +42,16 @@ assert '我的发布' in html or 'acct_tools' in html, "title missing"
 assert 'showToolForm' not in html, "old inline-form toggle still present"
 print("1. modal + icon grid, no text-input icon OK")
 
-# 2. icons_json injected with valid names
-m = re.search(r'const names = (\[.*?\]);', html)
-names = json.loads(m.group(1))
+# 2. picker names derive from window.__ICONS__ dict injected by base.html
+#    (page route no longer overrides icons_json — that broke lookups site-wide)
+m2 = re.search(r'window\.__ICONS__ = (\{.*?\});', html, re.S)
+assert m2, "__ICONS__ missing"
 from icons import _ICONS
-assert set(names) == set(_ICONS.keys()) and len(names) > 10, names[:5]
-print(f"2. icon grid data: {len(names)} icons = VALID_ICONS set OK")
+import json as _j
+injected = _j.loads(m2.group(1))
+assert isinstance(injected, dict) and set(injected.keys()) == set(_ICONS.keys())
+assert "const names = Object.keys(window.__ICONS__" in html
+print(f"2. icon picker: {len(injected)} icons from __ICONS__ dict OK")
 
 # 3. API returns earned field
 st, d = get("/api/usertools")
@@ -88,8 +92,8 @@ print("5. acct-nav mobile wrap CSS OK")
 # 6. i18n rename live (zh)
 conn.request("GET", "/account/tools", headers={"Cookie": f"{COOKIE_NAME}={tok_s}; flashshare_lang=zh"})
 r = conn.getresponse(); dzh = r.read()
-assert '我的发布' in dzh.decode(), dzh[:200]
-print("6. title renamed 我的发布 OK")
+assert '发布工具' in dzh.decode(), dzh[:200]
+print("6. title unified 发布工具 OK")
 
 # cleanup
 psql("DELETE FROM sessions WHERE user_id IN (%s, %s)", (uid, uid2))

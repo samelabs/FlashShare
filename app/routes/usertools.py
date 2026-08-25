@@ -245,6 +245,46 @@ async def search_tools(request: Request, q: str = ""):
     return {"ok": True, "tools": search_catalog(q, viewer)}  # noqa: E501 (search_catalog caps at 30)
 
 
+@router.get("/api/usertools/earnings")
+async def my_earnings(request: Request):
+    """Earnings panel data: summary + per-tool breakdown + withdrawal list."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    import earnings
+    tools = [_public_item(r) for r in _owner_rows(user["id"])]
+    for t in tools:
+        t.pop("url", None)  # no endpoint echo in the money view
+    return {
+        "ok": True,
+        "summary": earnings.earnings_summary(user["id"]),
+        "tools": tools,
+        "withdrawals": earnings.list_withdrawals(user["id"]),
+        "min_withdrawal": earnings.MIN_WITHDRAWAL,
+    }
+
+
+@router.post("/api/usertools/withdraw")
+async def request_withdraw(request: Request):
+    """Provider asks to cash out available credits (request → operator)."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    try:
+        raw = await request.json()
+        amount = int(raw.get("amount") or 0)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    import earnings
+    try:
+        row = earnings.request_withdrawal(user["id"], amount)
+    except ValueError as exc:
+        code = str(exc)
+        return JSONResponse({"ok": False, "error": code}, 422)
+    return {"ok": True, "withdrawal": {"id": row["id"], "amount": row["amount"],
+                                       "status": row["status"]}}
+
+
 @router.get("/api/usertools")
 async def list_user_tools(request: Request):
     """Owner's own tools with live stats."""

@@ -198,6 +198,9 @@ async def startup():
         from activities import ensure_schema_and_seed
         act = ensure_schema_and_seed()
         logger.info("activities seeded: +%d rows", act["seeded"])
+        from earnings import ensure_schema
+        ensure_schema()
+        logger.info("withdrawals schema ready")
     except Exception:
         logger.exception("pricing seed failed (non-fatal)")
     logger.info("%s started", APP_NAME)

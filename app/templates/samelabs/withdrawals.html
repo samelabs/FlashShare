@@ -1,0 +1,76 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "提现" %}
+{% block body %}
+
+<div class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>提现申请</h2>
+    <span class="sl-panel-sub">审批即扣减积分账本（kind=withdraw, 幂等 withdrawal:{id}）；驳回不动账。</span>
+  </div>
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead>
+        <tr><th>ID</th><th>用户</th><th>金额</th><th>状态</th><th>申请时间</th><th>操作</th></tr>
+      </thead>
+      <tbody id="wRows">
+        {% for w in withdrawals %}
+        <tr data-wid="{{ w.id }}">
+          <td>#{{ w.id }}</td>
+          <td>{{ w.username|e }}</td>
+          <td>{{ w.amount }}</td>
+          <td><span class="sl-vis v-{{ w.status }}">{{ w.status }}</span></td>
+          <td>{{ w.created_fmt }}</td>
+          <td>
+            {% if w.status == 'pending' %}
+            <button type="button" class="sl-btn sl-btn-primary btn-approve" data-wid="{{ w.id }}">批准</button>
+            <button type="button" class="sl-btn btn-reject" data-wid="{{ w.id }}">驳回</button>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not withdrawals %}
+        <tr><td colspan="6" class="sl-empty">暂无申请</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="sl-toast" id="slToast" hidden></div>
+
+<script>
+(function () {
+  var toast = document.getElementById('slToast');
+  function say(msg) { toast.textContent = msg; toast.hidden = false; setTimeout(function () { toast.hidden = true; }, 2200); }
+  function reload() { setTimeout(function () { location.reload(); }, 600); }
+
+  document.querySelectorAll('.btn-approve').forEach(function (b) {
+    b.addEventListener('click', function () {
+      fetch('/samelabs/withdrawals/' + b.dataset.wid + '/process', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approve: true })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) { say('已批准并记账'); reload(); } else say('失败: ' + d.error);
+      });
+    });
+  });
+  document.querySelectorAll('.btn-reject').forEach(function (b) {
+    var armed = false, t = 0;
+    b.addEventListener('click', function () {
+      if (!armed) {  // two-state (site pattern: no confirm())
+        armed = true; b.textContent = '确认驳回?'; b.classList.add('sl-btn-danger');
+        t = setTimeout(function () { armed = false; b.textContent = '驳回'; b.classList.remove('sl-btn-danger'); }, 3000);
+        return;
+      }
+      clearTimeout(t);
+      fetch('/samelabs/withdrawals/' + b.dataset.wid + '/process', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approve: false })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) { say('已驳回'); reload(); } else say('失败: ' + d.error);
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}
