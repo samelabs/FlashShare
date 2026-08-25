@@ -1,6 +1,7 @@
 # devlog — 改动摘要
 
 2026-08-15 | HEAD | feat: img2pdf 图片转PDF工具上线 (第8个工具, Pillow原生PDF编码器零新依赖, 多文件→单PDF, EXIF转正, E2E+回归全绿)
+- 2026-08-25 | AUDIT | 两批全量审计: 修signup停用仍发100语义bug+i18n 4键10语+远程裸bytes白名单校验+后台两态/表单规范+窗口输入; 删死代码
 - 2026-08-25 | 901741e | 远程执行类落地: http/mcp driver+签名URL拉取+SSRF守卫, samelabs远程工具管理页; CF对python-urllib UA拦截(1010)待WAF例外
 - 2026-08-25 | b3937d9 | 积分活动模块化: activities表+/samelabs/activities管理页, 注册/每日发放数据驱动; 修复signup短路bug(新用户100积分未发放)
 - 2026-08-25 | 889a229 | 工具链Phase1注册表数据化: platform_tools表+catalog.resolve统一路由链三通道一致; 附带修复MCP通道get_tool NameError死亡bug(213220a引入)
