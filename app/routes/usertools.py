@@ -356,7 +356,7 @@ async def update_user_tool(tool_id: str, request: Request):
     # at least one successful self-call recorded first)
     new_vis = fields.get("visibility")
     if new_vis == "public" and row["visibility"] != "public":
-        stats = _call_stats(tool_key)
+        stats = _call_stats(tool_key, row["owner_id"])
         if stats["ok"] < 1:
             return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
 

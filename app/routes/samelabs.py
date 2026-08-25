@@ -473,6 +473,12 @@ async def samelabs_remote_create(request: Request):
     ts = _now()
     try:
         with _db() as con:
+            # typed duplicate check (unique index would 500 otherwise)
+            clash = con.execute(
+                "SELECT 1 FROM platform_tools WHERE tool_key = %s", (tool_id,)
+            ).fetchone()
+            if clash:
+                return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
             con.execute(
                 """INSERT INTO platform_tools
                    (tool_key, owner_id, tool_id, execution, tool_type,

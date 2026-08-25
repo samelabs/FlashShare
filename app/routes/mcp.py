@@ -205,8 +205,10 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     tool, terr = resolve_tool(tool_key, user["id"])
     if terr or not tool:
         return _err(mid, -32602, f"unknown tool: {tool_id}")
-    tool = {"id": tool["tool_key"], "type": tool["tool_type"],
-            "multi": tool["multi"]}
+    # Keep the FULL resolved row (execution/owner_id/endpoint_json/trusted
+    # needed by the remote branch) — only normalize id/type like api.py does.
+    tool["id"] = tool["tool_key"]
+    tool["type"] = tool["tool_type"]
 
     raw = {
         "tool_id": tool_key,

@@ -120,16 +120,24 @@ def _in_window(act: dict) -> bool:
 
 
 def _idem_key(act: dict, user_id: int) -> str:
-    """Idempotency key — derived from activity_type, matching the
-    historical billing.py key families byte-for-byte:
-      once  → 'signup:{uid}'            (family of the signup grant)
-      daily → 'daily:{uid}:{yyyymmdd}'  (family of the login bonus)
-    New custom activities share these families ONLY via their kind; the
-    key prefix stays 'signup:'/'daily:' for backward compatibility."""
+    """Idempotency key — derived from activity_type.
+
+    The two SEEDED activities keep their historical billing.py key
+    families byte-for-byte (ledger lineage):
+      signup     → 'signup:{uid}'             (original family)
+      daily_login→ 'daily:{uid}:{yyyymmdd}'   (original family)
+    Any OTHER activity uses '{code}:{uid}'[:'{day}'] — a per-code family —
+    so two once-type campaigns never collide on the same key (a shared
+    'signup:{uid}' key would make the second campaign a permanent no-op)."""
+    historical = act.get("code") in ("signup", "daily_login")
     if act["activity_type"] == "daily":
         day = time.strftime("%Y%m%d", time.gmtime())
-        return f"daily:{user_id}:{day}"
-    return f"signup:{user_id}"
+        if historical:
+            return f"daily:{user_id}:{day}"
+        return f"{act['code']}:{user_id}:{day}"
+    if historical:
+        return f"signup:{user_id}"
+    return f"{act['code']}:{user_id}"
 
 
 # ── Grant entry (single point for every consumer) ──

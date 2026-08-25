@@ -149,7 +149,7 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
         return _wrap_raw(endpoint_decl, body)
     # json mode: {filename?, content_type?, data_b64 | output_url}
     if "output_url" in out:
-        data = _pull_output_url(out["output_url"], timeout_s)
+        data = _pull_output_url(out["output_url"], timeout_s, trusted)
         return _wrap_raw(endpoint_decl, data, out.get("filename"))
     if "data_b64" in out:
         import base64
@@ -161,10 +161,16 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
     raise RemoteError("invalid_response", "no data_b64/output_url/raw body")
 
 
-def _pull_output_url(output_url: str, timeout_s: int) -> bytes:
-    """Platform fetches the produced file (delivery verb 3, URL variant)."""
+def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:
+    """Platform fetches the produced file (delivery verb 3, URL variant).
+
+    The URL is ENDPOINT-CONTROLLED — it goes through the SAME SSRF guard
+    as the endpoint itself. Untrusted tools: https + public IP only
+    (a malicious endpoint must not turn the platform into an internal
+    fetcher). Trusted (operator) rows keep the vouched exemption."""
     if not str(output_url).startswith("https://"):
         raise RemoteError("bad_output", "output_url must be https")
+    guard_endpoint(str(output_url), trusted)
     req = urllib.request.Request(output_url)
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
@@ -244,10 +250,10 @@ def drive_mcp(endpoint_decl: dict, sources: list, params: dict,
                     "content_type": sniff_final_type(name, ctype, data),
                     "bytes": validate_output(name, ctype, data)}
         if btype == "text" and "https://" in (block.get("text") or ""):
-            # URL-in-text delivery: first https URL wins
+            # URL-in-text delivery: first https URL wins (guarded pull)
             for word in block["text"].split():
                 if word.startswith("https://"):
-                    data = _pull_output_url(word, timeout_s)
+                    data = _pull_output_url(word, timeout_s, trusted)
                     return _wrap_raw(endpoint_decl, data)
     raise RemoteError("invalid_response", "no file content in mcp result")
 
