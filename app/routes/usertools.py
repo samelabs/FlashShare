@@ -1,0 +1,403 @@
+"""User-submitted tools (C2C supply side, phase 3).
+
+Self-service manifest submission: a user registers their OWN http/mcp
+endpoint as a namespaced tool (`{username}/{tool_id}`). No human gate —
+visibility is an owner-set field. The platform thesis: new capabilities
+enter as DATA rows.
+
+Safety model (no review queue):
+  - SSRF pre-check at submission: https + resolved public IPs required
+    (same guard the driver applies per-call; fail early, fail typed)
+  - Landing identity: output_filename required with whitelisted ext
+  - Per-user caps: max 20 tools, price 0..100000
+  - Zero-trust output: sniff whitelist at every landing, no exemptions
+  - Economics: provider earns (price - commission) per successful call;
+    rate lives in settings (commission_rate, default 30%)
+
+Ownership boundaries:
+  - tool_key namespace = owner username at creation time (renames do not
+    re-key; the row's owner_id is the authority, tool_key is addressing)
+  - pricing rows are written with updated_by = owner; only the owner (or
+    /samelabs) may change them — set_pricing stays the single writer.
+"""
+
+import json
+import re
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from database import db
+from utils import now
+
+router = APIRouter()
+
+MAX_TOOLS_PER_USER = 20
+MAX_PRICE = 100000
+TOOL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
+ACCEPT_MIME_RE = re.compile(r"^[\w.+-]+/[\w.+-]+$")
+DEFAULT_COMMISSION_RATE = 30
+
+
+def _require_auth(request: Request):
+    user = request.state.user
+    if not user:
+        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
+    return user, None
+
+
+def commission_rate() -> int:
+    """Platform commission percent (0-100) from settings; default 30."""
+    with db() as con:
+        row = con.execute(
+            "SELECT value FROM settings WHERE key = 'commission_rate'"
+        ).fetchone()
+    try:
+        return max(0, min(100, int(row["value"]))) if row else DEFAULT_COMMISSION_RATE
+    except (ValueError, TypeError):
+        return DEFAULT_COMMISSION_RATE
+
+
+def _owner_rows(user_id: int) -> list:
+    with db() as con:
+        rows = con.execute(
+            """SELECT pt.*, u.username AS owner_name, p.cost, p.enabled AS priced
+               FROM platform_tools pt
+               JOIN users u ON u.id = pt.owner_id
+               LEFT JOIN pricing p ON p.tool_id = pt.tool_key
+               WHERE pt.owner_id = %s ORDER BY pt.id DESC""",
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _public_item(row: dict) -> dict:
+    """Owner-surface view of a user tool (no endpoint secrets)."""
+    decl = {}
+    try:
+        decl = json.loads(row.get("endpoint_json") or "{}")
+    except Exception:
+        pass
+    return {
+        "tool_key": row["tool_key"],
+        "tool_id": row["tool_id"],
+        "execution": row["execution"],
+        "label": json.loads(row["label_json"]).get("en")
+                 or json.loads(row["label_json"]).get("zh")
+                 or row["tool_id"],
+        "icon": row["icon"],
+        "visibility": row["visibility"],
+        "enabled": row["enabled"],
+        "trusted": bool(row["trusted"]),
+        "cost": int(row.get("cost") or 0),
+        "priced_enabled": bool(row.get("priced")),
+        "url": decl.get("url", ""),
+        "timeout_s": decl.get("timeout_s", 60),
+        "has_auth": bool(decl.get("auth_token")),
+        "calls": _call_stats(row["tool_key"]),
+    }
+
+
+def _call_stats(tool_key: str) -> dict:
+    with db() as con:
+        row = con.execute(
+            """SELECT COUNT(*) FILTER (WHERE status = 'ok') AS ok,
+                      COUNT(*) AS total
+               FROM tool_calls WHERE tool_id = %s""",
+            (tool_key,),
+        ).fetchone()
+    return {"ok": row["ok"], "total": row["total"]}
+
+
+def _validate_submission(raw: dict, partial: bool = False) -> tuple:
+    """Shared validation for create (full) and patch (partial).
+    Returns (fields, error_code). fields keys only for provided values."""
+    fields = {}
+
+    if "tool_id" in raw and not partial:
+        tid = str(raw.get("tool_id") or "").strip()
+        if not TOOL_ID_RE.match(tid):
+            return None, "bad_tool_id"
+
+    if "label" in raw or not partial:
+        label = str(raw.get("label") or "").strip()
+        if not label or len(label) > 40:
+            return None, "bad_label"
+        fields["label"] = label
+
+    if "icon" in raw or not partial:
+        icon = str(raw.get("icon") or "wand").strip()
+        from tools import VALID_ICONS
+        if icon not in VALID_ICONS:
+            return None, "bad_icon"
+        fields["icon"] = icon
+
+    if "url" in raw or not partial:
+        url = str(raw.get("url") or "").strip()
+        if not url.startswith("https://"):
+            return None, "https_required"
+        fields["url"] = url
+
+    if "timeout_s" in raw or not partial:
+        try:
+            timeout_s = int(raw.get("timeout_s") or 60)
+        except (ValueError, TypeError):
+            return None, "bad_timeout"
+        if not (5 <= timeout_s <= 300):
+            return None, "bad_timeout"
+        fields["timeout_s"] = timeout_s
+
+    if raw.get("auth_header") and raw.get("auth_token"):
+        fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
+        fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
+
+    if "mcp_tool" in raw or (not partial and raw.get("execution") == "mcp"):
+        mcp_tool = str(raw.get("mcp_tool") or "").strip()
+        if not mcp_tool or len(mcp_tool) > 64:
+            return None, "bad_mcp_tool"
+        fields["mcp_tool"] = mcp_tool
+
+    if "accept" in raw:
+        accept_raw = str(raw.get("accept") or "").strip()
+        accept = None
+        if accept_raw:
+            parts = [x.strip() for x in accept_raw.split(",") if x.strip()]
+            if not parts or any(not ACCEPT_MIME_RE.match(x) for x in parts):
+                return None, "bad_accept"
+            accept = sorted(set(parts))
+        fields["accept"] = accept
+
+    if "output_filename" in raw or not partial:
+        name = str(raw.get("output_filename") or "").strip()
+        if not name:
+            return None, "output_filename_required"
+        import os as _os
+        ext = _os.path.splitext(name)[1].lower()
+        from config import ALLOWED_EXT
+        if ext not in ALLOWED_EXT:
+            return None, "bad_output_filename"
+        fields["output_filename"] = name
+
+    if "output_content_type" in raw:
+        ct = str(raw.get("output_content_type") or "").strip()
+        if ct and not ACCEPT_MIME_RE.match(ct):
+            return None, "bad_output_content_type"
+        fields["output_content_type"] = ct
+
+    if "visibility" in raw or not partial:
+        vis = str(raw.get("visibility") or "private").strip()
+        if vis not in ("private", "unlisted", "public"):
+            return None, "bad_visibility"
+        fields["visibility"] = vis
+
+    if "cost" in raw or not partial:
+        try:
+            cost = int(raw.get("cost") or 0)
+        except (ValueError, TypeError):
+            return None, "bad_cost"
+        if not (0 <= cost <= MAX_PRICE):
+            return None, "bad_cost"
+        fields["cost"] = cost
+
+    return fields, None
+
+
+def _endpoint_decl(fields: dict, execution: str, existing: dict | None = None) -> dict:
+    """Compose endpoint_json from validated fields (merge for patch)."""
+    decl = dict(existing or {})
+    if "url" in fields:
+        decl["url"] = fields["url"]
+    if "timeout_s" in fields:
+        decl["timeout_s"] = fields["timeout_s"]
+    if "auth_header" in fields:
+        decl["auth_header"] = fields["auth_header"]
+    if "auth_token" in fields:
+        decl["auth_token"] = fields["auth_token"]
+    if "mcp_tool" in fields:
+        decl["mcp_tool"] = fields["mcp_tool"]
+    if "output_filename" in fields:
+        decl["output_filename"] = fields["output_filename"]
+    if "output_content_type" in fields:
+        decl["output_content_type"] = fields["output_content_type"]
+    return decl
+
+
+@router.get("/api/usertools")
+async def list_user_tools(request: Request):
+    """Owner's own tools with live stats."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    return {"ok": True, "tools": [_public_item(r) for r in _owner_rows(user["id"])]}
+
+
+@router.post("/api/usertools")
+async def create_user_tool(request: Request):
+    """Submit a tool manifest. New tools land as visibility=private by
+    default — the owner flips to unlisted/public after self-testing.
+    SSRF pre-check runs here so misconfiguration fails at submission,
+    not at first customer call."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+
+    tool_id = str(raw.get("tool_id") or "").strip()
+    if not TOOL_ID_RE.match(tool_id):
+        return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
+    execution = str(raw.get("execution") or "http").strip()
+    if execution not in ("http", "mcp"):
+        return JSONResponse({"ok": False, "error": "bad_execution"}, 422)
+
+    fields, ferr = _validate_submission(raw)
+    if ferr:
+        return JSONResponse({"ok": False, "error": ferr}, 422)
+    if execution == "mcp" and "mcp_tool" not in fields:
+        return JSONResponse({"ok": False, "error": "bad_mcp_tool"}, 422)
+
+    # SSRF pre-check (typed failure at submission time)
+    from remote import guard_endpoint, RemoteError
+    try:
+        guard_endpoint(fields["url"], trusted=False)
+    except RemoteError as exc:
+        code = "https_required" if exc.code == "ssrf_blocked" else "bad_url"
+        return JSONResponse({"ok": False, "error": code}, 422)
+
+    # New tools ALWAYS land private (self-test before exposure)
+    fields["visibility"] = "private"
+
+    tool_key = f"{user['username']}/{tool_id}"
+    with db() as con:
+        clash = con.execute(
+            "SELECT 1 FROM platform_tools WHERE tool_key = %s", (tool_key,)
+        ).fetchone()
+        if clash:
+            return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
+        n = con.execute(
+            "SELECT COUNT(*) AS n FROM platform_tools WHERE owner_id = %s",
+            (user["id"],)).fetchone()["n"]
+        if n >= MAX_TOOLS_PER_USER:
+            return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
+
+        ts = now()
+        label = fields["label"]
+        con.execute(
+            """INSERT INTO platform_tools
+               (tool_key, owner_id, tool_id, execution, tool_type,
+                label_json, icon, accept_json, presets_json, multi,
+                visibility, endpoint_json, enabled, trusted,
+                created_at, updated_at)
+               VALUES (%s, %s, %s, %s, 'produce', %s, %s, %s, NULL, FALSE,
+                       %s, %s, TRUE, FALSE, %s, %s)""",
+            (tool_key, user["id"], tool_id, execution,
+             json.dumps({"en": label, "zh": label}, ensure_ascii=False),
+             fields["icon"],
+             json.dumps(fields.get("accept")) if fields.get("accept") else None,
+             fields["visibility"],
+             json.dumps(_endpoint_decl(fields, execution)),
+             ts, ts),
+        )
+    # pricing row: owner-priced from day one
+    from pricing import set_pricing
+    set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
+    return {"ok": True, "tool_key": tool_key}
+
+
+@router.patch("/api/usertools/{tool_id}")
+async def update_user_tool(tool_id: str, request: Request):
+    """Partial update: label/icon/url/timeout/auth/accept/output identity/
+    visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    tool_key = f"{user['username']}/{tool_id}"
+    with db() as con:
+        row = con.execute(
+            "SELECT * FROM platform_tools WHERE tool_key = %s AND owner_id = %s",
+            (tool_key, user["id"]),
+        ).fetchone()
+    if not row:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    if not TOOL_ID_RE.match(tool_id or ""):
+        return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
+
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+
+    fields, ferr = _validate_submission(raw, partial=True)
+    if ferr:
+        return JSONResponse({"ok": False, "error": ferr}, 422)
+
+    existing_decl = {}
+    try:
+        existing_decl = json.loads(row["endpoint_json"] or "{}")
+    except Exception:
+        pass
+
+    # visibility cannot jump private→public directly (self-test gate:
+    # at least one successful self-call recorded first)
+    new_vis = fields.get("visibility")
+    if new_vis == "public" and row["visibility"] != "public":
+        stats = _call_stats(tool_key)
+        if stats["ok"] < 1:
+            return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
+
+    # endpoint change → SSRF re-check on the MERGED url
+    if "url" in fields:
+        from remote import guard_endpoint, RemoteError
+        try:
+            guard_endpoint(fields["url"], trusted=False)
+        except RemoteError:
+            return JSONResponse({"ok": False, "error": "https_required"}, 422)
+
+    sets = {}
+    if "label" in fields:
+        sets["label_json"] = json.dumps(
+            {"en": fields["label"], "zh": fields["label"]}, ensure_ascii=False)
+    if "icon" in fields:
+        sets["icon"] = fields["icon"]
+    if "visibility" in fields:
+        sets["visibility"] = fields["visibility"]
+    if "accept" in fields:
+        sets["accept_json"] = json.dumps(fields["accept"]) if fields["accept"] else None
+    if "enabled" in raw:
+        sets["enabled"] = bool(raw.get("enabled"))
+    if sets or fields:
+        decl = _endpoint_decl(fields, row["execution"], existing_decl)
+        sets["endpoint_json"] = json.dumps(decl)
+        sets["updated_at"] = now()
+        assign = ", ".join(f"{k} = %s" for k in sets)
+        with db() as con:
+            con.execute(
+                f"UPDATE platform_tools SET {assign} WHERE tool_key = %s",
+                (*sets.values(), tool_key),
+            )
+    if "cost" in fields:
+        from pricing import set_pricing
+        set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
+    return {"ok": True}
+
+
+@router.delete("/api/usertools/{tool_id}")
+async def delete_user_tool(tool_id: str, request: Request):
+    """Remove a tool row. pricing flips disabled (history interpretable)."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    tool_key = f"{user['username']}/{tool_id}"
+    with db() as con:
+        row = con.execute(
+            "SELECT id FROM platform_tools WHERE tool_key = %s AND owner_id = %s",
+            (tool_key, user["id"]),
+        ).fetchone()
+        if not row:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        con.execute("DELETE FROM platform_tools WHERE id = %s", (row["id"],))
+    from pricing import set_pricing
+    set_pricing(tool_key, 0, False, admin_user_id=user["id"])
+    return {"ok": True}

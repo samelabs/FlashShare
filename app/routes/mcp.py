@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from config import MAX_UPLOAD_BYTES
-from catalog import list_catalog, resolve as resolve_tool
+from catalog import list_catalog, resolve as resolve_tool, mcp_name
 from utils import sanitize_filename
 
 router = APIRouter()
@@ -184,7 +184,7 @@ def _tool_specs(user: dict) -> list:
         if int(t["cost"]) > 0:
             desc += f" (cost: {int(t['cost'])} credits)"
         specs.append({
-            "name": t["id"],
+            "name": mcp_name(t["id"]),  # 'owner/tool' → 'owner__tool'
             "description": desc,
             "inputSchema": {
                 "type": "object",

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.acct_tools }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="acct-page">
+  <h1>{{ texts.acct_tools }}</h1>
+  {% include "account/_nav.html" %}
+
+  <div class="acct-card">
+    <h2 data-i18n="mytools_title">{{ texts.mytools_title }}</h2>
+    <p class="profile-note" data-i18n="mytools_desc">{{ texts.mytools_desc }}</p>
+    <div class="token-create-row" id="toolFormToggle">
+      <button type="button" class="btn-secondary" id="showToolForm"><span data-i18n="mytools_create">{{ texts.mytools_create }}</span></button>
+    </div>
+
+    <div id="toolForm" hidden>
+      <div class="usertools-form">
+        <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span><input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41"></label>
+        <label><span data-i18n="mytools_f_label">{{ texts.mytools_f_label }}</span><input id="fLabel" maxlength="40" placeholder="Super Resolve"></label>
+        <label><span data-i18n="mytools_f_kind">{{ texts.mytools_f_kind }}</span>
+          <select id="fExec"><option value="http">http</option><option value="mcp">mcp</option></select></label>
+        <label class="usertools-wide"><span data-i18n="mytools_f_url">{{ texts.mytools_f_url }}</span><input id="fUrl" type="url" placeholder="https://api.example.com/process"></label>
+        <label><span data-i18n="mytools_f_out">{{ texts.mytools_f_out }}</span><input id="fOut" placeholder="out.png"></label>
+        <label><span data-i18n="mytools_f_mcp">{{ texts.mytools_f_mcp }}</span><input id="fMcpTool" placeholder="mcp only"></label>
+        <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span><input id="fCost" type="number" min="0" max="100000" value="0"></label>
+        <label><span data-i18n="mytools_f_icon">{{ texts.mytools_f_icon }}</span><input id="fIcon" value="wand" maxlength="16"></label>
+      </div>
+      <div class="token-create-row">
+        <button type="button" class="primary" id="submitTool"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
+      </div>
+    </div>
+
+    <div id="toolList" class="usertools-list"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+// ── My tools (C2C supply) — list + create + visibility/delete ──
+const _toolList = document.getElementById('toolList');
+
+async function loadTools() {
+  const r = await fetch('/api/usertools');
+  const d = await r.json();
+  if (!d.ok) return;
+  _toolList.innerHTML = '';
+  for (const t of d.tools) {
+    const card = document.createElement('div');
+    card.className = 'usertools-item';
+    const head = document.createElement('div');
+    head.className = 'usertools-head';
+    const name = document.createElement('strong');
+    name.textContent = t.tool_key;
+    const vis = document.createElement('span');
+    vis.className = 'usertools-vis v-' + t.visibility;
+    vis.textContent = t('mytools_v_' + t.visibility);
+    head.append(name, vis);
+    const meta = document.createElement('div');
+    meta.className = 'usertools-meta';
+    meta.textContent = `${t.execution} · ${t.cost} ${t('credits_unit')} · ok ${t.calls.ok}/${t.calls.total}`;
+    const actions = document.createElement('div');
+    actions.className = 'usertools-actions';
+    // visibility cycle: private → unlisted → public (public needs 1 ok self-call)
+    const visBtn = document.createElement('button');
+    visBtn.type = 'button'; visBtn.className = 'btn-secondary';
+    visBtn.textContent = t('mytools_set_' + _nextVis(t.visibility));
+    visBtn.addEventListener('click', () => cycleVis(t.tool_id, t.tool_key, _nextVis(t.visibility), visBtn));
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button'; delBtn.className = 'btn-secondary';
+    delBtn.textContent = t('delete');
+    delBtn.addEventListener('click', () => delTool(t.tool_id, t.tool_key, delBtn));
+    actions.append(visBtn, delBtn);
+    card.append(head, meta, actions);
+    _toolList.appendChild(card);
+  }
+}
+function _nextVis(v) { return { private: 'unlisted', unlisted: 'public', public: 'private' }[v]; }
+
+function t(k) { return window.t(k) !== k ? window.t(k) : k; }
+
+async function cycleVis(toolId, key, target, btn) {
+  btn.disabled = true;
+  const r = await fetch('/api/usertools/' + toolId, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visibility: target }),
+  });
+  const d = await r.json();
+  btn.disabled = false;
+  if (d.ok) { loadTools(); }
+  else if (d.error === 'self_test_required') { alert(t('mytools_selftest')); }
+  else { alert(d.error); }
+}
+
+async function delTool(toolId, key, btn) {
+  if (!confirm(t('mytools_confirm_del') + ' ' + key + '?')) return;
+  btn.disabled = true;
+  const r = await fetch('/api/usertools/' + toolId, { method: 'DELETE' });
+  const d = await r.json();
+  btn.disabled = false;
+  if (d.ok) loadTools(); else alert(d.error);
+}
+
+document.getElementById('showToolForm').addEventListener('click', () => {
+  document.getElementById('toolForm').hidden = false;
+  document.getElementById('toolFormToggle').hidden = true;
+});
+
+document.getElementById('submitTool').addEventListener('click', async () => {
+  const body = {
+    tool_id: document.getElementById('fToolId').value.trim(),
+    label: document.getElementById('fLabel').value.trim(),
+    execution: document.getElementById('fExec').value,
+    url: document.getElementById('fUrl').value.trim(),
+    output_filename: document.getElementById('fOut').value.trim(),
+    mcp_tool: document.getElementById('fMcpTool').value.trim(),
+    cost: parseInt(document.getElementById('fCost').value, 10) || 0,
+    icon: document.getElementById('fIcon').value.trim() || 'wand',
+    visibility: 'private',
+  };
+  const r = await fetch('/api/usertools', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (d.ok) {
+    document.getElementById('toolForm').hidden = true;
+    document.getElementById('toolFormToggle').hidden = false;
+    loadTools();
+  } else {
+    alert(t('mytools_err_' + d.error) !== 'mytools_err_' + d.error ? t('mytools_err_' + d.error) : d.error);
+  }
+});
+
+loadTools();
+{% endblock %}

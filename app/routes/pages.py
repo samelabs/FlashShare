@@ -295,6 +295,20 @@ async def account_credits_claim(request: Request):
     return RedirectResponse("/account/credits", 303)
 
 
+@router.get("/account/tools", response_class=HTMLResponse)
+async def account_tools(request: Request):
+    """User-submitted tools management (C2C supply side)."""
+    from app.main import templates
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from app.routes.usertools import _owner_rows, _public_item
+    ctx = _account_ctx(request, "tools",
+                       tools=[_public_item(r) for r in _owner_rows(user["id"])],
+                       max_tools=20)
+    return templates.TemplateResponse("account/tools.html", ctx)
+
+
 @router.get("/account/tokens", response_class=HTMLResponse)
 async def account_tokens(request: Request):
     from app.main import templates

@@ -711,3 +711,18 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-daily-info .acct-daily-sub { display: block; }
 .agents-endpoints { display: grid; gap: var(--s2); }
 .credit-note-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── /account/tools (C2C supply) — scoped to .acct-page ── */
+.acct-page .usertools-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s2) var(--s3); margin: var(--s2) 0; }
+.acct-page .usertools-form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--ink-soft); }
+.acct-page .usertools-form .usertools-wide { grid-column: 1 / -1; }
+.acct-page .usertools-form input, .acct-page .usertools-form select { padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); font-size: var(--text-base); }
+.acct-page .usertools-item { padding: var(--s3) 0; border-bottom: 1px dashed var(--line); }
+.acct-page .usertools-item:last-child { border-bottom: none; }
+.acct-page .usertools-head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.acct-page .usertools-vis { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); border: 1px solid var(--line-strong); }
+.acct-page .usertools-vis.v-public { border-color: var(--ok, #16a34a); color: var(--ok, #16a34a); }
+.acct-page .usertools-vis.v-unlisted { border-color: var(--warn, #d97706); color: var(--warn, #d97706); }
+.acct-page .usertools-vis.v-private { color: var(--ink-soft); }
+.acct-page .usertools-meta { font-size: var(--text-sm); color: var(--ink-soft); margin: 4px 0; }
+.acct-page .usertools-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }

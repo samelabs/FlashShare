@@ -314,6 +314,10 @@ _SCHEMA_SQL = (
     # format, DB = runtime truth). Remote/http/mcp execution classes and
     # namespaced user tools (owner/tool_id) land as data rows later —
     # resolve() is execution-class-agnostic and origin-agnostic.
+    # trusted: operator-adoption flag. User rows default FALSE (SSRF guard
+    # enforces https + public IPs); TRUE only via /samelabs (institutional
+    # supply the operator vouches for). First-party rows are trusted by
+    # definition (owner IS NULL → resolve treats them as trusted).
     """
     CREATE TABLE IF NOT EXISTS platform_tools (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -335,6 +339,7 @@ _SCHEMA_SQL = (
       endpoint_json  TEXT,                   -- remote execution decl (future)
       params_json    TEXT,                   -- typed params schema (future)
       enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+      trusted        BOOLEAN NOT NULL DEFAULT FALSE,
       created_at     BIGINT NOT NULL,
       updated_at     BIGINT NOT NULL
     )

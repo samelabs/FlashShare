@@ -52,11 +52,26 @@ def _get_pool():
 
 def _finish_metered_call(user, tool, client_ref, cost, started,
                          request, result, upload) -> dict:
-    """Record the successful call fact + return payload (with replay flag off)."""
+    """Record the successful call fact + return payload (with replay flag off).
+
+    C2C settlement (phase 3): when the tool has an owner and cost > 0,
+    the provider earns (cost - commission) in the SAME transaction as the
+    tool_calls fact row — one commit, no partial state. Self-calls
+    (caller == provider) do NOT settle (no self-dealing payout).
+    Payout idem key = payout:{call_id}: unique index makes a double
+    settle impossible even under replay storms.
+    """
+    from app.routes.usertools import commission_rate
+    call_id = None
+    payout = 0
     try:
         rid = None
         if upload is not None:
             rid = dict(upload).get("id")
+        owner_id = tool.get("owner_id")
+        if cost > 0 and owner_id and owner_id != user["id"]:
+            rate = commission_rate()
+            payout = cost - (cost * rate // 100)
         with db() as con:
             row = con.execute(
                 """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
@@ -69,6 +84,24 @@ def _finish_metered_call(user, tool, client_ref, cost, started,
                  json.dumps(result)[:4000], started, now()),
             ).fetchone()
             call_id = row["id"]
+            if payout > 0 and owner_id is not None:
+                con.execute(
+                    """INSERT INTO ledger (user_id, delta, balance_after, kind,
+                       ref_type, ref_id, idem_key, note, created_at)
+                       SELECT %s, %s,
+                              COALESCE((SELECT SUM(delta) FROM ledger
+                                        WHERE user_id = %s), 0) + %s,
+                              'provider_earn', 'tool_call', %s,
+                              %s, %s, %s
+                       WHERE NOT EXISTS (
+                         SELECT 1 FROM ledger
+                         WHERE user_id = %s AND idem_key = %s
+                       )""",
+                    (owner_id, payout, owner_id, payout, str(call_id),
+                     f"payout:{call_id}",
+                     f"{tool['id']} payout", now(),
+                     owner_id, f"payout:{call_id}"),
+                )
     except Exception:
         logger.exception("metering record failed (call still returned)")
         call_id = None
@@ -514,7 +547,7 @@ async def _execute_remote_and_share(request: Request, tool: dict, uploads: list,
     decl = _json.loads(tool["endpoint_json"]) if tool.get("endpoint_json") else {}
     if not decl.get("url"):
         raise ToolError("err_tool_not_configured")
-    trusted = tool.get("owner_id") is None
+    trusted = (tool.get("owner_id") is None) or bool(tool.get("trusted"))
     sources = []
     gokapi_ids = []
     total_size = 0
