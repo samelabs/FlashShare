@@ -205,9 +205,12 @@ button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke
 .controls { width: min(560px,100%); display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s4) auto 0; align-items: flex-end; justify-content: center; }
 .controls label { display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap; }
 .controls label > span { font-size: var(--text-sm); flex-shrink: 0; }
-.controls /* ── Form control baseline (single source) ─────────────────────
+/* ── Form control baseline (single source) ─────────────────────
    16px floor: iOS/Android auto-zoom any focused input <16px;
-   font-family: inherit — UA default differs from page font otherwise. */
+   font-family: inherit — UA default differs from page font otherwise.
+   NOTE: this selector must stay UNPREFIXED. A prior revision glued the
+   comment to `.controls`, silently scoping the floor to `.controls
+   input` — every input elsewhere kept UA ~13px and iOS zoomed on focus. */
 input, select, textarea {
   font-family: inherit;
   font-size: 16px;
@@ -712,26 +715,11 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .agents-endpoints { display: grid; gap: var(--s2); }
 .credit-note-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ── /account/tools (C2C supply) — scoped to .acct-page ── */
-.acct-page .usertools-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s2) var(--s3); margin: var(--s2) 0; }
-.acct-page .usertools-form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--ink-soft); }
-.acct-page .usertools-form .usertools-wide { grid-column: 1 / -1; }
-.acct-page .usertools-form input, .acct-page .usertools-form select { padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); font-size: var(--text-base); }
-.acct-page .usertools-item { padding: var(--s3) 0; border-bottom: 1px dashed var(--line); }
-.acct-page .usertools-item:last-child { border-bottom: none; }
-.acct-page .usertools-head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
-.acct-page .usertools-vis { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); border: 1px solid var(--line-strong); }
-.acct-page .usertools-vis.v-public { border-color: var(--ok, #16a34a); color: var(--ok, #16a34a); }
-.acct-page .usertools-vis.v-unlisted { border-color: var(--warn, #d97706); color: var(--warn, #d97706); }
-.acct-page .usertools-vis.v-private { color: var(--ink-soft); }
-.acct-page .usertools-meta { font-size: var(--text-sm); color: var(--ink-soft); margin: 4px 0; }
-.acct-page .usertools-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
-
 /* ── /account/tools v2: modal submit + icon grid + card list ── */
 .acct-page .usertools-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--s2) var(--s3); margin: var(--s3) 0 var(--s2); }
 .acct-page .usertools-form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--ink-soft); }
 .acct-page .usertools-form .usertools-wide { grid-column: 1 / -1; }
-.acct-page .usertools-form input, .acct-page .usertools-form select { padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); font-size: var(--text-base); width: 100%; box-sizing: border-box; }
+.acct-page .usertools-form input, .acct-page .usertools-form select { padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; }
 .acct-page .icon-pick-label { grid-column: 1 / -1; }
 .acct-page .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: var(--s1); padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); }
 .acct-page .icon-cell { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; padding: 8px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: pointer; }
