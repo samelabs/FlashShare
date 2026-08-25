@@ -36,7 +36,7 @@ from auth import (
     has_password, username_taken,
 )
 from i18n import server_text
-from billing import grant_daily_login, DAILY_LOGIN_CREDITS  # noqa: F401 (fallback import kept)
+from billing import grant_daily_login, DAILY_LOGIN_CREDITS  # noqa: F401 (deprecated shim kept one release)
 from activities import apply_activity
 from utils import now, b64url
 

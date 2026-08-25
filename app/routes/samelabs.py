@@ -386,14 +386,17 @@ async def samelabs_remote(request: Request):
     items = []
     for r in rows:
         decl = {}
+        label = r["tool_id"]
         try:
             import json as _json
             decl = _json.loads(r["endpoint_json"] or "{}")
+            lab = _json.loads(r["label_json"] or "{}")
+            label = lab.get("zh") or lab.get("en") or r["tool_id"]
         except Exception:
             pass
         items.append({
             "tool_key": r["tool_key"], "execution": r["execution"],
-            "label": (r["label_json"] or "{}").strip("{}")[:40],
+            "label": label,
             "icon": r["icon"], "visibility": r["visibility"],
             "enabled": r["enabled"], "owner": r["owner_name"] or "平台",
             "url": decl.get("url", ""), "timeout_s": decl.get("timeout_s", 60),
@@ -438,6 +441,15 @@ async def samelabs_remote_create(request: Request):
     from tools import VALID_ICONS
     if icon not in VALID_ICONS:
         return JSONResponse({"ok": False, "error": "bad_icon"}, 422)
+    # Raw-bytes delivery needs a whitelisted landing identity: sniff
+    # validates the filename extension, so output_filename is REQUIRED
+    # with a whitelisted extension when the endpoint may return raw bytes.
+    if output_filename:
+        import os as _os
+        ext = _os.path.splitext(output_filename)[1].lower()
+        from config import ALLOWED_EXT
+        if ext not in ALLOWED_EXT:
+            return JSONResponse({"ok": False, "error": "bad_output_filename"}, 422)
     import json as _json
     endpoint = {"url": url, "timeout_s": timeout_s}
     if auth_header and auth_token:

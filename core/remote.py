@@ -174,7 +174,13 @@ def _pull_output_url(output_url: str, timeout_s: int) -> bytes:
 
 
 def _wrap_raw(decl: dict, body: bytes, filename: str | None = None) -> dict:
-    name = filename or decl.get("output_filename") or "output.bin"
+    # Landing identity: explicit filename > declared default. Raw-bytes
+    # delivery without either is a configuration error (sniff would reject
+    # a non-whitelisted fallback extension) — fail typed, not silently.
+    name = filename or decl.get("output_filename")
+    if not name:
+        raise RemoteError("bad_output",
+                          "raw-bytes delivery needs output_filename declared")
     ctype = decl.get("output_content_type") or "application/octet-stream"
     validated = validate_output(name, ctype, body)
     return {"filename": name, "content_type": sniff_final_type(name, ctype, body),

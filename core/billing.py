@@ -188,15 +188,10 @@ def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
     return dict(row)
 
 
-def grant_daily_login(user_id: int, amount: int) -> dict | None:
-    """Once-per-UTC-day login bonus. Idem key daily:{uid}:{yyyymmdd}.
-
-    Thin compatibility shim over activities.apply_activity('daily_login'):
-    the activities table is the amount source of truth; the `amount`
-    argument is only a pre-startup fallback. Callers should prefer
-    apply_activity directly.
-
-    Returns the new ledger row, or None if already granted today.
+def grant_daily_login(user_id: int, amount: int) -> dict | None:  # noqa: F401
+    """DEPRECATED compatibility shim — zero in-repo callers (verified
+    2026-08-25 audit). Kept one release for out-of-tree tooling; remove
+    after Phase 3. All grants route through activities.apply_activity.
     """
     try:
         from activities import apply_activity
@@ -276,12 +271,19 @@ DAILY_LOGIN_CREDITS = 5
 
 
 def signup_amount() -> int:
-    """Live signup grant amount from the activities table (0 = disabled)."""
+    """Live signup grant amount from the activities table.
+
+    0 when the activity is disabled or missing — identical skip semantics
+    to apply_activity, so disabling the campaign stops the lazy grant at
+    the metering point too. The module constant is NOT a fallback here:
+    a disabled campaign must not keep granting.
+    """
     try:
         from activities import get_activity
         act = get_activity("signup")
         if act and act["active"]:
             return int(act["amount"])
+        return 0
     except Exception:
-        pass
-    return SIGNUP_GRANT_CREDITS
+        # activities table unreachable (pre-startup) — historical default
+        return SIGNUP_GRANT_CREDITS

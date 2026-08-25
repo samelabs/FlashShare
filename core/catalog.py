@@ -23,13 +23,12 @@ import json
 from database import db
 from utils import now
 
-# Visibility ladder (data field, owner-settable — no human gate)
+# Visibility ladder (data field, owner-settable — no human gate).
+# Validation of stored values happens at write time (samelabs/remote and
+# the future user-submission endpoint), not read time.
 VIS_PRIVATE = "private"    # owner only
 VIS_UNLISTED = "unlisted"  # callable when the key is known, never listed
 VIS_PUBLIC = "public"      # grid + every caller's tools/list
-
-_VALID_VIS = (VIS_PRIVATE, VIS_UNLISTED, VIS_PUBLIC)
-_VALID_EXEC = ("local", "http", "mcp")  # http/mcp drivers land in Phase 2/3
 
 
 # ── Seeding: register() declarations → platform_tools rows ──

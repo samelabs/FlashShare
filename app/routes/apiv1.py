@@ -29,7 +29,6 @@ from security import sniff_allowed
 from uploads import check_quota
 from gokapi import upload_to_gokapi
 from storage import read as storage_read
-from tools import get_tool
 from catalog import list_catalog
 from utils import now, sanitize_filename
 from auth import public_user
