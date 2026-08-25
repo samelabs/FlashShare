@@ -94,11 +94,13 @@ def _public_item(row: dict) -> dict:
         "url": decl.get("url", ""),
         "timeout_s": decl.get("timeout_s", 60),
         "has_auth": bool(decl.get("auth_token")),
-        "calls": _call_stats(row["tool_key"]),
+        "calls": _call_stats(row["tool_key"], row.get("owner_id")),
     }
 
 
-def _call_stats(tool_key: str) -> dict:
+def _call_stats(tool_key: str, owner_id: int | None = None) -> dict:
+    """Per-tool call stats + provider earnings (accurate join via payout
+    ledger rows referencing the call fact)."""
     with db() as con:
         row = con.execute(
             """SELECT COUNT(*) FILTER (WHERE status = 'ok') AS ok,
@@ -106,7 +108,18 @@ def _call_stats(tool_key: str) -> dict:
                FROM tool_calls WHERE tool_id = %s""",
             (tool_key,),
         ).fetchone()
-    return {"ok": row["ok"], "total": row["total"]}
+        earned = 0
+        if owner_id is not None:
+            erow = con.execute(
+                """SELECT COALESCE(SUM(l.delta), 0) AS earned
+                   FROM ledger l
+                   JOIN tool_calls tc ON l.ref_id = tc.id::text
+                   WHERE l.user_id = %s AND l.kind = 'provider_earn'
+                     AND tc.tool_id = %s""",
+                (owner_id, tool_key),
+            ).fetchone()
+            earned = int(erow["earned"]) if erow else 0
+    return {"ok": row["ok"], "total": row["total"], "earned": earned}
 
 
 def _validate_submission(raw: dict, partial: bool = False) -> tuple:

@@ -726,3 +726,34 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page .usertools-vis.v-private { color: var(--ink-soft); }
 .acct-page .usertools-meta { font-size: var(--text-sm); color: var(--ink-soft); margin: 4px 0; }
 .acct-page .usertools-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
+
+/* ── /account/tools v2: modal submit + icon grid + card list ── */
+.acct-page .usertools-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--s2) var(--s3); margin: var(--s3) 0 var(--s2); }
+.acct-page .usertools-form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--ink-soft); }
+.acct-page .usertools-form .usertools-wide { grid-column: 1 / -1; }
+.acct-page .usertools-form input, .acct-page .usertools-form select { padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); font-size: var(--text-base); width: 100%; box-sizing: border-box; }
+.acct-page .icon-pick-label { grid-column: 1 / -1; }
+.acct-page .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: var(--s1); padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.acct-page .icon-cell { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; padding: 8px; border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--muted); cursor: pointer; }
+.acct-page .icon-cell svg { width: 22px; height: 22px; display: block; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.acct-page .icon-cell.picked { border-color: var(--accent); color: var(--accent); background: var(--soft); }
+@media (hover:hover) and (pointer:fine) { .acct-page .icon-cell:hover { color: var(--ink); border-color: var(--line-strong); } }
+.acct-page .usertools-submit-row { display: flex; justify-content: flex-end; gap: var(--s2); }
+.acct-page .usertools-item { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s3) 0; border-bottom: 1px dashed var(--line); }
+.acct-page .usertools-item:last-child { border-bottom: none; }
+.acct-page .usertools-head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-width: 0; }
+.acct-page .usertools-ico { display: inline-flex; color: var(--accent); flex-shrink: 0; }
+.acct-page .usertools-ico svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.acct-page .usertools-key { font-size: var(--text-xs); color: var(--muted); font-family: var(--mono, monospace); overflow: hidden; text-overflow: ellipsis; }
+.acct-page .usertools-vis { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); border: 1px solid var(--line-strong); white-space: nowrap; }
+.acct-page .usertools-vis.v-public { border-color: var(--ok, #16a34a); color: var(--ok, #16a34a); }
+.acct-page .usertools-vis.v-unlisted { border-color: var(--warn, #d97706); color: var(--warn, #d97706); }
+.acct-page .usertools-vis.v-private { color: var(--ink-soft); }
+.acct-page .usertools-meta { font-size: var(--text-sm); color: var(--ink-soft); }
+.acct-page .usertools-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.acct-page .btn-secondary.danger { border-color: #dc2626; color: #dc2626; }
+/* account nav: 5 tabs wrap on phones instead of overflowing */
+@media (max-width: 640px) {
+  .acct-nav { flex-wrap: wrap; gap: 0 var(--s2); overflow-x: visible; }
+  .acct-tab { padding: 8px 10px; }
+}
