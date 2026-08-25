@@ -1,6 +1,7 @@
 # devlog — 改动摘要
 
 2026-08-15 | HEAD | feat: img2pdf 图片转PDF工具上线 (第8个工具, Pillow原生PDF编码器零新依赖, 多文件→单PDF, EXIF转正, E2E+回归全绿)
+- 2026-08-25 | b3937d9 | 积分活动模块化: activities表+/samelabs/activities管理页, 注册/每日发放数据驱动; 修复signup短路bug(新用户100积分未发放)
 - 2026-08-25 | 889a229 | 工具链Phase1注册表数据化: platform_tools表+catalog.resolve统一路由链三通道一致; 附带修复MCP通道get_tool NameError死亡bug(213220a引入)
 2026-08-15 | 18fc560 | feat: ZIP预览双形态上线 (上传前客户端CD解析预览 + 上传后浮层/详情页Range拉取列表, zip_preview.js共享模块, i18n 175键, E2E 4/4+回归全绿)
 2026-08-15 | c9d5fff | feat: zip_pack 多文件ZIP打包工具上线 (zipfile stdlib, multi=True, 文件名去重, i18n 10语×2键, E2E 5项全过)
