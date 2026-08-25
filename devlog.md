@@ -1,6 +1,7 @@
 # devlog — 改动摘要
 
 2026-08-15 | HEAD | feat: img2pdf 图片转PDF工具上线 (第8个工具, Pillow原生PDF编码器零新依赖, 多文件→单PDF, EXIF转正, E2E+回归全绿)
+- 2026-08-25 | AUDIT2 | 全量审计: 修M10 output_url SSRF敞口+M11 MCP远程崩溃+M12 409+M18活动键族; i18n 13键; 验收脚本入库
 - 2026-08-25 | CSSFIX | 弹层黑块+iOS聚焦放大: 16px基线84450ac起被注释截selector失效(全站级); modal移入scoped作用域
 - 2026-08-25 | V2 | 我的工具页重做: 弹层+图标网格+收益展示+tab自适应(用户四病灶逐项修复)
 - 2026-08-25 | P3 | C2C自助供给: /api/usertools+可见性阶梯+自测门+分账清算(30%佣金settings可调)+/account/tools页+MCP名投影修复
