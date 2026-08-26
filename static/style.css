@@ -141,7 +141,7 @@ h1, h2 { letter-spacing: -0.02em; }
 .user-info { padding: var(--s2) var(--s2) var(--s2); border-bottom: 1px solid var(--line); margin-bottom: var(--s1); }
 .user-name { display: block; font-size: var(--text-base); font-weight: 700; color: var(--ink); }
 .user-handle { font-weight: 400; color: var(--muted); }
-.user-dropdown a, .user-dropdown form button { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: var(--s2) var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 600; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
+/* (superseded by sectioned rules above; kept for fallback selectors) */
 .user-dropdown a svg, .user-dropdown form button svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
 @media (hover:hover) and (pointer:fine) { .user-dropdown a:hover, .user-dropdown form button:hover { background: var(--soft); } }
 .user-dropdown form { margin: 0; padding: 0; }
@@ -787,11 +787,14 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page .cat-cell.picked { border-color: var(--accent); color: var(--accent); background: var(--soft); }
 @media (hover:hover) and (pointer:fine) { .acct-page .cat-cell:hover { border-color: var(--line-strong); color: var(--ink); } }
 
-/* ── user dropdown: credits + history rows ── */
-.user-dropdown .dropdown-credits strong { margin-left: auto; color: var(--accent); font-variant-numeric: tabular-nums; }
-.user-dropdown button.dropdown-history { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: var(--s2) var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 600; color: var(--ink); cursor: pointer; border-radius: var(--r-sm); }
-.user-dropdown button.dropdown-history svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
-@media (hover:hover) and (pointer:fine) { .user-dropdown button.dropdown-history:hover { background: var(--soft); } }
+/* ── user dropdown: sectioned nav, unified rows ── */
+.user-dropdown { min-width: 220px; }
+.user-dropdown .menu-sec { padding: var(--s1) 0; }
+.user-dropdown .menu-sec + .menu-sec { border-top: 1px solid var(--line); }
+.user-dropdown a, .user-dropdown button { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: 8px var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 500; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
+.user-dropdown a svg, .user-dropdown button svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; opacity: .75; }
+@media (hover:hover) and (pointer:fine) { .user-dropdown a:hover, .user-dropdown button:hover { background: var(--soft); } }
+.user-dropdown .menu-val { margin-left: auto; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* ── token reveal: name line visually distinct from the key line ── */
 .token-new-name { margin: 0 0 var(--s1); font-weight: 600; color: var(--ink); }

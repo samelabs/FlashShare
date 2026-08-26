@@ -19,19 +19,50 @@
         <div class="user-info">
           <span class="user-name">{{ (user.displayName or user.username)|e }} <span class="user-handle">@{{ user.username|e }}</span></span>
         </div>
-        <a href="/account/credits" role="menuitem" class="dropdown-credits" title="{{ texts.credits_balance }}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10"></path><path d="M15.5 9.5a3 3 0 0 0-3.5-2.5h-.5a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5H12a3 3 0 0 1-3.5-2.5"></path></svg>
-          <span data-i18n="credits_balance">{{ texts.credits_balance }}</span>
-          <strong id="headerCredits">{{ credits }}</strong>
-        </a>
-        <button type="button" role="menuitem" class="dropdown-history" id="historyBtn" aria-label="{{ texts.recent }}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 7v5l3 3"></path></svg>
-          <span data-i18n="recent">{{ texts.recent }}</span>
-        </button>
-        <a href="/account/profile" role="menuitem"><span data-i18n="settings">{{ texts.settings }}</span></a>
-        <form method="post" action="/auth/logout">
-          <button type="submit" class="logout-link"><span data-i18n="logout">{{ texts.logout }}</span></button>
-        </form>
+
+        <div class="menu-sec" role="group" aria-label="{{ texts.credits_balance }}">
+          <a href="/account/credits" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10"></path><path d="M15.5 9.5a3 3 0 0 0-3.5-2.5h-.5a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5H12a3 3 0 0 1-3.5-2.5"></path></svg>
+            <span data-i18n="credits_balance">{{ texts.credits_balance }}</span>
+            <strong class="menu-val" id="headerCredits">{{ credits }}</strong>
+          </a>
+          <a href="/account/tools" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"></path></svg>
+            <span data-i18n="menu_earnings">{{ texts.menu_earnings }}</span>
+          </a>
+        </div>
+
+        <div class="menu-sec" role="group" aria-label="{{ texts.menu_recent }}">
+          <button type="button" role="menuitem" id="historyBtn" aria-label="{{ texts.menu_recent }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 7v5l3 3"></path></svg>
+            <span data-i18n="menu_recent">{{ texts.menu_recent }}</span>
+          </button>
+        </div>
+
+        <div class="menu-sec" role="group" aria-label="{{ texts.acct_nav }}">
+          <a href="/account/tools" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path></svg>
+            <span data-i18n="menu_publish">{{ texts.menu_publish }}</span>
+          </a>
+          <a href="/account/tokens" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+            <span data-i18n="menu_tokens">{{ texts.menu_tokens }}</span>
+          </a>
+          <a href="/agents" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="12" rx="2"></rect><path d="M12 8V4M8 4h8"></path><circle cx="8" cy="14" r="1"></circle><circle cx="16" cy="14" r="1"></circle></svg>
+            <span data-i18n="menu_mcp">{{ texts.menu_mcp }}</span>
+          </a>
+          <a href="/account/profile" role="menuitem">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 2 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span data-i18n="settings">{{ texts.settings }}</span>
+          </a>
+        </div>
+
+        <div class="menu-sec">
+          <form method="post" action="/auth/logout">
+            <button type="submit" class="logout-link"><span data-i18n="logout">{{ texts.logout }}</span></button>
+          </form>
+        </div>
       </div>
     </div>
     {% else %}
