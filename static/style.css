@@ -634,9 +634,11 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-tab.active { background: var(--soft); color: var(--accent); font-weight: 600; }
 .acct-tab-sep { width: 1px; height: 20px; background: var(--line); margin: 0 var(--s1); flex-shrink: 0; }
 @media (max-width: 720px) {
-  .acct-nav { overflow-x: auto; flex-wrap: nowrap; }
-  .acct-tab { padding: 8px 10px; }
-  .acct-tab-sep { margin: 0 2px; }
+  /* mobile: wrap into a full grid — every tab visible & tappable, no hidden scroll strip */
+  .acct-nav { flex-wrap: wrap; overflow-x: visible; gap: var(--s1); }
+  .acct-tab { flex: 1 1 calc(33.333% - var(--s1)); justify-content: center; padding: 10px 6px; font-size: var(--text-sm); }
+  .acct-tab svg { width: 15px; height: 15px; }
+  .acct-tab-sep { display: none; }  /* groups read as rows; separators noise at this size */
 }
 .acct-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s3) var(--s4); margin-bottom: var(--s3); }
 .acct-card h2 { font-size: var(--text-base); font-weight: 600; margin-bottom: var(--s2); }
