@@ -17,9 +17,10 @@
     </div>
     <div id="newTokenBox" hidden>
       <p class="profile-bound" data-i18n="tokenShownOnce">{{ texts.tokenShownOnce }}</p>
+      <p class="token-new-name" id="newTokenNameEcho"></p>
       <div class="token-reveal-row">
         <code id="newTokenValue"></code>
-        <button type="button" class="btn-secondary" id="copyNewToken"><span data-i18n="copy">{{ texts.copy }}</span></button>
+        <button type="button" class="btn-secondary" id="copyNewToken"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
       </div>
     </div>
     <div id="tokenList" class="token-list"></div>
@@ -86,14 +87,19 @@ document.getElementById('createToken')?.addEventListener('click', async () => {
   });
   const d = await r.json();
   if (!d.ok) { alert(d.error || 'error'); return; }
+  document.getElementById('newTokenNameEcho').textContent = name || '—';
   _newTokenValue.textContent = d.token.token;
   _newTokenBox.hidden = false;
   document.getElementById('newTokenName').value = '';
   loadTokens();
 });
 
-document.getElementById('copyNewToken')?.addEventListener('click', async () => {
+const _copyBtn = document.getElementById('copyNewToken');
+_copyBtn?.addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(_newTokenValue.textContent); } catch (e) {}
+  const span = _copyBtn.querySelector('[data-i18n]');
+  if (span) { span.dataset.i18n = 'copied'; span.textContent = '{{ texts['copied'] }}'; }
+  setTimeout(() => { if (span) { span.dataset.i18n = 'copy'; span.textContent = '{{ texts['copy'] }}'; } }, 2000);
 });
 
 if (_tokenList) loadTokens();
