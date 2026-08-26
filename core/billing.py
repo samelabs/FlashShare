@@ -42,13 +42,35 @@ def get_balance(user_id: int) -> int:
     return int(row["bal"])
 
 
+# Ledger kinds that make up the SPENDABLE pool. provider_earn is NOT here:
+# earnings accumulate in their own pool, withdrawable only. This is the
+# dual-pool invariant (2026-08-26 global audit): consumption must never
+# eat into provider earnings.
+SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
+                   "bonus", "topup", "consume", "refund", "adjust", "grant",
+                   "revoke", "manual_topup")
+
+
+def spendable_balance(user_id: int) -> int:
+    """Credits the user may spend (excludes provider_earn & withdraw rows)."""
+    with db() as con:
+        row = con.execute(
+            """SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger
+               WHERE user_id = %s AND kind = ANY(%s)""",
+            (user_id, list(SPENDABLE_KINDS)),
+        ).fetchone()
+    return int(row["bal"])
+
+
 def _balance_for_update(con, user_id: int) -> int:
-    """Serialize on the users row; returns the current balance."""
+    """Serialize on the users row; returns the SPENDABLE balance
+    (dual-pool: consume/refund/adjust only ever touch the spendable pool)."""
     con.execute(
         "SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
     row = con.execute(
-        "SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger WHERE user_id = %s",
-        (user_id,),
+        """SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger
+           WHERE user_id = %s AND kind = ANY(%s)""",
+        (user_id, list(SPENDABLE_KINDS)),
     ).fetchone()
     return int(row["bal"])
 
@@ -248,17 +270,23 @@ def history(user_id: int, limit: int = 50, offset: int = 0) -> list:
 
 
 def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, int]:
-    """(rows_newest_first, total_count) for the account credits page."""
+    """(rows_newest_first, total_count) for the account credits page.
+
+    Dual-pool (2026-08-26): spendable-side flow only — grants/topups/
+    consumes/refunds/adjusts. provider_earn & withdraw live on the
+    earnings page. One pool, two honest views.
+    """
     with db() as con:
         total = con.execute(
-            "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s", (user_id,)
+            "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = ANY(%s)",
+            (user_id, list(SPENDABLE_KINDS)),
         ).fetchone()["n"]
         rows = con.execute(
             """
-            SELECT * FROM ledger WHERE user_id = %s
+            SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)
             ORDER BY id DESC LIMIT %s OFFSET %s
             """,
-            (user_id, size, max(0, (page - 1) * size)),
+            (user_id, list(SPENDABLE_KINDS), size, max(0, (page - 1) * size)),
         ).fetchall()
     return [dict(r) for r in rows], total
 

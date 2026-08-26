@@ -314,6 +314,31 @@ async def create_user_tool(request: Request):
     return {"ok": True, "tool_key": tool_key}
 
 
+@router.get("/api/usertools/{tool_id}/calls")
+async def tool_call_log(tool_id: str, request: Request):
+    """B3: provider-visible call log for THEIR tool (last 20).
+    Owner-scoped; no caller identity beyond status/latency — privacy."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    tool_key = f"{user['username']}/{tool_id}"
+    with db() as con:
+        row = con.execute(
+            "SELECT id FROM platform_tools WHERE tool_key = %s AND owner_id = %s",
+            (tool_key, user["id"])).fetchone()
+        if not row:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        calls = [dict(r) for r in con.execute(
+            """SELECT status, error, started_at, finished_at, cost_snapshot
+               FROM tool_calls WHERE tool_id = %s AND user_id != %s
+               ORDER BY id DESC LIMIT 20""",
+            (tool_key, user["id"])).fetchall()]
+    for cl in calls:
+        f, s = cl.pop("finished_at", None), cl.pop("started_at", None)
+        cl["ms"] = (f - s) if (f is not None and s is not None) else None
+    return {"ok": True, "calls": calls}
+
+
 @router.post("/api/usertools/{tool_id}/selftest")
 async def selftest_tool(tool_id: str, request: Request):
     """T3: run ONE platform-mediated test call so the self-test gate is a

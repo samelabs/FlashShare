@@ -815,3 +815,29 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page .wd-st { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); background: var(--soft); color: var(--muted); }
 .acct-page .wd-st.st-approved, .acct-page .wd-st.st-paid { color: var(--accent); }
 .acct-page .wd-st.st-rejected { color: var(--danger); }
+
+/* ── register bonus banner (activities-driven) ── */
+.auth-bonus { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 var(--s3); padding: 10px 14px; background: var(--soft); border: 1px dashed var(--accent); border-radius: var(--r-md); color: var(--accent); font-size: var(--text-sm); font-weight: 600; }
+.auth-bonus svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── top-up packs (packages data-driven) ── */
+.topup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
+.topup-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--s3); background: var(--soft); border: 1px solid var(--line); border-radius: var(--r-md); }
+.topup-credits { font-size: var(--text-lg); font-weight: 700; color: var(--accent); }
+.topup-price { font-size: var(--text-sm); color: var(--ink); font-weight: 600; }
+.topup-status { font-size: var(--text-xs); color: var(--muted); }
+
+/* ── provider call-log drawer ── */
+.calls-drawer { margin-top: var(--s2); padding: var(--s2) var(--s3); background: var(--soft); border: 1px dashed var(--line); border-radius: var(--r-sm); display: flex; flex-direction: column; gap: 2px; }
+.calls-drawer .wd-row { border-bottom: 1px dashed var(--line); }
+.calls-drawer .wd-row:last-child { border-bottom: none; }
+.calls-drawer .wd-row strong:last-child { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+/* ── provider contract doc (collapsed) ── */
+.contract-doc { margin: var(--s2) 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
+.contract-doc summary { padding: 10px 14px; cursor: pointer; font-size: var(--text-sm); font-weight: 600; color: var(--muted); }
+.contract-doc[open] summary { border-bottom: 1px solid var(--line); color: var(--ink); }
+.contract-body { padding: var(--s2) var(--s3); font-size: var(--text-sm); }
+.contract-body h4 { margin: var(--s2) 0 var(--s1); font-size: var(--text-sm); }
+.contract-body pre { background: var(--soft); padding: 10px 12px; border-radius: var(--r-sm); overflow-x: auto; font-size: var(--text-xs); line-height: 1.6; }
+.contract-body p { color: var(--muted); }

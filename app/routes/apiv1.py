@@ -53,7 +53,7 @@ async def v1_me(request: Request):
     user, err = _require_bearer(request)
     if err:
         return err
-    from billing import get_balance
+    from billing import spendable_balance as get_balance
     u = public_user(user)
     u.pop("email", None)  # token channel: no PII beyond what's needed
     return {"ok": True, "user": u, "credits": get_balance(user["id"])}

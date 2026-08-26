@@ -20,6 +20,7 @@ from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
 from catalog import list_catalog, seed_from_registry
+from database import db
 
 
 def _fmt_ts(ts) -> str:
@@ -55,7 +56,7 @@ def _ctx_base(request: Request) -> dict:
     """Base context for all pages."""
     lang = request.state.lang
     user = request.state.user
-    from billing import get_balance
+    from billing import spendable_balance as get_balance
     return {
         "request": request,
         "lang": lang,
@@ -200,8 +201,13 @@ async def login_page(request: Request, error: str = ""):
 @router.get("/auth/register", response_class=HTMLResponse)
 async def register_page(request: Request, error: str = ""):
     from app.main import templates
+    # expose the LIVE signup bonus (activities table — data, not hardcoded)
+    from activities import get_activity
+    sa = get_activity("signup")
+    signup_bonus = int(sa["amount"]) if sa and sa["active"] else 0
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "error": error})
+    ctx.update({"shell_class": "", "share_url": "", "error": error,
+                "signup_bonus": signup_bonus})
     return templates.TemplateResponse("auth/register.html", ctx)
 
 
@@ -209,7 +215,7 @@ async def register_page(request: Request, error: str = ""):
 
 def _account_ctx(request: Request, page: str, **extra) -> dict:
     from app.main import templates  # noqa: F401
-    from billing import get_balance
+    from billing import spendable_balance as get_balance
     ctx = _ctx_base(request)
     ctx.update({
         "shell_class": "",
@@ -254,7 +260,7 @@ async def account_credits(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from billing import get_balance, history_paged
+    from billing import spendable_balance as get_balance, history_paged
     from activities import get_activity, granted_today
     daily = get_activity("daily_login")
     daily_amount = int(daily["amount"]) if daily and daily["active"] else 0
@@ -265,10 +271,16 @@ async def account_credits(request: Request):
         pg = 1
     size = 20
     rows, total = history_paged(user["id"], page=pg, size=size)
+    # packages (one-off top-up packs) — active rows only, data-driven
+    with db() as con:
+        pkgs = [dict(r) for r in con.execute(
+            "SELECT code, name, credits, price_cents, currency FROM packages "
+            "WHERE active ORDER BY sort_order, id").fetchall()]
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
                        granted_today=granted_today("daily_login", user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
+                       packages=pkgs,
                        priced_tools=[t for t in list_catalog(user["id"]) if t["cost"] > 0],
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)

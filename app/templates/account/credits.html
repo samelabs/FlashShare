@@ -59,6 +59,27 @@
 
   <div class="acct-card">
     <div class="acct-card-head">
+      <h2 data-i18n="topup_title">{{ texts.topup_title }}</h2>
+    </div>
+    {% if packages %}
+    <div class="topup-grid">
+      {% for p in packages %}
+      <div class="topup-item">
+        <strong class="topup-credits">+{{ p.credits }}</strong>
+        <span class="topup-price">¥{{ (p.price_cents / 100)|round(2) }}</span>
+        <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="profile-note" data-i18n="topup_soon">{{ texts.topup_soon }}</p>
+    {% endif %}
+    <p class="acct-card-sub" data-i18n="topup_note">{{ texts.topup_note }}</p>
+  </div>
+
+
+  <div class="acct-card">
+    <div class="acct-card-head">
       <h2 data-i18n="credits_history">{{ texts.credits_history }}</h2>
       <span class="acct-card-sub">{{ texts.credit_detail_count|replace('{n}', total) }}</span>
     </div>

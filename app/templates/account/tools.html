@@ -14,6 +14,27 @@
       <button type="button" class="primary" id="openToolModal"><span data-i18n="mytools_create">{{ texts.mytools_create }}</span></button>
     </div>
     <p class="profile-note" data-i18n="mytools_desc">{{ texts.mytools_desc }}</p>
+    <details class="contract-doc">
+      <summary>接入契约（HTTP API）</summary>
+      <div class="contract-body">
+        <h4>请求（518 → 你的端点）</h4>
+        <pre>POST https://your-endpoint/your-path
+Content-Type: application/json
+
+{
+  "source_urls": ["https://518.plus/api/source/...（一次性签名URL，5分钟有效）"],
+  "params": { ...工具参数 }
+}</pre>
+        <p>你的服务按 URL 拉取源文件（平台不推文件）。超时按提交时配置（5–300s）。</p>
+        <h4>响应（二选一）</h4>
+        <pre>A. 直接返回文件字节:  Content-Type: image/png 等（扩展名须在白名单）
+B. 返回 JSON:  { "output_url": "https://you/x.png" }  （平台回拉，同样过安全校验）</pre>
+        <h4>鉴权（可选）</h4>
+        <p>提交时配置 Header 名与令牌（如 <code>Authorization: Bearer …</code>），平台每次调用携带。</p>
+        <h4>安全要求</h4>
+        <p>端点必须 <b>https + 公网 IP</b>（SSRF 校验：禁私网/环回/元数据地址）。产出内容经嗅探白名单校验，不合格即拒。</p>
+      </div>
+    </details>
     <div id="toolList" class="usertools-list"></div>
     <p id="toolNone" class="profile-note hidden" data-i18n="mytools_none">{{ texts.mytools_none }}</p>
   </div>
@@ -119,6 +140,37 @@ function _openEdit(t) {
   document.getElementById('toolModal').classList.remove('hidden');
 }
 
+// ── call log drawer (B3): last 20 calls on MY tool ──
+function _showCalls(btn, t) {
+  let drawer = btn.closest('.usertools-item').querySelector('.calls-drawer');
+  if (drawer) { drawer.remove(); return; }  // toggle
+  btn.disabled = true;
+  fetch('/api/usertools/' + t.tool_id + '/calls').then(r => r.json()).then(d => {
+    btn.disabled = false;
+    if (!d.ok) { alert(d.error); return; }
+    drawer = document.createElement('div');
+    drawer.className = 'calls-drawer';
+    if (!d.calls.length) {
+      drawer.textContent = _msg('mytools_calls_none');
+    } else {
+      for (const c of d.calls) {
+        const row = document.createElement('div');
+        row.className = 'wd-row';
+        const st = document.createElement('span');
+        st.className = 'wd-st st-' + c.status;
+        st.textContent = c.status;
+        const info = document.createElement('span');
+        info.textContent = (c.ms != null ? c.ms + 'ms' : '—') + (c.error ? ' · ' + c.error : '');
+        const cost = document.createElement('strong');
+        cost.textContent = String(c.cost_snapshot || 0);
+        row.append(st, info, cost);
+        drawer.appendChild(row);
+      }
+    }
+    btn.closest('.usertools-item').appendChild(drawer);
+  });
+}
+
 function _delBtn(toolId, key) {
   const btn = document.createElement('button');
   btn.type = 'button'; btn.className = 'btn-secondary';
@@ -190,6 +242,10 @@ async function loadTools() {
     stBtn.type = 'button'; stBtn.className = 'btn-secondary';
     stBtn.textContent = _msg('mytools_run_selftest');
     stBtn.addEventListener('click', () => _selfTest(stBtn, t));
+    const logBtn = document.createElement('button');
+    logBtn.type = 'button'; logBtn.className = 'btn-secondary';
+    logBtn.textContent = _msg('mytools_calls_btn');
+    logBtn.addEventListener('click', () => _showCalls(logBtn, t));
     const edBtn = document.createElement('button');
     edBtn.type = 'button'; edBtn.className = 'btn-secondary';
     edBtn.textContent = _msg('mytools_edit');
@@ -208,7 +264,7 @@ async function loadTools() {
       enBtn.disabled = false;
       if (d3.ok) loadTools(); else alert(d3.error);
     });
-    actions.append(stBtn, edBtn, enBtn, visBtn, _delBtn(t.tool_id, t.tool_key));
+    actions.append(stBtn, logBtn, edBtn, enBtn, visBtn, _delBtn(t.tool_id, t.tool_key));
 
     card.append(head, meta, actions);
     _toolList.appendChild(card);
