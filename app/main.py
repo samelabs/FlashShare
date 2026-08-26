@@ -211,6 +211,14 @@ async def startup():
         from earnings import ensure_schema
         ensure_schema()
         logger.info("withdrawals schema ready")
+        # 8.4 (audit): purge expired upload rows at boot — detail pages
+        # already fall back to gokapi-live checks; this keeps the table
+        # from accumulating dead records (456 at audit time).
+        from database import db as _db
+        from utils import now as _now
+        with _db() as _con:
+            _con.execute("DELETE FROM uploads WHERE expire_at < %s", (_now(),))
+        logger.info("expired upload rows purged")
 
     except Exception:
         logger.exception("pricing seed failed (non-fatal)")

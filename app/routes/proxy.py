@@ -45,6 +45,16 @@ async def file_route(public_id: str, request: Request):
         ctx["shell_class"] = "file-shell"
         return templates.TemplateResponse("missing.html", ctx, status_code=404)
 
+    # 8.3 (audit): DB expiry is authoritative. Gokapi's own expiry is a
+    # backstop, not the contract — a row whose expire_at has passed must
+    # not serve, whatever the storage still holds.
+    from utils import now as _now
+    if int(upload["expire_at"] or 0) < _now():
+        from app.routes.pages import _ctx_base
+        ctx = _ctx_base(request)
+        ctx["shell_class"] = "file-shell"
+        return templates.TemplateResponse("missing.html", ctx, status_code=404)
+
     download = request.query_params.get("download")
 
     if download is not None:
