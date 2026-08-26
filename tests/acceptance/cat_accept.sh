@@ -50,12 +50,12 @@ print(f"3. category picker: {len(cats)} categories, icon wall gone OK")
 conn.request("POST", "/api/usertools", body=json.dumps({
     "tool_id": "catprobe", "label": "Cat Probe", "execution": "http",
     "url": "https://example.com/x", "output_filename": "out.png",
-    "cost": 0, "category": "pdf", "visibility": "private"}),
+    "cost": 0, "category": "convert", "visibility": "private"}),
     headers={"Cookie": ck, "Content-Type": "application/json"})
 d = json.loads(conn.getresponse().read())
 assert d["ok"], d
 row = psql("SELECT icon, category FROM platform_tools WHERE tool_key=%s", f"{uname}/catprobe")[0]
-assert row == ("pdf", "pdf"), row
+assert row == ("convert", "convert"), row
 print("4. category=pdf → icon derived 'pdf' + column stored OK")
 
 # 5. bad category rejected typed

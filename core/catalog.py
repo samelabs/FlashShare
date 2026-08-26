@@ -46,6 +46,11 @@ def seed_from_registry() -> dict:
     history stays interpretable — same convention as the pricing table.
     """
     from tools import _registry
+    from categories import SEED_CATEGORIES
+    _cat_icon = {k: i for k, _l, i in SEED_CATEGORIES}
+    _icon_cat = {}
+    for k, _l, i in SEED_CATEGORIES:
+        _icon_cat.setdefault(i, k)
     ts = now()
     added = 0
     updated = 0
@@ -55,14 +60,15 @@ def seed_from_registry() -> dict:
                 """
                 INSERT INTO platform_tools
                   (tool_key, owner_id, tool_id, execution, tool_type,
-                   label_json, icon, accept_json, presets_json, multi,
+                   label_json, icon, category, accept_json, presets_json, multi,
                    visibility, enabled, created_at, updated_at)
-                VALUES (%s, NULL, %s, 'local', %s, %s, %s, %s, %s, %s,
+                VALUES (%s, NULL, %s, 'local', %s, %s, %s, %s, %s, %s, %s,
                         'public', TRUE, %s, %s)
                 ON CONFLICT (tool_key) DO UPDATE SET
                   tool_type    = EXCLUDED.tool_type,
                   label_json   = EXCLUDED.label_json,
                   icon         = EXCLUDED.icon,
+                  category     = EXCLUDED.category,
                   accept_json  = EXCLUDED.accept_json,
                   presets_json = EXCLUDED.presets_json,
                   multi        = EXCLUDED.multi,
@@ -71,7 +77,7 @@ def seed_from_registry() -> dict:
                 """,
                 (t["id"], t["id"], t["type"],
                  json.dumps(t["label"], ensure_ascii=False),
-                 t["icon"],
+                 t["icon"], _icon_cat.get(t["icon"], "other"),
                  json.dumps(sorted(t["accept"]), ensure_ascii=False) if t["accept"] else None,
                  json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
                  bool(t.get("multi", False)),

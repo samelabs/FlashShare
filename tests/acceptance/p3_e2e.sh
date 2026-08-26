@@ -94,14 +94,14 @@ a.post('/auth/register', rq, ct)
 
 # 1. submission: https enforced → reject http url
 body = json.dumps({"tool_id": "echo", "label": "Echo", "execution": "http",
-                   "url": f"http://127.0.0.1:{PROV_PORT}/p", "output_filename": "out.png", "cost": 10, "category": "image"}).encode()
+                   "url": f"http://127.0.0.1:{PROV_PORT}/p", "output_filename": "out.png", "cost": 10, "category": "edit"}).encode()
 st, d = b.post('/api/usertools', body, 'application/json')
 assert st == 422 and json.loads(d)["error"] == "https_required", (st, d[:120])
 print("1. http url rejected (https_required) OK")
 
 # 2. submission: private IP https → ssrf reject
 body = json.dumps({"tool_id": "echo", "label": "Echo", "execution": "http",
-                   "url": "https://192.168.1.1/x", "category": "image", "output_filename": "out.png", "cost": 10}).encode()
+                   "url": "https://192.168.1.1/x", "category": "edit", "output_filename": "out.png", "cost": 10}).encode()
 st, d = b.post('/api/usertools', body, 'application/json')
 assert st == 422 and json.loads(d)["error"] == "https_required", (st, d[:120])
 print("2. private-ip https rejected OK")
@@ -109,7 +109,7 @@ print("2. private-ip https rejected OK")
 # 3. valid submission (public https host that resolves; driver won't be called
 #    until we flip trusted for the local test endpoint)
 body = json.dumps({"tool_id": "echo", "label": "Echo", "execution": "http",
-                   "url": "https://example.com/x", "category": "image", "output_filename": "out.png", "cost": 10}).encode()
+                   "url": "https://example.com/x", "category": "edit", "output_filename": "out.png", "cost": 10}).encode()
 st, d = b.post('/api/usertools', body, 'application/json')
 r = json.loads(d)
 assert r["ok"] and r["tool_key"] == f"{ub}/echo", (st, d[:150])
@@ -182,7 +182,7 @@ print("9. replay → no double settlement OK")
 # 10. failed call → refund, no payout
 psql("UPDATE platform_tools SET endpoint_json=%s WHERE tool_key=%s",
      (json.dumps({"url": "https://example.com/nonexistent-path-xyz", "timeout_s": 10,
-                  "category": "image", "output_filename": "out.png"}), f"{ub}/echo"))
+                  "category": "edit", "output_filename": "out.png"}), f"{ub}/echo"))
 rq, ct = mp({'expiryDays': '1', 'allowedDownloads': '10', 'tool': f'{ub}/echo'}, [('t.png', png1, 'image/png')])
 st, d = a.post('/api/uploads', rq, ct)
 f2 = json.loads(d)['file']

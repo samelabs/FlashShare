@@ -22,21 +22,23 @@ import json
 from database import db
 from utils import now
 
-# Seed: category → icon mapping (curated). Icons validated against
-# tools.VALID_ICONS at seed; a bad mapping fails loudly at startup.
+# Seed: category = USER SCENARIO (the job to get done), NOT a file format.
+# Tools are not limited to file processing — remote/AI endpoints do
+# generation, analysis, extraction… The list is verb-first, covers
+# first-party tools AND future community/AI capabilities:
 SEED_CATEGORIES = [
-    ("image",      {"zh": "图片处理", "en": "Image"},      "image"),
-    ("document",   {"zh": "文档处理", "en": "Document"},   "doc"),
-    ("pdf",        {"zh": "PDF", "en": "PDF"},             "pdf"),
-    ("sheet",      {"zh": "表格处理", "en": "Spreadsheet"}, "sheet"),
-    ("slides",     {"zh": "演示文稿", "en": "Slides"},     "slides"),
-    ("archive",    {"zh": "压缩解压", "en": "Archive"},    "archive"),
-    ("text",       {"zh": "文本代码", "en": "Text & Code"}, "text"),
-    ("audio",      {"zh": "音频处理", "en": "Audio"},      "convert"),
-    ("video",      {"zh": "视频处理", "en": "Video"},      "convert"),
-    ("convert",    {"zh": "格式转换", "en": "Convert"},    "convert"),
-    ("ai",         {"zh": "AI 增强", "en": "AI enhance"},  "wand"),
-    ("util",       {"zh": "实用工具", "en": "Utility"},    "shield"),
+    ("optimize",  {"zh": "优化压缩", "en": "Optimize"},     "compress"),
+    ("convert",   {"zh": "格式转换", "en": "Convert"},      "convert"),
+    ("merge",     {"zh": "合并拆分", "en": "Merge & Split"}, "merge"),
+    ("generate",  {"zh": "生成创建", "en": "Generate"},     "wand"),
+    ("edit",      {"zh": "编辑调整", "en": "Edit"},         "edit"),
+    ("extract",   {"zh": "提取识别", "en": "Extract"},      "crop"),
+    ("beautify",  {"zh": "美化润色", "en": "Beautify"},     "image"),
+    ("protect",   {"zh": "安全保护", "en": "Protect"},      "shield"),
+    ("analyze",   {"zh": "分析洞察", "en": "Analyze"},      "info"),
+    ("share",     {"zh": "分享分发", "en": "Share"},        "upload"),
+    ("automation",{"zh": "自动化", "en": "Automation"},     "settings"),
+    ("other",     {"zh": "其他", "en": "Other"},            "info"),
 ]
 
 
@@ -68,6 +70,15 @@ def ensure_schema() -> dict:
                 (key, json.dumps(label, ensure_ascii=False), icon, i, ts),
             )
             seeded += cur.rowcount
+        # Retired seed keys: rows were deleted from SEED_CATEGORIES (e.g. the
+        # format-based taxonomy 2026-08-25) — remove them so pickers show
+        # only the live scenario taxonomy. Operator-added custom keys
+        # (sort >= 100) survive.
+        live = [k for k, _l, _i in SEED_CATEGORIES]
+        cur.execute(
+            "DELETE FROM tool_categories WHERE key != ALL(%s) AND sort < 100",
+            (live,),
+        )
     return {"seeded": seeded}
 
 

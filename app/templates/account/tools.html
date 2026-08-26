@@ -42,7 +42,7 @@
     </button>
     <h2 data-i18n="mytools_create">{{ texts.mytools_create }}</h2>
     <p class="profile-note" data-i18n="mytools_modal_hint">{{ texts.mytools_modal_hint }}</p>
-    <input type="hidden" id="fCategory" value="util">
+    <input type="hidden" id="fCategory" value="generate">
     <div class="usertools-form">
       <label><span data-i18n="mytools_f_label">{{ texts.mytools_f_label }}</span><input id="fLabel" maxlength="40" placeholder="Super Resolve"></label>
       <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span><input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41"></label>
@@ -105,14 +105,14 @@ let _selIcon = 'wand';
   for (const c of cats) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'cat-cell' + (c.key === 'util' ? ' picked' : '');
+    b.className = 'cat-cell' + (c.key === 'generate' ? ' picked' : '');
     b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', c.key === 'util' ? 'true' : 'false');
+    b.setAttribute('aria-checked', c.key === 'generate' ? 'true' : 'false');
     b.dataset.cat = c.key;
     b.dataset.icon = c.icon;
     b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (window.__ICONS__[c.icon] || '') + '</svg>' +
       '<span>' + ((c.label && (c.label[lang] || c.label.en)) || c.key) + '</span>';
-    if (c.key === 'util') _selIcon = c.icon;
+    if (c.key === 'generate') _selIcon = c.icon;
     b.addEventListener('click', () => {
       _selIcon = c.icon;
       document.getElementById('fCategory').value = c.key;

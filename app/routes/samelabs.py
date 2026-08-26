@@ -455,7 +455,7 @@ async def samelabs_remote_create(request: Request):
         execution = str(raw.get("execution", "http")).strip()
         label = str(raw.get("label", "")).strip() or tool_id
         from categories import category_icon, valid_keys as cat_keys
-        cat = str(raw.get("category", "util")).strip()
+        cat = str(raw.get("category", "generate")).strip()
         if cat not in cat_keys():
             return JSONResponse({"ok": False, "error": "bad_category"}, 422)
         icon = category_icon(cat) or "wand"
