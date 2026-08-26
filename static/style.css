@@ -792,7 +792,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .user-dropdown { min-width: 220px; }
 .user-dropdown .menu-sec { padding: var(--s1) 0; }
 .user-dropdown .menu-sec + .menu-sec { border-top: 1px solid var(--line); }
-.user-dropdown a, .user-dropdown button { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: 8px var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 500; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
+.user-dropdown a, .user-dropdown button { display: flex; align-items: center; justify-content: flex-start; gap: var(--s2); width: 100%; min-height: 0; padding: 8px var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 500; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
 .user-dropdown a svg, .user-dropdown button svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; opacity: .75; }
 @media (hover:hover) and (pointer:fine) { .user-dropdown a:hover, .user-dropdown button:hover { background: var(--soft); } }
 .user-dropdown .menu-val { margin-left: auto; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
