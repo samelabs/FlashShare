@@ -85,7 +85,6 @@ def _public_item(row: dict) -> dict:
         "label": json.loads(row["label_json"]).get("en")
                  or json.loads(row["label_json"]).get("zh")
                  or row["tool_id"],
-        "icon": row["icon"],
         "visibility": row["visibility"],
         "enabled": row["enabled"],
         "trusted": bool(row["trusted"]),
@@ -137,17 +136,6 @@ def _validate_submission(raw: dict, partial: bool = False) -> tuple:
         if not label or len(label) > 40:
             return None, "bad_label"
         fields["label"] = label
-
-    if "icon" in raw or not partial:
-        # icon is DERIVED from category (spec 2026-08-25): submissions pick a
-        # category; the icon follows the curated mapping. Direct icon input
-        # is accepted only as a backward-compat alias for 'category'.
-        cat = str(raw.get("category") or raw.get("icon") or "").strip()
-        from categories import category_icon, valid_keys
-        if cat not in valid_keys():
-            return None, "bad_category"
-        fields["category"] = cat
-        fields["icon"] = category_icon(cat) or "wand"
 
     if "url" in raw or not partial:
         url = str(raw.get("url") or "").strip()
@@ -352,16 +340,14 @@ async def create_user_tool(request: Request):
         ts = now()
         label = fields["label"]
         con.execute(
+            # 11 bound columns + 4 literals (tool_type/presets/multi/enabled... trusted default FALSE)
             """INSERT INTO platform_tools
-               (tool_key, owner_id, tool_id, execution, tool_type,
-                label_json, icon, category, accept_json, presets_json, multi,
-                visibility, endpoint_json, enabled, trusted,
-                created_at, updated_at)
-               VALUES (%s, %s, %s, %s, 'produce', %s, %s, %s, %s, NULL, FALSE,
-                       %s, %s, TRUE, FALSE, %s, %s)""",
+               (tool_key, owner_id, tool_id, execution,
+                label_json, accept_json,
+                visibility, endpoint_json, enabled, created_at, updated_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)""",
             (tool_key, user["id"], tool_id, execution,
              json.dumps({"en": label, "zh": label}, ensure_ascii=False),
-             fields["icon"], fields.get("category"),
              json.dumps(fields.get("accept")) if fields.get("accept") else None,
              fields["visibility"],
              json.dumps(_endpoint_decl(fields, execution)),
@@ -375,7 +361,7 @@ async def create_user_tool(request: Request):
 
 @router.patch("/api/usertools/{tool_id}")
 async def update_user_tool(tool_id: str, request: Request):
-    """Partial update: label/icon/url/timeout/auth/accept/output identity/
+    """Partial update: label/url/timeout/auth/accept/output identity/
     visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check."""
     user, err = _require_auth(request)
     if err:
@@ -422,15 +408,10 @@ async def update_user_tool(tool_id: str, request: Request):
         except RemoteError:
             return JSONResponse({"ok": False, "error": "https_required"}, 422)
 
-    # category: derived-icon classification (validated above)
     sets = {}
     if "label" in fields:
         sets["label_json"] = json.dumps(
             {"en": fields["label"], "zh": fields["label"]}, ensure_ascii=False)
-    if "icon" in fields:
-        sets["icon"] = fields["icon"]
-    if "category" in fields:
-        sets["category"] = fields["category"]
     if "visibility" in fields:
         sets["visibility"] = fields["visibility"]
     if "accept" in fields:

@@ -501,7 +501,7 @@ function initToolSearch() {
       const by = x.id.includes("/") ? ` <em class="tool-tab-by">@${escapeHtml(x.id.split("/")[0])}</em>` : "";
       const cost = x.cost > 0 ? `<span class="tool-cost">${x.cost}</span>` : "";
       return `<button type="button" class="tool-search-item" role="option" data-idx="${i}" data-tool="${escapeHtml(x.id)}">
-        ${svgIcon(x.icon)}<span class="tool-tab-name">${escapeHtml(name)}${by}</span>${cost}
+        ${x.icon ? svgIcon(x.icon) : ''}<span class="tool-tab-name">${escapeHtml(name)}${by}</span>${cost}
       </button>`;
     }).join("");
     pop.classList.remove("hidden");
@@ -572,7 +572,7 @@ function openToolOverlay(tool, btn) {
   const toolName = tool.id.includes("/")
     ? (tool.label[currentLang()] || tool.label.en || tool.id)
     : t(tool.id);
-  const iconSvg = svgIcon(tool.icon);
+  const iconSvg = tool.icon ? svgIcon(tool.icon) : '';
   const isActive = activeTool && activeTool.id === tool.id;
 
   // Build overlay content

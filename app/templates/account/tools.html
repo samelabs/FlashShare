@@ -42,7 +42,6 @@
     </button>
     <h2 data-i18n="mytools_create">{{ texts.mytools_create }}</h2>
     <p class="profile-note" data-i18n="mytools_modal_hint">{{ texts.mytools_modal_hint }}</p>
-    <input type="hidden" id="fCategory" value="generate">
     <div class="usertools-form">
       <label><span data-i18n="mytools_f_label">{{ texts.mytools_f_label }}</span><input id="fLabel" maxlength="40" placeholder="Super Resolve"></label>
       <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span><input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41"></label>
@@ -57,10 +56,6 @@
       <label id="fMcpRow" class="hidden"><span data-i18n="mytools_f_mcp">{{ texts.mytools_f_mcp }}</span><input id="fMcpTool" placeholder="tools/call name"></label>
       <label><span data-i18n="mytools_f_authh">{{ texts.mytools_f_authh }}</span><input id="fAuthHeader" placeholder="Authorization" maxlength="64"></label>
       <label><span data-i18n="mytools_f_autht">{{ texts.mytools_f_autht }}</span><input id="fAuthToken" type="password" placeholder="Bearer …" maxlength="512"></label>
-      <label class="usertools-wide icon-pick-label">
-        <span data-i18n="mytools_f_category">{{ texts.mytools_f_category }}</span>
-        <div class="cat-grid" id="catGrid" role="radiogroup" aria-label="{{ texts.mytools_f_category }}"></div>
-      </label>
     </div>
     <div class="usertools-submit-row">
       <button type="button" class="primary" id="submitTool"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
@@ -95,36 +90,7 @@
 const _toolList = document.getElementById('toolList');
 const _modal = document.getElementById('toolModal');
 
-// category picker: icon is DERIVED from the curated category mapping
-// (spec 2026-08-25 — never a 40-icon wall, never a text input)
-let _selIcon = 'wand';
-(function buildCatGrid() {
-  const grid = document.getElementById('catGrid');
-  const cats = {{ categories_json|safe }};
-  const lang = window.__LANG || 'en';
-  for (const c of cats) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'cat-cell' + (c.key === 'generate' ? ' picked' : '');
-    b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', c.key === 'generate' ? 'true' : 'false');
-    b.dataset.cat = c.key;
-    b.dataset.icon = c.icon;
-    b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (window.__ICONS__[c.icon] || '') + '</svg>' +
-      '<span>' + ((c.label && (c.label[lang] || c.label.en)) || c.key) + '</span>';
-    if (c.key === 'generate') _selIcon = c.icon;
-    b.addEventListener('click', () => {
-      _selIcon = c.icon;
-      document.getElementById('fCategory').value = c.key;
-      grid.querySelectorAll('.cat-cell').forEach(x => {
-        const on = x.dataset.cat === c.key;
-        x.classList.toggle('picked', on);
-        x.setAttribute('aria-checked', on ? 'true' : 'false');
-      });
-    });
-    grid.appendChild(b);
-  }
-})();
+// (icon/category picker removed — icons fixed server-side)
 
 function openModal() {
   _modal.classList.remove('hidden');
@@ -170,7 +136,7 @@ async function loadTools() {
     head.className = 'usertools-head';
     const ico = document.createElement('span');
     ico.className = 'usertools-ico';
-    ico.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (window.__ICONS__[t.icon] || '') + '</svg>';
+    if (t.icon) ico.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (window.__ICONS__[t.icon] || '') + '</svg>';
     const name = document.createElement('strong');
     name.textContent = t.label || t.tool_key;
     const keyEl = document.createElement('span');
@@ -226,7 +192,6 @@ document.getElementById('submitTool').addEventListener('click', async () => {
     auth_header: document.getElementById('fAuthHeader').value.trim() || undefined,
     auth_token: document.getElementById('fAuthToken').value.trim() || undefined,
     cost: parseInt(document.getElementById('fCost').value, 10) || 0,
-    category: document.getElementById('fCategory').value,
     visibility: 'private',
   };
   // validation masks (mirror backend _validate_submission)

@@ -20,7 +20,7 @@ def get(path, cookie=""):
 st, html = get("/", "flashshare_lang=zh")
 assert st == 200
 assert 'id="toolSearch"' in html and 'cap-bar' in html, "search/cap missing"
-assert 'cap_first_party' in html and '自营工具' in html, "cap i18n zh missing"
+assert 'cap_mcp_ready' in html and 'Agent 可调用' in html, "cap i18n zh missing"
 assert 'data-i18n-placeholder="tool_search_ph"' in html
 print("1. home cap-bar + search box (zh) OK")
 

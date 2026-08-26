@@ -36,7 +36,8 @@ st, d = get("/account/tools")
 html = d.decode()
 assert st == 200, st
 assert 'id="toolModal"' in html and 'class="modal hidden"' in html, "modal missing"
-assert 'id="catGrid"' in html and 'role="radiogroup"' in html, "category picker missing"
+assert 'id="catGrid"' not in html and 'iconGrid' not in html, "picker should be gone"
+assert 'mytools_f_category' not in html and 'mytools_f_icon' not in html, "category/icon labels gone"
 assert 'id="fIcon"' not in html and 'name="icon"' not in html, "raw icon input still present!"
 assert '我的发布' in html or 'acct_tools' in html, "title missing"
 assert 'showToolForm' not in html, "old inline-form toggle still present"
@@ -44,15 +45,11 @@ print("1. modal + category picker, no icon input OK")
 
 # 2. picker names derive from window.__ICONS__ dict injected by base.html
 #    (page route no longer overrides icons_json — that broke lookups site-wide)
-m2 = re.search(r'const cats = (\[.*?\]);', html, re.S)
-assert m2, "categories data missing"
-cats = json.loads(m2.group(1))
-assert len(cats) == 12, len(cats)
-from icons import _ICONS
-assert all(c["icon"] in _ICONS and _ICONS[c["icon"]].strip() for c in cats)
 m3 = re.search(r'window\.__ICONS__ = (\{.*?\});', html, re.S)
-assert m3 and isinstance(json.loads(m3.group(1)), dict)
-print(f"2. category picker: {len(cats)} cats, icons derived + valid OK")
+assert m3 and isinstance(json.loads(m3.group(1)), dict), "base icons intact"
+assert 'const cats =' not in html, "category data still injected"
+print("2. no category/icon picker anywhere OK")
+print("2. no category/icon picker anywhere OK")
 
 # 3. API returns earned field
 st, d = get("/api/usertools")

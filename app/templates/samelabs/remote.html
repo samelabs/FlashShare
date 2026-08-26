@@ -47,9 +47,6 @@
       <option value="mcp">mcp</option>
     </select>
     <input class="sl-input" name="label" placeholder="显示名 如 超分辨率" maxlength="40" style="flex:1 1 130px" required>
-    <select class="sl-input" name="category" style="flex:0 1 130px" aria-label="分类">
-      {% for cat in categories %}<option value="{{ cat.key }}">{{ cat.label.zh }}/{{ cat.label.en }}</option>{% endfor %}
-    </select>
     <input class="sl-input" name="url" type="url" placeholder="https://api.example.com/process" style="flex:2 1 260px" required>
     <input class="sl-input" name="timeout_s" type="number" min="5" max="300" value="60" placeholder="超时秒" style="flex:0 1 90px">
     <input class="sl-input" name="mcp_tool" placeholder="mcp 工具名(仅mcp)" style="flex:1 1 140px">
@@ -74,8 +71,7 @@ document.getElementById('remoteCreate').addEventListener('submit', function (e) 
     tool_id: f.tool_id.value.trim(),
     execution: f.execution.value,
     label: f.label.value.trim(),
-    category: f.category.value,
-    url: f.url.value.trim(),
+        url: f.url.value.trim(),
     timeout_s: parseInt(f.timeout_s.value, 10) || 60,
     mcp_tool: f.mcp_tool.value.trim(),
     auth_header: f.auth_header.value.trim(),

@@ -305,15 +305,11 @@ async def account_tools(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from app.routes.usertools import _owner_rows, _public_item, MAX_TOOLS_PER_USER
-    import json as _json
-    from categories import list_categories
     # NOTE: do NOT pass icons_json here — base.html already injects the
-    # icon dict under that exact key; overriding it with a name list broke
-    # window.__ICONS__ lookups site-wide. Picker names derive client-side.
+    # icon dict under that exact key; overriding it broke site-wide lookups.
     ctx = _account_ctx(request, "tools",
                        tools=[_public_item(r) for r in _owner_rows(user["id"])],
-                       max_tools=MAX_TOOLS_PER_USER,
-                       categories_json=_json.dumps(list_categories(), ensure_ascii=False))
+                       max_tools=MAX_TOOLS_PER_USER)
     return templates.TemplateResponse("account/tools.html", ctx)
 
 
