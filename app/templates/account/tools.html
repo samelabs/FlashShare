@@ -90,6 +90,15 @@ _modal.addEventListener('click', (e) => { if (e.target === _modal) closeModal();
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !_modal.classList.contains('hidden')) closeModal(); });
 
 function _msg(k) { const v = window.t(k); return (v && v !== k) ? v : k; }
+// Error-code → message. Two families, one resolver:
+//  - execution pipeline codes carry their own err_ prefix (err_endpoint_failed…)
+//  - submission/CRUD codes are bare (bad_url…) → mytools_err_<code>
+function _errm(code) {
+  if (!code) return 'failed';
+  if (String(code).startsWith('err_')) return _msg(code) !== code ? _msg(code) : code;
+  const k = 'mytools_err_' + code;
+  return _msg(k) !== k ? _msg(k) : code;
+}
 
 // ── self-test: owner picks a file, platform runs ONE real call ──
 function _selfTest(btn, t) {
@@ -114,8 +123,7 @@ function _selfTest(btn, t) {
       const ds = await rs.json();
       if (ds.ok) alert(_msg('mytools_st_ok').replace('{ms}', ds.ms || '?'));
       else {
-        const k = 'mytools_err_' + ds.error;
-        alert(_msg(k) !== k ? _msg(k) : (ds.error || 'failed'));
+        alert(_errm(ds.error));
       }
     } catch (e) { alert(e.message || 'selftest failed'); }
     btn.disabled = false; btn.textContent = oldTxt;
@@ -147,7 +155,7 @@ function _showCalls(btn, t) {
   btn.disabled = true;
   fetch('/api/usertools/' + t.tool_id + '/calls').then(r => r.json()).then(d => {
     btn.disabled = false;
-    if (!d.ok) { alert(d.error); return; }
+    if (!d.ok) { alert(_errm(d.error)); return; }
     drawer = document.createElement('div');
     drawer.className = 'calls-drawer';
     if (!d.calls.length) {
@@ -185,7 +193,7 @@ function _delBtn(toolId, key) {
     clearTimeout(timer); btn.disabled = true;
     const r = await fetch('/api/usertools/' + toolId, { method: 'DELETE' });
     const d = await r.json();
-    if (d.ok) loadTools(); else { btn.disabled = false; alert(d.error); }
+    if (d.ok) loadTools(); else { btn.disabled = false; alert(_errm(d.error)); }
   });
   return btn;
 }
@@ -236,7 +244,7 @@ async function loadTools() {
       visBtn.disabled = false;
       if (d2.ok) loadTools();
       else if (d2.error === 'self_test_required') alert(_msg('mytools_selftest'));
-      else alert(d2.error);
+      else alert(_errm(d2.error));
     });
     const stBtn = document.createElement('button');
     stBtn.type = 'button'; stBtn.className = 'btn-secondary';
@@ -262,7 +270,7 @@ async function loadTools() {
       });
       const d3 = await r3.json();
       enBtn.disabled = false;
-      if (d3.ok) loadTools(); else alert(d3.error);
+      if (d3.ok) loadTools(); else alert(_errm(d3.error));
     });
     actions.append(stBtn, logBtn, edBtn, enBtn, visBtn, _delBtn(t.tool_id, t.tool_key));
 
@@ -296,9 +304,7 @@ document.getElementById('submitTool').addEventListener('click', async () => {
   const d = await r.json();
   if (d.ok) { _editKey = null; closeModal(); loadTools(); }
   else {
-    const key = 'mytools_err_' + d.error;
-    const v = window.t(key);
-    alert((v && v !== key) ? v : d.error);
+    alert(_errm(d.error));
   }
 });
 

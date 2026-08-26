@@ -15,6 +15,10 @@ LOCALE_TAGS = {
 
 SERVER_I18N = {
     "fr": {
+        "err_bearer_required": "Jeton Bearer manquant",
+        "err_client_ref_required": "client_ref requis",
+        "mytools_err_internal_error": "Erreur interne — réessaie",
+        "mytools_err_invalid_id": "Fichier source invalide",
         "mytools_calls_btn": "Appels",
         "mytools_calls_none": "Aucun appel pour l'instant",
         "signup_bonus_text": "Inscription : {n} crédits offerts",
@@ -361,6 +365,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200 fois",
     },
     "ko": {
+        "err_bearer_required": "Bearer 토큰 누락",
+        "err_client_ref_required": "client_ref 필요",
+        "mytools_err_internal_error": "내부 오류 — 다시 시도",
+        "mytools_err_invalid_id": "유효하지 않은 소스 파일",
         "mytools_calls_btn": "호출 기록",
         "mytools_calls_none": "아직 호출 없음",
         "signup_bonus_text": "가입하면 크레딧 {n} 즉시 지급",
@@ -708,6 +716,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200회",
     },
     "ru": {
+        "err_bearer_required": "Отсутствует Bearer-токен",
+        "err_client_ref_required": "Требуется client_ref",
+        "mytools_err_internal_error": "Внутренняя ошибка — попробуй снова",
+        "mytools_err_invalid_id": "Неверный исходный файл",
         "mytools_calls_btn": "Вызовы",
         "mytools_calls_none": "Вызовов пока нет",
         "signup_bonus_text": "За регистрацию — {n} кредитов сразу",
@@ -1054,6 +1066,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200 раз",
     },
     "ar": {
+        "err_bearer_required": "رمز Bearer مفقود",
+        "err_client_ref_required": "client_ref مطلوب",
+        "mytools_err_internal_error": "خطأ داخلي — أعد المحاولة",
+        "mytools_err_invalid_id": "ملف مصدر غير صالح",
         "mytools_calls_btn": "الاستدعاءات",
         "mytools_calls_none": "لا استدعاءات بعد",
         "signup_bonus_text": "عند التسجيل: {n} رصيد مجاني فورًا",
@@ -1400,6 +1416,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200 مرة",
     },
     "de": {
+        "err_bearer_required": "Bearer-Token fehlt",
+        "err_client_ref_required": "client_ref erforderlich",
+        "mytools_err_internal_error": "Interner Fehler — bitte erneut",
+        "mytools_err_invalid_id": "Ungültige Quelldatei",
         "mytools_calls_btn": "Aufrufe",
         "mytools_calls_none": "Noch keine Aufrufe",
         "signup_bonus_text": "Bei Registrierung: {n} Credits geschenkt",
@@ -1747,6 +1767,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200-mal",
     },
     "pt": {
+        "err_bearer_required": "Token Bearer ausente",
+        "err_client_ref_required": "client_ref obrigatório",
+        "mytools_err_internal_error": "Erro interno — tente novamente",
+        "mytools_err_invalid_id": "Arquivo de origem inválido",
         "mytools_calls_btn": "Chamadas",
         "mytools_calls_none": "Nenhuma chamada ainda",
         "signup_bonus_text": "Ao registrar: {n} créditos grátis na hora",
@@ -2093,6 +2117,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200 vezes",
     },
     "ja": {
+        "err_bearer_required": "Bearerトークンがありません",
+        "err_client_ref_required": "client_refが必要です",
+        "mytools_err_internal_error": "内部エラー — もう一度お試しください",
+        "mytools_err_invalid_id": "ソースファイルが無効です",
         "mytools_calls_btn": "呼び出し",
         "mytools_calls_none": "呼び出しはまだありません",
         "signup_bonus_text": "登録で {n} クレジットをプレゼント",
@@ -2439,6 +2467,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200回",
     },
     "zh": {
+        "err_bearer_required": "缺少 Bearer 令牌",
+        "err_client_ref_required": "缺少 client_ref",
+        "mytools_err_internal_error": "内部错误，请重试",
+        "mytools_err_invalid_id": "源文件无效",
         "mytools_calls_btn": "调用记录",
         "mytools_calls_none": "还没有被调用过",
         "signup_bonus_text": "注册即送 {n} 积分",
@@ -2786,6 +2818,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200 次",
     },
     "es": {
+        "err_bearer_required": "Falta el token Bearer",
+        "err_client_ref_required": "client_ref es obligatorio",
+        "mytools_err_internal_error": "Error interno — reintenta",
+        "mytools_err_invalid_id": "Archivo de origen no válido",
         "mytools_calls_btn": "Llamadas",
         "mytools_calls_none": "Aún sin llamadas",
         "signup_bonus_text": "Al registrarte: {n} créditos gratis",
@@ -3132,6 +3168,10 @@ SERVER_I18N = {
         "twohundredDownloads": "200 veces",
     },
     "en": {
+        "err_bearer_required": "Bearer token missing",
+        "err_client_ref_required": "client_ref required",
+        "mytools_err_internal_error": "Internal error — please retry",
+        "mytools_err_invalid_id": "Invalid source file",
         "mytools_calls_btn": "Calls",
         "mytools_calls_none": "No calls yet",
         "signup_bonus_text": "Sign up and get {n} free credits",

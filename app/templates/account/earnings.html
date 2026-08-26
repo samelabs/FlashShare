@@ -55,6 +55,12 @@
 
 {% block script %}
 const _msg = k => { const v = window.t(k); return (v && v !== k) ? v : k; };
+const _errm = code => {
+  if (!code) return 'failed';
+  if (String(code).startsWith('err_')) return _msg(code) !== code ? _msg(code) : code;
+  const k = 'err_' + code;  // money-page codes map under err_<code>
+  return _msg(k) !== k ? _msg(k) : code;
+};
 const _wModal = document.getElementById('withdrawModal');
 
 async function loadEarnings() {
@@ -144,8 +150,7 @@ document.getElementById('submitWithdraw')?.addEventListener('click', async () =>
   const d = await r.json();
   btn.disabled = false;
   if (d.ok) { _wModal.classList.add('hidden'); loadEarnings(); return; }
-  const key = 'err_' + d.error;
-  alert((key !== _msg(key)) ? _msg(key) : d.error);
+  alert(_errm(d.error));
 });
 
 loadEarnings();

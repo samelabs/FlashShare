@@ -812,7 +812,7 @@ async function retryTool() {
       }),
     });
     const toolData = await toolRes.json();
-    if (!toolData.ok) { showToolError(toolData.error, lastUploadResult); return; }
+    if (!toolData.ok) { const ek = toolData.error || "failed"; showToolError(t(ek) !== ek ? t(ek) : t("failed"), lastUploadResult); return; }
     lastToolSource = null;
     showShareResult(toolData.result);
     window._loadHistory && window._loadHistory();
