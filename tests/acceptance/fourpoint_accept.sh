@@ -16,13 +16,14 @@ def get(path, cookie=""):
     r = conn.getresponse()
     return r.status, r.read().decode()
 
-# 1. anonymous home: cap bar + search box + grid present
+# 1. anonymous home: search box + grid present (cap bar removed per user)
 st, html = get("/", "flashshare_lang=zh")
 assert st == 200
-assert 'id="toolSearch"' in html and 'cap-bar' in html, "search/cap missing"
-assert 'cap_mcp_ready' in html and 'Agent 可调用' in html, "cap i18n zh missing"
+assert 'id="toolSearch"' in html, "search missing"
+assert 'cap-bar' not in html and 'cap-stat' not in html, "cap bar should be gone"
+
 assert 'data-i18n-placeholder="tool_search_ph"' in html
-print("1. home cap-bar + search box (zh) OK")
+print("1. home search box (zh), cap bar removed OK")
 
 # 2. search endpoint: built-in match (pdf) — first-party first
 st, body = get("/api/tools/search?q=pdf")
@@ -70,17 +71,13 @@ span = _re.search(r'<span class="tool-tab-name">(.{0,120})</span>', seg, _re.S).
 assert 'data-i18n' not in span, span
 print("4. home grid: community tool + @provider badge, no data-i18n hazard OK")
 
-# 5. platform_stats shape
-from catalog import platform_stats
-s = platform_stats()
-assert s["first_party"] >= 10 and s["community"] >= 1
-print(f"5. platform_stats: {s} OK")
+# 5. (platform_stats removed with cap bar — grid itself is the catalog)
 
 # 6. agents page: MCP-first narrative
 st, html = get("/agents", "flashshare_lang=zh")
 assert st == 200
 assert html.find("mcpServers") < html.find("/api/v1/me"), "MCP must come before REST"
-assert "豆包" in html and "千问办公" in html and "WorkBuddy" in html
+assert "豆包工作" in html and "WorkBuddy" in html and "Cherry Studio" in html
 assert "client_ref" in html
 print("6. agents page MCP-first + client matrix OK")
 

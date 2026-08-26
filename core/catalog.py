@@ -117,22 +117,6 @@ def _row_to_item(row: dict, price: dict) -> dict:
 
 # ── Catalog (single source for web home, /api/v1/tools, MCP tools/list) ──
 
-def platform_stats() -> dict:
-    """Headline counts for the home capability panel (fast, no pricing join)."""
-    with db() as con:
-        row = con.execute(
-            """SELECT
-                 COUNT(*) FILTER (WHERE owner_id IS NULL AND execution = 'local') AS first_party,
-                 COUNT(*) FILTER (WHERE owner_id IS NOT NULL) AS community,
-                 COUNT(*) FILTER (WHERE execution IN ('http', 'mcp')) AS remote
-               FROM platform_tools
-               WHERE enabled AND visibility = %s""",
-            (VIS_PUBLIC,),
-        ).fetchone()
-    return {"first_party": row["first_party"], "community": row["community"],
-            "remote": row["remote"]}
-
-
 def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> list:
     """518-native tool search: prefix/substring match across name (all label
     langs) and tool key, self-operated + community in ONE result list.
