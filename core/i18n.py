@@ -19,7 +19,6 @@ SERVER_I18N = {
         "menu_earnings": "Revenus",
         "menu_publish": "Publier un outil",
         "menu_tokens": "Jetons API",
-        "menu_mcp": "Accès MCP",
 
     "credit_time": "Heure",
         "earn_title": "Revenus",
@@ -348,7 +347,6 @@ SERVER_I18N = {
         "menu_earnings": "수익",
         "menu_publish": "도구 게시",
         "menu_tokens": "API 토큰",
-        "menu_mcp": "MCP 연동",
 
     "credit_time": "시간",
         "earn_title": "수익",
@@ -678,7 +676,6 @@ SERVER_I18N = {
         "menu_earnings": "Доходы",
         "menu_publish": "Публикация инструментов",
         "menu_tokens": "API-токены",
-        "menu_mcp": "Доступ MCP",
 
     "credit_time": "Время",
         "earn_title": "Доходы",
@@ -1007,7 +1004,6 @@ SERVER_I18N = {
         "menu_earnings": "الأرباح",
         "menu_publish": "نشر أداة",
         "menu_tokens": "رموز API",
-        "menu_mcp": "اتصال MCP",
 
     "credit_time": "الوقت",
         "earn_title": "الأرباح",
@@ -1336,7 +1332,6 @@ SERVER_I18N = {
         "menu_earnings": "Einnahmen",
         "menu_publish": "Tool veröffentlichen",
         "menu_tokens": "API-Tokens",
-        "menu_mcp": "MCP-Zugang",
 
     "credit_time": "Zeit",
         "earn_title": "Einnahmen",
@@ -1666,7 +1661,6 @@ SERVER_I18N = {
         "menu_earnings": "Ganhos",
         "menu_publish": "Publicar ferramenta",
         "menu_tokens": "Tokens de API",
-        "menu_mcp": "Acesso MCP",
 
     "credit_time": "Hora",
         "earn_title": "Ganhos",
@@ -1995,7 +1989,6 @@ SERVER_I18N = {
         "menu_earnings": "収益",
         "menu_publish": "ツール公開",
         "menu_tokens": "APIトークン",
-        "menu_mcp": "MCP連携",
 
     "credit_time": "日時",
         "earn_title": "収益",
@@ -2324,7 +2317,6 @@ SERVER_I18N = {
         "menu_earnings": "我的收益",
         "menu_publish": "发布工具",
         "menu_tokens": "API 令牌",
-        "menu_mcp": "MCP 接入",
 
     "credit_time": "时间",
         "earn_title": "收益",
@@ -2654,7 +2646,6 @@ SERVER_I18N = {
         "menu_earnings": "Ganancias",
         "menu_publish": "Publicar herramienta",
         "menu_tokens": "Tokens de API",
-        "menu_mcp": "Acceso MCP",
 
     "credit_time": "Fecha",
         "earn_title": "Ganancias",
@@ -2983,7 +2974,6 @@ SERVER_I18N = {
         "menu_earnings": "Earnings",
         "menu_publish": "Publish a Tool",
         "menu_tokens": "API Tokens",
-        "menu_mcp": "MCP Access",
 
     "credit_time": "Time",
         "earn_title": "Earnings",
