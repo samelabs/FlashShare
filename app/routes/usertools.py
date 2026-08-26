@@ -139,11 +139,15 @@ def _validate_submission(raw: dict, partial: bool = False) -> tuple:
         fields["label"] = label
 
     if "icon" in raw or not partial:
-        icon = str(raw.get("icon") or "wand").strip()
-        from tools import VALID_ICONS
-        if icon not in VALID_ICONS:
-            return None, "bad_icon"
-        fields["icon"] = icon
+        # icon is DERIVED from category (spec 2026-08-25): submissions pick a
+        # category; the icon follows the curated mapping. Direct icon input
+        # is accepted only as a backward-compat alias for 'category'.
+        cat = str(raw.get("category") or raw.get("icon") or "").strip()
+        from categories import category_icon, valid_keys
+        if cat not in valid_keys():
+            return None, "bad_category"
+        fields["category"] = cat
+        fields["icon"] = category_icon(cat) or "wand"
 
     if "url" in raw or not partial:
         url = str(raw.get("url") or "").strip()
@@ -350,14 +354,14 @@ async def create_user_tool(request: Request):
         con.execute(
             """INSERT INTO platform_tools
                (tool_key, owner_id, tool_id, execution, tool_type,
-                label_json, icon, accept_json, presets_json, multi,
+                label_json, icon, category, accept_json, presets_json, multi,
                 visibility, endpoint_json, enabled, trusted,
                 created_at, updated_at)
-               VALUES (%s, %s, %s, %s, 'produce', %s, %s, %s, NULL, FALSE,
+               VALUES (%s, %s, %s, %s, 'produce', %s, %s, %s, %s, NULL, FALSE,
                        %s, %s, TRUE, FALSE, %s, %s)""",
             (tool_key, user["id"], tool_id, execution,
              json.dumps({"en": label, "zh": label}, ensure_ascii=False),
-             fields["icon"],
+             fields["icon"], fields.get("category"),
              json.dumps(fields.get("accept")) if fields.get("accept") else None,
              fields["visibility"],
              json.dumps(_endpoint_decl(fields, execution)),
@@ -418,12 +422,15 @@ async def update_user_tool(tool_id: str, request: Request):
         except RemoteError:
             return JSONResponse({"ok": False, "error": "https_required"}, 422)
 
+    # category: derived-icon classification (validated above)
     sets = {}
     if "label" in fields:
         sets["label_json"] = json.dumps(
             {"en": fields["label"], "zh": fields["label"]}, ensure_ascii=False)
     if "icon" in fields:
         sets["icon"] = fields["icon"]
+    if "category" in fields:
+        sets["category"] = fields["category"]
     if "visibility" in fields:
         sets["visibility"] = fields["visibility"]
     if "accept" in fields:

@@ -454,7 +454,11 @@ async def samelabs_remote_create(request: Request):
         tool_id = str(raw.get("tool_id", "")).strip()
         execution = str(raw.get("execution", "http")).strip()
         label = str(raw.get("label", "")).strip() or tool_id
-        icon = str(raw.get("icon", "wand")).strip()
+        from categories import category_icon, valid_keys as cat_keys
+        cat = str(raw.get("category", "util")).strip()
+        if cat not in cat_keys():
+            return JSONResponse({"ok": False, "error": "bad_category"}, 422)
+        icon = category_icon(cat) or "wand"
         url = str(raw.get("url", "")).strip()
         timeout_s = int(raw.get("timeout_s", 60))
         auth_header = str(raw.get("auth_header", "")).strip()
@@ -518,13 +522,13 @@ async def samelabs_remote_create(request: Request):
             con.execute(
                 """INSERT INTO platform_tools
                    (tool_key, owner_id, tool_id, execution, tool_type,
-                    label_json, icon, accept_json, presets_json, multi,
+                    label_json, icon, category, accept_json, presets_json, multi,
                     visibility, endpoint_json, enabled, created_at, updated_at)
-                   VALUES (%s, NULL, %s, %s, 'produce', %s, %s, %s, NULL, FALSE,
+                   VALUES (%s, NULL, %s, %s, 'produce', %s, %s, %s, %s, NULL, FALSE,
                            'public', %s, TRUE, %s, %s)""",
                 (tool_id, tool_id, execution,
                  _json.dumps({"en": label, "zh": label}, ensure_ascii=False),
-                 icon,
+                 icon, cat,
                  _json.dumps(accept) if accept else None,
                  _json.dumps(endpoint), ts, ts),
             )

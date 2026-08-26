@@ -201,6 +201,9 @@ async def startup():
         from earnings import ensure_schema
         ensure_schema()
         logger.info("withdrawals schema ready")
+        from categories import ensure_schema as ensure_categories
+        cat = ensure_categories()
+        logger.info("tool categories seeded: %s rows", cat["seeded"])
     except Exception:
         logger.exception("pricing seed failed (non-fatal)")
     logger.info("%s started", APP_NAME)

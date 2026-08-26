@@ -31,27 +31,28 @@ def get(path):
     conn.request("GET", path, headers={"Cookie": f"{COOKIE_NAME}={tok_s}"})
     r = conn.getresponse(); return r.status, r.read()
 
-# 1. page renders: modal + icon grid + NO raw icon text input
+# 1. page renders: modal + category picker (icon derived) + NO raw icon input
 st, d = get("/account/tools")
 html = d.decode()
 assert st == 200, st
 assert 'id="toolModal"' in html and 'class="modal hidden"' in html, "modal missing"
-assert 'id="iconGrid"' in html and 'role="radiogroup"' in html, "icon grid missing"
-assert 'id="fIcon"' not in html, "raw icon text input still present!"
+assert 'id="catGrid"' in html and 'role="radiogroup"' in html, "category picker missing"
+assert 'id="fIcon"' not in html and 'name="icon"' not in html, "raw icon input still present!"
 assert '我的发布' in html or 'acct_tools' in html, "title missing"
 assert 'showToolForm' not in html, "old inline-form toggle still present"
-print("1. modal + icon grid, no text-input icon OK")
+print("1. modal + category picker, no icon input OK")
 
 # 2. picker names derive from window.__ICONS__ dict injected by base.html
 #    (page route no longer overrides icons_json — that broke lookups site-wide)
-m2 = re.search(r'window\.__ICONS__ = (\{.*?\});', html, re.S)
-assert m2, "__ICONS__ missing"
+m2 = re.search(r'const cats = (\[.*?\]);', html, re.S)
+assert m2, "categories data missing"
+cats = json.loads(m2.group(1))
+assert len(cats) == 12, len(cats)
 from icons import _ICONS
-import json as _j
-injected = _j.loads(m2.group(1))
-assert isinstance(injected, dict) and set(injected.keys()) == set(_ICONS.keys())
-assert "const names = Object.keys(window.__ICONS__" in html
-print(f"2. icon picker: {len(injected)} icons from __ICONS__ dict OK")
+assert all(c["icon"] in _ICONS and _ICONS[c["icon"]].strip() for c in cats)
+m3 = re.search(r'window\.__ICONS__ = (\{.*?\});', html, re.S)
+assert m3 and isinstance(json.loads(m3.group(1)), dict)
+print(f"2. category picker: {len(cats)} cats, icons derived + valid OK")
 
 # 3. API returns earned field
 st, d = get("/api/usertools")

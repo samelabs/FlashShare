@@ -301,7 +301,9 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .modal.hidden { display: none; }
 .modal:not(.hidden) .modal-panel { animation: modalIn var(--ease); }
 @keyframes modalIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
-.modal-panel { width: min(540px,100%); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s5) var(--s4) var(--s4); padding-bottom: max(var(--s4), env(safe-area-inset-bottom)); position: relative; box-shadow: var(--sh-xl); }
+.modal-panel { width: min(540px,100%); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s5) var(--s4) var(--s4); padding-bottom: max(var(--s4), env(safe-area-inset-bottom)); position: relative; box-shadow: var(--sh-xl); max-height: calc(100dvh - var(--s4) * 2); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+/* tall forms must never lock the page: the panel itself scrolls
+   (body is overflow:hidden by site design — .shell scrolls) */
 .modal-close { position: absolute; right: var(--s3); top: var(--s3); width: 34px; height: 34px; min-height: 34px; padding: 0; background: transparent; color: var(--muted); border: 0; border-radius: 50%; }
 @media (hover:hover) and (pointer:fine) { .modal-close:hover { background: var(--soft); color: var(--ink); opacity: 1; } }
 .modal-panel h2 { margin: 0; padding-right: 42px; font-size: var(--text-xl); line-height: 1.25; overflow-wrap: anywhere; font-weight: 800; }
@@ -777,3 +779,10 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page .earn-hist { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .acct-page .earn-hist td { padding: 6px 10px 6px 0; border-bottom: 1px dashed var(--line); }
 .acct-page .earn-hist td:first-child { font-weight: 700; }
+
+/* ── category picker (icon = derived from category mapping) ── */
+.acct-page .cat-grid { display: flex; flex-wrap: wrap; gap: var(--s1); padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.acct-page .cat-cell { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid transparent; border-radius: var(--r-full); background: transparent; color: var(--ink-soft); cursor: pointer; font-size: var(--text-sm); }
+.acct-page .cat-cell svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.acct-page .cat-cell.picked { border-color: var(--accent); color: var(--accent); background: var(--soft); }
+@media (hover:hover) and (pointer:fine) { .acct-page .cat-cell:hover { border-color: var(--line-strong); color: var(--ink); } }
