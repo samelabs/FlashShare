@@ -1,27 +1,35 @@
-{# account nav — shared across /account/* pages #}
-<nav class="acct-nav" aria-label="{{ texts.acct_nav }}">
-  <a href="/account/profile" class="acct-tab{% if acct_page == 'profile' %} active{% endif %}">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-    <span data-i18n="acct_profile">{{ texts.acct_profile }}</span>
-  </a>
-  <a href="/account/security" class="acct-tab{% if acct_page == 'security' %} active{% endif %}">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-    <span data-i18n="acct_security">{{ texts.acct_security }}</span>
-  </a>
-  <a href="/account/credits" class="acct-tab{% if acct_page == 'credits' %} active{% endif %}">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10"></path><path d="M15.5 9.5a3 3 0 0 0-3.5-2.5h-.5a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5H12a3 3 0 0 1-3.5-2.5"></path></svg>
-    <span data-i18n="acct_credits">{{ texts.acct_credits }}</span>
-  </a>
-  <a href="/account/tokens" class="acct-tab{% if acct_page == 'tokens' %} active{% endif %}">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 9-3 3 3 3"></path><path d="m16 9 3 3-3 3"></path><path d="m13 5-2 14"></path></svg>
-    <span data-i18n="acct_tokens">{{ texts.acct_tokens }}</span>
-  </a>
-  <a href="/account/earnings" class="acct-tab{% if acct_page == 'earnings' %} active{% endif %}">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-    <span data-i18n="menu_earnings">{{ texts.menu_earnings }}</span>
-  </a>
-  <a href="/account/tools" class="acct-tab{% if acct_page == 'tools' %} active{% endif %}">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-    <span data-i18n="acct_tools">{{ texts.acct_tools }}</span>
-  </a>
-</nav>
+{# account nav — sidebar layout across /account/* pages #}
+<aside class="acct-side" aria-label="{{ texts.acct_nav }}">
+  <div class="acct-side-user">
+    <span class="acct-side-avatar">{{ (user.displayName or user.username or '?')[:1].upper() }}</span>
+    <span class="acct-side-name">{{ (user.displayName or user.username)|e }}</span>
+    <span class="acct-side-handle">@{{ user.username|e }}</span>
+  </div>
+  <nav class="acct-side-nav">
+    <a href="/account/tools" class="side-item{% if acct_page == 'tools' %} active{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+      <span data-i18n="acct_tools">{{ texts.acct_tools }}</span>
+    </a>
+    <a href="/account/earnings" class="side-item{% if acct_page == 'earnings' %} active{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+      <span data-i18n="menu_earnings">{{ texts.menu_earnings }}</span>
+    </a>
+    <a href="/account/credits" class="side-item{% if acct_page == 'credits' %} active{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10"></path><path d="M15.5 9.5a3 3 0 0 0-3.5-2.5h-.5a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5H12a3 3 0 0 1-3.5-2.5"></path></svg>
+      <span data-i18n="acct_credits">{{ texts.acct_credits }}</span>
+    </a>
+    <a href="/account/tokens" class="side-item{% if acct_page == 'tokens' %} active{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-3 3 3 3"></path><path d="m16 9 3 3-3 3"></path><path d="m13 5-2 14"></path></svg>
+      <span data-i18n="acct_tokens">{{ texts.acct_tokens }}</span>
+    </a>
+    <div class="side-sep"></div>
+    <a href="/account/profile" class="side-item{% if acct_page == 'profile' %} active{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <span data-i18n="acct_profile">{{ texts.acct_profile }}</span>
+    </a>
+    <a href="/account/security" class="side-item{% if acct_page == 'security' %} active{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      <span data-i18n="acct_security">{{ texts.acct_security }}</span>
+    </a>
+  </nav>
+</aside>

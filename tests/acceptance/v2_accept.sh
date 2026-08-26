@@ -81,10 +81,11 @@ probe = [t for t in res["tools"] if t["tool_key"] == key][0]
 assert probe["calls"]["earned"] == 7, probe["calls"]
 print("4. earned = 7 (payout join) OK")
 
-# 5. nav CSS: wrap rule present; 640px media query
+# 5. nav CSS: sidebar layout (2026-08-26 rework; flat tabs retired)
 css = open("/opt/flashshare/static/style.css").read()
-assert "@media (max-width: 640px)" in css and "flex-wrap: wrap" in css[css.rfind("@media (max-width: 640px)"):][:300], "nav wrap css missing"
-assert "overflow-x: visible" in css, "nav overflow fix missing"
+assert "grid-template-columns: 216px" in css, "sidebar grid missing"
+assert ".side-item.active" in css, "sidebar active state missing"
+assert "@media (max-width: 720px)" in css, "sidebar mobile rule missing"
 print("5. acct-nav mobile wrap CSS OK")
 
 # 6. i18n rename live (zh)

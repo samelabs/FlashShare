@@ -7,6 +7,7 @@
 <section class="acct-page">
   <h1>{{ texts.acct_tokens }}</h1>
   {% include "account/_nav.html" %}
+  <div class="acct-main">
 
   <div class="acct-card">
     <h2 data-i18n="apiTokens">{{ texts.apiTokens }}</h2>
@@ -32,6 +33,7 @@
       <a class="btn-secondary" href="/agents" data-i18n="open">{{ texts.open }}</a>
     </div>
     <p data-i18n="agents_tokens_hint">{{ texts.agents_tokens_hint }}</p>
+  </div>
   </div>
 </section>
 {% endblock %}
