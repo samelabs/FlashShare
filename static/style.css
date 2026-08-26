@@ -626,30 +626,17 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 /* ── Account pages (/account/*) ── */
 .acct-page { width: 100%; max-width: 720px; margin: 0 auto; padding: var(--s4) var(--s2) var(--s5); }
 .acct-page h1 { font-size: var(--text-xl); margin-bottom: var(--s3); }
-/* ── account center: sidebar layout (professional split) ── */
-.acct-page { display: grid; grid-template-columns: 216px minmax(0, 1fr); gap: var(--s4); align-items: start; }
-.acct-page > h1 { grid-column: 1 / -1; }
-.acct-side { position: sticky; top: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
-.acct-side-user { display: flex; flex-direction: column; gap: 2px; padding: var(--s3); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); }
-.acct-side-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: var(--button-ink); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: var(--text-base); margin-bottom: var(--s1); }
-.acct-side-name { font-weight: 700; color: var(--ink); font-size: var(--text-sm); }
-.acct-side-handle { color: var(--muted); font-size: var(--text-xs); }
-.acct-side-nav { display: flex; flex-direction: column; gap: 2px; padding: var(--s1); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); }
-.side-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-sm); color: var(--muted); font-size: var(--text-sm); font-weight: 500; text-decoration: none; transition: background var(--ease), color var(--ease); }
-.side-item svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
-@media (hover:hover) and (pointer:fine) { .side-item:hover { background: var(--soft); color: var(--ink); } }
-.side-item.active { background: var(--soft); color: var(--accent); font-weight: 600; }
-.side-sep { height: 1px; background: var(--line); margin: var(--s1) 6px; }
+/* ── account center: refined tab strip ── */
+.acct-nav { display: flex; align-items: center; gap: var(--s1); padding: var(--s1); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: var(--s3); overflow-x: auto; }
+.acct-tab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: var(--r-sm); color: var(--muted); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; text-decoration: none; transition: background var(--ease), color var(--ease); }
+.acct-tab svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
+@media (hover:hover) and (pointer:fine) { .acct-tab:hover { background: var(--soft); color: var(--ink); } }
+.acct-tab.active { background: var(--soft); color: var(--accent); font-weight: 600; }
+.acct-tab-sep { width: 1px; height: 20px; background: var(--line); margin: 0 var(--s1); flex-shrink: 0; }
 @media (max-width: 720px) {
-  .acct-page { grid-template-columns: 1fr; }
-  .acct-side { position: static; flex-direction: row; align-items: center; gap: var(--s2); overflow-x: auto; }
-  .acct-side-user { flex-direction: row; align-items: center; padding: var(--s2) var(--s3); gap: var(--s2); flex: 0 0 auto; }
-  .acct-side-avatar { width: 28px; height: 28px; margin: 0; font-size: var(--text-sm); }
-  .acct-side-name { white-space: nowrap; }
-  .acct-side-handle { display: none; }
-  .acct-side-nav { flex-direction: row; overflow-x: auto; flex-wrap: nowrap; }
-  .side-item { white-space: nowrap; flex: 0 0 auto; }
-  .side-sep { width: 1px; height: 24px; margin: 0 2px; flex: 0 0 auto; }
+  .acct-nav { overflow-x: auto; flex-wrap: nowrap; }
+  .acct-tab { padding: 8px 10px; }
+  .acct-tab-sep { margin: 0 2px; }
 }
 .acct-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s3) var(--s4); margin-bottom: var(--s3); }
 .acct-card h2 { font-size: var(--text-base); font-weight: 600; margin-bottom: var(--s2); }
@@ -826,6 +813,3 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page .wd-st { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); background: var(--soft); color: var(--muted); }
 .acct-page .wd-st.st-approved, .acct-page .wd-st.st-paid { color: var(--accent); }
 .acct-page .wd-st.st-rejected { color: var(--danger); }
-
-/* grid right column stacking */
-.acct-main { display: flex; flex-direction: column; min-width: 0; }

@@ -7,7 +7,6 @@
 <section class="acct-page">
   <h1>{{ texts.acct_security }}</h1>
   {% include "account/_nav.html" %}
-  <div class="acct-main">
   {% if error %}<p class="form-error">{{ error|e }}</p>{% endif %}
 
   {% if user_has_password %}
@@ -48,7 +47,6 @@
     </form>
   </div>
   {% endif %}
-  </div>
 </section>
 {% endblock %}
 

@@ -7,7 +7,6 @@
 <section class="acct-page">
   <h1>{{ texts.acct_profile }}</h1>
   {% include "account/_nav.html" %}
-  <div class="acct-main">
   {% if error %}<p class="form-error">{{ error|e }}</p>{% endif %}
 
   <div class="acct-card">
@@ -52,7 +51,6 @@
     <form method="post" action="/auth/logout">
       <button type="submit" class="btn-danger"><span data-i18n="logout">{{ texts.logout }}</span></button>
     </form>
-  </div>
   </div>
 </section>
 {% endblock %}

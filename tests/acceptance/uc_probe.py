@@ -46,15 +46,15 @@ c2 = ('class="primary" id="openToolModal"' in thtml
       and "还没有发布过工具" in thtml)
 print(("PASS" if c2 else "FAIL"), "2. tools page: primary create btn + list + empty state")
 
-# ③ sidebar layout everywhere, tabs gone
-all_sb = True
+# ③ tab strip refined, no sidebar, no duplicate user card
+all_tb = True
 for p in PAGES[:6]:
     st, h = get(p)
-    ok = 'class="acct-side"' in h and 'class="acct-side-nav"' in h and 'acct-tab' not in h and 'class="acct-main"' in h
-    if not ok: all_sb = False; print("   sidebar missing on", p)
+    ok = 'class="acct-nav"' in h and 'acct-tab active' in h and 'acct-side' not in h and 'acct-main' not in h
+    if not ok: all_tb = False; print("   tab strip missing on", p)
 css = open('/opt/flashshare/static/style.css').read()
-c3 = all_sb and '.acct-page { display: grid; grid-template-columns: 216px' in css and '.side-item.active' in css and '@media (max-width: 720px)' in css
-print(("PASS" if c3 else "FAIL"), "3. sidebar layout on all 6 account pages (+mobile row)")
+c3 = all_tb and '.acct-tab.active' in css and '.acct-tab-sep' in css and 'acct-side' not in css
+print(("PASS" if c3 else "FAIL"), "3. refined pill tabs on all 6 pages, no sidebar/no dup user card")
 
 psql("DELETE FROM sessions WHERE user_id=%s", (uid,))
 psql("DELETE FROM users WHERE id=%s", (uid,))
