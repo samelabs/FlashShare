@@ -8,24 +8,36 @@
   <p class="agents-intro">{{ texts.agents_mcp_intro }}</p>
 
   <div class="agents-quickstart">
-    <h2>{{ texts.agents_mcp_h }}</h2>
-    <p>{{ texts.agents_mcp_desc }}</p>
-    <div class="agents-copy">
-      <code id="mcpUrl">https://518.plus/mcp</code>
-      <button type="button" class="btn-secondary" id="copyMcp">{{ texts.copy }}</button>
-    </div>
-    <div class="agents-mcp-config">
-      <h3>{{ texts.agents_mcp_conf }}</h3>
+    <h2>{{ texts.agents_qs }}</h2>
+    <ol class="agents-steps">
+      <li>{{ texts.agents_qs1 }} <a href="/account/tokens">{{ texts.acct_tokens }}</a>（fsk_ 开头）</li>
+      <li>{{ texts.agents_qs2 }}</li>
+      <li>{{ texts.agents_qs3 }}</li>
+    </ol>
+  </div>
+
+  <h2>{{ texts.agents_mcp_h }}</h2>
+  <div class="agents-copy">
+    <code id="mcpUrl">https://518.plus/mcp</code>
+    <button type="button" class="btn-secondary" id="copyMcp">{{ texts.copy }}</button>
+  </div>
+  <div class="agents-mcp-config">
+    <h3>{{ texts.agents_mcp_conf }}</h3>
+    <dl class="agents-fields">
+      <dt>{{ texts.agents_f_url }}</dt><dd><code>https://518.plus/mcp</code></dd>
+      <dt>{{ texts.agents_f_header }}</dt><dd><code>Authorization</code></dd>
+      <dt>{{ texts.agents_f_value }}</dt><dd><code>Bearer fsk_你的令牌</code></dd>
+      <dt>{{ texts.agents_f_alt }}</dt><dd><code>https://518.plus/mcp?key=fsk_你的令牌</code></dd>
+    </dl>
 <pre class="agents-pre"><code id="mcpConf">{
   "mcpServers": {
     "fives18plus": {
       "url": "https://518.plus/mcp",
-      "headers": { "Authorization": "Bearer fsk_..." }
+      "headers": { "Authorization": "Bearer fsk_你的令牌" }
     }
   }
 }</code></pre>
-      <button type="button" class="btn-secondary" id="copyConf">{{ texts.copy }}</button>
-    </div>
+    <button type="button" class="btn-secondary" id="copyConf">{{ texts.copy }}</button>
   </div>
 
   <h2>{{ texts.agents_clients_h }}</h2>
@@ -34,10 +46,26 @@
     <table class="agents-table">
       <thead><tr><th>Client</th><th>{{ texts.agents_client_how }}</th></tr></thead>
       <tbody>
-        <tr><td class="mono">Claude / Cursor / Cherry Studio</td><td>{{ texts.agents_cl_generic }}</td></tr>
-        <tr><td class="mono">{{ texts.agents_cl_doubao }}</td><td>{{ texts.agents_cl_doubao_how }}</td></tr>
-        <tr><td class="mono">{{ texts.agents_cl_qwen }}</td><td>{{ texts.agents_cl_qwen_how }}</td></tr>
-        <tr><td class="mono">WorkBuddy / {{ texts.agents_cl_other }}</td><td>{{ texts.agents_cl_generic }}</td></tr>
+        <tr>
+          <td class="mono">Cherry Studio</td>
+          <td>{{ texts.agents_cl_cherry|safe }}</td>
+        </tr>
+        <tr>
+          <td class="mono">Claude Desktop / Cursor</td>
+          <td>{{ texts.agents_cl_generic|safe }}</td>
+        </tr>
+        <tr>
+          <td class="mono">Qwen Code (CLI)</td>
+          <td>{{ texts.agents_cl_qwen|safe }}<br><code class="mono">qwen mcp add 518plus "https://518.plus/mcp?key=fsk_你的令牌" -t http</code></td>
+        </tr>
+        <tr>
+          <td class="mono">WorkBuddy</td>
+          <td>{{ texts.agents_cl_wb|safe }}</td>
+        </tr>
+        <tr>
+          <td class="mono">{{ texts.agents_cl_doubao_name }}</td>
+          <td>{{ texts.agents_cl_doubao_note|safe }}</td>
+        </tr>
       </tbody>
     </table>
   </div>

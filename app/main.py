@@ -70,13 +70,21 @@ def get_user_from_request(request: Request):
     same downstream authorization. Cookie keeps browser flows unchanged.
     """
     from database import db
-    from apitokens import authenticate_token
+    from apitokens import authenticate_token, TOKEN_PREFIX
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         # Bearer channel for programmatic clients
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
             user = authenticate_token(auth[7:].strip())
+            if user:
+                request.state.auth_via = "token"
+            return user
+        # ?key= query channel for MCP clients that cannot set custom
+        # headers (industry-standard pattern; same token, same gates)
+        qkey = request.query_params.get("key", "")
+        if qkey.startswith(TOKEN_PREFIX):
+            user = authenticate_token(qkey)
             if user:
                 request.state.auth_via = "token"
             return user
