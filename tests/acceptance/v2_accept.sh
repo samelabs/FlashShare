@@ -81,11 +81,11 @@ probe = [t for t in res["tools"] if t["tool_key"] == key][0]
 assert probe["calls"]["earned"] == 7, probe["calls"]
 print("4. earned = 7 (payout join) OK")
 
-# 5. nav CSS: sidebar layout (2026-08-26 rework; flat tabs retired)
+# 5. nav CSS: refined pill tab strip (sidebar reverted per user)
 css = open("/opt/flashshare/static/style.css").read()
-assert "grid-template-columns: 216px" in css, "sidebar grid missing"
-assert ".side-item.active" in css, "sidebar active state missing"
-assert "@media (max-width: 720px)" in css, "sidebar mobile rule missing"
+assert ".acct-tab.active" in css, "pill tab active missing"
+assert ".acct-tab-sep" in css, "group separator missing"
+assert "acct-side" not in css, "sidebar residue"
 print("5. acct-nav mobile wrap CSS OK")
 
 # 6. i18n rename live (zh)
