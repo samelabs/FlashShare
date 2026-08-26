@@ -22,6 +22,7 @@ SERVER_I18N = {
 
     "credit_time": "Heure",
         "earn_title": "Revenus",
+        "earn_by_tool": "Revenus par outil",
         "earn_total": "Total gagné",
         "earn_avail": "Disponible",
         "earn_pending": "En attente",
@@ -349,6 +350,7 @@ SERVER_I18N = {
 
     "credit_time": "시간",
         "earn_title": "수익",
+        "earn_by_tool": "도구별 수익",
         "earn_total": "총 수익",
         "earn_avail": "인출 가능",
         "earn_pending": "처리 중",
@@ -677,6 +679,7 @@ SERVER_I18N = {
 
     "credit_time": "Время",
         "earn_title": "Доходы",
+        "earn_by_tool": "Доход по инструментам",
         "earn_total": "Всего заработано",
         "earn_avail": "Доступно",
         "earn_pending": "В обработке",
@@ -1004,6 +1007,7 @@ SERVER_I18N = {
 
     "credit_time": "الوقت",
         "earn_title": "الأرباح",
+        "earn_by_tool": "الأرباح حسب الأداة",
         "earn_total": "إجمالي المكتسب",
         "earn_avail": "متاح للسحب",
         "earn_pending": "قيد المعالجة",
@@ -1331,6 +1335,7 @@ SERVER_I18N = {
 
     "credit_time": "Zeit",
         "earn_title": "Einnahmen",
+        "earn_by_tool": "Einnahmen je Tool",
         "earn_total": "Insgesamt verdient",
         "earn_avail": "Verfügbar",
         "earn_pending": "In Bearbeitung",
@@ -1659,6 +1664,7 @@ SERVER_I18N = {
 
     "credit_time": "Hora",
         "earn_title": "Ganhos",
+        "earn_by_tool": "Ganhos por ferramenta",
         "earn_total": "Total ganho",
         "earn_avail": "Disponível",
         "earn_pending": "Pendente",
@@ -1986,6 +1992,7 @@ SERVER_I18N = {
 
     "credit_time": "日時",
         "earn_title": "収益",
+        "earn_by_tool": "ツール別収益",
         "earn_total": "累計獲得",
         "earn_avail": "引き出し可能",
         "earn_pending": "処理中",
@@ -2313,6 +2320,7 @@ SERVER_I18N = {
 
     "credit_time": "时间",
         "earn_title": "收益",
+        "earn_by_tool": "各工具收益",
         "earn_total": "累计收益",
         "earn_avail": "可提现",
         "earn_pending": "提现中",
@@ -2641,6 +2649,7 @@ SERVER_I18N = {
 
     "credit_time": "Fecha",
         "earn_title": "Ganancias",
+        "earn_by_tool": "Ganancias por herramienta",
         "earn_total": "Total ganado",
         "earn_avail": "Disponible",
         "earn_pending": "Pendiente",
@@ -2968,6 +2977,7 @@ SERVER_I18N = {
 
     "credit_time": "Time",
         "earn_title": "Earnings",
+        "earn_by_tool": "Earnings by tool",
         "earn_total": "Total earned",
         "earn_avail": "Available",
         "earn_pending": "Pending",

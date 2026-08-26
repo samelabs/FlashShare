@@ -56,14 +56,18 @@ assert 'id="fMcpRow" class="hidden"' in html  # hidden unless mcp
 print("4. submit form: timeout/accept/outct/auth x2/mcp-conditional rows OK")
 
 # 5. earnings panel markup + withdraw modal
-for eid in ["earnCard", "eTotal", "eAvail", "ePending", "eWithdrawn", "earnHist", "withdrawModal", "submitWithdraw"]:
-    assert f'id="{eid}"' in html, eid
+for eid in ["eTotal", "eAvail", "ePending", "eWithdrawn", "earnHist", "byToolList", "withdrawModal", "submitWithdraw"]:
+    assert f'id="{eid}"' not in html, eid  # money view GONE from tools page
 assert "发布工具" in html  # unified naming
 assert "我的发布" not in html and "我的工具" not in html
-print("5. earnings panel + withdraw modal + unified naming OK")
+conn.request("GET", "/account/earnings", headers={"Cookie": ck})
+eh = conn.getresponse().read().decode()
+for eid in ["eTotal", "eAvail", "byToolList", "withdrawModal", "submitWithdraw"]:
+    assert f'id="{eid}"' in eh, eid
+print("5. tools page money-free; /account/earnings carries the money view OK")
 
 # 6. earnings endpoint renders data for this user (zero state)
-conn.request("GET", "/api/usertools/earnings", headers={"Cookie": ck})
+conn.request("GET", "/api/earnings", headers={"Cookie": ck})
 d = json.loads(conn.getresponse().read())
 assert d["ok"] and d["summary"]["available"] == 0
 print("6. earnings endpoint zero-state OK")

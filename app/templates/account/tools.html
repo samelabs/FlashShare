@@ -8,24 +8,6 @@
   <h1>{{ texts.acct_tools }}</h1>
   {% include "account/_nav.html" %}
 
-  <div class="acct-card" id="earnCard">
-    <div class="acct-card-head">
-      <h2 data-i18n="earn_title">{{ texts.earn_title }}</h2>
-      <button type="button" class="primary" id="openWithdraw"><span data-i18n="earn_btn">{{ texts.earn_btn }}</span></button>
-    </div>
-    <div class="earn-grid" id="earnGrid">
-      <div class="earn-stat"><strong id="eTotal">0</strong><span data-i18n="earn_total">{{ texts.earn_total }}</span></div>
-      <div class="earn-stat avail"><strong id="eAvail">0</strong><span data-i18n="earn_avail">{{ texts.earn_avail }}</span></div>
-      <div class="earn-stat"><strong id="ePending">0</strong><span data-i18n="earn_pending">{{ texts.earn_pending }}</span></div>
-      <div class="earn-stat"><strong id="eWithdrawn">0</strong><span data-i18n="earn_withdrawn">{{ texts.earn_withdrawn }}</span></div>
-    </div>
-    <div class="earn-hist-wrap">
-      <h3 data-i18n="earn_hist">{{ texts.earn_hist }}</h3>
-      <table class="earn-hist" id="earnHist"><tbody></tbody></table>
-      <p class="profile-note hidden" id="earnNone" data-i18n="earn_none">{{ texts.earn_none }}</p>
-    </div>
-  </div>
-
   <div class="acct-card">
     <div class="acct-card-head">
       <h2 data-i18n="mytools_title">{{ texts.mytools_title }}</h2>
@@ -61,24 +43,6 @@
       <button type="button" class="primary" id="submitTool"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
     </div>
   </div>
-
-<!-- ── withdraw modal ── -->
-<div class="modal hidden" id="withdrawModal">
-  <div class="modal-panel">
-    <button type="button" class="modal-close" id="closeWithdrawModal" aria-label="{{ texts.cancel }}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
-    </button>
-    <h2 data-i18n="earn_modal_title">{{ texts.earn_modal_title }}</h2>
-    <p class="profile-note" id="withdrawHint"></p>
-    <div class="usertools-form">
-      <label><span data-i18n="earn_wd_amount">{{ texts.earn_wd_amount }}</span><input id="wAmount" type="number" min="1" inputmode="numeric"></label>
-      <label class="usertools-wide"><span data-i18n="earn_wd_note">{{ texts.earn_wd_note }}</span><input id="wNote" maxlength="200"></label>
-    </div>
-    <div class="usertools-submit-row">
-      <button type="button" class="primary" id="submitWithdraw"><span data-i18n="earn_submit">{{ texts.earn_submit }}</span></button>
-    </div>
-  </div>
-</div>
 
 </section>
 
@@ -214,63 +178,4 @@ document.getElementById('fExec').addEventListener('change', () => {
 });
 
 loadTools();
-
-// ── Earnings panel (money view) ──
-let _earn = null;
-const _wModal = document.getElementById('withdrawModal');
-
-async function loadEarnings() {
-  const r = await fetch('/api/usertools/earnings');
-  const d = await r.json();
-  if (!d.ok) return;
-  _earn = d;
-  document.getElementById('eTotal').textContent = d.summary.earned;
-  document.getElementById('eAvail').textContent = d.summary.available;
-  document.getElementById('ePending').textContent = d.summary.pending;
-  document.getElementById('eWithdrawn').textContent = d.summary.withdrawn;
-  const tb = document.querySelector('#earnHist tbody');
-  tb.innerHTML = '';
-  document.getElementById('earnNone').classList.toggle('hidden', d.withdrawals.length > 0);
-  for (const w of d.withdrawals) {
-    const tr = document.createElement('tr');
-    const tdA = document.createElement('td'); tdA.textContent = w.amount;
-    const tdS = document.createElement('td');
-    const key = 'earn_status_' + w.status;
-    tdS.textContent = _msg(key) !== key ? _msg(key) : w.status;
-    const tdT = document.createElement('td');
-    tdT.textContent = new Date(w.created_at * 1000).toLocaleString();
-    tr.append(tdA, tdS, tdT);
-    tb.appendChild(tr);
-  }
-  const hint = window.t('earn_min').replace('{n}', d.min_withdrawal);
-  document.getElementById('withdrawHint').textContent = hint + ' · ' +
-    window.t('earn_avail') + ': ' + d.summary.available;
-}
-
-document.getElementById('openWithdraw').addEventListener('click', () => {
-  _wModal.classList.remove('hidden');
-  document.getElementById('wAmount').value = _earn ? _earn.summary.available : '';
-  document.getElementById('wAmount').focus();
-});
-document.getElementById('closeWithdrawModal').addEventListener('click', () => _wModal.classList.add('hidden'));
-_wModal.addEventListener('click', (e) => { if (e.target === _wModal) _wModal.classList.add('hidden'); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !_wModal.classList.contains('hidden')) _wModal.classList.add('hidden'); });
-
-document.getElementById('submitWithdraw').addEventListener('click', async () => {
-  const amount = parseInt(document.getElementById('wAmount').value, 10) || 0;
-  const note = document.getElementById('wNote').value.trim();
-  const r = await fetch('/api/usertools/withdraw', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount, note }),
-  });
-  const d = await r.json();
-  if (d.ok) { _wModal.classList.add('hidden'); loadEarnings(); }
-  else {
-    const key = 'err_' + d.error;
-    const v = window.t(key);
-    alert((v && v !== key) ? v : d.error);
-  }
-});
-
-loadEarnings();
 {% endblock %}

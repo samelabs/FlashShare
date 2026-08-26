@@ -90,14 +90,14 @@ tok_s = _sec.token_urlsafe(32)
 th = hmac.new(SESSION_SECRET.encode(), tok_s.encode(), hashlib.sha256).hexdigest()
 psql("INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(%s,%s,%s,%s)", th, uid, ts+600, ts)
 conn = http.client.HTTPConnection("127.0.0.1", 8000, timeout=30)
-conn.request("GET", "/api/usertools/earnings", headers={"Cookie": f"{COOKIE_NAME}={tok_s}"})
+conn.request("GET", "/api/earnings", headers={"Cookie": f"{COOKIE_NAME}={tok_s}"})
 d = json.loads(conn.getresponse().read())
 assert d["ok"] and d["summary"]["available"] == 300 and d["min_withdrawal"] == MIN_WITHDRAWAL, d
 assert all("url" not in t for t in d["tools"])
-print("9. /api/usertools/earnings: summary + no endpoint echo OK")
+print("9. /api/earnings: summary + breakdown OK")
 
 # HTTP withdraw endpoint validation
-conn.request("POST", "/api/usertools/withdraw", body=json.dumps({"amount": 50}),
+conn.request("POST", "/api/earnings/withdraw", body=json.dumps({"amount": 50}),
              headers={"Cookie": f"{COOKIE_NAME}={tok_s}", "Content-Type": "application/json"})
 d = json.loads(conn.getresponse().read())
 assert not d["ok"] and d["error"] == "withdrawal_min", d

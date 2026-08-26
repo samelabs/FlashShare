@@ -803,3 +803,12 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 
 /* ── copy-button feedback state ── */
 .btn-secondary.copied { border-color: var(--accent); color: var(--accent); background: var(--soft); }
+
+/* ── /account/earnings: by-tool breakdown rows ── */
+.acct-page .bytool-list { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s3); }
+.acct-page .wd-row { display: flex; align-items: center; gap: var(--s3); padding: var(--s2) 0; border-bottom: 1px dashed var(--line); font-size: var(--text-sm); }
+.acct-page .wd-row:last-child { border-bottom: none; }
+.acct-page .wd-amt { color: var(--accent); margin-left: auto; font-variant-numeric: tabular-nums; }
+.acct-page .wd-st { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); background: var(--soft); color: var(--muted); }
+.acct-page .wd-st.st-approved, .acct-page .wd-st.st-paid { color: var(--accent); }
+.acct-page .wd-st.st-rejected { color: var(--danger); }

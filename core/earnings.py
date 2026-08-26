@@ -76,6 +76,29 @@ def earnings_summary(user_id: int) -> dict:
             "pending": int(pending), "available": max(0, available)}
 
 
+def per_tool_revenue(user_id: int) -> list:
+    """Revenue breakdown per published tool (provider_earn rows joined to
+    the tool that generated them — note references the tool_key)."""
+    with db() as con:
+        rows = con.execute(
+            """SELECT l.note AS tool_key,
+                      SUM(l.delta) AS earned,
+                      COUNT(*) AS payouts
+               FROM ledger l
+               WHERE l.user_id = %s AND l.kind = 'provider_earn'
+               GROUP BY l.note
+               ORDER BY earned DESC""",
+            (user_id,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        key = r["tool_key"] or ""
+        label = key.split("/")[-1] if key else "?"
+        out.append({"tool": label, "tool_key": key,
+                    "earned": int(r["earned"]), "payouts": r["payouts"]})
+    return out
+
+
 def list_withdrawals(user_id: int, limit: int = 20) -> list:
     with db() as con:
         rows = con.execute(

@@ -295,6 +295,18 @@ async def account_credits_claim(request: Request):
     return RedirectResponse("/account/credits", 303)
 
 
+@router.get("/account/earnings", response_class=HTMLResponse)
+async def account_earnings(request: Request):
+    """Earnings & withdrawals (money view — its own module since 08-26)."""
+    from app.main import templates
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    ctx = _account_ctx(request, "earnings")
+    return templates.TemplateResponse("account/earnings.html", ctx)
+
+
+
 @router.get("/account/tools", response_class=HTMLResponse)
 async def account_tools(request: Request):
     """User-published tools (C2C supply side)."""

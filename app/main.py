@@ -172,6 +172,8 @@ app.include_router(auth_route.router, prefix="/auth")
 app.include_router(samelabs.router)
 app.include_router(mcp.router)
 app.include_router(usertools.router)
+from app.routes import earn
+app.include_router(earn.router)
 app.include_router(proxy.router)
 
 
