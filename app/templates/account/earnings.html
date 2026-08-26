@@ -11,7 +11,10 @@
   <div class="acct-card">
     <div class="acct-card-head">
       <h2 data-i18n="earn_title">{{ texts.earn_title }}</h2>
-      <button type="button" class="primary" id="openWithdraw"><span data-i18n="earn_btn">{{ texts.earn_btn }}</span></button>
+      <div class="earn-actions">
+        <a class="btn-secondary" href="/account/credits"><span data-i18n="earn_topup">{{ texts.earn_topup }}</span></a>
+        <button type="button" class="primary" id="openWithdraw"><span data-i18n="earn_btn">{{ texts.earn_btn }}</span></button>
+      </div>
     </div>
     <div class="earn-grid" id="earnGrid">
       <div class="earn-cell"><strong id="eTotal">–</strong><span data-i18n="earn_total">{{ texts.earn_total }}</span></div>
@@ -22,6 +25,10 @@
 
     <h3 data-i18n="earn_by_tool">{{ texts.earn_by_tool }}</h3>
     <div id="byToolList" class="bytool-list"></div>
+
+    <h3 data-i18n="earn_lines">{{ texts.earn_lines }}</h3>
+    <div id="revLines" class="wd-list"></div>
+    <p id="revNone" class="profile-note hidden" data-i18n="earn_none">{{ texts.earn_none }}</p>
 
     <h3 data-i18n="earn_hist">{{ texts.earn_hist }}</h3>
     <div id="earnHist" class="wd-list"></div>
@@ -73,6 +80,26 @@ async function loadEarnings() {
       row.querySelector('.wd-tool').textContent = t.tool;
       row.querySelector('.wd-amt').textContent = '+' + t.earned;
       bt.appendChild(row);
+    }
+  }
+
+  // revenue detail lines
+  const rl = document.getElementById('revLines');
+  rl.innerHTML = '';
+  const rnone = document.getElementById('revNone');
+  if (!d.revenue_lines || !d.revenue_lines.length) { rnone.classList.remove('hidden'); }
+  else {
+    rnone.classList.add('hidden');
+    for (const ln of d.revenue_lines) {
+      const row = document.createElement('div');
+      row.className = 'wd-row';
+      const t = document.createElement('span');
+      t.textContent = ln.tool + ' · ' + new Date(ln.ts * 1000).toLocaleString();
+      const amt = document.createElement('strong');
+      amt.className = 'wd-amt';
+      amt.textContent = '+' + ln.delta;
+      row.append(t, amt);
+      rl.appendChild(row);
     }
   }
 

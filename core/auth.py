@@ -262,7 +262,8 @@ def unbind_x(user_id: int) -> None:
 # ── Profile ─────────────────────────────────────────────
 
 def update_profile(user_id: int, display_name: str | None = None,
-                   bio: str | None = None, email: str | None = None) -> None:
+                   bio: str | None = None, email: str | None = None,
+                   payout_channel: str | None = None) -> None:
     ts = now()
     with db() as con:
         if display_name is not None:
@@ -274,6 +275,10 @@ def update_profile(user_id: int, display_name: str | None = None,
         if bio is not None:
             con.execute("UPDATE users SET bio = %s, updated_at = %s WHERE id = %s",
                         (bio.strip()[:500] or None, ts, user_id))
+        if payout_channel is not None:
+            # withdrawal destination (operator reads it when paying out)
+            con.execute("UPDATE users SET payout_channel = %s, updated_at = %s WHERE id = %s",
+                        (payout_channel.strip()[:120] or None, ts, user_id))
         if email is not None:
             email = email.strip().lower()[:254]
             if not email:
@@ -331,6 +336,7 @@ def public_user(row) -> dict:
         "displayName": row["display_name"],
         "avatarUrl": row["avatar_url"],
         "bio": row["bio"],
+        "payoutChannel": row.get("payout_channel"),
         "hasPassword": bool(row["password_hash"]),
         "xUsername": row["x_username"],
         "xProfileUrl": row["x_profile_url"],

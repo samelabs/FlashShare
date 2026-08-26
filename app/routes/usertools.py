@@ -1,6 +1,6 @@
 """User-submitted tools (C2C supply side, phase 3).
 
-Self-service manifest submission: a user registers their OWN http/mcp
+Self-service manifest submission: a user registers their OWN http
 endpoint as a namespaced tool (`{username}/{tool_id}`). No human gate —
 visibility is an owner-set field. The platform thesis: new capabilities
 enter as DATA rows.
@@ -121,7 +121,7 @@ def _call_stats(tool_key: str, owner_id: int | None = None) -> dict:
     return {"ok": row["ok"], "total": row["total"], "earned": earned}
 
 
-def _validate_submission(raw: dict, partial: bool = False) -> tuple:
+def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False) -> tuple:
     """Shared validation for create (full) and patch (partial).
     Returns (fields, error_code). fields keys only for provided values."""
     fields = {}
@@ -139,8 +139,12 @@ def _validate_submission(raw: dict, partial: bool = False) -> tuple:
 
     if "url" in raw or not partial:
         url = str(raw.get("url") or "").strip()
-        if not url.startswith("https://"):
+        # https+public-IP is the user-row contract; trusted (operator-adopted)
+        # rows are exempt at runtime and on edit — flag set by the caller.
+        if not trusted_ok and not url.startswith("https://"):
             return None, "https_required"
+        if not url.startswith(("http://", "https://")):
+            return None, "bad_url"
         fields["url"] = url
 
     if "timeout_s" in raw or not partial:
@@ -155,12 +159,6 @@ def _validate_submission(raw: dict, partial: bool = False) -> tuple:
     if raw.get("auth_header") and raw.get("auth_token"):
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
         fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
-
-    if "mcp_tool" in raw or (not partial and raw.get("execution") == "mcp"):
-        mcp_tool = str(raw.get("mcp_tool") or "").strip()
-        if not mcp_tool or len(mcp_tool) > 64:
-            return None, "bad_mcp_tool"
-        fields["mcp_tool"] = mcp_tool
 
     if "accept" in raw:
         accept_raw = str(raw.get("accept") or "").strip()
@@ -218,8 +216,6 @@ def _endpoint_decl(fields: dict, execution: str, existing: dict | None = None) -
         decl["auth_header"] = fields["auth_header"]
     if "auth_token" in fields:
         decl["auth_token"] = fields["auth_token"]
-    if "mcp_tool" in fields:
-        decl["mcp_tool"] = fields["mcp_tool"]
     if "output_filename" in fields:
         decl["output_filename"] = fields["output_filename"]
     if "output_content_type" in fields:
@@ -263,15 +259,14 @@ async def create_user_tool(request: Request):
     tool_id = str(raw.get("tool_id") or "").strip()
     if not TOOL_ID_RE.match(tool_id):
         return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
-    execution = str(raw.get("execution") or "http").strip()
-    if execution not in ("http", "mcp"):
-        return JSONResponse({"ok": False, "error": "bad_execution"}, 422)
+    # Supply-side contract: ONE execution class — plain HTTP API.
+    # (mcp forwarding removed 2026-08-26: agent-native MCP servers don't
+    # need a broker; 518 IS the MCP surface northbound.)
+    execution = "http"
 
     fields, ferr = _validate_submission(raw)
     if ferr:
         return JSONResponse({"ok": False, "error": ferr}, 422)
-    if execution == "mcp" and "mcp_tool" not in fields:
-        return JSONResponse({"ok": False, "error": "bad_mcp_tool"}, 422)
 
     # SSRF pre-check (typed failure at submission time)
     from remote import guard_endpoint, RemoteError
@@ -319,6 +314,47 @@ async def create_user_tool(request: Request):
     return {"ok": True, "tool_key": tool_key}
 
 
+@router.post("/api/usertools/{tool_id}/selftest")
+async def selftest_tool(tool_id: str, request: Request):
+    """T3: run ONE platform-mediated test call so the self-test gate is a
+    button, not a riddle. Requires a source the owner uploads (same gate
+    as a real call — metering, refunds, sniff); response carries ok/err +
+    ms so the owner can diagnose. No free side-channel."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    tool_key = f"{user['username']}/{tool_id}"
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = {}
+    public_id = str(raw.get("public_id") or "").strip()
+    source_token = str(raw.get("source_token") or "").strip()
+    if not public_id:
+        return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
+    import time as _t
+    t0 = _t.time()
+    # Same single gate as any call (metering, refunds, sniff).
+    request.state._v1_raw = {
+        "tool_id": tool_key, "params": {},
+        "public_id": public_id, "source_token": source_token,
+        "client_ref": f"selftest:{tool_key}",
+    }
+    from app.routes.api import execute_tool
+    resp = await execute_tool(request)
+    ms = int((_t.time() - t0) * 1000)
+    if isinstance(resp, JSONResponse):
+        try:
+            body = json.loads(resp.body)
+        except Exception:
+            body = {"ok": False, "error": "internal_error"}
+        body["ms"] = ms
+        return JSONResponse(body, status_code=resp.status_code)
+    body = resp if isinstance(resp, dict) else {"ok": False, "error": "internal_error"}
+    body["ms"] = ms
+    return body
+
+
 @router.patch("/api/usertools/{tool_id}")
 async def update_user_tool(tool_id: str, request: Request):
     """Partial update: label/url/timeout/auth/accept/output identity/
@@ -342,7 +378,8 @@ async def update_user_tool(tool_id: str, request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
 
-    fields, ferr = _validate_submission(raw, partial=True)
+    fields, ferr = _validate_submission(raw, partial=True,
+                                        trusted_ok=bool(row["trusted"]))
     if ferr:
         return JSONResponse({"ok": False, "error": ferr}, 422)
 
@@ -360,8 +397,9 @@ async def update_user_tool(tool_id: str, request: Request):
         if stats["ok"] < 1:
             return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
 
-    # endpoint change → SSRF re-check on the MERGED url
-    if "url" in fields:
+    # endpoint change → SSRF re-check on the MERGED url.
+    # Trusted (operator-adopted) rows keep their exemption, same as runtime.
+    if "url" in fields and not row["trusted"]:
         from remote import guard_endpoint, RemoteError
         try:
             guard_endpoint(fields["url"], trusted=False)

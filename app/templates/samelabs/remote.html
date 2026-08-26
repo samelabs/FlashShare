@@ -5,17 +5,16 @@
 <div class="sl-panel">
   <div class="sl-panel-head">
     <h2>远程工具</h2>
-    <span class="sl-panel-sub">http / mcp 端点 · 平台受信（运营托管）</span>
+    <span class="sl-panel-sub">http 端点 · 平台受信（运营托管）</span>
   </div>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
-      <thead><tr><th>tool_id</th><th>名称</th><th>类型</th><th>端点</th><th>超时</th><th>鉴权</th><th>状态</th><th>操作</th></tr></thead>
+      <thead><tr><th>tool_id</th><th>名称</th><th>端点</th><th>超时</th><th>鉴权</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
       {% for t in remote_tools %}
         <tr data-tool="{{ t.tool_key|e }}">
           <td class="sl-mono">{{ t.tool_key|e }}</td>
           <td>{{ t.label|e }}</td>
-          <td><span class="sl-badge sl-b-info">{{ t.execution|e }}</span></td>
           <td class="sl-mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ t.url|e }}">{{ t.url|e }}</td>
           <td>{{ t.timeout_s }}s</td>
           <td>{{ 'Bearer' if t.has_auth else '—' }}</td>
@@ -42,14 +41,9 @@
   </div>
   <form class="sl-form" id="remoteCreate" style="flex-wrap:wrap">
     <input class="sl-input" name="tool_id" placeholder="tool_id 如 super_resolve" pattern="[a-z][a-z0-9_]{1,40}" style="flex:1 1 150px" required>
-    <select class="sl-input" name="execution" style="flex:0 1 100px" aria-label="执行类">
-      <option value="http">http</option>
-      <option value="mcp">mcp</option>
-    </select>
     <input class="sl-input" name="label" placeholder="显示名 如 超分辨率" maxlength="40" style="flex:1 1 130px" required>
     <input class="sl-input" name="url" type="url" placeholder="https://api.example.com/process" style="flex:2 1 260px" required>
     <input class="sl-input" name="timeout_s" type="number" min="5" max="300" value="60" placeholder="超时秒" style="flex:0 1 90px">
-    <input class="sl-input" name="mcp_tool" placeholder="mcp 工具名(仅mcp)" style="flex:1 1 140px">
     <input class="sl-input" name="auth_header" placeholder="鉴权头 如 Authorization" style="flex:1 1 150px">
     <input class="sl-input" name="auth_token" type="password" placeholder="鉴权令牌" style="flex:1 1 130px">
     <input class="sl-input" name="accept" placeholder="accept 如 image/png,image/jpeg" style="flex:1 1 180px">
@@ -69,11 +63,9 @@ document.getElementById('remoteCreate').addEventListener('submit', function (e) 
   var f = e.target;
   var payload = {
     tool_id: f.tool_id.value.trim(),
-    execution: f.execution.value,
     label: f.label.value.trim(),
         url: f.url.value.trim(),
     timeout_s: parseInt(f.timeout_s.value, 10) || 60,
-    mcp_tool: f.mcp_tool.value.trim(),
     auth_header: f.auth_header.value.trim(),
     auth_token: f.auth_token.value.trim(),
     accept: f.accept.value.trim(),
@@ -87,9 +79,8 @@ document.getElementById('remoteCreate').addEventListener('submit', function (e) 
       setTimeout(function () { location.reload(); }, 600);
     } else {
       var why = { bad_tool_id: 'tool_id 非法(小写字母开头,2-41位)',
-                  bad_execution: '执行类非法', bad_url: 'URL 非法',
-                  bad_timeout: '超时需 5-300', bad_icon: '图标不在集合内',
-                  bad_mcp_tool: 'mcp 类必须填工具名',
+                  bad_url: 'URL 非法',
+                  bad_timeout: '超时需 5-300',
                   bad_output_filename: '输出名扩展名不在白名单',
                   duplicate_or_db: 'tool_id 已存在或写入失败' }[r.data.error] || r.data.error || '请求失败';
       slToast('err', '创建失败', why);

@@ -111,15 +111,19 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     if method == "initialize":
         requested = (msg.get("params") or {}).get("protocolVersion", LATEST)
         version = requested if requested in SUPPORTED_VERSIONS else LATEST
+        from catalog import catalog_version
         return _rpc(mid, {
             "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": {"tools": {"listChanged": True}},
             "serverInfo": {"name": "518plus", "version": "1.0.0"},
             "instructions": (
-                "518.PLUS file-processing capability platform. Every tool "
-                "call is metered in credits (balance in /api/v1/me). Pass "
-                "client_ref on tools/call to retry safely — replays return "
-                "the original result without re-charging."
+                "518.PLUS capability platform. tools/list is paginated "
+                "(pass cursor for the next page); meta tool 'catalog_search' "
+                "finds tools by keyword when the catalog is large. Every "
+                "call is metered in credits (/api/v1/me); pass client_ref "
+                "on tools/call to retry safely — replays return the "
+                "original result without re-charging. Catalog version: "
+                f"{catalog_version()} — re-list when it changes."
             ),
         })
     if method == "notifications/initialized":
@@ -129,7 +133,18 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     if is_notification:
         return None  # any other notification: accept silently
     if method == "tools/list":
-        return _rpc(mid, {"tools": _tool_specs(user)})
+        params = msg.get("params") or {}
+        page_size = 50
+        specs = _tool_specs(user)
+        cur = params.get("cursor")
+        try:
+            start = int(cur) if cur else 0
+        except (TypeError, ValueError):
+            return _err(mid, -32602, "invalid cursor")
+        out = {"tools": specs[start:start + page_size]}
+        if start + page_size < len(specs):
+            out["nextCursor"] = str(start + page_size)
+        return _rpc(mid, out)
     if method == "tools/call":
         params = msg.get("params") or {}
         return await _call_tool(request, user, mid, params)
@@ -192,6 +207,18 @@ def _tool_specs(user: dict) -> list:
                 "required": required,
             },
         })
+    # meta tool: keyword search (catalog can exceed what a client wants
+    # to page through; search is the shortcut)
+    specs.append({
+        "name": "catalog_search",
+        "description": "Find tools by keyword (matches id and labels, "
+                       "all languages). Returns matching tool names.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"q": {"type": "string"}},
+            "required": ["q"],
+        },
+    })
     return specs
 
 
@@ -200,6 +227,15 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from app.routes.apiv1 import _upload_source  # shared pipeline (v1 + MCP)
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
+    if tool_id == "catalog_search":
+        from catalog import search_catalog
+        q = str(args.get("q") or "").strip()[:64]
+        hits = search_catalog(q, user["id"], limit=20) if q else []
+        return _rpc(mid, {
+            "content": [{"type": "text", "text": json.dumps(
+                {"query": q, "tools": [h["id"] for h in hits]}, ensure_ascii=False)}],
+            "isError": False,
+        })
     # MCP name projection inverse: 'sun__super-resolve' → 'sun/super-resolve'
     tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
     tool, terr = resolve_tool(tool_key, user["id"])

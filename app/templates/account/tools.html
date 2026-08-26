@@ -22,20 +22,17 @@
     <button type="button" class="modal-close" id="closeToolModal" aria-label="{{ texts.cancel }}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
     </button>
-    <h2 data-i18n="mytools_create">{{ texts.mytools_create }}</h2>
+    <h2 id="modalTitle" data-i18n="mytools_create">{{ texts.mytools_create }}</h2>
     <p class="profile-note" data-i18n="mytools_modal_hint">{{ texts.mytools_modal_hint }}</p>
     <div class="usertools-form">
       <label><span data-i18n="mytools_f_label">{{ texts.mytools_f_label }}</span><input id="fLabel" maxlength="40" placeholder="Super Resolve"></label>
       <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span><input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41"></label>
-      <label><span data-i18n="mytools_f_kind">{{ texts.mytools_f_kind }}</span>
-        <select id="fExec"><option value="http">http</option><option value="mcp">mcp</option></select></label>
       <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span><input id="fCost" type="number" min="0" max="100000" value="0"></label>
       <label><span data-i18n="mytools_f_timeout">{{ texts.mytools_f_timeout }}</span><input id="fTimeout" type="number" min="5" max="300" value="60"> </label>
       <label><span data-i18n="mytools_f_accept">{{ texts.mytools_f_accept }}</span><input id="fAccept" placeholder="image/png, application/pdf"></label>
       <label class="usertools-wide"><span data-i18n="mytools_f_url">{{ texts.mytools_f_url }}</span><input id="fUrl" type="url" placeholder="https://api.example.com/process"></label>
       <label><span data-i18n="mytools_f_out">{{ texts.mytools_f_out }}</span><input id="fOut" placeholder="out.png"></label>
       <label><span data-i18n="mytools_f_outct">{{ texts.mytools_f_outct }}</span><input id="fOutCt" placeholder="image/png"></label>
-      <label id="fMcpRow" class="hidden"><span data-i18n="mytools_f_mcp">{{ texts.mytools_f_mcp }}</span><input id="fMcpTool" placeholder="tools/call name"></label>
       <label><span data-i18n="mytools_f_authh">{{ texts.mytools_f_authh }}</span><input id="fAuthHeader" placeholder="Authorization" maxlength="64"></label>
       <label><span data-i18n="mytools_f_autht">{{ texts.mytools_f_autht }}</span><input id="fAuthToken" type="password" placeholder="Bearer …" maxlength="512"></label>
     </div>
@@ -52,6 +49,7 @@
 {% block script %}
 // ── My publications (C2C supply): card list + modal submit + icon grid ──
 const _toolList = document.getElementById('toolList');
+let _editKey = null;
 const _modal = document.getElementById('toolModal');
 
 // (icon/category picker removed — icons fixed server-side)
@@ -60,13 +58,65 @@ function openModal() {
   _modal.classList.remove('hidden');
   document.getElementById('fLabel').focus();
 }
-function closeModal() { _modal.classList.add('hidden'); }
+function closeModal() { _modal.classList.add('hidden'); _editKey = null;
+  document.getElementById('fToolId').disabled = false;
+  const mt = document.getElementById('modalTitle'); if (mt) mt.textContent = _msg('mytools_create');
+}
 document.getElementById('openToolModal').addEventListener('click', openModal);
 document.getElementById('closeToolModal').addEventListener('click', closeModal);
 _modal.addEventListener('click', (e) => { if (e.target === _modal) closeModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !_modal.classList.contains('hidden')) closeModal(); });
 
 function _msg(k) { const v = window.t(k); return (v && v !== k) ? v : k; }
+
+// ── self-test: owner picks a file, platform runs ONE real call ──
+function _selfTest(btn, t) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.addEventListener('change', async () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    btn.disabled = true;
+    const oldTxt = btn.textContent;
+    btn.textContent = _msg('mytools_testing');
+    try {
+      const up = new FormData();
+      up.append('file', f);
+      const ru = await fetch('/api/uploads', { method: 'POST', body: up });
+      const du = await ru.json();
+      if (!du.ok) throw new Error(du.error || 'upload failed');
+      const rs = await fetch('/api/usertools/' + t.tool_id + '/selftest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_id: du.file.publicId, source_token: du.file.sourceToken }),
+      });
+      const ds = await rs.json();
+      if (ds.ok) alert(_msg('mytools_st_ok').replace('{ms}', ds.ms || '?'));
+      else {
+        const k = 'mytools_err_' + ds.error;
+        alert(_msg(k) !== k ? _msg(k) : (ds.error || 'failed'));
+      }
+    } catch (e) { alert(e.message || 'selftest failed'); }
+    btn.disabled = false; btn.textContent = oldTxt;
+  });
+  input.click();
+}
+
+// ── edit: refill the submit modal in PATCH mode ──
+function _openEdit(t) {
+  _editKey = t.tool_id;
+  document.getElementById('fLabel').value = t.label || '';
+  document.getElementById('fToolId').value = t.tool_id;
+  document.getElementById('fToolId').disabled = true;  // id immutable
+  document.getElementById('fUrl').value = (t.url || '');
+  document.getElementById('fCost').value = t.cost != null ? t.cost : 0;
+  document.getElementById('fTimeout') && (document.getElementById('fTimeout').value = t.timeout_s || 60);
+  document.getElementById('fOut') && (document.getElementById('fOut').value = t.output_filename || '');
+  document.getElementById('fOutCt') && (document.getElementById('fOutCt').value = t.output_content_type || '');
+  document.getElementById('fAccept') && (document.getElementById('fAccept').value = (t.accept || []).join(','));
+  document.getElementById('fAuthHeader') && (document.getElementById('fAuthHeader').value = t.auth_header || '');
+  document.getElementById('modalTitle') && (document.getElementById('modalTitle').textContent = _msg('mytools_edit'));
+  document.getElementById('toolModal').classList.remove('hidden');
+}
 
 function _delBtn(toolId, key) {
   const btn = document.createElement('button');
@@ -113,7 +163,7 @@ async function loadTools() {
 
     const meta = document.createElement('div');
     meta.className = 'usertools-meta';
-    meta.textContent = `${t.execution} · ${_msg('mytools_price')} ${t.cost} · ` +
+    meta.textContent = `${_msg('mytools_price')} ${t.cost} · ` +
       `${_msg('mytools_calls')} ${t.calls.ok}/${t.calls.total}` +
       (t.calls.earned > 0 ? ` · ${_msg('mytools_earned')} +${t.calls.earned}` : '');
 
@@ -135,7 +185,29 @@ async function loadTools() {
       else if (d2.error === 'self_test_required') alert(_msg('mytools_selftest'));
       else alert(d2.error);
     });
-    actions.append(visBtn, _delBtn(t.tool_id, t.tool_key));
+    const stBtn = document.createElement('button');
+    stBtn.type = 'button'; stBtn.className = 'btn-secondary';
+    stBtn.textContent = _msg('mytools_run_selftest');
+    stBtn.addEventListener('click', () => _selfTest(stBtn, t));
+    const edBtn = document.createElement('button');
+    edBtn.type = 'button'; edBtn.className = 'btn-secondary';
+    edBtn.textContent = _msg('mytools_edit');
+    edBtn.addEventListener('click', () => _openEdit(t));
+    const enBtn = document.createElement('button');
+    enBtn.type = 'button';
+    enBtn.className = 'btn-secondary' + (t.enabled ? ' danger' : '');
+    enBtn.textContent = t.enabled ? _msg('mytools_disable') : _msg('mytools_enable');
+    enBtn.addEventListener('click', async () => {
+      enBtn.disabled = true;
+      const r3 = await fetch('/api/usertools/' + t.tool_id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !t.enabled }),
+      });
+      const d3 = await r3.json();
+      enBtn.disabled = false;
+      if (d3.ok) loadTools(); else alert(d3.error);
+    });
+    actions.append(stBtn, edBtn, enBtn, visBtn, _delBtn(t.tool_id, t.tool_key));
 
     card.append(head, meta, actions);
     _toolList.appendChild(card);
@@ -146,25 +218,24 @@ document.getElementById('submitTool').addEventListener('click', async () => {
   const body = {
     tool_id: document.getElementById('fToolId').value.trim(),
     label: document.getElementById('fLabel').value.trim(),
-    execution: document.getElementById('fExec').value,
     url: document.getElementById('fUrl').value.trim(),
     timeout_s: parseInt(document.getElementById('fTimeout').value, 10) || 60,
     accept: document.getElementById('fAccept').value.trim() || undefined,
     output_filename: document.getElementById('fOut').value.trim(),
     output_content_type: document.getElementById('fOutCt').value.trim() || undefined,
-    mcp_tool: document.getElementById('fExec').value === 'mcp' ? document.getElementById('fMcpTool').value.trim() : undefined,
     auth_header: document.getElementById('fAuthHeader').value.trim() || undefined,
     auth_token: document.getElementById('fAuthToken').value.trim() || undefined,
     cost: parseInt(document.getElementById('fCost').value, 10) || 0,
     visibility: 'private',
   };
   // validation masks (mirror backend _validate_submission)
-  const r = await fetch('/api/usertools', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+  const editing = !!_editKey;
+  const r = await fetch('/api/usertools' + (editing ? '/' + _editKey : ''), {
+    method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const d = await r.json();
-  if (d.ok) { closeModal(); loadTools(); }
+  if (d.ok) { _editKey = null; closeModal(); loadTools(); }
   else {
     const key = 'mytools_err_' + d.error;
     const v = window.t(key);
@@ -172,10 +243,6 @@ document.getElementById('submitTool').addEventListener('click', async () => {
   }
 });
 
-// mcp_tool row only for mcp execution
-document.getElementById('fExec').addEventListener('change', () => {
-  document.getElementById('fMcpRow').classList.toggle('hidden', document.getElementById('fExec').value !== 'mcp');
-});
 
 loadTools();
 {% endblock %}

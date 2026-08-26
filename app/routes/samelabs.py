@@ -366,7 +366,7 @@ async def samelabs_set_activity(code: str, request: Request):
         "starts_at": row["starts_at"], "ends_at": row["ends_at"]}}
 
 
-# ── Remote tools (execution http|mcp — operator-managed data rows) ──
+# ── Remote tools (http execution — operator-managed data rows) ──
 
 @router.get("/samelabs/withdrawals")
 async def samelabs_withdrawals(request: Request):
@@ -394,9 +394,11 @@ async def samelabs_process_withdrawal(wid: int, request: Request):
     except Exception:
         raw = {}
     approve = bool(raw.get("approve"))
+    txn_ref = str(raw.get("txn_ref") or "").strip()[:120] or None
     from earnings import process_withdrawal
     try:
-        row = process_withdrawal(wid, approve, admin_user_id=user["id"])
+        row = process_withdrawal(wid, approve, admin_user_id=user["id"],
+                                 txn_ref=txn_ref)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:
@@ -418,7 +420,7 @@ async def samelabs_remote(request: Request):
         rows = con.execute(
             """SELECT pt.*, u.username AS owner_name FROM platform_tools pt
                LEFT JOIN users u ON u.id = pt.owner_id
-               WHERE pt.execution IN ('http','mcp') ORDER BY pt.id""").fetchall()
+               WHERE pt.execution = 'http' ORDER BY pt.id""").fetchall()
     items = []
     for r in rows:
         decl = {}
@@ -467,15 +469,13 @@ async def samelabs_remote_create(request: Request):
     import re as _re
     if not _re.match(r"^[a-z][a-z0-9_]{1,40}$", tool_id):
         return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
-    if execution not in ("http", "mcp"):
-        return JSONResponse({"ok": False, "error": "bad_execution"}, 422)
+    # Supply contract: single execution class (http). mcp forwarding
+    # removed 2026-08-26 — operator rows follow the same API contract.
+    execution = "http"
     if not url.startswith(("http://", "https://")):
         return JSONResponse({"ok": False, "error": "bad_url"}, 422)
     if not (5 <= timeout_s <= 300):
         return JSONResponse({"ok": False, "error": "bad_timeout"}, 422)
-    from tools import VALID_ICONS
-    if icon not in VALID_ICONS:
-        return JSONResponse({"ok": False, "error": "bad_icon"}, 422)
     # Raw-bytes delivery needs a whitelisted landing identity: sniff
     # validates the filename extension, so output_filename is REQUIRED
     # with a whitelisted extension when the endpoint may return raw bytes.
@@ -494,11 +494,6 @@ async def samelabs_remote_create(request: Request):
         endpoint["output_filename"] = output_filename
     if output_content_type:
         endpoint["output_content_type"] = output_content_type
-    if execution == "mcp":
-        mcp_tool = str(raw.get("mcp_tool", "")).strip()
-        if not mcp_tool:
-            return JSONResponse({"ok": False, "error": "bad_mcp_tool"}, 422)
-        endpoint["mcp_tool"] = mcp_tool
     accept = None
     if accept_raw:
         accept = sorted({x.strip() for x in accept_raw.split(",") if x.strip()})

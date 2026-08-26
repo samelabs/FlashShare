@@ -50,6 +50,7 @@ async def my_earnings(request: Request):
         "summary": earnings.earnings_summary(user["id"]),
         "tools": breakdown,
         "withdrawals": earnings.list_withdrawals(user["id"]),
+        "revenue_lines": earnings.revenue_lines(user["id"], limit=50),
         "min_withdrawal": earnings.MIN_WITHDRAWAL,
     }
 

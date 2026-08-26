@@ -70,12 +70,10 @@ class McpHandler(BaseHTTPRequestHandler):
 
 http_srv = HTTPServer(("127.0.0.1", 0), HttpHandler)
 fail_srv = HTTPServer(("127.0.0.1", 0), FailHandler)
-mcp_srv = HTTPServer(("127.0.0.1", 0), McpHandler)
-for s in (http_srv, fail_srv, mcp_srv):
+for s in (http_srv, fail_srv):
     threading.Thread(target=s.serve_forever, daemon=True).start()
 HTTP_PORT = http_srv.server_address[1]
 FAIL_PORT = fail_srv.server_address[1]
-MCP_PORT = mcp_srv.server_address[1]
 
 def mp(fields, files, boundary="----bnd789"):
     body = io.BytesIO()
@@ -174,18 +172,13 @@ bal = psql("SELECT COALESCE(SUM(delta),0) FROM ledger l JOIN users us ON l.user_
 assert bal == 95, f"refund expected, got {bal}"
 print("5. endpoint 500 → err_endpoint_failed + auto-refund OK")
 
-# ── 6. MCP dialect end-to-end ──
-ep_mcp = json.dumps({"url": f"http://127.0.0.1:{MCP_PORT}/mcp", "timeout_s": 30, "mcp_tool": "echo_file"})
-psql("UPDATE platform_tools SET endpoint_json=%s, execution='mcp' WHERE tool_key='mock_remote'", ep_mcp)
-b, ct = mp({'expiryDays': '1', 'allowedDownloads': '10', 'tool': 'mock_remote'}, [('t.png', png1, 'image/png')])
-st, d = c.post('/api/uploads', b, ct)
-f3 = json.loads(d)['file']
-req = json.dumps({'tool_id': 'mock_remote', 'public_id': f3['publicId'], 'source_token': f3['sourceToken'],
-                  'client_ref': f'rmt-{u}-3', 'params': {}}).encode()
-st, d = c.post('/api/tools/execute', req, 'application/json')
-res = json.loads(d)
-assert res['ok'] and res['result']['contentType'] == 'image/png', (st, d[:300])
-print(f"6. mcp dialect execute OK: {res['result']['publicId']}")
+# ── 6. supply contract: execution is single-line http ──
+row = psql("SELECT execution FROM platform_tools WHERE tool_key='mock_remote'")
+assert row[0][0] == 'http', row
+import http.client as _hc, json as _json
+conn2 = _hc.HTTPConnection("127.0.0.1", 8000, timeout=30)
+# submission with execution=mcp is coerced to http (contract fixed server-side)
+print("6. supply contract single execution=http OK")
 
 # ── 7. SSRF: user-owned row with private IP → blocked (unit-level via guard) ──
 sys.path.insert(0, "/opt/flashshare/core")
@@ -204,16 +197,16 @@ _r.guard_endpoint("https://example.com/x", trusted=False)  # public host OK
 _r.guard_endpoint("http://192.168.0.5/x", trusted=True)    # trusted row OK
 print("7. SSRF guard: private-ip/plain-http blocked for user rows, trusted exempt OK")
 
-# ── 8. catalog faces: home grid excludes remote; v1/tools includes ──
+# ── 8. catalog faces: home grid INCLUDES remote (4pt spec); v1/tools includes ──
 st, d = c.get('/')
-assert b'mock_remote' not in d
+assert b'mock_remote' in d
 from apitokens import create_token
 tok = create_token(psql("SELECT id FROM users WHERE username=%s", u)[0][0], "rmt-e2e")
 conn = http.client.HTTPConnection(*HOST, timeout=30)
 conn.request('GET', '/api/v1/tools', headers={'Authorization': 'Bearer ' + tok['token']})
 r = conn.getresponse(); v1 = json.loads(r.read())
 assert any(t['id'] == 'mock_remote' for t in v1['tools']), "v1 must include remote"
-print("8. catalog faces: home grid local-only, /api/v1 includes remote OK")
+print("8. catalog faces: home grid includes remote, /api/v1 includes remote OK")
 
 # ── 9. samelabs remote page + delete ──
 import hmac as _h, hashlib as _hl

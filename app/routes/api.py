@@ -535,7 +535,7 @@ async def _execute_remote_and_share(request: Request, tool: dict, uploads: list,
 
       1. Build one-time signed fetch URLs per source (pull model — the
          endpoint fetches; the platform never pushes files out).
-      2. remote.drive_http / drive_mcp dispatch to the endpoint
+      2. remote.drive_http dispatches to the endpoint
          (SSRF-guarded, timeout-bounded, auth headers from the registry
          row — never from the caller).
       3. Output bytes are validated (sniff whitelist, size cap) with ZERO
@@ -575,12 +575,8 @@ async def _execute_remote_and_share(request: Request, tool: dict, uploads: list,
 
     loop = asyncio.get_event_loop()
     try:
-        if tool["execution"] == "mcp":
-            out = await loop.run_in_executor(
-                None, _remote.drive_mcp, decl, sources, params, auth_headers, trusted)
-        else:
-            out = await loop.run_in_executor(
-                None, _remote.drive_http, decl, sources, params, auth_headers, trusted)
+        out = await loop.run_in_executor(
+            None, _remote.drive_http, decl, sources, params, auth_headers, trusted)
     except _remote.RemoteError as exc:
         logger.warning("remote tool %s failed: %s", tool["id"], exc)
         code = {"ssrf_blocked": "err_endpoint_blocked",

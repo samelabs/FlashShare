@@ -44,12 +44,15 @@ def ensure_schema() -> None:
               note        TEXT,
               created_at  BIGINT NOT NULL,
               processed_at BIGINT,
-              processed_by BIGINT
+              processed_by BIGINT,
+              txn_ref     TEXT
             )
             """
         )
         con.execute(
             "CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)")
+        con.execute("ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS txn_ref TEXT")
+        con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_channel TEXT")
 
 
 def earnings_summary(user_id: int) -> dict:
@@ -120,16 +123,24 @@ def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> di
         raise ValueError("withdrawal_insufficient")
     ts = now()
     with db() as con:
+        ch = con.execute(
+            "SELECT payout_channel FROM users WHERE id = %s", (user_id,)
+        ).fetchone()
+        channel = (ch["payout_channel"] or "")[:120] if ch else ""
         row = con.execute(
-            """INSERT INTO withdrawals (user_id, amount, status, note, created_at)
-               VALUES (%s, %s, 'pending', %s, %s) RETURNING *""",
+            """INSERT INTO withdrawals
+               (user_id, amount, status, note, created_at, txn_ref)
+               VALUES (%s, %s, 'pending', %s, %s, NULL) RETURNING *""",
             (user_id, amount, (note or "")[:200], ts,),
         ).fetchone()
-    return dict(row)
+    out = dict(row)
+    out["payout_channel"] = channel  # surfaced for the operator queue
+    return out
 
 
 def process_withdrawal(withdrawal_id: int, approve: bool,
-                       admin_user_id: int | None = None) -> dict:
+                       admin_user_id: int | None = None,
+                       txn_ref: str | None = None) -> dict:
     """Operator verb. Approve = ledger consume (kind='withdraw',
     idem withdrawal:{id}) + status flip, ONE transaction. Reject = flip
     only. Re-processing a finished request is a typed no-op error."""
@@ -165,17 +176,38 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
             new_status = "rejected"
         out = con.execute(
             """UPDATE withdrawals SET status = %s, processed_at = %s,
-               processed_by = %s WHERE id = %s RETURNING *""",
-            (new_status, ts, admin_user_id, withdrawal_id,),
+               processed_by = %s, txn_ref = COALESCE(%s, txn_ref)
+               WHERE id = %s RETURNING *""",
+            (new_status, ts, admin_user_id,
+             (txn_ref or None) if approve else None, withdrawal_id,),
         ).fetchone()
     return dict(out)
+
+
+def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> list:
+    """E2: per-line revenue detail (provider_earn rows: tool / call / amount /
+    time). The ledger stays the single source; this is a read projection."""
+    with db() as con:
+        rows = con.execute(
+            """SELECT l.delta, l.ref_type, l.ref_id, l.note, l.created_at
+               FROM ledger l
+               WHERE l.user_id = %s AND l.kind = 'provider_earn'
+               ORDER BY l.id DESC LIMIT %s OFFSET %s""",
+            (user_id, limit, offset,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        out.append({"delta": int(r["delta"]), "ref": r["ref_id"],
+                    "tool": (r["note"] or "").replace("payout ", ""),
+                    "ts": int(r["created_at"])})
+    return out
 
 
 def list_all_pending(limit: int = 50) -> list:
     """Operator queue (/samelabs/withdrawals)."""
     with db() as con:
         rows = con.execute(
-            """SELECT w.*, u.username FROM withdrawals w
+            """SELECT w.*, u.username, u.payout_channel FROM withdrawals w
                JOIN users u ON u.id = w.user_id
                ORDER BY (w.status = 'pending') DESC, w.id DESC LIMIT %s""",
             (limit,),

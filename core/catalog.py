@@ -167,6 +167,20 @@ def _price_of(tool_key: str) -> dict | None:
     return p
 
 
+def catalog_version() -> str:
+    """Cheap change-detection for MCP clients: any insert/update/delete of
+    an enabled row bumps this digest (count + max updated_at + key checksum).
+    Agents compare versions to know when to re-list."""
+    with db() as con:
+        row = con.execute(
+            """SELECT COUNT(*) AS n,
+                      COALESCE(MAX(updated_at), 0) AS mx,
+                      COALESCE(SUM(hashtext(tool_key)), 0) AS ck
+               FROM platform_tools WHERE enabled"""
+        ).fetchone()
+    return f"v{row['n']}-{row['mx']}-{row['ck'] % 100000}"
+
+
 def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> list:
     """Pricing-overlaid catalog, identical contract to the legacy
     tools.list_all_tools(): disabled tools hidden, cost included.

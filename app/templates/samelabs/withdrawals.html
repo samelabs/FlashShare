@@ -10,7 +10,7 @@
   <div class="sl-tablewrap">
     <table class="sl-tbl">
       <thead>
-        <tr><th>ID</th><th>用户</th><th>金额</th><th>状态</th><th>申请时间</th><th>操作</th></tr>
+        <tr><th>ID</th><th>用户</th><th>金额</th><th>收款渠道</th><th>状态</th><th>凭证</th><th>申请时间</th><th>操作</th></tr>
       </thead>
       <tbody id="wRows">
         {% for w in withdrawals %}
@@ -18,7 +18,9 @@
           <td>#{{ w.id }}</td>
           <td>{{ w.username|e }}</td>
           <td>{{ w.amount }}</td>
+          <td class="mono">{{ (w.payout_channel or '—')|e }}</td>
           <td><span class="sl-vis v-{{ w.status }}">{{ w.status }}</span></td>
+          <td class="mono">{{ (w.txn_ref or '—')|e }}</td>
           <td>{{ w.created_fmt }}</td>
           <td>
             {% if w.status == 'pending' %}
@@ -29,7 +31,7 @@
         </tr>
         {% endfor %}
         {% if not withdrawals %}
-        <tr><td colspan="6" class="sl-empty">暂无申请</td></tr>
+        <tr><td colspan="8" class="sl-empty">暂无申请</td></tr>
         {% endif %}
       </tbody>
     </table>
@@ -45,12 +47,29 @@
   function reload() { setTimeout(function () { location.reload(); }, 600); }
 
   document.querySelectorAll('.btn-approve').forEach(function (b) {
+    var armed = false, t = 0;
     b.addEventListener('click', function () {
+      var tr = b.closest('tr');
+      var refInput = tr.querySelector('.txn-input');
+      if (!armed) {  // two-state: first click reveals the txn input, second submits
+        armed = true; b.classList.add('danger'); b.textContent = '确认批准';
+        if (!refInput) {
+          refInput = document.createElement('input');
+          refInput.className = 'sl-input txn-input';
+          refInput.placeholder = '打款凭证号(可选)';
+          refInput.style.cssText = 'width:130px;padding:4px 8px;font-size:13px';
+          tr.querySelector('td:nth-child(6)').appendChild(refInput);
+        }
+        refInput.focus();
+        t = setTimeout(function () { armed = false; b.classList.remove('danger'); b.textContent = '批准'; }, 5000);
+        return;
+      }
+      clearTimeout(t); b.disabled = true;
       fetch('/samelabs/withdrawals/' + b.dataset.wid + '/process', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approve: true })
+        body: JSON.stringify({ approve: true, txn_ref: (refInput ? refInput.value.trim() : '') })
       }).then(function (r) { return r.json(); }).then(function (d) {
-        if (d.ok) { say('已批准并记账'); reload(); } else say('失败: ' + d.error);
+        if (d.ok) { say('已批准并记账'); reload(); } else { say('失败: ' + d.error); b.disabled = false; armed = false; b.textContent = '批准'; }
       });
     });
   });

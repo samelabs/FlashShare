@@ -348,9 +348,10 @@ async def account_profile_save(request: Request):
     display_name = (form.get("display_name") or "").strip()
     email = (form.get("email") or "").strip()
     bio = (form.get("bio") or "").strip()
+    payout_channel = (form.get("payout_channel") or "").strip()
 
     try:
-        update_profile(user["id"], display_name=display_name or None, email=email or None, bio=bio or None)
+        update_profile(user["id"], display_name=display_name or None, email=email or None, bio=bio or None, payout_channel=payout_channel or None)
     except Exception as exc:
         u = public_user(user)
         ctx = _account_ctx(request, "profile", u=u,

@@ -70,10 +70,20 @@ print("3. ping OK")
 st,r=m.call('tools/list')
 tools=r['result']['tools']
 ids={t['name'] for t in tools}
-assert 'doc2pdf' in ids and len(tools)==10,(len(tools),ids)
+assert 'doc2pdf' in ids and 'catalog_search' in ids and len(tools)==11,(len(tools),ids)
 d2=[t for t in tools if t['name']=='doc2pdf'][0]
 assert d2['inputSchema']['required']==['file_b64','filename']
-print(f"4. tools/list OK ({len(tools)} tools, schema correct)")
+print(f"4. tools/list OK ({len(tools)} tools incl catalog_search meta, schema correct)")
+
+# 4b. initialize declares listChanged; instructions carry catalog version
+st,r=m.call('initialize',{'protocolVersion':'2025-03-26'})
+assert r['result']['capabilities']['tools']['listChanged'] is True
+assert 'Catalog version' in r['result']['instructions']
+st,r=m.call('tools/call',{'name':'catalog_search','arguments':{'q':'pdf'}})
+import json as _j
+hits=_j.loads(r['result']['content'][0]['text'])['tools']
+assert 'doc2pdf' in hits and 'img2pdf' in hits, hits
+print("4b. listChanged + catalog_version + catalog_search meta OK")
 
 # 5. tools/call doc2pdf: b64真转换
 def minimal_docx(text):

@@ -49,11 +49,12 @@ assert isinstance(icons, dict) and "wand" in icons and "search" in icons and ico
 assert "icons_json" not in html.replace("window.__ICONS__", "").replace(" = ", ""), "double inject"
 print(f"3. window.__ICONS__ is a dict ({len(icons)} icons), wand path present OK")
 
-# 4. form fields complete
-for fid in ["fTimeout", "fAccept", "fOutCt", "fAuthHeader", "fAuthToken", "fMcpRow"]:
+# 4. form fields complete (supply contract = http only; no mcp inputs)
+for fid in ["fTimeout", "fAccept", "fOutCt", "fAuthHeader", "fAuthToken"]:
     assert f'id="{fid}"' in html, fid
-assert 'id="fMcpRow" class="hidden"' in html  # hidden unless mcp
-print("4. submit form: timeout/accept/outct/auth x2/mcp-conditional rows OK")
+assert "fMcpRow" not in html and "fExec" not in html, "mcp inputs must be gone"
+assert 'name="payout_channel"' not in html  # payout lives on profile page
+print("4. submit form: timeout/accept/outct/auth x2, http-only contract OK")
 
 # 5. earnings panel markup + withdraw modal
 for eid in ["eTotal", "eAvail", "ePending", "eWithdrawn", "earnHist", "byToolList", "withdrawModal", "submitWithdraw"]:

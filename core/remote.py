@@ -1,4 +1,4 @@
-"""Remote tool execution drivers (phase 2: http | mcp, sync mode).
+"""Remote tool execution drivers (http supply contract, sync mode).
 
 The platform routes file work to EXTERNAL capabilities while keeping the
 four invariants:
@@ -42,7 +42,7 @@ MAX_OUTPUT_BYTES = MAX_UPLOAD_BYTES
 class RemoteError(Exception):
     """Typed failure. code is one of:
     ssrf_blocked | bad_endpoint | timeout | http_status | bad_output |
-    mcp_error | invalid_response
+    invalid_response
     The execute gate maps these to ToolError → refund + user error key.
     """
 
@@ -199,87 +199,3 @@ def sniff_final_type(filename: str, declared: str, body: bytes) -> str:
     return final if ok else declared
 
 
-# ── MCP driver (southbound dialect: tools/call on a remote server) ──
-
-def drive_mcp(endpoint_decl: dict, sources: list, params: dict,
-              auth_headers: dict, trusted: bool) -> dict:
-    """tools/call with {input_urls, params}; response content carries the
-    file (image/resource base64) or a text URL the platform pulls."""
-    url = guard_endpoint(endpoint_decl["url"], trusted)
-    timeout_s = min(int(endpoint_decl.get("timeout_s") or DEFAULT_TIMEOUT_S),
-                    MAX_TIMEOUT_S)
-    tool_name = endpoint_decl.get("mcp_tool") or ""
-    if not tool_name:
-        raise RemoteError("bad_endpoint", "mcp dialect needs mcp_tool")
-    args = {
-        "input_urls": [s["fetch_url"] for s in sources],
-        "input_names": [s["filename"] for s in sources],
-        "params": params,
-    }
-    rpc = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                      "params": {"name": tool_name, "arguments": args}}).encode()
-    req = urllib.request.Request(
-        url, data=rpc, method="POST",
-        headers={"Content-Type": "application/json",
-                 "Accept": "application/json, text/event-stream",
-                 **auth_headers})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            raw = resp.read(MAX_OUTPUT_BYTES * 2 + 1).decode("utf-8", "replace")
-    except urllib.error.HTTPError as exc:
-        raise RemoteError("http_status", f"mcp {exc.code}") from exc
-    except (urllib.error.URLError, socket.timeout) as exc:
-        raise RemoteError("timeout", str(exc)) from exc
-
-    result = _parse_mcp_response(raw)
-    if result.get("isError"):
-        raise RemoteError("mcp_error", json.dumps(result)[:300])
-
-    for block in result.get("content", []):
-        btype = block.get("type")
-        if btype in ("image", "audio", "resource") and block.get("data"):
-            import base64
-            try:
-                data = base64.b64decode(block["data"], validate=True)
-            except Exception as exc:
-                raise RemoteError("bad_output", "mcp b64 failed") from exc
-            name = block.get("filename") or block.get("title") \
-                or endpoint_decl.get("output_filename") or "output.bin"
-            ctype = block.get("mimeType") or "application/octet-stream"
-            return {"filename": name,
-                    "content_type": sniff_final_type(name, ctype, data),
-                    "bytes": validate_output(name, ctype, data)}
-        if btype == "text" and "https://" in (block.get("text") or ""):
-            # URL-in-text delivery: first https URL wins (guarded pull)
-            for word in block["text"].split():
-                if word.startswith("https://"):
-                    data = _pull_output_url(word, timeout_s, trusted)
-                    return _wrap_raw(endpoint_decl, data)
-    raise RemoteError("invalid_response", "no file content in mcp result")
-
-
-def _parse_mcp_response(raw: str) -> dict:
-    """Accept both application/json and SSE-framed streamable-http bodies."""
-    raw = raw.strip()
-    if raw.startswith("{"):
-        try:
-            msg = json.loads(raw)
-        except Exception:
-            raise RemoteError("invalid_response", "bad json")
-    else:
-        # SSE: find the first data: line carrying a JSON-RPC result
-        msg = None
-        for line in raw.splitlines():
-            if line.startswith("data:"):
-                try:
-                    cand = json.loads(line[5:].strip())
-                    if isinstance(cand, dict) and "result" in cand:
-                        msg = cand
-                        break
-                except Exception:
-                    continue
-        if msg is None:
-            raise RemoteError("invalid_response", "no sse result frame")
-    if "error" in msg:
-        raise RemoteError("mcp_error", json.dumps(msg["error"])[:300])
-    return msg.get("result") or {}
