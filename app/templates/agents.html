@@ -24,10 +24,10 @@
   <div class="agents-mcp-config">
     <h3>{{ texts.agents_mcp_conf }}</h3>
     <dl class="agents-fields">
-      <dt>{{ texts.agents_f_url }}</dt><dd><code>https://518.plus/mcp</code></dd>
-      <dt>{{ texts.agents_f_header }}</dt><dd><code>Authorization</code></dd>
-      <dt>{{ texts.agents_f_value }}</dt><dd><code>Bearer fsk_你的令牌</code></dd>
-      <dt>{{ texts.agents_f_alt }}</dt><dd><code>https://518.plus/mcp?key=fsk_你的令牌</code></dd>
+      <dt>URL</dt><dd><code>https://518.plus/mcp</code></dd>
+      <dt>Header 名称</dt><dd><code>Authorization</code></dd>
+      <dt>Header 值</dt><dd><code>Bearer fsk_你的令牌</code></dd>
+      <dt>不支持自定义 Header？</dt><dd><code>https://518.plus/mcp?key=fsk_你的令牌</code></dd>
     </dl>
 <pre class="agents-pre"><code id="mcpConf">{
   "mcpServers": {
@@ -48,23 +48,23 @@
       <tbody>
         <tr>
           <td class="mono">Cherry Studio</td>
-          <td>{{ texts.agents_cl_cherry|safe }}</td>
+          <td>设置 → MCP 服务器 → 添加：类型选 <b>Streamable HTTP</b>，URL 填服务地址，Header 名称 <code>Authorization</code>，值 <code>Bearer fsk_…</code></td>
         </tr>
         <tr>
           <td class="mono">Claude Desktop / Cursor</td>
-          <td>{{ texts.agents_cl_generic|safe }}</td>
+          <td>连接器（Connectors）→ 添加自定义连接器：填 URL，认证方式选 <b>Bearer Token</b>，粘贴 <code>fsk_…</code></td>
         </tr>
         <tr>
           <td class="mono">Qwen Code (CLI)</td>
-          <td>{{ texts.agents_cl_qwen|safe }}<br><code class="mono">qwen mcp add 518plus "https://518.plus/mcp?key=fsk_你的令牌" -t http</code></td>
+          <td>一条命令接入：<br><code class="mono">qwen mcp add 518plus "https://518.plus/mcp?key=fsk_你的令牌" -t http</code></td>
         </tr>
         <tr>
           <td class="mono">WorkBuddy</td>
-          <td>{{ texts.agents_cl_wb|safe }}</td>
+          <td>侧边栏 插件 → MCP 服务器 → 配置 MCP：粘贴上方 JSON 配置后保存</td>
         </tr>
         <tr>
-          <td class="mono">{{ texts.agents_cl_doubao_name }}</td>
-          <td>{{ texts.agents_cl_doubao_note|safe }}</td>
+          <td class="mono">豆包工作</td>
+          <td>工具生态为内置"技能·连接器"（200+），暂未开放手动添加 MCP 服务端；若连接器支持 Streamable HTTP URL，直接粘贴 <code>https://518.plus/mcp?key=fsk_…</code>，否则用下方 REST API</td>
         </tr>
       </tbody>
     </table>
@@ -103,11 +103,16 @@
 {% endblock %}
 
 {% block script %}
+async function _copyText(btn, text) {
+  try { await navigator.clipboard.writeText(text); } catch (e) {}
+  const old = btn.innerHTML;
+  btn.innerHTML = "✓ 已复制";
+  btn.classList.add("copied");
+  setTimeout(() => { btn.innerHTML = old; btn.classList.remove("copied"); }, 1500);
+}
 for (const [id, btn] of [["mcpUrl","copyMcp"],["mcpConf","copyConf"],["skillCmd","copySkill"]]) {
   const el = document.getElementById(btn);
   if (!el) continue;
-  el.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(document.getElementById(id).textContent); } catch (e) {}
-  });
+  el.addEventListener("click", () => _copyText(el, document.getElementById(id).textContent));
 }
 {% endblock %}

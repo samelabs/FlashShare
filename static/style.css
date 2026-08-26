@@ -796,3 +796,6 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 /* ── token reveal: name line visually distinct from the key line ── */
 .token-new-name { margin: 0 0 var(--s1); font-weight: 600; color: var(--ink); }
 .token-new-name::before { content: "🏷 "; }
+
+/* ── copy-button feedback state ── */
+.btn-secondary.copied { border-color: var(--accent); color: var(--accent); background: var(--soft); }
