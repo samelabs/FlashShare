@@ -808,9 +808,10 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 
 /* ── user dropdown: sectioned nav, unified rows ── */
 .user-dropdown { min-width: 220px; }
-.user-dropdown .menu-sec { padding: var(--s1) 0; }
-.user-dropdown .menu-sec + .menu-sec { border-top: 1px solid var(--line); }
-.user-dropdown a, .user-dropdown button { display: flex; align-items: center; justify-content: flex-start; gap: var(--s2); width: 100%; min-height: 0; padding: 8px var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 500; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
+/* 1px divider lives inside the 16px row gap: adjacent rows shrink 0.5px each side of the border */
+.menu-sec + .menu-sec { border-top: 1px solid var(--line); margin-top: -1px; padding-top: 0.5px; }
+.menu-sec + .menu-sec > a:first-child { padding-top: 7.5px; }
+.user-dropdown .user-dropdown a, .user-dropdown button { display: flex; align-items: center; justify-content: flex-start; gap: var(--s2); width: 100%; min-height: 0; padding: 8px var(--s3); border: none; background: none; text-align: left; font-size: var(--text-sm); font-weight: 500; color: var(--ink); text-decoration: none; cursor: pointer; border-radius: var(--r-sm); }
 .user-dropdown a svg, .user-dropdown button svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; opacity: .75; }
 @media (hover:hover) and (pointer:fine) { .user-dropdown a:hover, .user-dropdown button:hover { background: var(--soft); } }
 .user-dropdown .menu-val { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
