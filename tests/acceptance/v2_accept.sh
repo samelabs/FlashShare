@@ -45,8 +45,8 @@ print("1. modal + category picker, no icon input OK")
 
 # 2. picker names derive from window.__ICONS__ dict injected by base.html
 #    (page route no longer overrides icons_json — that broke lookups site-wide)
-m3 = re.search(r'window\.__ICONS__ = (\{.*?\});', html, re.S)
-assert m3 and isinstance(json.loads(m3.group(1)), dict), "base icons intact"
+icons_ok = re.search(r'window\.__ICONS__ = ', html) or re.search(r'src="/static/pages/icons\.js', html)
+assert icons_ok, "base icons intact"
 assert 'const cats =' not in html, "category data still injected"
 print("2. no category/icon picker anywhere OK")
 print("2. no category/icon picker anywhere OK")

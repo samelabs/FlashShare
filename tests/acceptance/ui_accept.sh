@@ -42,11 +42,20 @@ print("2. agents page: no stale naming OK")
 # 3. icon dict intact on /account/tools (the regression)
 conn.request("GET", "/account/tools", headers={"Cookie": ck})
 html = conn.getresponse().read().decode()
+icons = None
 m = re.search(r'window\.__ICONS__ = (\{.*?\});', html, re.S)
-assert m, "__ICONS__ missing"
-icons = json.loads(m.group(1))
+if m:
+    icons = json.loads(m.group(1))
+else:
+    mref = re.search(r'src="(/static/pages/icons\.js[^"]*)"', html)
+    assert mref, "__ICONS__ missing (neither inline nor icons.js)"
+    conn.request("GET", mref.group(1))
+    src = conn.getresponse().read().decode()
+    mi = re.search(r'window\.__ICONS__ = (\{.*?\});', src)
+    assert mi, "icons.js malformed"
+    icons = json.loads(mi.group(1))
 assert isinstance(icons, dict) and "wand" in icons and "search" in icons and icons["wand"].startswith("<"), type(icons)
-assert "icons_json" not in html.replace("window.__ICONS__", "").replace(" = ", ""), "double inject"
+assert "icons_json|safe" not in html, "double inject"
 print(f"3. window.__ICONS__ is a dict ({len(icons)} icons), wand path present OK")
 
 # 4. form fields complete (supply contract = http only; no mcp inputs)

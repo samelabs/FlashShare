@@ -135,7 +135,9 @@ window.__LIMITS__ = {{ limits_json|safe }};
 window.__TOOLS__ = {{ tools_json|safe }};
 {% endblock %}
 
-{% block script %}{{ JS|safe }}{% endblock %}
+{% block script %}
+<script src="/static/app.js?v={{ css_version }}"></script>
+{% endblock %}
 
 {% block script_tail %}
 if ("serviceWorker" in navigator) {
