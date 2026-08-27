@@ -43,13 +43,16 @@ router = APIRouter()
 _STATIC = _BASE / "static"
 with open(_STATIC / "style.css", encoding="utf-8") as f:
     _CSS = f.read()
-_CSS_VERSION = hashlib.md5(_CSS.encode()).hexdigest()[:8]
+# Version stamp = content hash + mtime: content-converging edits (diverge then
+# reconverge) can collide on a pure content hash and serve stale edge caches.
+import os as _os
+_CSS_VERSION = hashlib.md5((_CSS + str(int(_os.path.getmtime(_STATIC / "style.css")))).encode()).hexdigest()[:8]
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 # Separate cache-bust version for i18n.js — it changes independently of style.css
 with open(_STATIC / "i18n.js", encoding="utf-8") as f:
     _I18N_JS = f.read()
-_I18N_VERSION = hashlib.md5(_I18N_JS.encode()).hexdigest()[:8]
+_I18N_VERSION = hashlib.md5((_I18N_JS + str(int(_os.path.getmtime(_STATIC / "i18n.js")))).encode()).hexdigest()[:8]
 
 
 def _ctx_base(request: Request) -> dict:
