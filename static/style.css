@@ -741,8 +741,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .user-dropdown .menu-val { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 
 /* ── token reveal: name line visually distinct from the key line ── */
-.token-new-name { margin: 0 0 var(--s1); font-weight: 600; color: var(--ink); }
-.token-new-name::before { content: "🏷 "; }
+.token-new-name { margin: 0 0 var(--s1); font-weight: 600; color: var(--ink); } .token-new-name:empty { display: none; }
 
 /* ── copy-button feedback state ── */
 .btn-secondary.copied { border-color: var(--accent); color: var(--accent); background: var(--soft); }

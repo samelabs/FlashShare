@@ -8,16 +8,16 @@ async function loadTokens() {
   const d = await r.json();
   if (!d.ok) return;
   _tokenList.innerHTML = '';
-  for (const t of d.tokens) {
+  for (const t of d.tokens.filter(x => x.status === 'active')) {
     const row = document.createElement('div');
     row.className = 'token-item';
-    const status = t.status === 'active' ? 'token-active' : 'token-revoked';
+    const status = 'token-active';
     const label = document.createElement('span');
     label.className = 'token-name';
     label.textContent = `${t.name} · fsk_${t.prefix}…`;
     const badge = document.createElement('span');
     badge.className = status;
-    badge.textContent = t.status === 'active' ? window.t("active") : window.t("revoked");
+    badge.textContent = window.t("active");
     row.append(label, badge);
     if (t.status === 'active') {
       const btn = document.createElement('button');
@@ -48,7 +48,7 @@ document.getElementById('createToken')?.addEventListener('click', async () => {
   });
   const d = await r.json();
   if (!d.ok) { alert(d.error || 'error'); return; }
-  document.getElementById('newTokenNameEcho').textContent = name || '—';
+  document.getElementById('newTokenNameEcho').textContent = name || '';
   _newTokenValue.textContent = d.token.token;
   _newTokenBox.hidden = false;
   document.getElementById('newTokenName').value = '';

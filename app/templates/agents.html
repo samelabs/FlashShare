@@ -40,43 +40,7 @@
     <button type="button" class="btn-secondary" id="copyConf">{{ texts['copy'] }}</button>
   </div>
 
-  <h2>{{ texts.agents_clients_h }}</h2>
-  <p>{{ texts.agents_clients_desc }}</p>
-  <div class="agents-endpoints">
-    <table class="agents-table">
-      <thead><tr><th>Client</th><th>{{ texts.agents_client_how }}</th></tr></thead>
-      <tbody>
-        <tr>
-          <td class="mono">Cherry Studio</td>
-          <td>设置 → MCP 服务器 → 添加：类型选 <b>Streamable HTTP</b>，URL 填服务地址，Header 名称 <code>Authorization</code>，值 <code>Bearer fsk_…</code></td>
-        </tr>
-        <tr>
-          <td class="mono">Claude Desktop / Cursor</td>
-          <td>连接器（Connectors）→ 添加自定义连接器：填 URL，认证方式选 <b>Bearer Token</b>，粘贴 <code>fsk_…</code></td>
-        </tr>
-        <tr>
-          <td class="mono">Qwen Code (CLI)</td>
-          <td>一条命令接入：<br><code class="mono">qwen mcp add 518plus "https://518.plus/mcp?key=fsk_你的令牌" -t http</code></td>
-        </tr>
-        <tr>
-          <td class="mono">WorkBuddy</td>
-          <td>侧边栏 插件 → MCP 服务器 → 配置 MCP：粘贴上方 JSON 配置后保存</td>
-        </tr>
-        <tr>
-          <td class="mono">豆包工作</td>
-          <td>工具生态为内置"技能·连接器"（200+），暂未开放手动添加 MCP 服务端；若连接器支持 Streamable HTTP URL，直接粘贴 <code>https://518.plus/mcp?key=fsk_…</code>，否则用下方 REST API</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
 
-  <h2>{{ texts.agents_semantics_h }}</h2>
-  <ul class="agents-sem-list">
-    <li>{{ texts.agents_semi_1 }}</li>
-    <li>{{ texts.agents_semi_2 }}</li>
-    <li>{{ texts.agents_semi_3 }}</li>
-    <li>{{ texts.agents_semi_4 }}</li>
-  </ul>
 
   <h2>{{ texts.agents_api_h }}</h2>
   <p>{{ texts.agents_api_desc2 }}</p>
