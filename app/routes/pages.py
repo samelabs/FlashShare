@@ -201,13 +201,8 @@ async def login_page(request: Request, error: str = ""):
 @router.get("/auth/register", response_class=HTMLResponse)
 async def register_page(request: Request, error: str = ""):
     from app.main import templates
-    # expose the LIVE signup bonus (activities table — data, not hardcoded)
-    from activities import get_activity
-    sa = get_activity("signup")
-    signup_bonus = int(sa["amount"]) if sa and sa["active"] else 0
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "error": error,
-                "signup_bonus": signup_bonus})
+    ctx.update({"shell_class": "", "share_url": "", "error": error})
     return templates.TemplateResponse("auth/register.html", ctx)
 
 

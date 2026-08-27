@@ -91,6 +91,8 @@ b.post('/auth/register', rq, ct)
 a = C(); ua = f"cl{int(time.time()) % 100000}"
 rq, ct = mp({'username': ua, 'password': 'Test12345', 'password_confirm': 'Test12345', 'email': f'{ua}@t.co'}, [])
 a.post('/auth/register', rq, ct)
+# signup bonus decoupled (2026-08-27): seed spendable credits for the caller
+psql("INSERT INTO ledger (user_id, delta, balance_after, kind, ref_type, ref_id, idem_key, note, created_at) SELECT id, 100, 100, 'grant', 'test', 'seed', 'p3-seed:'||id, '', extract(epoch from now())::bigint FROM users WHERE username=%s", (ua,))
 
 # 1. submission: https enforced → reject http url
 body = json.dumps({"tool_id": "echo", "label": "Echo", "execution": "http",
@@ -190,7 +192,7 @@ st, d = a.post('/api/tools/execute', json.dumps({'tool_id': f'{ub}/echo', 'publi
 res3 = json.loads(d)
 assert not res3['ok'], d[:150]
 bal_a = psql("SELECT COALESCE(SUM(delta),0) FROM ledger l JOIN users us ON l.user_id=us.id WHERE us.username=%s", ua)[0][0]
-assert bal_a == 100 + 5 - 10, f"caller {bal_a} != 95 (failed refunded)"
+assert bal_a == 100 + 5 - 10, f"caller {bal_a} != 95 (seed100+daily5-10 refunded)"
 rows = psql("SELECT COUNT(*) FROM ledger l JOIN users us ON l.user_id=us.id WHERE us.username=%s AND kind='provider_earn'", ub)
 assert rows[0][0] == 1
 print("10. failed call → refund, no payout OK")

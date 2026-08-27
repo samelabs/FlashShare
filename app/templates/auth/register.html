@@ -6,9 +6,6 @@
 {% block content %}
 <section class="auth-page">
   <h1 data-i18n="registerTitle">{{ texts.registerTitle }}</h1>
-  {% if signup_bonus and signup_bonus > 0 %}
-  <p class="auth-bonus"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10"></path><path d="M15.5 9.5a3 3 0 0 0-3.5-2.5h-.5a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5H12a3 3 0 0 1-3.5-2.5"></path></svg><span>{{ texts.signup_bonus_text|replace('{n}', signup_bonus) }}</span></p>
-  {% endif %}
   {% if error %}<p class="form-error">{{ error|e }}</p>{% endif %}
   <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
   <div class="auth-divider"><span>or</span></div>

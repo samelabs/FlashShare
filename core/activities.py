@@ -33,16 +33,11 @@ ACTIVITY_TYPES = ("once", "daily")
 
 def _seed_rows() -> list:
     ts = now()
+    # REMOVED 2026-08-27: signup bonus was a pseudo-campaign coupled into
+    # registration logic (lazy grant at first billed call). Campaigns =
+    # opt-in mechanics; registration is core logic. daily_login stays as
+    # the model campaign (login = participation).
     return [
-        {
-            "code": "signup",
-            "activity_type": "once",
-            "amount": 100,
-            "kind": "grant_signup",
-            "label_json": None,
-            "starts_at": None,
-            "ends_at": None,
-        },
         {
             "code": "daily_login",
             "activity_type": "daily",

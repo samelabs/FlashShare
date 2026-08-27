@@ -175,39 +175,8 @@ def refund(user_id: int, amount: int, *,
 
 
 def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
-    """Grant the signup bonus lazily INSIDE an existing transaction.
-
-    Called at the single metering point when a user has no ledger rows
-    yet (fresh user, first billable event) — the free-tier welcome
-    credits land at first need, not at registration, so registration
-    stays zero-write for economics.
-
-    The prior-activity check is kind='grant_signup' — NOT "any row".
-    Daily-login grants land at register/login time and must NOT short-
-    circuit the signup bonus (bug fixed 2026-08-25: fresh users never
-    received the 100-credit signup grant because the daily row existed).
-
-    Returns the new ledger row, or None if the signup grant already
-    landed, or when amount <= 0 (activity disabled → no-op, not error).
-    """
-    prior = con.execute(
-        "SELECT 1 FROM ledger WHERE user_id = %s AND kind = 'grant_signup' LIMIT 1",
-        (user_id,)).fetchone()
-    if prior:
-        return None
-    if amount <= 0:
-        return None
-    bal = _balance_for_update(con, user_id)
-    row = con.execute(
-        """
-        INSERT INTO ledger (user_id, delta, balance_after, kind,
-                            ref_type, ref_id, idem_key, note, created_at)
-        VALUES (%s, %s, %s, 'grant_signup', NULL, NULL, %s, NULL, %s)
-        RETURNING *
-        """,
-        (user_id, amount, bal + amount, f"signup:{user_id}", now()),
-    ).fetchone()
-    return dict(row)
+    """REMOVED 2026-08-27: signup bonus decoupled from registration/billing."""
+    return None
 
 
 def grant_daily_login(user_id: int, amount: int) -> dict | None:  # noqa: F401
@@ -299,19 +268,5 @@ DAILY_LOGIN_CREDITS = 5
 
 
 def signup_amount() -> int:
-    """Live signup grant amount from the activities table.
-
-    0 when the activity is disabled or missing — identical skip semantics
-    to apply_activity, so disabling the campaign stops the lazy grant at
-    the metering point too. The module constant is NOT a fallback here:
-    a disabled campaign must not keep granting.
-    """
-    try:
-        from activities import get_activity
-        act = get_activity("signup")
-        if act and act["active"]:
-            return int(act["amount"])
-        return 0
-    except Exception:
-        # activities table unreachable (pre-startup) — historical default
-        return SIGNUP_GRANT_CREDITS
+    """REMOVED 2026-08-27: signup bonus decoupled (pseudo-campaign).
+    Kept as a stub returning 0 for any historical import sites."""

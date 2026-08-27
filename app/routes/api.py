@@ -291,7 +291,7 @@ async def execute_tool(request: Request):
     # matching the UX of click-again-to-retry). /api/v1 + MCP pass
     # client_ref: replay returns the original result without re-charging.
     from pricing import get_pricing
-    from billing import consume, lazy_signup_grant, InsufficientCredits, signup_amount
+    from billing import consume, InsufficientCredits
     price = get_pricing(tool_id)
     if not price["enabled"]:
         return JSONResponse({"ok": False, "error": "tool_disabled"}, 403)
@@ -326,19 +326,14 @@ async def execute_tool(request: Request):
     idem_key = f"call:{user['id']}:{client_ref}:{attempt}"
     cost = int(price["cost"])
     started = now()
-    # Lazy signup grant at first billable need (activities-driven amount;
-    # amount=0 when the signup activity is disabled → no ledger row)
+    # Free tools (cost=0) skip the ledger entirely — no zero-amount rows.
+    charge = None
     if cost > 0:
-        s_amount = signup_amount()
-        if s_amount > 0:
-            with db() as con:
-                lazy_signup_grant(con, user["id"], s_amount)
         try:
             charge = consume(user["id"], cost, "consume",
                              ref_type="tool_call", idem_key=idem_key,
                              note=f"{tool_id}")
         except InsufficientCredits as exc:
-            con_execute = None
             with db() as con:
                 con.execute(
                     """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,

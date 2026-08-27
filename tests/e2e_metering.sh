@@ -67,13 +67,18 @@ def balance():
     cur.execute("SELECT COALESCE(SUM(delta),0) FROM ledger WHERE user_id=(SELECT id FROM users WHERE username=%s)",(u,))
     v=cur.fetchone()[0]; con.close(); return v
 
-# 2. 首次带client_ref执行: 惰性发放100(注册每日5已在登录时落) + 扣5 = 100
+# 2. 首次带client_ref执行: daily5 - call5 = 0 (signup bonus decoupled 2026-08-27)
+# seed spendable credits for the billed call (dual-pool: grants only)
+psql_seed = ("INSERT INTO ledger (user_id, delta, balance_after, kind, ref_type, ref_id, idem_key, note, created_at) "
+             "SELECT id, 100, 100, 'grant', 'test', 'seed', 'meter-seed:'||id, '', extract(epoch from now())::bigint "
+             "FROM users WHERE username=%s")
+con=psycopg2.connect(PG_URL); cur=con.cursor(); cur.execute(psql_seed,(u,)); con.commit(); con.close()
 req=json.dumps({'tool_id':'doc2pdf','public_id':f['publicId'],'source_token':f['sourceToken'],'client_ref':'ref-e2e-001','params':{'preset':'auto'}}).encode()
 st,d=c.post('/api/tools/execute',req,'application/json')
 res=json.loads(d)
 assert res['ok'], d[:200]
-assert balance()==100, f"expected 100 (signup100+daily5-call5), got {balance()}"
-print(f"2. lazy grant 100 + charge 5 -> balance {balance()} OK (call_id={res.get('call_id')})")
+assert balance()==100, f"expected 100 (grant100+daily5-call5), got {balance()}"
+print(f"2. grant100 + charge 5 -> balance {balance()} OK (call_id={res.get('call_id')})")
 
 # 3. 同 client_ref 重放: 返回原结果不重扣
 st,d=c.post('/api/tools/execute',req,'application/json')
@@ -119,6 +124,7 @@ st,d=c.post('/api/uploads',b,ct); f3=json.loads(d)['file']
 req_f=json.dumps({'tool_id':'doc2pdf','public_id':f3['publicId'],'source_token':f3['sourceToken'],'client_ref':'ref-e2e-003','params':{'preset':'auto'}}).encode()
 st,d=c.post('/api/tools/execute',req_f,'application/json')
 resf=json.loads(d)
+
 assert resf['ok']
 assert balance()==95, f"free call should not charge, got {balance()}"
 print("6. cost=0 free call OK")
