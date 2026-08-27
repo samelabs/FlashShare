@@ -65,6 +65,7 @@
     })();
 
     {% block script_head %}{% endblock %}
+    <script src="/static/i18n.js?v={{ i18n_version }}"></script>
     {% block script %}{% endblock %}
     {% block script_tail %}{% endblock %}
   </script>
