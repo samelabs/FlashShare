@@ -93,7 +93,7 @@
           {% for r in rows %}
           <tr>
             <td class="mono">{{ fmt_ts(r.created_at) }}</td>
-            <td><span class="ledger-kind ledger-{{ r.kind }}">{{ r.kind }}</span></td>
+            <td><span class="ledger-kind ledger-{{ r.kind }}" data-i18n="ledger_{{ r.kind }}">{{ texts['ledger_' ~ r.kind] if texts.get('ledger_' ~ r.kind) else r.kind }}</span></td>
             <td class="credit-note-cell">{{ r.note or ('—') }}</td>
             <td class="ta-r mono {% if r.delta > 0 %}pos{% elif r.delta < 0 %}neg{% endif %}">{% if r.delta > 0 %}+{% endif %}{{ r.delta }}</td>
             <td class="ta-r mono">{{ r.balance_after }}</td>
