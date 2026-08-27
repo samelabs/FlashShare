@@ -655,9 +655,16 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-daily strong { display: block; font-size: var(--text-base); }
 .acct-daily-sub { font-size: var(--text-xs); color: var(--muted); }
 .acct-tablewrap { overflow-x: auto; }
-.acct-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
-.acct-table th { text-align: left; font-size: var(--text-xs); color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-.acct-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.acct-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); table-layout: fixed; }
+/* ledger table column contract: time | kind | note | delta | balance */
+.acct-table th:nth-child(1), .acct-table td:nth-child(1) { width: 150px; }
+.acct-table th:nth-child(2), .acct-table td:nth-child(2) { width: 110px; }
+.acct-table th:nth-child(3), .acct-table td:nth-child(3) { width: auto; }
+.acct-table th:nth-child(4), .acct-table td:nth-child(4) { width: 80px; }
+.acct-table th:nth-child(5), .acct-table td:nth-child(5) { width: 90px; }
+.acct-table td:nth-child(1) { white-space: nowrap; }
+.acct-table th { text-align: left; font-size: var(--text-xs); color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acct-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow: hidden; }
 @media (hover:hover) and (pointer:fine) { .acct-table tbody tr:hover { background: var(--hover, rgba(0,0,0,.02)); } }
 .acct-table .mono { font-variant-numeric: tabular-nums; }
 .acct-table .ta-r { text-align: right; }
