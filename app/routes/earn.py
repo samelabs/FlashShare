@@ -43,14 +43,27 @@ async def my_earnings(request: Request):
     if err:
         return err
     import earnings
-    from catalog import _price_of  # per-tool cost view
-    breakdown = earnings.per_tool_revenue(user["id"])
+    # growth contract: rev page paginates (50/page); withdrawals 20/page
+    try:
+        rev_pg = max(1, int(request.query_params.get("rev_page", "1") or 1))
+    except ValueError:
+        rev_pg = 1
+    try:
+        wd_pg = max(1, int(request.query_params.get("wd_page", "1") or 1))
+    except ValueError:
+        wd_pg = 1
+    rev_rows, rev_total = earnings.revenue_lines(user["id"], limit=50, offset=(rev_pg - 1) * 50)
+    wd_rows = earnings.list_withdrawals(user["id"], limit=20, offset=(wd_pg - 1) * 20)
     return {
         "ok": True,
         "summary": earnings.earnings_summary(user["id"]),
-        "tools": breakdown,
-        "withdrawals": earnings.list_withdrawals(user["id"]),
-        "revenue_lines": earnings.revenue_lines(user["id"], limit=50),
+        "tools": earnings.per_tool_revenue(user["id"]),  # capped at 100 tools
+        "withdrawals": wd_rows,
+        "wd_total": earnings.withdrawal_count(user["id"]),
+        "wd_page": wd_pg,
+        "revenue_lines": rev_rows,
+        "rev_total": rev_total,
+        "rev_page": rev_pg,
         "min_withdrawal": earnings.MIN_WITHDRAWAL,
     }
 

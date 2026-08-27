@@ -90,7 +90,7 @@ def per_tool_revenue(user_id: int) -> list:
                FROM ledger l
                WHERE l.user_id = %s AND l.kind = 'provider_earn'
                GROUP BY l.note
-               ORDER BY earned DESC""",
+               ORDER BY earned DESC LIMIT 100""",
             (user_id,),
         ).fetchall()
     out = []
@@ -102,14 +102,21 @@ def per_tool_revenue(user_id: int) -> list:
     return out
 
 
-def list_withdrawals(user_id: int, limit: int = 20) -> list:
+def list_withdrawals(user_id: int, limit: int = 20, offset: int = 0) -> list:
     with db() as con:
         rows = con.execute(
             "SELECT * FROM withdrawals WHERE user_id = %s "
-            "ORDER BY id DESC LIMIT %s",
-            (user_id, limit,),
+            "ORDER BY id DESC LIMIT %s OFFSET %s",
+            (user_id, limit, offset,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def withdrawal_count(user_id: int) -> int:
+    with db() as con:
+        return int(con.execute(
+            "SELECT COUNT(*) AS n FROM withdrawals WHERE user_id = %s",
+            (user_id,)).fetchone()["n"])
 
 
 def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> dict:
@@ -184,10 +191,13 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
     return dict(out)
 
 
-def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> list:
-    """E2: per-line revenue detail (provider_earn rows: tool / call / amount /
-    time). The ledger stays the single source; this is a read projection."""
+def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
+    """E2: per-line revenue detail — (rows, total) so the page can paginate.
+    The ledger stays the single source; this is a read projection."""
     with db() as con:
+        total = con.execute(
+            "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = 'provider_earn'",
+            (user_id,)).fetchone()["n"]
         rows = con.execute(
             """SELECT l.delta, l.ref_type, l.ref_id, l.note, l.created_at
                FROM ledger l
@@ -200,7 +210,7 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> list:
         out.append({"delta": int(r["delta"]), "ref": r["ref_id"],
                     "tool": (r["note"] or "").replace("payout ", ""),
                     "ts": int(r["created_at"])})
-    return out
+    return out, int(total)
 
 
 def list_all_pending(limit: int = 50) -> list:
