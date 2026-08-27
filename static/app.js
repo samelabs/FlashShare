@@ -17,7 +17,6 @@ const modalSaveQr = document.getElementById("modalSaveQr");
 const modalDelete = document.getElementById("modalDelete");
 const langButton = document.getElementById("langButton");
 const langMenu = document.getElementById("langMenu");
-const homeShare = document.getElementById("homeShare");
 const limits = window.__LIMITS__ || {};
 let activeUpload = null;
 
@@ -106,17 +105,9 @@ function renderModalActions() {
   modalDelete.setAttribute("aria-label", t("delete"));
   modalDelete.setAttribute("title", t("delete"));
 }
-function renderHomeShare() {
-  if (!homeShare) return;
-  const shareUrl = "https://x.com/intent/tweet?" + new URLSearchParams({ text:t("homeShareText"), url: location.origin });
-  homeShare.href = shareUrl;
-  homeShare.setAttribute("aria-label", t("shareX"));
-  homeShare.setAttribute("title", t("shareX"));
-}
 // Home page i18n callback — called by global applyI18n() after data-i18n sweep
 window.__afterI18n = function() {
   document.title = t("title");
-  renderHomeShare();
   modalCopy.textContent = t("copy");
   renderModalActions();
   if (!file.files[0]) fileLabel.textContent = t("dropEmpty");

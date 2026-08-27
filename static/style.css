@@ -66,16 +66,12 @@
 /* ── Reset ────────────────────────────────────────────────── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
-.shell::-webkit-scrollbar, .history-panel::-webkit-scrollbar, .tool-result-view::-webkit-scrollbar { display: none; }
-.shell, .history-panel, .tool-result-view { scrollbar-width: none; -ms-overflow-style: none; }
 body { margin: 0; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 /* Keyboard focus ring — consistent across all interactive elements */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Global link reset: UI links opt out of underline via this default-off policy;
-   in-content links re-enable via .u-link. Prevents per-component misses (.acct-tab bug). */
+/* Global link reset: no underline by default; in-content contexts opt in explicitly. */
 a { color: var(--accent); text-decoration: none; }
-a.u-link, .prose a { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
 h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Layout ───────────────────────────────────────────────── */
@@ -373,7 +369,6 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .token-item:last-child { border-bottom: none; }
 .token-name { flex: 1 1 200px; font-size: var(--text-base); word-break: break-all; }
 .token-active { color: var(--green); font-size: var(--text-sm); }
-.token-revoked { color: var(--ink-soft, #999); font-size: var(--text-sm); text-decoration: line-through; }
 .btn-token-revoke { padding: var(--s1) var(--s3); font-size: var(--text-sm); }
 .profile-bound { color: var(--green); font-size: var(--text-base); }
 .profile-bound a { color: var(--accent); }
@@ -402,10 +397,6 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .tool-panel input { width: 100%; border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s2) var(--s3); color: var(--ink); background: var(--bg); box-sizing: border-box; }
 .tool-panel input:focus { outline: none; border-color: var(--accent); }
 .tool-panel-actions { display: flex; gap: var(--s2); justify-content: flex-end; margin-top: var(--s3); }
-.tool-result-view .zip-list { list-style: none; padding: 0; margin: 0; }
-.tool-result-view .zip-list li { padding: var(--s1) 0; border-bottom: 1px solid var(--line); font-size: var(--text-sm); display: flex; justify-content: space-between; align-items: center; }
-.tool-result-view .zip-list li:last-child { border-bottom: none; }
-.tool-result-view .zip-list .zip-size { color: var(--muted); font-size: var(--text-sm); }
 
 /* ── Footer ───────────────────────────────────────────────── */
 .site-footer { flex-shrink: 0; background: var(--bg); padding: var(--s3) var(--s2); padding-bottom: max(var(--s3), env(safe-area-inset-bottom)); }
@@ -623,8 +614,6 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-pager .off { color: var(--muted); opacity: .5; }
 .acct-pager .grow { flex: 1; text-align: center; color: var(--muted); font-size: var(--text-xs); }
 .acct-empty { text-align: center; color: var(--muted); padding: var(--s4) 0; }
-.acct-agents-link { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
-.acct-agents-link p { margin: 0; font-size: var(--text-sm); color: var(--muted); }
 
 @media (max-width: 640px) {
   .acct-hero { flex-direction: column; }
