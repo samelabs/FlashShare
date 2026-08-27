@@ -31,7 +31,7 @@
     </dl>
 <pre class="agents-pre"><code id="mcpConf">{
   "mcpServers": {
-    "fives18plus": {
+    "518plus": {
       "url": "https://518.plus/mcp",
       "headers": { "Authorization": "Bearer fsk_你的令牌" }
     }
@@ -93,12 +93,6 @@
     </table>
   </div>
 
-  <h2>{{ texts.agents_skill_h }}</h2>
-  <p>{{ texts.agents_skill_desc }}</p>
-  <div class="agents-copy">
-    <code id="skillCmd">hermes curator adopt 518plus</code>
-    <button type="button" class="btn-secondary" id="copySkill">{{ texts['copy'] }}</button>
-  </div>
 </section>
 {% endblock %}
 
@@ -110,7 +104,7 @@ async function _copyText(btn, text) {
   btn.classList.add("copied");
   setTimeout(() => { btn.innerHTML = old; btn.classList.remove("copied"); }, 1500);
 }
-for (const [id, btn] of [["mcpUrl","copyMcp"],["mcpConf","copyConf"],["skillCmd","copySkill"]]) {
+for (const [id, btn] of [["mcpUrl","copyMcp"],["mcpConf","copyConf"]]) {
   const el = document.getElementById(btn);
   if (!el) continue;
   el.addEventListener("click", () => _copyText(el, document.getElementById(id).textContent));
