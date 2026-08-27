@@ -140,7 +140,5 @@ window.__TOOLS__ = {{ tools_json|safe }};
 {% endblock %}
 
 {% block script_tail %}
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=75", { updateViaCache:"none" }).catch(() => {}));
-}
+<script src="/static/pages/sw-register.js?v={{ css_version }}"></script>
 {% endblock %}

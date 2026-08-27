@@ -16,7 +16,7 @@ self.addEventListener("fetch", event => {
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) return;
 
   // Navigation: network-first, only fallback to cache when offline.
-  // Do NOT cache HTML responses — CSS/JS are inlined and must always be fresh.
+  // Do NOT cache HTML responses; CSS/JS are versioned ?v= files served fresh.
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).catch(() => caches.match(request).then(cached => cached || caches.match("/offline"))));
     return;
