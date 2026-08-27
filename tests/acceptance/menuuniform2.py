@@ -4,7 +4,7 @@ css = open('/opt/flashshare/static/style.css').read()
 row = re.search(r'\.user-dropdown a, \.user-dropdown button \{[^}]*\}', css).group(0)
 svg = re.search(r'\.user-dropdown a svg[^{]*\{[^}]*\}', css).group(0)
 checks = {
-  "one row rule, a+button unified": len(re.findall(r'\.user-dropdown a,', css)) == 1,
+  "one row rule, a+button unified": len(re.findall(r'(?m)^\.user-dropdown a, \.user-dropdown button \{ display', css)) == 1,
   "row: padding 8px s3 uniform": 'padding: 8px var(--s3);' in row,
   "row: justify/min-height globals reset": 'justify-content: flex-start' in row and 'min-height: 0' in row,
   "svg 18px uniform": 'width: 18px; height: 18px;' in svg,
