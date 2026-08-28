@@ -64,9 +64,32 @@ class _Connection:
         return self._con.cursor(cursor_factory=cursor_factory)
 
 
+# Connection pool: SCRAM handshake costs ~60ms per fresh connection; the
+# upload chain alone opens 3 (auth/quota/save). Pooling removes that fixed
+# cost from every request. Thread-safe; dead connections are retried once.
+from psycopg2.pool import ThreadedConnectionPool
+
+_pool = None
+_pool_lock = __import__("threading").Lock()
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = ThreadedConnectionPool(
+                    1, 8, **_database_dsn_kwargs())
+    return _pool
+
+
 @contextmanager
 def db():
-    con = psycopg2.connect(**_database_dsn_kwargs())
+    pool = _get_pool()
+    try:
+        con = pool.getconn()
+    except psycopg2.Error:
+        # pool exhausted or stale — fall back to a direct connection
+        con = psycopg2.connect(**_database_dsn_kwargs())
     wrap = _Connection(con)
     try:
         yield wrap
@@ -75,7 +98,10 @@ def db():
         con.rollback()
         raise
     finally:
-        con.close()
+        try:
+            pool.putconn(con)
+        except Exception:
+            con.close()
 
 
 # ── Schema ───────────────────────────────────────────────
