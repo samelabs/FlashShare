@@ -154,7 +154,7 @@ async def x_callback(request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": _t(request, "err_x_state_expired")})
-        resp = templates.TemplateResponse("auth/login.html", ctx); resp.status_code = 400; return resp
+        resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
 
     try:
         token = exchange_x_token(code, row["verifier"])
@@ -164,7 +164,7 @@ async def x_callback(request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_login_incomplete")}: {exc}'})
-        resp = templates.TemplateResponse("auth/login.html", ctx); resp.status_code = 400; return resp
+        resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
 
     bind_user_id = row["bind_user_id"] if "bind_user_id" in row.keys() else None
     try:
@@ -174,7 +174,7 @@ async def x_callback(request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_bind_failed")}: {exc}'})
-        resp = templates.TemplateResponse("auth/login.html", ctx); resp.status_code = 400; return resp
+        resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
 
     if bind_user_id:
         return RedirectResponse("/account/profile", 302)
@@ -207,14 +207,14 @@ async def login_submit(request: Request):
     if not login or not password:
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_fill_login", "Please fill in all fields")})
-        return templates.TemplateResponse("auth/login.html", ctx)
+        return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     ip = request.headers.get("X-Real-IP", request.client.host if request.client else "")
     throttle_key = (ip, login.lower())
     if _login_throttled(throttle_key):
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
-        return templates.TemplateResponse("auth/login.html", ctx)
+        return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     # bcrypt verification is CPU-heavy (~250ms) — keep it off the event loop
     user_id = await asyncio.to_thread(authenticate_local, login, password)
@@ -222,7 +222,7 @@ async def login_submit(request: Request):
         _record_login_failure(throttle_key)
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
-        return templates.TemplateResponse("auth/login.html", ctx)
+        return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     _login_failures.pop(throttle_key, None)
     _grant_daily(user_id)
@@ -245,7 +245,7 @@ async def register_submit(request: Request):
     def _err(msg):
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": msg})
-        return templates.TemplateResponse("auth/register.html", ctx)
+        return templates.TemplateResponse(request, "auth/register.html", ctx)
 
     err = validate_username(username)
     if err: return _err(texts.get(err, err))

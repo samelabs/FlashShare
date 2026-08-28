@@ -101,7 +101,7 @@ async def samelabs_overview(request: Request):
                recent=[dict(r) for r in recent],
                top_tools=[dict(r) for r in top_tools],
                fmt_num=_fmt_num, page="overview")
-    return templates.TemplateResponse("samelabs/overview.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/overview.html", ctx)
 
 
 @router.get("/samelabs/users")
@@ -131,7 +131,7 @@ async def samelabs_users(request: Request, q: str = ""):
                    FROM users u ORDER BY u.id DESC LIMIT 100""").fetchall()
     ctx = _ctx(request, user, users=[dict(r) for r in rows],
                q=q, fmt_num=_fmt_num, page="users")
-    return templates.TemplateResponse("samelabs/users.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/users.html", ctx)
 
 
 @router.get("/samelabs/tools")
@@ -156,7 +156,7 @@ async def samelabs_tools(request: Request):
             "icon": t["icon"] if t else "",
         })
     ctx = _ctx(request, user, tools=rows, fmt_num=_fmt_num, page="tools")
-    return templates.TemplateResponse("samelabs/tools.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/tools.html", ctx)
 
 
 @router.post("/samelabs/tools/{tool_id}/pricing")
@@ -186,7 +186,7 @@ async def samelabs_plans(request: Request):
     with db() as con:
         rows = con.execute("SELECT * FROM plans ORDER BY price_cents").fetchall()
     ctx = _ctx(request, user, plans=[dict(r) for r in rows], fmt_num=_fmt_num, page="plans")
-    return templates.TemplateResponse("samelabs/plans.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/plans.html", ctx)
 
 
 @router.post("/samelabs/plans")
@@ -226,7 +226,7 @@ async def samelabs_packages(request: Request):
     with db() as con:
         rows = con.execute("SELECT * FROM packages ORDER BY credits").fetchall()
     ctx = _ctx(request, user, packages=[dict(r) for r in rows], fmt_num=_fmt_num, page="packages")
-    return templates.TemplateResponse("samelabs/packages.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/packages.html", ctx)
 
 
 @router.post("/samelabs/packages")
@@ -275,7 +275,7 @@ async def samelabs_ledger(request: Request, page: int = 1):
     ctx = _ctx(request, user, entries=[dict(r) for r in rows],
                total=total, pg=page, pages=(total + size - 1) // size,
                fmt_num=_fmt_num, page="ledger")
-    return templates.TemplateResponse("samelabs/ledger.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/ledger.html", ctx)
 
 
 @router.post("/samelabs/users/{user_id}/credits")
@@ -330,7 +330,7 @@ async def samelabs_activities(request: Request):
             "ends_fmt": _fmt_ts(a["ends_at"]) if a["ends_at"] else "",
         })
     ctx = _ctx(request, user, activities=acts, page="activities")
-    return templates.TemplateResponse("samelabs/activities.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/activities.html", ctx)
 
 
 @router.post("/samelabs/activities/{code}/config")
@@ -380,7 +380,7 @@ async def samelabs_withdrawals(request: Request):
     for r in rows:
         r["created_fmt"] = _fmt_ts(r["created_at"])
     ctx = _ctx(request, user, withdrawals=rows, page="withdrawals")
-    return templates.TemplateResponse("samelabs/withdrawals.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/withdrawals.html", ctx)
 
 
 @router.post("/samelabs/withdrawals/{wid}/process")
@@ -441,7 +441,7 @@ async def samelabs_remote(request: Request):
             "has_auth": bool(decl.get("auth_token")),
         })
     ctx = _ctx(request, user, remote_tools=items, page="remote")
-    return templates.TemplateResponse("samelabs/remote.html", ctx)
+    return templates.TemplateResponse(request, "samelabs/remote.html", ctx)
 
 
 @router.post("/samelabs/remote/create")

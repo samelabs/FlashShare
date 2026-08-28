@@ -43,7 +43,7 @@ async def file_route(public_id: str, request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx["shell_class"] = "file-shell"
-        return templates.TemplateResponse("missing.html", ctx, status_code=404)
+        return templates.TemplateResponse(request, "missing.html", ctx, status_code=404)
 
     # 8.3 (audit): DB expiry is authoritative. Gokapi's own expiry is a
     # backstop, not the contract — a row whose expire_at has passed must
@@ -53,7 +53,7 @@ async def file_route(public_id: str, request: Request):
         from app.routes.pages import _ctx_base
         ctx = _ctx_base(request)
         ctx["shell_class"] = "file-shell"
-        return templates.TemplateResponse("missing.html", ctx, status_code=404)
+        return templates.TemplateResponse(request, "missing.html", ctx, status_code=404)
 
     download = request.query_params.get("download")
 
@@ -151,7 +151,7 @@ async def file_route(public_id: str, request: Request):
     })
     # file_format_icon takes filename arg — add as callable for template
     ctx["file_format_icon"] = lambda: file_format_icon(upload["file_name"])
-    return templates.TemplateResponse("detail.html", ctx)
+    return templates.TemplateResponse(request, "detail.html", ctx)
 
 
 @router.get("/f/{public_id}/qr.svg")
@@ -295,4 +295,4 @@ async def file_print(public_id: str, request: Request):
         "download_url": f"/f/{urllib.parse.quote(public_id)}?download=1",
         "t": texts,
     }
-    return templates.TemplateResponse("print.html", ctx)
+    return templates.TemplateResponse(request, "print.html", ctx)

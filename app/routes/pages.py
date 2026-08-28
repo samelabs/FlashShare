@@ -110,7 +110,7 @@ async def service_worker():
 async def offline_page(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
-    return templates.TemplateResponse("offline.html", ctx)
+    return templates.TemplateResponse(request, "offline.html", ctx)
 
 @router.get("/robots.txt")
 async def robots():
@@ -131,7 +131,7 @@ async def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"), "doc_body": _load_doc("terms.html")})
-    return templates.TemplateResponse("doc.html", ctx)
+    return templates.TemplateResponse(request, "doc.html", ctx)
 
 
 @router.get("/privacy", response_class=HTMLResponse)
@@ -139,7 +139,7 @@ async def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html")})
-    return templates.TemplateResponse("doc.html", ctx)
+    return templates.TemplateResponse(request, "doc.html", ctx)
 
 
 @router.get("/agents", response_class=HTMLResponse)
@@ -148,7 +148,7 @@ async def agents_page(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": ""})
-    return templates.TemplateResponse("agents.html", ctx)
+    return templates.TemplateResponse(request, "agents.html", ctx)
 
 
 _DOCS_DIR = _BASE / "templates"
@@ -193,7 +193,7 @@ async def home(request: Request):
         "download_count_icon": download_count_icon_svg(),
         "upload_icon": upload_icon_svg(),
     })
-    return templates.TemplateResponse("home.html", ctx)
+    return templates.TemplateResponse(request, "home.html", ctx)
 
 
 # ── Auth pages ──
@@ -203,7 +203,7 @@ async def login_page(request: Request, error: str = ""):
     from app.main import templates
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": "", "error": error})
-    return templates.TemplateResponse("auth/login.html", ctx)
+    return templates.TemplateResponse(request, "auth/login.html", ctx)
 
 
 @router.get("/auth/register", response_class=HTMLResponse)
@@ -211,7 +211,7 @@ async def register_page(request: Request, error: str = ""):
     from app.main import templates
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": "", "error": error})
-    return templates.TemplateResponse("auth/register.html", ctx)
+    return templates.TemplateResponse(request, "auth/register.html", ctx)
 
 
 # ── Account pages: profile split into focused pages (/auth/profile removed) ──
@@ -240,7 +240,7 @@ async def account_profile(request: Request):
     ctx = _account_ctx(request, "profile",
                        u=u, user_has_password=u.get("hasPassword", False),
                        x_bound=bool(u.get("xUsername")))
-    return templates.TemplateResponse("account/profile.html", ctx)
+    return templates.TemplateResponse(request, "account/profile.html", ctx)
 
 
 @router.get("/account/security", response_class=HTMLResponse)
@@ -254,7 +254,7 @@ async def account_security(request: Request):
     ctx = _account_ctx(request, "security",
                        u=u, user_has_password=u.get("hasPassword", False),
                        x_bound=bool(u.get("xUsername")))
-    return templates.TemplateResponse("account/security.html", ctx)
+    return templates.TemplateResponse(request, "account/security.html", ctx)
 
 
 @router.get("/account/credits", response_class=HTMLResponse)
@@ -287,7 +287,7 @@ async def account_credits(request: Request):
                        priced_tools=[t for t in list_catalog(user["id"]) if t["cost"] > 0],
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
-    return templates.TemplateResponse("account/credits.html", ctx)
+    return templates.TemplateResponse(request, "account/credits.html", ctx)
 
 
 @router.post("/account/credits/claim")
@@ -318,7 +318,7 @@ async def account_earnings(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     ctx = _account_ctx(request, "earnings")
-    return templates.TemplateResponse("account/earnings.html", ctx)
+    return templates.TemplateResponse(request, "account/earnings.html", ctx)
 
 
 
@@ -335,7 +335,7 @@ async def account_tools(request: Request):
     ctx = _account_ctx(request, "tools",
                        tools=[_public_item(r) for r in _owner_rows(user["id"])],
                        max_tools=MAX_TOOLS_PER_USER)
-    return templates.TemplateResponse("account/tools.html", ctx)
+    return templates.TemplateResponse(request, "account/tools.html", ctx)
 
 
 @router.get("/account/tokens", response_class=HTMLResponse)
@@ -345,7 +345,7 @@ async def account_tokens(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     ctx = _account_ctx(request, "tokens")
-    return templates.TemplateResponse("account/tokens.html", ctx)
+    return templates.TemplateResponse(request, "account/tokens.html", ctx)
 
 
 # Legacy /auth/profile is intentionally gone (single-page account removed).
@@ -372,7 +372,7 @@ async def account_profile_save(request: Request):
         ctx = _account_ctx(request, "profile", u=u,
                            user_has_password=u.get("hasPassword", False),
                            x_bound=bool(u.get("xUsername")), error=str(exc))
-        return templates.TemplateResponse("account/profile.html", ctx)
+        return templates.TemplateResponse(request, "account/profile.html", ctx)
 
     return RedirectResponse("/account/profile", 302)
 
@@ -397,7 +397,7 @@ async def account_password_save(request: Request):
         ctx = _account_ctx(request, "security", u=u,
                            user_has_password=u.get("hasPassword", False),
                            x_bound=bool(u.get("xUsername")), error=msg)
-        return templates.TemplateResponse("account/security.html", ctx)
+        return templates.TemplateResponse(request, "account/security.html", ctx)
 
     if new_password != new_password_confirm:
         return _err(server_text(lang).get("passwordMismatch", ""))
