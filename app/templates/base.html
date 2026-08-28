@@ -45,6 +45,7 @@ window.__LANG = "{{ lang }}";
 <script src="/static/pages/icons.js?v={{ css_version }}"></script>
 <script src="/static/pages/base-engine.js?v={{ css_version }}"></script>
   <script src="/static/i18n.js?v={{ i18n_version }}"></script>
+  {% block script_head %}{% endblock %}
   {% block script %}{% endblock %}
   {% block script_tail %}{% endblock %}
 

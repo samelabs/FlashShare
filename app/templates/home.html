@@ -131,8 +131,10 @@
 {% endblock %}
 
 {% block script_head %}
+<script>
 window.__LIMITS__ = {{ limits_json|safe }};
 window.__TOOLS__ = {{ tools_json|safe }};
+</script>
 {% endblock %}
 
 {% block script %}

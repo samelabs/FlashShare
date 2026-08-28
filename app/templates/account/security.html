@@ -50,7 +50,7 @@
 </section>
 {% endblock %}
 
-{% block script %}
+{% block script %}<script>
 const _pw = document.getElementById('newPw');
 const _pwc = document.getElementById('newPwConfirm');
 const _hint = document.getElementById('pwMismatch');
@@ -59,4 +59,4 @@ function checkPw() {
   else { _hint.hidden = true; _pwc.setCustomValidity(''); }
 }
 if (_pw && _pwc) { _pw.addEventListener('input', checkPw); _pwc.addEventListener('input', checkPw); }
-{% endblock %}
+</script>{% endblock %}

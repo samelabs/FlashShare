@@ -54,7 +54,13 @@ for _k in list(defined):
 _pydump = ''
 for _f in _g.glob('/opt/flashshare/app/routes/*.py') + _g.glob('/opt/flashshare/app/**/*.py', recursive=True):
     _pydump += open(_f).read()
-_errcodes = set(_re.findall(r'"error":\s*"([a-z_]+)"', _pydump)) | set(_re.findall(r'"error":\s*err', _pydump) and [])
+_errcodes = set(_re.findall(r'"error":\s*"([a-z_]+)"', _pydump))
+# 工具预设档名族: t(p.id)动态消费(app.js:594) — compress的light/standard/strong/max
+try:
+    _tools = json.loads(re.search(r'window\.__TOOLS__ = (.+?);\n', open('/tmp/_livehome.html').read()).group(1))
+    for _t in _tools:
+        for _p in (_t.get('presets') or []): _errcodes.add(_p['id'])
+except Exception: pass
 dead = {k for k in defined if k not in used and k not in _dyn and k not in _errcodes and not k.endswith('_text') and k not in ('privacy_title','terms_title')}
 # err_族: _errm动态拼(裸码→err_/mytools_err_), 保守豁免err_前缀; 其余死键=真死
 if missing: fails.append(f'A1 模板/JS引用但i18n缺失: {sorted(missing)[:8]}')
