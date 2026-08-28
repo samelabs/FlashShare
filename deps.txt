@@ -1,9 +1,9 @@
-# 518.PLUS 依赖清单 — 唯一事实源
-# 策略: 全部 apt(系统包), 零 pip。服务=/usr/bin/python3 + User=ubuntu(run.sh),
-#       加载路径=/usr/lib/python3/dist-packages(/usr/local零残留)。
-# 新增依赖流程: 先 apt-cache search/madison 查 apt → apt 有→sudo apt install 记入本文件;
-#               apt 没有→先问用户是否允许pip, 禁止默认pip。
-# 传递依赖(anyio/h11/markupsafe/sniffio等)由apt自动解决, 不单列。
+# 518.PLUS 依赖清单 — 现状盘点(实测加载路径, 2026-08-28)
+# 现状: 全部apt安装, 服务(/usr/bin/python3)加载/usr/lib/python3/dist-packages, /usr/local零pip残留
+# 注意: apt版本随Ubuntu 24.04源冻结(fastapi 0.101.0为2023版);
+#      fastapi 0.101+starlette 0.31.1违反上游pin(<0.28), 当前能用但升级冻结
+# 依赖管理策略: 待用户裁定(apt现状/venv+pip锁定/混合)
+# 传递依赖(anyio/h11/markupsafe等)由apt自动解决, 不单列
 python3-fastapi    0.101.0   # Web框架(starlette 0.31.1 + pydantic 1.10.14)
 python3-uvicorn    0.27.1    # ASGI服务器
 python3-jinja2     3.1.2     # 模板引擎
