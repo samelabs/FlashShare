@@ -8,8 +8,8 @@
       var L=window.__LANG||"en";
       document.documentElement.lang=window.__LOCALE_MAP[L]||"en";
       document.documentElement.dir=L==="ar"?"rtl":"ltr";
-      document.querySelectorAll("[data-i18n]").forEach(function(el){el.textContent=window.t(el.getAttribute("data-i18n"))});
-      document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){el.setAttribute("placeholder",window.t(el.getAttribute("data-i18n-placeholder")))});
+      document.querySelectorAll("[data-i18n]").forEach(function(el){try{el.textContent=window.t(el.getAttribute("data-i18n"))}catch(err){}});
+      document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){try{el.setAttribute("placeholder",window.t(el.getAttribute("data-i18n-placeholder")))}catch(err){}});
       if(typeof window.__afterI18n==="function")window.__afterI18n();
     };
     // Language switcher
