@@ -36,7 +36,7 @@
 {% block content %}
 <section class="workspace">
   <div class="intro">
-    <h1 data-i18n="hero_title">Flash Share</h1>
+    <h1 data-i18n="hero_title">{{ texts.hero_title }}</h1>
     <p class="hero-subtitle" data-i18n="subtitle">{{ texts.subtitle }}</p>
 
     <div class="limit-grid">
@@ -75,14 +75,14 @@
         </div>
       </label>
       <div class="controls">
-        <label><span data-i18n="expiry">Expires</span>
+        <label><span data-i18n="expiry">{{ texts.expiry }}</span>
           <select name="expiryDays">
             <option value="1" data-i18n="oneDay">1 day</option>
             <option value="3" data-i18n="threeDays">3 days</option>
             <option value="7" data-i18n="sevenDays">7 days</option>
           </select>
         </label>
-        <label><span data-i18n="downloads">Downloads</span>
+        <label><span data-i18n="downloads">{{ texts.downloads }}</span>
           <select name="allowedDownloads">
             <option value="1" data-i18n="oneDownload">1 time</option>
             <option value="10" data-i18n="tenDownloads">10 times</option>
@@ -93,7 +93,7 @@
         </label>
         <button id="submitBtn" class="primary" type="submit">
           <span class="button-icon" aria-hidden="true">{{ icon_svg("upload") }}</span>
-          <span data-i18n="create">Upload</span>
+          <span data-i18n="create">{{ texts['create'] }}</span>
         </button>
       </div>
     </form>
@@ -118,7 +118,7 @@
     <img id="modalQr" class="qr-code modal-qr" alt="QR code">
     <div class="urlrow">
       <input id="modalUrl" readonly>
-      <button id="modalCopy" type="button" data-i18n="copy">Copy</button>
+      <button id="modalCopy" type="button" data-i18n="copy">{{ texts['copy'] }}</button>
     </div>
     <div class="modal-actions">
       <a id="modalOpen" class="modal-action" target="_blank" rel="noreferrer"></a>

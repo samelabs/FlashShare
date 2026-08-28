@@ -29,7 +29,7 @@ ck = f"{COOKIE_NAME}={tok_s}; flashshare_lang=zh"
 # 1. topbar MCP entry on home (both anon + authed)
 conn.request("GET", "/", headers={"Cookie": "flashshare_lang=zh"})
 html = conn.getresponse().read().decode()
-assert 'class="topbar-agents"' in html and "MCP 接入" in html, "topbar entry missing"
+assert 'class="topbar-agents"' in html and 'data-i18n="agents_title"' in html, "topbar entry missing"  # 文案统一MCP(用户裁定); 锚=类+键
 assert html.find("topbar-agents") < html.find("site-footer"), "must be in header"
 print("1. topbar MCP entry present (before footer) OK")
 

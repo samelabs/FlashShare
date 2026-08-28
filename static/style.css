@@ -616,7 +616,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-empty { text-align: center; color: var(--muted); padding: var(--s4) 0; }
 
 @media (max-width: 640px) {
-  .topbar-agents { padding: 5px 8px; font-size: var(--text-xs); }
+  .topbar-agents { padding: 5px 8px; font-size: var(--text-xs); max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
   .topbar-login, .topbar-register { padding: 6px 10px; font-size: var(--text-xs); }
   .top-actions { gap: var(--s1); }
   .topbar { gap: var(--s2); }
