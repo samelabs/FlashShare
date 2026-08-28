@@ -651,6 +651,22 @@ async def get_uploads(request: Request):
     return {"ok": True, "uploads": uploads, "has_more": len(uploads) == 20}
 
 
+@router.post("/client-error")
+async def client_error(request: Request):
+    """Browser-side crash tap (see base-engine.js __errTap). Diagnostics only."""
+    import logging
+    try:
+        body = await request.json()
+        logging.getLogger("flashshare.client").error(
+            "CLIENT-CRASH %s %s | %s", body.get("lang"), body.get("url"), body.get("msg"))
+        stack = (body.get("stack") or "").replace("\n", " | ")[:1500]
+        if stack:
+            logging.getLogger("flashshare.client").error("CLIENT-STACK %s", stack)
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 @router.post("/uploads")
 async def create_upload(request: Request):
     """Upload one or more files via multipart form.

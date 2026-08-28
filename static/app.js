@@ -75,7 +75,9 @@ const ICONS = {
 };
 
 // i18n: t(), applyI18n(), lang data — all provided by base.html global engine
-function t(key, vars = {}) { return window.t(key, vars); }
+// Local alias — MUST stay arrow/const: a top-level `function t` declaration
+// would shadow window.t (engine) and recurse infinitely (call-stack overflow).
+const t = (key, vars = {}) => window.t(key, vars);
 function currentLang() { return window.__LANG || "en"; }
 
 function fmtSize(n) {

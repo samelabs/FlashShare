@@ -1,3 +1,20 @@
+// ── Error tap: surface client-side crashes to the server log ──
+window.__errTap = function(msg, stack) {
+  try {
+    var body = JSON.stringify({msg: String(msg).slice(0, 300), stack: String(stack || "").slice(0, 1500), lang: window.__LANG, url: location.pathname});
+    if (navigator.sendBeacon) navigator.sendBeacon("/api/client-error", body);
+  } catch (e) {}
+};
+window.addEventListener("error", function(e) {
+  if (e.error && /Maximum call stack/i.test(e.message)) {
+    document.title = "ERR:stack";
+    window.__errTap(e.message, e.error.stack);
+  } else if (e.error) {
+    window.__errTap(e.message, e.error.stack);
+  }
+});
+window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.reason, ""); });
+
 // ── Global i18n engine ──
     window.__SUPPORTED_LANGS=["en","zh","ja","ko","es","ar","de","ru","pt","fr"];
     window.__LOCALE_MAP={en:"en",zh:"zh-CN",ja:"ja-JP",ko:"ko-KR",es:"es-ES",ar:"ar",de:"de-DE",ru:"ru-RU",pt:"pt-BR",fr:"fr-FR"};

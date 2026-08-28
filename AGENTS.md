@@ -155,7 +155,7 @@ FlashShare 是临时文件分享 + 工具处理平台，部署在 Oracle Cloud 1
 **规则**：
 - CSS 和 JS 在 `pages.py` 启动时读入内存（`CSS = open(...).read()`）
 - **修改 style.css / app.js 后必须 `sudo systemctl restart flashshare-api.service`**
-- SW 版本号同步更新：`sw.js` 的 `CACHE_NAME` + `home.html` 的 `sw.js?v=N`
+- SW 缓存名在 `sw.js` 的 `CACHE_NAME`（图片白名单 only，不缓存 HTML/CSS/JS）
 
 ### 7. Jinja2 autoescape
 
@@ -238,7 +238,7 @@ FlashShare 是临时文件分享 + 工具处理平台，部署在 Oracle Cloud 1
 4. `app/main.py`：`import tools_{name}`
 5. `core/i18n.py`（10 语言）+ `static/i18n.json`（7 语言）：加 `tool_id`、`tool_id_desc`、各 preset_id
 6. `static/app.js` `ACCEPT_TAGS`：加新 MIME 映射（如需要）
-7. `static/sw.js` `CACHE_NAME` +1，`home.html` `sw.js?v=N` +1
+7. `static/sw.js` `CACHE_NAME` +1
 8. 重启服务：`sudo systemctl restart flashshare-api.service`
 
 ### 工具属性表
