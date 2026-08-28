@@ -1,0 +1,15 @@
+# 518.PLUS 依赖清单 — 唯一事实源
+# 策略: 全部 apt(系统包), 零 pip。服务=/usr/bin/python3 + User=ubuntu(run.sh),
+#       加载路径=/usr/lib/python3/dist-packages(/usr/local零残留)。
+# 新增依赖流程: 先 apt-cache search/madison 查 apt → apt 有→sudo apt install 记入本文件;
+#               apt 没有→先问用户是否允许pip, 禁止默认pip。
+# 传递依赖(anyio/h11/markupsafe/sniffio等)由apt自动解决, 不单列。
+python3-fastapi    0.101.0   # Web框架(starlette 0.31.1 + pydantic 1.10.14)
+python3-uvicorn    0.27.1    # ASGI服务器
+python3-jinja2     3.1.2     # 模板引擎
+python3-multipart  0.0.9     # 表单/文件上传解析(上传链路核心)
+python3-psycopg2   2.9.9     # PostgreSQL驱动
+python3-pil        10.2.0    # Pillow图像处理
+python3-pypdf      4.0.2     # PDF合并/解析(tools_pdf)
+python3-bcrypt     3.2.2     # 密码哈希
+python3-requests   2.31.0    # HTTP客户端(gokapi/远程工具/探活)
