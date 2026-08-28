@@ -138,9 +138,9 @@ window.__TOOLS__ = {{ tools_json|safe }};
 {% endblock %}
 
 {% block script %}
-<script src="/static/app.js?v={{ css_version }}"></script>
+<script src="/static/app.js?v={{ js_version }}"></script>
 {% endblock %}
 
 {% block script_tail %}
-<script src="/static/pages/sw-register.js?v={{ css_version }}"></script>
+<script src="/static/pages/sw-register.js?v={{ js_version }}"></script>
 {% endblock %}
