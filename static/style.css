@@ -486,7 +486,7 @@ body[data-tool="privacy"] body[data-tool="privacy"] .tool-overlay-preset.active 
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 820px) {
   .shell { width: calc(100vw - 24px); padding: var(--s2) var(--s2) 0; }
-  .topbar { padding: 0 calc(12px + var(--s2)); }
+  .topbar { padding: 0 calc(12px + var(--s2)); gap: var(--s2); }
   .top-actions { gap: var(--s2); }
   .brand { font-size: var(--text-sm); gap: var(--s1); min-width: 0; }
   .brand-logo { font-size: var(--text-sm); }
@@ -616,6 +616,11 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-empty { text-align: center; color: var(--muted); padding: var(--s4) 0; }
 
 @media (max-width: 640px) {
+  .topbar-agents { padding: 5px 8px; font-size: var(--text-xs); }
+  .topbar-login, .topbar-register { padding: 6px 10px; font-size: var(--text-xs); }
+  .top-actions { gap: var(--s1); }
+  .topbar { gap: var(--s2); }
+
   .acct-hero { flex-direction: column; }
   .acct-balance, .acct-daily { flex-basis: auto; }
 }
