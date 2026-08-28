@@ -1,4 +1,19 @@
 const form = document.getElementById("uploadForm");
+// ── Load self-check: version-skew (stale cached JS vs fresh HTML) must
+// fail LOUD, not silently half-bind events. ──
+(function(){
+  const need = ["uploadForm","file","fileLabel","dropZone","submitBtn","toolSearch"];
+  const missing = need.filter(id => !document.getElementById(id));
+  if (missing.length) {
+    console.error("[518] DOM missing:", missing.join(","), "— stale JS? hard-refresh (Cmd/Ctrl+Shift+R)");
+    const b = document.createElement("div");
+    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#f4212e;color:#fff;padding:10px 16px;font:600 14px system-ui;text-align:center";
+    b.textContent = "页面资源版本不一致 — 请强制刷新 (Ctrl/Cmd+Shift+R)";
+    document.body && document.body.appendChild(b);
+    throw new Error("[518] abort: DOM missing " + missing.join(","));
+  }
+})();
+
 const file = document.getElementById("file");
 const fileLabel = document.getElementById("fileLabel");
 const result = document.getElementById("result");
