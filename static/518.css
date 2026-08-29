@@ -20,11 +20,13 @@
   --button-ink: #ffffff;
   --danger: #ff3b30;
   --danger-soft: rgba(255,59,48,0.08);
-  --green: #1dd1a1;
+  --info-soft: rgba(59,130,246,0.10);
+  --green-12: rgba(22,163,74,0.12);
+  --green: #16a34a;
   --green-soft: #f0fdf4;
-  --warn: #feca57;
-  --violet: #f368e0;
-  --info: #48dbfb;
+  --warn: #f59e0b;
+  --violet: #8b5cf6;
+  --info: #3b82f6;
   --card: #ffffff;
   --neutral-100: #f7f7f7;
   --neutral-300: #e0e0e0;
@@ -135,7 +137,8 @@ h1, h2 { letter-spacing: -0.02em; }
 .tool-tab.on { border-color: var(--accent); background: var(--accent-soft); }
 .tool-tab.on svg { stroke: var(--accent); }
 .tool-tab.on .tool-tab-name { color: var(--accent); }
-.tool-desc { font-size: 13px; color: var(--muted); margin-top: 10px; padding: 10px 14px; background: var(--soft); border-radius: var(--r-sm); border-left: 3px solid var(--accent); }
+.tool-desc { position: relative; font-size: 13.5px; font-weight: 500; color: #fff; margin: 12px var(--r-sm) 0; padding: 11px 16px; background: var(--accent); border-radius: var(--r-sm); box-shadow: var(--sh-accent); line-height: 1.5; }
+.tool-desc::before { content: ""; position: absolute; top: -5px; left: 26px; width: 10px; height: 10px; background: var(--accent); transform: rotate(45deg); border-radius: 2px; }
 
 @media (max-width: 640px) {
   .drop { padding: 28px 16px 22px; }
@@ -635,9 +638,9 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-table .pos { color: var(--ok, var(--green)); font-weight: 600; }
 .acct-table .neg { color: var(--danger, var(--danger)); font-weight: 600; }
 .ledger-kind { display: inline-block; font-size: var(--text-xs); padding: 2px 8px; border-radius: 99px; background: var(--line); color: var(--ink); }
-.ledger-kind.ledger-grant_signup, .ledger-kind.ledger-grant_daily, .ledger-kind.ledger-grant_plan, .ledger-kind.ledger-grant_package, .ledger-kind.ledger-grant_referral { background: rgba(22,163,74,.12); color: var(--green); }
+.ledger-kind.ledger-grant_signup, .ledger-kind.ledger-grant_daily, .ledger-kind.ledger-grant_plan, .ledger-kind.ledger-grant_package, .ledger-kind.ledger-grant_referral { background: var(--green-12); color: var(--green); }
 .ledger-kind.ledger-consume { background: rgba(220,38,38,.10); color: var(--danger); }
-.ledger-kind.ledger-refund { background: rgba(29,155,240,.12); color: var(--info); }
+.ledger-kind.ledger-refund { background: var(--info-soft); color: var(--info); }
 .ledger-kind.ledger-adjust { background: rgba(107,114,128,.15); color: var(--body); }
 .acct-pager { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: var(--text-sm); }
 .acct-pager a { color: var(--accent); text-decoration: none; }
@@ -665,8 +668,8 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .agents-table th { text-align: left; font-size: var(--text-xs); color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .agents-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); }
 .agents-table .mono { font-family: var(--mono, monospace); font-size: var(--text-xs); }
-.ep-get { display: inline-block; font-size: var(--text-xs); font-weight: 700; padding: 2px 8px; border-radius: 4px; background: rgba(29,155,240,.12); color: var(--info); }
-.ep-post { display: inline-block; font-size: var(--text-xs); font-weight: 700; padding: 2px 8px; border-radius: 4px; background: rgba(22,163,74,.12); color: var(--green); }
+.ep-get { display: inline-block; font-size: var(--text-xs); font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--info-soft); color: var(--info); }
+.ep-post { display: inline-block; font-size: var(--text-xs); font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--green-12); color: var(--green); }
 .agents-copy { display: flex; align-items: center; gap: var(--s2); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 14px; margin: var(--s2) 0; flex-wrap: wrap; }
 .agents-copy code { flex: 1; min-width: 200px; font-size: var(--text-sm); word-break: break-all; }
 .agents-copy .btn-secondary { flex-shrink: 0; }
@@ -676,7 +679,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .agents-pre code { font-family: var(--mono, monospace); }
 
 /* ── Tool cost badges (pricing surfaced in UI) ── */
-.tool-cost { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; padding: 0 6px; margin-left: auto; border-radius: 99px; font-size: var(--text-xs, 12px); font-weight: 700; background: rgba(29,155,240,.12); color: var(--info); font-variant-numeric: tabular-nums; }
+.tool-cost { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; padding: 0 6px; margin-left: auto; border-radius: 99px; font-size: var(--text-xs, 12px); font-weight: 700; background: var(--info-soft); color: var(--info); font-variant-numeric: tabular-nums; }
 .tool-tab .tool-cost { flex-shrink: 0; }
 .tool-overlay-cost { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--s2); font-size: var(--text-sm); color: var(--muted); }
 .tool-overlay-cost .tool-cost { margin-left: 0; }
