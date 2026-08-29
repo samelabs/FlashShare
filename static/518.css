@@ -134,9 +134,9 @@ h1, h2 { letter-spacing: -0.02em; }
 .tool-tab svg { width: 19px; height: 19px; stroke: var(--body, var(--muted)); flex-shrink: 0; }
 .tool-tab .tool-tab-name { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; }
 .tool-tab .tool-cost { font-size: 11.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 6px; flex-shrink: 0; }
-.tool-tab.on { border-color: var(--accent); background: var(--accent-soft); }
-.tool-tab.on svg { stroke: var(--accent); }
-.tool-tab.on .tool-tab-name { color: var(--accent); }
+.tool-tab.active, .tool-tab.on { border-color: var(--accent); background: var(--accent-soft); }
+.tool-tab.active svg, .tool-tab.on svg { stroke: var(--accent); }
+.tool-tab.active .tool-tab-name, .tool-tab.on .tool-tab-name { color: var(--accent); }
 .tool-desc { position: relative; font-size: 13.5px; font-weight: 500; color: #fff; margin: 12px var(--r-sm) 0; padding: 11px 16px; background: var(--accent); border-radius: var(--r-sm); box-shadow: var(--sh-accent); line-height: 1.5; }
 .tool-desc::before { content: ""; position: absolute; top: -5px; left: 26px; width: 10px; height: 10px; background: var(--accent); transform: rotate(45deg); border-radius: 2px; }
 
