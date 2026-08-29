@@ -106,6 +106,16 @@ h1, h2 { letter-spacing: -0.02em; }
 .hero-sub { font-size: 13.5px; color: var(--muted); line-height: 1.55; margin: 8px auto 0; max-width: 44ch; }
 @media (max-width: 640px) { .hero-title { font-size: 23px; } }
 
+
+/* ── 开放模式条: hero下 ── */
+.open-callout { display: inline-flex; align-items: center; gap: 8px; margin: 14px auto 0;
+  padding: 9px 16px; border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 650; text-decoration: none; transition: background var(--ease), transform var(--ease-in); }
+.open-callout svg { width: 15px; height: 15px; stroke: var(--accent); }
+.open-callout .arr { width: 13px; height: 13px; }
+.open-callout:hover { background: #ffe4e6; }
+.open-callout:active { transform: scale(.98); }
+
 /* ── 上传卡: 页面唯一主角 ── */
 .upload-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--sh-sm); }
 .drop { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 34px 20px 40px; cursor: pointer; text-align: center; }
