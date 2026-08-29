@@ -125,7 +125,7 @@ h1, h2 { letter-spacing: -0.02em; }
 .drop-glyph svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .drop-title { font-size: 16.5px; font-weight: 700; }
 .drop-title em, .drop-title em * { font-style: normal; color: var(--accent); }
-.drop-formats { font-size: 12.5px; color: var(--muted); letter-spacing: .04em; }
+.drop-formats { font-size: 12.5px; color: var(--muted); letter-spacing: .02em; line-height: 1.6; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; white-space: normal; padding: 0 12px; }
 .upload-divider { height: 1px; background: var(--line); }
 .controls { display: flex; align-items: stretch; width: 100%; }
 
@@ -517,7 +517,7 @@ select { width: auto; margin-top: 0; }
 .tool-processing span { font-size: var(--text-sm); color: var(--muted); font-weight: 600; }
 
 /* ── Result (upload complete) ─────────────────────────────── */
-.result { margin-top: var(--s5); padding: var(--s4) 0 0; line-height: 1.5; }
+.result { margin-top: 14px; padding: var(--s4); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-sm); line-height: 1.5; }
 .result:not(.hidden) { animation: fadeIn var(--ease); }
 .result.error { color: var(--danger); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

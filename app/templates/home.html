@@ -39,7 +39,7 @@
     <h1 class="hero-title" data-i18n="hero_title">{{ texts.hero_title }}</h1>
     <p class="hero-sub" data-i18n="hero_sub">{{ texts.hero_sub }}</p>
     <a class="open-callout" href="/account/tools">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7z"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/><path d="M9.5 17.5h5"/></svg>
       <span data-i18n="open_callout">{{ texts.open_callout }}</span>
       <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
     </a>
@@ -78,6 +78,8 @@
     <form id="uploadForm" class="visually-hidden" enctype="multipart/form-data"></form>
   </div>
 
+  <div id="result" class="result hidden" aria-live="polite"></div>
+
   <div class="tool-search" role="search">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
     <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
@@ -95,8 +97,6 @@
     {% endfor %}
   </div>
   <p class="tool-desc hidden" id="toolDesc"></p>
-
-  <div id="result" class="result hidden" aria-live="polite"></div>
 </section>
   {% endblock %}
 
