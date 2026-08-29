@@ -24,7 +24,7 @@ earn = conn.getresponse().read().decode()
 
 css = open("/opt/flashshare/static/518.css").read()
 checks = {
-  "home: chips centered (one axis w/ search+drop)": ".home-tools { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; justify-content: center;" in css,
+  "home: chips centered (one axis w/ search+drop)": ".home-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 9px;" in css,
   "home: dead tool-desc rule gone": css.count(".tool-desc {") == 1,
   "home: card rhythm step": "margin-top: var(--s4);" in css[css.find(".tool {"):css.find(".tool {")+200],
   "earn: stat cells styled": ".earn-cell strong { font-size: var(--text-xl);" in css,

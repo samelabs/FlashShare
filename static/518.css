@@ -209,10 +209,6 @@ h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Hero / Intro ─────────────────────────────────────────── */
 .workspace { display: flex; flex-direction: column; gap: 18px; max-width: 560px; margin: 0 auto; width: 100%; padding-top: var(--s4); padding-bottom: var(--s5); }
-h1 { margin: 0 auto var(--s1); font-size: var(--text-2xl); line-height: 1.1; font-weight: 800; max-width: 680px; }
-.limit { display: inline-flex; align-items: center; gap: var(--s1); padding: 2px var(--s3); position: relative; font-size: var(--text-sm); }
-.limit svg { width: 14px; height: 14px; opacity: 0.6; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.limit strong { font-weight: 500; color: var(--ink); }
 .limit:not(:last-child)::after { content: ""; position: absolute; right: 0; top: var(--s2); bottom: var(--s2); width: 1px; background: var(--line); }
 .limit span { color: var(--muted); font-size: var(--text-sm); line-height: 1.2; }
 
@@ -247,7 +243,6 @@ button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke
 @media (hover:hover) and (pointer:fine) { .drop:hover .drop-formats span, .drop.dragover .drop-formats span { border-color: var(--accent); color: var(--accent); } }
 
 /* ── Controls ─────────────────────────────────────────────── */
-.controls { width: min(560px,100%); display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s4) auto 0; align-items: flex-end; justify-content: center; }
 .auth-form .controls label { display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap; }
 .auth-form .controls label > span { font-size: var(--text-sm); flex-shrink: 0; }
 /* ── Form control baseline (single source) ─────────────────────
@@ -503,24 +498,8 @@ select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px
 .overlay-btn.muted { color: var(--muted); }
 .tool-overlay-actions .overlay-btn + .overlay-btn { margin-left: auto; }
 
-/* ── Home Tools ───────────────────────────────────────────── */
-.home-tools { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; justify-content: center; margin-bottom: var(--s2); }
+/* ── Home Tools (legacy chips removed in STEP2; hidden helper kept) ── */
 .home-tools.hidden { display: none; }
-.tool-tab { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 8px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; color: var(--muted); transition: all .15s ease; user-select: none; white-space: nowrap; background: var(--soft); border: 1px solid var(--line); }
-.tool-tab:active { transform: scale(0.95); }
-.tool-tab svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-@media (hover:hover) and (pointer:fine) { .tool-tab:hover { color: var(--ink); border-color: var(--accent); } }
-.tool-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-.tool-tab[data-tool-id="privacy"] { color: var(--green); border-color: var(--green-soft); }
-@media (hover:hover) and (pointer:fine) { .tool-tab[data-tool-id="privacy"]:hover { border-color: var(--green); background: var(--green-soft); } }
-.tool-tab[data-tool-id="privacy"].active { color: var(--green); border-color: var(--green); background: var(--green-soft); }
-.tool-tab[data-tool-id="privacy"] .tool-preset-badge { color: var(--green); }
-body[data-tool="privacy"] body[data-tool="privacy"] .tool-overlay-preset.active { color: var(--green); border-color: var(--green); }
-.tool-tab.active svg { stroke-width: 2; }
-.tool-tab .tool-preset-badge { font-size: 11px; font-weight: 500; color: var(--accent); opacity: 0.8; }
-.tool-desc { font-size: var(--text-sm); color: var(--accent); line-height: 1.5; margin: 0 0 var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--accent-soft); border-radius: var(--r-sm); background: var(--soft); }
-.tool-desc.hidden { display: none; }
-
 /* ── Tool Processing ──────────────────────────────────────── */
 .tool-processing { display: flex; flex-direction: column; align-items: center; gap: var(--s3); padding: var(--s5); }
 .tool-processing .upload-spinner { margin: 0; }
@@ -556,8 +535,7 @@ body[data-tool="privacy"] body[data-tool="privacy"] .tool-overlay-preset.active 
   .lang-menu { width: 128px; }
   .workspace { max-width: 100%; }
   h1 { font-size: clamp(30px, 10vw, 40px); }
-    .limit { padding-left: var(--s2); padding-right: var(--s2); }
-  .limit:not(:last-child)::after { display: none; }
+      .limit:not(:last-child)::after { display: none; }
   
   .auth-form .controls label { font-size: var(--text-sm); }
   .auth-form .controls .primary { min-height: 40px; padding: 0 var(--s4); font-size: var(--text-sm); }
