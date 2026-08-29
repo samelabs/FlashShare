@@ -125,7 +125,7 @@ h1, h2 { letter-spacing: -0.02em; }
 .drop-glyph svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .drop-title { font-size: 16.5px; font-weight: 700; }
 .drop-title em, .drop-title em * { font-style: normal; color: var(--accent); }
-.drop-formats { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 7px; max-width: 100%; padding: 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.drop-formats { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 7px; width: 100%; max-width: 100%; padding: 0 16px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
 .drop-formats .fmt-chip { display: inline-block; padding: 2px 8px; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; font-weight: 600; letter-spacing: .02em; }
 .upload-divider { height: 1px; background: var(--line); }
 .controls { display: flex; align-items: stretch; width: 100%; }
