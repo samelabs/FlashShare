@@ -155,3 +155,11 @@ if fails:
     for f_ in fails: print(' ✗', f_)
 else:
     print('PASS: i18n双向/CSS死类/JS悬挂DOM/静态可达/删块残渣/SSR裸键 六维全过')
+# C3: CSS解析完整性(518.css规则数下限, 断尾残段会让解析器吞规则)
+_css = open('/opt/flashshare/static/518.css').read()
+_n = _css.count('{')
+if _n < 500:
+    print(f'✗ C3 CSS解析完整性: 规则块仅{_n}(<500), 存在断尾/吞规则')
+    sys.exit(1)
+else:
+    print(f'PASS C3 CSS解析完整性: 规则块{_n}')
