@@ -24,7 +24,7 @@ checks = {
   "5 columns per row (header+3 rows)": h.count("<td") >= 15,
   "note ellipsis cell class": 'credit-note-cell' in h,
 }
-css = open('/opt/flashshare/static/style.css').read()
+css = open('/opt/flashshare/static/518.css').read()
 checks["fixed layout"] = 'table-layout: fixed' in css
 checks["column contract (5 widths + nowrap)"] = css.count('.acct-table td:nth-child') == 6
 ok = True

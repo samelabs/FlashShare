@@ -67,7 +67,7 @@ if missing: fails.append(f'A1 模板/JS引用但i18n缺失: {sorted(missing)[:8]
 if dead: fails.append(f'A2 i18n死键({len(dead)}): {sorted(dead)[:12]}')
 
 # ═══ B. CSS 死类(近期删块的残渣) ═══
-css = open('/opt/flashshare/static/style.css').read()
+css = open('/opt/flashshare/static/518.css').read()
 css_classes = set(re.findall(r'\.([a-zA-Z][a-zA-Z0-9_-]+)[^a-zA-Z0-9_-]', css))
 blob = ''
 for f in glob.glob('/opt/flashshare/app/templates/**/*.html', recursive=True):
@@ -113,7 +113,7 @@ residue = ['Cherry', '豆包', 'curator adopt', 'agents_clients', 'agents_semi',
             'acct-agents-link', 'token-revoked', 'skillCmd', 'copySkill']
 for kw in residue:
     hits = []
-    for f in glob.glob('/opt/flashshare/app/templates/**/*.html', recursive=True) + glob.glob('/opt/flashshare/static/pages/*.js') + ['/opt/flashshare/static/style.css']:
+    for f in glob.glob('/opt/flashshare/app/templates/**/*.html', recursive=True) + glob.glob('/opt/flashshare/static/pages/*.js') + ['/opt/flashshare/static/518.css']:
         if kw in open(f).read():
             hits.append(f.split('flashshare/')[-1])
     if hits: fails.append(f'E 残渣[{kw}]: {hits[:3]}')

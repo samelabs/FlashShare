@@ -2,7 +2,7 @@
 import re, glob
 from collections import Counter
 
-CSS = open('/opt/flashshare/static/style.css').read()
+CSS = open('/opt/flashshare/static/518.css').read()
 
 print("=" * 64)
 print("A. CSS 规则健康度")

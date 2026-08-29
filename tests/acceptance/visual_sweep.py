@@ -27,7 +27,7 @@ psql("INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(%
 ck = {"Cookie": f"{COOKIE_NAME}={tok_s}"}
 conn = http.client.HTTPConnection("127.0.0.1", 8000, timeout=30)
 
-STYLE = open('/opt/flashshare/static/style.css').read()
+STYLE = open('/opt/flashshare/static/518.css').read()
 
 checks = {}
 

@@ -41,19 +41,19 @@ router = APIRouter()
 
 # Load static assets once
 _STATIC = _BASE / "static"
-with open(_STATIC / "style.css", encoding="utf-8") as f:
+with open(_STATIC / "518.css", encoding="utf-8") as f:
     _CSS = f.read()
 # Version stamp = content hash + mtime: content-converging edits (diverge then
 # reconverge) can collide on a pure content hash and serve stale edge caches.
 import os as _os
-_CSS_VERSION = hashlib.md5((_CSS + str(int(_os.path.getmtime(_STATIC / "style.css")))).encode()).hexdigest()[:8]
+_CSS_VERSION = hashlib.md5((_CSS + str(int(_os.path.getmtime(_STATIC / "518.css")))).encode()).hexdigest()[:8]
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
-# app.js gets its OWN stamp: it changes independently of style.css. Sharing
+# app.js gets its OWN stamp: it changes independently of 518.css. Sharing
 # css_version meant an app.js-only edit kept the old stamp → edge served the
 # stale (buggy) app.js forever under the same URL.
 _JS_VERSION = hashlib.md5((JS + str(int(_os.path.getmtime(_STATIC / "app.js")))).encode()).hexdigest()[:8]
-# Separate cache-bust version for i18n.js — it changes independently of style.css
+# Separate cache-bust version for i18n.js — it changes independently of 518.css
 with open(_STATIC / "i18n.js", encoding="utf-8") as f:
     _I18N_JS = f.read()
 _I18N_VERSION = hashlib.md5((_I18N_JS + str(int(_os.path.getmtime(_STATIC / "i18n.js")))).encode()).hexdigest()[:8]
