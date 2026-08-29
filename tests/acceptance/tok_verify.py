@@ -40,7 +40,7 @@ conn.request("GET", "/account/tokens", headers=ck)
 h = conn.getresponse().read().decode()
 checks["MCP接入卡已删"] = "acct-agents-link" not in h and "agents_tokens_hint" not in h
 # emoji+横线
-css = open('/opt/flashshare/static/style.css').read()
+css = open('/opt/flashshare/static/518.css').read()
 checks["书签emoji删除"] = "🏷" not in css
 checks["无名'—'回退删除"] = "name || '—'" not in js
 checks["空名字行隐藏"] = ".token-new-name:empty { display: none; }" in css

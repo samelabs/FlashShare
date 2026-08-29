@@ -44,7 +44,7 @@ for p in pages:
     conn.request("GET", p, headers=ck)
     r = conn.getresponse(); h = r.read().decode()
     if r.status != 200: bad.append((p, r.status)); continue
-    if 'style.css?v=' not in h: bad.append((p, 'style.css missing'))
+    if '518.css?v=' not in h: bad.append((p, 'style.css missing'))
 checks['8页: style.css加载'] = (not bad, bad[:3])
 
 # 3. 按钮体系统一定义在style.css

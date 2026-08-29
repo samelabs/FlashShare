@@ -42,7 +42,7 @@ checks = {
 for k, v in checks.items():
     print(("PASS" if v else "FAIL"), k)
 
-css = open("/opt/flashshare/static/style.css").read()
+css = open("/opt/flashshare/static/518.css").read()
 checks["css: no centering (text-align left)"] = ".user-dropdown a, .user-dropdown button" in css and "margin-left: auto" in css.split(".menu-val")[1][:120]
 checks["css: sections divided"] = ".menu-sec + .menu-sec" in css
 

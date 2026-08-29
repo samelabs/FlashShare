@@ -52,7 +52,7 @@ for p in PAGES[:6]:
     st, h = get(p)
     ok = 'class="acct-nav"' in h and 'acct-tab active' in h and 'acct-side' not in h and 'acct-main' not in h
     if not ok: all_tb = False; print("   tab strip missing on", p)
-css = open('/opt/flashshare/static/style.css').read()
+css = open('/opt/flashshare/static/518.css').read()
 c3 = all_tb and '.acct-tab.active' in css and '.acct-tab-sep' in css and 'acct-side' not in css
 print(("PASS" if c3 else "FAIL"), "3. refined pill tabs on all 6 pages, no sidebar/no dup user card")
 

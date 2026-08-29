@@ -17,7 +17,7 @@ psql("INSERT INTO users(username, display_name, status, created_at, last_login_a
 uid = psql("SELECT id FROM users WHERE username=%s", (uname,))[0][0]
 psql("INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(%s,%s,%s,%s)", (th, uid, ts+600, ts))
 
-CSS = open("/opt/flashshare/static/style.css").read()
+CSS = open("/opt/flashshare/static/518.css").read()
 
 # 1. health
 d = 0

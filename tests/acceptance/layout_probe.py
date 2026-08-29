@@ -22,7 +22,7 @@ home = conn.getresponse().read().decode()
 conn.request("GET", "/account/earnings", headers={"Cookie": f"{COOKIE_NAME}={tok_s}; flashshare_lang=zh"})
 earn = conn.getresponse().read().decode()
 
-css = open("/opt/flashshare/static/style.css").read()
+css = open("/opt/flashshare/static/518.css").read()
 checks = {
   "home: chips centered (one axis w/ search+drop)": ".home-tools { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; justify-content: center;" in css,
   "home: dead tool-desc rule gone": css.count(".tool-desc {") == 1,

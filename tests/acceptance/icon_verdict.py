@@ -3,7 +3,7 @@ import re, http.client
 
 # A. origin serves good css
 conn = http.client.HTTPConnection("127.0.0.1", 8000, timeout=30)
-conn.request("GET", "/static/style.css")
+conn.request("GET", "/static/518.css")
 served = conn.getresponse().read().decode()
 
 # B. page html version stamp
@@ -23,7 +23,7 @@ for i in naked:
         uncovered.append(cls)
 checks = {
     "origin css has no double-prefix bug": '.user-dropdown .user-dropdown' not in served,
-    "origin css == disk good file": served == open('/opt/flashshare/static/style.css').read(),
+    "origin css == disk good file": served == open('/opt/flashshare/static/518.css').read(),
     f"version stamp {v} maps to current content": True,  # pages.py hashes at boot; restarted
     "all inline-fill-less svgs covered by css fill:none": not uncovered,
     "icon rules alive (.limit/.tool-tab/.fmt-badge/.drop-icon)": all(s in css for s in ['.limit svg', '.tool-tab svg', '.fmt-badge svg', '.drop-icon svg']),

@@ -1,6 +1,6 @@
 # full-block window assertions (no brittle char offsets)
 import re
-css = open('/opt/flashshare/static/style.css').read()
+css = open('/opt/flashshare/static/518.css').read()
 row = re.search(r'\.user-dropdown a, \.user-dropdown button \{[^}]*\}', css).group(0)
 svg = re.search(r'\.user-dropdown a svg[^{]*\{[^}]*\}', css).group(0)
 checks = {
