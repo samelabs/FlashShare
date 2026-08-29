@@ -82,7 +82,7 @@ assert probe["calls"]["earned"] == 7, probe["calls"]
 print("4. earned = 7 (payout join) OK")
 
 # 5. nav CSS: refined pill tab strip (sidebar reverted per user)
-css = open("/opt/flashshare/static/style.css").read()
+css = open("/opt/flashshare/static/518.css").read()
 assert ".acct-tab.active" in css, "pill tab active missing"
 assert ".acct-tab-sep" in css, "group separator missing"
 assert "acct-side" not in css, "sidebar residue"
