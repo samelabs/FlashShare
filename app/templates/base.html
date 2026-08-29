@@ -21,6 +21,7 @@
 
   <main class="shell {{ shell_class }}">
     {% block content %}{% endblock %}
+    {% include "partials/footer.html" %}
   </main>
 
   {% block modals %}
@@ -48,6 +49,5 @@ window.__LANG = "{{ lang }}";
   {% block script %}{% endblock %}
   {% block script_tail %}{% endblock %}
 
-  {% include "partials/footer.html" %}
 </body>
 </html>
