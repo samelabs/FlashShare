@@ -79,7 +79,7 @@ html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
 svg:not([width]):not([height]) { width: 20px; height: 20px; }
 .drop-glyph svg, .brand .mark svg, .tool-overlay-close svg, .modal-close svg,
 .controls .field b svg, .section-h svg { width: unset; height: unset; }
-.drop-glyph svg { width: 24px; height: 24px; }
+.drop-glyph svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .brand .mark svg { width: 14px; height: 14px; }
 .tool-overlay-close svg, .modal-close svg { width: 16px; height: 16px; }
 .controls .field b svg { width: 13px; height: 13px; }
@@ -103,12 +103,12 @@ h1, h2 { letter-spacing: -0.02em; }
 .drop.dragover { background: var(--accent-soft); }
 .drop input { position: absolute; opacity: 0; pointer-events: none; }
 .drop-glyph { width: 52px; height: 52px; border-radius: 16px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; }
-.drop-glyph svg { width: 24px; height: 24px; stroke: var(--accent); }
+.drop-glyph svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .drop-title { font-size: 16.5px; font-weight: 700; }
 .drop-title em, .drop-title em * { font-style: normal; color: var(--accent); }
 .drop-formats { font-size: 12.5px; color: var(--muted); letter-spacing: .04em; }
 .upload-divider { height: 1px; background: var(--line); }
-.controls { display: flex; align-items: stretch; }
+.controls { display: flex; align-items: stretch; width: 100%; }
 
 /* legacy login/register controls (not home upload-card) */
 .auth-form .controls .field { flex: 1; padding: 13px 18px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; position: relative; }
@@ -227,19 +227,7 @@ button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke
 @media (hover:hover) and (pointer:fine) { .logout:hover { color: var(--danger); border-color: var(--line); background: var(--soft); opacity: 1; } }
 
 /* ── Upload Zone ──────────────────────────────────────────── */
-.tool { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s3) var(--s5) var(--s4); margin-top: var(--s4); text-align: center; box-shadow: var(--sh-sm); }
-#uploadForm { text-align: center; }
 .upload { display: block; }
-.drop { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 180px; border: 2px dashed var(--line-strong); border-radius: var(--r-lg); padding: var(--s6) var(--s5); background: var(--bg); cursor: pointer; transition: border-color var(--ease), box-shadow var(--ease), transform .15s ease; width: 100%; position: relative; }
-@media (hover:hover) and (pointer:fine) { .drop:hover, .drop.dragover { border-color: var(--accent); box-shadow: 0 4px 20px rgba(29,155,240,0.10); } }
-@media (hover:hover) and (pointer:fine) { .drop:hover { transform: translateY(-1px); } }
-.drop.dragover { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.01); }
-.drop input { position: absolute; opacity: 0; pointer-events: none; }
-@media (hover:hover) and (pointer:fine) { .drop:hover }
-.drop small { display: block; color: var(--muted); margin-top: 9px; line-height: 1.5; }
-.drop-formats { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s1); margin-top: var(--s3); max-width: 400px; }
-.drop-formats span { display: inline-block; padding: 3px 9px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--soft); color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: 0.5px; line-height: 1.4; transition: border-color var(--ease-in), color var(--ease-in), background var(--ease-in); }
-@media (hover:hover) and (pointer:fine) { .drop:hover .drop-formats span, .drop.dragover .drop-formats span { border-color: var(--accent); color: var(--accent); } }
 
 /* ── Controls ─────────────────────────────────────────────── */
 .auth-form .controls label { display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap; }
