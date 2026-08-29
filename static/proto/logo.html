@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>518.PLUS Logo 方案 — 主题红体系</title>
+<style>
+:root{
+  --ink:#18181b; --body:#3f3f46; --muted:#a1a1aa;
+  --line:#e7e5e4; --bg:#fafaf9; --card:#fff;
+  --red:#ff4d4d; --red-hover:#ff2442; --red-soft:#fff1f2; --red-deep:#e63b3b;
+  --r:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",Roboto,sans-serif;
+     background:var(--bg);color:var(--ink);padding:0 0 60px}
+.wrap{max-width:560px;margin:0 auto;padding:32px 20px}
+h1{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px}
+.sub{font-size:13.5px;color:var(--muted);margin-bottom:28px}
+
+.section{margin-bottom:34px}
+.section .t{font-size:14px;font-weight:700;margin-bottom:4px}
+.section .d{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.5}
+
+/* 展示台 */
+.stage{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 20px;
+       display:flex;flex-direction:column;align-items:center;gap:14px}
+.stage .ctx{font-size:12px;color:var(--muted)}
+.stage.dark{background:#18181b;border-color:#18181b}
+.stage.dark .ctx{color:#71717a}
+
+/* ═══ A. 字标: 518 红 + .PLUS 墨 ═══ */
+.logoA{font-size:30px;font-weight:800;letter-spacing:-.03em;display:flex;align-items:baseline}
+.logoA .num{color:var(--red);font-variant-numeric:tabular-nums}
+.logoA .dot{color:var(--ink)}
+.logoA .plus{color:var(--ink)}
+.logoA.sm{font-size:17px}
+
+/* ═══ B. 图标章: 红底白箭cedes(上传闪电+回形) ═══ */
+.markB{width:64px;height:64px;border-radius:16px;background:var(--red);display:flex;align-items:center;justify-content:center;
+       box-shadow:0 6px 20px rgba(255,77,77,.35)}
+.markB svg{width:34px;height:34px;stroke:#fff}
+.markB.sm{width:26px;height:26px;border-radius:7px}
+.markB.sm svg{width:15px;height:15px}
+
+/* B2 组合锁: 图标章+字标 */
+.lockB{display:flex;align-items:center;gap:12px}
+
+/* ═══ C. 单色线标: 墨线闪电框 ═══ */
+.markC{width:64px;height:64px;border-radius:16px;border:2.5px solid var(--red);display:flex;align-items:center;justify-content:center;background:var(--card)}
+.markC svg{width:34px;height:34px;stroke:var(--red)}
+.lockC{display:flex;align-items:center;gap:12px}
+
+/* ═══ D. 字标变体: 518.PLUS 整体红 ═══ */
+.logoD{font-size:30px;font-weight:800;letter-spacing:-.03em;color:var(--red)}
+.logoD .plus{color:var(--ink)}
+
+/* 应用预览: 顶栏 */
+.topbar-demo{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;margin-top:14px}
+.topbar-demo .brand{font-size:17px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--ink)}
+.top-actions{display:flex;align-items:center;gap:14px;font-size:13px;font-weight:600;color:var(--muted)}
+.top-actions .register{background:var(--red);color:#fff;padding:6px 14px;border-radius:8px}
+.topbar-demo.dark{background:#18181b;border-color:#18181b}
+.topbar-demo.dark .brand{color:#fff}
+.topbar-demo.dark .logoA .num{color:var(--red)}
+.topbar-demo.dark .logoA .dot,.topbar-demo.dark .logoA .plus{color:#fff}
+
+.favicon-row{display:flex;gap:10px;align-items:center}
+.fav{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.fav svg{width:26px;height:26px}
+.fav.f1{background:var(--red)}
+.fav.f2{background:var(--card);border:2.5px solid var(--red)}
+.fav.f3{background:var(--ink)}
+.fav.f4{background:#fff;border:1px solid var(--line)}
+.fav.f3 svg,.fav.f4 svg{stroke:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>518.PLUS Logo 方案</h1>
+  <div class="sub">主题红 #ff4d4d · 副色 = 墨 #18181b / 深红 #e63b3b / 浅红面 #fff1f2</div>
+
+  <!-- A -->
+  <div class="section">
+    <div class="t">A · 双色字标（推荐）</div>
+    <div class="d">518=主题红，.PLUS=墨。数字承载红，最简、任何尺寸都清晰，favicon 直接用「518」。</div>
+    <div class="stage">
+      <span class="logoA"><span class="num">518</span><span class="dot">.</span><span class="plus">PLUS</span></span>
+      <span class="ctx">亮色底</span>
+      <span class="logoA sm" style="color:#fff"><span class="num">518</span><span class="dot" style="color:#fff">.</span><span class="plus" style="color:#fff">PLUS</span></span>
+      <span class="ctx">深色底</span>
+    </div>
+    <div class="topbar-demo">
+      <span class="brand"><span class="logoA sm"><span class="num">518</span><span class="dot">.</span><span class="plus">PLUS</span></span></span>
+      <div class="top-actions"><span>MCP</span><span class="register">注册</span></div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="section">
+    <div class="t">B · 图标章 + 字标（App/头像用）</div>
+    <div class="d">红底圆角章 + 白色「闪电上传」符号（分享=向上箭头出框）。配 A 字标成组合锁。</div>
+    <div class="stage">
+      <div class="lockB">
+        <span class="markB"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></span>
+        <span class="logoA"><span class="num">518</span><span class="dot">.</span><span class="plus">PLUS</span></span>
+      </div>
+      <span class="ctx">组合锁</span>
+      <span class="markB sm"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></span>
+      <span class="ctx">小尺寸(顶栏/移动端)</span>
+    </div>
+  </div>
+
+  <!-- C -->
+  <div class="section">
+    <div class="t">C · 线框章（轻量变体）</div>
+    <div class="d">白底红框红线，弱 presence 场景（页脚/水印/文档页眉）。</div>
+    <div class="stage">
+      <div class="lockC">
+        <span class="markC"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></span>
+        <span class="logoA"><span class="num">518</span><span class="dot">.</span><span class="plus">PLUS</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- favicon 全底色测试 -->
+  <div class="section">
+    <div class="t">Favicon 四底测试（闪电符号）</div>
+    <div class="stage">
+      <div class="favicon-row">
+        <span class="fav f1"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></span>
+        <span class="fav f2"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></span>
+        <span class="fav f3"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></span>
+        <span class="fav f4"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></span>
+      </div>
+      <span class="ctx">红底白线 / 白底红线 / 墨底红线 / 白卡红线</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
