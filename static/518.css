@@ -74,6 +74,16 @@
 /* ── Reset ────────────────────────────────────────────────── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+
+/* ── SVG兜底: 任何未显式定尺寸的svg不得撑满(裸viewBox默认300x150) ── */
+svg:not([width]):not([height]) { width: 20px; height: 20px; }
+.drop-glyph svg, .brand .mark svg, .tool-overlay-close svg, .modal-close svg,
+.controls .field b svg, .section-h svg { width: unset; height: unset; }
+.drop-glyph svg { width: 24px; height: 24px; }
+.brand .mark svg { width: 14px; height: 14px; }
+.tool-overlay-close svg, .modal-close svg { width: 16px; height: 16px; }
+.controls .field b svg { width: 13px; height: 13px; }
+
 body { margin: 0; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 /* Keyboard focus ring — consistent across all interactive elements */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
