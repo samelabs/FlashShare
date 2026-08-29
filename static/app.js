@@ -773,10 +773,10 @@ function applyToolSelection(skipPresetReset) {
     file.removeAttribute("multiple");
   }
 
-  // Update format tags
+  // Update format tags — spans with wrapping (flex-wrap chips)
   if (formatTags && activeTool.accept) {
     const tags = [...new Set(activeTool.accept.map(m => ACCEPT_TAGS[m]).filter(Boolean))];
-    formatTags.innerHTML = tags.map(tg => `<span>${tg}</span>`).join("");
+    formatTags.innerHTML = tags.map(tg => `<span class="fmt-chip">${tg}</span>`).join("");
   }
 
   // Show description below tools
