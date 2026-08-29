@@ -111,7 +111,7 @@ h1, h2 { letter-spacing: -0.02em; }
 .controls { display: flex; align-items: stretch; width: 100%; }
 
 /* legacy login/register controls (not home upload-card) */
-.auth-form .controls .field { flex: 1; padding: 13px 18px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; position: relative; }
+.controls .field { flex: 1; padding: 13px 18px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; position: relative; }
 .controls .field + .field { border-left: 1px solid var(--line); }
 .controls .field span { font-size: 11.5px; font-weight: 650; color: var(--muted); letter-spacing: .03em; }
 .controls .field b { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
@@ -247,8 +247,8 @@ select { width: auto; margin-top: 0; }
 .auth-form .controls .primary { flex: 0 0 auto; min-height: 42px; padding: 0 var(--s5); background: var(--accent); border-radius: var(--r); font-size: var(--text-sm); font-weight: 700; white-space: nowrap; box-shadow: var(--sh-accent); transition: background var(--ease), box-shadow var(--ease), transform var(--ease); }
 @media (hover:hover) and (pointer:fine) { .auth-form .controls .primary:hover { background: var(--accent-hover); transform: translateY(-1px); } }
 .auth-form .controls .primary:active { transform: translateY(0); }
-label { color: var(--muted); font-size: var(--text-sm); font-weight: 500; display: block; }
-select {
+.auth-form label { color: var(--muted); font-size: var(--text-sm); font-weight: 500; display: block; }
+.auth-form select {
   width: 100%; margin-top: 7px;
   border: 1px solid var(--line-strong); border-radius: var(--r);
   padding: var(--s2) 32px var(--s2) var(--s3);
@@ -259,9 +259,9 @@ select {
   background-repeat: no-repeat; background-position: right 10px center;
   cursor: pointer; transition: border-color var(--ease), background var(--ease), box-shadow var(--ease);
 }
-@media (hover:hover) and (pointer:fine) { select:hover { border-color: var(--accent); background: var(--bg); } }
-select::-ms-expand { display: none; }
-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+@media (hover:hover) and (pointer:fine) { .auth-form select:hover { border-color: var(--accent); background: var(--bg); } }
+.auth-form select::-ms-expand { display: none; }
+.auth-form select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* ── Upload Progress ──────────────────────────────────────── */
 .upload-progress { margin: var(--s5) 0; }
