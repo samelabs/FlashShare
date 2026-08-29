@@ -126,6 +126,23 @@ function renderModalActions() {
 window.__afterI18n = function() {
   document.title = t("title");
   modalCopy.textContent = t("copy");
+  // Upload-card param values follow language
+  const expSel = document.getElementById("expiryDays");
+  const dlSel = document.getElementById("allowedDownloads");
+  const expLab = document.getElementById("expiryLabel");
+  const dlLab = document.getElementById("downloadsLabel");
+  if (expSel && expLab) {
+    const d = expSel.value;
+    expLab.textContent = d === "1" ? "1 " + t("day_unit") : d + " " + t("days_unit");
+  }
+  if (dlSel && dlLab) dlLab.textContent = dlSel.value + " " + t("times_unit");
+  // Tool names: SSR renders {{ texts.get(t.id) }} — re-derive per current language
+  document.querySelectorAll("#homeTools .tool-tab").forEach(tab => {
+    const toolId = tab.dataset.toolId;
+    if (!toolId || toolId.includes("/")) return; // community tools carry their own label
+    const nameEl = tab.querySelector(".tool-tab-name");
+    if (nameEl) nameEl.textContent = t(toolId);
+  });
   renderModalActions();
   if (!file.files[0]) fileLabel.textContent = t("dropEmpty");
   applyToolSelection();

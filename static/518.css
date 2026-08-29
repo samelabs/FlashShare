@@ -99,6 +99,13 @@ h1, h2 { letter-spacing: -0.02em; }
 
 /* ═══ 首页新结构样式 (STEP 2) ═══ */
 
+
+/* ── Hero mini: 一句点题 ── */
+.hero-mini { text-align: center; padding: 4px 0 0; }
+.hero-title { font-size: 26px; font-weight: 800; letter-spacing: -.03em; margin: 0; color: var(--ink); }
+.hero-sub { font-size: 13.5px; color: var(--muted); line-height: 1.55; margin: 8px auto 0; max-width: 44ch; }
+@media (max-width: 640px) { .hero-title { font-size: 23px; } }
+
 /* ── 上传卡: 页面唯一主角 ── */
 .upload-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--sh-sm); }
 .drop { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 34px 20px 40px; cursor: pointer; text-align: center; }
