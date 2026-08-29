@@ -708,7 +708,7 @@ function applyToolSelection(skipPresetReset) {
 
   if (!activeTool || activeTool.id === "share") {
     file.accept = "";
-    if (formatTags) formatTags.innerHTML = "<span>IMG</span><span>PDF</span><span>DOC</span><span>XLS</span><span>PPT</span><span>TXT</span><span>ZIP</span><span>CODE</span>";
+    if (formatTags) formatTags.textContent = t("dropFormats");
     updateToolDescription();
     return;
   }
