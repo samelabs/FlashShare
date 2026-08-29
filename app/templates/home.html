@@ -35,70 +35,59 @@
 
 {% block content %}
 <section class="workspace">
-  <div class="intro">
-    <h1 data-i18n="hero_title">{{ texts.hero_title }}</h1>
-    <p class="hero-subtitle" data-i18n="subtitle">{{ texts.subtitle }}</p>
-
-    <div class="limit-grid">
-      <div class="limit" title="Max file size">{{ file_size_icon }}<strong>{{ max_mb }}MB</strong></div>
-      <div class="limit" title="Daily uploads">{{ upload_count_icon }}<strong>{{ daily_uploads }}</strong></div>
-      <div class="limit" title="Daily bandwidth">{{ bandwidth_icon }}<strong>{{ daily_mb }}MB</strong></div>
-      <div class="limit" title="Max expiry">{{ expiry_icon }}<strong>7d</strong></div>
-      <div class="limit" title="Max downloads">{{ download_count_icon }}<strong>200</strong></div>
+  <div class="upload-card">
+    <label class="drop" id="dropZone">
+      <input id="file" name="file" type="file" required accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.ico,.heic,.heif,.tiff,.tif,.avif,.svg,.pdf,.txt,.csv,.md,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.zip,.rar,.7z,.gz,.tar,.bz2,.xz,.tgz,.json,.xml,.yaml,.yml,.py,.js,.mjs,.ts,.html,.htm,.css,.go,.rs,.java,.c,.cpp,.h,.rb,.php,.sh,.sql">
+      <span class="drop-glyph" aria-hidden="true">{{ icon_svg("upload") }}</span>
+      <span class="drop-title" id="fileLabel" data-i18n="dropTitle">{{ texts.dropTitle }}</span>
+      <span class="drop-formats" data-i18n="dropFormats">{{ texts.dropFormats }}</span>
+    </label>
+    <div class="upload-divider"></div>
+    <div class="controls">
+      <label class="field"><span data-i18n="expiry">{{ texts.expiry }}</span>
+        <b><span id="expiryLabel">1 {{ texts.day_unit }}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        <select name="expiryDays" id="expiryDays">
+          <option value="1" data-i18n="oneDay">1 day</option>
+          <option value="3" data-i18n="threeDays">3 days</option>
+          <option value="7" data-i18n="sevenDays">7 days</option>
+        </select></b>
+      </label>
+      <label class="field"><span data-i18n="downloads">{{ texts.downloads }}</span>
+        <b><span id="downloadsLabel">50</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        <select name="allowedDownloads" id="allowedDownloads">
+          <option value="1" data-i18n="oneDownload">1 time</option>
+          <option value="10" data-i18n="tenDownloads">10 times</option>
+          <option value="50" data-i18n="fiftyDownloads" selected>50 times</option>
+          <option value="100" data-i18n="hundredDownloads">100 times</option>
+          <option value="200" data-i18n="twohundredDownloads">200 times</option>
+        </select></b>
+      </label>
     </div>
+    <div class="cta-row">
+      <button id="submitBtn" class="primary" type="submit" form="uploadForm"><span data-i18n="create">{{ texts['create'] }}</span></button>
+    </div>
+    <form id="uploadForm" class="visually-hidden" enctype="multipart/form-data"></form>
   </div>
 
-  <section class="tool" aria-label="Upload">
-    <div class="tool-search" role="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
-      <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
-      <div class="tool-search-pop hidden" id="toolSearchPop" role="listbox"></div>
-    </div>
-    <div class="home-tools{% if not tools %} hidden{% endif %}" id="homeTools">
-      {% for t in tools %}
-      <div class="tool-tab{% if '/' in t.id %} community{% endif %}" data-tool-id="{{ t.id }}" role="button" tabindex="0">
-        {% if t.icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path(t.icon) }}</svg>{% endif %}
-        <span class="tool-tab-name">{{ texts.get(t.id) if '/' not in t.id else (t.label.get(lang, t.label.get('en', t.id))) }}{% if '/' in t.id %} <em class="tool-tab-by">@{{ t.id.split('/')[0] }}</em>{% endif %}</span>
-        {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
-      </div>
-      {% endfor %}
-    </div>
-    <p class="tool-desc hidden" id="toolDesc"></p>
+  <div class="tool-search" role="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
+    <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
+    <div class="tool-search-pop hidden" id="toolSearchPop" role="listbox"></div>
+  </div>
 
-    <form id="uploadForm" class="upload" enctype="multipart/form-data">
-      <label class="drop" id="dropZone">
-        <input id="file" name="file" type="file" required accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.ico,.heic,.heif,.tiff,.tif,.avif,.svg,.pdf,.txt,.csv,.md,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.zip,.rar,.7z,.gz,.tar,.bz2,.xz,.tgz,.json,.xml,.yaml,.yml,.py,.js,.mjs,.ts,.html,.htm,.css,.go,.rs,.java,.c,.cpp,.h,.rb,.php,.sh,.sql">
-        <span class="drop-icon" aria-hidden="true">{{ upload_icon }}</span>
-        <span id="fileLabel" data-i18n="dropTitle">Add File</span>
-        <div class="drop-formats">
-          <span>IMG</span><span>PDF</span><span>DOC</span><span>XLS</span><span>PPT</span><span>TXT</span><span>ZIP</span><span>CODE</span>
-        </div>
-      </label>
-      <div class="controls">
-        <label><span data-i18n="expiry">{{ texts.expiry }}</span>
-          <select name="expiryDays">
-            <option value="1" data-i18n="oneDay">1 day</option>
-            <option value="3" data-i18n="threeDays">3 days</option>
-            <option value="7" data-i18n="sevenDays">7 days</option>
-          </select>
-        </label>
-        <label><span data-i18n="downloads">{{ texts.downloads }}</span>
-          <select name="allowedDownloads">
-            <option value="1" data-i18n="oneDownload">1 time</option>
-            <option value="10" data-i18n="tenDownloads">10 times</option>
-            <option value="50" data-i18n="fiftyDownloads" selected>50 times</option>
-            <option value="100" data-i18n="hundredDownloads">100 times</option>
-            <option value="200" data-i18n="twohundredDownloads">200 times</option>
-          </select>
-        </label>
-        <button id="submitBtn" class="primary" type="submit">
-          <span class="button-icon" aria-hidden="true">{{ icon_svg("upload") }}</span>
-          <span data-i18n="create">{{ texts['create'] }}</span>
-        </button>
-      </div>
-    </form>
-    <div id="result" class="result hidden" aria-live="polite"></div>
-  </section>
+  <div class="section-h"><span class="t" data-i18n="tools_section">{{ texts.tools_section }}</span><span class="n" id="toolsCount">{{ tools|length }}</span></div>
+  <div class="home-tools{% if not tools %} hidden{% endif %}" id="homeTools">
+    {% for t in tools %}
+    <div class="tool-tab{% if '/' in t.id %} community{% endif %}" data-tool-id="{{ t.id }}" role="button" tabindex="0">
+      {% if t.icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path(t.icon) }}</svg>{% endif %}
+      <span class="tool-tab-name">{{ texts.get(t.id) if '/' not in t.id else (t.label.get(lang, t.label.get('en', t.id))) }}{% if '/' in t.id %} <em class="tool-tab-by">@{{ t.id.split('/')[0] }}</em>{% endif %}</span>
+      {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="tool-desc hidden" id="toolDesc"></p>
+
+  <div id="result" class="result hidden" aria-live="polite"></div>
 </section>
   {% endblock %}
 

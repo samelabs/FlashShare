@@ -258,6 +258,8 @@ form.addEventListener("submit", async (event) => {
   submitBtn.innerHTML = `<div class="btn-spinner"></div>`;
   showResult(`<div class="upload-progress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="progressFill"></div></div><div class="upload-progress-text" id="progressText">0%</div></div>`);
   const formData = new FormData(form);
+  // file input lives in the visual drop label (outside <form>) — append explicitly
+  Array.from(file.files).forEach((f, idx) => formData.append(idx === 0 ? "file" : "file", f));
   if (activeTool && activeTool.id !== "share") {
     formData.append("tool", activeTool.id);
     if (activePreset) formData.append("preset", activePreset);
