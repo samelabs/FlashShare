@@ -111,3 +111,16 @@
 {{ super() }}
 {% include "partials/upload_modals.html" %}
 {% endblock %}
+
+{% block script_head %}
+<script>
+window.__LIMITS__ = {{ limits_json|safe }};
+window.__TOOLS__ = {{ tools_json|safe }};
+</script>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ js_version }}"></script>
+<script src="/static/app.js?v={{ js_version }}"></script>
+<script src="/static/pages/sw-register.js?v={{ js_version }}"></script>
+{% endblock %}
