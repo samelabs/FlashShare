@@ -488,8 +488,9 @@ async def samelabs_remote_create(request: Request):
     import json as _json
     endpoint = {"url": url, "timeout_s": timeout_s}
     if auth_header and auth_token:
+        from secrets_vault import seal
         endpoint["auth_header"] = auth_header
-        endpoint["auth_token"] = auth_token
+        endpoint["auth_token"] = seal(auth_token)
     if output_filename:
         endpoint["output_filename"] = output_filename
     if output_content_type:

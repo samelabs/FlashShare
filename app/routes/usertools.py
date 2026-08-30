@@ -157,8 +157,9 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         fields["timeout_s"] = timeout_s
 
     if raw.get("auth_header") and raw.get("auth_token"):
+        from secrets_vault import seal
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
-        fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
+        fields["auth_token"] = seal(str(raw["auth_token"]).strip()[:512])
 
     if "accept" in raw:
         accept_raw = str(raw.get("accept") or "").strip()
@@ -215,7 +216,8 @@ def _endpoint_decl(fields: dict, execution: str, existing: dict | None = None) -
     if "auth_header" in fields:
         decl["auth_header"] = fields["auth_header"]
     if "auth_token" in fields:
-        decl["auth_token"] = fields["auth_token"]
+        from secrets_vault import seal
+        decl["auth_token"] = seal(fields["auth_token"])
     if "output_filename" in fields:
         decl["output_filename"] = fields["output_filename"]
     if "output_content_type" in fields:

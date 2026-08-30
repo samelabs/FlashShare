@@ -566,7 +566,8 @@ async def _execute_remote_and_share(request: Request, tool: dict, uploads: list,
 
     auth_headers = {}
     if decl.get("auth_header") and decl.get("auth_token"):
-        auth_headers[decl["auth_header"]] = decl["auth_token"]
+        from secrets_vault import unseal
+        auth_headers[decl["auth_header"]] = unseal(decl["auth_token"])
 
     loop = asyncio.get_event_loop()
     try:
