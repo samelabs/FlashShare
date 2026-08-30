@@ -20,6 +20,9 @@ from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
 from catalog import list_catalog, seed_from_registry
+from config import MAX_UPLOAD_BYTES
+
+MAX_UPLOAD_MB = MAX_UPLOAD_BYTES // (1024 * 1024)
 from database import db
 
 
@@ -201,14 +204,18 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
     if err or tool.get("visibility") != "public":
         return None
     ctx = _ctx_base(request)
+    tool_public = {k: v for k, v in tool.items() if k != "handler"}
+    import json as _json
     ctx.update({
         "shell_class": "",
-        "tool": tool,
+        "tool": tool_public,
         "tool_name": (tool.get("label") or {}).get(ctx["lang"]) or (tool.get("label") or {}).get("en") or tool_id,
         "handle": _owner_handle(tool["owner_id"]),
         "stats": _public_stats(tool_key),
         "mcp_name": tool_key.replace("/", "__"),
         "is_mcp": mcp,
+        "tools_json": _json.dumps([tool_public], ensure_ascii=False),
+        "limits_json": ctx.get("limits_json") or _json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),
     })
     return ctx
 

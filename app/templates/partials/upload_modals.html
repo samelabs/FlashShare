@@ -1,0 +1,24 @@
+<div class="tool-overlay hidden" id="toolOverlay" role="dialog" aria-modal="true">
+  <div class="tool-overlay-panel">
+    <button class="tool-overlay-close" id="toolOverlayClose" type="button" aria-label="Close">{{ close_icon }}</button>
+    <div id="toolOverlayBody"></div>
+  </div>
+</div>
+<div class="modal hidden" id="uploadModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-panel">
+    <button class="modal-close" id="modalClose" type="button" aria-label="Close">{{ close_icon }}</button>
+    <h2 id="modalTitle"></h2>
+    <p id="modalMeta" class="modal-meta"></p>
+    <img id="modalQr" class="qr-code modal-qr" alt="QR code">
+    <div class="urlrow">
+      <input id="modalUrl" readonly>
+      <button id="modalCopy" type="button" data-i18n="copy">{{ texts['copy'] }}</button>
+    </div>
+    <div class="modal-actions">
+      <a id="modalOpen" class="modal-action" target="_blank" rel="noreferrer"></a>
+      <a id="modalShare" class="modal-action accent-action" target="_blank" rel="noreferrer"></a>
+      <a id="modalSaveQr" class="modal-action" download></a>
+      <button id="modalDelete" class="modal-action danger-button" type="button"></button>
+    </div>
+  </div>
+</div>

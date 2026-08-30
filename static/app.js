@@ -2,7 +2,7 @@ const form = document.getElementById("uploadForm");
 // ── Load self-check: version-skew (stale cached JS vs fresh HTML) must
 // fail LOUD, not silently half-bind events. ──
 (function(){
-  const need = ["uploadForm","file","fileLabel","dropZone","submitBtn","toolSearch"];
+  const need = ["uploadForm","file","fileLabel","dropZone","submitBtn"];
   const missing = need.filter(id => !document.getElementById(id));
   if (missing.length) {
     console.error("[518] DOM missing:", missing.join(","), "— stale JS? hard-refresh (Cmd/Ctrl+Shift+R)");

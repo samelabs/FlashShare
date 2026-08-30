@@ -35,11 +35,15 @@
       </div>
     </div>
     <div class="cta-row">
-      <button type="button" id="submitBtn" class="toolpage-call" data-tool="{{ tool.id }}">
+      <button type="submit" id="submitBtn" class="toolpage-call" form="uploadForm">
         <span data-i18n="tool_call_cta">{{ texts.tool_call_cta }}</span>
       </button>
     </div>
   </div>
+
+  <div id="result" class="result hidden" aria-live="polite"></div>
+
+  <form id="uploadForm" class="visually-hidden" enctype="multipart/form-data"></form>
 
   <p class="toolpage-notice" data-i18n="tool_ext_notice">{{ texts.tool_ext_notice }}</p>
 
@@ -51,6 +55,17 @@
     </div>
   </div>
 </section>
+{% endblock %}
+
+{% block modals %}
+{% include "partials/upload_modals.html" %}
+{% endblock %}
+
+{% block script_head %}
+<script>
+window.__LIMITS__ = {{ limits_json|safe }};
+window.__TOOLS__ = {{ tools_json|safe }};
+</script>
 {% endblock %}
 
 {% block script %}
