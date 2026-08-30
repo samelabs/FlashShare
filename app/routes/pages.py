@@ -191,6 +191,11 @@ async def tools_market(request: Request):
             row = con.execute("SELECT owner_id FROM platform_tools WHERE tool_key = %s", (t["id"],)).fetchone()
         handle = _owner_handle(row["owner_id"]) if row else "unknown"
         community.append({**t, "handle": handle, "stats": _public_stats(t["id"])})
+    from icons import icon_svg
+    for t in official:
+        t["icon_svg"] = icon_svg(t["icon"] or "upload")
+    for t in community:
+        t["icon_svg"] = icon_svg(t["icon"] or "zap")
     ctx.update({"shell_class": "", "official": official, "community": community})
     return templates.TemplateResponse(request, "tools_market.html", ctx)
 
@@ -210,6 +215,8 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
         label_map = json.loads(tool.get("label_json") or "{}")
     except Exception:
         label_map = {}
+    from icons import icon_svg
+    tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "zap")
     ctx.update({
         "shell_class": "",
         "tool": tool_public,

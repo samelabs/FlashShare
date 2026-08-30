@@ -903,3 +903,11 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .open-callout-ghost svg { stroke: var(--muted); }
 @media (hover:hover) and (pointer:fine) { .open-callout-ghost:hover { border-color: var(--accent); color: var(--accent); } }
 .agents-market-link { display: flex; justify-content: center; margin: var(--s5) 0; }
+
+/* ── 市场页视觉精修 ── */
+.mkt-official { min-width: 128px; padding: 12px; gap: 10px; }
+.mkt-official .mkt-icon { width: 34px; height: 34px; border-radius: 10px; }
+.mkt-official .mkt-icon svg { width: 17px; height: 17px; }
+.market-page .hero-sub { max-width: 34em; }
+.mkt-community .mkt-meta { justify-content: flex-start; }
+.mkt-community .mkt-tags { margin-left: 0; }

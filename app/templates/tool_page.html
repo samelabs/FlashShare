@@ -15,7 +15,7 @@
   <div class="upload-card">
     <label class="drop" id="dropZone">
       <input id="file" name="file" type="file" {% if tool.accept %}accept="{{ tool.accept | join(',') }}"{% endif %}>
-      <span class="drop-glyph" aria-hidden="true">{% if tool.icon %}<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent);fill:none">{{ tool.icon | safe }}</svg>{% else %}{{ icon_svg("upload") }}{% endif %}</span>
+      <span class="drop-glyph" aria-hidden="true">{% if tool.icon %}<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent);fill:none">{{ tool.icon_svg | safe }}</svg>{% else %}{{ icon_svg("upload") }}{% endif %}</span>
       <span class="drop-title" id="fileLabel" data-i18n="dropTitle">{{ texts.dropTitle }}</span>
       {% if tool.accept %}
       <span class="drop-formats">

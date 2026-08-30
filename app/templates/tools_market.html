@@ -13,7 +13,7 @@
   <div class="market-official-row">
     {% for t in official %}
     <a class="mkt-card mkt-official" href="/?tool={{ t.id }}">
-      <span class="mkt-icon">{% if t.icon %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
+      <span class="mkt-icon">{% if t.icon %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon_svg | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
       <span class="mkt-name">{{ texts.get(t.id, t.label.get(lang, t.label.get('en', t.id))) }}</span>
       {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
     </a>
@@ -29,12 +29,12 @@
   <div class="market-grid">
     {% for t in community %}
     <a class="mkt-card mkt-community" href="/tool/{{ t.id }}">
-      <span class="mkt-icon">{% if t.icon %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
+      <span class="mkt-icon">{% if t.icon %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon_svg | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
       <span class="mkt-name">{{ t.label.get(lang, t.label.get('en', t.id)) }}</span>
       <span class="mkt-author">@{{ t.handle }}</span>
       <span class="mkt-meta">
+        <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
         {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
-        <span class="mkt-calls" data-i18n="tool_calls_total">{{ texts.tool_calls_total }} · {{ t.stats.calls }}</span>
       </span>
       <span class="mkt-tags"><span class="mkt-tag">UI</span><span class="mkt-tag">MCP</span></span>
     </a>
