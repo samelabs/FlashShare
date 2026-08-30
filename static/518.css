@@ -617,9 +617,9 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page h1 + .acct-nav { margin-top: 0; }
 
 /* ── 分区 tabs: 单行分段控件(proto .tabs), 当前项红底白字 ── */
-.acct-nav { display: flex; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.acct-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
 .acct-nav::-webkit-scrollbar { display: none; }
-.acct-tab { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 13px; border-radius: 9px; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; transition: background var(--ease), color var(--ease); }
+.acct-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 4px; border-radius: 9px; color: var(--muted); font-size: 12.5px; font-weight: 600; white-space: nowrap; text-decoration: none; transition: background var(--ease), color var(--ease); min-width: 0; }
 .acct-tab svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
 @media (hover:hover) and (pointer:fine) { .acct-tab:hover { background: var(--soft); color: var(--ink); } }
 .acct-tab.active { background: var(--accent); color: var(--button-ink); font-weight: 700; }
