@@ -139,7 +139,7 @@ window.__afterI18n = function() {
   // Tool names: SSR renders {{ texts.get(t.id) }} — re-derive per current language
   document.querySelectorAll("#homeTools .tool-tab").forEach(tab => {
     const toolId = tab.dataset.toolId;
-    if (!toolId || toolId.includes("/")) return; // community tools carry their own label
+    if (!toolId || toolId.includes("/")) return; // namespaced tools carry their own label
     const nameEl = tab.querySelector(".tool-tab-name");
     if (nameEl) nameEl.textContent = t(toolId);
   });
@@ -525,10 +525,9 @@ function initToolSearch() {
       const name = x.id.includes("/")
         ? (x.label[currentLang()] || x.label.en || x.id)
         : t(x.id);
-      const by = x.id.includes("/") ? ` <em class="tool-tab-by">@${escapeHtml(x.id.split("/")[0])}</em>` : "";
       const cost = x.cost > 0 ? `<span class="tool-cost">${x.cost}</span>` : "";
       return `<button type="button" class="tool-search-item" role="option" data-idx="${i}" data-tool="${escapeHtml(x.id)}">
-        ${x.icon ? svgIcon(x.icon) : ''}<span class="tool-tab-name">${escapeHtml(name)}${by}</span>${cost}
+        ${x.icon ? svgIcon(x.icon) : ''}<span class="tool-tab-name">${escapeHtml(name)}</span>${cost}
       </button>`;
     }).join("");
     pop.classList.remove("hidden");

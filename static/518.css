@@ -792,8 +792,6 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .tool-search-item svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 .tool-search-item.active, .tool-search-item:hover { background: var(--soft); }
 .tool-search-empty { padding: 12px; text-align: center; color: var(--muted); font-size: var(--text-sm); }
-.tool-tab.community { border-style: dashed; }
-.tool-tab-by { font-style: normal; font-size: var(--text-xs); color: var(--muted); }
 .tool-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── topbar MCP entry (primary service surface) ── */
@@ -909,8 +907,6 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .mkt-official .mkt-icon { width: 34px; height: 34px; border-radius: 10px; }
 .mkt-official .mkt-icon svg { width: 17px; height: 17px; }
 .market-page .hero-sub { max-width: 34em; }
-.mkt-community .mkt-meta { justify-content: flex-start; }
-.mkt-community .mkt-tags { margin-left: 0; }
 
 /* 工具主页精修 */
 .toolpage .panel .d { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }

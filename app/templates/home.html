@@ -96,9 +96,9 @@
   <div class="section-h"><span class="t" data-i18n="tools_section">{{ texts.tools_section }}</span><span class="n" id="toolsCount">{{ tools|length }}</span></div>
   <div class="home-tools{% if not tools %} hidden{% endif %}" id="homeTools">
     {% for t in tools %}
-    <div class="tool-tab{% if '/' in t.id %} community{% endif %}" data-tool-id="{{ t.id }}" role="button" tabindex="0">
-      {% if t.icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path(t.icon) }}</svg>{% endif %}
-      <span class="tool-tab-name">{{ texts.get(t.id) if '/' not in t.id else (t.label.get(lang, t.label.get('en', t.id))) }}{% if '/' in t.id %} <em class="tool-tab-by">@{{ t.id.split('/')[0] }}</em>{% endif %}</span>
+    <div class="tool-tab" data-tool-id="{{ t.id }}" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path(t.icon or "wand") }}</svg>
+      <span class="tool-tab-name">{{ texts.get(t.id) if '/' not in t.id else (t.label.get(lang, t.label.get('en', t.id))) }}</span>
       {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
     </div>
     {% endfor %}

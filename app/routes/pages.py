@@ -185,7 +185,7 @@ async def tools_market(request: Request):
     from icons import icon_svg
     tools_all = []
     for t in list_catalog(None):
-        t["icon_svg"] = icon_svg(t["icon"] or "zap")
+        t["icon_svg"] = icon_svg(t["icon"] or "wand")
         t["stats"] = _public_stats(t["id"])
         tools_all.append(t)
     ctx.update({"shell_class": "", "tools_all": tools_all})
@@ -208,7 +208,7 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
     except Exception:
         label_map = {}
     from icons import icon_svg
-    tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "zap")
+    tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "wand")
     ctx.update({
         "shell_class": "",
         "tool": tool_public,
