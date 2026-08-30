@@ -608,53 +608,82 @@ html[dir="rtl"] .tool-overlay-close { right: auto; left: var(--s3); }
 html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 
 /* ── Account pages (/account/*) ── */
-.acct-page { width: 100%; max-width: 720px; margin: 0 auto; padding: var(--s4) var(--s2) var(--s5); }
-.acct-page h1 { font-size: var(--text-xl); margin-bottom: var(--s3); }
-/* ── account center: refined tab strip ── */
-.acct-nav { display: flex; align-items: center; gap: var(--s1); padding: var(--s1); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: var(--s3); overflow-x: auto; }
-.acct-tab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: var(--r-sm); color: var(--muted); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; text-decoration: none; transition: background var(--ease), color var(--ease); }
-.acct-tab svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
+/* ═══ STEP 3: 账户页 6 页新视觉 (对齐 proto/account.html) ═══ */
+
+/* ── 页骨架: 560px 居中(对齐首页 workspace), 16px 节奏 ── */
+.acct-page { width: 100%; max-width: 560px; margin: 0 auto; padding: 18px 16px 32px; display: flex; flex-direction: column; gap: 16px; }
+.acct-page h1 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+.acct-page h1 + .acct-nav { margin-top: 0; }
+
+/* ── 分区 tabs: 单行分段控件(proto .tabs), 当前项红底白字 ── */
+.acct-nav { display: flex; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.acct-nav::-webkit-scrollbar { display: none; }
+.acct-tab { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 13px; border-radius: 9px; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; transition: background var(--ease), color var(--ease); }
+.acct-tab svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
 @media (hover:hover) and (pointer:fine) { .acct-tab:hover { background: var(--soft); color: var(--ink); } }
-.acct-tab.active { background: var(--soft); color: var(--accent); font-weight: 600; }
-.acct-tab-sep { width: 1px; height: 20px; background: var(--line); margin: 0 var(--s1); flex-shrink: 0; }
-@media (max-width: 720px) {
-  /* mobile: wrap into a full grid — every tab visible & tappable, no hidden scroll strip */
-  .acct-nav { flex-wrap: wrap; overflow-x: visible; gap: var(--s1); }
-  .acct-tab { flex: 1 1 calc(33.333% - var(--s1)); justify-content: center; padding: 10px 6px; font-size: var(--text-sm); }
-  .acct-tab svg { width: 15px; height: 15px; }
-  .acct-tab-sep { display: none; }  /* groups read as rows; separators noise at this size */
+.acct-tab.active { background: var(--accent); color: var(--button-ink); font-weight: 700; }
+.acct-tab-sep { display: none; }
+
+/* ── 余额主角卡(proto .balance-card): 大数字 + 右侧签到态 ── */
+.acct-hero { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin: 0; }
+.acct-balance { min-width: 0; }
+.acct-bal-label { font-size: 12.5px; font-weight: 650; color: var(--muted); letter-spacing: .03em; }
+.acct-bal-num { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.acct-daily { flex-shrink: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 11px 16px; color: var(--ink); cursor: default; }
+.acct-daily.done { color: var(--green); border-color: transparent; background: var(--green-soft); }
+.acct-daily:not(.done) { border-color: var(--accent); color: var(--accent); }
+.acct-daily:not(.done) .acct-daily-claim button { background: var(--accent); color: var(--button-ink); border: 0; border-radius: 9px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.acct-daily svg { width: 18px; height: 18px; flex-shrink: 0; }
+.acct-daily strong { display: block; font-size: 13.5px; }
+.acct-daily-sub { font-size: 12px; color: var(--muted); }
+.acct-daily-claim { margin: 0; }
+
+/* ── 内容卡(proto .panel): 白卡+细边, 统一 16/18px 内距 ── */
+.acct-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg, 16px); padding: 16px 18px; margin: 0; }
+.acct-card h2 { font-size: 14.5px; font-weight: 700; margin: 0 0 10px; }
+.acct-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.acct-card-sub { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.acct-card + .acct-card { margin-top: 0; }
+
+/* ── 流水: 表格保持(数据密集), 行式美化: 斑马+hover+类型章 ── */
+.acct-tablewrap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.acct-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.acct-table thead th { background: var(--soft); padding: 9px 12px; text-align: left; font-size: 12px; font-weight: 650; color: var(--muted); letter-spacing: .02em; border-bottom: 1px solid var(--line); }
+.acct-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.acct-table tbody tr:last-child td { border-bottom: 0; }
+.acct-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--soft) 45%, transparent); }
+@media (hover:hover) and (pointer:fine) { .acct-table tbody tr:hover { background: var(--accent-soft); } }
+.acct-table .pos { color: var(--green); font-weight: 700; }
+.acct-table .neg { color: var(--danger); font-weight: 700; }
+.acct-empty { padding: 26px 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ── 收益四格(proto .earn-grid 风格): 2×2 ── */
+.earn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 4px; }
+.earn-cell { background: var(--soft); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+.earn-cell strong { font-size: 20px; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.earn-cell span { font-size: 12px; color: var(--muted); }
+
+/* ── 表单卡片化(auth-form 已有基础, 对齐新卡) ── */
+.acct-card .auth-form { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+.acct-card .auth-form label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.acct-card .auth-form input, .acct-card .auth-form textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 10px; padding: 11px 13px; font-size: 15px; color: var(--ink); background: var(--card); font-family: inherit; }
+.acct-card .auth-form input:focus, .acct-card .auth-form textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.acct-card .auth-form input[disabled] { background: var(--soft); color: var(--muted); }
+.acct-card .auth-form button[type=submit].primary { align-self: flex-start; background: var(--accent); color: var(--button-ink); border: 0; border-radius: 10px; padding: 11px 22px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background var(--ease); }
+@media (hover:hover) and (pointer:fine) { .acct-card .auth-form button[type=submit].primary:hover { background: var(--accent-hover); } }
+
+@media (max-width: 640px) {
+  .acct-page { padding: 14px 14px 28px; }
+  .acct-hero { padding: 16px; }
+  .acct-bal-num { font-size: 28px; }
+  .acct-daily { padding: 9px 12px; }
+  .acct-tab { padding: 9px 10px; font-size: 12.5px; }
+  .acct-table { font-size: 12.5px; }
+  .acct-table thead th, .acct-table tbody td { padding: 8px 9px; }
 }
-.acct-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s3) var(--s4); margin-bottom: var(--s3); }
-.acct-card h2 { font-size: var(--text-base); font-weight: 600; margin-bottom: var(--s2); }
-.acct-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
-.acct-card-sub { font-size: var(--text-xs); color: var(--muted); }
-.acct-hero { display: flex; gap: var(--s2); align-items: stretch; margin-bottom: var(--s3); flex-wrap: wrap; }
-.acct-balance { flex: 1 1 200px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s3) var(--s4); }
-.acct-bal-num { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; }
-.acct-bal-label { font-size: var(--text-sm); color: var(--muted); margin-top: 2px; }
-.acct-daily { flex: 1 1 240px; display: flex; align-items: center; gap: var(--s2); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s3) var(--s4); color: var(--ink);  cursor: default;}
-.acct-daily.done { color: var(--ok, var(--green)); border-color: var(--ok, var(--green)); }
-.acct-daily.done svg { color: var(--ok, var(--green)); }
-.acct-daily:not(.done) { border-color: var(--accent); }
-.acct-daily:not(.done) svg { color: var(--accent); }
-.acct-daily strong { display: block; font-size: var(--text-base); }
-.acct-daily-sub { font-size: var(--text-xs); color: var(--muted); }
-.acct-tablewrap { overflow-x: auto; }
-.acct-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); table-layout: fixed; }
-/* ledger table column contract: time | kind | note | delta | balance */
-.acct-table th:nth-child(1), .acct-table td:nth-child(1) { width: 150px; }
-.acct-table th:nth-child(2), .acct-table td:nth-child(2) { width: 110px; }
-.acct-table th:nth-child(3), .acct-table td:nth-child(3) { width: auto; }
-.acct-table th:nth-child(4), .acct-table td:nth-child(4) { width: 80px; }
-.acct-table th:nth-child(5), .acct-table td:nth-child(5) { width: 90px; }
-.acct-table td:nth-child(1) { white-space: nowrap; }
-.acct-table th { text-align: left; font-size: var(--text-xs); color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.acct-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow: hidden; }
-@media (hover:hover) and (pointer:fine) { .acct-table tbody tr:hover { background: var(--hover, rgba(0,0,0,.02)); } }
+
 .acct-table .mono { font-variant-numeric: tabular-nums; }
 .acct-table .ta-r { text-align: right; }
-.acct-table .pos { color: var(--ok, var(--green)); font-weight: 600; }
-.acct-table .neg { color: var(--danger, var(--danger)); font-weight: 600; }
 .ledger-kind { display: inline-block; font-size: var(--text-xs); padding: 2px 8px; border-radius: 99px; background: var(--line); color: var(--ink); }
 .ledger-kind.ledger-grant_signup, .ledger-kind.ledger-grant_daily, .ledger-kind.ledger-grant_plan, .ledger-kind.ledger-grant_package, .ledger-kind.ledger-grant_referral { background: var(--green-12); color: var(--green); }
 .ledger-kind.ledger-consume { background: rgba(220,38,38,.10); color: var(--danger); }
