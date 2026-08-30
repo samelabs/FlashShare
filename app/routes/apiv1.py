@@ -30,6 +30,7 @@ from uploads import check_quota
 from gokapi import upload_to_gokapi
 from storage import read as storage_read
 from catalog import list_catalog
+from gokapi import open_gokapi_download
 from utils import now, sanitize_filename
 from auth import public_user
 
@@ -178,3 +179,46 @@ async def v1_fetch(public_id: str, request: Request):
                     "application/octet-stream",
                     headers={"Content-Disposition":
                              f'attachment; filename="{upload["file_name"]}"'})
+
+# ── Demo echo endpoint (open-platform market seed; contract-compliant) ──
+# Implements the user-tool HTTP contract: receives job_inputs[].url (signed
+# fetch URLs), returns {filename, content_type, data_b64}. Exists so the
+# market always has working examples and so the remote-call pipeline can be
+# exercised end-to-end without third-party infrastructure.
+
+@router.post("/demo-echo")
+async def demo_echo(request: Request):
+    import base64 as _b64
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    job_inputs = payload.get("job_inputs") or []
+    outputs = []
+    for item in job_inputs[:5]:
+        url = str(item.get("url") or "")
+        # fetch_url = /api/source/{gokapi_id}?u=..&t=.. — read the file
+        # directly from local Gokapi storage (no HTTP loop-back: the
+        # single uvicorn worker would deadlock on itself).
+        marker = "/api/source/"
+        idx = url.find(marker)
+        if idx < 0:
+            continue
+        gid = url[idx + len(marker):].split("?")[0]
+        try:
+            status, headers, resp = open_gokapi_download(gid)
+            data = resp.read(50 * 1024 * 1024)
+            resp.close()
+        except Exception:
+            continue
+        if status != 200:
+            continue
+        outputs.append({
+            "filename": "echoed-" + str(item.get("filename") or "file"),
+            "content_type": str(item.get("content_type") or "application/octet-stream"),
+            "data_b64": _b64.b64encode(data).decode(),
+        })
+    body = outputs[0] if len(outputs) == 1 else {"files": outputs}
+    body["echo"] = True
+    return body
+
