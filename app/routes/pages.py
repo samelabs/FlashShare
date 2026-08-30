@@ -182,21 +182,13 @@ async def tools_market(request: Request):
     from catalog import list_catalog
     from database import db
     ctx = _ctx_base(request)
-    official = [t for t in list_catalog(None) if "/" not in t["id"]]
-    community = []
-    for t in list_catalog(None):
-        if "/" not in t["id"]:
-            continue
-        with db() as con:
-            row = con.execute("SELECT owner_id FROM platform_tools WHERE tool_key = %s", (t["id"],)).fetchone()
-        handle = _owner_handle(row["owner_id"]) if row else "unknown"
-        community.append({**t, "handle": handle, "stats": _public_stats(t["id"])})
     from icons import icon_svg
-    for t in official:
-        t["icon_svg"] = icon_svg(t["icon"] or "upload")
-    for t in community:
+    tools_all = []
+    for t in list_catalog(None):
         t["icon_svg"] = icon_svg(t["icon"] or "zap")
-    ctx.update({"shell_class": "", "official": official, "community": community})
+        t["stats"] = _public_stats(t["id"])
+        tools_all.append(t)
+    ctx.update({"shell_class": "", "tools_all": tools_all})
     return templates.TemplateResponse(request, "tools_market.html", ctx)
 
 
