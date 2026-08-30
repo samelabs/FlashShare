@@ -911,3 +911,9 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .market-page .hero-sub { max-width: 34em; }
 .mkt-community .mkt-meta { justify-content: flex-start; }
 .mkt-community .mkt-tags { margin-left: 0; }
+
+/* 工具主页精修 */
+.toolpage .panel .d { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.toolpage .panel .d .mono { font-size: 13px; }
+.toolpage .cta-row { margin: 0; }
+.mkt-calls { font-weight: 600; color: var(--body); }
