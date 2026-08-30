@@ -853,3 +853,53 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .contract-body h4 { margin: var(--s2) 0 var(--s1); font-size: var(--text-sm); }
 .contract-body pre { background: var(--soft); padding: 10px 12px; border-radius: var(--r-sm); overflow-x: auto; font-size: var(--text-xs); line-height: 1.6; }
 .contract-body p { color: var(--muted); }
+
+/* ═══ STEP 9: 工具市场 + 工具主页 ═══ */
+
+/* ── 市场页 ── */
+.market-page { gap: 14px; }
+.market-official-row { display: flex; gap: 9px; overflow-x: auto; padding: 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.market-official-row::-webkit-scrollbar { display: none; }
+.mkt-card { display: flex; flex-direction: column; gap: 7px; padding: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; text-decoration: none; color: var(--ink); transition: border-color var(--ease), box-shadow var(--ease); }
+@media (hover:hover) and (pointer:fine) { .mkt-card:hover { border-color: var(--accent); box-shadow: var(--sh-sm); } }
+.mkt-official { flex: 0 0 auto; min-width: 132px; align-items: flex-start; }
+.market-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mkt-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--accent-soft); display: inline-flex; align-items: center; justify-content: center; }
+.mkt-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; }
+.mkt-name { font-size: 14px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mkt-author { font-size: 12px; color: var(--muted); }
+.mkt-meta { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.mkt-calls { font-variant-numeric: tabular-nums; }
+.mkt-tags { display: inline-flex; gap: 5px; margin-left: auto; }
+.mkt-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; background: var(--soft); border: 1px solid var(--line); font-size: 11px; font-weight: 700; color: var(--muted); text-decoration: none; }
+a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
+.mkt-tag.on { background: var(--accent); border-color: var(--accent); color: var(--button-ink); }
+.market-empty { text-align: left; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.market-empty .open-callout { margin-top: 8px; }
+
+/* ── 工具主页（独占式） ── */
+.toolpage-by { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.toolpage-handle { font-weight: 700; color: var(--ink); }
+.toolpage .drop-glyph { background: var(--accent-soft); }
+.toolpage-call { width: 100%; border: 0; border-radius: 10px; background: var(--accent); color: var(--button-ink); font-size: 16px; font-weight: 700; padding: 14px; font-family: inherit; cursor: pointer; transition: background var(--ease); }
+.toolpage-call:hover { background: var(--accent-hover); }
+.toolpage-call:disabled { opacity: .6; }
+.toolpage-call:disabled:hover { background: var(--accent); }
+.toolpage-notice { font-size: 12.5px; color: var(--muted); text-align: center; padding: 0 10px; line-height: 1.5; }
+.toolpage .controls .field b { justify-content: center; }
+.toolpage .panel .code-block { background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 10px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.toolpage .panel .d a { color: var(--accent); font-weight: 600; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+@media (max-width: 640px) {
+  .market-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mkt-card { padding: 12px; }
+}
+
+/* 双胶囊并排(发布+市场) */
+.hero-callouts { display: flex; justify-content: center; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
+.hero-callouts .open-callout { margin: 0; }
+.open-callout-ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line-strong); }
+.open-callout-ghost svg { stroke: var(--muted); }
+@media (hover:hover) and (pointer:fine) { .open-callout-ghost:hover { border-color: var(--accent); color: var(--accent); } }
+.agents-market-link { display: flex; justify-content: center; margin: var(--s5) 0; }

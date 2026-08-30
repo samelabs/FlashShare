@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ tool_name }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{{ tool_name }} · @{{ handle }}{% endblock %}
+
+{% block content %}
+<section class="workspace toolpage">
+  <div class="hero-mini">
+    <h1 class="hero-title">{{ tool_name }}</h1>
+    <p class="hero-sub toolpage-by">
+      <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <span class="toolpage-handle">@{{ handle }}</span>
+      <span class="mkt-tags"><a class="mkt-tag" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
+    </p>
+  </div>
+
+  <div class="upload-card">
+    <label class="drop" id="dropZone">
+      <input id="file" name="file" type="file" {% if tool.accept %}accept="{{ tool.accept | join(',') }}"{% endif %}>
+      <span class="drop-glyph" aria-hidden="true">{% if tool.icon %}<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent);fill:none">{{ tool.icon | safe }}</svg>{% else %}{{ icon_svg("upload") }}{% endif %}</span>
+      <span class="drop-title" id="fileLabel" data-i18n="dropTitle">{{ texts.dropTitle }}</span>
+      {% if tool.accept %}
+      <span class="drop-formats">
+        {% for a in tool.accept %}<span class="fmt-chip">{{ a.split('/')[-1] | upper }}</span>{% endfor %}
+      </span>
+      {% endif %}
+    </label>
+    <div class="upload-divider"></div>
+    <div class="controls">
+      <div class="field">
+        <span data-i18n="tool_call_cta_cost">{{ texts.tool_call_cta_cost }}</span>
+        <b>{% if tool.cost %}<span class="tool-cost">{{ tool.cost }}</span> {{ texts.credits_per_call }}{% else %}{{ texts.free }}{% endif %}</b>
+      </div>
+      <div class="field">
+        <span data-i18n="tool_calls_total">{{ texts.tool_calls_total }}</span>
+        <b>{{ stats.calls }}</b>
+      </div>
+    </div>
+    <div class="cta-row">
+      <button type="button" id="submitBtn" class="toolpage-call" data-tool="{{ tool.id }}">
+        <span data-i18n="tool_call_cta">{{ texts.tool_call_cta }}</span>
+      </button>
+    </div>
+  </div>
+
+  <p class="toolpage-notice" data-i18n="tool_ext_notice">{{ texts.tool_ext_notice }}</p>
+
+  <div class="panel">
+    <div class="t">MCP</div>
+    <div class="d">
+      <span class="mono">{{ mcp_name }}</span> —
+      <a class="toolpage-mcp-link" href="/tool/{{ tool.id }}/mcp" data-i18n="tool_use_mcp">{{ texts.tool_use_mcp }}</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ js_version }}"></script>
+<script src="/static/app.js?v={{ js_version }}"></script>
+{% endblock %}

@@ -46,7 +46,7 @@ with open(_STATIC / "518.css", encoding="utf-8") as f:
 # Version stamp = content hash + mtime: content-converging edits (diverge then
 # reconverge) can collide on a pure content hash and serve stale edge caches.
 import os as _os
-_CSS_VERSION = "v5"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增
+_CSS_VERSION = "v6"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 # app.js gets its OWN stamp: it changes independently of 518.css. Sharing
@@ -149,6 +149,88 @@ async def agents_page(request: Request):
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": ""})
     return templates.TemplateResponse(request, "agents.html", ctx)
+
+
+
+# ── Tool market & tool page (open platform supply side) ──
+
+def _owner_handle(owner_id) -> str:
+    from database import db
+    with db() as con:
+        row = con.execute("SELECT username FROM users WHERE id = %s", (owner_id,)).fetchone()
+    return row["username"] if row else "unknown"
+
+
+def _public_stats(tool_key: str) -> dict:
+    """Public counters: successful calls only. No user-level data."""
+    from database import db
+    with db() as con:
+        row = con.execute(
+            "SELECT COUNT(*) AS n FROM tool_calls WHERE tool_id = %s AND status = 'ok'",
+            (tool_key,),
+        ).fetchone()
+    return {"calls": int(row["n"]) if row else 0}
+
+
+@router.get("/tools", response_class=HTMLResponse)
+async def tools_market(request: Request):
+    """Open-platform market: official row + community cards. Public only."""
+    from app.main import templates
+    from catalog import list_catalog
+    from database import db
+    ctx = _ctx_base(request)
+    official = [t for t in list_catalog(None) if "/" not in t["id"]]
+    community = []
+    for t in list_catalog(None):
+        if "/" not in t["id"]:
+            continue
+        with db() as con:
+            row = con.execute("SELECT owner_id FROM platform_tools WHERE tool_key = %s", (t["id"],)).fetchone()
+        handle = _owner_handle(row["owner_id"]) if row else "unknown"
+        community.append({**t, "handle": handle, "stats": _public_stats(t["id"])})
+    ctx.update({"shell_class": "", "official": official, "community": community})
+    return templates.TemplateResponse(request, "tools_market.html", ctx)
+
+
+def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
+    """Shared builder for tool page + MCP page. Non-public → None (404, no probe)."""
+    from catalog import resolve
+    user = request.state.user
+    tool_key = f"{owner}/{tool_id}"
+    tool, err = resolve(tool_key, user["id"] if user else None)
+    if err or tool.get("visibility") != "public":
+        return None
+    ctx = _ctx_base(request)
+    ctx.update({
+        "shell_class": "",
+        "tool": tool,
+        "tool_name": (tool.get("label") or {}).get(ctx["lang"]) or (tool.get("label") or {}).get("en") or tool_id,
+        "handle": _owner_handle(tool["owner_id"]),
+        "stats": _public_stats(tool_key),
+        "mcp_name": tool_key.replace("/", "__"),
+        "is_mcp": mcp,
+    })
+    return ctx
+
+
+@router.get("/tool/{owner}/{tool_id}", response_class=HTMLResponse)
+async def tool_page(request: Request, owner: str, tool_id: str):
+    from app.main import templates
+    from fastapi.responses import HTMLResponse as _H
+    ctx = _tool_page_ctx(request, owner, tool_id, mcp=False)
+    if ctx is None:
+        return _H("", status_code=404)
+    return templates.TemplateResponse(request, "tool_page.html", ctx)
+
+
+@router.get("/tool/{owner}/{tool_id}/mcp", response_class=HTMLResponse)
+async def tool_mcp_page(request: Request, owner: str, tool_id: str):
+    from app.main import templates
+    from fastapi.responses import HTMLResponse as _H
+    ctx = _tool_page_ctx(request, owner, tool_id, mcp=True)
+    if ctx is None:
+        return _H("", status_code=404)
+    return templates.TemplateResponse(request, "tool_mcp.html", ctx)
 
 
 _DOCS_DIR = _BASE / "templates"
