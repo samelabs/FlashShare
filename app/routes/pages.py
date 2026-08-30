@@ -369,14 +369,15 @@ async def account_credits(request: Request):
     # packages (one-off top-up packs) — active rows only, data-driven
     with db() as con:
         pkgs = [dict(r) for r in con.execute(
-            "SELECT code, name, credits, price_cents, currency FROM packages "
+            "SELECT id, code, name, credits, price_cents, currency, creem_price_id FROM packages "
             "WHERE active ORDER BY sort_order, id").fetchall()]
+    import creem as _creem
+    topup_ready = _creem.creem_enabled()
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
                        granted_today=granted_today("daily_login", user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
-                       packages=pkgs,
-                       priced_tools=[t for t in list_catalog(user["id"]) if t["cost"] > 0],
+                       packages=pkgs, topup_ready=topup_ready,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)

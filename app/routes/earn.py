@@ -54,9 +54,15 @@ async def my_earnings(request: Request):
         wd_pg = 1
     rev_rows, rev_total = earnings.revenue_lines(user["id"], limit=50, offset=(rev_pg - 1) * 50)
     wd_rows = earnings.list_withdrawals(user["id"], limit=20, offset=(wd_pg - 1) * 20)
+    from earnings import to_usd
+    s = earnings.earnings_summary(user["id"])
+    for k in ("earned", "available", "pending", "withdrawn"):
+        s[k + "_usd"] = to_usd(s[k])
+    for w in wd_rows:
+        w["usd"] = to_usd(w["amount"])
     return {
         "ok": True,
-        "summary": earnings.earnings_summary(user["id"]),
+        "summary": s,
         "tools": earnings.per_tool_revenue(user["id"]),  # capped at 100 tools
         "withdrawals": wd_rows,
         "wd_total": earnings.withdrawal_count(user["id"]),
@@ -65,6 +71,7 @@ async def my_earnings(request: Request):
         "rev_total": rev_total,
         "rev_page": rev_pg,
         "min_withdrawal": earnings.MIN_WITHDRAWAL,
+        "min_withdrawal_usd": to_usd(earnings.MIN_WITHDRAWAL),
     }
 
 
@@ -76,7 +83,9 @@ async def request_withdraw(request: Request):
         return err
     try:
         raw = await request.json()
-        amount = int(raw.get("amount", 0))
+        # UI takes USD (float); ledger stays credits (×1000)
+        usd = float(raw.get("usd", 0) or 0)
+        amount = int(round(usd * 1000))
         note = str(raw.get("note", ""))[:200]
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)

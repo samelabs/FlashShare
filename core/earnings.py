@@ -28,7 +28,8 @@ Red lines honored:
 from database import db
 from utils import now
 
-MIN_WITHDRAWAL = 100          # credits
+MIN_WITHDRAWAL = 10000         # credits = $10 (CREDITS_PER_USD=1000)
+CREDITS_PER_USD = 1000         # 1 USD = 1000 credits; earnings shown in USD
 WITHDRAWAL_STATES = ("pending", "approved", "rejected", "paid")
 
 
@@ -223,3 +224,7 @@ def list_all_pending(limit: int = 50) -> list:
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+def to_usd(credits: int) -> str:
+    """Credits → display USD string, e.g. 25000 → '$25'."""
+    return f"${credits / CREDITS_PER_USD:,.2f}".rstrip('0').rstrip('.') if credits % CREDITS_PER_USD else f"${credits // CREDITS_PER_USD:,}"

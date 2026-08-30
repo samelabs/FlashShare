@@ -33,29 +33,7 @@
     </div>
   </div>
 
-  {% if priced_tools %}
-  <div class="acct-card">
-    <div class="acct-card-head">
-      <h2 data-i18n="credits_prices">{{ texts.credits_prices }}</h2>
-    </div>
-    <div class="acct-tablewrap">
-      <table class="acct-table">
-        <thead>
-          <tr><th data-i18n="credit_tool">{{ texts.credit_tool }}</th><th class="ta-r" data-i18n="credit_cost">{{ texts.credit_cost }}</th></tr>
-        </thead>
-        <tbody>
-          {% for t in priced_tools %}
-          <tr>
-            <td data-i18n="{{ t.id }}">{{ texts.get(t.id, t.label.get(lang, t.label.get('en', t.id))) }}</td>
-            <td class="ta-r mono"><span class="tool-cost">{{ t.cost }}</span></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <p class="acct-card-sub" data-i18n="credits_prices_note">{{ texts.credits_prices_note }}</p>
-  </div>
-  {% endif %}
+  
 
   <div class="acct-card">
     <div class="acct-card-head">
@@ -66,8 +44,12 @@
       {% for p in packages %}
       <div class="topup-item">
         <strong class="topup-credits">+{{ p.credits }}</strong>
-        <span class="topup-price">¥{{ (p.price_cents / 100)|round(2) }}</span>
+        <span class="topup-price">${{ (p.price_cents / 100)|round(0)|int }}</span>
+        {% if topup_ready and p.creem_price_id %}
+        <button type="button" class="primary topup-buy" data-pkg="{{ p.id }}" data-i18n="topup_buy">{{ texts.topup_buy }}</button>
+        {% else %}
         <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
+        {% endif %}
       </div>
       {% endfor %}
     </div>

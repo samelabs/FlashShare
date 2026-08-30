@@ -25,6 +25,9 @@ async function loadEarnings() {
   document.getElementById('eAvail').textContent = s.available;
   document.getElementById('ePending').textContent = s.pending;
   document.getElementById('eWithdrawn').textContent = s.withdrawn;
+  const _usd = (el, v) => { const n = document.getElementById(el); if (n) n.textContent = v; };
+  _usd('eTotalUsd', s.earned_usd || ''); _usd('eAvailUsd', s.available_usd || '');
+  _usd('ePendingUsd', s.pending_usd || ''); _usd('eWithdrawnUsd', s.withdrawn_usd || '');
 
   // per-tool revenue breakdown
   const bt = document.getElementById('byToolList');
@@ -37,7 +40,7 @@ async function loadEarnings() {
       row.className = 'wd-row';
       row.innerHTML = '<span class="wd-tool"></span><strong class="wd-amt"></strong>';
       row.querySelector('.wd-tool').textContent = t.tool;
-      row.querySelector('.wd-amt').textContent = '+' + t.earned;
+      row.querySelector('.wd-amt').textContent = '+' + t.earned + ' · $' + (t.earned / 1000).toFixed(2);
       bt.appendChild(row);
     }
   }
@@ -57,7 +60,7 @@ async function loadEarnings() {
       t.textContent = ln.tool + ' · ' + new Date(ln.ts * 1000).toLocaleString();
       const amt = document.createElement('strong');
       amt.className = 'wd-amt';
-      amt.textContent = '+' + ln.delta;
+      amt.textContent = '+' + ln.delta + ' · $' + (ln.delta / 1000).toFixed(2);
       row.append(t, amt);
       rl.appendChild(row);
     }
@@ -68,7 +71,8 @@ async function loadEarnings() {
   h.innerHTML = '';
   _pager(document.getElementById('wdPager'), 'wd', 'wd_page', d.wd_page || 1, d.wd_total || 0, 20);
   const none = document.getElementById('earnNone');
-  if (!d.withdrawals || !d.withdrawals.length) { none.classList.remove('hidden'); return; }
+  if (!d.withdrawals || !d.withdrawals.length) { none.classList.remove('hidden'); }
+  else {
   none.classList.add('hidden');
   for (const w of d.withdrawals) {
     const row = document.createElement('div');
@@ -77,13 +81,15 @@ async function loadEarnings() {
     st.className = 'wd-st st-' + w.status;
     st.textContent = _msg('earn_status_' + w.status);
     const amt = document.createElement('strong');
-    amt.textContent = '-' + w.amount;
+    amt.textContent = '-' + (w.usd || ('$' + (w.amount / 1000)));
     row.append(Object.assign(document.createElement('span'), { textContent: '#' + w.id }), st, amt);
     h.appendChild(row);
   }
 
+    }
+
   const hint = document.getElementById('withdrawHint');
-  hint.textContent = _msg('earn_min').replace('{n}', d.min_withdrawal) + ' · ' + _msg('earn_avail') + ' ' + s.available;
+  hint.textContent = _msg('earn_min').replace('{n}', (d.min_withdrawal_usd || '$10')) + ' · ' + _msg('earn_avail') + ' ' + (s.available_usd || '');
 }
 
 document.getElementById('openWithdraw')?.addEventListener('click', () => {
@@ -95,12 +101,12 @@ _wModal?.addEventListener('click', e => { if (e.target === _wModal) _wModal.clas
 
 document.getElementById('submitWithdraw')?.addEventListener('click', async () => {
   const btn = document.getElementById('submitWithdraw');
-  const amount = parseInt(document.getElementById('wAmount').value, 10) || 0;
+  const usd = parseFloat(document.getElementById('wAmount').value) || 0;
   const note = document.getElementById('wNote').value.trim();
   btn.disabled = true;
   const r = await fetch('/api/earnings/withdraw', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount, note })
+    body: JSON.stringify({ usd, note })
   });
   const d = await r.json();
   btn.disabled = false;

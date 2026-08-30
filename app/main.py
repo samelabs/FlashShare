@@ -171,6 +171,8 @@ app.include_router(apiv1.router, prefix="/api/v1")
 app.include_router(auth_route.router, prefix="/auth")
 app.include_router(samelabs.router)
 app.include_router(mcp.router)
+from app.routes import topup  # noqa: E402
+app.include_router(topup.router)
 app.include_router(usertools.router)
 from app.routes import earn
 app.include_router(earn.router)

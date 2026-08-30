@@ -913,3 +913,7 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .toolpage .panel .d .mono { font-size: 13px; }
 .toolpage .cta-row { margin: 0; }
 .mkt-calls { font-weight: 600; color: var(--body); }
+
+/* ── 收益USD换算 + 提现浮层单列 ── */
+.earn-usd { display: block; font-style: normal; font-size: var(--text-xs); color: var(--muted); margin-top: -4px; }
+.wd-modal-form { grid-template-columns: 1fr !important; }
