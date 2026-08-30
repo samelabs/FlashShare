@@ -206,10 +206,14 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
     ctx = _ctx_base(request)
     tool_public = {k: v for k, v in tool.items() if k != "handler"}
     import json as _json
+    try:
+        label_map = json.loads(tool.get("label_json") or "{}")
+    except Exception:
+        label_map = {}
     ctx.update({
         "shell_class": "",
         "tool": tool_public,
-        "tool_name": (tool.get("label") or {}).get(ctx["lang"]) or (tool.get("label") or {}).get("en") or tool_id,
+        "tool_name": label_map.get(ctx["lang"]) or label_map.get("en") or tool_id,
         "handle": _owner_handle(tool["owner_id"]),
         "stats": _public_stats(tool_key),
         "mcp_name": tool_key.replace("/", "__"),
