@@ -201,14 +201,26 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
     if err or tool.get("visibility") != "public":
         return None
     ctx = _ctx_base(request)
-    tool_public = {k: v for k, v in tool.items() if k != "handler"}
     import json as _json
     try:
         label_map = json.loads(tool.get("label_json") or "{}")
     except Exception:
         label_map = {}
     from icons import icon_svg
-    tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "wand")
+    # Public-surface whitelist ONLY (same shape as catalog items): the raw
+    # DB row (endpoint_json/auth_token/owner_id/trusted/timestamps) must
+    # never reach any client — owner or anonymous.
+    tool_public = {
+        "id": tool["tool_key"],
+        "type": tool["tool_type"],
+        "label": label_map,
+        "icon": tool.get("icon"),
+        "accept": _json.loads(tool["accept_json"]) if tool.get("accept_json") else None,
+        "presets": None,
+        "multi": bool(tool.get("multi")),
+        "cost": int(tool.get("cost") or 0),
+        "icon_svg": icon_svg(tool.get("icon") or "wand"),
+    }
     ctx.update({
         "shell_class": "",
         "tool": tool_public,
