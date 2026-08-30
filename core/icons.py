@@ -57,7 +57,7 @@ _ICONS = {
     "bandwidth": '<path d="M7 4v12"></path><path d="M3 8l4-4 4 4"></path><path d="M17 20V8"></path><path d="M13 16l4 4 4-4"></path>',
 
     # ── Tools ──
-    "wand": '<rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><circle cx="6.5" cy="6" r="0.5" fill="currentColor"></circle><circle cx="9.5" cy="6" r="0.5" fill="currentColor"></circle><circle cx="12.5" cy="6" r="0.5" fill="currentColor"></circle>',
+    "wand": '<path d="M15 4V2"></path><path d="M15 16v-2"></path><path d="M8 9h2"></path><path d="M20 9h2"></path><path d="M17.8 11.8L19 13"></path><path d="M15 9h0"></path><path d="M17.8 6.2L19 5"></path><path d="M12.2 6.2L11 5"></path><path d="M3 21l9-9"></path><path d="M12.2 11.8L11 13"></path>',
     "search": '<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path>',
     "shield": '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path>',
     "crop": '<path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path>',
@@ -65,7 +65,7 @@ _ICONS = {
     "convert": '<path d="M16 3l4 4-4 4"></path><path d="M20 7H4"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h16"></path>',
     "print": '<path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="7"></rect>',
     "favicon": '<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M12 8l1.5 3 3 .5-2 2 .5 3-3-1.5-3 1.5.5-3-2-2 3-.5z"></path>',
-    "merge": '<path d="M8 3v5l4 3 4-3V3"></path><path d="M12 11v10"></path>',
+    "merge": '<rect x="3" y="3" width="8" height="8" rx="1.5"></rect><rect x="13" y="3" width="8" height="8" rx="1.5"></rect><path d="M7 11v4a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-4"></path><path d="M12 15v6"></path>',
     "history": '<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path>',
     "hash": '<path d="M4 9h16"></path><path d="M4 15h16"></path><path d="M10 3L8 21"></path><path d="M16 3l-2 18"></path>',
 
