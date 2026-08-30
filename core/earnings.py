@@ -165,13 +165,30 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
             raise ValueError("already_processed")
         if approve:
             new_status = "approved"
+            # EARN-pool gate (same accounting as the request path's
+            # earnings_summary): withdrawal pays provider earnings only —
+            # top-up credits are NOT withdrawable. Available excluding this
+            # pending row = earned - (approved+paid) - other_pending.
+            s = con.execute(
+                """SELECT
+                     (SELECT COALESCE(SUM(delta),0) FROM ledger
+                      WHERE user_id = %s AND kind = 'provider_earn') -
+                     (SELECT COALESCE(SUM(amount),0) FROM withdrawals
+                      WHERE user_id = %s AND status IN ('approved','paid')
+                        AND id != %s) -
+                     (SELECT COALESCE(SUM(amount),0) FROM withdrawals
+                      WHERE user_id = %s AND status = 'pending' AND id != %s)
+                     AS avail""",
+                (row["user_id"], row["user_id"], withdrawal_id,
+                 row["user_id"], withdrawal_id),
+            ).fetchone()["avail"]
+            if int(s) < int(row["amount"]):
+                con.rollback()
+                raise ValueError("withdrawal_insufficient")
             bal = con.execute(
                 "SELECT COALESCE(SUM(delta),0) AS b FROM ledger WHERE user_id = %s",
                 (row["user_id"],),
             ).fetchone()["b"]
-            if int(bal) < int(row["amount"]):
-                con.rollback()
-                raise ValueError("withdrawal_insufficient")
             con.execute(
                 """INSERT INTO ledger (user_id, delta, balance_after, kind,
                    ref_type, ref_id, idem_key, note, created_at)

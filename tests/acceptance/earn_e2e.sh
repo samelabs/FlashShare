@@ -19,13 +19,13 @@ ts = int(time.time())
 uname = f"ern{ts%100000}"
 psql("INSERT INTO users(username, display_name, status, created_at, last_login_at) VALUES(%s,'e','user',%s,%s)", uname, ts, ts)
 uid = psql("SELECT id FROM users WHERE username=%s", uname)[0][0]
-psql("INSERT INTO ledger(user_id, delta, balance_after, kind, idem_key, created_at) VALUES(%s, 500, 500, 'provider_earn', %s, %s)",
+psql("INSERT INTO ledger(user_id, delta, balance_after, kind, idem_key, created_at) VALUES(%s, 50000, 50000, 'provider_earn', %s, %s)",
      uid, f"earn:{uid}:t", ts)
 
 from earnings import earnings_summary, request_withdrawal, process_withdrawal, MIN_WITHDRAWAL
 s = earnings_summary(uid)
-assert s == {"earned": 500, "withdrawn": 0, "pending": 0, "available": 500}, s
-print("1. summary earned=500 available=500 OK")
+assert s == {"earned": 50000, "withdrawn": 0, "pending": 0, "available": 50000}, s
+print("1. summary earned=50000 available=50000 OK")
 
 # min withdrawal enforced
 try:
@@ -36,21 +36,21 @@ print("2. min withdrawal enforced OK")
 
 # over-available rejected
 try:
-    request_withdrawal(uid, 501); raise SystemExit("avail FAIL")
+    request_withdrawal(uid, 50001); raise SystemExit("avail FAIL")
 except ValueError as e:
     assert str(e) == "withdrawal_insufficient"
 print("3. over-available rejected OK")
 
 # request → pending reduces available
-w1 = request_withdrawal(uid, 200)
+w1 = request_withdrawal(uid, 20000)
 assert w1["status"] == "pending"
 s = earnings_summary(uid)
-assert s["pending"] == 200 and s["available"] == 300, s
-print("4. request → pending 200, available 300 OK")
+assert s["pending"] == 20000 and s["available"] == 30000, s
+print("4. request → pending 20000, available 30000 OK")
 
 # over-available now (pending included) rejected
 try:
-    request_withdrawal(uid, 301); raise SystemExit("pending FAIL")
+    request_withdrawal(uid, 30001); raise SystemExit("pending FAIL")
 except ValueError as e:
     assert str(e) == "withdrawal_insufficient"
 print("5. pending counts against available OK")
@@ -59,10 +59,10 @@ print("5. pending counts against available OK")
 r1 = process_withdrawal(w1["id"], True, admin_user_id=2)
 assert r1["status"] == "approved"
 bal = psql("SELECT COALESCE(SUM(delta),0) FROM ledger WHERE user_id=%s", uid)[0][0]
-assert bal == 300, bal
+assert bal == 30000, bal
 s = earnings_summary(uid)
-assert s["withdrawn"] == 200 and s["available"] == 300, s
-print("6. approve: ledger -200 (balance 300), withdrawn=200 OK")
+assert s["withdrawn"] == 20000 and s["available"] == 30000, s
+print("6. approve: ledger -20000 (balance 30000), withdrawn=20000 OK")
 
 # double-process rejected (idempotent by status)
 try:
