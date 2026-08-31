@@ -40,7 +40,7 @@ async def file_route(public_id: str, request: Request):
 
     upload = get_upload_by_public_id(public_id)
     if not upload:
-        from app.routes.pages import _ctx_base
+        from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx["shell_class"] = "file-shell"
         return templates.TemplateResponse(request, "missing.html", ctx, status_code=404)
@@ -50,7 +50,7 @@ async def file_route(public_id: str, request: Request):
     # not serve, whatever the storage still holds.
     from utils import now as _now
     if int(upload["expire_at"] or 0) < _now():
-        from app.routes.pages import _ctx_base
+        from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx["shell_class"] = "file-shell"
         return templates.TemplateResponse(request, "missing.html", ctx, status_code=404)
@@ -125,7 +125,7 @@ async def file_route(public_id: str, request: Request):
     url = public_file_url(upload["public_id"])
     share_url = html_escape("https://x.com/intent/tweet?" + urllib.parse.urlencode({"text": texts["share_text"], "url": url}))
 
-    from app.routes.pages import _ctx_base
+    from app.web_ctx import ctx_base as _ctx_base
     ctx = _ctx_base(request)
     ctx.update({
         "shell_class": "file-shell",

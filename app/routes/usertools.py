@@ -28,11 +28,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from database import db
+from governance.user_tools import (
+    MAX_TOOLS_PER_USER, _owner_rows, _public_item, _call_stats,
+)
 from utils import now
 
 router = APIRouter()
 
-MAX_TOOLS_PER_USER = 20
 MAX_PRICE = 100000
 TOOL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 ACCEPT_MIME_RE = re.compile(r"^[\w.+-]+/[\w.+-]+$")
@@ -55,51 +57,6 @@ def commission_rate() -> int:
         return max(0, min(100, int(row["value"]))) if row else DEFAULT_COMMISSION_RATE
     except (ValueError, TypeError):
         return DEFAULT_COMMISSION_RATE
-
-
-def _owner_rows(user_id: int) -> list:
-    from repo.catalog import owner_rows_joined
-    with db() as con:
-        rows = owner_rows_joined(con, user_id)
-    return [dict(r) for r in rows]
-
-
-def _public_item(row: dict) -> dict:
-    """Owner-surface view of a user tool (no endpoint secrets)."""
-    decl = {}
-    try:
-        decl = json.loads(row.get("endpoint_json") or "{}")
-    except Exception:
-        pass
-    return {
-        "tool_key": row["tool_key"],
-        "tool_id": row["tool_id"],
-        "execution": row["execution"],
-        "label": json.loads(row["label_json"]).get("en")
-                 or json.loads(row["label_json"]).get("zh")
-                 or row["tool_id"],
-        "visibility": row["visibility"],
-        "enabled": row["enabled"],
-        "trusted": bool(row["trusted"]),
-        "cost": int(row.get("cost") or 0),
-        "priced_enabled": bool(row.get("priced")),
-        "url": decl.get("url", ""),
-        "timeout_s": decl.get("timeout_s", 60),
-        "has_auth": bool(decl.get("auth_token")),
-        "calls": _call_stats(row["tool_key"], row.get("owner_id")),
-    }
-
-
-def _call_stats(tool_key: str, owner_id: int | None = None) -> dict:
-    """Per-tool call stats + provider earnings (accurate join via payout
-    ledger rows referencing the call fact)."""
-    from repo.ledger import call_stats_by_tool, earn_sum_joined_calls
-    with db() as con:
-        row = call_stats_by_tool(con, tool_key)
-        earned = 0
-        if owner_id is not None:
-            earned = earn_sum_joined_calls(con, owner_id, tool_key)
-    return {"ok": row["ok"], "total": row["total"], "earned": earned}
 
 
 def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False) -> tuple:
@@ -326,24 +283,20 @@ async def selftest_tool(tool_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
     import time as _t
     t0 = _t.time()
-    # Same single gate as any call (metering, refunds, sniff).
-    request.state._v1_raw = {
+    # Same single gate as any call (批3a: 直调 execution 域 dispatch)
+    from execution.dispatch import dispatch_execute
+    raw = {
         "tool_id": tool_key, "params": {},
         "public_id": public_id, "source_token": source_token,
         "client_ref": f"selftest:{tool_key}",
     }
-    from app.routes.api import execute_tool
-    resp = await execute_tool(request)
+    payload, error_body, status = await dispatch_execute(request, user, raw)
     ms = int((_t.time() - t0) * 1000)
-    if isinstance(resp, JSONResponse):
-        try:
-            body = json.loads(resp.body)
-        except Exception:
-            body = {"ok": False, "error": "internal_error"}
+    body = payload if (payload is not None) else (error_body or {"ok": False, "error": "internal_error"})
+    if isinstance(body, dict):
         body["ms"] = ms
-        return JSONResponse(body, status_code=resp.status_code)
-    body = resp if isinstance(resp, dict) else {"ok": False, "error": "internal_error"}
-    body["ms"] = ms
+        if error_body is not None:
+            return JSONResponse(body, status_code=status)
     return body
 
 

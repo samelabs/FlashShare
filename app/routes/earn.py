@@ -22,16 +22,7 @@ from utils import now
 router = APIRouter()
 
 
-def _require_auth(request: Request):
-    """Session-only (money surface is human-facing)."""
-    tok = request.cookies.get(COOKIE_NAME)
-    if not tok:
-        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
-    with db() as con:
-        row = user_by_session_token(con, token_hash(tok), now())
-    if not row:
-        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
-    return dict(row), None
+from app.web_auth import require_session_auth as _require_auth  # 批3a: 应用层公共
 
 
 @router.get("/api/earnings")

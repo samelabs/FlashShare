@@ -44,7 +44,7 @@ A1_WHITELIST = {
 A2_WHITELIST = {
     "app/main.py", "app/routes/samelabs.py", "app/routes/auth_route.py",
     "app/routes/pages.py", "app/routes/earn.py", "app/routes/api.py",
-    "app/routes/usertools.py", "app/routes/topup.py",
+    "app/routes/usertools.py", "app/routes/topup.py", "app/web_auth.py",
 }
 # A3: creem.py:81 = 审计🔴2(块外用连接), 批2 economy 重建时修复后删除
 A3_WHITELIST = {"core/creem.py"}
@@ -192,7 +192,7 @@ class A3NoConnEscape(unittest.TestCase):
 # 域 → 允许的 repo 模块显式映射 (repo 文件名与域非同名前缀时在此声明)
 DOMAIN_REPO_ALLOW = {
     "identity": {"users", "sessions"},
-    "governance": {"catalog", "orders"},  # orders.settings KV 治理参数共用
+    "governance": {"catalog", "orders", "ledger"},  # orders=settings KV; ledger=工具调用统计(治理投影)
     "execution": {"uploads", "ledger"},
     "economy": {"economy", "ledger", "orders"},
     "sharing": {"uploads"},

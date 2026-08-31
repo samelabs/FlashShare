@@ -35,7 +35,7 @@ from catalog import resolve as resolve_tool, get_default_preset
 from execution.source import resolve_upload
 from auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
-from app.models import ToolExecuteRequest, RenameRequest
+from app.models import RenameRequest
 from app.worker import process_tool
 
 logger = logging.getLogger("flashshare")
@@ -75,81 +75,22 @@ def _require_auth(request: Request):
 
 @router.post("/tools/execute")
 async def execute_tool(request: Request):
-    """执行入口 (批2e 重构): 解析 + resolve + 输入校验 → execution.gate.run。
+    """执行入口 (批3a): 解析 → execution.dispatch 统一处理。
 
-    计量/幂等/退费/失败记账全部在闸门内 (单一入口, 三消费面共用)。
-    🔴1 修复: 计费后的输入校验失败 (too_many/invalid_id/not_found/forbidden)
-    走 gate 的 ExecutionError 路径 → 退费 + 失败记账, 不再裸 return。
+    计量/幂等/退费/编排全部在 execution 域; 本函数只管 HTTP 形状。
+    v1/MCP/selftest 经 request.state._v1_raw 借道时同样收口到 dispatch
+    (raw 由调用方注入)。
     """
-    from execution import ExecutionError
-    from execution.gate import run as gate_run
-
     user, err = _require_auth(request)
     if err:
         return err
-
     try:
-        if getattr(request.state, "_v1_raw", None) is not None:
-            raw = request.state._v1_raw  # dispatched from /api/v1/execute
-        else:
-            raw = await request.json()
-        req = ToolExecuteRequest(**raw)
+        raw = getattr(request.state, "_v1_raw", None) or await request.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-
-    tool_id = req.tool_id
-    params = req.params
-    tool, terr = resolve_tool(tool_id, user["id"])
-    if terr:
-        if terr == "disabled":
-            return JSONResponse({"ok": False, "error": "tool_disabled"}, 403)
-        return JSONResponse({"ok": False, "error": "tool_not_found"}, 404)
-    tool["id"] = tool["tool_key"]
-    tool["type"] = tool["tool_type"]
-
-    if "preset" not in params:
-        default = get_default_preset(tool_id)
-        if default:
-            params["preset"] = default
-
-    request_ctx = {"ip": _client_ip(request)}
-
-    async def orchestrate(p):
-        # ── 输入解析 (计费后失败 → ExecutionError → 闸门退费) ──
-        uploads = []
-        if tool.get("multi") and req.public_ids:
-            if len(req.public_ids) > 20:
-                raise ExecutionError("err_too_many_files")
-            for i, pid in enumerate(req.public_ids):
-                if not PUBLIC_ID_RE.match(pid):
-                    raise ExecutionError("invalid_id")
-                token = req.source_tokens[i] if i < len(req.source_tokens) else ""
-                upload, rerr = await resolve_upload(pid, user, token)
-                if rerr or not upload:
-                    raise ExecutionError(rerr or "not_found")
-                uploads.append(upload)
-        else:
-            public_id = req.public_id
-            if not public_id:
-                raise ExecutionError("invalid_id")
-            if not PUBLIC_ID_RE.match(public_id):
-                raise ExecutionError("invalid_id")
-            upload, rerr = await resolve_upload(public_id, user, req.source_token)
-            if rerr or not upload:
-                raise ExecutionError(rerr or "not_found")
-            uploads.append(upload)
-
-        # ── 编排 (local / remote) ──
-        from execution.orchestrator import execute_local, execute_remote
-        try:
-            if tool.get("execution") in ("http", "mcp"):
-                return await execute_remote(request_ctx, tool, uploads, p, user)
-            return await execute_local(request_ctx, tool, uploads, p, user,
-                                       process_tool, _get_pool())
-        except ToolError as exc:
-            raise ExecutionError(str(exc)) from exc
-
-    payload, error_body, status = await gate_run(user, tool, req, orchestrate)
+    from execution.dispatch import dispatch_execute
+    payload, error_body, status = await dispatch_execute(
+        request, user, raw, process_tool, _get_pool())
     if error_body is not None:
         return JSONResponse(error_body, status)
     return payload

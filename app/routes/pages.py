@@ -41,59 +41,15 @@ from utils import (
 
 router = APIRouter()
 
-# Load static assets once
-_STATIC = _BASE / "static"
-with open(_STATIC / "518.css", encoding="utf-8") as f:
-    _CSS = f.read()
-# Version stamp = content hash + mtime: content-converging edits (diverge then
-# reconverge) can collide on a pure content hash and serve stale edge caches.
-import os as _os
-_CSS_VERSION = "v7"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增
-with open(_STATIC / "app.js", encoding="utf-8") as f:
-    JS = f.read()
-# app.js gets its OWN stamp: it changes independently of 518.css. Sharing
-# css_version meant an app.js-only edit kept the old stamp → edge served the
-# stale (buggy) app.js forever under the same URL.
-_JS_VERSION = hashlib.md5((JS + str(int(_os.path.getmtime(_STATIC / "app.js")))).encode()).hexdigest()[:8]
-# Separate cache-bust version for i18n.js — it changes independently of 518.css
-with open(_STATIC / "i18n.js", encoding="utf-8") as f:
-    _I18N_JS = f.read()
-_I18N_VERSION = hashlib.md5((_I18N_JS + str(int(_os.path.getmtime(_STATIC / "i18n.js")))).encode()).hexdigest()[:8]
 
 
-def _ctx_base(request: Request) -> dict:
-    """Base context for all pages."""
-    lang = request.state.lang
-    user = request.state.user
-    from billing import spendable_balance as get_balance
-    return {
-        "request": request,
-        "lang": lang,
-        "locale": LOCALE_TAGS.get(lang, "en"),
-        "direction": "rtl" if lang == "ar" else "ltr",
-        "texts": server_text(lang),
-        "user": public_user(user) if user else None,
-        # dict (not pre-dumped JSON) so base.html can apply |tojson,
-        # which escapes < > & — required inside a <script> block.
-        "user_json": public_user(user) if user else None,
-        # Header credit chip (None for anonymous)
-        "credits": get_balance(user["id"]) if user else None,
-        "icons_json": json.dumps(_ICONS, ensure_ascii=False),
-        "APP_NAME": APP_NAME,
-        "BASE_URL": BASE_URL,
-        "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
-        "css_version": _CSS_VERSION,
-        "js_version": _JS_VERSION,
-        "i18n_version": _I18N_VERSION,
-        "fmt_ts": _fmt_ts,
-        "year": datetime.datetime.now().year,
-        # icon helpers
-        "icon_svg": icon_svg,
-        "icon_path": icon_path,
-        "brand_icon": brand_icon_svg(),
-        "close_icon": close_icon_svg(),
-        "history_icon_svg": history_icon_svg(),
-    }
+from app.web_ctx import (  # noqa: F401 (模板/路由沿用原名)
+    ctx_base as _ctx_base_impl, _CSS_VERSION, _JS_VERSION, _I18N_VERSION, JS,
+)
+
+
+def _ctx_base(request):
+    return _ctx_base_impl(request)
 
 
 # ── Static system routes ──
@@ -431,7 +387,7 @@ async def account_tools(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from app.routes.usertools import _owner_rows, _public_item, MAX_TOOLS_PER_USER
+    from governance.user_tools import _owner_rows, _public_item, MAX_TOOLS_PER_USER
     # NOTE: do NOT pass icons_json here — base.html already injects the
     # icon dict under that exact key; overriding it broke site-wide lookups.
     ctx = _account_ctx(request, "tools",

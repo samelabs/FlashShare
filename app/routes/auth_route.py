@@ -146,7 +146,7 @@ async def x_callback(request: Request):
         row = pop_oauth_state(con, state, now())
     if not row:
         from app.main import templates
-        from app.routes.pages import _ctx_base
+        from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": _t(request, "err_x_state_expired")})
         resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
@@ -156,7 +156,7 @@ async def x_callback(request: Request):
         x_user = fetch_x_user(token["access_token"])
     except Exception as exc:
         from app.main import templates
-        from app.routes.pages import _ctx_base
+        from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_login_incomplete")}: {exc}'})
         resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
@@ -166,7 +166,7 @@ async def x_callback(request: Request):
         user_id = upsert_x_user(x_user, bind_user_id=bind_user_id)
     except ValueError as exc:
         from app.main import templates
-        from app.routes.pages import _ctx_base
+        from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_bind_failed")}: {exc}'})
         resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
@@ -193,7 +193,7 @@ async def x_unbind(request: Request):
 @router.post("/login")
 async def login_submit(request: Request):
     from app.main import templates
-    from app.routes.pages import _ctx_base
+    from app.web_ctx import ctx_base as _ctx_base
     lang = _lang(request)
     texts = server_text(lang)
     form = await request.form()
@@ -228,7 +228,7 @@ async def login_submit(request: Request):
 @router.post("/register")
 async def register_submit(request: Request):
     from app.main import templates
-    from app.routes.pages import _ctx_base
+    from app.web_ctx import ctx_base as _ctx_base
     lang = _lang(request)
     texts = server_text(lang)
     form = await request.form()

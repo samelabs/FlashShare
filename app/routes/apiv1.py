@@ -72,27 +72,9 @@ async def v1_tools(request: Request):
 
 
 def _upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) -> dict:
-    """Shared source-upload pipeline (v1 + MCP): sniff → quota → gokapi.
-    Raises ValueError with an i18n error key on rejection."""
-    from security import sniff_allowed
-    ok, reason = sniff_allowed(filename, ctype, body)
-    if not ok:
-        raise ValueError(reason)
-    ok, reason = check_quota(user["id"], ip, len(body))
-    if not ok:
-        raise ValueError(reason)
-    from security import sign_source_token
-    gokapi = upload_to_gokapi(io.BytesIO(body), filename, ctype, 1, 10, len(body))
-    info = gokapi.get("FileInfo", {})
-    fid = info.get("Id", "")
-    return {
-        "publicId": fid,
-        "gokapiId": fid,
-        "filename": filename,
-        "contentType": ctype,
-        "size": len(body),
-        "sourceToken": sign_source_token(user["id"], fid),
-    }
+    """Shared source-upload pipeline (v1 + MCP) — 薄壳, 实现在 execution.pipeline."""
+    from execution.pipeline import upload_source
+    return upload_source(user, filename, ctype, body, ip)
 
 
 @router.post("/uploads")
@@ -142,12 +124,13 @@ async def v1_execute(request: Request):
     if not client_ref or len(client_ref) > 128:
         return JSONResponse({"ok": False, "error": "client_ref_required"}, 422)
 
-    # Funnel through the internal endpoint's logic by internal dispatch:
-    # the metering gate, replay handling, and refunds live in ONE place.
-    from app.routes.api import execute_tool as _internal_execute
-    request.state._v1_raw = raw
-    request.state._v1_client_ref = client_ref
-    return await _internal_execute(request)
+    # 统一执行入口 (批3a): 直接走 execution 域 dispatch, 不再借道路由层。
+    from execution.dispatch import dispatch_execute
+    raw.setdefault("client_ref", client_ref)
+    payload, error_body, status = await dispatch_execute(request, user, raw)
+    if error_body is not None:
+        return JSONResponse(error_body, status)
+    return payload
 
 
 @router.get("/uploads/{public_id}")

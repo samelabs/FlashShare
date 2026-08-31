@@ -47,7 +47,7 @@ def _gate(request: Request):
 
 def _ctx(request: Request, user: dict, **extra) -> dict:
     """Full page context: shared vars + samelabs.css version + operator row."""
-    from app.routes.pages import _ctx_base
+    from app.web_ctx import ctx_base as _ctx_base
     ctx = _ctx_base(request)
     ctx["op"] = user
     ctx["fmt_ts"] = _fmt_ts

@@ -224,7 +224,7 @@ def _tool_specs(user: dict) -> list:
 
 async def _call_tool(request: Request, user: dict, mid, params: dict):
     import secrets as _secrets
-    from app.routes.apiv1 import _upload_source  # shared pipeline (v1 + MCP)
+    from execution.pipeline import upload_source as _upload_pipeline  # 批3a
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
     if tool_id == "catalog_search":
@@ -277,27 +277,25 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         try:
             if len(uploads) == 1:
                 fn, ctype, body = uploads[0]
-                info = _upload_source(user, fn, ctype, body, ip)
+                info = _upload_pipeline(user, fn, ctype, body, ip)
                 raw["public_id"] = info["publicId"]
                 raw["source_token"] = info["sourceToken"]
             else:
                 raw["public_ids"] = []
                 raw["source_tokens"] = []
                 for fn, ctype, body in uploads:
-                    info = _upload_source(user, fn, ctype, body, ip)
+                    info = _upload_pipeline(user, fn, ctype, body, ip)
                     raw["public_ids"].append(info["publicId"])
                     raw["source_tokens"].append(info["sourceToken"])
         except Exception as exc:
             return _err(mid, -32602, f"upload rejected: {exc}")
 
-    # Funnel through the ONE metering gate
-    from app.routes.api import execute_tool as _internal_execute
-    request.state._v1_raw = raw
-    resp = await _internal_execute(request)
-    if isinstance(resp, JSONResponse):
-        payload = json.loads(resp.body)
-    else:
-        payload = resp
+    # Funnel through the ONE metering gate (批3a: 直调 execution 域)
+    from execution.dispatch import dispatch_execute
+    from fastapi.responses import JSONResponse as _JR
+    payload, error_body, status = await dispatch_execute(request, user, raw)
+    if error_body is not None:
+        payload = error_body
     if not payload.get("ok"):
         # Tool-level failure ⇒ MCP isError result (not a protocol error)
         return _rpc(mid, {
