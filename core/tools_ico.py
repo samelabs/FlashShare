@@ -69,6 +69,11 @@ def ico_handler(tool_input, params):
 
     # Generate ICO — let Pillow resize from source in one step
     # (pre-resizing then saving adds unwanted extra sizes + double-scaling blur)
+    # 小图守卫: Pillow 对源图小于请求尺寸的 size 会静默丢弃 → 可能产出空 ICO;
+    # 先放大到目标再保存。
+    if min(img.size) < min(tw, th):
+        img = img.resize((max(tw, img.size[0]), max(th, img.size[1])),
+                         Image.LANCZOS)
     out = io.BytesIO()
     img.save(out, format="ICO", sizes=[(tw, th)])
     out.seek(0)

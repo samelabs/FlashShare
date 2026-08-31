@@ -135,8 +135,11 @@ def verify_fetch_token(token: str, user_id: int, gokapi_id: str) -> bool:
     if token in _REDEEMED_FETCH:
         return False
     _REDEEMED_FETCH.add(token)
-    # Bound the redemption set (defensive; tokens expire in minutes)
+    # Bound the redemption set: 淘汰最旧一半 (环形), 而非全清——
+    # 全清会让清空瞬间的已用 token 重新可用 (重放窗口)。
     if len(_REDEEMED_FETCH) > 4096:
-        _REDEEMED_FETCH.clear()
+        doomed = iter(list(_REDEEMED_FETCH)[:2048])
+        for t in doomed:
+            _REDEEMED_FETCH.discard(t)
     return True
 

@@ -158,8 +158,9 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
         rows, total = ledger_repo.earn_lines_paged(con, user_id, limit, offset)
     out = []
     for r in rows:
-        out.append({"delta": int(r["delta"]), "ref": r["ref_id"],
-                    "tool": (r["note"] or "").replace("payout ", ""),
+        out.append({"delta": int(r["delta"]),
+                    "call_id": r["ref_id"],           # ref = tool_calls.id (批4 #17)
+                    "tool": (r["note"] or "").replace("payout ", ""),  # note = tool_key
                     "ts": int(r["created_at"])})
     return out, int(total)
 

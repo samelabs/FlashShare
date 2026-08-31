@@ -361,10 +361,11 @@ async def account_credits_claim(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from economy.activities import apply_activity
+    import logging as _logging
     try:
         apply_activity("daily_login", user["id"])
     except Exception:
-        logger.exception("daily claim failed")
+        _logging.getLogger("flashshare").exception("daily claim failed")
     return RedirectResponse("/account/credits", 303)
 
 

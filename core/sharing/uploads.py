@@ -73,7 +73,12 @@ def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
         if live:
             item["downloads_remaining"] = live.get("DownloadsRemaining")
             item["download_count"] = live.get("DownloadCount")
-            item["expire_at"] = live.get("ExpireAt") or item["expire_at"]
+            exp = live.get("ExpireAt")
+            # gokapi 版本差异可能返回字符串时间戳 — 统一 int, 失败回落 DB 值 (批4 #16)
+            try:
+                item["expire_at"] = int(exp) if exp else item["expire_at"]
+            except (TypeError, ValueError):
+                pass
             item["url_hotlink"] = live.get("UrlHotlink") or item["url_hotlink"]
         item["url_download"] = public_file_url(item["public_id"])
         uploads.append(item)

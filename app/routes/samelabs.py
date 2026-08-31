@@ -60,7 +60,8 @@ def _fmt_ts(ts) -> str:
     if not ts:
         return "—"
     import datetime
-    return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
+    return datetime.datetime.fromtimestamp(
+        int(ts), datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _fmt_num(v) -> str:

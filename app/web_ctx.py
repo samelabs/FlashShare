@@ -51,7 +51,8 @@ def _fmt_ts(ts) -> str:
     """Unix ts → local time string for templates."""
     if not ts:
         return "—"
-    return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
+    return datetime.datetime.fromtimestamp(
+        int(ts), datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def ctx_base(request: Request) -> dict:

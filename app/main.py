@@ -222,5 +222,7 @@ async def startup():
         logger.info("expired upload rows purged")
 
     except Exception:
-        logger.exception("pricing seed failed (non-fatal)")
+        # schema/seed 失败 = 平台核心不可用, 显式失败而非静默降级 (批4 #15)
+        logger.exception("startup seed failed - ABORT")
+        raise
     logger.info("%s started", APP_NAME)

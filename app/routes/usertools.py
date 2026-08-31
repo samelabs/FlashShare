@@ -340,12 +340,13 @@ async def update_user_tool(tool_id: str, request: Request):
         if stats["ok"] < 1:
             return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
 
-    # endpoint change → SSRF re-check on the MERGED url.
-    # Trusted (operator-adopted) rows keep their exemption, same as runtime.
+    # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
+    # 与运行时驱动看到的完全一致, 而非裸入参)
+    merged_decl = _endpoint_decl(fields, row["execution"], existing_decl)
     if "url" in fields and not row["trusted"]:
         from remote import guard_endpoint, RemoteError
         try:
-            guard_endpoint(fields["url"], trusted=False)
+            guard_endpoint(merged_decl["url"], trusted=False)
         except RemoteError:
             return JSONResponse({"ok": False, "error": "https_required"}, 422)
 
@@ -360,8 +361,7 @@ async def update_user_tool(tool_id: str, request: Request):
     if "enabled" in raw:
         sets["enabled"] = bool(raw.get("enabled"))
     if sets or fields:
-        decl = _endpoint_decl(fields, row["execution"], existing_decl)
-        sets["endpoint_json"] = json.dumps(decl)
+        sets["endpoint_json"] = json.dumps(merged_decl)
         sets["updated_at"] = now()
         with db() as con:
             update_fields(con, tool_key, sets)

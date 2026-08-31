@@ -78,17 +78,18 @@ async def file_route(public_id: str, request: Request):
                 if hot_query:
                     dl_path += "?" + hot_query
             else:
-                dl_path = hot_path
-                if hot_query:
-                    dl_path += "?" + hot_query
+                # 未知 hotlink 格式 = gokapi 配置漂移, 不猜测重定向 (批4 #18);
+                # dl_path=None → 落入下方 Python 流式兜底
+                dl_path = None
 
-            safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
-            from urllib.parse import quote
-            from fastapi.responses import RedirectResponse
-            resp = RedirectResponse(url=dl_path, status_code=302)
-            ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "download"
-            resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
-            return resp
+            if dl_path is not None:
+                safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
+                from urllib.parse import quote
+                from fastapi.responses import RedirectResponse
+                resp = RedirectResponse(url=dl_path, status_code=302)
+                ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "download"
+                resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
+                return resp
         # Fallback: stream via Python if no hotlink
         from gokapi import open_gokapi_download
         status, headers, stream = open_gokapi_download(upload["gokapi_id"])
@@ -203,11 +204,14 @@ async def file_zip_list(public_id: str, request: Request):
         entries = await asyncio.to_thread(list_zip_remote, fetch_range, total)
     except ValueError as exc:
         reason = str(exc)
-        if reason in ("zip64_unsupported",):
-            return JSONResponse({"ok": False, "error": "zip_unsupported"}, 422)
-        if reason in ("cd_too_large", "range_unavailable", "range_short_read"):
-            return JSONResponse({"ok": False, "error": "zip_too_complex"}, 422)
-        return JSONResponse({"ok": False, "error": "zip_invalid"}, 422)
+        if reason == "empty_archive":
+            entries = []  # 合法空 zip (批4 #19) — 落入下方正常返回
+        else:
+            if reason in ("zip64_unsupported",):
+                return JSONResponse({"ok": False, "error": "zip_unsupported"}, 422)
+            if reason in ("cd_too_large", "range_unavailable", "range_short_read"):
+                return JSONResponse({"ok": False, "error": "zip_too_complex"}, 422)
+            return JSONResponse({"ok": False, "error": "zip_invalid"}, 422)
 
     files = [e for e in entries if not e["is_dir"]]
     dirs = [e for e in entries if e["is_dir"]]
