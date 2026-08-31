@@ -34,26 +34,11 @@ WITHDRAWAL_STATES = ("pending", "approved", "rejected", "paid")
 
 
 def ensure_schema() -> None:
-    with db() as con:
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS withdrawals (
-              id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-              user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-              amount      BIGINT NOT NULL CHECK (amount > 0),
-              status      TEXT NOT NULL DEFAULT 'pending',
-              note        TEXT,
-              created_at  BIGINT NOT NULL,
-              processed_at BIGINT,
-              processed_by BIGINT,
-              txn_ref     TEXT
-            )
-            """
-        )
-        con.execute(
-            "CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)")
-        con.execute("ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS txn_ref TEXT")
-        con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_channel TEXT")
+    """Schema now lives in database.py _SCHEMA_SQL (single source of truth,
+    批1归一). Kept as a no-op shim for existing callers (main.startup);
+    the withdrawals DDL here would be a second truth source.
+    """
+    return None
 
 
 def earnings_summary(user_id: int) -> dict:

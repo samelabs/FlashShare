@@ -51,26 +51,11 @@ def _seed_rows() -> list:
 
 
 def ensure_schema_and_seed() -> dict:
-    """CREATE TABLE IF NOT EXISTS + idempotent seed. Called at startup."""
+    """Seed only — the activities TABLE now lives in database.py _SCHEMA_SQL
+    (批1归一, single source of truth). Idempotent seed, called at startup.
+    """
     ts = now()
     with db() as con:
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS activities (
-              id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-              code          TEXT NOT NULL UNIQUE,
-              activity_type TEXT NOT NULL,
-              amount        BIGINT NOT NULL,
-              kind          TEXT NOT NULL,
-              active        BOOLEAN NOT NULL DEFAULT TRUE,
-              starts_at     BIGINT,
-              ends_at       BIGINT,
-              label_json    TEXT,
-              updated_at    BIGINT NOT NULL,
-              updated_by    BIGINT
-            )
-            """
-        )
         seeded = 0
         for row in _seed_rows():
             cur = con.execute(

@@ -378,6 +378,41 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS platform_tools_owner_idx
       ON platform_tools(owner_id)
     """,
+    # ── platform: activities (credit campaigns; seeded from activities.py) ──
+    """
+    CREATE TABLE IF NOT EXISTS activities (
+      id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      code          TEXT NOT NULL UNIQUE,
+      activity_type TEXT NOT NULL,
+      amount        BIGINT NOT NULL,
+      kind          TEXT NOT NULL,
+      active        BOOLEAN NOT NULL DEFAULT TRUE,
+      starts_at     BIGINT,
+      ends_at       BIGINT,
+      label_json    TEXT,
+      updated_at    BIGINT NOT NULL,
+      updated_by    BIGINT
+    )
+    """,
+    # ── platform: withdrawals (provider payout requests) ──
+    """
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      amount       BIGINT NOT NULL CHECK (amount > 0),
+      status       TEXT NOT NULL DEFAULT 'pending',
+      note         TEXT,
+      created_at   BIGINT NOT NULL,
+      processed_at BIGINT,
+      processed_by BIGINT,
+      txn_ref      TEXT
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)
+    """,
+    # users.payout_channel (withdrawal destination, operator-read) — additive
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_channel TEXT",
 )
 
 
