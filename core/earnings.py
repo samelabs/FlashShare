@@ -131,11 +131,15 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
             if int(avail) < int(row["amount"]):
                 con.rollback()
                 raise ValueError("withdrawal_insufficient")
-            # EARN 池基线: balance_after 记 provider_earn 池口径 (批2 修复 🔴3,
-            # 现阶段保持现行为=全池口径, 重建时统一)
-            bal = ledger_repo.total_balance(con, row["user_id"])
+            # 🔴3 修复(批2a): withdraw 属 EARN 池支出, balance_after 记
+            # earn 池口径 = earned − (approved+paid 提现累计, 不含本行)。
+            # 原实现写全池 SUM, 导致 spendable 用户看到虚高余额行。
+            earned = ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
+            withdrawn_so_far = economy_repo.withdrawal_sum(
+                con, row["user_id"], ("approved", "paid"))
+            earn_pool_after = earned - withdrawn_so_far - int(row["amount"])
             ledger_repo.insert_row(con, row["user_id"], -int(row["amount"]),
-                                   int(bal) - int(row["amount"]), "withdraw",
+                                   earn_pool_after, "withdraw",
                                    "withdrawal", str(row["id"]),
                                    f"withdrawal:{row['id']}",
                                    f"withdrawal #{row['id']}", ts)

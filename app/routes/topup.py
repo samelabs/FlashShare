@@ -65,6 +65,13 @@ async def creem_webhook(request: Request):
         res = creem.fulfill(order.get("id") or "", obj.get("id") or "",
                             int(order.get("amount") or 0))
     except KeyError:
-        # unknown order: acknowledge to avoid retry storms, log via status
-        return {"ok": True, "granted": False, "error": "order_not_found"}
+        # 🔴5 修复(批2a): order_not_found 可能是 checkout→provider_order_id
+        # 写入窗口内的乱序到达。返回 500 让 Creem 重试(webhook 重试政策),
+        # 重试时 provider_order_id 已落库即可对上。原实现 200-ack 会把
+        # 乱序事件变成永久丢失(用户付款不到账)。
+        import logging
+        logging.getLogger("flashshare").warning(
+            "creem webhook: order not found (prov=%s ch=%s) — retriable",
+            order.get("id"), obj.get("id"))
+        return JSONResponse({"ok": False, "error": "order_not_found"}, 500)
     return {"ok": True, **res}
