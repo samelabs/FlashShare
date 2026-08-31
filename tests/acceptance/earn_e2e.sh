@@ -70,17 +70,17 @@ try:
 except ValueError as e:
     assert str(e) == "already_processed"
 bal = psql("SELECT COALESCE(SUM(delta),0) FROM ledger WHERE user_id=%s", uid)[0][0]
-assert bal == 300
+assert bal == 30000
 print("7. double-approve impossible, balance intact OK")
 
 # reject path: request + reject → no ledger change
-w2 = request_withdrawal(uid, 100)
+w2 = request_withdrawal(uid, 20000)
 r2 = process_withdrawal(w2["id"], False, admin_user_id=2)
 assert r2["status"] == "rejected"
 bal = psql("SELECT COALESCE(SUM(delta),0) FROM ledger WHERE user_id=%s", uid)[0][0]
-assert bal == 300
+assert bal == 30000
 s = earnings_summary(uid)
-assert s["pending"] == 0 and s["available"] == 300
+assert s["pending"] == 0 and s["available"] == 30000
 print("8. reject: credits untouched, pending released OK")
 
 # API surface: earnings endpoint shape (session auth)
@@ -92,7 +92,7 @@ psql("INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(%
 conn = http.client.HTTPConnection("127.0.0.1", 8000, timeout=30)
 conn.request("GET", "/api/earnings", headers={"Cookie": f"{COOKIE_NAME}={tok_s}"})
 d = json.loads(conn.getresponse().read())
-assert d["ok"] and d["summary"]["available"] == 300 and d["min_withdrawal"] == MIN_WITHDRAWAL, d
+assert d["ok"] and d["summary"]["available"] == 30000 and d["min_withdrawal"] == MIN_WITHDRAWAL, d
 assert all("url" not in t for t in d["tools"])
 print("9. /api/earnings: summary + breakdown OK")
 

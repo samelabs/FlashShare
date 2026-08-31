@@ -114,6 +114,11 @@ u = f"rmt{int(time.time()) % 100000}"
 b, ct = mp({'username': u, 'password': 'Test12345', 'password_confirm': 'Test12345', 'email': f'{u}@t.co'}, [])
 c.post('/auth/register', b, ct)
 
+# signup 奖励已移除(0827): 直插 grant 100 供扣费验证 (remote cost=10)
+psql("INSERT INTO ledger(user_id, delta, balance_after, kind, note, idem_key, created_at) "
+     "SELECT id, 100, 100, 'grant', 'p2-seed', 'p2seed:'||id||':'||%s, %s FROM users WHERE username=%s",
+     f"p2{u}", int(time.time()), u)
+
 # ── 1. create remote http tool (admin API via session? use direct row insert + pricing) ──
 ts = int(time.time())
 ep = json.dumps({"url": f"http://127.0.0.1:{HTTP_PORT}/process", "timeout_s": 30,
@@ -152,10 +157,10 @@ except _ue.HTTPError as e:
     assert e.code == 404, f"replay got {e.code}"
 print("3. fetch token single-use enforced (replay 404) OK")
 
-# ── 4. balance check: signup 100 + daily 5 - 10 = 95 ──
+# ── 4. balance check: seed100 + daily 5 - 10 = 95 (signup 奖励已移除) ──
 bal = psql("SELECT COALESCE(SUM(delta),0) FROM ledger l JOIN users us ON l.user_id=us.id WHERE us.username=%s", u)[0][0]
-assert bal == 95, f"expected 95, got {bal}"
-print(f"4. metering: signup100+daily5-remote10 = {bal} OK")
+assert bal == 95, f"expected 95 (100+5-10), got {bal}"
+print(f"4. metering: seed100+daily5-remote10 = {bal} OK")
 
 # ── 5. failing endpoint → typed error + auto refund ──
 ep_fail = json.dumps({"url": f"http://127.0.0.1:{FAIL_PORT}/x", "timeout_s": 10})

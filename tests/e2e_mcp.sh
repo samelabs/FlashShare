@@ -70,7 +70,8 @@ print("3. ping OK")
 st,r=m.call('tools/list')
 tools=r['result']['tools']
 ids={t['name'] for t in tools}
-assert 'doc2pdf' in ids and 'catalog_search' in ids and len(tools)==11,(len(tools),ids)
+assert 'doc2pdf' in ids and 'catalog_search' in ids,(len(tools),ids)
+assert len(tools) >= 11, (len(tools), ids)  # 10 一方+meta, 数据态目录可含公开用户工具
 d2=[t for t in tools if t['name']=='doc2pdf'][0]
 assert d2['inputSchema']['required']==['file_b64','filename']
 print(f"4. tools/list OK ({len(tools)} tools incl catalog_search meta, schema correct)")
