@@ -132,16 +132,6 @@ def get_tool(tool_id: str):
     return None
 
 
-def get_default_preset(tool_id: str):
-    """Return the default preset id for a tool, or None."""
-    tool = get_tool(tool_id)
-    if not tool or not tool["presets"]:
-        return None
-    for p in tool["presets"]:
-        if p.get("default"):
-            return p["id"]
-    return None
-
 
 _loaded = False
 

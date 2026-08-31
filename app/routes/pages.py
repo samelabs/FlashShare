@@ -20,7 +20,6 @@ from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
 from catalog import list_catalog, seed_from_registry
-from config import MAX_UPLOAD_BYTES
 
 MAX_UPLOAD_MB = MAX_UPLOAD_BYTES // (1024 * 1024)
 from database import db

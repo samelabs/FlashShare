@@ -147,7 +147,6 @@ async def file_route(public_id: str, request: Request):
         "file_size_icon": file_size_icon_svg(),
         "expiry_icon": expiry_icon_svg(),
         "download_count_icon": download_count_icon_svg(),
-        "file_format_icon": file_format_icon,
     })
     # file_format_icon takes filename arg — add as callable for template
     ctx["file_format_icon"] = lambda: file_format_icon(upload["file_name"])
