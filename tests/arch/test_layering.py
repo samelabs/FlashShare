@@ -192,7 +192,7 @@ class A3NoConnEscape(unittest.TestCase):
 # 域 → 允许的 repo 模块显式映射 (repo 文件名与域非同名前缀时在此声明)
 DOMAIN_REPO_ALLOW = {
     "identity": {"users", "sessions"},
-    "governance": {"catalog"},
+    "governance": {"catalog", "orders"},  # orders.settings KV 治理参数共用
     "execution": {"uploads", "ledger"},
     "economy": {"economy", "ledger", "orders"},
     "sharing": {"uploads"},

@@ -138,9 +138,9 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         fields["timeout_s"] = timeout_s
 
     if raw.get("auth_header") and raw.get("auth_token"):
-        from secrets_vault import seal
+        # 存原文; seal 只在 _endpoint_decl 组装时做一次 (🔴4 修复: 原双重加密)
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
-        fields["auth_token"] = seal(str(raw["auth_token"]).strip()[:512])
+        fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
 
     if "accept" in raw:
         accept_raw = str(raw.get("accept") or "").strip()

@@ -195,6 +195,8 @@ async def demo_echo(request: Request):
         payload = {}
     job_inputs = payload.get("job_inputs") or []
     outputs = []
+    from security import verify_fetch_token
+    from urllib.parse import urlparse, parse_qs
     for item in job_inputs[:5]:
         url = str(item.get("url") or "")
         # fetch_url = /api/source/{gokapi_id}?u=..&t=.. — read the file
@@ -204,7 +206,17 @@ async def demo_echo(request: Request):
         idx = url.find(marker)
         if idx < 0:
             continue
-        gid = url[idx + len(marker):].split("?")[0]
+        path_and_query = url[idx + len(marker):]
+        gid, _, query = path_and_query.partition("?")
+        # 🔴6 修复 (批2e): 与 /api/source 同闸 — 单次签名 fetch token 必须有效。
+        # 原实现裸读 gokapi, 匿名者知道 gid 即可绕过签名闸取件。
+        q = parse_qs(query)
+        u_raw = (q.get("u") or [""])[0]
+        t_raw = (q.get("t") or [""])[0]
+        if not u_raw.isdigit() or not t_raw:
+            continue
+        if not verify_fetch_token(t_raw, int(u_raw), gid):
+            continue
         try:
             status, headers, resp = open_gokapi_download(gid)
             data = resp.read(50 * 1024 * 1024)
