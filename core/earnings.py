@@ -26,7 +26,7 @@ Red lines honored:
 """
 
 from database import db
-from repo import catalog as catalog_repo
+from repo import economy as economy_repo
 from repo import ledger as ledger_repo
 from utils import now
 
@@ -48,9 +48,9 @@ def earnings_summary(user_id: int) -> dict:
     pending requests. Derived live from the ledger; no cached counters."""
     with db() as con:
         earned = ledger_repo.sum_kind(con, user_id, "provider_earn")
-        withdrawn = catalog_repo.withdrawal_sum(
+        withdrawn = economy_repo.withdrawal_sum(
             con, user_id, ("approved", "paid"))
-        pending = catalog_repo.withdrawal_sum(con, user_id, ("pending",))
+        pending = economy_repo.withdrawal_sum(con, user_id, ("pending",))
     available = int(earned) - int(withdrawn) - int(pending)
     return {"earned": int(earned), "withdrawn": int(withdrawn),
             "pending": int(pending), "available": max(0, available)}
@@ -72,13 +72,13 @@ def per_tool_revenue(user_id: int) -> list:
 
 def list_withdrawals(user_id: int, limit: int = 20, offset: int = 0) -> list:
     with db() as con:
-        rows = catalog_repo.withdrawals_by_user(con, user_id, limit, offset)
+        rows = economy_repo.withdrawals_by_user(con, user_id, limit, offset)
     return [dict(r) for r in rows]
 
 
 def withdrawal_count(user_id: int) -> int:
     with db() as con:
-        return catalog_repo.withdrawal_count(con, user_id)
+        return economy_repo.withdrawal_count(con, user_id)
 
 
 def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> dict:
@@ -95,7 +95,7 @@ def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> di
         from repo import users as users_repo
         ch = users_repo.payout_channel_of(con, user_id)
         channel = (ch["payout_channel"] or "")[:120] if ch else ""
-        row = catalog_repo.insert_withdrawal(con, user_id, amount,
+        row = economy_repo.insert_withdrawal(con, user_id, amount,
                                              (note or "")[:200], ts)
     out = dict(row)
     out["payout_channel"] = channel  # surfaced for the operator queue
@@ -111,7 +111,7 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
     from billing import consume
     ts = now()
     with db() as con:
-        row = catalog_repo.withdrawal_for_update(con, withdrawal_id)
+        row = economy_repo.withdrawal_for_update(con, withdrawal_id)
         if not row:
             raise KeyError("not_found")
         if row["status"] != "pending":
@@ -124,9 +124,9 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
             # pending row = earned - (approved+paid) - other_pending.
             avail = (
                 ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
-                - catalog_repo.withdrawal_sum_excluding(
+                - economy_repo.withdrawal_sum_excluding(
                     con, row["user_id"], ("approved", "paid"), withdrawal_id)
-                - catalog_repo.withdrawal_sum_excluding(
+                - economy_repo.withdrawal_sum_excluding(
                     con, row["user_id"], ("pending",), withdrawal_id))
             if int(avail) < int(row["amount"]):
                 con.rollback()
@@ -141,7 +141,7 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
                                    f"withdrawal #{row['id']}", ts)
         else:
             new_status = "rejected"
-        out = catalog_repo.finish_withdrawal(
+        out = economy_repo.finish_withdrawal(
             con, withdrawal_id, new_status, ts, admin_user_id,
             (txn_ref or None) if approve else None)
     return dict(out)
@@ -163,7 +163,7 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
 def list_all_pending(limit: int = 50) -> list:
     """Operator queue (/samelabs/withdrawals)."""
     with db() as con:
-        rows = catalog_repo.withdrawals_queue(con, limit)
+        rows = economy_repo.withdrawals_queue(con, limit)
     return [dict(r) for r in rows]
 
 def to_usd(credits: int) -> str:

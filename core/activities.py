@@ -26,7 +26,7 @@ import json
 import time
 
 from database import db
-from repo import catalog as catalog_repo
+from repo import economy as economy_repo
 from utils import now
 
 ACTIVITY_TYPES = ("once", "daily")
@@ -59,7 +59,7 @@ def ensure_schema_and_seed() -> dict:
     with db() as con:
         seeded = 0
         for row in _seed_rows():
-            seeded += catalog_repo.seed_activity(
+            seeded += economy_repo.seed_activity(
                 con, row["code"], row["activity_type"], row["amount"],
                 row["kind"], row["starts_at"], row["ends_at"],
                 row["label_json"], ts)
@@ -70,13 +70,13 @@ def ensure_schema_and_seed() -> dict:
 
 def get_activity(code: str) -> dict | None:
     with db() as con:
-        row = catalog_repo.activity_by_code(con, code)
+        row = economy_repo.activity_by_code(con, code)
     return dict(row) if row else None
 
 
 def list_activities() -> list:
     with db() as con:
-        rows = catalog_repo.all_activities(con)
+        rows = economy_repo.all_activities(con)
     return [dict(r) for r in rows]
 
 
@@ -162,7 +162,7 @@ def set_activity(code: str, amount: int | None, active: bool | None,
         raise ValueError("starts_at > ends_at")
     ts = now()
     with db() as con:
-        row = catalog_repo.update_activity(
+        row = economy_repo.update_activity(
             con, code, amount, active, starts_at, ends_at,
             starts_at == 0, ends_at == 0, ts, admin_user_id)
     return dict(row)

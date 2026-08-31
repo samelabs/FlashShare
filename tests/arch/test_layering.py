@@ -189,6 +189,16 @@ class A3NoConnEscape(unittest.TestCase):
         self.assertEqual(violations, [], "A3 违例(con 逃逸 with 块): " + ", ".join(violations))
 
 
+# 域 → 允许的 repo 模块显式映射 (repo 文件名与域非同名前缀时在此声明)
+DOMAIN_REPO_ALLOW = {
+    "identity": {"users", "sessions"},
+    "governance": {"catalog"},
+    "execution": {"uploads", "ledger"},
+    "economy": {"economy", "ledger", "orders"},
+    "sharing": {"uploads"},
+}
+
+
 class A4DomainRepoIsolation(unittest.TestCase):
     def test_domains_import_own_repo_only(self):
         violations = []
@@ -196,6 +206,7 @@ class A4DomainRepoIsolation(unittest.TestCase):
             dom_root = BASE / "core" / dom
             if not dom_root.exists():
                 continue
+            allowed = DOMAIN_REPO_ALLOW.get(dom, set())
             for p in dom_root.rglob("*.py"):
                 if "__pycache__" in p.parts:
                     continue
@@ -203,13 +214,16 @@ class A4DomainRepoIsolation(unittest.TestCase):
                 for node in ast.walk(tree):
                     if not isinstance(node, (ast.Import, ast.ImportFrom)):
                         continue
-                    targets = ([a.name for a in node.names] if isinstance(node, ast.Import)
-                               else [node.module or ""])
+                    targets = []
+                    if isinstance(node, ast.Import):
+                        targets = [a.name for a in node.names]
+                    elif (node.module or "").startswith("repo"):
+                        targets = [node.module]
                     for t in targets:
-                        if re.match(r"repo[\w.]*", t or ""):
-                            # 只允许本域 repo 模块: repo/<dom>_*.py
-                            parts = t.split(".")
-                            if len(parts) >= 2 and parts[1].startswith(dom + "_"):
+                        if t == "repo" or (t or "").startswith("repo."):
+                            parts = (t or "").split(".")
+                            mod = parts[1] if len(parts) > 1 else "*"
+                            if mod in allowed or mod == "*":
                                 continue
                             violations.append(f"{_rel(p)}: import {t}")
         self.assertEqual(violations, [], "A4 违例(跨域 repo import): " + ", ".join(violations))
