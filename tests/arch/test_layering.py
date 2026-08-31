@@ -37,16 +37,15 @@ SQL_PATTERNS = [
 # ── 白名单 (现状违例, 随批次清零; 批4 必须全空) ──
 # A1: 批1 数据层落位时这些文件的 SQL 全部迁入 repo, 清空
 A1_WHITELIST = {
-    "core/auth.py", "core/uploads.py", "core/billing.py", "core/earnings.py",
-    "core/activities.py", "core/catalog.py", "core/pricing.py", "core/apitokens.py",
-    "core/creem.py", "core/utils.py",
-    "app/routes/api.py", "app/routes/apiv1.py", "app/routes/samelabs.py",
-    "app/routes/usertools.py", "app/routes/auth_route.py", "app/routes/topup.py",
-    "app/routes/earn.py", "app/routes/pages.py", "app/main.py",
-    "scripts/migrate_sqlite_to_pg.py",
+    "scripts/migrate_sqlite_to_pg.py",  # 一次性迁移脚本, 存档性质
 }
-# A2: 批3 应用层瘦身时清空
-A2_WHITELIST = set(A1_WHITELIST)
+# A2: app 层事务边界暂留 (批1 服务在 core、编排仍在 routes); 批2 域服务
+# 重建时事务下沉, 逐域清零
+A2_WHITELIST = {
+    "app/main.py", "app/routes/samelabs.py", "app/routes/auth_route.py",
+    "app/routes/pages.py", "app/routes/earn.py", "app/routes/api.py",
+    "app/routes/usertools.py", "app/routes/topup.py",
+}
 # A3: creem.py:81 = 审计🔴2(块外用连接), 批2 economy 重建时修复后删除
 A3_WHITELIST = {"core/creem.py"}
 # A4: 域目录建立前的平铺期空表

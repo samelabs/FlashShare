@@ -158,20 +158,19 @@ async def agents_page(request: Request):
 
 def _owner_handle(owner_id) -> str:
     from database import db
+    from repo.users import username_of
     with db() as con:
-        row = con.execute("SELECT username FROM users WHERE id = %s", (owner_id,)).fetchone()
+        row = username_of(con, owner_id)
     return row["username"] if row else "unknown"
 
 
 def _public_stats(tool_key: str) -> dict:
     """Public counters: successful calls only. No user-level data."""
     from database import db
+    from repo.ledger import call_stats_by_tool
     with db() as con:
-        row = con.execute(
-            "SELECT COUNT(*) AS n FROM tool_calls WHERE tool_id = %s AND status = 'ok'",
-            (tool_key,),
-        ).fetchone()
-    return {"calls": int(row["n"]) if row else 0}
+        row = call_stats_by_tool(con, tool_key)
+    return {"calls": int(row["ok"]) if row else 0}
 
 
 @router.get("/tools", response_class=HTMLResponse)
@@ -378,10 +377,9 @@ async def account_credits(request: Request):
     size = 20
     rows, total = history_paged(user["id"], page=pg, size=size)
     # packages (one-off top-up packs) — active rows only, data-driven
+    from repo.orders import active_packages
     with db() as con:
-        pkgs = [dict(r) for r in con.execute(
-            "SELECT id, code, name, credits, price_cents, currency, creem_price_id FROM packages "
-            "WHERE active ORDER BY sort_order, id").fetchall()]
+        pkgs = [dict(r) for r in active_packages(con)]
     import creem as _creem
     topup_ready = _creem.creem_enabled()
     ctx = _account_ctx(request, "credits",

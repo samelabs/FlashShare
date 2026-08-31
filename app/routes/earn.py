@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 from config import COOKIE_NAME
 from security import token_hash
 from database import db
+from repo.sessions import user_by_session_token
+from security import token_hash
 from utils import now
 
 router = APIRouter()
@@ -26,11 +28,7 @@ def _require_auth(request: Request):
     if not tok:
         return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
     with db() as con:
-        row = con.execute(
-            """SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-               WHERE s.token_hash = %s AND s.expires_at > %s""",
-            (token_hash(tok), now()),
-        ).fetchone()
+        row = user_by_session_token(con, token_hash(tok), now())
     if not row:
         return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
     return dict(row), None

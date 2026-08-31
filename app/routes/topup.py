@@ -24,30 +24,25 @@ async def topup_checkout(request: Request):
         package_id = int(raw.get("package_id", 0))
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from database import db
+    from repo.orders import package_by_id_active
     from utils import now
     with db() as con:
-        pkg = con.execute(
-            "SELECT * FROM packages WHERE id=%s AND active", (package_id,)).fetchone()
+        pkg = package_by_id_active(con, package_id)
     if not pkg or not pkg["creem_price_id"]:
         return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
+    from repo.orders import insert_order, mark_failed, set_provider_order_id
     ts = now()
     with db() as con:
-        order = con.execute(
-            """INSERT INTO orders (user_id, kind, item_id, provider, status,
-               amount_cents, currency, created_at)
-               VALUES (%s, 'package', %s, 'creem', 'pending', %s, %s, %s)
-               RETURNING *""",
-            (user["id"], pkg["id"], pkg["price_cents"], pkg["currency"], ts)).fetchone()
+        order = insert_order(con, user["id"], "package", pkg["id"], "creem",
+                             pkg["price_cents"], pkg["currency"], ts)
     try:
         out = creem.create_checkout(order["id"], dict(pkg), user)
     except Exception:
         with db() as con:
-            con.execute("UPDATE orders SET status='failed' WHERE id=%s", (order["id"],))
+            mark_failed(con, order["id"])
         return JSONResponse({"ok": False, "error": "checkout_failed"}, 502)
     with db() as con:
-        con.execute("UPDATE orders SET provider_order_id=%s WHERE id=%s",
-                    ("ch:" + out["checkout_id"], order["id"]))
+        set_provider_order_id(con, order["id"], "ch:" + out["checkout_id"])
     return out
 
 

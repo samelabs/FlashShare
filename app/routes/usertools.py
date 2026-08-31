@@ -48,10 +48,9 @@ def _require_auth(request: Request):
 
 def commission_rate() -> int:
     """Platform commission percent (0-100) from settings; default 30."""
+    from repo.orders import setting
     with db() as con:
-        row = con.execute(
-            "SELECT value FROM settings WHERE key = 'commission_rate'"
-        ).fetchone()
+        row = setting(con, "commission_rate")
     try:
         return max(0, min(100, int(row["value"]))) if row else DEFAULT_COMMISSION_RATE
     except (ValueError, TypeError):
@@ -59,15 +58,9 @@ def commission_rate() -> int:
 
 
 def _owner_rows(user_id: int) -> list:
+    from repo.catalog import owner_rows_joined
     with db() as con:
-        rows = con.execute(
-            """SELECT pt.*, u.username AS owner_name, p.cost, p.enabled AS priced
-               FROM platform_tools pt
-               JOIN users u ON u.id = pt.owner_id
-               LEFT JOIN pricing p ON p.tool_id = pt.tool_key
-               WHERE pt.owner_id = %s ORDER BY pt.id DESC""",
-            (user_id,),
-        ).fetchall()
+        rows = owner_rows_joined(con, user_id)
     return [dict(r) for r in rows]
 
 
@@ -100,24 +93,12 @@ def _public_item(row: dict) -> dict:
 def _call_stats(tool_key: str, owner_id: int | None = None) -> dict:
     """Per-tool call stats + provider earnings (accurate join via payout
     ledger rows referencing the call fact)."""
+    from repo.ledger import call_stats_by_tool, earn_sum_joined_calls
     with db() as con:
-        row = con.execute(
-            """SELECT COUNT(*) FILTER (WHERE status = 'ok') AS ok,
-                      COUNT(*) AS total
-               FROM tool_calls WHERE tool_id = %s""",
-            (tool_key,),
-        ).fetchone()
+        row = call_stats_by_tool(con, tool_key)
         earned = 0
         if owner_id is not None:
-            erow = con.execute(
-                """SELECT COALESCE(SUM(l.delta), 0) AS earned
-                   FROM ledger l
-                   JOIN tool_calls tc ON l.ref_id = tc.id::text
-                   WHERE l.user_id = %s AND l.kind = 'provider_earn'
-                     AND tc.tool_id = %s""",
-                (owner_id, tool_key),
-            ).fetchone()
-            earned = int(erow["earned"]) if erow else 0
+            earned = earn_sum_joined_calls(con, owner_id, tool_key)
     return {"ok": row["ok"], "total": row["total"], "earned": earned}
 
 
@@ -281,35 +262,22 @@ async def create_user_tool(request: Request):
     # New tools ALWAYS land private (self-test before exposure)
     fields["visibility"] = "private"
 
+    from repo.catalog import tool_key_exists, count_by_owner, insert_user_tool
     tool_key = f"{user['username']}/{tool_id}"
     with db() as con:
-        clash = con.execute(
-            "SELECT 1 FROM platform_tools WHERE tool_key = %s", (tool_key,)
-        ).fetchone()
-        if clash:
+        if tool_key_exists(con, tool_key):
             return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
-        n = con.execute(
-            "SELECT COUNT(*) AS n FROM platform_tools WHERE owner_id = %s",
-            (user["id"],)).fetchone()["n"]
-        if n >= MAX_TOOLS_PER_USER:
+        if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
             return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
 
         ts = now()
         label = fields["label"]
-        con.execute(
-            # 11 bound columns + 4 literals (tool_type/presets/multi/enabled... trusted default FALSE)
-            """INSERT INTO platform_tools
-               (tool_key, owner_id, tool_id, execution,
-                label_json, accept_json,
-                visibility, endpoint_json, enabled, created_at, updated_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)""",
-            (tool_key, user["id"], tool_id, execution,
-             json.dumps({"en": label, "zh": label}, ensure_ascii=False),
-             json.dumps(fields.get("accept")) if fields.get("accept") else None,
-             fields["visibility"],
-             json.dumps(_endpoint_decl(fields, execution)),
-             ts, ts),
-        )
+        insert_user_tool(
+            con, tool_key, user["id"], tool_id, execution,
+            json.dumps({"en": label, "zh": label}, ensure_ascii=False),
+            json.dumps(fields.get("accept")) if fields.get("accept") else None,
+            fields["visibility"],
+            json.dumps(_endpoint_decl(fields, execution)), ts)
     # pricing row: owner-priced from day one
     from pricing import set_pricing
     set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
@@ -323,18 +291,15 @@ async def tool_call_log(tool_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
+    from repo.catalog import owner_row_by_key
+    from repo.ledger import calls_by_tool_excluding_owner
     tool_key = f"{user['username']}/{tool_id}"
     with db() as con:
-        row = con.execute(
-            "SELECT id FROM platform_tools WHERE tool_key = %s AND owner_id = %s",
-            (tool_key, user["id"])).fetchone()
+        row = owner_row_by_key(con, tool_key, user["id"])
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
-        calls = [dict(r) for r in con.execute(
-            """SELECT status, error, started_at, finished_at, cost_snapshot
-               FROM tool_calls WHERE tool_id = %s AND user_id != %s
-               ORDER BY id DESC LIMIT 20""",
-            (tool_key, user["id"])).fetchall()]
+        calls = [dict(r) for r in calls_by_tool_excluding_owner(
+            con, tool_key, user["id"], limit=20)]
     for cl in calls:
         f, s = cl.pop("finished_at", None), cl.pop("started_at", None)
         cl["ms"] = (f - s) if (f is not None and s is not None) else None
@@ -389,12 +354,10 @@ async def update_user_tool(tool_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
+    from repo.catalog import owner_row_by_key, update_fields
     tool_key = f"{user['username']}/{tool_id}"
     with db() as con:
-        row = con.execute(
-            "SELECT * FROM platform_tools WHERE tool_key = %s AND owner_id = %s",
-            (tool_key, user["id"]),
-        ).fetchone()
+        row = owner_row_by_key(con, tool_key, user["id"])
     if not row:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if not TOOL_ID_RE.match(tool_id or ""):
@@ -447,12 +410,8 @@ async def update_user_tool(tool_id: str, request: Request):
         decl = _endpoint_decl(fields, row["execution"], existing_decl)
         sets["endpoint_json"] = json.dumps(decl)
         sets["updated_at"] = now()
-        assign = ", ".join(f"{k} = %s" for k in sets)
         with db() as con:
-            con.execute(
-                f"UPDATE platform_tools SET {assign} WHERE tool_key = %s",
-                (*sets.values(), tool_key),
-            )
+            update_fields(con, tool_key, sets)
     if "cost" in fields:
         from pricing import set_pricing
         set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
@@ -465,15 +424,13 @@ async def delete_user_tool(tool_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
+    from repo.catalog import owner_row_by_key, delete_row
     tool_key = f"{user['username']}/{tool_id}"
     with db() as con:
-        row = con.execute(
-            "SELECT id FROM platform_tools WHERE tool_key = %s AND owner_id = %s",
-            (tool_key, user["id"]),
-        ).fetchone()
+        row = owner_row_by_key(con, tool_key, user["id"])
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
-        con.execute("DELETE FROM platform_tools WHERE id = %s", (row["id"],))
+        delete_row(con, row["id"])
     from pricing import set_pricing
     set_pricing(tool_key, 0, False, admin_user_id=user["id"])
     return {"ok": True}

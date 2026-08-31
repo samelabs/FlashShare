@@ -90,11 +90,9 @@ def get_user_from_request(request: Request):
             return user
         return None
     try:
+        from repo.sessions import user_by_session_token
         with db() as con:
-            row = con.execute(
-                "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = %s AND s.expires_at > %s",
-                (token_hash(token), now()),
-            ).fetchone()
+            row = user_by_session_token(con, token_hash(token), now())
         if row:
             request.state.auth_via = "session"
         return dict(row) if row else None
@@ -218,8 +216,9 @@ async def startup():
         # from accumulating dead records (456 at audit time).
         from database import db as _db
         from utils import now as _now
+        from repo.uploads import purge_expired
         with _db() as _con:
-            _con.execute("DELETE FROM uploads WHERE expire_at < %s", (_now(),))
+            purge_expired(_con, _now())
         logger.info("expired upload rows purged")
 
     except Exception:

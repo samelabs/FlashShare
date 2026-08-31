@@ -27,6 +27,7 @@ from config import (
     COOKIE_NAME,
 )
 from database import db
+from repo.sessions import insert as insert_session, pop_oauth_state, insert_oauth_state
 from security import token_hash
 from auth import (
     authenticate_local, register_user, public_user,
@@ -78,11 +79,9 @@ def _t(request: Request, key: str, **kw):
 
 def _create_session(user_id: int) -> str:
     token = b64url(secrets.token_bytes(32))
+    ts = now()
     with db() as con:
-        con.execute(
-            "INSERT INTO sessions(token_hash, user_id, expires_at, created_at) VALUES(%s,%s,%s,%s)",
-            (token_hash(token), user_id, now() + SESSION_TTL, now()),
-        )
+        insert_session(con, token_hash(token), user_id, ts + SESSION_TTL, ts)
     return token
 
 
@@ -119,11 +118,9 @@ async def x_login(request: Request):
     verifier = b64url(secrets.token_bytes(48))
     challenge = b64url(hashlib.sha256(verifier.encode()).digest())
     state = b64url(secrets.token_bytes(32))
+    ts = now()
     with db() as con:
-        con.execute(
-            "INSERT INTO oauth_states(state, verifier, expires_at, created_at, bind_user_id) VALUES(%s,%s,%s,%s,%s)",
-            (state, verifier, now() + OAUTH_TTL, now(), bind_user_id),
-        )
+        insert_oauth_state(con, state, verifier, ts + OAUTH_TTL, ts, bind_user_id)
     params = {
         "response_type": "code",
         "client_id": X_CLIENT_ID,
@@ -146,8 +143,7 @@ async def x_callback(request: Request):
         return RedirectResponse("/", 302)
 
     with db() as con:
-        row = con.execute("SELECT * FROM oauth_states WHERE state = %s AND expires_at > %s", (state, now())).fetchone()
-        con.execute("DELETE FROM oauth_states WHERE state = %s", (state,))
+        row = pop_oauth_state(con, state, now())
     if not row:
         from app.main import templates
         from app.routes.pages import _ctx_base

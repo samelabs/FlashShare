@@ -72,36 +72,19 @@ def _finish_metered_call(user, tool, client_ref, cost, started,
         if cost > 0 and owner_id and owner_id != user["id"]:
             rate = commission_rate()
             payout = cost - (cost * rate // 100)
+        from repo.ledger import insert_call_ok, insert_provider_earn_if_absent, total_balance
         with db() as con:
-            row = con.execute(
-                """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
-                   cost_snapshot, upload_id, result_public_id, params_json,
-                   result_json, started_at, finished_at)
-                   VALUES (%s, %s, %s, 'ok', %s, %s, %s, %s, %s, %s, %s)
-                   RETURNING id""",
-                (client_ref, user["id"], tool["id"], cost, rid,
-                 result.get("publicId"), None,
-                 json.dumps(result)[:4000], started, now()),
-            ).fetchone()
+            row = insert_call_ok(
+                con, client_ref, user["id"], tool["id"], cost, rid,
+                result.get("publicId"), json.dumps(result)[:4000],
+                started, now())
             call_id = row["id"]
             if payout > 0 and owner_id is not None:
-                con.execute(
-                    """INSERT INTO ledger (user_id, delta, balance_after, kind,
-                       ref_type, ref_id, idem_key, note, created_at)
-                       SELECT %s, %s,
-                              COALESCE((SELECT SUM(delta) FROM ledger
-                                        WHERE user_id = %s), 0) + %s,
-                              'provider_earn', 'tool_call', %s,
-                              %s, %s, %s
-                       WHERE NOT EXISTS (
-                         SELECT 1 FROM ledger
-                         WHERE user_id = %s AND idem_key = %s
-                       )""",
-                    (owner_id, payout, owner_id, payout, str(call_id),
-                     f"payout:{call_id}",
-                     f"{tool['id']} payout", now(),
-                     owner_id, f"payout:{call_id}"),
-                )
+                # 分账基线 = 全池累计 (现行为; 批2 economy 域重建时与 withdraw 统一)
+                base = total_balance(con, owner_id)
+                insert_provider_earn_if_absent(
+                    con, owner_id, payout, base + payout, call_id,
+                    f"payout:{call_id}", f"{tool['id']} payout", now())
     except Exception:
         logger.exception("metering record failed (call still returned)")
         call_id = None
@@ -120,13 +103,11 @@ def _finish_metered_call(user, tool, client_ref, cost, started,
 
 def _record_failed_call(user, tool, client_ref, cost, started, error) -> None:
     try:
+        from repo.ledger import insert_call_failed
         with db() as con:
-            con.execute(
-                """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
-                   cost_snapshot, error, started_at, finished_at)
-                   VALUES (%s, %s, %s, 'failed', %s, %s, %s, %s)""",
-                (client_ref, user["id"], tool["id"], cost,
-                 str(error)[:500], started, now()))
+            insert_call_failed(con, client_ref, user["id"], tool["id"],
+                               "failed", cost, str(error)[:500],
+                               started, now())
     except Exception:
         logger.exception("failed-call record failed")
 
@@ -138,11 +119,9 @@ def _refund_call(user, client_ref, tool_id, cost, reason) -> None:
         return
     try:
         # Ordinal = rows recorded for this ref INCLUDING the just-failed one
+        from repo.ledger import call_count_by_ref
         with db() as con:
-            n = con.execute(
-                "SELECT COUNT(*) AS n FROM tool_calls WHERE user_id = %s AND client_ref = %s",
-                (user["id"], client_ref),
-            ).fetchone()["n"]
+            n = call_count_by_ref(con, user["id"], client_ref)
         refund(user["id"], cost, ref_type="tool_call",
                ref_id=client_ref,
                idem_key=f"refund:call:{user['id']}:{client_ref}:{int(n) - 1}",
@@ -171,16 +150,13 @@ def _save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
                          url_hotlink):
     """Insert a DB record for an upload and return the response dict.
     url_download is generated from public_id (not passed in)."""
+    from repo.uploads import insert_record
     with db() as con:
         public_id = generate_public_id(con)
         dl_url = public_file_url(public_id)
-        con.execute(
-            """INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
-               expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
-               VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (user_id, ip, public_id, gokapi_id, filename, content_type, size,
-             expiry_days, allowed_downloads, expire_at, dl_url, url_hotlink, now()),
-        )
+        insert_record(con, user_id, ip, public_id, gokapi_id, filename,
+                      content_type, size, expiry_days, allowed_downloads,
+                      expire_at, dl_url, url_hotlink, now())
     return {
         "type": "share_link",
         "name": filename,
@@ -300,20 +276,15 @@ async def execute_tool(request: Request):
     idem_key = f"call:{user['id']}:{client_ref}"  # attempt appended post-check
 
     # Replay check (idempotent consumers only)
+    from repo.ledger import call_by_client_ref, call_count_by_ref
     with db() as con:
-        prior = con.execute(
-            "SELECT * FROM tool_calls WHERE user_id = %s AND client_ref = %s",
-            (user["id"], client_ref),
-        ).fetchone()
+        prior = call_by_client_ref(con, user["id"], client_ref)
         # Attempt ordinal: crash-safety + recharge-after-refund. If the
         # process died between charge and tool_calls insert, the retry
         # lands on the same attempt → consume idem replays (no double
         # charge). A retry AFTER a recorded failure lands on attempt+1
         # → fresh charge (the refund must not become a free pass).
-        attempt = con.execute(
-            "SELECT COUNT(*) AS n FROM tool_calls WHERE user_id = %s AND client_ref = %s",
-            (user["id"], client_ref),
-        ).fetchone()["n"]
+        attempt = call_count_by_ref(con, user["id"], client_ref)
 
     if prior:
         # Exact replay: return recorded result, no charge, no re-run
@@ -334,13 +305,11 @@ async def execute_tool(request: Request):
                              ref_type="tool_call", idem_key=idem_key,
                              note=f"{tool_id}")
         except InsufficientCredits as exc:
+            from repo.ledger import insert_call_failed
             with db() as con:
-                con.execute(
-                    """INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
-                       cost_snapshot, error, started_at, finished_at)
-                       VALUES (%s, %s, %s, 'insufficient', %s, %s, %s, %s)""",
-                    (client_ref, user["id"], tool_id, cost,
-                     f"balance:{exc.balance}", started, now()))
+                insert_call_failed(con, client_ref, user["id"], tool_id,
+                                   "insufficient", cost,
+                                   f"balance:{exc.balance}", started, now())
             return JSONResponse({"ok": False, "error": "err_insufficient_credits",
                                  "balance": exc.balance, "cost": exc.cost}, 402)
 
@@ -834,8 +803,9 @@ async def rename_upload_route(public_id: str, request: Request):
     if not clean_stem or len(clean_stem) > 200:
         return JSONResponse({"ok": False, "error": "invalid_name"}, 400)
     final_name = clean_stem + original_ext
+    from repo.uploads import rename as rename_upload_row
     with db() as con:
-        con.execute("UPDATE uploads SET file_name = %s WHERE id = %s", (final_name, upload["id"]))
+        rename_upload_row(con, upload["id"], final_name)
     return {"ok": True, "name": final_name}
 
 

@@ -77,26 +77,11 @@ async def samelabs_overview(request: Request):
     if resp:
         return resp
     from app.main import templates
+    from repo.reports import overview_stats, recent_calls, top_tools
     with db() as con:
-        stats = {
-            "users": con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"],
-            "uploads": con.execute("SELECT COUNT(*) n FROM uploads").fetchone()["n"],
-            "calls_ok": con.execute(
-                "SELECT COUNT(*) n FROM tool_calls WHERE status='ok'").fetchone()["n"],
-            "calls_failed": con.execute(
-                "SELECT COUNT(*) n FROM tool_calls WHERE status<>'ok'").fetchone()["n"],
-            "credits_granted": con.execute(
-                "SELECT COALESCE(SUM(delta),0) n FROM ledger WHERE delta>0").fetchone()["n"],
-            "credits_consumed": con.execute(
-                "SELECT COALESCE(-SUM(delta),0) n FROM ledger WHERE delta<0").fetchone()["n"],
-        }
-        recent = con.execute(
-            """SELECT tc.*, u.username FROM tool_calls tc
-               LEFT JOIN users u ON u.id = tc.user_id
-               ORDER BY tc.id DESC LIMIT 15""").fetchall()
-        top_tools = con.execute(
-            """SELECT tool_id, COUNT(*) n FROM tool_calls
-               GROUP BY tool_id ORDER BY n DESC LIMIT 10""").fetchall()
+        stats = overview_stats(con)
+        recent = recent_calls(con, 15)
+        top_tools = top_tools(con, 10)
     ctx = _ctx(request, user, stats=stats,
                recent=[dict(r) for r in recent],
                top_tools=[dict(r) for r in top_tools],
@@ -110,25 +95,9 @@ async def samelabs_users(request: Request, q: str = ""):
     if resp:
         return resp
     from app.main import templates
+    from repo.reports import users_overview
     with db() as con:
-        if q:
-            rows = con.execute(
-                """SELECT u.id, u.username, u.display_name, u.status, u.created_at,
-                          u.last_login_at, u.avatar_url,
-                          COALESCE((SELECT SUM(delta) FROM ledger l WHERE l.user_id=u.id), 0) balance,
-                          (SELECT COUNT(*) FROM tool_calls tc WHERE tc.user_id=u.id
-                             AND tc.status='ok') calls_ok
-                   FROM users u WHERE u.username ILIKE %s OR u.display_name ILIKE %s
-                   ORDER BY u.id DESC LIMIT 100""",
-                (f"%{q}%", f"%{q}%")).fetchall()
-        else:
-            rows = con.execute(
-                """SELECT u.id, u.username, u.display_name, u.status, u.created_at,
-                          u.last_login_at, u.avatar_url,
-                          COALESCE((SELECT SUM(delta) FROM ledger l WHERE l.user_id=u.id), 0) balance,
-                          (SELECT COUNT(*) FROM tool_calls tc WHERE tc.user_id=u.id
-                             AND tc.status='ok') calls_ok
-                   FROM users u ORDER BY u.id DESC LIMIT 100""").fetchall()
+        rows = users_overview(con, q or None)
     ctx = _ctx(request, user, users=[dict(r) for r in rows],
                q=q, fmt_num=_fmt_num, page="users")
     return templates.TemplateResponse(request, "samelabs/users.html", ctx)
@@ -183,8 +152,9 @@ async def samelabs_plans(request: Request):
     if resp:
         return resp
     from app.main import templates
+    from repo.orders import all_plans
     with db() as con:
-        rows = con.execute("SELECT * FROM plans ORDER BY price_cents").fetchall()
+        rows = all_plans(con)
     ctx = _ctx(request, user, plans=[dict(r) for r in rows], fmt_num=_fmt_num, page="plans")
     return templates.TemplateResponse(request, "samelabs/plans.html", ctx)
 
@@ -205,13 +175,11 @@ async def samelabs_create_plan(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     import psycopg2
+    from repo.orders import insert_plan
     try:
         with db() as con:
-            row = con.execute(
-                """INSERT INTO plans (code, name, monthly_credits, price_cents,
-                                     active, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, TRUE, %s, %s) RETURNING *""",
-                (code, name, monthly_credits, monthly_price, now(), now())).fetchone()
+            row = insert_plan(con, code, name, monthly_credits,
+                              monthly_price, now())
     except psycopg2.IntegrityError:
         return JSONResponse({"ok": False, "error": "code_taken"}, 409)
     return {"ok": True, "plan": dict(row)}
@@ -223,8 +191,9 @@ async def samelabs_packages(request: Request):
     if resp:
         return resp
     from app.main import templates
+    from repo.orders import all_packages
     with db() as con:
-        rows = con.execute("SELECT * FROM packages ORDER BY credits").fetchall()
+        rows = all_packages(con)
     ctx = _ctx(request, user, packages=[dict(r) for r in rows], fmt_num=_fmt_num, page="packages")
     return templates.TemplateResponse(request, "samelabs/packages.html", ctx)
 
@@ -245,13 +214,10 @@ async def samelabs_create_package(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     import psycopg2
+    from repo.orders import insert_package
     try:
         with db() as con:
-            row = con.execute(
-                """INSERT INTO packages (code, name, credits, price_cents,
-                                        active, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, TRUE, %s, %s) RETURNING *""",
-                (code, name, credits, price, now(), now())).fetchone()
+            row = insert_package(con, code, name, credits, price, now())
     except psycopg2.IntegrityError:
         return JSONResponse({"ok": False, "error": "code_taken"}, 409)
     return {"ok": True, "package": dict(row)}
@@ -263,15 +229,11 @@ async def samelabs_ledger(request: Request, page: int = 1):
     if resp:
         return resp
     from app.main import templates
+    from repo.reports import ledger_page
     page = max(1, min(page, 10000))
     size = 50
     with db() as con:
-        total = con.execute("SELECT COUNT(*) n FROM ledger").fetchone()["n"]
-        rows = con.execute(
-            """SELECT l.*, u.username FROM ledger l
-               LEFT JOIN users u ON u.id = l.user_id
-               ORDER BY l.id DESC LIMIT %s OFFSET %s""",
-            (size, (page - 1) * size)).fetchall()
+        rows, total = ledger_page(con, size, (page - 1) * size)
     ctx = _ctx(request, user, entries=[dict(r) for r in rows],
                total=total, pg=page, pages=(total + size - 1) // size,
                fmt_num=_fmt_num, page="ledger")
@@ -415,12 +377,9 @@ async def samelabs_remote(request: Request):
     from app.main import templates
     from catalog import list_catalog
     # remote rows only, all visibilities (operator view)
-    from database import db as _db
-    with _db() as con:
-        rows = con.execute(
-            """SELECT pt.*, u.username AS owner_name FROM platform_tools pt
-               LEFT JOIN users u ON u.id = pt.owner_id
-               WHERE pt.execution = 'http' ORDER BY pt.id""").fetchall()
+    from repo.catalog import all_remote_joined
+    with db() as con:
+        rows = all_remote_joined(con)
     items = []
     for r in rows:
         decl = {}
@@ -499,29 +458,19 @@ async def samelabs_remote_create(request: Request):
     if accept_raw:
         accept = sorted({x.strip() for x in accept_raw.split(",") if x.strip()})
 
-    from database import db as _db
+    from repo.catalog import tool_key_exists, insert_remote_row
     from utils import now as _now
     ts = _now()
     try:
-        with _db() as con:
+        with db() as con:
             # typed duplicate check (unique index would 500 otherwise)
-            clash = con.execute(
-                "SELECT 1 FROM platform_tools WHERE tool_key = %s", (tool_id,)
-            ).fetchone()
-            if clash:
+            if tool_key_exists(con, tool_id):
                 return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
-            con.execute(
-                """INSERT INTO platform_tools
-                   (tool_key, owner_id, tool_id, execution, tool_type,
-                    label_json, accept_json, presets_json, multi,
-                    visibility, endpoint_json, enabled, created_at, updated_at)
-                   VALUES (%s, NULL, %s, %s, 'produce', %s, %s, NULL, FALSE,
-                           'public', %s, TRUE, %s, %s)""",
-                (tool_id, tool_id, execution,
-                 _json.dumps({"en": label, "zh": label}, ensure_ascii=False),
-                 _json.dumps(accept) if accept else None,
-                 _json.dumps(endpoint), ts, ts),
-            )
+            insert_remote_row(
+                con, tool_id, tool_id, execution,
+                _json.dumps({"en": label, "zh": label}, ensure_ascii=False),
+                _json.dumps(accept) if accept else None,
+                _json.dumps(endpoint), ts)
     except Exception:
         return JSONResponse({"ok": False, "error": "duplicate_or_db"}, 409)
     # seed pricing row so the metering gate can charge it
@@ -539,14 +488,12 @@ async def samelabs_remote_delete(tool_key: str, request: Request):
     user, resp = _gate(request)
     if resp:
         return resp
-    from database import db as _db
-    with _db() as con:
-        row = con.execute(
-            "SELECT id FROM platform_tools WHERE tool_key = %s AND owner_id IS NULL",
-            (tool_key,)).fetchone()
+    from repo.catalog import id_of_platform_row, delete_row
+    with db() as con:
+        row = id_of_platform_row(con, tool_key, owner_id_is_null=True)
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
-        con.execute("DELETE FROM platform_tools WHERE id = %s", (row["id"],))
+        delete_row(con, row["id"])
     from pricing import set_pricing
     set_pricing(tool_key, 0, False, admin_user_id=user["id"])
     return {"ok": True}
