@@ -78,7 +78,7 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int) -> dict
         orders_repo.mark_paid(con, row["id"], ts)
         pkg = _orders_repo.package_credits(con, row["item_id"])
         credits = pkg["credits"] if pkg else 0
-    from billing import grant
+    from economy.billing import grant
     if credits > 0:
         grant(row["user_id"], credits, "grant_package",
               ref_type="order", ref_id=str(row["id"]),

@@ -205,7 +205,7 @@ print("7. SSRF guard: private-ip/plain-http blocked for user rows, trusted exemp
 # ── 8. catalog faces: home grid INCLUDES remote (4pt spec); v1/tools includes ──
 st, d = c.get('/')
 assert b'mock_remote' in d
-from apitokens import create_token
+from identity.apitokens import create_token
 tok = create_token(psql("SELECT id FROM users WHERE username=%s", u)[0][0], "rmt-e2e")
 conn = http.client.HTTPConnection(*HOST, timeout=30)
 conn.request('GET', '/api/v1/tools', headers={'Authorization': 'Bearer ' + tok['token']})

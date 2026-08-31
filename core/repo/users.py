@@ -1,7 +1,7 @@
 """repo: users — 用户表数据访问 (批1b).
 
 规则: 函数=(con,...)->rows, 参数化, 无事务/无业务判断。
-调用方: core/identity 域服务 (现 auth.py/apitokens.py/earn.py 过渡期)。
+调用方: core/identity 域服务 (现 identity.auth.py/identity.apitokens.py/earn.py 过渡期)。
 """
 
 from typing import Any, Optional

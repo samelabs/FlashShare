@@ -109,8 +109,8 @@ async def samelabs_tools(request: Request):
     if resp:
         return resp
     from app.main import templates
-    from pricing import list_pricing
-    from catalog import list_catalog
+    from governance.pricing import list_pricing
+    from governance.catalog import list_catalog
     # Registry truth is the data-state catalog (platform_tools + pricing
     # overlay). 'registered' = present in the live catalog; retired rows
     # show as unregistered so history stays interpretable.
@@ -141,7 +141,7 @@ async def samelabs_set_pricing(tool_id: str, request: Request):
             raise ValueError
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from pricing import set_pricing
+    from governance.pricing import set_pricing
     row = set_pricing(tool_id, cost, enabled, admin_user_id=user["id"])
     return {"ok": True, "pricing": {k: row[k] for k in ("tool_id", "cost", "enabled")}}
 
@@ -251,7 +251,7 @@ async def samelabs_adjust_credits(user_id: int, request: Request):
         note = str(raw.get("note", ""))[:200]
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from billing import grant, consume, InsufficientCredits
+    from economy.billing import grant, consume, InsufficientCredits
     # Each manual adjustment is a distinct event — idem must never collide
     # (two ops in the same second would share a now()-second key).
     import secrets as _secrets
@@ -282,7 +282,7 @@ async def samelabs_activities(request: Request):
     if resp:
         return resp
     from app.main import templates
-    from activities import list_activities, activity_label
+    from economy.activities import list_activities, activity_label
     acts = []
     for a in list_activities():
         acts.append({
@@ -315,7 +315,7 @@ async def samelabs_set_activity(code: str, request: Request):
             ends_at = int(ends_at)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from activities import set_activity
+    from economy.activities import set_activity
     try:
         row = set_activity(code, amount, active, starts_at, ends_at,
                            admin_user_id=user["id"])
@@ -337,7 +337,7 @@ async def samelabs_withdrawals(request: Request):
     if resp:
         return resp
     from app.main import templates
-    from earnings import list_all_pending
+    from economy.earnings import list_all_pending
     rows = list_all_pending()
     for r in rows:
         r["created_fmt"] = _fmt_ts(r["created_at"])
@@ -357,7 +357,7 @@ async def samelabs_process_withdrawal(wid: int, request: Request):
         raw = {}
     approve = bool(raw.get("approve"))
     txn_ref = str(raw.get("txn_ref") or "").strip()[:120] or None
-    from earnings import process_withdrawal
+    from economy.earnings import process_withdrawal
     try:
         row = process_withdrawal(wid, approve, admin_user_id=user["id"],
                                  txn_ref=txn_ref)
@@ -375,7 +375,7 @@ async def samelabs_remote(request: Request):
     if resp:
         return resp
     from app.main import templates
-    from catalog import list_catalog
+    from governance.catalog import list_catalog
     # remote rows only, all visibilities (operator view)
     from repo.catalog import all_remote_joined
     with db() as con:
@@ -474,10 +474,10 @@ async def samelabs_remote_create(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "duplicate_or_db"}, 409)
     # seed pricing row so the metering gate can charge it
-    from pricing import seed_pricing
+    from governance.pricing import seed_pricing
     seed_pricing([tool_id])
     if cost > 0:
-        from pricing import set_pricing
+        from governance.pricing import set_pricing
         set_pricing(tool_id, cost, True, admin_user_id=user["id"])
     return {"ok": True, "tool_key": tool_id}
 
@@ -494,6 +494,6 @@ async def samelabs_remote_delete(tool_key: str, request: Request):
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         delete_row(con, row["id"])
-    from pricing import set_pricing
+    from governance.pricing import set_pricing
     set_pricing(tool_key, 0, False, admin_user_id=user["id"])
     return {"ok": True}

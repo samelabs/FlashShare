@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from config import MAX_UPLOAD_BYTES
-from catalog import list_catalog, resolve as resolve_tool, mcp_name
+from governance.catalog import list_catalog, resolve as resolve_tool, mcp_name
 from utils import sanitize_filename
 
 router = APIRouter()
@@ -111,7 +111,7 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     if method == "initialize":
         requested = (msg.get("params") or {}).get("protocolVersion", LATEST)
         version = requested if requested in SUPPORTED_VERSIONS else LATEST
-        from catalog import catalog_version
+        from governance.catalog import catalog_version
         return _rpc(mid, {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": True}},
@@ -228,7 +228,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
     if tool_id == "catalog_search":
-        from catalog import search_catalog
+        from governance.catalog import search_catalog
         q = str(args.get("q") or "").strip()[:64]
         hits = search_catalog(q, user["id"], limit=20) if q else []
         return _rpc(mid, {

@@ -167,7 +167,7 @@ def _endpoint_decl(fields: dict, execution: str, existing: dict | None = None) -
 async def search_tools(request: Request, q: str = ""):
     """Home tool search — one list, self-operated first, community next.
     Anonymous: public rows only. Signed-in: own private/unlisted included."""
-    from catalog import search_catalog
+    from governance.catalog import search_catalog
     user = request.state.user
     viewer = user["id"] if user else None
     return {"ok": True, "tools": search_catalog(q, viewer)}  # noqa: E501 (search_catalog caps at 30)
@@ -236,7 +236,7 @@ async def create_user_tool(request: Request):
             fields["visibility"],
             json.dumps(_endpoint_decl(fields, execution)), ts)
     # pricing row: owner-priced from day one
-    from pricing import set_pricing
+    from governance.pricing import set_pricing
     set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
     return {"ok": True, "tool_key": tool_key}
 
@@ -366,7 +366,7 @@ async def update_user_tool(tool_id: str, request: Request):
         with db() as con:
             update_fields(con, tool_key, sets)
     if "cost" in fields:
-        from pricing import set_pricing
+        from governance.pricing import set_pricing
         set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
     return {"ok": True}
 
@@ -384,6 +384,6 @@ async def delete_user_tool(tool_id: str, request: Request):
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         delete_row(con, row["id"])
-    from pricing import set_pricing
+    from governance.pricing import set_pricing
     set_pricing(tool_key, 0, False, admin_user_id=user["id"])
     return {"ok": True}

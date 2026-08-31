@@ -97,7 +97,7 @@ def list_all_tools() -> list:
     catalog (cost included, disabled tools hidden).
     Strips handler/match and preset defaults (orchestrator's job).
     """
-    from pricing import list_pricing
+    from governance.pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}
 
     result = []

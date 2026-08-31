@@ -29,7 +29,7 @@ from config import (
 from database import db
 from repo.sessions import insert as insert_session, pop_oauth_state, insert_oauth_state
 from security import token_hash
-from auth import (
+from identity.auth import (
     authenticate_local, register_user, public_user,
     exchange_x_token, fetch_x_user, upsert_x_user,
     update_profile, change_password, unbind_x,
@@ -37,7 +37,7 @@ from auth import (
     has_password, username_taken,
 )
 from i18n import server_text
-from activities import apply_activity
+from economy.activities import apply_activity
 from utils import now, b64url
 
 router = APIRouter()

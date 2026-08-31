@@ -2,7 +2,7 @@ import os, sys, time, json, http.client, hmac, hashlib, secrets as _sec
 sys.path.insert(0, "/opt/flashshare/core")
 import psycopg2
 from config import SESSION_SECRET, COOKIE_NAME
-from billing import spendable_balance, consume, InsufficientCredits
+from economy.billing import spendable_balance, consume, InsufficientCredits
 from database import db
 
 PG = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
@@ -39,7 +39,7 @@ c3b = rows[0][0] == 200
 print(("PASS" if c3 and c3b else "FAIL"), f"3. consume 40 OK → spendable=10, earn=200 intact")
 
 # 4. earnings summary unaffected (200 available to withdraw)
-from earnings import earnings_summary
+from economy.earnings import earnings_summary
 s = earnings_summary(uid)
 c4 = s["earned"] == 200 and s["available"] == 200
 print(("PASS" if c4 else "FAIL"), f"4. withdrawable=200 independent ({s})")

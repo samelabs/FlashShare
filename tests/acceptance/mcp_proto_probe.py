@@ -1,7 +1,7 @@
 import http.client, time, sys, os, json
 sys.path.insert(0, "/opt/flashshare/core")
 import psycopg2, secrets as _sec
-from apitokens import create_token
+from identity.apitokens import create_token
 
 PG = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
 con = psycopg2.connect(PG); cur = con.cursor()
@@ -56,7 +56,7 @@ c4 = "error" in d and d["error"]["code"] == -32602
 print(("PASS" if c4 else "FAIL"), "4. invalid cursor → -32602")
 
 # 5. catalog_version stability + sensitivity
-from catalog import catalog_version
+from governance.catalog import catalog_version
 v1 = catalog_version()
 cur = psycopg2.connect(PG).cursor()
 cur2 = psycopg2.connect(PG)
@@ -70,6 +70,6 @@ cu.execute("UPDATE platform_tools SET updated_at = updated_at - 1 WHERE tool_key
 cur2.commit()
 
 ok = all([c1, c1b, c2, c3, c3b, c4, c5])
-from apitokens import revoke_token
+from identity.apitokens import revoke_token
 revoke_token(uid, t["id"])
 print("ALL PASS" if ok else "HAS FAILURES")

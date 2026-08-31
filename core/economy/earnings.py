@@ -108,7 +108,7 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
     """Operator verb. Approve = ledger consume (kind='withdraw',
     idem withdrawal:{id}) + status flip, ONE transaction. Reject = flip
     only. Re-processing a finished request is a typed no-op error."""
-    from billing import consume
+    from economy.billing import consume
     ts = now()
     with db() as con:
         row = economy_repo.withdrawal_for_update(con, withdrawal_id)

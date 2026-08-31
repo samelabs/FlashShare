@@ -122,7 +122,7 @@ def apply_activity(code: str, user_id: int) -> dict | None:
     if not act or not act["active"] or not _in_window(act):
         return None
     idem = _idem_key(act, user_id)
-    from billing import grant
+    from economy.billing import grant
     try:
         return grant(user_id, int(act["amount"]), act["kind"],
                      idem_key=idem, note=f"activity:{act['code']}")

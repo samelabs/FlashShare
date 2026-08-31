@@ -14,7 +14,7 @@ _CORE = _BASE / "core"
 sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
-from uploads import get_upload_by_public_id
+from sharing.uploads import get_upload_by_public_id
 from gokapi import open_gokapi_download, get_gokapi_file
 from utils import (
     public_file_url, format_bytes, format_ts,

@@ -22,7 +22,7 @@ uid = psql("SELECT id FROM users WHERE username=%s", uname)[0][0]
 psql("INSERT INTO ledger(user_id, delta, balance_after, kind, idem_key, created_at) VALUES(%s, 50000, 50000, 'provider_earn', %s, %s)",
      uid, f"earn:{uid}:t", ts)
 
-from earnings import earnings_summary, request_withdrawal, process_withdrawal, MIN_WITHDRAWAL
+from economy.earnings import earnings_summary, request_withdrawal, process_withdrawal, MIN_WITHDRAWAL
 s = earnings_summary(uid)
 assert s == {"earned": 50000, "withdrawn": 0, "pending": 0, "available": 50000}, s
 print("1. summary earned=50000 available=50000 OK")

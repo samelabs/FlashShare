@@ -378,7 +378,7 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS platform_tools_owner_idx
       ON platform_tools(owner_id)
     """,
-    # ── platform: activities (credit campaigns; seeded from activities.py) ──
+    # ── platform: activities (credit campaigns; seeded from economy.activities.py) ──
     """
     CREATE TABLE IF NOT EXISTS activities (
       id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

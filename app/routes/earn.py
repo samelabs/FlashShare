@@ -2,7 +2,7 @@
 
 The money module owns: summary, per-tool revenue breakdown, withdrawal
 requests + history. The tools module owns tool CRUD. They share the
-ledger (core/earnings.py) as the single source of truth.
+ledger (core/economy/earnings.py) as the single source of truth.
 """
 
 import sys
@@ -13,8 +13,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from config import COOKIE_NAME
-from security import token_hash
 from database import db
+from economy import earnings
+from economy.earnings import to_usd
 from repo.sessions import user_by_session_token
 from security import token_hash
 from utils import now
@@ -31,7 +32,6 @@ async def my_earnings(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    import earnings
     # growth contract: rev page paginates (50/page); withdrawals 20/page
     try:
         rev_pg = max(1, int(request.query_params.get("rev_page", "1") or 1))
@@ -43,7 +43,7 @@ async def my_earnings(request: Request):
         wd_pg = 1
     rev_rows, rev_total = earnings.revenue_lines(user["id"], limit=50, offset=(rev_pg - 1) * 50)
     wd_rows = earnings.list_withdrawals(user["id"], limit=20, offset=(wd_pg - 1) * 20)
-    from earnings import to_usd
+    from economy.earnings import to_usd
     s = earnings.earnings_summary(user["id"])
     for k in ("earned", "available", "pending", "withdrawn"):
         s[k + "_usd"] = to_usd(s[k])
@@ -78,7 +78,6 @@ async def request_withdraw(request: Request):
         note = str(raw.get("note", ""))[:200]
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    import earnings
     try:
         w = earnings.request_withdrawal(user["id"], amount, note)
     except ValueError as e:

@@ -46,8 +46,8 @@ A2_WHITELIST = {
     "app/routes/pages.py", "app/routes/earn.py", "app/routes/api.py",
     "app/routes/usertools.py", "app/routes/topup.py", "app/web_auth.py",
 }
-# A3: creem.py:81 = 审计🔴2(块外用连接), 批2 economy 重建时修复后删除
-A3_WHITELIST = {"core/creem.py"}
+# A3: economy.creem.py:81 = 审计🔴2(块外用连接), 批2 economy 重建时修复后删除
+A3_WHITELIST = {"core/economy.creem.py"}
 # A4: 域目录建立前的平铺期空表
 A4_WHITELIST = set()
 # A5: 批2f(execution 服务收编)与批3(_ctx_base 下沉)清空

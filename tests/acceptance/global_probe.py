@@ -2,7 +2,7 @@ import os, sys, time, json, http.client, hmac, hashlib, secrets as _sec
 sys.path.insert(0, "/opt/flashshare/core")
 import psycopg2
 from config import SESSION_SECRET, COOKIE_NAME
-from billing import spendable_balance
+from economy.billing import spendable_balance
 
 PG = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
 def psql(q, a=()):
@@ -39,7 +39,7 @@ psql("INSERT INTO ledger (user_id, delta, balance_after, kind, ref_type, ref_id,
 st, ch = get("/account/credits")
 c3 = "999" not in ch.split("流水")[1][:2000] if "流水" in ch else True
 # direct projection check:
-from billing import history_paged
+from economy.billing import history_paged
 rows, total = history_paged(uid)
 kinds = {r["kind"] for r in rows}
 c3 = kinds == {"grant_signup"} and total == 1

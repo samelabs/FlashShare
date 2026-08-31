@@ -70,7 +70,7 @@ def get_user_from_request(request: Request):
     same downstream authorization. Cookie keeps browser flows unchanged.
     """
     from database import db
-    from apitokens import authenticate_token, TOKEN_PREFIX
+    from identity.apitokens import authenticate_token, TOKEN_PREFIX
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         # Bearer channel for programmatic clients
@@ -194,21 +194,21 @@ async def startup():
     try:
         from tools import load_all, _registry
         load_all()
-        from pricing import seed_pricing
+        from governance.pricing import seed_pricing
         seeded = seed_pricing([t["id"] for t in _registry])
         logger.info("pricing seeded: +%d rows", seeded["added"])
         # Data-state registry: compile register() declarations into
         # platform_tools rows (runtime catalog source). Retired-in-code
         # tools keep rows with enabled=false (history stays interpretable).
-        from catalog import seed_from_registry
+        from governance.catalog import seed_from_registry
         sync = seed_from_registry()
         logger.info("platform_tools seeded: +%d added, %d updated",
                     sync["added"], sync["updated"])
         # Activities (credit campaigns) — schema + idempotent seed.
-        from activities import ensure_schema_and_seed
+        from economy.activities import ensure_schema_and_seed
         act = ensure_schema_and_seed()
         logger.info("activities seeded: +%d rows", act["seeded"])
-        from earnings import ensure_schema
+        from economy.earnings import ensure_schema
         ensure_schema()
         logger.info("withdrawals schema ready")
         # 8.4 (audit): purge expired upload rows at boot — detail pages

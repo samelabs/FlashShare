@@ -12,7 +12,7 @@ api.py / apiv1 / mcp / selftest 四个消费面共用的 execute 请求处理:
 import json
 
 from config import PUBLIC_ID_RE
-from catalog import resolve as resolve_tool, get_default_preset
+from governance.catalog import resolve as resolve_tool, get_default_preset
 
 from . import ExecutionError
 from .gate import run as gate_run

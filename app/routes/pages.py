@@ -19,7 +19,7 @@ from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
-from catalog import list_catalog, seed_from_registry
+from governance.catalog import list_catalog, seed_from_registry
 
 MAX_UPLOAD_MB = MAX_UPLOAD_BYTES // (1024 * 1024)
 from database import db
@@ -32,7 +32,7 @@ def _fmt_ts(ts) -> str:
     return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
 
 load_all()  # auto-discover every tools_*.py
-from auth import public_user
+from identity.auth import public_user
 from utils import (
     brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,
     bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
@@ -133,7 +133,7 @@ def _public_stats(tool_key: str) -> dict:
 async def tools_market(request: Request):
     """Open-platform market: official row + community cards. Public only."""
     from app.main import templates
-    from catalog import list_catalog
+    from governance.catalog import list_catalog
     from database import db
     ctx = _ctx_base(request)
     from icons import icon_svg
@@ -148,7 +148,7 @@ async def tools_market(request: Request):
 
 def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
     """Shared builder for tool page + MCP page. Non-public → None (404, no probe)."""
-    from catalog import resolve
+    from governance.catalog import resolve
     user = request.state.user
     tool_key = f"{owner}/{tool_id}"
     tool, err = resolve(tool_key, user["id"] if user else None)
@@ -276,7 +276,7 @@ async def register_page(request: Request, error: str = ""):
 
 def _account_ctx(request: Request, page: str, **extra) -> dict:
     from app.main import templates  # noqa: F401
-    from billing import spendable_balance as get_balance
+    from economy.billing import spendable_balance as get_balance
     ctx = _ctx_base(request)
     ctx.update({
         "shell_class": "",
@@ -293,7 +293,7 @@ async def account_profile(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from auth import public_user
+    from identity.auth import public_user
     u = public_user(user)
     ctx = _account_ctx(request, "profile",
                        u=u, user_has_password=u.get("hasPassword", False),
@@ -307,7 +307,7 @@ async def account_security(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from auth import public_user
+    from identity.auth import public_user
     u = public_user(user)
     ctx = _account_ctx(request, "security",
                        u=u, user_has_password=u.get("hasPassword", False),
@@ -321,8 +321,8 @@ async def account_credits(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from billing import spendable_balance as get_balance, history_paged
-    from activities import get_activity, granted_today
+    from economy.billing import spendable_balance as get_balance, history_paged
+    from economy.activities import get_activity, granted_today
     daily = get_activity("daily_login")
     daily_amount = int(daily["amount"]) if daily and daily["active"] else 0
     pg = 1
@@ -336,7 +336,7 @@ async def account_credits(request: Request):
     from repo.orders import active_packages
     with db() as con:
         pkgs = [dict(r) for r in active_packages(con)]
-    import creem as _creem
+    import economy.creem as _creem
     topup_ready = _creem.creem_enabled()
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
@@ -360,7 +360,7 @@ async def account_credits_claim(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from activities import apply_activity
+    from economy.activities import apply_activity
     try:
         apply_activity("daily_login", user["id"])
     except Exception:
@@ -412,7 +412,7 @@ async def account_tokens(request: Request):
 @router.post("/account/profile")
 async def account_profile_save(request: Request):
     from app.main import templates
-    from auth import update_profile, public_user
+    from identity.auth import update_profile, public_user
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
@@ -438,7 +438,7 @@ async def account_profile_save(request: Request):
 @router.post("/account/password")
 async def account_password_save(request: Request):
     from app.main import templates
-    from auth import public_user, has_password, change_password, set_password
+    from identity.auth import public_user, has_password, change_password, set_password
     from i18n import server_text
     user = request.state.user
     if not user:

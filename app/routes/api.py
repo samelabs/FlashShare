@@ -26,14 +26,14 @@ sys.path.insert(0, str(_CORE))
 
 from config import MAX_UPLOAD_BYTES, MAX_BATCH_BYTES, PUBLIC_ID_RE, BASE_URL
 from database import db
-from uploads import check_quota, get_upload_by_public_id, list_uploads, delete_upload
+from sharing.uploads import check_quota, get_upload_by_public_id, list_uploads, delete_upload
 from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
 from security import sniff_allowed, sign_source_token, verify_source_token
 from storage import read as storage_read, write as storage_write
 from tools import ToolError
-from catalog import resolve as resolve_tool, get_default_preset
+from governance.catalog import resolve as resolve_tool, get_default_preset
 from execution.source import resolve_upload
-from auth import public_user
+from identity.auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
 from app.models import RenameRequest
 from app.worker import process_tool
@@ -49,7 +49,7 @@ def _get_pool():
     return _process_pool
 
 
-# ── Metering helpers (single gate at execute_tool; see pricing.py/billing.py) ──
+# ── Metering helpers (single gate at execute_tool; see pricing/billing) ──
 
 
 def _client_ip(request: Request) -> str:
@@ -369,7 +369,7 @@ async def list_tokens_route(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    from apitokens import list_tokens
+    from identity.apitokens import list_tokens
     return {"ok": True, "tokens": list_tokens(user["id"])}
 
 
@@ -384,7 +384,7 @@ async def create_token_route(request: Request):
         name = str(raw.get("name") or "").strip()[:64]
     except Exception:
         name = ""
-    from apitokens import create_token
+    from identity.apitokens import create_token
     tok = create_token(user["id"], name or "token")
     return {"ok": True, "token": tok}
 
@@ -395,7 +395,7 @@ async def revoke_token_route(token_id: int, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    from apitokens import revoke_token
+    from identity.apitokens import revoke_token
     if not revoke_token(user["id"], token_id):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True}

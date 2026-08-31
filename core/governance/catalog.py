@@ -121,7 +121,7 @@ def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> lis
 
 def _price_of(tool_key: str) -> dict | None:
     """pricing overlay for one row: None = disabled/hidden."""
-    from pricing import get_pricing
+    from governance.pricing import get_pricing
     p = get_pricing(tool_key)
     if not p or not p["enabled"]:
         return None
@@ -148,7 +148,7 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     grid is local-only until the remote-tool UX ships; /api/v1 and MCP
     keep them (programmatic surfaces are the remote-first consumers).
     """
-    from pricing import list_pricing
+    from governance.pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}
 
     with db() as con:

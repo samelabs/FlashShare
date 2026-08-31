@@ -26,13 +26,13 @@ from fastapi.responses import JSONResponse, Response
 from config import MAX_UPLOAD_BYTES
 from database import db
 from security import sniff_allowed
-from uploads import check_quota
+from sharing.uploads import check_quota
 from gokapi import upload_to_gokapi
 from storage import read as storage_read
-from catalog import list_catalog
+from governance.catalog import list_catalog
 from gokapi import open_gokapi_download
 from utils import now, sanitize_filename
-from auth import public_user
+from identity.auth import public_user
 
 router = APIRouter()
 
@@ -54,7 +54,7 @@ async def v1_me(request: Request):
     user, err = _require_bearer(request)
     if err:
         return err
-    from billing import spendable_balance as get_balance
+    from economy.billing import spendable_balance as get_balance
     u = public_user(user)
     u.pop("email", None)  # token channel: no PII beyond what's needed
     return {"ok": True, "user": u, "credits": get_balance(user["id"])}
@@ -140,7 +140,7 @@ async def v1_fetch(public_id: str, request: Request):
     user, err = _require_bearer(request)
     if err:
         return err
-    from uploads import get_upload_by_public_id
+    from sharing.uploads import get_upload_by_public_id
     upload = get_upload_by_public_id(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)

@@ -58,7 +58,7 @@ def ctx_base(request: Request) -> dict:
     """Base context for all pages."""
     lang = request.state.lang
     user = request.state.user
-    from billing import spendable_balance as get_balance
+    from economy.billing import spendable_balance as get_balance
     return {
         "request": request,
         "lang": lang,
