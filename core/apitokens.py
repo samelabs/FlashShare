@@ -11,6 +11,7 @@ profile page can list tokens without the secret.
 import secrets
 
 from database import db
+from repo import sessions as sessions_repo
 from security import token_hash
 from utils import now
 
@@ -28,14 +29,9 @@ def create_token(user_id: int, name: str) -> dict:
     plaintext, prefix = _generate_token()
     ts = now()
     with db() as con:
-        row = con.execute(
-            """
-            INSERT INTO api_tokens (user_id, name, token_hash, prefix, status, created_at)
-            VALUES (%s, %s, %s, %s, 'active', %s)
-            RETURNING id, user_id, name, prefix, status, last_used_at, expires_at, created_at
-            """,
-            (user_id, name.strip()[:64] or "token", token_hash(plaintext), prefix, ts),
-        ).fetchone()
+        row = sessions_repo.insert_token(
+            con, user_id, name.strip()[:64] or "token",
+            token_hash(plaintext), prefix, ts)
     out = dict(row)
     out["token"] = plaintext  # one-time secret
     return out
@@ -44,23 +40,13 @@ def create_token(user_id: int, name: str) -> dict:
 def revoke_token(user_id: int, token_id: int) -> bool:
     """Soft-revoke (status=revoked). Revoked tokens never authenticate."""
     with db() as con:
-        cur = con.execute(
-            "UPDATE api_tokens SET status = 'revoked' WHERE id = %s AND user_id = %s AND status = 'active'",
-            (token_id, user_id),
-        )
-        return cur.rowcount > 0
+        return sessions_repo.revoke_token(con, user_id, token_id) > 0
 
 
 def list_tokens(user_id: int) -> list:
     """All tokens for the profile page. No secrets — prefix only."""
     with db() as con:
-        rows = con.execute(
-            """
-            SELECT id, name, prefix, status, last_used_at, expires_at, created_at
-            FROM api_tokens WHERE user_id = %s ORDER BY id DESC
-            """,
-            (user_id,),
-        ).fetchall()
+        rows = sessions_repo.list_tokens(con, user_id)
     return [dict(r) for r in rows]
 
 
@@ -73,22 +59,11 @@ def authenticate_token(plaintext: str) -> dict | None:
     if not plaintext or not plaintext.startswith(TOKEN_PREFIX):
         return None
     with db() as con:
-        tok = con.execute(
-            """
-            SELECT t.id AS token_id, u.* FROM api_tokens t
-            JOIN users u ON u.id = t.user_id
-            WHERE t.token_hash = %s AND t.status = 'active'
-              AND (t.expires_at IS NULL OR t.expires_at > %s)
-            """,
-            (token_hash(plaintext), now()),
-        ).fetchone()
+        tok = sessions_repo.user_by_api_token(con, token_hash(plaintext), now())
         if not tok:
             return None
         try:
-            con.execute(
-                "UPDATE api_tokens SET last_used_at = %s WHERE id = %s",
-                (now(), tok["token_id"]),
-            )
+            sessions_repo.touch_token(con, tok["token_id"], now())
         except Exception:
             pass  # last_used is telemetry, not auth state
     d = dict(tok)

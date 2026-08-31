@@ -15,9 +15,8 @@ SELECT ... FOR UPDATE on the user row to serialize concurrent mutations
 per user. Cross-user concurrency is unaffected.
 """
 
-import psycopg2
-
 from database import db
+from repo import ledger as ledger_repo
 from utils import now
 
 
@@ -33,11 +32,7 @@ class InsufficientCredits(Exception):
 def get_balance(user_id: int) -> int:
     """Current balance = sum of all ledger deltas. 0 for fresh users."""
     with db() as con:
-        row = con.execute(
-            "SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger WHERE user_id = %s",
-            (user_id,),
-        ).fetchone()
-    return int(row["bal"])
+        return ledger_repo.total_balance(con, user_id)
 
 
 # Ledger kinds that make up the SPENDABLE pool. provider_earn is NOT here:
@@ -52,25 +47,14 @@ SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
 def spendable_balance(user_id: int) -> int:
     """Credits the user may spend (excludes provider_earn & withdraw rows)."""
     with db() as con:
-        row = con.execute(
-            """SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger
-               WHERE user_id = %s AND kind = ANY(%s)""",
-            (user_id, list(SPENDABLE_KINDS)),
-        ).fetchone()
-    return int(row["bal"])
+        return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
 
 
 def _balance_for_update(con, user_id: int) -> int:
     """Serialize on the users row; returns the SPENDABLE balance
     (dual-pool: consume/refund/adjust only ever touch the spendable pool)."""
-    con.execute(
-        "SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
-    row = con.execute(
-        """SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger
-           WHERE user_id = %s AND kind = ANY(%s)""",
-        (user_id, list(SPENDABLE_KINDS)),
-    ).fetchone()
-    return int(row["bal"])
+    ledger_repo.lock_user(con, user_id)
+    return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
 
 
 def grant(user_id: int, amount: int, kind: str, *,
@@ -85,23 +69,12 @@ def grant(user_id: int, amount: int, kind: str, *,
     ts = now()
     with db() as con:
         if idem_key:
-            prior = con.execute(
-                "SELECT * FROM ledger WHERE user_id = %s AND idem_key = %s",
-                (user_id, idem_key),
-            ).fetchone()
+            prior = ledger_repo.by_idem_key(con, user_id, idem_key)
             if prior:
                 return dict(prior)
         bal = _balance_for_update(con, user_id)
-        row = con.execute(
-            """
-            INSERT INTO ledger (user_id, delta, balance_after, kind,
-                                ref_type, ref_id, idem_key, note, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING *
-            """,
-            (user_id, amount, bal + amount, kind, ref_type, ref_id,
-             idem_key, note, ts),
-        ).fetchone()
+        row = ledger_repo.insert_row(con, user_id, amount, bal + amount,
+                                     kind, ref_type, ref_id, idem_key, note, ts)
     return dict(row)
 
 
@@ -118,25 +91,14 @@ def consume(user_id: int, cost: int, kind: str, *,
     ts = now()
     with db() as con:
         if idem_key:
-            prior = con.execute(
-                "SELECT * FROM ledger WHERE user_id = %s AND idem_key = %s",
-                (user_id, idem_key),
-            ).fetchone()
+            prior = ledger_repo.by_idem_key(con, user_id, idem_key)
             if prior:
                 return dict(prior)
         bal = _balance_for_update(con, user_id)
         if bal < cost:
             raise InsufficientCredits(bal, cost)
-        row = con.execute(
-            """
-            INSERT INTO ledger (user_id, delta, balance_after, kind,
-                                ref_type, ref_id, idem_key, note, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING *
-            """,
-            (user_id, -cost, bal - cost, kind, ref_type, ref_id,
-             idem_key, note, ts),
-        ).fetchone()
+        row = ledger_repo.insert_row(con, user_id, -cost, bal - cost,
+                                     kind, ref_type, ref_id, idem_key, note, ts)
     return dict(row)
 
 
@@ -152,23 +114,13 @@ def refund(user_id: int, amount: int, *,
     ts = now()
     with db() as con:
         if idem_key:
-            prior = con.execute(
-                "SELECT * FROM ledger WHERE user_id = %s AND idem_key = %s",
-                (user_id, idem_key),
-            ).fetchone()
+            prior = ledger_repo.by_idem_key(con, user_id, idem_key)
             if prior:
                 return dict(prior)
         bal = _balance_for_update(con, user_id)
-        row = con.execute(
-            """
-            INSERT INTO ledger (user_id, delta, balance_after, kind,
-                                ref_type, ref_id, idem_key, note, created_at)
-            VALUES (%s, %s, %s, 'refund', %s, %s, %s, %s, %s)
-            RETURNING *
-            """,
-            (user_id, amount, bal + amount, ref_type, ref_id,
-             idem_key, note, ts),
-        ).fetchone()
+        row = ledger_repo.insert_row(con, user_id, amount, bal + amount,
+                                     "refund", ref_type, ref_id,
+                                     idem_key, note, ts)
     return dict(row)
 
 
@@ -185,18 +137,9 @@ def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, in
     earnings page. One pool, two honest views.
     """
     with db() as con:
-        total = con.execute(
-            "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = ANY(%s)",
-            (user_id, list(SPENDABLE_KINDS)),
-        ).fetchone()["n"]
-        rows = con.execute(
-            """
-            SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)
-            ORDER BY id DESC LIMIT %s OFFSET %s
-            """,
-            (user_id, list(SPENDABLE_KINDS), size, max(0, (page - 1) * size)),
-        ).fetchall()
-    return [dict(r) for r in rows], total
+        rows, total = ledger_repo.history_paged(con, user_id, SPENDABLE_KINDS,
+                                                size, max(0, (page - 1) * size))
+    return rows, total
 
 
 # Config defaults — HISTORICAL migration values only. The live source of

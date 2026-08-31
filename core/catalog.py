@@ -21,6 +21,7 @@ joins the two: DB row = contract, _registry = implementation for local class.
 import json
 
 from database import db
+from repo import catalog as catalog_repo
 from utils import now
 
 # Visibility ladder (data field, owner-settable — no human gate).
@@ -51,43 +52,20 @@ def seed_from_registry() -> dict:
     updated = 0
     with db() as con:
         for t in _registry:
-            row = con.execute(
-                """
-                INSERT INTO platform_tools
-                  (tool_key, owner_id, tool_id, execution, tool_type,
-                   label_json, icon, accept_json, presets_json, multi,
-                   visibility, enabled, created_at, updated_at)
-                VALUES (%s, NULL, %s, 'local', %s, %s, %s, %s, %s, %s,
-                        'public', TRUE, %s, %s)
-                ON CONFLICT (tool_key) DO UPDATE SET
-                  tool_type    = EXCLUDED.tool_type,
-                  label_json   = EXCLUDED.label_json,
-                  icon         = EXCLUDED.icon,
-                  accept_json  = EXCLUDED.accept_json,
-                  presets_json = EXCLUDED.presets_json,
-                  multi        = EXCLUDED.multi,
-                  updated_at   = EXCLUDED.updated_at
-                RETURNING (xmax = 0) AS inserted
-                """,
-                (t["id"], t["id"], t["type"],
-                 json.dumps(t["label"], ensure_ascii=False),
-                 t["icon"],
-                 json.dumps(sorted(t["accept"]), ensure_ascii=False) if t["accept"] else None,
-                 json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
-                 bool(t.get("multi", False)),
-                 ts, ts),
-            ).fetchone()
+            row = catalog_repo.upsert_first_party(
+                con, t["id"], t["type"],
+                json.dumps(t["label"], ensure_ascii=False),
+                t["icon"],
+                json.dumps(sorted(t["accept"]), ensure_ascii=False) if t["accept"] else None,
+                json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
+                bool(t.get("multi", False)), ts)
             if row["inserted"]:
                 added += 1
             else:
                 updated += 1
         # Retired-in-code first-party tools: flip enabled off, keep the row
-        keys = [t["id"] for t in _registry]
-        con.execute(
-            """UPDATE platform_tools SET enabled = FALSE, updated_at = %s
-               WHERE owner_id IS NULL AND enabled AND tool_key != ALL(%s)""",
-            (ts, keys),
-        )
+        catalog_repo.retire_absent_first_party(
+            con, [t["id"] for t in _registry], ts)
     return {"added": added, "updated": updated}
 
 
@@ -131,24 +109,7 @@ def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> lis
         return []
     like = f"%{q}%"
     with db() as con:
-        if viewer_id is None:
-            rows = con.execute(
-                """SELECT * FROM platform_tools
-                   WHERE enabled AND visibility = %s
-                     AND (LOWER(tool_key) LIKE %s
-                          OR LOWER(label_json)::jsonb::text LIKE %s)
-                   ORDER BY (owner_id IS NULL) DESC, id LIMIT %s""",
-                (VIS_PUBLIC, like, like, limit,),
-            ).fetchall()
-        else:
-            rows = con.execute(
-                """SELECT * FROM platform_tools
-                   WHERE enabled AND (visibility = %s OR owner_id = %s)
-                     AND (LOWER(tool_key) LIKE %s
-                          OR LOWER(label_json)::jsonb::text LIKE %s)
-                   ORDER BY (owner_id IS NULL) DESC, id LIMIT %s""",
-                (VIS_PUBLIC, viewer_id, like, like, limit,),
-            ).fetchall()
+        rows = catalog_repo.search(con, VIS_PUBLIC, viewer_id, like, limit)
     out = []
     for row in rows:
         p = _price_of(row["tool_key"])
@@ -172,12 +133,7 @@ def catalog_version() -> str:
     an enabled row bumps this digest (count + max updated_at + key checksum).
     Agents compare versions to know when to re-list."""
     with db() as con:
-        row = con.execute(
-            """SELECT COUNT(*) AS n,
-                      COALESCE(MAX(updated_at), 0) AS mx,
-                      COALESCE(SUM(hashtext(tool_key)), 0) AS ck
-               FROM platform_tools WHERE enabled"""
-        ).fetchone()
+        row = catalog_repo.version_digest(con)
     return f"v{row['n']}-{row['mx']}-{row['ck'] % 100000}"
 
 
@@ -196,19 +152,7 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     prices = {r["tool_id"]: r for r in list_pricing()}
 
     with db() as con:
-        if viewer_id is None:
-            rows = con.execute(
-                """SELECT * FROM platform_tools
-                   WHERE enabled AND visibility = %s ORDER BY id""",
-                (VIS_PUBLIC,),
-            ).fetchall()
-        else:
-            rows = con.execute(
-                """SELECT * FROM platform_tools
-                   WHERE enabled AND (visibility = %s OR owner_id = %s)
-                   ORDER BY id""",
-                (VIS_PUBLIC, viewer_id),
-            ).fetchall()
+        rows = catalog_repo.visible_to(con, VIS_PUBLIC, viewer_id)
 
     result = []
     for row in rows:
@@ -224,10 +168,7 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
 def get_default_preset(tool_key: str) -> str | None:
     """Default preset id for a tool key, or None."""
     with db() as con:
-        row = con.execute(
-            "SELECT presets_json FROM platform_tools WHERE tool_key = %s",
-            (tool_key,),
-        ).fetchone()
+        row = catalog_repo.by_tool_key(con, tool_key)
     if not row or not row["presets_json"]:
         return None
     for p in json.loads(row["presets_json"]):
@@ -256,9 +197,7 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
       private   → owner only
     """
     with db() as con:
-        row = con.execute(
-            "SELECT * FROM platform_tools WHERE tool_key = %s", (tool_key,)
-        ).fetchone()
+        row = catalog_repo.by_tool_key(con, tool_key)
     if not row:
         return None, "not_found"
     if not row["enabled"]:

@@ -15,6 +15,7 @@ grant, so credits are charged exactly once per logical call.
 import json
 
 from database import db
+from repo import catalog as catalog_repo
 from utils import now
 
 
@@ -28,25 +29,14 @@ def seed_pricing(tool_ids: list) -> dict:
     added = 0
     with db() as con:
         for tid in tool_ids:
-            cur = con.execute(
-                """
-                INSERT INTO pricing (tool_id, cost, enabled, updated_at)
-                VALUES (%s, 0, TRUE, %s)
-                ON CONFLICT (tool_id) DO NOTHING
-                """,
-                (tid, ts),
-            )
-            added += cur.rowcount
+            added += catalog_repo.seed_pricing_row(con, tid, ts)
     return {"added": added}
 
 
 def get_pricing(tool_id: str) -> dict:
     """Return pricing row for a tool; default free when absent."""
     with db() as con:
-        row = con.execute(
-            "SELECT tool_id, cost, enabled FROM pricing WHERE tool_id = %s",
-            (tool_id,),
-        ).fetchone()
+        row = catalog_repo.pricing_row(con, tool_id)
     if not row:
         return {"tool_id": tool_id, "cost": 0, "enabled": True}
     return dict(row)
@@ -67,22 +57,12 @@ def set_pricing(tool_id: str, cost: int, enabled: bool, admin_user_id: int | Non
         raise ValueError("cost must be >= 0")
     ts = now()
     with db() as con:
-        row = con.execute(
-            """
-            INSERT INTO pricing (tool_id, cost, enabled, updated_at, updated_by)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (tool_id) DO UPDATE SET
-              cost = EXCLUDED.cost, enabled = EXCLUDED.enabled,
-              updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
-            RETURNING *
-            """,
-            (tool_id, int(cost), bool(enabled), ts, admin_user_id),
-        ).fetchone()
+        row = catalog_repo.upsert_pricing(con, tool_id, int(cost),
+                                          bool(enabled), ts, admin_user_id)
     return dict(row)
 
 
 def list_pricing() -> list:
     with db() as con:
-        rows = con.execute(
-            "SELECT * FROM pricing ORDER BY tool_id").fetchall()
+        rows = catalog_repo.all_pricing(con)
     return [dict(r) for r in rows]

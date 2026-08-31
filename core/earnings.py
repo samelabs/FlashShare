@@ -26,6 +26,8 @@ Red lines honored:
 """
 
 from database import db
+from repo import catalog as catalog_repo
+from repo import ledger as ledger_repo
 from utils import now
 
 MIN_WITHDRAWAL = 10000         # credits = $10 (CREDITS_PER_USD=1000)
@@ -45,21 +47,10 @@ def earnings_summary(user_id: int) -> dict:
     """Available = earned (provider_earn) − withdrawn (approved+paid) −
     pending requests. Derived live from the ledger; no cached counters."""
     with db() as con:
-        earned = con.execute(
-            "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
-            "WHERE user_id = %s AND kind = 'provider_earn'",
-            (user_id,),
-        ).fetchone()["s"]
-        withdrawn = con.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS s FROM withdrawals "
-            "WHERE user_id = %s AND status IN ('approved', 'paid')",
-            (user_id,),
-        ).fetchone()["s"]
-        pending = con.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS s FROM withdrawals "
-            "WHERE user_id = %s AND status = 'pending'",
-            (user_id,),
-        ).fetchone()["s"]
+        earned = ledger_repo.sum_kind(con, user_id, "provider_earn")
+        withdrawn = catalog_repo.withdrawal_sum(
+            con, user_id, ("approved", "paid"))
+        pending = catalog_repo.withdrawal_sum(con, user_id, ("pending",))
     available = int(earned) - int(withdrawn) - int(pending)
     return {"earned": int(earned), "withdrawn": int(withdrawn),
             "pending": int(pending), "available": max(0, available)}
@@ -69,16 +60,7 @@ def per_tool_revenue(user_id: int) -> list:
     """Revenue breakdown per published tool (provider_earn rows joined to
     the tool that generated them — note references the tool_key)."""
     with db() as con:
-        rows = con.execute(
-            """SELECT l.note AS tool_key,
-                      SUM(l.delta) AS earned,
-                      COUNT(*) AS payouts
-               FROM ledger l
-               WHERE l.user_id = %s AND l.kind = 'provider_earn'
-               GROUP BY l.note
-               ORDER BY earned DESC LIMIT 100""",
-            (user_id,),
-        ).fetchall()
+        rows = ledger_repo.earn_by_tool(con, user_id, limit=100)
     out = []
     for r in rows:
         key = r["tool_key"] or ""
@@ -90,19 +72,13 @@ def per_tool_revenue(user_id: int) -> list:
 
 def list_withdrawals(user_id: int, limit: int = 20, offset: int = 0) -> list:
     with db() as con:
-        rows = con.execute(
-            "SELECT * FROM withdrawals WHERE user_id = %s "
-            "ORDER BY id DESC LIMIT %s OFFSET %s",
-            (user_id, limit, offset,),
-        ).fetchall()
+        rows = catalog_repo.withdrawals_by_user(con, user_id, limit, offset)
     return [dict(r) for r in rows]
 
 
 def withdrawal_count(user_id: int) -> int:
     with db() as con:
-        return int(con.execute(
-            "SELECT COUNT(*) AS n FROM withdrawals WHERE user_id = %s",
-            (user_id,)).fetchone()["n"])
+        return catalog_repo.withdrawal_count(con, user_id)
 
 
 def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> dict:
@@ -116,16 +92,11 @@ def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> di
         raise ValueError("withdrawal_insufficient")
     ts = now()
     with db() as con:
-        ch = con.execute(
-            "SELECT payout_channel FROM users WHERE id = %s", (user_id,)
-        ).fetchone()
+        from repo import users as users_repo
+        ch = users_repo.payout_channel_of(con, user_id)
         channel = (ch["payout_channel"] or "")[:120] if ch else ""
-        row = con.execute(
-            """INSERT INTO withdrawals
-               (user_id, amount, status, note, created_at, txn_ref)
-               VALUES (%s, %s, 'pending', %s, %s, NULL) RETURNING *""",
-            (user_id, amount, (note or "")[:200], ts,),
-        ).fetchone()
+        row = catalog_repo.insert_withdrawal(con, user_id, amount,
+                                             (note or "")[:200], ts)
     out = dict(row)
     out["payout_channel"] = channel  # surfaced for the operator queue
     return out
@@ -140,10 +111,7 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
     from billing import consume
     ts = now()
     with db() as con:
-        row = con.execute(
-            "SELECT * FROM withdrawals WHERE id = %s FOR UPDATE",
-            (withdrawal_id,),
-        ).fetchone()
+        row = catalog_repo.withdrawal_for_update(con, withdrawal_id)
         if not row:
             raise KeyError("not_found")
         if row["status"] != "pending":
@@ -154,43 +122,28 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
             # earnings_summary): withdrawal pays provider earnings only —
             # top-up credits are NOT withdrawable. Available excluding this
             # pending row = earned - (approved+paid) - other_pending.
-            s = con.execute(
-                """SELECT
-                     (SELECT COALESCE(SUM(delta),0) FROM ledger
-                      WHERE user_id = %s AND kind = 'provider_earn') -
-                     (SELECT COALESCE(SUM(amount),0) FROM withdrawals
-                      WHERE user_id = %s AND status IN ('approved','paid')
-                        AND id != %s) -
-                     (SELECT COALESCE(SUM(amount),0) FROM withdrawals
-                      WHERE user_id = %s AND status = 'pending' AND id != %s)
-                     AS avail""",
-                (row["user_id"], row["user_id"], withdrawal_id,
-                 row["user_id"], withdrawal_id),
-            ).fetchone()["avail"]
-            if int(s) < int(row["amount"]):
+            avail = (
+                ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
+                - catalog_repo.withdrawal_sum_excluding(
+                    con, row["user_id"], ("approved", "paid"), withdrawal_id)
+                - catalog_repo.withdrawal_sum_excluding(
+                    con, row["user_id"], ("pending",), withdrawal_id))
+            if int(avail) < int(row["amount"]):
                 con.rollback()
                 raise ValueError("withdrawal_insufficient")
-            bal = con.execute(
-                "SELECT COALESCE(SUM(delta),0) AS b FROM ledger WHERE user_id = %s",
-                (row["user_id"],),
-            ).fetchone()["b"]
-            con.execute(
-                """INSERT INTO ledger (user_id, delta, balance_after, kind,
-                   ref_type, ref_id, idem_key, note, created_at)
-                   VALUES (%s, %s, %s, 'withdraw', 'withdrawal', %s, %s, %s, %s)""",
-                (row["user_id"], -int(row["amount"]), int(bal) - int(row["amount"]),
-                 str(row["id"]), f"withdrawal:{row['id']}",
-                 f"withdrawal #{row['id']}", ts,),
-            )
+            # EARN 池基线: balance_after 记 provider_earn 池口径 (批2 修复 🔴3,
+            # 现阶段保持现行为=全池口径, 重建时统一)
+            bal = ledger_repo.total_balance(con, row["user_id"])
+            ledger_repo.insert_row(con, row["user_id"], -int(row["amount"]),
+                                   int(bal) - int(row["amount"]), "withdraw",
+                                   "withdrawal", str(row["id"]),
+                                   f"withdrawal:{row['id']}",
+                                   f"withdrawal #{row['id']}", ts)
         else:
             new_status = "rejected"
-        out = con.execute(
-            """UPDATE withdrawals SET status = %s, processed_at = %s,
-               processed_by = %s, txn_ref = COALESCE(%s, txn_ref)
-               WHERE id = %s RETURNING *""",
-            (new_status, ts, admin_user_id,
-             (txn_ref or None) if approve else None, withdrawal_id,),
-        ).fetchone()
+        out = catalog_repo.finish_withdrawal(
+            con, withdrawal_id, new_status, ts, admin_user_id,
+            (txn_ref or None) if approve else None)
     return dict(out)
 
 
@@ -198,16 +151,7 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
     """E2: per-line revenue detail — (rows, total) so the page can paginate.
     The ledger stays the single source; this is a read projection."""
     with db() as con:
-        total = con.execute(
-            "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = 'provider_earn'",
-            (user_id,)).fetchone()["n"]
-        rows = con.execute(
-            """SELECT l.delta, l.ref_type, l.ref_id, l.note, l.created_at
-               FROM ledger l
-               WHERE l.user_id = %s AND l.kind = 'provider_earn'
-               ORDER BY l.id DESC LIMIT %s OFFSET %s""",
-            (user_id, limit, offset,),
-        ).fetchall()
+        rows, total = ledger_repo.earn_lines_paged(con, user_id, limit, offset)
     out = []
     for r in rows:
         out.append({"delta": int(r["delta"]), "ref": r["ref_id"],
@@ -219,12 +163,7 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
 def list_all_pending(limit: int = 50) -> list:
     """Operator queue (/samelabs/withdrawals)."""
     with db() as con:
-        rows = con.execute(
-            """SELECT w.*, u.username, u.payout_channel FROM withdrawals w
-               JOIN users u ON u.id = w.user_id
-               ORDER BY (w.status = 'pending') DESC, w.id DESC LIMIT %s""",
-            (limit,),
-        ).fetchall()
+        rows = catalog_repo.withdrawals_queue(con, limit)
     return [dict(r) for r in rows]
 
 def to_usd(credits: int) -> str:

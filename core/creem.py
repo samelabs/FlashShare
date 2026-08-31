@@ -16,6 +16,7 @@ import os
 import urllib.request
 
 from database import db
+from repo import orders as orders_repo
 from utils import now
 
 CREEM_API_KEY = os.environ.get("CREEM_API_KEY", "").strip()
@@ -56,31 +57,28 @@ def verify_signature(raw_body: bytes, signature: str) -> bool:
 
 def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int) -> dict:
     """checkout.completed: mark order paid + grant credits (idempotent).
-    Returns {granted, credits} — granted=False means replay/no-op."""
+    Returns {granted, credits} — granted=False means replay/no-op.
+
+    订单锁定+标记+套餐读取在同一事务内 (批1c 顺带修复: 原实现块外用 con
+    的连接逃逸); 授信仍走 billing.grant 的独立幂等事务 (order:{id} 键)。"""
+    from repo import orders as _orders_repo
     ts = now()
     with db() as con:
-        row = con.execute(
-            "SELECT * FROM orders WHERE provider_order_id = %s FOR UPDATE",
-            (provider_order_id,)).fetchone() if provider_order_id else None
-        if row is None:
+        row = None
+        if provider_order_id:
+            row = orders_repo.order_by_provider_id_for_update(con, provider_order_id)
+        if row is None and checkout_id:
             # webhook may arrive before checkout callback stores the id —
-            # fall back to request_id linkage (order:{id})
-            row = None
-            if checkout_id:
-                row = con.execute(
-                    "SELECT * FROM orders WHERE provider_order_id = %s",
-                    ("ch:" + checkout_id,)).fetchone()
+            # fall back to checkout-id linkage (ch:{id})
+            row = orders_repo.order_by_provider_id(con, "ch:" + checkout_id)
         if row is None:
             raise KeyError("order_not_found")
         if row["granted"]:
             return {"granted": False, "credits": 0}
-        con.execute(
-            "UPDATE orders SET status='paid', granted=TRUE, paid_at=%s WHERE id=%s",
-            (ts, row["id"]))
+        orders_repo.mark_paid(con, row["id"], ts)
+        pkg = _orders_repo.package_credits(con, row["item_id"])
+        credits = pkg["credits"] if pkg else 0
     from billing import grant
-    pkg = con.execute("SELECT credits FROM packages WHERE id=%s",
-                      (row["item_id"],)).fetchone() if row else None
-    credits = pkg["credits"] if pkg else 0
     if credits > 0:
         grant(row["user_id"], credits, "grant_package",
               ref_type="order", ref_id=str(row["id"]),

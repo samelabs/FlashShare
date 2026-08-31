@@ -26,6 +26,7 @@ import json
 import time
 
 from database import db
+from repo import catalog as catalog_repo
 from utils import now
 
 ACTIVITY_TYPES = ("once", "daily")
@@ -58,18 +59,10 @@ def ensure_schema_and_seed() -> dict:
     with db() as con:
         seeded = 0
         for row in _seed_rows():
-            cur = con.execute(
-                """
-                INSERT INTO activities (code, activity_type, amount, kind,
-                                        active, starts_at, ends_at, label_json,
-                                        updated_at)
-                VALUES (%s, %s, %s, %s, TRUE, %s, %s, %s, %s)
-                ON CONFLICT (code) DO NOTHING
-                """,
-                (row["code"], row["activity_type"], row["amount"], row["kind"],
-                 row["starts_at"], row["ends_at"], row["label_json"], ts),
-            )
-            seeded += cur.rowcount
+            seeded += catalog_repo.seed_activity(
+                con, row["code"], row["activity_type"], row["amount"],
+                row["kind"], row["starts_at"], row["ends_at"],
+                row["label_json"], ts)
     return {"seeded": seeded}
 
 
@@ -77,16 +70,13 @@ def ensure_schema_and_seed() -> dict:
 
 def get_activity(code: str) -> dict | None:
     with db() as con:
-        row = con.execute(
-            "SELECT * FROM activities WHERE code = %s", (code,)
-        ).fetchone()
+        row = catalog_repo.activity_by_code(con, code)
     return dict(row) if row else None
 
 
 def list_activities() -> list:
     with db() as con:
-        rows = con.execute(
-            "SELECT * FROM activities ORDER BY code").fetchall()
+        rows = catalog_repo.all_activities(con)
     return [dict(r) for r in rows]
 
 
@@ -147,11 +137,10 @@ def granted_today(code: str, user_id: int) -> bool:
     if not act:
         return False
     with db() as con:
-        prior = con.execute(
-            "SELECT 1 FROM ledger WHERE user_id = %s AND idem_key = %s LIMIT 1",
-            (user_id, _idem_key(act, user_id)),
-        ).fetchone()
-    return prior is not None
+        from repo import ledger as ledger_repo
+        prior = ledger_repo.idem_key_exists(
+            con, user_id, _idem_key(act, user_id))
+    return prior
 
 
 # ── Operator mutations (/samelabs) ──
@@ -173,22 +162,9 @@ def set_activity(code: str, amount: int | None, active: bool | None,
         raise ValueError("starts_at > ends_at")
     ts = now()
     with db() as con:
-        row = con.execute(
-            """
-            UPDATE activities SET
-              amount     = COALESCE(%s, amount),
-              active     = COALESCE(%s, active),
-              starts_at  = CASE WHEN %s THEN NULL ELSE COALESCE(%s, starts_at) END,
-              ends_at    = CASE WHEN %s THEN NULL ELSE COALESCE(%s, ends_at) END,
-              updated_at = %s,
-              updated_by = %s
-            WHERE code = %s
-            RETURNING *
-            """,
-            (amount, active,
-             starts_at == 0, starts_at, ends_at == 0, ends_at,
-             ts, admin_user_id, code),
-        ).fetchone()
+        row = catalog_repo.update_activity(
+            con, code, amount, active, starts_at, ends_at,
+            starts_at == 0, ends_at == 0, ts, admin_user_id)
     return dict(row)
 
 

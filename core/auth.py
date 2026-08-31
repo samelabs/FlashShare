@@ -5,10 +5,9 @@ import urllib.parse
 import urllib.request
 import urllib.error
 
-import psycopg2
-
 from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET
 from database import db
+from repo import users as users_repo
 from security import hash_password, verify_password, needs_rehash
 from utils import now
 
@@ -55,7 +54,7 @@ def validate_password(password: str) -> str | None:
 
 def username_taken(username: str) -> bool:
     with db() as con:
-        return con.execute("SELECT 1 FROM users WHERE username = %s", (username,)).fetchone() is not None
+        return users_repo.username_exists(con, username)
 
 
 def register_user(username: str, email: str, password: str) -> int:
@@ -63,24 +62,15 @@ def register_user(username: str, email: str, password: str) -> int:
     ts = now()
     pw_hash = hash_password(password)
     with db() as con:
-        row = con.execute(
-            """
-            INSERT INTO users (username, email, password_hash, display_name, status, created_at, last_login_at, updated_at)
-            VALUES (%s, %s, %s, %s, 'active', %s, %s, %s)
-            RETURNING id
-            """,
-            (username, email, pw_hash, username, ts, ts, ts),
-        ).fetchone()
+        row = users_repo.insert_local(con, username, email, pw_hash,
+                                      username, ts)
         return row["id"]
 
 
 def authenticate_local(login: str, password: str) -> int | None:
     """Authenticate by username or email. Returns user id or None."""
     with db() as con:
-        row = con.execute(
-            "SELECT id, password_hash FROM users WHERE username = %s OR email = %s",
-            (login, login),
-        ).fetchone()
+        row = users_repo.by_username_or_email(con, login)
     if not row or not row["password_hash"]:
         return None
     if not verify_password(password, row["password_hash"]):
@@ -90,15 +80,9 @@ def authenticate_local(login: str, password: str) -> int | None:
     if needs_rehash(row["password_hash"]):
         new_hash = hash_password(password)
         with db() as con:
-            con.execute(
-                "UPDATE users SET password_hash = %s, updated_at = %s WHERE id = %s",
-                (new_hash, ts, row["id"]),
-            )
+            users_repo.update_password_hash(con, row["id"], new_hash, ts)
     with db() as con:
-        con.execute(
-            "UPDATE users SET last_login_at = %s, updated_at = %s WHERE id = %s",
-            (ts, ts, row["id"]),
-        )
+        users_repo.touch_login(con, row["id"], ts)
     return row["id"]
 
 
@@ -167,43 +151,25 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
     x_profile_url = f"https://x.com/{x_username}" if x_username else ""
 
     with db() as con:
-        existing = con.execute(
-            "SELECT id FROM users WHERE x_user_id = %s", (x_id,)
-        ).fetchone()
+        existing = users_repo.by_x_user_id(con, x_id)
 
         if existing:
             # X account already linked to a user
             if bind_user_id and existing["id"] != bind_user_id:
                 raise ValueError("err_x_bound_other")
             user_id = existing["id"]
-            con.execute(
-                """
-                UPDATE users SET
-                    x_username = %s, x_display_name = %s, x_avatar_url = %s, x_profile_url = %s,
-                    avatar_url = COALESCE(avatar_url, %s),
-                    last_login_at = %s, updated_at = %s
-                WHERE id = %s
-                """,
-                (x_username, x_display_name, x_avatar_url, x_profile_url,
-                 x_avatar_url, ts, ts, user_id),
-            )
+            users_repo.update_x_profile(con, user_id, x_username,
+                                        x_display_name, x_avatar_url,
+                                        x_profile_url, ts)
             return user_id
 
         if bind_user_id:
             # Bind X to existing local account
-            row = con.execute("SELECT id FROM users WHERE id = %s", (bind_user_id,)).fetchone()
+            row = users_repo.by_id(con, bind_user_id)
             if not row:
                 raise ValueError("err_user_not_found")
-            con.execute(
-                """
-                UPDATE users SET
-                    x_user_id = %s, x_username = %s, x_display_name = %s, x_avatar_url = %s,
-                    x_profile_url = %s, updated_at = %s
-                WHERE id = %s
-                """,
-                (x_id, x_username, x_display_name, x_avatar_url,
-                 x_profile_url, ts, bind_user_id),
-            )
+            users_repo.bind_x(con, bind_user_id, x_id, x_username,
+                              x_display_name, x_avatar_url, x_profile_url, ts)
             return bind_user_id
 
         # New user via X login — create account with X identity
@@ -215,48 +181,25 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
         # Ensure username uniqueness
         base_name = username
         suffix = 1
-        while con.execute(
-            "SELECT 1 FROM users WHERE username = %s", (username,)
-        ).fetchone():
+        while users_repo.username_exists(con, username):
             username = f"{base_name}_{suffix}"[:32]
             suffix += 1
 
-        row = con.execute(
-            """
-            INSERT INTO users
-              (username, display_name, avatar_url,
-               x_user_id, x_username, x_display_name, x_avatar_url, x_profile_url,
-               status, created_at, last_login_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
-            RETURNING id
-            """,
-            (username, x_display_name or username, x_avatar_url,
-             x_id, x_username, x_display_name, x_avatar_url, x_profile_url,
-             ts, ts, ts),
-        ).fetchone()
+        row = users_repo.insert_x_user(
+            con, username, x_display_name or username, x_avatar_url,
+            x_id, x_username, x_display_name, x_avatar_url, x_profile_url, ts)
         return row["id"]
 
 
 def unbind_x(user_id: int) -> None:
     """Remove X binding from user. User must have local credentials."""
     with db() as con:
-        row = con.execute(
-            "SELECT password_hash, email FROM users WHERE id = %s", (user_id,)
-        ).fetchone()
+        row = users_repo.by_id(con, user_id)
         if not row:
             raise ValueError("err_user_not_found")
         if not row["password_hash"] or not row["email"]:
             raise ValueError("err_set_email_before_unbind")
-        con.execute(
-            """
-            UPDATE users SET
-                x_user_id = NULL, x_username = NULL, x_display_name = NULL,
-                x_avatar_url = NULL, x_profile_url = NULL,
-                updated_at = %s
-            WHERE id = %s
-            """,
-            (now(), user_id),
-        )
+        users_repo.unbind_x(con, user_id, now())
 
 
 # ── Profile ─────────────────────────────────────────────
@@ -270,31 +213,25 @@ def update_profile(user_id: int, display_name: str | None = None,
             display_name = display_name.strip()[:64]
             if not display_name:
                 raise ValueError("err_display_name_empty")
-            con.execute("UPDATE users SET display_name = %s, updated_at = %s WHERE id = %s",
-                        (display_name, ts, user_id))
+            users_repo.update_display_name(con, user_id, display_name, ts)
         if bio is not None:
-            con.execute("UPDATE users SET bio = %s, updated_at = %s WHERE id = %s",
-                        (bio.strip()[:500] or None, ts, user_id))
+            users_repo.update_bio(con, user_id, bio.strip()[:500] or None, ts)
         if payout_channel is not None:
             # withdrawal destination (operator reads it when paying out)
-            con.execute("UPDATE users SET payout_channel = %s, updated_at = %s WHERE id = %s",
-                        (payout_channel.strip()[:120] or None, ts, user_id))
+            users_repo.update_payout_channel(
+                con, user_id, payout_channel.strip()[:120] or None, ts)
         if email is not None:
             email = email.strip().lower()[:254]
             if not email:
                 raise ValueError("err_email_empty")
-            existing = con.execute("SELECT id FROM users WHERE email = %s AND id != %s", (email, user_id)).fetchone()
-            if existing:
+            if users_repo.email_taken_by_other(con, email, user_id):
                 raise ValueError("err_email_used")
-            con.execute("UPDATE users SET email = %s, updated_at = %s WHERE id = %s",
-                        (email, ts, user_id))
+            users_repo.update_email(con, user_id, email, ts)
 
 
 def change_password(user_id: int, old_password: str, new_password: str) -> None:
     with db() as con:
-        row = con.execute(
-            "SELECT password_hash FROM users WHERE id = %s", (user_id,)
-        ).fetchone()
+        row = users_repo.by_id(con, user_id)
     if not row or not row["password_hash"]:
         raise ValueError("err_no_password_set")
     if not verify_password(old_password, row["password_hash"]):
@@ -303,28 +240,22 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
     if err:
         raise ValueError(err)
     with db() as con:
-        con.execute(
-            "UPDATE users SET password_hash = %s, updated_at = %s WHERE id = %s",
-            (hash_password(new_password), now(), user_id),
-        )
+        users_repo.update_password_hash(
+            con, user_id, hash_password(new_password), now())
 
 
 def set_password(user_id: int, new_password: str) -> None:
     """Set password for OAuth-only users who have no password."""
     with db() as con:
-        row = con.execute(
-            "SELECT password_hash FROM users WHERE id = %s", (user_id,)
-        ).fetchone()
+        row = users_repo.by_id(con, user_id)
     if row and row["password_hash"]:
         raise ValueError("err_password_already_set")
     err = validate_password(new_password)
     if err:
         raise ValueError(err)
     with db() as con:
-        con.execute(
-            "UPDATE users SET password_hash = %s, updated_at = %s WHERE id = %s",
-            (hash_password(new_password), now(), user_id),
-        )
+        users_repo.update_password_hash(
+            con, user_id, hash_password(new_password), now())
 
 
 # ── Serialization ───────────────────────────────────────
@@ -348,5 +279,5 @@ def public_user(row) -> dict:
 
 def has_password(user_id: int) -> bool:
     with db() as con:
-        row = con.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,)).fetchone()
+        row = users_repo.by_id(con, user_id)
     return bool(row and row["password_hash"])

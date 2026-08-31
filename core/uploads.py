@@ -3,6 +3,7 @@ import time
 
 from config import DAILY_UPLOADS, DAILY_BYTES
 from database import db
+from repo import uploads as uploads_repo
 from gokapi import delete_gokapi_file, _gokapi_connection, _gokapi_path, GOKAPI_KEY
 from utils import now, public_file_url
 
@@ -10,14 +11,8 @@ from utils import now, public_file_url
 def check_quota(user_id: int, ip: str, incoming_bytes: int) -> tuple:
     start = now() - 24 * 3600
     with db() as con:
-        row = con.execute(
-            "SELECT COUNT(*) c, COALESCE(SUM(size_bytes), 0) b FROM uploads WHERE user_id = %s AND created_at > %s",
-            (user_id, start),
-        ).fetchone()
-        ip_row = con.execute(
-            "SELECT COUNT(*) c FROM uploads WHERE ip = %s AND created_at > %s",
-            (ip, start),
-        ).fetchone()
+        row = uploads_repo.quota_usage(con, user_id, start)
+        ip_row = {"c": uploads_repo.ip_usage_count(con, ip, start)}
     if row["c"] >= DAILY_UPLOADS:
         return False, "err_quota_count"
     if row["b"] + incoming_bytes > DAILY_BYTES:
@@ -29,15 +24,7 @@ def check_quota(user_id: int, ip: str, incoming_bytes: int) -> tuple:
 
 def get_upload_by_public_id(public_id: str):
     with db() as con:
-        return con.execute(
-            """
-            SELECT id, public_id, gokapi_id, file_name, content_type, size_bytes, expiry_days,
-                   allowed_downloads, expire_at, url_download, url_hotlink, created_at, user_id
-            FROM uploads
-            WHERE public_id = %s
-            """,
-            (public_id,),
-        ).fetchone()
+        return uploads_repo.by_public_id(con, public_id)
 
 
 _gokapi_cache = {}  # {"data": {...}, "ts": epoch}
@@ -76,17 +63,7 @@ def _get_all_gokapi_status():
 
 def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
     with db() as con:
-        rows = con.execute(
-            """
-            SELECT id, public_id, gokapi_id, file_name, size_bytes, expiry_days, allowed_downloads, expire_at,
-                   url_download, url_hotlink, created_at
-            FROM uploads
-            WHERE user_id = %s AND expire_at > %s
-            ORDER BY created_at DESC
-            LIMIT %s OFFSET %s
-            """,
-            (user_id, int(time.time()), limit, offset),
-        ).fetchall()
+        rows = uploads_repo.by_owner(con, user_id, int(time.time()), limit, offset)
     # Single batch request — no N+1
     gokapi_map = _get_all_gokapi_status()
     uploads = []
@@ -105,17 +82,14 @@ def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
 
 def delete_upload(upload_id: int, user_id: int) -> bool:
     with db() as con:
-        row = con.execute(
-            "SELECT id, gokapi_id FROM uploads WHERE id = %s AND user_id = %s",
-            (upload_id, user_id),
-        ).fetchone()
+        row = uploads_repo.owned_row(con, upload_id, user_id)
     if not row:
         return False
     # DB first, then storage: a storage failure after the DB delete leaves an
     # orphaned gokapi file that expires on its own (invisible, no record).
     # The reverse order could leave a live DB record pointing at a dead file.
     with db() as con:
-        con.execute("DELETE FROM uploads WHERE id = %s AND user_id = %s", (upload_id, user_id))
+        uploads_repo.delete_row(con, upload_id, user_id)
     try:
         delete_gokapi_file(row["gokapi_id"])
     except Exception:
