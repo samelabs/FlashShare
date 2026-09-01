@@ -298,6 +298,15 @@ def beautify_handler(tool_input, params):
     sw, sh = w + pad * 2, h + pad * 2
     bg = p["bg"]((sw, sh), img)
 
+    # ── 4.5 Tiny-image guard (冒烟发现: 1px 图使 rounded rect 坐标退化) ──
+    # 与 privacy 的 tw=max(1,...) 同约定: 极小图先放大到可渲染底尺。
+    if w < 4 or h < 4:
+        w2, h2 = max(w, 4), max(h, 4)
+        img = img.resize((w2, h2), Image.LANCZOS)
+        w, h = w2, h2
+        pad = PADDING
+        sw, sh = w + pad * 2, h + pad * 2
+
     # ── 5. Shadow at 1/2 scale (performance) ──
     half_sw, half_sh = sw // 2, sh // 2
     half_pad = pad // 2
@@ -310,14 +319,15 @@ def beautify_handler(tool_input, params):
     ImageDraw.Draw(shadow_half).rounded_rectangle(
         [half_pad, half_pad + half_offset,
          half_pad + half_w - 1, half_pad + half_h - 1 + half_offset],
-        radius=half_radius, fill=(0, 0, 0, SHADOW_ALPHA))
+        radius=min(half_radius, half_w // 2, half_h // 2),
+        fill=(0, 0, 0, SHADOW_ALPHA))
     shadow_half = shadow_half.filter(ImageFilter.GaussianBlur(radius=half_blur))
     shadow = shadow_half.resize((sw, sh), Image.LANCZOS)
 
-    # ── 6. Rounded mask ──
+    # ── 6. Rounded mask (radius 钳制: 不超过半边长) ──
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, w - 1, h - 1], radius=RADIUS, fill=255)
+        [0, 0, w - 1, h - 1], radius=min(RADIUS, w // 2, h // 2), fill=255)
 
     # ── 7. Composite: shadow + image on background ──
     canvas = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))

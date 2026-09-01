@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _stream_handler
 logger = logging.getLogger("flashshare")
 
 # ── App ──
-app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None)
+app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None, openapi_url=None)  # openapi.json 关闭 (冒烟发现: 原仅关文档页, schema 本体仍公开)
 
 _STATIC_DIR = _BASE_DIR / "static"
 _TEMPLATES_DIR = _BASE_DIR / "app" / "templates"

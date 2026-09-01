@@ -16,7 +16,7 @@ async def topup_checkout(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    import economy.creem
+    from economy import creem
     if not creem.creem_enabled():
         return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
     try:
@@ -48,7 +48,7 @@ async def topup_checkout(request: Request):
 
 @router.post("/webhooks/creem")
 async def creem_webhook(request: Request):
-    import economy.creem
+    from economy import creem
     raw = await request.body()
     sig = request.headers.get("creem-signature", "")
     if not creem.verify_signature(raw, sig):

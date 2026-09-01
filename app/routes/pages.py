@@ -39,6 +39,7 @@ router = APIRouter()
 
 
 
+from app.web_ctx import _STATIC  # 静态目录单点 (web_ctx 持有)
 from app.web_ctx import (  # noqa: F401 (模板/路由沿用原名)
     ctx_base as _ctx_base_impl, _CSS_VERSION, _JS_VERSION, _I18N_VERSION, JS,
 )
