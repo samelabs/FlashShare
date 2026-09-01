@@ -69,7 +69,7 @@ def owned_row(con, upload_id: int, user_id: int) -> Optional[dict]:
         (upload_id, user_id)).fetchone()
 
 
-def delete_row(con, upload_id: int, user_id: int) -> None:
+def delete_upload_row(con, upload_id: int, user_id: int) -> None:
     con.execute(
         "DELETE FROM uploads WHERE id = %s AND user_id = %s", (upload_id, user_id))
 

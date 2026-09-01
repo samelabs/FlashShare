@@ -174,7 +174,7 @@ def update_fields(con, tool_key: str, sets: dict) -> None:
         (*sets.values(), tool_key))
 
 
-def delete_row(con, row_id: int) -> None:
+def delete_tool_row(con, row_id: int) -> None:
     con.execute("DELETE FROM platform_tools WHERE id = %s", (row_id,))
 
 

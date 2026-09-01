@@ -39,7 +39,7 @@ def _rpc(id_, result=None, error=None):
     return out
 
 
-def _err(id_, code, message):
+def _rpc_err(id_, code, message):
     return _rpc(id_, error={"code": code, "message": message})
 
 
@@ -85,7 +85,7 @@ async def mcp_post(request: Request):
     try:
         msg = json.loads(await request.body())
     except Exception:
-        return JSONResponse(_err(None, -32700, "parse error"),
+        return JSONResponse(_rpc_err(None, -32700, "parse error"),
                             headers=_cors_headers())
     if isinstance(msg, list):  # 2024-11-05 batch
         out = []
@@ -103,7 +103,7 @@ async def mcp_post(request: Request):
 async def _dispatch(request: Request, user: dict, msg: dict):
     """Handle one JSON-RPC message. None ⇒ notification (202, no body)."""
     if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0":
-        return _err(None, -32600, "invalid request")
+        return _rpc_err(None, -32600, "invalid request")
     mid = msg.get("id")
     method = msg.get("method", "")
     is_notification = "id" not in msg
@@ -140,7 +140,7 @@ async def _dispatch(request: Request, user: dict, msg: dict):
         try:
             start = int(cur) if cur else 0
         except (TypeError, ValueError):
-            return _err(mid, -32602, "invalid cursor")
+            return _rpc_err(mid, -32602, "invalid cursor")
         out = {"tools": specs[start:start + page_size]}
         if start + page_size < len(specs):
             out["nextCursor"] = str(start + page_size)
@@ -148,7 +148,7 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     if method == "tools/call":
         params = msg.get("params") or {}
         return await _call_tool(request, user, mid, params)
-    return _err(mid, -32601, f"method not found: {method}")
+    return _rpc_err(mid, -32601, f"method not found: {method}")
 
 
 def _tool_specs(user: dict) -> list:
@@ -237,14 +237,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             "isError": False,
         })
     # MCP name projection inverse: 'sun__super-resolve' → 'sun/super-resolve'
+    # (resolve 统一在 dispatch 内做 — 治理6 单点; 此处不预 resolve)
     tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
-    tool, terr = resolve_tool(tool_key, user["id"])
-    if terr or not tool:
-        return _err(mid, -32602, f"unknown tool: {tool_id}")
-    # Keep the FULL resolved row (execution/owner_id/endpoint_json/trusted
-    # needed by the remote branch) — only normalize id/type like api.py does.
-    tool["id"] = tool["tool_key"]
-    tool["type"] = tool["tool_type"]
 
     raw = {
         "tool_id": tool_key,
@@ -254,6 +248,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     }
 
     # Source: fresh files (b64) or a prior upload handle (public_id)
+    # multi 判定走目录行 (轻读, 不做执行 resolve — 那是 dispatch 的事)
+    from governance.catalog import resolve as _resolve_for_multi
+    _tool_row, _terr = _resolve_for_multi(tool_key, user["id"])
+    if _terr or not _tool_row:
+        return _rpc_err(mid, -32602, f"unknown tool: {tool_id}")
     if args.get("public_id"):
         raw["public_id"] = str(args["public_id"])
         raw["source_token"] = str(args.get("source_token") or "")
@@ -263,7 +262,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     else:
         try:
             uploads = []
-            if tool.get("multi") and args.get("files"):
+            if _tool_row.get("multi") and args.get("files"):
                 for f in args["files"][:20]:
                     uploads.append(_decode_file(f.get("b64"), f.get("filename")))
             elif args.get("file_b64"):
@@ -271,7 +270,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             else:
                 raise ValueError("no source file provided")
         except (ValueError, binascii.Error) as exc:
-            return _err(mid, -32602, f"invalid arguments: {exc}")
+            return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
         ip = request.headers.get("X-Real-IP",
                                  request.client.host if request.client else "").strip()
         try:
@@ -288,7 +287,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     raw["public_ids"].append(info["publicId"])
                     raw["source_tokens"].append(info["sourceToken"])
         except Exception as exc:
-            return _err(mid, -32602, f"upload rejected: {exc}")
+            return _rpc_err(mid, -32602, f"upload rejected: {exc}")
 
     # Funnel through the ONE metering gate (批3a: 直调 execution 域)
     from execution.dispatch import dispatch_execute

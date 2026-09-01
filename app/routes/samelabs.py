@@ -20,6 +20,8 @@ from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from database import db
 from utils import now
 
+from app.web_ctx import fmt_ts as _fmt_ts  # 单点 (治理4)
+
 router = APIRouter()
 
 BACKOFFICE_STATUSES = ("admin", "samelabs")
@@ -56,12 +58,6 @@ def _ctx(request: Request, user: dict, **extra) -> dict:
     return ctx
 
 
-def _fmt_ts(ts) -> str:
-    if not ts:
-        return "—"
-    import datetime
-    return datetime.datetime.fromtimestamp(
-        int(ts), datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _fmt_num(v) -> str:
@@ -489,12 +485,12 @@ async def samelabs_remote_delete(tool_key: str, request: Request):
     user, resp = _gate(request)
     if resp:
         return resp
-    from repo.catalog import id_of_platform_row, delete_row
+    from repo.catalog import id_of_platform_row, delete_tool_row
     with db() as con:
         row = id_of_platform_row(con, tool_key, owner_id_is_null=True)
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
-        delete_row(con, row["id"])
+        delete_tool_row(con, row["id"])
     from governance.pricing import set_pricing
     set_pricing(tool_key, 0, False, admin_user_id=user["id"])
     return {"ok": True}

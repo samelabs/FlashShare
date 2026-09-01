@@ -27,6 +27,8 @@ import re
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from app.web_auth import require_session_or_bearer_auth as _require_auth  # 单点 (治理)
+
 from database import db
 from governance.user_tools import (
     MAX_TOOLS_PER_USER, _owner_rows, _public_item, _call_stats,
@@ -38,25 +40,6 @@ router = APIRouter()
 MAX_PRICE = 100000
 TOOL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 ACCEPT_MIME_RE = re.compile(r"^[\w.+-]+/[\w.+-]+$")
-DEFAULT_COMMISSION_RATE = 30
-
-
-def _require_auth(request: Request):
-    user = request.state.user
-    if not user:
-        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
-    return user, None
-
-
-def commission_rate() -> int:
-    """Platform commission percent (0-100) from settings; default 30."""
-    from repo.orders import setting
-    with db() as con:
-        row = setting(con, "commission_rate")
-    try:
-        return max(0, min(100, int(row["value"]))) if row else DEFAULT_COMMISSION_RATE
-    except (ValueError, TypeError):
-        return DEFAULT_COMMISSION_RATE
 
 
 def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False) -> tuple:
@@ -377,13 +360,13 @@ async def delete_user_tool(tool_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    from repo.catalog import owner_row_by_key, delete_row
+    from repo.catalog import owner_row_by_key, delete_tool_row
     tool_key = f"{user['username']}/{tool_id}"
     with db() as con:
         row = owner_row_by_key(con, tool_key, user["id"])
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
-        delete_row(con, row["id"])
+        delete_tool_row(con, row["id"])
     from governance.pricing import set_pricing
     set_pricing(tool_key, 0, False, admin_user_id=user["id"])
     return {"ok": True}

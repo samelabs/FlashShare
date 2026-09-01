@@ -94,7 +94,7 @@ def delete_upload(upload_id: int, user_id: int) -> bool:
     # orphaned gokapi file that expires on its own (invisible, no record).
     # The reverse order could leave a live DB record pointing at a dead file.
     with db() as con:
-        uploads_repo.delete_row(con, upload_id, user_id)
+        uploads_repo.delete_upload_row(con, upload_id, user_id)
     try:
         delete_gokapi_file(row["gokapi_id"])
     except Exception:

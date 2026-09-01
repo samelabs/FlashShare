@@ -47,7 +47,7 @@ from utils import (
 )
 
 
-def _fmt_ts(ts) -> str:
+def fmt_ts(ts) -> str:
     """Unix ts → local time string for templates."""
     if not ts:
         return "—"
@@ -79,7 +79,7 @@ def ctx_base(request: Request) -> dict:
         "css_version": _CSS_VERSION,
         "js_version": _JS_VERSION,
         "i18n_version": _I18N_VERSION,
-        "fmt_ts": _fmt_ts,
+        "fmt_ts": fmt_ts,
         "year": datetime.datetime.now().year,
         # icon helpers
         "icon_svg": icon_svg,

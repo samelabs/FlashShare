@@ -9,7 +9,7 @@ import io
 import sys
 
 # Core modules are in ../core/
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "core"))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent.parent))  # core/ (execution/ 的上一级)
 
 from tools import get_tool
 

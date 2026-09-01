@@ -8,11 +8,7 @@ router = APIRouter()
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from app.web_auth import require_session_auth as _require_auth_impl
-
-
-def _require_auth(request):
-    return _require_auth_impl(request)
+from app.web_auth import require_session_auth as _require_auth  # 单点 (治理)
 
 
 @router.post("/api/topup/checkout")

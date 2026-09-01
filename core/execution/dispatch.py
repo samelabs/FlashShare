@@ -32,7 +32,7 @@ class _RawRequest:
         self.client_ref = str(raw.get("client_ref") or "")
 
 
-def _client_ip(request) -> str:
+def client_ip(request) -> str:
     return request.headers.get("X-Real-IP",
                                request.client.host if request.client else "").strip()
 
@@ -56,7 +56,7 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
             params["preset"] = default
 
     req = _RawRequest(raw)
-    request_ctx = {"ip": _client_ip(request)}
+    request_ctx = {"ip": client_ip(request)}
 
     async def orchestrate(p):
         uploads = []
@@ -87,12 +87,11 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         try:
             if tool.get("execution") in ("http", "mcp"):
                 return await execute_remote(request_ctx, tool, uploads, p, user)
-            # local: worker pool 由调用方注入 (web 进程内单例)
+            # local: worker pool 由调用方注入; 未注入 → 执行域自持池
             if process_tool is None or pool is None:
-                from app.routes.api import _get_pool  # noqa: 只是池引用
-                from app.worker import process_tool as _pt
+                from .pool import get_pool, default_process_tool
                 return await execute_local(request_ctx, tool, uploads, p, user,
-                                           _pt, _get_pool())
+                                           default_process_tool(), get_pool())
             return await execute_local(request_ctx, tool, uploads, p, user,
                                        process_tool, pool)
         except _TE as exc:

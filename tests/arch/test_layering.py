@@ -244,5 +244,69 @@ class A5NoCrossRouteImports(unittest.TestCase):
         self.assertEqual(violations, [], "A5 违例(routes 互 import): " + ", ".join(violations))
 
 
+class A6CoreNoAppImports(unittest.TestCase):
+    """core 不得 import app (分层单向: app → core)。"""
+
+    def test_core_never_imports_app(self):
+        violations = []
+        for p in _pyfiles("core"):
+            tree = _tree(p)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for a in node.names:
+                        if a.name.split(".")[0] == "app":
+                            violations.append(f"{_rel(p)}: import {a.name}")
+                elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "app":
+                    violations.append(f"{_rel(p)}: from {node.module}")
+        self.assertEqual(violations, [],
+                         "A6 违例(core 反向依赖 app): " + ", ".join(violations))
+
+
+class A7NoDuplicateDefs(unittest.TestCase):
+    """同名函数跨文件分叉禁令 (白名单=真正的多态实现/测试)。"""
+
+    # 已知合理重复 (模板 helper / 测试 / repo 参数化形状)
+    A7_WHITELIST = {
+        "_decode_file": None,  # mcp 域内
+    }
+
+    def test_no_cross_file_duplicate_defs(self):
+        import collections
+        defs = collections.defaultdict(list)
+        for p in _pyfiles("core", "app"):
+            rel = _rel(p)
+            if rel.startswith("tests/"):
+                continue
+            tree = _tree(p)
+            # 只扫模块级定义 (函数内闭包=页面局部惯例, 非跨文件分叉)
+            top_nodes = list(tree.body)
+            for node in top_nodes:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    name = node.name
+                    if name.startswith("__"):
+                        continue
+                    # 域目录内同名为多态入口可接受; 跨文件同名 = 分叉候选
+                    defs[name].append(rel)
+        forks = {k: v for k, v in defs.items()
+                 if len(v) > 1 and not k.startswith("_private_")}
+        # 白名单过滤
+        for k in list(forks):
+            if k in ("client_ip",):
+                continue  # dispatch 单点 + import 别名不算
+        reported = {}
+        for k, v in forks.items():
+            uniq = sorted(set(v))
+            # 服务×repo 同名对 = 分层同构 (服务=事务壳, repo=查询), 非分叉:
+            # 同名且一方在 repo/ 一方在域服务目录 → 放行
+            if len(uniq) == 2 and any(x.startswith("core/repo/") for x in uniq) \
+                    and not all(x.startswith("core/repo/") for x in uniq):
+                continue
+            if len(uniq) > 1:
+                reported[k] = uniq
+        self.assertEqual(reported, {},
+                         "A7 违例(跨文件同名定义=分叉): " +
+                         "; ".join(f"{k}: {v}" for k, v in reported.items()))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

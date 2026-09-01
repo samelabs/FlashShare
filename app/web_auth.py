@@ -20,3 +20,12 @@ def require_session_auth(request: Request):
     if not row:
         return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
     return dict(row), None
+
+
+def require_session_or_bearer_auth(request: Request):
+    """api 面认证: 中间件已解析 request.state.user (session/bearer 双通道),
+    此处只做存在性闸 (与原各路由 _require_auth 行为一致)。"""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
+    return user, None

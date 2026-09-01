@@ -18,8 +18,11 @@ import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response
-from concurrent.futures import ProcessPoolExecutor
+from fastapi.responses import JSONResponse
+
+from fastapi.responses import Response
+
+from app.web_auth import require_session_or_bearer_auth as _require_auth  # 单点 (治理)
 
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
 sys.path.insert(0, str(_CORE))
@@ -36,35 +39,19 @@ from execution.source import resolve_upload
 from identity.auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
 from app.models import RenameRequest
-from app.worker import process_tool
+from execution.pool import get_pool as _get_pool
+from execution.pool import default_process_tool as process_tool
 
 logger = logging.getLogger("flashshare")
 router = APIRouter()
 
-# Worker pool for tool processing (subprocess isolation)
-_process_pool = ProcessPoolExecutor(max_workers=2)
-
-
-def _get_pool():
-    return _process_pool
 
 
 # ── Metering helpers (single gate at execute_tool; see pricing/billing) ──
 
 
-def _client_ip(request: Request) -> str:
-    # Nginx sets X-Real-IP from $remote_addr (overwritten, not appended),
-    # so it cannot be spoofed by the client. X-Forwarded-For is append-mode
-    # and its first segment is client-controlled — never trust it.
-    return request.headers.get("X-Real-IP", request.client.host if request.client else "").strip()
+from execution.dispatch import client_ip as _client_ip  # 单点 (治理3)
 
-
-def _require_auth(request: Request):
-    """Return user dict or JSONResponse error."""
-    user = request.state.user
-    if not user:
-        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
-    return user, None
 
 
 # ── Tools ──
@@ -90,7 +77,7 @@ async def execute_tool(request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from execution.dispatch import dispatch_execute
     payload, error_body, status = await dispatch_execute(
-        request, user, raw, process_tool, _get_pool())
+        request, user, raw, process_tool(), _get_pool())
     if error_body is not None:
         return JSONResponse(error_body, status)
     return payload

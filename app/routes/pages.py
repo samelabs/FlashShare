@@ -25,11 +25,7 @@ MAX_UPLOAD_MB = MAX_UPLOAD_BYTES // (1024 * 1024)
 from database import db
 
 
-def _fmt_ts(ts) -> str:
-    """Unix ts → local time string for templates."""
-    if not ts:
-        return "—"
-    return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M")
+from app.web_ctx import fmt_ts as _fmt_ts  # 单点 (治理4, UTC)
 
 load_all()  # auto-discover every tools_*.py
 from identity.auth import public_user
