@@ -376,8 +376,6 @@ register(
         "fr": "Embellir la capture",
     },
     icon="wand",
-    match=lambda upload: upload.get("content_type", "") in
-    {"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
     accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
     handler=beautify_handler,
     presets=[

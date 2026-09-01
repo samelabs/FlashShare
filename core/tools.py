@@ -41,7 +41,7 @@ class ToolError(Exception):
 _registry = []
 
 
-def register(tool_id, tool_type, label, icon, match, handler,
+def register(tool_id, tool_type, label, icon, handler,
              accept=None, presets=None, multi=False):
     """Register a tool.
 
@@ -50,8 +50,6 @@ def register(tool_id, tool_type, label, icon, match, handler,
         tool_type: TYPE_VIEW, TYPE_PEEK, or TYPE_PRODUCE.
         label: dict of {lang_code: display_name}. Must contain "en".
         icon: icon identifier from VALID_ICONS.
-        match: callable(upload: dict) -> bool. Used by detail page to
-               filter tools for a given file.
         handler: callable(tool_input: dict, params: dict) -> dict.
                  Receives source file stream + metadata, returns result.
                  Must NOT touch gokapi, database, or HTTP.
@@ -82,7 +80,6 @@ def register(tool_id, tool_type, label, icon, match, handler,
         "type": tool_type,
         "label": label,
         "icon": icon,
-        "match": match,
         "handler": handler,
         "accept": accept,
         "presets": presets,

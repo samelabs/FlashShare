@@ -117,7 +117,6 @@ register(
         "fr": "Images en PDF",
     },
     icon="convert",
-    match=lambda upload: (upload.get("content_type") or "") in ACCEPTED,
     accept=ACCEPTED,
     handler=img2pdf_handler,
     multi=True,

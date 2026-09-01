@@ -175,8 +175,11 @@ def insert_call_failed(con, client_ref: str, user_id: int, tool_id: str,
 
 
 def call_by_client_ref(con, user_id: int, client_ref: str) -> Optional[dict]:
+    """replay 锚点行: 该 ref 的 ok 行 (收口1 部分唯一索引保证至多一行);
+    无 ok 行 (全部失败/无历史) → None, 允许重试。"""
     return con.execute(
-        "SELECT * FROM tool_calls WHERE user_id = %s AND client_ref = %s",
+        "SELECT * FROM tool_calls WHERE user_id = %s AND client_ref = %s "
+        "AND status = 'ok' LIMIT 1",
         (user_id, client_ref)).fetchone()
 
 

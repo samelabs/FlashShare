@@ -130,7 +130,6 @@ register(
         "fr": "Rogner le blanc",
     },
     icon="crop",
-    match=lambda upload: (upload.get("content_type") or "") in ACCEPTED,
     accept=ACCEPTED,
     handler=crop_white_handler,
 )

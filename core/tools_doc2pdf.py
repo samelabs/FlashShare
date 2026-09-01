@@ -133,7 +133,6 @@ register(
         "fr": "Document en PDF",
     },
     icon="print",
-    match=lambda upload: os.path.splitext((upload.get("file_name") or "").lower())[1] in ACCEPTED_EXT,
     accept=set(ACCEPTED_MIMES),
     handler=doc2pdf_handler,
     multi=False,

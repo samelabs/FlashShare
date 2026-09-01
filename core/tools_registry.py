@@ -150,7 +150,6 @@ register(
         "pt": "Compartilhar sem perda", "fr": "Partage sans perte",
     },
     icon="upload",
-    match=lambda upload: True,
     accept=None,  # accepts all formats
     handler=share_handler,
 )
@@ -171,7 +170,6 @@ register(
         "fr": "Nettoyer l'image",
     },
     icon="shield",
-    match=lambda upload: upload.get("content_type", "").startswith("image/"),
     accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
     handler=privacy_handler,
     presets=[

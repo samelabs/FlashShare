@@ -92,7 +92,6 @@ register(
         "fr": "Créer ZIP",
     },
     icon="archive",
-    match=lambda upload: True,
     accept=None,
     handler=zip_pack_handler,
     multi=True,

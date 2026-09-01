@@ -240,9 +240,13 @@ _SCHEMA_SQL = (
     )
     """,
     """
-    CREATE UNIQUE INDEX IF NOT EXISTS tool_calls_client_ref_idx
-      ON tool_calls(user_id, client_ref)
+    CREATE UNIQUE INDEX IF NOT EXISTS tool_calls_client_ref_ok_idx
+      ON tool_calls(user_id, client_ref) WHERE status = 'ok'
     """,
+    # 收口1(未决项): 旧全量唯一索引与"失败后同 client_ref 重试"语义冲突
+    # (fail→retry 是产品语义, 同 ref 允许多行 attempt 历史; 唯一性只需
+    # 约束 replay 锚点=ok 行)。init_db 时替换旧索引。
+    "DROP INDEX IF EXISTS tool_calls_client_ref_idx",
     """
     CREATE INDEX IF NOT EXISTS tool_calls_user_time_idx
       ON tool_calls(user_id, started_at DESC)

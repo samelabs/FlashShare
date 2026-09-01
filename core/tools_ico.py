@@ -107,7 +107,6 @@ register(
         "fr": "ICO Favicon",
     },
     icon="favicon",
-    match=lambda upload: upload.get("content_type", "") in ACCEPT_MIMES,
     accept=ACCEPT_MIMES,
     presets=[
         {"id": "ico_16", "label": {"en": "16x16", "zh": "16x16", "ja": "16x16", "ko": "16x16", "es": "16x16", "ar": "16x16", "de": "16x16"}, "default": False},

@@ -92,7 +92,6 @@ register(
         "fr": "Fusionner PDF",
     },
     icon="merge",
-    match=lambda upload: upload.get("content_type") == "application/pdf",
     accept={"application/pdf"},
     handler=pdf_merge_handler,
     multi=True,

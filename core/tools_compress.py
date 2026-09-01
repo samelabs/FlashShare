@@ -149,7 +149,6 @@ register(
         "fr": "Compresser l'image",
     },
     icon="compress",
-    match=lambda upload: upload.get("content_type", "").startswith("image/"),
     accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
     handler=compress_handler,
     presets=[
