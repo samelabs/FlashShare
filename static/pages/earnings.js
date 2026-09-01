@@ -33,7 +33,7 @@ async function loadEarnings() {
   const bt = document.getElementById('byToolList');
   bt.innerHTML = '';
   if (!d.tools || !d.tools.length) {
-    bt.innerHTML = '<p class="profile-note">' + _msg('earn_none') + '</p>';
+    bt.innerHTML = '<p class="profile-note">' + _msg('earn_tool_none') + '</p>';
   } else {
     for (const t of d.tools) {
       const row = document.createElement('div');

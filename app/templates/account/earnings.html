@@ -29,7 +29,7 @@
     <h3 data-i18n="earn_lines">{{ texts.earn_lines }}</h3>
     <div id="revLines" class="wd-list"></div>
     <div id="revPager" class="acct-pager hidden"></div>
-    <p id="revNone" class="profile-note hidden" data-i18n="earn_none">{{ texts.earn_none }}</p>
+    <p id="revNone" class="profile-note hidden" data-i18n="earn_rev_none">{{ texts.earn_rev_none }}</p>
 
     <h3 data-i18n="earn_hist">{{ texts.earn_hist }}</h3>
     <div id="earnHist" class="wd-list"></div>
@@ -56,6 +56,6 @@
 {% endblock %}
 
 {% block script %}
-<script src="/static/pages/common.js?v={{ js_version }}"></script>
-  <script src="/static/pages/earnings.js?v={{ js_version }}"></script>
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
+  <script src="/static/pages/earnings.js?v={{ pages_version }}"></script>
 {% endblock %}

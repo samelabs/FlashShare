@@ -86,5 +86,5 @@
 
 {% block script %}
 <script>window.__PAGE__ = { publicId: {{ public_id|tojson }}, dlUrl: {{ dl_url|tojson }}, fileName: {{ file_name|tojson }}, icons: { check: {{ icon_svg("check")|tojson }} } };</script>
-<script src="/static/pages/detail.js?v={{ js_version }}"></script>
+<script src="/static/pages/detail.js?v={{ pages_version }}"></script>
 {% endblock %}

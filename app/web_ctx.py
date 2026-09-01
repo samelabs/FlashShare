@@ -33,6 +33,15 @@ _JS_VERSION = hashlib.md5((JS + str(int(_os.path.getmtime(_STATIC / "app.js"))))
 with open(_STATIC / "i18n.js", encoding="utf-8") as f:
     _I18N_JS = f.read()
 _I18N_VERSION = hashlib.md5((_I18N_JS + str(int(_os.path.getmtime(_STATIC / "i18n.js")))).encode()).hexdigest()[:8]
+
+# pages/*.js 独立戳: 目录聚合 md5 (任一文件改动即变)。此前全部借用 js_version
+# (app.js 的 hash) — pages 文件改动戳不变, 边缘永发旧文件 (skill 记录过的同款缺陷)。
+_PAGES_DIR = _STATIC / "pages"
+_pages_digest = hashlib.md5()
+for _f in sorted(_PAGES_DIR.glob("*.js")):
+    _pages_digest.update(_f.name.encode())
+    _pages_digest.update(_f.read_bytes())
+PAGES_VERSION = _pages_digest.hexdigest()[:8]
 sys.path.insert(0, str(_CORE))
 
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL
@@ -78,6 +87,7 @@ def ctx_base(request: Request) -> dict:
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
         "css_version": _CSS_VERSION,
         "js_version": _JS_VERSION,
+        "pages_version": PAGES_VERSION,
         "i18n_version": _I18N_VERSION,
         "fmt_ts": fmt_ts,
         "year": datetime.datetime.now().year,
