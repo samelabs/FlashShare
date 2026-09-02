@@ -511,7 +511,7 @@ select { width: auto; margin-top: 0; }
 .sub-warn { font-size: var(--text-xs); color: var(--muted); }
 .sub-period { display: block; font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
 .topup-price .sub-per { font-size: var(--text-xs); color: var(--muted); font-weight: 400; }
-.brand-plus { display: inline-flex; padding: 1px 7px; margin-left: 5px; border-radius: var(--r-full); border: 1px solid var(--accent); color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .05em; vertical-align: middle; }
+.plus-badge { display: inline-flex; padding: 1px 7px; margin-left: 5px; border-radius: var(--r-full); border: 1px solid var(--accent); color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .05em; vertical-align: middle; }
 /* 发布表单高级项折叠 */
 .usertools-adv { margin: 2px 0 0; }
 .usertools-adv summary { font-size: var(--text-sm); color: var(--muted); cursor: pointer; padding: 6px 0; user-select: none; }

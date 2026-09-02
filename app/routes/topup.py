@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from app.web_auth import require_session_auth as _require_auth  # 单点 (治理)
+from database import db  # checkout/subscribe 事务 (审计T1: 8处 with db() 此前零导入)
 
 
 @router.post("/api/topup/checkout")

@@ -74,7 +74,7 @@
     </div>
     {% endif %}
     {% if plans %}
-    <div class="topup-grid">
+    <div class="topup-grid sub-grid">
       {% for pl in plans %}
       <div class="topup-item">
         <strong class="topup-credits">+{{ pl.monthly_credits }}</strong>
@@ -131,4 +131,9 @@
     {% endif %}
   </div>
 </section>
+{% endblock %}
+
+{% block script %}
+  <script src="/static/pages/common.js?v={{ pages_version }}"></script>
+  <script src="/static/pages/credits.js?v={{ pages_version }}"></script>
 {% endblock %}

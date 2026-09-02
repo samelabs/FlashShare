@@ -19,7 +19,7 @@
       </button>
       <div class="user-dropdown hidden" id="userDropdown" role="menu">
         <div class="user-info">
-          <span class="user-name">{{ (user.displayName or user.username)|e }} <span class="user-handle">@{{ user.username|e }}</span>{% if my_plan and my_plan.member %} <span class="brand-plus">PLUS</span>{% endif %}</span>
+          <span class="user-name">{{ (user.displayName or user.username)|e }} <span class="user-handle">@{{ user.username|e }}</span>{% if my_plan and my_plan.member %} <span class="plus-badge">PLUS</span>{% endif %}</span>
         </div>
 
         <div class="menu-sec" role="group" aria-label="{{ texts.credits_balance }}">

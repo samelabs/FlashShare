@@ -41,7 +41,7 @@ def get_balance(user_id: int) -> int:
 # eat into provider earnings.
 SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
                    "bonus", "topup", "consume", "refund", "adjust", "grant",
-                   "revoke", "manual_topup", "grant_plan")
+                   "revoke", "manual_topup", "grant_plan", "grant_package")
 
 
 def spendable_balance(user_id: int) -> int:
