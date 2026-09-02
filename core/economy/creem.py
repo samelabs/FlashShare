@@ -75,6 +75,14 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int) -> dict
             raise KeyError("order_not_found")
         if row["granted"]:
             return {"granted": False, "credits": 0}
+        # 🟡(订阅S2 随批): 金额一致性 — Creem 侧金额与订单不符时拒绝授信
+        # (改价/异常事件), 运营对账后人工处理。amount_cents<=0 视为未知, 放行。
+        if amount_cents and row["amount_cents"] and int(amount_cents) != int(row["amount_cents"]):
+            import logging
+            logging.getLogger("flashshare").warning(
+                "creem fulfill amount mismatch: order=%s expected=%s got=%s",
+                row["id"], row["amount_cents"], amount_cents)
+            raise KeyError("amount_mismatch")
         orders_repo.mark_paid(con, row["id"], ts)
         pkg = _orders_repo.package_credits(con, row["item_id"])
         credits = pkg["credits"] if pkg else 0

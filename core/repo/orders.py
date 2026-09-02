@@ -166,6 +166,42 @@ def latest_plan_order_for_user(con, user_id: int) -> Optional[dict]:
         """, (user_id,)).fetchone()
 
 
+def plan_by_id(con, plan_id: int) -> Optional[dict]:
+    return con.execute(
+        "SELECT * FROM plans WHERE id = %s", (plan_id,)).fetchone()
+
+
+def user_plan_row(con, user_id: int, plan_id: int) -> Optional[dict]:
+    return con.execute(
+        "SELECT * FROM user_plans WHERE user_id=%s AND plan_id=%s",
+        (user_id, plan_id)).fetchone()
+
+
+def plan_credits(con, plan_id: int) -> int:
+    row = con.execute(
+        "SELECT monthly_credits FROM plans WHERE id=%s", (plan_id,)).fetchone()
+    return int(row["monthly_credits"] or 0) if row else 0
+
+
+def set_cancel_scheduled(con, user_id: int, plan_id: int, ts: int) -> None:
+    con.execute(
+        """UPDATE user_plans SET cancel_scheduled_at=%s, updated_at=%s
+           WHERE user_id=%s AND plan_id=%s""",
+        (ts, ts, user_id, plan_id))
+
+
+def sweep_expired_plans(con, ts: int) -> int:
+    """过期订阅 → expired。状态转移 only, 授信永不在此发生。"""
+    cur = con.execute(
+        """
+        UPDATE user_plans SET status='expired', updated_at=%s
+        WHERE status IN ('active','past_due') AND renews_at IS NOT NULL
+          AND renews_at < %s
+        RETURNING user_id
+        """, (ts, ts))
+    return len(cur.fetchall())
+
+
 # ── settings (KV) ──
 
 def setting(con, key: str) -> Optional[dict]:
