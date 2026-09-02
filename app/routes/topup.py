@@ -82,10 +82,18 @@ async def subscribe_checkout(request: Request):
     return out
 
 
+MAX_WEBHOOK_BODY = 262144  # 256KB — Creem 事件远小于此; 挡匿名内存放大 (审计🟡9)
+
+
 @router.post("/webhooks/creem")
 async def creem_webhook(request: Request):
     from economy import creem
+    cl = request.headers.get("content-length", "")
+    if cl.isdigit() and int(cl) > MAX_WEBHOOK_BODY:
+        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
     raw = await request.body()
+    if len(raw) > MAX_WEBHOOK_BODY:
+        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
     sig = request.headers.get("creem-signature", "")
     if not creem.verify_signature(raw, sig):
         return JSONResponse({"ok": False, "error": "bad_signature"}, 401)

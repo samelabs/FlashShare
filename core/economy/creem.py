@@ -73,8 +73,8 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int) -> dict
             row = orders_repo.order_by_provider_id(con, "ch:" + checkout_id)
         if row is None:
             raise KeyError("order_not_found")
-        if row["granted"]:
-            return {"granted": False, "credits": 0}
+        # granted=TRUE 不早退: mark_paid 同值幂等 + grant idem_key 兜底,
+        # 使"标记已提交但 grant 曾失败"的行在重试时补授 (审计🟡2: 原早退致永不到账)。
         # 🟡(订阅S2 随批): 金额一致性 — Creem 侧金额与订单不符时拒绝授信
         # (改价/异常事件), 运营对账后人工处理。amount_cents<=0 视为未知, 放行。
         if amount_cents and row["amount_cents"] and int(amount_cents) != int(row["amount_cents"]):

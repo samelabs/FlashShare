@@ -21,17 +21,24 @@ PLAN_STATUSES = ("active", "past_due", "canceled", "expired")
 
 
 def _parse_ts(val) -> int | None:
-    """Creem payload dates are ISO8601 or epoch-ms — normalise to epoch s."""
+    """Creem payload dates are ISO8601 or epoch-ms — normalise to epoch s.
+    加固 (审计🟡7): 无时区串按 UTC (幂等键不受部署机时区影响); nan/inf/超界归 None。"""
     if val is None:
         return None
-    if isinstance(val, (int, float)):
-        v = int(val)
-        return v // 1000 if v > 10**12 else v
     import datetime
     try:
+        if isinstance(val, (int, float)):
+            v = int(val)
+            if v != v or v in (1 << 63, -(1 << 63)):  # nan check / i64 边界
+                return None
+            v = v // 1000 if v > 10**12 else v
+            return v if 0 < v < 4102444800 else None  # (1970, 2100) 钳制
         dt = datetime.datetime.fromisoformat(str(val).replace("Z", "+00:00"))
-        return int(dt.timestamp())
-    except ValueError:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        epoch = int(dt.timestamp())
+        return epoch if 0 < epoch < 4102444800 else None
+    except (ValueError, OverflowError, TypeError):
         return None
 
 
@@ -57,6 +64,10 @@ def bind_checkout(obj: dict) -> dict:
     with _db() as con:
         row = orders_repo.order_by_provider_id(con, "ch:" + ch_id)
         if row is None:
+            # 重放: 绑定已完成 (ch: 已被覆写为 sub:) → 幂等 ack, 不再 500 重试环
+            already = orders_repo.plan_order_by_sub_id(con, sub_id)
+            if already is not None:
+                return {"bound": True, "replay": True}
             raise KeyError("order_not_found")
         if row["kind"] != "plan":
             return {"ignored": True}
@@ -150,12 +161,21 @@ def _ev_scheduled_cancel(sub_id: str, obj: dict) -> dict:
     return {"scheduled_cancel": True}
 
 
+def _period_end_of(obj: dict, sub_id: str) -> int | None:
+    """payload 的当期周期 end; 缺失时回落到库中现值 (规范四: 当期权益到 period_end)。"""
+    sub = obj.get("subscription") or obj
+    return _parse_ts(sub.get("current_period_end_date"))
+
+
 def _ev_canceled(sub_id: str, obj: dict) -> dict:
-    order, plan, _ = _bind_and_load(sub_id, obj)
+    """当期权益保留至 period_end (规范四) — 不抹 renews_at。"""
+    order, plan, current = _bind_and_load(sub_id, obj)
+    renews = _period_end_of(obj, sub_id) or (current["renews_at"] if current else None)
     with db() as con:
+        started = current["started_at"] if current else order["created_at"]
         orders_repo.upsert_user_plan(
             con, order["user_id"], plan["id"], "canceled",
-            started_at=order["created_at"], renews_at=None, period_start=None)
+            started_at=started, renews_at=renews, period_start=None)
     return {"status": "canceled"}
 
 
@@ -164,9 +184,11 @@ def _ev_past_due(sub_id: str, obj: dict) -> dict:
     with db() as con:
         current = orders_repo.user_plan_row(con, order["user_id"], plan["id"])
         started = current["started_at"] if current else order["created_at"]
+        # 宽限: 权益保留至原 renews_at (不抹) — 补扣成功由 paid 推进周期
+        renews = current["renews_at"] if current else None
         orders_repo.upsert_user_plan(
             con, order["user_id"], plan["id"], "past_due",
-            started_at=started, renews_at=None, period_start=None)
+            started_at=started, renews_at=renews, period_start=None)
     return {"status": "past_due"}
 
 
@@ -175,9 +197,10 @@ def _ev_expired(sub_id: str, obj: dict) -> dict:
     with db() as con:
         current = orders_repo.user_plan_row(con, order["user_id"], plan["id"])
         started = current["started_at"] if current else order["created_at"]
+        renews = _period_end_of(obj, sub_id) or (current["renews_at"] if current else None)
         orders_repo.upsert_user_plan(
             con, order["user_id"], plan["id"], "expired",
-            started_at=started, renews_at=None, period_start=None)
+            started_at=started, renews_at=renews, period_start=None)
     return {"status": "expired"}
 
 
@@ -200,7 +223,9 @@ def plan_of(user_id: int) -> dict | None:
         return None
     d = dict(row)
     ts = now()
-    live = d["status"] == "active" and (d["renews_at"] or 0) > ts
+    # 规范四: canceled(当期结束前)/past_due(宽限期) 权益保留至 renews_at;
+    # expired 永久失效。renews_at 是权威边界。
+    live = d["status"] in ("active", "canceled", "past_due") and (d["renews_at"] or 0) > ts
     return {
         "code": d["code"], "name": d["name"], "status": d["status"],
         "renews_at": d["renews_at"],

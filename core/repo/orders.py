@@ -167,14 +167,6 @@ def plan_order_by_sub_id(con, sub_id: str) -> Optional[dict]:
         """, (f"sub:{sub_id}",)).fetchone()
 
 
-def latest_plan_order_for_user(con, user_id: int) -> Optional[dict]:
-    return con.execute(
-        """
-        SELECT * FROM orders WHERE user_id = %s AND kind = 'plan'
-        ORDER BY id DESC LIMIT 1
-        """, (user_id,)).fetchone()
-
-
 def plan_by_id(con, plan_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM plans WHERE id = %s", (plan_id,)).fetchone()
