@@ -86,7 +86,7 @@ svg:not([width]):not([height]) { width: 20px; height: 20px; }
 .tool-overlay-close svg, .modal-close svg { width: 16px; height: 16px; }
 .controls .field b svg { width: 13px; height: 13px; }
 
-body { margin: 0; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+body { margin: 0; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; min-height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 /* Keyboard focus ring — consistent across all interactive elements */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -95,7 +95,7 @@ a { color: var(--accent); text-decoration: none; }
 h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Layout ───────────────────────────────────────────────── */
-.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: 0 var(--s2); flex: 1; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+.shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: 0 var(--s2); flex: 1; display: flex; flex-direction: column; }
 
 /* ═══ 首页新结构样式 (STEP 2) ═══ */
 
@@ -165,7 +165,7 @@ h1, h2 { letter-spacing: -0.02em; }
 }
 
 /* ── Topbar ───────────────────────────────────────────────── */
-.topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); padding: 0 max(var(--s2), calc((100vw - 880px) / 2 + var(--s2))); flex-shrink: 0; background: var(--card); z-index: var(--z-dropdown); border-bottom: 1px solid var(--line); }
+.topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); padding: 0 max(var(--s2), calc((100vw - 880px) / 2 + var(--s2))); flex-shrink: 0; background: var(--card); z-index: var(--z-dropdown); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
 .brand { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; letter-spacing: -0.03em; text-decoration: none; white-space: nowrap; color: var(--ink); }
 .brand-mark { width: 24px; height: 24px; border-radius: 7px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .brand-mark svg { width: 14px; height: 14px; }
@@ -352,7 +352,7 @@ select { width: auto; margin-top: 0; }
 @keyframes modalIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 .modal-panel { width: min(540px,100%); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s5) var(--s4) var(--s4); padding-bottom: max(var(--s4), env(safe-area-inset-bottom)); position: relative; box-shadow: var(--sh-xl); max-height: calc(100dvh - var(--s4) * 2); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 /* tall forms must never lock the page: the panel itself scrolls
-   (body is overflow:hidden by site design — .shell scrolls) */
+   (page scrolls natively; .modal-panel caps at viewport) */
 .modal-close { position: absolute; right: var(--s3); top: var(--s3); width: 34px; height: 34px; min-height: 34px; padding: 0; background: transparent; color: var(--muted); border: 0; border-radius: 50%; }
 @media (hover:hover) and (pointer:fine) { .modal-close:hover { background: var(--soft); color: var(--ink); opacity: 1; } }
 .modal-panel h2 { margin: 0; padding-right: 42px; font-size: var(--text-xl); line-height: 1.25; overflow-wrap: anywhere; font-weight: 800; }
@@ -503,6 +503,9 @@ select { width: auto; margin-top: 0; }
 .tool-overlay-preset.active { color: var(--accent); border-color: var(--accent); }
 .tool-overlay-preset.active::before { background: currentColor; }
 @media (hover:hover) and (pointer:fine) { .tool-overlay-preset:hover { border-color: var(--accent); color: var(--accent); } }
+/* 模式徽标 (工具 tab 内 "· Aurora"): 附属信息, 主从层级低于工具名 (14px) */
+.tool-preset-badge { font-size: var(--text-xs); font-weight: 600; color: var(--muted); }
+.tool-tab.active .tool-preset-badge { color: var(--accent); opacity: .75; }
 .tool-overlay-actions { display: flex; gap: var(--s2); margin-top: var(--s5); }
 .overlay-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s1); height: 40px; padding: 0 var(--s5); border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg); color: var(--ink); font-size: var(--text-sm); font-weight: 700; cursor: pointer; white-space: nowrap; transition: border-color var(--ease-in), background var(--ease-in), color var(--ease-in); text-decoration: none; }
 @media (hover:hover) and (pointer:fine) { .overlay-btn:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); } }
