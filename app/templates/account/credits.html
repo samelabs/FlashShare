@@ -59,6 +59,39 @@
     <p class="acct-card-sub" data-i18n="topup_note">{{ texts.topup_note }}</p>
   </div>
 
+  <div class="acct-card">
+    <div class="acct-card-head">
+      <h2 data-i18n="sub_title">{{ texts.sub_title }}</h2>
+    </div>
+    {% if my_plan %}
+    <div class="sub-status">
+      <span class="sub-badge{% if my_plan.member %} on{% endif %}" data-i18n="sub_plus_badge">{{ texts.sub_plus_badge }}</span>
+      <span class="sub-meta">
+        {% if my_plan.member %}{{ texts.sub_until }} {{ fmt_ts(my_plan.renews_at) }}
+        {% else %}{{ my_plan.status }}{% endif %}
+      </span>
+      {% if my_plan.cancel_scheduled_at %}<span class="sub-warn" data-i18n="sub_ends_no_renew">{{ texts.sub_ends_no_renew }}</span>{% endif %}
+    </div>
+    {% endif %}
+    {% if plans %}
+    <div class="topup-grid">
+      {% for pl in plans %}
+      <div class="topup-item">
+        <strong class="topup-credits">+{{ pl.monthly_credits }}</strong>
+        <span class="sub-period" data-i18n="sub_per_period">{{ texts.sub_per_period }}</span>
+        <span class="topup-price">${{ (pl.price_cents / 100)|round(0)|int }}<span class="sub-per">/{{ pl.period_days }}d</span></span>
+        {% if topup_ready and pl.creem_price_id %}
+        <button type="button" class="primary sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
+        {% else %}
+        <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <p class="acct-card-sub" data-i18n="sub_note">{{ texts.sub_note }}</p>
+  </div>
+
 
   <div class="acct-card">
     <div class="acct-card-head">

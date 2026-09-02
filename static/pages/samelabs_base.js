@@ -24,9 +24,9 @@ function slToast(kind, title, sub) {
 }
 
 /* POST JSON, 返回 {status, data} — 调用方负责业务分支 */
-function slPost(url, payload) {
+function slPost(url, payload, method) {
   return fetch(url, {
-    method: 'POST',
+    method: method || 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })

@@ -46,6 +46,41 @@ async def topup_checkout(request: Request):
     return out
 
 
+@router.post("/subscribe")
+async def subscribe_checkout(request: Request):
+    """订阅 checkout (v3 spec): plan 必须绑 creem_price_id 才可售。"""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from economy import creem
+    if not creem.creem_enabled():
+        return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
+    try:
+        raw = await request.json()
+        plan_id = int(raw.get("plan_id", 0))
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.orders import plan_by_id_active, insert_order, set_provider_order_id
+    with db() as con:
+        plan = plan_by_id_active(con, plan_id)
+    if not plan or not plan["creem_price_id"]:
+        return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
+    from utils import now
+    with db() as con:
+        order = insert_order(con, user["id"], "plan", plan["id"], "creem",
+                             plan["price_cents"], plan["currency"], now())
+    try:
+        out = creem.create_checkout(order["id"], dict(plan), user)
+    except Exception:
+        with db() as con:
+            from repo.orders import mark_failed
+            mark_failed(con, order["id"])
+        return JSONResponse({"ok": False, "error": "checkout_failed"}, 502)
+    with db() as con:
+        set_provider_order_id(con, order["id"], "ch:" + out["checkout_id"])
+    return out
+
+
 @router.post("/webhooks/creem")
 async def creem_webhook(request: Request):
     from economy import creem

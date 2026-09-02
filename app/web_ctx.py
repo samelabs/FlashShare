@@ -69,6 +69,14 @@ def ctx_base(request: Request) -> dict:
     lang = request.state.lang
     user = request.state.user
     from economy.billing import spendable_balance as get_balance
+    # 会员标识单点: 登录用户查订阅状态 (header PLUS 徽标/账户页同源)
+    my_plan = None
+    if user:
+        from economy.subscription import plan_of
+        try:
+            my_plan = plan_of(user["id"])
+        except Exception:
+            my_plan = None
     return {
         "request": request,
         "lang": lang,
@@ -81,6 +89,7 @@ def ctx_base(request: Request) -> dict:
         "user_json": public_user(user) if user else None,
         # Header credit chip (None for anonymous)
         "credits": get_balance(user["id"]) if user else None,
+        "my_plan": my_plan,
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
         "BASE_URL": BASE_URL,

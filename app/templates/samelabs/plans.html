@@ -5,25 +5,28 @@
 <div class="sl-panel">
   <div class="sl-panel-head">
     <h2>订阅档位</h2>
-    <span class="sl-panel-sub">价格单位: 分 / 月</span>
+    <span class="sl-panel-sub">价格单位: 分 / 周期 · Creem product id 绑定后可售</span>
   </div>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
-      <thead><tr><th>code</th><th>名称</th><th class="sl-num">月价(分)</th><th class="sl-num">月积分</th><th>状态</th></tr></thead>
+      <thead><tr><th>code</th><th>名称</th><th class="sl-num">周期价(分)</th><th class="sl-num">每期积分</th><th>周期天数</th><th>Creem product id</th><th>状态</th><th></th></tr></thead>
       <tbody>
       {% for p in plans %}
-        <tr>
+        <tr data-plan="{{ p.id }}">
           <td class="sl-mono">{{ p.code|e }}</td>
           <td>{{ p.name|e }}</td>
-          <td class="sl-num">{{ fmt_num(p.price_cents) }}</td>
+          <td class="sl-num"><input class="sl-input" style="width:90px" type="number" min="0" value="{{ p.price_cents }}" data-field="price_cents"></td>
           <td class="sl-num">{{ fmt_num(p.monthly_credits) }}</td>
+          <td class="sl-num">{{ p.period_days }}</td>
+          <td><input class="sl-input sl-mono" style="width:180px" type="text" value="{{ p.creem_price_id or '' }}" placeholder="prod_…" data-field="creem_price_id" maxlength="64"></td>
           <td>
             {% if p.active %}<span class="sl-badge sl-b-ok">生效中</span>
             {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
           </td>
+          <td><button type="button" class="sl-btn sl-btn-primary plan-save" data-plan="{{ p.id }}">保存</button></td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="sl-dim">暂无档位</td></tr>
+        <tr><td colspan="8" class="sl-dim">暂无档位</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -31,8 +34,8 @@
   <form class="sl-form" id="planForm">
     <input class="sl-input" type="text" id="planCode" placeholder="code 如 pro" maxlength="32" required>
     <input class="sl-input" type="text" id="planName" placeholder="名称" maxlength="64" required>
-    <input class="sl-input" type="number" id="planPrice" placeholder="月价(分)" min="0" style="flex:0 1 130px" required>
-    <input class="sl-input" type="number" id="planCredits" placeholder="月积分" min="0" style="flex:0 1 130px" required>
+    <input class="sl-input" type="number" id="planPrice" placeholder="周期价(分)" min="0" style="flex:0 1 130px" required>
+    <input class="sl-input" type="number" id="planCredits" placeholder="每期积分" min="0" style="flex:0 1 130px" required>
     <button type="submit" class="sl-btn sl-btn-primary" id="planCreate">创建档位</button>
   </form>
 </div>

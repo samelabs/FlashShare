@@ -55,9 +55,11 @@ async def v1_me(request: Request):
     if err:
         return err
     from economy.billing import spendable_balance as get_balance
+    from economy.subscription import plan_of
     u = public_user(user)
     u.pop("email", None)  # token channel: no PII beyond what's needed
-    return {"ok": True, "user": u, "credits": get_balance(user["id"])}
+    return {"ok": True, "user": u, "credits": get_balance(user["id"]),
+            "plan": plan_of(user["id"])}
 
 
 @router.get("/tools")

@@ -87,6 +87,15 @@ def insert_plan(con, code: str, name: str, monthly_credits: int,
         (code, name, monthly_credits, price_cents, ts, ts)).fetchone()
 
 
+def update_plan_pricing(con, plan_id: int, price_cents: int,
+                        creem_price_id: str | None, ts: int) -> Optional[dict]:
+    return con.execute(
+        """
+        UPDATE plans SET price_cents=%s, creem_price_id=%s, updated_at=%s
+        WHERE id=%s RETURNING *
+        """, (price_cents, creem_price_id, ts, plan_id)).fetchone()
+
+
 def all_packages(con) -> list:
     return con.execute("SELECT * FROM packages ORDER BY credits").fetchall()
 

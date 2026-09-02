@@ -182,6 +182,27 @@ async def samelabs_create_plan(request: Request):
     return {"ok": True, "plan": dict(row)}
 
 
+@router.patch("/samelabs/plans/{plan_id}")
+async def samelabs_update_plan(plan_id: int, request: Request):
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        price = int(raw.get("price_cents", -1))
+        creem_price_id = str(raw.get("creem_price_id", "")).strip()[:64] or None
+        if price < 0:
+            raise ValueError
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.orders import update_plan_pricing
+    with db() as con:
+        row = update_plan_pricing(con, plan_id, price, creem_price_id, now())
+    if row is None:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True, "plan": dict(row)}
+
+
 @router.get("/samelabs/packages")
 async def samelabs_packages(request: Request):
     user, resp = _gate(request)
