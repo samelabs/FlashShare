@@ -102,6 +102,70 @@ def insert_package(con, code: str, name: str, credits: int,
         (code, name, credits, price_cents, ts, ts)).fetchone()
 
 
+# ── plans (subscription tiers) ──
+
+def active_plans(con) -> list:
+    return con.execute(
+        "SELECT * FROM plans WHERE active ORDER BY sort_order, price_cents"
+    ).fetchall()
+
+
+def plan_by_id_active(con, plan_id: int) -> Optional[dict]:
+    return con.execute(
+        "SELECT * FROM plans WHERE id = %s AND active", (plan_id,)).fetchone()
+
+
+def upsert_user_plan(con, user_id: int, plan_id: int, status: str,
+                     started_at: int, renews_at: int | None,
+                     period_start: int | None = None,
+                     cancel_scheduled_at: int | None = None) -> dict:
+    """状态机落库: 同 (user,plan) 复购=UPDATE。所有列幂等写 (SET 同值无副作用)。"""
+    return con.execute(
+        """
+        INSERT INTO user_plans (user_id, plan_id, status, started_at,
+                                renews_at, last_grant_period_start,
+                                cancel_scheduled_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, plan_id) DO UPDATE SET
+          status = EXCLUDED.status,
+          renews_at = EXCLUDED.renews_at,
+          last_grant_period_start = EXCLUDED.last_grant_period_start,
+          cancel_scheduled_at = EXCLUDED.cancel_scheduled_at,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *
+        """,
+        (user_id, plan_id, status, started_at, renews_at,
+         period_start, cancel_scheduled_at, started_at)).fetchone()
+
+
+def plan_of(con, user_id: int) -> Optional[dict]:
+    """身份单点读取: 用户当前订阅行 (含 plan code)。"""
+    return con.execute(
+        """
+        SELECT up.status, up.started_at, up.renews_at, up.cancel_scheduled_at,
+               p.code, p.name
+        FROM user_plans up JOIN plans p ON p.id = up.plan_id
+        WHERE up.user_id = %s
+        """, (user_id,)).fetchone()
+
+
+def plan_order_by_sub_id(con, sub_id: str) -> Optional[dict]:
+    """事件→订阅行映射: provider_order_id='sub:{id}' 最新一条。"""
+    return con.execute(
+        """
+        SELECT * FROM orders WHERE provider_order_id = %s
+        ORDER BY id DESC LIMIT 1
+        """, (f"sub:{sub_id}",)).fetchone()
+
+
+def latest_plan_order_for_user(con, user_id: int) -> Optional[dict]:
+    return con.execute(
+        """
+        SELECT * FROM orders WHERE user_id = %s AND kind = 'plan'
+        ORDER BY id DESC LIMIT 1
+        """, (user_id,)).fetchone()
+
+
 # ── settings (KV) ──
 
 def setting(con, key: str) -> Optional[dict]:

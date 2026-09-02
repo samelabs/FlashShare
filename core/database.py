@@ -272,6 +272,8 @@ _SCHEMA_SQL = (
       code             TEXT NOT NULL UNIQUE,
       name             TEXT NOT NULL,
       monthly_credits  BIGINT NOT NULL DEFAULT 0,
+      period_days      INT NOT NULL DEFAULT 30,
+      period           TEXT NOT NULL DEFAULT 'monthly',
       price_cents      BIGINT NOT NULL DEFAULT 0,
       currency         TEXT NOT NULL DEFAULT 'USD',
       creem_price_id   TEXT,
@@ -288,7 +290,11 @@ _SCHEMA_SQL = (
       plan_id    BIGINT NOT NULL REFERENCES plans(id),
       started_at BIGINT NOT NULL,
       renews_at  BIGINT,
-      status     TEXT NOT NULL DEFAULT 'active',
+      status     TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active','past_due','canceled','expired')),
+      cancel_scheduled_at     BIGINT,
+      last_grant_period_start BIGINT,
+      updated_at BIGINT,
       PRIMARY KEY (user_id, plan_id)
     )
     """,
@@ -417,6 +423,22 @@ _SCHEMA_SQL = (
     """,
     # users.payout_channel (withdrawal destination, operator-read) — additive
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_channel TEXT",
+    # ── subscription (plans/user_plans v3, 2026-09-02) ──
+    "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period_days INT NOT NULL DEFAULT 30",
+    "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly'",
+    "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS cancel_scheduled_at BIGINT",
+    "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS last_grant_period_start BIGINT",
+    "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS updated_at BIGINT",
+    # 状态约束: 旧表无 CHECK; DROP IF NOT EXISTS 语义 → 先删后加(幂等)
+    "ALTER TABLE user_plans DROP CONSTRAINT IF EXISTS user_plans_status_check",
+    """ALTER TABLE user_plans ADD CONSTRAINT user_plans_status_check
+       CHECK (status IN ('active','past_due','canceled','expired'))""",
+    # PLUS 档种子 (幂等; creem_price_id 留空待运营绑定)
+    """INSERT INTO plans (code, name, monthly_credits, period_days, period,
+                         price_cents, sort_order, active, created_at, updated_at)
+       VALUES ('plus', 'PLUS', 10000, 30, 'monthly', 0, 0, TRUE,
+               EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
+       ON CONFLICT (code) DO NOTHING""",
 )
 
 
