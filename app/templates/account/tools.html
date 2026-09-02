@@ -47,16 +47,18 @@ B. 返回 JSON:  { "output_url": "https://you/x.png" }  （平台回拉，同样
     <h2 id="modalTitle" data-i18n="mytools_create">{{ texts.mytools_create }}</h2>
     <p class="profile-note" data-i18n="mytools_modal_hint">{{ texts.mytools_modal_hint }}</p>
     <div class="usertools-form">
+      <label class="usertools-wide"><span data-i18n="mytools_f_url">{{ texts.mytools_f_url }}</span><input id="fUrl" type="url" placeholder="https://api.example.com/process"></label>
+      <label><span data-i18n="mytools_f_accept">{{ texts.mytools_f_accept }}</span><input id="fAccept" placeholder="image/png, application/pdf"></label>
+      <label><span data-i18n="mytools_f_out">{{ texts.mytools_f_out }}</span><input id="fOut" placeholder="out.png"></label>
       <label><span data-i18n="mytools_f_label">{{ texts.mytools_f_label }}</span><input id="fLabel" maxlength="40" placeholder="Super Resolve"></label>
       <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span><input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41"></label>
       <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span><input id="fCost" type="number" min="0" max="100000" value="0"></label>
-      <label><span data-i18n="mytools_f_timeout">{{ texts.mytools_f_timeout }}</span><input id="fTimeout" type="number" min="5" max="300" value="60"> </label>
-      <label><span data-i18n="mytools_f_accept">{{ texts.mytools_f_accept }}</span><input id="fAccept" placeholder="image/png, application/pdf"></label>
-      <label class="usertools-wide"><span data-i18n="mytools_f_url">{{ texts.mytools_f_url }}</span><input id="fUrl" type="url" placeholder="https://api.example.com/process"></label>
-      <label><span data-i18n="mytools_f_out">{{ texts.mytools_f_out }}</span><input id="fOut" placeholder="out.png"></label>
       <label><span data-i18n="mytools_f_outct">{{ texts.mytools_f_outct }}</span><input id="fOutCt" placeholder="image/png"></label>
-      <label><span data-i18n="mytools_f_authh">{{ texts.mytools_f_authh }}</span><input id="fAuthHeader" placeholder="Authorization" maxlength="64"></label>
-      <label><span data-i18n="mytools_f_autht">{{ texts.mytools_f_autht }}</span><input id="fAuthToken" type="password" placeholder="Bearer …" maxlength="512"></label>
+      <details class="usertools-adv"><summary data-i18n="mytools_adv">{{ texts.mytools_adv }}</summary>
+        <label><span data-i18n="mytools_f_timeout">{{ texts.mytools_f_timeout }}</span><input id="fTimeout" type="number" min="5" max="300" value="60"></label>
+        <label><span data-i18n="mytools_f_authh">{{ texts.mytools_f_authh }}</span><input id="fAuthHeader" placeholder="Authorization" maxlength="64"></label>
+        <label><span data-i18n="mytools_f_autht">{{ texts.mytools_f_autht }}</span><input id="fAuthToken" type="password" placeholder="Bearer …" maxlength="512"></label>
+      </details>
     </div>
     <div class="usertools-submit-row">
       <button type="button" class="primary" id="submitTool"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>

@@ -503,6 +503,11 @@ select { width: auto; margin-top: 0; }
 .tool-overlay-preset.active { color: var(--accent); border-color: var(--accent); }
 .tool-overlay-preset.active::before { background: currentColor; }
 @media (hover:hover) and (pointer:fine) { .tool-overlay-preset:hover { border-color: var(--accent); color: var(--accent); } }
+/* 发布表单高级项折叠 */
+.usertools-adv { margin: 2px 0 0; }
+.usertools-adv summary { font-size: var(--text-sm); color: var(--muted); cursor: pointer; padding: 6px 0; user-select: none; }
+.usertools-adv[open] summary { margin-bottom: 4px; }
+.usertools-adv label { display: grid; gap: 4px; margin-bottom: 8px; }
 /* 模式徽标 (工具 tab 内 "· Aurora"): 附属信息, 主从层级低于工具名 (14px) */
 .tool-preset-badge { font-size: var(--text-xs); font-weight: 600; color: var(--muted); }
 .tool-tab.active .tool-preset-badge { color: var(--accent); opacity: .75; }
