@@ -137,8 +137,8 @@ h1, h2 { letter-spacing: -0.02em; }
 .controls .field b { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
 .controls .field b svg { width: 13px; height: 13px; stroke: var(--muted); }
 .controls .field select { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.cta-row { margin: 14px 14px 16px; display: flex; }
-.cta-row button { width: 100%; border: 0; border-radius: 10px; background: var(--accent); color: var(--button-ink); font-size: 16px; font-weight: 700; padding: 14px; font-family: inherit; cursor: pointer; transition: background var(--ease); }
+.cta-row { margin: 14px 14px 16px; display: flex; justify-content: center; }
+.cta-row button { width: auto; min-width: 220px; max-width: 100%; border: 0; border-radius: 10px; background: var(--accent); color: var(--button-ink); font-size: 16px; font-weight: 700; padding: 14px 56px; font-family: inherit; cursor: pointer; transition: background var(--ease); }
 .cta-row button:hover { background: var(--accent-hover); }
 .cta-row button:disabled { opacity: .78; cursor: pointer; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
