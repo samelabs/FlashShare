@@ -124,3 +124,80 @@ def resolve_label(label, lang: str) -> str:
             if isinstance(v, str) and v:
                 return v
     return ""
+
+
+def to_input_schema_properties(decl: list, lang: str = "en") -> tuple[dict, list]:
+    """decl → MCP inputSchema (properties, required). Agent 面恒稳定单串
+    (dict["en"] 或原文), 不做语言协商。空声明返回 ({}, [])。"""
+    props: dict = {}
+    required: list = []
+    for p in decl or []:
+        t = p.get("type")
+        if t == "enum":
+            schema = {"type": "string",
+                      "enum": [o["value"] for o in p.get("options", [])]}
+        elif t == "number":
+            schema = {"type": "number"}
+            if p.get("min") is not None:
+                schema["minimum"] = p["min"]
+            if p.get("max") is not None:
+                schema["maximum"] = p["max"]
+        elif t == "boolean":
+            schema = {"type": "boolean"}
+        else:
+            schema = {"type": "string"}
+        desc = resolve_label(p.get("label"), lang) or p["key"]
+        default = p.get("default")
+        if default is not None:
+            schema["default"] = default
+            desc = f"{desc} (default: {default})"
+        schema["description"] = desc
+        props[p["key"]] = schema
+        if p.get("required"):
+            required.append(p["key"])
+    return props, required
+
+
+class ParamsValueError(ValueError):
+    """运行时取值违规 (→ 422)。与声明校验的 ParamsDeclError 分离。"""
+
+
+def enforce_params_decl(decl: list, values: dict) -> dict:
+    """执行入口取值校验 (spec v3 M4): required/enum/number 越界 → ParamsValueError;
+    boolean 强转; 声明外的键剥离 (不透传 handler)。返回清洗后的 dict。"""
+    if values is None:
+        values = {}
+    out: dict = {}
+    for p in decl or []:
+        key = p["key"]
+        if key not in values or values[key] is None or values[key] == "":
+            if p.get("required"):
+                if p.get("default") is not None:
+                    out[key] = p["default"]
+                else:
+                    raise ParamsValueError("param_required")
+            elif p.get("default") is not None:
+                out[key] = p["default"]
+            continue
+        v = values[key]
+        t = p.get("type")
+        if t == "enum":
+            sv = str(v)
+            if sv not in [o["value"] for o in p.get("options", [])]:
+                raise ParamsValueError("param_invalid")
+            out[key] = sv
+        elif t == "number":
+            try:
+                nv = float(v)
+            except (TypeError, ValueError):
+                raise ParamsValueError("param_invalid")
+            if p.get("min") is not None and nv < p["min"]:
+                raise ParamsValueError("param_out_of_range")
+            if p.get("max") is not None and nv > p["max"]:
+                raise ParamsValueError("param_out_of_range")
+            out[key] = nv
+        elif t == "boolean":
+            out[key] = bool(v) if not isinstance(v, str) else v.lower() in ("1", "true", "yes", "on")
+        else:  # text
+            out[key] = str(v)
+    return out

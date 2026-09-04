@@ -55,6 +55,23 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         if default:
             params["preset"] = default
 
+    # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
+    # 无声明的工具 params 保持自由直通 (兼容现状)。preset/expiry 等系统键
+    # 属于 presets/生命周期机制, 不受声明管辖。
+    import json as _json
+    try:
+        decl = _json.loads(tool.get("params_json") or "[]")
+    except (TypeError, ValueError):
+        decl = []
+    if decl:
+        from governance.tool_params import enforce_params_decl, ParamsValueError
+        try:
+            declared = enforce_params_decl(decl, params)
+        except ParamsValueError as exc:
+            return None, {"ok": False, "error": str(exc)}, 422
+        params.clear()
+        params.update(declared)
+
     req = _RawRequest(raw)
     request_ctx = {"ip": client_ip(request)}
 

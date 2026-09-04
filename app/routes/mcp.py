@@ -187,7 +187,20 @@ def _tool_specs(user: dict) -> list:
                 },
             }
             required = ["file_b64", "filename"]
-        props["params"] = {"type": "object", "description": "Tool-specific parameters"}
+        # params schema: 有声明 → 具名 properties (agent 检索即知怎么调);
+        # 无声明 → 保持裸 object 兼容 (tool modes spec v3 M3)
+        decl = t.get("params") or []
+        if decl:
+            from governance.tool_params import to_input_schema_properties
+            sub_props, sub_required = to_input_schema_properties(decl)
+            props["params"] = {
+                "type": "object",
+                "description": "Tool parameters (validated server-side)",
+                "properties": sub_props,
+                **({"required": sub_required} if sub_required else {}),
+            }
+        else:
+            props["params"] = {"type": "object", "description": "Tool-specific parameters"}
         props["client_ref"] = {
             "type": "string",
             "description": "Idempotency ref: reuse to retry after errors without double charge",
