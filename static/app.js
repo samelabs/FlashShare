@@ -99,6 +99,20 @@ function fmtDate(ts) {
   const lm = window.__LOCALE_MAP || {};
   return new Date(ts * 1000).toLocaleString(lm[currentLang()] || "en", { hour12:false });
 }
+// 标签解析单点 (tool modes v3): str 原样 / dict[lang]→dict.en→首值。勿在他处重写此链。
+function resolveLabel(label) {
+  if (typeof label === "string") return label;
+  if (label && typeof label === "object") {
+    const lang = currentLang();
+    if (label[lang]) return label[lang];
+    if (label.en) return label.en;
+    for (const v of Object.values(label)) {
+      if (typeof v === "string" && v) return v;
+    }
+  }
+  return "";
+}
+
 function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 }
@@ -280,6 +294,10 @@ form.addEventListener("submit", async (event) => {
   if (activeTool && activeTool.id !== "share") {
     formData.append("tool", activeTool.id);
     if (activePreset) formData.append("preset", activePreset);
+    // spec v3: 模式控件值随执行提交 (服务端按声明校验/剥离)
+    if (activeToolParams && Object.keys(activeToolParams).length) {
+      formData.append("params", JSON.stringify(activeToolParams));
+    }
   }
   const fileSize = Array.from(file.files).reduce((s,f) => s+f.size, 0);
   const startTime = Date.now();
@@ -322,11 +340,11 @@ form.addEventListener("submit", async (event) => {
       const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
       const toolBody = {
         tool_id: activeTool.id,
-        params: {
+        params: Object.assign({
           preset: activePreset,
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
-        },
+        }, activeToolParams || {}),
       };
       if (isMulti) {
         var fileList = data.files || [data.file];
@@ -464,6 +482,7 @@ const ACCEPT_TAGS = {
 };
 let activeTool = null;
 let activePreset = null;
+let activeToolParams = {};  // spec v3: 确认时收集的 params 值
 let lastUploadResult = null;
 let lastToolSource = null;
 let homeToolsData = [];
@@ -479,11 +498,14 @@ function loadHomeTools() {
     const tool = tools.find(t => t.id === toolId);
     if (!tool) return;
     tab.addEventListener("click", () => {
-      // "share" is the default fallback — select directly, no overlay
-      if (toolId === "share") {
+      // 直选规则 (tool modes v3): 无输入声明 (presets 空且 params 空) → 不弹浮层。
+      // share 由此规则自然直选 — 无工具名特判。
+      const noInput = !(tool.presets && tool.presets.length) && !(Array.isArray(tool.params) && tool.params.length);
+      if (noInput) {
         activeTool = tool;
         activePreset = null;
-        localStorage.setItem("flashshare_tool", "share");
+        activeToolParams = {};
+        localStorage.setItem("flashshare_tool", tool.id);
         localStorage.removeItem("flashshare_tool_preset");
         applyToolSelection();
         return;
@@ -596,7 +618,7 @@ function openToolOverlay(tool, btn) {
   // Community tools have no i18n key (id 'owner/tool') — use their label
   // directly; first-party tools keep the t(id) lookup.
   const toolName = tool.id.includes("/")
-    ? (tool.label[currentLang()] || tool.label.en || tool.id)
+    ? resolveLabel(tool.label) || tool.id
     : t(tool.id);
   const iconSvg = tool.icon ? svgIcon(tool.icon) : '';
   const isActive = activeTool && activeTool.id === tool.id;
@@ -628,9 +650,43 @@ function openToolOverlay(tool, btn) {
     }
     html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${t("intensity")}</div><div class="tool-overlay-presets">`;
     tool.presets.forEach((p) => {
-      const pname = t(p.id) !== p.id ? t(p.id) : (p.label && p.label[currentLang()] ? p.label[currentLang()] : (p.label && p.label.en ? p.label.en : p.id));
+      const pname = t(p.id) !== p.id ? t(p.id) : (resolveLabel(p.label) || p.id);
       const sel = (p.id === defaultPreset) ? " active" : "";
       html += `<button type="button" class="tool-overlay-preset${sel}" data-preset="${p.id}">${escapeHtml(pname)}</button>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Params controls (tool modes v3: enum 分段/boolean 开关/number 步进/text 输入)
+  let paramValues = {};
+  try { paramValues = JSON.parse(localStorage.getItem("flashshare_tool_params") || "{}"); } catch (e) { paramValues = {}; }
+  const savedParams = paramValues[tool.id] || {};
+  if (Array.isArray(tool.params) && tool.params.length > 0) {
+    const sectionLabel = t("tool_params") !== "tool_params" ? t("tool_params") : "Options";
+    html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${escapeHtml(sectionLabel)}</div><div class="tool-overlay-params">`;
+    tool.params.forEach((p) => {
+      const plabel = resolveLabel(p.label) || p.key;
+      const val = savedParams[p.key] !== undefined ? savedParams[p.key] : p.default;
+      const pid = `tp_${p.key}`;
+      if (p.type === "enum") {
+        html += `<div class="tool-overlay-param"><div class="tool-param-label">${escapeHtml(plabel)}</div><div class="tool-overlay-presets">`;
+        (p.options || []).forEach((o) => {
+          const olabel = resolveLabel(o.label) || o.value;
+          const sel = (val === o.value) ? " active" : "";
+          html += `<button type="button" class="tool-overlay-preset tp-option${sel}" data-param="${p.key}" data-value="${escapeHtml(o.value)}">${escapeHtml(olabel)}</button>`;
+        });
+        html += `</div></div>`;
+      } else if (p.type === "boolean") {
+        const on = val === true || val === "true";
+        html += `<div class="tool-overlay-param tool-param-row"><label class="tool-param-label" for="${pid}">${escapeHtml(plabel)}</label><input type="checkbox" id="${pid}" class="tp-bool" data-param="${p.key}"${on ? " checked" : ""}></div>`;
+      } else if (p.type === "number") {
+        const mn = p.min !== undefined ? ` min="${p.min}"` : "";
+        const mx = p.max !== undefined ? ` max="${p.max}"` : "";
+        html += `<div class="tool-overlay-param tool-param-row"><label class="tool-param-label" for="${pid}">${escapeHtml(plabel)}</label><input type="number" id="${pid}" class="tp-number" data-param="${p.key}"${mn}${mx} value="${val !== undefined && val !== null ? escapeHtml(String(val)) : ""}"></div>`;
+      } else {
+        const ph = p.placeholder ? escapeHtml(resolveLabel(p.placeholder)) : "";
+        html += `<div class="tool-overlay-param tool-param-row"><label class="tool-param-label" for="${pid}">${escapeHtml(plabel)}</label><input type="text" id="${pid}" class="tp-text" data-param="${p.key}" placeholder="${ph}" value="${val !== undefined && val !== null ? escapeHtml(String(val)) : ""}"></div>`;
+      }
     });
     html += `</div></div>`;
   }
@@ -641,8 +697,8 @@ function openToolOverlay(tool, btn) {
   toolOverlayBody.innerHTML = html;
   toolOverlay.classList.remove("hidden");
 
-  // Preset selection
-  const presetButtons = toolOverlayBody.querySelectorAll(".tool-overlay-preset");
+  // Preset selection (排除 params 的 .tp-option — 同视觉类, 不同语义)
+  const presetButtons = toolOverlayBody.querySelectorAll(".tool-overlay-preset:not(.tp-option)");
   let selectedPreset = defaultPreset;
   presetButtons.forEach(pbtn => {
     if (pbtn.classList.contains("active")) selectedPreset = pbtn.dataset.preset;
@@ -653,12 +709,45 @@ function openToolOverlay(tool, btn) {
     });
   });
 
+  // Params enum 分段选择 (spec v3)
+  const paramOptions = toolOverlayBody.querySelectorAll(".tp-option");
+  paramOptions.forEach(obtn => {
+    obtn.addEventListener("click", () => {
+      paramOptions.forEach(b => { if (b.dataset.param === obtn.dataset.param) b.classList.remove("active"); });
+      obtn.classList.add("active");
+    });
+  });
+
   // Confirm
   const confirmBtn = document.getElementById("overlayConfirm");
   if (confirmBtn) {
     confirmBtn.addEventListener("click", () => {
       activeTool = tool;
       activePreset = selectedPreset;
+      // 收集 params 控件值 (spec v3: enum 分段/bool/number/text)
+      const collected = {};
+      if (Array.isArray(tool.params)) {
+        tool.params.forEach((p) => {
+          if (p.type === "enum") {
+            const on = toolOverlayBody.querySelector(`.tp-option[data-param="${p.key}"].active`);
+            if (on) collected[p.key] = on.dataset.value;
+          } else if (p.type === "boolean") {
+            const el = document.getElementById(`tp_${p.key}`);
+            if (el) collected[p.key] = el.checked;
+          } else {
+            const el = document.getElementById(`tp_${p.key}`);
+            if (el && el.value !== "") {
+              collected[p.key] = p.type === "number" ? Number(el.value) : el.value;
+            }
+          }
+        });
+      }
+      activeToolParams = collected;
+      try {
+        const all = JSON.parse(localStorage.getItem("flashshare_tool_params") || "{}");
+        all[tool.id] = collected;
+        localStorage.setItem("flashshare_tool_params", JSON.stringify(all));
+      } catch (e) { /* storage full/blocked — non-fatal */ }
       // Save to localStorage
       localStorage.setItem("flashshare_tool", tool.id);
       if (selectedPreset) localStorage.setItem("flashshare_tool_preset", selectedPreset);
@@ -830,11 +919,11 @@ async function retryTool() {
         public_ids: lastToolSource.publicIds || [],
         source_token: lastToolSource.sourceToken || "",
         source_tokens: lastToolSource.sourceTokens || [],
-        params: {
+        params: Object.assign({
           preset: activePreset,
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
-        },
+        }, activeToolParams || {}),
       }),
     });
     const toolData = await toolRes.json();
