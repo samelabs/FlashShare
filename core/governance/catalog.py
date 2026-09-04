@@ -90,6 +90,8 @@ def _row_to_item(row: dict, price: dict) -> dict:
             {"id": p["id"], "label": p["label"], "default": p.get("default", False)}
             for p in json.loads(row["presets_json"])
         ]
+    # params 声明 (tool modes v3): 三面同构 — web 浮层/MCP inputSchema/详情同源
+    item["params"] = json.loads(row["params_json"]) if row["params_json"] else None
     return item
 
 

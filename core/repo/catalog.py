@@ -153,17 +153,18 @@ def insert_remote_row(con, tool_key: str, tool_id: str, execution: str,
 def insert_user_tool(con, tool_key: str, owner_id: int, tool_id: str,
                      execution: str, label_json: str,
                      accept_json: Optional[str], visibility: str,
-                     endpoint_json: str, ts: int) -> None:
+                     endpoint_json: str, ts: int,
+                     params_json: Optional[str] = None) -> None:
     con.execute(
         """
         INSERT INTO platform_tools
            (tool_key, owner_id, tool_id, execution,
-            label_json, accept_json,
+            label_json, accept_json, params_json,
             visibility, endpoint_json, enabled, created_at, updated_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
         """,
         (tool_key, owner_id, tool_id, execution, label_json, accept_json,
-         visibility, endpoint_json, ts, ts))
+         params_json, visibility, endpoint_json, ts, ts))
 
 
 def update_fields(con, tool_key: str, sets: dict) -> None:
