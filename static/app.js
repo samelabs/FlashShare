@@ -99,6 +99,14 @@ function fmtDate(ts) {
   const lm = window.__LOCALE_MAP || {};
   return new Date(ts * 1000).toLocaleString(lm[currentLang()] || "en", { hour12:false });
 }
+// 直选/透传判定单点 (tool modes v3): 无输入声明 = 透传工具。
+// A8 配套: 交互行为一律经此判定, 禁止工具名比较。
+function isPassThrough(tool) {
+  if (!tool) return true;
+  return !(Array.isArray(tool.presets) && tool.presets.length) &&
+         !(Array.isArray(tool.params) && tool.params.length);
+}
+
 // 标签解析单点 (tool modes v3): str 原样 / dict[lang]→dict.en→首值。勿在他处重写此链。
 function resolveLabel(label) {
   if (typeof label === "string") return label;
@@ -323,7 +331,7 @@ form.addEventListener("submit", async (event) => {
       const data = JSON.parse(xhr.responseText);
       if (xhr.status >= 400 || !data.ok) { const ek = data.error || "failed"; throw new Error(t(ek) !== ek ? t(ek) : t("failed")); }
       // No tool (or default share tool) → show result directly
-      if (!activeTool || activeTool.id === "share") {
+      if (isPassThrough(activeTool)) {
         if (data.files) {
           data.files.forEach((f, i) => setTimeout(() => showShareResult(f), i * 100));
         } else {
@@ -811,7 +819,7 @@ function applyToolSelection(skipPresetReset) {
     if (oldBadge) oldBadge.remove();
   });
 
-  if (!activeTool || activeTool.id === "share") {
+  if (isPassThrough(activeTool)) {
     file.accept = "";
     if (formatTags) formatTags.textContent = t("dropFormats");
     updateToolDescription();

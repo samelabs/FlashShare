@@ -308,5 +308,26 @@ class A7NoDuplicateDefs(unittest.TestCase):
                          "; ".join(f"{k}: {v}" for k, v in reported.items()))
 
 
+class A8NoToolNameBranching(unittest.TestCase):
+    """A8 (tool modes v3): 前端交互禁工具名特判 — 浮层/直选行为必须由
+    数据 (presets/params) 推导, 与具体工具名无关。"""
+
+    DQ = chr(34)   # "
+    SQ = chr(39)   # '
+
+    def test_no_tool_name_branching_in_frontend(self):
+        import re
+        q = "[\"'" + chr(39) + "]"
+        pattern = re.compile(
+            "toolId\\s*===?\\s*[" + chr(34) + chr(39) + "][a-z_]+["
+            + chr(34) + chr(39) + "]|activeTool\\.id\\s*===?\\s*["
+            + chr(34) + chr(39) + "][a-z_]+[" + chr(34) + chr(39) + "]")
+        src = open("/opt/flashshare/static/app.js", encoding="utf-8").read()
+        violations = pattern.findall(src)
+        self.assertEqual(violations, [],
+                         "A8 违例(前端工具名特判): " + ", ".join(violations))
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
