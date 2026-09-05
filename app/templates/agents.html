@@ -25,15 +25,15 @@
     <h3>{{ texts.agents_mcp_conf }}</h3>
     <dl class="agents-fields">
       <dt>URL</dt><dd><code>https://518.plus/mcp</code></dd>
-      <dt>Header 名称</dt><dd><code>Authorization</code></dd>
-      <dt>Header 值</dt><dd><code>Bearer fsk_你的令牌</code></dd>
-      <dt>不支持自定义 Header？</dt><dd><code>https://518.plus/mcp?key=fsk_你的令牌</code></dd>
+      <dt data-i18n="agents_hdr_name">{{ texts.agents_hdr_name }}</dt><dd><code>Authorization</code></dd>
+      <dt data-i18n="agents_hdr_value">{{ texts.agents_hdr_value }}</dt><dd><code>Bearer fsk_{{ texts.agents_your_token }}</code></dd>
+      <dt data-i18n="agents_no_hdr">{{ texts.agents_no_hdr }}</dt><dd><code>https://518.plus/mcp?key=fsk_{{ texts.agents_your_token }}</code></dd>
     </dl>
 <pre class="agents-pre"><code id="mcpConf">{
   "mcpServers": {
     "518plus": {
       "url": "https://518.plus/mcp",
-      "headers": { "Authorization": "Bearer fsk_你的令牌" }
+      "headers": { "Authorization": "Bearer fsk_{{ texts.agents_your_token }}" }
     }
   }
 }</code></pre>
