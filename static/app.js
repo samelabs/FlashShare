@@ -1,17 +1,29 @@
 const form = document.getElementById("uploadForm");
 // ── Load self-check: version-skew (stale cached JS vs fresh HTML) must
 // fail LOUD, not silently half-bind events. ──
+// 单工具页 (tool_page) 没有 uploadForm/dropZone — 那是首页多工具入口的
+// 形态; 该页只复用本文件的共享底座 (t/showResult/showShareResult/…),
+// 自检跳过表单 id, 但 toolPage 标记必须在 (缺 = 真版本错位)。
 (function(){
-  const need = ["uploadForm","file","fileLabel","dropZone","submitBtn"];
+  const singleToolPage = !!document.getElementById("toolRunForm");
+  const need = singleToolPage
+    ? ["result"]
+    : ["uploadForm","file","fileLabel","dropZone","submitBtn"];
+  if (!singleToolPage) window.__TOOLPAGE__ = false;
   const missing = need.filter(id => !document.getElementById(id));
   if (missing.length) {
-    console.error("[518] DOM missing:", missing.join(","), "— stale JS? hard-refresh (Cmd/Ctrl+Shift+R)");
+    console.error("[518] DOM missing:", missing.join(", "), "— stale JS? hard-refresh (Cmd/Ctrl+Shift+R)");
     const b = document.createElement("div");
     b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#f4212e;color:#fff;padding:10px 16px;font:600 14px system-ui;text-align:center";
     b.textContent = "页面资源版本不一致 — 请强制刷新 (Ctrl/Cmd+Shift+R)";
     document.body && document.body.appendChild(b);
-    throw new Error("[518] abort: DOM missing " + missing.join(","));
+    throw new Error("[518] abort: DOM missing " + missing.join(", "));
   }
+  if (singleToolPage) {
+    window.__TOOLPAGE__ = true;
+    return;
+  }
+  // 首页形态: 绑定表单事件 (下方代码使用这些引用)
 })();
 
 const file = document.getElementById("file");
@@ -166,7 +178,7 @@ window.__afterI18n = function() {
     if (nameEl) nameEl.textContent = resolveLabel(tool.label) || tool.id;
   });
   renderModalActions();
-  if (!file.files[0]) fileLabel.textContent = t("dropEmpty");
+  if (file && !file.files[0]) fileLabel.textContent = t("dropEmpty");
   applyToolSelection();
   renderAccount();
   if (activeUpload) renderModal(activeUpload);
@@ -183,6 +195,7 @@ function setMetaProperty(property, value) {
   if (el) el.setAttribute("content", value);
 }
 function renderAccount() {
+  if (window.__TOOLPAGE__) return; // 工具页无表单 — 登录态由 run() 引导
   if (!window.__USER__) {
     form.classList.add("disabled");
     submitBtn.disabled = true;
@@ -245,7 +258,7 @@ function ensureZipPreview(cb) {
   document.head.appendChild(s);
 }
 
-file.addEventListener("change", () => {
+if (!window.__TOOLPAGE__) file.addEventListener("change", () => {
   if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (file.files.length > 0) {
     for (let i = 0; i < file.files.length; i++) {
@@ -267,18 +280,18 @@ file.addEventListener("change", () => {
   }
   updateZipPreviewBtn();
 });
-dropZone.addEventListener("click", (e) => {
+if (!window.__TOOLPAGE__) dropZone.addEventListener("click", (e) => {
   if (!window.__USER__) { e.preventDefault(); location.href = "/auth/login"; }
 });
-["dragenter", "dragover"].forEach(name => dropZone.addEventListener(name, event => {
+["dragenter", "dragover"].forEach(name => { if (dropZone) dropZone.addEventListener(name, event => {
   event.preventDefault();
   dropZone.classList.add("dragover");
-}));
-["dragleave", "drop"].forEach(name => dropZone.addEventListener(name, event => {
+}); });
+["dragleave", "drop"].forEach(name => { if (dropZone) dropZone.addEventListener(name, event => {
   event.preventDefault();
   dropZone.classList.remove("dragover");
-}));
-dropZone.addEventListener("drop", event => {
+}); });
+if (!window.__TOOLPAGE__) dropZone.addEventListener("drop", event => {
   if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (event.dataTransfer.files.length) {
     const dt = new DataTransfer();
@@ -287,7 +300,7 @@ dropZone.addEventListener("drop", event => {
     file.dispatchEvent(new Event("change"));
   }
 });
-form.addEventListener("submit", async (event) => {
+if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!window.__USER__) return location.href = "/auth/login";
   if (!file.files[0]) return;
@@ -426,11 +439,11 @@ function closeModal() {
   activeUpload = null;
   uploadModal.classList.add("hidden");
 }
-modalClose.addEventListener("click", closeModal);
-uploadModal.addEventListener("click", event => {
+if (!window.__TOOLPAGE__) modalClose.addEventListener("click", closeModal);
+if (!window.__TOOLPAGE__) uploadModal.addEventListener("click", event => {
   if (event.target === uploadModal) closeModal();
 });
-modalCopy.addEventListener("click", async () => {
+if (!window.__TOOLPAGE__) modalCopy.addEventListener("click", async () => {
   if (!activeUpload) return;
   await navigator.clipboard.writeText(activeUpload.url_download);
   modalCopy.textContent = t("copied");
@@ -465,7 +478,7 @@ async function deleteUpload(upload, triggerButton = null) {
     }
   }
 }
-modalDelete.addEventListener("click", () => deleteUpload(activeUpload, modalDelete));
+if (!window.__TOOLPAGE__) modalDelete.addEventListener("click", () => deleteUpload(activeUpload, modalDelete));
 
 // ── Home Tools ──────────────────────────────────────────────────────────────
 const homeTools = document.getElementById("homeTools");
@@ -785,11 +798,12 @@ function closeToolOverlay() {
   toolOverlayBody.innerHTML = "";
 }
 
-toolOverlayClose.addEventListener("click", closeToolOverlay);
-toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) closeToolOverlay(); });
+if (!window.__TOOLPAGE__) toolOverlayClose.addEventListener("click", closeToolOverlay);
+if (!window.__TOOLPAGE__) toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) closeToolOverlay(); });
 
-// Apply tool selection to the upload zone
+// Apply tool selection to the upload zone (首页形态专属 — 工具页无表单)
 function applyToolSelection(skipPresetReset) {
+  if (window.__TOOLPAGE__) return;
   // Full state reset on tool switch (not on preset-only change)
   if (!skipPresetReset) {
     file.value = "";
@@ -1058,5 +1072,5 @@ function showShareResult(file) {
 }
 
 // Load tools on page load
-loadHomeTools();
+if (!window.__TOOLPAGE__) loadHomeTools();
 window.applyI18n();

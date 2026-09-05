@@ -942,6 +942,60 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .toolpage .cta-row { margin: 0; }
 .mkt-calls { font-weight: 600; color: var(--body); }
 
+/* ── 工具页改版 (能力叙事 + 一控件即执行, 0905 机制) ── */
+a.toolpage-handle { text-decoration: none; }
+a.toolpage-handle:hover { color: var(--accent); }
+.toolpage-desc { text-align: center; max-width: 40em; margin: 0 auto 4px; color: var(--body); font-size: 15px; line-height: 1.6; }
+.toolpage-facts { display: flex; flex-wrap: wrap; gap: 10px 22px; justify-content: center; padding: 12px 16px; margin: 12px 0 16px; }
+.toolpage-fact { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.toolpage-fact .k { color: var(--muted); font-weight: 500; }
+.toolpage-fact .v { color: var(--ink); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.toolpage-fact .fmt-chips { gap: 4px; }
+.toolpage-run { display: flex; flex-direction: column; gap: 12px; }
+.toolpage-params { display: flex; flex-direction: column; gap: 12px; }
+.toolpage-param-group { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.toolpage-params-grid { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 30em; margin: 0 auto; }
+.toolpage-param { display: flex; flex-direction: column; gap: 6px; }
+.toolpage-param.tool-param-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+.tool-param-sub { font-size: 13px; color: var(--muted); font-weight: 500; }
+.toolpage-param input[type="number"], .toolpage-param input[type="text"] {
+  min-width: 0; flex: 1; max-width: 12em; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--line-strong); background: var(--card); color: var(--ink);
+  font-size: 14px; font-family: inherit;
+}
+.toolpage-submit-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 4px 0 2px; }
+.toolpage-file-btn {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--card); color: var(--ink);
+  border-radius: 10px; padding: 10px 18px; font-size: 15px; font-weight: 600; font-family: inherit;
+  transition: border-color var(--ease), color var(--ease);
+}
+.toolpage-file-btn svg { width: 18px; height: 18px; stroke: var(--accent); }
+.toolpage-file-btn:hover, .toolpage-file-btn:focus-visible { border-color: var(--accent); color: var(--accent); }
+.toolpage-file-btn.busy { opacity: .6; pointer-events: none; }
+.toolpage-file-name { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.toolpage-mcp-panel { margin-top: 16px; }
+.toolpage-mcp-panel .d { font-size: 13.5px; }
+
+/* ── 用户页 (开发者公开面, 0905 机制) ── */
+.userpage-handle { letter-spacing: .2px; }
+.userpage-stats { display: inline-flex; gap: 8px; align-items: center; }
+.userpage-stats .dot { color: var(--muted); }
+.userpage-grid { align-items: stretch; }
+.userpage-card { display: flex; flex-direction: column; gap: 6px; cursor: default; }
+.mkt-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mkt-free { font-size: 11px; font-weight: 700; color: var(--muted); }
+.userpage-card-actions { margin-top: auto; display: flex; gap: 6px; }
+.userpage-quick { display: flex; align-items: center; gap: 8px; }
+.userpage-quick-btn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--card); color: var(--ink);
+  border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; font-family: inherit;
+}
+.userpage-quick-btn svg { width: 15px; height: 15px; stroke: var(--accent); }
+.userpage-quick-btn:hover { border-color: var(--accent); color: var(--accent); }
+.userpage-quick-btn.busy { opacity: .6; pointer-events: none; }
+
 /* ── 收益USD换算 + 提现浮层单列 ── */
 .earn-usd { display: block; font-style: normal; font-size: var(--text-xs); color: var(--muted); margin-top: -4px; }
 .wd-modal-form { grid-template-columns: 1fr !important; }

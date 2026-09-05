@@ -3,58 +3,67 @@
 {% block desc %}{{ tool_name }} · @{{ handle }}{% endblock %}
 
 {% block content %}
-<section class="workspace toolpage">
+<section class="workspace toolpage" id="toolPage">
   <div class="hero-mini">
     <h1 class="hero-title">{{ tool_name }}</h1>
     <p class="hero-sub toolpage-by">
-      <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <span class="toolpage-handle">@{{ handle }}</span>
-      <span class="mkt-tags"><a class="mkt-tag" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
+      <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <a class="toolpage-handle" href="/u/{{ handle }}">@{{ handle }}</a>
+      <span class="mkt-tags"><a class="mkt-tag on" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
     </p>
   </div>
 
-  <div class="upload-card">
-    <label class="drop" id="dropZone">
-      <input id="file" name="file" type="file" {% if tool.accept %}accept="{{ tool.accept | join(',') }}"{% endif %}>
-      <span class="drop-glyph" aria-hidden="true">{% if tool.icon %}<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent);fill:none">{{ tool.icon_svg | safe }}</svg>{% else %}{{ icon_svg("upload") }}{% endif %}</span>
-      <span class="drop-title" id="fileLabel" data-i18n="dropTitle">{{ texts.dropTitle }}</span>
-      {% if tool.accept %}
-      <span class="drop-formats">
-        {% for a in tool.accept %}<span class="fmt-chip">{{ a.split('/')[-1] | upper }}</span>{% endfor %}
-      </span>
-      {% endif %}
-    </label>
-    <div class="upload-divider"></div>
-    <div class="controls">
-      <div class="field">
-        <span data-i18n="tool_call_cta_cost">{{ texts.tool_call_cta_cost }}</span>
-        <b>{% if tool.cost %}<span class="tool-cost">{{ tool.cost }}</span> {{ texts.credits_per_call }}{% else %}{{ texts.free }}{% endif %}</b>
-      </div>
-      <div class="field">
-        <span data-i18n="tool_calls_total">{{ texts.tool_calls_total }}</span>
-        <b>{{ stats.calls }}</b>
-      </div>
+  {% if tool.desc %}
+  <p class="toolpage-desc" id="toolDesc">{{ tool.desc.get(lang, tool.desc.get('en', '')) if tool.desc is mapping else tool.desc }}</p>
+  {% endif %}
+
+  <div class="panel toolpage-facts">
+    <div class="toolpage-fact">
+      <span class="k" data-i18n="tool_call_cta_cost">{{ texts.tool_call_cta_cost }}</span>
+      <span class="v">{% if tool.cost %}<span class="tool-cost">{{ tool.cost }}</span> {{ texts.credits_per_call }}{% else %}{{ texts.free }}{% endif %}</span>
     </div>
-    <div class="cta-row">
-      <button type="submit" id="submitBtn" class="toolpage-call" form="uploadForm">
-        <span data-i18n="tool_call_cta">{{ texts.tool_call_cta }}</span>
-      </button>
+    <div class="toolpage-fact">
+      <span class="k" data-i18n="tool_calls_total">{{ texts.tool_calls_total }}</span>
+      <span class="v">{{ stats.calls }}</span>
     </div>
+    {% if tool.accept %}
+    <div class="toolpage-fact">
+      <span class="k" data-i18n="dropFormats">{{ texts.dropFormats }}</span>
+      <span class="v fmt-chips">{% for a in tool.accept %}<span class="fmt-chip">{{ a.split('/')[-1] | upper }}</span>{% endfor %}</span>
+    </div>
+    {% endif %}
+    {% if tool.multi %}
+    <div class="toolpage-fact"><span class="k" data-i18n="tool_multi_files">{{ texts.tool_multi_files }}</span><span class="v">{{ texts.tool_multi_yes }}</span></div>
+    {% endif %}
   </div>
+
+  <form id="toolRunForm" class="toolpage-run">
+    <div id="toolParams" class="toolpage-params"></div>
+    <div class="toolpage-submit-row">
+      <input type="file" id="toolFile" class="visually-hidden"
+             {% if tool.accept %}accept="{{ tool.accept | join(',') }}"{% endif %}
+             {% if tool.multi %}multiple{% endif %}>
+      <label class="toolpage-file-btn" for="toolFile" id="toolFileLabel" tabindex="0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
+        <span data-i18n="tool_run_pick">{{ texts.tool_run_pick }}</span>
+      </label>
+      <span class="toolpage-file-name" id="toolFileName" aria-live="polite"></span>
+    </div>
+  </form>
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
-  <form id="uploadForm" class="visually-hidden" enctype="multipart/form-data"></form>
-
   <p class="toolpage-notice" data-i18n="tool_ext_notice">{{ texts.tool_ext_notice }}</p>
 
-  <div class="panel">
-    <div class="t">MCP</div>
+  <div class="panel toolpage-mcp-panel">
+    <div class="t" data-i18n="tool_use_mcp">{{ texts.tool_use_mcp }}</div>
     <div class="d">
+      <span data-i18n="tool_ai_hint">{{ texts.tool_ai_hint }}</span>
       <span class="mono">{{ mcp_name }}</span> —
-      <a class="toolpage-mcp-link" href="/tool/{{ tool.id }}/mcp" data-i18n="tool_use_mcp">{{ texts.tool_use_mcp }}</a>
+      <a class="toolpage-mcp-link" href="/tool/{{ tool.id }}/mcp" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a>
     </div>
   </div>
 </section>
+
 {% endblock %}
 
 {% block modals %}
@@ -65,10 +74,13 @@
 <script>
 window.__LIMITS__ = {{ limits_json|safe }};
 window.__TOOLS__ = {{ tools_json|safe }};
+window.__PAGE__ = "tool";
 </script>
 {% endblock %}
 
 {% block script %}
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
 <script src="/static/app.js?v={{ app_js_version }}"></script>
+<script src="/static/pages/process-flow.js?v={{ pages_version }}"></script>
+<script src="/static/pages/tool_page.js?v={{ pages_version }}"></script>
 {% endblock %}
