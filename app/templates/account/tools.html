@@ -22,7 +22,7 @@
 Content-Type: application/json
 
 {
-  "source_urls": ["https://518.plus/api/source/...（一次性签名URL，5分钟有效）"],
+  "source_urls": ["{{ BASE_URL }}/api/source/...（一次性签名URL，5分钟有效）"],
   "params": { ...工具参数 }
 }</pre>
         <p>你的服务按 URL 拉取源文件（平台不推文件）。超时按提交时配置（5–300s）。</p>

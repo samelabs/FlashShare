@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from PIL import Image, ImageFilter, ImageChops, ImageOps
 
+from config import APP_NAME, BASE_URL
 from tools import register, TYPE_PRODUCE, ToolError
 
 MAX_DIM = 2048
@@ -36,9 +37,9 @@ def _inject_xmp(jpeg_bytes: bytes) -> bytes:
         b'<x:xmpmeta xmlns:x="adobe:ns:meta/">'
         b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
         b'<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">'
-        b'<dc:creator><rdf:Seq><rdf:li>518.plus</rdf:li></rdf:Seq></dc:creator>'
+        b'<dc:creator><rdf:Seq><rdf:li>' + APP_NAME.encode() + b'</rdf:li></rdf:Seq></dc:creator>'
         b'<dc:description><rdf:Alt><rdf:li xml:lang="x-default">'
-        b'Processed by 518.plus/privacy at ' + now.encode() + b'</rdf:li></rdf:Alt></dc:description>'
+        b'Processed by ' + BASE_URL.encode() + b'/privacy at ' + now.encode() + b'</rdf:li></rdf:Alt></dc:description>'
         b'</rdf:Description>'
         b'</rdf:RDF>'
         b'</x:xmpmeta>'

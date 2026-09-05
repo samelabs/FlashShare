@@ -18,21 +18,21 @@
 
   <h2>{{ texts.agents_mcp_h }}</h2>
   <div class="agents-copy">
-    <code id="mcpUrl">https://518.plus/mcp</code>
+    <code id="mcpUrl">{{ BASE_URL }}/mcp</code>
     <button type="button" class="btn-secondary" id="copyMcp">{{ texts['copy'] }}</button>
   </div>
   <div class="agents-mcp-config">
     <h3>{{ texts.agents_mcp_conf }}</h3>
     <dl class="agents-fields">
-      <dt>URL</dt><dd><code>https://518.plus/mcp</code></dd>
+      <dt>URL</dt><dd><code>{{ BASE_URL }}/mcp</code></dd>
       <dt data-i18n="agents_hdr_name">{{ texts.agents_hdr_name }}</dt><dd><code>Authorization</code></dd>
       <dt data-i18n="agents_hdr_value">{{ texts.agents_hdr_value }}</dt><dd><code>Bearer fsk_{{ texts.agents_your_token }}</code></dd>
-      <dt data-i18n="agents_no_hdr">{{ texts.agents_no_hdr }}</dt><dd><code>https://518.plus/mcp?key=fsk_{{ texts.agents_your_token }}</code></dd>
+      <dt data-i18n="agents_no_hdr">{{ texts.agents_no_hdr }}</dt><dd><code>{{ BASE_URL }}/mcp?key=fsk_{{ texts.agents_your_token }}</code></dd>
     </dl>
 <pre class="agents-pre"><code id="mcpConf">{
   "mcpServers": {
     "518plus": {
-      "url": "https://518.plus/mcp",
+      "url": "{{ BASE_URL }}/mcp",
       "headers": { "Authorization": "Bearer fsk_{{ texts.agents_your_token }}" }
     }
   }

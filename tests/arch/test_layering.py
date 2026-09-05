@@ -328,6 +328,33 @@ class A8NoToolNameBranching(unittest.TestCase):
                          "A8 违例(前端工具名特判): " + ", ".join(violations))
 
 
+class A9NoHardcodedDomain(unittest.TestCase):
+    """A9 (域名解耦): 产品代码禁硬编码 518.plus — 域名只能经 config.BASE_URL
+    (env FLASHSHARE_BASE_URL) 注入。站名叙事 (i18n 的 518.PLUS 文案) 与测试不算。"""
+
+    def test_no_hardcoded_domain_in_product_code(self):
+        import os
+        offenders = []
+        roots = ["app", "core", "static"]
+        skip_dirs = {"__pycache__", "node_modules"}
+        skip_files = {"i18n.py"}  # 站名叙事文案, 非域名
+        for root in roots:
+            for dirpath, dirnames, filenames in os.walk(root):
+                dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+                for fn in filenames:
+                    if not fn.endswith((".py", ".html", ".js", ".css")):
+                        continue
+                    if fn in skip_files or fn.endswith(".min.js"):
+                        continue
+                    p = os.path.join(dirpath, fn)
+                    with open(p, encoding="utf-8", errors="replace") as fh:
+                        for lineno, line in enumerate(fh, 1):
+                            if "518.plus" in line:
+                                offenders.append(f"{p}:{lineno}: {line.strip()[:90]}")
+        self.assertEqual(offenders, [],
+                         "A9 违例(产品代码硬编码 518.plus): " + " | ".join(offenders[:8]))
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

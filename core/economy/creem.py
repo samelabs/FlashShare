@@ -15,6 +15,7 @@ import json
 import os
 import urllib.request
 
+from config import BASE_URL
 from database import db
 from repo import orders as orders_repo
 from utils import now
@@ -35,7 +36,7 @@ def create_checkout(order_id: int, package: dict, user: dict) -> dict:
     body = json.dumps({
         "product_id": package["creem_price_id"],
         "request_id": f"order:{order_id}",
-        "success_url": os.environ.get("BASE_URL", "https://518.plus") + "/account/credits?paid=1",
+        "success_url": BASE_URL + "/account/credits?paid=1",
         "metadata": {"order_id": str(order_id), "user_id": str(user["id"])},
         "customer": {"email": user.get("email") or ""},
     }).encode()
