@@ -343,7 +343,7 @@ form.addEventListener("submit", async (event) => {
         return;
       }
       // Tool active → Step 2: execute tool
-      showToolProcessing(t(activeTool.id));
+      showToolProcessing(resolveLabel(activeTool.label) || activeTool.id);
       const expirySelect = form.querySelector("[name=\"expiryDays\"]");
       const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
       const toolBody = {
@@ -623,11 +623,7 @@ let _lastSearchResults = [];
 // ── Tool Overlay (shared component) ─────────────────────────
 
 function openToolOverlay(tool, btn) {
-  // Community tools have no i18n key (id 'owner/tool') — use their label
-  // directly; first-party tools keep the t(id) lookup.
-  const toolName = tool.id.includes("/")
-    ? resolveLabel(tool.label) || tool.id
-    : t(tool.id);
+  const toolName = resolveLabel(tool.label) || tool.id;
   const iconSvg = tool.icon ? svgIcon(tool.icon) : '';
   const isActive = activeTool && activeTool.id === tool.id;
 
@@ -635,9 +631,7 @@ function openToolOverlay(tool, btn) {
   let html = `<div class="tool-overlay-head"><svg viewBox="0 0 24 24" aria-hidden="true">${iconSvg}</svg><h3>${escapeHtml(toolName)}</h3></div>`;
 
   // Description: 系统工具走 i18n {id}_desc; 工具自述 desc 双通道兼容 (spec v3)
-  const descKey = tool.id + "_desc";
-  let desc = t(descKey);
-  if (!desc || desc === descKey) desc = resolveLabel(tool.desc);
+  const desc = resolveLabel(tool.desc);
   if (desc) {
     html += `<p class="tool-overlay-desc">${escapeHtml(desc)}</p>`;
   }
@@ -888,9 +882,8 @@ function updateToolDescription() {
     descEl.classList.add("hidden");
     return;
   }
-  const descKey = activeTool.id + "_desc";
-  const desc = t(descKey);
-  if (desc && desc !== descKey) {
+  const desc = resolveLabel(activeTool.desc);
+  if (desc) {
     descEl.textContent = desc;
     descEl.classList.remove("hidden");
   } else {
@@ -914,7 +907,7 @@ function showToolError(message, originalFile) {
 
 async function retryTool() {
   if (!activeTool || !lastToolSource) return;
-  const toolName = t(activeTool.id);
+  const toolName = resolveLabel(activeTool.label) || activeTool.id;
   showToolProcessing(toolName);
   const expirySelect = form.querySelector("[name=\"expiryDays\"]");
   const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");

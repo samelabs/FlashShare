@@ -28,13 +28,19 @@ def _public_item(row: dict) -> dict:
         decl = json.loads(row.get("endpoint_json") or "{}")
     except Exception:
         pass
+    label_full = json.loads(row["label_json"] or "{}")
+    desc_full = None
+    try:
+        desc_full = json.loads(row["desc_json"]) if row.get("desc_json") else None
+    except Exception:
+        desc_full = None
     return {
         "tool_key": row["tool_key"],
         "tool_id": row["tool_id"],
         "execution": row["execution"],
-        "label": json.loads(row["label_json"]).get("en")
-                 or json.loads(row["label_json"]).get("zh")
-                 or row["tool_id"],
+        # 完整结构 (spec v3 语言模型): 编辑回填需要全部语言; 呈现层自行回落
+        "label": label_full or row["tool_id"],
+        "desc": desc_full,
         "visibility": row["visibility"],
         "enabled": row["enabled"],
         "trusted": bool(row["trusted"]),

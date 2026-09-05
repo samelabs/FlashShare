@@ -67,19 +67,20 @@ def version_digest(con) -> dict:
 def upsert_first_party(con, tool_key: str, tool_type: str, label_json: str,
                        icon: str, accept_json: Optional[str],
                        presets_json: Optional[str], multi: bool,
-                       ts: int) -> dict:
+                       ts: int, desc_json: Optional[str] = None) -> dict:
     """一方工具 seed (ON CONFLICT 更新声明字段, 保留行身份)。"""
     return con.execute(
         """
         INSERT INTO platform_tools
           (tool_key, owner_id, tool_id, execution, tool_type,
-           label_json, icon, accept_json, presets_json, multi,
+           label_json, desc_json, icon, accept_json, presets_json, multi,
            visibility, enabled, created_at, updated_at)
-        VALUES (%s, NULL, %s, 'local', %s, %s, %s, %s, %s, %s,
+        VALUES (%s, NULL, %s, 'local', %s, %s, %s, %s, %s, %s, %s,
                 'public', TRUE, %s, %s)
         ON CONFLICT (tool_key) DO UPDATE SET
           tool_type    = EXCLUDED.tool_type,
           label_json   = EXCLUDED.label_json,
+          desc_json    = COALESCE(EXCLUDED.desc_json, platform_tools.desc_json),
           icon         = EXCLUDED.icon,
           accept_json  = EXCLUDED.accept_json,
           presets_json = EXCLUDED.presets_json,
@@ -87,8 +88,8 @@ def upsert_first_party(con, tool_key: str, tool_type: str, label_json: str,
           updated_at   = EXCLUDED.updated_at
         RETURNING (xmax = 0) AS inserted
         """,
-        (tool_key, tool_key, tool_type, label_json, icon, accept_json,
-         presets_json, multi, ts, ts)).fetchone()
+        (tool_key, tool_key, tool_type, label_json, desc_json, icon,
+         accept_json, presets_json, multi, ts, ts)).fetchone()
 
 
 def retire_absent_first_party(con, live_keys: Sequence[str], ts: int) -> None:

@@ -106,6 +106,18 @@ register(
         "pt": "ICO Favicon",
         "fr": "ICO Favicon",
     },
+    desc={
+            "fr": 'Générer des icônes ICO de différentes tailles.',
+            "ko": '이미지에서 다양한 크기의 ICO 아이콘 생성.',
+            "ru": 'Создание ICO-иконок разных размеров из изображения.',
+            "ar": 'إنشاء أيقونات ICO بأحجام مختلفة من صورة.',
+            "de": 'ICO-Symbole in verschiedenen Größen aus einem Bild erstellen.',
+            "pt": 'Gerar ícones ICO em vários tamanhos a partir de uma imagem.',
+            "ja": '画像から各サイズのICOアイコンを生成。',
+            "zh": '图片生成各尺寸 ICO 图标。',
+            "es": 'Generar iconos ICO de varios tamaños desde una imagen.',
+            "en": 'Generate ICO icons in various sizes from an image.',
+        },
     icon="favicon",
     accept=ACCEPT_MIMES,
     presets=[

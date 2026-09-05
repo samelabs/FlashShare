@@ -58,7 +58,8 @@ def seed_from_registry() -> dict:
                 t["icon"],
                 json.dumps(sorted(t["accept"]), ensure_ascii=False) if t["accept"] else None,
                 json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
-                bool(t.get("multi", False)), ts)
+                bool(t.get("multi", False)), ts,
+                json.dumps(t["desc"], ensure_ascii=False) if t.get("desc") else None)
             if row["inserted"]:
                 added += 1
             else:

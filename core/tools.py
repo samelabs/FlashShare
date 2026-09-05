@@ -42,7 +42,7 @@ _registry = []
 
 
 def register(tool_id, tool_type, label, icon, handler,
-             accept=None, presets=None, multi=False):
+             accept=None, presets=None, multi=False, desc=None):
     """Register a tool.
 
     Args:
@@ -75,10 +75,13 @@ def register(tool_id, tool_type, label, icon, handler,
         if len(defaults) != 1:
             raise ValueError(f"presets must have exactly one default, got {len(defaults)}")
 
+    if desc is not None and "en" not in desc:
+        raise ValueError("desc must have 'en' key")
     _registry.append({
         "id": tool_id,
         "type": tool_type,
         "label": label,
+        "desc": desc,
         "icon": icon,
         "handler": handler,
         "accept": accept,

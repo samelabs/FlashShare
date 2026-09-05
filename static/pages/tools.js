@@ -53,7 +53,23 @@ function _selfTest(btn, t) {
 // ── edit: refill the submit modal in PATCH mode ──
 function _openEdit(t) {
   _editKey = t.tool_id;
-  document.getElementById('fLabel').value = t.label || '';
+  // 编辑回填: label dict → 原文 (en 优先回落), desc 同理
+  const lb = t.label;
+  if (typeof lb === 'string') document.getElementById('fLabel').value = lb;
+  else if (lb && typeof lb === 'object') {
+    document.getElementById('fLabel').value = lb.en || Object.values(lb)[0] || '';
+    Object.entries(lb).forEach(([lang, v]) => {
+      if (lang === 'en') return;
+      document.getElementById('addLangRow')?.click();
+      const row = document.querySelector('#langRows .lang-row:last-child');
+      if (row) { row.querySelector('.lang-pick').value = lang; row.querySelector('.lang-name').value = v; }
+    });
+  }
+  const dd = t.desc;
+  if (typeof dd === 'string') document.getElementById('fDesc').value = dd;
+  else if (dd && typeof dd === 'object') {
+    document.getElementById('fDesc').value = dd.en || Object.values(dd)[0] || '';
+  }
   document.getElementById('fToolId').value = t.tool_id;
   document.getElementById('fToolId').disabled = true;  // id immutable
   document.getElementById('fUrl').value = (t.url || '');
@@ -200,10 +216,56 @@ async function loadTools() {
   if (none) none.classList.toggle('hidden', !!(d.tools && d.tools.length));
 }
 
+// 多语言输入行 (tool modes v3): 语言下拉 + 名称 + 简介
+// 原文输入框 (fLabel/fDesc) 是主项; 附加语言行组装 dict。
+const SITE_LANGS = ["en","zh","ja","ko","es","pt","ru","ar","de","fr"];
+function langRowHtml() {
+  const opts = SITE_LANGS.map(l => '<option value="' + l + '">' + l + '</option>').join('');
+  return '<div class="lang-row" style="display:flex;gap:8px;margin-bottom:8px">' +
+    '<select class="lang-pick sl-input" style="max-width:90px">' + opts + '</select>' +
+    '<input class="lang-name" style="flex:1" maxlength="40" placeholder="Name">' +
+    '<input class="lang-desc" style="flex:2" maxlength="200" placeholder="Description">' +
+    '<button type="button" class="lang-del" style="padding:0 10px">✕</button></div>';
+}
+document.getElementById('addLangRow')?.addEventListener('click', () => {
+  const wrap = document.getElementById('langRows');
+  wrap.insertAdjacentHTML('beforeend', langRowHtml());
+  wrap.lastElementChild.querySelector('.lang-del').addEventListener('click', e => e.target.closest('.lang-row').remove());
+});
+function collectLangDict() {
+  const out = {};
+  document.querySelectorAll('#langRows .lang-row').forEach(row => {
+    const lang = row.querySelector('.lang-pick').value;
+    const name = row.querySelector('.lang-name').value.trim();
+    const desc = row.querySelector('.lang-desc').value.trim();
+    if (lang && name) out[lang] = name;
+    if (lang && desc) out[lang + '__desc'] = desc;   // 临时携带, 下方拆分
+  });
+  return out;
+}
+
 document.getElementById('submitTool').addEventListener('click', async () => {
+  // 多语言组装: 附加语言行 dict + 主输入框 = 原文 (spec v3: str|dict 双形态)
+  const extra = collectLangDict();
+  let label = document.getElementById('fLabel').value.trim();
+  let desc = document.getElementById('fDesc').value.trim();
+  if (Object.keys(extra).length) {
+    const labelDict = {}; const descDict = {};
+    for (const [k, v] of Object.entries(extra)) {
+      if (k.endsWith('__desc')) descDict[k.slice(0, -6)] = v;
+      else labelDict[k] = v;
+    }
+    if (label) labelDict[document.documentElement.lang.slice(0,2)] = label;
+    if (desc) descDict[document.documentElement.lang.slice(0,2)] = desc;
+    if (Object.keys(labelDict).length > 1 || Object.keys(descDict).length) {
+      label = Object.keys(labelDict).length ? labelDict : label;
+      desc = Object.keys(descDict).length ? descDict : desc;
+    }
+  }
   const body = {
     tool_id: document.getElementById('fToolId').value.trim(),
-    label: document.getElementById('fLabel').value.trim(),
+    label: label,
+    desc: desc || undefined,
     url: document.getElementById('fUrl').value.trim(),
     timeout_s: parseInt(document.getElementById('fTimeout').value, 10) || 60,
     accept: document.getElementById('fAccept').value.trim() || undefined,
