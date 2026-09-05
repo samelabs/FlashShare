@@ -25,19 +25,40 @@
     <span class="n">{{ tools_all | length }}</span>
   </div>
 
+  <div class="market-toolbar">
+    <div class="market-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="search" id="marketSearch" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}" aria-label="{{ texts.tool_search_ph }}">
+    </div>
+    <div class="market-filters" id="marketFilters" role="group">
+      <button type="button" class="market-filter active" data-filter="all" data-i18n="market_all">{{ texts.market_all }}</button>
+      <button type="button" class="market-filter" data-filter="official" data-i18n="market_official">{{ texts.market_official }}</button>
+      <button type="button" class="market-filter" data-filter="community" data-i18n="market_community">{{ texts.market_community }}</button>
+      <button type="button" class="market-filter" data-filter="free" data-i18n="free">{{ texts.free }}</button>
+      <button type="button" class="market-filter" data-filter="paid" data-i18n="market_paid">{{ texts.market_paid }}</button>
+    </div>
+  </div>
+
   {% if tools_all %}
-  <div class="market-grid">
+  <div class="market-grid" id="marketGrid">
     {% for t in tools_all %}
-    <a class="mkt-card mkt-community" href="/tool/{{ t.id }}">
+    <a class="mkt-card {% if '/' in t.id %}mkt-community{% else %}mkt-official{% endif %}"
+       href="/tool/{{ t.id }}"
+       data-name="{{ (t.label.values() | list | join(' ') ~ ' ' ~ t.id) | lower }}"
+       data-origin="{{ 'community' if '/' in t.id else 'official' }}"
+       data-cost="{{ t.cost or 0 }}">
       <span class="mkt-icon">{% if t.icon %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon_svg | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
       <span class="mkt-name">{{ t.label.get(lang, t.label.get('en', t.id)) }}</span>
       <span class="mkt-meta">
         <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
-        {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
+        {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="mkt-free">{{ texts.free }}</span>{% endif %}
       </span>
-      <span class="mkt-tags"><span class="mkt-tag">UI</span><span class="mkt-tag">MCP</span></span>
+      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official if '/' not in t.id else texts.market_community }}</span><span class="mkt-tag">UI</span><span class="mkt-tag">MCP</span></span>
     </a>
     {% endfor %}
+  </div>
+  <div class="market-none hidden" id="marketNone">
+    <span data-i18n="tool_search_none">{{ texts.tool_search_none }}</span>
   </div>
   {% else %}
   <div class="panel market-empty">
@@ -56,4 +77,9 @@
   </div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/pages/market.js?v={{ pages_version }}"></script>
 {% endblock %}
