@@ -120,6 +120,8 @@ async def samelabs_tools(request: Request):
             "registered": t is not None,
             "label": (t["label"].get("zh") or t["label"].get("en")) if t else "",
             "icon": t["icon"] if t else "",
+            "featured": bool(t["featured"]) if t else False,
+            "sort_order": int(t["sort_order"]) if t else 0,
         })
     ctx = _ctx(request, user, tools=rows, fmt_num=_fmt_num, page="tools")
     return templates.TemplateResponse(request, "samelabs/tools.html", ctx)
@@ -201,6 +203,26 @@ async def samelabs_update_plan(plan_id: int, request: Request):
     if row is None:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "plan": dict(row)}
+
+
+@router.patch("/samelabs/tools/{tool_key}/presentation")
+async def samelabs_set_tool_presentation(tool_key: str, request: Request):
+    """管理后台遴选: 推荐标记 + 排序 (首页/市场呈现序的权威)。"""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        featured = bool(raw.get("featured", False))
+        sort_order = int(raw.get("sort_order", 0))
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.catalog import set_tool_presentation
+    with db() as con:
+        row = set_tool_presentation(con, tool_key, featured, sort_order, now())
+    if row is None:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True, "tool": dict(row)}
 
 
 @router.get("/samelabs/packages")

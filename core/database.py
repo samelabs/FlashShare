@@ -367,6 +367,8 @@ _SCHEMA_SQL = (
                                            -- produce | view | peek
       label_json     TEXT NOT NULL,          -- {lang: display_name}
       desc_json      TEXT,                   -- 简介 {lang: str} | str (可空)
+      sort_order     INT NOT NULL DEFAULT 0, -- 后台遴选排序 (首页/市场呈现序)
+      featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
       icon           TEXT NOT NULL,
       accept_json    TEXT,                   -- JSON array or NULL = any
       presets_json   TEXT,                   -- JSON array or NULL
@@ -427,6 +429,9 @@ _SCHEMA_SQL = (
     # ── subscription (plans/user_plans v3, 2026-09-02) ──
     # 工具简介 (tool modes v3 补: 名称/简介/模式/使用 — desc 与 label 同形 str|dict)
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS desc_json TEXT",
+    # 推荐与排序 (管理后台遴选的权威全局工具呈现顺序)
+    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0",
+    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period_days INT NOT NULL DEFAULT 30",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly'",
     "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS cancel_scheduled_at BIGINT",

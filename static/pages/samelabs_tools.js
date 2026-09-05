@@ -6,20 +6,28 @@ function savePricing(tool, cost, enabled) {
 document.querySelectorAll('.btn-save-pricing').forEach(function (btn) {
   btn.addEventListener('click', function () {
     var tool = btn.dataset.tool;
-    var input = document.querySelector('.tool-cost[data-tool="' + tool + '"]');
+    var row = document.querySelector('tr[data-tool="' + tool + '"]');
+    var input = row.querySelector('.tool-cost');
     var cost = parseInt(input.value, 10);
     if (isNaN(cost) || cost < 0) {
       slToast('err', '单价无效', tool + ' · 需为 0 – 1000000 的整数');
       input.focus();
       return;
     }
-    var enabled = document.querySelector('tr[data-tool="' + tool + '"] .tool-enabled .sl-badge').textContent.indexOf('启用') !== -1;
+    var enabled = row.querySelector('.tool-enabled .sl-badge').textContent.indexOf('启用') !== -1;
+    var featured = row.querySelector('.tool-featured').checked;
+    var sortOrder = parseInt(row.querySelector('.tool-sort').value, 10) || 0;
+    // 单价 + 推荐/排序一次保存 (遴选呈现序的权威入口)
     slBusy(btn, savePricing(tool, cost, enabled)).then(function (r) {
       if (r.ok && r.data.ok) {
-        slToast('ok', '单价已保存', tool + ' = ' + r.data.pricing.cost + ' 积分/次');
-      } else {
-        slToast('err', '保存失败', tool + ' · ' + (r.data.error || '请求失败'));
+        return slPost('/samelabs/tools/' + encodeURIComponent(tool) + '/presentation',
+                      { featured: featured, sort_order: sortOrder }, 'PATCH')
+          .then(function (pr) {
+            if (pr.ok && pr.data.ok) slToast('ok', '已保存', tool + ' · 推荐=' + (featured ? '是' : '否') + ' · 排序=' + sortOrder);
+            else slToast('err', '推荐/排序保存失败', tool);
+          });
       }
+      slToast('err', '保存失败', tool + ' · ' + (r.data.error || '请求失败'));
     });
   });
 });

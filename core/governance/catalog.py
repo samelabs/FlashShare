@@ -96,6 +96,9 @@ def _row_to_item(row: dict, price: dict) -> dict:
     # 简介 (名称/简介/模式/使用): str|dict, 前端 resolveLabel 解析; 系统工具简介
     # 在 i18n {id}_desc — 由前端 t() 双通道兼容
     item["desc"] = json.loads(row["desc_json"]) if row.get("desc_json") else None
+    # 遴选呈现 (后台管理): 推荐标记 + 排序
+    item["featured"] = bool(row["featured"])
+    item["sort_order"] = int(row["sort_order"])
     return item
 
 

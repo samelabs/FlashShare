@@ -20,14 +20,17 @@ def tool_key_exists(con, tool_key: str) -> bool:
 
 
 def visible_to(con, visibility_public: str, viewer_id: Optional[int]) -> list:
+    """呈现顺序 = 管理后台遴选: featured 优先, 再 sort_order, 再 id (注册序兜底)。"""
     if viewer_id is None:
         return con.execute(
             "SELECT * FROM platform_tools "
-            "WHERE enabled AND visibility = %s ORDER BY id",
+            "WHERE enabled AND visibility = %s "
+            "ORDER BY featured DESC, sort_order, id",
             (visibility_public,)).fetchall()
     return con.execute(
         "SELECT * FROM platform_tools "
-        "WHERE enabled AND (visibility = %s OR owner_id = %s) ORDER BY id",
+        "WHERE enabled AND (visibility = %s OR owner_id = %s) "
+        "ORDER BY featured DESC, sort_order, id",
         (visibility_public, viewer_id)).fetchall()
 
 
@@ -167,6 +170,15 @@ def insert_user_tool(con, tool_key: str, owner_id: int, tool_id: str,
         """,
         (tool_key, owner_id, tool_id, execution, label_json, accept_json,
          params_json, desc_json, visibility, endpoint_json, ts, ts))
+
+
+def set_tool_presentation(con, tool_key: str, featured: bool,
+                          sort_order: int, ts: int) -> Optional[dict]:
+    return con.execute(
+        """
+        UPDATE platform_tools SET featured=%s, sort_order=%s, updated_at=%s
+        WHERE tool_key=%s RETURNING tool_key, featured, sort_order
+        """, (featured, sort_order, ts, tool_key)).fetchone()
 
 
 def update_fields(con, tool_key: str, sets: dict) -> None:
