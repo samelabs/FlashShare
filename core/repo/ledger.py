@@ -208,3 +208,15 @@ def calls_by_tool_excluding_owner(con, tool_key: str, owner_id: int,
         ORDER BY id DESC LIMIT %s
         """,
         (tool_key, owner_id, limit)).fetchall()
+
+
+def ok_calls_by_owner(con, owner_id: int, tool_keys: list) -> int:
+    """用户页作者统计: 一组工具键的成功调用总数 (tool_calls.tool_id=tool_key)。"""
+    if not tool_keys:
+        return 0
+    return con.execute(
+        """
+        SELECT COUNT(*) AS n FROM tool_calls
+        WHERE status = 'ok' AND tool_id = ANY(%s) AND user_id != %s
+        """,
+        (tool_keys, owner_id)).fetchone()["n"]

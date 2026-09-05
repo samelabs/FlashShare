@@ -122,6 +122,15 @@ def count_by_owner(con, user_id: int) -> int:
         (user_id,)).fetchone()["n"]
 
 
+def public_rows_by_owner(con, owner_id: int, visibility_public: str) -> list:
+    """用户页 (开发者公开面): 该作者的公开+启用工具行, 呈现序同全站。"""
+    return con.execute(
+        "SELECT * FROM platform_tools "
+        "WHERE owner_id = %s AND enabled AND visibility = %s "
+        "ORDER BY featured DESC, sort_order, id",
+        (owner_id, visibility_public)).fetchall()
+
+
 def owner_row_by_key(con, tool_key: str, user_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM platform_tools WHERE tool_key = %s AND owner_id = %s",

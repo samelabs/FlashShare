@@ -146,3 +146,9 @@ def payout_channel_of(con, user_id: int) -> Optional[dict]:
 def username_of(con, user_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT username FROM users WHERE id = %s", (user_id,)).fetchone()
+
+
+def id_by_username(con, username: str) -> Optional[dict]:
+    """用户页路由: username → id (只取 id, 不泄露其它列)。"""
+    return con.execute(
+        "SELECT id FROM users WHERE username = %s", (username,)).fetchone()

@@ -146,6 +146,22 @@ def catalog_version() -> str:
     return f"v{row['n']}-{row['mx']}-{row['ck'] % 100000}"
 
 
+def owner_public_tools(owner_id: int) -> list:
+    """用户页 (开发者公开面): 该作者的公开 catalog items — 与三面同构
+    (label/desc/params/cost/presets 同 _row_to_item 契约), 呈现序同全站。"""
+    from governance.pricing import list_pricing
+    prices = {r["tool_id"]: r for r in list_pricing()}
+    with db() as con:
+        rows = catalog_repo.public_rows_by_owner(con, owner_id, VIS_PUBLIC)
+    out = []
+    for row in rows:
+        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
+        if not p["enabled"]:
+            continue
+        out.append(_row_to_item(row, p))
+    return out
+
+
 def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> list:
     """Pricing-overlaid catalog, identical contract to the legacy
     tools.list_all_tools(): disabled tools hidden, cost included.

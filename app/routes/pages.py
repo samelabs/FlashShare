@@ -143,6 +143,40 @@ async def tools_market(request: Request):
     return templates.TemplateResponse(request, "tools_market.html", ctx)
 
 
+@router.get("/u/{handle}", response_class=HTMLResponse)
+async def user_page(request: Request, handle: str):
+    """用户页 (开发者公开面): 作者身份 + 公开工具罗列。并列于工具页
+    (App Store 开发者页参照), 只透公开字段白名单, 404 不泄露存在性。"""
+    from app.main import templates
+    from repo.users import id_by_username
+    from governance.catalog import owner_public_tools
+    from database import db
+    from repo.ledger import ok_calls_by_owner
+    from icons import icon_svg
+
+    with db() as con:
+        urow = id_by_username(con, handle)
+    if urow is None:
+        return templates.TemplateResponse(request, "missing.html",
+                                          _ctx_base(request), status_code=404)
+    owner_id = urow["id"]
+    tools = owner_public_tools(owner_id)
+    for t in tools:
+        t["icon_svg"] = icon_svg(t["icon"] or "wand")
+        t["stats"] = _public_stats(t["id"])
+    with db() as con:
+        total_calls = ok_calls_by_owner(con, owner_id, [t["id"] for t in tools])
+    ctx = _ctx_base(request)
+    ctx.update({
+        "shell_class": "",
+        "owner_handle": handle,
+        "owner_tools": tools,
+        "owner_total_calls": total_calls,
+        "owner_tools_json": json.dumps(tools, ensure_ascii=False),
+    })
+    return templates.TemplateResponse(request, "user_page.html", ctx)
+
+
 def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
     """Shared builder for tool page + MCP page. Non-public → None (404, no probe)."""
     from governance.catalog import resolve
@@ -154,9 +188,13 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
     ctx = _ctx_base(request)
     import json as _json
     try:
-        label_map = json.loads(tool.get("label_json") or "{}")
+        label_map = _json.loads(tool.get("label_json") or "{}")
     except Exception:
         label_map = {}
+    try:
+        desc_map = _json.loads(tool.get("desc_json") or "null")
+    except Exception:
+        desc_map = None
     from icons import icon_svg
     # Public-surface whitelist ONLY (same shape as catalog items): the raw
     # DB row (endpoint_json/auth_token/owner_id/trusted/timestamps) must
@@ -165,13 +203,20 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
         "id": tool["tool_key"],
         "type": tool["tool_type"],
         "label": label_map,
+        "desc": desc_map,
         "icon": tool.get("icon"),
         "accept": _json.loads(tool["accept_json"]) if tool.get("accept_json") else None,
         "presets": None,
+        "params": _json.loads(tool["params_json"]) if tool.get("params_json") else None,
         "multi": bool(tool.get("multi")),
         "cost": int(tool.get("cost") or 0),
         "icon_svg": icon_svg(tool.get("icon") or "wand"),
     }
+    if tool.get("presets_json"):
+        tool_public["presets"] = [
+            {"id": p["id"], "label": p["label"], "default": p.get("default", False)}
+            for p in _json.loads(tool["presets_json"])
+        ]
     ctx.update({
         "shell_class": "",
         "tool": tool_public,

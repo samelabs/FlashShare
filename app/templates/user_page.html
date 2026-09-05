@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}@{{ owner_handle }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}@{{ owner_handle }} · {{ texts.owner_page_desc }}{% endblock %}
+
+{% block content %}
+<section class="acct-page user-page">
+  <div class="hero-mini">
+    <h1 class="hero-title userpage-handle">@{{ owner_handle }}</h1>
+    <p class="hero-sub userpage-stats">
+      <span>{{ owner_tools | length }} {{ texts.owner_tools_count }}</span>
+      <span class="dot">·</span>
+      <span>{{ owner_total_calls }} {{ texts.tool_calls_total }}</span>
+    </p>
+  </div>
+
+  {% if owner_tools %}
+  <div class="section-h">
+    <span class="t" data-i18n="owner_tools_list">{{ texts.owner_tools_list }}</span>
+    <span class="n">{{ owner_tools | length }}</span>
+  </div>
+  <div class="market-grid userpage-grid">
+    {% for t in owner_tools %}
+    <div class="mkt-card mkt-community userpage-card" data-tool-id="{{ t.id }}">
+      <span class="mkt-icon"><svg viewBox="0 0 24 24" aria-hidden="true">{% if t.icon_svg %}{{ t.icon_svg | safe }}{% endif %}</svg></span>
+      <span class="mkt-name">{{ t.label.get(lang, t.label.get('en', t.id)) }}</span>
+      {% if t.desc %}<span class="mkt-desc">{{ t.desc.get(lang, t.desc.get('en', '')) if t.desc is mapping else t.desc }}</span>{% endif %}
+      <span class="mkt-meta">
+        <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
+        {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="mkt-free">{{ texts.free }}</span>{% endif %}
+      </span>
+      <span class="userpage-card-actions">
+        <a class="mkt-tag" href="/tool/{{ t.id }}">{{ texts.tool_call_cta }}</a>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="panel market-empty">
+    <div class="t" data-i18n="owner_empty_title">{{ texts.owner_empty_title }}</div>
+    <div class="d" data-i18n="owner_empty_sub">{{ texts.owner_empty_sub }}</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block script_head %}
+<script>
+window.__PAGE__ = "user";
+window.__OWNER_TOOLS__ = {{ owner_tools_json | safe }};
+</script>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/pages/user_page.js?v={{ pages_version }}"></script>
+{% endblock %}
