@@ -57,18 +57,20 @@ function _openEdit(t) {
   const lb = t.label;
   if (typeof lb === 'string') document.getElementById('fLabel').value = lb;
   else if (lb && typeof lb === 'object') {
-    document.getElementById('fLabel').value = lb.en || Object.values(lb)[0] || '';
-    Object.entries(lb).forEach(([lang, v]) => {
-      if (lang === 'en') return;
+    const lang = document.documentElement.lang.slice(0, 2) || 'en';
+    document.getElementById('fLabel').value = lb[lang] || lb.en || Object.values(lb)[0] || '';
+    Object.entries(lb).forEach(([lg, v]) => {
+      if (lg === 'en') return;
       document.getElementById('addLangRow')?.click();
       const row = document.querySelector('#langRows .lang-row:last-child');
-      if (row) { row.querySelector('.lang-pick').value = lang; row.querySelector('.lang-name').value = v; }
+      if (row) { row.querySelector('.lang-pick').value = lg; row.querySelector('.lang-name').value = v; }
     });
   }
   const dd = t.desc;
   if (typeof dd === 'string') document.getElementById('fDesc').value = dd;
   else if (dd && typeof dd === 'object') {
-    document.getElementById('fDesc').value = dd.en || Object.values(dd)[0] || '';
+    const lang = document.documentElement.lang.slice(0, 2) || 'en';
+    document.getElementById('fDesc').value = dd[lang] || dd.en || Object.values(dd)[0] || '';
   }
   document.getElementById('fToolId').value = t.tool_id;
   document.getElementById('fToolId').disabled = true;  // id immutable
@@ -133,6 +135,18 @@ function _delBtn(toolId, key) {
   return btn;
 }
 
+// label 解析 (str|dict, 同 app.js resolveLabel 回落链 — 此页无 app.js 依赖)
+function _rl(label) {
+  if (typeof label === 'string') return label;
+  if (label && typeof label === 'object') {
+    const lang = document.documentElement.lang.slice(0, 2) || 'en';
+    if (label[lang]) return label[lang];
+    if (label.en) return label.en;
+    for (const v of Object.values(label)) if (typeof v === 'string' && v) return v;
+  }
+  return '';
+}
+
 async function loadTools() {
   const r = await fetch('/api/usertools');
   const d = await r.json();
@@ -148,7 +162,7 @@ async function loadTools() {
     ico.className = 'usertools-ico';
     if (t.icon) ico.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + (window.__ICONS__[t.icon] || '') + '</svg>';
     const name = document.createElement('strong');
-    name.textContent = t.label || t.tool_key;
+    name.textContent = _rl(t.label) || t.tool_key;
     const keyEl = document.createElement('span');
     keyEl.className = 'usertools-key';
     keyEl.textContent = t.tool_key;
@@ -291,3 +305,4 @@ document.getElementById('submitTool').addEventListener('click', async () => {
 
 
 loadTools();
+// tool modes v3: multilang label/desc wiring
