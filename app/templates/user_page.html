@@ -3,7 +3,7 @@
 {% block desc %}@{{ owner_handle }} · {{ texts.owner_page_desc }}{% endblock %}
 
 {% block content %}
-<section class="acct-page user-page">
+<section class="acct-page user-page" id="userPage">
   <div class="hero-mini">
     <h1 class="hero-title userpage-handle">@{{ owner_handle }}</h1>
     <p class="hero-sub userpage-stats">
@@ -40,6 +40,8 @@
     <div class="d" data-i18n="owner_empty_sub">{{ texts.owner_empty_sub }}</div>
   </div>
   {% endif %}
+
+  <div id="result" class="result hidden" aria-live="polite"></div>
 </section>
 {% endblock %}
 
@@ -52,5 +54,7 @@ window.__OWNER_TOOLS__ = {{ owner_tools_json | safe }};
 
 {% block script %}
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/app.js?v={{ app_js_version }}"></script>
+<script src="/static/pages/process-flow.js?v={{ pages_version }}"></script>
 <script src="/static/pages/user_page.js?v={{ pages_version }}"></script>
 {% endblock %}

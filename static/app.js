@@ -5,7 +5,10 @@ const form = document.getElementById("uploadForm");
 // 形态; 该页只复用本文件的共享底座 (t/showResult/showShareResult/…),
 // 自检跳过表单 id, 但 toolPage 标记必须在 (缺 = 真版本错位)。
 (function(){
-  const singleToolPage = !!document.getElementById("toolRunForm");
+  // 单工具上下文页 (工具页 toolRunForm / 用户页 userPage) 无 uploadForm/
+  // dropZone — 那是首页多工具入口的形态; 这些页只复用本文件的共享底座
+  // (t/showResult/showShareResult/…), 自检跳过表单 id。
+  const singleToolPage = !!(document.getElementById("toolRunForm") || document.getElementById("userPage"));
   const need = singleToolPage
     ? ["result"]
     : ["uploadForm","file","fileLabel","dropZone","submitBtn"];
@@ -143,6 +146,7 @@ function visibleAction(icon, label) {
   return `<span class="action-mark">${ICONS[icon]}</span><span>${escapeHtml(label)}</span>`;
 }
 function renderModalActions() {
+  if (!modalOpen) return; // 无结果浮层 dom 的页 (用户页等) — 结果操作按钮由 showShareResult 动态渲染
   modalOpen.innerHTML = actionLabel("open", t("open"));
   modalOpen.setAttribute("aria-label", t("open"));
   modalOpen.setAttribute("title", t("open"));
@@ -159,7 +163,7 @@ function renderModalActions() {
 // Home page i18n callback — called by global applyI18n() after data-i18n sweep
 window.__afterI18n = function() {
   document.title = t("title");
-  modalCopy.textContent = t("copy");
+  if (modalCopy) modalCopy.textContent = t("copy");
   // Upload-card param values follow language
   const expSel = document.getElementById("expiryDays");
   const dlSel = document.getElementById("allowedDownloads");
@@ -178,7 +182,7 @@ window.__afterI18n = function() {
     if (nameEl) nameEl.textContent = resolveLabel(tool.label) || tool.id;
   });
   renderModalActions();
-  if (file && !file.files[0]) fileLabel.textContent = t("dropEmpty");
+  if (file && fileLabel && !file.files[0]) fileLabel.textContent = t("dropEmpty");
   applyToolSelection();
   renderAccount();
   if (activeUpload) renderModal(activeUpload);
