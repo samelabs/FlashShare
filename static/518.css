@@ -475,7 +475,15 @@ select { width: auto; margin-top: 0; }
 .footer-copy { font-size: var(--text-xs); color: var(--muted); }
 .footer-copy .brand-logo { font-size: var(--text-xs); font-weight: 700; }
 
-/* ── Doc Pages ────────────────────────────────────────────── */
+/* ── 内容卡 (.panel): 白卡+细边+圆角, 事实/MCP/空态容器 ──
+   原型 static/proto/account.html 的 .panel 正式落地 (此前为幽灵类:
+   模板六处引用但本表从未定义, 页面裸文本堆砌)。置于 .doc 之前,
+   doc/agents 的透明版式靠后置覆盖保持。 */
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px 18px; }
+.panel .t { font-size: 14.5px; font-weight: 700; }
+.panel .d { font-size: 13px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+
+/* ── Doc Pages ───────────────────────────────────────────── */
 .doc { line-height: 1.7; width: 100%; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
 .doc h1 { font-size: var(--text-xl); }
 
