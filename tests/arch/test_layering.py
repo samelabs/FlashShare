@@ -356,5 +356,32 @@ class A9NoHardcodedDomain(unittest.TestCase):
 
 
 
+class A10I18nJsInSync(unittest.TestCase):
+    """A10 (i18n 双载体同步): core/i18n.py SERVER_I18N 与 static/i18n.js 是
+    生成关系 (tools/gen_i18n.py)。加键不跑生成器 → live 切换显示裸键
+    (0905 home_mcp_hint 实锤)。断言两载体键集全等。"""
+
+    def test_i18n_js_matches_source(self):
+        import json
+        import re as _re
+        import sys as _sys
+        _sys.path.insert(0, "/opt/flashshare/core")
+        from i18n import SERVER_I18N
+        src = open("/opt/flashshare/static/i18n.js", encoding="utf-8").read()
+        m = _re.search(r"window\.__I18N__ = (\{.*\});", src, _re.S)
+        self.assertIsNotNone(m, "i18n.js 形态异常 (无 __I18N__ 赋值)")
+        js = json.loads(m.group(1))
+        diffs = []
+        for lang in SERVER_I18N:
+            a = set(SERVER_I18N[lang].keys())
+            b = set(js.get(lang, {}).keys())
+            missing = a - b   # 源有 js 无 = 裸键风险
+            extra = b - a     # js 有 源无 = 陈旧键 (源删了没重生成)
+            if missing or extra:
+                diffs.append(f"{lang}: missing={sorted(missing)[:4]} extra={sorted(extra)[:4]}")
+        self.assertEqual(diffs, [],
+                         "A10 违例(改 i18n.py 未跑 tools/gen_i18n.py): " + " | ".join(diffs[:4]))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
