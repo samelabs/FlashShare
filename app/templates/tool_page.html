@@ -31,7 +31,7 @@
     </div>
     {% if tool.accept %}
     <div class="toolpage-fact">
-      <span class="k" data-i18n="dropFormats">{{ texts.dropFormats }}</span>
+      <span class="k" data-i18n="tool_accept">{{ texts.tool_accept }}</span>
       <span class="v fmt-chips">{% for a in tool.accept %}<span class="fmt-chip">{{ a.split('/')[-1] | upper }}</span>{% endfor %}</span>
     </div>
     {% endif %}
