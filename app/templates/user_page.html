@@ -7,7 +7,7 @@
   <div class="hero-mini">
     <h1 class="hero-title userpage-handle">@{{ owner_handle }}</h1>
     <p class="hero-sub userpage-stats">
-      <span>{{ owner_tools | length }} {{ texts.owner_tools_count }}</span>
+      <span>{{ owner_tools | length }} <span data-i18n="owner_tools_count">{{ texts.owner_tools_count }}</span></span>
       <span class="dot">·</span>
       <span>{{ owner_total_calls }} {{ texts.tool_calls_total }}</span>
     </p>
