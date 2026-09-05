@@ -177,11 +177,13 @@ async def user_page(request: Request, handle: str):
     return templates.TemplateResponse(request, "user_page.html", ctx)
 
 
-def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
-    """Shared builder for tool page + MCP page. Non-public → None (404, no probe)."""
+def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool):
+    """Shared builder for tool page + MCP page. Non-public → None (404, no probe).
+
+    owner=None → first-party bare-id tool (官方工具, 无作者命名空间)."""
     from governance.catalog import resolve
     user = request.state.user
-    tool_key = f"{owner}/{tool_id}"
+    tool_key = f"{owner}/{tool_id}" if owner else tool_id
     tool, err = resolve(tool_key, user["id"] if user else None)
     if err or tool.get("visibility") != "public":
         return None
@@ -221,7 +223,7 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
         "shell_class": "",
         "tool": tool_public,
         "tool_name": label_map.get(ctx["lang"]) or label_map.get("en") or tool_id,
-        "handle": _owner_handle(tool["owner_id"]),
+        "handle": _owner_handle(tool["owner_id"]) if tool.get("owner_id") else None,
         "stats": _public_stats(tool_key),
         "mcp_name": tool_key.replace("/", "__"),
         "is_mcp": mcp,
@@ -229,6 +231,38 @@ def _tool_page_ctx(request: Request, owner: str, tool_id: str, mcp: bool):
         "limits_json": ctx.get("limits_json") or _json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),
     })
     return ctx
+
+
+# ── First-party bare-id routes (官方工具, 无作者命名空间) ──
+# /tool/{x}/mcp 必须注册在 /tool/{owner}/{tool_id} 之前, 否则
+# /tool/compress/mcp 被两段式错吞 (owner=compress, tool_id=mcp)。
+# FastAPI 按注册序匹配。
+
+@router.get("/tool/{tool_id}/mcp", response_class=HTMLResponse)
+async def tool_first_party_mcp_page(request: Request, tool_id: str):
+    """官方工具 MCP 页 (/tool/compress/mcp)。
+
+    兜底: 社区工具 slug 恰为 'mcp' 时, /tool/{owner}/mcp 是其 UI 页
+    (被本路由遮蔽), 回退两段式解析。"""
+    from app.main import templates
+    from fastapi.responses import HTMLResponse as _H
+    ctx = _tool_page_ctx(request, None, tool_id, mcp=True)
+    if ctx is not None:
+        return templates.TemplateResponse(request, "tool_mcp.html", ctx)
+    ctx = _tool_page_ctx(request, tool_id, "mcp", mcp=False)
+    if ctx is not None:
+        return templates.TemplateResponse(request, "tool_page.html", ctx)
+    return _H("", status_code=404)
+
+
+@router.get("/tool/{tool_id}", response_class=HTMLResponse)
+async def tool_first_party_page(request: Request, tool_id: str):
+    from app.main import templates
+    from fastapi.responses import HTMLResponse as _H
+    ctx = _tool_page_ctx(request, None, tool_id, mcp=False)
+    if ctx is None:
+        return _H("", status_code=404)
+    return templates.TemplateResponse(request, "tool_page.html", ctx)
 
 
 @router.get("/tool/{owner}/{tool_id}", response_class=HTMLResponse)

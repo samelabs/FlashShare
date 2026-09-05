@@ -1,14 +1,18 @@
 {% extends "base.html" %}
 {% block title %}{{ tool_name }} - {{ APP_NAME }}{% endblock %}
-{% block desc %}{{ tool_name }} · @{{ handle }}{% endblock %}
+{% block desc %}{{ tool_name }}{% if handle %} · @{{ handle }}{% endif %}{% endblock %}
 
 {% block content %}
 <section class="workspace toolpage" id="toolPage">
   <div class="hero-mini">
     <h1 class="hero-title">{{ tool_name }}</h1>
     <p class="hero-sub toolpage-by">
+      {% if handle %}
       <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <a class="toolpage-handle" href="/u/{{ handle }}">@{{ handle }}</a>
       <span class="mkt-tags"><a class="mkt-tag on" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
+      {% else %}
+      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official }}</span><a class="mkt-tag on" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
+      {% endif %}
     </p>
   </div>
 
