@@ -158,12 +158,12 @@ window.__afterI18n = function() {
     expLab.textContent = d === "1" ? "1 " + t("day_unit") : d + " " + t("days_unit");
   }
   if (dlSel && dlLab) dlLab.textContent = dlSel.value + " " + t("times_unit");
-  // Tool names: SSR renders {{ texts.get(t.id) }} — re-derive per current language
+  // Tool names: data-driven (tool modes v3) — resolveLabel 同链 (dict[lang]→en→首值)
   document.querySelectorAll("#homeTools .tool-tab").forEach(tab => {
-    const toolId = tab.dataset.toolId;
-    if (!toolId || toolId.includes("/")) return; // namespaced tools carry their own label
+    const tool = homeToolsData.find(t => t.id === tab.dataset.toolId);
+    if (!tool) return;
     const nameEl = tab.querySelector(".tool-tab-name");
-    if (nameEl) nameEl.textContent = t(toolId);
+    if (nameEl) nameEl.textContent = resolveLabel(tool.label) || tool.id;
   });
   renderModalActions();
   if (!file.files[0]) fileLabel.textContent = t("dropEmpty");
@@ -552,9 +552,7 @@ function initToolSearch() {
       return;
     }
     pop.innerHTML = items.map((x, i) => {
-      const name = x.id.includes("/")
-        ? (x.label[currentLang()] || x.label.en || x.id)
-        : t(x.id);
+      const name = resolveLabel(x.label) || x.id;
       const cost = x.cost > 0 ? `<span class="tool-cost">${x.cost}</span>` : "";
       return `<button type="button" class="tool-search-item" role="option" data-idx="${i}" data-tool="${escapeHtml(x.id)}">
         ${x.icon ? svgIcon(x.icon) : ''}<span class="tool-tab-name">${escapeHtml(name)}</span>${cost}
@@ -653,7 +651,7 @@ function openToolOverlay(tool, btn) {
     }
     html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${t("intensity")}</div><div class="tool-overlay-presets">`;
     tool.presets.forEach((p) => {
-      const pname = t(p.id) !== p.id ? t(p.id) : (resolveLabel(p.label) || p.id);
+      const pname = resolveLabel(p.label) || p.id;
       const sel = (p.id === defaultPreset) ? " active" : "";
       html += `<button type="button" class="tool-overlay-preset${sel}" data-preset="${p.id}">${escapeHtml(pname)}</button>`;
     });
@@ -834,12 +832,9 @@ function applyToolSelection(skipPresetReset) {
   if (activePreset) {
     const activeTab = document.querySelector('.tool-tab.active');
     if (activeTab) {
-      let presetLabel = t(activePreset);
-      if (presetLabel === activePreset) {
-        const pt = (homeToolsData.find(t => t.id === activeTool.id) || {}).presets || [];
-        const p = pt.find(p => p.id === activePreset);
-        if (p) presetLabel = (p.label && p.label[currentLang()]) || (p.label && p.label.en) || activePreset;
-      }
+      const pt = (homeToolsData.find(t => t.id === activeTool.id) || {}).presets || [];
+      const p = pt.find(p => p.id === activePreset);
+      const presetLabel = p ? (resolveLabel(p.label) || activePreset) : activePreset;
       if (presetLabel && presetLabel !== activePreset) {
         const badge = document.createElement("span");
         badge.className = "tool-preset-badge";
