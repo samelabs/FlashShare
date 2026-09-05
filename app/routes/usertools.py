@@ -203,6 +203,11 @@ async def create_user_tool(request: Request):
     fields["visibility"] = "private"
 
     # params 声明 (tool modes spec v3): 可选, 提交时全量校验, 存库即合法
+    # 简介 (tool modes v3: 名称/简介/模式/使用): 可选, ≤200 字符, 任意语言
+    desc = raw.get("desc")
+    if desc is not None:
+        desc = str(desc).strip()[:200] or None
+
     params_decl = []
     if raw.get("params") not in (None, "", []):
         from governance.tool_params import validate_params_decl, ParamsDeclError
@@ -227,7 +232,8 @@ async def create_user_tool(request: Request):
             json.dumps(fields.get("accept")) if fields.get("accept") else None,
             fields["visibility"],
             json.dumps(_endpoint_decl(fields, execution)), ts,
-            params_json=json.dumps(params_decl, ensure_ascii=False) if params_decl else None)
+            params_json=json.dumps(params_decl, ensure_ascii=False) if params_decl else None,
+            desc_json=json.dumps({"en": desc}, ensure_ascii=False) if desc else None)
     # pricing row: owner-priced from day one
     from governance.pricing import set_pricing
     set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
@@ -353,6 +359,9 @@ async def update_user_tool(tool_id: str, request: Request):
         sets["accept_json"] = json.dumps(fields["accept"]) if fields["accept"] else None
     if "enabled" in raw:
         sets["enabled"] = bool(raw.get("enabled"))
+    if "desc" in raw:
+        d = str(raw.get("desc") or "").strip()[:200]
+        sets["desc_json"] = json.dumps({"en": d}, ensure_ascii=False) if d else None
     if "params" in raw:
         # params 声明 (spec v3): 全量替换式更新 — 提交即全量校验
         from governance.tool_params import validate_params_decl, ParamsDeclError

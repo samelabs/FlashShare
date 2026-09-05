@@ -366,6 +366,7 @@ _SCHEMA_SQL = (
       tool_type      TEXT NOT NULL DEFAULT 'produce',
                                            -- produce | view | peek
       label_json     TEXT NOT NULL,          -- {lang: display_name}
+      desc_json      TEXT,                   -- 简介 {lang: str} | str (可空)
       icon           TEXT NOT NULL,
       accept_json    TEXT,                   -- JSON array or NULL = any
       presets_json   TEXT,                   -- JSON array or NULL
@@ -424,6 +425,8 @@ _SCHEMA_SQL = (
     # users.payout_channel (withdrawal destination, operator-read) — additive
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_channel TEXT",
     # ── subscription (plans/user_plans v3, 2026-09-02) ──
+    # 工具简介 (tool modes v3 补: 名称/简介/模式/使用 — desc 与 label 同形 str|dict)
+    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS desc_json TEXT",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period_days INT NOT NULL DEFAULT 30",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly'",
     "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS cancel_scheduled_at BIGINT",

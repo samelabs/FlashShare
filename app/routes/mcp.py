@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, Response
 
 from config import MAX_UPLOAD_BYTES
 from governance.catalog import list_catalog, resolve as resolve_tool, mcp_name
+from governance.tool_params import resolve_label
 from utils import sanitize_filename
 
 router = APIRouter()
@@ -209,6 +210,10 @@ def _tool_specs(user: dict) -> list:
         desc = f"{label.get('en') or t['id']}"
         if label.get("zh"):
             desc += f" / {label['zh']}"
+        # 简介 (agent 检索质量): 工具自述 desc 单串
+        tool_desc = resolve_label(t.get("desc"), "en") if t.get("desc") else ""
+        if tool_desc:
+            desc += f" — {tool_desc}"
         if int(t["cost"]) > 0:
             desc += f" (cost: {int(t['cost'])} credits)"
         specs.append({

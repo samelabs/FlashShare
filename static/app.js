@@ -634,10 +634,11 @@ function openToolOverlay(tool, btn) {
   // Build overlay content
   let html = `<div class="tool-overlay-head"><svg viewBox="0 0 24 24" aria-hidden="true">${iconSvg}</svg><h3>${escapeHtml(toolName)}</h3></div>`;
 
-  // Description
+  // Description: 系统工具走 i18n {id}_desc; 工具自述 desc 双通道兼容 (spec v3)
   const descKey = tool.id + "_desc";
-  const desc = t(descKey);
-  if (desc && desc !== descKey) {
+  let desc = t(descKey);
+  if (!desc || desc === descKey) desc = resolveLabel(tool.desc);
+  if (desc) {
     html += `<p class="tool-overlay-desc">${escapeHtml(desc)}</p>`;
   }
 

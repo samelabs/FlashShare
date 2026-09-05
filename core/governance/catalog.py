@@ -92,6 +92,9 @@ def _row_to_item(row: dict, price: dict) -> dict:
         ]
     # params 声明 (tool modes v3): 三面同构 — web 浮层/MCP inputSchema/详情同源
     item["params"] = json.loads(row["params_json"]) if row["params_json"] else None
+    # 简介 (名称/简介/模式/使用): str|dict, 前端 resolveLabel 解析; 系统工具简介
+    # 在 i18n {id}_desc — 由前端 t() 双通道兼容
+    item["desc"] = json.loads(row["desc_json"]) if row.get("desc_json") else None
     return item
 
 
