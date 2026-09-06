@@ -296,9 +296,11 @@ async function submit() {
     auth_token: document.getElementById("fAuthToken").value.trim() || undefined,
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
     params: params.length ? params : undefined,
-    visibility: "private",
   };
+  if (!_editId) body.visibility = "private";   // 新工具恒私有起步; 编辑态不动可见性 (防公开工具被编辑静默降级)
   const editing = !!_editId;
+  // 编辑态 tool_id immutable: 去掉 body.tool_id, 走 URL 路径定位
+  if (editing) delete body.tool_id;
   const r = await fetch("/api/usertools" + (editing ? "/" + _editId : ""), {
     method: editing ? "PATCH" : "POST",
     headers: { "Content-Type": "application/json" },
