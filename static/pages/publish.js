@@ -43,10 +43,11 @@ function renderFamGrid(preselected) {
     '<label class="fam-chip" title="' + FAM_DETAIL[k] + '"><input type="checkbox" value="' + k + '"' +
     (preselected && preselected.includes(k) ? " checked" : "") + ">" +
     "<span>" + _msg(FAM_I18N[k]) + "</span></label>").join("");
-  const hint = document.createElement("span");
-  hint.className = "fam-hint";
-  hint.textContent = FAM_KEYS.map(k => _msg(FAM_I18N[k]) + ": " + FAM_DETAIL[k]).join(" · ");
-  grid.appendChild(hint);
+  // 说明区: 按族一行 (族名加粗 + 格式明细), 头行交代"全部格式=不勾任何族"语义
+  const hint = document.getElementById("famHint");
+  hint.innerHTML = '<div class="fam-hint-all">' + _msg("fam_all") + " = 0</div>" +
+    FAM_KEYS.map(k => '<div class="fam-hint-row"><b>' + _msg(FAM_I18N[k]) +
+      "</b>" + FAM_DETAIL[k] + "</div>").join("");
 }
 function collectFamilies() {
   const checked = [...document.querySelectorAll("#famGrid input:checked")].map(el => el.value);
