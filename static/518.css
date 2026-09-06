@@ -927,7 +927,6 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .toolpage-call:hover { background: var(--accent-hover); }
 .toolpage-call:disabled { opacity: .6; }
 .toolpage-call:disabled:hover { background: var(--accent); }
-.toolpage-notice { font-size: 12.5px; color: var(--muted); text-align: center; padding: 0 10px; line-height: 1.5; }
 .toolpage .controls .field b { justify-content: center; }
 .toolpage .panel .code-block { background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 10px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .toolpage .panel .d a { color: var(--accent); font-weight: 600; }
