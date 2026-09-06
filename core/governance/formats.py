@@ -39,16 +39,11 @@ FAMILIES: dict[str, FormatFamily] = {
         FormatFamily(
             "image",
             {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".heif",
-             ".tiff", ".tif", ".avif"},
+             ".tiff", ".tif", ".avif", ".ico"},
             {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
-             "image/heic", "image/heif", "image/tiff", "image/avif"},
+             "image/heic", "image/heif", "image/tiff", "image/avif",
+             "image/x-icon", "image/vnd.microsoft.icon"},
             "Images",
-        ),
-        FormatFamily(
-            "ico",
-            {".ico"},
-            {"image/x-icon", "image/vnd.microsoft.icon"},
-            "ICO",
         ),
         FormatFamily(
             "document",
@@ -96,7 +91,7 @@ FAMILIES: dict[str, FormatFamily] = {
     )
 }
 
-FAMILY_ORDER = ["image", "ico", "document", "archive", "data", "code"]
+FAMILY_ORDER = ["image", "document", "archive", "data", "code"]
 
 # chip 标签 (族内逐格式展示用): ext → 短名, 从派生族生成
 CHIP_BY_EXT: dict[str, str] = {}

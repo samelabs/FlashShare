@@ -54,8 +54,8 @@ function _selfTest(btn, t) {
 // ── 场景格式族勾选器 (0930 范式: 声明即契约) ──
 // 词表单源在服务端 governance/formats.py; 此处静态镜像 FAMILY_ORDER+标签键,
 // 服务端漂移时提交校验 (bad_format_family) 兜底。
-const FAM_KEYS = ["image", "ico", "document", "archive", "data", "code"];
-const FAM_I18N = {image: "family_image", ico: "family_ico", document: "family_document",
+const FAM_KEYS = ["image", "document", "archive", "data", "code"];
+const FAM_I18N = {image: "family_image", document: "family_document",
                   archive: "family_archive", data: "family_data", code: "family_code"};
 function renderFamGrid(preselected) {
   const grid = document.getElementById('famGrid');
