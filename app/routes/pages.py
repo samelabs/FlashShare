@@ -167,12 +167,14 @@ async def user_page(request: Request, handle: str):
     with db() as con:
         total_calls = ok_calls_by_owner(con, owner_id, [t["id"] for t in tools])
     ctx = _ctx_base(request)
+    user = request.state.user
     ctx.update({
         "shell_class": "",
         "owner_handle": handle,
         "owner_tools": tools,
         "owner_total_calls": total_calls,
         "owner_tools_json": json.dumps(tools, ensure_ascii=False),
+        "is_self": bool(user and user.get("id") == owner_id),
     })
     return templates.TemplateResponse(request, "user_page.html", ctx)
 
