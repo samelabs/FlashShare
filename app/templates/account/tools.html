@@ -29,6 +29,7 @@ Content-Type: application/json
         <h4>响应（二选一）</h4>
         <pre>A. 直接返回文件字节:  Content-Type: image/png 等（扩展名须在白名单）
 B. 返回 JSON:  { "output_url": "https://you/x.png" }  （平台回拉，同样过安全校验）</pre>
+        <p>输出限制：单文件 ≤ 50MB（超出拒收）；每次调用产出一个文件。接受的输入格式在"接受格式"中勾选，用户上传不符文件将被拒绝执行。</p>
         <h4>鉴权（可选）</h4>
         <p>提交时配置 Header 名与令牌（如 <code>Authorization: Bearer …</code>），平台每次调用携带。</p>
         <h4>安全要求</h4>

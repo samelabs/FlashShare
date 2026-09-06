@@ -54,16 +54,28 @@ function _selfTest(btn, t) {
 // ── 场景格式族勾选器 (0930 范式: 声明即契约) ──
 // 词表单源在服务端 governance/formats.py; 此处静态镜像 FAMILY_ORDER+标签键,
 // 服务端漂移时提交校验 (bad_format_family) 兜底。
+// 族明细 = 悬停 title (格式归类明确性, 用户问"数据/代码囊括什么"直接可查)。
 const FAM_KEYS = ["image", "document", "archive", "data", "code"];
 const FAM_I18N = {image: "family_image", document: "family_document",
                   archive: "family_archive", data: "family_data", code: "family_code"};
+const FAM_DETAIL = {
+  image: "JPG PNG GIF WebP BMP HEIC HEIF TIFF AVIF ICO",
+  document: "PDF TXT CSV MD RTF DOC DOCX XLS XLSX PPT PPTX ODT ODS ODP",
+  archive: "ZIP RAR 7Z GZ TAR BZ2 XZ TGZ",
+  data: "JSON XML YAML YML",
+  code: "PY JS TS HTML CSS SVG GO RS JAVA C CPP H RB PHP SH SQL",
+};
 function renderFamGrid(preselected) {
   const grid = document.getElementById('famGrid');
   if (!grid) return;
   grid.innerHTML = FAM_KEYS.map(k =>
-    '<label class="fam-chip"><input type="checkbox" value="' + k + '"' +
+    '<label class="fam-chip" title="' + FAM_DETAIL[k] + '"><input type="checkbox" value="' + k + '"' +
     (preselected && preselected.includes(k) ? ' checked' : '') + '>' +
     '<span>' + _msg(FAM_I18N[k]) + '</span></label>').join('');
+  const hint = document.createElement('span');
+  hint.className = 'fam-hint';
+  hint.textContent = FAM_KEYS.map(k => _msg(FAM_I18N[k]) + ': ' + FAM_DETAIL[k]).join(' · ');
+  grid.appendChild(hint);
 }
 function collectFamilies() {
   const checked = [...document.querySelectorAll('#famGrid input:checked')].map(el => el.value);

@@ -541,6 +541,7 @@ select { width: auto; margin-top: 0; }
 .fam-chip { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid var(--line-strong); border-radius: 99px; padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--ink-soft); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
 .fam-chip input { position: absolute; opacity: 0; pointer-events: none; }
 .fam-chip:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.fam-hint { flex-basis: 100%; font-size: 12px; color: var(--muted); line-height: 1.5; }
 /* 多语言行: 全宽 grid = 语言(原生名) | 名称 | 简介 | 删除 */
 .lang-row { display: grid; grid-template-columns: 108px 1fr 2fr 34px; gap: 8px; margin-bottom: 8px; }
 .lang-row .lang-pick, .lang-row input { padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; font-size: var(--text-sm); }
