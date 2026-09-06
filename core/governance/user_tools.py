@@ -49,6 +49,10 @@ def _public_item(row: dict) -> dict:
         "url": decl.get("url", ""),
         "timeout_s": decl.get("timeout_s", 60),
         "has_auth": bool(decl.get("auth_token")),
+        "accept": json.loads(row["accept_json"]) if row.get("accept_json") else None,
+        "output_filename": decl.get("output_filename", ""),
+        "output_content_type": decl.get("output_content_type", ""),
+        "params": json.loads(row["params_json"]) if row.get("params_json") else [],
         "calls": _call_stats(row["tool_key"], row.get("owner_id")),
     }
 

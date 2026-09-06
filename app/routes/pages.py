@@ -482,6 +482,28 @@ async def account_tools(request: Request):
     return templates.TemplateResponse(request, "account/tools.html", ctx)
 
 
+@router.get("/account/tools/publish", response_class=HTMLResponse)
+async def account_tools_publish(request: Request):
+    """Standalone publish page (create + edit via ?id={tool_id})."""
+    from app.main import templates
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from governance.user_tools import _owner_rows, _public_item
+    tool_id = request.query_params.get("id", "").strip()
+    tool = None
+    if tool_id:
+        for r in _owner_rows(user["id"]):
+            if r["tool_id"] == tool_id:
+                tool = _public_item(r)
+                break
+        if tool is None:
+            return HTMLResponse("", status_code=404)
+    ctx = _account_ctx(request, "tools", tool=tool,
+                       tool_json=json.dumps(tool, ensure_ascii=False) if tool else "null")
+    return templates.TemplateResponse(request, "account/publish.html", ctx)
+
+
 @router.get("/account/tokens", response_class=HTMLResponse)
 async def account_tokens(request: Request):
     from app.main import templates

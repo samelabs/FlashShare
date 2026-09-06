@@ -11,7 +11,7 @@
   <div class="acct-card">
     <div class="acct-card-head">
       <h2 data-i18n="mytools_title">{{ texts.mytools_title }}</h2>
-      <button type="button" class="primary" id="openToolModal"><span data-i18n="mytools_create">{{ texts.mytools_create }}</span></button>
+      <a class="primary" href="/account/tools/publish" id="openPublish" style="text-decoration:none;border:0;border-radius:10px;padding:9px 18px;font-size:13.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px"><span data-i18n="mytools_create">{{ texts.mytools_create }}</span></a>
     </div>
     <p class="profile-note" data-i18n="mytools_desc">{{ texts.mytools_desc }}</p>
     <details class="contract-doc">
@@ -39,44 +39,10 @@ B. 返回 JSON:  { "output_url": "https://you/x.png" }  （平台回拉，同样
     <div id="toolList" class="usertools-list"></div>
     <p id="toolNone" class="profile-note hidden" data-i18n="mytools_none">{{ texts.mytools_none }}</p>
   </div>
-<!-- ── submit modal (site .modal component — same overlay pattern as tool pickers) ── -->
-<div class="modal hidden" id="toolModal">
-  <div class="modal-panel">
-    <button type="button" class="modal-close" id="closeToolModal" aria-label="{{ texts.cancel }}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
-    </button>
-    <h2 id="modalTitle" data-i18n="mytools_create">{{ texts.mytools_create }}</h2>
-    <p class="profile-note" data-i18n="mytools_modal_hint">{{ texts.mytools_modal_hint }}</p>
-    <div class="usertools-form">
-      <label class="usertools-wide"><span data-i18n="mytools_f_url">{{ texts.mytools_f_url }}</span><input id="fUrl" type="url" placeholder="https://api.example.com/process"></label>
-      <label class="usertools-wide"><span data-i18n="mytools_f_accept">{{ texts.mytools_f_accept }}</span><span class="fam-grid" id="famGrid"></span></label>
-      <label><span data-i18n="mytools_f_out">{{ texts.mytools_f_out }}</span><input id="fOut" placeholder="out.png"></label>
-      <label><span data-i18n="mytools_f_label">{{ texts.mytools_f_label }}</span><input id="fLabel" maxlength="40" data-i18n-placeholder="mytools_ph_label" placeholder="{{ texts.mytools_ph_label }}"></label>
-      <label class="usertools-wide"><span data-i18n="mytools_f_desc">{{ texts.mytools_f_desc }}</span><input id="fDesc" maxlength="200" data-i18n-placeholder="mytools_ph_desc" placeholder="{{ texts.mytools_ph_desc }}"></label>
-      <details class="usertools-adv usertools-wide" id="langMore"><summary data-i18n="mytools_add_lang">{{ texts.mytools_add_lang }}</summary>
-        <div id="langRows"></div>
-        <button type="button" class="primary" id="addLangRow" style="margin-top:6px">+ {{ texts.mytools_add_lang_row }}</button>
-      </details>
-      <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span><input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41"></label>
-      <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span><input id="fCost" type="number" min="0" max="100000" value="0"></label>
-      <label><span data-i18n="mytools_f_outct">{{ texts.mytools_f_outct }}</span><input id="fOutCt" placeholder="image/png"></label>
-      <details class="usertools-adv"><summary data-i18n="mytools_adv">{{ texts.mytools_adv }}</summary>
-        <label><span data-i18n="mytools_f_timeout">{{ texts.mytools_f_timeout }}</span><input id="fTimeout" type="number" min="5" max="300" value="60"></label>
-        <label><span data-i18n="mytools_f_authh">{{ texts.mytools_f_authh }}</span><input id="fAuthHeader" placeholder="Authorization" maxlength="64"></label>
-        <label><span data-i18n="mytools_f_autht">{{ texts.mytools_f_autht }}</span><input id="fAuthToken" type="password" placeholder="Bearer …" maxlength="512"></label>
-      </details>
-    </div>
-    <div class="usertools-submit-row">
-      <button type="button" class="primary" id="submitTool"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
-    </div>
-  </div>
-
 </section>
-
-</div>
 {% endblock %}
 
 {% block script %}
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
-  <script src="/static/pages/tools.js?v={{ pages_version }}"></script>
+<script src="/static/pages/tools.js?v={{ pages_version }}"></script>
 {% endblock %}

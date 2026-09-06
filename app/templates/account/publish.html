@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.pub_title }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{{ texts.pub_title }}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="acct-page pub-page" id="pubPage">
+  <h1 id="pubTitle">{{ texts.pub_title }}</h1>
+  {% include "account/_nav.html" %}
+
+  <form class="pub-form" id="pubForm" novalidate>
+    <!-- ── 1. 基础信息 ── -->
+    <div class="acct-card pub-card">
+      <div class="acct-card-head"><h2 data-i18n="pub_sec_basic">{{ texts.pub_sec_basic }}</h2></div>
+      <div class="pub-grid">
+        <label class="pub-wide"><span data-i18n="mytools_f_url">{{ texts.mytools_f_url }}</span>
+          <input id="fUrl" type="url" placeholder="https://api.example.com/process" required>
+          <em class="pub-err" data-err="url"></em></label>
+        <label><span data-i18n="mytools_f_label">{{ texts.mytools_f_label }}</span>
+          <input id="fLabel" maxlength="40" data-i18n-placeholder="mytools_ph_label" placeholder="{{ texts.mytools_ph_label }}" required>
+          <em class="pub-err" data-err="label"></em></label>
+        <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span>
+          <input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41">
+          <em class="pub-err" data-err="tool_id"></em></label>
+        <label class="pub-wide"><span data-i18n="mytools_f_desc">{{ texts.mytools_f_desc }}</span>
+          <input id="fDesc" maxlength="200" data-i18n-placeholder="mytools_ph_desc" placeholder="{{ texts.mytools_ph_desc }}">
+          <em class="pub-err" data-err="desc"></em></label>
+        <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span>
+          <input id="fCost" type="number" min="0" max="100000" value="0"></label>
+      </div>
+      <details class="usertools-adv pub-wide" id="langMore">
+        <summary data-i18n="mytools_add_lang">{{ texts.mytools_add_lang }}</summary>
+        <div id="langRows"></div>
+        <button type="button" class="btn-secondary" id="addLangRow">+ {{ texts.mytools_add_lang_row }}</button>
+      </details>
+    </div>
+
+    <!-- ── 2. 输入与输出 ── -->
+    <div class="acct-card pub-card">
+      <div class="acct-card-head"><h2 data-i18n="pub_sec_io">{{ texts.pub_sec_io }}</h2></div>
+      <div class="pub-grid">
+        <div class="pub-wide">
+          <span data-i18n="mytools_f_accept">{{ texts.mytools_f_accept }}</span>
+          <span class="fam-grid" id="famGrid"></span>
+          <span class="fam-allnote" data-i18n="fam_all">{{ texts.fam_all }}</span>
+        </div>
+        <label><span data-i18n="mytools_f_out">{{ texts.mytools_f_out }}</span>
+          <input id="fOut" placeholder="out.png" required>
+          <em class="pub-err" data-err="output_filename"></em></label>
+        <label><span data-i18n="mytools_f_outct">{{ texts.mytools_f_outct }}</span>
+          <input id="fOutCt" placeholder="image/png"></label>
+      </div>
+    </div>
+
+    <!-- ── 3. 模式与参数 ── -->
+    <div class="acct-card pub-card">
+      <div class="acct-card-head">
+        <h2 data-i18n="pub_sec_params">{{ texts.pub_sec_params }}</h2>
+        <button type="button" class="btn-secondary" id="addParam">+ {{ texts.pub_add_param }}</button>
+      </div>
+      <p class="profile-note" data-i18n="pub_params_hint">{{ texts.pub_params_hint }}</p>
+      <div id="paramRows"></div>
+      <p class="profile-note hidden" id="paramNone" data-i18n="pub_params_none">{{ texts.pub_params_none }}</p>
+    </div>
+
+    <!-- ── 4. 高级 ── -->
+    <div class="acct-card pub-card">
+      <div class="acct-card-head"><h2 data-i18n="mytools_adv">{{ texts.mytools_adv }}</h2></div>
+      <div class="pub-grid">
+        <label><span data-i18n="mytools_f_timeout">{{ texts.mytools_f_timeout }}</span>
+          <input id="fTimeout" type="number" min="5" max="300" value="60"></label>
+        <label><span data-i18n="mytools_f_authh">{{ texts.mytools_f_authh }}</span>
+          <input id="fAuthHeader" placeholder="Authorization" maxlength="64"></label>
+        <label><span data-i18n="mytools_f_autht">{{ texts.mytools_f_autht }}</span>
+          <input id="fAuthToken" type="password" placeholder="Bearer …" maxlength="512"></label>
+      </div>
+    </div>
+
+    <div class="pub-submit-row">
+      <button type="button" class="btn-secondary" id="pubCancel">{{ texts.cancel }}</button>
+      <button type="button" class="primary" id="pubSubmit"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block script_head %}
+<script>
+window.__PAGE__ = "publish";
+window.__PUB_TOOL__ = {{ tool_json | safe }};
+</script>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/pages/publish.js?v={{ pages_version }}"></script>
+{% endblock %}

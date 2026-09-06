@@ -536,6 +536,44 @@ select { width: auto; margin-top: 0; }
 .usertools-adv summary { font-size: var(--text-sm); color: var(--muted); cursor: pointer; padding: 6px 0; user-select: none; }
 .usertools-adv[open] summary { margin-bottom: 4px; }
 .usertools-adv label { display: grid; gap: 4px; margin-bottom: 8px; }
+
+/* ── 发布页 (/account/tools/publish): 分节卡单列 ── */
+.pub-page h1 { margin-bottom: 10px; }
+.pub-form { display: flex; flex-direction: column; gap: 16px; }
+.pub-card { display: flex; flex-direction: column; }
+.pub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s2) var(--s3); }
+.pub-grid label, .pub-grid .pub-wide { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--ink-soft); }
+.pub-grid input, .pub-grid select { padding: 10px 13px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; font-size: 14px; }
+.pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pub-grid .pub-wide { grid-column: 1 / -1; }
+.pub-err { font-size: 12px; color: var(--danger); min-height: 0; font-style: normal; }
+.pub-err:empty { display: none; }
+.pub-submit-row { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* 参数行编辑器 */
+.param-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--bg); }
+.param-row-head { display: grid; grid-template-columns: 1fr 130px 1fr auto auto; gap: 8px; align-items: center; }
+.param-row-head input, .param-row-head select { padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; font-size: 13.5px; min-width: 0; }
+.param-row-head .pr-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pr-req { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.pr-del, .pr-opt-del { border: 0; background: var(--soft); color: var(--muted); border-radius: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; }
+@media (hover:hover) and (pointer:fine) { .pr-del:hover, .pr-opt-del:hover { color: var(--danger); } }
+.param-row-body { margin-top: 10px; }
+.pr-opt { display: grid; grid-template-columns: 140px 1fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
+.pr-opt input { padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; font-size: 13px; min-width: 0; }
+.pr-enum-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.pr-default-wrap { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.pr-default-wrap select, .pr-inline select { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; }
+.pr-inline { display: flex; gap: 10px; flex-wrap: wrap; }
+.pr-inline label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.pr-inline input { padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; font-size: 13px; max-width: 9em; }
+.pr-ph-wrap input { max-width: 16em; }
+@media (max-width: 640px) {
+  .param-row-head { grid-template-columns: 1fr 1fr; }
+  .param-row-head .pr-label { grid-column: 1 / -1; }
+  .pr-opt { grid-template-columns: 1fr auto; }
+  .pr-opt .pr-opt-label { grid-column: 1 / -1; }
+}
 /* 族勾选器: chip 网格, 不勾=全部格式 */
 .fam-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .fam-chip { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid var(--line-strong); border-radius: 99px; padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--ink-soft); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
