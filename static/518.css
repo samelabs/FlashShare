@@ -683,7 +683,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-card + .acct-card { margin-top: 0; }
 
 /* ── 流水: 表格保持(数据密集), 行式美化: 斑马+hover+类型章 ── */
-.acct-tablewrap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.acct-tablewrap { border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .acct-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .acct-table thead th { background: var(--soft); padding: 9px 12px; text-align: left; font-size: 12px; font-weight: 650; color: var(--muted); letter-spacing: .02em; border-bottom: 1px solid var(--line); }
 .acct-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -721,7 +721,9 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 
 .acct-table .mono { font-variant-numeric: tabular-nums; }
 .acct-table .ta-r { text-align: right; }
-.ledger-kind { display: inline-block; font-size: var(--text-xs); padding: 2px 8px; border-radius: 99px; background: var(--line); color: var(--ink); }
+/* 明细表防碎版式: 时间/数字格禁折行, 类型徽章禁折行 */
+.acct-table td.mono, .acct-table td.ta-r { white-space: nowrap; }
+.ledger-kind { display: inline-block; font-size: var(--text-xs); padding: 2px 8px; border-radius: 99px; background: var(--line); color: var(--ink); white-space: nowrap; }
 .ledger-kind.ledger-grant_signup, .ledger-kind.ledger-grant_daily, .ledger-kind.ledger-grant_plan, .ledger-kind.ledger-grant_package, .ledger-kind.ledger-grant_referral { background: var(--green-12); color: var(--green); }
 .ledger-kind.ledger-consume { background: rgba(220,38,38,.10); color: var(--danger); }
 .ledger-kind.ledger-refund { background: var(--info-soft); color: var(--info); }
