@@ -53,25 +53,33 @@ function _selfTest(btn, t) {
 // ── edit: refill the submit modal in PATCH mode ──
 function _openEdit(t) {
   _editKey = t.tool_id;
-  // 编辑回填: label dict → 原文 (en 优先回落), desc 同理
-  const lb = t.label;
-  if (typeof lb === 'string') document.getElementById('fLabel').value = lb;
-  else if (lb && typeof lb === 'object') {
-    const lang = document.documentElement.lang.slice(0, 2) || 'en';
-    document.getElementById('fLabel').value = lb[lang] || lb.en || Object.values(lb)[0] || '';
-    Object.entries(lb).forEach(([lg, v]) => {
-      if (lg === 'en') return;
-      document.getElementById('addLangRow')?.click();
-      const row = document.querySelector('#langRows .lang-row:last-child');
-      if (row) { row.querySelector('.lang-pick').value = lg; row.querySelector('.lang-name').value = v; }
-    });
-  }
-  const dd = t.desc;
-  if (typeof dd === 'string') document.getElementById('fDesc').value = dd;
-  else if (dd && typeof dd === 'object') {
-    const lang = document.documentElement.lang.slice(0, 2) || 'en';
-    document.getElementById('fDesc').value = dd[lang] || dd.en || Object.values(dd)[0] || '';
-  }
+  // 行区复位: 编辑回填前清空语言行 (防上次编辑累积)
+  document.getElementById('langRows').innerHTML = '';
+  // 编辑回填: label/desc dict → 主框(当前语言) + 语言行合并回填 (en 优先回落)
+  const lang = _curLang();
+  const rows = {};  // lg → {name, desc}
+  const eat = (d, key) => {
+    if (typeof d === 'string') document.getElementById(key).value = d;
+    else if (d && typeof d === 'object') {
+      document.getElementById(key).value = d[lang] || d.en || Object.values(d)[0] || '';
+      Object.entries(d).forEach(([lg, v]) => {
+        if (lg === lang || !v) return;
+        if (key === 'fLabel') (rows[lg] = rows[lg] || {}).name = v;
+        else (rows[lg] = rows[lg] || {}).desc = v;
+      });
+    }
+  };
+  eat(t.label, 'fLabel');
+  eat(t.desc, 'fDesc');
+  Object.entries(rows).forEach(([lg, kv]) => {
+    document.getElementById('addLangRow')?.click();
+    const row = document.querySelector('#langRows .lang-row:last-child');
+    if (row) {
+      row.querySelector('.lang-pick').value = lg;
+      if (kv.name) row.querySelector('.lang-name').value = kv.name;
+      if (kv.desc) row.querySelector('.lang-desc').value = kv.desc;
+    }
+  });
   document.getElementById('fToolId').value = t.tool_id;
   document.getElementById('fToolId').disabled = true;  // id immutable
   document.getElementById('fUrl').value = (t.url || '');
@@ -230,16 +238,19 @@ async function loadTools() {
   if (none) none.classList.toggle('hidden', !!(d.tools && d.tools.length));
 }
 
-// 多语言输入行 (tool modes v3): 语言下拉 + 名称 + 简介
-// 原文输入框 (fLabel/fDesc) 是主项; 附加语言行组装 dict。
-const SITE_LANGS = ["en","zh","ja","ko","es","pt","ru","ar","de","fr"];
+// 多语言输入行 (tool modes v3): 语言下拉(原生名, 排除当前界面语言) + 名称 + 简介
+// 原文输入框 (fLabel/fDesc) = 当前语言主项; 附加语言行组装 dict。
+const SITE_LANGS = [["en","English"],["zh","中文"],["ja","日本語"],["ko","한국어"],["es","Español"],["pt","Português"],["ru","Русский"],["ar","العربية"],["de","Deutsch"],["fr","Français"]];
+const _curLang = () => (document.documentElement.lang || "en").slice(0, 2);
 function langRowHtml() {
-  const opts = SITE_LANGS.map(l => '<option value="' + l + '">' + l + '</option>').join('');
-  return '<div class="lang-row" style="display:flex;gap:8px;margin-bottom:8px">' +
-    '<select class="lang-pick sl-input" style="max-width:90px">' + opts + '</select>' +
-    '<input class="lang-name" style="flex:1" maxlength="40" placeholder="Name">' +
-    '<input class="lang-desc" style="flex:2" maxlength="200" placeholder="Description">' +
-    '<button type="button" class="lang-del" style="padding:0 10px">✕</button></div>';
+  const cur = _curLang();
+  const opts = SITE_LANGS.filter(([c]) => c !== cur)
+    .map(([c, n]) => '<option value="' + c + '">' + n + '</option>').join('');
+  return '<div class="lang-row">' +
+    '<select class="lang-pick">' + opts + '</select>' +
+    '<input class="lang-name" maxlength="40" placeholder="' + _msg('mytools_ph_label') + '">' +
+    '<input class="lang-desc" maxlength="200" placeholder="' + _msg('mytools_ph_desc') + '">' +
+    '<button type="button" class="lang-del" aria-label="✕">✕</button></div>';
 }
 document.getElementById('addLangRow')?.addEventListener('click', () => {
   const wrap = document.getElementById('langRows');
@@ -248,10 +259,12 @@ document.getElementById('addLangRow')?.addEventListener('click', () => {
 });
 function collectLangDict() {
   const out = {};
+  const cur = _curLang();
   document.querySelectorAll('#langRows .lang-row').forEach(row => {
     const lang = row.querySelector('.lang-pick').value;
     const name = row.querySelector('.lang-name').value.trim();
     const desc = row.querySelector('.lang-desc').value.trim();
+    if (lang === cur) return;  // 当前语言走主输入框, 行选它会被主值覆盖
     if (lang && name) out[lang] = name;
     if (lang && desc) out[lang + '__desc'] = desc;   // 临时携带, 下方拆分
   });
