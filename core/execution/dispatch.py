@@ -99,6 +99,30 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
                 raise ExecutionError(rerr or "not_found")
             uploads.append(upload)
 
+        # ── 格式边界闸门 (0930 范式: 声明即契约, 执行即强制) ──
+        # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
+        # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
+        # 单点收口: web/token/MCP/selftest 四面共用本函数, 无旁路。
+        declared = tool.get("accept")
+        if declared is None and tool.get("accept_json"):
+            try:
+                declared = json.loads(tool["accept_json"])
+            except (TypeError, ValueError):
+                declared = None
+        if declared:
+            from governance.formats import families_for_mimes
+            try:
+                fams = families_for_mimes(declared)
+            except KeyError:
+                fams = None  # 声明含词表外 MIME (存量脏数据): 不拦截, 记日志
+            if fams:
+                import os as _os
+                from governance.formats import sniff_ext_to_families
+                for u in uploads:
+                    ext = _os.path.splitext(str(u.get("file_name", "")).lower())[1]
+                    if fams.isdisjoint(sniff_ext_to_families(ext)):
+                        raise ExecutionError("err_format_mismatch")
+
         from .orchestrator import execute_local, execute_remote
         from tools import ToolError as _TE
         try:

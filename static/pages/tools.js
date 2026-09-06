@@ -7,6 +7,7 @@ const _modal = document.getElementById('toolModal');
 
 function openModal() {
   _modal.classList.remove('hidden');
+  renderFamGrid([]);   // 新建: 族全不勾 = 全部格式
   document.getElementById('fLabel').focus();
 }
 function closeModal() { _modal.classList.add('hidden'); _editKey = null;
@@ -50,6 +51,49 @@ function _selfTest(btn, t) {
   input.click();
 }
 
+// ── 场景格式族勾选器 (0930 范式: 声明即契约) ──
+// 词表单源在服务端 governance/formats.py; 此处静态镜像 FAMILY_ORDER+标签键,
+// 服务端漂移时提交校验 (bad_format_family) 兜底。
+const FAM_KEYS = ["image", "ico", "document", "archive", "data", "code"];
+const FAM_I18N = {image: "family_image", ico: "family_ico", document: "family_document",
+                  archive: "family_archive", data: "family_data", code: "family_code"};
+function renderFamGrid(preselected) {
+  const grid = document.getElementById('famGrid');
+  if (!grid) return;
+  grid.innerHTML = FAM_KEYS.map(k =>
+    '<label class="fam-chip"><input type="checkbox" value="' + k + '"' +
+    (preselected && preselected.includes(k) ? ' checked' : '') + '>' +
+    '<span>' + _msg(FAM_I18N[k]) + '</span></label>').join('');
+}
+function collectFamilies() {
+  const checked = [...document.querySelectorAll('#famGrid input:checked')].map(el => el.value);
+  return checked.length ? checked : undefined;   // 不勾 = 全部 (accept=None 语义)
+}
+function famKeyFromMimes(mimes) {
+  // 存量 MIME 声明 → 族集合 (镜像服务端映射; 未知 MIME 忽略)
+  const EXT_BY_MIME = {
+    "image/jpeg": "image", "image/png": "image", "image/gif": "image", "image/webp": "image",
+    "image/bmp": "image", "image/tiff": "image", "image/heic": "image", "image/avif": "image",
+    "image/x-icon": "ico", "image/vnd.microsoft.icon": "ico", "image/svg+xml": "code",
+    "application/pdf": "document", "text/plain": "document", "text/csv": "document",
+    "application/rtf": "document", "application/msword": "document",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document",
+    "application/vnd.ms-excel": "document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "document",
+    "application/vnd.ms-powerpoint": "document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "document",
+    "application/zip": "archive", "application/x-7z-compressed": "archive",
+    "application/gzip": "archive", "application/x-tar": "archive",
+    "application/json": "data", "application/xml": "data", "text/xml": "data",
+    "application/yaml": "data",
+    "text/x-python": "code", "text/javascript": "code", "application/javascript": "code",
+    "text/html": "code", "text/css": "code",
+  };
+  const fams = new Set();
+  (mimes || []).forEach(m => { const f = EXT_BY_MIME[m]; if (f) fams.add(f); });
+  return [...fams];
+}
+
 // ── edit: refill the submit modal in PATCH mode ──
 function _openEdit(t) {
   _editKey = t.tool_id;
@@ -87,7 +131,7 @@ function _openEdit(t) {
   document.getElementById('fTimeout') && (document.getElementById('fTimeout').value = t.timeout_s || 60);
   document.getElementById('fOut') && (document.getElementById('fOut').value = t.output_filename || '');
   document.getElementById('fOutCt') && (document.getElementById('fOutCt').value = t.output_content_type || '');
-  document.getElementById('fAccept') && (document.getElementById('fAccept').value = (t.accept || []).join(','));
+  renderFamGrid(famKeyFromMimes(t.accept));   // 编辑: 存量 MIME 声明映射回族勾选
   document.getElementById('fAuthHeader') && (document.getElementById('fAuthHeader').value = t.auth_header || '');
   document.getElementById('modalTitle') && (document.getElementById('modalTitle').textContent = _msg('mytools_edit'));
   document.getElementById('toolModal').classList.remove('hidden');
@@ -295,7 +339,8 @@ document.getElementById('submitTool').addEventListener('click', async () => {
     desc: desc || undefined,
     url: document.getElementById('fUrl').value.trim(),
     timeout_s: parseInt(document.getElementById('fTimeout').value, 10) || 60,
-    accept: document.getElementById('fAccept').value.trim() || undefined,
+    accept: document.getElementById('fAccept') ? document.getElementById('fAccept').value.trim() || undefined : undefined,
+    format_families: collectFamilies(),
     output_filename: document.getElementById('fOut').value.trim(),
     output_content_type: document.getElementById('fOutCt').value.trim() || undefined,
     auth_header: document.getElementById('fAuthHeader').value.trim() || undefined,
