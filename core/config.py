@@ -33,7 +33,7 @@ OAUTH_TTL = 10 * 60
 PUBLIC_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,48}$")
 
 ALLOWED_EXT = {
-    # Images
+    # Images (SVG 属图像格式, 含于 image 族)
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".ico", ".heic", ".heif", ".tiff", ".tif", ".avif", ".svg",
     # Documents
     ".pdf", ".txt", ".csv", ".md", ".rtf",
@@ -43,9 +43,15 @@ ALLOWED_EXT = {
     ".zip", ".rar", ".7z", ".gz", ".tar", ".bz2", ".xz", ".tgz",
     # Data
     ".json", ".xml", ".yaml", ".yml",
-    # Code
-    ".py", ".js", ".mjs", ".ts", ".html", ".htm", ".css",
-    ".go", ".rs", ".java", ".c", ".cpp", ".h", ".rb", ".php", ".sh", ".sql",
+    # Code (收缩到高价值文本子集 — 平台是处理+分享, 非 IDE)
+    ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
+    # CAD / 3D (设计·工程场景, 0930 业务裁定)
+    ".dwg", ".dxf", ".step", ".stp", ".iges", ".igs",
+    ".stl", ".obj", ".fbx", ".glb", ".gltf", ".3ds", ".skp", ".blend",
+    ".sldprt", ".iam", ".catpart",
+    # Audio / Video (媒体场景)
+    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a",
+    ".mp4", ".mov", ".webm", ".avi", ".mkv",
 }
 
 BLOCKED_EXT = {

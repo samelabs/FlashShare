@@ -9,20 +9,10 @@ const _pubTool = window.__PUB_TOOL__ || null;
 const _curLang = () => (document.documentElement.lang || "en").slice(0, 2);
 
 // ── 场景格式族勾选器 (词表镜像 governance/formats.py; 详见 formats.py) ──
-const FAM_KEYS = ["image", "document", "archive", "data", "code"];
-const FAM_I18N = {image: "family_image", document: "family_document",
-                  archive: "family_archive", data: "family_data", code: "family_code"};
-const FAM_DETAIL = {
-  image: "JPG PNG GIF WebP BMP HEIC HEIF TIFF AVIF ICO",
-  document: "PDF TXT CSV MD RTF DOC DOCX XLS XLSX PPT PPTX ODT ODS ODP",
-  archive: "ZIP RAR 7Z GZ TAR BZ2 XZ TGZ",
-  data: "JSON XML YAML YML",
-  code: "PY JS TS HTML CSS SVG GO RS JAVA C CPP H RB PHP SH SQL",
-};
 const EXT_BY_MIME = {
   "image/jpeg": "image", "image/png": "image", "image/gif": "image", "image/webp": "image",
   "image/bmp": "image", "image/tiff": "image", "image/heic": "image", "image/avif": "image",
-  "image/x-icon": "image", "image/vnd.microsoft.icon": "image", "image/svg+xml": "code",
+  "image/x-icon": "image", "image/vnd.microsoft.icon": "image", "image/svg+xml": "image",
   "application/pdf": "document", "text/plain": "document", "text/csv": "document",
   "application/rtf": "document", "application/msword": "document",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document",
@@ -37,21 +27,35 @@ const EXT_BY_MIME = {
   "text/x-python": "code", "text/javascript": "code", "application/javascript": "code",
   "text/html": "code", "text/css": "code",
 };
+// ── 场景格式族 (0930 范式 v2): 输入族**单选必选** — 词表镜像 governance/formats.py ──
+const FAM_KEYS = ["image", "document", "archive", "cad3d", "media", "data", "code"];
+const FAM_I18N = {image: "family_image", document: "family_document",
+                  archive: "family_archive", cad3d: "family_cad3d",
+                  media: "family_media", data: "family_data", code: "family_code"};
+const FAM_DETAIL = {
+  image: "JPG PNG GIF WebP BMP HEIC HEIF TIFF AVIF ICO SVG",
+  document: "PDF TXT CSV MD RTF DOC DOCX XLS XLSX PPT PPTX ODT ODS ODP",
+  archive: "ZIP RAR 7Z GZ TAR BZ2 XZ TGZ",
+  cad3d: "DWG DXF STEP IGES STL OBJ FBX GLB GLTF 3DS SKP BLEND SLDPRT IAM CATPART",
+  media: "MP3 WAV FLAC AAC OGG M4A MP4 MOV WEBM AVI MKV",
+  data: "JSON XML YAML YML",
+  code: "PY JS TS HTML CSS SQL",
+};
 function renderFamGrid(preselected) {
   const grid = document.getElementById("famGrid");
+  const sel = preselected && preselected.length ? preselected[0] : FAM_KEYS[0]; // 默认 image, 不可空
   grid.innerHTML = FAM_KEYS.map(k =>
-    '<label class="fam-chip" title="' + FAM_DETAIL[k] + '"><input type="checkbox" value="' + k + '"' +
-    (preselected && preselected.includes(k) ? " checked" : "") + ">" +
+    '<label class="fam-chip" title="' + FAM_DETAIL[k] + '"><input type="radio" name="fam" value="' + k + '"' +
+    (k === sel ? " checked" : "") + ">" +
     "<span>" + _msg(FAM_I18N[k]) + "</span></label>").join("");
-  // 说明区: 头行=不勾即全部 (人话, 复用 fam_all 键); 其后按族一行明细
+  // 说明区: 按族一行 (族名加粗 + 格式明细)
   const hint = document.getElementById("famHint");
-  hint.innerHTML = '<div class="fam-hint-all">' + _msg("fam_all") + "</div>" +
-    FAM_KEYS.map(k => '<div class="fam-hint-row"><b>' + _msg(FAM_I18N[k]) +
-      "</b>" + FAM_DETAIL[k] + "</div>").join("");
+  hint.innerHTML = FAM_KEYS.map(k => '<div class="fam-hint-row"><b>' + _msg(FAM_I18N[k]) +
+    "</b>" + FAM_DETAIL[k] + "</div>").join("");
 }
 function collectFamilies() {
-  const checked = [...document.querySelectorAll("#famGrid input:checked")].map(el => el.value);
-  return checked.length ? checked : undefined;   // 不勾 = 全部 (accept=None)
+  const sel = document.querySelector("#famGrid input:checked");
+  return sel ? sel.value : FAM_KEYS[0];   // 单选必选: 无空态
 }
 function famKeyFromMimes(mimes) {
   const fams = new Set();
@@ -292,7 +296,6 @@ async function submit() {
     timeout_s: parseInt(document.getElementById("fTimeout").value, 10) || 60,
     format_families: collectFamilies(),
     output_filename: document.getElementById("fOut").value.trim(),
-    output_content_type: document.getElementById("fOutCt").value.trim() || undefined,
     auth_header: document.getElementById("fAuthHeader").value.trim() || undefined,
     auth_token: document.getElementById("fAuthToken").value.trim() || undefined,
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
@@ -338,7 +341,6 @@ function refill(t) {
     ? (t.desc || "") : (t.desc[_curLang()] || t.desc.en || Object.values(t.desc)[0] || "");
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fOut").value = t.output_filename || "";
-  document.getElementById("fOutCt").value = t.output_content_type || "";
   document.getElementById("fTimeout").value = t.timeout_s || 60;
   renderFamGrid(famKeyFromMimes(t.accept));
   // 多语言回填

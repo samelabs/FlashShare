@@ -34,7 +34,7 @@ from i18n import SERVER_I18N as _SUPPORTED_LANGS  # 发布端多语言键白名�
 from governance.user_tools import (
     MAX_TOOLS_PER_USER, _owner_rows, _public_item, _call_stats,
 )
-from governance.formats import FAMILIES, FAMILY_ORDER, validate_family_keys, families_for_mimes
+from governance.formats import FAMILIES, FAMILY_ORDER, validate_family_key
 from utils import now
 
 router = APIRouter()
@@ -101,31 +101,15 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
         fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
 
-    if "accept" in raw:
-        # 声明即契约 (0930 范式): 双形态输入。
-        # 新范式: format_families=[族键...] (勾选器) → 展开为 MIME 集。
-        # 兼容: 旧客户端 accept="MIME,..." 直传仍收, 但每个 MIME 必须落在
-        # 平台族词表内 (悬空 MIME 会产生不可勾选/不可执行的声明, 拒收)。
-        fams, ferr = validate_family_keys(raw.get("format_families"))
+    if "accept" in raw or not partial:
+        # 声明即契约 (0930 范式 v2): 输入族**单选必填** — 格式精度由发布者
+        # 负责到底, "默认全部"的模糊声明不复存在。
+        # format_families = 族键字符串 (单选)。缺失/非法 → bad_format_family。
+        # 旧多选数组/裸 MIME 串 → 一律拒收 (新范式不再兼容模糊声明)。
+        fam, ferr = validate_family_key(raw.get("format_families"))
         if ferr:
             return None, ferr
-        if fams is not None:
-            mimes: set[str] = set()
-            for k in fams:
-                mimes |= FAMILIES[k].mimes
-            accept = sorted(mimes) if mimes else None
-        else:
-            accept_raw = str(raw.get("accept") or "").strip()
-            accept = None
-            if accept_raw:
-                parts = [x.strip() for x in accept_raw.split(",") if x.strip()]
-                if not parts or any(not ACCEPT_MIME_RE.match(x) for x in parts):
-                    return None, "bad_accept"
-                try:
-                    families_for_mimes(parts)
-                except KeyError as e:
-                    return None, "bad_accept"
-                accept = sorted(set(parts))
+        accept = sorted(FAMILIES[fam].mimes)
         fields["accept"] = accept
 
     if "output_filename" in raw or not partial:

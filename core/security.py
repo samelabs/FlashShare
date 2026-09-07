@@ -58,8 +58,10 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
     if ext == ".rar" and not (sample.startswith(b"Rar!\x1a\x07\x00") or sample.startswith(b"Rar!\x1a\x07\x01\x00")):
         return False, "err_content_mismatch_archive"
     if ext in {".txt", ".csv", ".md", ".json", ".xml", ".yaml", ".yml",
-               ".py", ".js", ".ts", ".html", ".htm", ".css", ".go", ".rs",
-               ".java", ".c", ".cpp", ".h", ".rb", ".php", ".sh", ".sql"} and b"\x00" in sample:
+               ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
+               ".svg", ".step", ".stp", ".iges", ".igs", ".obj"} and b"\x00" in sample:
+        # 文本型格式: 含 NUL 即非文本 (SVG/STEP/IGES/OBJ 是文本格式; STL 不在此列 —
+        # STL 有合法的二进制变体, 平台不做二进制/ASCII 区分, 交给端点)
         return False, "err_content_mismatch_text"
     import mimetypes
     return True, content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
