@@ -204,10 +204,8 @@ async def startup():
         sync = seed_from_registry()
         logger.info("platform_tools seeded: +%d added, %d updated",
                     sync["added"], sync["updated"])
-        # Activities (credit campaigns) — schema + idempotent seed.
-        from economy.activities import ensure_schema_and_seed
-        act = ensure_schema_and_seed()
-        logger.info("activities seeded: +%d rows", act["seeded"])
+        # 1002 收口: economy.daily 模块化, activities 表已拆 — 每日登录
+        # 额度/开关是模块常量 (core/economy/daily.py), 无 seed。
         from economy.earnings import ensure_schema
         ensure_schema()
         logger.info("withdrawals schema ready")

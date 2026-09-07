@@ -1,55 +1,11 @@
-"""repo: economy — activities/withdrawals 数据访问 (批2a: 经济域专用).
+"""repo: economy — withdrawals 数据访问 (批2a: 经济域专用).
 
 规则: 函数=(con,...)->rows, 参数化, 无事务/无业务判断。
+(1002 收口: activities 函数已拆 — 每日登录 = economy.daily 模块常量,
+不经 repo/表。)
 """
 
 from typing import Optional, Sequence
-
-
-# ── activities ──
-
-def activity_by_code(con, code: str) -> Optional[dict]:
-    return con.execute(
-        "SELECT * FROM activities WHERE code = %s", (code,)).fetchone()
-
-
-def all_activities(con) -> list:
-    return con.execute("SELECT * FROM activities ORDER BY code").fetchall()
-
-
-def seed_activity(con, code: str, activity_type: str, amount: int,
-                  kind: str, starts_at, ends_at, label_json, ts: int) -> int:
-    cur = con.execute(
-        """
-        INSERT INTO activities (code, activity_type, amount, kind,
-                                active, starts_at, ends_at, label_json,
-                                updated_at)
-        VALUES (%s, %s, %s, %s, TRUE, %s, %s, %s, %s)
-        ON CONFLICT (code) DO NOTHING
-        """,
-        (code, activity_type, amount, kind, starts_at, ends_at,
-         label_json, ts))
-    return cur.rowcount
-
-
-def update_activity(con, code: str, amount, active, starts_at, ends_at,
-                    starts_clear: bool, ends_clear: bool,
-                    ts: int, admin_user_id) -> dict:
-    return con.execute(
-        """
-        UPDATE activities SET
-          amount     = COALESCE(%s, amount),
-          active     = COALESCE(%s, active),
-          starts_at  = CASE WHEN %s THEN NULL ELSE COALESCE(%s, starts_at) END,
-          ends_at    = CASE WHEN %s THEN NULL ELSE COALESCE(%s, ends_at) END,
-          updated_at = %s,
-          updated_by = %s
-        WHERE code = %s
-        RETURNING *
-        """,
-        (amount, active,
-         starts_clear, starts_at, ends_clear, ends_at,
-         ts, admin_user_id, code)).fetchone()
 
 
 # ── withdrawals ──

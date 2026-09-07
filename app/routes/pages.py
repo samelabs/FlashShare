@@ -400,9 +400,8 @@ async def account_credits(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from economy.billing import spendable_balance as get_balance, history_paged
-    from economy.activities import get_activity, granted_today
-    daily = get_activity("daily_login")
-    daily_amount = int(daily["amount"]) if daily and daily["active"] else 0
+    from economy.daily import DAILY_AMOUNT, granted_today
+    daily_amount = DAILY_AMOUNT
     pg = 1
     try:
         pg = max(1, int(request.query_params.get("page", "1") or 1))
@@ -424,7 +423,7 @@ async def account_credits(request: Request):
     my_plan = plan_of(user["id"])
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
-                       granted_today=granted_today("daily_login", user["id"]) if daily_amount > 0 else True,
+                       granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
                        packages=pkgs, topup_ready=topup_ready,
                        plans=plans, my_plan=my_plan,
@@ -445,10 +444,10 @@ async def account_credits_claim(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from economy.activities import apply_activity
+    from economy.daily import grant_daily
     import logging as _logging
     try:
-        apply_activity("daily_login", user["id"])
+        grant_daily(user["id"])
     except Exception:
         _logging.getLogger("flashshare").exception("daily claim failed")
     return RedirectResponse("/account/credits", 303)

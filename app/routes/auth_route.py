@@ -37,7 +37,6 @@ from identity.auth import (
     has_password, username_taken,
 )
 from i18n import server_text
-from economy.activities import apply_activity
 from utils import now, b64url
 
 router = APIRouter()
@@ -88,12 +87,12 @@ def _create_session(user_id: int) -> str:
 def _grant_daily(uid: int) -> None:
     """Daily login bonus at session creation (idempotent, own tx).
 
-    Activities-driven: amount/active/window live in the activities
-    table (/samelabs/activities). apply_activity is best-effort — a
-    disabled activity is a clean skip, not an error path.
+    economy.daily module (1002 收口, activities 表已拆). best-effort —
+    停用 (额度 0) 是干净跳过, 不是错误路径。
     """
     try:
-        apply_activity("daily_login", uid)
+        from economy.daily import grant_daily
+        grant_daily(uid)
     except Exception:
         logger.exception("daily grant failed uid=%s", uid)
 

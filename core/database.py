@@ -391,22 +391,8 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS platform_tools_owner_idx
       ON platform_tools(owner_id)
     """,
-    # ── platform: activities (credit campaigns; seeded from economy.activities.py) ──
-    """
-    CREATE TABLE IF NOT EXISTS activities (
-      id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      code          TEXT NOT NULL UNIQUE,
-      activity_type TEXT NOT NULL,
-      amount        BIGINT NOT NULL,
-      kind          TEXT NOT NULL,
-      active        BOOLEAN NOT NULL DEFAULT TRUE,
-      starts_at     BIGINT,
-      ends_at       BIGINT,
-      label_json    TEXT,
-      updated_at    BIGINT NOT NULL,
-      updated_by    BIGINT
-    )
-    """,
+    # 1002 收口: activities 表已拆 — 每日登录 = economy.daily 模块常量,
+    # 无表无 seed; 发放流水在 ledger (note='activity:daily_login')。
     # ── platform: withdrawals (provider payout requests) ──
     """
     CREATE TABLE IF NOT EXISTS withdrawals (

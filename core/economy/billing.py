@@ -145,7 +145,7 @@ def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, in
     return rows, total
 
 
-# Config defaults — HISTORICAL migration values only. The live source of
-# truth is the activities table (seeded from these at first boot).
+# Config defaults — HISTORICAL migration values only. Live values live in
+# economy.daily (DAILY_AMOUNT; signup bonus removed 2026-08-27).
 SIGNUP_GRANT_CREDITS = 100
 DAILY_LOGIN_CREDITS = 5

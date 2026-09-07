@@ -313,62 +313,7 @@ async def samelabs_adjust_credits(user_id: int, request: Request):
     return {"ok": True, "balance_after": row["balance_after"]}
 
 
-# ── Activities (credit campaigns: signup / daily_login / future) ──
-
-@router.get("/samelabs/activities")
-async def samelabs_activities(request: Request):
-    """Campaign management: amount / active / window per activity row."""
-    user, resp = _gate(request)
-    if resp:
-        return resp
-    from app.main import templates
-    from economy.activities import list_activities, activity_label
-    acts = []
-    for a in list_activities():
-        acts.append({
-            **a,
-            "label": activity_label(a),
-            "starts_fmt": _fmt_ts(a["starts_at"]) if a["starts_at"] else "",
-            "ends_fmt": _fmt_ts(a["ends_at"]) if a["ends_at"] else "",
-        })
-    ctx = _ctx(request, user, activities=acts, page="activities")
-    return templates.TemplateResponse(request, "samelabs/activities.html", ctx)
-
-
-@router.post("/samelabs/activities/{code}/config")
-async def samelabs_set_activity(code: str, request: Request):
-    """Partial update: amount / active / window bounds. 0 clears a bound."""
-    user, resp = _gate(request)
-    if resp:
-        return resp
-    try:
-        raw = await request.json()
-        amount = raw.get("amount")
-        active = raw.get("active")
-        starts_at = raw.get("starts_at")
-        ends_at = raw.get("ends_at")
-        if amount is not None:
-            amount = int(amount)
-        if starts_at is not None:
-            starts_at = int(starts_at)  # epoch seconds; 0 = clear
-        if ends_at is not None:
-            ends_at = int(ends_at)
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from economy.activities import set_activity
-    try:
-        row = set_activity(code, amount, active, starts_at, ends_at,
-                           admin_user_id=user["id"])
-    except KeyError:
-        return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    except ValueError as exc:
-        return JSONResponse({"ok": False, "error": str(exc)}, 422)
-    return {"ok": True, "activity": {
-        "code": row["code"], "amount": row["amount"], "active": row["active"],
-        "starts_at": row["starts_at"], "ends_at": row["ends_at"]}}
-
-
-# ── Remote tools (http execution — operator-managed data rows) ──
+# ── Withdrawals (operator payout queue) ──
 
 @router.get("/samelabs/withdrawals")
 async def samelabs_withdrawals(request: Request):
