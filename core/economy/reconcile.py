@@ -94,17 +94,15 @@ def reconcile_user(user_id: int) -> dict:
             continue  # 当期已授, 状态机层防重
         if period_end <= ts:
             continue  # 周期已过, 不补授
-        # 状态机层推进 + 当期授信 (billing idem 兜底双保险)
+        # 授信先行 (1005 崩溃一致性, 与 _ev_paid 同序): grant 幂等落账后
+        # 才写 last_grant_period_start — 判据列永远不超前于账。
         try:
+            credits = 0
             with db() as con:
                 plan = orders_repo.plan_by_id(con, row["item_id"])
                 if plan is None:
                     continue
                 credits = int(plan["monthly_credits"] or 0)
-                orders_repo.upsert_user_plan(
-                    con, user_id, row["item_id"], "active",
-                    started_at=row.get("created_at") or ts,
-                    renews_at=period_end, period_start=period_start)
             if credits > 0:
                 from economy.billing import grant
                 grant(user_id, credits, "grant_plan",
@@ -115,6 +113,11 @@ def reconcile_user(user_id: int) -> dict:
                 granted += 1
                 log.info("subscription reconcile: user=%s sub=%s +%d credits",
                          user_id, sub_id, credits)
+            with db() as con:
+                orders_repo.upsert_user_plan(
+                    con, user_id, row["item_id"], "active",
+                    started_at=row.get("created_at") or ts,
+                    renews_at=period_end, period_start=period_start)
         except Exception:
             log.exception("subscription reconcile failed user=%s sub=%s",
                           user_id, sub_id)

@@ -74,8 +74,6 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int) -> dict
             row = orders_repo.order_by_provider_id(con, "ch:" + checkout_id)
         if row is None:
             raise KeyError("order_not_found")
-        # granted=TRUE 不早退: mark_paid 同值幂等 + grant idem_key 兜底,
-        # 使"标记已提交但 grant 曾失败"的行在重试时补授 (审计🟡2: 原早退致永不到账)。
         # 🟡(订阅S2 随批): 金额一致性 — Creem 侧金额与订单不符时拒绝授信
         # (改价/异常事件), 运营对账后人工处理。amount_cents<=0 视为未知, 放行。
         if amount_cents and row["amount_cents"] and int(amount_cents) != int(row["amount_cents"]):
@@ -84,13 +82,19 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int) -> dict
                 "creem fulfill amount mismatch: order=%s expected=%s got=%s",
                 row["id"], row["amount_cents"], amount_cents)
             raise KeyError("amount_mismatch")
-        orders_repo.mark_paid(con, row["id"], ts)
+        order_id = row["id"]
+        amount_note = f"topup {row['amount_cents'] / 100:.2f}{row['currency']}"
         pkg = _orders_repo.package_credits(con, row["item_id"])
         credits = pkg["credits"] if pkg else 0
-    from economy.billing import grant
+        user_id = row["user_id"]
+    # 授信先行 (billing 幂等事务, idem order:{id}); mark_paid 是终态戳 —
+    # granted=TRUE 蕴含 ledger 行已存在, 留痕永不撒谎 (1005 崩溃一致性)。
+    # 崩溃自愈: 授信后崩溃 → 重试时 grant 幂等重放 + mark_paid 补戳。
     if credits > 0:
-        grant(row["user_id"], credits, "grant_package",
-              ref_type="order", ref_id=str(row["id"]),
-              idem_key=f"order:{row['id']}",
-              note=f"topup {row['amount_cents'] / 100:.2f}{row['currency']}")
+        from economy.billing import grant
+        grant(user_id, credits, "grant_package",
+              ref_type="order", ref_id=str(order_id),
+              idem_key=f"order:{order_id}", note=amount_note)
+    with db() as con:
+        orders_repo.mark_paid(con, order_id, ts)
     return {"granted": True, "credits": credits}

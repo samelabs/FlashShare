@@ -127,7 +127,11 @@ def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
 
 
 def _ev_paid(sub_id: str, obj: dict) -> dict:
-    """The ONLY credit-granting path. period fields are Creem-authoritative."""
+    """The ONLY credit-granting path. period fields are Creem-authoritative.
+
+    授信先行 (1005 崩溃一致性): grant 落账后才能写 last_grant_period_start
+    (upsert) — 该列被 reconcile 用作"当期已授"判据, 先写后授会在崩溃窗口
+    里留下"已授未到账"的撒谎留痕。顺序: grant(幂等) → upsert(状态戳)。"""
     sub = obj.get("subscription") or obj
     period_start = _parse_ts(sub.get("current_period_start_date"))
     period_end = _parse_ts(sub.get("current_period_end_date"))
@@ -136,10 +140,8 @@ def _ev_paid(sub_id: str, obj: dict) -> dict:
     order, plan, _ = _bind_and_load(sub_id, obj)
     ts = now()
     status = "active" if period_end > ts else "expired"
+    credits = 0
     with db() as con:
-        orders_repo.upsert_user_plan(
-            con, order["user_id"], plan["id"], status,
-            started_at=order["created_at"], renews_at=period_end, period_start=period_start)
         credits = orders_repo.plan_credits(con, plan["id"])
     if credits > 0:
         from economy.billing import grant
@@ -147,6 +149,10 @@ def _ev_paid(sub_id: str, obj: dict) -> dict:
               ref_type="subscription", ref_id=sub_id,
               idem_key=f"plan:{order['user_id']}:{period_start}",
               note=f"plus cycle {period_start}-{period_end}")
+    with db() as con:
+        orders_repo.upsert_user_plan(
+            con, order["user_id"], plan["id"], status,
+            started_at=order["created_at"], renews_at=period_end, period_start=period_start)
     return {"granted": True, "credits": credits, "status": status}
 
 
