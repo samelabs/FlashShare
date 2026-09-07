@@ -26,7 +26,10 @@ from governance.commission import commission_rate
 
 
 def _finish(user, tool, client_ref, cost, started, result, upload) -> dict:
-    """成功收口: fact 行 + 分账 同一事务 (红线)。"""
+    """成功收口: fact 行 + 分账/平台收入 同一事务 (红线)。
+
+    经济闭合 (0930): cost = 作者 payout (用户工具) 或 平台收入 (系统工具);
+    用户工具再拆平台佣金 — 每笔计费调用全额可追溯。"""
     call_id = None
     payout = 0
     try:
@@ -41,12 +44,22 @@ def _finish(user, tool, client_ref, cost, started, result, upload) -> dict:
                 result.get("publicId"), json.dumps(result)[:4000],
                 started, now())
             call_id = row["id"]
-            if payout > 0 and owner_id is not None:
-                # 分账基线 = 全池累计 (与 earn 池分账行同口径; 批4 统一后对账)
-                base = total_balance(con, owner_id)
-                insert_provider_earn_if_absent(
-                    con, owner_id, payout, base + payout, call_id,
-                    f"payout:{call_id}", f"{tool['id']} payout", now())
+            if cost > 0:
+                from governance.platform import record_platform_income
+                if payout > 0 and owner_id is not None:
+                    # 路径A: 作者分账 + 平台佣金, 同一事务
+                    base = total_balance(con, owner_id)
+                    insert_provider_earn_if_absent(
+                        con, owner_id, payout, base + payout, call_id,
+                        f"payout:{call_id}", f"{tool['id']} payout", now())
+                    record_platform_income(
+                        con, call_id, "platform_commission", cost - payout,
+                        f"{tool['id']} commission", now())
+                elif not owner_id:
+                    # 路径B: 系统工具直销全额归平台
+                    record_platform_income(
+                        con, call_id, "platform_revenue", cost,
+                        f"{tool['id']} revenue", now())
     except Exception:
         logger.exception("metering record failed (call still returned)")
         call_id = None

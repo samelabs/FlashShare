@@ -211,6 +211,10 @@ async def startup():
         from economy.earnings import ensure_schema
         ensure_schema()
         logger.info("withdrawals schema ready")
+        # Platform principal: 系统账户 (经济闭合的记账主体)
+        from governance.platform import ensure_platform_account
+        pid = ensure_platform_account()
+        logger.info("platform account ready: id=%s", pid)
         # 8.4 (audit): purge expired upload rows at boot — detail pages
         # already fall back to gokapi-live checks; this keeps the table
         # from accumulating dead records (456 at audit time).
