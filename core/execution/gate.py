@@ -117,6 +117,12 @@ async def run(user: dict, tool: dict, req, orchestrate):
         return None, {"ok": False, "error": "tool_disabled"}, 403
     client_ref = req.client_ref or secrets.token_hex(16)
 
+    # 防滥用 (1004): 同 user 高频提交 (含重试) 削峰 — 记账在锁与幂等后,
+    # 这里只挡洪泛, 不影响正常调用。
+    from economy.antibuse import gate_ref_throttled
+    if gate_ref_throttled(user["id"]):
+        return None, {"ok": False, "error": "err_rate_limited"}, 429
+
     with db() as con:
         prior = call_by_client_ref(con, user["id"], client_ref)
         attempt = call_count_by_ref(con, user["id"], client_ref)

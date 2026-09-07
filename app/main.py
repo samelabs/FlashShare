@@ -222,22 +222,9 @@ async def startup():
         with _db() as _con:
             purge_expired(_con, _now())
         logger.info("expired upload rows purged")
-        # 订阅过期兜底扫描: boot 一次 + 轻量周期任务(6h)。
-        # 授信永不在此发生 — 状态转移 only (v3 spec)。
-        from economy.subscription import sweep_expired
-        sweep_expired()
-
-        async def _sub_sweep_loop():
-            import asyncio as _aio
-            while True:
-                await _aio.sleep(6 * 3600)
-                try:
-                    sweep_expired()
-                except Exception:
-                    logger.exception("subscription sweep failed")
-
-        asyncio.create_task(_sub_sweep_loop())
-        logger.info("subscription sweep scheduled")
+        # 1004: 订阅对账改为登录触发 (economy.reconcile, _login_maintenance)
+        # — 不再有 cron/asyncio 循环。过期状态在 plan_of 读取时按
+        # renews_at 权威判定, 无需后台 sweep。
 
     except Exception:
         # schema/seed 失败 = 平台核心不可用, 显式失败而非静默降级 (批4 #15)

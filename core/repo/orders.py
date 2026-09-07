@@ -203,6 +203,18 @@ def sweep_expired_plans(con, ts: int) -> int:
     return len(cur.fetchall())
 
 
+# ── subscriptions (reconcile: user → orders rows with sub: binding) ──
+
+def user_subscriptions(con, user_id: int) -> list:
+    """该用户全部 plan 订单 (含 sub 绑定/未绑定), reconcile 读取。"""
+    return con.execute(
+        """
+        SELECT id, kind, item_id, provider_order_id, status, created_at
+        FROM orders WHERE user_id = %s AND kind = 'plan'
+        ORDER BY id DESC
+        """, (user_id,)).fetchall()
+
+
 # ── settings (KV) ──
 
 def setting(con, key: str) -> Optional[dict]:

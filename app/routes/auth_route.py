@@ -97,6 +97,23 @@ def _grant_daily(uid: int) -> None:
         logger.exception("daily grant failed uid=%s", uid)
 
 
+def _login_maintenance(uid: int) -> None:
+    """登录触发的账目维护 (1004, 不依赖 cron):
+    - daily 发放 (上面 _grant_daily)
+    - 会员订阅对账: webhook 丢失时拉 Creem API 补授 (economy.reconcile)
+    全部 best-effort — 任何异常不阻塞登录。
+    """
+    _grant_daily(uid)
+    try:
+        from economy.reconcile import reconcile_user
+        res = reconcile_user(uid)
+        if res.get("granted"):
+            logger.info("login reconcile granted: uid=%s +%d",
+                        uid, res["credits"])
+    except Exception:
+        logger.exception("login reconcile failed uid=%s", uid)
+
+
 def _redirect_with_cookie(url: str, token: str) -> RedirectResponse:
     resp = RedirectResponse(url, status_code=302)
     resp.set_cookie(COOKIE_NAME, token, max_age=SESSION_TTL, httponly=True, secure=True, samesite="lax")
@@ -173,7 +190,7 @@ async def x_callback(request: Request):
     if bind_user_id:
         return RedirectResponse("/account/profile", 302)
 
-    _grant_daily(user_id)
+    _login_maintenance(user_id)
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
 
@@ -219,7 +236,7 @@ async def login_submit(request: Request):
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     _login_failures.pop(throttle_key, None)
-    _grant_daily(user_id)
+    _login_maintenance(user_id)
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
 
@@ -262,7 +279,7 @@ async def register_submit(request: Request):
         logger.exception("register failed for username=%s", username)
         return _err(texts.get("err_invalid_request", "err_invalid_request"))
 
-    _grant_daily(user_id)
+    _login_maintenance(user_id)
     session_token = _create_session(user_id)
     return _redirect_with_cookie("/", session_token)
 
