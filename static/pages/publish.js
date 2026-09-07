@@ -301,7 +301,6 @@ async function submit() {
     url: document.getElementById("fUrl").value.trim(),
     timeout_s: parseInt(document.getElementById("fTimeout").value, 10) || 60,
     format_families: collectFamilies(),
-    output_filename: document.getElementById("fOut").value.trim(),
     auth_header: document.getElementById("fAuthHeader").value.trim() || undefined,
     auth_token: document.getElementById("fAuthToken").value.trim() || undefined,
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
@@ -346,7 +345,6 @@ function refill(t) {
   document.getElementById("fDesc").value = typeof t.desc !== "object" || !t.desc
     ? (t.desc || "") : (t.desc[_curLang()] || t.desc.en || Object.values(t.desc)[0] || "");
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
-  document.getElementById("fOut").value = t.output_filename || "";
   document.getElementById("fTimeout").value = t.timeout_s || 60;
   renderFamGrid(famKeyFromMimes(t.accept));
   // 多语言回填

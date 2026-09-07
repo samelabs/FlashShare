@@ -112,22 +112,14 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         accept = sorted(FAMILIES[fam].mimes)
         fields["accept"] = accept
 
-    if "output_filename" in raw or not partial:
-        name = str(raw.get("output_filename") or "").strip()
-        if not name:
-            return None, "output_filename_required"
-        import os as _os
-        ext = _os.path.splitext(name)[1].lower()
-        from config import ALLOWED_EXT
-        if ext not in ALLOWED_EXT:
-            return None, "bad_output_filename"
-        fields["output_filename"] = name
+    if "output_filename" in raw:
+        # 0930 裁定: 文件名是开发者 API 自定义机制, 平台不限定。
+        # 字段不再写入 (raw-bytes 兜底名由执行层按产物嗅探生成)。
+        return None, "bad_output_filename"
 
     if "output_content_type" in raw:
-        ct = str(raw.get("output_content_type") or "").strip()
-        if ct and not ACCEPT_MIME_RE.match(ct):
-            return None, "bad_output_content_type"
-        fields["output_content_type"] = ct
+        # 0930 裁定: 输出由端点决定, 平台不声明。字段不再写入 (存量 decl 原样保留)。
+        return None, "bad_output_content_type"
 
     if "visibility" in raw or not partial:
         vis = str(raw.get("visibility") or "private").strip()
@@ -159,10 +151,8 @@ def _endpoint_decl(fields: dict, execution: str, existing: dict | None = None) -
     if "auth_token" in fields:
         from secrets_vault import seal
         decl["auth_token"] = seal(fields["auth_token"])
-    if "output_filename" in fields:
-        decl["output_filename"] = fields["output_filename"]
-    if "output_content_type" in fields:
-        decl["output_content_type"] = fields["output_content_type"]
+    # 0930 裁定: output_filename/output_content_type 由端点决定, 不入库
+    # (存量 decl 中已有值原样保留在 existing_decl 里)。
     return decl
 
 

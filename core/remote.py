@@ -180,17 +180,42 @@ def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:
 
 
 def _wrap_raw(decl: dict, body: bytes, filename: str | None = None) -> dict:
-    # Landing identity: explicit filename > declared default. Raw-bytes
-    # delivery without either is a configuration error (sniff would reject
-    # a non-whitelisted fallback extension) — fail typed, not silently.
-    name = filename or decl.get("output_filename")
-    if not name:
-        raise RemoteError("bad_output",
-                          "raw-bytes delivery needs output_filename declared")
+    # Landing identity: endpoint-provided filename > sniffed placeholder.
+    # 0930 裁定: 文件名是开发者 API 自定义机制, 平台不限定 — 端点返回什么
+    # 用什么; 端点未给时用产物魔数定型生成占位名 (result.<ext>)。
+    if not filename:
+        ext = _sniff_ext(body[:64])
+        if not ext:
+            raise RemoteError("bad_output", "unknown output format (no filename given)")
+        filename = "result" + ext
+    name = filename
     ctype = decl.get("output_content_type") or "application/octet-stream"
     validated = validate_output(name, ctype, body)
     return {"filename": name, "content_type": sniff_final_type(name, ctype, body),
             "bytes": validated}
+
+
+def _sniff_ext(head: bytes) -> str | None:
+    """产物魔数 → 扩展名 (占位名生成用)。仅覆盖常见二进制格式; 未识别 → None。"""
+    m = {
+        b"\x89PNG\r\n\x1a\n": ".png",
+        b"\xff\xd8": ".jpg",
+        b"GIF87a": ".gif", b"GIF89a": ".gif",
+        b"%PDF": ".pdf",
+        b"BM": ".bmp",
+        b"PK\x03\x04": ".zip",
+        b"\x1f\x8b": ".gz",
+        b"ID3": ".mp3", b"\xff\xfb": ".mp3", b"\xff\xf3": ".mp3",
+        b"RIFF": ".webp",  # RIFF 容器细化需读 8-12 位 (WEBP/WAV), 保守归 webp
+    }
+    for magic, ext in m.items():
+        if head.startswith(magic):
+            if magic == b"RIFF" and len(head) >= 12 and head[8:12] == b"WAVE":
+                return ".wav"
+            if magic == b"RIFF" and len(head) >= 12 and head[8:12] != b"WEBP":
+                continue
+            return ext
+    return None
 
 
 def sniff_final_type(filename: str, declared: str, body: bytes) -> str:
