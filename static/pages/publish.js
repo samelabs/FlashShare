@@ -48,10 +48,16 @@ function renderFamGrid(preselected) {
     '<label class="fam-chip" title="' + FAM_DETAIL[k] + '"><input type="radio" name="fam" value="' + k + '"' +
     (k === sel ? " checked" : "") + ">" +
     "<span>" + _msg(FAM_I18N[k]) + "</span></label>").join("");
-  // 说明区: 按族一行 (族名加粗 + 格式明细)
+  // 摘要行: 单行, 随选中族实时更新 (明细的常驻清单是文档排版, 不进表单;
+  // 完整明细在 chip title 悬停)
+  updateFamSummary();
+  grid.addEventListener("change", updateFamSummary);
+}
+function updateFamSummary() {
+  const sel = document.querySelector("#famGrid input:checked");
+  const key = sel ? sel.value : FAM_KEYS[0];
   const hint = document.getElementById("famHint");
-  hint.innerHTML = FAM_KEYS.map(k => '<div class="fam-hint-row"><b>' + _msg(FAM_I18N[k]) +
-    "</b>" + FAM_DETAIL[k] + "</div>").join("");
+  hint.textContent = _msg(FAM_I18N[key]) + ": " + FAM_DETAIL[key];
 }
 function collectFamilies() {
   const sel = document.querySelector("#famGrid input:checked");
