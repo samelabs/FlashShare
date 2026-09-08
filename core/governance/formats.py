@@ -1,12 +1,12 @@
 """Scenario format families — the platform's user-facing format vocabulary.
 
-范式 (0930 拍板): 场景定族、族定格式、声明即契约、执行即强制。
+范式: 场景定族、族定格式、声明即契约、执行即强制。
 - 族 (FormatFamily) 按"用户处理文件的场景"划分, 与具体工具无关;
   工具上线下线, 族不动。
 - 族从 ALLOWED_EXT (config) 派生: 平台全域边界与工具声明边界同源,
   扩展名集是平台准入边界的子集视图, 永不越界。
 - 单一事实源: 后端执行闸门 / C2C 发布选择器 / 前端 chips 三方共用。
-- 0930 业务裁定: 输入声明为**单选** (每工具一个族, 必选不可空);
+- 输入声明为**单选** (每工具一个族, 必选不可空);
   输出由端点决定, 平台只保证产物落在 ALLOWED_EXT 内, 不做声明。
 """
 
@@ -33,7 +33,7 @@ class FormatFamily:
         self.chip = chip
 
 
-# ── 场景格式族 (用户格式语言, 平台词表; 0930 业务裁定) ──
+# ── 场景格式族 (用户格式语言, 平台词表) ──
 FAMILIES: dict[str, FormatFamily] = {
     fam.key: fam
     for fam in (
@@ -139,7 +139,7 @@ def families_for_mimes(mimes: list[str] | None) -> set[str] | None:
 
 
 def validate_family_key(key) -> tuple[str | None, str | None]:
-    """发布提交校验: 单个族键 (0930 单选范式) → (family_key|None, err)。
+    """发布提交校验: 单个族键 (单选范式) → (family_key|None, err)。
 
     缺失/非法 (含旧客户端数组形态) → (None, 'bad_format_family') —
     单选必填, 无空语义。"""

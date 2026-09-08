@@ -1,4 +1,4 @@
-"""platform principal — 平台账户 (0930 经济模型闭合).
+"""platform principal — 平台账户 (经济模型闭合).
 
 两条平台收入路径的记账主体:
   A. 用户工具抽佣: cost 的 (1-payout) 部分 → kind='platform_commission'

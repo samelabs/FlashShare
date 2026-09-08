@@ -181,7 +181,7 @@ def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:
 
 def _wrap_raw(decl: dict, body: bytes, filename: str | None = None) -> dict:
     # Landing identity: endpoint-provided filename > sniffed placeholder.
-    # 0930 裁定: 文件名是开发者 API 自定义机制, 平台不限定 — 端点返回什么
+    # 文件名是开发者 API 自定义机制, 平台不限定 — 端点返回什么
     # 用什么; 端点未给时用产物魔数定型生成占位名 (result.<ext>)。
     if not filename:
         ext = _sniff_ext(body[:64])

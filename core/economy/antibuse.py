@@ -1,6 +1,6 @@
 """Anti-abuse: client_ref throttle (gate 前置).
 
-防作弊基线 (1004): 消费/发放的账目实时性由 billing 单点保证
+防作弊基线: 消费/发放的账目实时性由 billing 单点保证
 (行锁 + 幂等键 + balance_after 逐行快照); 此处补调用面滥用防线 —
 
 client_ref 洪泛: 同一 user 对未知/重试 ref 的高频提交会打满

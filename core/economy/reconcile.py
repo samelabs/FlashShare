@@ -1,6 +1,6 @@
-"""Membership reconciliation — Creem API pull, login-triggered (1004).
+"""Membership reconciliation — Creem API pull, login-triggered.
 
-背景 (用户裁定): 会员每月赠送积分不能依赖 cron; webhook 是唯一授信
+背景: 会员每月赠送积分不能依赖 cron; webhook 是唯一授信
 路径但会丢。对账改为**登录时拉取**: 用户登录 → 若名下有活跃订阅且
 当期授信缺失 → 主动查 Creem API 补授。
 
@@ -94,7 +94,7 @@ def reconcile_user(user_id: int) -> dict:
             continue  # 当期已授, 状态机层防重
         if period_end <= ts:
             continue  # 周期已过, 不补授
-        # 授信先行 (1005 崩溃一致性, 与 _ev_paid 同序): grant 幂等落账后
+        # 授信先行 (与 _ev_paid 同序): grant 幂等落账后
         # 才写 last_grant_period_start — 判据列永远不超前于账。
         try:
             credits = 0

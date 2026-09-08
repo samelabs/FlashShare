@@ -45,7 +45,7 @@ ALLOWED_EXT = {
     ".json", ".xml", ".yaml", ".yml",
     # Code (收缩到高价值文本子集 — 平台是处理+分享, 非 IDE)
     ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
-    # CAD / 3D (设计·工程场景, 0930 业务裁定)
+    # CAD / 3D (设计·工程场景)
     ".dwg", ".dxf", ".step", ".stp", ".iges", ".igs",
     ".stl", ".obj", ".fbx", ".glb", ".gltf", ".3ds", ".skp", ".blend",
     ".sldprt", ".iam", ".catpart",

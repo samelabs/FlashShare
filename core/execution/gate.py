@@ -28,7 +28,7 @@ from governance.commission import commission_rate
 def _finish(user, tool, client_ref, cost, started, result, upload) -> dict:
     """成功收口: fact 行 + 分账/平台收入 同一事务 (红线)。
 
-    经济闭合 (0930): cost = 作者 payout (用户工具) 或 平台收入 (系统工具);
+    经济闭合: cost = 作者 payout (用户工具) 或 平台收入 (系统工具);
     用户工具再拆平台佣金 — 每笔计费调用全额可追溯。"""
     call_id = None
     payout = 0
@@ -117,7 +117,7 @@ async def run(user: dict, tool: dict, req, orchestrate):
         return None, {"ok": False, "error": "tool_disabled"}, 403
     client_ref = req.client_ref or secrets.token_hex(16)
 
-    # 防滥用 (1004): 同 user 高频提交 (含重试) 削峰 — 记账在锁与幂等后,
+    # 防滥用: 同 user 高频提交 (含重试) 削峰 — 记账在锁与幂等后,
     # 这里只挡洪泛, 不影响正常调用。
     from economy.antibuse import gate_ref_throttled
     if gate_ref_throttled(user["id"]):

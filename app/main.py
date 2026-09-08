@@ -204,7 +204,7 @@ async def startup():
         sync = seed_from_registry()
         logger.info("platform_tools seeded: +%d added, %d updated",
                     sync["added"], sync["updated"])
-        # 1002 收口: economy.daily 模块化, activities 表已拆 — 每日登录
+        # economy.daily 模块化: 每日登录
         # 额度/开关是模块常量 (core/economy/daily.py), 无 seed。
         from economy.earnings import ensure_schema
         ensure_schema()
@@ -222,8 +222,8 @@ async def startup():
         with _db() as _con:
             purge_expired(_con, _now())
         logger.info("expired upload rows purged")
-        # 1004: 订阅对账改为登录触发 (economy.reconcile, _login_maintenance)
-        # — 不再有 cron/asyncio 循环。过期状态在 plan_of 读取时按
+        # 订阅对账登录触发 (economy.reconcile, _login_maintenance)
+        # — 无 cron/asyncio 循环。过期状态在 plan_of 读取时按
         # renews_at 权威判定, 无需后台 sweep。
 
     except Exception:

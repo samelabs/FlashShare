@@ -88,7 +88,7 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int) -> dict
         credits = pkg["credits"] if pkg else 0
         user_id = row["user_id"]
     # 授信先行 (billing 幂等事务, idem order:{id}); mark_paid 是终态戳 —
-    # granted=TRUE 蕴含 ledger 行已存在, 留痕永不撒谎 (1005 崩溃一致性)。
+    # granted=TRUE 蕴含 ledger 行已存在, 留痕永不撒谎 (崩溃一致性)。
     # 崩溃自愈: 授信后崩溃 → 重试时 grant 幂等重放 + mark_paid 补戳。
     if credits > 0:
         from economy.billing import grant

@@ -87,7 +87,7 @@ def _create_session(user_id: int) -> str:
 def _grant_daily(uid: int) -> None:
     """Daily login bonus at session creation (idempotent, own tx).
 
-    economy.daily module (1002 收口, activities 表已拆). best-effort —
+    economy.daily module. best-effort —
     停用 (额度 0) 是干净跳过, 不是错误路径。
     """
     try:
@@ -98,7 +98,7 @@ def _grant_daily(uid: int) -> None:
 
 
 def _login_maintenance(uid: int) -> None:
-    """登录触发的账目维护 (1004, 不依赖 cron):
+    """登录触发的账目维护 (无 cron):
     - daily 发放 (上面 _grant_daily)
     - 会员订阅对账: webhook 丢失时拉 Creem API 补授 (economy.reconcile)
     全部 best-effort — 任何异常不阻塞登录。

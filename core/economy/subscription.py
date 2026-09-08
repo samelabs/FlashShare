@@ -129,7 +129,7 @@ def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
 def _ev_paid(sub_id: str, obj: dict) -> dict:
     """The ONLY credit-granting path. period fields are Creem-authoritative.
 
-    授信先行 (1005 崩溃一致性): grant 落账后才能写 last_grant_period_start
+    授信先行 (崩溃一致性): grant 落账后才能写 last_grant_period_start
     (upsert) — 该列被 reconcile 用作"当期已授"判据, 先写后授会在崩溃窗口
     里留下"已授未到账"的撒谎留痕。顺序: grant(幂等) → upsert(状态戳)。"""
     sub = obj.get("subscription") or obj

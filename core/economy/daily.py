@@ -1,6 +1,6 @@
-"""Daily login credits — self-contained module (1002 收口).
+"""Daily login credits — self-contained module.
 
-模块化裁定 (1001 会话): 活动=功能模块, 不设活动表/触发器注册。
+活动=功能模块: 无活动表/触发器注册。
 本模块是第一个也是唯一的模块: 每日登录领积分。
 
 运营参数即模块常量 — 改额度/停用 = 改这里 + 重启 (与 commission_rate

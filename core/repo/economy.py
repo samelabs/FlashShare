@@ -1,7 +1,7 @@
 """repo: economy — withdrawals 数据访问 (批2a: 经济域专用).
 
 规则: 函数=(con,...)->rows, 参数化, 无事务/无业务判断。
-(1002 收口: activities 函数已拆 — 每日登录 = economy.daily 模块常量,
+(activities 函数已移除 — 每日登录 = economy.daily 模块常量,
 不经 repo/表。)
 """
 

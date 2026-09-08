@@ -99,7 +99,7 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
                 raise ExecutionError(rerr or "not_found")
             uploads.append(upload)
 
-        # ── 格式边界闸门 (0930 范式: 声明即契约, 执行即强制) ──
+        # ── 格式边界闸门 (声明即契约, 执行即强制) ──
         # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
         # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
         # 单点收口: web/token/MCP/selftest 四面共用本函数, 无旁路。
