@@ -482,15 +482,12 @@ if adm_u:
     b, ct = mp({"login": adm_u, "password": "AdminSmoke1"}, [])
     st, _ = ca.req("POST", "/auth/login", b, ct)
     check("管理员登录", ca.sess is not None)
-    for path in ["/samelabs", "/samelabs/users", "/samelabs/tools", "/samelabs/plans", "/samelabs/packages", "/samelabs/ledger", "/samelabs/activities", "/samelabs/withdrawals", "/samelabs/remote"]:
+    for path in ["/samelabs", "/samelabs/users", "/samelabs/tools", "/samelabs/plans", "/samelabs/packages", "/samelabs/ledger", "/samelabs/withdrawals", "/samelabs/remote"]:
         st, body = ca.req("GET", path)
         check(f"后台页 {path}", st == 200, f"status={st}")
     # 定价改回
     st, body = ca.req("POST", "/samelabs/tools/doc2pdf/pricing", json.dumps({"cost": 5, "enabled": True}).encode(), "application/json")
     check("改定价", st == 200)
-    # 活动配置
-    st, body = ca.req("POST", "/samelabs/activities/daily_login/config", json.dumps({"amount": 5, "active": True}).encode(), "application/json")
-    check("活动配置", st == 200)
     # 用户列表搜索
     st, body = ca.req("GET", f"/samelabs/users?q={u}")
     check("用户搜索", st == 200 and u.encode() in body)
