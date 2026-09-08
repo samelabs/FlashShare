@@ -31,6 +31,8 @@
     // Step 1: upload (multipart, XHR for progress)
     const formData = new FormData();
     fileList.forEach(f => formData.append("file", f));
+    // 工具中间件语义: 带 tool 字段 → 上传不落分享记录 (仅 execute 产物落库)
+    if (tool) formData.append("tool", tool.id);
     const up = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/uploads");
