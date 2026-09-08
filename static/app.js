@@ -118,6 +118,9 @@ function fmtDate(ts) {
 // A8 配套: 交互行为一律经此判定, 禁止工具名比较。
 function isPassThrough(tool) {
   if (!tool) return true;
+  // multi 工具 (zip_pack/pdf_merge) 有执行语义 (合并/打包), 不属 pass-through —
+  // 否则源文件被后端当中间件不落分享记录, 前端却按直传展示 → url undefined 崩溃。
+  if (tool.multi) return false;
   return !(Array.isArray(tool.presets) && tool.presets.length) &&
          !(Array.isArray(tool.params) && tool.params.length);
 }
