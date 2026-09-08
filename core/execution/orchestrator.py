@@ -43,14 +43,14 @@ def validate_lifecycle(params) -> tuple:
     return expiry_days, allowed_downloads
 
 
-async def _run_handler(pool, process_tool, tool_id, single, multi_sources):
+async def _run_handler(pool, process_tool, tool_id, single, multi_sources, params):
     loop = asyncio.get_event_loop()
     if multi_sources is not None:
         return await loop.run_in_executor(
-            pool, process_tool, tool_id, b"", "", "", 0, {}, multi_sources)
+            pool, process_tool, tool_id, b"", "", "", 0, params, multi_sources)
     stream, filename, ctype, size = single
     return await loop.run_in_executor(
-        pool, process_tool, tool_id, stream, filename, ctype, size, {})
+        pool, process_tool, tool_id, stream, filename, ctype, size, params)
 
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool):
@@ -74,11 +74,11 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
 
     if tool.get("multi") and len(sources) >= 1:
         result = await _run_handler(pool, process_tool, tool["id"],
-                                    None, sources)
+                                    None, sources, params)
     else:
         stream, filename, ctype, size = sources[0]
         result = await _run_handler(pool, process_tool, tool["id"],
-                                    (stream, filename, ctype, size), None)
+                                    (stream, filename, ctype, size), None, params)
 
     output_bytes = result["output_bytes"]
     output_size = len(output_bytes)
