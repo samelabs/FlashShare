@@ -58,12 +58,9 @@
       xhr.send(formData);
     });
 
-    // Pass-through (share 语义): 无声明且非 multi 的工具 → 结果即分享链接。
-    // multi 工具 (zip_pack/pdf_merge) 有执行语义, 不能走 pass-through
-    // (源文件会被后端当中间件不落分享记录, 前端却按直传展示 → url undefined)。
-    const hasExec = tool && (Array.isArray(tool.presets) && tool.presets.length
-                             || Array.isArray(tool.params) && tool.params.length
-                             || tool.multi);
+    // Pass-through (share 语义): 工具声明 pass_through=true 才直传,
+    // 不从 presets/params/multi 推断 (无参执行型工具会被误判)。
+    const hasExec = tool && !tool.pass_through;
     if (!hasExec) {
       const f = up.files ? up.files[0] : up.file;
       window.showShareResult && window.showShareResult(f);

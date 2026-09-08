@@ -59,7 +59,8 @@ def seed_from_registry() -> dict:
                 json.dumps(sorted(t["accept"]), ensure_ascii=False) if t["accept"] else None,
                 json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
                 bool(t.get("multi", False)), ts,
-                json.dumps(t["desc"], ensure_ascii=False) if t.get("desc") else None)
+                json.dumps(t["desc"], ensure_ascii=False) if t.get("desc") else None,
+                bool(t.get("pass_through", False)))
             if row["inserted"]:
                 added += 1
             else:
@@ -84,6 +85,7 @@ def _row_to_item(row: dict, price: dict) -> dict:
         "accept": json.loads(row["accept_json"]) if row["accept_json"] else None,
         "presets": None,
         "multi": bool(row["multi"]),
+        "pass_through": bool(row.get("pass_through") or False),
         "cost": int(price.get("cost") or 0),
     }
     if row["presets_json"]:

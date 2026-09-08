@@ -118,11 +118,10 @@ function fmtDate(ts) {
 // A8 配套: 交互行为一律经此判定, 禁止工具名比较。
 function isPassThrough(tool) {
   if (!tool) return true;
-  // multi 工具 (zip_pack/pdf_merge) 有执行语义 (合并/打包), 不属 pass-through —
-  // 否则源文件被后端当中间件不落分享记录, 前端却按直传展示 → url undefined 崩溃。
-  if (tool.multi) return false;
-  return !(Array.isArray(tool.presets) && tool.presets.length) &&
-         !(Array.isArray(tool.params) && tool.params.length);
+  // 直传判定 = 工具声明 (platform_tools.pass_through, 仅直传语义工具为 true),
+  // 不再从 presets/params/multi 推断 — 无参执行型工具 (crop_white/doc2pdf)
+  // 和无参 http 工具必须走 execute, 推断会把它们误判成直传。
+  return !!tool.pass_through;
 }
 
 // 标签解析单点 (tool modes v3): str 原样 / dict[lang]→dict.en→首值。勿在他处重写此链。

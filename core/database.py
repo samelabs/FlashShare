@@ -373,6 +373,8 @@ _SCHEMA_SQL = (
       accept_json    TEXT,                   -- JSON array or NULL = any
       presets_json   TEXT,                   -- JSON array or NULL
       multi          BOOLEAN NOT NULL DEFAULT FALSE,
+      pass_through   BOOLEAN NOT NULL DEFAULT FALSE,
+                                           -- TRUE = 直传工具: 上传即结果, 无执行步 (share)
       visibility     TEXT NOT NULL DEFAULT 'public',
                                            -- public | unlisted | private
       endpoint_json  TEXT,                   -- remote execution decl (future)
@@ -418,6 +420,7 @@ _SCHEMA_SQL = (
     # 推荐与排序 (管理后台遴选的权威全局工具呈现顺序)
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0",
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS pass_through BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period_days INT NOT NULL DEFAULT 30",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly'",
     "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS cancel_scheduled_at BIGINT",

@@ -42,7 +42,8 @@ _registry = []
 
 
 def register(tool_id, tool_type, label, icon, handler,
-             accept=None, presets=None, multi=False, desc=None):
+             accept=None, presets=None, multi=False, desc=None,
+             pass_through=False):
     """Register a tool.
 
     Args:
@@ -61,6 +62,8 @@ def register(tool_id, tool_type, label, icon, handler,
         multi: bool. If True, this tool accepts multiple input files
                (e.g. PDF merge). Handler receives "sources" array.
                If False, handler receives a single "stream" (default).
+        pass_through: bool. If True, selecting this tool uploads directly
+               with no execute step (identity handler, e.g. share).
     """
     if tool_type not in (TYPE_VIEW, TYPE_PEEK, TYPE_PRODUCE):
         raise ValueError(f"Invalid tool type: {tool_type}")
@@ -87,6 +90,7 @@ def register(tool_id, tool_type, label, icon, handler,
         "accept": accept,
         "presets": presets,
         "multi": multi,
+        "pass_through": bool(pass_through),
     })
 
 

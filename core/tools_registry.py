@@ -165,6 +165,7 @@ register(
     icon="upload",
     accept=None,  # accepts all formats
     handler=share_handler,
+    pass_through=True,  # identity handler: upload IS the result, no execute step
 )
 
 register(

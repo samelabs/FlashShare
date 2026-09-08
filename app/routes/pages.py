@@ -213,6 +213,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "presets": None,
         "params": _json.loads(tool["params_json"]) if tool.get("params_json") else None,
         "multi": bool(tool.get("multi")),
+        "pass_through": bool(tool.get("pass_through") or False),
         "cost": int(tool.get("cost") or 0),
         "icon_svg": icon_svg(tool.get("icon") or "wand"),
     }
