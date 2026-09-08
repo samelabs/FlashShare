@@ -506,10 +506,9 @@ select { width: auto; margin-top: 0; }
 .tool-overlay-section { margin-bottom: var(--s4); }
 .tool-overlay-section-label { font-size: var(--text-sm); color: var(--muted); font-weight: 600; margin-bottom: var(--s2); }
 .tool-overlay-presets { display: flex; flex-wrap: wrap; gap: var(--s2); }
-.tool-overlay-preset { display: inline-flex; align-items: center; gap: 5px; padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-full); background: var(--bg); font-size: var(--text-sm); font-weight: 600; cursor: pointer; color: var(--muted); transition: all var(--ease-in); }
-.tool-overlay-preset::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid currentColor; flex-shrink: 0; transition: background var(--ease-in); }
+.tool-overlay-preset { display: inline-flex; align-items: center; padding: var(--s2) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-full); background: var(--bg); font-size: var(--text-sm); font-weight: 600; cursor: pointer; color: var(--muted); transition: all var(--ease-in); }
+/* 模式选择 = 纯文字 pill (radio 圆点视觉废弃: 非激活态常驻灰点突兀, 选中态以边框+文字色区分) */
 .tool-overlay-preset.active { color: var(--accent); border-color: var(--accent); }
-.tool-overlay-preset.active::before { background: currentColor; }
 @media (hover:hover) and (pointer:fine) { .tool-overlay-preset:hover { border-color: var(--accent); color: var(--accent); } }
 /* 模式控件区 (tool modes v3) */
 .tool-overlay-params { display: flex; flex-direction: column; gap: var(--s2); }
