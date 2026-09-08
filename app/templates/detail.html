@@ -38,7 +38,7 @@
     </div>
     {% if is_image %}
     <div class="file-preview">
-      <img src="{{ dl_url }}" alt="{{ file_name|e }}" loading="lazy" decoding="async">
+      <img src="{{ inline_url }}" alt="{{ file_name|e }}" loading="lazy" decoding="async">
     </div>
     {% endif %}
     <div class="workspace-tools" id="workspaceTools" data-pid="{{ public_id }}">

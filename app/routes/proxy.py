@@ -145,6 +145,7 @@ async def file_route(public_id: str, request: Request):
         "is_owner": bool(user and "user_id" in upload.keys() and user["id"] == upload["user_id"]),
         "escaped_url": html_escape(url),
         "dl_url": f"/f/{pid}?download=1",
+        "inline_url": f"/f/{pid}/inline",
         "file_size_icon": file_size_icon_svg(),
         "expiry_icon": expiry_icon_svg(),
         "download_count_icon": download_count_icon_svg(),
@@ -229,17 +230,17 @@ async def file_zip_list(public_id: str, request: Request):
 async def file_inline(public_id: str, request: Request):
     """Stream a file inline (Content-Disposition: inline) for embedded display.
 
-    Same visibility rules as /f/{pid}. The nginx /dh/ path forces
-    attachment, so the print view (and future PDF embeds) stream through
-    here instead. Non-PDF requests are rejected — this endpoint exists
-    for print/embed, not as a general CORS-free viewer.
-    """
+    Same visibility rules as /f/{pid}. Supports PDF (print view) and
+    images (result preview: attachment responses weaken the iOS
+    long-press "Save Image" menu, previews must stream inline)."""
     upload = get_upload_by_public_id(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     ct = (upload["content_type"] or "").lower()
-    if ct != "application/pdf":
-        return JSONResponse({"ok": False, "error": "not_pdf"}, 400)
+    is_pdf = ct == "application/pdf"
+    is_image = ct.startswith("image/")
+    if not (is_pdf or is_image):
+        return JSONResponse({"ok": False, "error": "not_embeddable"}, 400)
 
     from gokapi import open_gokapi_download
     from urllib.parse import quote
@@ -263,7 +264,7 @@ async def file_inline(public_id: str, request: Request):
 
     return StreamingResponse(
         generate(),
-        media_type="application/pdf",
+        media_type=ct,
         headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
     )
 

@@ -642,7 +642,8 @@ select { width: auto; margin-top: 0; }
      brand-word 截断省略, 需求宽降到 390 内。 */
   .topbar-agents { padding: 5px 7px; max-width: 52px; }
   .topbar-login, .topbar-register { padding: 6px 9px; }
-  .lang-button { min-width: 0; padding: 0 14px 0 6px; font-size: var(--text-xs); }
+  .lang-button { min-width: 0; padding: 0 30px 0 var(--s2); font-size: var(--text-xs); }
+  .lang-button::after { right: 12px; }
   .brand { flex-shrink: 0; }
   .brand-logo { font-size: var(--text-sm); }
   .lang-menu { width: 128px; }

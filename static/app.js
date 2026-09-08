@@ -1023,7 +1023,8 @@ function showShareResult(file) {
   actions += `<a class="action-btn" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}"><span class="x-glyph" aria-hidden="true">𝕏</span></a>`;
 
   const isImg = file.contentType && file.contentType.startsWith("image/");
-  const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(dlUrl)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
+  const inlineUrl = `/f/${file.publicId}/inline`;
+  const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(inlineUrl)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
   const zipCt = file.contentType || "";
   const zipName = file.filename || file.name || "";
   const isZip = !!file.publicId && (/\.zip$/i.test(zipName) || zipCt === "application/zip" || zipCt === "application/x-zip-compressed");
