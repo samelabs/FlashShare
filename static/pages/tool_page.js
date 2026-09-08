@@ -28,7 +28,7 @@
 
     if (Array.isArray(tool.presets) && tool.presets.length) {
       const def = (tool.presets.find(p => p.default) || tool.presets[0]).id;
-      html += `<div class="toolpage-param-group"><div class="tool-param-label">${esc(t("intensity"))}</div><div class="tool-overlay-presets">`;
+      html += `<div class="toolpage-param-group"><div class="tool-overlay-presets">`;
       tool.presets.forEach(p => {
         const sel = (saved.__preset || def) === p.id ? " active" : "";
         html += `<button type="button" class="tool-overlay-preset tp-preset${sel}" data-preset="${esc(p.id)}">${esc(resolveLabel(p.label) || p.id)}</button>`;

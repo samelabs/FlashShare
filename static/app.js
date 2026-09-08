@@ -666,7 +666,7 @@ function openToolOverlay(tool, btn) {
       const dp = tool.presets.find(p => p.default);
       defaultPreset = dp ? dp.id : tool.presets[0].id;
     }
-    html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${t("intensity")}</div><div class="tool-overlay-presets">`;
+    html += `<div class="tool-overlay-section"><div class="tool-overlay-presets">`;
     tool.presets.forEach((p) => {
       const pname = resolveLabel(p.label) || p.id;
       const sel = (p.id === defaultPreset) ? " active" : "";
