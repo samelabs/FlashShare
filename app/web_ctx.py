@@ -22,7 +22,7 @@ with open(_STATIC / "518.css", encoding="utf-8") as f:
 # Version stamp = content hash + mtime: content-converging edits (diverge then
 # reconverge) can collide on a pure content hash and serve stale edge caches.
 import os as _os
-_CSS_VERSION = "v27"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增
+_CSS_VERSION = "v31"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 # app.js gets its OWN stamp: it changes independently of 518.css. Sharing

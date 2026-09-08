@@ -635,8 +635,15 @@ select { width: auto; margin-top: 0; }
 @media (max-width: 820px) {
   .shell { width: calc(100vw - 24px); padding: var(--s2) var(--s2) 0; }
   .topbar { padding: 0 calc(12px + var(--s2)); gap: var(--s2); }
-  .top-actions { gap: var(--s2); }
+  .top-actions { gap: var(--s2); min-width: 0; flex-wrap: nowrap; }
   .brand { font-size: var(--text-sm); gap: var(--s1); min-width: 0; }
+  /* 390px 窄屏: 顶栏四件套 (brand+MCP+auth+lang) 总宽溢出 → space-between
+     失效, MCP 胶囊叠上 brand 文字 (gap -11px 实测)。收窄动作区并允许
+     brand-word 截断省略, 需求宽降到 390 内。 */
+  .topbar-agents { padding: 5px 7px; max-width: 52px; }
+  .topbar-login, .topbar-register { padding: 6px 9px; }
+  .lang-button { min-width: 0; padding: 0 14px 0 6px; font-size: var(--text-xs); }
+  .brand { flex-shrink: 0; }
   .brand-logo { font-size: var(--text-sm); }
   .lang-menu { width: 128px; }
   .workspace { max-width: 100%; }
@@ -792,9 +799,11 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-empty { text-align: center; color: var(--muted); padding: var(--s4) 0; }
 
 @media (max-width: 640px) {
-  .topbar-agents { padding: 5px 8px; font-size: var(--text-xs); max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
-  .topbar-login, .topbar-register { padding: 6px 10px; font-size: var(--text-xs); }
-  .top-actions { gap: var(--s1); }
+  .topbar-agents { padding: 5px 7px; font-size: var(--text-xs); max-width: 52px; }
+  .topbar-login, .topbar-register { padding: 6px 9px; font-size: var(--text-xs); }
+  .top-actions { gap: var(--s1); margin-left: 0; }
+  .brand { max-width: 128px; }
+  .brand-word { overflow: hidden; text-overflow: ellipsis; }
   .topbar { gap: var(--s2); }
 
   .acct-hero { flex-direction: column; }
