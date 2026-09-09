@@ -60,7 +60,8 @@ def seed_from_registry() -> dict:
                 json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
                 bool(t.get("multi", False)), ts,
                 json.dumps(t["desc"], ensure_ascii=False) if t.get("desc") else None,
-                bool(t.get("pass_through", False)))
+                bool(t.get("pass_through", False)),
+                json.dumps(t["params"], ensure_ascii=False) if t.get("params") else None)
             if row["inserted"]:
                 added += 1
             else:
@@ -88,7 +89,10 @@ def _row_to_item(row: dict, price: dict) -> dict:
         "pass_through": bool(row.get("pass_through") or False),
         "cost": int(price.get("cost") or 0),
     }
-    if row["presets_json"]:
+    # 批 4A: params 是唯一参数声明通道 — presets 仅存量兼容读取,
+    # 有 canonical params 的工具不再透出 presets (防止 Web/MCP 双渲染)
+    has_params = bool(row["params_json"])
+    if row["presets_json"] and not has_params:
         item["presets"] = [
             {"id": p["id"], "label": p["label"], "default": p.get("default", False)}
             for p in json.loads(row["presets_json"])

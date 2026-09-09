@@ -112,9 +112,11 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
         fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
 
-    if "accept" in raw or not partial:
+    if "accept" in raw or "format_families" in raw or not partial:
         # 声明即契约: 输入族**单选必填** — 格式精度由发布者
         # 负责到底, "默认全部"的模糊声明不复存在。
+        # (批 4A: 前端 PATCH 发 format_families, 旧条件只查 accept 导致
+        #  格式更新静默丢失)
         # format_families = 族键字符串 (单选)。缺失/非法 → bad_format_family。
         # 旧多选数组/裸 MIME 串 → 一律拒收 (新范式不再兼容模糊声明)。
         fam, ferr = validate_family_key(raw.get("format_families"))

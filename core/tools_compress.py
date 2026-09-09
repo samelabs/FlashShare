@@ -163,8 +163,9 @@ register(
     icon="compress",
     accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
     handler=compress_handler,
-    presets=[
-        {"id": pid, "label": lbl, "default": (pid == "2mb")}
-        for pid, lbl in _PRESET_LABELS.items()
+    params=[
+        {"key": "preset", "type": "enum", "label": {"en": "Target size", "zh": "目标体积"},
+         "options": [{"value": pid, "label": lbl} for pid, lbl in _PRESET_LABELS.items()],
+         "default": "2mb"},
     ],
 )

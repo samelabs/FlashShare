@@ -91,8 +91,7 @@ async function loadTools() {
     const head = document.createElement('div');
     head.className = 'usertools-head';
     const name = document.createElement('strong');
-    name.textContent = typeof t.label === 'string' ? t.label
-      : (t.label[document.documentElement.lang.slice(0, 2)] || t.label.en || t.tool_id);
+    name.textContent = window.resolveLabel(t.label) || t.tool_id;
     const key = document.createElement('span');
     key.className = 'usertools-key';
     key.textContent = t.tool_key;

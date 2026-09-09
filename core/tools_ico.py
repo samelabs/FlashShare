@@ -120,13 +120,17 @@ register(
         },
     icon="favicon",
     accept=ACCEPT_MIMES,
-    presets=[
-        {"id": "ico_16", "label": {"en": "16x16", "zh": "16x16", "ja": "16x16", "ko": "16x16", "es": "16x16", "ar": "16x16", "de": "16x16"}, "default": False},
-        {"id": "ico_32", "label": {"en": "32x32", "zh": "32x32", "ja": "32x32", "ko": "32x32", "es": "32x32", "ar": "32x32", "de": "32x32"}, "default": True},
-        {"id": "ico_48", "label": {"en": "48x48", "zh": "48x48", "ja": "48x48", "ko": "48x48", "es": "48x48", "ar": "48x48", "de": "48x48"}, "default": False},
-        {"id": "ico_64", "label": {"en": "64x64", "zh": "64x64", "ja": "64x64", "ko": "64x64", "es": "64x64", "ar": "64x64", "de": "64x64"}, "default": False},
-        {"id": "ico_128", "label": {"en": "128x128", "zh": "128x128", "ja": "128x128", "ko": "128x128", "es": "128x128", "ar": "128x128", "de": "128x128"}, "default": False},
-        {"id": "ico_256", "label": {"en": "256x256", "zh": "256x256", "ja": "256x256", "ko": "256x256", "es": "256x256", "ar": "256x256", "de": "256x256"}, "default": False},
+    params=[
+        {"key": "preset", "type": "enum", "label": {"en": "Icon size", "zh": "图标尺寸"},
+         "options": [
+             {"value": "ico_16", "label": {"en": "16x16", "zh": "16x16", "ja": "16x16", "ko": "16x16", "es": "16x16", "ar": "16x16", "de": "16x16"}},
+             {"value": "ico_32", "label": {"en": "32x32", "zh": "32x32", "ja": "32x32", "ko": "32x32", "es": "32x32", "ar": "32x32", "de": "32x32"}},
+             {"value": "ico_48", "label": {"en": "48x48", "zh": "48x48", "ja": "48x48", "ko": "48x48", "es": "48x48", "ar": "48x48", "de": "48x48"}},
+             {"value": "ico_64", "label": {"en": "64x64", "zh": "64x64", "ja": "64x64", "ko": "64x64", "es": "64x64", "ar": "64x64", "de": "64x64"}},
+             {"value": "ico_128", "label": {"en": "128x128", "zh": "128x128", "ja": "128x128", "ko": "128x128", "es": "128x128", "ar": "128x128", "de": "128x128"}},
+             {"value": "ico_256", "label": {"en": "256x256", "zh": "256x256", "ja": "256x256", "ko": "256x256", "es": "256x256", "ar": "256x256", "de": "256x256"}},
+         ],
+         "default": "ico_32"},
     ],
     handler=ico_handler,
 )

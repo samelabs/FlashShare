@@ -43,7 +43,7 @@ _registry = []
 
 def register(tool_id, tool_type, label, icon, handler,
              accept=None, presets=None, multi=False, desc=None,
-             pass_through=False):
+             pass_through=False, params=None):
     """Register a tool.
 
     Args:
@@ -64,6 +64,11 @@ def register(tool_id, tool_type, label, icon, handler,
                If False, handler receives a single "stream" (default).
         pass_through: bool. If True, selecting this tool uploads directly
                with no execute step (identity handler, e.g. share).
+        params: canonical parameter declaration (tool modes spec v3) — same
+               shape as user tools' params_json. Validated with the SAME
+               validator as user tools (governance.tool_params). This is the
+               ONLY parameter declaration channel for first-party tools;
+               presets is legacy storage-compat only.
     """
     if tool_type not in (TYPE_VIEW, TYPE_PEEK, TYPE_PRODUCE):
         raise ValueError(f"Invalid tool type: {tool_type}")
@@ -80,6 +85,14 @@ def register(tool_id, tool_type, label, icon, handler,
 
     if desc is not None and "en" not in desc:
         raise ValueError("desc must have 'en' key")
+    # Canonical params: 与用户工具完全相同的声明 validator (批 4A 单一轨道)
+    params_decl = []
+    if params not in (None, [], ""):
+        from governance.tool_params import validate_params_decl, ParamsDeclError
+        try:
+            params_decl = validate_params_decl(params)
+        except ParamsDeclError as exc:
+            raise ValueError(f"invalid params declaration: {exc}") from exc
     _registry.append({
         "id": tool_id,
         "type": tool_type,
@@ -91,6 +104,7 @@ def register(tool_id, tool_type, label, icon, handler,
         "presets": presets,
         "multi": multi,
         "pass_through": bool(pass_through),
+        "params": params_decl,
     })
 
 

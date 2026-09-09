@@ -369,7 +369,7 @@ _SCHEMA_SQL = (
       desc_json      TEXT,                   -- 简介 {lang: str} | str (可空)
       sort_order     INT NOT NULL DEFAULT 0, -- 后台遴选排序 (首页/市场呈现序)
       featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
-      icon           TEXT NOT NULL,
+      icon           TEXT NOT NULL DEFAULT 'wand',
       accept_json    TEXT,                   -- JSON array or NULL = any
       presets_json   TEXT,                   -- JSON array or NULL
       multi          BOOLEAN NOT NULL DEFAULT FALSE,
@@ -421,6 +421,7 @@ _SCHEMA_SQL = (
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0",
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS pass_through BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE platform_tools ALTER COLUMN icon SET DEFAULT 'wand'",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period_days INT NOT NULL DEFAULT 30",
     "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly'",
     "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS cancel_scheduled_at BIGINT",

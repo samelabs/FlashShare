@@ -400,8 +400,9 @@ register(
     icon="wand",
     accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
     handler=beautify_handler,
-    presets=[
-        {"id": pid, "label": lbl, "default": (pid == "aurora")}
-        for pid, lbl in _PRESET_LABELS.items()
+    params=[
+        {"key": "preset", "type": "enum", "label": {"en": "Style", "zh": "样式"},
+         "options": [{"value": pid, "label": lbl} for pid, lbl in _PRESET_LABELS.items()],
+         "default": "aurora"},
     ],
 )

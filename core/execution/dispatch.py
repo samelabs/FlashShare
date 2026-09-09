@@ -50,7 +50,15 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     tool["id"] = tool["tool_key"]
     tool["type"] = tool["tool_type"]
 
-    if "preset" not in params:
+    # 批 4A: canonical params 是唯一参数事实源 — 有声明时 default 由
+    # enforce_params_decl 注入, 不再走 presets 通道 (get_default_preset 仅
+    # 为存量无声明工具保留 compatibility shim)。
+    import json as _json
+    try:
+        decl = _json.loads(tool.get("params_json") or "[]")
+    except (TypeError, ValueError):
+        decl = []
+    if not decl and "preset" not in params:
         default = get_default_preset(tool_id)
         if default:
             params["preset"] = default
@@ -58,11 +66,6 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
     # 无声明的工具 params 保持自由直通 (兼容现状)。preset/expiry 等系统键
     # 属于 presets/生命周期机制, 不受声明管辖。
-    import json as _json
-    try:
-        decl = _json.loads(tool.get("params_json") or "[]")
-    except (TypeError, ValueError):
-        decl = []
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:

@@ -71,15 +71,16 @@ def upsert_first_party(con, tool_key: str, tool_type: str, label_json: str,
                        icon: str, accept_json: Optional[str],
                        presets_json: Optional[str], multi: bool,
                        ts: int, desc_json: Optional[str] = None,
-                       pass_through: bool = False) -> dict:
+                       pass_through: bool = False,
+                       params_json: Optional[str] = None) -> dict:
     """一方工具 seed (ON CONFLICT 更新声明字段, 保留行身份)。"""
     return con.execute(
         """
         INSERT INTO platform_tools
           (tool_key, owner_id, tool_id, execution, tool_type,
            label_json, desc_json, icon, accept_json, presets_json, multi,
-           pass_through, visibility, enabled, created_at, updated_at)
-        VALUES (%s, NULL, %s, 'local', %s, %s, %s, %s, %s, %s, %s, %s,
+           pass_through, params_json, visibility, enabled, created_at, updated_at)
+        VALUES (%s, NULL, %s, 'local', %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 'public', TRUE, %s, %s)
         ON CONFLICT (tool_key) DO UPDATE SET
           tool_type    = EXCLUDED.tool_type,
@@ -90,11 +91,12 @@ def upsert_first_party(con, tool_key: str, tool_type: str, label_json: str,
           presets_json = EXCLUDED.presets_json,
           multi        = EXCLUDED.multi,
           pass_through = EXCLUDED.pass_through,
+          params_json  = EXCLUDED.params_json,
           updated_at   = EXCLUDED.updated_at
         RETURNING (xmax = 0) AS inserted
         """,
         (tool_key, tool_key, tool_type, label_json, desc_json, icon,
-         accept_json, presets_json, multi, pass_through, ts, ts)).fetchone()
+         accept_json, presets_json, multi, pass_through, params_json, ts, ts)).fetchone()
 
 
 def retire_absent_first_party(con, live_keys: Sequence[str], ts: int) -> None:
@@ -159,9 +161,9 @@ def insert_remote_row(con, tool_key: str, tool_id: str, execution: str,
         """
         INSERT INTO platform_tools
            (tool_key, owner_id, tool_id, execution, tool_type,
-            label_json, accept_json, presets_json, multi,
+            label_json, accept_json, presets_json, multi, icon,
             visibility, endpoint_json, enabled, created_at, updated_at)
-           VALUES (%s, NULL, %s, %s, 'produce', %s, %s, NULL, FALSE,
+           VALUES (%s, NULL, %s, %s, 'produce', %s, %s, NULL, FALSE, 'wand',
                    'public', %s, TRUE, %s, %s)
         """,
         (tool_key, tool_id, execution, label_json, accept_json,
@@ -173,16 +175,17 @@ def insert_user_tool(con, tool_key: str, owner_id: int, tool_id: str,
                      accept_json: Optional[str], visibility: str,
                      endpoint_json: str, ts: int,
                      params_json: Optional[str] = None,
-                     desc_json: Optional[str] = None) -> None:
+                     desc_json: Optional[str] = None,
+                     icon: str = "wand") -> None:
     con.execute(
         """
         INSERT INTO platform_tools
-           (tool_key, owner_id, tool_id, execution,
+           (tool_key, owner_id, tool_id, execution, icon,
             label_json, accept_json, params_json, desc_json,
             visibility, endpoint_json, enabled, created_at, updated_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
         """,
-        (tool_key, owner_id, tool_id, execution, label_json, accept_json,
+        (tool_key, owner_id, tool_id, execution, icon, label_json, accept_json,
          params_json, desc_json, visibility, endpoint_json, ts, ts))
 
 
