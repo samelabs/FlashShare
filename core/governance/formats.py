@@ -262,6 +262,24 @@ def family_exts(key: str) -> frozenset[str]:
     return FAMILIES[key].exts
 
 
+def format_manifest() -> dict:
+    """客户端 format manifest (4C-2a): 发布页唯一格式事实源。
+
+    直接从 FAMILY_ORDER / FAMILIES 派生 (排序稳定), 客户端禁止再维护
+    第二份 ext/MIME 镜像。只含公开格式声明数据, 不含任何平台内部字段。
+    """
+    return {
+        "order": list(FAMILY_ORDER),
+        "families": {
+            key: {
+                "exts": sorted(FAMILIES[key].exts),
+                "mimes": sorted(FAMILIES[key].mimes),
+            }
+            for key in FAMILY_ORDER
+        },
+    }
+
+
 def sniff_ext_to_families(ext: str) -> set[str]:
     """扩展名 → 族集合 (执行闸门: 上传 sniff 后的 ext 反查)。未知 ext → 空集。"""
     return {k for k, f in FAMILIES.items() if ext in f.exts}

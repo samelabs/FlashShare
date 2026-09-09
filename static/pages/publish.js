@@ -8,46 +8,21 @@ const _pubTool = window.__PUB_TOOL__ || null;
 // ── helpers (single source: common.js _msg/_errm) ──
 const _curLang = () => (document.documentElement.lang || "en").slice(0, 2);
 
-// ── 场景格式族勾选器 (词表镜像 governance/formats.py; 详见 formats.py) ──
-const EXT_BY_MIME = {
-  "image/jpeg": "image", "image/png": "image", "image/gif": "image", "image/webp": "image",
-  "image/bmp": "image", "image/tiff": "image", "image/heic": "image", "image/avif": "image",
-  "image/x-icon": "image", "image/vnd.microsoft.icon": "image", "image/svg+xml": "image",
-  "application/pdf": "document", "text/plain": "document", "text/csv": "document",
-  "application/rtf": "document", "application/msword": "document",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document",
-  "application/vnd.ms-excel": "document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "document",
-  "application/vnd.ms-powerpoint": "document",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "document",
-  "application/zip": "archive", "application/x-7z-compressed": "archive",
-  "application/gzip": "archive", "application/x-tar": "archive",
-  "application/json": "data", "application/xml": "data", "text/xml": "data",
-  "application/yaml": "data",
-  "text/x-python": "code", "text/javascript": "code", "application/javascript": "code",
-  "text/html": "code", "text/css": "code",
-};
-// ── 场景格式族 (0930 范式 v2): 输入族**单选必选** — 词表镜像 governance/formats.py ──
-const FAM_KEYS = ["image", "document", "archive", "cad3d", "media", "data", "code"];
-const FAM_I18N = {image: "family_image", document: "family_document",
-                  archive: "family_archive", cad3d: "family_cad3d",
-                  media: "family_media", data: "family_data", code: "family_code"};
-const FAM_DETAIL = {
-  image: "JPG PNG GIF WebP BMP HEIC HEIF TIFF AVIF ICO SVG",
-  document: "PDF TXT CSV MD RTF DOC DOCX XLS XLSX PPT PPTX ODT ODS ODP",
-  archive: "ZIP RAR 7Z GZ TAR BZ2 XZ TGZ",
-  cad3d: "DWG DXF STEP IGES STL OBJ FBX GLB GLTF 3DS SKP BLEND SLDPRT IAM CATPART",
-  media: "MP3 WAV FLAC AAC OGG M4A MP4 MOV WEBM AVI MKV",
-  data: "JSON XML YAML YML",
-  code: "PY JS TS HTML CSS SQL",
-};
+// ── 场景格式族勾选器 (4C-2a: 唯一事实源 = 服务端注入的 window.__FORMAT_FAMILIES__,
+// 派生自 governance/formats.py; 本文件不再维护任何 ext/MIME 镜像) ──
+const FORMAT_MANIFEST = window.__FORMAT_FAMILIES__ || { order: [], families: {} };
+const FAM_KEYS = FORMAT_MANIFEST.order;
+const _famI18n = k => "family_" + k;
+// 摘要明细: 直接从 manifest exts 生成 (.jpg → JPG), 不手写七族清单
+const _famDetail = k => (FORMAT_MANIFEST.families[k]?.exts || [])
+  .map(e => e.replace(/^\./, "").toUpperCase()).join(" ");
 function renderFamGrid(preselected) {
   const grid = document.getElementById("famGrid");
   const sel = preselected && preselected.length ? preselected[0] : FAM_KEYS[0]; // 默认 image, 不可空
   grid.innerHTML = FAM_KEYS.map(k =>
-    '<label class="fam-chip" title="' + FAM_DETAIL[k] + '"><input type="radio" name="fam" value="' + k + '"' +
+    '<label class="fam-chip" title="' + _famDetail(k) + '"><input type="radio" name="fam" value="' + k + '"' +
     (k === sel ? " checked" : "") + ">" +
-    "<span>" + _msg(FAM_I18N[k]) + "</span></label>").join("");
+    "<span>" + _msg(_famI18n(k)) + "</span></label>").join("");
   // 摘要行: 单行, 随选中族实时更新 (明细的常驻清单是文档排版, 不进表单;
   // 完整明细在 chip title 悬停)
   updateFamSummary();
@@ -57,15 +32,29 @@ function updateFamSummary() {
   const sel = document.querySelector("#famGrid input:checked");
   const key = sel ? sel.value : FAM_KEYS[0];
   const hint = document.getElementById("famHint");
-  hint.textContent = _msg(FAM_I18N[key]) + ": " + FAM_DETAIL[key];
+  hint.textContent = _msg(_famI18n(key)) + ": " + _famDetail(key);
 }
 function collectFamilies() {
   const sel = document.querySelector("#famGrid input:checked");
   return sel ? sel.value : FAM_KEYS[0];   // 单选必选: 无空态
 }
-function famKeyFromMimes(mimes) {
+// 通用 family inference (4C-2a): token 是 MIME → family.mimes 匹配;
+// token 是 ".pdf" 这类 extension → family.exts 匹配。下一阶段切换 canonical
+// extension token 时发布页无需再改 inference。本批 submit 仍只发 family key。
+function famKeyFromAccept(tokens) {
   const fams = new Set();
-  (mimes || []).forEach(m => { const f = EXT_BY_MIME[m]; if (f) fams.add(f); });
+  (tokens || []).forEach(tok => {
+    const t = String(tok || "").toLowerCase();
+    for (const k of FAM_KEYS) {
+      const f = FORMAT_MANIFEST.families[k];
+      if (!f) continue;
+      if (t.startsWith(".")) {
+        if (f.exts.includes(t)) fams.add(k);
+      } else if (f.mimes.includes(t)) {
+        fams.add(k);
+      }
+    }
+  });
   return [...fams];
 }
 
@@ -381,7 +370,7 @@ function refill(t) {
   document.getElementById("fToolId").readOnly = true;      // id immutable
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
-  renderFamGrid(famKeyFromMimes(t.accept));
+  renderFamGrid(famKeyFromAccept(t.accept));
   // 多语言回填
   const rows = {};
   const eat = (d, key) => {

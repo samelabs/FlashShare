@@ -470,6 +470,7 @@ async def account_tools_publish(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from governance.user_tools import _owner_rows, _public_item
+    from governance.formats import format_manifest
     tool_id = request.query_params.get("id", "").strip()
     tool = None
     if tool_id:
@@ -479,8 +480,11 @@ async def account_tools_publish(request: Request):
                 break
         if tool is None:
             return HTMLResponse("", status_code=404)
+    # 4C-2a: format manifest 服务端单点派生 (governance.formats),
+    # publish 页唯一格式事实源 — 前端不再维护词表镜像。
     ctx = _account_ctx(request, "tools", tool=tool,
-                       tool_json=json.dumps(tool, ensure_ascii=False) if tool else "null")
+                       tool_json=json.dumps(tool, ensure_ascii=False) if tool else "null",
+                       format_manifest_json=json.dumps(format_manifest(), ensure_ascii=False))
     return templates.TemplateResponse(request, "account/publish.html", ctx)
 
 
