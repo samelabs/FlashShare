@@ -111,8 +111,24 @@ def validate_params_decl(raw) -> list:
 
 
 def resolve_label(label, lang: str) -> str:
-    """The single label resolver (str | dict → display string).
-    str → 原样; dict[lang] → dict["en"] → 首值。三面共用, 勿在他处重写。"""
+    """LocalizedText protocol resolver.
+
+    Accepted shapes:
+        str
+        dict[str, str]   (locale -> text)
+
+    Resolution order (the canonical platform fallback chain):
+        requested locale -> "en" -> first non-empty value -> ""
+
+    Callers MAY apply domain-specific fallback after resolution
+    (e.g. `or tool_id` for tool names), but MUST NOT implement
+    another LocalizedText resolution chain — Jinja templates use the
+    `lt` filter (app/main.py), JS uses window.resolveLabel (static/app.js);
+    both are semantically identical twins of this function and are kept
+    in sync by the protocol regression test.
+
+    Search indexing is exempt: it intentionally indexes all locale values.
+    """
     if isinstance(label, str):
         return label
     if isinstance(label, dict):

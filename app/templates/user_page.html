@@ -25,8 +25,8 @@
     {% for t in owner_tools %}
     <div class="mkt-card mkt-community userpage-card" data-tool-id="{{ t.id }}">
       <span class="mkt-icon"><svg viewBox="0 0 24 24" aria-hidden="true">{% if t.icon_svg %}{{ t.icon_svg | safe }}{% endif %}</svg></span>
-      <span class="mkt-name">{{ t.label.get(lang, t.label.get('en', t.id)) }}</span>
-      {% if t.desc %}<span class="mkt-desc">{{ t.desc.get(lang, t.desc.get('en', '')) if t.desc is mapping else t.desc }}</span>{% endif %}
+      <span class="mkt-name">{{ t.label | lt(lang) or t.id }}</span>
+      {% if t.desc %}<span class="mkt-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
       <span class="mkt-meta">
         <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
         {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="mkt-free">{{ texts.free }}</span>{% endif %}

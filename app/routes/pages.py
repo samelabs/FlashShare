@@ -19,7 +19,9 @@ from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
-from governance.catalog import list_catalog, seed_from_registry
+from governance.catalog import list_catalog
+from governance.catalog import seed_from_registry
+from governance.tool_params import resolve_label
 
 MAX_UPLOAD_MB = MAX_UPLOAD_BYTES // (1024 * 1024)
 from database import db
@@ -225,7 +227,8 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     ctx.update({
         "shell_class": "",
         "tool": tool_public,
-        "tool_name": label_map.get(ctx["lang"]) or label_map.get("en") or tool_id,
+        # LocalizedText 协议单链解析; tool_id 兜底属调用方 (协议注释见 app/main.py lt filter)
+        "tool_name": resolve_label(label_map, ctx["lang"]) or tool_id,
         "handle": _owner_handle(tool["owner_id"]) if tool.get("owner_id") else None,
         "stats": _public_stats(tool_key),
         "mcp_name": tool_key.replace("/", "__"),

@@ -17,7 +17,7 @@
   </div>
 
   {% if tool.desc %}
-  <p class="toolpage-desc" id="toolDesc">{{ tool.desc.get(lang, tool.desc.get('en', '')) if tool.desc is mapping else tool.desc }}</p>
+  <p class="toolpage-desc" id="toolDesc">{{ tool.desc | lt(lang) }}</p>
   {% endif %}
 
   <div class="panel toolpage-facts">

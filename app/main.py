@@ -58,6 +58,20 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # autoescape disabled — templates output raw HTML (icon_svg, CSS, JS).
 # All user-supplied values are escaped with |e or |tojson.
 templates.env.autoescape = False
+
+# ── LocalizedText protocol (tool modes v3): canonical resolver as Jinja filter.
+# Resolution order (the ONLY platform fallback chain):
+#   requested locale -> "en" -> first non-empty value -> ""
+# Callers MAY apply domain fallback after it (e.g. `or t.id`), but MUST NOT
+# implement another dict[lang] chain in templates. Search indexing is exempt:
+# data-name intentionally concatenates all locale values (cross-lingual search).
+from governance.tool_params import resolve_label as _resolve_label
+
+def _lt(value, lang: str) -> str:
+    return _resolve_label(value, lang)
+
+templates.env.filters["lt"] = _lt
+templates.env.globals["lt"] = _lt
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
