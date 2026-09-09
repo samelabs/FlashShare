@@ -47,16 +47,29 @@ def seed_from_registry() -> dict:
     history stays interpretable — same convention as the pricing table.
     """
     from tools import _registry
+    from governance.formats import extensions_for_accept
     ts = now()
     added = 0
     updated = 0
+
+    def _seed_accept(decl):
+        """register() 暂仍允许 legacy MIME creation input; 写库前统一
+        canonicalize 成 extension tokens (4C-2)。未知 token 安全保留。"""
+        if not decl:
+            return None
+        try:
+            canon = extensions_for_accept(sorted(decl))
+            return json.dumps(sorted(canon), ensure_ascii=False) if canon else None
+        except (KeyError, TypeError):
+            return json.dumps(sorted(str(x) for x in decl if x), ensure_ascii=False)
+
     with db() as con:
         for t in _registry:
             row = catalog_repo.upsert_first_party(
                 con, t["id"], t["type"],
                 json.dumps(t["label"], ensure_ascii=False),
                 t["icon"],
-                json.dumps(sorted(t["accept"]), ensure_ascii=False) if t["accept"] else None,
+                _seed_accept(t["accept"]),
                 json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
                 bool(t.get("multi", False)), ts,
                 json.dumps(t["desc"], ensure_ascii=False) if t.get("desc") else None,
@@ -72,6 +85,22 @@ def seed_from_registry() -> dict:
     return {"added": added, "updated": updated}
 
 
+def _canonical_accept(tokens) -> list | None:
+    """accept_json 行 → canonical extension token list (4C-2)。
+
+    Web/Tool Page/API/MCP 看到的 accept 必须是精确 extension contract:
+    legacy MIME 经 extensions_for_accept 展开成 ext。存量行含完全未知
+    token 时不 500、不猜格式 — 安全 fallback 原样保留 token。"""
+    if not tokens:
+        return None
+    from governance.formats import extensions_for_accept
+    try:
+        canon = extensions_for_accept(tokens)
+        return sorted(canon) if canon else None
+    except (KeyError, TypeError):
+        return sorted(str(t) for t in tokens if t)
+
+
 def row_to_item(row: dict, price: dict) -> dict:
     """platform_tools row + pricing row → canonical catalog item shape.
 
@@ -85,7 +114,10 @@ def row_to_item(row: dict, price: dict) -> dict:
         "type": row["tool_type"],
         "label": json.loads(row["label_json"]),
         "icon": row["icon"],
-        "accept": json.loads(row["accept_json"]) if row["accept_json"] else None,
+        # 4C-2: 公开 accept 一律投影成 canonical extension tokens
+        # (legacy MIME 行在投影时精确展开; 未知 token 安全 fallback)。
+        "accept": _canonical_accept(
+            json.loads(row["accept_json"]) if row["accept_json"] else None),
         "presets": None,
         "multi": bool(row["multi"]),
         "pass_through": bool(row.get("pass_through") or False),

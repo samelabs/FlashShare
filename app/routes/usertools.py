@@ -113,17 +113,40 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
 
     if "accept" in raw or "format_families" in raw or not partial:
-        # 声明即契约: 输入族**单选必填** — 格式精度由发布者
-        # 负责到底, "默认全部"的模糊声明不复存在。
-        # (批 4A: 前端 PATCH 发 format_families, 旧条件只查 accept 导致
-        #  格式更新静默丢失)
-        # format_families = 族键字符串 (单选)。缺失/非法 → bad_format_family。
-        # 旧多选数组/裸 MIME 串 → 一律拒收 (新范式不再兼容模糊声明)。
+        # 4C-2 Tool Input Contract: format_families 保留为 authoring taxonomy;
+        # accept 是 exact executable contract — 存库永远写 sorted canonical
+        # extension tokens。旧客户端只发 family (无 accept) → 解释为整族。
         fam, ferr = validate_family_key(raw.get("format_families"))
         if ferr:
             return None, ferr
-        accept = sorted(FAMILIES[fam].mimes)
-        fields["accept"] = accept
+        fam_exts = set(FAMILIES[fam].exts)
+        raw_accept = raw.get("accept")
+        if raw_accept is None or (isinstance(raw_accept, list)
+                                  and not raw_accept):
+            # 兼容: 只发 family = 整族支持 (但存 canonical ext, 不再写 MIME)
+            canon = set(fam_exts)
+        else:
+            if not isinstance(raw_accept, list):
+                return None, "bad_accept"
+            from governance.formats import extensions_for_accept
+            try:
+                canon = extensions_for_accept(raw_accept)
+            except (KeyError, TypeError):
+                return None, "bad_accept"
+            if not canon:
+                return None, "bad_accept"
+            # exact tokens 必须全部属于所选 family (operator remote 才允许跨族)
+            if not canon <= fam_exts:
+                return None, "bad_accept"
+        fields["accept"] = sorted(canon)
+
+    # 4C-2: multi 是标准 ToolDeclaration capability (不是 params)。
+    # create 缺失 → false; 显式值必须是真 JSON boolean; PATCH 仅出现时更新。
+    if "multi" in raw or not partial:
+        multi = raw.get("multi", False)
+        if not isinstance(multi, bool):
+            return None, "bad_multi"
+        fields["multi"] = multi
 
     if "output_filename" in raw:
         # 文件名是开发者 API 自定义机制, 平台不限定。
@@ -262,7 +285,8 @@ async def create_user_tool(request: Request):
             json.dumps(_endpoint_decl(fields, execution)), ts,
             params_json=json.dumps(params_decl, ensure_ascii=False) if params_decl else None,
             desc_json=json.dumps(desc if isinstance(desc, dict) else {"en": desc},
-                                 ensure_ascii=False) if desc else None)
+                                 ensure_ascii=False) if desc else None,
+            multi=bool(fields.get("multi", False)))
     # pricing row: owner-priced from day one
     from governance.pricing import set_pricing
     set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
@@ -465,6 +489,8 @@ async def update_user_tool(tool_id: str, request: Request):
         sets["visibility"] = fields["visibility"]
     if "accept" in fields:
         sets["accept_json"] = json.dumps(fields["accept"]) if fields["accept"] else None
+    if "multi" in fields:  # 4C-2: PATCH 仅在提交 multi 时更新
+        sets["multi"] = bool(fields["multi"])
     if "enabled" in raw:
         sets["enabled"] = bool(raw.get("enabled"))
     if "desc" in raw:

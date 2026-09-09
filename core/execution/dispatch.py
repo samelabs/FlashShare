@@ -39,9 +39,12 @@ class _RawRequest:
         else:
             self.params = None
         self.public_id = str(raw.get("public_id") or "")
-        self.public_ids = [str(x) for x in (raw.get("public_ids") or [])][:20]
+        # 4C-2: 不静默截断 [:20] — 多文件上限是 typed 契约 (multi=true 1..20,
+        # >20 / multi=false 显式多文件 → err_too_many_files), 截断会让调用方
+        # 永远收不到越界错误。
+        self.public_ids = [str(x) for x in (raw.get("public_ids") or [])]
         self.source_token = str(raw.get("source_token") or "")
-        self.source_tokens = [str(x) for x in (raw.get("source_tokens") or [])][:20]
+        self.source_tokens = [str(x) for x in (raw.get("source_tokens") or [])]
         self.client_ref = str(raw.get("client_ref") or "")
 
 
@@ -110,10 +113,15 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
 
     async def orchestrate(p):
         uploads = []
-        if tool.get("multi") and req.public_ids:
-            if len(req.public_ids) > 20:
+        # 4C-2 multi 真实边界: multi=true 允许 1..20; >20 typed err。
+        # multi=false 时调用方若显式送多文件形态, 不静默忽略/截断,
+        # 同样 typed err_too_many_files。multi=true 仍允许单个 public_id。
+        multi = bool(tool.get("multi"))
+        ids = req.public_ids
+        if multi and ids:
+            if len(ids) > 20:
                 raise ExecutionError("err_too_many_files")
-            for i, pid in enumerate(req.public_ids):
+            for i, pid in enumerate(ids):
                 if not PUBLIC_ID_RE.match(pid):
                     raise ExecutionError("invalid_id")
                 token = req.source_tokens[i] if i < len(req.source_tokens) else ""
@@ -122,7 +130,9 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
                     raise ExecutionError(rerr or "not_found")
                 uploads.append(upload)
         else:
-            public_id = req.public_id
+            if not multi and len(ids) > 1:
+                raise ExecutionError("err_too_many_files")
+            public_id = req.public_id or (ids[0] if ids else "")
             if not public_id:
                 raise ExecutionError("invalid_id")
             if not PUBLIC_ID_RE.match(public_id):
@@ -136,9 +146,9 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
         # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
         # 单点收口: web/token/MCP/selftest 四面共用本函数, 无旁路。
-        # 4C-1: 精确 accept — declared MIME → 具体扩展名集合 (formats.
-        # MIME_EXTS 单一词表), 上传 ext 必须 ∈ 该集合。不再经
-        # families_for_mimes() 扩大成 family (application/pdf 只放 .pdf)。
+        # 4C-2: canonical AcceptToken — declared tokens (canonical ext 或
+        # legacy MIME) → extensions_for_accept 精确扩展名集合, 上传 ext 必须
+        # ∈ 该集合。.dxf 声明不会因 application/octet-stream 同族放行 .fbx。
         declared = tool.get("accept")
         if declared is None and tool.get("accept_json"):
             try:
@@ -146,11 +156,13 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
             except (TypeError, ValueError):
                 declared = None
         if declared:
-            from governance.formats import extensions_for_mimes
+            from governance.formats import extensions_for_accept
             try:
-                allowed_exts = extensions_for_mimes(declared)
-            except KeyError:
-                allowed_exts = None  # 声明含词表外 MIME (存量脏数据): 不拦截, 不 500
+                allowed_exts = extensions_for_accept(declared)
+            except (KeyError, TypeError):
+                # 声明含词表外 token (存量脏数据/裸串): 保持线上容错,
+                # 整体不拦截, 不产生 500。
+                allowed_exts = None
             if allowed_exts:
                 import os as _os
                 for u in uploads:

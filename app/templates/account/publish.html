@@ -42,8 +42,16 @@
         <div class="pub-wide fam-block">
           <span data-i18n="mytools_f_accept">{{ texts.mytools_f_accept }}</span>
           <span class="fam-grid" id="famGrid"></span>
+          <!-- 4C-2: family = taxonomy; exact formats = executable contract -->
+          <span class="fam-grid ext-grid" id="extGrid"></span>
           <span class="fam-hint" id="famHint"></span>
+          <em class="pub-err" data-err="accept"></em>
         </div>
+        <label class="pub-multi-wrap">
+          <input type="checkbox" id="fMulti">
+          <span data-i18n="tool_multi_yes">{{ texts.tool_multi_yes }}</span>
+          <em class="pub-err" data-err="multi"></em>
+        </label>
       </div>
     </div>
 

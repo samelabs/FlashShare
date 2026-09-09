@@ -2,7 +2,7 @@
 // 机制 (0905 终稿): 单工具上下文 = 参数平铺默认预选 + 选文件即提交,
 // 无确认步无大 dropzone。执行走全局 process-flow (runToolFlow 单源)。
 // app.js 提供共享底座 (t/showResult/showToolProcessing/showShareResult/
-// resolveLabel/ACCEPT_TAGS) — 此文件只做本页专属逻辑。
+// resolveLabel/extLabel) — 此文件只做本页专属逻辑。
 (function () {
   "use strict";
 

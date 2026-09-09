@@ -275,13 +275,15 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         raw["public_id"] = str(args["public_id"])
         raw["source_token"] = str(args.get("source_token") or "")
         if args.get("public_ids"):
-            raw["public_ids"] = [str(x) for x in args["public_ids"]][:20]
-            raw["source_tokens"] = [str(x) for x in (args.get("source_tokens") or [])][:20]
+            # 4C-2: 不静默截断 [:20] — 越界由 dispatch 统一 typed
+            # err_too_many_files (multi=true 1..20)。
+            raw["public_ids"] = [str(x) for x in args["public_ids"]]
+            raw["source_tokens"] = [str(x) for x in (args.get("source_tokens") or [])]
     else:
         try:
             uploads = []
             if _tool_row.get("multi") and args.get("files"):
-                for f in args["files"][:20]:
+                for f in args["files"]:
                     uploads.append(_decode_file(f.get("b64"), f.get("filename")))
             elif args.get("file_b64"):
                 uploads.append(_decode_file(args["file_b64"], args.get("filename")))

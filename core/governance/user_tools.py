@@ -50,6 +50,7 @@ def _public_item(row: dict) -> dict:
         "timeout_s": decl.get("timeout_s", 60),
         "has_auth": bool(decl.get("auth_token")),
         "accept": json.loads(row["accept_json"]) if row.get("accept_json") else None,
+        "multi": bool(row.get("multi")) if row.get("multi") is not None else False,
         "output_filename": decl.get("output_filename", ""),
         "output_content_type": decl.get("output_content_type", ""),
         "params": json.loads(row["params_json"]) if row.get("params_json") else [],

@@ -26,7 +26,11 @@
     if (!window.__USER__) { location.href = "/auth/login"; return null; }
 
     const isMulti = !!(tool && tool.multi);
-    if (!isMulti && fileList.length > 1) fileList.length = 1;
+    // 4C-2: multi=false 显式多文件不静默截断/忽略 — typed 错误, 由 UI 呈现
+    // (dispatch 对 public_ids 多文件形态同样 typed err_too_many_files)。
+    if (!isMulti && fileList.length > 1) {
+      throw new Error(errText("err_too_many_files"));
+    }
 
     // Step 1: upload (multipart, XHR for progress)
     const formData = new FormData();

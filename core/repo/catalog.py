@@ -155,18 +155,18 @@ def id_of_platform_row(con, tool_key: str, owner_id_is_null: bool) -> Optional[d
 
 def insert_remote_row(con, tool_key: str, tool_id: str, execution: str,
                       label_json: str, accept_json: Optional[str],
-                      endpoint_json: str, ts: int) -> None:
-    """operator 侧 remote 行 (owner NULL, public)。"""
+                      endpoint_json: str, ts: int, multi: bool = False) -> None:
+    """operator 侧 remote 行 (owner NULL, public)。4C-2: multi 取真实声明。"""
     con.execute(
         """
         INSERT INTO platform_tools
            (tool_key, owner_id, tool_id, execution, tool_type,
             label_json, accept_json, presets_json, multi, icon,
             visibility, endpoint_json, enabled, created_at, updated_at)
-           VALUES (%s, NULL, %s, %s, 'produce', %s, %s, NULL, FALSE, 'wand',
+           VALUES (%s, NULL, %s, %s, 'produce', %s, %s, NULL, %s, 'wand',
                    'public', %s, TRUE, %s, %s)
         """,
-        (tool_key, tool_id, execution, label_json, accept_json,
+        (tool_key, tool_id, execution, label_json, accept_json, bool(multi),
          endpoint_json, ts, ts))
 
 
@@ -176,17 +176,18 @@ def insert_user_tool(con, tool_key: str, owner_id: int, tool_id: str,
                      endpoint_json: str, ts: int,
                      params_json: Optional[str] = None,
                      desc_json: Optional[str] = None,
-                     icon: str = "wand") -> None:
+                     icon: str = "wand", multi: bool = False) -> None:
+    # 4C-2: multi 是标准 ToolDeclaration capability, 随声明写入。
     con.execute(
         """
         INSERT INTO platform_tools
            (tool_key, owner_id, tool_id, execution, icon,
-            label_json, accept_json, params_json, desc_json,
+            label_json, accept_json, params_json, desc_json, multi,
             visibility, endpoint_json, enabled, created_at, updated_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
         """,
         (tool_key, owner_id, tool_id, execution, icon, label_json, accept_json,
-         params_json, desc_json, visibility, endpoint_json, ts, ts))
+         params_json, desc_json, bool(multi), visibility, endpoint_json, ts, ts))
 
 
 def set_tool_presentation(con, tool_key: str, featured: bool,

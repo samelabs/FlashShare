@@ -405,6 +405,9 @@ async def samelabs_remote_create(request: Request):
         auth_header = str(raw.get("auth_header", "")).strip()
         auth_token = str(raw.get("auth_token", "")).strip()
         accept_raw = str(raw.get("accept", "")).strip()
+        # 4C-2: multi 是标准 ToolDeclaration capability (operator 受信供给
+        # 可声明跨 family exact accept; 不要求单一 family)。
+        multi = bool(raw.get("multi", False))
         cost = int(raw.get("cost", 0))
         output_filename = str(raw.get("output_filename", "")).strip()
         output_content_type = str(raw.get("output_content_type", "")).strip()
@@ -439,9 +442,18 @@ async def samelabs_remote_create(request: Request):
         endpoint["output_filename"] = output_filename
     if output_content_type:
         endpoint["output_content_type"] = output_content_type
+    # 4C-2: 逗号分隔输入同时兼容 canonical ext (.png,.pdf) 与 legacy MIME
+    # (image/png); 统一过 extensions_for_accept, 存库只写 canonical ext。
+    # operator 受信供给允许跨 family; unknown token → bad_accept。
     accept = None
     if accept_raw:
-        accept = sorted({x.strip() for x in accept_raw.split(",") if x.strip()})
+        tokens = [x.strip() for x in accept_raw.split(",") if x.strip()]
+        from governance.formats import extensions_for_accept
+        try:
+            canon = extensions_for_accept(tokens)
+        except (KeyError, TypeError):
+            return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
+        accept = sorted(canon) if canon else None
 
     from repo.catalog import tool_key_exists, insert_remote_row
     from utils import now as _now
@@ -455,7 +467,7 @@ async def samelabs_remote_create(request: Request):
                 con, tool_id, tool_id, execution,
                 _json.dumps({"en": label, "zh": label}, ensure_ascii=False),
                 _json.dumps(accept) if accept else None,
-                _json.dumps(endpoint), ts)
+                _json.dumps(endpoint), ts, multi=multi)
     except Exception:
         return JSONResponse({"ok": False, "error": "duplicate_or_db"}, 409)
     # seed pricing row so the metering gate can charge it

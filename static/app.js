@@ -479,22 +479,14 @@ const homeTools = document.getElementById("homeTools");
 const toolOverlay = document.getElementById("toolOverlay");
 const toolOverlayBody = document.getElementById("toolOverlayBody");
 const toolOverlayClose = document.getElementById("toolOverlayClose");
-const ACCEPT_TAGS = {
-  "image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF",
-  "image/bmp": "BMP", "image/tiff": "TIFF", "image/svg+xml": "SVG", "image/avif": "AVIF",
-  "image/x-icon": "ICO", "image/vnd.microsoft.icon": "ICO",
-  "application/pdf": "PDF", "application/zip": "ZIP", "text/plain": "TXT",
-  "application/msword": "DOC", "application/rtf": "RTF",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
-  "application/vnd.ms-excel": "XLS",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
-  "application/vnd.ms-powerpoint": "PPT",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
-  "application/vnd.oasis.opendocument.text": "ODT",
-  "application/vnd.oasis.opendocument.spreadsheet": "ODS",
-  "application/vnd.oasis.opendocument.presentation": "ODP",
-  "text/csv": "CSV", "text/html": "HTML",
-};
+// 4C-2: 删除 ACCEPT_TAGS MIME 手写镜像 — Catalog 已输出 canonical extension
+// token (".pdf"), 展示统一用 extLabel (".jpeg"→"JPEG"); 偶发 legacy fallback
+// token (含 "/") 简单取末段可读, 不再维护 MIME→格式全集。
+function extLabel(tok) {
+  const t = String(tok || "");
+  const tail = t.indexOf("/") >= 0 ? t.split("/").pop() : t;
+  return tail.replace(/^\./, "").toUpperCase();
+}
 let activeTool = null;
 let activePreset = null;
 let activeToolParams = {};  // spec v3: 确认时收集的 params 值
@@ -890,10 +882,10 @@ function applyToolSelection(skipPresetReset) {
     }
   }
 
-  // Bind accept — image/* for photo picker, empty = all files
+  // Bind accept — 4C-2: canonical exact extension token list 直绑,
+  // 不再把同族 MIME 放宽成 image/* (exact contract 不得被 UI 扩大)
   if (activeTool.accept && activeTool.accept.length > 0) {
-    var allImages = activeTool.accept.every(function(t){return t.indexOf("image/")===0});
-    file.accept = allImages ? "image/*" : activeTool.accept.join(",");
+    file.accept = activeTool.accept.join(",");
   } else {
     file.removeAttribute("accept");
   }
@@ -907,7 +899,7 @@ function applyToolSelection(skipPresetReset) {
 
   // Update format tags — spans with wrapping (flex-wrap chips)
   if (formatTags && activeTool.accept) {
-    const tags = [...new Set(activeTool.accept.map(m => ACCEPT_TAGS[m]).filter(Boolean))];
+    const tags = [...new Set(activeTool.accept.map(extLabel).filter(Boolean))];
     formatTags.innerHTML = tags.map(tg => `<span class="fmt-chip">${tg}</span>`).join("");
   }
 

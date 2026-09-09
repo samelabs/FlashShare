@@ -198,13 +198,25 @@ for _key, _fam in FAMILIES.items():
     for _mime in _fam.mimes:
         MIME_TO_FAMILIES.setdefault(_mime, set()).add(_key)
 
+# 平台 format vocabulary 全部具体扩展名并集 (canonical AcceptToken 边界)
+VOCAB_EXTS: frozenset[str] = frozenset().union(
+    *(_fam.exts for _fam in FAMILIES.values()))
+
+
+def _exts_for_mime(mime: str) -> set[str]:
+    """单个 legacy MIME → 具体扩展名集合; 未知 MIME → KeyError。"""
+    e = MIME_EXTS.get(mime)
+    if not e:
+        raise KeyError(mime)
+    return set(e)
+
 
 def families_for_mimes(mimes: list[str] | None) -> set[str] | None:
     """MIME 声明 → 族集合 (存量声明映射, 分类/发现维度)。未知 MIME → KeyError 上抛。
 
     mimes=None → None (accept=all 语义, 历史数据; 新发布为单选必填)。
 
-    4C-1: 执行闸门不再使用本函数 — 精确契约用 extensions_for_mimes。
+    4C-1: 执行闸门不再使用本函数 — 精确契约用 extensions_for_accept。
     本函数保留供分类/发现消费方使用 (family 是分类维度)。"""
     if not mimes:
         return None
@@ -218,24 +230,52 @@ def families_for_mimes(mimes: list[str] | None) -> set[str] | None:
 
 
 def extensions_for_mimes(mimes: list[str] | None) -> set[str] | None:
-    """MIME 声明 → 具体扩展名集合 (4C-1 精确执行契约)。
+    """[legacy compatibility wrapper] MIME 声明 → 具体扩展名集合。
 
-    - mimes=None/[] → None (不限制语义, 与 accept=None/[] 现有行为一致)
-    - 已知 MIME → 对应具体扩展名 union (精确词表 MIME_EXTS)
-    - 未知 MIME → KeyError 上抛 (存量脏数据; 调用方决定兼容策略:
-      当前 dispatch 捕获后整体不拦截, 不产生 500)
-
-    禁止把精确声明扩大成 family — application/pdf 只允许 .pdf,
-    不会放行整个 document 族。
-    """
+    4C-2 起 canonical 入口是 extensions_for_accept (同时理解 ext token 与
+    legacy MIME); 本函数只展开 MIME, 保留给仅处理 legacy MIME 的消费方与
+    family invariant, 实现不复制 (直接走 _exts_for_mime)。
+    None/[] → None; 未知 MIME → KeyError。"""
     if not mimes:
         return None
     exts: set[str] = set()
     for m in mimes:
-        e = MIME_EXTS.get(m)
-        if not e:
-            raise KeyError(m)
-        exts |= e
+        exts |= _exts_for_mime(m)
+    return exts
+
+
+def extensions_for_accept(tokens) -> set[str] | None:
+    """Canonical AcceptToken 化 (4C-2 Tool Input Contract 单点)。
+
+    输入允许混合:
+      - canonical extension token: ".pdf" / ".dxf" (大小写不敏感,
+        lowercase 后必须属于平台 vocabulary = FAMILIES 全部 exts 并集)
+      - legacy MIME: "application/pdf" / "application/octet-stream"
+        (经 MIME_EXTS 展开成具体扩展名)
+    输出: canonical 小写 extension token 集合。
+
+    - None / [] → None (accept=不限制, 仍受平台 ALLOWED_EXT 总边界)
+    - string 裸值不是 token list → TypeError (禁止逐字符处理)
+    - 未知 extension / MIME → KeyError(token), 由调用方决定容错策略
+    """
+    if tokens is None:
+        return None
+    if isinstance(tokens, str):
+        raise TypeError("accept tokens must be a list, not a bare string")
+    token_list = list(tokens)
+    if not token_list:
+        return None
+    exts: set[str] = set()
+    for tok in token_list:
+        t = str(tok or "").strip().lower()
+        if not t:
+            continue
+        if t.startswith("."):
+            if t not in VOCAB_EXTS:
+                raise KeyError(t)
+            exts.add(t)
+        else:
+            exts |= _exts_for_mime(t)  # legacy MIME 展开
     return exts
 
 
@@ -277,6 +317,9 @@ def format_manifest() -> dict:
             }
             for key in FAMILY_ORDER
         },
+        # 4C-2: legacy MIME → canonical ext 精确转换表 (publish edit 回填用),
+        # 直接从 MIME_EXTS 派生, 排序稳定。
+        "mime_exts": {m: sorted(e) for m, e in sorted(MIME_EXTS.items())},
     }
 
 

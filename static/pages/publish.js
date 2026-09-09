@@ -8,39 +8,65 @@ const _pubTool = window.__PUB_TOOL__ || null;
 // ── helpers (single source: common.js _msg/_errm) ──
 const _curLang = () => (document.documentElement.lang || "en").slice(0, 2);
 
-// ── 场景格式族勾选器 (4C-2a: 唯一事实源 = 服务端注入的 window.__FORMAT_FAMILIES__,
-// 派生自 governance/formats.py; 本文件不再维护任何 ext/MIME 镜像) ──
-const FORMAT_MANIFEST = window.__FORMAT_FAMILIES__ || { order: [], families: {} };
+// ── 场景格式族 + exact formats 勾选器 (4C-2: family=taxonomy, accept=exact
+// executable contract)。唯一事实源 = 服务端注入 window.__FORMAT_FAMILIES__,
+// 派生自 governance/formats.py; 本文件不维护任何 ext/MIME 镜像 ──
+const FORMAT_MANIFEST = window.__FORMAT_FAMILIES__ || { order: [], families: {}, mime_exts: {} };
 const FAM_KEYS = FORMAT_MANIFEST.order;
 const _famI18n = k => "family_" + k;
+const _famExts = k => (FORMAT_MANIFEST.families[k]?.exts) || [];
 // 摘要明细: 直接从 manifest exts 生成 (.jpg → JPG), 不手写七族清单
-const _famDetail = k => (FORMAT_MANIFEST.families[k]?.exts || [])
-  .map(e => e.replace(/^\./, "").toUpperCase()).join(" ");
-function renderFamGrid(preselected) {
+const _extLabel = e => String(e || "").replace(/^\./, "").toUpperCase();
+const _famDetail = k => _famExts(k).map(_extLabel).join(" ");
+
+// 选择状态 (单点): selectedFam=当前族, selectedExts=该族下选中的 canonical ext
+let selectedFam = null;
+let selectedExts = new Set();
+
+function renderFamGrid(selFam, selExts, isCreate) {
+  // isCreate: 新建态默认首族 (image) 且全选; 编辑态按回填数据;
+  // 编辑遇到完全未知 legacy accept → selFam=null 受控空态 (不默认 image)。
+  if (isCreate) {
+    selFam = FAM_KEYS[0];
+    selExts = _famExts(selFam);
+  }
+  selectedFam = selFam || null;
+  selectedExts = new Set(selExts || []);
   const grid = document.getElementById("famGrid");
-  const sel = preselected && preselected.length ? preselected[0] : FAM_KEYS[0]; // 默认 image, 不可空
   grid.innerHTML = FAM_KEYS.map(k =>
     '<label class="fam-chip" title="' + _famDetail(k) + '"><input type="radio" name="fam" value="' + k + '"' +
-    (k === sel ? " checked" : "") + ">" +
+    (k === selectedFam ? " checked" : "") + ">" +
     "<span>" + _msg(_famI18n(k)) + "</span></label>").join("");
-  // 摘要行: 单行, 随选中族实时更新 (明细的常驻清单是文档排版, 不进表单;
-  // 完整明细在 chip title 悬停)
+  renderExtGrid();
   updateFamSummary();
-  grid.addEventListener("change", updateFamSummary);
+}
+function renderExtGrid() {
+  // exact format chips: 数据只来自当前族 manifest.exts, 选中态 = selectedExts
+  const box = document.getElementById("extGrid");
+  if (!selectedFam) { box.innerHTML = ""; return; }
+  box.innerHTML = _famExts(selectedFam).map(e =>
+    '<label class="fam-chip ext-chip"><input type="checkbox" value="' + e + '"' +
+    (selectedExts.has(e) ? " checked" : "") + "><span>" + _extLabel(e) +
+    "</span></label>").join("");
 }
 function updateFamSummary() {
-  const sel = document.querySelector("#famGrid input:checked");
-  const key = sel ? sel.value : FAM_KEYS[0];
   const hint = document.getElementById("famHint");
-  hint.textContent = _msg(_famI18n(key)) + ": " + _famDetail(key);
+  if (!selectedFam) {
+    // 受控空态: 未知 legacy accept, 必须由用户明确选族, 禁止静默覆盖
+    hint.textContent = "";
+    return;
+  }
+  const picked = _famExts(selectedFam).filter(e => selectedExts.has(e)).map(_extLabel);
+  hint.textContent = _msg(_famI18n(selectedFam)) + ": " + picked.join(" ");
 }
 function collectFamilies() {
-  const sel = document.querySelector("#famGrid input:checked");
-  return sel ? sel.value : FAM_KEYS[0];   // 单选必选: 无空态
+  return selectedFam || FAM_KEYS[0];   // 受控空态由 submit 拦截, 这里保持单选必选
 }
-// 通用 family inference (4C-2a): token 是 MIME → family.mimes 匹配;
-// token 是 ".pdf" 这类 extension → family.exts 匹配。下一阶段切换 canonical
-// extension token 时发布页无需再改 inference。本批 submit 仍只发 family key。
+function collectAccept() {
+  return [...selectedExts].sort();
+}
+// family inference: token 是 MIME → family.mimes 匹配; token 是 ".pdf" 这类
+// extension → family.exts 匹配 (canonical 与 legacy 双兼容)。
 function famKeyFromAccept(tokens) {
   const fams = new Set();
   (tokens || []).forEach(tok => {
@@ -56,6 +82,35 @@ function famKeyFromAccept(tokens) {
     }
   });
   return [...fams];
+}
+// accept tokens → canonical ext 集合: ext token 直接保留; legacy MIME 经
+// manifest.mime_exts 精确展开 (整族 MIME 自然展开为整族 exts 全选)。
+function extsFromAccept(tokens) {
+  const mimeExts = FORMAT_MANIFEST.mime_exts || {};
+  const out = new Set();
+  (tokens || []).forEach(tok => {
+    const t = String(tok || "").toLowerCase();
+    if (!t) return;
+    if (t.startsWith(".")) out.add(t);
+    else (mimeExts[t] || []).forEach(e => out.add(e));
+  });
+  return [...out].sort();
+}
+// 族切换 / exact 勾选事件 (委托, init 绑一次)
+function bindFormatPickers() {
+  document.getElementById("famGrid").addEventListener("change", e => {
+    if (e.target.name !== "fam") return;
+    selectedFam = e.target.value;
+    // 切族 = 默认全选新族 (保持"选族=全族支持"的旧产品默认)
+    selectedExts = new Set(_famExts(selectedFam));
+    renderExtGrid();
+    updateFamSummary();
+  });
+  document.getElementById("extGrid").addEventListener("change", e => {
+    const v = e.target.value;
+    if (e.target.checked) selectedExts.add(v); else selectedExts.delete(v);
+    updateFamSummary();
+  });
 }
 
 // ── 多语言行 (label/desc 附加语言) ──
@@ -315,6 +370,12 @@ async function submit() {
     }
   }
   const isEditPatch = !!_editId;   // Web PATCH: 空 desc = 显式删除当前 locale
+  // 4C-2: 受控空态 (未知 legacy accept) / 取消到 0 个 exact format → 拦截,
+  // 禁止在未明确选择时保存覆盖原 contract。
+  if (!selectedFam || collectAccept().length === 0) {
+    showErrors({ accept: "bad_format_family" });
+    return;
+  }
   const body = {
     tool_id: document.getElementById("fToolId").value.trim(),
     label,
@@ -322,6 +383,8 @@ async function submit() {
     url: document.getElementById("fUrl").value.trim(),
     timeout_s: parseInt(document.getElementById("fTimeout").value, 10) || 60,
     format_families: collectFamilies(),
+    accept: collectAccept(),
+    multi: document.getElementById("fMulti").checked,
     auth_header: document.getElementById("fAuthHeader").value.trim() || undefined,
     auth_token: document.getElementById("fAuthToken").value.trim() || undefined,
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
@@ -348,7 +411,7 @@ async function submit() {
     bad_url: "url", https_required: "url", url_taken: "url",
     bad_tool_id: "tool_id", tool_id_taken: "tool_id",
     bad_label: "label", bad_desc: "desc",
-    bad_accept: "accept", bad_format_family: "accept",
+    bad_accept: "accept", bad_format_family: "accept", bad_multi: "multi",
     bad_output_filename: "output_filename", bad_output_content_type: "output_content_type",
     bad_cost: "cost", too_many_tools: "tool_id",
   };
@@ -370,7 +433,12 @@ function refill(t) {
   document.getElementById("fToolId").readOnly = true;      // id immutable
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
-  renderFamGrid(famKeyFromAccept(t.accept));
+  // 4C-2 编辑回填: legacy MIME 经 manifest.mime_exts 精确转 ext;
+  // 完全未知 accept → famKey 为空 → 受控空态 (不默认 image, 不覆盖原声明)。
+  const accExts = extsFromAccept(t.accept);
+  const fams = famKeyFromAccept(t.accept);
+  renderFamGrid(fams[0] || null, accExts, false);
+  document.getElementById("fMulti").checked = !!t.multi;
   // 多语言回填
   const rows = {};
   const eat = (d, key) => {
@@ -408,7 +476,8 @@ function initLangRowDel() {
 
 function init() {
   initLangRowDel();
-  renderFamGrid([]);
+  bindFormatPickers();
+  renderFamGrid(null, null, true);   // 新建态: 默认首族 + 全选
   document.getElementById("addParam").addEventListener("click", () => addParamRow());
   document.getElementById("pubSubmit").addEventListener("click", submit);
   document.getElementById("pubCancel").addEventListener("click",
