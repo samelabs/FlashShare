@@ -27,7 +27,7 @@
 
     const isMulti = !!(tool && tool.multi);
     // 4C-2: multi=false 显式多文件不静默截断/忽略 — typed 错误, 由 UI 呈现
-    // (dispatch 对 public_ids 多文件形态同样 typed err_too_many_files)。
+    // (dispatch 对 files[] 越界同样 typed err_too_many_files)。
     if (!isMulti && fileList.length > 1) {
       throw new Error(errText("err_too_many_files"));
     }
@@ -72,25 +72,23 @@
       return f;
     }
 
-    // Step 2: execute tool
+    // Step 2: execute tool — canonical ToolInvocation (Stage C):
+    // source.files[] 唯一 shape (single/multi 只是长度不同);
+    // params 只含 tool params; delivery 独立; client_ref=null= fresh。
     window.showToolProcessing &&
       window.showToolProcessing(window.resolveLabel ? window.resolveLabel(tool.label) || tool.id : tool.id);
+    const uploaded = up.files || [up.file];
+    const params = Object.assign({}, opts.params || {});
+    // legacy presets shim: 仅在真实有值时作为 tool param 传入;
+    // canonical params 工具的 default 由 dispatch 注入声明 default。
+    if (opts.preset) params.preset = opts.preset;
     const body = {
       tool_id: tool.id,
-      params: Object.assign({
-        preset: opts.preset || null,
-        expiry_days: opts.expiryDays || 1,
-        allowed_downloads: opts.allowedDownloads || 50,
-      }, opts.params || {}),
+      source: { files: uploaded.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
+      params: params,
+      delivery: { expiry_days: opts.expiryDays || 1, allowed_downloads: opts.allowedDownloads || 50 },
+      client_ref: null,
     };
-    if (isMulti) {
-      const fl = up.files || [up.file];
-      body.public_ids = fl.map(f => f.publicId);
-      body.source_tokens = fl.map(f => f.sourceToken || "");
-    } else {
-      body.public_id = up.file.publicId;
-      body.source_token = up.file.sourceToken || "";
-    }
     const res = await fetch("/api/tools/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

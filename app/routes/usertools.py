@@ -318,63 +318,6 @@ async def tool_call_log(tool_id: str, request: Request):
     return {"ok": True, "calls": calls}
 
 
-@router.post("/api/usertools/{tool_id}/selftest")
-async def selftest_tool(tool_id: str, request: Request):
-    """4A-fix4: compatibility thin adapter over the REAL tool consumption path.
-
-    UI 自测已收口到真实工具页 (/tool/{owner}/{tool_id} → canonical params →
-    runToolFlow → /api/tools/execute → dispatch → gate → real endpoint)。
-    本 endpoint 仅为兼容保留: 同一 dispatch/gate, 无免费测试侧路。
-
-    params:
-      - 缺失/null → {} (canonical validator 注入声明 default)
-      - dict      → 原样交给 dispatch, canonical validator 校验
-      - 非 dict   → 422 invalid_request (沿用现有错误协议, 不发明新协议)
-    client_ref:
-      - 显式传   → 原样使用, 支持幂等重试 (gate replay)
-      - 未传     → 留空 (gate 自动生成本次唯一 ref) — 每次 selftest 真实执行,
-                   不会因固定 ref 第二次起全部被 replay 吞掉
-    """
-    user, err = _require_auth(request)
-    if err:
-        return err
-    tool_key = f"{user['username']}/{tool_id}"
-    try:
-        raw = await request.json()
-    except Exception:
-        raw = {}
-    public_id = str(raw.get("public_id") or "").strip()
-    source_token = str(raw.get("source_token") or "").strip()
-    if not public_id:
-        return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
-    params = raw.get("params")
-    if params is None:
-        params = {}
-    elif not isinstance(params, dict):
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    import time as _t
-    t0 = _t.time()
-    # Same single gate as any call (批3a: 直调 execution 域 dispatch)
-    from execution.dispatch import dispatch_execute
-    body_raw = {
-        "tool_id": tool_key,
-        "params": params,
-        "public_id": public_id,
-        "source_token": source_token,
-    }
-    client_ref = raw.get("client_ref")
-    if client_ref:
-        body_raw["client_ref"] = str(client_ref)
-    payload, error_body, status = await dispatch_execute(request, user, body_raw)
-    ms = int((_t.time() - t0) * 1000)
-    body = payload if (payload is not None) else (error_body or {"ok": False, "error": "internal_error"})
-    if isinstance(body, dict):
-        body["ms"] = ms
-        if error_body is not None:
-            return JSONResponse(body, status_code=status)
-    return body
-
-
 @router.patch("/api/usertools/{tool_id}")
 async def update_user_tool(tool_id: str, request: Request):
     """Partial update: label/url/timeout/auth/accept/output identity/

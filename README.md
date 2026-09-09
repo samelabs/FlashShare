@@ -65,6 +65,29 @@ FLASHSHARE_BASE_URL=https://your-domain
 
 令牌在站内「API 令牌」页创建；`tools/call` 传 `client_ref` 重试返回原结果不重复扣费；失败自动退款。
 
+`POST /api/v1/execute` 请求体是 canonical ToolInvocation（`client_ref` 为
+v1 必填——agent/程序重试必须可幂等）：
+
+```json
+{
+  "tool_id": "compress",
+  "source": {
+    "files": [
+      { "public_id": "fXXXXXXXXXXXX", "source_token": "st_..." }
+    ]
+  },
+  "params": { "preset": "2mb" },
+  "delivery": { "expiry_days": 7, "allowed_downloads": 200 },
+  "client_ref": "my-job-123"
+}
+```
+
+顶层只允许这五个键；旧扁平字段（`public_id`/`public_ids`/
+`source_token`/`source_tokens`、`params.expiry_days`/
+`params.allowed_downloads`）一律 422 `invalid_request`。
+`delivery.expiry_days ∈ {1,3,7}`、`delivery.allowed_downloads ∈
+{1,10,50,100,200}`，无字符串强转。
+
 ## 用户工具声明协议
 
 用户发布的工具通过一份 JSON manifest 声明。本节描述当前已落地的声明契约：结构、多语言文本、Web 编辑与 API 写入语义、参数校验与错误码。

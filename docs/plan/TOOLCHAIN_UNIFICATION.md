@@ -86,8 +86,8 @@ operator 入口都从它派生，禁止第二份手写格式表。
 |---|---|---|---|
 | **legacy MIME accept**（DB 存量行 / runtime 声明含 MIME） | 历史工具与用户存量数据以 MIME 存储 | accept 一律 canonical extension token；读时由 `extensions_for_accept` 展开、projection 时 canonicalize | 存量行全部重写为 ext，且 `extensions_for_mimes` 无消费者后删除 MIME 展开分支 |
 | **legacy presets**（presets_json 与 params_json 双轨） | 一方工具旧预设模型 | canonical params 声明；projection 有 params 时 presets=None | 一方 registry 全部迁移到 params 声明 |
-| **lifecycle 暂混 params 外层旧 envelope**（expiry_days / allowed_downloads 随请求 params 传入） | Web 请求 shape 历史形态 | ToolInvocation 正式分层：lifecycle 独立于 canonical tool params（阶段 C delivery envelope） | delivery 正式协议落地，Web/API/MCP 请求 shape 切换 |
-| **compatibility selftest endpoint**（`/api/usertools/{id}/selftest`） | My Tools 旧自测链的薄适配 | 作者从真实工具页 `/tool/{owner}/{tool_id}` 走 runToolFlow 完整消费链 | 确认无外部调用方后删除该 endpoint |
+| ~~lifecycle 混 params 外层旧 envelope~~ **已删除（阶段 C 完成）** | — | ToolInvocation delivery envelope 独立字段 | Web/API/MCP 已全部切换 canonical invocation |
+| ~~compatibility selftest endpoint~~ **已删除（阶段 C 完成）** | — | 作者从真实工具页 `/tool/{owner}/{tool_id}` 走 runToolFlow 完整消费链 | endpoint 已删除；self_test_required 发布门与 UI 自测概念保留 |
 | ~~first-party `register()` 仍接受 MIME creation input~~ **已删除（阶段 B 完成）** | — | register 直接声明 canonical ext；seed 无需再 canonicalize | 已随阶段 B 迁移全部一方源码并删除 shim |
 
 每个 shim 的容忍策略：**读兼容、写 canonical**。新写入（用户发布、operator
@@ -110,16 +110,25 @@ operator 入口都从它派生，禁止第二份手写格式表。
   输出、label 必填/desc 可选；返回值即**可持久化 canonical declaration**，
   无来源政策）与 `validate_tool_patch()`（update patch 字段级同规则，
   不静默强转）→ `create_tool / update_tool / upsert_seed_tool`（DB 列映射
-  唯一一份 `_serialize_row`；支持 con= 参与 source adapter 事务）→
+  唯一一份 `_serialize_row`；当前仅 `create_tool(con=...)` 支持加入
+  source adapter 事务，`update_tool`/`upsert_seed_tool` 自持事务）→
   `repo.catalog` 通用 row writer。HTTP binding 组装与 auth seal 唯一入口
   `build_http_binding()`（`_endpoint_decl` 与 operator 旧 endpoint 组装段
   均已删除，全仓 supply 路径无第二处 seal）。
   来源政策（user caps/SSRF/self-test gate、operator public/trusted、
   first-party seed 语义、pricing）保持在各 source adapter；user 并发 cap
   由 source adapter 对 owner 行 FOR UPDATE 后同事务 count+insert 保证。
-- **阶段 C — ToolInvocation source/params/delivery/client_ref 分层**
-  正式 invocation envelope；lifecycle/delivery 从 params 外层彻底分离；
-  移除 lifecycle 旧 envelope shim。
+- **阶段 C — ToolInvocation source/params/delivery/client_ref 分层（已完成）**
+  唯一 canonical ToolInvocation（`execution/invocation.py`）：
+  `tool_id` / `source.files[]`（1..20，每项 `{public_id, source_token}`）/
+  `params`（只含 tool params）/ `delivery`（`{expiry_days, allowed_downloads}`，
+  值域单源 `governance.delivery`，严格类型无强转）/ `client_ref`
+  （null = fresh；非空 = user-scoped 幂等键，gate 语义不变）。
+  Web（app.js + process-flow runToolFlow）/ REST v1 / MCP 构造完全相同的
+  canonical invocation；dispatch 只认这一种 schema，旧 flat shape 一律
+  422 invalid_request，无 compatibility adapter。delivery/client_ref 等
+  平台字段不泄漏给 handler 与 remote endpoint。lifecycle 旧 envelope 与
+  selftest compatibility endpoint 均已删除。
 
 ---
 

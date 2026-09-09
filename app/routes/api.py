@@ -34,7 +34,6 @@ from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
 from security import sniff_allowed, sign_source_token, verify_source_token
 from storage import read as storage_read, write as storage_write
 from tools import ToolError
-from governance.catalog import resolve as resolve_tool, get_default_preset
 from execution.source import resolve_upload
 from identity.auth import public_user
 from utils import now, sanitize_filename, generate_public_id, public_file_url
@@ -62,17 +61,17 @@ from execution.dispatch import client_ip as _client_ip  # 单点 (治理3)
 
 @router.post("/tools/execute")
 async def execute_tool(request: Request):
-    """执行入口 (批3a): 解析 → execution.dispatch 统一处理。
+    """执行入口 (Stage C): canonical ToolInvocation JSON → dispatch。
 
     计量/幂等/退费/编排全部在 execution 域; 本函数只管 HTTP 形状。
-    v1/MCP/selftest 经 request.state._v1_raw 借道时同样收口到 dispatch
-    (raw 由调用方注入)。
+    请求体必须是 canonical invocation (source.files[]), 旧 flat shape
+    由 dispatch parser 统一 422。
     """
     user, err = _require_auth(request)
     if err:
         return err
     try:
-        raw = getattr(request.state, "_v1_raw", None) or await request.json()
+        raw = await request.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from execution.dispatch import dispatch_execute
@@ -172,12 +171,11 @@ async def create_upload(request: Request):
 
     ip = _client_ip(request)
 
-    # Form fields (shared across all files)
-    from execution.orchestrator import validate_lifecycle
-    expiry_days, allowed_downloads = validate_lifecycle({
-        "expiry_days": form.get("expiryDays", "1"),
-        "allowed_downloads": form.get("allowedDownloads", "50"),
-    })
+    # Form fields (shared across all files) — share 表单薄壳 coerce
+    # (Stage C: 值域单源 governance.delivery; 普通分享行为不变)
+    from governance.delivery import coerce_share_delivery
+    expiry_days, allowed_downloads = coerce_share_delivery(
+        form.get("expiryDays", "1"), form.get("allowedDownloads", "50"))
     has_tool = form.get("tool", "").strip()
 
     # Pre-check: read all files, validate size, check total quota upfront

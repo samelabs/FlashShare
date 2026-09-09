@@ -26,21 +26,9 @@ logger = logging.getLogger("flashshare")
 MAX_MULTI_BYTES = 100 * 1024 * 1024
 
 
-def validate_lifecycle(params) -> tuple:
-    """expiry_days(1|3|7) + allowed_downloads(1|10|50|100|200), 非法回落默认。"""
-    try:
-        expiry_days = int(params.get("expiry_days", 1))
-    except (ValueError, TypeError):
-        expiry_days = 1
-    if expiry_days not in (1, 3, 7):
-        expiry_days = 1
-    try:
-        allowed_downloads = int(params.get("allowed_downloads", 50))
-    except (ValueError, TypeError):
-        allowed_downloads = 50
-    if allowed_downloads not in (1, 10, 50, 100, 200):
-        allowed_downloads = 50
-    return expiry_days, allowed_downloads
+# Stage C: delivery 合法性在 invocation boundary (governance.delivery
+# validate_delivery) 已严格保证; orchestrator 直读 canonical delivery,
+# 不再从 params 取 lifecycle / silent fallback / 猜默认值。
 
 
 async def _run_handler(pool, process_tool, tool_id, single, multi_sources, params):
@@ -54,17 +42,17 @@ async def _run_handler(pool, process_tool, tool_id, single, multi_sources, param
 
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,
-                        lifecycle=None):
+                        delivery):
     """local 单/多文件编排。uploads 非空已解析。
 
-    lifecycle (4A-fix1): dispatch 在 params 清洗前捕获的平台生命周期字段
-    (expiry_days/allowed_downloads)。与 canonical tool params 分开传递 —
-    tool params 可能被 enforce_params_decl 剥离声明外键, 不能再作为
-    lifecycle 的来源。None/缺键 → validate_lifecycle 默认 1 / 50。
+    delivery (Stage C): canonical invocation delivery — 在 invocation
+    boundary 已严格合法 (expiry_days/allowed_downloads), 直接读取。
+    handler 只收到 params, 永远看不到 delivery。
     """
     multi = bool(tool.get("multi")) and len(uploads) > 1 or (
         bool(tool.get("multi")) and len(uploads) >= 1)
-    expiry_days, allowed_downloads = validate_lifecycle(lifecycle or {})
+    expiry_days = delivery["expiry_days"]
+    allowed_downloads = delivery["allowed_downloads"]
 
     sources = []
     gokapi_ids = []
@@ -110,11 +98,12 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     return record
 
 
-async def execute_remote(request_ctx, tool, uploads, params, user, lifecycle=None):
+async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
     """remote (http) 编排: 拉 URL 签名 → drive_http → 零信任落地。
 
-    lifecycle (4A-fix1): 与 execute_local 同协议 — dispatch 在 params
-    清洗前捕获, 独立于 canonical tool params 传递。None/缺键 → 默认 1 / 50。
+    delivery (Stage C): canonical invocation delivery, boundary 已严格
+    合法。drive_http 只收到 params — delivery/client_ref 等平台字段
+    不泄漏给 remote endpoint。
     """
     import remote as _remote
     from security import sign_fetch_token
@@ -158,7 +147,8 @@ async def execute_remote(request_ctx, tool, uploads, params, user, lifecycle=Non
 
     output_bytes = out["bytes"]
     output_size = len(output_bytes)
-    expiry_days, allowed_downloads = validate_lifecycle(lifecycle or {})
+    expiry_days = delivery["expiry_days"]
+    allowed_downloads = delivery["allowed_downloads"]
     gokapi_result = storage_write(
         io.BytesIO(output_bytes), out["filename"], out["content_type"],
         expiry_days, allowed_downloads, output_size)

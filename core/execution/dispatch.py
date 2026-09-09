@@ -1,8 +1,26 @@
-"""execution/dispatch — 统一执行请求入口 (批3a).
+"""execution/dispatch — 统一执行请求入口 (Stage C: canonical ToolInvocation).
 
-api.py / apiv1 / mcp / selftest 四个消费面共用的 execute 请求处理:
-解析请求对象 → resolve → gate.run(orchestrate)。消灭 request.state._v1_raw
-借道与 routes 互 import (A5)。
+Web(api.py) / REST v1 / MCP 三面构造完全相同的 canonical ToolInvocation,
+dispatch 只认识这一种 schema:
+
+    parse_tool_invocation(raw)
+        ↓
+    resolve tool
+        ↓
+    enforce source count vs tool.multi
+        ↓
+    resolve source.files
+        ↓
+    enforce accept
+        ↓
+    enforce params
+        ↓
+    gate (client_ref 幂等/扣费)
+        ↓
+    orchestrator (delivery)
+
+旧协议 (flat source 字段 / delivery 混入 params) 已删除 —
+无 compatibility adapter。
 
 调用协议:
     payload = await dispatch_execute(request, user, raw)
@@ -16,36 +34,8 @@ from governance.catalog import resolve as resolve_tool, get_default_preset
 
 from . import ExecutionError
 from .gate import run as gate_run
+from .invocation import parse_tool_invocation, InvocationError
 from .source import resolve_upload
-
-
-class _RawRequest:
-    """统一请求形状 (dict → 属性), 复用 app.models 的字段约定。
-
-    params 规范化 (4A-fix2): 缺失/None/{} 统一为独立 dict, 非 dict
-    ([]/"abc"/123) → .params = None, 由 dispatch 以 422 invalid_request
-    拒绝 — 避免 .clear()/.update() 在非 dict 上 500。调用方必须只从
-    req.params 读写 params, 禁止清洗后再次从 raw 重建本对象 (空 dict
-    falsy, `raw.get("params") or {}` 两次调用会得到两个不同 dict)。
-    """
-
-    def __init__(self, raw: dict):
-        self.tool_id = str(raw.get("tool_id") or "")
-        p = raw.get("params")
-        if p is None:
-            self.params = {}
-        elif isinstance(p, dict):
-            self.params = p
-        else:
-            self.params = None
-        self.public_id = str(raw.get("public_id") or "")
-        # 4C-2: 不静默截断 [:20] — 多文件上限是 typed 契约 (multi=true 1..20,
-        # >20 / multi=false 显式多文件 → err_too_many_files), 截断会让调用方
-        # 永远收不到越界错误。
-        self.public_ids = [str(x) for x in (raw.get("public_ids") or [])]
-        self.source_token = str(raw.get("source_token") or "")
-        self.source_tokens = [str(x) for x in (raw.get("source_tokens") or [])]
-        self.client_ref = str(raw.get("client_ref") or "")
 
 
 def client_ip(request) -> str:
@@ -55,16 +45,14 @@ def client_ip(request) -> str:
 
 async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, pool=None):
     """返回 (payload_dict | None, error_body | None, status | None)。"""
-    # 4A-fix2: 先构造规范化 req — tool_id/params/source ids/client_ref 全部
-    # 从同一个 req 读取, params 是唯一事实对象。此前 `raw.get("params") or {}`
-    # 出现两次: 空 dict 为 falsy, 两次各自创建脱离 raw 的新 dict — canonical
-    # default 写入第一个 dict, gate 却从重建后的 req 读第二个空 dict, 用户
-    # remote tool 的 default 真实丢失 (compress 靠 handler fallback 掩盖)。
-    req = _RawRequest(raw)
-    if req.params is None:  # 非 dict params — 受控 422, 不 500
+    # Stage C: 单点 parser — root 非 dict / 旧 shape / 未知字段 / 非法
+    # delivery 全部在此受控 422, 不 500。
+    try:
+        inv = parse_tool_invocation(raw)
+    except InvocationError:
         return None, {"ok": False, "error": "invalid_request"}, 422
 
-    tool, terr = resolve_tool(req.tool_id, user["id"])
+    tool, terr = resolve_tool(inv.tool_id, user["id"])
     if terr:
         if terr == "disabled":
             return None, {"ok": False, "error": "tool_disabled"}, 403
@@ -72,34 +60,25 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     tool["id"] = tool["tool_key"]
     tool["type"] = tool["tool_type"]
 
-    params = req.params
+    params = inv.params
 
     # 批 4A: canonical params 是唯一参数事实源 — 有声明时 default 由
     # enforce_params_decl 注入, 不再走 presets 通道 (get_default_preset 仅
-    # 为存量无声明工具保留 compatibility shim)。
+    # 为存量无声明工具保留 compatibility shim)。delivery 属 invocation
+    # 边界字段, 永不出现在 params。
     import json as _json
     try:
         decl = _json.loads(tool.get("params_json") or "[]")
     except (TypeError, ValueError):
         decl = []
     if not decl and "preset" not in params:
-        default = get_default_preset(req.tool_id)
+        default = get_default_preset(inv.tool_id)
         if default:
             params["preset"] = default
 
-    # 4A-fix1: 平台生命周期字段 (expiry_days/allowed_downloads) 是请求 shape
-    # 的一部分 (Web/API/MCP 仍放在 params 中), 不属于 canonical tool params
-    # 声明 — enforce_params_decl 会剥离声明外键。必须在清洗前捕获, 与 tool
-    # params 分开传给 orchestrator, 否则 canonical 工具的产物保存会回落到
-    # 默认 1 天 / 50 次。校验仍由 orchestrator.validate_lifecycle 执行。
-    lifecycle = {k: params.get(k) for k in ("expiry_days", "allowed_downloads")
-                 if k in params}
-
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
-    # 无声明的工具 params 保持自由直通 (兼容现状)。preset/expiry 等系统键
-    # 属于 presets/生命周期机制, 不受声明管辖 (lifecycle 已在清洗前捕获)。
-    # 4A-fix2: enforce 结果直接写入 req.params (同一对象), gate 从 req.params
-    # 读取 — 清洗前不再有第二个 params 对象。
+    # 无声明的工具 params 保持自由直传 (兼容现状)。preset 属 legacy
+    # presets 机制键, 不受声明管辖。
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:
@@ -111,33 +90,17 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
 
     request_ctx = {"ip": client_ip(request)}
 
-    async def orchestrate(p):
+    async def orchestrate():
+        # ── source resolve: 只认 source.files[] ──
+        # multi=false: len(files) 必须 == 1; multi=true: parser 已保证 1..20。
         uploads = []
-        # 4C-2 multi 真实边界: multi=true 允许 1..20; >20 typed err。
-        # multi=false 时调用方若显式送多文件形态, 不静默忽略/截断,
-        # 同样 typed err_too_many_files。multi=true 仍允许单个 public_id。
         multi = bool(tool.get("multi"))
-        ids = req.public_ids
-        if multi and ids:
-            if len(ids) > 20:
-                raise ExecutionError("err_too_many_files")
-            for i, pid in enumerate(ids):
-                if not PUBLIC_ID_RE.match(pid):
-                    raise ExecutionError("invalid_id")
-                token = req.source_tokens[i] if i < len(req.source_tokens) else ""
-                upload, rerr = await resolve_upload(pid, user, token)
-                if rerr or not upload:
-                    raise ExecutionError(rerr or "not_found")
-                uploads.append(upload)
-        else:
-            if not multi and len(ids) > 1:
-                raise ExecutionError("err_too_many_files")
-            public_id = req.public_id or (ids[0] if ids else "")
-            if not public_id:
+        if not multi and len(inv.files) > 1:
+            raise ExecutionError("err_too_many_files")
+        for f in inv.files:
+            if not PUBLIC_ID_RE.match(f.public_id):
                 raise ExecutionError("invalid_id")
-            if not PUBLIC_ID_RE.match(public_id):
-                raise ExecutionError("invalid_id")
-            upload, rerr = await resolve_upload(public_id, user, req.source_token)
+            upload, rerr = await resolve_upload(f.public_id, user, f.source_token)
             if rerr or not upload:
                 raise ExecutionError(rerr or "not_found")
             uploads.append(upload)
@@ -145,20 +108,20 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         # ── 格式边界闸门 (声明即契约, 执行即强制) ──
         # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
         # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
-        # 单点收口: web/token/MCP/selftest 四面共用本函数, 无旁路。
+        # 单点收口: web/token/MCP 三面共用本函数, 无旁路。
         # 4C-2: canonical AcceptToken — declared tokens (canonical ext 或
         # legacy MIME) → extensions_for_accept 精确扩展名集合, 上传 ext 必须
-        # ∈ 该集合。.dxf 声明不会因 application/octet-stream 同族放行 .fbx。
-        declared = tool.get("accept")
-        if declared is None and tool.get("accept_json"):
+        # ∈ 该集合。
+        declared_accept = tool.get("accept")
+        if declared_accept is None and tool.get("accept_json"):
             try:
-                declared = json.loads(tool["accept_json"])
+                declared_accept = json.loads(tool["accept_json"])
             except (TypeError, ValueError):
-                declared = None
-        if declared:
+                declared_accept = None
+        if declared_accept:
             from governance.formats import extensions_for_accept
             try:
-                allowed_exts = extensions_for_accept(declared)
+                allowed_exts = extensions_for_accept(declared_accept)
             except (KeyError, TypeError):
                 # 声明含词表外 token (存量脏数据/裸串): 保持线上容错,
                 # 整体不拦截, 不产生 500。
@@ -174,17 +137,18 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         from tools import ToolError as _TE
         try:
             if tool.get("execution") in ("http", "mcp"):
-                return await execute_remote(request_ctx, tool, uploads, p, user,
-                                            lifecycle)
+                return await execute_remote(request_ctx, tool, uploads,
+                                            params, user, inv.delivery)
             # local: worker pool 由调用方注入; 未注入 → 执行域自持池
             if process_tool is None or pool is None:
                 from .pool import get_pool, default_process_tool
-                return await execute_local(request_ctx, tool, uploads, p, user,
+                return await execute_local(request_ctx, tool, uploads,
+                                           params, user,
                                            default_process_tool(), get_pool(),
-                                           lifecycle)
-            return await execute_local(request_ctx, tool, uploads, p, user,
-                                       process_tool, pool, lifecycle)
+                                           inv.delivery)
+            return await execute_local(request_ctx, tool, uploads, params, user,
+                                       process_tool, pool, inv.delivery)
         except _TE as exc:
             raise ExecutionError(str(exc)) from exc
 
-    return await gate_run(user, tool, req, orchestrate)
+    return await gate_run(user, tool, inv, orchestrate)

@@ -113,8 +113,13 @@ async def v1_upload(request: Request):
 
 @router.post("/execute")
 async def v1_execute(request: Request):
-    """Run a tool. Identical metering gate to the web path; client_ref is
-    REQUIRED here (agent retries must not double-charge)."""
+    """Run a tool (Stage C: request body IS the canonical ToolInvocation).
+
+    v1 source policy: client_ref is REQUIRED here (agent/program retries
+    must be idempotent). The canonical parser itself allows null (web
+    fresh invocation is legal) — this route only adds bearer + ref
+    policy; source/delivery/params validation stays in dispatch.
+    """
     user, err = _require_bearer(request)
     if err:
         return err
@@ -122,13 +127,13 @@ async def v1_execute(request: Request):
         raw = await request.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    client_ref = str(raw.get("client_ref") or "").strip()
+    client_ref = raw.get("client_ref") if isinstance(raw, dict) else None
+    client_ref = str(client_ref).strip() if isinstance(client_ref, str) else ""
     if not client_ref or len(client_ref) > 128:
         return JSONResponse({"ok": False, "error": "client_ref_required"}, 422)
 
-    # 统一执行入口 (批3a): 直接走 execution 域 dispatch, 不再借道路由层。
+    # 统一执行入口: canonical invocation 直传 dispatch。
     from execution.dispatch import dispatch_execute
-    raw.setdefault("client_ref", client_ref)
     payload, error_body, status = await dispatch_execute(request, user, raw)
     if error_body is not None:
         return JSONResponse(error_body, status)

@@ -156,38 +156,28 @@ def _tool_specs(user: dict) -> list:
     # list_catalog: single catalog source (data-state registry + pricing
     # overlay inside — disabled hidden, cost included), identical to web
     # home and /api/v1. Viewer-scoped: own private/unlisted tools included.
+    # Stage C: source input 只有一套 shape — files[{filename,b64}];
+    # multi 只影响 maxItems (UX/agent hint), 执行约束仍在 dispatch。
     specs = []
     for t in list_catalog(user["id"]):
         multi = bool(t.get("multi"))
-        if multi:
-            props = {
-                "files": {
-                    "type": "array",
-                    "description": "Source files (base64 + original filename)",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {"type": "string"},
-                            "b64": {"type": "string"},
-                        },
-                        "required": ["filename", "b64"],
+        props = {
+            "files": {
+                "type": "array",
+                "description": "Source files (base64 + original filename)",
+                "minItems": 1,
+                "maxItems": 20 if multi else 1,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {"type": "string"},
+                        "b64": {"type": "string"},
                     },
+                    "required": ["filename", "b64"],
                 },
-            }
-            required = ["files"]
-        else:
-            mime_list = ", ".join(str(x) for x in (t.get("accept") or [])) or "any"
-            props = {
-                "file_b64": {
-                    "type": "string",
-                    "description": f"Source file content, base64. Accepted: {mime_list}",
-                },
-                "filename": {
-                    "type": "string",
-                    "description": "Original filename with extension, e.g. report.docx",
-                },
-            }
-            required = ["file_b64", "filename"]
+            },
+        }
+        required = ["files"]
         # params schema: 有声明 → 具名 properties (agent 检索即知怎么调);
         # 无声明 → 保持裸 object 兼容 (tool modes spec v3 M3)
         decl = t.get("params") or []
@@ -202,6 +192,14 @@ def _tool_specs(user: dict) -> list:
             }
         else:
             props["params"] = {"type": "object", "description": "Tool-specific parameters"}
+        props["delivery"] = {
+            "type": "object",
+            "description": "Result delivery policy (optional; defaults 1 day / 50 downloads)",
+            "properties": {
+                "expiry_days": {"type": "integer", "enum": [1, 3, 7]},
+                "allowed_downloads": {"type": "integer", "enum": [1, 10, 50, 100, 200]},
+            },
+        }
         props["client_ref"] = {
             "type": "string",
             "description": "Idempotency ref: reuse to retry after errors without double charge",
@@ -258,58 +256,61 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # (resolve 统一在 dispatch 内做 — 治理6 单点; 此处不预 resolve)
     tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
 
+    # Stage C: MCP 构造 canonical ToolInvocation (与 Web/v1 完全同 shape)。
+    # client_ref: 调用方传 → replay 语义; 未传 → adapter 生成一次 fresh ref。
+    client_ref = str(args.get("client_ref") or "").strip() or \
+                 f"mcp:{_secrets.token_hex(16)}"
+    # delivery: adapter 层允许缺失 → 平台默认 (constants 单源); 构造给
+    # dispatch 的 invocation 始终带完整 delivery。
+    from governance.delivery import (validate_delivery, DEFAULT_EXPIRY_DAYS,
+                                     DEFAULT_ALLOWED_DOWNLOADS)
+    d = args.get("delivery")
+    if isinstance(d, dict) and d:
+        try:
+            delivery = validate_delivery(
+                {**{"expiry_days": d.get("expiry_days", DEFAULT_EXPIRY_DAYS),
+                     "allowed_downloads": d.get("allowed_downloads",
+                                                DEFAULT_ALLOWED_DOWNLOADS)}})
+        except ValueError:
+            return _rpc_err(mid, -32602, "invalid delivery")
+    else:
+        delivery = {"expiry_days": DEFAULT_EXPIRY_DAYS,
+                    "allowed_downloads": DEFAULT_ALLOWED_DOWNLOADS}
+
+    # Source: 统一 files[{filename,b64}] — decode + upload each →
+    # source.files[{public_id, source_token}]。(multi 上限是 schema hint,
+    # 执行约束由 dispatch + ToolDeclaration 决定。)
+    try:
+        files_arg = args.get("files")
+        if not isinstance(files_arg, list) or not files_arg:
+            raise ValueError("files[] required")
+        uploads = []
+        for f in files_arg:
+            if not isinstance(f, dict):
+                raise ValueError("files[] items must be objects")
+            uploads.append(_decode_file(f.get("b64"), f.get("filename")))
+    except (ValueError, binascii.Error) as exc:
+        return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
+    ip = request.headers.get("X-Real-IP",
+                             request.client.host if request.client else "").strip()
+    source_files = []
+    try:
+        for fn, ctype, body in uploads:
+            info = _upload_pipeline(user, fn, ctype, body, ip)
+            source_files.append({"public_id": info["publicId"],
+                                 "source_token": info.get("sourceToken", "")})
+    except Exception as exc:
+        return _rpc_err(mid, -32602, f"upload rejected: {exc}")
+
     raw = {
         "tool_id": tool_key,
+        "source": {"files": source_files},
         "params": args.get("params") or {},
-        "client_ref": str(args.get("client_ref") or "").strip() or
-                      f"mcp:{_secrets.token_hex(16)}",
+        "delivery": delivery,
+        "client_ref": client_ref,
     }
 
-    # Source: fresh files (b64) or a prior upload handle (public_id)
-    # multi 判定走目录行 (轻读, 不做执行 resolve — 那是 dispatch 的事)
-    from governance.catalog import resolve as _resolve_for_multi
-    _tool_row, _terr = _resolve_for_multi(tool_key, user["id"])
-    if _terr or not _tool_row:
-        return _rpc_err(mid, -32602, f"unknown tool: {tool_id}")
-    if args.get("public_id"):
-        raw["public_id"] = str(args["public_id"])
-        raw["source_token"] = str(args.get("source_token") or "")
-        if args.get("public_ids"):
-            # 4C-2: 不静默截断 [:20] — 越界由 dispatch 统一 typed
-            # err_too_many_files (multi=true 1..20)。
-            raw["public_ids"] = [str(x) for x in args["public_ids"]]
-            raw["source_tokens"] = [str(x) for x in (args.get("source_tokens") or [])]
-    else:
-        try:
-            uploads = []
-            if _tool_row.get("multi") and args.get("files"):
-                for f in args["files"]:
-                    uploads.append(_decode_file(f.get("b64"), f.get("filename")))
-            elif args.get("file_b64"):
-                uploads.append(_decode_file(args["file_b64"], args.get("filename")))
-            else:
-                raise ValueError("no source file provided")
-        except (ValueError, binascii.Error) as exc:
-            return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
-        ip = request.headers.get("X-Real-IP",
-                                 request.client.host if request.client else "").strip()
-        try:
-            if len(uploads) == 1:
-                fn, ctype, body = uploads[0]
-                info = _upload_pipeline(user, fn, ctype, body, ip)
-                raw["public_id"] = info["publicId"]
-                raw["source_token"] = info["sourceToken"]
-            else:
-                raw["public_ids"] = []
-                raw["source_tokens"] = []
-                for fn, ctype, body in uploads:
-                    info = _upload_pipeline(user, fn, ctype, body, ip)
-                    raw["public_ids"].append(info["publicId"])
-                    raw["source_tokens"].append(info["sourceToken"])
-        except Exception as exc:
-            return _rpc_err(mid, -32602, f"upload rejected: {exc}")
-
-    # Funnel through the ONE metering gate (批3a: 直调 execution 域)
+    # Funnel through the ONE metering gate (canonical invocation → dispatch)
     from execution.dispatch import dispatch_execute
     from fastapi.responses import JSONResponse as _JR
     payload, error_body, status = await dispatch_execute(request, user, raw)
@@ -337,7 +338,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
 
 def _decode_file(b64, filename) -> tuple:
     if not b64 or not filename:
-        raise ValueError("file_b64 and filename are required")
+        raise ValueError("files[] items need b64 and filename")
     if len(b64) > MAX_B64_BYTES:
         raise ValueError("file exceeds size limit")
     body = base64.b64decode(b64, validate=True)

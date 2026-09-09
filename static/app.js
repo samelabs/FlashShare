@@ -353,26 +353,24 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
       showToolProcessing(resolveLabel(activeTool.label) || activeTool.id);
       const expirySelect = form.querySelector("[name=\"expiryDays\"]");
       const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
+      // Canonical ToolInvocation (Stage C): source.files[] 唯一 shape;
+      // params 只含 tool params (legacy preset 仅真实有值时带上);
+      // delivery 独立字段; client_ref null = fresh invocation。
+      const fileList = data.files || [data.file];
+      const toolParams = Object.assign({}, activeToolParams || {});
+      if (activePreset) toolParams.preset = activePreset;
       const toolBody = {
         tool_id: activeTool.id,
-        params: Object.assign({
-          preset: activePreset,
+        source: { files: fileList.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
+        params: toolParams,
+        delivery: {
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
-        }, activeToolParams || {}),
+        },
+        client_ref: null,
       };
-      if (isMulti) {
-        var fileList = data.files || [data.file];
-        toolBody.public_ids = fileList.map(f => f.publicId);
-        toolBody.source_tokens = fileList.map(f => f.sourceToken || "");
-      } else {
-        toolBody.public_id = data.file.publicId;
-        toolBody.source_token = data.file.sourceToken || "";
-      }
       // Keep source reference for retry (originals survive until tool succeeds)
-      lastToolSource = isMulti
-        ? { publicIds: toolBody.public_ids, sourceTokens: toolBody.source_tokens }
-        : { publicId: toolBody.public_id, sourceToken: toolBody.source_token };
+      lastToolSource = fileList.map(f => ({ publicId: f.publicId, sourceToken: f.sourceToken || "" }));
       const toolRes = await fetch("/api/tools/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -950,15 +948,13 @@ async function retryTool() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tool_id: activeTool.id,
-        public_id: lastToolSource.publicId || "",
-        public_ids: lastToolSource.publicIds || [],
-        source_token: lastToolSource.sourceToken || "",
-        source_tokens: lastToolSource.sourceTokens || [],
-        params: Object.assign({
-          preset: activePreset,
+        source: { files: lastToolSource.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
+        params: Object.assign({}, activeToolParams || {}, activePreset ? { preset: activePreset } : {}),
+        delivery: {
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
-        }, activeToolParams || {}),
+        },
+        client_ref: null,
       }),
     });
     const toolData = await toolRes.json();

@@ -4,7 +4,7 @@
 / 失败(失败记账+退费)。🔴1 修复: 编排回调抛 ExecutionError 时统一走 fail 路径
 (计费后的任何失败都不再裸 return)。
 
-调用面: web(api.py) / v1(apiv1) / mcp / selftest 全部走这里。
+调用面: web(api.py) / v1(apiv1) / mcp 全部走这里。
 """
 
 import json
@@ -96,26 +96,30 @@ def _refund(user, client_ref, tool_id, cost, reason) -> None:
         logger.exception("refund failed for call %s", client_ref)
 
 
-async def run(user: dict, tool: dict, req, orchestrate):
+async def run(user: dict, tool: dict, invocation, orchestrate):
     """闸门主体。
 
     Args:
       user: 认证用户 dict
       tool: resolve() 归一后的工具行 (id/type/owner_id/execution/...)
-      req: 请求对象 (tool_id/client_ref/public_id[s]/source_token[s]/params)
-      orchestrate: async callable(upload_list, params) -> result dict;
-                   失败抛 ExecutionError(code) — 闸门负责记账+退费。
+      invocation: canonical ToolInvocation (execution.invocation);
+                  gate 只读 tool_id/params/client_ref
+      orchestrate: async callable() -> result dict (closure 直接使用
+                   canonical invocation.params); 失败抛
+                   ExecutionError(code) — 闸门负责记账+退费。
     Returns: (payload_dict | None, error_json | None, status_code)
     """
     from . import ExecutionError
 
-    tool_id = req.tool_id
-    params = req.params
+    tool_id = invocation.tool_id
+    params = invocation.params
 
     price = get_pricing(tool_id)
     if not price["enabled"]:
         return None, {"ok": False, "error": "tool_disabled"}, 403
-    client_ref = req.client_ref or secrets.token_hex(16)
+    # client_ref: null/空 = fresh (每次新 ref → fresh execution);
+    # 非空 = user-scoped idempotency/replay key (语义不变)。
+    client_ref = invocation.client_ref or secrets.token_hex(16)
 
     # 防滥用: 同 user 高频提交 (含重试) 削峰 — 记账在锁与幂等后,
     # 这里只挡洪泛, 不影响正常调用。
@@ -149,7 +153,7 @@ async def run(user: dict, tool: dict, req, orchestrate):
                      "balance": exc.balance, "cost": exc.cost}, 402)
 
     try:
-        result = await orchestrate(params)
+        result = await orchestrate()
     except ExecutionError as exc:
         _record_failure(user, tool, client_ref, cost, started, exc.code)
         _refund(user, client_ref, tool_id, cost, exc.code)
