@@ -189,8 +189,15 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     user = request.state.user
     tool_key = f"{owner}/{tool_id}" if owner else tool_id
     tool, err = resolve(tool_key, user["id"] if user else None)
-    if err or tool.get("visibility") != "public":
+    if err:
         return None
+    # 4A-fix4: public-page exposure — public 所有人可进入; private/unlisted
+    # 仅 owner 本人登录可进入。resolve() 已负责 private 的 owner 权限
+    # (非 owner 在此前已 404), 页面层不重建权限模型, 只补 unlisted 的
+    # owner-only exposure; 非 owner 一律 404, 不泄露存在性。
+    if tool.get("visibility") != "public":
+        if not user or tool.get("owner_id") != user["id"]:
+            return None
     ctx = _ctx_base(request)
     import json as _json
     try:

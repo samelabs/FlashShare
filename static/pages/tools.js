@@ -4,34 +4,11 @@
 
 const _toolList = document.getElementById('toolList');
 
-// ── selftest (upload sample → run selftest endpoint) ──
-function _selfTest(btn, t) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.addEventListener('change', async () => {
-    const f = input.files[0];
-    if (!f) return;
-    btn.disabled = true;
-    const oldTxt = btn.textContent;
-    btn.textContent = _msg('mytools_testing');
-    try {
-      const up = new FormData();
-      up.append('file', f);
-      const ru = await fetch('/api/uploads', { method: 'POST', body: up });
-      const du = await ru.json();
-      if (!du.ok) throw new Error(du.error || 'upload failed');
-      const rs = await fetch('/api/usertools/' + t.tool_id + '/selftest', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ public_id: du.file.publicId, source_token: du.file.sourceToken }),
-      });
-      const ds = await rs.json();
-      if (ds.ok) alert(_msg('mytools_st_ok').replace('{ms}', ds.ms || '?'));
-      else alert(_errm(ds.error));
-    } catch (e) { alert(e.message || 'selftest failed'); }
-    btn.disabled = false; btn.textContent = oldTxt;
-  });
-  input.click();
-}
+// 4A-fix4: 自测入口收口到真实工具页 — /tool/{owner}/{tool_id}
+// (t.tool_key 即 owner/tool_id)。作者以与真实用户完全相同的路径自测:
+// canonical params → 选文件 → runToolFlow → /api/tools/execute →
+// dispatch → gate → real endpoint。此处不复制 params renderer,
+// 不再维护 upload→selftest 重复消费链。
 
 // ── call log drawer: last 20 calls on MY tool ──
 function _showCalls(btn, t) {
@@ -127,7 +104,10 @@ async function loadTools() {
     const stBtn = document.createElement('button');
     stBtn.type = 'button'; stBtn.className = 'btn-secondary';
     stBtn.textContent = _msg('mytools_run_selftest');
-    stBtn.addEventListener('click', () => _selfTest(stBtn, t));
+    // 4A-fix4: 导航到真实工具页自测 — 不再走 upload→selftest 执行链
+    stBtn.addEventListener('click', () => {
+      location.href = '/tool/' + t.tool_key;
+    });
     const logBtn = document.createElement('button');
     logBtn.type = 'button'; logBtn.className = 'btn-secondary';
     logBtn.textContent = _msg('mytools_calls_btn');
