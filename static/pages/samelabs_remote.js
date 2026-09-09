@@ -9,6 +9,7 @@ document.getElementById('remoteCreate').addEventListener('submit', function (e) 
     auth_header: f.auth_header.value.trim(),
     auth_token: f.auth_token.value.trim(),
     accept: f.accept.value.trim(),
+    multi: !!(f.multi && f.multi.checked),   // 真 boolean (checkbox)
     cost: parseInt(f.cost.value, 10) || 0,
     output_filename: f.output_filename.value.trim(),
     output_content_type: f.output_content_type.value.trim(),

@@ -405,9 +405,11 @@ async def samelabs_remote_create(request: Request):
         auth_header = str(raw.get("auth_header", "")).strip()
         auth_token = str(raw.get("auth_token", "")).strip()
         accept_raw = str(raw.get("accept", "")).strip()
-        # 4C-2: multi 是标准 ToolDeclaration capability (operator 受信供给
-        # 可声明跨 family exact accept; 不要求单一 family)。
-        multi = bool(raw.get("multi", False))
+        # 4C-2-close: multi 与 user ToolDeclaration 同语义 —
+        # 缺失 → false; 显式值必须是真 JSON boolean, 非 bool → bad_multi
+        multi = raw.get("multi", False)
+        if not isinstance(multi, bool):
+            return JSONResponse({"ok": False, "error": "bad_multi"}, 422)
         cost = int(raw.get("cost", 0))
         output_filename = str(raw.get("output_filename", "")).strip()
         output_content_type = str(raw.get("output_content_type", "")).strip()

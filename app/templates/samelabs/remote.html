@@ -46,7 +46,10 @@
     <input class="sl-input" name="timeout_s" type="number" min="5" max="300" value="60" placeholder="超时秒" style="flex:0 1 90px">
     <input class="sl-input" name="auth_header" placeholder="鉴权头 如 Authorization" style="flex:1 1 150px">
     <input class="sl-input" name="auth_token" type="password" placeholder="鉴权令牌" style="flex:1 1 130px">
-    <input class="sl-input" name="accept" placeholder="accept 如 image/png,image/jpeg" style="flex:1 1 180px">
+    <input class="sl-input" name="accept" placeholder="accept 如 .png,.jpg,.pdf" style="flex:1 1 180px">
+    <label class="sl-check" style="flex:0 1 auto;display:flex;align-items:center;gap:6px;margin:0">
+      <input type="checkbox" name="multi" id="remoteMulti"><span>允许多文件输入</span>
+    </label>
     <input class="sl-input" name="cost" type="number" min="0" value="0" placeholder="单价积分" style="flex:0 1 100px">
     <input class="sl-input" name="output_filename" placeholder="输出名 如 out.png" style="flex:1 1 130px">
     <input class="sl-input" name="output_content_type" placeholder="输出类型 如 image/png" style="flex:1 1 150px">

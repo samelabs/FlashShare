@@ -120,10 +120,12 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         if ferr:
             return None, ferr
         fam_exts = set(FAMILIES[fam].exts)
+        # accept 缺失 vs 显式空数组语义 (4C-2-close):
+        #   raw 无 accept 键 / None → legacy client: 整族 canonical ext
+        #   显式 [] / 非 list / 空 token 结果 → bad_accept (显式空选择
+        #   不得静默扩大成整族)
         raw_accept = raw.get("accept")
-        if raw_accept is None or (isinstance(raw_accept, list)
-                                  and not raw_accept):
-            # 兼容: 只发 family = 整族支持 (但存 canonical ext, 不再写 MIME)
+        if "accept" not in raw or raw_accept is None:
             canon = set(fam_exts)
         else:
             if not isinstance(raw_accept, list):

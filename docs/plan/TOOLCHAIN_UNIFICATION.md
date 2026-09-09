@@ -33,7 +33,7 @@ Web 首页、Tool Page、`/api/v1`、MCP 四个消费面看到的是同一份 pr
 |---|---|
 | identity | `tool_key` / `tool_id` / owner |
 | label / desc | LocalizedText 多语言展示 |
-| tool_type | share / produce 等执行类别 |
+| tool_type | view / peek / produce（TYPE_VIEW / TYPE_PEEK / TYPE_PRODUCE，canonical 协议枚举） |
 | **accept** | **exact executable input contract：canonical 小写 extension token 列表（`[".pdf", ".docx"]`）或 `null`（不限制，仍受平台 ALLOWED_EXT 总边界）** |
 | **multi** | **标准 capability：false=单文件；true=允许 1..20 个输入文件** |
 | params | canonical 参数声明（enum/number/boolean/text），与 legacy presets 二选一投影 |
