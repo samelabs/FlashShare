@@ -342,12 +342,10 @@ async function submit() {
 // ── 编辑回填 ──
 function refill(t) {
   document.getElementById("fUrl").value = t.url || "";
-  document.getElementById("fLabel").value = typeof t.label === "string" ? t.label
-    : (t.label[_curLang()] || t.label.en || Object.values(t.label)[0] || "");
+  document.getElementById("fLabel").value = _ltBack(t.label);
   document.getElementById("fToolId").value = t.tool_id;
   document.getElementById("fToolId").readOnly = true;      // id immutable
-  document.getElementById("fDesc").value = typeof t.desc !== "object" || !t.desc
-    ? (t.desc || "") : (t.desc[_curLang()] || t.desc.en || Object.values(t.desc)[0] || "");
+  document.getElementById("fDesc").value = _ltBack(t.desc);
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
   renderFamGrid(famKeyFromMimes(t.accept));

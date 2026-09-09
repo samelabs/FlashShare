@@ -35,7 +35,7 @@ from governance.user_tools import (
     MAX_TOOLS_PER_USER, _owner_rows, _public_item, _call_stats,
 )
 from governance.formats import FAMILIES, FAMILY_ORDER, validate_family_key
-from governance.tool_params import patch_locale
+from governance.tool_params import patch_locale, patch_locale_guard, resolve_label
 from utils import now
 
 router = APIRouter()
@@ -324,7 +324,16 @@ async def selftest_tool(tool_id: str, request: Request):
 @router.patch("/api/usertools/{tool_id}")
 async def update_user_tool(tool_id: str, request: Request):
     """Partial update: label/url/timeout/auth/accept/output identity/
-    visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check."""
+    visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check.
+
+    LocalizedText 写入语义 (批 2 协议, 二选一无灰色地带):
+      携 X-518-Edit-Locale (Web 表单):
+        str 与 dict 均为 locale patch — 只写提及的 locale, 未提及语言不动;
+        空值 = 显式删除该 locale; 提交值 == resolver fallback → 未修改不写。
+      无头 (API/manifest):
+        dict = 显式全集替换 (未提及语言删除); str 归一为 {"en": str}。
+    params 的三文本叶子在两种语义下都做 key/value 对齐的 locale merge。
+    """
     user, err = _require_auth(request)
     if err:
         return err
@@ -382,25 +391,40 @@ async def update_user_tool(tool_id: str, request: Request):
     sets = {}
     if "label" in fields:
         if edit_locale:
-            # Web locale patch: str 只更新当前 locale, 保留其余语言;
-            # 空 str = 显式删除当前 locale (dict 全空时 patch_locale 返回 "",
-            # 工具名不允许为空 → 落 {"en": ""} 会被展示层兜底 tool_id,
-            # 这里直接拒绝空结果, 要求至少保留一个语言)
+            # Web locale patch 语义 (批 2 协议, 唯一):
+            #   携 X-518-Edit-Locale 的 PATCH 上, str 与 dict 都是 locale patch —
+            #   str 只写该 locale; dict 逐 locale 覆写; 未提及的语言一律不动。
+            #   空值 = 显式删除该 locale。
+            # 无此头的 API PATCH = 替换语义 (dict 即全集, 见下方 else 分支)。
             try:
                 old_label = json.loads(row["label_json"] or "{}")
             except Exception:
                 old_label = {}
             new_label = fields["label"]
             if isinstance(new_label, dict):
-                # API 形状混入 Web 请求: 尊重显式 dict (完整替换意图)
-                sets["label_json"] = json.dumps(new_label, ensure_ascii=False)
-            else:
-                merged = patch_locale(old_label, edit_locale, str(new_label or ""))
+                merged = dict(old_label) if isinstance(old_label, dict) else {}
+                for lg, txt in new_label.items():
+                    if lg not in _SUPPORTED_LANGS:
+                        continue
+                    # 逐 locale fallback 物化防护: 提交值==该 locale resolver
+                    # 结果视为未修改 (表单把 fallback 回填进了主输入框)
+                    merged = patch_locale_guard(merged, lg, str(txt or ""))
+                # dict 全空提交 (全部清空) → 不写, 保留原值
                 if isinstance(merged, dict) and merged:
                     sets["label_json"] = json.dumps(merged, ensure_ascii=False)
-                elif isinstance(merged, str) and merged:
-                    sets["label_json"] = json.dumps({"en": merged}, ensure_ascii=False)
-                # merged 为 "" (删光了所有语言) → 不写 label, 保留原值
+            else:
+                # fallback 物化防护: 提交值 == 旧值在当前 locale 的 resolver
+                # 结果 → 发布者未修改 (表单显示的就是 fallback), 不写。
+                cur = resolve_label(old_label, edit_locale)
+                if cur and str(new_label or "").strip() == cur:
+                    pass  # 未修改 — 保留原 dict, 不创建/覆写 locale 键
+                else:
+                    merged = patch_locale(old_label, edit_locale, str(new_label or ""))
+                    if isinstance(merged, dict) and merged:
+                        sets["label_json"] = json.dumps(merged, ensure_ascii=False)
+                    elif isinstance(merged, str) and merged:
+                        sets["label_json"] = json.dumps({"en": merged}, ensure_ascii=False)
+                    # merged 为 "" (删光了所有语言) → 不写 label, 保留原值
         else:
             sets["label_json"] = json.dumps(
                 fields["label"] if isinstance(fields["label"], dict)
@@ -413,19 +437,33 @@ async def update_user_tool(tool_id: str, request: Request):
         sets["enabled"] = bool(raw.get("enabled"))
     if "desc" in raw:
         d = raw.get("desc")
-        if isinstance(d, dict):
-            clean = {k: str(v).strip()[:200] for k, v in d.items()
-                     if k in _SUPPORTED_LANGS and str(v).strip()}
-            sets["desc_json"] = json.dumps(clean, ensure_ascii=False) if clean else None
-        elif edit_locale:
-            # Web locale patch: 同 label — 保留既有语言, 只动当前 locale
+        if edit_locale:
+            # Web locale patch: str 与 dict 同协议 (见 label 分支注释) —
+            # str 只写该 locale + fallback 物化防护; dict 逐 locale merge。
             try:
                 old_desc = json.loads(row["desc_json"] or "{}")
             except Exception:
                 old_desc = {}
-            merged = patch_locale(old_desc if isinstance(old_desc, dict) else {},
-                                  edit_locale, str(d or "").strip()[:200])
-            sets["desc_json"] = json.dumps(merged, ensure_ascii=False) if merged else None
+            old_dict = old_desc if isinstance(old_desc, dict) else {}
+            cur = resolve_label(old_desc, edit_locale) if old_desc else ""
+            if isinstance(d, dict):
+                merged = dict(old_dict)
+                for lg, txt in d.items():
+                    if lg not in _SUPPORTED_LANGS:
+                        continue
+                    merged = patch_locale_guard(merged, lg, str(txt or "").strip()[:200])
+                sets["desc_json"] = json.dumps(merged, ensure_ascii=False) if merged else None
+            else:
+                new_txt = str(d or "").strip()[:200]
+                if cur and new_txt == cur:
+                    pass  # 未修改 — 保留原 dict
+                else:
+                    merged = patch_locale(old_dict, edit_locale, new_txt)
+                    sets["desc_json"] = json.dumps(merged, ensure_ascii=False) if merged else None
+        elif isinstance(d, dict):
+            clean = {k: str(v).strip()[:200] for k, v in d.items()
+                     if k in _SUPPORTED_LANGS and str(v).strip()}
+            sets["desc_json"] = json.dumps(clean, ensure_ascii=False) if clean else None
         else:
             d = str(d or "").strip()[:200]
             sets["desc_json"] = json.dumps({"en": d}, ensure_ascii=False) if d else None

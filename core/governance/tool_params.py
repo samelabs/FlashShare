@@ -256,6 +256,17 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
     return merged
 
 
+
+
+def patch_locale_guard(value, lang: str, new_text: str):
+    """patch_locale + fallback 物化防护: new_text 等于旧值在该 locale 的
+    resolver 结果时视为未修改, 原样返回 (不创建/覆写键)。"""
+    cur = resolve_label(value, lang) if value else ""
+    if cur and (new_text or "").strip() == cur:
+        return value if isinstance(value, dict) else value
+    return patch_locale(value, lang, new_text)
+
+
 class ParamsValueError(ValueError):
     """运行时取值违规 (→ 422)。与声明校验的 ParamsDeclError 分离。"""
 
