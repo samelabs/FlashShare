@@ -112,7 +112,15 @@ FLASHSHARE_BASE_URL=https://your-domain
 | `option.value` | 稳定机器值，唯一，非空 |
 | `endpoint url` / `timeout_s` | 用户端点必须 https |
 
-上限：每工具 ≤ 8 个参数；每参数 ≤ 32 个 option；LocalizedText 单值 ≤ 64 字符；工具 label ≤ 40 字符。
+上限（服务端 validator 强制）：
+
+| 约束 | 值 |
+|---|---|
+| tool label | 每语言 ≤ 40 字符 |
+| tool desc | 每语言 ≤ 200 字符 |
+| param.label / param.placeholder / option.label | 每语言 ≤ 64 字符 |
+| params | 每工具 ≤ 8 个 |
+| options | 每 enum 参数 ≤ 32 个 |
 
 ### 合法 manifest 示例
 
@@ -185,7 +193,10 @@ requested locale → en → 任意第一个非空值 → ""
 | Web zh patch（携头） | `"label": "质量"`（未改则不提交亦可） | `{ "en": "Quality", "zh": "质量" }`，en 保留 |
 | API dict（无头） | `"label": {"en": "Quality"}` | `{ "en": "Quality" }`，zh 被删除 |
 
-`"locale": ""`（删）与"未提及"（保留）是两种不同意图，协议按此区分。
+tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不是 manifest 字段；不存在 `tool.locale`、不存在 `default_locale`）。旧值 `{ "en": "Quality", "zh": "质量" }`：
+
+- Web patch 提交 `{ "zh": "" }` → `""` 是 tombstone，显式删除 zh
+- Web patch 提交 `{}` 或完全不出现 `zh` 键 → zh 未提及，保留旧值
 
 ### params 写入契约
 
