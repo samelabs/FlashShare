@@ -40,13 +40,20 @@ Web 首页、Tool Page、`/api/v1`、MCP 四个消费面看到的是同一份 pr
 | visibility | public / unlisted / private，由 `governance.catalog.resolve()` 单一治理 |
 | execution binding | local handler 或 HTTP endpoint（endpoint 密钥不进公开 projection） |
 
-### 2.2 ToolInvocation（一次调用的目标 envelope — 目标登记，本阶段不实现）
+### 2.2 ToolInvocation（canonical invocation — Stage C 已落地冻结）
 
 - `tool_id` — 目标工具
-- `source` — public_id / public_ids（multi）或既有上传句柄
-- `params` — canonical tool params（**不再混入平台生命周期字段**）
-- `delivery` — 产物交付策略（正式协议留待阶段 C）
-- `client_ref` — 幂等键（gate replay 语义）
+- `source.files[]` — 每项 `{public_id, source_token}`；single/multi 只有
+  files 数量区别，schema 唯一（1..20）
+- `params` — canonical tool params（**不含平台生命周期字段**）；
+  `params: {}` 表示无参数
+- `delivery` — `{expiry_days, allowed_downloads}`（精确两键，值域单源
+  `governance.delivery`）
+- `client_ref` — `null` = fresh invocation；非空 string ≤128 =
+  user-scoped 幂等键（gate replay 语义）
+
+root 五键全部显式存在（缺失即 422 invalid_request）；无 legacy
+invocation adapter。
 
 ### 2.3 ToolResult（目标说明）
 
@@ -98,7 +105,7 @@ operator 入口都从它派生，禁止第二份手写格式表。
 
 ## 5. 后续阶段
 
-- **阶段 A — Tool Input Contract（本阶段）**
+- **阶段 A — Tool Input Contract（已完成）**
   canonical AcceptToken、精确执行闸门、multi 真实边界、Catalog canonical
   projection、用户/operator 发布 canonical write、前端 exact selector。
 - **阶段 B — Tool Supply Unification（已完成）**
@@ -128,7 +135,9 @@ operator 入口都从它派生，禁止第二份手写格式表。
   canonical invocation；dispatch 只认这一种 schema，旧 flat shape 一律
   422 invalid_request，无 compatibility adapter。delivery/client_ref 等
   平台字段不泄漏给 handler 与 remote endpoint。lifecycle 旧 envelope 与
-  selftest compatibility endpoint 均已删除。
+  selftest compatibility endpoint 均已删除。C-close 收口：root 精确五键
+  （缺失键同样拒绝，`params: null` 拒绝）、delivery 精确两键（未知键不
+  剥离）、MCP adapter 只对完全缺失填默认、显式非法输入 -32602。
 
 ---
 

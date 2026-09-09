@@ -21,6 +21,8 @@ def validate_delivery(delivery: dict) -> dict:
     """
     if not isinstance(delivery, dict):
         raise ValueError("bad_delivery")
+    if set(delivery.keys()) != {"expiry_days", "allowed_downloads"}:
+        raise ValueError("bad_delivery")
     ed = delivery.get("expiry_days")
     dl = delivery.get("allowed_downloads")
     if type(ed) is not int or ed not in EXPIRY_DAYS:

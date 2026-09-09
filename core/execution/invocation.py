@@ -74,8 +74,9 @@ def parse_tool_invocation(raw) -> ToolInvocation:
     """
     if not isinstance(raw, dict):
         raise _bad()
-    unknown = set(raw.keys()) - _ALLOWED_KEYS
-    if unknown:
+    # canonical root 必须精确五键 — 多余键与缺失键同样拒绝
+    # (字段缺失不得解释为 null/默认)。
+    if set(raw.keys()) != _ALLOWED_KEYS:
         raise _bad()
 
     tool_id = raw.get("tool_id")
@@ -107,23 +108,20 @@ def parse_tool_invocation(raw) -> ToolInvocation:
         parsed_files.append(SourceFile(pid, token))
 
     params = raw.get("params")
-    if params is None:
-        params = {}
+    # canonical params 必须显式是 dict; null = 缺失语义, 拒绝
+    # (无参数工具必须显式 "params": {})。
     if not isinstance(params, dict):
         raise _bad()
     # 旧协议: delivery 曾随 params 传入 — 显式拒绝, 不剥离不忽略。
     if "expiry_days" in params or "allowed_downloads" in params:
         raise _bad()
 
-    delivery_raw = raw.get("delivery")
-    if delivery_raw is None:
-        delivery_raw = {}
+    # delivery: key 必须存在 (五键 root 已保证), 严格两键校验在
+    # governance.delivery.validate_delivery。
     try:
-        delivery = validate_delivery(delivery_raw) if delivery_raw else None
+        delivery = validate_delivery(raw.get("delivery"))
     except ValueError:
         raise _bad() from None
-    if delivery is None:
-        raise _bad()
 
     client_ref = raw.get("client_ref")
     if client_ref is not None:

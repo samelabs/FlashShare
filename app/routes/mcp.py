@@ -257,25 +257,44 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
 
     # Stage C: MCP 构造 canonical ToolInvocation (与 Web/v1 完全同 shape)。
-    # client_ref: 调用方传 → replay 语义; 未传 → adapter 生成一次 fresh ref。
-    client_ref = str(args.get("client_ref") or "").strip() or \
-                 f"mcp:{_secrets.token_hex(16)}"
-    # delivery: adapter 层允许缺失 → 平台默认 (constants 单源); 构造给
-    # dispatch 的 invocation 始终带完整 delivery。
+    # Stage C-close: adapter 只对"完全缺失"填默认, 显式非法输入一律
+    # -32602, 不吞不 str() 强转。
+    # client_ref: 完全缺 → fresh ref; 显式必须是 non-empty str <=128。
+    if "client_ref" in args:
+        cr = args.get("client_ref")
+        if not isinstance(cr, str) or not cr.strip() or len(cr) > 128:
+            return _rpc_err(mid, -32602, "invalid client_ref")
+        client_ref = cr.strip()
+    else:
+        client_ref = f"mcp:{_secrets.token_hex(16)}"
+    # delivery: 完全缺 → 平台默认 (constants 单源); 显式 dict 缺 leaf 补
+    # 默认得精确两键后 validate; 显式非 dict / 未知 key → -32602。
     from governance.delivery import (validate_delivery, DEFAULT_EXPIRY_DAYS,
                                      DEFAULT_ALLOWED_DOWNLOADS)
-    d = args.get("delivery")
-    if isinstance(d, dict) and d:
+    if "delivery" in args:
+        d = args.get("delivery")
+        if not isinstance(d, dict):
+            return _rpc_err(mid, -32602, "invalid delivery")
+        if set(d.keys()) - {"expiry_days", "allowed_downloads"}:
+            return _rpc_err(mid, -32602, "invalid delivery")
         try:
-            delivery = validate_delivery(
-                {**{"expiry_days": d.get("expiry_days", DEFAULT_EXPIRY_DAYS),
-                     "allowed_downloads": d.get("allowed_downloads",
-                                                DEFAULT_ALLOWED_DOWNLOADS)}})
+            delivery = validate_delivery({
+                "expiry_days": d.get("expiry_days", DEFAULT_EXPIRY_DAYS),
+                "allowed_downloads": d.get("allowed_downloads",
+                                           DEFAULT_ALLOWED_DOWNLOADS)})
         except ValueError:
             return _rpc_err(mid, -32602, "invalid delivery")
     else:
         delivery = {"expiry_days": DEFAULT_EXPIRY_DAYS,
                     "allowed_downloads": DEFAULT_ALLOWED_DOWNLOADS}
+
+    # params: 完全缺 → {}; 显式必须是 dict (null/[]/str/number → -32602)。
+    if "params" in args:
+        tool_params = args.get("params")
+        if not isinstance(tool_params, dict):
+            return _rpc_err(mid, -32602, "invalid params")
+    else:
+        tool_params = {}
 
     # Source: 统一 files[{filename,b64}] — decode + upload each →
     # source.files[{public_id, source_token}]。(multi 上限是 schema hint,
@@ -305,7 +324,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     raw = {
         "tool_id": tool_key,
         "source": {"files": source_files},
-        "params": args.get("params") or {},
+        "params": tool_params,
         "delivery": delivery,
         "client_ref": client_ref,
     }
