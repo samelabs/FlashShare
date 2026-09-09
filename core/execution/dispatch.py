@@ -136,6 +136,9 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
         # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
         # 单点收口: web/token/MCP/selftest 四面共用本函数, 无旁路。
+        # 4C-1: 精确 accept — declared MIME → 具体扩展名集合 (formats.
+        # MIME_EXTS 单一词表), 上传 ext 必须 ∈ 该集合。不再经
+        # families_for_mimes() 扩大成 family (application/pdf 只放 .pdf)。
         declared = tool.get("accept")
         if declared is None and tool.get("accept_json"):
             try:
@@ -143,17 +146,16 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
             except (TypeError, ValueError):
                 declared = None
         if declared:
-            from governance.formats import families_for_mimes
+            from governance.formats import extensions_for_mimes
             try:
-                fams = families_for_mimes(declared)
+                allowed_exts = extensions_for_mimes(declared)
             except KeyError:
-                fams = None  # 声明含词表外 MIME (存量脏数据): 不拦截, 记日志
-            if fams:
+                allowed_exts = None  # 声明含词表外 MIME (存量脏数据): 不拦截, 不 500
+            if allowed_exts:
                 import os as _os
-                from governance.formats import sniff_ext_to_families
                 for u in uploads:
                     ext = _os.path.splitext(str(u.get("file_name", "")).lower())[1]
-                    if fams.isdisjoint(sniff_ext_to_families(ext)):
+                    if ext not in allowed_exts:
                         raise ExecutionError("err_format_mismatch")
 
         from .orchestrator import execute_local, execute_remote
