@@ -502,6 +502,18 @@ let lastUploadResult = null;
 let lastToolSource = null;
 let homeToolsData = [];
 
+// 4A-fix3: 单点读取某 tool_id 保存的 canonical params (localStorage 权威源)。
+// reload 恢复与浮层渲染共用此 helper — 参数读取逻辑只此一处, 杜绝分叉。
+function savedToolParams(toolId) {
+  try {
+    const all = JSON.parse(localStorage.getItem("flashshare_tool_params") || "{}");
+    const v = all && typeof all === "object" ? all[toolId] : undefined;
+    return (v && typeof v === "object" && !Array.isArray(v)) ? v : {};
+  } catch (e) {
+    return {};
+  }
+}
+
 function loadHomeTools() {
   if (!homeTools) return;
   const tools = window.__TOOLS__;
@@ -534,8 +546,19 @@ function loadHomeTools() {
   const savedTool = tools.find(t => t.id === saved);
   if (savedTool) {
     activeTool = savedTool;
-    activePreset = savedTool.id === "share" ? null : (localStorage.getItem("flashshare_tool_preset") || null);
-    applyToolSelection();
+    // 4A-fix3: legacy preset 只在工具有 presets 声明时恢复 — canonical params
+    // 工具 (4A 迁移后 presets 空) 不读 flashshare_tool_preset, 避免历史残留
+    // 值污染 canonical 请求。share 恒无 preset。
+    const hasPresets = !!(savedTool.presets && savedTool.presets.length);
+    activePreset = savedTool.id === "share" || !hasPresets
+      ? null : (localStorage.getItem("flashshare_tool_preset") || null);
+    // 4A-fix3: reload 恢复保存的 canonical params — 保存过的参数必须真实
+    // 用于下一次 execute (此前只恢复 activeTool, activeToolParams 恒空)。
+    activeToolParams = savedToolParams(savedTool.id);
+    // 4A-fix3: 有保存的 preset 时 skip reset — applyToolSelection 不再把恢复
+    // 出的 activePreset 清成 null 后回落声明 default; 无保存 preset 时保持
+    // 原有 auto-select default 行为。
+    applyToolSelection(!!activePreset);
   }
 
   initToolSearch();
@@ -581,6 +604,10 @@ function initToolSearch() {
     if (tool.id === "share") { closePop(); return; }
     activeTool = tool;
     activePreset = null;
+    // 4A-fix3: 切工具即清内存 params — 浮层确认前 activeTool 已切换, 不得把
+    // 上一工具的 activeToolParams 残留发给新工具 (浮层渲染值来自 savedToolParams,
+    // 与内存态无关; confirm 时才收集新工具的值写入 activeToolParams)。
+    activeToolParams = {};
     localStorage.setItem("flashshare_tool", tool.id);
     localStorage.removeItem("flashshare_tool_preset");
     applyToolSelection();
@@ -666,9 +693,8 @@ function openToolOverlay(tool, btn) {
   }
 
   // Params controls (tool modes v3: enum 分段/boolean 开关/number 步进/text 输入)
-  let paramValues = {};
-  try { paramValues = JSON.parse(localStorage.getItem("flashshare_tool_params") || "{}"); } catch (e) { paramValues = {}; }
-  const savedParams = paramValues[tool.id] || {};
+  // 4A-fix3: 渲染值来自单点 savedToolParams — 与 reload 恢复同一数据源
+  const savedParams = savedToolParams(tool.id);
   if (Array.isArray(tool.params) && tool.params.length > 0) {
     const sectionLabel = t("tool_params") !== "tool_params" ? t("tool_params") : "Options";
     html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${escapeHtml(sectionLabel)}</div><div class="tool-overlay-params">`;
@@ -773,6 +799,8 @@ function openToolOverlay(tool, btn) {
         const shareTool = homeToolsData.find(t => t.id === "share");
         activeTool = shareTool || null;
         activePreset = null;
+        // 4A-fix3: 回退 share 同步清空内存 params — 内存态与选择态一致
+        activeToolParams = {};
         if (shareTool) {
           localStorage.setItem("flashshare_tool", "share");
           localStorage.removeItem("flashshare_tool_preset");
