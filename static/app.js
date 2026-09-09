@@ -125,28 +125,6 @@ function isPassThrough(tool) {
 }
 
 // 标签解析单点 (tool modes v3): str 原样 / dict[lang]→dict.en→首值。勿在他处重写此链。
-/*
- * LocalizedText protocol resolver (JS twin of governance.tool_params.resolve_label).
- * Accepted shapes: string | {locale: string}
- * Canonical fallback order (the ONLY one on this platform):
- *   requested locale -> "en" -> first non-empty value -> ""
- * Callers MAY apply domain fallback after it (e.g. `|| tool.id`), but MUST NOT
- * implement another locale chain. MUST stay semantically identical to the
- * Python resolver — a protocol test asserts the two behave the same.
- * Search indexing is exempt: data-name intentionally indexes all locale values.
- */
-function resolveLabel(label) {
-  if (typeof label === "string") return label;
-  if (label && typeof label === "object") {
-    const lang = currentLang();
-    if (label[lang]) return label[lang];
-    if (label.en) return label.en;
-    for (const v of Object.values(label)) {
-      if (typeof v === "string" && v) return v;
-    }
-  }
-  return "";
-}
 
 function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));

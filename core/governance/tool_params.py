@@ -174,6 +174,88 @@ def to_input_schema_properties(decl: list, lang: str = "en") -> tuple[dict, list
     return props, required
 
 
+def patch_locale(value, lang: str, new_text: str):
+    """LocalizedText 编辑保护 (patch semantics, 批 2).
+
+    Web 表单只编辑一个 locale; 既有翻译必须原样保留:
+      旧值 str      → {lang: new_text}        (不保留旧 str — 单串无其它语言可保)
+      旧值 dict     → 旧 dict 浅拷贝后覆写 lang 键
+      new_text 空   → 删除 lang 键 (显式删除语义); dict 删空后返回 ""
+    Fallback 物化防护由调用方处理 (merge_params_decl 的 no-change 检测)。
+    """
+    new_text = (new_text or "").strip()
+    if isinstance(value, dict):
+        out = {k: v for k, v in value.items() if isinstance(v, str)}
+        if new_text:
+            out[lang] = new_text
+        else:
+            out.pop(lang, None)
+        return out if out else ""
+    # str 旧值
+    if new_text:
+        return {lang: new_text}
+    return ""
+
+
+def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
+    """params 结构全量替换 + LocalizedText 叶子 locale merge (批 2).
+
+    结构 (参数/选项的增删改) 以 new_decl 为准 — 删除 parameter/option
+    表示结构删除, 其旧翻译随结构一起删除。
+    三个 LocalizedText 叶子 (param.label / param.placeholder /
+    options[].label) 按身份对齐合并: parameter 按 key, option 按 value,
+    禁止按数组 index。旧值在该 locale 下缺失时, new_decl 的 str 直接落
+    {lang: str} (首次翻译); 若 str 等于旧值的 resolver fallback (发布者
+    没改 fallback 文本), 视为未修改, 不物化新 locale 键。
+    """
+    old_by_key = {p["key"]: p for p in (old_decl or []) if isinstance(p, dict) and p.get("key")}
+    merged = []
+    for p in new_decl or []:
+        key = p.get("key")
+        old = old_by_key.get(key)
+        if not old:
+            merged.append(p)
+            continue
+        # param.label
+        if "label" in p:
+            old_label = old.get("label")
+            if isinstance(p["label"], str):
+                cur = resolve_label(old_label, lang)
+                if cur and p["label"] == cur and isinstance(old_label, dict):
+                    p["label"] = old_label            # 未修改, 不物化
+                elif cur and p["label"] == cur:
+                    p["label"] = old_label            # str 旧值: 原样保留
+                else:
+                    p["label"] = patch_locale(old_label, lang, p["label"])
+        # param.placeholder
+        if p.get("placeholder") is not None and isinstance(p["placeholder"], str):
+            old_ph = old.get("placeholder")
+            if old_ph is not None:
+                cur = resolve_label(old_ph, lang)
+                if cur and p["placeholder"] == cur:
+                    p["placeholder"] = old_ph
+                else:
+                    p["placeholder"] = patch_locale(old_ph, lang, p["placeholder"])
+        # options[].label (按 value 对齐)
+        old_opts = {o.get("value"): o for o in (old.get("options") or [])
+                    if isinstance(o, dict) and o.get("value") is not None}
+        if p.get("options"):
+            new_opts = []
+            for o in p["options"]:
+                old_o = old_opts.get(o.get("value"))
+                if old_o and isinstance(o.get("label"), str):
+                    old_label = old_o.get("label")
+                    cur = resolve_label(old_label, lang)
+                    if cur and o["label"] == cur:
+                        o["label"] = old_label
+                    else:
+                        o["label"] = patch_locale(old_label, lang, o["label"])
+                new_opts.append(o)
+            p["options"] = new_opts
+        merged.append(p)
+    return merged
+
+
 class ParamsValueError(ValueError):
     """运行时取值违规 (→ 422)。与声明校验的 ParamsDeclError 分离。"""
 

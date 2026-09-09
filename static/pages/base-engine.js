@@ -40,3 +40,28 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
       lm.addEventListener("click",function(e){var o=e.target.closest("[data-lang]");if(!o)return;var l=window.__SUPPORTED_LANGS.indexOf(o.dataset.lang)>=0?o.dataset.lang:"en";window.__LANG=l;document.cookie="flashshare_lang="+l+";Path=/;Max-Age=31536000;SameSite=Lax";if(typeof window.__afterI18n==="function"){lb.textContent=window.__LANG_LABELS[l]||"English";lm.classList.add("hidden");lb.setAttribute("aria-expanded","false");lm.querySelectorAll(".lang-option").forEach(function(b){b.classList.toggle("active",b.dataset.lang===l);b.setAttribute("aria-selected",b.dataset.lang===l)});window.applyI18n()}else{location.reload()}});
       document.addEventListener("click",function(e){if(e.target===lb||lm.contains(e.target))return;lm.classList.add("hidden");lb.setAttribute("aria-expanded","false")});
     })();
+
+/*
+ * LocalizedText protocol resolver (JS twin of governance.tool_params.resolve_label).
+ * Accepted shapes: string | {locale: string}
+ * Canonical fallback order (the ONLY one on this platform):
+ *   requested locale -> "en" -> first non-empty value -> ""
+ * Callers MAY apply domain fallback after it (e.g. `|| tool.id`), but MUST NOT
+ * implement another locale chain. MUST stay semantically identical to the
+ * Python resolver — a protocol test asserts the two behave the same.
+ * Search indexing is exempt: data-name intentionally indexes all locale values.
+ * Lives on base-engine (site-wide) — every page resolves user tool text.
+ */
+window.resolveLabel = function (label) {
+  if (typeof label === "string") return label;
+  if (label && typeof label === "object") {
+    const lang = (window.currentLang && window.currentLang()) ||
+                 document.documentElement.lang || "en";
+    if (label[lang]) return label[lang];
+    if (label.en) return label.en;
+    for (const v of Object.values(label)) {
+      if (typeof v === "string" && v) return v;
+    }
+  }
+  return "";
+};

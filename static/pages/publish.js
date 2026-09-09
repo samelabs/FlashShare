@@ -100,6 +100,9 @@ const PARAM_TYPES = [
   ["number", "pub_pt_number"], ["boolean", "pub_pt_boolean"],
 ];
 const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
+// LocalizedText 编辑回填 (批 2): 只经 canonical resolveLabel 读 dict —
+// 禁止 Object.values()[0] / 把 dict 当 string。服务端 merge 负责 patch 语义。
+const _ltBack = v => window.resolveLabel ? window.resolveLabel(v) : (typeof v === "string" ? v : "");
 let _paramSeq = 0;
 
 function paramRowHtml(p) {
@@ -110,7 +113,7 @@ function paramRowHtml(p) {
     <div class="param-row-head">
       <input class="pr-key" placeholder="style" maxlength="32" value="${(p.key || "").replace(/"/g, "&quot;")}">
       <select class="pr-type">${typeOpts}</select>
-      <input class="pr-label" maxlength="80" placeholder="${_msg("pub_param_label_ph")}" value="${typeof p.label === "string" ? p.label.replace(/"/g, "&quot;") : ""}">
+      <input class="pr-label" maxlength="80" placeholder="${_msg("pub_param_label_ph")}" value="${_ltBack(p.label).replace(/"/g, "&quot;")}">
       <label class="pr-req"><input type="checkbox" class="pr-required"${p.required ? " checked" : ""}><span>${_msg("pub_param_required")}</span></label>
       <button type="button" class="pr-del" aria-label="✕">✕</button>
     </div>
@@ -124,7 +127,7 @@ function paramBodyHtml(type, p) {
   if (type === "enum") {
     const opts = (p.options || []).map(o =>
       `<div class="pr-opt"><input class="pr-opt-val" placeholder="warm" maxlength="32" value="${(o.value || "").replace(/"/g, "&quot;")}">` +
-      `<input class="pr-opt-label" maxlength="40" placeholder="${_msg("pub_param_optlabel_ph")}" value="${typeof o.label === "string" ? o.label.replace(/"/g, "&quot;") : (typeof o.label === "object" ? Object.values(o.label)[0] || "" : "")}">` +
+      `<input class="pr-opt-label" maxlength="40" placeholder="${_msg("pub_param_optlabel_ph")}" value="${_ltBack(o.label).replace(/"/g, "&quot;")}">` +
       `<button type="button" class="pr-opt-del">✕</button></div>`).join("");
     return `<div class="pr-opts">${opts}</div>
       <div class="pr-enum-foot">
@@ -145,7 +148,7 @@ function paramBodyHtml(type, p) {
       <select class="pr-default-b"><option value="">—</option><option value="true"${p.default === true ? " selected" : ""}>true</option><option value="false"${p.default === false ? " selected" : ""}>false</option></select></label>`;
   }
   return `<div class="pr-inline">
-    <label class="pr-ph-wrap"><span>placeholder</span><input class="pr-ph" maxlength="80" value="${(p.placeholder || "").replace(/"/g, "&quot;")}"></label>
+    <label class="pr-ph-wrap"><span>placeholder</span><input class="pr-ph" maxlength="80" value="${_ltBack(p.placeholder).replace(/"/g, "&quot;")}"></label>
     <label><span>${_msg("pub_param_default")}</span><input class="pr-default-t" maxlength="200" value="${(p.default || "").replace(/"/g, "&quot;")}"></label>
   </div>`;
 }
@@ -312,7 +315,8 @@ async function submit() {
   if (editing) delete body.tool_id;
   const r = await fetch("/api/usertools" + (editing ? "/" + _editId : ""), {
     method: editing ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: Object.assign({ "Content-Type": "application/json" },
+      editing ? { "X-518-Edit-Locale": _curLang() } : null),
     body: JSON.stringify(body),
   });
   const d = await r.json();

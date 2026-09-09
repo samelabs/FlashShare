@@ -35,6 +35,7 @@ from governance.user_tools import (
     MAX_TOOLS_PER_USER, _owner_rows, _public_item, _call_stats,
 )
 from governance.formats import FAMILIES, FAMILY_ORDER, validate_family_key
+from governance.tool_params import patch_locale
 from utils import now
 
 router = APIRouter()
@@ -44,7 +45,8 @@ TOOL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 ACCEPT_MIME_RE = re.compile(r"^[\w.+-]+/[\w.+-]+$")
 
 
-def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False) -> tuple:
+def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False,
+                         edit_locale: str = "") -> tuple:
     """Shared validation for create (full) and patch (partial).
     Returns (fields, error_code). fields keys only for provided values."""
     fields = {}
@@ -59,7 +61,11 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         # 双形态 (tool modes v3 语言模型): str=任意语言原文 | dict=多语言集合
         if isinstance(label, str):
             label = label.strip()
-            if not label or len(label) > 40:
+            # Web locale patch 下空串 = 显式删除当前 locale (批 2), 放行;
+            # 其余路径 (POST / 无头 API PATCH) 工具名必填维持 bad_label
+            if not label and not (partial and edit_locale):
+                return None, "bad_label"
+            if len(label) > 40:
                 return None, "bad_label"
             fields["label"] = label
         elif isinstance(label, dict):
@@ -336,8 +342,16 @@ async def update_user_tool(tool_id: str, request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
 
+    # LocalizedText 编辑保护 (批 2): Web 表单显式携带当前编辑 locale 才启用
+    # patch 语义 (str 只更新该 locale, 保留其余语言)。无此头的 API PATCH
+    # 保持既有替换语义 — Web 语义不扩散到 API manifest。
+    edit_locale = (request.headers.get("X-518-Edit-Locale") or "").strip()
+    if edit_locale and edit_locale not in _SUPPORTED_LANGS:
+        return JSONResponse({"ok": False, "error": "bad_edit_locale"}, 422)
+
     fields, ferr = _validate_submission(raw, partial=True,
-                                        trusted_ok=bool(row["trusted"]))
+                                        trusted_ok=bool(row["trusted"]),
+                                        edit_locale=edit_locale)
     if ferr:
         return JSONResponse({"ok": False, "error": ferr}, 422)
 
@@ -367,9 +381,30 @@ async def update_user_tool(tool_id: str, request: Request):
 
     sets = {}
     if "label" in fields:
-        sets["label_json"] = json.dumps(
-            fields["label"] if isinstance(fields["label"], dict)
-            else {"en": fields["label"]}, ensure_ascii=False)
+        if edit_locale:
+            # Web locale patch: str 只更新当前 locale, 保留其余语言;
+            # 空 str = 显式删除当前 locale (dict 全空时 patch_locale 返回 "",
+            # 工具名不允许为空 → 落 {"en": ""} 会被展示层兜底 tool_id,
+            # 这里直接拒绝空结果, 要求至少保留一个语言)
+            try:
+                old_label = json.loads(row["label_json"] or "{}")
+            except Exception:
+                old_label = {}
+            new_label = fields["label"]
+            if isinstance(new_label, dict):
+                # API 形状混入 Web 请求: 尊重显式 dict (完整替换意图)
+                sets["label_json"] = json.dumps(new_label, ensure_ascii=False)
+            else:
+                merged = patch_locale(old_label, edit_locale, str(new_label or ""))
+                if isinstance(merged, dict) and merged:
+                    sets["label_json"] = json.dumps(merged, ensure_ascii=False)
+                elif isinstance(merged, str) and merged:
+                    sets["label_json"] = json.dumps({"en": merged}, ensure_ascii=False)
+                # merged 为 "" (删光了所有语言) → 不写 label, 保留原值
+        else:
+            sets["label_json"] = json.dumps(
+                fields["label"] if isinstance(fields["label"], dict)
+                else {"en": fields["label"]}, ensure_ascii=False)
     if "visibility" in fields:
         sets["visibility"] = fields["visibility"]
     if "accept" in fields:
@@ -382,16 +417,34 @@ async def update_user_tool(tool_id: str, request: Request):
             clean = {k: str(v).strip()[:200] for k, v in d.items()
                      if k in _SUPPORTED_LANGS and str(v).strip()}
             sets["desc_json"] = json.dumps(clean, ensure_ascii=False) if clean else None
+        elif edit_locale:
+            # Web locale patch: 同 label — 保留既有语言, 只动当前 locale
+            try:
+                old_desc = json.loads(row["desc_json"] or "{}")
+            except Exception:
+                old_desc = {}
+            merged = patch_locale(old_desc if isinstance(old_desc, dict) else {},
+                                  edit_locale, str(d or "").strip()[:200])
+            sets["desc_json"] = json.dumps(merged, ensure_ascii=False) if merged else None
         else:
             d = str(d or "").strip()[:200]
             sets["desc_json"] = json.dumps({"en": d}, ensure_ascii=False) if d else None
     if "params" in raw:
-        # params 声明 (spec v3): 全量替换式更新 — 提交即全量校验
-        from governance.tool_params import validate_params_decl, ParamsDeclError
+        # params 声明 (spec v3): 结构全量替换; Web 编辑时三个 LocalizedText
+        # 叶子 (label/placeholder/options[].label) 对旧声明做 locale merge —
+        # parameter 按 key 对齐, option 按 value 对齐, 禁止按 index。
+        from governance.tool_params import (validate_params_decl, ParamsDeclError,
+                                            merge_params_decl)
         try:
             decl = validate_params_decl(raw.get("params"))
         except ParamsDeclError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, 422)
+        if edit_locale and decl:
+            try:
+                old_decl = json.loads(row["params_json"] or "[]")
+            except Exception:
+                old_decl = []
+            decl = merge_params_decl(old_decl, decl, edit_locale)
         sets["params_json"] = json.dumps(decl, ensure_ascii=False) if decl else None
     if sets or fields:
         sets["endpoint_json"] = json.dumps(merged_decl)
