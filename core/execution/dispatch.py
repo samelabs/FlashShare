@@ -20,11 +20,24 @@ from .source import resolve_upload
 
 
 class _RawRequest:
-    """统一请求形状 (dict → 属性), 复用 app.models 的字段约定。"""
+    """统一请求形状 (dict → 属性), 复用 app.models 的字段约定。
+
+    params 规范化 (4A-fix2): 缺失/None/{} 统一为独立 dict, 非 dict
+    ([]/"abc"/123) → .params = None, 由 dispatch 以 422 invalid_request
+    拒绝 — 避免 .clear()/.update() 在非 dict 上 500。调用方必须只从
+    req.params 读写 params, 禁止清洗后再次从 raw 重建本对象 (空 dict
+    falsy, `raw.get("params") or {}` 两次调用会得到两个不同 dict)。
+    """
 
     def __init__(self, raw: dict):
         self.tool_id = str(raw.get("tool_id") or "")
-        self.params = raw.get("params") or {}
+        p = raw.get("params")
+        if p is None:
+            self.params = {}
+        elif isinstance(p, dict):
+            self.params = p
+        else:
+            self.params = None
         self.public_id = str(raw.get("public_id") or "")
         self.public_ids = [str(x) for x in (raw.get("public_ids") or [])][:20]
         self.source_token = str(raw.get("source_token") or "")
@@ -39,16 +52,24 @@ def client_ip(request) -> str:
 
 async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, pool=None):
     """返回 (payload_dict | None, error_body | None, status | None)。"""
-    tool_id = str(raw.get("tool_id") or "")
-    params = raw.get("params") or {}
+    # 4A-fix2: 先构造规范化 req — tool_id/params/source ids/client_ref 全部
+    # 从同一个 req 读取, params 是唯一事实对象。此前 `raw.get("params") or {}`
+    # 出现两次: 空 dict 为 falsy, 两次各自创建脱离 raw 的新 dict — canonical
+    # default 写入第一个 dict, gate 却从重建后的 req 读第二个空 dict, 用户
+    # remote tool 的 default 真实丢失 (compress 靠 handler fallback 掩盖)。
+    req = _RawRequest(raw)
+    if req.params is None:  # 非 dict params — 受控 422, 不 500
+        return None, {"ok": False, "error": "invalid_request"}, 422
 
-    tool, terr = resolve_tool(tool_id, user["id"])
+    tool, terr = resolve_tool(req.tool_id, user["id"])
     if terr:
         if terr == "disabled":
             return None, {"ok": False, "error": "tool_disabled"}, 403
         return None, {"ok": False, "error": "tool_not_found"}, 404
     tool["id"] = tool["tool_key"]
     tool["type"] = tool["tool_type"]
+
+    params = req.params
 
     # 批 4A: canonical params 是唯一参数事实源 — 有声明时 default 由
     # enforce_params_decl 注入, 不再走 presets 通道 (get_default_preset 仅
@@ -59,7 +80,7 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     except (TypeError, ValueError):
         decl = []
     if not decl and "preset" not in params:
-        default = get_default_preset(tool_id)
+        default = get_default_preset(req.tool_id)
         if default:
             params["preset"] = default
 
@@ -74,6 +95,8 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
     # 无声明的工具 params 保持自由直通 (兼容现状)。preset/expiry 等系统键
     # 属于 presets/生命周期机制, 不受声明管辖 (lifecycle 已在清洗前捕获)。
+    # 4A-fix2: enforce 结果直接写入 req.params (同一对象), gate 从 req.params
+    # 读取 — 清洗前不再有第二个 params 对象。
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:
@@ -83,7 +106,6 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         params.clear()
         params.update(declared)
 
-    req = _RawRequest(raw)
     request_ctx = {"ip": client_ip(request)}
 
     async def orchestrate(p):
