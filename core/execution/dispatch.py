@@ -63,9 +63,17 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         if default:
             params["preset"] = default
 
+    # 4A-fix1: 平台生命周期字段 (expiry_days/allowed_downloads) 是请求 shape
+    # 的一部分 (Web/API/MCP 仍放在 params 中), 不属于 canonical tool params
+    # 声明 — enforce_params_decl 会剥离声明外键。必须在清洗前捕获, 与 tool
+    # params 分开传给 orchestrator, 否则 canonical 工具的产物保存会回落到
+    # 默认 1 天 / 50 次。校验仍由 orchestrator.validate_lifecycle 执行。
+    lifecycle = {k: params.get(k) for k in ("expiry_days", "allowed_downloads")
+                 if k in params}
+
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
     # 无声明的工具 params 保持自由直通 (兼容现状)。preset/expiry 等系统键
-    # 属于 presets/生命周期机制, 不受声明管辖。
+    # 属于 presets/生命周期机制, 不受声明管辖 (lifecycle 已在清洗前捕获)。
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:
@@ -130,14 +138,16 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         from tools import ToolError as _TE
         try:
             if tool.get("execution") in ("http", "mcp"):
-                return await execute_remote(request_ctx, tool, uploads, p, user)
+                return await execute_remote(request_ctx, tool, uploads, p, user,
+                                            lifecycle)
             # local: worker pool 由调用方注入; 未注入 → 执行域自持池
             if process_tool is None or pool is None:
                 from .pool import get_pool, default_process_tool
                 return await execute_local(request_ctx, tool, uploads, p, user,
-                                           default_process_tool(), get_pool())
+                                           default_process_tool(), get_pool(),
+                                           lifecycle)
             return await execute_local(request_ctx, tool, uploads, p, user,
-                                       process_tool, pool)
+                                       process_tool, pool, lifecycle)
         except _TE as exc:
             raise ExecutionError(str(exc)) from exc
 

@@ -53,11 +53,18 @@ async def _run_handler(pool, process_tool, tool_id, single, multi_sources, param
         pool, process_tool, tool_id, stream, filename, ctype, size, params)
 
 
-async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool):
-    """local 单/多文件编排。uploads 非空已解析。"""
+async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,
+                        lifecycle=None):
+    """local 单/多文件编排。uploads 非空已解析。
+
+    lifecycle (4A-fix1): dispatch 在 params 清洗前捕获的平台生命周期字段
+    (expiry_days/allowed_downloads)。与 canonical tool params 分开传递 —
+    tool params 可能被 enforce_params_decl 剥离声明外键, 不能再作为
+    lifecycle 的来源。None/缺键 → validate_lifecycle 默认 1 / 50。
+    """
     multi = bool(tool.get("multi")) and len(uploads) > 1 or (
         bool(tool.get("multi")) and len(uploads) >= 1)
-    expiry_days, allowed_downloads = validate_lifecycle(params)
+    expiry_days, allowed_downloads = validate_lifecycle(lifecycle or {})
 
     sources = []
     gokapi_ids = []
@@ -103,8 +110,12 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     return record
 
 
-async def execute_remote(request_ctx, tool, uploads, params, user):
-    """remote (http) 编排: 拉 URL 签名 → drive_http → 零信任落地。"""
+async def execute_remote(request_ctx, tool, uploads, params, user, lifecycle=None):
+    """remote (http) 编排: 拉 URL 签名 → drive_http → 零信任落地。
+
+    lifecycle (4A-fix1): 与 execute_local 同协议 — dispatch 在 params
+    清洗前捕获, 独立于 canonical tool params 传递。None/缺键 → 默认 1 / 50。
+    """
     import remote as _remote
     from security import sign_fetch_token
 
@@ -147,7 +158,7 @@ async def execute_remote(request_ctx, tool, uploads, params, user):
 
     output_bytes = out["bytes"]
     output_size = len(output_bytes)
-    expiry_days, allowed_downloads = validate_lifecycle(params)
+    expiry_days, allowed_downloads = validate_lifecycle(lifecycle or {})
     gokapi_result = storage_write(
         io.BytesIO(output_bytes), out["filename"], out["content_type"],
         expiry_days, allowed_downloads, output_size)
