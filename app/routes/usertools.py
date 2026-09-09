@@ -35,7 +35,8 @@ from governance.user_tools import (
     MAX_TOOLS_PER_USER, _owner_rows, _public_item, _call_stats,
 )
 from governance.formats import FAMILIES, FAMILY_ORDER, validate_family_key
-from governance.tool_params import patch_locale, patch_locale_guard, resolve_label
+from governance.tool_params import (patch_locale, patch_locale_guard,
+                                     resolve_label)
 from utils import now
 
 router = APIRouter()
@@ -74,7 +75,11 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
                 if lang not in _SUPPORTED_LANGS or not isinstance(v, str):
                     return None, "bad_label"
                 v = v.strip()
-                if not v or len(v) > 40:
+                # Web locale patch: 成员空串 = 显式删除该 locale (批 2c),
+                # 放行空串由 handler patch_locale 删键; 其余路径维持非空约束
+                if not v and not (partial and edit_locale):
+                    return None, "bad_label"
+                if len(v) > 40:
                     return None, "bad_label"
                 clean[lang] = v
             if not clean:
@@ -332,7 +337,12 @@ async def update_user_tool(tool_id: str, request: Request):
         空值 = 显式删除该 locale; 提交值 == resolver fallback → 未修改不写。
       无头 (API/manifest):
         dict = 显式全集替换 (未提及语言删除); str 归一为 {"en": str}。
-    params 的三文本叶子在两种语义下都做 key/value 对齐的 locale merge。
+    params 机器结构 (key/type/default/min/max/options.value/required):
+      两种语义下均为全量 authoritative — 结构增删以提交为准。
+    params 的三文本叶子 (label/placeholder/options[].label):
+      Web Form (携 X-518-Edit-Locale): 对旧声明做 locale merge —
+        parameter 按 key 对齐, option 按 value 对齐, 禁止 index。
+      API / manifest (无头): 显式全集替换, 不启用 locale merge。
     """
     user, err = _require_auth(request)
     if err:
@@ -402,13 +412,13 @@ async def update_user_tool(tool_id: str, request: Request):
                 old_label = {}
             new_label = fields["label"]
             if isinstance(new_label, dict):
+                # fallback no-change 判定永远基于 old_snapshot (原始旧 dict),
+                # 与 merged 累积状态无关 — locale 间互不顺序依赖 (批 2c)
                 merged = dict(old_label) if isinstance(old_label, dict) else {}
                 for lg, txt in new_label.items():
                     if lg not in _SUPPORTED_LANGS:
                         continue
-                    # 逐 locale fallback 物化防护: 提交值==该 locale resolver
-                    # 结果视为未修改 (表单把 fallback 回填进了主输入框)
-                    merged = patch_locale_guard(merged, lg, str(txt or ""))
+                    merged = patch_locale_guard(old_label, merged, lg, str(txt or ""))
                 # dict 全空提交 (全部清空) → 不写, 保留原值
                 if isinstance(merged, dict) and merged:
                     sets["label_json"] = json.dumps(merged, ensure_ascii=False)
@@ -447,11 +457,12 @@ async def update_user_tool(tool_id: str, request: Request):
             old_dict = old_desc if isinstance(old_desc, dict) else {}
             cur = resolve_label(old_desc, edit_locale) if old_desc else ""
             if isinstance(d, dict):
+                # 同 label: no-change 基于 old_snapshot, 顺序无关
                 merged = dict(old_dict)
                 for lg, txt in d.items():
                     if lg not in _SUPPORTED_LANGS:
                         continue
-                    merged = patch_locale_guard(merged, lg, str(txt or "").strip()[:200])
+                    merged = patch_locale_guard(old_dict, merged, lg, str(txt or "").strip()[:200])
                 sets["desc_json"] = json.dumps(merged, ensure_ascii=False) if merged else None
             else:
                 new_txt = str(d or "").strip()[:200]

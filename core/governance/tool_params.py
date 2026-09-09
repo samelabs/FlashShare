@@ -197,6 +197,15 @@ def patch_locale(value, lang: str, new_text: str):
     return ""
 
 
+def _leaf_merge(old_value, new_text, lang: str):
+    """params 叶子 (label/placeholder/options[].label) 的 locale merge:
+    no-change 判定基于 old_value (该参数的原始声明, 不可变), 真写走 patch_locale。
+    返回合并后的叶子值 (str | dict)。"""
+    if not isinstance(new_text, str):
+        return new_text
+    return patch_locale_guard(old_value, old_value, lang, new_text)
+
+
 def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
     """params 结构全量替换 + LocalizedText 叶子 locale merge (批 2).
 
@@ -220,22 +229,12 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
         if "label" in p:
             old_label = old.get("label")
             if isinstance(p["label"], str):
-                cur = resolve_label(old_label, lang)
-                if cur and p["label"] == cur and isinstance(old_label, dict):
-                    p["label"] = old_label            # 未修改, 不物化
-                elif cur and p["label"] == cur:
-                    p["label"] = old_label            # str 旧值: 原样保留
-                else:
-                    p["label"] = patch_locale(old_label, lang, p["label"])
+                p["label"] = _leaf_merge(old_label, p["label"], lang)
         # param.placeholder
         if p.get("placeholder") is not None and isinstance(p["placeholder"], str):
             old_ph = old.get("placeholder")
             if old_ph is not None:
-                cur = resolve_label(old_ph, lang)
-                if cur and p["placeholder"] == cur:
-                    p["placeholder"] = old_ph
-                else:
-                    p["placeholder"] = patch_locale(old_ph, lang, p["placeholder"])
+                p["placeholder"] = _leaf_merge(old_ph, p["placeholder"], lang)
         # options[].label (按 value 对齐)
         old_opts = {o.get("value"): o for o in (old.get("options") or [])
                     if isinstance(o, dict) and o.get("value") is not None}
@@ -244,12 +243,7 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
             for o in p["options"]:
                 old_o = old_opts.get(o.get("value"))
                 if old_o and isinstance(o.get("label"), str):
-                    old_label = old_o.get("label")
-                    cur = resolve_label(old_label, lang)
-                    if cur and o["label"] == cur:
-                        o["label"] = old_label
-                    else:
-                        o["label"] = patch_locale(old_label, lang, o["label"])
+                    o["label"] = _leaf_merge(old_o.get("label"), o["label"], lang)
                 new_opts.append(o)
             p["options"] = new_opts
         merged.append(p)
@@ -258,13 +252,19 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
 
 
 
-def patch_locale_guard(value, lang: str, new_text: str):
-    """patch_locale + fallback 物化防护: new_text 等于旧值在该 locale 的
-    resolver 结果时视为未修改, 原样返回 (不创建/覆写键)。"""
-    cur = resolve_label(value, lang) if value else ""
+def patch_locale_guard(old_snapshot, merged, lang: str, new_text: str):
+    """patch_locale + fallback 物化防护 (批 2c: 顺序无关)。
+
+    no-change 判定永远基于 old_snapshot (merge 前的原始旧 dict) 在该
+    locale 的 resolver 结果, 与 merged 的累积状态无关 — 前一个 locale
+    的修改不得影响后一个 locale 是否被判为 fallback/no-op。
+      new_text == resolve_label(old_snapshot, lang) → 未修改, 返回 merged 原样
+      否则 → 对 merged 执行该 locale 的 patch/delete
+    """
+    cur = resolve_label(old_snapshot, lang) if old_snapshot else ""
     if cur and (new_text or "").strip() == cur:
-        return value if isinstance(value, dict) else value
-    return patch_locale(value, lang, new_text)
+        return merged
+    return patch_locale(merged, lang, new_text)
 
 
 class ParamsValueError(ValueError):

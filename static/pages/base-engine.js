@@ -55,7 +55,10 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
 window.resolveLabel = function (label) {
   if (typeof label === "string") return label;
   if (label && typeof label === "object") {
+    // __LANG = platform locale code (zh/en/...), same keys as LocalizedText
+    // dicts. documentElement.lang is a BCP-47 tag (zh-CN) — NOT a dict key.
     const lang = (window.currentLang && window.currentLang()) ||
+                 window.__LANG ||
                  document.documentElement.lang || "en";
     if (label[lang]) return label[lang];
     if (label.en) return label.en;
