@@ -116,6 +116,16 @@ const _ltBack = v => window.resolveLabel ? window.resolveLabel(v) : (typeof v ==
 // 提交时以空串 tombstone 送达服务端 (与"从未提及"可区分)。
 const _deletedLangs = new Set();
 let _initLabel = "", _initDesc = "";
+// 语言行删除单点 (批 2d): refill 回填行 / addLangRow 新增行共用 —
+// 记 locale 进 _deletedLangs (tombstone) 后移除行
+function bindLangRowDelete(row) {
+  row.querySelector(".lang-del").addEventListener("click",
+    e => {
+      const lg = row.querySelector(".lang-pick").value;
+      if (lg) _deletedLangs.add(lg);   // 行删除 = 显式删除该语言
+      row.remove();
+    });
+}
 let _paramSeq = 0;
 
 function paramRowHtml(p) {
@@ -304,10 +314,12 @@ async function submit() {
       if (k.endsWith("__desc")) descDict[k.slice(0, -6)] = v;
       else labelDict[k] = v;
     }
-    // cur locale fallback 物化防护 (批 2c): 主框值 == 回填初值 (resolver
-    // fallback) → 未修改, 不并入 cur 键 — 服务端旧 dict 该 locale 原样保留
-    if (label && label !== _initLabel) labelDict[_curLang()] = label;
-    if (desc && desc !== _initDesc) descDict[_curLang()] = desc;
+    // cur locale 三态 (批 2d):
+    //   值 == 回填初值 → 未修改, 不并入 (旧 dict 该 locale 原样保留)
+    //   值 != 初值非空 → {cur: 新值}
+    //   值 != 初值空串 → {cur: ""} tombstone (显式删除该 locale)
+    if (label !== _initLabel) labelDict[_curLang()] = label;
+    if (desc !== _initDesc) descDict[_curLang()] = desc;
     if (Object.keys(labelDict).length > 1 || Object.keys(descDict).length) {
       label = Object.keys(labelDict).length ? labelDict : label;
       desc = Object.keys(descDict).length ? descDict : desc;
@@ -388,13 +400,7 @@ function refill(t) {
     if (kv.name) row.querySelector(".lang-name").value = kv.name;
     if (kv.desc) row.querySelector(".lang-desc").value = kv.desc;
   });
-  document.querySelector("#langRows .lang-row .lang-del")?.addEventListener("click",
-    e => {
-      const row = e.target.closest(".lang-row");
-      const lg = row.querySelector(".lang-pick").value;
-      if (lg) _deletedLangs.add(lg);     // 批 2c: 行删除 = 显式删除该语言
-      row.remove();
-    }, { once: true });
+  document.querySelectorAll("#langRows .lang-row").forEach(bindLangRowDelete);
   // 参数回填
   (t.params || []).forEach(p => addParamRow(p));
   refreshParamNone();
@@ -407,13 +413,7 @@ function initLangRowDel() {
   document.getElementById("addLangRow").addEventListener("click", () => {
     const box = document.getElementById("langRows");
     box.insertAdjacentHTML("beforeend", langRowHtml());
-    box.lastElementChild.querySelector(".lang-del").addEventListener("click",
-      e => {
-        const row = e.target.closest(".lang-row");
-        const lg = row.querySelector(".lang-pick").value;
-        if (lg) _deletedLangs.add(lg);   // 批 2c: 行删除 = 显式删除该语言
-        row.remove();
-      });
+    bindLangRowDelete(box.lastElementChild);
   });
 }
 
