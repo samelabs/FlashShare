@@ -182,64 +182,36 @@ async def user_page(request: Request, handle: str):
 
 
 def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool):
-    """Shared builder for tool page + MCP page. Non-public → None (404, no probe).
+    """Shared builder for tool page + MCP page. resolve() 是唯一权限判断
+    (public/unlisted → everyone when key known; private → owner only)。
 
     owner=None → first-party bare-id tool (官方工具, 无作者命名空间)."""
-    from governance.catalog import resolve
+    from governance.catalog import resolve, catalog_item
     user = request.state.user
     tool_key = f"{owner}/{tool_id}" if owner else tool_id
     tool, err = resolve(tool_key, user["id"] if user else None)
     if err:
         return None
-    # 4A-fix4a: visibility 单一治理语义 — resolve() 是唯一权限判断
-    # (public/unlisted → everyone when key known; private → owner only)。
-    # 页面层不再自行重解释 visibility: unlisted 直接 URL 与 resolve 契约
-    # 一致 (匿名/非 owner 可访问, 仅不出现在公开列表); private 已由
-    # resolve 拦非 owner。
+    # 4A-fix5: Tool Page 不再手工重建公开 contract — canonical projection
+    # (governance.catalog.row_to_item) + pricing overlay 是唯一数据源, 与
+    # list/search/owner 同一 projection。raw resolved row 仅保留在服务端
+    # (owner_id → handle 上下文), 敏感字段 (endpoint_json/auth_token/
+    # owner_id/trusted/timestamps) 绝不进入 tool/tools_json。
+    tool_public = catalog_item(tool)
     ctx = _ctx_base(request)
-    import json as _json
-    try:
-        label_map = _json.loads(tool.get("label_json") or "{}")
-    except Exception:
-        label_map = {}
-    try:
-        desc_map = _json.loads(tool.get("desc_json") or "null")
-    except Exception:
-        desc_map = None
     from icons import icon_svg
-    # Public-surface whitelist ONLY (same shape as catalog items): the raw
-    # DB row (endpoint_json/auth_token/owner_id/trusted/timestamps) must
-    # never reach any client — owner or anonymous.
-    tool_public = {
-        "id": tool["tool_key"],
-        "type": tool["tool_type"],
-        "label": label_map,
-        "desc": desc_map,
-        "icon": tool.get("icon"),
-        "accept": _json.loads(tool["accept_json"]) if tool.get("accept_json") else None,
-        "presets": None,
-        "params": _json.loads(tool["params_json"]) if tool.get("params_json") else None,
-        "multi": bool(tool.get("multi")),
-        "pass_through": bool(tool.get("pass_through") or False),
-        "cost": int(tool.get("cost") or 0),
-        "icon_svg": icon_svg(tool.get("icon") or "wand"),
-    }
-    if tool.get("presets_json"):
-        tool_public["presets"] = [
-            {"id": p["id"], "label": p["label"], "default": p.get("default", False)}
-            for p in _json.loads(tool["presets_json"])
-        ]
+    tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "wand")
     ctx.update({
         "shell_class": "",
         "tool": tool_public,
         # LocalizedText 协议单链解析; tool_id 兜底属调用方 (协议注释见 app/main.py lt filter)
-        "tool_name": resolve_label(label_map, ctx["lang"]) or tool_id,
-        "handle": _owner_handle(tool["owner_id"]) if tool.get("owner_id") else None,
+        "tool_name": resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id,
+        "handle": _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None,
         "stats": _public_stats(tool_key),
         "mcp_name": tool_key.replace("/", "__"),
         "is_mcp": mcp,
-        "tools_json": _json.dumps([tool_public], ensure_ascii=False),
-        "limits_json": ctx.get("limits_json") or _json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),
+        "tools_json": json.dumps([tool_public], ensure_ascii=False),
+        "limits_json": ctx.get("limits_json") or json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),
     })
     return ctx
 

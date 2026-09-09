@@ -72,11 +72,13 @@ def seed_from_registry() -> dict:
     return {"added": added, "updated": updated}
 
 
-def _row_to_item(row: dict, price: dict) -> dict:
-    """platform_tools row + pricing row → the catalog item shape.
+def row_to_item(row: dict, price: dict) -> dict:
+    """platform_tools row + pricing row → canonical catalog item shape.
 
     Byte-compatible with the legacy tools.list_all_tools() item (same keys,
-    same types) — the three consumption surfaces keep one contract.
+    same types). 4A-fix5: canonical projection 单点 — list/search/owner/
+    Tool Page 对同一工具的公开 contract 全部来自此函数, 禁止任何 surface
+    手工重建第二份公开 shape。
     """
     item = {
         "id": row["tool_key"],  # namespaced key is THE identity from now on
@@ -108,6 +110,21 @@ def _row_to_item(row: dict, price: dict) -> dict:
     return item
 
 
+def catalog_item(tool: dict) -> dict:
+    """Resolve 成功的 platform_tools row → canonical catalog item.
+
+    4A-fix5: Tool Page 单工具入口 — 与 list/search/owner 同一 projection
+    (row_to_item) + pricing overlay。cost 来自 pricing 表 (single source),
+    platform_tools 无 cost 列。
+
+    pricing.enabled 不参与本函数访问判定 — 可访问性由 resolve() 决定,
+    pricing.enabled 的现有访问语义不变 (仅 list/search/owner 列表隐藏)。
+    """
+    from governance.pricing import get_pricing
+    price = get_pricing(tool["tool_key"]) or {"cost": 0, "enabled": True}
+    return row_to_item(tool, price)
+
+
 # ── Catalog (single source for web home, /api/v1/tools, MCP tools/list) ──
 
 def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> list:
@@ -130,7 +147,7 @@ def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> lis
         p = _price_of(row["tool_key"])
         if p is None:
             continue
-        out.append(_row_to_item(row, p))
+        out.append(row_to_item(row, p))
     return out
 
 
@@ -154,7 +171,7 @@ def catalog_version() -> str:
 
 def owner_public_tools(owner_id: int) -> list:
     """用户页 (开发者公开面): 该作者的公开 catalog items — 与三面同构
-    (label/desc/params/cost/presets 同 _row_to_item 契约), 呈现序同全站。"""
+    (label/desc/params/cost/presets 同 row_to_item 契约), 呈现序同全站。"""
     from governance.pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}
     with db() as con:
@@ -164,7 +181,7 @@ def owner_public_tools(owner_id: int) -> list:
         p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
         if not p["enabled"]:
             continue
-        out.append(_row_to_item(row, p))
+        out.append(row_to_item(row, p))
     return out
 
 
@@ -192,7 +209,7 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
         p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
         if not p["enabled"]:
             continue
-        result.append(_row_to_item(row, p))
+        result.append(row_to_item(row, p))
     return result
 
 
