@@ -53,7 +53,7 @@ MIME_EXTS: dict[str, set[str]] = {
     "application/zip": {".zip"},
     "application/vnd.rar": {".rar"},
     "application/x-7z-compressed": {".7z"},
-    "application/gzip": {".gz"},
+    "application/gzip": {".gz", ".tgz"},
     "application/x-tar": {".tar"},
     "application/x-bzip2": {".bz2"},
     "application/x-xz": {".xz"},
@@ -86,8 +86,8 @@ MIME_EXTS: dict[str, set[str]] = {
     "application/json": {".json"},
     "application/xml": {".xml"},
     "text/xml": {".xml"},
-    "application/yaml": {".yaml"},
-    "text/yaml": {".yaml"},
+    "application/yaml": {".yaml", ".yml"},
+    "text/yaml": {".yaml", ".yml"},
     # code
     "text/x-python": {".py"},
     "text/javascript": {".js"},
@@ -98,12 +98,10 @@ MIME_EXTS: dict[str, set[str]] = {
     "application/x-sql": {".sql"},
 }
 
-# 族特有附加扩展: 无专属 MIME (复合/历史别名), 仅存在于分类维度,
-# 不属于任何 MIME 的精确映射 — family 派生时并入 exts, 不进入 MIME_EXTS。
-FAMILY_EXTRA_EXTS: dict[str, set[str]] = {
-    "archive": {".tgz"},
-    "data": {".yml"},
-}
+# 4C-1a: 不再有 FAMILY_EXTRA_EXTS — MIME_EXTS 完整表达当前 family 可发布/
+# 可执行的扩展范围 (application/gzip 含 .tgz, application/yaml/text/yaml 含
+# .yml 等合理别名), family 发布存 mimes → dispatch 精确执行 extensions_
+# for_mimes(mimes) 必须放行族内全部格式, 不允许第二份隐藏扩展来源。
 
 
 class FormatFamily:
@@ -179,7 +177,7 @@ _FAMILY_DEFS: dict[str, tuple[set[str], str]] = {
 FAMILIES: dict[str, FormatFamily] = {
     key: FormatFamily(
         key,
-        set().union(*(MIME_EXTS[m] for m in mimes)) | FAMILY_EXTRA_EXTS.get(key, set()),
+        set().union(*(MIME_EXTS[m] for m in mimes)),
         mimes,
         chip,
     )
@@ -274,3 +272,15 @@ def mime_in_families(mime: str | None, ext: str, fam_keys: set[str]) -> bool:
 
     族词表以 ext 为准 (MIME 服务端不可信, ext 已过魔数嗅探)。"""
     return bool(sniff_ext_to_families(ext) & fam_keys)
+
+
+# 4C-1a 决定性 invariant: 用当前 family 发布协议写成 accept_json 的 MIME
+# 集合, runtime (extensions_for_mimes) 必须放行该族声明的每一个扩展名 —
+# 七个 family 全部成立。未来增改 family/MIME 词表违反此 invariant 即加载
+# 失败, 不允许 family 声称支持但精确执行闸门拒绝的格式。
+for _key, _fam in FAMILIES.items():
+    assert extensions_for_mimes(list(_fam.mimes)) == set(_fam.exts), (
+        f"family '{_key}' accept→ext 分叉: "
+        f"extensions_for_mimes(mimes)={sorted(extensions_for_mimes(list(_fam.mimes)))} "
+        f"!= exts={sorted(_fam.exts)}"
+    )
