@@ -54,8 +54,10 @@ def register(tool_id, tool_type, label, icon, handler,
         handler: callable(tool_input: dict, params: dict) -> dict.
                  Receives source file stream + metadata, returns result.
                  Must NOT touch gokapi, database, or HTTP.
-        accept: set of MIME types or None. Used by homepage to constrain
-                <input accept>. None means accept all formats.
+        accept: set/list of lowercase extension tokens or None, e.g.
+                {".jpg", ".jpeg", ".png"}. Tokens must be canonical
+                (governance.formats.VOCAB_EXTS). None means accept all
+                whitelisted formats.
         presets: list of preset dicts or None. Each preset:
                  {"id": str, "label": {lang: name}, "default": bool}
                  Exactly one preset must have default=True if presets given.
@@ -78,16 +80,10 @@ def register(tool_id, tool_type, label, icon, handler,
         if len(defaults) != 1:
             raise ValueError(f"presets must have exactly one default, got {len(defaults)}")
 
-    # 阶段 B: declaration 经 canonical validator (tool_supply 单点),
-    # register() 不再拥有独立 contract 校验。accept contract = canonical
-    # extension tokens (MIME creation input 已删除, 4C-2 shim 移除)。
-    params_decl = []
-    if params not in (None, [], ""):
-        from governance.tool_params import validate_params_decl, ParamsDeclError
-        try:
-            params_decl = validate_params_decl(params)
-        except ParamsDeclError as exc:
-            raise ValueError(f"invalid params declaration: {exc}") from exc
+    # 阶段 B-close: declaration 经 canonical validator 单点 (tool_supply),
+    # register() 不再独立校验 params/accept/label contract — 只保留
+    # runtime duplicate registration + handler binding。accept contract =
+    # canonical lowercase extension tokens。
     from governance.tool_supply import validate_tool_declaration, DeclarationError
     decl = {
         "tool_key": tool_id,
@@ -100,28 +96,28 @@ def register(tool_id, tool_type, label, icon, handler,
         "icon": icon,
         "accept": sorted(accept) if accept else None,
         "multi": multi,
-        "params": params_decl or None,
+        "params": params,
         "presets": presets,
         "pass_through": pass_through,
         "visibility": "public",
         "enabled": True,
     }
     try:
-        validate_tool_declaration(decl)
+        decl = validate_tool_declaration(decl)
     except DeclarationError as exc:
         raise ValueError(f"invalid tool declaration: {exc}") from exc
     _registry.append({
         "id": tool_id,
         "type": tool_type,
-        "label": label,
-        "desc": desc,
+        "label": decl["label"],
+        "desc": decl["desc"],
         "icon": icon,
         "handler": handler,
-        "accept": accept,
+        "accept": set(decl["accept"]) if decl["accept"] else None,
         "presets": presets,
         "multi": multi,
         "pass_through": bool(pass_through),
-        "params": params_decl,
+        "params": decl["params"],
     })
 
 

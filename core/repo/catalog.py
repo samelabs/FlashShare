@@ -93,6 +93,13 @@ def owner_rows_joined(con, user_id: int) -> list:
         (user_id,)).fetchall()
 
 
+def lock_user_row(con, user_id: int) -> None:
+    """对 owner 行 SELECT ... FOR UPDATE — 串行化同 owner 的并发 create,
+    使 count-based cap (MAX_TOOLS_PER_USER) 在 READ COMMITTED 下成立。
+    仅 user source adapter 使用 (policy 锁, 非 supply domain)。"""
+    con.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
+
+
 def count_by_owner(con, user_id: int) -> int:
     return con.execute(
         "SELECT COUNT(*) AS n FROM platform_tools WHERE owner_id = %s",

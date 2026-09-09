@@ -105,12 +105,18 @@ operator 入口都从它派生，禁止第二份手写格式表。
   system local / operator remote / user remote 三入口的 create/update
   service 收口为同一供给路径；移除 register 的 MIME creation shim。
   落地事实：三源 source adapter → `governance.tool_supply` 的
-  `validate_tool_declaration()`（纯 declaration 校验，无来源政策）→
-  `create_tool / update_tool / upsert_seed_tool`（DB 列映射唯一份）→
-  `repo.catalog` 通用 row writer。HTTP binding 组装单点
-  `build_http_binding()`（seal 一次，user 路由的 `_endpoint_decl` 已删除）。
+  `validate_tool_declaration()`（declaration 校验 + normalization：accept
+  限 VOCAB_EXTS 输出 sorted unique、params 采 validate_params_decl canonical
+  输出、label 必填/desc 可选；返回值即**可持久化 canonical declaration**，
+  无来源政策）与 `validate_tool_patch()`（update patch 字段级同规则，
+  不静默强转）→ `create_tool / update_tool / upsert_seed_tool`（DB 列映射
+  唯一一份 `_serialize_row`；支持 con= 参与 source adapter 事务）→
+  `repo.catalog` 通用 row writer。HTTP binding 组装与 auth seal 唯一入口
+  `build_http_binding()`（`_endpoint_decl` 与 operator 旧 endpoint 组装段
+  均已删除，全仓 supply 路径无第二处 seal）。
   来源政策（user caps/SSRF/self-test gate、operator public/trusted、
-  first-party seed 语义、pricing）保持在各 source adapter。
+  first-party seed 语义、pricing）保持在各 source adapter；user 并发 cap
+  由 source adapter 对 owner 行 FOR UPDATE 后同事务 count+insert 保证。
 - **阶段 C — ToolInvocation source/params/delivery/client_ref 分层**
   正式 invocation envelope；lifecycle/delivery 从 params 外层彻底分离；
   移除 lifecycle 旧 envelope shim。

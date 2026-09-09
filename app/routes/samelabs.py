@@ -434,16 +434,6 @@ async def samelabs_remote_create(request: Request):
         from config import ALLOWED_EXT
         if ext not in ALLOWED_EXT:
             return JSONResponse({"ok": False, "error": "bad_output_filename"}, 422)
-    import json as _json
-    endpoint = {"url": url, "timeout_s": timeout_s}
-    if auth_header and auth_token:
-        from secrets_vault import seal
-        endpoint["auth_header"] = auth_header
-        endpoint["auth_token"] = seal(auth_token)
-    if output_filename:
-        endpoint["output_filename"] = output_filename
-    if output_content_type:
-        endpoint["output_content_type"] = output_content_type
     # 4C-2: 逗号分隔输入同时兼容 canonical ext (.png,.pdf) 与 legacy MIME
     # (image/png); 统一过 extensions_for_accept, 存库只写 canonical ext。
     # operator 受信供给允许跨 family; unknown token → bad_accept。
@@ -458,7 +448,9 @@ async def samelabs_remote_create(request: Request):
         accept = sorted(canon) if canon else None
 
     # 阶段 B: operator policy 之上构造 canonical declaration →
-    # tool_supply 单点 (与 user 同一 create_tool / binding shape)
+    # tool_supply 单点 (与 user 同一 create_tool / binding shape)。
+    # HTTP binding composition + auth seal 唯一入口 = build_http_binding
+    # (旧 endpoint 组装段已删除, 不再存在第二份 seal)。
     from repo.catalog import tool_key_exists
     from governance.tool_supply import create_tool, build_http_binding, DeclarationError
     try:

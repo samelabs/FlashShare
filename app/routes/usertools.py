@@ -247,23 +247,16 @@ async def create_user_tool(request: Request):
         else:
             desc = str(desc).strip()[:200] or None
 
-    params_decl = []
-    if raw.get("params") not in (None, "", []):
-        from governance.tool_params import validate_params_decl, ParamsDeclError
-        try:
-            params_decl = validate_params_decl(raw.get("params"))
-        except ParamsDeclError as exc:
-            return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    # 阶段 B-close: params 不再提前 validate — raw 直入 declaration,
+    # 由 create_tool → validate_tool_declaration 单点校验/normalize。
+    # (PATCH 的 edit-locale params merge 仍可调 validate_params_decl:
+    #  transformation prerequisite, 非 declaration validator。)
+    params_decl = raw.get("params") or None
 
     # user policy → canonical declaration → tool_supply 单点 (阶段 B)
-    from repo.catalog import tool_key_exists, count_by_owner
+    from repo.catalog import tool_key_exists, count_by_owner, lock_user_row
     from governance.tool_supply import create_tool, build_http_binding, DeclarationError
     tool_key = f"{user['username']}/{tool_id}"
-    with db() as con:
-        if tool_key_exists(con, tool_key):
-            return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
-        if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
-            return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
     label = fields["label"]
     declaration = {
         "tool_key": tool_key,
@@ -284,7 +277,17 @@ async def create_user_tool(request: Request):
         "binding": build_http_binding(fields),
     }
     try:
-        create_tool(declaration)
+        # Stage B-close: policy check + persistence 同事务; 对 owner 行
+        # SELECT ... FOR UPDATE 串行化同 owner 并发 create, 保证
+        # MAX_TOOLS_PER_USER 在并发下不被突破 (READ COMMITTED 下裸
+        # COUNT 会双读 19)。cap 是 user policy, 不进 supply domain。
+        with db() as con:
+            lock_user_row(con, user["id"])
+            if tool_key_exists(con, tool_key):
+                return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
+            if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
+                return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
+            create_tool(declaration, con=con)
     except DeclarationError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 422)
     # pricing row: owner-priced from day one
@@ -490,9 +493,13 @@ async def update_user_tool(tool_id: str, request: Request):
     if "accept" in fields:
         sets["accept"] = fields["accept"]
     if "multi" in fields:  # 4C-2: PATCH 仅在提交 multi 时更新
-        sets["multi"] = bool(fields["multi"])
+        # _validate_submission 已保证 bool; 不再二次强转 (supply 边界
+        # validate_tool_patch 同样拒非 bool — 双层都不静默修正)。
+        sets["multi"] = fields["multi"]
     if "enabled" in raw:
-        sets["enabled"] = bool(raw.get("enabled"))
+        # 不做 bool(raw) 强转 — 非 bool 交 supply patch validator 拒
+        # (bad_enabled), 与 declaration 语义一致。
+        sets["enabled"] = raw.get("enabled")
     if "desc" in raw:
         d = raw.get("desc")
         if edit_locale:
