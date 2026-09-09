@@ -514,6 +514,19 @@ function savedToolParams(toolId) {
   }
 }
 
+// 4A-fix3b: 无配置工具的直接选择 — tab 直选 / 搜索 share / 搜索无配置工具
+// 共用同一 commit 语义 (一次性提交 + 清 preset/params + 写 selection storage)。
+// 有配置工具必须走 openToolOverlay 事务语义: Confirm 才 commit, Cancel/X/
+// backdrop 不改当前 committed selection。
+function commitToolSelection(tool) {
+  activeTool = tool;
+  activePreset = null;
+  activeToolParams = {};
+  localStorage.setItem("flashshare_tool", tool.id);
+  localStorage.removeItem("flashshare_tool_preset");
+  applyToolSelection();
+}
+
 function loadHomeTools() {
   if (!homeTools) return;
   const tools = window.__TOOLS__;
@@ -529,12 +542,8 @@ function loadHomeTools() {
       // share 由此规则自然直选 — 无工具名特判。
       const noInput = !(tool.presets && tool.presets.length) && !(Array.isArray(tool.params) && tool.params.length);
       if (noInput) {
-        activeTool = tool;
-        activePreset = null;
-        activeToolParams = {};
-        localStorage.setItem("flashshare_tool", tool.id);
-        localStorage.removeItem("flashshare_tool_preset");
-        applyToolSelection();
+        // 4A-fix3b: 无配置工具直接选择 — 与搜索路径共用 commitToolSelection
+        commitToolSelection(tool);
         return;
       }
       openToolOverlay(tool, tab);
@@ -601,16 +610,17 @@ function initToolSearch() {
   };
 
   const selectToolFromSearch = (tool) => {
-    if (tool.id === "share") { closePop(); return; }
-    activeTool = tool;
-    activePreset = null;
-    // 4A-fix3: 切工具即清内存 params — 浮层确认前 activeTool 已切换, 不得把
-    // 上一工具的 activeToolParams 残留发给新工具 (浮层渲染值来自 savedToolParams,
-    // 与内存态无关; confirm 时才收集新工具的值写入 activeToolParams)。
-    activeToolParams = {};
-    localStorage.setItem("flashshare_tool", tool.id);
-    localStorage.removeItem("flashshare_tool_preset");
-    applyToolSelection();
+    // 4A-fix3b: 与 tab 路径同一事务语义 — 有配置工具只打开 overlay, 不改
+    // 当前 committed selection; Confirm 才 commit (activeTool/activePreset/
+    // activeToolParams/localStorage 一次性提交)。share/无配置工具直接选择
+    // (真实切换 + 清 preset/params + 写 selection storage)。
+    const noInput = !(tool.presets && tool.presets.length)
+      && !(Array.isArray(tool.params) && tool.params.length);
+    if (noInput) {
+      commitToolSelection(tool);
+      closePop();
+      return;
+    }
     openToolOverlay(tool, null);
     input.value = "";
     closePop();
