@@ -8,11 +8,7 @@ import io
 from PIL import Image
 from tools import register, TYPE_PRODUCE, ToolError
 
-ACCEPT_MIMES = {
-    "image/png", "image/jpeg", "image/gif",
-    "image/bmp", "image/webp", "image/tiff",
-    "image/x-icon", "image/vnd.microsoft.icon",
-}
+ACCEPT_MIMES = {".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
 # ICO output sizes
 ICO_SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]

@@ -398,7 +398,7 @@ register(
             "en": 'Wrap screenshots in beautiful styled containers.',
         },
     icon="wand",
-    accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
+    accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
     handler=beautify_handler,
     params=[
         {"key": "preset", "type": "enum", "label": {"en": "Style", "zh": "样式"},

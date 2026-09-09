@@ -19,7 +19,7 @@ from PIL import Image, ImageOps
 
 from tools import register, TYPE_PRODUCE, ToolError
 
-ACCEPTED = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"}
+ACCEPTED = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
 # Below this gray level a pixel counts as content (255 = pure white).
 WHITE_THRESHOLD = 245

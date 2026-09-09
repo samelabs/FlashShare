@@ -46,40 +46,37 @@ def seed_from_registry() -> dict:
     A tool removed from code keeps its row (enabled=false) so metering
     history stays interpretable — same convention as the pricing table.
     """
+    # 阶段 B: registry → canonical declaration → tool_supply 单点 upsert。
+    # 本函数不再解释 declaration 字段 (无 MIME shim / 手工 json.dumps)。
     from tools import _registry
-    from governance.formats import extensions_for_accept
+    from governance.tool_supply import upsert_seed_tool
     ts = now()
     added = 0
     updated = 0
-
-    def _seed_accept(decl):
-        """register() 暂仍允许 legacy MIME creation input; 写库前统一
-        canonicalize 成 extension tokens (4C-2)。未知 token 安全保留。"""
-        if not decl:
-            return None
-        try:
-            canon = extensions_for_accept(sorted(decl))
-            return json.dumps(sorted(canon), ensure_ascii=False) if canon else None
-        except (KeyError, TypeError):
-            return json.dumps(sorted(str(x) for x in decl if x), ensure_ascii=False)
-
+    for t in _registry:
+        decl = {
+            "tool_key": t["id"],
+            "tool_id": t["id"],
+            "owner_id": None,
+            "execution": "local",
+            "tool_type": t["type"],
+            "label": t["label"],
+            "desc": t.get("desc"),
+            "icon": t["icon"],
+            "accept": sorted(t["accept"]) if t.get("accept") else None,
+            "multi": bool(t.get("multi", False)),
+            "params": t.get("params"),
+            "presets": t.get("presets"),
+            "pass_through": bool(t.get("pass_through", False)),
+            "visibility": "public",
+            "enabled": True,
+        }
+        if upsert_seed_tool(decl):
+            added += 1
+        else:
+            updated += 1
+    # Retired-in-code first-party tools: flip enabled off, keep the row
     with db() as con:
-        for t in _registry:
-            row = catalog_repo.upsert_first_party(
-                con, t["id"], t["type"],
-                json.dumps(t["label"], ensure_ascii=False),
-                t["icon"],
-                _seed_accept(t["accept"]),
-                json.dumps(t["presets"], ensure_ascii=False) if t["presets"] else None,
-                bool(t.get("multi", False)), ts,
-                json.dumps(t["desc"], ensure_ascii=False) if t.get("desc") else None,
-                bool(t.get("pass_through", False)),
-                json.dumps(t["params"], ensure_ascii=False) if t.get("params") else None)
-            if row["inserted"]:
-                added += 1
-            else:
-                updated += 1
-        # Retired-in-code first-party tools: flip enabled off, keep the row
         catalog_repo.retire_absent_first_party(
             con, [t["id"] for t in _registry], ts)
     return {"added": added, "updated": updated}

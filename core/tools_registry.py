@@ -196,7 +196,7 @@ register(
         "en": "Strips metadata and disrupts AI watermarks from your images.",
     },
     icon="shield",
-    accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
+    accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
     handler=privacy_handler,
     params=[
         {"key": "preset", "type": "enum", "label": {"en": "Clean level", "zh": "净化强度"},

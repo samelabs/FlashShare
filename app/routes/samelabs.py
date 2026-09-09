@@ -457,19 +457,43 @@ async def samelabs_remote_create(request: Request):
             return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
         accept = sorted(canon) if canon else None
 
-    from repo.catalog import tool_key_exists, insert_remote_row
-    from utils import now as _now
-    ts = _now()
+    # 阶段 B: operator policy 之上构造 canonical declaration →
+    # tool_supply 单点 (与 user 同一 create_tool / binding shape)
+    from repo.catalog import tool_key_exists
+    from governance.tool_supply import create_tool, build_http_binding, DeclarationError
     try:
         with db() as con:
             # typed duplicate check (unique index would 500 otherwise)
             if tool_key_exists(con, tool_id):
                 return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
-            insert_remote_row(
-                con, tool_id, tool_id, execution,
-                _json.dumps({"en": label, "zh": label}, ensure_ascii=False),
-                _json.dumps(accept) if accept else None,
-                _json.dumps(endpoint), ts, multi=multi)
+        declaration = {
+            "tool_key": tool_id,
+            "tool_id": tool_id,
+            "owner_id": None,
+            "execution": "http",
+            "tool_type": "produce",
+            "label": {"en": label, "zh": label},
+            "desc": None,
+            "icon": "wand",
+            "accept": accept,
+            "multi": multi,
+            "params": None,
+            "presets": None,
+            "pass_through": False,
+            "visibility": "public",
+            "enabled": True,
+            "binding": build_http_binding({
+                "url": url, "timeout_s": timeout_s,
+                **({"auth_header": auth_header} if auth_header else {}),
+                **({"auth_token": auth_token} if auth_token else {}),
+                **({"output_filename": output_filename} if output_filename else {}),
+                **({"output_content_type": output_content_type} if output_content_type else {}),
+            }),
+        }
+        try:
+            create_tool(declaration)
+        except DeclarationError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, 422)
     except Exception:
         return JSONResponse({"ok": False, "error": "duplicate_or_db"}, 409)
     # seed pricing row so the metering gate can charge it

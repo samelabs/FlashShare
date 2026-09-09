@@ -70,12 +70,7 @@ def register(tool_id, tool_type, label, icon, handler,
                ONLY parameter declaration channel for first-party tools;
                presets is legacy storage-compat only.
     """
-    if tool_type not in (TYPE_VIEW, TYPE_PEEK, TYPE_PRODUCE):
-        raise ValueError(f"Invalid tool type: {tool_type}")
-    if icon not in VALID_ICONS:
-        raise ValueError(f"Invalid icon: {icon}")
-    if "en" not in label:
-        raise ValueError("Label must have 'en' key")
+    # local runtime binding 专属检查 (duplicate registration)
     if any(t["id"] == tool_id for t in _registry):
         raise ValueError(f"Tool already registered: {tool_id}")
     if presets is not None:
@@ -83,9 +78,9 @@ def register(tool_id, tool_type, label, icon, handler,
         if len(defaults) != 1:
             raise ValueError(f"presets must have exactly one default, got {len(defaults)}")
 
-    if desc is not None and "en" not in desc:
-        raise ValueError("desc must have 'en' key")
-    # Canonical params: 与用户工具完全相同的声明 validator (批 4A 单一轨道)
+    # 阶段 B: declaration 经 canonical validator (tool_supply 单点),
+    # register() 不再拥有独立 contract 校验。accept contract = canonical
+    # extension tokens (MIME creation input 已删除, 4C-2 shim 移除)。
     params_decl = []
     if params not in (None, [], ""):
         from governance.tool_params import validate_params_decl, ParamsDeclError
@@ -93,6 +88,28 @@ def register(tool_id, tool_type, label, icon, handler,
             params_decl = validate_params_decl(params)
         except ParamsDeclError as exc:
             raise ValueError(f"invalid params declaration: {exc}") from exc
+    from governance.tool_supply import validate_tool_declaration, DeclarationError
+    decl = {
+        "tool_key": tool_id,
+        "tool_id": tool_id,
+        "owner_id": None,
+        "execution": "local",
+        "tool_type": tool_type,
+        "label": label,
+        "desc": desc,
+        "icon": icon,
+        "accept": sorted(accept) if accept else None,
+        "multi": multi,
+        "params": params_decl or None,
+        "presets": presets,
+        "pass_through": pass_through,
+        "visibility": "public",
+        "enabled": True,
+    }
+    try:
+        validate_tool_declaration(decl)
+    except DeclarationError as exc:
+        raise ValueError(f"invalid tool declaration: {exc}") from exc
     _registry.append({
         "id": tool_id,
         "type": tool_type,

@@ -161,7 +161,7 @@ register(
             "en": 'Reduce image file size with quality control.',
         },
     icon="compress",
-    accept={"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"},
+    accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
     handler=compress_handler,
     params=[
         {"key": "preset", "type": "enum", "label": {"en": "Target size", "zh": "目标体积"},

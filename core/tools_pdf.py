@@ -104,7 +104,7 @@ register(
             "en": 'Combine multiple PDF files into one document.',
         },
     icon="merge",
-    accept={"application/pdf"},
+    accept={".pdf"},
     handler=pdf_merge_handler,
     multi=True,
 )

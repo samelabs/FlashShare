@@ -36,8 +36,8 @@ ACCEPTED_EXT = {
     ".htm": "text/html",
 }
 
-# MIME types accepted by the registry (sorted for stable output in /api/tools)
-ACCEPTED_MIMES = sorted(set(ACCEPTED_EXT.values()))
+# Canonical extension tokens accepted by the registry (sorted for stable output)
+ACCEPTED_EXTS = sorted(ACCEPTED_EXT.keys())
 
 SOFFICE = os.environ.get("FLASHSHARE_SOFFICE", "soffice")
 CONVERT_TIMEOUT = 60          # seconds per conversion
@@ -145,7 +145,7 @@ register(
             "en": 'Convert Word/Excel/PPT and other documents to a clean PDF, ready to print or share.',
         },
     icon="print",
-    accept=set(ACCEPTED_MIMES),
+    accept=set(ACCEPTED_EXTS),
     handler=doc2pdf_handler,
     multi=False,
 )

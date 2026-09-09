@@ -21,7 +21,7 @@ from tools import register, TYPE_PRODUCE, ToolError
 
 MAX_SOURCES = 20
 DPI = 150
-ACCEPTED = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"}
+ACCEPTED = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
 
 def img2pdf_handler(tool_input, params):

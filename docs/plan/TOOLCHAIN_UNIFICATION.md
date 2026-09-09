@@ -88,7 +88,7 @@ operator 入口都从它派生，禁止第二份手写格式表。
 | **legacy presets**（presets_json 与 params_json 双轨） | 一方工具旧预设模型 | canonical params 声明；projection 有 params 时 presets=None | 一方 registry 全部迁移到 params 声明 |
 | **lifecycle 暂混 params 外层旧 envelope**（expiry_days / allowed_downloads 随请求 params 传入） | Web 请求 shape 历史形态 | ToolInvocation 正式分层：lifecycle 独立于 canonical tool params（阶段 C delivery envelope） | delivery 正式协议落地，Web/API/MCP 请求 shape 切换 |
 | **compatibility selftest endpoint**（`/api/usertools/{id}/selftest`） | My Tools 旧自测链的薄适配 | 作者从真实工具页 `/tool/{owner}/{tool_id}` 走 runToolFlow 完整消费链 | 确认无外部调用方后删除该 endpoint |
-| **first-party `register()` 仍接受 MIME creation input** | 一方 `tools_*.py` 源码仍以 MIME 声明 accept，机械重写成本高 | register 直接声明 canonical ext；seed 无需再 canonicalize | 阶段 B（Tool Supply Unification）统一三入口时迁移全部一方源码 |
+| ~~first-party `register()` 仍接受 MIME creation input~~ **已删除（阶段 B 完成）** | — | register 直接声明 canonical ext；seed 无需再 canonicalize | 已随阶段 B 迁移全部一方源码并删除 shim |
 
 每个 shim 的容忍策略：**读兼容、写 canonical**。新写入（用户发布、operator
 创建、一方 seed）落库永远是 canonical ext；只有读取存量时才展开/回落，
@@ -101,9 +101,16 @@ operator 入口都从它派生，禁止第二份手写格式表。
 - **阶段 A — Tool Input Contract（本阶段）**
   canonical AcceptToken、精确执行闸门、multi 真实边界、Catalog canonical
   projection、用户/operator 发布 canonical write、前端 exact selector。
-- **阶段 B — Tool Supply Unification**
+- **阶段 B — Tool Supply Unification（已完成）**
   system local / operator remote / user remote 三入口的 create/update
   service 收口为同一供给路径；移除 register 的 MIME creation shim。
+  落地事实：三源 source adapter → `governance.tool_supply` 的
+  `validate_tool_declaration()`（纯 declaration 校验，无来源政策）→
+  `create_tool / update_tool / upsert_seed_tool`（DB 列映射唯一份）→
+  `repo.catalog` 通用 row writer。HTTP binding 组装单点
+  `build_http_binding()`（seal 一次，user 路由的 `_endpoint_decl` 已删除）。
+  来源政策（user caps/SSRF/self-test gate、operator public/trusted、
+  first-party seed 语义、pricing）保持在各 source adapter。
 - **阶段 C — ToolInvocation source/params/delivery/client_ref 分层**
   正式 invocation envelope；lifecycle/delivery 从 params 外层彻底分离；
   移除 lifecycle 旧 envelope shim。

@@ -108,7 +108,7 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         fields["timeout_s"] = timeout_s
 
     if raw.get("auth_header") and raw.get("auth_token"):
-        # 存原文; seal 只在 _endpoint_decl 组装时做一次 (🔴4 修复: 原双重加密)
+        # 存原文; seal 只在 tool_supply.build_http_binding 组装时做一次
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
         fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
 
@@ -177,21 +177,8 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
     return fields, None
 
 
-def _endpoint_decl(fields: dict, execution: str, existing: dict | None = None) -> dict:
-    """Compose endpoint_json from validated fields (merge for patch)."""
-    decl = dict(existing or {})
-    if "url" in fields:
-        decl["url"] = fields["url"]
-    if "timeout_s" in fields:
-        decl["timeout_s"] = fields["timeout_s"]
-    if "auth_header" in fields:
-        decl["auth_header"] = fields["auth_header"]
-    if "auth_token" in fields:
-        from secrets_vault import seal
-        decl["auth_token"] = seal(fields["auth_token"])
-    # output_filename/output_content_type 由端点决定, 不入库
-    # (存量 decl 中已有值原样保留在 existing_decl 里)。
-    return decl
+# 阶段 B: HTTP binding 组装单点在 governance.tool_supply.build_http_binding
+# (_endpoint_decl 已删除, seal 只在 supply 层发生一次)。
 
 
 @router.get("/api/tools/search")
@@ -268,27 +255,38 @@ async def create_user_tool(request: Request):
         except ParamsDeclError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, 422)
 
-    from repo.catalog import tool_key_exists, count_by_owner, insert_user_tool
+    # user policy → canonical declaration → tool_supply 单点 (阶段 B)
+    from repo.catalog import tool_key_exists, count_by_owner
+    from governance.tool_supply import create_tool, build_http_binding, DeclarationError
     tool_key = f"{user['username']}/{tool_id}"
     with db() as con:
         if tool_key_exists(con, tool_key):
             return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
         if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
             return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
-
-        ts = now()
-        label = fields["label"]
-        insert_user_tool(
-            con, tool_key, user["id"], tool_id, execution,
-            json.dumps(fields["label"] if isinstance(fields["label"], dict)
-                       else {"en": fields["label"]}, ensure_ascii=False),
-            json.dumps(fields.get("accept")) if fields.get("accept") else None,
-            fields["visibility"],
-            json.dumps(_endpoint_decl(fields, execution)), ts,
-            params_json=json.dumps(params_decl, ensure_ascii=False) if params_decl else None,
-            desc_json=json.dumps(desc if isinstance(desc, dict) else {"en": desc},
-                                 ensure_ascii=False) if desc else None,
-            multi=bool(fields.get("multi", False)))
+    label = fields["label"]
+    declaration = {
+        "tool_key": tool_key,
+        "tool_id": tool_id,
+        "owner_id": user["id"],
+        "execution": execution,
+        "tool_type": "produce",
+        "label": label if isinstance(label, dict) else {"en": label},
+        "desc": desc if isinstance(desc, dict) else ({"en": desc} if desc else None),
+        "icon": "wand",
+        "accept": fields.get("accept"),
+        "multi": bool(fields.get("multi", False)),
+        "params": params_decl or None,
+        "presets": None,
+        "pass_through": False,
+        "visibility": fields["visibility"],
+        "enabled": True,
+        "binding": build_http_binding(fields),
+    }
+    try:
+        create_tool(declaration)
+    except DeclarationError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
     # pricing row: owner-priced from day one
     from governance.pricing import set_pricing
     set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
@@ -395,7 +393,7 @@ async def update_user_tool(tool_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    from repo.catalog import owner_row_by_key, update_fields
+    from repo.catalog import owner_row_by_key
     tool_key = f"{user['username']}/{tool_id}"
     with db() as con:
         row = owner_row_by_key(con, tool_key, user["id"])
@@ -438,7 +436,8 @@ async def update_user_tool(tool_id: str, request: Request):
 
     # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
     # 与运行时驱动看到的完全一致, 而非裸入参)
-    merged_decl = _endpoint_decl(fields, row["execution"], existing_decl)
+    from governance.tool_supply import build_http_binding
+    merged_decl = build_http_binding(fields, existing_decl)
     if "url" in fields and not row["trusted"]:
         from remote import guard_endpoint, RemoteError
         try:
@@ -469,7 +468,7 @@ async def update_user_tool(tool_id: str, request: Request):
                     merged = patch_locale_guard(old_label, merged, lg, str(txt or ""))
                 # dict 全空提交 (全部清空) → 不写, 保留原值
                 if isinstance(merged, dict) and merged:
-                    sets["label_json"] = json.dumps(merged, ensure_ascii=False)
+                    sets["label"] = merged
             else:
                 # fallback 物化防护: 提交值 == 旧值在当前 locale 的 resolver
                 # 结果 → 发布者未修改 (表单显示的就是 fallback), 不写。
@@ -479,18 +478,17 @@ async def update_user_tool(tool_id: str, request: Request):
                 else:
                     merged = patch_locale(old_label, edit_locale, str(new_label or ""))
                     if isinstance(merged, dict) and merged:
-                        sets["label_json"] = json.dumps(merged, ensure_ascii=False)
+                        sets["label"] = merged
                     elif isinstance(merged, str) and merged:
-                        sets["label_json"] = json.dumps({"en": merged}, ensure_ascii=False)
+                        sets["label"] = {"en": merged}
                     # merged 为 "" (删光了所有语言) → 不写 label, 保留原值
         else:
-            sets["label_json"] = json.dumps(
-                fields["label"] if isinstance(fields["label"], dict)
-                else {"en": fields["label"]}, ensure_ascii=False)
+            sets["label"] = (fields["label"] if isinstance(fields["label"], dict)
+                else {"en": fields["label"]})
     if "visibility" in fields:
         sets["visibility"] = fields["visibility"]
     if "accept" in fields:
-        sets["accept_json"] = json.dumps(fields["accept"]) if fields["accept"] else None
+        sets["accept"] = fields["accept"]
     if "multi" in fields:  # 4C-2: PATCH 仅在提交 multi 时更新
         sets["multi"] = bool(fields["multi"])
     if "enabled" in raw:
@@ -513,21 +511,21 @@ async def update_user_tool(tool_id: str, request: Request):
                     if lg not in _SUPPORTED_LANGS:
                         continue
                     merged = patch_locale_guard(old_dict, merged, lg, str(txt or "").strip()[:200])
-                sets["desc_json"] = json.dumps(merged, ensure_ascii=False) if merged else None
+                sets["desc"] = merged or None
             else:
                 new_txt = str(d or "").strip()[:200]
                 if cur and new_txt == cur:
                     pass  # 未修改 — 保留原 dict
                 else:
                     merged = patch_locale(old_dict, edit_locale, new_txt)
-                    sets["desc_json"] = json.dumps(merged, ensure_ascii=False) if merged else None
+                    sets["desc"] = merged or None
         elif isinstance(d, dict):
             clean = {k: str(v).strip()[:200] for k, v in d.items()
                      if k in _SUPPORTED_LANGS and str(v).strip()}
-            sets["desc_json"] = json.dumps(clean, ensure_ascii=False) if clean else None
+            sets["desc"] = clean or None
         else:
             d = str(d or "").strip()[:200]
-            sets["desc_json"] = json.dumps({"en": d}, ensure_ascii=False) if d else None
+            sets["desc"] = {"en": d} if d else None
     if "params" in raw:
         # params 声明 (spec v3): 结构全量替换; Web 编辑时三个 LocalizedText
         # 叶子 (label/placeholder/options[].label) 对旧声明做 locale merge —
@@ -544,12 +542,14 @@ async def update_user_tool(tool_id: str, request: Request):
             except Exception:
                 old_decl = []
             decl = merge_params_decl(old_decl, decl, edit_locale)
-        sets["params_json"] = json.dumps(decl, ensure_ascii=False) if decl else None
+        sets["params"] = decl or None
+    # 阶段 B: canonical patch → tool_supply 单点序列化/写库
+    # (merged_decl = build_http_binding 产物, binding 结构与 operator 一致)
     if sets or fields:
-        sets["endpoint_json"] = json.dumps(merged_decl)
-        sets["updated_at"] = now()
-        with db() as con:
-            update_fields(con, tool_key, sets)
+        if row["execution"] == "http":
+            sets["binding"] = merged_decl
+        from governance.tool_supply import update_tool
+        update_tool(tool_key, sets)
     if "cost" in fields:
         from governance.pricing import set_pricing
         set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
