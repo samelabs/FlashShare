@@ -11,6 +11,11 @@ DOWNLOAD_LIMITS = (1, 10, 50, 100, 200)
 DEFAULT_EXPIRY_DAYS = 1
 DEFAULT_ALLOWED_DOWNLOADS = 50
 
+# Tool source files are temporary execution custody, not result delivery.
+# Their lifetime is platform policy and must not inherit user result settings.
+INTERMEDIATE_TTL_DAYS = 1
+INTERMEDIATE_DOWNLOAD_LIMIT = 10
+
 
 def validate_delivery(delivery: dict) -> dict:
     """canonical delivery validator — 严格类型, 拒绝字符串/浮点/缺字段。
