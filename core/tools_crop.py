@@ -14,6 +14,7 @@ Guards:
 """
 
 import io
+import os
 
 from PIL import Image, ImageOps
 
@@ -56,8 +57,12 @@ def crop_white_handler(tool_input, params):
     Returns:
         {"stream", "filename", "content_type", "size"}
     """
-    ct = tool_input.get("content_type", "")
-    if ct not in ACCEPTED:
+    filename = tool_input.get("filename") or ""
+    ext = os.path.splitext(filename.lower())[1]
+    ct = (tool_input.get("content_type") or "").lower()
+    # Tool Contract accept is canonical extension vocabulary. Keep the handler
+    # in the same domain, then independently require a MIME we can re-encode.
+    if ext not in ACCEPTED or ct not in _FORMAT:
         raise ToolError("err_format_not_supported")
 
     stream = tool_input["stream"]
@@ -99,7 +104,7 @@ def crop_white_handler(tool_input, params):
     out = img.crop(bbox)
     img.close()
 
-    fmt, ext = _FORMAT[ct]
+    fmt, out_ext = _FORMAT[ct]
     if fmt == "JPEG" and out.mode != "RGB":
         out = out.convert("RGB")
     buf = io.BytesIO()
@@ -112,7 +117,7 @@ def crop_white_handler(tool_input, params):
 
     return {
         "stream": io.BytesIO(raw),
-        "filename": f"cropped_{stem}.{ext}",
+        "filename": f"cropped_{stem}.{out_ext}",
         "content_type": ct,
         "size": len(raw),
     }

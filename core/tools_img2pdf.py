@@ -5,7 +5,7 @@ dependencies: Pillow 10.2 ships the PDF plugin.
 
 Architecture:
     Multi-file image input → Pillow PDF encoder → single PDF output.
-    accept mirrors compress (6 decoded image MIMEs — SVG/AVIF/HEIC are NOT
+    accept mirrors compress (canonical image extensions — SVG/AVIF/HEIC are NOT
     Pillow-decodable today and stay out; see tool-paradigms.md image formats).
 
 Page sizing: each page sized to the image at 150 DPI (resolution=150),
@@ -14,6 +14,7 @@ portrait/landscape follows the image aspect. EXIF orientation applied
 """
 
 import io
+import os
 
 from PIL import Image, ImageOps
 
@@ -48,8 +49,12 @@ def img2pdf_handler(tool_input, params):
     pages = []
     try:
         for src in sources:
-            ct = src.get("content_type", "")
-            if ct not in ACCEPTED:
+            filename = src.get("filename") or ""
+            ext = os.path.splitext(filename.lower())[1]
+            ct = (src.get("content_type") or "").lower()
+            # accept is exact extension contract; MIME stays an independent
+            # defense-in-depth check rather than being compared to ext tokens.
+            if ext not in ACCEPTED or not ct.startswith("image/"):
                 raise ToolError("err_format_not_supported")
 
             stream = src["stream"]

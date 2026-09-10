@@ -5,10 +5,11 @@ Pure Pillow, zero I/O dependencies.
 """
 
 import io
+import os
 from PIL import Image
 from tools import register, TYPE_PRODUCE, ToolError
 
-ACCEPT_MIMES = {".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
+ACCEPTED_EXTS = {".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
 # ICO output sizes
 ICO_SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
@@ -29,13 +30,14 @@ def ico_handler(tool_input, params):
     """Convert image to multi-resolution ICO favicon.
 
     Flow:
-        1. Validate content_type
+        1. Validate canonical filename extension
         2. Open image, convert to RGBA
         3. Center-crop to square (favicon must be square)
         4. Save as ICO with selected size preset
     """
-    ct = tool_input.get("content_type", "")
-    if ct not in ACCEPT_MIMES:
+    filename = tool_input.get("filename") or ""
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in ACCEPTED_EXTS:
         raise ToolError("err_format_not_supported")
 
     stream = tool_input["stream"]
@@ -115,7 +117,7 @@ register(
             "en": 'Generate ICO icons in various sizes from an image.',
         },
     icon="favicon",
-    accept=ACCEPT_MIMES,
+    accept=ACCEPTED_EXTS,
     params=[
         {"key": "preset", "type": "enum", "label": {"en": "Icon size", "zh": "图标尺寸"},
          "options": [
