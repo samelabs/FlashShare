@@ -1,6 +1,8 @@
-"""repo: sessions — 会话/api_tokens 表数据访问 (批1b).
+"""repo: sessions — browser sessions + API token persistence.
 
-规则: 函数=(con,...)->rows, 参数化, 无事务/无业务判断。
+Functions are transaction-agnostic repo primitives; authentication lookups
+apply the account suspension gate so every session/token consumer sees the same
+identity state.
 """
 
 from typing import Optional
@@ -19,15 +21,24 @@ def user_by_session_token(con, token_hash: str, now_ts: int) -> Optional[dict]:
         """
         SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = %s AND s.expires_at > %s
+          AND u.status <> 'suspended'
         """,
         (token_hash, now_ts)).fetchone()
+
+
+def delete_session(con, token_hash: str) -> None:
+    con.execute("DELETE FROM sessions WHERE token_hash = %s", (token_hash,))
+
+
+def delete_user_sessions(con, user_id: int) -> None:
+    con.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
 
 
 def delete_expired(con, now_ts: int) -> None:
     con.execute("DELETE FROM sessions WHERE expires_at < %s", (now_ts,))
 
 
-# ── oauth_states (X OAuth 中间态) ──
+# ── oauth_states (X OAuth intermediate state) ──
 
 def insert_oauth_state(con, state: str, verifier: str, expires_at: int,
                        created_at: int, bind_user_id: Optional[int]) -> None:
@@ -37,7 +48,6 @@ def insert_oauth_state(con, state: str, verifier: str, expires_at: int,
 
 
 def pop_oauth_state(con, state: str, now_ts: int) -> Optional[dict]:
-    """读+删一次性 state (单事务内调用)。"""
     row = con.execute(
         "SELECT * FROM oauth_states WHERE state = %s AND expires_at > %s",
         (state, now_ts)).fetchone()
@@ -69,6 +79,13 @@ def revoke_token(con, user_id: int, token_id: int) -> int:
     return cur.rowcount
 
 
+def revoke_all_tokens(con, user_id: int) -> int:
+    cur = con.execute(
+        "UPDATE api_tokens SET status='revoked' WHERE user_id=%s AND status='active'",
+        (user_id,))
+    return cur.rowcount
+
+
 def list_tokens(con, user_id: int) -> list:
     return con.execute(
         """
@@ -84,6 +101,7 @@ def user_by_api_token(con, token_hash: str, now_ts: int) -> Optional[dict]:
         SELECT t.id AS token_id, u.* FROM api_tokens t
         JOIN users u ON u.id = t.user_id
         WHERE t.token_hash = %s AND t.status = 'active'
+          AND u.status <> 'suspended'
           AND (t.expires_at IS NULL OR t.expires_at > %s)
         """,
         (token_hash, now_ts)).fetchone()
