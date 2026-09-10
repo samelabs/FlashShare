@@ -1,11 +1,15 @@
 """Database layer — PostgreSQL (psycopg2) edition.
 
-Connection strategy: one connection per db() call. Callers use
-`with db() as con:`; success commits, exceptions roll back, connections return
-to the pool. RealDictCursor keeps row access dict-shaped across the codebase.
+Connection strategy: one connection per db() call (mirrors the SQLite
+edition's pattern). Callers use `with db() as con:` — the context manager
+commits on success, rolls back on exception, and always closes.
 
-init_db() is the single schema/bootstrap source for runtime tables and routine
-expired-state cleanup.
+Row access: RealDictCursor → every cursor row is a plain dict with
+column-name keys, matching the old sqlite3.Row usage.
+
+init_db(): CREATE TABLE IF NOT EXISTS for the full schema + routine
+expired-state cleanup. No legacy repair logic — history lives in git and
+in the SQLite→PG migration script (scripts/migrate_sqlite_to_pg.py).
 """
 
 import os
@@ -14,7 +18,7 @@ from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
 
-from config import DB_PATH  # noqa: F401 (dev tooling may still reference it)
+from config import DB_PATH  # noqa: F401  (kept: dev tooling may still reference it)
 
 
 def _database_dsn_kwargs() -> dict:
@@ -31,7 +35,13 @@ def _database_dsn_kwargs() -> dict:
 
 
 class _Connection:
-    """SQLite-style facade over psycopg2 connection."""
+    """SQLite-style facade over psycopg2 connection.
+
+    sqlite3.Connection exposes .execute() directly; psycopg2 requires a
+    cursor. Callers throughout the codebase use `con.execute(...)` with
+    dict-style row access — this facade preserves both, so the 25 call
+    sites need zero structural change.
+    """
 
     def __init__(self, con):
         self._con = con
@@ -54,12 +64,13 @@ class _Connection:
         return self._con.cursor(cursor_factory=cursor_factory)
 
 
+# Connection pool: SCRAM handshake costs ~60ms per fresh connection; the
+# upload chain alone opens 3 (auth/quota/save). Pooling removes that fixed
+# cost from every request. Thread-safe; dead connections are retried once.
 from psycopg2.pool import ThreadedConnectionPool
 
 _pool = None
 _pool_lock = __import__("threading").Lock()
-
-
 def _get_pool():
     global _pool
     if _pool is None:
@@ -76,6 +87,7 @@ def db():
     try:
         con = pool.getconn()
     except psycopg2.Error:
+        # pool exhausted or stale — fall back to a direct connection
         con = psycopg2.connect(**_database_dsn_kwargs())
     wrap = _Connection(con)
     try:
@@ -92,8 +104,13 @@ def db():
 
 
 # ── Schema ───────────────────────────────────────────────
+# Full PostgreSQL schema: 4 legacy tables (structure-equivalent ports of
+# the SQLite originals) + 8 platform tables (economics core). All
+# statements are CREATE ... IF NOT EXISTS — safe on every boot.
+# Column-by-column rationale: docs/plan/A2-ddl-draft.md (definitive).
+
 _SCHEMA_SQL = (
-    # ── users ──
+    # ── legacy: users ──
     """
     CREATE TABLE IF NOT EXISTS users (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -114,7 +131,7 @@ _SCHEMA_SQL = (
       updated_at     BIGINT NOT NULL DEFAULT 0
     )
     """,
-    # ── sessions ──
+    # ── legacy: sessions ──
     """
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY,
@@ -123,8 +140,10 @@ _SCHEMA_SQL = (
       created_at BIGINT NOT NULL
     )
     """,
-    "CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)",
-    # ── oauth_states ──
+    """
+    CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id)
+    """,
+    # ── legacy: oauth_states ──
     """
     CREATE TABLE IF NOT EXISTS oauth_states (
       state        TEXT PRIMARY KEY,
@@ -134,7 +153,7 @@ _SCHEMA_SQL = (
       bind_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE
     )
     """,
-    # ── uploads: durable public/result objects ──
+    # ── legacy: uploads ──
     """
     CREATE TABLE IF NOT EXISTS uploads (
       id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -145,20 +164,26 @@ _SCHEMA_SQL = (
       file_name         TEXT NOT NULL,
       content_type      TEXT NOT NULL,
       size_bytes        BIGINT NOT NULL,
-      expiry_days       INT NOT NULL,
-      allowed_downloads INT NOT NULL,
+      expiry_days       INT  NOT NULL,
+      allowed_downloads INT  NOT NULL,
       expire_at         BIGINT,
       url_download      TEXT NOT NULL,
       url_hotlink       TEXT,
       created_at        BIGINT NOT NULL
     )
     """,
-    "CREATE UNIQUE INDEX IF NOT EXISTS uploads_public_id_idx ON uploads(public_id)",
-    "CREATE INDEX IF NOT EXISTS uploads_user_created_idx ON uploads(user_id, created_at)",
-    "CREATE INDEX IF NOT EXISTS uploads_ip_created_idx ON uploads(ip, created_at)",
-    # ── upload_usage: ingress facts only (share source + tool source) ──
-    # Generated tool results do not land here, so daily quota measures bytes/files
-    # entering the platform rather than double-counting transformed output.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uploads_public_id_idx ON uploads(public_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS uploads_user_created_idx ON uploads(user_id, created_at)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS uploads_ip_created_idx ON uploads(ip, created_at)
+    """,
+    # Ingress quota facts are deliberately separate from uploads (which is
+    # the durable share/result entity). One row = one source file accepted
+    # from a user; generated tool outputs never count a second time.
     """
     CREATE TABLE IF NOT EXISTS upload_usage (
       id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -168,9 +193,15 @@ _SCHEMA_SQL = (
       created_at BIGINT NOT NULL
     )
     """,
-    "CREATE INDEX IF NOT EXISTS upload_usage_user_created_idx ON upload_usage(user_id, created_at)",
-    "CREATE INDEX IF NOT EXISTS upload_usage_ip_created_idx ON upload_usage(ip, created_at)",
-    # ── api_tokens ──
+    """
+    CREATE INDEX IF NOT EXISTS upload_usage_user_created_idx
+      ON upload_usage(user_id, created_at)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS upload_usage_ip_created_idx
+      ON upload_usage(ip, created_at)
+    """,
+    # ── platform: api_tokens (agent/MCP/API channel; parallel to sessions) ──
     """
     CREATE TABLE IF NOT EXISTS api_tokens (
       id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -184,8 +215,10 @@ _SCHEMA_SQL = (
       created_at   BIGINT NOT NULL
     )
     """,
-    "CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id)",
-    # ── ledger ──
+    """
+    CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id)
+    """,
+    # ── platform: ledger (append-only; balance == sum(delta), auditable) ──
     """
     CREATE TABLE IF NOT EXISTS ledger (
       id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -204,8 +237,10 @@ _SCHEMA_SQL = (
     CREATE UNIQUE INDEX IF NOT EXISTS ledger_idem_idx
       ON ledger(user_id, idem_key) WHERE idem_key IS NOT NULL
     """,
-    "CREATE INDEX IF NOT EXISTS ledger_user_created_idx ON ledger(user_id, created_at)",
-    # ── tool_calls: durable invocation-attempt facts ──
+    """
+    CREATE INDEX IF NOT EXISTS ledger_user_created_idx ON ledger(user_id, created_at)
+    """,
+    # ── platform: tool_calls (metering fact table) ──
     """
     CREATE TABLE IF NOT EXISTS tool_calls (
       id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -223,8 +258,8 @@ _SCHEMA_SQL = (
       finished_at      BIGINT
     )
     """,
-    # client_ref scope is user + tool. A running row owns execution; an ok row
-    # owns replay. Failed attempts deliberately leave the key reusable.
+    # Invocation identity is user + tool + client_ref. A running row owns the
+    # execution; an ok row owns replay. Failed attempts leave the key reusable.
     "DROP INDEX IF EXISTS tool_calls_client_ref_ok_idx",
     "DROP INDEX IF EXISTS tool_calls_client_ref_idx",
     """
@@ -232,9 +267,15 @@ _SCHEMA_SQL = (
       ON tool_calls(user_id, tool_id, client_ref)
       WHERE status IN ('running','ok')
     """,
-    "CREATE INDEX IF NOT EXISTS tool_calls_user_time_idx ON tool_calls(user_id, started_at DESC)",
-    "CREATE INDEX IF NOT EXISTS tool_calls_tool_time_idx ON tool_calls(tool_id, started_at DESC)",
-    # ── pricing ──
+    """
+    CREATE INDEX IF NOT EXISTS tool_calls_user_time_idx
+      ON tool_calls(user_id, started_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS tool_calls_tool_time_idx
+      ON tool_calls(tool_id, started_at DESC)
+    """,
+    # ── platform: pricing ──
     """
     CREATE TABLE IF NOT EXISTS pricing (
       tool_id    TEXT PRIMARY KEY,
@@ -244,7 +285,7 @@ _SCHEMA_SQL = (
       updated_by BIGINT
     )
     """,
-    # ── plans ──
+    # ── platform: plans ──
     """
     CREATE TABLE IF NOT EXISTS plans (
       id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -277,7 +318,7 @@ _SCHEMA_SQL = (
       PRIMARY KEY (user_id, plan_id)
     )
     """,
-    # ── packages ──
+    # ── platform: packages ──
     """
     CREATE TABLE IF NOT EXISTS packages (
       id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -294,7 +335,7 @@ _SCHEMA_SQL = (
       updated_at       BIGINT NOT NULL
     )
     """,
-    # ── orders ──
+    # ── platform: orders ──
     """
     CREATE TABLE IF NOT EXISTS orders (
       id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -311,8 +352,10 @@ _SCHEMA_SQL = (
       paid_at           BIGINT
     )
     """,
-    "CREATE INDEX IF NOT EXISTS orders_user_idx ON orders(user_id, created_at DESC)",
-    # ── settings ──
+    """
+    CREATE INDEX IF NOT EXISTS orders_user_idx ON orders(user_id, created_at DESC)
+    """,
+    # ── platform: settings ──
     """
     CREATE TABLE IF NOT EXISTS settings (
       key        TEXT PRIMARY KEY,
@@ -321,36 +364,58 @@ _SCHEMA_SQL = (
       updated_by BIGINT
     )
     """,
-    # ── platform_tools ──
+    # ── platform: platform_tools (tool registry — data-state rows) ──
+    # The runtime source of truth for the tool catalog. First-party tools are
+    # seeded here at startup from register() declarations (code = creation
+    # format, DB = runtime truth). Remote/http/mcp execution classes and
+    # namespaced user tools (owner/tool_id) land as data rows later —
+    # resolve() is execution-class-agnostic and origin-agnostic.
+    # trusted: operator-adoption flag. User rows default FALSE (SSRF guard
+    # enforces https + public IPs); TRUE only via /samelabs (institutional
+    # supply the operator vouches for). First-party rows are trusted by
+    # definition (owner IS NULL → resolve treats them as trusted).
     """
     CREATE TABLE IF NOT EXISTS platform_tools (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      tool_key       TEXT NOT NULL,
+      tool_key       TEXT NOT NULL,          -- 'beautify' | 'owner/tool'
       owner_id       BIGINT REFERENCES users(id) ON DELETE CASCADE,
-      tool_id        TEXT NOT NULL,
+                                           -- NULL = first-party seed
+      tool_id        TEXT NOT NULL,          -- bare id within namespace
       execution      TEXT NOT NULL DEFAULT 'local',
+                                           -- local | http | mcp (future)
       tool_type      TEXT NOT NULL DEFAULT 'produce',
-      label_json     TEXT NOT NULL,
-      desc_json      TEXT,
-      sort_order     INT NOT NULL DEFAULT 0,
-      featured       BOOLEAN NOT NULL DEFAULT FALSE,
+                                           -- produce | view | peek
+      label_json     TEXT NOT NULL,          -- {lang: display_name}
+      desc_json      TEXT,                   -- 简介 {lang: str} | str (可空)
+      sort_order     INT NOT NULL DEFAULT 0, -- 后台遴选排序 (首页/市场呈现序)
+      featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
       icon           TEXT NOT NULL DEFAULT 'wand',
-      accept_json    TEXT,
-      presets_json   TEXT,
+      accept_json    TEXT,                   -- JSON array or NULL = any
+      presets_json   TEXT,                   -- JSON array or NULL
       multi          BOOLEAN NOT NULL DEFAULT FALSE,
       pass_through   BOOLEAN NOT NULL DEFAULT FALSE,
+                                           -- TRUE = 直传工具: 上传即结果, 无执行步 (share)
       visibility     TEXT NOT NULL DEFAULT 'public',
-      endpoint_json  TEXT,
-      params_json    TEXT,
+                                           -- public | unlisted | private
+      endpoint_json  TEXT,                   -- remote execution decl (future)
+      params_json    TEXT,                   -- typed params schema (future)
       enabled        BOOLEAN NOT NULL DEFAULT TRUE,
       trusted        BOOLEAN NOT NULL DEFAULT FALSE,
       created_at     BIGINT NOT NULL,
       updated_at     BIGINT NOT NULL
     )
     """,
-    "CREATE UNIQUE INDEX IF NOT EXISTS platform_tools_key_idx ON platform_tools(tool_key)",
-    "CREATE INDEX IF NOT EXISTS platform_tools_owner_idx ON platform_tools(owner_id)",
-    # ── withdrawals ──
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS platform_tools_key_idx
+      ON platform_tools(tool_key)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS platform_tools_owner_idx
+      ON platform_tools(owner_id)
+    """,
+    # activities 表已移除 — 每日登录 = economy.daily 模块常量,
+    # 无表无 seed; 发放流水在 ledger (note='activity:daily_login')。
+    # ── platform: withdrawals (provider payout requests) ──
     """
     CREATE TABLE IF NOT EXISTS withdrawals (
       id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -364,10 +429,15 @@ _SCHEMA_SQL = (
       txn_ref      TEXT
     )
     """,
-    "CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)",
-    # additive schema convergence
+    """
+    CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)
+    """,
+    # users.payout_channel (withdrawal destination, operator-read) — additive
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_channel TEXT",
+    # ── subscription (plans/user_plans v3, 2026-09-02) ──
+    # 工具简介 (tool modes v3 补: 名称/简介/模式/使用 — desc 与 label 同形 str|dict)
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS desc_json TEXT",
+    # 推荐与排序 (管理后台遴选的权威全局工具呈现顺序)
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0",
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS pass_through BOOLEAN NOT NULL DEFAULT FALSE",
@@ -377,10 +447,11 @@ _SCHEMA_SQL = (
     "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS cancel_scheduled_at BIGINT",
     "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS last_grant_period_start BIGINT",
     "ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS updated_at BIGINT",
+    # 状态约束: 旧表无 CHECK; DROP IF NOT EXISTS 语义 → 先删后加(幂等)
     "ALTER TABLE user_plans DROP CONSTRAINT IF EXISTS user_plans_status_check",
     """ALTER TABLE user_plans ADD CONSTRAINT user_plans_status_check
        CHECK (status IN ('active','past_due','canceled','expired'))""",
-    # PLUS seed
+    # PLUS 档种子 (幂等; creem_price_id 留空待运营绑定)
     """INSERT INTO plans (code, name, monthly_credits, period_days, period,
                          price_cents, sort_order, active, created_at, updated_at)
        VALUES ('plus', 'PLUS', 10000, 30, 'monthly', 0, 0, TRUE,
@@ -395,7 +466,9 @@ def init_db() -> None:
     with db() as con:
         for stmt in _SCHEMA_SQL:
             con.execute(stmt)
+        # Routine cleanup — same behaviour as the SQLite edition
         con.execute("DELETE FROM oauth_states WHERE expires_at < %s", (ts,))
         con.execute("DELETE FROM sessions WHERE expires_at < %s", (ts,))
-        # Quota facts only need the rolling 24h window; keep a small audit margin.
-        con.execute("DELETE FROM upload_usage WHERE created_at < %s", (ts - 7 * 24 * 3600,))
+        # Quota facts only need a rolling 24h window; keep a small audit margin.
+        con.execute("DELETE FROM upload_usage WHERE created_at < %s",
+                    (ts - 7 * 24 * 3600,))
