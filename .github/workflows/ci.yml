@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: fast-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Python syntax
+        run: |
+          python -m compileall -q app core
+          python -m py_compile tests/canonical/*.py tests/ci/*.py tests/support/*.py
+      - name: JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            node --check "$file"
+          done < <(git ls-files '*.js')
+      - name: Source-of-truth guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E '(/etc/flashshare|/opt/flashshare|(^|[^[:alnum:]_])sudo([^[:alnum:]_]|$))' tests/canonical; then
+            echo "canonical tests contain a server-local dependency"
+            exit 1
+          fi
+          tracked_env="$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env\.example$' || true)"
+          if [ -n "$tracked_env" ]; then
+            echo "tracked environment file(s) are forbidden:"
+            printf '%s\n' "$tracked_env"
+            exit 1
+          fi
+
+  canonical:
+    name: canonical-integration
+    runs-on: ubuntu-latest
+    needs: fast
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flashshare
+          POSTGRES_PASSWORD: flashshare-ci
+          POSTGRES_DB: flashshare_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U flashshare -d flashshare_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql+psycopg://flashshare:flashshare-ci@127.0.0.1:5432/flashshare_ci
+      TEST_DB_URL: postgresql://flashshare:flashshare-ci@127.0.0.1:5432/flashshare_ci
+      FLASHSHARE_SESSION_SECRET: ci-session-secret-not-production
+      FLASHSHARE_GOKAPI_URL: http://127.0.0.1:53898
+      FLASHSHARE_GOKAPI_KEY: ci-gokapi-key
+      FLASHSHARE_BASE_URL: http://127.0.0.1:8100
+      FLASHSHARE_LOG_DIR: /tmp/flashshare-ci-log
+      FLASHSHARE_TEST_PORT: "8100"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Fail-closed canonical guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          expect_exit_2() {
+            set +e
+            "$@" >/tmp/guard.out 2>/tmp/guard.err
+            code=$?
+            set -e
+            if [ "$code" -ne 2 ]; then
+              echo "expected exit 2, got $code: $*"
+              cat /tmp/guard.err
+              exit 1
+            fi
+          }
+          expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
+            python tests/canonical/test_invocation_canonical.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_invocation_canonical.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=08000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_supply_accept_multi.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_supply_accept_multi.py
+
+      - name: Start Gokapi HTTP-boundary service
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/support/fake_gokapi.py \
+            --host 127.0.0.1 --port 53898 --key "$FLASHSHARE_GOKAPI_KEY" \
+            >/tmp/fake-gokapi.log 2>&1 &
+          echo $! >/tmp/fake-gokapi.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:53898/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/fake-gokapi.log
+          exit 1
+
+      - name: Gokapi adapter contract
+        run: python tests/ci/test_gokapi_adapter.py
+
+      - name: Start real FlashShare app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$FLASHSHARE_LOG_DIR"
+          python -m uvicorn app.main:app \
+            --host 127.0.0.1 --port 8100 --workers 1 \
+            >/tmp/flashshare-app.log 2>&1 &
+          echo $! >/tmp/flashshare-app.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8100/healthz >/dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat /tmp/flashshare-app.pid)" 2>/dev/null; then
+              cat /tmp/flashshare-app.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat /tmp/flashshare-app.log
+          exit 1
+
+      - name: Stage C canonical
+        run: python tests/canonical/test_invocation_canonical.py
+
+      - name: Supply accept/multi canonical
+        run: python tests/canonical/test_supply_accept_multi.py
+
+      - name: Failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== FlashShare app log ==="
+          cat /tmp/flashshare-app.log 2>/dev/null || true
+          echo "=== fake Gokapi log ==="
+          cat /tmp/fake-gokapi.log 2>/dev/null || true
+          echo "=== PostgreSQL service ==="
+          docker logs "${{ job.services.postgres.id }}" 2>&1 | tail -200 || true
