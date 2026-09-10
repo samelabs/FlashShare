@@ -1,8 +1,4 @@
-"""Auth routes: /auth/*
-
-X OAuth login/callback, local login/register, profile, password, logout.
-GET routes render pages via Jinja2 templates, POST routes handle forms.
-"""
+"""Auth routes: X OAuth, local login/register and logout."""
 
 import sys
 import asyncio
@@ -22,30 +18,24 @@ _CORE = _BASE / "core"
 sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
-from config import (
-    BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET, OAUTH_TTL, SESSION_TTL,
-    COOKIE_NAME,
-)
+from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET, OAUTH_TTL, COOKIE_NAME
 from database import db
-from repo.sessions import insert as insert_session, pop_oauth_state, insert_oauth_state
+from repo.sessions import pop_oauth_state, insert_oauth_state, delete_session
 from security import token_hash
 from identity.auth import (
-    authenticate_local, register_user, public_user,
+    authenticate_local, register_user,
     exchange_x_token, fetch_x_user, upsert_x_user,
-    update_profile, change_password, unbind_x,
+    unbind_x,
     validate_username, validate_email, validate_password,
-    has_password, username_taken,
+    username_taken,
 )
 from i18n import server_text
 from utils import now, b64url
+from app.web_auth import require_session_auth, redirect_with_session
 
 router = APIRouter()
 logger = logging.getLogger("flashshare")
 
-# ── Login failure throttle (in-process) ──
-# 10 failures per (ip, login) in 15 minutes → further attempts rejected
-# with the generic wrong-credentials message. In-process is sufficient:
-# single uvicorn worker; restart resets the window, which is acceptable.
 _LOGIN_FAIL_LIMIT = 10
 _LOGIN_FAIL_WINDOW = 15 * 60
 _login_failures: dict[tuple, list[int]] = {}
@@ -60,7 +50,7 @@ def _login_throttled(key: tuple) -> bool:
 
 def _record_login_failure(key: tuple) -> None:
     _login_failures.setdefault(key, []).append(now())
-    if len(_login_failures) > 10000:  # opportunistic cleanup
+    if len(_login_failures) > 10000:
         cutoff = now() - _LOGIN_FAIL_WINDOW
         for k in list(_login_failures):
             _login_failures[k] = [t for t in _login_failures[k] if t >= cutoff]
@@ -76,20 +66,7 @@ def _t(request: Request, key: str, **kw):
     return server_text(_lang(request)).get(key, key)
 
 
-def _create_session(user_id: int) -> str:
-    token = b64url(secrets.token_bytes(32))
-    ts = now()
-    with db() as con:
-        insert_session(con, token_hash(token), user_id, ts + SESSION_TTL, ts)
-    return token
-
-
 def _grant_daily(uid: int) -> None:
-    """Daily login bonus at session creation (idempotent, own tx).
-
-    economy.daily module. best-effort —
-    停用 (额度 0) 是干净跳过, 不是错误路径。
-    """
     try:
         from economy.daily import grant_daily
         grant_daily(uid)
@@ -98,11 +75,7 @@ def _grant_daily(uid: int) -> None:
 
 
 def _login_maintenance(uid: int) -> None:
-    """登录触发的账目维护 (无 cron):
-    - daily 发放 (上面 _grant_daily)
-    - 会员订阅对账: webhook 丢失时拉 Creem API 补授 (economy.reconcile)
-    全部 best-effort — 任何异常不阻塞登录。
-    """
+    """Best-effort login maintenance after identity has been accepted."""
     _grant_daily(uid)
     try:
         from economy.reconcile import reconcile_user
@@ -114,12 +87,6 @@ def _login_maintenance(uid: int) -> None:
         logger.exception("login reconcile failed uid=%s", uid)
 
 
-def _redirect_with_cookie(url: str, token: str) -> RedirectResponse:
-    resp = RedirectResponse(url, status_code=302)
-    resp.set_cookie(COOKIE_NAME, token, max_age=SESSION_TTL, httponly=True, secure=True, samesite="lax")
-    return resp
-
-
 # ── X OAuth ──
 
 @router.get("/x/login")
@@ -127,9 +94,13 @@ async def x_login(request: Request):
     if not X_CLIENT_ID or not X_CLIENT_SECRET:
         return HTMLResponse("X login not configured", 500)
 
-    current = request.state.user
-    is_bind = current is not None and request.query_params.get("bind") == "1"
-    bind_user_id = current["id"] if is_bind else None
+    wants_bind = request.query_params.get("bind") == "1"
+    bind_user_id = None
+    if wants_bind:
+        current, err = require_session_auth(request)
+        if err:
+            return RedirectResponse("/auth/login", 302)
+        bind_user_id = current["id"]
 
     verifier = b64url(secrets.token_bytes(48))
     challenge = b64url(hashlib.sha256(verifier.encode()).digest())
@@ -151,10 +122,8 @@ async def x_login(request: Request):
 
 @router.get("/x/callback")
 async def x_callback(request: Request):
-    lang = _lang(request)
     code = request.query_params.get("code", "")
     state = request.query_params.get("state", "")
-    # User cancelled OAuth — redirect home, don't block
     if not code or not state:
         return RedirectResponse("/", 302)
 
@@ -165,7 +134,9 @@ async def x_callback(request: Request):
         from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": _t(request, "err_x_state_expired")})
-        resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
+        resp = templates.TemplateResponse(request, "auth/login.html", ctx)
+        resp.status_code = 400
+        return resp
 
     try:
         token = exchange_x_token(code, row["verifier"])
@@ -175,7 +146,9 @@ async def x_callback(request: Request):
         from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_login_incomplete")}: {exc}'})
-        resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
+        resp = templates.TemplateResponse(request, "auth/login.html", ctx)
+        resp.status_code = 400
+        return resp
 
     bind_user_id = row["bind_user_id"] if "bind_user_id" in row.keys() else None
     try:
@@ -185,23 +158,24 @@ async def x_callback(request: Request):
         from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_bind_failed")}: {exc}'})
-        resp = templates.TemplateResponse(request, "auth/login.html", ctx); resp.status_code = 400; return resp
+        resp = templates.TemplateResponse(request, "auth/login.html", ctx)
+        resp.status_code = 400
+        return resp
 
     if bind_user_id:
         return RedirectResponse("/account/profile", 302)
 
     _login_maintenance(user_id)
-    session_token = _create_session(user_id)
-    return _redirect_with_cookie("/", session_token)
+    return redirect_with_session("/", user_id)
 
 
 @router.post("/x/unbind")
 async def x_unbind(request: Request):
-    user = request.state.user
-    if not user:
-        return HTMLResponse('{"ok":false,"error":"auth_required"}', 401, media_type="application/json")
+    user, err = require_session_auth(request)
+    if err:
+        return err
     unbind_x(user["id"])
-    return HTMLResponse('{"ok":true}', media_type="application/json")
+    return {"ok": True}
 
 
 # ── Local auth ──
@@ -210,8 +184,7 @@ async def x_unbind(request: Request):
 async def login_submit(request: Request):
     from app.main import templates
     from app.web_ctx import ctx_base as _ctx_base
-    lang = _lang(request)
-    texts = server_text(lang)
+    texts = server_text(_lang(request))
     form = await request.form()
     login = (form.get("login") or "").strip()
     password = form.get("password") or ""
@@ -227,7 +200,6 @@ async def login_submit(request: Request):
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
-    # bcrypt verification is CPU-heavy (~250ms) — keep it off the event loop
     user_id = await asyncio.to_thread(authenticate_local, login, password)
     if not user_id:
         _record_login_failure(throttle_key)
@@ -237,16 +209,14 @@ async def login_submit(request: Request):
 
     _login_failures.pop(throttle_key, None)
     _login_maintenance(user_id)
-    session_token = _create_session(user_id)
-    return _redirect_with_cookie("/", session_token)
+    return redirect_with_session("/", user_id)
 
 
 @router.post("/register")
 async def register_submit(request: Request):
     from app.main import templates
     from app.web_ctx import ctx_base as _ctx_base
-    lang = _lang(request)
-    texts = server_text(lang)
+    texts = server_text(_lang(request))
     form = await request.form()
     username = (form.get("username") or "").strip()
     email = (form.get("email") or "").strip()
@@ -259,19 +229,20 @@ async def register_submit(request: Request):
         return templates.TemplateResponse(request, "auth/register.html", ctx)
 
     err = validate_username(username)
-    if err: return _err(texts.get(err, err))
+    if err:
+        return _err(texts.get(err, err))
     err = validate_email(email)
-    if err: return _err(texts.get(err, err))
+    if err:
+        return _err(texts.get(err, err))
     err = validate_password(password)
-    if err: return _err(texts.get(err, err))
+    if err:
+        return _err(texts.get(err, err))
     if password != password_confirm:
         return _err(texts.get("passwordMismatch", "Passwords do not match"))
 
     try:
-        # bcrypt hashing is CPU-heavy — keep it off the event loop
         user_id = await asyncio.to_thread(register_user, username, email, password)
     except psycopg2.IntegrityError:
-        # Lost the race between validation and INSERT — map back to i18n keys
         if username_taken(username):
             return _err(texts.get("err_username_taken", "err_username_taken"))
         return _err(texts.get("err_email_taken", "err_email_taken"))
@@ -280,18 +251,21 @@ async def register_submit(request: Request):
         return _err(texts.get("err_invalid_request", "err_invalid_request"))
 
     _login_maintenance(user_id)
-    session_token = _create_session(user_id)
-    return _redirect_with_cookie("/", session_token)
+    return redirect_with_session("/", user_id)
 
 
 @router.post("/logout")
 async def logout_post(request: Request):
+    token = request.cookies.get(COOKIE_NAME)
+    if token:
+        try:
+            with db() as con:
+                delete_session(con, token_hash(token))
+        except Exception:
+            logger.exception("logout session revoke failed")
     resp = RedirectResponse("/", 302)
     resp.delete_cookie(COOKIE_NAME)
     return resp
 
 
-# ── Profile ──
-
-# Legacy /auth/profile is intentionally gone (single-page account removed).
-# Profile/password POST handlers live in app/routes/pages.py (/account/* forms).
+# Profile/password POST handlers live in app/routes/pages.py (/account/*).
