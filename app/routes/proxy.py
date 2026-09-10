@@ -27,6 +27,22 @@ from icons import icon_svg
 router = APIRouter()
 
 
+def _live_upload(public_id: str):
+    """Canonical public-file read gate: DB mapping must exist and be live.
+
+    Gokapi expiry remains a storage backstop; the platform's share contract is
+    the uploads row + expire_at. Every /f/{id} derivative goes through here so
+    detail/inline/print/QR/ZIP cannot disagree about expiry.
+    """
+    upload = get_upload_by_public_id(public_id)
+    if not upload:
+        return None
+    from utils import now as _now
+    if int(upload["expire_at"] or 0) < _now():
+        return None
+    return upload
+
+
 @router.get("/f/{public_id}")
 async def file_route(public_id: str, request: Request):
     """Route: /f/{pid} → detail page, /f/{pid}?download=1 → file stream."""
@@ -38,18 +54,8 @@ async def file_route(public_id: str, request: Request):
     direction = "rtl" if lang == "ar" else "ltr"
     texts = server_text(lang)
 
-    upload = get_upload_by_public_id(public_id)
+    upload = _live_upload(public_id)
     if not upload:
-        from app.web_ctx import ctx_base as _ctx_base
-        ctx = _ctx_base(request)
-        ctx["shell_class"] = "file-shell"
-        return templates.TemplateResponse(request, "missing.html", ctx, status_code=404)
-
-    # 8.3 (audit): DB expiry is authoritative. Gokapi's own expiry is a
-    # backstop, not the contract — a row whose expire_at has passed must
-    # not serve, whatever the storage still holds.
-    from utils import now as _now
-    if int(upload["expire_at"] or 0) < _now():
         from app.web_ctx import ctx_base as _ctx_base
         ctx = _ctx_base(request)
         ctx["shell_class"] = "file-shell"
@@ -78,8 +84,7 @@ async def file_route(public_id: str, request: Request):
                 if hot_query:
                     dl_path += "?" + hot_query
             else:
-                # 未知 hotlink 格式 = gokapi 配置漂移, 不猜测重定向 (批4 #18);
-                # dl_path=None → 落入下方 Python 流式兜底
+                # Unknown hotlink format = storage configuration drift; do not guess.
                 dl_path = None
 
             if dl_path is not None:
@@ -91,12 +96,12 @@ async def file_route(public_id: str, request: Request):
                 resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
                 return resp
         # Fallback: stream via Python if no hotlink
-        from gokapi import open_gokapi_download
         status, headers, stream = open_gokapi_download(upload["gokapi_id"])
         if status >= 400:
             return HTMLResponse("File unavailable", status=status)
         content_type = upload["content_type"] or "application/octet-stream"
         safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
+
         def generate():
             try:
                 while True:
@@ -106,8 +111,10 @@ async def file_route(public_id: str, request: Request):
                     yield chunk
             finally:
                 stream.close()
+
         return StreamingResponse(generate(), media_type=content_type,
-                                 headers={"Content-Disposition": f'attachment; filename="{safe_name}"'})
+                                 headers={"Content-Disposition": f'attachment; filename="{safe_name}"',
+                                          "X-Content-Type-Options": "nosniff"})
 
     # Detail page via Jinja2
     live = get_gokapi_file(upload["gokapi_id"]) if upload["gokapi_id"] else None
@@ -150,13 +157,14 @@ async def file_route(public_id: str, request: Request):
         "expiry_icon": expiry_icon_svg(),
         "download_count_icon": download_count_icon_svg(),
     })
-    # file_format_icon takes filename arg — add as callable for template
     ctx["file_format_icon"] = lambda: file_format_icon(upload["file_name"])
     return templates.TemplateResponse(request, "detail.html", ctx)
 
 
 @router.get("/f/{public_id}/qr.svg")
 async def file_qr(public_id: str):
+    if not _live_upload(public_id):
+        return Response(status_code=404)
     from utils import qr_svg
     url = public_file_url(public_id)
     svg = qr_svg(url)
@@ -165,13 +173,8 @@ async def file_qr(public_id: str):
 
 @router.get("/f/{public_id}/zip-list")
 async def file_zip_list(public_id: str, request: Request):
-    """List ZIP archive contents without downloading the whole file.
-
-    Result-end preview capability (peer of image inline render):
-    pulls only the central directory from gokapi via HTTP Range and
-    returns a JSON entry list. Mirrors /f/{pid} visibility rules.
-    """
-    upload = get_upload_by_public_id(public_id)
+    """List ZIP archive contents without downloading the whole file."""
+    upload = _live_upload(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     ct = (upload["content_type"] or "").lower()
@@ -184,7 +187,6 @@ async def file_zip_list(public_id: str, request: Request):
         live = get_gokapi_file(upload["gokapi_id"]) if upload["gokapi_id"] else None
         total = int((live or {}).get("SizeBytes") or 0)
 
-    import http.client
     import urllib.parse
     from gokapi import _gokapi_connection, _gokapi_path
 
@@ -206,7 +208,7 @@ async def file_zip_list(public_id: str, request: Request):
     except ValueError as exc:
         reason = str(exc)
         if reason == "empty_archive":
-            entries = []  # 合法空 zip (批4 #19) — 落入下方正常返回
+            entries = []
         else:
             if reason in ("zip64_unsupported",):
                 return JSONResponse({"ok": False, "error": "zip_unsupported"}, 422)
@@ -228,21 +230,16 @@ async def file_zip_list(public_id: str, request: Request):
 
 @router.get("/f/{public_id}/inline")
 async def file_inline(public_id: str, request: Request):
-    """Stream a file inline (Content-Disposition: inline) for embedded display.
-
-    Same visibility rules as /f/{pid}. Supports PDF (print view) and
-    images (result preview: attachment responses weaken the iOS
-    long-press "Save Image" menu, previews must stream inline)."""
-    upload = get_upload_by_public_id(public_id)
+    """Stream trusted embeddable file types inline for result preview."""
+    upload = _live_upload(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     ct = (upload["content_type"] or "").lower()
     is_pdf = ct == "application/pdf"
-    is_image = ct.startswith("image/")
+    is_image = ct.startswith("image/") and ct != "image/svg+xml"
     if not (is_pdf or is_image):
         return JSONResponse({"ok": False, "error": "not_embeddable"}, 400)
 
-    from gokapi import open_gokapi_download
     from urllib.parse import quote
     status, headers, stream = open_gokapi_download(upload["gokapi_id"])
     if status >= 400:
@@ -265,21 +262,18 @@ async def file_inline(public_id: str, request: Request):
     return StreamingResponse(
         generate(),
         media_type=ct,
-        headers={"Content-Disposition": disposition, "Cache-Control": "no-store"},
+        headers={"Content-Disposition": disposition,
+                 "Cache-Control": "no-store",
+                 "X-Content-Type-Options": "nosniff"},
     )
 
 
 @router.get("/f/{public_id}/print", response_class=HTMLResponse)
 async def file_print(public_id: str, request: Request):
-    """Minimal print view for PDF results: embedded PDF + print button.
-
-    No site navigation. Auto-triggers the print dialog where supported
-    (desktop); on mobile Safari/Chrome the explicit button opens the
-    system print panel via the embedded viewer.
-    """
+    """Minimal print view for PDF results: embedded PDF + print button."""
     from app.main import templates
 
-    upload = get_upload_by_public_id(public_id)
+    upload = _live_upload(public_id)
     if not upload:
         return HTMLResponse("Not found", status_code=404)
     ct = (upload["content_type"] or "").lower()
