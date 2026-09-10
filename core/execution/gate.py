@@ -22,31 +22,102 @@ logger = logging.getLogger("flashshare")
 from governance.commission import commission_rate
 
 
-def _record_failure(call_id: int, error, status: str = "failed") -> None:
-    """Best-effort transition of the already-claimed invocation fact."""
+def _record_failure(call_id: int, error, status: str = "failed") -> bool:
+    """Transition the claimed invocation fact to a terminal failed state.
+
+    Returns True on success. A False return leaves the row in 'running' —
+    a durable unresolved obligation that startup recovery will settle.
+    """
     try:
         with db() as con:
-            finalize_call_failed(con, call_id, status, error, now())
+            row = finalize_call_failed(con, call_id, status, error, now())
+        return row is not None
     except Exception:
         logger.exception("failed-call finalize failed call_id=%s", call_id)
+        return False
 
 
 def _refund_charge(user: dict, tool_id: str, charge: dict | None,
-                   reason: str) -> None:
-    """Refund exactly one durable consume row; concurrent callers converge."""
+                   reason: str) -> bool:
+    """Refund exactly one durable consume row; concurrent callers converge.
+
+    Returns True when no refund was needed (no charge) or the refund
+    committed (including idempotent replay of an already-refunded row).
+    Returns False only when the refund genuinely failed — the caller must
+    then keep the call 'running' and report err_metering_failed.
+    """
     if not charge:
-        return
+        return True
     charge_id = int(charge["id"])
     amount = -int(charge["delta"])
     if amount <= 0:
-        return
+        return True
     try:
         refund(user["id"], amount,
                ref_type="ledger", ref_id=str(charge_id),
                idem_key=f"refund:ledger:{charge_id}",
                note=f"{tool_id}: {reason}"[:200])
+        return True
     except Exception:
         logger.exception("refund failed for ledger charge %s", charge_id)
+        return False
+
+
+def _settle_failure(user: dict, tool_id: str, call_id: int, charge,
+                    error: str, status: str = "failed") -> bool:
+    """Durable failure settlement: refund the exact charge FIRST, then
+    finalize the fact. If the refund fails the call stays 'running' (an
+    unresolved obligation); if only the finalize fails after a successful
+    refund, the row also stays 'running' — recovery replays the same
+    refund idem key, so it can never double-refund.
+    """
+    if not _refund_charge(user, tool_id, charge, error):
+        return False
+    return _record_failure(call_id, error, status=status)
+
+
+def recover_abandoned_calls() -> dict:
+    """Startup settlement for invocation facts left 'running' by a dead
+    process (single-worker deployment: every surviving running row belongs
+    to the previous process).
+
+    Per row: no consume row -> finalize failed (died before charging).
+    Consume present -> refund via the same exact ledger identity, then
+    finalize failed. Any refund failure keeps the row running for the next
+    restart. No queue table, no cron — the running fact IS the worklist.
+    """
+    from repo.ledger import by_idem_key
+    out = {"scanned": 0, "failed_no_charge": 0, "refunded": 0,
+           "kept_running": 0}
+    with db() as con:
+        rows = con.execute(
+            "SELECT id, user_id, tool_id FROM tool_calls "
+            "WHERE status = 'running' ORDER BY id").fetchall()
+    out["scanned"] = len(rows)
+    for row in rows:
+        call_id = int(row["id"])
+        charge = None
+        with db() as con:
+            charge = by_idem_key(con, int(row["user_id"]),
+                                 f"call:{call_id}")
+        if charge is None:
+            if _record_failure(call_id, "process_restarted"):
+                out["failed_no_charge"] += 1
+            else:
+                out["kept_running"] += 1
+            continue
+        if _refund_charge({"id": int(row["user_id"])}, row["tool_id"],
+                          dict(charge), "process_restarted"):
+            if _record_failure(call_id, "process_restarted"):
+                out["refunded"] += 1
+            else:
+                out["kept_running"] += 1
+        else:
+            out["kept_running"] += 1
+    if out["kept_running"]:
+        logger.error("startup recovery: %d running calls could not be "
+                     "settled and remain unresolved", out["kept_running"])
+    return out
 
 
 def _finish(user: dict, tool: dict, call_id: int, cost: int,
@@ -155,14 +226,17 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     try:
         result = await orchestrate()
     except ExecutionError as exc:
-        _record_failure(call_id, exc.code)
-        _refund_charge(user, tool_id, charge, exc.code)
-        return None, {"ok": False, "error": exc.code}, 400
+        # Durable settlement: refund the exact charge before finalizing; if
+        # either leg fails the row stays running (recovery settles it) and
+        # the client must not be told the economy is closed.
+        if _settle_failure(user, tool_id, call_id, charge, exc.code):
+            return None, {"ok": False, "error": exc.code}, 400
+        return None, {"ok": False, "error": "err_metering_failed"}, 500
     except Exception:
         logger.exception("tool execution failed call_id=%s", call_id)
-        _record_failure(call_id, "tool_failed")
-        _refund_charge(user, tool_id, charge, "tool_failed")
-        return None, {"ok": False, "error": "tool_failed"}, 500
+        if _settle_failure(user, tool_id, call_id, charge, "tool_failed"):
+            return None, {"ok": False, "error": "tool_failed"}, 500
+        return None, {"ok": False, "error": "err_metering_failed"}, 500
 
     try:
         return _finish(user, tool, call_id, cost, result), None, None
@@ -170,6 +244,6 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         # Output execution may already have succeeded, but accounting is not
         # allowed to report success without the authoritative fact/split.
         logger.exception("metering finalize failed call_id=%s", call_id)
-        _record_failure(call_id, "metering_failed")
-        _refund_charge(user, tool_id, charge, "metering_failed")
+        if _settle_failure(user, tool_id, call_id, charge, "metering_failed"):
+            return None, {"ok": False, "error": "err_metering_failed"}, 500
         return None, {"ok": False, "error": "err_metering_failed"}, 500

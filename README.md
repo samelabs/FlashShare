@@ -63,7 +63,7 @@ FLASHSHARE_BASE_URL=https://your-domain
 | POST | `/api/v1/execute` | 执行工具（client_ref 幂等） |
 | GET | `/api/v1/uploads/{id}` | 按公开 id 获取产出 |
 
-令牌在站内「API 令牌」页创建；`tools/call` 传 `client_ref` 重试返回原结果不重复扣费；失败自动退款。
+令牌在站内「API 令牌」页创建；`tools/call` 对同一工具调用复用 `client_ref` 重试返回原结果不重复扣费；失败自动退款。
 
 `POST /api/v1/execute` 请求体是 canonical ToolInvocation（`client_ref` 为
 v1 必填——agent/程序重试必须可幂等）：

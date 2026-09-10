@@ -49,8 +49,10 @@ Web 首页、Tool Page、`/api/v1`、MCP 四个消费面看到的是同一份 pr
   `params: {}` 表示无参数
 - `delivery` — `{expiry_days, allowed_downloads}`（精确两键，值域单源
   `governance.delivery`）
-- `client_ref` — `null` = fresh invocation；非空 string ≤128 =
-  user-scoped 幂等键（gate replay 语义）
+- `client_ref` — `null` = fresh invocation；非空 string ≤128 = 幂等键，
+  scope = (user_id, tool_id, client_ref)：同一工具内 client_ref 是逻辑
+  invocation id（重试返回原结果），不同工具可安全复用同一 client_ref
+  （各自独立执行与计费）（gate replay 语义）
 
 root 五键全部显式存在（缺失即 422 invalid_request）；无 legacy
 invocation adapter。
@@ -130,14 +132,18 @@ operator 入口都从它派生，禁止第二份手写格式表。
   `tool_id` / `source.files[]`（1..20，每项 `{public_id, source_token}`）/
   `params`（只含 tool params）/ `delivery`（`{expiry_days, allowed_downloads}`，
   值域单源 `governance.delivery`，严格类型无强转）/ `client_ref`
-  （null = fresh；非空 = user-scoped 幂等键，gate 语义不变）。
+  （null = fresh；非空 = 幂等键，scope = (user_id, tool_id, client_ref)，
+  gate 语义不变）。
   Web（app.js + process-flow runToolFlow）/ REST v1 / MCP 构造完全相同的
   canonical invocation；dispatch 只认这一种 schema，旧 flat shape 一律
   422 invalid_request，无 compatibility adapter。delivery/client_ref 等
   平台字段不泄漏给 handler 与 remote endpoint。lifecycle 旧 envelope 与
   selftest compatibility endpoint 均已删除。C-close 收口：root 精确五键
   （缺失键同样拒绝，`params: null` 拒绝）、delivery 精确两键（未知键不
-  剥离）、MCP adapter 只对完全缺失填默认、显式非法输入 -32602。
+  剥离）。MCP adapter：delivery 完全缺失 → 平台默认；显式 delivery 必须
+  dict，未知 key / null / 非 dict / 非法 leaf → -32602；合法 dict 可只提
+  供一个 leaf，缺失 leaf 由 adapter 补平台默认，最终构造精确两键
+  canonical delivery。
 
 ---
 

@@ -124,18 +124,27 @@ _HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/api/v1/uploads", "/mcp",
 # Mutating account identity/credentials is a browser-session surface. Capability
 # tokens may run tools/API, but cannot use themselves to mint/alter account
 # credentials. Token CRUD and X bind/unbind also enforce session at their routes.
-_SESSION_ONLY_POSTS = {"/account/profile", "/account/password"}
-
-
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     request.state.user = get_user_from_request(request)
     request.state.lang = detect_lang(request)
     path = request.url.path
 
-    if request.method == "POST" and path in _SESSION_ONLY_POSTS:
-        if not request.state.user or getattr(request.state, "auth_via", "") != "session":
-            return JSONResponse({"ok": False, "error": "auth_required"}, status_code=401)
+    # Account namespace is the human browser surface. Capability tokens
+    # (Bearer/query-key) run tools/REST/MCP — they never render or mutate
+    # the account pages. Anonymous browsers get the login redirect instead.
+    if path == "/account" or path.startswith("/account/"):
+        via = getattr(request.state, "auth_via", "")
+        if not request.state.user:
+            if request.method in ("GET", "HEAD"):
+                return RedirectResponse("/auth/login", status_code=302)
+            return JSONResponse({"ok": False, "error": "auth_required"},
+                                status_code=401)
+        if via != "session":
+            if request.method in ("GET", "HEAD"):
+                return RedirectResponse("/auth/login", status_code=302)
+            return JSONResponse({"ok": False, "error": "auth_required"},
+                                status_code=401)
 
     user_id = request.state.user.get("id") if request.state.user else None
     if any(path.startswith(p) for p in _HEAVY_PATHS):
@@ -203,6 +212,12 @@ async def not_found_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 async def startup():
     init_db()
+    # Durable settlement for invocation facts left running by a dead process
+    # (single-worker deployment). Runs after schema init, before traffic.
+    from execution.gate import recover_abandoned_calls
+    recovered = recover_abandoned_calls()
+    if recovered.get("scanned"):
+        logger.info("startup call recovery: %s", recovered)
     try:
         from tools import load_all, _registry
         load_all()

@@ -211,9 +211,12 @@ def update_profile(user_id: int, display_name: str | None = None,
             users_repo.update_payout_channel(
                 con, user_id, payout_channel.strip()[:120] or None, ts)
         if email is not None:
-            email = email.strip().lower()[:254]
-            if not email:
-                raise ValueError("err_email_empty")
+            # Same contract as registration: one validator, no silent
+            # truncation — validate_email owns length and shape rules.
+            email = email.strip().lower()
+            err = validate_email(email)
+            if err:
+                raise ValueError(err)
             if users_repo.email_taken_by_other(con, email, user_id):
                 raise ValueError("err_email_used")
             users_repo.update_email(con, user_id, email, ts)

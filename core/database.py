@@ -469,6 +469,7 @@ def init_db() -> None:
         # Routine cleanup — same behaviour as the SQLite edition
         con.execute("DELETE FROM oauth_states WHERE expires_at < %s", (ts,))
         con.execute("DELETE FROM sessions WHERE expires_at < %s", (ts,))
-        # Quota facts only need a rolling 24h window; keep a small audit margin.
+        # Quota facts only serve the rolling 24h window (queries read
+        # created_at > now-24h); older rows have no business value.
         con.execute("DELETE FROM upload_usage WHERE created_at < %s",
-                    (ts - 7 * 24 * 3600,))
+                    (ts - 24 * 3600,))

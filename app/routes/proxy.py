@@ -14,7 +14,7 @@ _CORE = _BASE / "core"
 sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
-from sharing.uploads import get_upload_by_public_id
+from sharing.uploads import get_live_upload_by_public_id as _live_upload
 from gokapi import open_gokapi_download, get_gokapi_file
 from utils import (
     public_file_url, format_bytes, format_ts,
@@ -25,22 +25,6 @@ from i18n import LOCALE_TAGS, server_text
 from icons import icon_svg
 
 router = APIRouter()
-
-
-def _live_upload(public_id: str):
-    """Canonical public-file read gate: DB mapping must exist and be live.
-
-    Gokapi expiry remains a storage backstop; the platform's share contract is
-    the uploads row + expire_at. Every /f/{id} derivative goes through here so
-    detail/inline/print/QR/ZIP cannot disagree about expiry.
-    """
-    upload = get_upload_by_public_id(public_id)
-    if not upload:
-        return None
-    from utils import now as _now
-    if int(upload["expire_at"] or 0) < _now():
-        return None
-    return upload
 
 
 @router.get("/f/{public_id}")
