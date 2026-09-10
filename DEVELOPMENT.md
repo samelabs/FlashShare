@@ -46,19 +46,46 @@
 
 生产值在服务器 env 文件（不进仓库）；测试用 isolated DB + 任意测试 secret。
 
-## Local / test DB setup
+## Local / test stack（isolated — 全部必须显式）
+
+canonical integration tests **fail closed**：未显式提供 isolated port 与
+TEST_DB_URL 时直接退出（不发任何请求）。两种合法方式：
+
+**A. manual isolated stack**
+
+- isolated PostgreSQL（临时库，验收后 DROP）
+- isolated Gokapi（disposable 实例，见下）
+- isolated app 端口（≠ 8000；8000 是生产端口，测试显式拒绝）
 
 ```bash
+# PostgreSQL
 sudo -u postgres psql -c "CREATE DATABASE flashshare_test OWNER flashshare"
-# 用分支代码初始化 + seed：
+# 初始化 + seed（分支代码）
 DATABASE_URL=postgresql+psycopg://…/flashshare_test \
 FLASHSHARE_SESSION_SECRET=<test-secret> \
+FLASHSHARE_GOKAPI_URL=<isolated-gokapi> FLASHSHARE_GOKAPI_KEY=<its-key> \
 PYTHONPATH=core venv/bin/python -c "from database import init_db; from tools import load_all; load_all(); from governance.catalog import seed_from_registry; init_db(); print(seed_from_registry())"
-# 起隔离实例：
-DATABASE_URL=… FLASHSHARE_SESSION_SECRET=… venv/bin/python -m uvicorn app.main:app --port 8100 --workers 1
+# 隔离实例（端口 != 8000）
+DATABASE_URL=… FLASHSHARE_SESSION_SECRET=… FLASHSHARE_GOKAPI_URL=… FLASHSHARE_GOKAPI_KEY=… \
+  venv/bin/python -m uvicorn app.main:app --port 8100 --workers 1
 ```
 
-**禁止**对 production DB 跑 test 分支的 `init_db`。
+**B. GitHub Actions（后续）**：provision PostgreSQL + Gokapi → app 起 dedicated
+test port → run tests/canonical。
+
+### Isolated Gokapi（正式测试前提）
+
+Canonical integration tests 会真实 upload / local execute / result upload /
+MCP tools/call，因此**必须**指向 disposable/local Gokapi（或 CI provisioned
+Gokapi），**绝不使用 production Gokapi**。只隔离 DB 而复用生产 Gokapi 是
+禁止的。
+
+全新 Gokapi 实例初始化：容器/二进制首次启动后，在它的 admin UI 里完成初始
+设置并生成 API key（无固定默认 key — 不要假设）；将实例 URL+key 注入测试
+服务的 `FLASHSHARE_GOKAPI_URL`/`FLASHSHARE_GOKAPI_KEY`。
+
+**禁止**对 production DB 跑 test 分支的 `init_db`；禁止测试写 production
+Gokapi。
 
 ## Run / test commands
 
@@ -66,12 +93,14 @@ DATABASE_URL=… FLASHSHARE_SESSION_SECRET=… venv/bin/python -m uvicorn app.ma
 python -m compileall -q app core          # 语法
 node --check static/app.js                # 每个改动 JS
 git diff --check
-FLASHSHARE_TEST_PORT=8100 python tests/canonical/test_invocation_canonical.py   # Stage C 42
-FLASHSHARE_TEST_PORT=8100 python tests/canonical/test_supply_accept_multi.py    # 4C-close 15
+# canonical tests — 环境变量无默认值，必须显式提供：
+FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
+  python tests/canonical/test_invocation_canonical.py     # Stage C 42
+FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
+  python tests/canonical/test_supply_accept_multi.py      # 4C-close 15
 ```
 
-canonical 测试需要一个已启动的（隔离）服务实例 + 可用 DB；断言走 HTTP + DB 查询。
-测试账号在测试库自建（脚本内 `new_user()`），不留生产数据。
+测试账号在测试库自建（脚本内 `new_user()`），不留数据（测试库最终 DROP）。
 
 ## Branch workflow
 

@@ -2,9 +2,25 @@
 """4C-2-close 验收 A-F"""
 import json, uuid, http.client, sys, subprocess
 import os
-import os as _os
-_REPO = _os.environ.get("FLASHSHARE_TEST_REPO") or _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
-_HOST = ("127.0.0.1", int(_os.environ.get("FLASHSHARE_TEST_PORT", "8000")))
+import os as _os, sys as _sys
+_REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+
+# ── FAIL-CLOSED GATE ─────────────────────────────────────────────────────
+# Canonical integration tests run ONLY against an explicitly provided
+# isolated service port + isolated test database. No defaults, no
+# production fallbacks. Refuse to run before any HTTP request or DB write.
+_TEST_PORT = _os.environ.get("FLASHSHARE_TEST_PORT")
+if not _TEST_PORT:
+    _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT is required (isolated service port, never the production port).\n")
+    _sys.exit(2)
+if _TEST_PORT == "8000":
+    _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT=8000 is the production port; canonical tests must use an isolated port.\n")
+    _sys.exit(2)
+TEST_DB = _os.environ.get("TEST_DB_URL")
+if not TEST_DB:
+    _sys.stderr.write("ERROR: TEST_DB_URL is required (isolated test database DSN).\n")
+    _sys.exit(2)
+_HOST = ("127.0.0.1", int(_TEST_PORT))
 
 FAIL = []
 def check(name, ok, detail=""):
@@ -93,14 +109,10 @@ conn = http.client.HTTPConnection(*_HOST, timeout=30)
 u, pw = "op4ctest", "Test12345"
 b, ct = mp(fields={"username": u, "password": pw, "password_confirm": pw, "email": "op4c@t.co"})
 conn.request("POST", "/auth/register", b, {"Content-Type": ct}); conn.getresponse().read()
-TEST_DB = _os.environ.get("TEST_DB_URL")
-if TEST_DB:
-    import psycopg2 as _pg0
-    _c0 = _pg0.connect(TEST_DB); _c0.autocommit = True
-    _c0.cursor().execute("update users set status='samelabs' where username=%s", (u,))
-    _c0.close(); print("operator upgraded (direct DB)")
-else:
-    print("TEST_DB_URL not set — operator cases need it")
+import psycopg2 as _pg0
+_c0 = _pg0.connect(TEST_DB); _c0.autocommit = True
+_c0.cursor().execute("update users set status='samelabs' where username=%s", (u,))
+_c0.close(); print("operator upgraded (direct DB)")
 b, ct = mp(fields={"login": u, "password": pw})
 conn.request("POST", "/auth/login", b, {"Content-Type": ct})
 resp = conn.getresponse(); resp.read()
@@ -123,15 +135,12 @@ if admin_cookie:
         "tool_id": tid, "label": "DB", "url": "https://httpbin.org/anything",
         "timeout_s": 30, "accept": ".png,.jpg", "multi": True}, admin_cookie)
     check("D operator create ok", r.get("ok"), str(r))
-    if TEST_DB:
-        import psycopg2 as _pg2, json as _js
-        _c2 = _pg2.connect(TEST_DB); _c2.autocommit = True
-        _cur2 = _c2.cursor(); _cur2.execute(f"select accept_json, multi from platform_tools where tool_key='{tid}'")
-        row = _cur2.fetchone(); _c2.close()
-        check("D DB canonical ['.jpg','.png'] + multi=true",
-              _js.loads(row[0]) == [".jpg", ".png"] and row[1] is True, str(row))
-    else:
-        check("D operator create (multi=true) ok", r.get("ok"), str(r))
+    import psycopg2 as _pg2, json as _js
+    _c2 = _pg2.connect(TEST_DB); _c2.autocommit = True
+    _cur2 = _c2.cursor(); _cur2.execute(f"select accept_json, multi from platform_tools where tool_key='{tid}'")
+    row = _cur2.fetchone(); _c2.close()
+    check("D DB canonical ['.jpg','.png'] + multi=true",
+          _js.loads(row[0]) == [".jpg", ".png"] and row[1] is True, str(row))
 else:
     check("C/D admin 通道", False, "无 admin 凭据 — 需人工提供或本地单元验证")
 
@@ -139,17 +148,14 @@ else:
 doc = open(os.path.join(_REPO, 'docs/plan/TOOLCHAIN_UNIFICATION.md')).read()
 check("E docs tool_type = view/peek/produce", "view / peek / produce" in doc and "share / produce" not in doc)
 
+# 清理 operator 测试账号 (可达 — 在退出前执行; 测试库终将 DROP, 这里只做轻量收尾)
+import psycopg2 as _pg3
+_c3 = _pg3.connect(TEST_DB); _c3.autocommit = True
+_cur3 = _c3.cursor()
+_cur3.execute("delete from users where username='op4ctest'")
+_cur3.execute("delete from platform_tools where tool_key like 'mtest%' or tool_key like 'dbcheck%'")
+_c3.close(); print("清理: cleaned")
+
 print()
 print("FAIL:", FAIL if FAIL else "无 — 全绿")
 sys.exit(1 if FAIL else 0)
-
-# 清理 operator 测试账号
-if TEST_DB:
-    import psycopg2 as _pg3
-    _c3 = _pg3.connect(TEST_DB); _c3.autocommit = True
-    _cur3 = _c3.cursor()
-    _cur3.execute("delete from users where username='op4ctest'")
-    _cur3.execute("delete from platform_tools where tool_key like 'mtest%' or tool_key like 'dbcheck%'")
-    _c3.close(); print("清理: cleaned")
-else:
-    print("清理: TEST_DB_URL 未设 — 跳过")

@@ -76,6 +76,7 @@
 - `python -m compileall app core`
 - 改动 JS 全部 `node --check`
 - 相关 canonical tests（`tests/canonical/`）
+- canonical integration tests fail closed：未显式提供 isolated port / TEST_DB_URL 时不得运行；禁止使用 production DB / production Gokapi。
 - UI 改动：真浏览器（CDP）验证用户可见行为
 
 ---
@@ -132,6 +133,6 @@
 
 ## 关键约束
 
-- 零回归容忍；一次只改一个功能，禁顺手改。
+- 零回归容忍。一次一个 coherent mechanism batch；不要 one-bug-one-commit 微切片。P0/P1 或明确 regression 可单独切片；禁止无关顺手改。
 - 改动前 grep 全局引用；Python 改完 `ast.parse`；JS 改完 `node --check`。
 - 排障三层：`journalctl -u flashshare-api`（服务）+ nginx error.log（接入）+ `/api/client-error` 上报（浏览器）。

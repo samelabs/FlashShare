@@ -1,5 +1,6 @@
 # 本地开发环境（全部容器化，使用本项目专属端口段 53842-53844，不占用通用端口）：
 #   flashshare  宿主 53844 → 容器 8000（生产内部端口不变）
+#   postgres    无宿主端口（仅 compose 网络内访问；dev 数据在独立 volume）
 #   gokapi      宿主 53842（生产同款镜像/端口）
 # 生产部署不使用本文件（生产为 systemd + 系统 python，见 run.sh / AGENTS.md）。
 services:
@@ -13,15 +14,29 @@ services:
       - "53844:8000"
     env_file: .env
     environment:
-      # 容器内视角：覆盖 .env 里的宿主机路径/地址
-      FLASHSHARE_DB: /opt/flashshare/data/flashshare.sqlite
+      # 容器内视角：覆盖 .env 里的宿主机地址
+      DATABASE_URL: postgresql+psycopg://flashshare:flashshare-dev@postgres:5432/flashshare_dev
       FLASHSHARE_LOG_DIR: /opt/flashshare/data/logs
       FLASHSHARE_GOKAPI_URL: http://gokapi:53842
       FLASHSHARE_BASE_URL: http://localhost:53844
+      # dev placeholder — 不是生产值；如需覆盖在 .env 里设置
+      FLASHSHARE_SESSION_SECRET: dev-session-secret-change-me
     volumes:
       - .:/opt/flashshare
     depends_on:
+      - postgres
       - gokapi
+    restart: unless-stopped
+
+  postgres:
+    image: docker.io/library/postgres:16
+    container_name: flashshare-dev-postgres
+    environment:
+      POSTGRES_USER: flashshare
+      POSTGRES_PASSWORD: flashshare-dev
+      POSTGRES_DB: flashshare_dev
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
     restart: unless-stopped
 
   gokapi:
@@ -37,5 +52,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres-dev-data:
   gokapi-dev-data:
   gokapi-dev-config:
