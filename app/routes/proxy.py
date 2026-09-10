@@ -15,7 +15,8 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from sharing.uploads import get_live_upload_by_public_id as _live_upload
-from gokapi import open_gokapi_download, get_gokapi_file
+from gokapi import (open_gokapi_download, get_gokapi_file,
+                     open_gokapi_internal_download, InternalDownloadUnavailable)
 from utils import (
     public_file_url, format_bytes, format_ts,
     file_size_icon_svg, expiry_icon_svg, download_count_icon_svg, file_format_icon,
@@ -125,7 +126,8 @@ async def file_route(public_id: str, request: Request):
         "public_id": pid,
         "file_name": upload["file_name"],
         "content_type": upload["content_type"] or "",
-        "is_image": (upload["content_type"] or "").startswith("image/"),
+        "is_image": ((upload["content_type"] or "").startswith("image/")
+                      and (upload["content_type"] or "").lower() != "image/svg+xml"),
         "is_pdf": (upload["content_type"] or "").lower() == "application/pdf",
         "is_zip": ((upload["content_type"] or "") in ("application/zip", "application/x-zip-compressed"))
                    or (upload["file_name"] or "").lower().endswith(".zip"),
@@ -175,20 +177,23 @@ async def file_zip_list(public_id: str, request: Request):
     from gokapi import _gokapi_connection, _gokapi_path
 
     def fetch_range(start: int, length: int) -> bytes:
-        conn, _ = _gokapi_connection(timeout=30)
+        # Internal non-counting Range read (zip central-directory inspection
+        # is platform-side, not a user download).
+        status, _headers, stream = open_gokapi_internal_download(
+            upload["gokapi_id"],
+            range_header=f"bytes={start}-{start + length - 1}")
+        if status not in (200, 206):
+            raise ValueError("range_unavailable")
         try:
-            conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(upload['gokapi_id'])}"),
-                         headers={"Range": f"bytes={start}-{start + length - 1}"})
-            resp = conn.getresponse()
-            if resp.status not in (200, 206):
-                raise ValueError("range_unavailable")
-            return resp.read()
+            return stream.read()
         finally:
-            conn.close()
+            stream.close()
 
     from zip_preview import list_zip_remote
     try:
         entries = await asyncio.to_thread(list_zip_remote, fetch_range, total)
+    except InternalDownloadUnavailable:
+        return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
     except ValueError as exc:
         reason = str(exc)
         if reason == "empty_archive":
@@ -225,7 +230,12 @@ async def file_inline(public_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "not_embeddable"}, 400)
 
     from urllib.parse import quote
-    status, headers, stream = open_gokapi_download(upload["gokapi_id"])
+    # Internal non-counting read: in-site preview must never consume the
+    # user's download allowance (Batch A resource boundary).
+    try:
+        status, headers, stream = open_gokapi_internal_download(upload["gokapi_id"])
+    except InternalDownloadUnavailable:
+        return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
     if status >= 400:
         return HTMLResponse("File unavailable", status=status)
 

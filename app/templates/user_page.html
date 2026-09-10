@@ -24,7 +24,7 @@
   <div class="market-grid userpage-grid">
     {% for t in owner_tools %}
     <div class="mkt-card mkt-community userpage-card" data-tool-id="{{ t.id }}">
-      <span class="mkt-icon"><svg viewBox="0 0 24 24" aria-hidden="true">{% if t.icon_svg %}{{ t.icon_svg | safe }}{% endif %}</svg></span>
+      <span class="mkt-icon">{% if t.icon_svg %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon_svg | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
       <span class="mkt-name">{{ t.label | lt(lang) or t.id }}</span>
       {% if t.desc %}<span class="mkt-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
       <span class="mkt-meta">

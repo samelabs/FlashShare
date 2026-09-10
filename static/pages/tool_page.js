@@ -36,8 +36,11 @@
       html += `</div></div>`;
     }
     if (Array.isArray(tool.params) && tool.params.length) {
-      const lbl = t("tool_params") !== "tool_params" ? t("tool_params") : "Options";
-      html += `<div class="toolpage-param-group"><div class="tool-param-label">${esc(lbl)}</div><div class="toolpage-params-grid">`;
+      // B1: 单参数工具不显示通用 heading — 与首页浮层同规则。
+      const lblHtml = tool.params.length > 1
+        ? `<div class="tool-param-label">${esc(t("tool_params") !== "tool_params" ? t("tool_params") : "Options")}</div>`
+        : "";
+      html += `<div class="toolpage-param-group">${lblHtml}<div class="toolpage-params-grid">`;
       tool.params.forEach(p => {
         const pl = resolveLabel(p.label) || p.key;
         const val = saved[p.key] !== undefined ? saved[p.key] : p.default;

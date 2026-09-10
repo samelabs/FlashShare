@@ -21,13 +21,15 @@ async function loadEarnings() {
   if (!r.ok) return;
   const d = await r.json();
   const s = d.summary;
-  document.getElementById('eTotal').textContent = s.earned;
-  document.getElementById('eAvail').textContent = s.available;
-  document.getElementById('ePending').textContent = s.pending;
-  document.getElementById('eWithdrawn').textContent = s.withdrawn;
-  const _usd = (el, v) => { const n = document.getElementById(el); if (n) n.textContent = v; };
-  _usd('eTotalUsd', s.earned_usd || ''); _usd('eAvailUsd', s.available_usd || '');
-  _usd('ePendingUsd', s.pending_usd || ''); _usd('eWithdrawnUsd', s.withdrawn_usd || '');
+  // C1: Earnings 的资产单位就是现金 USD — 主值直接 USD, 不再以
+  // credits 数字为主 + USD 小字 (消费积分属于 /account/credits)。
+  document.getElementById('eTotal').textContent = s.earned_usd || ('$' + (s.earned / 1000).toFixed(2));
+  document.getElementById('eAvail').textContent = s.available_usd || ('$' + (s.available / 1000).toFixed(2));
+  document.getElementById('ePending').textContent = s.pending_usd || ('$' + (s.pending / 1000).toFixed(2));
+  document.getElementById('eWithdrawn').textContent = s.withdrawn_usd || ('$' + (s.withdrawn / 1000).toFixed(2));
+  ['eTotalUsd', 'eAvailUsd', 'ePendingUsd', 'eWithdrawnUsd'].forEach(id => {
+    const n = document.getElementById(id); if (n) n.textContent = '';
+  });
 
   // per-tool revenue breakdown
   const bt = document.getElementById('byToolList');
@@ -40,7 +42,7 @@ async function loadEarnings() {
       row.className = 'wd-row';
       row.innerHTML = '<span class="wd-tool"></span><strong class="wd-amt"></strong>';
       row.querySelector('.wd-tool').textContent = t.tool;
-      row.querySelector('.wd-amt').textContent = '+' + t.earned + ' · $' + (t.earned / 1000).toFixed(2);
+      row.querySelector('.wd-amt').textContent = '+$' + (t.earned / 1000).toFixed(2);
       bt.appendChild(row);
     }
   }
@@ -60,7 +62,7 @@ async function loadEarnings() {
       t.textContent = ln.tool + ' · ' + new Date(ln.ts * 1000).toLocaleString();
       const amt = document.createElement('strong');
       amt.className = 'wd-amt';
-      amt.textContent = '+' + ln.delta + ' · $' + (ln.delta / 1000).toFixed(2);
+      amt.textContent = '+$' + (ln.delta / 1000).toFixed(2);
       row.append(t, amt);
       rl.appendChild(row);
     }
