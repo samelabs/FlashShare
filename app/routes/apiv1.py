@@ -1,45 +1,25 @@
-"""Public API v1 — /api/v1/* (batch C3).
+"""Public API v1 — /api/v1/*.
 
-The programmatic surface of the capability platform. Same identity
-(Bearer token), same single metering gate (execute funnels through the
-internal pipeline), same storage. Five endpoints:
-
-    GET  /api/v1/me          — identity + credit balance
-    GET  /api/v1/tools       — capability catalog (register() minus
-                               handlers + pricing)
-    POST /api/v1/uploads     — upload source (gokapi intermediate +
-                               sourceToken; tool flow parity with web)
-    POST /api/v1/execute     — run a tool (client_ref idempotent)
-    GET  /api/v1/uploads/{id} — fetch result bytes or metadata
-
-Response contract mirrors the internal API ({"ok": true, ...}) with one
-addition: programmatic errors never leak stack traces, and execute
-accepts/echoes client_ref for retry-safe agents.
+Bearer identity, canonical Catalog/ToolInvocation, shared source ingress and the
+single metering gate. Result reads obey the same DB lifecycle as public /f.
 """
 
-import io
 import json
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from config import MAX_UPLOAD_BYTES
-from database import db
-from security import sniff_allowed
-from sharing.uploads import check_quota
-from gokapi import upload_to_gokapi
 from storage import read as storage_read
 from governance.catalog import list_catalog
 from gokapi import open_gokapi_download
-from utils import now, sanitize_filename
+from utils import sanitize_filename
 from identity.auth import public_user
 
 router = APIRouter()
 
 
 def _require_bearer(request: Request):
-    """v1 is token-only. Session cookies are NOT accepted here — the
-    programmatic surface must not accidentally depend on browser state."""
     user = getattr(request.state, "user", None)
     via = getattr(request.state, "auth_via", "session")
     if not user:
@@ -57,7 +37,7 @@ async def v1_me(request: Request):
     from economy.billing import spendable_balance as get_balance
     from economy.subscription import plan_of
     u = public_user(user)
-    u.pop("email", None)  # token channel: no PII beyond what's needed
+    u.pop("email", None)
     return {"ok": True, "user": u, "credits": get_balance(user["id"]),
             "plan": plan_of(user["id"])}
 
@@ -67,23 +47,17 @@ async def v1_tools(request: Request):
     user, err = _require_bearer(request)
     if err:
         return err
-    # list_catalog is the single catalog source (data-state registry +
-    # pricing overlay inside): cost included, disabled tools hidden —
-    # identical to web home and MCP. Viewer-scoped (own private tools).
     return {"ok": True, "tools": list_catalog(user["id"])}
 
 
 def _upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) -> dict:
-    """Shared source-upload pipeline (v1 + MCP) — 薄壳, 实现在 execution.pipeline."""
     from execution.pipeline import upload_source
     return upload_source(user, filename, ctype, body, ip)
 
 
 @router.post("/uploads")
 async def v1_upload(request: Request):
-    """Upload a source file. Returns the gokapi intermediate handle +
-    sourceToken — the same object the web frontend gets after upload
-    when a tool is selected. Parity keeps execute identical."""
+    """Upload one tool source file and return its intermediate handle."""
     user, err = _require_bearer(request)
     if err:
         return err
@@ -97,7 +71,6 @@ async def v1_upload(request: Request):
         return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
     body = await request.body()
     if len(body) != size:
-        # streaming/unknown length fell through — accept actual bytes
         size = len(body)
         if size <= 0 or size > MAX_UPLOAD_BYTES:
             return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
@@ -113,13 +86,7 @@ async def v1_upload(request: Request):
 
 @router.post("/execute")
 async def v1_execute(request: Request):
-    """Run a tool (Stage C: request body IS the canonical ToolInvocation).
-
-    v1 source policy: client_ref is REQUIRED here (agent/program retries
-    must be idempotent). The canonical parser itself allows null (web
-    fresh invocation is legal) — this route only adds bearer + ref
-    policy; source/delivery/params validation stays in dispatch.
-    """
+    """Run canonical ToolInvocation; v1 additionally requires client_ref."""
     user, err = _require_bearer(request)
     if err:
         return err
@@ -132,7 +99,6 @@ async def v1_execute(request: Request):
     if not client_ref or len(client_ref) > 128:
         return JSONResponse({"ok": False, "error": "client_ref_required"}, 422)
 
-    # 统一执行入口: canonical invocation 直传 dispatch。
     from execution.dispatch import dispatch_execute
     payload, error_body, status = await dispatch_execute(request, user, raw)
     if error_body is not None:
@@ -142,13 +108,12 @@ async def v1_execute(request: Request):
 
 @router.get("/uploads/{public_id}")
 async def v1_fetch(public_id: str, request: Request):
-    """Fetch result bytes (or metadata with ?meta=1). Owner-only —
-    tokens are scoped to the same user as sessions."""
+    """Fetch a live result (or metadata with ?meta=1), owner-only."""
     user, err = _require_bearer(request)
     if err:
         return err
-    from sharing.uploads import get_upload_by_public_id
-    upload = get_upload_by_public_id(public_id)
+    from sharing.uploads import get_live_upload_by_public_id
+    upload = get_live_upload_by_public_id(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if upload["user_id"] != user["id"]:
@@ -165,16 +130,15 @@ async def v1_fetch(public_id: str, request: Request):
     if status >= 400:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     data = stream.read()
-    return Response(content=data, media_type=upload["content_type"] or
-                    "application/octet-stream",
-                    headers={"Content-Disposition":
-                             f'attachment; filename="{upload["file_name"]}"'})
+    return Response(
+        content=data,
+        media_type=upload["content_type"] or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{upload["file_name"]}"',
+                 "X-Content-Type-Options": "nosniff"},
+    )
+
 
 # ── Demo echo endpoint (open-platform market seed; contract-compliant) ──
-# Implements the user-tool HTTP contract: receives job_inputs[].url (signed
-# fetch URLs), returns {filename, content_type, data_b64}. Exists so the
-# market always has working examples and so the remote-call pipeline can be
-# exercised end-to-end without third-party infrastructure.
 
 @router.post("/demo-echo")
 async def demo_echo(request: Request):
@@ -186,20 +150,15 @@ async def demo_echo(request: Request):
     job_inputs = payload.get("job_inputs") or []
     outputs = []
     from security import verify_fetch_token
-    from urllib.parse import urlparse, parse_qs
+    from urllib.parse import parse_qs
     for item in job_inputs[:5]:
         url = str(item.get("url") or "")
-        # fetch_url = /api/source/{gokapi_id}?u=..&t=.. — read the file
-        # directly from local Gokapi storage (no HTTP loop-back: the
-        # single uvicorn worker would deadlock on itself).
         marker = "/api/source/"
         idx = url.find(marker)
         if idx < 0:
             continue
         path_and_query = url[idx + len(marker):]
         gid, _, query = path_and_query.partition("?")
-        # 🔴6 修复 (批2e): 与 /api/source 同闸 — 单次签名 fetch token 必须有效。
-        # 原实现裸读 gokapi, 匿名者知道 gid 即可绕过签名闸取件。
         q = parse_qs(query)
         u_raw = (q.get("u") or [""])[0]
         t_raw = (q.get("t") or [""])[0]
@@ -223,4 +182,3 @@ async def demo_echo(request: Request):
     body = outputs[0] if len(outputs) == 1 else {"files": outputs}
     body["echo"] = True
     return body
-
