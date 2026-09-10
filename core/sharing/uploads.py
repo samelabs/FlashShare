@@ -4,22 +4,67 @@ import time
 from config import DAILY_UPLOADS, DAILY_BYTES
 from database import db
 from repo import uploads as uploads_repo
+from repo import upload_usage as usage_repo
 from gokapi import delete_gokapi_file, _gokapi_connection, _gokapi_path, GOKAPI_KEY
 from utils import now, public_file_url
 
 
-def check_quota(user_id: int, ip: str, incoming_bytes: int) -> tuple:
+def _quota_reason(row: dict, ip_count: int, incoming_bytes: int,
+                  incoming_count: int) -> str:
+    if int(row["c"]) + incoming_count > DAILY_UPLOADS:
+        return "err_quota_count"
+    if int(row["b"]) + incoming_bytes > DAILY_BYTES:
+        return "err_quota_size"
+    if int(ip_count) + incoming_count > DAILY_UPLOADS * 2:
+        return "err_quota_ip"
+    return ""
+
+
+def check_quota(user_id: int, ip: str, incoming_bytes: int,
+                incoming_count: int = 1) -> tuple:
+    """Read-only quota preview against ingress facts.
+
+    Mutating upload paths should use reserve_ingress() so concurrent requests
+    cannot both pass the same user quota window.
+    """
     start = now() - 24 * 3600
     with db() as con:
-        row = uploads_repo.quota_usage(con, user_id, start)
-        ip_row = {"c": uploads_repo.ip_usage_count(con, ip, start)}
-    if row["c"] >= DAILY_UPLOADS:
-        return False, "err_quota_count"
-    if row["b"] + incoming_bytes > DAILY_BYTES:
-        return False, "err_quota_size"
-    if ip_row["c"] >= DAILY_UPLOADS * 2:
-        return False, "err_quota_ip"
-    return True, ""
+        row = usage_repo.user_usage(con, user_id, start)
+        ip_count = usage_repo.ip_usage_count(con, ip, start)
+    reason = _quota_reason(row, ip_count, int(incoming_bytes), int(incoming_count))
+    return (not reason, reason)
+
+
+def reserve_ingress(user_id: int, ip: str, sizes: list[int]) -> tuple:
+    """Atomically reserve daily ingress quota and return usage row ids.
+
+    One reservation row represents one source file accepted from the user.
+    Generated tool outputs are not ingress and never call this function.
+    """
+    clean = [int(s) for s in sizes]
+    if not clean or any(s <= 0 for s in clean):
+        return False, "err_empty_file", []
+    start = now() - 24 * 3600
+    ts = now()
+    with db() as con:
+        # Serialize the authoritative user count/byte window. IP quota remains
+        # a secondary abuse bound; user quota is the hard resource contract.
+        usage_repo.lock_user(con, user_id)
+        row = usage_repo.user_usage(con, user_id, start)
+        ip_count = usage_repo.ip_usage_count(con, ip, start)
+        reason = _quota_reason(row, ip_count, sum(clean), len(clean))
+        if reason:
+            return False, reason, []
+        ids = usage_repo.insert_many(con, user_id, ip, clean, ts)
+    return True, "", ids
+
+
+def release_ingress(user_id: int, usage_ids: list[int]) -> None:
+    """Release reservations when an upload request itself does not land."""
+    if not usage_ids:
+        return
+    with db() as con:
+        usage_repo.delete_ids(con, user_id, usage_ids)
 
 
 def get_upload_by_public_id(public_id: str):
@@ -42,7 +87,6 @@ def _get_all_gokapi_status():
         return _gokapi_cache.get("data", {})
     if not GOKAPI_KEY:
         return {}
-    # Cache expired — try refresh, but serve stale if available
     has_stale = age < _GOKAPI_STALE_TTL and _gokapi_cache.get("data")
     try:
         conn, _ = _gokapi_connection(timeout=2)
@@ -64,7 +108,6 @@ def _get_all_gokapi_status():
 def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
     with db() as con:
         rows = uploads_repo.by_owner(con, user_id, int(time.time()), limit, offset)
-    # Single batch request — no N+1
     gokapi_map = _get_all_gokapi_status()
     uploads = []
     for row in rows:
@@ -74,7 +117,6 @@ def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
             item["downloads_remaining"] = live.get("DownloadsRemaining")
             item["download_count"] = live.get("DownloadCount")
             exp = live.get("ExpireAt")
-            # gokapi 版本差异可能返回字符串时间戳 — 统一 int, 失败回落 DB 值 (批4 #16)
             try:
                 item["expire_at"] = int(exp) if exp else item["expire_at"]
             except (TypeError, ValueError):
@@ -90,15 +132,13 @@ def delete_upload(upload_id: int, user_id: int) -> bool:
         row = uploads_repo.owned_row(con, upload_id, user_id)
     if not row:
         return False
-    # DB first, then storage: a storage failure after the DB delete leaves an
-    # orphaned gokapi file that expires on its own (invisible, no record).
-    # The reverse order could leave a live DB record pointing at a dead file.
+    # DB first revokes the public mapping; storage deletion is best-effort and
+    # storage expiry remains the backstop.
     with db() as con:
         uploads_repo.delete_upload_row(con, upload_id, user_id)
     try:
         delete_gokapi_file(row["gokapi_id"])
     except Exception:
-        # Non-fatal: gokapi expiry is the backstop.
         import logging
         logging.getLogger("flashshare").warning(
             "gokapi delete failed for %s (will expire naturally)", row["gokapi_id"])
