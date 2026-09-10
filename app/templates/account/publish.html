@@ -90,8 +90,8 @@
 {% block script_head %}
 <script>
 window.__PAGE__ = "publish";
-window.__PUB_TOOL__ = {{ tool_json | safe }};
-window.__FORMAT_FAMILIES__ = {{ format_manifest_json | safe }};
+window.__PUB_TOOL__ = JSON.parse({{ tool_json | tojson }});
+window.__FORMAT_FAMILIES__ = JSON.parse({{ format_manifest_json | tojson }});
 </script>
 {% endblock %}
 
