@@ -1,0 +1,10 @@
+[Unit]
+Description=FlashShare daily backup (PostgreSQL + Gokapi)
+Documentation=file:/opt/flashshare/scripts/backup.sh
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

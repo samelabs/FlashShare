@@ -13,6 +13,7 @@
       <div class="acct-bal-num" id="acctBalance">{{ balance }}</div>
       <div class="acct-bal-label" data-i18n="credits_balance">{{ texts.credits_balance }}</div>
     </div>
+    {% if daily_amount > 0 %}
     <div class="acct-daily{% if granted_today %} done{% endif %}" id="dailyBox">
       {% if granted_today %}
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
@@ -31,6 +32,7 @@
       </form>
       {% endif %}
     </div>
+{% endif %}
   </div>
 
   

@@ -5,6 +5,13 @@
     <nav class="footer-links" aria-label="policy">
       <a href="/terms" data-i18n="footer_terms">{{ texts.footer_terms }}</a>
       <a href="/privacy" data-i18n="footer_privacy">{{ texts.footer_privacy }}</a>
+      {% if support_channel %}
+      {% if support_channel.startswith("http") %}
+      <a href="{{ support_channel }}" target="_blank" rel="noopener" data-i18n="footer_support">{{ texts.footer_support }}</a>
+      {% else %}
+      <a href="mailto:{{ support_channel }}" data-i18n="footer_support">{{ texts.footer_support }}</a>
+      {% endif %}
+      {% endif %}
     </nav>
   </div>
 </footer>

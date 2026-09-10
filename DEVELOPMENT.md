@@ -126,6 +126,13 @@ FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
 - schema migration 由新进程 startup `init_db()` 自动执行，与代码切换一体。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 
+## Production backup（scripts/）
+
+- `backup.sh`：daily 04:30 UTC（systemd timer）pg_dump custom 格式 + Gokapi sqlite（`.backup` 一致性快照）与 data 目录 tar.gz；SHA256SUMS；本地 `/var/backups/flashshare/`（daily×7 + 周日 weekly×4 轮换）。
+- off-host 上传：`FLASHSHARE_BACKUP_REMOTE`（rclone remote:path）配置后自动启用；未配置时显式 WARNING（仅 on-host）。rclone 未装而 remote 已配 → 非零退出（timer failed 可见）。
+- `restore-proof.sh`：monthly timer — 最新备份恢复到 scratch DB + 解档校验行数/校验和后清理。
+- failure 可观测：journalctl -u flashshare-backup（非零退出 = unit failed）。
+
 ## Gokapi 集成约束（已验证事实）
 
 - 生产 Gokapi = **v2.2.4**。

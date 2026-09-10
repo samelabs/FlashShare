@@ -16,7 +16,7 @@ from database import db
 from utils import now
 
 # ── 运营参数 ──
-DAILY_AMOUNT = 5            # 每日额度 (积分); 0 = 停用
+DAILY_AMOUNT = 0            # 每日额度 (积分); 0 = 停用 (签到奖励暂停, 账本机制不变)
 DAILY_KIND = "grant_daily"  # ledger kind (发放类, 总池语义)
 DAILY_NOTE = "activity:daily_login"  # ledger 溯源键 — 历史不变
 

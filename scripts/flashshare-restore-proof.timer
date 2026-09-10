@@ -1,0 +1,10 @@
+[Unit]
+Description=FlashShare monthly isolated restore proof
+Documentation=file:/opt/flashshare/scripts/restore-proof.sh
+
+[Timer]
+OnCalendar=monthly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

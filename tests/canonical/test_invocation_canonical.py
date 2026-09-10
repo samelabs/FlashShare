@@ -48,7 +48,22 @@ def new_user(prefix="sc"):
     conn.request("POST", "/auth/login", b, {"Content-Type": ct})
     resp = conn.getresponse(); resp.read()
     conn.close()
+    _seed_test_credits(u)
     return (resp.getheader("Set-Cookie") or "").split(";")[0], u
+
+def _seed_test_credits(username, amount=50):
+    """Test fixture: seed spendable credits via the production grant primitive
+    so canonical runs do not depend on the daily-bonus product setting."""
+    import psycopg2
+    _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
+    sys.path.insert(0, os.path.join(_REPO, 'core'))
+    from database import db as _db
+    from economy.billing import grant
+    _c = psycopg2.connect(TEST_DB); _c.autocommit = True
+    _cur = _c.cursor(); _cur.execute("select id from users where username=%s", (username,))
+    _uid = _cur.fetchone()[0]; _c.close()
+    with _db() as _c2:
+        grant(_uid, amount, "grant", idem_key=f"test:{username}", note="canonical test funds")
 
 def req(method, path, body, cookie=None, raw_body=None):
     conn = http.client.HTTPConnection(*_HOST, timeout=60)

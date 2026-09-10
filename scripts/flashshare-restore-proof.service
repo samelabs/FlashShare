@@ -1,0 +1,8 @@
+[Unit]
+Description=FlashShare monthly isolated restore proof
+Documentation=file:/opt/flashshare/scripts/restore-proof.sh
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/flashshare/scripts/restore-proof.sh

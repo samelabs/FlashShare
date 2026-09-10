@@ -83,11 +83,22 @@ async def sitemap():
     return Response(content=body, media_type="application/xml")
 
 
+def _support_note() -> str:
+    """Append the public support channel to policy pages when configured."""
+    from config import PUBLIC_SUPPORT_CHANNEL
+    if not PUBLIC_SUPPORT_CHANNEL:
+        return ""
+    href = (PUBLIC_SUPPORT_CHANNEL if PUBLIC_SUPPORT_CHANNEL.startswith("http")
+            else f"mailto:{PUBLIC_SUPPORT_CHANNEL}")
+    return (f'<p class="doc-support">如有问题或举报，请联系 '
+            f'<a href="{href}" rel="noopener">{PUBLIC_SUPPORT_CHANNEL}</a>。</p>')
+
+
 @router.get("/terms", response_class=HTMLResponse)
 async def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"), "doc_body": _load_doc("terms.html")})
+    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"), "doc_body": _load_doc("terms.html") + _support_note()})
     return templates.TemplateResponse(request, "doc.html", ctx)
 
 
@@ -95,7 +106,7 @@ async def terms(request: Request):
 async def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html")})
+    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html") + _support_note()})
     return templates.TemplateResponse(request, "doc.html", ctx)
 
 
@@ -425,8 +436,10 @@ async def account_credits_claim(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from economy.daily import grant_daily
+    from economy.daily import grant_daily, DAILY_AMOUNT
     import logging as _logging
+    if DAILY_AMOUNT <= 0:
+        return RedirectResponse("/account/credits", 303)
     try:
         grant_daily(user["id"])
     except Exception:

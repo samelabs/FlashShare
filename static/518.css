@@ -477,6 +477,8 @@ select { width: auto; margin-top: 0; }
 .footer-links { display: flex; gap: var(--s2); }
 .footer-links a { font-size: var(--text-xs); color: var(--muted); text-decoration: none; }
 .footer-links a:hover { text-decoration: underline; }
+.doc-support { margin-top: 1em; font-size: 0.9em; }
+.doc-support a { color: var(--muted); }
 
 /* ── 内容卡 (.panel): 白卡+细边+圆角, 事实/MCP/空态容器 ──
    原型 static/proto/account.html 的 .panel 正式落地 (此前为幽灵类:

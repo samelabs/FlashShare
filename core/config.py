@@ -17,6 +17,9 @@ GOKAPI_URL = os.environ.get("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53842").r
 GOKAPI_KEY = os.environ.get("FLASHSHARE_GOKAPI_KEY", "")
 
 SESSION_SECRET = os.environ.get("FLASHSHARE_SESSION_SECRET", "")
+
+# Public support channel (email or URL). Empty = support surfaces hidden.
+PUBLIC_SUPPORT_CHANNEL = os.environ.get("FLASHSHARE_PUBLIC_SUPPORT_CHANNEL", "").strip()
 if not SESSION_SECRET:
     raise RuntimeError("FLASHSHARE_SESSION_SECRET environment variable must be set")
 
