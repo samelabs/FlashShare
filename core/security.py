@@ -60,8 +60,6 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
     if ext in {".txt", ".csv", ".md", ".json", ".xml", ".yaml", ".yml",
                ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
                ".svg", ".step", ".stp", ".iges", ".igs", ".obj"} and b"\x00" in sample:
-        # 文本型格式: 含 NUL 即非文本 (SVG/STEP/IGES/OBJ 是文本格式; STL 不在此列 —
-        # STL 有合法的二进制变体, 平台不做二进制/ASCII 区分, 交给端点)
         return False, "err_content_mismatch_text"
     import mimetypes
     return True, content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -74,13 +72,11 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, stored: str) -> bool:
     if not stored:
         return False
-    # bcrypt hashes start with $2
     if stored.startswith("$2"):
         try:
             return bcrypt.checkpw(password.encode(), stored.encode())
         except Exception:
             return False
-    # Legacy SHA-256 format: "base64(salt):base64(hash)"
     try:
         salt_b64, hash_b64 = stored.split(":", 1)
         salt = base64.b64decode(salt_b64)
@@ -91,11 +87,10 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def needs_rehash(stored: str) -> bool:
-    """Check if a password hash needs upgrading from SHA-256 to bcrypt."""
     return bool(stored) and not stored.startswith("$2")
 
 
-# ── One-time signed source-fetch tokens (remote tool execution, phase 2) ──
+# ── One-time signed source-fetch tokens (remote tool execution) ──
 
 import time as _time
 
@@ -110,38 +105,36 @@ def _fetch_sig(user_id: int, gokapi_id: str, expires_at: int) -> str:
 
 
 def sign_fetch_token(user_id: int, gokapi_id: str, expires_in: int = 600) -> str:
-    """HMAC token authorizing ONE fetch of a source file within expires_in.
-
-    Pull model: the remote endpoint fetches the input itself — the
-    platform never pushes user files out. Binds (user, file, expiry);
-    single-use is enforced by verify_fetch_token's redemption set
-    (single uvicorn worker per run.sh --workers 1)."""
     expires_at = now_ts() + int(expires_in)
     return f"{expires_at}.{_fetch_sig(user_id, gokapi_id, expires_at)}"
 
 
-_REDEEMED_FETCH = set()
+# token -> expires_at. Single-worker state is sufficient for this short-lived
+# internal fetch credential; valid redeemed markers are never evicted early.
+_REDEEMED_FETCH: dict[str, int] = {}
 
 
 def verify_fetch_token(token: str, user_id: int, gokapi_id: str) -> bool:
-    """True exactly once per token. Expired or replayed tokens fail."""
+    """True exactly once while this process is alive and the token is valid."""
     try:
         expires_at_str, sig = token.split(".", 1)
         expires_at = int(expires_at_str)
     except (ValueError, AttributeError):
         return False
-    if expires_at < now_ts():
+    ts = now_ts()
+    if expires_at < ts:
         return False
     if not hmac.compare_digest(sig, _fetch_sig(user_id, gokapi_id, expires_at)):
         return False
+
+    # Purge only markers whose token validity has ended. Removing a still-live
+    # marker would make a previously redeemed token usable again.
+    if len(_REDEEMED_FETCH) > 4096:
+        for redeemed, exp in list(_REDEEMED_FETCH.items()):
+            if exp < ts:
+                _REDEEMED_FETCH.pop(redeemed, None)
+
     if token in _REDEEMED_FETCH:
         return False
-    _REDEEMED_FETCH.add(token)
-    # Bound the redemption set: 淘汰最旧一半 (环形), 而非全清——
-    # 全清会让清空瞬间的已用 token 重新可用 (重放窗口)。
-    if len(_REDEEMED_FETCH) > 4096:
-        doomed = iter(list(_REDEEMED_FETCH)[:2048])
-        for t in doomed:
-            _REDEEMED_FETCH.discard(t)
+    _REDEEMED_FETCH[token] = expires_at
     return True
-
