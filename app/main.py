@@ -12,7 +12,6 @@ Architecture:
 import sys
 from pathlib import Path
 
-# Core modules (zero-change from legacy, now in ../core/)
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _CORE_DIR = _BASE_DIR / "core"
 sys.path.insert(0, str(_CORE_DIR))
@@ -35,7 +34,7 @@ from utils import now
 import tools_registry  # noqa: F401 — registers share + privacy tools
 from tools import load_all
 
-load_all()  # auto-discover every tools_*.py (incl. tools_registry itself)
+load_all()
 
 # ── Logging ──
 import os as _os
@@ -49,29 +48,20 @@ logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _stream_handler
 logger = logging.getLogger("flashshare")
 
 # ── App ──
-app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None, openapi_url=None)  # openapi.json 关闭 (冒烟发现: 原仅关文档页, schema 本体仍公开)
+app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None, openapi_url=None)
 
 _STATIC_DIR = _BASE_DIR / "static"
 _TEMPLATES_DIR = _BASE_DIR / "app" / "templates"
 _TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-# autoescape disabled — templates output raw HTML (icon_svg, CSS, JS).
-# User-controlled display text is escaped at its canonical template boundary:
-# LocalizedText via |lt, independent scalar outputs via |e, data via |tojson.
+# Raw platform-owned SVG/HTML still relies on autoescape=False. User-controlled
+# text/data has explicit canonical boundaries: |lt, |e and |tojson.
 templates.env.autoescape = False
 
-# ── LocalizedText protocol (tool modes v3): canonical resolver as Jinja filter.
-# Resolution order (the ONLY platform fallback chain):
-#   requested locale -> "en" -> first non-empty value -> ""
-# Callers MAY apply domain fallback after it (e.g. `or t.id`), but MUST NOT
-# implement another dict[lang] chain in templates. Search indexing is exempt:
-# data-name intentionally concatenates all locale values (cross-lingual search).
 from governance.tool_params import resolve_label as _resolve_label
 
 def _lt(value, lang: str):
-    # Presentation boundary only: resolver semantics stay unchanged while
-    # every template text consumer receives escaped markup-safe text.
     return html_escape(_resolve_label(value, lang))
 
 templates.env.filters["lt"] = _lt
@@ -79,27 +69,20 @@ templates.env.globals["lt"] = _lt
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
-# ── Auth helpers (reuse core/security.py + core/database.py) ──
+# ── Auth helpers ──
 
 def get_user_from_request(request: Request):
-    """Extract and validate identity: session cookie first, then Bearer.
-
-    The Bearer path is the agent/MCP channel (api_tokens): same user dict,
-    same downstream authorization. Cookie keeps browser flows unchanged.
-    """
+    """Session first, then Bearer/query-token capability identity."""
     from database import db
     from identity.apitokens import authenticate_token, TOKEN_PREFIX
     token = request.cookies.get(COOKIE_NAME)
     if not token:
-        # Bearer channel for programmatic clients
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
             user = authenticate_token(auth[7:].strip())
             if user:
                 request.state.auth_via = "token"
             return user
-        # ?key= query channel for MCP clients that cannot set custom
-        # headers (industry-standard pattern; same token, same gates)
         qkey = request.query_params.get("key", "")
         if qkey.startswith(TOKEN_PREFIX):
             user = authenticate_token(qkey)
@@ -119,7 +102,6 @@ def get_user_from_request(request: Request):
 
 
 def detect_lang(request: Request) -> str:
-    """Detect preferred language: query > cookie > Accept-Language."""
     for param in ("lang", "x"):
         val = request.query_params.get(param, "")
         code = language_from_code(val)
@@ -136,11 +118,13 @@ def detect_lang(request: Request) -> str:
 
 import asyncio
 
-# Concurrency limiter — for CPU/IO-heavy operations (uploads, tool execution,
-# auth endpoints running bcrypt ~250ms/attempt: login + register).
-# Page views and other lightweight requests are never throttled.
 _concurrency = asyncio.Semaphore(8)
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/auth/login", "/auth/register")
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/api/v1/uploads", "/mcp",
+                "/auth/login", "/auth/register")
+# Mutating account identity/credentials is a browser-session surface. Capability
+# tokens may run tools/API, but cannot use themselves to mint/alter account
+# credentials. Token CRUD and X bind/unbind also enforce session at their routes.
+_SESSION_ONLY_POSTS = {"/account/profile", "/account/password"}
 
 
 @app.middleware("http")
@@ -148,22 +132,38 @@ async def auth_middleware(request: Request, call_next):
     request.state.user = get_user_from_request(request)
     request.state.lang = detect_lang(request)
     path = request.url.path
+
+    if request.method == "POST" and path in _SESSION_ONLY_POSTS:
+        if not request.state.user or getattr(request.state, "auth_via", "") != "session":
+            return JSONResponse({"ok": False, "error": "auth_required"}, status_code=401)
+
+    user_id = request.state.user.get("id") if request.state.user else None
     if any(path.startswith(p) for p in _HEAVY_PATHS):
         async with _concurrency:
             response = await call_next(request)
     else:
         response = await call_next(request)
+
+    # change_password/set_password revoke every old session/token atomically.
+    # A successful browser password POST gets exactly one fresh current session.
+    if (request.method == "POST" and path == "/account/password"
+            and user_id and getattr(request.state, "auth_via", "") == "session"
+            and 300 <= response.status_code < 400):
+        try:
+            from app.web_auth import create_browser_session
+            fresh = create_browser_session(user_id)
+            response.set_cookie(COOKIE_NAME, fresh, max_age=SESSION_TTL,
+                                httponly=True, secure=True, samesite="lax")
+        except Exception:
+            logger.exception("password session rotation failed uid=%s", user_id)
+            return JSONResponse({"ok": False, "error": "internal_error"}, 500)
     return response
 
-
-# ── Health check ──
 
 @app.get("/healthz")
 async def healthz():
     return {"ok": True, "status": "healthy"}
 
-
-# ── Global exception handler ──
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
