@@ -1,15 +1,8 @@
-"""MCP server at /mcp (batch D1) — streamable-http, minimal, zero-dep.
+"""MCP server at /mcp — stateless streamable HTTP.
 
-The agent channel reuses the same boundaries as /api/v1: Bearer token
-(api_tokens), the same upload pipeline (sniff/quota/gokapi), and the
-same single metering gate (execute_tool). No SDK dependency — the
-streamable-http transport is JSON-RPC over POST; we answer with
-application/json (spec-legal; clients must accept both content types),
-return 202 for notifications, 405 for GET/DELETE (stateless server,
-no sessions).
-
-Methods: initialize | notifications/initialized | ping | tools/list |
-tools/call.
+The agent channel reuses the same boundaries as /api/v1: Bearer identity,
+canonical Catalog, source ingress pipeline, ToolInvocation and metering gate.
+Methods: initialize | notifications/initialized | ping | tools/list | tools/call.
 """
 
 import base64
@@ -28,7 +21,7 @@ router = APIRouter()
 
 SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 LATEST = SUPPORTED_VERSIONS[0]
-MAX_B64_BYTES = MAX_UPLOAD_BYTES * 2  # b64 inflation bound, checked pre-decode
+MAX_B64_BYTES = MAX_UPLOAD_BYTES * 2
 
 
 def _rpc(id_, result=None, error=None):
@@ -65,13 +58,11 @@ async def mcp_options():
 
 @router.get("/mcp")
 async def mcp_get():
-    # Stateless server: no server-initiated SSE stream.
     return Response(status_code=405, headers=_cors_headers())
 
 
 @router.delete("/mcp")
 async def mcp_delete():
-    # Stateless server: no sessions to terminate.
     return Response(status_code=405, headers=_cors_headers())
 
 
@@ -88,7 +79,7 @@ async def mcp_post(request: Request):
     except Exception:
         return JSONResponse(_rpc_err(None, -32700, "parse error"),
                             headers=_cors_headers())
-    if isinstance(msg, list):  # 2024-11-05 batch
+    if isinstance(msg, list):
         out = []
         for m in msg:
             r = await _dispatch(request, user, m)
@@ -96,13 +87,12 @@ async def mcp_post(request: Request):
                 out.append(r)
         return JSONResponse(out, headers=_cors_headers())
     resp = await _dispatch(request, user, msg)
-    if resp is None:  # notification
+    if resp is None:
         return Response(status_code=202, headers=_cors_headers())
     return JSONResponse(resp, headers=_cors_headers())
 
 
 async def _dispatch(request: Request, user: dict, msg: dict):
-    """Handle one JSON-RPC message. None ⇒ notification (202, no body)."""
     if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0":
         return _rpc_err(None, -32600, "invalid request")
     mid = msg.get("id")
@@ -132,7 +122,7 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     if method == "ping":
         return _rpc(mid, {})
     if is_notification:
-        return None  # any other notification: accept silently
+        return None
     if method == "tools/list":
         params = msg.get("params") or {}
         page_size = 50
@@ -153,11 +143,6 @@ async def _dispatch(request: Request, user: dict, msg: dict):
 
 
 def _tool_specs(user: dict) -> list:
-    # list_catalog: single catalog source (data-state registry + pricing
-    # overlay inside — disabled hidden, cost included), identical to web
-    # home and /api/v1. Viewer-scoped: own private/unlisted tools included.
-    # Stage C: source input 只有一套 shape — files[{filename,b64}];
-    # multi 只影响 maxItems (UX/agent hint), 执行约束仍在 dispatch。
     specs = []
     for t in list_catalog(user["id"]):
         multi = bool(t.get("multi"))
@@ -178,8 +163,6 @@ def _tool_specs(user: dict) -> list:
             },
         }
         required = ["files"]
-        # params schema: 有声明 → 具名 properties (agent 检索即知怎么调);
-        # 无声明 → 保持裸 object 兼容 (tool modes spec v3 M3)
         decl = t.get("params") or []
         if decl:
             from governance.tool_params import to_input_schema_properties
@@ -202,20 +185,19 @@ def _tool_specs(user: dict) -> list:
         }
         props["client_ref"] = {
             "type": "string",
-            "description": "Idempotency ref: reuse to retry after errors without double charge",
+            "description": "Idempotency ref: reuse to retry this tool call safely",
         }
         label = t["label"]
         desc = f"{label.get('en') or t['id']}"
         if label.get("zh"):
             desc += f" / {label['zh']}"
-        # 简介 (agent 检索质量): 工具自述 desc 单串
         tool_desc = resolve_label(t.get("desc"), "en") if t.get("desc") else ""
         if tool_desc:
             desc += f" — {tool_desc}"
         if int(t["cost"]) > 0:
             desc += f" (cost: {int(t['cost'])} credits)"
         specs.append({
-            "name": mcp_name(t["id"]),  # 'owner/tool' → 'owner__tool'
+            "name": mcp_name(t["id"]),
             "description": desc,
             "inputSchema": {
                 "type": "object",
@@ -223,12 +205,9 @@ def _tool_specs(user: dict) -> list:
                 "required": required,
             },
         })
-    # meta tool: keyword search (catalog can exceed what a client wants
-    # to page through; search is the shortcut)
     specs.append({
         "name": "catalog_search",
-        "description": "Find tools by keyword (matches id and labels, "
-                       "all languages). Returns matching tool names.",
+        "description": "Find tools by keyword (matches id and labels, all languages). Returns matching tool names.",
         "inputSchema": {
             "type": "object",
             "properties": {"q": {"type": "string"}},
@@ -240,7 +219,8 @@ def _tool_specs(user: dict) -> list:
 
 async def _call_tool(request: Request, user: dict, mid, params: dict):
     import secrets as _secrets
-    from execution.pipeline import upload_source as _upload_pipeline  # 批3a
+    from execution.pipeline import upload_sources as _upload_batch
+
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
     if tool_id == "catalog_search":
@@ -252,14 +232,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                 {"query": q, "tools": [h["id"] for h in hits]}, ensure_ascii=False)}],
             "isError": False,
         })
-    # MCP name projection inverse: 'sun__super-resolve' → 'sun/super-resolve'
-    # (resolve 统一在 dispatch 内做 — 治理6 单点; 此处不预 resolve)
     tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
 
-    # Stage C: MCP 构造 canonical ToolInvocation (与 Web/v1 完全同 shape)。
-    # Stage C-close: adapter 只对"完全缺失"填默认, 显式非法输入一律
-    # -32602, 不吞不 str() 强转。
-    # client_ref: 完全缺 → fresh ref; 显式必须是 non-empty str <=128。
     if "client_ref" in args:
         cr = args.get("client_ref")
         if not isinstance(cr, str) or not cr.strip() or len(cr) > 128:
@@ -267,8 +241,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         client_ref = cr.strip()
     else:
         client_ref = f"mcp:{_secrets.token_hex(16)}"
-    # delivery: 完全缺 → 平台默认 (constants 单源); 显式 dict 缺 leaf 补
-    # 默认得精确两键后 validate; 显式非 dict / 未知 key → -32602。
+
     from governance.delivery import (validate_delivery, DEFAULT_EXPIRY_DAYS,
                                      DEFAULT_ALLOWED_DOWNLOADS)
     if "delivery" in args:
@@ -288,7 +261,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         delivery = {"expiry_days": DEFAULT_EXPIRY_DAYS,
                     "allowed_downloads": DEFAULT_ALLOWED_DOWNLOADS}
 
-    # params: 完全缺 → {}; 显式必须是 dict (null/[]/str/number → -32602)。
     if "params" in args:
         tool_params = args.get("params")
         if not isinstance(tool_params, dict):
@@ -296,9 +268,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     else:
         tool_params = {}
 
-    # Source: 统一 files[{filename,b64}] — decode + upload each →
-    # source.files[{public_id, source_token}]。(multi 上限是 schema hint,
-    # 执行约束由 dispatch + ToolDeclaration 决定。)
     try:
         files_arg = args.get("files")
         if not isinstance(files_arg, list) or not files_arg:
@@ -310,14 +279,14 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             uploads.append(_decode_file(f.get("b64"), f.get("filename")))
     except (ValueError, binascii.Error) as exc:
         return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
+
     ip = request.headers.get("X-Real-IP",
                              request.client.host if request.client else "").strip()
-    source_files = []
     try:
-        for fn, ctype, body in uploads:
-            info = _upload_pipeline(user, fn, ctype, body, ip)
-            source_files.append({"public_id": info["publicId"],
-                                 "source_token": info.get("sourceToken", "")})
+        infos = _upload_batch(user, uploads, ip)
+        source_files = [{"public_id": info["publicId"],
+                         "source_token": info.get("sourceToken", "")}
+                        for info in infos]
     except Exception as exc:
         return _rpc_err(mid, -32602, f"upload rejected: {exc}")
 
@@ -329,14 +298,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         "client_ref": client_ref,
     }
 
-    # Funnel through the ONE metering gate (canonical invocation → dispatch)
     from execution.dispatch import dispatch_execute
-    from fastapi.responses import JSONResponse as _JR
     payload, error_body, status = await dispatch_execute(request, user, raw)
     if error_body is not None:
         payload = error_body
     if not payload.get("ok"):
-        # Tool-level failure ⇒ MCP isError result (not a protocol error)
         return _rpc(mid, {
             "content": [{"type": "text",
                          "text": json.dumps({"error": payload.get("error"),
