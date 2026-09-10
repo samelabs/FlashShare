@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ tool_name }} - {{ APP_NAME }}{% endblock %}
-{% block desc %}{{ tool_name }}{% if handle %} · @{{ handle }}{% endif %}{% endblock %}
+{% block title %}{{ tool_name|e }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{{ tool_name|e }}{% if handle %} · @{{ handle }}{% endif %}{% endblock %}
 
 {% block content %}
 <section class="workspace toolpage" id="toolPage">
   <div class="hero-mini">
-    <h1 class="hero-title">{{ tool_name }}</h1>
+    <h1 class="hero-title">{{ tool_name|e }}</h1>
     <p class="hero-sub toolpage-by">
       {% if handle %}
       <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <a class="toolpage-handle" href="/u/{{ handle }}">@{{ handle }}</a>
@@ -75,7 +75,7 @@
 {% block script_head %}
 <script>
 window.__LIMITS__ = {{ limits_json|safe }};
-window.__TOOLS__ = {{ tools_json|safe }};
+window.__TOOLS__ = JSON.parse({{ tools_json|tojson }});
 window.__PAGE__ = "tool";
 </script>
 {% endblock %}
