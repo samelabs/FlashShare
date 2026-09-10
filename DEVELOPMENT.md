@@ -27,6 +27,8 @@
 - `static/` 前端（app.js + pages/*.js + css）
 - `tools/` 代码生成（gen_i18n.py）
 - `tests/canonical/` 正式回归测试（可移植，见下）
+- `tests/ci/` CI 边界契约测试
+- `tests/support/` CI test service；不得复制 518 业务逻辑
 - `docs/plan/` 架构计划文档（TOOLCHAIN_UNIFICATION.md 等）
 - `scripts/` 一次性迁移脚本
 
@@ -70,21 +72,23 @@ DATABASE_URL=… FLASHSHARE_SESSION_SECRET=… FLASHSHARE_GOKAPI_URL=… FLASHSH
   venv/bin/python -m uvicorn app.main:app --port 8100 --workers 1
 ```
 
-**B. GitHub Actions（后续）**：provision PostgreSQL + Gokapi → app 起 dedicated
-test port → run tests/canonical。
+**B. GitHub Actions CI v1**：真实 PostgreSQL 16 + 真实 FlashShare app +
+`tests/support/fake_gokapi.py` 提供 Gokapi HTTP boundary test service，然后运行
+`tests/canonical/`。workflow 在 `.github/workflows/ci.yml`。
 
-Repository is CI-baseline ready, but full canonical integration CI still
-requires a non-interactive disposable Gokapi harness. GitHub Actions 后续必须
-选择：A. 自动 provision/configure disposable Gokapi；或 B. 提供只模拟 Gokapi
-HTTP boundary 的 test service。普通 CI 不得使用 production Gokapi、依赖人工
-web wizard、或穿透 Gokapi private storage。
+CI v1 测的是 518.PLUS 自己的 invariant，不是 Gokapi compatibility。fake Gokapi
+只实现 `core/gokapi.py` 当前消费的外部 HTTP contract（add/list/get/download/delete），
+不实现 ownership/quota/tool/economy/lifecycle，不读 Gokapi 私有 sqlite/schema/content。
+生产 Gokapi、生产 PostgreSQL、生产 secrets 和 deployment action 均不进入 CI。
 
-### Isolated Gokapi（正式测试前提）
+真实 Gokapi compatibility smoke 可以后作为独立低频测试；不要把 web wizard 或
+生产 Gokapi 接到普通 commit CI。
+
+### Isolated Gokapi（人工正式测试前提）
 
 Canonical integration tests 会真实 upload / local execute / result upload /
-MCP tools/call，因此**必须**指向 disposable/local Gokapi（或 CI provisioned
-Gokapi），**绝不使用 production Gokapi**。只隔离 DB 而复用生产 Gokapi 是
-禁止的。
+MCP tools/call，因此人工运行时**必须**指向 disposable/local Gokapi，**绝不使用
+production Gokapi**。只隔离 DB 而复用生产 Gokapi 是禁止的。
 
 全新 Gokapi 实例初始化：容器/二进制首次启动后，在它的 admin UI 里完成初始
 设置并生成 API key（无固定默认 key — 不要假设）；将实例 URL+key 注入测试
@@ -113,6 +117,7 @@ FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
 1. `git fetch origin`；从 `origin/main` 建分支。
 2. 小步改动 + diff 自审 + 门禁（compile/node/canonical）。
 3. push 分支，等二次核查；main 的合并由 owner 裁定。
+4. 合入 main 前 GitHub CI required checks 应全绿；CI 不执行 production deploy。
 
 ## Production deploy 概要
 

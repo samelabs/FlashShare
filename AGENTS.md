@@ -77,6 +77,7 @@
 - 改动 JS 全部 `node --check`
 - 相关 canonical tests（`tests/canonical/`）
 - canonical integration tests fail closed：未显式提供 isolated port / TEST_DB_URL 时不得运行；禁止使用 production DB / production Gokapi。
+- 任何 feature branch 合入 main 前，CI required checks 应保持全绿。
 - UI 改动：真浏览器（CDP）验证用户可见行为
 
 ---
