@@ -1,6 +1,10 @@
-{# shared_footer: copyright + language switcher JS #}
+{# shared_footer: copyright + policy links + language switcher JS #}
 <footer class="site-footer">
   <div class="footer-inner">
     <span class="footer-copy">© {{ year }} <strong class="brand-logo">518<span class="brand-dot">.</span>PLUS</strong></span>
+    <nav class="footer-links" aria-label="policy">
+      <a href="/terms" data-i18n="footer_terms">{{ texts.footer_terms }}</a>
+      <a href="/privacy" data-i18n="footer_privacy">{{ texts.footer_privacy }}</a>
+    </nav>
   </div>
 </footer>
