@@ -8,6 +8,7 @@ import urllib.error
 from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET
 from database import db
 from repo import users as users_repo
+from repo import sessions as sessions_repo
 from security import hash_password, verify_password, needs_rehash
 from utils import now
 
@@ -68,15 +69,14 @@ def register_user(username: str, email: str, password: str) -> int:
 
 
 def authenticate_local(login: str, password: str) -> int | None:
-    """Authenticate by username or email. Returns user id or None."""
+    """Authenticate by username/email. Suspended accounts never authenticate."""
     with db() as con:
         row = users_repo.by_username_or_email(con, login)
-    if not row or not row["password_hash"]:
+    if not row or row.get("status") == "suspended" or not row["password_hash"]:
         return None
     if not verify_password(password, row["password_hash"]):
         return None
     ts = now()
-    # Auto-upgrade legacy SHA-256 hashes to bcrypt on successful login
     if needs_rehash(row["password_hash"]):
         new_hash = hash_password(password)
         with db() as con:
@@ -133,16 +133,7 @@ def fetch_x_user(access_token: str) -> dict:
 
 
 def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
-    """Process X OAuth callback.
-
-    Args:
-        x_user: dict with id, name, username, profile_image_url from X API.
-        bind_user_id: If set, bind X to this existing user instead of creating new.
-
-    Returns user id.
-
-    Raises ValueError if X account is linked to a different user.
-    """
+    """Process X OAuth callback; suspended identities cannot login or bind."""
     ts = now()
     x_id = x_user["id"]
     x_username = x_user.get("username", "")
@@ -154,7 +145,8 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
         existing = users_repo.by_x_user_id(con, x_id)
 
         if existing:
-            # X account already linked to a user
+            if existing.get("status") == "suspended":
+                raise ValueError("err_user_suspended")
             if bind_user_id and existing["id"] != bind_user_id:
                 raise ValueError("err_x_bound_other")
             user_id = existing["id"]
@@ -164,21 +156,18 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             return user_id
 
         if bind_user_id:
-            # Bind X to existing local account
             row = users_repo.by_id(con, bind_user_id)
             if not row:
                 raise ValueError("err_user_not_found")
+            if row.get("status") == "suspended":
+                raise ValueError("err_user_suspended")
             users_repo.bind_x(con, bind_user_id, x_id, x_username,
                               x_display_name, x_avatar_url, x_profile_url, ts)
             return bind_user_id
 
-        # New user via X login — create account with X identity
-        # X guarantees username ≤15 chars and numeric ids, but external API
-        # data is not trusted: clamp to the 32-char column/validation limit.
         username = (x_username or "")[:32]
         if not username or len(username) < 5:
             username = f"x_{x_id}"[:32]
-        # Ensure username uniqueness
         base_name = username
         suffix = 1
         while users_repo.username_exists(con, username):
@@ -197,6 +186,8 @@ def unbind_x(user_id: int) -> None:
         row = users_repo.by_id(con, user_id)
         if not row:
             raise ValueError("err_user_not_found")
+        if row.get("status") == "suspended":
+            raise ValueError("err_user_suspended")
         if not row["password_hash"] or not row["email"]:
             raise ValueError("err_set_email_before_unbind")
         users_repo.unbind_x(con, user_id, now())
@@ -217,7 +208,6 @@ def update_profile(user_id: int, display_name: str | None = None,
         if bio is not None:
             users_repo.update_bio(con, user_id, bio.strip()[:500] or None, ts)
         if payout_channel is not None:
-            # withdrawal destination (operator reads it when paying out)
             users_repo.update_payout_channel(
                 con, user_id, payout_channel.strip()[:120] or None, ts)
         if email is not None:
@@ -227,6 +217,14 @@ def update_profile(user_id: int, display_name: str | None = None,
             if users_repo.email_taken_by_other(con, email, user_id):
                 raise ValueError("err_email_used")
             users_repo.update_email(con, user_id, email, ts)
+
+
+def _rotate_password_credentials(con, user_id: int, new_hash: str) -> None:
+    """Password mutation atomically invalidates every pre-existing credential."""
+    ts = now()
+    users_repo.update_password_hash(con, user_id, new_hash, ts)
+    sessions_repo.delete_user_sessions(con, user_id)
+    sessions_repo.revoke_all_tokens(con, user_id)
 
 
 def change_password(user_id: int, old_password: str, new_password: str) -> None:
@@ -239,13 +237,13 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
     err = validate_password(new_password)
     if err:
         raise ValueError(err)
+    new_hash = hash_password(new_password)
     with db() as con:
-        users_repo.update_password_hash(
-            con, user_id, hash_password(new_password), now())
+        _rotate_password_credentials(con, user_id, new_hash)
 
 
 def set_password(user_id: int, new_password: str) -> None:
-    """Set password for OAuth-only users who have no password."""
+    """Set password for OAuth-only users; rotate all old credentials too."""
     with db() as con:
         row = users_repo.by_id(con, user_id)
     if row and row["password_hash"]:
@@ -253,9 +251,9 @@ def set_password(user_id: int, new_password: str) -> None:
     err = validate_password(new_password)
     if err:
         raise ValueError(err)
+    new_hash = hash_password(new_password)
     with db() as con:
-        users_repo.update_password_hash(
-            con, user_id, hash_password(new_password), now())
+        _rotate_password_credentials(con, user_id, new_hash)
 
 
 # ── Serialization ───────────────────────────────────────
@@ -272,7 +270,6 @@ def public_user(row) -> dict:
         "xUsername": row["x_username"],
         "xProfileUrl": row["x_profile_url"],
     }
-    # Backward compat
     data["profileUrl"] = row["x_profile_url"]
     return data
 
