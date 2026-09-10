@@ -22,11 +22,7 @@ def _quota_reason(row: dict, ip_count: int, incoming_bytes: int,
 
 def check_quota(user_id: int, ip: str, incoming_bytes: int,
                 incoming_count: int = 1) -> tuple:
-    """Read-only quota preview against ingress facts.
-
-    Mutating upload paths should use reserve_ingress() so concurrent requests
-    cannot both pass the same user quota window.
-    """
+    """Read-only quota preview against ingress facts."""
     start = now() - 24 * 3600
     with db() as con:
         row = usage_repo.user_usage(con, user_id, start)
@@ -36,19 +32,13 @@ def check_quota(user_id: int, ip: str, incoming_bytes: int,
 
 
 def reserve_ingress(user_id: int, ip: str, sizes: list[int]) -> tuple:
-    """Atomically reserve daily ingress quota and return usage row ids.
-
-    One reservation row represents one source file accepted from the user.
-    Generated tool outputs are not ingress and never call this function.
-    """
+    """Atomically reserve the daily source-file ingress budget."""
     clean = [int(s) for s in sizes]
     if not clean or any(s <= 0 for s in clean):
         return False, "err_empty_file", []
     start = now() - 24 * 3600
     ts = now()
     with db() as con:
-        # Serialize the authoritative user count/byte window. IP quota remains
-        # a secondary abuse bound; user quota is the hard resource contract.
         usage_repo.lock_user(con, user_id)
         row = usage_repo.user_usage(con, user_id, start)
         ip_count = usage_repo.ip_usage_count(con, ip, start)
@@ -60,7 +50,6 @@ def reserve_ingress(user_id: int, ip: str, sizes: list[int]) -> tuple:
 
 
 def release_ingress(user_id: int, usage_ids: list[int]) -> None:
-    """Release reservations when an upload request itself does not land."""
     if not usage_ids:
         return
     with db() as con:
@@ -68,18 +57,27 @@ def release_ingress(user_id: int, usage_ids: list[int]) -> None:
 
 
 def get_upload_by_public_id(public_id: str):
+    """Raw owner/internal lookup; callers decide whether expiry is relevant."""
     with db() as con:
         return uploads_repo.by_public_id(con, public_id)
 
 
-_gokapi_cache = {}  # {"data": {...}, "ts": epoch}
-_GOKAPI_CACHE_TTL = 60  # seconds
-_GOKAPI_STALE_TTL = 300  # serve stale data up to 5min while refreshing
+def get_live_upload_by_public_id(public_id: str):
+    """Canonical read gate for serving a share/result to a consumer."""
+    row = get_upload_by_public_id(public_id)
+    if not row:
+        return None
+    if int(row["expire_at"] or 0) < now():
+        return None
+    return row
+
+
+_gokapi_cache = {}
+_GOKAPI_CACHE_TTL = 60
+_GOKAPI_STALE_TTL = 300
 
 def _get_all_gokapi_status():
-    """Fetch all file statuses from gokapi, cached for 60 seconds.
-    Serves stale data (up to 5min) to avoid blocking on gokapi HTTP.
-    Returns empty dict on failure."""
+    """Fetch all file statuses, with a short stale-on-error cache."""
     import time
     now_ts = time.time()
     age = now_ts - _gokapi_cache.get("ts", 0)
@@ -121,8 +119,11 @@ def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
                 item["expire_at"] = int(exp) if exp else item["expire_at"]
             except (TypeError, ValueError):
                 pass
-            item["url_hotlink"] = live.get("UrlHotlink") or item["url_hotlink"]
         item["url_download"] = public_file_url(item["public_id"])
+        # Storage binding is server-side implementation detail, not an account
+        # API contract. Keeping it out also prevents bypassing /f lifecycle.
+        item.pop("gokapi_id", None)
+        item.pop("url_hotlink", None)
         uploads.append(item)
     return uploads
 
@@ -132,8 +133,6 @@ def delete_upload(upload_id: int, user_id: int) -> bool:
         row = uploads_repo.owned_row(con, upload_id, user_id)
     if not row:
         return False
-    # DB first revokes the public mapping; storage deletion is best-effort and
-    # storage expiry remains the backstop.
     with db() as con:
         uploads_repo.delete_upload_row(con, upload_id, user_id)
     try:
