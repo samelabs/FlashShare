@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
-AGENTS.md
-devlog.md
-docs/
 venv/
-tests/
+devlog.md
+tests/local/
+*.local.md
+.tmp/
