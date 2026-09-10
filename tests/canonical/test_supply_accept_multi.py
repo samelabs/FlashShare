@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """4C-2-close 验收 A-F"""
-import json, uuid, http.client, sys, subprocess
+import json, uuid, http.client, sys
 import os
 import os as _os, sys as _sys
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
@@ -13,14 +13,19 @@ _TEST_PORT = _os.environ.get("FLASHSHARE_TEST_PORT")
 if not _TEST_PORT:
     _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT is required (isolated service port, never the production port).\n")
     _sys.exit(2)
-if _TEST_PORT == "8000":
+try:
+    _TEST_PORT_INT = int(_TEST_PORT, 10)
+except ValueError:
+    _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT must be an integer port number.\n")
+    _sys.exit(2)
+if _TEST_PORT_INT == 8000:
     _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT=8000 is the production port; canonical tests must use an isolated port.\n")
     _sys.exit(2)
 TEST_DB = _os.environ.get("TEST_DB_URL")
 if not TEST_DB:
     _sys.stderr.write("ERROR: TEST_DB_URL is required (isolated test database DSN).\n")
     _sys.exit(2)
-_HOST = ("127.0.0.1", int(_TEST_PORT))
+_HOST = ("127.0.0.1", _TEST_PORT_INT)
 
 FAIL = []
 def check(name, ok, detail=""):

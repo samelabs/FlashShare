@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stage C ToolInvocation Unification 验收 A-K"""
-import json, uuid, http.client, sys, os, subprocess, base64, threading, re
+import json, uuid, http.client, sys, os, base64, threading, re
 import os as _os, sys as _sys
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
 
@@ -12,14 +12,19 @@ _TEST_PORT = _os.environ.get("FLASHSHARE_TEST_PORT")
 if not _TEST_PORT:
     _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT is required (isolated service port, never the production port).\n")
     _sys.exit(2)
-if _TEST_PORT == "8000":
+try:
+    _TEST_PORT_INT = int(_TEST_PORT, 10)
+except ValueError:
+    _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT must be an integer port number.\n")
+    _sys.exit(2)
+if _TEST_PORT_INT == 8000:
     _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT=8000 is the production port; canonical tests must use an isolated port.\n")
     _sys.exit(2)
 TEST_DB = _os.environ.get("TEST_DB_URL")
 if not TEST_DB:
     _sys.stderr.write("ERROR: TEST_DB_URL is required (isolated test database DSN).\n")
     _sys.exit(2)
-_HOST = ("127.0.0.1", int(_TEST_PORT))
+_HOST = ("127.0.0.1", _TEST_PORT_INT)
 
 FAIL = []
 def check(name, ok, detail=""):
@@ -59,12 +64,6 @@ def req(method, path, body, cookie=None, raw_body=None):
     conn.close()
     return resp.status, data
 
-def db_exec(code):
-    path = '/tmp/stagec_q.py'
-    open(path, 'w').write(code)
-    r = subprocess.run(['sudo', '/opt/flashshare/venv/bin/python', path], capture_output=True, text=True)
-    return r.stdout.strip(), r.stderr.strip()[:300]
-
 _PG = None
 def _pg():
     global _PG
@@ -94,7 +93,7 @@ def upload(cookie, name=b"t.png", ct="image/png", extra=None):
     conn.close()
     return data
 
-# ═══ A: parser ═══ (subprocess venv — 系统 python 无 psycopg2, execution 包 init 会拉 database)
+# ═══ A: parser ═══ (in-process; pure function, no DB)
 _PARSER = None
 def parse_invocation(raw):
     """Parse via the repo's canonical parser (pure function, no DB)."""

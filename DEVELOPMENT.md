@@ -73,6 +73,12 @@ DATABASE_URL=… FLASHSHARE_SESSION_SECRET=… FLASHSHARE_GOKAPI_URL=… FLASHSH
 **B. GitHub Actions（后续）**：provision PostgreSQL + Gokapi → app 起 dedicated
 test port → run tests/canonical。
 
+Repository is CI-baseline ready, but full canonical integration CI still
+requires a non-interactive disposable Gokapi harness. GitHub Actions 后续必须
+选择：A. 自动 provision/configure disposable Gokapi；或 B. 提供只模拟 Gokapi
+HTTP boundary 的 test service。普通 CI 不得使用 production Gokapi、依赖人工
+web wizard、或穿透 Gokapi private storage。
+
 ### Isolated Gokapi（正式测试前提）
 
 Canonical integration tests 会真实 upload / local execute / result upload /

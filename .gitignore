@@ -5,3 +5,6 @@ devlog.md
 tests/local/
 *.local.md
 .tmp/
+.env
+.env.*
+!.env.example
