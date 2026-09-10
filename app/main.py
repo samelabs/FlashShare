@@ -25,6 +25,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse, RedirectResponse
+from markupsafe import escape as html_escape
 
 from config import APP_NAME, COOKIE_NAME, SESSION_TTL
 from database import init_db
@@ -56,7 +57,8 @@ _TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # autoescape disabled — templates output raw HTML (icon_svg, CSS, JS).
-# All user-supplied values are escaped with |e or |tojson.
+# User-controlled display text is escaped at its canonical template boundary:
+# LocalizedText via |lt, independent scalar outputs via |e, data via |tojson.
 templates.env.autoescape = False
 
 # ── LocalizedText protocol (tool modes v3): canonical resolver as Jinja filter.
@@ -67,8 +69,10 @@ templates.env.autoescape = False
 # data-name intentionally concatenates all locale values (cross-lingual search).
 from governance.tool_params import resolve_label as _resolve_label
 
-def _lt(value, lang: str) -> str:
-    return _resolve_label(value, lang)
+def _lt(value, lang: str):
+    # Presentation boundary only: resolver semantics stay unchanged while
+    # every template text consumer receives escaped markup-safe text.
+    return html_escape(_resolve_label(value, lang))
 
 templates.env.filters["lt"] = _lt
 templates.env.globals["lt"] = _lt
@@ -116,18 +120,15 @@ def get_user_from_request(request: Request):
 
 def detect_lang(request: Request) -> str:
     """Detect preferred language: query > cookie > Accept-Language."""
-    # Query param
     for param in ("lang", "x"):
         val = request.query_params.get(param, "")
         code = language_from_code(val)
         if code:
             return code
-    # Cookie
     cookie_lang = request.cookies.get("flashshare_lang", "")
     code = language_from_code(cookie_lang)
     if code:
         return code
-    # Header
     return language_from_header(request.headers.get("accept-language", ""))
 
 
@@ -202,46 +203,29 @@ async def not_found_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 async def startup():
     init_db()
-    # Seed pricing rows for every registered tool (idempotent, default
-    # cost 0 = free until priced in /samelabs). Tools registry must be
-    # loaded first.
     try:
         from tools import load_all, _registry
         load_all()
         from governance.pricing import seed_pricing
         seeded = seed_pricing([t["id"] for t in _registry])
         logger.info("pricing seeded: +%d rows", seeded["added"])
-        # Data-state registry: compile register() declarations into
-        # platform_tools rows (runtime catalog source). Retired-in-code
-        # tools keep rows with enabled=false (history stays interpretable).
         from governance.catalog import seed_from_registry
         sync = seed_from_registry()
         logger.info("platform_tools seeded: +%d added, %d updated",
                     sync["added"], sync["updated"])
-        # economy.daily 模块化: 每日登录
-        # 额度/开关是模块常量 (core/economy/daily.py), 无 seed。
         from economy.earnings import ensure_schema
         ensure_schema()
         logger.info("withdrawals schema ready")
-        # Platform principal: 系统账户 (经济闭合的记账主体)
         from governance.platform import ensure_platform_account
         pid = ensure_platform_account()
         logger.info("platform account ready: id=%s", pid)
-        # 8.4 (audit): purge expired upload rows at boot — detail pages
-        # already fall back to gokapi-live checks; this keeps the table
-        # from accumulating dead records (456 at audit time).
         from database import db as _db
         from utils import now as _now
         from repo.uploads import purge_expired
         with _db() as _con:
             purge_expired(_con, _now())
         logger.info("expired upload rows purged")
-        # 订阅对账登录触发 (economy.reconcile, _login_maintenance)
-        # — 无 cron/asyncio 循环。过期状态在 plan_of 读取时按
-        # renews_at 权威判定, 无需后台 sweep。
-
     except Exception:
-        # schema/seed 失败 = 平台核心不可用, 显式失败而非静默降级 (批4 #15)
         logger.exception("startup seed failed - ABORT")
         raise
     logger.info("%s started", APP_NAME)
