@@ -14,13 +14,13 @@ def by_id(con, user_id: int) -> Optional[dict]:
 
 def by_username_or_email(con, login: str) -> Optional[dict]:
     return con.execute(
-        "SELECT id, password_hash FROM users WHERE username = %s OR email = %s",
+        "SELECT id, password_hash, status FROM users WHERE username = %s OR email = %s",
         (login, login)).fetchone()
 
 
 def by_x_user_id(con, x_id: str) -> Optional[dict]:
     return con.execute(
-        "SELECT id FROM users WHERE x_user_id = %s", (x_id,)).fetchone()
+        "SELECT id, status FROM users WHERE x_user_id = %s", (x_id,)).fetchone()
 
 
 def username_exists(con, username: str) -> bool:
