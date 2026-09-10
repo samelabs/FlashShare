@@ -44,3 +44,9 @@ def delete_ids(con, user_id: int, ids: list[int]) -> None:
     con.execute(
         "DELETE FROM upload_usage WHERE user_id=%s AND id = ANY(%s)",
         (user_id, ids))
+
+
+def purge_before(con, cutoff_ts: int) -> int:
+    """Drop ingress facts outside the rolling 24h quota window."""
+    cur = con.execute("DELETE FROM upload_usage WHERE created_at <= %s", (cutoff_ts,))
+    return int(cur.rowcount or 0)

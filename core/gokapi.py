@@ -98,6 +98,39 @@ def get_gokapi_file(file_id: str):
         return None
 
 
+def list_gokapi_files() -> tuple[bool, list]:
+    """Return an authoritative snapshot of live storage files.
+
+    `(True, files)` means Gokapi answered successfully; a valid JSON `null`
+    response is normalized to an empty list. `(False, [])` means the snapshot
+    is unavailable and MUST NOT be used to infer that local mappings are stale.
+    """
+    if not GOKAPI_KEY:
+        return False, []
+    conn = None
+    try:
+        conn, _parsed = _gokapi_connection(timeout=5)
+        conn.request("GET", _gokapi_path("/api/files/list"), headers={"apikey": GOKAPI_KEY})
+        resp = conn.getresponse()
+        data = resp.read()
+        if resp.status != 200:
+            return False, []
+        payload = json.loads(data.decode("utf-8"))
+        if payload is None:
+            return True, []
+        if not isinstance(payload, list):
+            return False, []
+        return True, payload
+    except Exception:
+        return False, []
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def delete_gokapi_file(file_id: str) -> None:
     if not GOKAPI_KEY or not file_id:
         raise RuntimeError("delete_not_configured")

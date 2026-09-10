@@ -209,8 +209,28 @@ async def not_found_handler(request: Request, exc: Exception):
     return RedirectResponse("/", status_code=302)
 
 
+_housekeeping_task = None
+_HOUSEKEEPING_INTERVAL = 3600
+
+
+async def _resource_housekeeping_loop():
+    """One lightweight lifecycle pass per hour; no scheduler subsystem."""
+    from sharing.housekeeping import housekeeping_once
+    while True:
+        await asyncio.sleep(_HOUSEKEEPING_INTERVAL)
+        try:
+            stats = await asyncio.to_thread(housekeeping_once)
+            if stats["expired"] or stats["usage_purged"] or stats["storage_reconciled"]:
+                logger.info("resource housekeeping: %s", stats)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("resource housekeeping failed")
+
+
 @app.on_event("startup")
 async def startup():
+    global _housekeeping_task
     init_db()
     # Durable settlement for invocation facts left running by a dead process
     # (single-worker deployment). Runs after schema init, before traffic.
@@ -234,13 +254,27 @@ async def startup():
         from governance.platform import ensure_platform_account
         pid = ensure_platform_account()
         logger.info("platform account ready: id=%s", pid)
-        from database import db as _db
-        from utils import now as _now
-        from repo.uploads import purge_expired
-        with _db() as _con:
-            purge_expired(_con, _now())
-        logger.info("expired upload rows purged")
+
+        # Resource lifecycle is dual-owned: Gokapi expires physical bytes;
+        # 518 periodically converges public-id mappings and rolling quota facts.
+        from sharing.housekeeping import housekeeping_once
+        housekeeping = await asyncio.to_thread(housekeeping_once)
+        logger.info("startup resource housekeeping: %s", housekeeping)
+        _housekeeping_task = asyncio.create_task(_resource_housekeeping_loop())
     except Exception:
         logger.exception("startup seed failed - ABORT")
         raise
     logger.info("%s started", APP_NAME)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global _housekeeping_task
+    if _housekeeping_task is None:
+        return
+    _housekeeping_task.cancel()
+    try:
+        await _housekeeping_task
+    except asyncio.CancelledError:
+        pass
+    _housekeeping_task = None

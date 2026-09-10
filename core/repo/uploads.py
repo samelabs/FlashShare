@@ -69,9 +69,23 @@ def owned_row(con, upload_id: int, user_id: int) -> Optional[dict]:
         (upload_id, user_id)).fetchone()
 
 
+def active_storage_rows(con, now_ts: int) -> list:
+    """Local live mappings used by storage reconciliation."""
+    return con.execute(
+        "SELECT id, gokapi_id FROM uploads WHERE expire_at >= %s",
+        (now_ts,)).fetchall()
+
+
 def delete_upload_row(con, upload_id: int, user_id: int) -> None:
     con.execute(
         "DELETE FROM uploads WHERE id = %s AND user_id = %s", (upload_id, user_id))
+
+
+def delete_rows_by_ids(con, upload_ids: list[int]) -> int:
+    if not upload_ids:
+        return 0
+    cur = con.execute("DELETE FROM uploads WHERE id = ANY(%s)", (upload_ids,))
+    return int(cur.rowcount or 0)
 
 
 def rename(con, upload_id: int, new_name: str) -> None:
@@ -79,5 +93,6 @@ def rename(con, upload_id: int, new_name: str) -> None:
         "UPDATE uploads SET file_name = %s WHERE id = %s", (new_name, upload_id))
 
 
-def purge_expired(con, now_ts: int) -> None:
-    con.execute("DELETE FROM uploads WHERE expire_at < %s", (now_ts,))
+def purge_expired(con, now_ts: int) -> int:
+    cur = con.execute("DELETE FROM uploads WHERE expire_at < %s", (now_ts,))
+    return int(cur.rowcount or 0)
