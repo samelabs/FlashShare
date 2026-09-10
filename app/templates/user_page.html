@@ -64,7 +64,7 @@
 {% block script_head %}
 <script>
 window.__PAGE__ = "user";
-window.__OWNER_TOOLS__ = {{ owner_tools_json | safe }};
+window.__OWNER_TOOLS__ = JSON.parse({{ owner_tools_json | tojson }});
 </script>
 {% endblock %}
 
