@@ -146,6 +146,85 @@ def insert_provider_earn_if_absent(con, owner_id: int, payout: int,
 
 # ── tool_calls (计量事实) ──
 
+def claim_call(con, client_ref: str, user_id: int, tool_id: str,
+               cost: int, params_json: str, started_at: int) -> tuple[dict, bool]:
+    """Claim one logical invocation attempt before charging/executing.
+
+    The partial unique index on (user_id, tool_id, client_ref) for
+    running|ok rows makes concurrent retries converge here. Failed attempts do
+    not block a later retry with the same logical client_ref.
+
+    Returns (row, claimed). claimed=False means an existing running/ok anchor
+    already owns this logical invocation.
+    """
+    row = con.execute(
+        """
+        INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
+           cost_snapshot, params_json, started_at)
+        VALUES (%s, %s, %s, 'running', %s, %s, %s)
+        ON CONFLICT (user_id, tool_id, client_ref)
+          WHERE status IN ('running','ok')
+        DO NOTHING
+        RETURNING *
+        """,
+        (client_ref, user_id, tool_id, cost, params_json, started_at)).fetchone()
+    if row:
+        return dict(row), True
+    prior = con.execute(
+        """
+        SELECT * FROM tool_calls
+        WHERE user_id=%s AND tool_id=%s AND client_ref=%s
+          AND status IN ('running','ok')
+        ORDER BY id DESC LIMIT 1
+        """,
+        (user_id, tool_id, client_ref)).fetchone()
+    return (dict(prior) if prior else {}), False
+
+
+def finalize_call_ok(con, call_id: int, result_public_id,
+                     result_json: str, finished_at: int) -> dict:
+    row = con.execute(
+        """
+        UPDATE tool_calls
+        SET status='ok', result_public_id=%s, result_json=%s,
+            error=NULL, finished_at=%s
+        WHERE id=%s AND status='running'
+        RETURNING *
+        """,
+        (result_public_id, result_json, finished_at, call_id)).fetchone()
+    if not row:
+        raise RuntimeError("tool_call_not_running")
+    return dict(row)
+
+
+def finalize_call_failed(con, call_id: int, status: str,
+                         error, finished_at: int) -> dict | None:
+    row = con.execute(
+        """
+        UPDATE tool_calls
+        SET status=%s, error=%s, finished_at=%s
+        WHERE id=%s AND status='running'
+        RETURNING *
+        """,
+        (status, str(error)[:500], finished_at, call_id)).fetchone()
+    return dict(row) if row else None
+
+
+def call_by_tool_client_ref(con, user_id: int, tool_id: str,
+                            client_ref: str) -> Optional[dict]:
+    """Successful replay anchor scoped to one user + one tool."""
+    row = con.execute(
+        """
+        SELECT * FROM tool_calls
+        WHERE user_id=%s AND tool_id=%s AND client_ref=%s AND status='ok'
+        ORDER BY id DESC LIMIT 1
+        """,
+        (user_id, tool_id, client_ref)).fetchone()
+    return dict(row) if row else None
+
+
+# Historical insert helpers are retained for non-gate maintenance/tests; the
+# production gate now claims a running fact first and finalizes that same row.
 def insert_call_ok(con, client_ref: str, user_id: int, tool_id: str,
                    cost: int, upload_id, result_public_id,
                    result_json, started_at: int, finished_at: int) -> dict:
@@ -175,11 +254,11 @@ def insert_call_failed(con, client_ref: str, user_id: int, tool_id: str,
 
 
 def call_by_client_ref(con, user_id: int, client_ref: str) -> Optional[dict]:
-    """replay 锚点行: 该 ref 的 ok 行 (收口1 部分唯一索引保证至多一行);
-    无 ok 行 (全部失败/无历史) → None, 允许重试。"""
+    """Legacy repo query kept for historical diagnostics; execution uses the
+    tool-scoped call_by_tool_client_ref()."""
     return con.execute(
         "SELECT * FROM tool_calls WHERE user_id = %s AND client_ref = %s "
-        "AND status = 'ok' LIMIT 1",
+        "AND status = 'ok' ORDER BY id DESC LIMIT 1",
         (user_id, client_ref)).fetchone()
 
 
