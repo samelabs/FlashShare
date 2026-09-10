@@ -3,7 +3,7 @@ import json
 import secrets
 import urllib.parse
 
-from config import GOKAPI_URL, GOKAPI_KEY, GOKAPI_DATA_DIR
+from config import GOKAPI_URL, GOKAPI_KEY
 
 
 def _gokapi_connection(timeout=30):
@@ -147,108 +147,6 @@ def delete_gokapi_file(file_id: str) -> None:
     except Exception:
         message = data.decode("utf-8", "replace") or f"delete_failed_{resp.status}"
     raise RuntimeError(message)
-
-
-class InternalDownloadUnavailable(RuntimeError):
-    """The internal non-counting read primitive could not serve this file.
-
-    Raised instead of silently falling back to the counted public download
-    path — a preview must never consume a user's download allowance.
-    """
-
-
-def open_gokapi_internal_download(file_id: str, range_header: str | None = None):
-    """Open a file for internal platform use WITHOUT consuming the download
-    counter (preview, zip central-directory inspection, print embedding).
-
-    Resolution order:
-    1. Official authenticated API GET /api/files/download/{id} with
-       apikey + increaseCounter:false (available on newer Gokapi builds).
-    2. Same-host data directory read (id -> SHA1 from the files API), which
-       bypasses HTTP entirely. This is NOT the counted /downloadFile path.
-    3. Neither works -> InternalDownloadUnavailable (explicit preview
-       unavailability; never a silent counted fallback).
-
-    Returns (status, headers, stream) like open_gokapi_download.
-    """
-    import urllib.parse
-    if not file_id:
-        raise InternalDownloadUnavailable("missing_file_id")
-    headers = {"apikey": GOKAPI_KEY, "increaseCounter": "false"}
-    if range_header:
-        headers["Range"] = range_header
-    conn, _parsed = _gokapi_connection(timeout=300)
-    conn.request(
-        "GET",
-        _gokapi_path(f"/api/files/download/{urllib.parse.quote(file_id)}"),
-        headers=headers)
-    resp = conn.getresponse()
-    if resp.status == 200:
-        return resp.status, resp.getheaders(), resp
-    resp.read()
-    # API route not usable on this build (e.g. admin-session-only scope) —
-    # fall back to the same-host data directory, never to the counted path.
-    try:
-        return _local_data_read(file_id, range_header)
-    except Exception as exc:
-        raise InternalDownloadUnavailable(str(exc)) from exc
-
-
-def _local_data_read(file_id: str, range_header: str | None = None):
-    import io as _io
-    import os as _os
-    import re as _re
-    import sqlite3 as _sqlite3
-    info = get_gokapi_file(file_id)
-    if not info:
-        raise InternalDownloadUnavailable("file_not_in_storage")
-    # Content address (SHA1) is not part of the list API response — read it
-    # from the same-host Gokapi metadata database (read-only query).
-    sha1 = ""
-    import glob as _glob
-    candidates = [
-        _os.path.join(GOKAPI_DATA_DIR, "gokapi.sqlite"),
-        _os.path.join(_os.path.dirname(GOKAPI_DATA_DIR.rstrip("/")), "data", "gokapi.sqlite"),
-        "/opt/gokapi/data/gokapi.sqlite",
-    ]
-    candidates += _glob.glob("/opt/gokapi/*/gokapi.sqlite")
-    db_path = next((p for p in candidates if _os.path.isfile(p)), "")
-    if db_path:
-        try:
-            con = _sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-            row = con.execute(
-                "SELECT SHA1 FROM FileMetaData WHERE Id = ?",
-                (file_id,)).fetchone()
-            con.close()
-            sha1 = str(row[0]) if row and row[0] else ""
-        except Exception:
-            sha1 = ""
-    if not _re.fullmatch(r"[0-9a-f]{40}", sha1):
-        raise InternalDownloadUnavailable("no_content_address")
-    path = _os.path.join(GOKAPI_DATA_DIR, sha1)
-    if not _os.path.isfile(path):
-        raise InternalDownloadUnavailable("content_object_missing")
-    with open(path, "rb") as fh:
-        if range_header:
-            m = _re.fullmatch(r"bytes=(\d+)-(\d*)", range_header.strip())
-            if not m:
-                raise InternalDownloadUnavailable("bad_range")
-            start = int(m.group(1))
-            end = int(m.group(2)) if m.group(2) else _os.path.getsize(path) - 1
-            fh.seek(start)
-            data = fh.read(end - start + 1)
-            headers = [
-                ("Content-Range", f"bytes {start}-{end}/{_os.path.getsize(path)}"),
-                ("Content-Length", str(len(data))),
-                ("Accept-Ranges", "bytes"),
-            ]
-            return 206, headers, _io.BytesIO(data)
-        data = fh.read()
-    headers = [
-        ("Content-Length", str(len(data))),
-        ("Content-Type", info.get("ContentType") or "application/octet-stream"),
-    ]
-    return 200, headers, _io.BytesIO(data)
 
 
 def open_gokapi_download(file_id: str):

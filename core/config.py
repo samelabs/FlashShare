@@ -15,9 +15,6 @@ X_CLIENT_SECRET = os.environ.get("FLASHSHARE_X_CLIENT_SECRET", "")
 
 GOKAPI_URL = os.environ.get("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53842").rstrip("/")
 GOKAPI_KEY = os.environ.get("FLASHSHARE_GOKAPI_KEY", "")
-# Local Gokapi data directory (same-host deployments): enables the internal
-# non-counting read primitive without going through the counted public path.
-GOKAPI_DATA_DIR = os.environ.get("FLASHSHARE_GOKAPI_DATA_DIR", "/var/lib/gokapi/data")
 
 SESSION_SECRET = os.environ.get("FLASHSHARE_SESSION_SECRET", "")
 if not SESSION_SECRET:

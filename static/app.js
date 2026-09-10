@@ -696,14 +696,10 @@ function openToolOverlay(tool, btn) {
   // 4A-fix3: 渲染值来自单点 savedToolParams — 与 reload 恢复同一数据源
   const savedParams = savedToolParams(tool.id);
   if (Array.isArray(tool.params) && tool.params.length > 0) {
-    // B1: 单参数工具不显示通用 section 层级 — 控件名直接来自 param.label;
-    // 多参数工具才用 section heading 区分各参数组。
-    if (tool.params.length > 1) {
-      const sectionLabel = t("tool_params") !== "tool_params" ? t("tool_params") : "Options";
-      html += `<div class="tool-overlay-section"><div class="tool-overlay-section-label">${escapeHtml(sectionLabel)}</div><div class="tool-overlay-params">`;
-    } else {
-      html += `<div class="tool-overlay-section"><div class="tool-overlay-params">`;
-    }
+    // Params are presented by their own labels only — no generic
+    // "参数/Options" grouping heading above them (the tool's own label in
+    // the overlay head is the heading).
+    html += `<div class="tool-overlay-section"><div class="tool-overlay-params">`;
     tool.params.forEach((p) => {
       const plabel = resolveLabel(p.label) || p.key;
       const val = savedParams[p.key] !== undefined ? savedParams[p.key] : p.default;
