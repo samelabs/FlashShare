@@ -93,17 +93,14 @@ conn = http.client.HTTPConnection(*_HOST, timeout=30)
 u, pw = "op4ctest", "Test12345"
 b, ct = mp(fields={"username": u, "password": pw, "password_confirm": pw, "email": "op4c@t.co"})
 conn.request("POST", "/auth/register", b, {"Content-Type": ct}); conn.getresponse().read()
-open('/tmp/op_up.py', 'w').write(
-    "import psycopg2\n"
-    "env={}\n"
-    "for k in open('/etc/flashshare.env'):\n"
-    "    k=k.strip()\n"
-    "    if k and not k.startswith('#') and '=' in k:\n"
-    "        a,v=k.split('=',1); env[a]=v\n"
-    "con=psycopg2.connect(env['DATABASE_URL'].replace('postgresql+psycopg://','postgresql://'))\n"
-    "con.autocommit=True\n"
-    f"cur=con.cursor(); cur.execute(\"update users set status='samelabs' where username='{u}'\"); print('upgraded')\n")
-subprocess.run(['sudo', os.path.join(_REPO, 'venv/bin/python'), '/tmp/op_up.py'], capture_output=True, text=True)
+TEST_DB = _os.environ.get("TEST_DB_URL")
+if TEST_DB:
+    import psycopg2 as _pg0
+    _c0 = _pg0.connect(TEST_DB); _c0.autocommit = True
+    _c0.cursor().execute("update users set status='samelabs' where username=%s", (u,))
+    _c0.close(); print("operator upgraded (direct DB)")
+else:
+    print("TEST_DB_URL not set — operator cases need it")
 b, ct = mp(fields={"login": u, "password": pw})
 conn.request("POST", "/auth/login", b, {"Content-Type": ct})
 resp = conn.getresponse(); resp.read()
@@ -126,12 +123,15 @@ if admin_cookie:
         "tool_id": tid, "label": "DB", "url": "https://httpbin.org/anything",
         "timeout_s": 30, "accept": ".png,.jpg", "multi": True}, admin_cookie)
     check("D operator create ok", r.get("ok"), str(r))
-    import subprocess
-    q = ("import psycopg2, json; env={}; [env.update({k.split(chr(61))[0]: k.split(chr(61))[1]}) for k in open('/etc/flashshare.env') if chr(61) in k and not k.startswith(chr(35))];"
-         "con=psycopg2.connect(env['DATABASE_URL'].replace('postgresql+psycopg://','postgresql://')); cur=con.cursor();"
-         f"cur.execute(\"select accept_json, multi from platform_tools where tool_key='{tid}'\"); print(cur.fetchone())")
-    # DB 断言在 sudo 步骤 (env 需 root 读): 此处仅确认 create ok
-    check("D operator create (multi=true) ok", r.get("ok"), str(r))
+    if TEST_DB:
+        import psycopg2 as _pg2, json as _js
+        _c2 = _pg2.connect(TEST_DB); _c2.autocommit = True
+        _cur2 = _c2.cursor(); _cur2.execute(f"select accept_json, multi from platform_tools where tool_key='{tid}'")
+        row = _cur2.fetchone(); _c2.close()
+        check("D DB canonical ['.jpg','.png'] + multi=true",
+              _js.loads(row[0]) == [".jpg", ".png"] and row[1] is True, str(row))
+    else:
+        check("D operator create (multi=true) ok", r.get("ok"), str(r))
 else:
     check("C/D admin 通道", False, "无 admin 凭据 — 需人工提供或本地单元验证")
 
@@ -144,15 +144,12 @@ print("FAIL:", FAIL if FAIL else "无 — 全绿")
 sys.exit(1 if FAIL else 0)
 
 # 清理 operator 测试账号
-import psycopg2 as _pg
-_env = {}
-for _line in open('/etc/flashshare.env'):
-    _line = _line.strip()
-    if _line and not _line.startswith('#') and '=' in _line:
-        _k, _v = _line.split('=', 1); _env[_k] = _v
-import subprocess as _sp
-_q = "import psycopg2; env={}; [env.update({k.split(chr(61))[0]: k.split(chr(61))[1]}) for k in open('/etc/flashshare.env') if chr(61) in k and not k.startswith(chr(35))];"
-_q += "c=psycopg2.connect(env['DATABASE_URL'].replace('postgresql+psycopg://','postgresql://')); c.autocommit=True;"
-_q += "cur=c.cursor(); cur.execute(\"delete from users where username='op4ctest'\"); cur.execute(\"delete from platform_tools where tool_key like 'mtest%' or tool_key like 'dbcheck%'\"); print('cleaned')"
-_r = _sp.run([os.path.join(_REPO, 'venv/bin/python'), '-c', _q], capture_output=True, text=True)
-print("清理:", _r.stdout.strip() or _r.stderr[:100])
+if TEST_DB:
+    import psycopg2 as _pg3
+    _c3 = _pg3.connect(TEST_DB); _c3.autocommit = True
+    _cur3 = _c3.cursor()
+    _cur3.execute("delete from users where username='op4ctest'")
+    _cur3.execute("delete from platform_tools where tool_key like 'mtest%' or tool_key like 'dbcheck%'")
+    _c3.close(); print("清理: cleaned")
+else:
+    print("清理: TEST_DB_URL 未设 — 跳过")

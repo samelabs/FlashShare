@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """Stage C ToolInvocation Unification 验收 A-K"""
 import json, uuid, http.client, sys, os, subprocess, base64, threading, re
+import os as _os
+_REPO = _os.environ.get("FLASHSHARE_TEST_REPO") or _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+_HOST = ("127.0.0.1", int(_os.environ.get("FLASHSHARE_TEST_PORT", "8000")))
 sys.path.insert(0, os.path.join(_REPO, 'core')); sys.path.insert(0, _REPO)
 os.environ.setdefault('FLASHSHARE_SESSION_SECRET', 'x')
-import os as _os
-_REPO = _os.environ.get("FLASHSHARE_TEST_REPO") or _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
-_HOST = ("127.0.0.1", int(_os.environ.get("FLASHSHARE_TEST_PORT", "8000")))
-import os as _os
-_REPO = _os.environ.get("FLASHSHARE_TEST_REPO") or _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
-_HOST = ("127.0.0.1", int(_os.environ.get("FLASHSHARE_TEST_PORT", "8000")))
 
 FAIL = []
 def check(name, ok, detail=""):
@@ -48,13 +45,37 @@ def req(method, path, body, cookie=None, raw_body=None):
     conn.close()
     return resp.status, data
 
+TEST_DB = _os.environ.get("TEST_DB_URL")  # e.g. postgresql://user:pw@127.0.0.1:5432/flashshare_test
+_PG = None
 def db_exec(code):
+    # Direct DB access when TEST_DB_URL is provided (preferred: no sudo, no
+    # server-local env file dependency). Falls back to repo venv python.
+    if TEST_DB:
+        global _PG
+        if _PG is None:
+            import psycopg2
+            _PG = psycopg2.connect(TEST_DB); _PG.autocommit = True
+        ns = {}
+        exec(code.replace("psycopg2.connect(env['DATABASE_URL'].replace('postgresql+psycopg://','postgresql://'))",
+                          "_PG"), {'psycopg2': __import__('psycopg2'), '_PG': _PG, 'print': print}, ns)
+        return "", ""
     path = '/tmp/stagec_q.py'
     open(path, 'w').write(code)
     r = subprocess.run(['sudo', os.path.join(_REPO, 'venv/bin/python'), path], capture_output=True, text=True)
     return r.stdout.strip(), r.stderr.strip()[:300]
 
 def db_query(sql):
+    if TEST_DB:
+        import psycopg2
+        global _PG
+        if _PG is None:
+            _PG = psycopg2.connect(TEST_DB); _PG.autocommit = True
+        cur = _PG.cursor()
+        try:
+            cur.execute(sql)
+            return cur.fetchall()
+        except Exception:
+            return [("ERR",)]
     out, err = db_exec(
         "import psycopg2, json, os\n"
         "env={}\n"
@@ -90,17 +111,33 @@ def upload(cookie, name=b"t.png", ct="image/png", extra=None):
     return data
 
 # ═══ A: parser ═══ (subprocess venv — 系统 python 无 psycopg2, execution 包 init 会拉 database)
+_PARSER = None
 def parse_via_venv(raw):
-    out, err = db_exec(
-        "import sys, json; sys.path.insert(0, os.path.join(_REPO, 'core'))\n"
-        "import os; os.environ.setdefault('FLASHSHARE_SESSION_SECRET', 'x')\n"
-        "from execution.invocation import parse_tool_invocation, InvocationError\n"
-        "try:\n"
-        "    inv = parse_tool_invocation(" + repr(raw) + ")\n"
-        "    print('OK:' + json.dumps(inv.to_json()))\n"
-        "except InvocationError as e:\n"
-        "    print('BAD:' + str(e))\n")
-    return out, err
+    # In-process (the parser is pure — no DB); subprocess fallback kept for
+    # environments where core imports have side effects to avoid.
+    global _PARSER
+    try:
+        if _PARSER is None:
+            sys.path.insert(0, os.path.join(_REPO, 'core'))
+            from execution.invocation import parse_tool_invocation, InvocationError
+            _PARSER = (parse_tool_invocation, InvocationError)
+        p, E = _PARSER
+        try:
+            inv = p(raw)
+            return 'OK:' + json.dumps(inv.to_json()), ''
+        except E as e:
+            return 'BAD:' + str(e), ''
+    except ImportError:
+        out, err = db_exec(
+            "import sys, json; sys.path.insert(0, os.environ['FLASHSHARE_TEST_REPO'] + '/core')\n"
+            "import os; os.environ.setdefault('FLASHSHARE_SESSION_SECRET', 'x')\n"
+            "from execution.invocation import parse_tool_invocation, InvocationError\n"
+            "try:\n"
+            "    inv = parse_tool_invocation(" + repr(raw) + ")\n"
+            "    print('OK:' + json.dumps(inv.to_json()))\n"
+            "except InvocationError as e:\n"
+            "    print('BAD:' + str(e))\n")
+        return out, err
 
 def parse_ok(raw):
     out, err = parse_via_venv(raw)
@@ -222,22 +259,34 @@ check("B4 multi=false files[2] → err_too_many_files", rm.get("error") == "err_
 # 需 bearer token — 用测试账号已有 token? 生成: users 表 token 字段/专用路由
 # 直接为测试用户 mint 一个 token (security.token_hash 单向 — 造已知明文+hash 插行)
 PLAIN = "fsk_sctest_" + uuid.uuid4().hex
-db_exec(
-    "import sys, psycopg2, hmac, hashlib\n"
-    "sys.path.insert(0, os.path.join(_REPO, 'core'))\n"
-    "import os\n"
-    "env={}\n"
-    "for k in open('/etc/flashshare.env'):\n"
-    "    k=k.strip()\n"
-    "    if k and not k.startswith('#') and '=' in k:\n"
-    "        a,v=k.split('=',1); env[a]=v\n"
-    "os.environ.update(env)\n"
-    "from security import token_hash\n"
-    "con=psycopg2.connect(env['DATABASE_URL'].replace('postgresql+psycopg://','postgresql://'))\n"
-    "con.autocommit=True\n"
-    "cur=con.cursor(); cur.execute('select id from users where username=%s', (" + repr(uname) + ",)); uid=cur.fetchone()[0]\n"
-    "cur.execute('insert into api_tokens (user_id, name, token_hash, prefix, status, created_at) values (%s, %s, %s, %s, %s, %s)', (uid, 'sctest', token_hash(" + repr(PLAIN) + "), 'sctest', 'active', 1))\n"
-    "print('minted')\n")
+if TEST_DB:
+    import psycopg2 as _pgm
+    sys.path.insert(0, os.path.join(_REPO, 'core'))
+    from security import token_hash as _th
+    _cm = _pgm.connect(TEST_DB); _cm.autocommit = True
+    _curm = _cm.cursor()
+    _curm.execute('select id from users where username=%s', (uname,))
+    _uid = _curm.fetchone()[0]
+    _curm.execute('insert into api_tokens (user_id, name, token_hash, prefix, status, created_at) values (%s, %s, %s, %s, %s, %s)', (_uid, 'sctest', _th(PLAIN), 'sctest', 'active', 1))
+    _cm.close()
+    print('minted (direct)')
+else:
+    db_exec(
+        "import sys, psycopg2, hmac, hashlib\n"
+        "sys.path.insert(0, os.path.join(_REPO, 'core'))\n"
+        "import os\n"
+        "env={}\n"
+        "for k in open('/etc/flashshare.env'):\n"
+        "    k=k.strip()\n"
+        "    if k and not k.startswith('#') and '=' in k:\n"
+        "        a,v=k.split('=',1); env[a]=v\n"
+        "os.environ.update(env)\n"
+        "from security import token_hash\n"
+        "con=psycopg2.connect(env['DATABASE_URL'].replace('postgresql+psycopg://','postgresql://'))\n"
+        "con.autocommit=True\n"
+        "cur=con.cursor(); cur.execute('select id from users where username=%s', (" + repr(uname) + ",)); uid=cur.fetchone()[0]\n"
+        "cur.execute('insert into api_tokens (user_id, name, token_hash, prefix, status, created_at) values (%s, %s, %s, %s, %s, %s)', (uid, 'sctest', token_hash(" + repr(PLAIN) + "), 'sctest', 'active', 1))\n"
+        "print('minted')\n")
 bearer = PLAIN
 if True:
     st, r = req("POST", "/api/v1/execute", {
