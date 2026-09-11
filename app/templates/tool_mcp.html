@@ -12,7 +12,6 @@
       {% else %}
       <span class="mkt-tag">{{ texts.market_official }}</span>
       {% endif %}
-      <span class="mkt-tags"><a class="mkt-tag" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag on" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
     </p>
   </div>
 
@@ -46,14 +45,5 @@
     </div>
   </div>
 
-  <div class="panel">
-    <div class="t" data-i18n="tool_use_ui">{{ texts.tool_use_ui }}</div>
-    <div class="d">
-      <a class="open-callout" href="/tool/{{ tool.id }}">
-        <span data-i18n="tool_call_cta">{{ texts.tool_call_cta }}</span>
-        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-      </a>
-    </div>
-  </div>
 </section>
 {% endblock %}

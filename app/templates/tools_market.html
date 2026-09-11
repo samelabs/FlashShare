@@ -53,7 +53,7 @@
         <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
         {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="mkt-free">{{ texts.free }}</span>{% endif %}
       </span>
-      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official if '/' not in t.id else texts.market_community }}</span><span class="mkt-tag">UI</span><span class="mkt-tag">MCP</span></span>
+      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official if '/' not in t.id else texts.market_community }}</span></span>
     </a>
     {% endfor %}
   </div>
