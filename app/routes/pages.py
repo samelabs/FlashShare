@@ -141,20 +141,68 @@ def _public_stats(tool_key: str) -> dict:
     return {"calls": int(row["ok"]) if row else 0}
 
 
+def _market_page_window(current: int, total_pages: int,
+                        radius: int = 2, edge: int = 2) -> list:
+    """Web 页码窗口 (presentation, 非 governance): 固定大小, 不随 total_pages
+    线性增长。规则: 首/末页恒可达, 当前页 ±radius 可达, 开头/结尾额外 edge 页;
+    不可达区间折叠为单条 ellipsis。返回 [{"page": n} | {"ellipsis": True}]。"""
+    if total_pages <= 7:
+        return [{"page": p} for p in range(1, total_pages + 1)]
+    pages = {1, total_pages}
+    for p in range(2, edge + 2):
+        pages.add(p)
+        pages.add(total_pages + 1 - p)
+    for p in range(current - radius, current + radius + 1):
+        if 1 <= p <= total_pages:
+            pages.add(p)
+    out = []
+    prev = 0
+    for p in sorted(pages):
+        if p - prev > 1:
+            out.append({"ellipsis": True})
+        out.append({"page": p})
+        prev = p
+    return out
+
+
 @router.get("/tools", response_class=HTMLResponse)
 async def tools_market(request: Request):
-    """Open-platform market: official row + community cards. Public only."""
+    """Open-platform market: server-side search + paginated public list.
+    Search and pagination live in the URL (?q= / ?page=); pricing
+    visibility, ordering and paging all happen in SQL."""
     from app.main import templates
-    from governance.catalog import list_catalog
+    from governance.catalog import market_page as market_page_data
+    from repo.ledger import ok_calls_by_tools
     from database import db
-    ctx = _ctx_base(request)
     from icons import icon_svg
-    tools_all = []
-    for t in list_catalog(None):
+
+    raw_page = request.query_params.get("page", "1")
+    try:
+        page = max(int(raw_page), 1)
+    except ValueError:
+        page = 1
+    q = (request.query_params.get("q") or "").strip()
+
+    page_data = market_page_data(q=q or None, page=page)
+    tools = page_data["items"]
+    for t in tools:
         t["icon_svg"] = icon_svg(t["icon"] or "wand")
-        t["stats"] = _public_stats(t["id"])
-        tools_all.append(t)
-    ctx.update({"shell_class": "", "tools_all": tools_all})
+    with db() as con:
+        stats = ok_calls_by_tools(con, [t["id"] for t in tools])
+    for t in tools:
+        t["stats"] = {"calls": stats.get(t["id"], 0)}
+
+    ctx = _ctx_base(request)
+    ctx.update({
+        "shell_class": "",
+        "tools_all": tools,
+        "market_q": q,
+        "market_page": page_data["page"],
+        "market_total": page_data["total"],
+        "market_total_pages": page_data["total_pages"],
+        "market_page_items": _market_page_window(
+            page_data["page"], page_data["total_pages"]),
+    })
     return templates.TemplateResponse(request, "tools_market.html", ctx)
 
 

@@ -369,7 +369,6 @@ SERVER_I18N = {
     "market_title": "Marché d’outils",
     "market_official": "Officiel",
     "market_community": "Communauté",
-    "market_paid": "Payant",
     "market_sub": "Outils communautaires sur 518.PLUS — paiement à l’appel, les auteurs gagnent.",
     "market_empty_title": "La première place est libre.",
     "owner_page_desc": "Outils publics de @{{h}} sur 518.PLUS",
@@ -421,7 +420,10 @@ SERVER_I18N = {
         "threeDays": "3 days",
         "title": "518.PLUS",
         "twohundredDownloads": "200 fois",
-    },
+
+    "pager_prev": "Précédent",
+    "pager_next": "Suivant",
+},
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
         "bad_param_key": "잘못된 매개변수 키: 영문 소문자/숫자/밑줄, 영문자로 시작, 최대 32자, 중복 불가",
@@ -778,7 +780,6 @@ SERVER_I18N = {
     "market_title": "도구 마켓",
     "market_official": "공식",
     "market_community": "커뮤니티",
-    "market_paid": "유료",
     "market_sub": "커뮤니티가 만든 파일 도구, 518.PLUS에서 — 호출당 과금, 제작자 수익.",
     "market_empty_title": "첫 번째 자리가 비어 있습니다.",
     "owner_page_desc": "518.PLUS에서 이 작성자의 공개 도구",
@@ -830,7 +831,10 @@ SERVER_I18N = {
         "threeDays": "3일",
         "title": "518.PLUS",
         "twohundredDownloads": "200회",
-    },
+
+    "pager_prev": "이전",
+    "pager_next": "다음",
+},
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
         "bad_param_key": "Недопустимый ключ параметра: строчные буквы/цифры/подчёркивание, начинается с буквы, до 32 символов, уникальный",
@@ -1186,7 +1190,6 @@ SERVER_I18N = {
     "market_title": "Маркет инструментов",
     "market_official": "Официальные",
     "market_community": "Сообщество",
-    "market_paid": "Платные",
     "market_sub": "Инструменты сообщества на 518.PLUS — оплата за вызов, авторы зарабатывают.",
     "market_empty_title": "Первое место свободно.",
     "owner_page_desc": "Публичные инструменты автора на 518.PLUS",
@@ -1238,7 +1241,10 @@ SERVER_I18N = {
         "threeDays": "3 days",
         "title": "518.PLUS",
         "twohundredDownloads": "200 раз",
-    },
+
+    "pager_prev": "Назад",
+    "pager_next": "Далее",
+},
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
         "bad_param_key": "مفتاح معامل غير صالح: أحرف صغيرة/أرقام/شرطة سفلية، يبدأ بحرف، 32 حرفًا كحد أقصى، غير مكرر",
@@ -1594,7 +1600,6 @@ SERVER_I18N = {
     "market_title": "سوق الأدوات",
     "market_official": "رسمي",
     "market_community": "المجتمع",
-    "market_paid": "مدفوع",
     "market_sub": "أدوات ملفات من المجتمع تعمل على 518.PLUS — دفع لكل استدعاء، المؤلف يربح.",
     "market_empty_title": "المقعد الأول فارغ.",
     "owner_page_desc": "أدوات هذا الناشر العامة على 518.PLUS",
@@ -1646,7 +1651,10 @@ SERVER_I18N = {
         "threeDays": "3 أيام",
         "title": "518.PLUS",
         "twohundredDownloads": "200 مرة",
-    },
+
+    "pager_prev": "السابق",
+    "pager_next": "التالي",
+},
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
         "bad_param_key": "Ungültiger Parameterschlüssel: Kleinbuchstaben/Ziffern/Unterstrich, beginnt mit Buchstaben, max. 32 Zeichen, eindeutig",
@@ -2003,7 +2011,6 @@ SERVER_I18N = {
     "market_title": "Tool-Markt",
     "market_official": "Offiziell",
     "market_community": "Community",
-    "market_paid": "Kostenpflichtig",
     "market_sub": "Community-Datei-Tools auf 518.PLUS — Bezahlung pro Aufruf, Autoren verdienen.",
     "market_empty_title": "Der erste Platz ist frei.",
     "owner_page_desc": "Öffentliche Tools dieses Autors auf 518.PLUS",
@@ -2055,7 +2062,10 @@ SERVER_I18N = {
         "threeDays": "3 Tage",
         "title": "518.PLUS",
         "twohundredDownloads": "200-mal",
-    },
+
+    "pager_prev": "Zurück",
+    "pager_next": "Weiter",
+},
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
         "bad_param_key": "Chave de parâmetro inválida: minúsculas/dígitos/underscore, começa com letra, máx. 32 caracteres, exclusiva",
@@ -2411,7 +2421,6 @@ SERVER_I18N = {
     "market_title": "Mercado de ferramentas",
     "market_official": "Oficial",
     "market_community": "Comunidade",
-    "market_paid": "Pago",
     "market_sub": "Ferramentas da comunidade no 518.PLUS — pague por chamada, autores ganham.",
     "market_empty_title": "A primeira vaga está aberta.",
     "owner_page_desc": "Ferramentas públicas deste autor no 518.PLUS",
@@ -2463,7 +2472,10 @@ SERVER_I18N = {
         "threeDays": "3 days",
         "title": "518.PLUS",
         "twohundredDownloads": "200 vezes",
-    },
+
+    "pager_prev": "Anterior",
+    "pager_next": "Próxima",
+},
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
         "bad_param_key": "パラメータキーが無効：半角小文字/数字/アンダースコア、英字開始、32 文字以内、重複不可",
@@ -2819,7 +2831,6 @@ SERVER_I18N = {
     "market_title": "ツールマーケット",
     "market_official": "公式",
     "market_community": "コミュニティ",
-    "market_paid": "有料",
     "market_sub": "コミュニティ製ファイルツールが 518.PLUS で動く — 従量課金、作者は収益獲得。",
     "market_empty_title": "最初の1枠が空いています。",
     "owner_page_desc": "この作者の公開ツール · 518.PLUS",
@@ -2871,7 +2882,10 @@ SERVER_I18N = {
         "threeDays": "3日",
         "title": "518.PLUS",
         "twohundredDownloads": "200回",
-    },
+
+    "pager_prev": "前へ",
+    "pager_next": "次へ",
+},
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
         "bad_param_key": "参数键无效：小写字母/数字/下划线，字母开头，最长 32 字符，不可重复",
@@ -3228,7 +3242,6 @@ SERVER_I18N = {
     "market_title": "工具市场",
     "market_official": "官方",
     "market_community": "社区",
-    "market_paid": "付费",
     "market_sub": "社区构建的文件工具，运行在 518.PLUS——按次付费，作者获利。",
     "market_empty_title": "第一个位置空着。",
     "owner_page_desc": "518.PLUS 上该作者的公开工具",
@@ -3280,7 +3293,10 @@ SERVER_I18N = {
         "threeDays": "3 天",
         "title": "518.PLUS",
         "twohundredDownloads": "200 次",
-    },
+
+    "pager_prev": "上一页",
+    "pager_next": "下一页",
+},
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
         "bad_param_key": "Clave de parámetro no válida: minúsculas/dígitos/guion bajo, empieza por letra, máx. 32 caracteres, sin duplicados",
@@ -3636,7 +3652,6 @@ SERVER_I18N = {
     "market_title": "Mercado de herramientas",
     "market_official": "Oficial",
     "market_community": "Comunidad",
-    "market_paid": "De pago",
     "market_sub": "Herramientas de la comunidad en 518.PLUS — pago por uso, los autores ganan.",
     "market_empty_title": "El primer puesto está libre.",
     "owner_page_desc": "Herramientas públicas de este autor en 518.PLUS",
@@ -3688,7 +3703,10 @@ SERVER_I18N = {
         "threeDays": "3 días",
         "title": "518.PLUS",
         "twohundredDownloads": "200 veces",
-    },
+
+    "pager_prev": "Anterior",
+    "pager_next": "Siguiente",
+},
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
         "bad_param_key": "Invalid parameter key: use lowercase letters/digits/underscore, start with a letter, max 32 chars, unique",
@@ -4045,7 +4063,6 @@ SERVER_I18N = {
     "market_title": "Tool Market",
     "market_official": "Official",
     "market_community": "Community",
-    "market_paid": "Paid",
     "market_sub": "Community-built file tools, running on 518.PLUS — pay per call, authors earn.",
     "market_empty_title": "The first spot is open.",
     "owner_page_desc": "Public tools by this author on 518.PLUS",
@@ -4097,7 +4114,10 @@ SERVER_I18N = {
         "threeDays": "3 days",
         "title": "518.PLUS",
         "twohundredDownloads": "200 times",
-    },
+
+    "pager_prev": "Previous",
+    "pager_next": "Next",
+},
 }
 
 

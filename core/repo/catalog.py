@@ -8,6 +8,42 @@ from typing import Optional, Sequence
 
 # ── platform_tools ──
 
+def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
+    """公开市场查询基座 (selection/search/pricing visibility):
+    enabled+public, LEFT JOIN pricing — cost=COALESCE(pricing.cost,0),
+    pricing 缺行=free+enabled, pricing.enabled=false 排除; 搜索范围仅
+    tool_key+label_json。返回 (FROM+WHERE 片段, 参数)。"""
+    where = "pt.enabled AND pt.visibility = %s"
+    args: list = [visibility_public]
+    if q:
+        where += (" AND (LOWER(pt.tool_key) LIKE %s"
+                  " OR LOWER(pt.label_json)::jsonb::text LIKE %s)")
+        like = f"%{q.lower()}%"
+        args += [like, like]
+    base = (
+        "FROM platform_tools pt "
+        "LEFT JOIN pricing pr ON pr.tool_id = pt.tool_key "
+        f"WHERE {where} AND (pr.enabled IS NULL OR pr.enabled)")
+    return base, args
+
+
+def market_count(con, visibility_public: str, q: Optional[str]) -> int:
+    """公开市场匹配总数 (COUNT 先行 — 供 clamp 后再取行, 未经 clamp 的
+    page 不得进入 OFFSET)。"""
+    base, args = _market_base(visibility_public, q)
+    return int(con.execute(f"SELECT COUNT(*) AS n {base}", args).fetchone()["n"])
+
+
+def market_rows(con, visibility_public: str, q: Optional[str],
+                limit: int, offset: int) -> list:
+    """公开市场一页行 (offset 必须来自 clamp 后的 canonical page)。"""
+    base, args = _market_base(visibility_public, q)
+    return con.execute(
+        f"SELECT pt.*, COALESCE(pr.cost, 0) AS price_cost {base} "
+        "ORDER BY pt.featured DESC, pt.sort_order, pt.id "
+        "LIMIT %s OFFSET %s",
+        args + [limit, offset]).fetchall()
+
 def by_tool_key(con, tool_key: str) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM platform_tools WHERE tool_key = %s", (tool_key,)).fetchone()
