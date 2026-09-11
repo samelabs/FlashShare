@@ -90,15 +90,16 @@ def _support_note() -> str:
         return ""
     href = (PUBLIC_SUPPORT_CHANNEL if PUBLIC_SUPPORT_CHANNEL.startswith("http")
             else f"mailto:{PUBLIC_SUPPORT_CHANNEL}")
-    return (f'<p class="doc-support">如有问题或举报，请联系 '
-            f'<a href="{href}" rel="noopener">{PUBLIC_SUPPORT_CHANNEL}</a>。</p>')
+    return (f'<p class="doc-support"><a href="{href}" rel="noopener">'
+            f'{PUBLIC_SUPPORT_CHANNEL}</a></p>')
 
 
 @router.get("/terms", response_class=HTMLResponse)
 async def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"), "doc_body": _load_doc("terms.html") + _support_note()})
+    lang = ctx["lang"]
+    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"), "doc_body": _load_doc("terms.html", lang) + _support_note()})
     return templates.TemplateResponse(request, "doc.html", ctx)
 
 
@@ -106,7 +107,8 @@ async def terms(request: Request):
 async def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html") + _support_note()})
+    lang = ctx["lang"]
+    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html", lang) + _support_note()})
     return templates.TemplateResponse(request, "doc.html", ctx)
 
 
@@ -280,8 +282,13 @@ async def tool_mcp_page(request: Request, owner: str, tool_id: str):
 
 
 _DOCS_DIR = _BASE / "templates"
-def _load_doc(name: str) -> str:
-    with open(_DOCS_DIR / name) as f:
+_POLICY_DIR = _BASE / "templates" / "policies"
+def _load_doc(name: str, lang: str = "en") -> str:
+    """Policy document by locale; en fallback when a locale file is missing."""
+    loc = _POLICY_DIR / lang / name
+    if not loc.is_file():
+        loc = _POLICY_DIR / "en" / name
+    with open(loc, encoding="utf-8") as f:
         return f.read()
 
 
