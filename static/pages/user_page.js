@@ -36,11 +36,7 @@
       if (!window.__USER__) { location.href = "/auth/login"; return; }
       nameEl.textContent = files.length > 1 ? `${files.length} files` : files[0].name;
       btn.classList.add("busy");
-      // 快捷使用 = 默认参数 (preset 默认项/params 默认值); 深度调整走工具页
-      let preset = null;
-      if (Array.isArray(tool.presets) && tool.presets.length) {
-        preset = (tool.presets.find(p => p.default) || tool.presets[0]).id;
-      }
+      // 快捷使用 = params 声明默认值; 深度调整走工具页
       const params = {};
       if (Array.isArray(tool.params)) {
         tool.params.forEach(p => {
@@ -48,7 +44,7 @@
         });
       }
       try {
-        const r = await window.runToolFlow(tool, files, { preset, params });
+        const r = await window.runToolFlow(tool, files, { params });
         if (r) nameEl.textContent = "";
       } catch (e) {
         window.showResult && window.showResult(esc(e.message), true);

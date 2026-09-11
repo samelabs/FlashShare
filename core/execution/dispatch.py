@@ -30,7 +30,7 @@ dispatch 只认识这一种 schema:
 import json
 
 from config import PUBLIC_ID_RE
-from governance.catalog import resolve as resolve_tool, get_default_preset
+from governance.catalog import resolve as resolve_tool
 
 from . import ExecutionError
 from .gate import run as gate_run
@@ -62,23 +62,16 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
 
     params = inv.params
 
-    # 批 4A: canonical params 是唯一参数事实源 — 有声明时 default 由
-    # enforce_params_decl 注入, 不再走 presets 通道 (get_default_preset 仅
-    # 为存量无声明工具保留 compatibility shim)。delivery 属 invocation
-    # 边界字段, 永不出现在 params。
+    # canonical params 是唯一参数事实源 — default 由 enforce_params_decl
+    # 注入。delivery 属 invocation 边界字段, 永不出现在 params。
     import json as _json
     try:
         decl = _json.loads(tool.get("params_json") or "[]")
     except (TypeError, ValueError):
         decl = []
-    if not decl and "preset" not in params:
-        default = get_default_preset(inv.tool_id)
-        if default:
-            params["preset"] = default
 
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
-    # 无声明的工具 params 保持自由直传 (兼容现状)。preset 属 legacy
-    # presets 机制键, 不受声明管辖。
+    # 无声明的工具 params 保持自由直传 (兼容现状)。
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:

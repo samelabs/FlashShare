@@ -26,15 +26,6 @@
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem("flashshare_tool_params") || "{}")[tool.id] || {}; } catch (e) { saved = {}; }
 
-    if (Array.isArray(tool.presets) && tool.presets.length) {
-      const def = (tool.presets.find(p => p.default) || tool.presets[0]).id;
-      html += `<div class="toolpage-param-group"><div class="tool-overlay-presets">`;
-      tool.presets.forEach(p => {
-        const sel = (saved.__preset || def) === p.id ? " active" : "";
-        html += `<button type="button" class="tool-overlay-preset tp-preset${sel}" data-preset="${esc(p.id)}">${esc(resolveLabel(p.label) || p.id)}</button>`;
-      });
-      html += `</div></div>`;
-    }
     if (Array.isArray(tool.params) && tool.params.length) {
       // Params render under their own labels only — no generic heading
       // (same rule as the home overlay).
@@ -66,11 +57,6 @@
     }
     paramsBox.innerHTML = html;
 
-    paramsBox.querySelectorAll(".tp-preset").forEach(b => b.addEventListener("click", () => {
-      paramsBox.querySelectorAll(".tp-preset").forEach(x => x.classList.remove("active"));
-      b.classList.add("active");
-      persist();
-    }));
     paramsBox.querySelectorAll(".tp-option").forEach(b => b.addEventListener("click", () => {
       paramsBox.querySelectorAll(`.tp-option[data-param="${b.dataset.param}"]`).forEach(x => x.classList.remove("active"));
       b.classList.add("active");
@@ -99,15 +85,10 @@
     return out;
   }
 
-  function currentPreset() {
-    const on = paramsBox && paramsBox.querySelector(".tp-preset.active");
-    return on ? on.dataset.preset : null;
-  }
-
   function persist() {
     try {
       const all = JSON.parse(localStorage.getItem("flashshare_tool_params") || "{}");
-      all[tool.id] = Object.assign(collect(), currentPreset() ? { __preset: currentPreset() } : {});
+      all[tool.id] = collect();
       localStorage.setItem("flashshare_tool_params", JSON.stringify(all));
     } catch (e) { /* non-fatal */ }
   }
@@ -124,7 +105,6 @@
     fileLabel.classList.add("busy");
     try {
       const r = await window.runToolFlow(tool, files, {
-        preset: currentPreset(),
         params: collect(),
         onProgress: (pct, bps) => {
           const speed = bps >= 1048576 ? (bps / 1048576).toFixed(1) + " MB/s"

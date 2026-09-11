@@ -391,7 +391,6 @@ _SCHEMA_SQL = (
       featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
       icon           TEXT NOT NULL DEFAULT 'wand',
       accept_json    TEXT,                   -- JSON array or NULL = any
-      presets_json   TEXT,                   -- JSON array or NULL
       multi          BOOLEAN NOT NULL DEFAULT FALSE,
       pass_through   BOOLEAN NOT NULL DEFAULT FALSE,
                                            -- TRUE = 直传工具: 上传即结果, 无执行步 (share)
@@ -437,6 +436,9 @@ _SCHEMA_SQL = (
     # ── subscription (plans/user_plans v3, 2026-09-02) ──
     # 工具简介 (tool modes v3 补: 名称/简介/模式/使用 — desc 与 label 同形 str|dict)
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS desc_json TEXT",
+    # legacy presets 通道退场: params_json 是唯一参数声明 (存量行已确认全空)
+    "ALTER TABLE platform_tools DROP COLUMN IF EXISTS presets_json",
+
     # 推荐与排序 (管理后台遴选的权威全局工具呈现顺序)
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0",
     "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE",

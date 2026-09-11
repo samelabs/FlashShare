@@ -1,7 +1,7 @@
 """Tool registry for FlashShare.
 
 Each tool is a self-contained object. It declares what formats it accepts,
-what presets it offers, and a handler function that transforms input bytes
+what parameters it declares, and a handler function that transforms input bytes
 to output bytes. The handler never touches storage, database, or HTTP.
 
 Tool lifecycle:
@@ -42,7 +42,7 @@ _registry = []
 
 
 def register(tool_id, tool_type, label, icon, handler,
-             accept=None, presets=None, multi=False, desc=None,
+             accept=None, multi=False, desc=None,
              pass_through=False, params=None):
     """Register a tool.
 
@@ -58,9 +58,6 @@ def register(tool_id, tool_type, label, icon, handler,
                 {".jpg", ".jpeg", ".png"}. Tokens must be canonical
                 (governance.formats.VOCAB_EXTS). None means accept all
                 whitelisted formats.
-        presets: list of preset dicts or None. Each preset:
-                 {"id": str, "label": {lang: name}, "default": bool}
-                 Exactly one preset must have default=True if presets given.
         multi: bool. If True, this tool accepts multiple input files
                (e.g. PDF merge). Handler receives "sources" array.
                If False, handler receives a single "stream" (default).
@@ -69,16 +66,11 @@ def register(tool_id, tool_type, label, icon, handler,
         params: canonical parameter declaration (tool modes spec v3) — same
                shape as user tools' params_json. Validated with the SAME
                validator as user tools (governance.tool_params). This is the
-               ONLY parameter declaration channel for first-party tools;
-               presets is legacy storage-compat only.
+               ONLY parameter declaration channel for first-party tools.
     """
     # local runtime binding 专属检查 (duplicate registration)
     if any(t["id"] == tool_id for t in _registry):
         raise ValueError(f"Tool already registered: {tool_id}")
-    if presets is not None:
-        defaults = [p for p in presets if p.get("default")]
-        if len(defaults) != 1:
-            raise ValueError(f"presets must have exactly one default, got {len(defaults)}")
 
     # 阶段 B-close: declaration 经 canonical validator 单点 (tool_supply),
     # register() 不再独立校验 params/accept/label contract — 只保留
@@ -97,7 +89,6 @@ def register(tool_id, tool_type, label, icon, handler,
         "accept": sorted(accept) if accept else None,
         "multi": multi,
         "params": params,
-        "presets": presets,
         "pass_through": pass_through,
         "visibility": "public",
         "enabled": True,
@@ -114,45 +105,10 @@ def register(tool_id, tool_type, label, icon, handler,
         "icon": icon,
         "handler": handler,
         "accept": set(decl["accept"]) if decl["accept"] else None,
-        "presets": presets,
         "multi": multi,
         "pass_through": bool(pass_through),
         "params": decl["params"],
     })
-
-
-def list_all_tools() -> list:
-    """Public tool catalog — single source for web home, /api/v1, MCP.
-
-    Pricing overlay happens HERE once: every channel gets the same
-    catalog (cost included, disabled tools hidden).
-    Strips handler/match and preset defaults (orchestrator's job).
-    """
-    from governance.pricing import list_pricing
-    prices = {r["tool_id"]: r for r in list_pricing()}
-
-    result = []
-    for tool in _registry:
-        p = prices.get(tool["id"]) or {"cost": 0, "enabled": True}
-        if not p["enabled"]:
-            continue
-        item = {
-            "id": tool["id"],
-            "type": tool["type"],
-            "label": tool["label"],
-            "icon": tool["icon"],
-            "accept": sorted(tool["accept"]) if tool["accept"] else None,
-            "presets": None,
-            "multi": tool.get("multi", False),
-            "cost": int(p["cost"]),
-        }
-        if tool["presets"]:
-            item["presets"] = [
-                {"id": p["id"], "label": p["label"], "default": p.get("default", False)}
-                for p in tool["presets"]
-            ]
-        result.append(item)
-    return result
 
 
 def get_tool(tool_id: str):

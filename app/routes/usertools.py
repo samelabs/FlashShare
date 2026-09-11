@@ -270,7 +270,6 @@ async def create_user_tool(request: Request):
         "accept": fields.get("accept"),
         "multi": bool(fields.get("multi", False)),
         "params": params_decl or None,
-        "presets": None,
         "pass_through": False,
         "visibility": fields["visibility"],
         "enabled": True,
