@@ -231,6 +231,37 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     return result
 
 
+MARKET_PAGE_SIZE = 24
+
+
+def market_page(q: str | None = None, page: int = 1) -> dict:
+    """公开市场页: 搜索 + 分页列表 (selection/search/order/pagination/
+    pricing visibility 全部在 SQL 层), canonical projection 仍走 row_to_item。
+
+    返回 {items, total, page, total_pages}。页边界 canonical 行为:
+    非法/非正数页 → 1; 超过末页 → 末页 (空目录时 total_pages=1)。
+    排序与可见性语义同 visible_to: featured DESC, sort_order, id;
+    pricing 缺行 = free + enabled, pricing.enabled=false 排除。
+    """
+    rows, total = None, 0
+    # 先取 page 1 探 total, 再修正越界页 (两次查询同一稳定排序)
+    with db() as con:
+        rows, total = catalog_repo.market_page(
+            con, VIS_PUBLIC, (q or "").strip() or None,
+            MARKET_PAGE_SIZE, (page - 1) * MARKET_PAGE_SIZE)
+    total_pages = max(1, -(-total // MARKET_PAGE_SIZE))
+    canonical_page = min(max(page, 1), total_pages)
+    if canonical_page != page:
+        with db() as con:
+            rows, total = catalog_repo.market_page(
+                con, VIS_PUBLIC, (q or "").strip() or None,
+                MARKET_PAGE_SIZE, (canonical_page - 1) * MARKET_PAGE_SIZE)
+    items = [row_to_item(row, {"cost": row["price_cost"], "enabled": True})
+             for row in rows]
+    return {"items": items, "total": total, "page": canonical_page,
+            "total_pages": total_pages}
+
+
 # ── resolve: the single routing entry for all surfaces ──
 
 def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:

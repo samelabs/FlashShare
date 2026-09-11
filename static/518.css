@@ -1093,17 +1093,18 @@ a.toolpage-handle:hover { color: var(--accent); }
 .userpage-empty-ico { width: 34px; height: 34px; color: var(--muted); opacity: .8; }
 .userpage-empty .open-callout { margin-top: 10px; }
 
-/* ── 市场页: 检索 + 多维过滤 (发现面, 0905) ── */
+/* ── 市场页: 搜索 + 分页列表 ── */
 .market-toolbar { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 16px; }
+.market-pager { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 18px 0 4px; }
+.pager-btn, .pager-num { border: 1px solid var(--line); background: var(--card); color: var(--muted);
+  border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; font-family: inherit; text-decoration: none; }
+.pager-btn:hover, .pager-num:hover { border-color: var(--accent); color: var(--accent); }
+.pager-num.active { border-color: var(--accent); color: var(--accent); background: var(--accent-weak, rgba(53,122,232,.08)); }
+.pager-btn.disabled { opacity: .45; pointer-events: none; }
 .market-search { display: flex; align-items: center; gap: 8px; max-width: 26em; width: 100%; margin: 0 auto;
   border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card); padding: 8px 12px; }
 .market-search svg { width: 16px; height: 16px; stroke: var(--muted); flex: none; }
 .market-search input { border: 0; background: none; color: var(--ink); font-size: 14px; font-family: inherit; width: 100%; outline: none; }
-.market-filters { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-.market-filter { border: 1px solid var(--line); background: var(--card); color: var(--muted);
-  border-radius: 999px; padding: 5px 14px; font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer; }
-.market-filter:hover { border-color: var(--accent); color: var(--accent); }
-.market-filter.active { background: var(--accent); border-color: var(--accent); color: var(--button-ink); }
 .market-none { text-align: center; color: var(--muted); font-size: 14px; padding: 22px 0; }
 .mkt-official .mkt-icon { background: var(--accent-soft); }
 

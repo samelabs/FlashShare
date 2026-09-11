@@ -8,6 +8,31 @@ from typing import Optional, Sequence
 
 # ── platform_tools ──
 
+def market_page(con, visibility_public: str, q: Optional[str],
+                limit: int, offset: int) -> tuple:
+    """公开市场分页页 (selection/search/order/pagination/pricing visibility
+    全部在 SQL 层): featured DESC, sort_order, id 稳定排序; LEFT JOIN pricing
+    保持既有语义 — cost=COALESCE(pricing.cost,0), pricing 缺行=free+enabled,
+    pricing.enabled=false 排除。返回 (rows, total)。"""
+    where = "pt.enabled AND pt.visibility = %s"
+    args: list = [visibility_public]
+    if q:
+        where += (" AND (LOWER(pt.tool_key) LIKE %s"
+                  " OR LOWER(pt.label_json)::jsonb::text LIKE %s)")
+        like = f"%{q.lower()}%"
+        args += [like, like]
+    base = (
+        "FROM platform_tools pt "
+        "LEFT JOIN pricing pr ON pr.tool_id = pt.tool_key "
+        f"WHERE {where} AND (pr.enabled IS NULL OR pr.enabled)")
+    rows = con.execute(
+        f"SELECT pt.*, COALESCE(pr.cost, 0) AS price_cost {base} "
+        "ORDER BY pt.featured DESC, pt.sort_order, pt.id "
+        "LIMIT %s OFFSET %s",
+        args + [limit, offset]).fetchall()
+    total = con.execute(f"SELECT COUNT(*) AS n {base}", args).fetchone()["n"]
+    return rows, int(total)
+
 def by_tool_key(con, tool_key: str) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM platform_tools WHERE tool_key = %s", (tool_key,)).fetchone()

@@ -143,18 +143,40 @@ def _public_stats(tool_key: str) -> dict:
 
 @router.get("/tools", response_class=HTMLResponse)
 async def tools_market(request: Request):
-    """Open-platform market: official row + community cards. Public only."""
+    """Open-platform market: server-side search + paginated public list.
+    Search and pagination live in the URL (?q= / ?page=); pricing
+    visibility, ordering and paging all happen in SQL."""
     from app.main import templates
-    from governance.catalog import list_catalog
+    from governance.catalog import market_page as market_page_data
+    from repo.ledger import ok_calls_by_tools
     from database import db
-    ctx = _ctx_base(request)
     from icons import icon_svg
-    tools_all = []
-    for t in list_catalog(None):
+
+    raw_page = request.query_params.get("page", "1")
+    try:
+        page = max(int(raw_page), 1)
+    except ValueError:
+        page = 1
+    q = (request.query_params.get("q") or "").strip()
+
+    page_data = market_page_data(q=q or None, page=page)
+    tools = page_data["items"]
+    for t in tools:
         t["icon_svg"] = icon_svg(t["icon"] or "wand")
-        t["stats"] = _public_stats(t["id"])
-        tools_all.append(t)
-    ctx.update({"shell_class": "", "tools_all": tools_all})
+    with db() as con:
+        stats = ok_calls_by_tools(con, [t["id"] for t in tools])
+    for t in tools:
+        t["stats"] = {"calls": stats.get(t["id"], 0)}
+
+    ctx = _ctx_base(request)
+    ctx.update({
+        "shell_class": "",
+        "tools_all": tools,
+        "market_q": q,
+        "market_page": page_data["page"],
+        "market_total": page_data["total"],
+        "market_total_pages": page_data["total_pages"],
+    })
     return templates.TemplateResponse(request, "tools_market.html", ctx)
 
 
