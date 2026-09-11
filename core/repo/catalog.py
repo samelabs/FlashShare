@@ -8,12 +8,11 @@ from typing import Optional, Sequence
 
 # ── platform_tools ──
 
-def market_page(con, visibility_public: str, q: Optional[str],
-                limit: int, offset: int) -> tuple:
-    """公开市场分页页 (selection/search/order/pagination/pricing visibility
-    全部在 SQL 层): featured DESC, sort_order, id 稳定排序; LEFT JOIN pricing
-    保持既有语义 — cost=COALESCE(pricing.cost,0), pricing 缺行=free+enabled,
-    pricing.enabled=false 排除。返回 (rows, total)。"""
+def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
+    """公开市场查询基座 (selection/search/pricing visibility):
+    enabled+public, LEFT JOIN pricing — cost=COALESCE(pricing.cost,0),
+    pricing 缺行=free+enabled, pricing.enabled=false 排除; 搜索范围仅
+    tool_key+label_json。返回 (FROM+WHERE 片段, 参数)。"""
     where = "pt.enabled AND pt.visibility = %s"
     args: list = [visibility_public]
     if q:
@@ -25,13 +24,25 @@ def market_page(con, visibility_public: str, q: Optional[str],
         "FROM platform_tools pt "
         "LEFT JOIN pricing pr ON pr.tool_id = pt.tool_key "
         f"WHERE {where} AND (pr.enabled IS NULL OR pr.enabled)")
-    rows = con.execute(
+    return base, args
+
+
+def market_count(con, visibility_public: str, q: Optional[str]) -> int:
+    """公开市场匹配总数 (COUNT 先行 — 供 clamp 后再取行, 未经 clamp 的
+    page 不得进入 OFFSET)。"""
+    base, args = _market_base(visibility_public, q)
+    return int(con.execute(f"SELECT COUNT(*) AS n {base}", args).fetchone()["n"])
+
+
+def market_rows(con, visibility_public: str, q: Optional[str],
+                limit: int, offset: int) -> list:
+    """公开市场一页行 (offset 必须来自 clamp 后的 canonical page)。"""
+    base, args = _market_base(visibility_public, q)
+    return con.execute(
         f"SELECT pt.*, COALESCE(pr.cost, 0) AS price_cost {base} "
         "ORDER BY pt.featured DESC, pt.sort_order, pt.id "
         "LIMIT %s OFFSET %s",
         args + [limit, offset]).fetchall()
-    total = con.execute(f"SELECT COUNT(*) AS n {base}", args).fetchone()["n"]
-    return rows, int(total)
 
 def by_tool_key(con, tool_key: str) -> Optional[dict]:
     return con.execute(

@@ -141,6 +141,30 @@ def _public_stats(tool_key: str) -> dict:
     return {"calls": int(row["ok"]) if row else 0}
 
 
+def _market_page_window(current: int, total_pages: int,
+                        radius: int = 2, edge: int = 2) -> list:
+    """Web 页码窗口 (presentation, 非 governance): 固定大小, 不随 total_pages
+    线性增长。规则: 首/末页恒可达, 当前页 ±radius 可达, 开头/结尾额外 edge 页;
+    不可达区间折叠为单条 ellipsis。返回 [{"page": n} | {"ellipsis": True}]。"""
+    if total_pages <= 7:
+        return [{"page": p} for p in range(1, total_pages + 1)]
+    pages = {1, total_pages}
+    for p in range(2, edge + 2):
+        pages.add(p)
+        pages.add(total_pages + 1 - p)
+    for p in range(current - radius, current + radius + 1):
+        if 1 <= p <= total_pages:
+            pages.add(p)
+    out = []
+    prev = 0
+    for p in sorted(pages):
+        if p - prev > 1:
+            out.append({"ellipsis": True})
+        out.append({"page": p})
+        prev = p
+    return out
+
+
 @router.get("/tools", response_class=HTMLResponse)
 async def tools_market(request: Request):
     """Open-platform market: server-side search + paginated public list.
@@ -176,6 +200,8 @@ async def tools_market(request: Request):
         "market_page": page_data["page"],
         "market_total": page_data["total"],
         "market_total_pages": page_data["total_pages"],
+        "market_page_items": _market_page_window(
+            page_data["page"], page_data["total_pages"]),
     })
     return templates.TemplateResponse(request, "tools_market.html", ctx)
 

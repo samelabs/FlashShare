@@ -235,27 +235,26 @@ MARKET_PAGE_SIZE = 24
 
 
 def market_page(q: str | None = None, page: int = 1) -> dict:
-    """公开市场页: 搜索 + 分页列表 (selection/search/order/pagination/
-    pricing visibility 全部在 SQL 层), canonical projection 仍走 row_to_item。
+    """公开市场页: 搜索 + 分页列表。顺序固定为 COUNT → total_pages →
+    clamp page → OFFSET → rows — 未经 clamp 的 page 永不进入 SQL OFFSET
+    (page=10^100 只是一次 COUNT, 不是巨大 OFFSET)。canonical projection
+    仍走 row_to_item。
 
     返回 {items, total, page, total_pages}。页边界 canonical 行为:
     非法/非正数页 → 1; 超过末页 → 末页 (空目录时 total_pages=1)。
     排序与可见性语义同 visible_to: featured DESC, sort_order, id;
     pricing 缺行 = free + enabled, pricing.enabled=false 排除。
+    Web 页码窗口 (ellipsis/page window) 属 presentation, 不在此层。
     """
-    rows, total = None, 0
-    # 先取 page 1 探 total, 再修正越界页 (两次查询同一稳定排序)
+    q = (q or "").strip() or None
     with db() as con:
-        rows, total = catalog_repo.market_page(
-            con, VIS_PUBLIC, (q or "").strip() or None,
-            MARKET_PAGE_SIZE, (page - 1) * MARKET_PAGE_SIZE)
+        total = catalog_repo.market_count(con, VIS_PUBLIC, q)
     total_pages = max(1, -(-total // MARKET_PAGE_SIZE))
     canonical_page = min(max(page, 1), total_pages)
-    if canonical_page != page:
-        with db() as con:
-            rows, total = catalog_repo.market_page(
-                con, VIS_PUBLIC, (q or "").strip() or None,
-                MARKET_PAGE_SIZE, (canonical_page - 1) * MARKET_PAGE_SIZE)
+    with db() as con:
+        rows = catalog_repo.market_rows(
+            con, VIS_PUBLIC, q, MARKET_PAGE_SIZE,
+            (canonical_page - 1) * MARKET_PAGE_SIZE)
     items = [row_to_item(row, {"cost": row["price_cost"], "enabled": True})
              for row in rows]
     return {"items": items, "total": total, "page": canonical_page,

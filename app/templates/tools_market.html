@@ -72,8 +72,12 @@
   <nav class="market-pager" aria-label="pagination">
     {% set qs = ('&amp;q=' ~ (market_q | urlencode)) if market_q else '' %}
     <a class="pager-btn{% if market_page <= 1 %} disabled{% endif %}"{% if market_page > 1 %} href="/tools?page={{ market_page - 1 }}{{ qs }}"{% endif %} data-i18n="pager_prev">{{ texts.pager_prev }}</a>
-    {% for p in range(1, market_total_pages + 1) %}
-    <a class="pager-num{% if p == market_page %} active{% endif %}" href="/tools?page={{ p }}{{ qs }}">{{ p }}</a>
+    {% for pi in market_page_items %}
+    {% if pi.ellipsis %}
+    <span class="pager-ellipsis" aria-hidden="true">…</span>
+    {% else %}
+    <a class="pager-num{% if pi.page == market_page %} active{% endif %}" href="/tools?page={{ pi.page }}{{ qs }}">{{ pi.page }}</a>
+    {% endif %}
     {% endfor %}
     <a class="pager-btn{% if market_page >= market_total_pages %} disabled{% endif %}"{% if market_page < market_total_pages %} href="/tools?page={{ market_page + 1 }}{{ qs }}"{% endif %} data-i18n="pager_next">{{ texts.pager_next }}</a>
   </nav>
