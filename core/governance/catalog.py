@@ -100,10 +100,9 @@ def _canonical_accept(tokens) -> list | None:
 def row_to_item(row: dict, price: dict) -> dict:
     """platform_tools row + pricing row → canonical catalog item shape.
 
-    Byte-compatible with the legacy tools.list_all_tools() item (same keys,
-    same types). 4A-fix5: canonical projection 单点 — list/search/owner/
-    Tool Page 对同一工具的公开 contract 全部来自此函数, 禁止任何 surface
-    手工重建第二份公开 shape。
+    row_to_item() defines THE canonical public catalog projection —
+    list/search/owner/tool-page all consume this projection; no surface
+    may rebuild a second public shape.
     """
     item = {
         "id": row["tool_key"],  # namespaced key is THE identity from now on
@@ -205,8 +204,8 @@ def owner_public_tools(owner_id: int) -> list:
 
 
 def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> list:
-    """Pricing-overlaid catalog, identical contract to the legacy
-    tools.list_all_tools(): disabled tools hidden, cost included.
+    """Pricing-overlaid catalog (row_to_item projection): disabled tools
+    hidden, cost included.
 
     viewer_id: when given, the result additionally includes the viewer's
     own private/unlisted tools (owner surface). Public listing (web home

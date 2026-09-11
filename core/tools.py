@@ -111,34 +111,6 @@ def register(tool_id, tool_type, label, icon, handler,
     })
 
 
-def list_all_tools() -> list:
-    """Public tool catalog — single source for web home, /api/v1, MCP.
-
-    Pricing overlay happens HERE once: every channel gets the same
-    catalog (cost included, disabled tools hidden).
-    Strips handler/match (orchestrator's job).
-    """
-    from governance.pricing import list_pricing
-    prices = {r["tool_id"]: r for r in list_pricing()}
-
-    result = []
-    for tool in _registry:
-        p = prices.get(tool["id"]) or {"cost": 0, "enabled": True}
-        if not p["enabled"]:
-            continue
-        item = {
-            "id": tool["id"],
-            "type": tool["type"],
-            "label": tool["label"],
-            "icon": tool["icon"],
-            "accept": sorted(tool["accept"]) if tool["accept"] else None,
-            "multi": tool.get("multi", False),
-            "cost": int(p["cost"]),
-        }
-        result.append(item)
-    return result
-
-
 def get_tool(tool_id: str):
     """Get a registered tool by id (full dict including handler), or None."""
     for tool in _registry:

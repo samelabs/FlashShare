@@ -13,7 +13,7 @@
 
   /**
    * runToolFlow(tool, files, opts) → Promise<result|null>
-   * tool: catalog item 形状 {id,label,params,presets,multi,cost,...}
+   * tool: catalog item 形状 {id,label,params,multi,cost,...}
    *       传 null/undefined = 无工具直传 (share 语义)。
    * files: FileList | File[]
    * opts: {params, expiryDays, allowedDownloads,
