@@ -470,7 +470,6 @@ async def samelabs_remote_create(request: Request):
             "accept": accept,
             "multi": multi,
             "params": None,
-            "presets": None,
             "pass_through": False,
             "visibility": "public",
             "enabled": True,

@@ -134,10 +134,6 @@ def validate_tool_declaration(decl: dict) -> dict:
 
     params = _normalize_params(decl.get("params"))
 
-    presets = decl.get("presets")
-    if presets is not None and not isinstance(presets, list):
-        raise DeclarationError("bad_presets")
-
     owner_id = decl.get("owner_id")
     if owner_id is not None and not isinstance(owner_id, int):
         raise DeclarationError("bad_owner")
@@ -168,7 +164,6 @@ def validate_tool_declaration(decl: dict) -> dict:
         "multi": bool(decl.get("multi", False)),
         "pass_through": bool(decl.get("pass_through", False)),
         "params": params,
-        "presets": presets,
         "visibility": decl["visibility"],
         "enabled": bool(decl.get("enabled", True)),
         "binding": binding,
@@ -198,10 +193,6 @@ def validate_tool_patch(patch: dict) -> dict:
         out["accept"] = _normalize_accept(patch["accept"])
     if "params" in patch:
         out["params"] = _normalize_params(patch["params"])
-    if "presets" in patch:
-        if patch["presets"] is not None and not isinstance(patch["presets"], list):
-            raise DeclarationError("bad_presets")
-        out["presets"] = patch["presets"]
     for key in ("multi", "pass_through"):
         if key in patch:
             if not isinstance(patch[key], bool):
@@ -273,8 +264,6 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "icon": decl["icon"],
         "accept_json": (json.dumps(decl["accept"], ensure_ascii=False)
                         if decl.get("accept") else None),
-        "presets_json": (json.dumps(decl["presets"], ensure_ascii=False)
-                         if decl.get("presets") else None),
         "params_json": (json.dumps(decl["params"], ensure_ascii=False)
                         if decl.get("params") else None),
         "multi": bool(decl.get("multi", False)),
@@ -326,9 +315,6 @@ def update_tool(tool_key: str, patch: dict) -> None:
     if "accept" in patch:
         sets["accept_json"] = (json.dumps(patch["accept"], ensure_ascii=False)
                                if patch["accept"] else None)
-    if "presets" in patch:
-        sets["presets_json"] = (json.dumps(patch["presets"], ensure_ascii=False)
-                                if patch["presets"] else None)
     if "params" in patch:
         sets["params_json"] = (json.dumps(patch["params"], ensure_ascii=False)
                                if patch["params"] else None)

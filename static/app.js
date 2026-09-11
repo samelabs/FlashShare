@@ -308,7 +308,6 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
   Array.from(file.files).forEach((f, idx) => formData.append(idx === 0 ? "file" : "file", f));
   if (activeTool && activeTool.id !== "share") {
     formData.append("tool", activeTool.id);
-    if (activePreset) formData.append("preset", activePreset);
     // spec v3: 模式控件值随执行提交 (服务端按声明校验/剥离)
     if (activeToolParams && Object.keys(activeToolParams).length) {
       formData.append("params", JSON.stringify(activeToolParams));
@@ -354,11 +353,9 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
       const expirySelect = form.querySelector("[name=\"expiryDays\"]");
       const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
       // Canonical ToolInvocation (Stage C): source.files[] 唯一 shape;
-      // params 只含 tool params (legacy preset 仅真实有值时带上);
-      // delivery 独立字段; client_ref null = fresh invocation。
+      // params 只含 tool params; delivery 独立字段; client_ref null = fresh。
       const fileList = data.files || [data.file];
       const toolParams = Object.assign({}, activeToolParams || {});
-      if (activePreset) toolParams.preset = activePreset;
       const toolBody = {
         tool_id: activeTool.id,
         source: { files: fileList.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
@@ -486,7 +483,6 @@ function extLabel(tok) {
   return tail.replace(/^\./, "").toUpperCase();
 }
 let activeTool = null;
-let activePreset = null;
 let activeToolParams = {};  // spec v3: 确认时收集的 params 值
 let lastUploadResult = null;
 let lastToolSource = null;
@@ -505,15 +501,13 @@ function savedToolParams(toolId) {
 }
 
 // 4A-fix3b: 无配置工具的直接选择 — tab 直选 / 搜索 share / 搜索无配置工具
-// 共用同一 commit 语义 (一次性提交 + 清 preset/params + 写 selection storage)。
+// 共用同一 commit 语义 (一次性提交 + 清 params + 写 selection storage)。
 // 有配置工具必须走 openToolOverlay 事务语义: Confirm 才 commit, Cancel/X/
 // backdrop 不改当前 committed selection。
 function commitToolSelection(tool) {
   activeTool = tool;
-  activePreset = null;
   activeToolParams = {};
   localStorage.setItem("flashshare_tool", tool.id);
-  localStorage.removeItem("flashshare_tool_preset");
   applyToolSelection();
 }
 
@@ -528,9 +522,9 @@ function loadHomeTools() {
     const tool = tools.find(t => t.id === toolId);
     if (!tool) return;
     tab.addEventListener("click", () => {
-      // 直选规则 (tool modes v3): 无输入声明 (presets 空且 params 空) → 不弹浮层。
+      // 直选规则: 无 params 声明 → 不弹浮层; 有 params → openToolOverlay。
       // share 由此规则自然直选 — 无工具名特判。
-      const noInput = !(tool.presets && tool.presets.length) && !(Array.isArray(tool.params) && tool.params.length);
+      const noInput = !(Array.isArray(tool.params) && tool.params.length);
       if (noInput) {
         // 4A-fix3b: 无配置工具直接选择 — 与搜索路径共用 commitToolSelection
         commitToolSelection(tool);
@@ -545,19 +539,10 @@ function loadHomeTools() {
   const savedTool = tools.find(t => t.id === saved);
   if (savedTool) {
     activeTool = savedTool;
-    // 4A-fix3: legacy preset 只在工具有 presets 声明时恢复 — canonical params
-    // 工具 (4A 迁移后 presets 空) 不读 flashshare_tool_preset, 避免历史残留
-    // 值污染 canonical 请求。share 恒无 preset。
-    const hasPresets = !!(savedTool.presets && savedTool.presets.length);
-    activePreset = savedTool.id === "share" || !hasPresets
-      ? null : (localStorage.getItem("flashshare_tool_preset") || null);
-    // 4A-fix3: reload 恢复保存的 canonical params — 保存过的参数必须真实
-    // 用于下一次 execute (此前只恢复 activeTool, activeToolParams 恒空)。
+    // reload 恢复保存的 canonical params — 保存过的参数必须真实
+    // 用于下一次 execute。
     activeToolParams = savedToolParams(savedTool.id);
-    // 4A-fix3: 有保存的 preset 时 skip reset — applyToolSelection 不再把恢复
-    // 出的 activePreset 清成 null 后回落声明 default; 无保存 preset 时保持
-    // 原有 auto-select default 行为。
-    applyToolSelection(!!activePreset);
+    applyToolSelection(true);
   }
 
   initToolSearch();
@@ -601,11 +586,9 @@ function initToolSearch() {
 
   const selectToolFromSearch = (tool) => {
     // 4A-fix3b: 与 tab 路径同一事务语义 — 有配置工具只打开 overlay, 不改
-    // 当前 committed selection; Confirm 才 commit (activeTool/activePreset/
-    // activeToolParams/localStorage 一次性提交)。share/无配置工具直接选择
-    // (真实切换 + 清 preset/params + 写 selection storage)。
-    const noInput = !(tool.presets && tool.presets.length)
-      && !(Array.isArray(tool.params) && tool.params.length);
+    // 当前 committed selection; Confirm 才 commit (activeTool/
+    // activeToolParams/localStorage 一次性提交)。无配置工具直接选择。
+    const noInput = !(Array.isArray(tool.params) && tool.params.length);
     if (noInput) {
       commitToolSelection(tool);
       closePop();
@@ -673,25 +656,6 @@ function openToolOverlay(tool, btn) {
     html += `<p class="tool-overlay-cost"><span class="tool-cost">${tool.cost}</span> ${t("credits_per_call")}</p>`;
   }
 
-  // Presets section
-  let defaultPreset = null;
-  if (tool.presets && tool.presets.length > 0) {
-    // Use user's last selection if this tool is active, otherwise use registered default
-    if (isActive && activePreset) {
-      defaultPreset = activePreset;
-    } else {
-      const dp = tool.presets.find(p => p.default);
-      defaultPreset = dp ? dp.id : tool.presets[0].id;
-    }
-    html += `<div class="tool-overlay-section"><div class="tool-overlay-presets">`;
-    tool.presets.forEach((p) => {
-      const pname = resolveLabel(p.label) || p.id;
-      const sel = (p.id === defaultPreset) ? " active" : "";
-      html += `<button type="button" class="tool-overlay-preset${sel}" data-preset="${p.id}">${escapeHtml(pname)}</button>`;
-    });
-    html += `</div></div>`;
-  }
-
   // Params controls (tool modes v3: enum 分段/boolean 开关/number 步进/text 输入)
   // 4A-fix3: 渲染值来自单点 savedToolParams — 与 reload 恢复同一数据源
   const savedParams = savedToolParams(tool.id);
@@ -727,25 +691,13 @@ function openToolOverlay(tool, btn) {
     html += `</div></div>`;
   }
 
-  // Actions — always show confirm/cancel, even when active (user can change preset)
+  // Actions — always show confirm/cancel, even when active
   html += `<div class="tool-overlay-actions"><button type="button" class="overlay-btn muted" id="overlayCancel">${isActive ? t("cancelTool") : t("cancel")}</button><button type="button" class="overlay-btn primary" id="overlayConfirm">${t("confirm")}</button></div>`;
 
   toolOverlayBody.innerHTML = html;
   toolOverlay.classList.remove("hidden");
 
-  // Preset selection (排除 params 的 .tp-option — 同视觉类, 不同语义)
-  const presetButtons = toolOverlayBody.querySelectorAll(".tool-overlay-preset:not(.tp-option)");
-  let selectedPreset = defaultPreset;
-  presetButtons.forEach(pbtn => {
-    if (pbtn.classList.contains("active")) selectedPreset = pbtn.dataset.preset;
-    pbtn.addEventListener("click", () => {
-      presetButtons.forEach(b => b.classList.remove("active"));
-      pbtn.classList.add("active");
-      selectedPreset = pbtn.dataset.preset;
-    });
-  });
-
-  // Params enum 分段选择 (spec v3)
+  // Params enum 分段选择
   const paramOptions = toolOverlayBody.querySelectorAll(".tp-option");
   paramOptions.forEach(obtn => {
     obtn.addEventListener("click", () => {
@@ -759,7 +711,6 @@ function openToolOverlay(tool, btn) {
   if (confirmBtn) {
     confirmBtn.addEventListener("click", () => {
       activeTool = tool;
-      activePreset = selectedPreset;
       // 收集 params 控件值 (spec v3: enum 分段/bool/number/text)
       const collected = {};
       if (Array.isArray(tool.params)) {
@@ -784,9 +735,7 @@ function openToolOverlay(tool, btn) {
         all[tool.id] = collected;
         localStorage.setItem("flashshare_tool_params", JSON.stringify(all));
       } catch (e) { /* storage full/blocked — non-fatal */ }
-      // Save to localStorage
       localStorage.setItem("flashshare_tool", tool.id);
-      if (selectedPreset) localStorage.setItem("flashshare_tool_preset", selectedPreset);
       applyToolSelection(true);
       closeToolOverlay();
     });
@@ -800,15 +749,11 @@ function openToolOverlay(tool, btn) {
         // Cancel falls back to "share" (default), not null
         const shareTool = homeToolsData.find(t => t.id === "share");
         activeTool = shareTool || null;
-        activePreset = null;
-        // 4A-fix3: 回退 share 同步清空内存 params — 内存态与选择态一致
         activeToolParams = {};
         if (shareTool) {
           localStorage.setItem("flashshare_tool", "share");
-          localStorage.removeItem("flashshare_tool_preset");
         } else {
           localStorage.removeItem("flashshare_tool");
-          localStorage.removeItem("flashshare_tool_preset");
         }
         applyToolSelection();
       }
@@ -826,13 +771,12 @@ if (!window.__TOOLPAGE__) toolOverlayClose.addEventListener("click", closeToolOv
 if (!window.__TOOLPAGE__) toolOverlay.addEventListener("click", (e) => { if (e.target === toolOverlay) closeToolOverlay(); });
 
 // Apply tool selection to the upload zone (首页形态专属 — 工具页无表单)
-function applyToolSelection(skipPresetReset) {
+function applyToolSelection(skipStateReset) {
   if (window.__TOOLPAGE__) return;
-  // Full state reset on tool switch (not on preset-only change)
-  if (!skipPresetReset) {
+  // Full state reset on tool switch (not on params-only re-confirm)
+  if (!skipStateReset) {
     file.value = "";
     fileLabel.textContent = t("dropEmpty");
-    activePreset = null;
   }
   result.classList.add("hidden");
   lastErrorKey = null;
@@ -855,31 +799,6 @@ function applyToolSelection(skipPresetReset) {
     if (formatTags) formatTags.textContent = t("dropFormats");
     updateToolDescription();
     return;
-  }
-
-  // Auto-select default preset if tool has one (skip if preset already set)
-  if (!skipPresetReset && activeTool && homeToolsData) {
-    const toolData = homeToolsData.find(t => t.id === activeTool.id);
-    if (toolData && toolData.presets) {
-      const def = toolData.presets.find(p => p.default);
-      if (def) activePreset = def.id;
-    }
-  }
-
-  // Add preset badge on active tool tab
-  if (activePreset) {
-    const activeTab = document.querySelector('.tool-tab.active');
-    if (activeTab) {
-      const pt = (homeToolsData.find(t => t.id === activeTool.id) || {}).presets || [];
-      const p = pt.find(p => p.id === activePreset);
-      const presetLabel = p ? (resolveLabel(p.label) || activePreset) : activePreset;
-      if (presetLabel && presetLabel !== activePreset) {
-        const badge = document.createElement("span");
-        badge.className = "tool-preset-badge";
-        badge.textContent = " · " + presetLabel;
-        activeTab.appendChild(badge);
-      }
-    }
   }
 
   // Bind accept — 4C-2: canonical exact extension token list 直绑,
@@ -951,7 +870,7 @@ async function retryTool() {
       body: JSON.stringify({
         tool_id: activeTool.id,
         source: { files: lastToolSource.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
-        params: Object.assign({}, activeToolParams || {}, activePreset ? { preset: activePreset } : {}),
+        params: Object.assign({}, activeToolParams || {}),
         delivery: {
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,

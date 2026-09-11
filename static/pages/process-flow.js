@@ -16,7 +16,7 @@
    * tool: catalog item 形状 {id,label,params,presets,multi,cost,...}
    *       传 null/undefined = 无工具直传 (share 语义)。
    * files: FileList | File[]
-   * opts: {preset, params, expiryDays, allowedDownloads,
+   * opts: {params, expiryDays, allowedDownloads,
    *        onProgress(pct, speedStr), signal}
    */
   async function runToolFlow(tool, files, opts) {
@@ -79,9 +79,6 @@
       window.showToolProcessing(window.resolveLabel ? window.resolveLabel(tool.label) || tool.id : tool.id);
     const uploaded = up.files || [up.file];
     const params = Object.assign({}, opts.params || {});
-    // legacy presets shim: 仅在真实有值时作为 tool param 传入;
-    // canonical params 工具的 default 由 dispatch 注入声明 default。
-    if (opts.preset) params.preset = opts.preset;
     const body = {
       tool_id: tool.id,
       source: { files: uploaded.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },

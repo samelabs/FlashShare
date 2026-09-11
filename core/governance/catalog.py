@@ -66,7 +66,6 @@ def seed_from_registry() -> dict:
             "accept": sorted(t["accept"]) if t.get("accept") else None,
             "multi": bool(t.get("multi", False)),
             "params": t.get("params"),
-            "presets": t.get("presets"),
             "pass_through": bool(t.get("pass_through", False)),
             "visibility": "public",
             "enabled": True,
@@ -115,19 +114,10 @@ def row_to_item(row: dict, price: dict) -> dict:
         # (legacy MIME 行在投影时精确展开; 未知 token 安全 fallback)。
         "accept": _canonical_accept(
             json.loads(row["accept_json"]) if row["accept_json"] else None),
-        "presets": None,
         "multi": bool(row["multi"]),
         "pass_through": bool(row.get("pass_through") or False),
         "cost": int(price.get("cost") or 0),
     }
-    # 批 4A: params 是唯一参数声明通道 — presets 仅存量兼容读取,
-    # 有 canonical params 的工具不再透出 presets (防止 Web/MCP 双渲染)
-    has_params = bool(row["params_json"])
-    if row["presets_json"] and not has_params:
-        item["presets"] = [
-            {"id": p["id"], "label": p["label"], "default": p.get("default", False)}
-            for p in json.loads(row["presets_json"])
-        ]
     # params 声明 (tool modes v3): 三面同构 — web 浮层/MCP inputSchema/详情同源
     item["params"] = json.loads(row["params_json"]) if row["params_json"] else None
     # 简介 (名称/简介/模式/使用): str|dict, 前端 resolveLabel 解析; 系统工具简介
@@ -200,7 +190,7 @@ def catalog_version() -> str:
 
 def owner_public_tools(owner_id: int) -> list:
     """用户页 (开发者公开面): 该作者的公开 catalog items — 与三面同构
-    (label/desc/params/cost/presets 同 row_to_item 契约), 呈现序同全站。"""
+    (label/desc/params/cost 同 row_to_item 契约), 呈现序同全站。"""
     from governance.pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}
     with db() as con:
@@ -240,18 +230,6 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
             continue
         result.append(row_to_item(row, p))
     return result
-
-
-def get_default_preset(tool_key: str) -> str | None:
-    """Default preset id for a tool key, or None."""
-    with db() as con:
-        row = catalog_repo.by_tool_key(con, tool_key)
-    if not row or not row["presets_json"]:
-        return None
-    for p in json.loads(row["presets_json"]):
-        if p.get("default"):
-            return p["id"]
-    return None
 
 
 # ── resolve: the single routing entry for all surfaces ──

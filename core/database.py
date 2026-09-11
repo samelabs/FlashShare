@@ -391,7 +391,7 @@ _SCHEMA_SQL = (
       featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
       icon           TEXT NOT NULL DEFAULT 'wand',
       accept_json    TEXT,                   -- JSON array or NULL = any
-      presets_json   TEXT,                   -- JSON array or NULL
+      presets_json   TEXT,                   -- deprecated legacy column; not written since params-only closure
       multi          BOOLEAN NOT NULL DEFAULT FALSE,
       pass_through   BOOLEAN NOT NULL DEFAULT FALSE,
                                            -- TRUE = 直传工具: 上传即结果, 无执行步 (share)
