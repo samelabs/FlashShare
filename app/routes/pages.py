@@ -188,7 +188,6 @@ async def user_page(request: Request, handle: str):
         "owner_handle": handle,
         "owner_tools": tools,
         "owner_total_calls": total_calls,
-        "owner_tools_json": json.dumps(tools, ensure_ascii=False),
         "is_self": bool(user and user.get("id") == owner_id),
     })
     return templates.TemplateResponse(request, "user_page.html", ctx)

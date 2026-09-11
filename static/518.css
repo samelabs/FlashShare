@@ -1087,22 +1087,11 @@ a.toolpage-handle:hover { color: var(--accent); }
 .userpage-card { display: flex; flex-direction: column; gap: 6px; cursor: default; }
 .mkt-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .mkt-free { font-size: 11px; font-weight: 700; color: var(--muted); }
-.userpage-card-actions { margin-top: auto; display: flex; gap: 6px; }
-.userpage-card-actions .mkt-tag { text-decoration: none; }
 .userpage-empty { text-align: center; align-items: center; display: flex; flex-direction: column; gap: 8px; padding: 40px 18px; }
 .userpage-empty .t { font-size: 15.5px; font-weight: 700; }
 .userpage-empty .d { font-size: 13px; color: var(--muted); max-width: 34em; }
 .userpage-empty-ico { width: 34px; height: 34px; color: var(--muted); opacity: .8; }
 .userpage-empty .open-callout { margin-top: 10px; }
-.userpage-quick { display: flex; align-items: center; gap: 8px; }
-.userpage-quick-btn {
-  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  border: 1px solid var(--line-strong); background: var(--card); color: var(--ink);
-  border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; font-family: inherit;
-}
-.userpage-quick-btn svg { width: 15px; height: 15px; stroke: var(--accent); }
-.userpage-quick-btn:hover { border-color: var(--accent); color: var(--accent); }
-.userpage-quick-btn.busy { opacity: .6; pointer-events: none; }
 
 /* ── 市场页: 检索 + 多维过滤 (发现面, 0905) ── */
 .market-toolbar { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 16px; }

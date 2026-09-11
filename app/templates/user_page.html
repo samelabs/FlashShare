@@ -23,7 +23,7 @@
   </div>
   <div class="market-grid userpage-grid">
     {% for t in owner_tools %}
-    <div class="mkt-card mkt-community userpage-card" data-tool-id="{{ t.id }}">
+    <a class="mkt-card mkt-community userpage-card" href="/tool/{{ t.id }}" data-tool-id="{{ t.id }}">
       <span class="mkt-icon">{% if t.icon_svg %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon_svg | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
       <span class="mkt-name">{{ t.label | lt(lang) or t.id }}</span>
       {% if t.desc %}<span class="mkt-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
@@ -31,11 +31,7 @@
         <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
         {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="mkt-free">{{ texts.free }}</span>{% endif %}
       </span>
-      <span class="userpage-card-actions">
-        <a class="mkt-tag" href="/tool/{{ t.id }}">{{ texts.tool_call_cta }}</a>
-        <a class="mkt-tag" href="/tool/{{ t.id }}/mcp">MCP</a>
-      </span>
-    </div>
+    </a>
     {% endfor %}
   </div>
   {% else %}
@@ -56,21 +52,9 @@
     {% endif %}
   </div>
   {% endif %}
-
-  <div id="result" class="result hidden" aria-live="polite"></div>
 </section>
-{% endblock %}
-
-{% block script_head %}
-<script>
-window.__PAGE__ = "user";
-window.__OWNER_TOOLS__ = JSON.parse({{ owner_tools_json | tojson }});
-</script>
 {% endblock %}
 
 {% block script %}
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
-<script src="/static/app.js?v={{ app_js_version }}"></script>
-<script src="/static/pages/process-flow.js?v={{ pages_version }}"></script>
-<script src="/static/pages/user_page.js?v={{ pages_version }}"></script>
 {% endblock %}
