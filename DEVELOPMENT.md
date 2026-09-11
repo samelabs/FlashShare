@@ -116,7 +116,11 @@ FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
 
 1. `git fetch origin`；从 `origin/main` 建分支。
 2. 小步改动 + diff 自审 + 门禁（compile/node/canonical）。
-3. push 分支，等二次核查；main 的合并由 owner 裁定。
+3. push non-main branch → **STOP**。
+4. Server Agent 无 GitHub API 权限（仅 SSH deploy key）：PR 创建/diff 审查/
+   GitHub CI 核验/merge 全部由 owner 在 GitHub 侧完成；本地测试结果不得
+   声明为 CI 结果。
+5. main 前进后，production deploy 由 Server Agent 按指令执行。
 4. 合入 main 前 GitHub CI required checks 应全绿；CI 不执行 production deploy。
 
 ## Production deploy 概要
@@ -127,6 +131,11 @@ FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 
 ## Production backup（scripts/）
+
+> 口径：same-server backup = **LOCAL RECOVERY（READY）**，**不是** off-host
+> disaster recovery（NOT CONFIGURED）。`FLASHSHARE_BACKUP_REMOTE` 保持空，
+> 直到 owner 单独选择 off-host 目的地（Oracle Object Storage / R2 / S3 兼容
+> remote）。不要把同服务器目录当作 remote。
 
 - `backup.sh`：daily 04:30 UTC（systemd timer）pg_dump custom 格式 + Gokapi sqlite（`.backup` 一致性快照）与 data 目录 tar.gz；SHA256SUMS；本地 `/var/backups/flashshare/`（daily×7 + 周日 weekly×4 轮换）。
 - off-host 上传：`FLASHSHARE_BACKUP_REMOTE`（rclone remote:path）配置后自动启用；未配置时显式 WARNING（仅 on-host）。rclone 未装而 remote 已配 → 非零退出（timer failed 可见）。
