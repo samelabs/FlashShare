@@ -9,9 +9,8 @@
     <p class="hero-sub toolpage-by">
       {% if handle %}
       <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <a class="toolpage-handle" href="/u/{{ handle }}">@{{ handle }}</a>
-      <span class="mkt-tags"><a class="mkt-tag on" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
       {% else %}
-      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official }}</span><a class="mkt-tag on" href="/tool/{{ tool.id }}">UI</a><a class="mkt-tag" href="/tool/{{ tool.id }}/mcp">MCP</a></span>
+      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official }}</span></span>
       {% endif %}
     </p>
   </div>
