@@ -14,6 +14,29 @@
 - 长期开发规则、架构约束、正式测试都只存在于仓库内；服务器本地只允许
   secrets、runtime env、部署专属配置、scratch/临时诊断和 dev log。
 
+### Server Agent × GitHub control boundary
+
+Server Agent 的 GitHub 权限只有 SSH deploy key——**没有** GitHub API token、
+authenticated gh、PR API、Actions API 或 branch protection 管理权限。
+
+Server Agent MAY：
+- `git fetch`
+- 创建 branch / worktree
+- commit
+- push non-main branch
+
+Server Agent MUST NOT：
+- 直推 main（除非 owner 明确授权的例外，如已发生过的 fast-forward deploy 批次）
+- force push
+- 因缺 GitHub API 权限而绕过 PR 流程直推 main
+- 把本地测试结果声明为 GitHub CI 结果（本地绿 ≠ CI 绿；两者都要，来源分开表述）
+
+标准流程：
+1. Server Agent → branch → commit → push non-main branch → **STOP**
+2. 外部 GitHub control plane（owner）→ create PR → inspect diff → verify
+   GitHub CI → approve / merge → advance main
+3. production deploy 由 Server Agent 在 owner 指令后明确执行。
+
 ## B. 四主链
 
 产品只有四条核心机制链，任何改动先定位它落在哪条链、影响哪条链：
