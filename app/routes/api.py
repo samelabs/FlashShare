@@ -207,10 +207,12 @@ async def create_upload(request: Request):
         status = 400 if denial["error"] == "err_too_many_files" else 413
         return JSONResponse({"ok": False, **denial}, status)
 
-    ok, reason, usage_ids = reserve_ingress(
+    ok, denial, usage_ids = reserve_ingress(
         user["id"], ip, [size for _, size, _, _ in pending])
     if not ok:
-        return JSONResponse({"ok": False, "error": reason}, 429)
+        # Authoritative denial from reserve_ingress — the web layer never
+        # recomputes used/remaining, it only relays the full contract.
+        return JSONResponse({"ok": False, **denial}, 429)
 
     source_expiry = INTERMEDIATE_TTL_DAYS if is_tool_source else expiry_days
     source_downloads = (INTERMEDIATE_DOWNLOAD_LIMIT

@@ -9,13 +9,30 @@ from gokapi import delete_gokapi_file, _gokapi_connection, _gokapi_path, GOKAPI_
 from utils import now, public_file_url
 
 
-def _quota_reason(row: dict, ent: dict, incoming_bytes: int,
-                  incoming_count: int) -> str:
-    if int(row["c"]) + incoming_count > ent["ingress_files_24h"]:
-        return "err_quota_count"
-    if int(row["b"]) + incoming_bytes > ent["ingress_bytes_24h"]:
-        return "err_quota_size"
-    return ""
+def _quota_denial(row: dict, ent: dict, incoming_bytes: int,
+                  incoming_count: int) -> dict | None:
+    """Single quota decision point — the only constructor of structured
+    rolling-quota denials.
+
+    Priority keeps the existing semantics: files first, then bytes.
+    remaining = max(limit - used, 0) measured BEFORE this request (the
+    window's spare capacity at decision time), never the post-incoming
+    remainder; incoming is never truncated to remaining.
+    """
+    used_files, used_bytes = int(row["c"]), int(row["b"])
+    if used_files + incoming_count > ent["ingress_files_24h"]:
+        limit = ent["ingress_files_24h"]
+        return {"error": "err_ingress_files_24h", "limit": limit,
+                "used": used_files, "incoming": incoming_count,
+                "remaining": max(limit - used_files, 0),
+                "plan_code": ent["plan_code"]}
+    if used_bytes + incoming_bytes > ent["ingress_bytes_24h"]:
+        limit = ent["ingress_bytes_24h"]
+        return {"error": "err_ingress_bytes_24h", "limit": limit,
+                "used": used_bytes, "incoming": incoming_bytes,
+                "remaining": max(limit - used_bytes, 0),
+                "plan_code": ent["plan_code"]}
+    return None
 
 
 def check_quota(user_id: int, ip: str, incoming_bytes: int,
@@ -24,37 +41,39 @@ def check_quota(user_id: int, ip: str, incoming_bytes: int,
 
     Limits come from the user's effective entitlement (governance.
     entitlements.resolve). ip is accepted for the audit-fact record but
-    takes no part in quota decisions.
+    takes no part in quota decisions. Denials carry the full structured
+    contract from _quota_denial — the same shape reserve_ingress emits.
     """
     start = now() - 24 * 3600
     ent = _resolve_entitlement(user_id)
     with db() as con:
         row = usage_repo.user_usage(con, user_id, start)
-    reason = _quota_reason(row, ent, int(incoming_bytes), int(incoming_count))
-    return (not reason, reason)
+    denial = _quota_denial(row, ent, int(incoming_bytes), int(incoming_count))
+    return (denial is None, denial)
 
 
 def reserve_ingress(user_id: int, ip: str, sizes: list[int]) -> tuple:
-    """Atomically reserve the daily source-file ingress budget.
+    """Atomically reserve the rolling-24h source-file ingress budget.
 
-    Same resolver and same limit semantics as check_quota; the check and
-    the insert both happen under the user row lock so same-user
-    concurrency cannot exceed the entitlement.
+    Same resolver, same limit semantics and same denial contract as
+    check_quota (single _quota_denial); the decision and the insert both
+    happen under the user row lock so same-user concurrency cannot
+    exceed the entitlement.
     """
     clean = [int(s) for s in sizes]
     if not clean or any(s <= 0 for s in clean):
-        return False, "err_empty_file", []
+        return False, {"error": "err_empty_file"}, []
     start = now() - 24 * 3600
     ts = now()
     ent = _resolve_entitlement(user_id)
     with db() as con:
         usage_repo.lock_user(con, user_id)
         row = usage_repo.user_usage(con, user_id, start)
-        reason = _quota_reason(row, ent, sum(clean), len(clean))
-        if reason:
-            return False, reason, []
+        denial = _quota_denial(row, ent, sum(clean), len(clean))
+        if denial:
+            return False, denial, []
         ids = usage_repo.insert_many(con, user_id, ip, clean, ts)
-    return True, "", ids
+    return True, None, ids
 
 
 def release_ingress(user_id: int, usage_ids: list[int]) -> None:
