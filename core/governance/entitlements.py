@@ -70,21 +70,33 @@ for _code, _spec in _PLANS.items():
     _validate_against_protocol(_spec, _code)
 
 
+def resolve_from_membership(membership: dict | None) -> dict:
+    """plan_of() public result → effective entitlement (纯函数单点)。
+
+    输入只能是 economy.subscription.plan_of() 的公开结果 (或 None):
+    member == True 且 code 在 _PLANS → 对应 entitlement; 其余一切
+    (None / member=false / 未知 code) → Free fallback。
+    Membership → Entitlement 的政策映射只存在于本模块 — 禁止任何
+    消费方 (如 access projection) 复制 member/code 判定。
+    """
+    if membership and membership.get("member") and membership.get("code") in _PLANS:
+        return dict(_PLANS[membership["code"]])
+    return dict(FREE)
+
+
 def resolve(user_id: int) -> dict:
     """user_id → effective entitlement。
 
     返回 {plan_code, ingress_files_24h, ingress_bytes_24h,
-    expiry_days, download_limits}。PLUS 判定只来自 plan_of():
-    member == True 且 code 在 _PLANS; 其余一切 (无会员 / 已失效 /
-    未知 code) → Free fallback。
+    expiry_days, download_limits}。判定只来自 plan_of() 的公开结果,
+    经 resolve_from_membership 单点映射; plan_of 抛错时按既有
+    Free fallback 行为处理。
     """
     try:
         p = plan_of(user_id)
     except Exception:
         p = None
-    if p and p.get("member") and p.get("code") in _PLANS:
-        return dict(_PLANS[p["code"]])
-    return dict(FREE)
+    return resolve_from_membership(p)
 
 
 def check_delivery(user_id: int, delivery: dict) -> dict | None:

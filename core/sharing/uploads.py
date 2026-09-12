@@ -35,6 +35,27 @@ def _quota_denial(row: dict, ent: dict, incoming_bytes: int,
     return None
 
 
+def _usage_24h_row(user_id: int) -> dict:
+    """Rolling-24h usage facts (single internal read helper — the same
+    query check_quota previews and the public reader report; one window
+    algorithm, no second copy)."""
+    start = now() - 24 * 3600
+    with db() as con:
+        return usage_repo.user_usage(con, user_id, start)
+
+
+def usage_24h(user_id: int) -> dict:
+    """Public read-only rolling-24h ingress usage projection.
+
+    Returns {"ingress_files_24h": n, "ingress_bytes_24h": n}. No
+    reserve/insert/delete/lock and no IP-quota reads — pure facts for
+    read models (access projection).
+    """
+    row = _usage_24h_row(user_id)
+    return {"ingress_files_24h": int(row["c"]),
+            "ingress_bytes_24h": int(row["b"])}
+
+
 def check_quota(user_id: int, ip: str, incoming_bytes: int,
                 incoming_count: int = 1) -> tuple:
     """Read-only quota preview against ingress facts.
@@ -44,10 +65,8 @@ def check_quota(user_id: int, ip: str, incoming_bytes: int,
     takes no part in quota decisions. Denials carry the full structured
     contract from _quota_denial — the same shape reserve_ingress emits.
     """
-    start = now() - 24 * 3600
     ent = _resolve_entitlement(user_id)
-    with db() as con:
-        row = usage_repo.user_usage(con, user_id, start)
+    row = _usage_24h_row(user_id)
     denial = _quota_denial(row, ent, int(incoming_bytes), int(incoming_count))
     return (denial is None, denial)
 
