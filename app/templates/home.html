@@ -34,6 +34,7 @@
 {% endblock %}
 
 {% block content %}
+{% from "partials/tool_identity.html" import tool_tab with context %}
 <section class="workspace">
   <div class="hero-mini">
     <h1 class="hero-title" data-i18n="hero_title">{{ texts.hero_title }}</h1>
@@ -97,13 +98,7 @@
 
   <div class="section-h"><span class="t" data-i18n="tools_section">{{ texts.tools_section }}</span><span class="n" id="toolsCount">{{ tools|length }}</span></div>
   <div class="home-tools{% if not tools %} hidden{% endif %}" id="homeTools">
-    {% for t in tools %}
-    <div class="tool-tab" data-tool-id="{{ t.id }}" role="button" tabindex="0">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path(t.icon or "wand") }}</svg>
-      <span class="tool-tab-name">{{ t.label | lt(lang) or t.id }}</span>
-      {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
-    </div>
-    {% endfor %}
+    {% for t in tools %}{{ tool_tab(t, lang) }}{% endfor %}
   </div>
   <p class="tool-desc hidden" id="toolDesc"></p>
 </section>

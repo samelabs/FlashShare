@@ -351,6 +351,61 @@ v1raw = sum(s.count('_v1_raw') for s in srcs.values())
 check("J3 request.state._v1_raw = 0", v1raw == 0)
 check("J4 mcp 无 file_b64 single branch", "args.get(\"file_b64\")" not in srcs['app/routes/mcp.py'])
 
+# ── Tool identity/card contract guards (Batch A) ──
+import os as _os
+_REPO2 = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+def _rd(*p):
+    return open(_os.path.join(_REPO2, *p), encoding="utf-8").read()
+
+icons_src = _rd("core", "icons.py")
+# G1 Tool icon fallback 只有一个定义 (canonical fallback key 单点):
+import re as _re
+fb_defs = len(_re.findall(r'TOOL_ICON_FALLBACK\s*=\s*"wand"', icons_src))
+check("G1 tool icon fallback 单一定义", fb_defs == 1
+      and icons_src.count('or "wand"') == 0)
+# G2 Market/User Page 卡片循环不各自 inline Tool SVG fallback (empty-state
+# 装饰 svg 不属于 tool identity — 只查 tool 卡/macro 调用形态):
+for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):
+    src = _rd(*tmpl.split("/"))
+    check(f"G2 {tmpl.split('/')[-1]} 卡面经 macro, 无自绘 tool svg/mkt-icon",
+          "tool_card(" in src and "mkt-icon" not in src
+          and 'icon_svg | safe' not in src)
+# G3 Home/Market/User Page consume canonical renderer (macro partial):
+part = _rd("app", "templates", "partials", "tool_identity.html")
+check("G3 partial 消费 icon_tool_svg 单一 renderer",
+      "icon_tool_svg" in part and "icon_svg(" not in part)
+home_src3 = _rd("app", "templates", "home.html")
+check("G3b home 工具 tab 经 partial (无 icon_path 工具渲染)",
+      "tool_tab(" in home_src3
+      and '{{ icon_path(t.icon' not in home_src3)
+# G4/G5: author 槽位在 partial 单点, market 开 / user page 关:
+check("G4 community author 槽位存在 (market 开)",
+      "tcard-author" in part and "show_author" in part)
+check("G5 user page show_author=False (页头已定义作者, 无冗余)",
+      'show_author=False' in _rd("app", "templates", "user_page.html"))
+# G6 origin 语义单源:
+cat_src = _rd("core", "governance", "catalog.py")
+check("G6 Official/Community origin 单源 (is_official_id)",
+      "def is_official_id" in cat_src
+      and '"origin":' in cat_src)
+for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html",
+             "app/templates/home.html"):
+    src = _rd(*tmpl.split("/"))
+    check(f"G6 {tmpl.split('/')[-1]} 无 origin 字符串判断",
+          "'/' not in t.id" not in src and "'/' in t.id" not in src)
+# G7 card href 仍是 Tool Page:
+check("G7 card href = /tool/{id}",
+      'href="/tool/{{ t.id }}"' in part)
+# G8 home 保持执行 surface (tool-tab div, 非导航 a):
+home_src = _rd("app", "templates", "home.html")
+check("G8 home tool-tab 为执行 surface (partial div role=button, home 无导航 a)",
+      '<div class="tool-tab"' in part and 'role="button"' in part
+      and "tool_tab(" in home_src
+      and '<a class="tool-tab"' not in home_src)
+check("PG19 production 零 deprecated icon fallback 字面 (wand 兜底仅 icons.py)",
+      sum(_rd("app", "templates", t).count('or "wand"')
+          for t in ("home.html", "tools_market.html", "user_page.html")) == 0)
+
 print()
 print("FAIL:", FAIL if FAIL else "无 — 全绿")
 sys.exit(1 if FAIL else 0)

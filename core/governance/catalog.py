@@ -97,6 +97,13 @@ def _canonical_accept(tokens) -> list | None:
         return sorted(str(t) for t in tokens if t)
 
 
+def is_official_id(tool_id: str) -> bool:
+    """Official/Community origin 单源判定: bare id = official (self-operated),
+    namespaced 'owner/tool' = community。三面 (home/market/tool-page) 一律
+    消费本判定, 禁止各自写字符串判断。"""
+    return "/" not in (tool_id or "")
+
+
 def row_to_item(row: dict, price: dict) -> dict:
     """platform_tools row + pricing row → canonical catalog item shape.
 
@@ -106,6 +113,7 @@ def row_to_item(row: dict, price: dict) -> dict:
     """
     item = {
         "id": row["tool_key"],  # namespaced key is THE identity from now on
+        "origin": "official" if is_official_id(row["tool_key"]) else "community",
         "type": row["tool_type"],
         "label": json.loads(row["label_json"]),
         "icon": row["icon"],
@@ -125,6 +133,9 @@ def row_to_item(row: dict, price: dict) -> dict:
     # 遴选呈现 (后台管理): 推荐标记 + 排序
     item["featured"] = bool(row["featured"])
     item["sort_order"] = int(row["sort_order"])
+    # community 作者 handle (identity contract; official 行为 NULL —
+    # Official 不伪造 author)
+    item["owner_handle"] = row.get("owner_handle")
     return item
 
 

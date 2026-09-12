@@ -22,7 +22,7 @@ with open(_STATIC / "518.css", encoding="utf-8") as f:
 # Version stamp = content hash + mtime: content-converging edits (diverge then
 # reconverge) can collide on a pure content hash and serve stale edge caches.
 import os as _os
-_CSS_VERSION = "v41"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (footer policy links)
+_CSS_VERSION = "v42"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (footer policy links)
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 # app.js gets its OWN stamp: it changes independently of 518.css. Sharing
@@ -52,7 +52,7 @@ sys.path.insert(0, str(_CORE))
 
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, PUBLIC_SUPPORT_CHANNEL
 from i18n import LOCALE_TAGS, server_text
-from icons import _ICONS, icon_svg, icon_path
+from icons import _ICONS, icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
 from identity.auth import public_user
 from economy.billing import spendable_balance
 from governance.access_projection import project
@@ -114,6 +114,8 @@ def ctx_base(request: Request) -> dict:
         # icon helpers
         "icon_svg": icon_svg,
         "icon_path": icon_path,
+        # Tool identity single renderer (fallback 单源在 core/icons.py)
+        "icon_tool_svg": _tool_icon_svg,
         "brand_icon": brand_icon_svg(),
         "close_icon": close_icon_svg(),
         "history_icon_svg": history_icon_svg(),

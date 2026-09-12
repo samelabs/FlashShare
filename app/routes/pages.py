@@ -174,7 +174,6 @@ async def tools_market(request: Request):
     from governance.catalog import market_page as market_page_data
     from repo.ledger import ok_calls_by_tools
     from database import db
-    from icons import icon_svg
 
     raw_page = request.query_params.get("page", "1")
     try:
@@ -185,8 +184,6 @@ async def tools_market(request: Request):
 
     page_data = market_page_data(q=q or None, page=page)
     tools = page_data["items"]
-    for t in tools:
-        t["icon_svg"] = icon_svg(t["icon"] or "wand")
     with db() as con:
         stats = ok_calls_by_tools(con, [t["id"] for t in tools])
     for t in tools:
@@ -215,7 +212,6 @@ async def user_page(request: Request, handle: str):
     from governance.catalog import owner_public_tools
     from database import db
     from repo.ledger import ok_calls_by_owner
-    from icons import icon_svg
 
     with db() as con:
         urow = id_by_username(con, handle)
@@ -225,7 +221,6 @@ async def user_page(request: Request, handle: str):
     owner_id = urow["id"]
     tools = owner_public_tools(owner_id)
     for t in tools:
-        t["icon_svg"] = icon_svg(t["icon"] or "wand")
         t["stats"] = _public_stats(t["id"])
     with db() as con:
         total_calls = ok_calls_by_owner(con, owner_id, [t["id"] for t in tools])
