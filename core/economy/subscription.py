@@ -238,20 +238,45 @@ def sweep_expired() -> int:
     return n
 
 
-def plan_of(user_id: int) -> dict | None:
-    """Identity single point (badge / API / backoffice all read here)."""
-    with db() as con:
-        row = orders_repo.plan_of(con, user_id)
-    if row is None:
-        return None
-    d = dict(row)
-    ts = now()
+class MembershipAmbiguousError(RuntimeError):
+    """多行 membership 同时 live — 无法 deterministic 选择, fail closed。
+
+    Read model 各消费面 (projection/API/Web/MCP) 必须向上传播, 不得
+    谎称某个 tier; authorization (entitlements.resolve) 既有 exception →
+    Free fail-safe 边界保持。candidates 只进 debug 信息, 不进 public shape。
+    """
+
+
+def _is_live(row: dict, ts: int) -> bool:
     # 规范四: canceled(当期结束前)/past_due(宽限期) 权益保留至 renews_at;
     # expired 永久失效。renews_at 是权威边界。
-    live = d["status"] in ("active", "canceled", "past_due") and (d["renews_at"] or 0) > ts
+    return (row["status"] in ("active", "canceled", "past_due")
+            and (row["renews_at"] or 0) > ts)
+
+
+def plan_of(user_id: int) -> dict | None:
+    """Identity single point (badge / API / backoffice all read here).
+
+    Read invariant: 唯一 live → 返回; 多个 live → MembershipAmbiguousError
+    (绝不 silently pick); 无 live → repo 时间排序第一行作最近历史 fact
+    (member=false, 不产生 entitlement)。public shape 不变。
+    """
+    ts = now()
+    with db() as con:
+        rows = orders_repo.membership_rows(con, user_id)
+    if not rows:
+        return None
+    dicts = [dict(r) for r in rows]
+    live = [d for d in dicts if _is_live(d, ts)]
+    if len(live) > 1:
+        raise MembershipAmbiguousError(
+            f"user {user_id} has {len(live)} live memberships: "
+            f"{[(d['code'], d['plan_id']) for d in live]}")
+    chosen = live[0] if live else dicts[0]
+    member = bool(live)
     return {
-        "code": d["code"], "name": d["name"], "status": d["status"],
-        "renews_at": d["renews_at"],
-        "cancel_scheduled_at": d["cancel_scheduled_at"],
-        "member": live,
+        "code": chosen["code"], "name": chosen["name"],
+        "status": chosen["status"], "renews_at": chosen["renews_at"],
+        "cancel_scheduled_at": chosen["cancel_scheduled_at"],
+        "member": member,
     }

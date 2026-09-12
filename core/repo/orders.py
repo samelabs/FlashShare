@@ -147,15 +147,26 @@ def upsert_user_plan(con, user_id: int, plan_id: int, status: str,
          period_start, cancel_scheduled_at, started_at)).fetchone()
 
 
-def plan_of(con, user_id: int) -> Optional[dict]:
-    """身份单点读取: 用户当前订阅行 (含 plan code)。"""
+def membership_rows(con, user_id: int) -> list:
+    """用户全部 membership rows (plural read invariant).
+
+    Repo 只负责数据读取和机械时间排序, 不判断 member/live。排序固定:
+      renews_at DESC NULLS LAST  — Membership/provider period 主要边界
+      started_at DESC            — 次级历史顺序
+      plan_id DESC               — 最终 deterministic tie-break
+    禁止用 price / sort_order / credits / plan code / entitlement 大小
+    决定优先级。单行/多行/历史选择语义由 subscription domain 解析。
+    """
     return con.execute(
         """
-        SELECT up.status, up.started_at, up.renews_at, up.cancel_scheduled_at,
-               p.code, p.name
+        SELECT up.plan_id, up.status, up.started_at, up.renews_at,
+               up.cancel_scheduled_at, p.code, p.name
         FROM user_plans up JOIN plans p ON p.id = up.plan_id
         WHERE up.user_id = %s
-        """, (user_id,)).fetchone()
+        ORDER BY up.renews_at DESC NULLS LAST,
+                 up.started_at DESC,
+                 up.plan_id DESC
+        """, (user_id,)).fetchall()
 
 
 def plan_order_by_sub_id(con, sub_id: str) -> Optional[dict]:
