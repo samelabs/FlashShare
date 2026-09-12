@@ -147,15 +147,64 @@ def upsert_user_plan(con, user_id: int, plan_id: int, status: str,
          period_start, cancel_scheduled_at, started_at)).fetchone()
 
 
-def plan_of(con, user_id: int) -> Optional[dict]:
-    """身份单点读取: 用户当前订阅行 (含 plan code)。"""
+def membership_row(con, user_id: int) -> Optional[dict]:
+    """用户唯一 current Membership (memberships.user_id PK 单行权威)。
+
+    plan_of() 的唯一数据源; 数据库不变量保证一个 user 至多一行。
+    """
     return con.execute(
         """
-        SELECT up.status, up.started_at, up.renews_at, up.cancel_scheduled_at,
+        SELECT m.plan_id, m.provider_subscription_id, m.status, m.started_at,
+               m.renews_at, m.cancel_scheduled_at, m.last_grant_period_start,
                p.code, p.name
-        FROM user_plans up JOIN plans p ON p.id = up.plan_id
-        WHERE up.user_id = %s
+        FROM memberships m JOIN plans p ON p.id = m.plan_id
+        WHERE m.user_id = %s
         """, (user_id,)).fetchone()
+
+
+def membership_by_sub(con, sub_id: str) -> Optional[dict]:
+    """provider subscription → current Membership 定位 (事件/reconcile 绑定)。"""
+    return con.execute(
+        """
+        SELECT m.*, p.code, p.name FROM memberships m
+        JOIN plans p ON p.id = m.plan_id
+        WHERE m.provider_subscription_id = %s
+        """, (f"sub:{sub_id}",)).fetchone()
+
+
+def upsert_membership(con, user_id: int, plan_id: int, sub_id: str,
+                      status: str, started_at: int, renews_at: int | None,
+                      period_start: int | None = None,
+                      cancel_scheduled_at: int | None = None) -> dict:
+    """单行 membership 状态机: (user) 唯一; 同 sub 重放 = UPDATE;
+    status/period/marker 幂等写。plan change 走同 user 行的 plan_id 更新。"""
+    return con.execute(
+        """
+        INSERT INTO memberships (user_id, plan_id, provider_subscription_id,
+                                 status, started_at, renews_at,
+                                 last_grant_period_start, cancel_scheduled_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+          plan_id = EXCLUDED.plan_id,
+          provider_subscription_id = EXCLUDED.provider_subscription_id,
+          status = EXCLUDED.status,
+          renews_at = EXCLUDED.renews_at,
+          last_grant_period_start = COALESCE(EXCLUDED.last_grant_period_start,
+                                             memberships.last_grant_period_start),
+          cancel_scheduled_at = EXCLUDED.cancel_scheduled_at,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *
+        """,
+        (user_id, plan_id, f"sub:{sub_id}", status, started_at, renews_at,
+         period_start, cancel_scheduled_at, started_at)).fetchone()
+
+
+def plan_by_product_id(con, product_id: str) -> Optional[dict]:
+    """subscription.update: provider product/price → 本地唯一 plan。
+    无绑定或非唯一映射 → None (caller fail loud, 不猜)。"""
+    rows = con.execute(
+        "SELECT * FROM plans WHERE creem_price_id = %s ORDER BY id", (product_id,)).fetchall()
+    return rows[0] if len(rows) == 1 else None
 
 
 def plan_order_by_sub_id(con, sub_id: str) -> Optional[dict]:
@@ -192,10 +241,10 @@ def set_cancel_scheduled(con, user_id: int, plan_id: int, ts: int) -> None:
 
 
 def sweep_expired_plans(con, ts: int) -> int:
-    """过期订阅 → expired。状态转移 only, 授信永不在此发生。"""
+    """过期 membership → expired。状态转移 only, 授信永不在此发生。"""
     cur = con.execute(
         """
-        UPDATE user_plans SET status='expired', updated_at=%s
+        UPDATE memberships SET status='expired', updated_at=%s
         WHERE status IN ('active','past_due') AND renews_at IS NOT NULL
           AND renews_at < %s
         RETURNING user_id

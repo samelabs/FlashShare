@@ -61,11 +61,26 @@ async def subscribe_checkout(request: Request):
         plan_id = int(raw.get("plan_id", 0))
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from repo.orders import plan_by_id_active, insert_order, set_provider_order_id
+    from repo.orders import plan_by_id_active, insert_order, set_provider_order_id, membership_row
     with db() as con:
         plan = plan_by_id_active(con, plan_id)
     if not plan or not plan["creem_price_id"]:
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
+    # 一个 user 至多一个 current Membership: 已有会员 (含同档) 再购买
+    # → plan_change_required — 不得创建第二条并行 subscription checkout;
+    # tier 变更走 provider subscription 的 update 通道 (后续批次)。
+    from utils import now as _now
+    _ts = _now()
+    with db() as con:
+        current = membership_row(con, user["id"])
+    if current and current["status"] in ("active", "canceled", "past_due") \
+            and (current["renews_at"] or 0) > _ts:
+        return JSONResponse({
+            "ok": False,
+            "error": "plan_change_required",
+            "current_plan": current["code"],
+            "requested_plan": plan["code"],
+        }, 409)
     from utils import now
     with db() as con:
         order = insert_order(con, user["id"], "plan", plan["id"], "creem",
