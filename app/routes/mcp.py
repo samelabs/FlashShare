@@ -220,7 +220,7 @@ def _tool_specs(user: dict) -> list:
 async def _call_tool(request: Request, user: dict, mid, params: dict):
     import secrets as _secrets
     from execution.pipeline import upload_sources as _upload_batch
-    from execution.pipeline import IngressBoundaryError
+    from execution.pipeline import IngressBoundaryError, IngressQuotaError
 
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
@@ -288,9 +288,10 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         source_files = [{"public_id": info["publicId"],
                          "source_token": info.get("sourceToken", "")}
                         for info in infos]
-    except IngressBoundaryError as exc:
-        # Platform business limits are tool results, not JSON-RPC syntax
-        # errors: 20/50/100MB boundaries answer as isError content.
+    except (IngressBoundaryError, IngressQuotaError) as exc:
+        # Platform business limits — hard boundaries and rolling quota —
+        # are tool results, not JSON-RPC syntax errors: they answer as
+        # isError content carrying the structured denial.
         return _rpc(mid, {
             "content": [{"type": "text", "text": json.dumps(exc.denial)}],
             "isError": True,

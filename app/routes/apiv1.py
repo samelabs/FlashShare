@@ -80,12 +80,16 @@ async def v1_upload(request: Request):
             return JSONResponse({"ok": False, **denial}, 413)
 
     ip = request.headers.get("X-Real-IP", request.client.host if request.client else "").strip()
+    from execution.pipeline import IngressQuotaError
     try:
         return {"ok": True, "file": _upload_source(user, filename, ctype, body, ip)}
+    except IngressQuotaError as exc:
+        # Structured rolling-quota denial relayed verbatim — no local
+        # recomputation of used/remaining and no err_quota_* sniffing.
+        return JSONResponse({"ok": False, **exc.denial}, 429)
     except ValueError as exc:
         code = str(exc) or "err_upload_failed"
-        status = 429 if code.startswith("err_quota") else 415
-        return JSONResponse({"ok": False, "error": code}, status)
+        return JSONResponse({"ok": False, "error": code}, 415)
 
 
 @router.post("/execute")

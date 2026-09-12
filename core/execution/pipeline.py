@@ -23,6 +23,13 @@ class IngressBoundaryError(ValueError):
         self.denial = denial
 
 
+class IngressQuotaError(ValueError):
+    """Rolling-24h ingress quota denial; args[0] = structured denial dict."""
+    def __init__(self, denial: dict):
+        super().__init__(denial["error"])
+        self.denial = denial
+
+
 def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> list[dict]:
     """Upload one logical source batch for v1/MCP.
 
@@ -48,10 +55,10 @@ def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> 
     if denial:
         raise IngressBoundaryError(denial)
 
-    ok, reason, usage_ids = reserve_ingress(
+    ok, denial, usage_ids = reserve_ingress(
         user["id"], ip, [len(body) for _, _, body in checked])
     if not ok:
-        raise ValueError(reason)
+        raise IngressQuotaError(denial)
 
     uploaded_ids = []
     out = []

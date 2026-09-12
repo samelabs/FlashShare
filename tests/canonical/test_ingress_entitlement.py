@@ -43,7 +43,7 @@ from governance.delivery import (validate_delivery, EXPIRY_DAYS,
                                  DOWNLOAD_LIMITS, INTERMEDIATE_TTL_DAYS,
                                  INTERMEDIATE_DOWNLOAD_LIMIT)
 from economy.subscription import plan_of
-from sharing.uploads import reserve_ingress, release_ingress
+from sharing.uploads import reserve_ingress, release_ingress, check_quota
 from repo import upload_usage as usage_repo
 from database import db
 
@@ -135,35 +135,77 @@ check("R5 resolver 不 import creem/orders/payment 内部",
 check("R6 resolver 只经 economy.subscription.plan_of 取会员事实",
       "plan_of" in src and "user_plans" not in src)
 
-# ═══ 2. Free quota 边界 ═══
+# ═══ 2. Free quota 边界 + 结构化 denial contract ═══
 ip = "203.0.113.9"
 FLIM = FREE["ingress_files_24h"]; BLIM = FREE["ingress_bytes_24h"]
+
+# Free files: used = limit-2, incoming = 3 → 精确六字段
 _clear_usage(id_f)
-ok, r, ids = reserve_ingress(id_f, ip, [1] * (FLIM - 1))
+with db() as c:
+    usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 2), int(time.time()))
+ok, r, _ = reserve_ingress(id_f, ip, [1] * 3)
+check("F3 Free files denial 精确结构 {error,limit,used,incoming,remaining,plan_code}",
+      (not ok) and r == {"error": "err_ingress_files_24h", "limit": FLIM,
+                         "used": FLIM - 2, "incoming": 3, "remaining": 2,
+                         "plan_code": "free"}, str(r))
+check("F3b incoming 不截断为 remaining (3 > 2 仍报 3)",
+      (not ok) and r["incoming"] == 3 and r["remaining"] == 2)
+
+# Free bytes: 同形 (单行大 size 即 sum 语义, 无需十亿行)
+_clear_usage(id_f)
+with db() as c:
+    usage_repo.insert_many(c, id_f, ip, [BLIM - 100], int(time.time()))
+ok, r, _ = reserve_ingress(id_f, ip, [101])
+check("F5 Free bytes denial 精确结构",
+      (not ok) and r == {"error": "err_ingress_bytes_24h", "limit": BLIM,
+                         "used": BLIM - 100, "incoming": 101,
+                         "remaining": 100, "plan_code": "free"}, str(r))
+
+# 边界通过性 (既有行为不回归)
+_clear_usage(id_f)
+ok, r, _ = reserve_ingress(id_f, ip, [1] * (FLIM - 1))
 check("F1 Free limit-1 files 通过", ok)
-ok, r, ids2 = reserve_ingress(id_f, ip, [1])
-check("F2 Free 第 limit 个通过", ok)
 ok, r, _ = reserve_ingress(id_f, ip, [1])
-check("F3 Free limit+1 拒 err_quota_count", (not ok) and r == "err_quota_count", r)
+check("F2 Free 第 limit 个通过", ok)
 _clear_usage(id_f)
 ok, r, _ = reserve_ingress(id_f, ip, [BLIM])
 check("F4 Free 恰 bytes-limit 通过", ok)
-ok, r, _ = reserve_ingress(id_f, ip, [1])
-check("F5 Free limit+1 byte 拒 err_quota_size", (not ok) and r == "err_quota_size", r)
 
-# ═══ 3. PLUS quota 边界 ═══
+# ═══ 3. PLUS quota 边界 (结构值来自 effective entitlement, 非 Free 常量) ═══
+PLIM = _PLANS["plus"]["ingress_files_24h"]; PBLIM = _PLANS["plus"]["ingress_bytes_24h"]
 _clear_usage(id_p)
-ok, r, _ = reserve_ingress(id_p, ip, [1] * 499)
-check("P1 PLUS 499 files 通过", ok)
+with db() as c:
+    usage_repo.insert_many(c, id_p, ip, [1] * (PLIM - 2), int(time.time()))
+ok, r, _ = reserve_ingress(id_p, ip, [1] * 3)
+check("P3 PLUS files denial: plan_code=plus, limit=500 (effective entitlement)",
+      (not ok) and r["error"] == "err_ingress_files_24h" and r["plan_code"] == "plus"
+      and r["limit"] == 500 and r["used"] == 498 and r["incoming"] == 3
+      and r["remaining"] == 2, str(r))
+_clear_usage(id_p)
+with db() as c:
+    usage_repo.insert_many(c, id_p, ip, [PBLIM - 50], int(time.time()))
+ok, r, _ = reserve_ingress(id_p, ip, [51])
+check("P5 PLUS bytes denial: limit=5GiB, plan_code=plus",
+      (not ok) and r["error"] == "err_ingress_bytes_24h"
+      and r["limit"] == PLUS_BYTES and r["plan_code"] == "plus"
+      and r["remaining"] == 50, str(r))
+_clear_usage(id_p)
+ok, r, _ = reserve_ingress(id_p, ip, [1] * (PLIM - 1))
+check("P1 PLUS limit-1 files 通过", ok)
 ok, r, _ = reserve_ingress(id_p, ip, [1])
 check("P2 PLUS 第 500 个通过", ok)
-ok, r, _ = reserve_ingress(id_p, ip, [1])
-check("P3 PLUS 501 拒 err_quota_count", (not ok) and r == "err_quota_count", r)
 _clear_usage(id_p)
 ok, r, _ = reserve_ingress(id_p, ip, [PLUS_BYTES])
 check("P4 PLUS 恰 5 GiB 通过", ok)
-ok, r, _ = reserve_ingress(id_p, ip, [1])
-check("P5 PLUS 5 GiB+1 拒 err_quota_size", (not ok) and r == "err_quota_size", r)
+
+# check/reserve 同义: 同 snapshot + incoming → denial 字段完全一致
+_clear_usage(id_f)
+with db() as c:
+    usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 2), int(time.time()))
+ok1, d1 = check_quota(id_f, ip, 1, incoming_count=3)
+ok2, d2, _ = reserve_ingress(id_f, ip, [1] * 3)
+check("Q1 check_quota denial == reserve_ingress denial (逐字段)",
+      (not ok1) and (not ok2) and d1 == d2, f"check={d1} reserve={d2}")
 
 # ═══ 4. IP 不参与 quota ═══
 u_i2, id_i2 = _new_user("enti")
@@ -190,12 +232,16 @@ t1 = threading.Thread(target=_race); t2 = threading.Thread(target=_race)
 t1.start(); t2.start(); t1.join(); t2.join()
 granted = sum(1 for okx, _ in results if okx)
 check("S1 same-user 并发抢最后名额恰一个成功", granted == 1, str(results))
+_s1_denials = [d for okx, d in results if not okx]
+check("S1b 失败线程收到 structured quota denial",
+      len(_s1_denials) == 1 and _s1_denials[0].get("error") == "err_ingress_files_24h"
+      and "limit" in _s1_denials[0] and "remaining" in _s1_denials[0], str(_s1_denials))
 
 _clear_usage(id_f)
 ok, r, res = reserve_ingress(id_f, ip, [1] * 10)
 release_ingress(id_f, res)
 ok2, r2, _ = reserve_ingress(id_f, ip, [1] * FLIM)
-check("S2 release_ingress 恢复失败 reservation", ok and ok2)
+check("S2 release_ingress 恢复失败 reservation", ok and ok2 and r2 is None)
 
 _clear_usage(id_f)
 ok, r, res = reserve_ingress(id_f, ip, [1] * 5)
@@ -475,9 +521,7 @@ except _IBE as e:
           e.denial["error"] == "err_file_too_large", str(e.denial))
 _cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
 check("B-M3 被拒 batch 零 usage 残留 (storage 前)", _cur.fetchone()[0] == _all_usage)
-# MCP 端到端 isError 语义 (bearer): 用 apiv1 token? MCP 走同 bearer — 走真实 /mcp:
-# (token 创建入口属 identity 面, 此处以 pipeline 层契约 + dispatch 无 -32602 回归覆盖;
-#  HTTP 层 -32602 分流逻辑见 mcp.py except IngressBoundaryError → isError result)
+# MCP HTTP 层 isError 语义由 5f 段真实 /mcp E2E 覆盖 (bearer + tools/call)。
 
 # ═══ 5f. 真实 /mcp HTTP E2E (create user → API bearer token → tools/call) ═══
 _eu, _euid = _register("mcpe2e" + str(int(time.time()))[-6:])
@@ -527,6 +571,99 @@ st, d = _mcp({"files": [{"b64": "!!!not-base64!!!", "filename": "x.png"}]})
 check("ME-B 非法 base64 → JSON-RPC -32602",
       (d.get("error") or {}).get("code") == -32602, str(d.get("error"))[:80])
 
+# C. 真实 MCP rolling-quota denial: 填满 E2E 用户 usage 再 tools/call
+_cur.execute("select id from users where username=%s", (_eu,))
+_euid = _cur.fetchone()[0]
+_cur.execute("delete from upload_usage where user_id=%s", (_euid,))
+with db() as c:
+    usage_repo.insert_many(c, _euid, "127.0.0.1", [1] * FREE["ingress_files_24h"], int(time.time()))
+_files_q = [{"b64": base64.b64encode(_png1).decode(), "filename": "q.png"}]
+st, d = _mcp({"files": _files_q})
+_res = d.get("result") or {}
+_content = ((_res.get("content") or [{}])[0].get("text") or "")
+_qd = json.loads(_content) if _content.startswith("{") else {}
+check("MQ-1 MCP quota denial: HTTP 200 + isError + 完整结构",
+      st == 200 and _res.get("isError") is True
+      and _qd.get("error") == "err_ingress_files_24h"
+      and _qd.get("limit") == FREE["ingress_files_24h"]
+      and _qd.get("used") == FREE["ingress_files_24h"]
+      and _qd.get("incoming") == 1 and _qd.get("remaining") == 0
+      and _qd.get("plan_code") == "free", _content[:110])
+check("MQ-2 无 top-level JSON-RPC error (非 -32602)", "error" not in d)
+
+# Web 真实: 同用户 (或新用户填满) → /api/uploads 429 六字段
+_wu = "webq" + str(int(time.time()))[-6:]
+_wu_id = None
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+_out = b""
+for k, v in {"username": _wu, "password": "Test12345", "password_confirm": "Test12345", "email": f"{_wu}@t.co"}.items():
+    _out += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+b, ct = _out + b"--B--\r\n", "multipart/form-data; boundary=B"
+conn.request("POST", "/auth/register", b, {"Content-Type": ct}); conn.getresponse().read(); conn.close()
+_wck = _login(_wu)
+_cur.execute("select id from users where username=%s", (_wu,))
+_wu_id = _cur.fetchone()[0]
+with db() as c:
+    usage_repo.insert_many(c, _wu_id, "127.0.0.1", [1] * FREE["ingress_files_24h"], int(time.time()))
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+body = b""
+for k, v in {"tool": "share"}.items():
+    body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="q.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + _png1 + b"\r\n--B--\r\n"
+conn.request("POST", "/api/uploads", body, {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _wck})
+r = conn.getresponse(); wd = json.loads(r.read()); conn.close()
+check("WQ-1 Web quota denial: 429 + 六字段完整",
+      r.status == 429 and wd.get("error") == "err_ingress_files_24h"
+      and wd.get("limit") == FREE["ingress_files_24h"]
+      and wd.get("used") == FREE["ingress_files_24h"]
+      and wd.get("incoming") == 1 and wd.get("remaining") == 0
+      and wd.get("plan_code") == "free", f"{r.status} {str(wd)[:110]}")
+
+# REST 真实: bearer token 上传 → 429 同结构
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/tokens", json.dumps({"name": "quota-e2e"}),
+             {"Cookie": _wck, "Content-Type": "application/json"})
+_wtk = json.loads(conn.getresponse().read()); conn.close()
+_wbearer = (_wtk.get("token") or {}).get("token") or ""
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/v1/uploads", _png1, {
+    "Content-Type": "image/png", "x-filename": "q.png",
+    "Content-Length": str(len(_png1)), "Authorization": f"Bearer {_wbearer}"})
+r = conn.getresponse(); rd = json.loads(r.read()); conn.close()
+check("RQ-1 REST quota denial: 429 + 同一结构 contract",
+      r.status == 429 and rd.get("error") == "err_ingress_files_24h"
+      and rd.get("limit") == FREE["ingress_files_24h"]
+      and rd.get("remaining") == 0 and rd.get("plan_code") == "free", f"{r.status} {str(rd)[:110]}")
+
+# denial 无残留 (upload_usage 不增; Gokapi 面由 pipeline 顺序保证)
+_cur.execute("select count(*) from upload_usage where user_id=%s", (_wu_id,))
+check("NQ-1 quota denial 后 upload_usage 零新增",
+      _cur.fetchone()[0] == FREE["ingress_files_24h"])
+
+# NQ-2: quota decision 在 Gokapi storage 之前 — 真实 HTTP path 前后对象计数不变
+def _gokapi_count():
+    conn = _hc.HTTPConnection(_HOST[0], _GOKAPI_PORT, timeout=15)
+    conn.request("GET", "/api/files/list", headers={"apikey": _GK_KEY})
+    r = conn.getresponse(); files = json.loads(r.read()); conn.close()
+    return len(files) if isinstance(files, list) else -1
+
+_GK_KEY = _os.environ.get("FLASHSHARE_GOKAPI_KEY", "")
+_GOKAPI_RAW = _os.environ.get("FLASHSHARE_GOKAPI_URL", "")
+_GOKAPI_PORT = int(_GOKAPI_RAW.rsplit(":", 1)[-1]) if ":" in _GOKAPI_RAW else 53898
+_before = _gokapi_count()
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+body = b""
+for k, v in {"tool": "share"}.items():
+    body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="z.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + _png1 + b"\r\n--B--\r\n"
+conn.request("POST", "/api/uploads", body, {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _wck})
+r = conn.getresponse(); _zd = json.loads(r.read()); conn.close()
+_after = _gokapi_count()
+check("NQ-2 quota denial 后 Gokapi object count 不增加 (真实 HTTP path, storage 前拒)",
+      r.status == 429 and _zd.get("error") == "err_ingress_files_24h"
+      and _after == _before and _before >= 0,
+      f"before={_before} after={_after} status={r.status}")
+
 # ═══ 6. Source-of-truth guard ═══
 _up = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G1 sharing/uploads.py 不出现 plus (不认识会员名)",
@@ -557,8 +694,8 @@ check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字�
       "len(uploads) > 20" not in _apir and "total_incoming" not in _apir
       and "validate_batch" in _apir)
 _mcp_up = _mcp_src.split("infos = _upload_batch")[1].split("raw = {")[0] if "infos = _upload_batch" in _mcp_src else ""
-check("G12 MCP upload 区保留 IngressBoundaryError 专门分支 + generic Exception fallback",
-      "except IngressBoundaryError" in _mcp_up
+check("G12 MCP upload 区保留 boundary/quota 专门分支 + generic Exception fallback",
+      "except (IngressBoundaryError, IngressQuotaError)" in _mcp_up
       and _mcp_up.count("except Exception as exc") >= 1, "")
 # G13: Web transport early-reject 与 authoritative validate_batch 输出同构
 # (ok/error/limit/incoming 四键; incoming=declared transport bytes)
@@ -567,6 +704,44 @@ check("G13 Web early-reject 结构完整 {ok,error,limit,incoming} 且不早于 
       '"error": "err_batch_too_large"' in _er and '"limit": MAX_BATCH_BYTES' in _er
       and '"incoming": declared' in _er and "MAX_BATCH_BYTES +" in _er
       and "validate_batch" in _apir)
+_ups = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
+check("G14 sharing/uploads.py 是 quota denial 唯一构造点 (_quota_denial 单点)",
+      "_quota_denial" in _ups and "err_ingress_files_24h" not in _apir
+      and "err_ingress_files_24h" not in _mcp_src, "")
+_apiv1_src = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
+def _code_lines(src):
+    return "\n".join(l for l in src.split("\n")
+                     if not l.strip().startswith("#") and "recomputation" not in l)
+check("G15 三面不自行算 remaining (透传 denial, 排除注释)",
+      "remaining" not in _code_lines(_apir)
+      and "remaining" not in _code_lines(_apiv1_src)
+      and "remaining" not in _code_lines(_mcp_src))
+# repo-wide active guard: 动态拼旧 key 防自匹配; 只扫文本源码, 排除缓存/生成物目录树中非源码部分
+_old_count_key = "err_quota_" + "count"
+_old_size_key = "err_quota_" + "size"
+_hits = []
+for _root_name in ("app", "core", "static", "templates", "tests"):
+    _base = _os.path.join(_REPO, _root_name)
+    for _dirpath, _dirnames, _filenames in _os.walk(_base):
+        _dirnames[:] = [d for d in _dirnames
+                        if d not in ("__pycache__", "node_modules", ".git")]
+        for _fn in _filenames:
+            if not _fn.endswith((".py", ".js", ".html", ".css", ".json", ".md", ".txt")):
+                continue
+            _fp = _os.path.join(_dirpath, _fn)
+            try:
+                _src = open(_fp, encoding="utf-8", errors="ignore").read()
+            except OSError:
+                continue
+            if _old_count_key in _src or _old_size_key in _src:
+                _hits.append(_os.path.relpath(_fp, _REPO))
+check("G16 旧 quota key repo-wide 零 active hit (app/core/static/templates/tests)",
+      not _hits, str(_hits[:6]))
+check("G17 MCP IngressQuotaError → isError 分支存在 + generic fallback 仍在",
+      "IngressQuotaError" in _mcp_src
+      and _mcp_up.count("except Exception as exc") >= 1)
+check("G18 pipeline quota 走 IngressQuotaError (非普通 ValueError)",
+      "IngressQuotaError(denial)" in _pipe_src)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
