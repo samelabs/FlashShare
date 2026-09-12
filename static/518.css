@@ -149,7 +149,8 @@ h1, h2 { letter-spacing: -0.02em; }
 .section-h .n { font-size: 12.5px; color: var(--muted); }
 .home-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .tool-tab { background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r); padding: 12.5px 13.5px; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: border-color var(--ease), background var(--ease); }
-.tool-tab svg { width: 19px; height: 19px; stroke: var(--body, var(--muted)); flex-shrink: 0; }
+.tool-tab svg, .tool-tab .tool-tab-icon svg { width: 19px; height: 19px; stroke: var(--body, var(--muted)); flex-shrink: 0; }
+.tool-tab .tool-tab-icon { display: inline-flex; }
 .tool-tab .tool-tab-name { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; }
 .tool-tab .tool-cost { font-size: 11.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 6px; flex-shrink: 0; }
 .tool-tab.active, .tool-tab.on { border-color: var(--accent); border-width: 1.5px; background: var(--accent-soft); box-shadow: 0 2px 10px rgba(255,77,77,.18); }
@@ -971,17 +972,23 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .market-page { gap: 14px; }
 .market-official-row { display: flex; gap: 9px; overflow-x: auto; padding: 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .market-official-row::-webkit-scrollbar { display: none; }
-.mkt-card { display: flex; flex-direction: column; gap: 7px; padding: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; text-decoration: none; color: var(--ink); transition: border-color var(--ease), box-shadow var(--ease); }
-@media (hover:hover) and (pointer:fine) { .mkt-card:hover { border-color: var(--accent); box-shadow: var(--sh-sm); } }
-.mkt-official { flex: 0 0 auto; min-width: 132px; align-items: flex-start; }
+/* ── Tool card identity contract (tcard): market + user page 同一组件。
+   工具符号轻量中性, 不做 app-icon tile。─ */
+.tcard { display: flex; align-items: flex-start; gap: 11px; padding: 12px 13px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; text-decoration: none; color: var(--ink); transition: border-color var(--ease), box-shadow var(--ease); }
+@media (hover:hover) and (pointer:fine) { .tcard:hover { border-color: var(--accent); box-shadow: var(--sh-sm); } }
 .market-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.mkt-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--accent-soft); display: inline-flex; align-items: center; justify-content: center; }
-.mkt-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; }
-.mkt-name { font-size: 14px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tcard-icon { width: 22px; height: 22px; margin-top: 1px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.tcard-icon svg { width: 20px; height: 20px; stroke: var(--body, var(--muted)); fill: none; }
+.tcard-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.tcard-name { font-size: 13.5px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .mkt-author { font-size: 12px; color: var(--muted); }
-.mkt-meta { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
-.mkt-calls { font-variant-numeric: tabular-nums; }
-.mkt-tags { display: inline-flex; gap: 5px; margin-left: auto; }
+.tcard-desc { font-size: 12px; color: var(--muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tcard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+.tcard-author { font-weight: 600; color: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tcard-origin { padding: 1px 6px; border-radius: 5px; background: var(--soft); border: 1px solid var(--line); font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.tcard-free { font-weight: 700; }
+.tcard-calls { font-variant-numeric: tabular-nums; }
+.mkt-tags { display: inline-flex; gap: 5px; }
 .mkt-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; background: var(--soft); border: 1px solid var(--line); font-size: 11px; font-weight: 700; color: var(--muted); text-decoration: none; }
 a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .mkt-tag.on { background: var(--accent); border-color: var(--accent); color: var(--button-ink); }
@@ -1003,7 +1010,6 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 
 @media (max-width: 640px) {
   .market-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .mkt-card { padding: 12px; }
 }
 
 /* 双胶囊并排(发布+市场) */
@@ -1015,9 +1021,6 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .agents-market-link { display: flex; justify-content: center; margin: var(--s5) 0; }
 
 /* ── 市场页视觉精修 ── */
-.mkt-official { min-width: 128px; padding: 12px; gap: 10px; }
-.mkt-official .mkt-icon { width: 34px; height: 34px; border-radius: 10px; }
-.mkt-official .mkt-icon svg { width: 17px; height: 17px; }
 .market-page .hero-sub { max-width: 34em; }
 
 /* 工具主页精修 */
@@ -1085,8 +1088,7 @@ a.toolpage-handle:hover { color: var(--accent); }
 .userpage-stats .dot { color: var(--muted); }
 .userpage-grid { align-items: stretch; }
 .userpage-card { display: flex; flex-direction: column; gap: 6px; cursor: default; }
-.mkt-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.mkt-free { font-size: 11px; font-weight: 700; color: var(--muted); }
+.userpage-card { align-items: flex-start; }
 .userpage-empty { text-align: center; align-items: center; display: flex; flex-direction: column; gap: 8px; padding: 40px 18px; }
 .userpage-empty .t { font-size: 15.5px; font-weight: 700; }
 .userpage-empty .d { font-size: 13px; color: var(--muted); max-width: 34em; }
@@ -1107,7 +1109,6 @@ a.toolpage-handle:hover { color: var(--accent); }
 .market-search svg { width: 16px; height: 16px; stroke: var(--muted); flex: none; }
 .market-search input { border: 0; background: none; color: var(--ink); font-size: 14px; font-family: inherit; width: 100%; outline: none; }
 .market-none { text-align: center; color: var(--muted); font-size: 14px; padding: 22px 0; }
-.mkt-official .mkt-icon { background: var(--accent-soft); }
 
 /* ── 收益USD换算 + 提现浮层单列 ── */
 .earn-usd { display: block; font-style: normal; font-size: var(--text-xs); color: var(--muted); margin-top: -4px; }

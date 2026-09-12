@@ -3,6 +3,7 @@
 {% block desc %}{{ texts.market_sub }}{% endblock %}
 
 {% block content %}
+{% from "partials/tool_identity.html" import tool_card with context %}
 <section class="acct-page market-page">
   <div class="hero-mini">
     <h1 class="hero-title" data-i18n="market_title">{{ texts.market_title }}</h1>
@@ -38,18 +39,7 @@
   </div>
   {% elif tools_all %}
   <div class="market-grid" id="marketGrid">
-    {% for t in tools_all %}
-    <a class="mkt-card {% if '/' in t.id %}mkt-community{% else %}mkt-official{% endif %}"
-       href="/tool/{{ t.id }}">
-      <span class="mkt-icon">{% if t.icon %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon_svg | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
-      <span class="mkt-name">{{ t.label | lt(lang) or t.id }}</span>
-      <span class="mkt-meta">
-        <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
-        {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="mkt-free">{{ texts.free }}</span>{% endif %}
-      </span>
-      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official if '/' not in t.id else texts.market_community }}</span></span>
-    </a>
-    {% endfor %}
+    {% for t in tools_all %}{{ tool_card(t, lang, texts, show_author=True) }}{% endfor %}
   </div>
   {% else %}
   <div class="panel market-empty">

@@ -3,6 +3,7 @@
 {% block desc %}@{{ owner_handle }} · {{ texts.owner_page_desc }}{% endblock %}
 
 {% block content %}
+{% from "partials/tool_identity.html" import tool_card with context %}
 <section class="acct-page user-page" id="userPage">
   <div class="userpage-hero panel">
     <span class="userpage-avatar" aria-hidden="true">{{ owner_handle[:1] | upper }}</span>
@@ -22,17 +23,7 @@
     <span class="n">{{ owner_tools | length }}</span>
   </div>
   <div class="market-grid userpage-grid">
-    {% for t in owner_tools %}
-    <a class="mkt-card mkt-community userpage-card" href="/tool/{{ t.id }}" data-tool-id="{{ t.id }}">
-      <span class="mkt-icon">{% if t.icon_svg %}<svg viewBox="0 0 24 24" aria-hidden="true">{{ t.icon_svg | safe }}</svg>{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/></svg>{% endif %}</span>
-      <span class="mkt-name">{{ t.label | lt(lang) or t.id }}</span>
-      {% if t.desc %}<span class="mkt-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
-      <span class="mkt-meta">
-        <span class="mkt-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>
-        {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="mkt-free">{{ texts.free }}</span>{% endif %}
-      </span>
-    </a>
-    {% endfor %}
+    {% for t in owner_tools %}{{ tool_card(t, lang, texts, show_author=False) }}{% endfor %}
   </div>
   {% else %}
   <div class="panel userpage-empty">

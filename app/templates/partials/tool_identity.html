@@ -1,0 +1,37 @@
+{#- Tool identity contract: ONE server-side icon renderer + card/tab
+variants. icon/fallback/label/desc/author/origin/cost/calls/href 全部
+经此表达 — surface 模板禁止自建 icon SVG 或 fallback。
+
+消费约定:
+  t 必须携带 canonical catalog projection 字段:
+  id, origin, label, desc, icon(→ icon_tool_svg), cost, owner_handle
+  stats.calls 可选; show_author 控制社区作者槽位 (user page 关闭 —
+  页头已定义作者, 非第二模板逻辑)。-#}
+
+{% macro tool_icon(icon, cls="tool-ident-icon") -%}
+<span class="{{ cls }}">{{ icon_tool_svg(icon) | safe }}</span>
+{%- endmacro %}
+
+{% macro tool_card(t, lang, texts, show_author=True) -%}
+<a class="tcard tcard-{{ t.origin }}" href="/tool/{{ t.id }}">
+  {{ tool_icon(t.icon, "tcard-icon") }}
+  <span class="tcard-body">
+    <span class="tcard-name">{{ t.label | lt(lang) or t.id }}</span>
+    {% if t.desc %}<span class="tcard-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
+    <span class="tcard-meta">
+      {% if show_author and t.origin == 'community' and t.owner_handle %}<span class="tcard-author">by @{{ t.owner_handle }}</span>{% endif %}
+      {% if show_author and t.origin == 'official' %}<span class="tcard-origin">{{ texts.market_official }}</span>{% endif %}
+      {% if t.cost %}<span class="tool-cost">{{ t.cost }}</span>{% else %}<span class="tcard-free">{{ texts.free }}</span>{% endif %}
+      {% if t.stats and t.stats.calls is defined %}<span class="tcard-calls">{{ t.stats.calls }} {{ texts.tool_calls_total }}</span>{% endif %}
+    </span>
+  </span>
+</a>
+{%- endmacro %}
+
+{% macro tool_tab(t, lang) -%}
+<div class="tool-tab" data-tool-id="{{ t.id }}" role="button" tabindex="0">
+  {{ tool_icon(t.icon, "tool-tab-icon") }}
+  <span class="tool-tab-name">{{ t.label | lt(lang) or t.id }}</span>
+  {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
+</div>
+{%- endmacro %}

@@ -36,10 +36,17 @@ def market_count(con, visibility_public: str, q: Optional[str]) -> int:
 
 def market_rows(con, visibility_public: str, q: Optional[str],
                 limit: int, offset: int) -> list:
-    """公开市场一页行 (offset 必须来自 clamp 后的 canonical page)。"""
+    """公开市场一页行 (offset 必须来自 clamp 后的 canonical page)。
+    JOIN users: community 作者 handle 是卡片 identity contract 字段
+    (official 行 owner 为空 → owner_handle NULL, 不伪造 author)。"""
     base, args = _market_base(visibility_public, q)
+    base = base.replace(
+        "FROM platform_tools pt ",
+        "FROM platform_tools pt "
+        "LEFT JOIN users u ON u.id = pt.owner_id ")
     return con.execute(
-        f"SELECT pt.*, COALESCE(pr.cost, 0) AS price_cost {base} "
+        f"SELECT pt.*, COALESCE(pr.cost, 0) AS price_cost, "
+        f"u.username AS owner_handle {base} "
         "ORDER BY pt.featured DESC, pt.sort_order, pt.id "
         "LIMIT %s OFFSET %s",
         args + [limit, offset]).fetchall()

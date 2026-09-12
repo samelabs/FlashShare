@@ -89,5 +89,18 @@ def icon_path(name):
     return _ICONS.get(name, "")
 
 
+# Tool identity icon 的 canonical fallback key — 全站唯一 fallback 定义
+TOOL_ICON_FALLBACK = "wand"
+
+
+def tool_icon_svg(name):
+    """THE server-side Tool icon renderer (single visual contract).
+
+    tool icon key → canonical SVG; unknown/missing key → canonical
+    fallback (TOOL_ICON_FALLBACK)。模板/视图一律消费本函数, 禁止
+    surface 自建 fallback SVG。"""
+    return icon_svg(name if name in _ICONS else TOOL_ICON_FALLBACK)
+
+
 def all_icon_names():
     return set(_ICONS.keys())
