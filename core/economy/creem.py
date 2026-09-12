@@ -50,10 +50,12 @@ def create_checkout(order_id: int, package: dict, user: dict) -> dict:
 
 
 def retrieve_checkout(checkout_id: str) -> dict:
-    """GET /v1/checkouts/{id} — status / checkout_url / subscription。
-    raises RuntimeError on API failure (caller fail loud, 不猜 TTL)。"""
+    """GET /v1/checkouts?checkout_id={id} (官方当前合同) —
+    status / checkout_url / subscription。raises on API failure
+    (caller fail loud, 不猜 TTL)。"""
     req = urllib.request.Request(
-        _BASE + "/v1/checkouts/" + urllib.parse.quote(checkout_id),
+        _BASE + "/v1/checkouts?" + urllib.parse.urlencode(
+            {"checkout_id": checkout_id}),
         method="GET", headers={"x-api-key": CREEM_API_KEY})
     with urllib.request.urlopen(req, timeout=20) as resp:
         data = json.loads(resp.read())

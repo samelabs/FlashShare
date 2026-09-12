@@ -166,20 +166,19 @@ def bind_membership(con, user_id: int, plan_id: int, sub_id: str,
     (status ∉ active/canceled/past_due 且 renews_at ≤ now) 时允许;
     live/pending Membership 存在时换绑 → MembershipBindingError fail loud,
     原 Membership 不变。"""
+    from economy.subscription import membership_is_occupied  # 单一语义 (禁第二套)
+    from utils import now as _now
     sub_ref = f"sub:{sub_id}"
     cur = con.execute(
         "SELECT status, renews_at, provider_subscription_id FROM memberships"
         " WHERE user_id = %s FOR UPDATE", (user_id,)).fetchone()
     if cur is not None:
-        live = (cur["status"] in ("active", "canceled", "past_due")
-                and (cur["renews_at"] or 0) > 0)
-        if cur["provider_subscription_id"] == sub_ref and not live:
-            pass  # 同 sub 重绑 definitively-non-live 行 (收敛重放)
-        elif live:
+        if membership_is_occupied(cur["status"], cur["renews_at"], _now()):
             raise MembershipBindingError(
                 f"binding conflict: user={user_id} current sub"
-                f" {cur['provider_subscription_id']} is live/pending")
-        # 非 live 且不同 sub: definitively non-live → 重新首购 rebind 允许
+                f" {cur['provider_subscription_id']} is occupied (live or"
+                " bound-but-unpaid)")
+        # definitively non-live (expired 或 renews_at ≤ now) → 显式 rebind 允许
     return con.execute(
         """
         INSERT INTO memberships (user_id, plan_id, provider_subscription_id,

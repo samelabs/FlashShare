@@ -123,6 +123,19 @@ def handle_event(event_type: str, obj: dict) -> dict:
 
 # ── per-event handlers ──
 
+def membership_is_occupied(status: str, renews_at: int | None, ts: int) -> bool:
+    """occupied/current 单一语义 (route 与 binding path 共用, 禁第二套):
+
+    occupied = status ∈ (active, canceled, past_due) 且
+               (renews_at is None 或 renews_at > ts)
+    definitively non-live = expired, 或 live-state 但 renews_at ≤ ts
+    (bind 后未 paid 的 active+renews None 同样占用)。
+    """
+    if status not in ("active", "canceled", "past_due"):
+        return False
+    return renews_at is None or renews_at > ts
+
+
 def extract_product_id(sub: dict) -> str:
     """provider payload product 单点提取 (canonical Creem 形态):
     product = {"id": "prod_xxx"} dict → ["id"]; 兼容历史 string /

@@ -74,28 +74,30 @@ async def subscribe_checkout(request: Request):
     if not entitlement_profile_exists(plan["code"]):
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     # 一个 user 同时最多一个 open plan checkout — users 行 FOR UPDATE
-    # 串行化同 user 并发 subscribe; 同一事务内检查 current Membership +
-    # open pending plan order。
+    # 串行化同 user 并发 subscribe。检查与 INSERT 同一事务: pending order
+    # 在锁释放前落库 → 并发 B 等锁后必然看到 A 的 pending, 不再 INSERT。
+    # provider HTTP 一律在事务外 (不持 DB lock 调外部 API)。
     from utils import now as _now
+    from economy.subscription import membership_is_occupied
     _ts = _now()
     with db() as con:
         lock_user_for_checkout(con, user["id"])
         current = membership_row(con, user["id"])
-        # bind 后未 paid 的 membership (active + renews_at NULL) 同样占用:
-        # current 行存在且非 definitively-expired 即视为 occupied。
-        if current is not None:
-            if (current["status"] in ("active", "canceled", "past_due")
-                    and (current["renews_at"] is None
-                         or current["renews_at"] > _ts)):
-                return JSONResponse({
-                    "ok": False,
-                    "error": "plan_change_required",
-                    "current_plan": current["code"],
-                    "requested_plan": plan["code"],
-                }, 409)
+        if current is not None and membership_is_occupied(
+                current["status"], current["renews_at"], _ts):
+            return JSONResponse({
+                "ok": False,
+                "error": "plan_change_required",
+                "current_plan": current["code"],
+                "requested_plan": plan["code"],
+            }, 409)
         pending = open_plan_order(con, user["id"])
-    # open pending checkout 收敛 (不在锁内做 provider HTTP):
-    if pending is not None:
+        order = None
+        if pending is None:
+            order = insert_order(con, user["id"], "plan", plan["id"], "creem",
+                                 plan["price_cents"], plan["currency"], _ts)
+    # open pending checkout 收敛 (事务外):
+    if order is None:
         prov_id = pending["provider_order_id"] or ""
         if not prov_id.startswith("ch:"):
             # provider id 尚未落地 → in-progress, 不建第二单
@@ -114,10 +116,13 @@ async def subscribe_checkout(request: Request):
         # expired (或其它终态) → 终结旧 order, 走下方重新创建
         with db() as con:
             mark_failed(con, pending["id"])
-    from utils import now
-    with db() as con:
-        order = insert_order(con, user["id"], "plan", plan["id"], "creem",
-                             plan["price_cents"], plan["currency"], now())
+        with db() as con:
+            lock_user_for_checkout(con, user["id"])
+            pending2 = open_plan_order(con, user["id"])
+            if pending2 is not None:
+                return JSONResponse({"ok": False, "error": "subscription_in_progress"}, 409)
+            order = insert_order(con, user["id"], "plan", plan["id"], "creem",
+                                 plan["price_cents"], plan["currency"], _ts)
     try:
         out = creem.create_checkout(order["id"], dict(plan), user)
     except Exception:

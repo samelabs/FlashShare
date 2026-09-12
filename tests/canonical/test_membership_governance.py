@@ -505,6 +505,92 @@ check("G12f unknown-profile plan → plan_not_ready / 零 order / 零 checkout",
       and _cur.fetchone()[0] == 0 and _creem_calls["create"] == 2, f"st={st} d={d}")
 _topup._require_auth = _orig_auth
 
+# ═══ 链13: occupied/rebind 七态 (membership_is_occupied 单一语义) ═══
+_FUT2, _PAST2 = _ts + 15 * 86400, _ts - 15 * 86400
+_states = [
+    # (name, status, renews_at, expect_occupied)
+    ("active+None", "active", None, True),
+    ("active+future", "active", _FUT2, True),
+    ("canceled+future", "canceled", _FUT2, True),
+    ("past_due+future", "past_due", _FUT2, True),
+    ("expired", "expired", _FUT2, False),
+    ("canceled+past", "canceled", _PAST2, False),
+    ("active+past", "active", _PAST2, False),
+]
+for _nm, _st, _rn, _exp in _states:
+    check(f"G13 {_nm} → occupied={_exp}",
+          _sub.membership_is_occupied(_st, _rn, _ts) is _exp)
+# bind 路径吃同一语义: 七态行 × 不同 sub bind:
+for _nm, _st, _rn, _exp in _states:
+    uX, uidX = _new_user("mgX")
+    _cur.execute(
+        "insert into memberships (user_id, plan_id, provider_subscription_id, status,"
+        " started_at, renews_at, updated_at) values (%s, %s, %s, %s, %s, %s, %s)",
+        (uidX, plan_plus, f"sub:old_{uidX}", _st, _ts - 86400, _rn, _ts))
+    try:
+        with db() as con:
+            orders_repo.bind_membership(con, uidX, plan_plus, f"rx{uidX}",
+                                        "active", started_at=_ts, renews_at=None)
+        check(f"G13b bind 不同 sub @ {_nm} → {'BLOCK' if _exp else 'rebind ok'}",
+              not _exp, "unexpectedly allowed")
+    except _MBE:
+        check(f"G13b bind 不同 sub @ {_nm} → {'BLOCK' if _exp else 'rebind ok'}",
+              _exp, "unexpectedly blocked")
+
+# ═══ 链14: 真实并发 /subscribe — threading.Barrier 同起跑 ═══
+import threading
+uR2, uidR2 = _new_user("mgR2")
+_topup._require_auth = lambda request: ({"id": uidR2, "email": "t@t.co",
+                                        "username": uR2}, None)
+_creem_calls["create"] = 0
+_barrier = threading.Barrier(2)
+_results = []
+def _worker():
+    _barrier.wait()
+    _results.append(_resp(asyncio.run(_do_sub({"plan_id": plan_plus}))))
+_t1 = threading.Thread(target=_worker)
+_t2 = threading.Thread(target=_worker)
+_t1.start(); _t2.start(); _t1.join(); _t2.join()
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan' and status='pending'", (uidR2,))
+_np = _cur.fetchone()[0]
+_ok200 = sum(1 for st, _ in _results if st == 200)
+_inprog = sum(1 for st, d in _results if d.get("error") == "subscription_in_progress")
+check("G14 同 user 两线程并发 /subscribe → 恰 1 pending order / 恰 1 create_checkout",
+      _np == 1 and _creem_calls["create"] == 1 and _ok200 == 1 and _inprog == 1,
+      f"orders={_np} creates={_creem_calls['create']} results={_results}")
+_topup._require_auth = _orig_auth
+# retrieve URL proof: 真 retrieve_checkout + 捕获 Request.get_full_url:
+import io as _io
+class _FakeResp:
+    def read(self):
+        return json.dumps({"status": "pending", "checkout_url": "https://creem.test/x"}).encode()
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+_captured = {}
+import urllib.request as _ureq
+_orig_open = _ureq.urlopen
+def _spy_open(req, *a, **kw):
+    _captured["url"] = req.get_full_url()
+    _captured["method"] = req.get_method()
+    return _FakeResp()
+_ureq.urlopen = _spy_open
+try:
+    out = _orig_retrieve("ch/test with space")  # 真实现 (fake 已被 _spy 顶替 urlopen)
+finally:
+    _ureq.urlopen = _orig_open
+check("G14b retrieve URL == /v1/checkouts?checkout_id=<quoted> (GET)",
+      _captured.get("url", "").endswith(
+          "/v1/checkouts?checkout_id=ch%2Ftest+with+space")
+      and "/v1/checkouts?" in _captured.get("url", "")
+      and _captured.get("method") == "GET" and out.get("status") == "pending",
+      str(_captured))
+# 还原 creem patch (后续 suite 段不吃 fake):
+_creem_mod.create_checkout = _orig_create
+_creem_mod.retrieve_checkout = _orig_retrieve
+_creem_mod.creem_enabled = _orig_enabled
+
 # ═══ Source guards ═══
 _sub_src = open(_os.path.join(_REPO, "core", "economy", "subscription.py"), encoding="utf-8").read()
 _repo_src = open(_os.path.join(_REPO, "core", "repo", "orders.py"), encoding="utf-8").read()
@@ -558,6 +644,29 @@ check("SG15 /subscribe profile gate + open order 检查 + FOR UPDATE",
       and "open_plan_order" in _topup_g
       and "retrieve_checkout" in _topup_g)
 _pages_g = open(_os.path.join(_REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
+check("SG17 occupied 语义单一纯函数 (route+bind 共用, 无第二套 predicate)",
+      "def membership_is_occupied(" in _sub_src
+      and "membership_is_occupied" in _topup_g
+      and "membership_is_occupied" in _repo_src
+      and "renews_at or 0" not in _repo_src.split("def bind_membership")[1].split("\ndef ")[0])
+_checkouts_url = open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read()
+check("SG18 retrieve query-encoded 合同 (无 path 形式)",
+      '"/v1/checkouts?"' in _checkouts_url
+      and "urlencode" in _checkouts_url
+      and "/v1/checkouts/" not in _checkouts_url.split("def retrieve_checkout")[1].split("\ndef ")[0])
+import ast as _ast
+_sub_fn = [n for n in _ast.parse(_topup_g).body
+           if isinstance(n, _ast.AsyncFunctionDef) and n.name == "subscribe_checkout"][0]
+_all_withs = [n for n in _ast.walk(_sub_fn) if isinstance(n, _ast.With)]
+_locked_bodies = [_ast.dump(n) for n in _all_withs
+                  if "lock_user_for_checkout" in _ast.dump(n)]
+check("SG19 INSERT 在每个锁事务内 (AST; 两处 lock = 首建+expired-recreate)",
+      len(_locked_bodies) == 2
+      and all("insert_order" in b for b in _locked_bodies))
+check("SG19b HTTP 全在锁事务外 (AST: 锁 with 块内无 retrieve/create)",
+      bool(_locked_bodies)
+      and all("retrieve_checkout" not in b and "create_checkout" not in b
+              for b in _locked_bodies))
 check("SG16 Account 可售列表消费同一 profile 单点",
       "entitlement_profile_exists" in _pages_g.split("def account_credits")[1][:2000]
       if "def account_credits" in _pages_g else "active_plans" in _pages_g)
