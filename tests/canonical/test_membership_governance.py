@@ -80,10 +80,10 @@ def _new_user(prefix):
 def _seed_plan(code, credits=100, price_id=None):
     # 幂等 seed: plus 为 init_db 种子行, 其余测试自建
     _cur.execute(
-        "insert into plans (code, name, monthly_credits, price_cents, creem_price_id, created_at, updated_at)"
+        "insert into plans (code, name, monthly_credits, price_cents, creem_product_id, created_at, updated_at)"
         " values (%s, %s, %s, 500, %s, %s, %s)"
         " on conflict (code) do update set monthly_credits=excluded.monthly_credits,"
-        " creem_price_id=coalesce(plans.creem_price_id, excluded.creem_price_id)"
+        " creem_product_id=coalesce(plans.creem_product_id, excluded.creem_product_id)"
         " returning id",
         (code, code.upper(), credits, price_id, _ts, _ts))
     return _cur.fetchone()[0]
@@ -171,28 +171,21 @@ except _MBE:
           _cur.fetchone()[0] == 1 and _m_row(uidP)[1] == "sub:mgsub1")
 
 # ═══ 链4: 第二付费 tier → 自己的 entitlement (非 Free) ═══
-_PRO_TIER = {
-    "plan_code": "mg_test_pro", "ingress_files_24h": 999,
-    "ingress_bytes_24h": 20 * 1024 ** 3,
-    "expiry_days": (1, 3, 7, 30, 90), "download_limits": (1, 10, 50, 100, 200, 1000, 5000),
-}
-# fail-closed protocol-subset 校验会拒 90/5000 (平台枚举外) — 用合法值:
-_PRO_TIER["expiry_days"] = (1, 3, 7, 30)
-_PRO_TIER["download_limits"] = (1, 10, 50, 100, 200, 1000)
-_PLANS["mg_test_pro"] = _PRO_TIER
-from governance import entitlements as _ent_mod
-_ent_mod._validate_against_protocol(_PRO_TIER, "mg_test_pro")
+# 第二付费 tier 使用 canonical pro (provider product 只映射 plus/pro):
 uT, uidT = _new_user("mgT")
-plan_pro = _seed_plan("mg_test_pro", 500, "price_pro")
+_cur.execute("select id from plans where code='pro'")
+plan_pro = _cur.fetchone()[0]
+_cur.execute("update plans set creem_product_id='price_pro' where code='pro'")
+PRO_FILES, PRO_BYTES = 2000, 20 * 1024 ** 3
 _seed_order(uidT, plan_pro, "mgsubT")
 _sub.bind_checkout({"id": "chT", "subscription": {"id": "mgsubT"}})
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubT"))
 r = resolve(uidT)
-check("G4 第二 tier → 自己的 entitlement (999 files/20GiB, 绝不 Free)",
-      r["plan_code"] == "mg_test_pro" and r["ingress_files_24h"] == 999
-      and r["ingress_bytes_24h"] == 20 * 1024 ** 3, str(r["plan_code"]))
+check("G4 第二 tier (pro) → 自己的 entitlement (2000 files/20GiB, 绝不 Free)",
+      r["plan_code"] == "pro" and r["ingress_files_24h"] == PRO_FILES
+      and r["ingress_bytes_24h"] == PRO_BYTES, str(r["plan_code"]))
 check("G4b entitlement_profile_exists 单点",
-      entitlement_profile_exists("plus") and entitlement_profile_exists("mg_test_pro")
+      entitlement_profile_exists("plus") and entitlement_profile_exists("pro")
       and not entitlement_profile_exists("nope"))
 
 # ═══ 链5: subscription.update 换 tier (同一 sub) ═══
@@ -201,8 +194,8 @@ m = _m_row(uidT)
 pp = project(uidT)
 check("G5 update plan A→B: 同一 provider sub, membership/projection/entitlement 全变 B",
       m[0] == plan_pro and m[1] == "sub:mgsubT"
-      and pp["entitlements"]["plan_code"] == "mg_test_pro"
-      and resolve(uidT)["ingress_files_24h"] == 999, str(res))
+      and pp["entitlements"]["plan_code"] == "pro"
+      and resolve(uidT)["ingress_files_24h"] == PRO_FILES, str(res))
 # product dict 单点提取 (canonical Creem 形态 + 历史兼容):
 check("G5c extract_product_id dict/string/product_id/空",
       _sub.extract_product_id({"product": {"id": "prod_x"}}) == "prod_x"
@@ -422,9 +415,11 @@ def _fake_retrieve(cid):
         raise RuntimeError("provider down")
     return _RT[cid]
 from economy import creem as _creem_mod
-_orig_create, _orig_retrieve, _orig_enabled = (_creem_mod.create_checkout,
+def _fake_sub_checkout(order_id, plan, user):
+    return _fake_create(order_id, plan, user)
+_orig_create, _orig_retrieve, _orig_enabled = (_creem_mod.create_subscription_checkout,
     _creem_mod.retrieve_checkout, _creem_mod.creem_enabled)
-_creem_mod.create_checkout = _fake_create
+_creem_mod.create_subscription_checkout = _fake_sub_checkout
 _creem_mod.retrieve_checkout = _fake_retrieve
 _creem_mod.creem_enabled = lambda: True
 
@@ -459,7 +454,7 @@ check("G12 live member 再 subscribe → plan_change_required / 零 checkout",
 uS, uidS = _new_user("mgS")
 _topup._require_auth = lambda request: ({"id": uidS, "email": "t@t.co",
                                         "username": uS}, None)
-_cur.execute("update plans set creem_price_id='price_plus' where id=%s", (plan_plus,))
+_cur.execute("update plans set creem_product_id='price_plus' where id=%s", (plan_plus,))
 st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 _cur.execute("select id from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidS,))
 _oi1 = _cur.fetchone()[0]
@@ -493,7 +488,7 @@ check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscriptio
       and _creem_calls["create"] == 2, f"st={st} d={d}")
 # unknown-profile plan → 收费前拒绝 (plan_not_ready, 零 order 零 create):
 uQ, uidQ = _new_user("mgQ")
-_cur.execute("update plans set creem_price_id='price_q' where code='mg_unknown_tier'")
+_cur.execute("update plans set creem_product_id='price_q' where code='mg_unknown_tier'")
 _cur.execute("select id from plans where code='mg_unknown_tier'")
 _pq = _cur.fetchone()[0]
 _topup._require_auth = lambda request: ({"id": uidQ, "email": "t@t.co",
@@ -587,7 +582,7 @@ check("G14b retrieve URL == /v1/checkouts?checkout_id=<quoted> (GET)",
       and _captured.get("method") == "GET" and out.get("status") == "pending",
       str(_captured))
 # 还原 creem patch (后续 suite 段不吃 fake):
-_creem_mod.create_checkout = _orig_create
+_creem_mod.create_subscription_checkout = _orig_create
 _creem_mod.retrieve_checkout = _orig_retrieve
 _creem_mod.creem_enabled = _orig_enabled
 

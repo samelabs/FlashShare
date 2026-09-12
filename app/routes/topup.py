@@ -29,7 +29,13 @@ async def topup_checkout(request: Request):
     from utils import now
     with db() as con:
         pkg = package_by_id_active(con, package_id)
-    if not pkg or not pkg["creem_price_id"]:
+    # 前置合同 (本地拒绝, 不让 provider 4xx 兜底): shared Product + 固定
+    # currency + custom_price 官方范围 — 全部在创建 order 之前。
+    if not pkg or not creem.credits_ready():
+        return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
+    if (pkg["currency"] or "").upper() != creem.CREEM_CREDITS_CURRENCY:
+        return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
+    if not creem.custom_price_in_range(pkg["price_cents"]):
         return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
     from repo.orders import insert_order, mark_failed, set_provider_order_id
     ts = now()
@@ -37,7 +43,7 @@ async def topup_checkout(request: Request):
         order = insert_order(con, user["id"], "package", pkg["id"], "creem",
                              pkg["price_cents"], pkg["currency"], ts)
     try:
-        out = creem.create_checkout(order["id"], dict(pkg), user)
+        out = creem.create_credits_checkout(order["id"], pkg["price_cents"], user)
     except Exception:
         with db() as con:
             mark_failed(con, order["id"])
@@ -49,7 +55,7 @@ async def topup_checkout(request: Request):
 
 @router.post("/subscribe")
 async def subscribe_checkout(request: Request):
-    """订阅 checkout (v3 spec): plan 必须绑 creem_price_id 才可售。"""
+    """订阅 checkout (v3 spec): plan 必须绑 creem_product_id 才可售。"""
     user, err = _require_auth(request)
     if err:
         return err
@@ -66,12 +72,13 @@ async def subscribe_checkout(request: Request):
                              lock_user_for_checkout, mark_failed)
     with db() as con:
         plan = plan_by_id_active(con, plan_id)
-    if not plan or not plan["creem_price_id"]:
+    if not plan or not plan["creem_product_id"]:
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     # 收费前配置 gate: 无 entitlement profile 的付费档不可售 (用户点击后
     # 必失败的 plan 不产生 order/checkout)。同一单点供 Account 可售列表消费。
     from governance.entitlements import entitlement_profile_exists
-    if not entitlement_profile_exists(plan["code"]):
+    from governance.tiers import is_paid_tier
+    if not is_paid_tier(plan["code"]) or not entitlement_profile_exists(plan["code"]):
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     # 一个 user 同时最多一个 open plan checkout — users 行 FOR UPDATE
     # 串行化同 user 并发 subscribe。检查与 INSERT 同一事务: pending order
@@ -124,7 +131,7 @@ async def subscribe_checkout(request: Request):
             order = insert_order(con, user["id"], "plan", plan["id"], "creem",
                                  plan["price_cents"], plan["currency"], _ts)
     try:
-        out = creem.create_checkout(order["id"], dict(plan), user)
+        out = creem.create_subscription_checkout(order["id"], dict(plan), user)
     except Exception:
         with db() as con:
             mark_failed(con, order["id"])
@@ -132,6 +139,109 @@ async def subscribe_checkout(request: Request):
     with db() as con:
         set_provider_order_id(con, order["id"], "ch:" + out["checkout_id"])
     return out
+
+
+@router.post("/plan-upgrade")
+async def plan_upgrade(request: Request):
+    """Plus → Pro (立即生效): 调 Creem upgrade (proration-charge-
+    immediately)。本地 Membership 不伪造 — subscription.update webhook
+    → product.id → pro 收敛, 升级补差 credits 由 update 事件补授。"""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from economy import creem
+    if not creem.creem_enabled():
+        return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
+    try:
+        raw = await request.json()
+        target_code = str(raw.get("plan", "")).strip().lower()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from governance.tiers import PAID_TIER_CODES, TIER_ORDER
+    if target_code not in PAID_TIER_CODES:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from utils import now as _now
+    from economy.subscription import membership_is_occupied
+    from repo.orders import membership_row, plan_by_code
+    with db() as con:
+        current = membership_row(con, user["id"])
+    if current is None or not membership_is_occupied(
+            current["status"], current["renews_at"], _now()):
+        return JSONResponse({"ok": False, "error": "no_active_membership"}, 409)
+    cur_code = current["code"]
+    if TIER_ORDER.get(target_code, 0) <= TIER_ORDER.get(cur_code, 0):
+        return JSONResponse({"ok": False, "error": "not_an_upgrade"}, 409)
+    with db() as con:
+        target = plan_by_code(con, target_code)
+    if not target or not target["creem_product_id"] or not target["active"]:
+        return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
+    sub_id = current["provider_subscription_id"]
+    if sub_id.startswith("sub:"):
+        sub_id = sub_id[4:]
+    try:
+        # 升级域语义: proration-charge-immediately — product 立即 Pro,
+        # prorated difference charged immediately, original billing date
+        # remains (本周期 credits 由 update 事件补差 100+400=500)
+        creem.upgrade_subscription(sub_id, target["creem_product_id"],
+                                   update_behavior="proration-charge-immediately")
+    except Exception:
+        return JSONResponse({"ok": False, "error": "upgrade_failed"}, 502)
+    return {"ok": True, "upgrade": "initiated",
+            "from": cur_code, "to": target_code}
+
+
+@router.post("/plan-downgrade")
+async def plan_downgrade(request: Request):
+    """Pro → Plus (next renewal): Creem 官方 product-change endpoint 同样
+    承载 downgrade — update_behavior=proration-none (官方语义: no
+    proration, change takes effect next billing cycle, no immediate
+    charge)。先同步 Creem; provider 成功后才写 pending_downgrades
+    (application expectation / local continuity fact, 非 Payment
+    authority)。Creem 失败 → ZERO pending。当前周期 Membership/entitlements
+    保持 Pro; 周期边界 provider product 必须实际为 Plus 才切换。"""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from economy import creem
+    if not creem.creem_enabled():
+        return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
+    try:
+        raw = await request.json()
+        target_code = str(raw.get("plan", "")).strip().lower()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from governance.tiers import PAID_TIER_CODES, TIER_ORDER
+    if target_code not in PAID_TIER_CODES:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from utils import now as _now
+    from economy.subscription import membership_is_occupied, schedule_downgrade
+    from repo.orders import membership_row, plan_by_code
+    with db() as con:
+        current = membership_row(con, user["id"])
+    if current is None or not membership_is_occupied(
+            current["status"], current["renews_at"], _now()):
+        return JSONResponse({"ok": False, "error": "no_active_membership"}, 409)
+    cur_code = current["code"]
+    if TIER_ORDER.get(target_code, 0) >= TIER_ORDER.get(cur_code, 0):
+        return JSONResponse({"ok": False, "error": "not_a_downgrade"}, 409)
+    with db() as con:
+        target = plan_by_code(con, target_code)
+    # readiness (provider 调用前): canonical tier + active + product 绑定,
+    # 缺 product 不发给 Creem 换 502。
+    if not target or not target["active"] or not target["creem_product_id"]:
+        return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
+    sub_id = current["provider_subscription_id"]
+    if sub_id.startswith("sub:"):
+        sub_id = sub_id[4:]
+    try:
+        creem.upgrade_subscription(sub_id, target["creem_product_id"],
+                                   update_behavior="proration-none")
+    except Exception:
+        return JSONResponse({"ok": False, "error": "downgrade_failed"}, 502)
+    schedule_downgrade(user["id"], target["id"])
+    return {"ok": True, "downgrade": "scheduled",
+            "from": cur_code, "to": target_code,
+            "effective_at": current["renews_at"]}
 
 
 MAX_WEBHOOK_BODY = 262144  # 256KB — Creem 事件远小于此; 挡匿名内存放大 (审计🟡9)
@@ -195,7 +305,9 @@ async def creem_webhook(request: Request):
     order = (obj.get("order") or {})
     try:
         res = creem.fulfill(order.get("id") or "", obj.get("id") or "",
-                            int(order.get("amount") or 0))
+                            int(order.get("amount") or 0),
+                            product_id=str(order.get("product") or ""),
+                            currency=str(order.get("currency") or ""))
     except KeyError as exc:
         # 🔴5 修复(批2a): order_not_found 可能是 checkout→provider_order_id
         # 写入窗口内的乱序到达。返回 500 让 Creem 重试(webhook 重试政策),

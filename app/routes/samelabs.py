@@ -151,37 +151,16 @@ async def samelabs_plans(request: Request):
     if resp:
         return resp
     from app.main import templates
-    from repo.orders import all_plans
+    from repo.orders import canonical_plans
     with db() as con:
-        rows = all_plans(con)
+        rows = canonical_plans(con)
     ctx = _ctx(request, user, plans=[dict(r) for r in rows], fmt_num=_fmt_num, page="plans")
     return templates.TemplateResponse(request, "samelabs/plans.html", ctx)
 
 
-@router.post("/samelabs/plans")
-async def samelabs_create_plan(request: Request):
-    user, resp = _gate(request)
-    if resp:
-        return resp
-    try:
-        raw = await request.json()
-        code = str(raw.get("code", "")).strip().lower()[:32]
-        name = str(raw.get("name", "")).strip()[:64]
-        monthly_price = int(raw.get("monthly_price", 0))
-        monthly_credits = int(raw.get("monthly_credits", 0))
-        if not code or not name or monthly_price < 0 or monthly_credits < 0:
-            raise ValueError
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    import psycopg2
-    from repo.orders import insert_plan
-    try:
-        with db() as con:
-            row = insert_plan(con, code, name, monthly_credits,
-                              monthly_price, now())
-    except psycopg2.IntegrityError:
-        return JSONResponse({"ok": False, "error": "code_taken"}, 409)
-    return {"ok": True, "plan": dict(row)}
+# POST /samelabs/plans (任意创建 paid tier) 已移除: canonical paid tiers
+# 只有 plus/pro (governance.tiers), operator 只可配置 price / Creem
+# Product ID / active, 不可创建第三档或改 canonical credits。
 
 
 @router.patch("/samelabs/plans/{plan_id}")
@@ -192,14 +171,22 @@ async def samelabs_update_plan(plan_id: int, request: Request):
     try:
         raw = await request.json()
         price = int(raw.get("price_cents", -1))
-        creem_price_id = str(raw.get("creem_price_id", "")).strip()[:64] or None
+        creem_product_id = str(raw.get("creem_product_id", "")).strip()[:64] or None
         if price < 0:
             raise ValueError
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    # canonical guard: 只有 plus/pro 可被配置 (price / Creem Product ID);
+    # code 与 canonical monthly credits 不可经 operator 修改。
     from repo.orders import update_plan_pricing
+    from repo.orders import plan_by_id
+    from governance.tiers import is_paid_tier
     with db() as con:
-        row = update_plan_pricing(con, plan_id, price, creem_price_id, now())
+        row = plan_by_id(con, plan_id)
+    if row is None or not is_paid_tier(row["code"]):
+        return JSONResponse({"ok": False, "error": "not_canonical_tier"}, 422)
+    with db() as con:
+        row = update_plan_pricing(con, plan_id, price, creem_product_id, now())
     if row is None:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "plan": dict(row)}

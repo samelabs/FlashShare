@@ -123,6 +123,19 @@ def handle_event(event_type: str, obj: dict) -> dict:
 
 # ── per-event handlers ──
 
+def schedule_downgrade(user_id: int, target_plan_id: int) -> dict:
+    """Pro → Plus next renewal: 只记录 pending fact (effective_at = 当前
+    renews_at), 不改当前 Membership/entitlements; 周期边界由下一周期
+    paid/reconcile 应用。"""
+    with db() as con:
+        m = orders_repo.membership_row(con, user_id)
+        if m is None:
+            raise KeyError("membership_not_found")
+        orders_repo.set_pending_downgrade(
+            con, user_id, target_plan_id, int(m["renews_at"] or 0))
+    return {"scheduled": True, "effective_at": int(m["renews_at"] or 0)}
+
+
 def membership_is_occupied(status: str, renews_at: int | None, ts: int) -> bool:
     """occupied/current 单一语义 (route 与 binding path 共用, 禁第二套):
 
@@ -205,9 +218,53 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     credits = 0
     with db() as con:
         credits = orders_repo.plan_credits(con, plan["id"])
-    if credits > 0:
+    # downgrade 周期边界 — provider paid snapshot 是最终权威:
+    #   a) pending due + provider product == target → 切换 + grant target 周期
+    #   b) pending due + provider product != target → fail loud, 不切不清
+    #   c) pending 缺失 (route crash / update 未消费) + 新周期
+    #      (period_start >= 旧 renews_at) + provider product 是 canonical
+    #      下行 tier → provider snapshot 自身即权威证明, 恢复连续性事实:
+    #      Membership → target, grant target 周期 credits (Plus 100, 非 500)。
+    #      pending 表不凌驾 provider paid snapshot。
+    target_plan_id = None
+    with db() as con:
+        provider_product = extract_product_id(
+            (provider_subscription.get("subscription") or provider_subscription))
+        pend = orders_repo.pending_downgrade(con, order["user_id"])
+        m_cur = orders_repo.membership_row(con, order["user_id"])
+        cur_plan = orders_repo.plan_by_id(con, m_cur["plan_id"]) if m_cur else None
+        if pend is not None and int(pend["effective_at"] or 0) <= period_start:
+            tgt = orders_repo.plan_by_id(con, int(pend["target_plan_id"]))
+            if tgt is None or not tgt.get("creem_product_id") \
+                    or provider_product != tgt["creem_product_id"]:
+                raise KeyError("downgrade_product_not_confirmed")
+            target_plan_id = int(pend["target_plan_id"])
+            orders_repo.clear_pending_downgrade(con, order["user_id"])
+        elif pend is None and cur_plan is not None and m_cur is not None:
+            from governance.tiers import TIER_ORDER
+            by_product = orders_repo.plan_by_product_id(con, provider_product) \
+                if provider_product else None
+            if by_product is not None:
+                direction = (TIER_ORDER.get(by_product["code"], -1)
+                             - TIER_ORDER.get(cur_plan["code"], -1))
+                old_renews = int(m_cur["renews_at"] or 0)
+                if direction < 0 and old_renews and period_start >= old_renews:
+                    target_plan_id = int(by_product["id"])
+    if target_plan_id is not None:
+        with db() as con:
+            plan = orders_repo.plan_by_id(con, target_plan_id)
+            credits = orders_repo.plan_credits(con, target_plan_id)
+    # 周期 plan-derived credits 语义: 本 billing period 已获得的 plan credits
+    # (grant_plan + grant_plan_upgrade, 按 idem 前缀聚合) 补齐到当前 plan
+    # 的 canonical 值 — 升级补差后再收到本周期 paid 重放/新周期判断时,
+    # 总额始终收敛到该周期应得值, 绝不重复全额。
+    plan_total = credits
+    with db() as con:
+        already = orders_repo.period_plan_credits(con, order["user_id"], period_start)
+    if plan_total > already and plan_total > 0:
+        delta = plan_total - already
         from economy.billing import grant
-        grant(order["user_id"], credits, "grant_plan",
+        grant(order["user_id"], delta, "grant_plan",
               ref_type="subscription", ref_id=sub_id,
               idem_key=f"plan:{order['user_id']}:{period_start}",
               note=f"{plan['code']} cycle {period_start}-{period_end}")
@@ -234,7 +291,7 @@ def _ev_paid(sub_id: str, obj: dict) -> dict:
 def _ev_update(sub_id: str, obj: dict) -> dict:
     """subscription.update: provider product 变化 → 同步 current Membership.plan。
 
-    provider payload 的 product/product_id → 本地唯一 plan (creem_price_id
+    provider payload 的 product/product_id → 本地唯一 plan (creem_product_id
     绑定); 无唯一本地映射 → KeyError fail loud (retriable), 绝不猜 plan、
     不回落原始 order.item_id。plan change 后 plan_of()/projection/
     entitlements 自然跟随新 tier。
@@ -250,12 +307,46 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
         m = orders_repo.membership_by_sub(con, sub_id)
         if m is None:
             raise KeyError("membership_not_found")
-        orders_repo.upsert_membership_state(
-            con, sub_id, m["status"],
-            started_at=m["started_at"], renews_at=m["renews_at"],
-            plan_id=plan["id"],
-            period_start=m["last_grant_period_start"],
-            cancel_scheduled_at=m["cancel_scheduled_at"])
+        if m["plan_id"] != plan["id"]:
+            from governance.tiers import TIER_ORDER, TIER_PLAN_SPECS
+            cur_plan = orders_repo.plan_by_id(con, m["plan_id"])
+            direction = (TIER_ORDER.get(plan["code"], -1)
+                         - TIER_ORDER.get(cur_plan["code"], -1)) if cur_plan else 1
+            if direction > 0:
+                # upgrade (Plus→Pro): immediate Membership switch + 当周期
+                # credits 补差 (幂等 plan-upgrade:{uid}:{period}:{target})。
+                old_cr = TIER_PLAN_SPECS.get(cur_plan["code"], {}).get(
+                    "monthly_credits", cur_plan["monthly_credits"]) if cur_plan else 0
+                new_cr = TIER_PLAN_SPECS.get(plan["code"], {}).get(
+                    "monthly_credits", plan["monthly_credits"])
+                period_start = m["last_grant_period_start"] or 0
+                if new_cr > old_cr and period_start:
+                    adjustment = max(new_cr - old_cr, 0)
+                    from economy.billing import grant
+                    grant(m["user_id"], adjustment, "grant_plan_upgrade",
+                          ref_type="subscription", ref_id=sub_id,
+                          idem_key=f"plan-upgrade:{m['user_id']}:{period_start}:{plan['code']}",
+                          note=f"upgrade {cur_plan['code']}→{plan['code']} adj {adjustment}")
+                orders_repo.clear_pending_downgrade(con, m["user_id"])
+                orders_repo.upsert_membership_state(
+                    con, sub_id, m["status"],
+                    started_at=m["started_at"], renews_at=m["renews_at"],
+                    plan_id=plan["id"],
+                    period_start=m["last_grant_period_start"],
+                    cancel_scheduled_at=m["cancel_scheduled_at"])
+                return {"updated": True, "plan": plan["code"]}
+            if direction < 0:
+                # downgrade (Pro→Plus): 方向由 canonical tier order 判定,
+                # 与 pending row 是否已写入无关 (webhook-before-pending race
+                # 免疫)。provider Product 已切是事实, 但当前 Pro 周期已付 →
+                # Membership/Entitlements 保持 Pro 到 period_end; 自建/幂等
+                # 收敛同一 pending fact (route 的 schedule_downgrade 之后
+                # 到达时为同值 upsert)。
+                orders_repo.set_pending_downgrade(
+                    con, m["user_id"], plan["id"], int(m["renews_at"] or 0))
+                return {"updated": False, "deferred": "pending_downgrade",
+                        "pending_target": plan["code"]}
+        # 同 plan 的 update: 状态/周期字段同步 (无 tier 变化)
     return {"updated": True, "plan": plan["code"]}
 
 
