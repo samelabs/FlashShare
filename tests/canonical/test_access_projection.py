@@ -385,6 +385,62 @@ check("HD-S2 首次+retry execute 均经 form.elements (零 querySelector)",
       and _appjs.count('form.elements.namedItem("allowedDownloads")') == 2
       and 'form.querySelector("[name=' not in _appjs)
 
+# ═══ 7g. MCP tools/list delivery enum 投影 (真实 Bearer) ═══
+def _mcp_list(bearer):
+    conn = _hc.HTTPConnection(*_HOST, timeout=60)
+    _b = {"jsonrpc": "2.0", "id": 11, "method": "tools/list", "params": {}}
+    conn.request("POST", "/mcp", json.dumps(_b), {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "Authorization": f"Bearer {bearer}"})
+    r = conn.getresponse(); raw = r.read().decode(); conn.close()
+    for line in raw.split("\n"):
+        if line.startswith("data:"):
+            d = json.loads(line[5:]); break
+    else:
+        d = json.loads(raw)
+    res = d.get("result") or {}
+    return r.status, res.get("tools") or []
+
+def _delivery_enums(tools):
+    exps, dls = set(), set()
+    search = None
+    for t in tools:
+        if t.get("name") == "catalog_search":
+            search = t
+            continue
+        dl = ((t.get("inputSchema") or {}).get("properties") or {}).get("delivery") or {}
+        props = dl.get("properties") or {}
+        if "expiry_days" in props:
+            exps.add(tuple(props["expiry_days"].get("enum") or []))
+        if "allowed_downloads" in props:
+            dls.add(tuple(props["allowed_downloads"].get("enum") or []))
+    return exps, dls, search
+
+FREE_EXP = list(FREE["expiry_days"]); FREE_DL = list(FREE["download_limits"])
+PLUS_EXP = list(_PLANS["plus"]["expiry_days"]); PLUS_DL = list(_PLANS["plus"]["download_limits"])
+
+st, tools = _mcp_list(_mf_bearer)
+exps, dls, search = _delivery_enums(tools)
+check("ML-F1 Free tools/list: 全部 tool expiry enum == [1,3,7]",
+      st == 200 and exps == {tuple(FREE_EXP)} and len(tools) > 1, str(exps))
+check("ML-F2 Free downloads enum == [1,10,50,100,200]",
+      dls == {tuple(FREE_DL)}, str(dls))
+check("ML-F3 catalog_search 无 delivery schema",
+      search is not None and "delivery" not in (search.get("inputSchema") or {}).get("properties", {}))
+
+st, tools = _mcp_list(_token(_login_http(_mp)))
+exps, dls, _ = _delivery_enums(tools)
+check("ML-P1 PLUS tools/list: expiry enum == [1,3,7,30] (来自 projection)",
+      exps == {tuple(PLUS_EXP)}, str(exps))
+check("ML-P2 PLUS downloads enum == [1,10,50,100,200,1000]",
+      dls == {tuple(PLUS_DL)}, str(dls))
+
+st, tools = _mcp_list(_token(_login_http(_me_)))
+exps, dls, _ = _delivery_enums(tools)
+check("ML-E1 expired 精确回落 Free enum",
+      exps == {tuple(FREE_EXP)} and dls == {tuple(FREE_DL)})
+
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
 import ast as _ast
@@ -505,6 +561,21 @@ check("AP-H4 template options 用循环 (无固定 oneDay/threeDays/sevenDays �
       and "oneDay" not in _sel_blk and "sevenDays" not in _sel_blk)
 check("AP-H5 模板无 plus 分支 (PLUS 30/1000 来自数据非判断)",
       "plus" not in _sel_blk.lower())
+_mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"), encoding="utf-8").read()
+_specs_blk = _mcp_src.split("def _tool_specs")[1].split("\ndef ")[0]
+_specs_code = "\n".join(l for l in _specs_blk.split("\n") if not l.strip().startswith("#"))
+check("AP-M1 _tool_specs 使用 project(user[\"id\"]) 消费 projection",
+      'project(user["id"])' in _specs_blk)
+check("AP-M2 _tool_specs 只调用一次 project(",
+      _specs_code.count("project(") == 1)
+check("AP-M3 _tool_specs 无 plus policy / FREE / _PLANS / plan_of",
+      '"plus"' not in _specs_code and "FREE" not in _specs_code
+      and "_PLANS" not in _specs_code and "plan_of" not in _specs_code)
+check("AP-M4 旧硬编码 enum 不在 _tool_specs",
+      "[1, 3, 7]" not in _specs_code and "[1, 10, 50, 100, 200]" not in _specs_code)
+_call_blk = _mcp_src.split("async def _call_tool")[1].split("\n@router")[0] if "\n@router" in _mcp_src.split("async def _call_tool")[1] else _mcp_src.split("async def _call_tool")[1]
+check("AP-M5 _call_tool 零 projection/schema 依赖新增 (无 project/)",
+      "project(" not in _call_blk and "_tool_specs" not in _call_blk)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
