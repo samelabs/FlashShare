@@ -479,6 +479,54 @@ check("B-M3 被拒 batch 零 usage 残留 (storage 前)", _cur.fetchone()[0] == 
 # (token 创建入口属 identity 面, 此处以 pipeline 层契约 + dispatch 无 -32602 回归覆盖;
 #  HTTP 层 -32602 分流逻辑见 mcp.py except IngressBoundaryError → isError result)
 
+# ═══ 5f. 真实 /mcp HTTP E2E (create user → API bearer token → tools/call) ═══
+_eu, _euid = _register("mcpe2e" + str(int(time.time()))[-6:])
+_eck = _login(_eu)
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/tokens", json.dumps({"name": "canonical-e2e"}),
+             {"Cookie": _eck, "Content-Type": "application/json"})
+_tk = json.loads(conn.getresponse().read()); conn.close()
+_bearer = (_tk.get("token") or {}).get("token") or ""
+check("ME-P0 fixture: 真实 API token 创建成功", bool(_bearer),
+      f"cookie={'yes' if _eck else 'NO'} resp={str(_tk)[:80]}")
+
+def _mcp(arguments):
+    _body = {"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+             "params": {"name": "share", "arguments": arguments}}
+    conn = _hc.HTTPConnection(*_HOST, timeout=60)
+    conn.request("POST", "/mcp", json.dumps(_body), {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "Authorization": f"Bearer {_bearer}"})
+    r = conn.getresponse(); raw = r.read().decode(); conn.close()
+    parsed = None
+    for line in raw.split("\n"):
+        if line.startswith("data:"):
+            parsed = json.loads(line[5:]); break
+    if parsed is None:
+        parsed = json.loads(raw)
+    return r.status, parsed
+
+# A. hard boundary business error (真实 21 files)
+_files21 = [{"b64": base64.b64encode(_png1).decode(), "filename": f"e{i}.png"}
+            for i in range(MAX_FILES_PER_REQUEST + 1)]
+st, d = _mcp({"files": _files21})
+_res = d.get("result") or {}
+_content = ((_res.get("content") or [{}])[0].get("text") or "")
+_cd = json.loads(_content) if _content.startswith("{") else {}
+check("ME-A1 MCP E2E 21 files → HTTP 200, 无 top-level jsonrpc error",
+      st == 200 and "error" not in d, f"{st} {str(d.get('error'))[:60]}")
+check("ME-A2 result.isError == true + err_too_many_files {limit:20, incoming:21}",
+      _res.get("isError") is True and _cd.get("error") == "err_too_many_files"
+      and _cd.get("limit") == 20 and _cd.get("incoming") == 21, _content[:90])
+check("ME-A3 非 -32602 (业务错误/协议错误分层)",
+      not (d.get("error") or {}).get("code") == -32602)
+
+# B. malformed request 仍是 protocol error
+st, d = _mcp({"files": [{"b64": "!!!not-base64!!!", "filename": "x.png"}]})
+check("ME-B 非法 base64 → JSON-RPC -32602",
+      (d.get("error") or {}).get("code") == -32602, str(d.get("error"))[:80])
+
 # ═══ 6. Source-of-truth guard ═══
 _up = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G1 sharing/uploads.py 不出现 plus (不认识会员名)",
@@ -507,6 +555,17 @@ check("G10 MCP 不自建 batch byte sum 规则 (业务限制→isError)",
       "MAX_BATCH_BYTES" not in _mcp_src and "IngressBoundaryError" in _mcp_src)
 check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字面/无逐文件 sum 拒)",
       "len(uploads) > 20" not in _apir and "total_incoming" not in _apir
+      and "validate_batch" in _apir)
+_mcp_up = _mcp_src.split("infos = _upload_batch")[1].split("raw = {")[0] if "infos = _upload_batch" in _mcp_src else ""
+check("G12 MCP upload 区保留 IngressBoundaryError 专门分支 + generic Exception fallback",
+      "except IngressBoundaryError" in _mcp_up
+      and _mcp_up.count("except Exception as exc") >= 1, "")
+# G13: Web transport early-reject 与 authoritative validate_batch 输出同构
+# (ok/error/limit/incoming 四键; incoming=declared transport bytes)
+_er = _apir.split("Transport safety only")[1].split("pending = []")[0] if "Transport safety only" in _apir else ""
+check("G13 Web early-reject 结构完整 {ok,error,limit,incoming} 且不早于 validate_batch 定义第二算法",
+      '"error": "err_batch_too_large"' in _er and '"limit": MAX_BATCH_BYTES' in _er
+      and '"incoming": declared' in _er and "MAX_BATCH_BYTES +" in _er
       and "validate_batch" in _apir)
 
 print()

@@ -169,16 +169,20 @@ async def create_upload(request: Request):
             return JSONResponse(body, 403)
 
     pending = []
-    # Transport-level early reject only: a declared Content-Length far beyond
-    # the batch cap never needs reading. Authoritative boundary decisions
-    # come from governance.ingress below (same error contract).
+    # Transport safety only: a declared Content-Length far beyond the batch
+    # cap never needs reading. This is NOT a second batch algorithm — the
+    # authoritative source-byte contract stays in governance.ingress
+    # validate_batch() below. `incoming` on this early-reject path means the
+    # transport-declared request bytes (headers included), never the
+    # authoritative source batch total.
     try:
         declared = int(request.headers.get("content-length", "0"))
     except ValueError:
         declared = 0
     if declared > MAX_BATCH_BYTES + 1024 * 1024:
         return JSONResponse({"ok": False, "error": "err_batch_too_large",
-                             "limit": MAX_BATCH_BYTES}, 413)
+                             "limit": MAX_BATCH_BYTES,
+                             "incoming": declared}, 413)
 
     for file in uploads:
         if not file.filename:

@@ -297,6 +297,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         })
     except ValueError as exc:
         return _rpc_err(mid, -32602, f"upload rejected: {exc}")
+    except Exception as exc:
+        # Generic upload/storage failure fallback (pre-existing behavior):
+        # only IngressBoundaryError is specialized above; every other
+        # exception keeps the original rejection semantics.
+        return _rpc_err(mid, -32602, f"upload rejected: {exc}")
 
     raw = {
         "tool_id": tool_key,
