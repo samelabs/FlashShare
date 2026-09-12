@@ -591,6 +591,39 @@ _creem_mod.create_checkout = _orig_create
 _creem_mod.retrieve_checkout = _orig_retrieve
 _creem_mod.creem_enabled = _orig_enabled
 
+# ═══ 链15: subscription checkout 两事实分离 (order paid vs cycle credits) ═══
+uV, uidV = _new_user("mgV")
+plan_v = plan_plus
+_seed_order(uidV, plan_v, "mgsubV")  # pending plan order
+_cur.execute("select id, status, granted from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidV,))
+_ov_id, _ov_status, _ov_granted = _cur.fetchone()
+# checkout.completed (bind) — payment 完成, credits 未授:
+_res15 = _sub.bind_checkout({"id": "chV", "subscription": {"id": "mgsubV"}})
+_cur.execute("select status, granted from orders where id=%s", (_ov_id,))
+_st15, _gr15 = _cur.fetchone()
+check("G15 checkout.completed 后 order: status=paid / granted=FALSE (cycle credits 未授)",
+      _st15 == "paid" and _gr15 is False, f"st={_st15} granted={_gr15}")
+_bal15 = spendable_balance(uidV)
+# subscription.paid — credits 此刻授予:
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubV"))
+_cur.execute("select count(*) from ledger where user_id=%s and kind='grant_plan'", (uidV,))
+_ng15 = _cur.fetchone()[0]
+check("G15b subscription.paid 后: grant_plan 恰一笔 / credits +100 / membership marker 更新",
+      _ng15 == 1 and spendable_balance(uidV) == _bal15 + 100
+      and _m_row(uidV)[4] == PS, f"grants={_ng15} bal={spendable_balance(uidV)}")
+# package/top-up mark_paid 语义保持 (窄 DB proof):
+uW, uidW = _new_user("mgW")
+_cur.execute(
+    "insert into orders (user_id, kind, item_id, provider, status, amount_cents, currency, created_at)"
+    " values (%s, 'package', 1, 'creem', 'pending', 500, 'USD', %s) returning id",
+    (uidW, _ts))
+_ow = _cur.fetchone()[0]
+with db() as con:
+    orders_repo.mark_paid(con, _ow, _ts)
+_cur.execute("select status, granted from orders where id=%s", (_ow,))
+check("G15c package mark_paid → status=paid / granted=TRUE (语义保持)",
+      _cur.fetchone() == ("paid", True))
+
 # ═══ Source guards ═══
 _sub_src = open(_os.path.join(_REPO, "core", "economy", "subscription.py"), encoding="utf-8").read()
 _repo_src = open(_os.path.join(_REPO, "core", "repo", "orders.py"), encoding="utf-8").read()
@@ -663,6 +696,19 @@ _locked_bodies = [_ast.dump(n) for n in _all_withs
 check("SG19 INSERT 在每个锁事务内 (AST; 两处 lock = 首建+expired-recreate)",
       len(_locked_bodies) == 2
       and all("insert_order" in b for b in _locked_bodies))
+_bind_blk = _sub_src.split("def bind_checkout")[1].split("\ndef ")[0]
+check("SG20 bind_checkout 不调用 mark_paid",
+      "mark_paid(" not in _bind_blk
+      and "mark_subscription_checkout_completed(" in _bind_blk)
+_subw_blk = _repo_src.split("def mark_subscription_checkout_completed")[1].split("\ndef ")[0]
+_subw_sql = "\n".join(l for l in _subw_blk.split("\n") if "UPDATE" in l)
+check("SG21 subscription checkout-completed writer SQL 无 granted=TRUE",
+      bool(_subw_sql) and "granted" not in _subw_sql
+      and "status='paid'" in _subw_sql and "paid_at=%s" in _subw_sql,
+      _subw_sql[:120])
+_orig_paid_blk = _repo_src.split("def mark_paid")[1].split("\ndef ")[0]
+check("SG22 package mark_paid 保持 granted=TRUE",
+      "granted=TRUE" in _orig_paid_blk)
 check("SG19b HTTP 全在锁事务外 (AST: 锁 with 块内无 retrieve/create)",
       bool(_locked_bodies)
       and all("retrieve_checkout" not in b and "create_checkout" not in b

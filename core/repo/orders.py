@@ -38,8 +38,19 @@ def order_by_provider_id(con, provider_order_id: str) -> Optional[dict]:
 
 
 def mark_paid(con, order_id: int, ts: int) -> None:
+    """package/top-up fulfillment 终态戳: grant 已由 billing 落账,
+    granted=TRUE 与 paid 同点写入。"""
     con.execute(
         "UPDATE orders SET status='paid', granted=TRUE, paid_at=%s WHERE id=%s",
+        (ts, order_id))
+
+
+def mark_subscription_checkout_completed(con, order_id: int, ts: int) -> None:
+    """subscription checkout.completed 窄 writer: 只推进 payment/order
+    状态 (paid + paid_at), 不写 granted — cycle credits 由后续
+    subscription.paid 的 paid-period path 授予, 两事实分离。"""
+    con.execute(
+        "UPDATE orders SET status='paid', paid_at=%s WHERE id=%s",
         (ts, order_id))
 
 

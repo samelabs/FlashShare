@@ -94,7 +94,7 @@ def bind_checkout(obj: dict) -> dict:
             # path 决定, 此处不改 granted 语义 (subscription 授信不走
             # order:{id} idem, 由 plan:{uid}:{period} 兜底)。
             if row["status"] == "pending":
-                orders_repo.mark_paid(con, row["id"], now())
+                orders_repo.mark_subscription_checkout_completed(con, row["id"], now())
     return _ev_sync(sub_id, obj)
 
 
