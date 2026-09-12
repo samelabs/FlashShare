@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Ingress Entitlement invariants — 用户身份 → plan_of → entitlement → atomic quota.
+"""Ingress + Delivery Entitlement invariants — 身份 → plan_of → entitlement.
 
-长期 baseline: 把 entitlement 映射与 24h quota 原子性锁进 canonical 体系。
-遵循 canonical fail-closed 规则: 必须显式提供 isolated port + isolated
-TEST_DB_URL, 禁止 production DB/port。业务契约断言, 不 snapshot 实现细节。
+长期 baseline: 把 entitlement 映射 (24h ingress quota + delivery 值域)
+与 authoritative enforcement 锁进 canonical 体系。遵循 canonical
+fail-closed 规则: 必须显式提供 isolated port + isolated TEST_DB_URL,
+禁止 production DB/port。业务契约断言, 不 snapshot 实现细节。
 """
 import os as _os, sys as _sys
 import sys
+import json
 import time, threading, re
 
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
@@ -35,7 +37,10 @@ _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")  # config 
 sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 import psycopg2
-from governance.entitlements import resolve, FREE, _PLAN_INGRESS
+from governance.entitlements import resolve, check_delivery, FREE, _PLANS
+from governance.delivery import (validate_delivery, EXPIRY_DAYS,
+                                 DOWNLOAD_LIMITS, INTERMEDIATE_TTL_DAYS,
+                                 INTERMEDIATE_DOWNLOAD_LIMIT)
 from economy.subscription import plan_of
 from sharing.uploads import reserve_ingress, release_ingress
 from repo import upload_usage as usage_repo
@@ -89,9 +94,12 @@ GB = 1024 ** 3
 # ═══ 1. Entitlement resolver ═══
 u_f, id_f = _new_user("entf")
 r = resolve(id_f)
-check("R1 无 plan → Free", r == {"plan_code": "free",
-      "ingress_files_24h": FREE["ingress_files_24h"],
-      "ingress_bytes_24h": FREE["ingress_bytes_24h"]}, str(r))
+check("R1 无 plan → Free (含 delivery 值域 = Free 档)",
+      r["plan_code"] == "free"
+      and r["ingress_files_24h"] == FREE["ingress_files_24h"]
+      and r["ingress_bytes_24h"] == FREE["ingress_bytes_24h"]
+      and r["expiry_days"] == (1, 3, 7)
+      and r["download_limits"] == (1, 10, 50, 100, 200), str(r))
 
 u_e, id_e = _new_user("ente")
 _seed_plan(id_e, "plus", "active", int(time.time()) - 100)  # renews_at 已过 → member=false
@@ -105,8 +113,11 @@ _seed_plan(id_p, "plus", "active", int(time.time()) + 30 * 86400)
 p = plan_of(id_p)
 check("R3a fixture: active plus member == True", p and p["member"] is True, str(p))
 r = resolve(id_p)
-check("R3b member+plus → 500 files / 5 GiB",
-      r == {"plan_code": "plus", "ingress_files_24h": 500, "ingress_bytes_24h": PLUS_BYTES}, str(r))
+check("R3b member+plus → 500 files / 5 GiB / 全值域 delivery",
+      r == {"plan_code": "plus", "ingress_files_24h": 500,
+            "ingress_bytes_24h": PLUS_BYTES,
+            "expiry_days": (1, 3, 7, 30),
+            "download_limits": (1, 10, 50, 100, 200, 1000)}, str(r))
 
 u_x, id_x = _new_user("entx")
 _seed_plan(id_x, "future-unknown", "active", int(time.time()) + 30 * 86400)
@@ -201,6 +212,181 @@ check("S4 reserve_ingress 只出现在 source-accept 路径 (pipeline+api 各一
 # 引用既有 Stage C E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
 
+# ═══ 5b. Delivery entitlement 两层契约 ═══
+# platform protocol validity (validate_delivery) vs user entitlement (check_delivery) 分离
+
+def _proto_ok(ed, dl):
+    try:
+        validate_delivery({"expiry_days": ed, "allowed_downloads": dl})
+        return True
+    except ValueError:
+        return False
+
+check("D-P1 validate(30/1000) protocol PASS (平台枚举已扩展)",
+      _proto_ok(30, 1000) and _proto_ok(1, 1000))
+check("D-P2 validate(5/999) protocol FAIL",
+      not _proto_ok(5, 50) and not _proto_ok(7, 999))
+check("D-P3 平台枚举 = (1,3,7,30) / (1,10,50,100,200,1000)",
+      EXPIRY_DAYS == (1, 3, 7, 30) and DOWNLOAD_LIMITS == (1, 10, 50, 100, 200, 1000))
+check("D-P4 intermediate custody 固定 1 day / 10 downloads (平台策略非权益)",
+      INTERMEDIATE_TTL_DAYS == 1 and INTERMEDIATE_DOWNLOAD_LIMIT == 10)
+
+rf = resolve(id_f)
+rp = resolve(id_p)
+rx = resolve(id_x)
+check("D-E1 Free delivery 值域 = 显式 (1,3,7)+(1,10,50,100,200)",
+      rf["expiry_days"] == (1, 3, 7)
+      and rf["download_limits"] == (1, 10, 50, 100, 200), str(rf))
+check("D-E2 PLUS delivery 值域 = 显式 (1,3,7,30)+(1,10,50,100,200,1000)",
+      rp["expiry_days"] == (1, 3, 7, 30)
+      and rp["download_limits"] == (1, 10, 50, 100, 200, 1000), str(rp))
+check("D-E3 未知 plan → Free delivery 值域", rx["expiry_days"] == (1, 3, 7)
+      and rx["download_limits"] == (1, 10, 50, 100, 200), str(rx))
+
+# Entitlement 显式声明 guard: 不得从 platform enum 推导
+ent_src = open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read()
+_defs = ent_src.split('def _validate_against_protocol')[0]  # 定义区 (FREE/_PLANS)
+check("D-X1 entitlement 源无枚举推导 (comprehension/filter/slice)",
+      "tuple(d for d in" not in _defs
+      and "for d in EXPIRY_DAYS" not in _defs
+      and "for d in DOWNLOAD_LIMITS" not in _defs
+      and "EXPIRY_DAYS[:-" not in _defs and "DOWNLOAD_LIMITS[:-" not in _defs
+      and "EXPIRY_DAYS[" not in _defs and "DOWNLOAD_LIMITS[" not in _defs)
+check("D-X2 plan 定义不直接赋值 platform 全集",
+      '"expiry_days": EXPIRY_DAYS' not in _defs
+      and '"download_limits": DOWNLOAD_LIMITS' not in _defs)
+check("D-X3 fail-closed protocol-subset 校验存在 (显式→被支持, 不反向生成)",
+      "_validate_against_protocol" in ent_src
+      and "ConfigurationError" in ent_src)
+# 未来协议扩容 ≠ 自动授权 (独立构造验证, 不 monkeypatch production):
+from governance.entitlements import _validate_against_protocol, ConfigurationError
+_fut = dict(FREE)
+_fut["expiry_days"] = FREE["expiry_days"] + (60,)      # 假设平台未来加了 60 天
+_fut["download_limits"] = FREE["download_limits"] + (5000,)
+try:
+    _validate_against_protocol(_fut, "future-spec")
+    check("D-X4 协议未支持的 entitlement 值 → ConfigurationError", False, "no raise")
+except ConfigurationError:
+    check("D-X4 协议未支持的 entitlement 值 → ConfigurationError (fail closed)", True)
+# 若平台真扩了 enum, 既有 entitlement 档不变 (不自动获得):
+check("D-X5 Free/PLUS 声明独立于 protocol 全集 (重叠但非派生)",
+      FREE["expiry_days"] != EXPIRY_DAYS      # Free ⊂ 全集
+      and _PLANS["plus"]["expiry_days"] == EXPIRY_DAYS  # PLUS 恰等, 但显式字面声明 (D-X2 锁)
+      and set(FREE["download_limits"]) < set(DOWNLOAD_LIMITS))
+# 所有 entitlement 值 ⊆ platform enum (模块 import 成功即已过 fail-closed;
+# 此处显式断言一次):
+check("D-X6 全部 entitlement 值 ⊆ platform enum",
+      set(FREE["expiry_days"]) <= set(EXPIRY_DAYS)
+      and set(FREE["download_limits"]) <= set(DOWNLOAD_LIMITS)
+      and set(_PLANS["plus"]["expiry_days"]) <= set(EXPIRY_DAYS)
+      and set(_PLANS["plus"]["download_limits"]) <= set(DOWNLOAD_LIMITS))
+# resolver 契约完整形状:
+check("D-E4 resolve 返回五键 (ingress×2 + delivery×2 + plan_code)",
+      set(rf) == {"plan_code", "ingress_files_24h", "ingress_bytes_24h",
+                  "expiry_days", "download_limits"}, str(sorted(rf)))
+
+dn = check_delivery(id_f, {"expiry_days": 30, "allowed_downloads": 200})
+check("D-C1 Free 30 → 精确 err_expiry_not_entitled + 上下文",
+      dn and dn["error"] == "err_expiry_not_entitled" and dn["field"] == "expiry_days"
+      and dn["requested"] == 30 and dn["allowed"] == [1, 3, 7] and dn["plan_code"] == "free", str(dn))
+dn = check_delivery(id_f, {"expiry_days": 7, "allowed_downloads": 1000})
+check("D-C2 Free 1000 → err_download_limit_not_entitled + 上下文",
+      dn and dn["error"] == "err_download_limit_not_entitled"
+      and dn["field"] == "allowed_downloads" and dn["requested"] == 1000
+      and dn["allowed"] == [1, 10, 50, 100, 200], str(dn))
+check("D-C3 PLUS 30/1000 → None (有权)",
+      check_delivery(id_p, {"expiry_days": 30, "allowed_downloads": 1000}) is None)
+check("D-C4 Free 7/200 → None (有权)",
+      check_delivery(id_f, {"expiry_days": 7, "allowed_downloads": 200}) is None)
+# check_delivery 不自读 plan_of (静态: 源码只 import resolve)
+_ent_src = open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read()
+_check_fn = _ent_src.split("def check_delivery")[1]
+_import_face = [l for l in _check_fn.split("\n") if l.startswith(("import ", "from "))]
+check("D-C5 check_delivery 只消费 resolve() 不直读 plan_of()",
+      not _import_face and "resolve(user_id)" in _check_fn)
+
+# ═══ 5c. Authoritative enforcement (HTTP, 与 service 同栈) ═══
+import http.client as _hc
+_HOST = ("127.0.0.1", _TEST_PORT_INT)
+
+def _login(username):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    out = b""
+    for k, v in {"login": username, "password": "Test12345"}.items():
+        out += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    b, ct = out + b"--B--\r\n", "multipart/form-data; boundary=B"
+    conn.request("POST", "/auth/login", b, {"Content-Type": ct})
+    r = conn.getresponse(); r.read(); ck = (r.getheader("Set-Cookie") or "").split(";")[0]
+    conn.close(); return ck
+
+def _execute(ck, body):
+    conn = _hc.HTTPConnection(*_HOST, timeout=60)
+    conn.request("POST", "/api/tools/execute", json.dumps(body),
+                 {"Content-Type": "application/json", "Cookie": ck})
+    r = conn.getresponse(); d = json.loads(r.read()); conn.close()
+    return r.status, d
+
+def _share(ck, ed, dl):
+    import base64 as _b64
+    png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    body = b""
+    for k, v in {"tool": "share", "expiryDays": str(ed), "allowedDownloads": str(dl)}.items():
+        body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    body += b'--B\r\nContent-Disposition: form-data; name="file"; filename="d.png\r\nContent-Type: image/png\r\n\r\n' + png + b"\r\n--B--\r\n"
+    conn.request("POST", "/api/uploads", body,
+                 {"Content-Type": "multipart/form-data; boundary=B", "Cookie": ck})
+    r = conn.getresponse(); d = json.loads(r.read()); conn.close()
+    return r.status, d
+
+def _register(username):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    out = b""
+    for k, v in {"username": username, "password": "Test12345",
+                 "password_confirm": "Test12345", "email": f"{username}@t.co"}.items():
+        out += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    b, ct = out + b"--B--\r\n", "multipart/form-data; boundary=B"
+    conn.request("POST", "/auth/register", b, {"Content-Type": ct})
+    r = conn.getresponse(); r.read(); conn.close()
+    _cur.execute("select id from users where username=%s", (username,))
+    return username, _cur.fetchone()[0]
+
+_suffix = str(int(time.time()))[-5:]
+_hf_name, _hf_id2 = _register("delfree" + _suffix)
+_hp_name, _hp_id2 = _register("delplus" + _suffix)
+_seed_plan(_hp_id2, "plus", "active", int(time.time()) + 30 * 86400)
+assert resolve(_hf_id2)["plan_code"] == "free" and resolve(_hp_id2)["plan_code"] == "plus"
+_ckf = _login(_hf_name); _ckp = _login(_hp_name)
+def _inv(ed, dl):
+    return {"tool_id": "share", "source": {"files": [{"public_id": "nonexistent", "source_token": ""}]},
+            "params": {}, "delivery": {"expiry_days": ed, "allowed_downloads": dl}, "client_ref": None}
+
+st, d = _execute(_ckf, _inv(5, 50))
+check("H1 Free execute expiry=5 → 422 invalid_request (protocol 面)",
+      st == 422 and d.get("error") == "invalid_request", f"{st} {d.get('error')}")
+st, d = _execute(_ckf, _inv(30, 200))
+check("H2 Free execute 30 → 403 err_expiry_not_entitled (entitlement 面)",
+      st == 403 and d.get("error") == "err_expiry_not_entitled"
+      and d.get("field") == "expiry_days" and d.get("plan_code") == "free", f"{st} {d.get('error')}")
+st, d = _execute(_ckf, _inv(7, 1000))
+check("H3 Free execute 1000 → 403 err_download_limit_not_entitled",
+      st == 403 and d.get("error") == "err_download_limit_not_entitled", f"{st}")
+st, d = _execute(_ckp, _inv(30, 1000))
+check("H4 PLUS execute 30/1000 → 非 403/422 (entitlement 放行)",
+      st not in (403, 422), f"{st} {d.get('error')}")
+st, d = _share(_ckf, 30, 200)
+check("H5 Free direct share 30 → 403 (storage 前拒)",
+      st == 403 and d.get("error") == "err_expiry_not_entitled", f"{st}")
+st, d = _share(_ckf, 7, 1000)
+check("H6 Free direct share 1000 → 403 (storage 前拒)",
+      st == 403 and d.get("error") == "err_download_limit_not_entitled", f"{st}")
+_cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
+_all_usage = _cur.fetchone()[0]
+st, d = _share(_ckf, 30, 200)  # 再拒一次
+_cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
+check("H7 被拒 direct share 不产生 upload_usage",
+      _cur.fetchone()[0] == _all_usage, f"{_all_usage}")
+
 # ═══ 6. Source-of-truth guard ═══
 _up = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G1 sharing/uploads.py 不出现 plus (不认识会员名)",
@@ -209,6 +395,14 @@ check("G2 quota decision 无 err_quota_ip", "err_quota_ip" not in _up)
 check("G3 quota decision 不调用 ip_usage_count", "ip_usage_count" not in _up)
 check("G4 uploads.py 经 entitlements resolver 取限",
       "entitlements" in _up and "DAILY_UPLOADS" not in _up and "DAILY_BYTES" not in _up)
+_disp = open(_os.path.join(_REPO, "core", "execution", "dispatch.py"), encoding="utf-8").read()
+_apir = open(_os.path.join(_REPO, "app", "routes", "api.py"), encoding="utf-8").read()
+check("G5 dispatch 无 plus 业务判断, 经 check_delivery",
+      "plus" not in _disp and "check_delivery" in _disp)
+check("G6 api.py 无 plus 业务判断, direct share 经 check_delivery",
+      "plus" not in _apir and "check_delivery" in _apir)
+check("G7 validate_delivery 仍是唯一 protocol 单点 (无第二枚举)",
+      _disp.count("EXPIRY_DAYS") == 0 and "EXPIRY_DAYS" not in _apir)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
