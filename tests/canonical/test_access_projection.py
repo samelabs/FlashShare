@@ -448,34 +448,41 @@ def _get_credits(ck):
     r = conn.getresponse(); body = r.read().decode(); conn.close()
     return r.status, body
 
-# Free
+# Free: 无 membership fact → Account subscription status block 不渲染。
+# 稳定 DOM marker (class 选择器), 不用 "PLUS" 字符串 (可售目录/header 可含)。
 st, body = _get_credits(_mf_ck)
 _proj_f = project(_mf_id)["membership"]
-check("AC-F1 Free /account/credits → 200 无 active member 展示",
+check("AC-F1 Free /account/credits → 200, membership None, 无 sub-status / 无 sub-badge on",
       st == 200 and _proj_f is None
-      and 'my_plan' not in body[:0]  # 模板变量; 以 projection 一致性判定
-      and "PLUS" not in body.split("plan-card")[0][:2000] if "plan-card" in body else True,
-      f"{st}")
-check("AC-F2 Free: project.membership is None (展示事实=projection 事实)",
-      _proj_f is None)
+      and 'class="sub-status"' not in body
+      and 'class="sub-badge on"' not in body, f"{st}")
 
-# PLUS
+# PLUS: Account membership block 真渲染 (非 header badge 借证)
 _mp_ck2 = _login_http(_mp)
 st, body = _get_credits(_mp_ck2)
 _proj_p = project(_mp_id)["membership"]
-check("AC-P1 PLUS /account/credits → 200 且 project.membership.member == True",
-      st == 200 and _proj_p and _proj_p["member"] is True)
-# 模板展示与 projection 一致: my_plan.member 渲染 active 态 (plus-badge 或 plan 状态块)
-_m = _re.search(r"plan-status[^>]*>([^<]*)<", body) or _re.search(r"my_plan[^>]*>([^<]*)<", body)
-check("AC-P2 PLUS 页面呈现 member 状态 (与 projection 一致)",
-      bool(_m) or "PLUS" in body, "rendered")
+check("AC-P1 PLUS /account/credits → 200, member=True, sub-status + sub-badge on 存在",
+      st == 200 and _proj_p and _proj_p["member"] is True
+      and 'class="sub-status"' in body
+      and 'class="sub-badge on"' in body, f"{st}")
 
-# Expired
+# Expired: fact 保留并展示 ≠ active member (badge 无 on 态)
 st, body = _get_credits(_login_http(_me_))
 _proj_e = project(_me_id)["membership"]
-check("AC-E1 expired → 200, membership fact 保留 (member=false, 非 active)",
+check("AC-E1 expired → 200, fact 保留 (member=false), sub-status 在 / badge 无 on",
       st == 200 and _proj_e is not None and _proj_e["member"] is False
-      and _proj_e["code"] == "plus")
+      and _proj_e["code"] == "plus"
+      and 'class="sub-status"' in body
+      and 'class="sub-badge' in body
+      and 'class="sub-badge on"' not in body, f"{st}")
+
+# 负向自检 guard: 本 Account HTTP 断言组永久禁止假通过模式
+_self_src = open(_os.path.abspath(__file__), encoding="utf-8").read()
+_acct_http_blk = _self_src.split("7h. Account")[1].split("8. Source-of-truth")[0]
+check("AC-N1 Account HTTP 断言无假通过模式 (else True / body[:0] / 裸 PLUS-in-body)",
+      "else True" not in _acct_http_blk
+      and "body[:0]" not in _acct_http_blk
+      and '"PLUS" in body' not in _acct_http_blk)
 
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
