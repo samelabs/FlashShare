@@ -12,7 +12,6 @@ import secrets
 
 from database import db
 from economy.billing import InsufficientCredits, consume, refund, spendable_balance
-from governance.pricing import get_pricing
 from repo.ledger import (claim_call, finalize_call_failed, finalize_call_ok,
                          insert_provider_earn_if_absent, total_balance)
 from utils import now
@@ -170,22 +169,21 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     tool_id = invocation.tool_id
     params = invocation.params
 
-    price = get_pricing(tool_id)
-    if not price["enabled"]:
+    # Single effective-quote snapshot: enabled + cost both come from one
+    # effective_quote() read (listed price × self-owned free, the shared
+    # combination point with the advisory preflight). A gate invocation
+    # reads the pricing table exactly once.
+    from execution.affordability import effective_quote
+    quote = effective_quote(user["id"], tool)
+    if not quote["enabled"]:
         return None, {"ok": False, "error": "tool_disabled"}, 403
+    cost = quote["cost"]
 
     client_ref = invocation.client_ref or secrets.token_hex(16)
 
     from economy.antibuse import gate_ref_throttled
     if gate_ref_throttled(user["id"]):
         return None, {"ok": False, "error": "err_rate_limited"}, 429
-
-    # Product rule: a provider may run their own tool for self-test/use without
-    # paying themselves or the platform. The call fact still records success.
-    # Effective cost (listed price × self-owned free) comes from the
-    # single combination point shared with the advisory preflight.
-    from execution.affordability import effective_quote
-    cost = effective_quote(user["id"], tool)["cost"]
     started = now()
 
     # Claim before charging/executing. The DB partial unique index makes this

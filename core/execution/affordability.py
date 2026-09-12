@@ -33,10 +33,17 @@ def effective_quote(user_id: int, tool: dict) -> dict:
 def check_affordability(user_id: int, tool: dict) -> dict | None:
     """Advisory read-only affordability check. Never a reservation.
 
-    None → affordable (or free). Denial reuses the existing
-    err_insufficient_credits contract verbatim — no parallel error key.
+    None → affordable, free, self-owned, or pricing-disabled (availability
+    is deferred to the gate's authoritative tool_disabled). Denial reuses
+    the existing err_insufficient_credits contract verbatim — no parallel
+    error key.
     """
     quote = effective_quote(user_id, tool)
+    if not quote["enabled"]:
+        # Tool availability is the gate's authority (tool_disabled 403);
+        # the preflight never adjudicates disabled-ness and does not
+        # touch the balance on this path.
+        return None
     cost = quote["cost"]
     if cost <= 0:
         return None  # free (or self-owned priced) — no balance lookup

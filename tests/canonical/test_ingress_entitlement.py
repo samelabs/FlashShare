@@ -714,6 +714,54 @@ check("PF-A2 balance == cost → None (恰好够)", _dn is None, str(_dn))
 check("PF-A3 self-owned → None (不查余额)",
       check_affordability(_pf_owner_id, _trow_self) is None)
 
+def _pf_multipart(tool):
+    _b = b""
+    for k, v in {"tool": tool}.items():
+        _b += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    _b += b'--B\r\nContent-Disposition: form-data; name="file"; filename="r.png"\r\nContent-Type: image/png\r\n\r\n' + _png1 + b"\r\n--B--\r\n"
+    return _b
+
+# pricing disabled → defer 给 gate: 不裁决 disabled / 不查余额 / 不 402
+_cur.execute("update pricing set enabled=false where tool_id=%s", (_pf_key,))
+_dn_dis = check_affordability(_pf_user_id, _trow)  # balance=0 用户 + disabled priced tool
+check("PF-A4 pricing disabled + balance=0 → check_affordability is None (defer 给 gate)",
+      _dn_dis is None, str(_dn_dis))
+# spy: disabled path 不触碰 spendable_balance (替换为会抛异常的函数)
+import execution.affordability as _affmod
+_orig_sb = _affmod.spendable_balance
+def _boom(_uid):
+    raise AssertionError("spendable_balance must not be called on disabled path")
+_affmod.spendable_balance = _boom
+try:
+    _dn_spy = check_affordability(_pf_user_id, _trow)
+    _spy_ok = _dn_spy is None
+except AssertionError:
+    _spy_ok = False
+finally:
+    _affmod.spendable_balance = _orig_sb
+check("PF-A5 disabled path 不调用 spendable_balance (spy 证实)", _spy_ok)
+# authoritative execute 最终 403 tool_disabled:
+_pfd_ck = _login(_pf_user_name)
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/tools/preflight", json.dumps({"tool_id": _pf_key}),
+             {"Cookie": _pfd_ck, "Content-Type": "application/json"})
+r = conn.getresponse(); _pfd = json.loads(r.read()); conn.close()
+check("PF-A6 preflight 对 disabled 不 402 (defer: ok)",
+      r.status == 200 and _pfd == {"ok": True}, f"{r.status} {_pfd}")
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/uploads", _pf_multipart("share"), {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _pfd_ck})
+_up_d = json.loads(conn.getresponse().read()); conn.close()
+_files_d = [{"public_id": _up_d["file"]["publicId"], "source_token": _up_d["file"].get("sourceToken", "")}]
+_inv_d = {"tool_id": _pf_key, "source": {"files": _files_d}, "params": {},
+          "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": None}
+conn = _hc.HTTPConnection(*_HOST, timeout=60)
+conn.request("POST", "/api/tools/execute", json.dumps(_inv_d),
+             {"Cookie": _pfd_ck, "Content-Type": "application/json"})
+r = conn.getresponse(); _ed = json.loads(r.read()); conn.close()
+check("PF-A7 authoritative execute 最终 403 tool_disabled",
+      r.status == 403 and _ed.get("error") == "tool_disabled", f"{r.status} {str(_ed)[:70]}")
+_cur.execute("update pricing set enabled=true, cost=5 where tool_id=%s", (_pf_key,))
+
 # no mutation: denial 前后差分 (denial 用户 balance=0; 此前 PF-A2 grant 属另一用户)
 def _counts(uid):
     _cur.execute("select count(*) from ledger where user_id=%s", (uid,))
@@ -775,15 +823,33 @@ else:
 _mres = md.get("result") or {}
 _mtxt = ((_mres.get("content") or [{}])[0].get("text") or "")
 _mdj = json.loads(_mtxt) if _mtxt.startswith("{") else {}
+# 真 before/after 差分: 计数在请求发出之前先取 (上一段是伪序)
 _gk_before_pf = _gokapi_count()
 _cur.execute("select count(*) from upload_usage where user_id=%s", (_pfw_id,))
-_uu_pf = _cur.fetchone()[0]
+_uu_before_pf = _cur.fetchone()[0]
+conn = _hc.HTTPConnection(*_HOST, timeout=60)
+conn.request("POST", "/mcp", json.dumps(_mcp_body), {
+    "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+    "Authorization": f"Bearer {_pfm_bearer}"})
+r = conn.getresponse(); raw = r.read().decode(); conn.close()
+for line in raw.split("\n"):
+    if line.startswith("data:"):
+        md = json.loads(line[5:]); break
+else:
+    md = json.loads(raw)
+_mres = md.get("result") or {}
+_mtxt = ((_mres.get("content") or [{}])[0].get("text") or "")
+_mdj = json.loads(_mtxt) if _mtxt.startswith("{") else {}
+_gk_after_pf = _gokapi_count()
+_cur.execute("select count(*) from upload_usage where user_id=%s", (_pfw_id,))
+_uu_after_pf = _cur.fetchone()[0]
 check("PF-M1 MCP priced+balance0 → 200 isError err_insufficient_credits {balance:0, cost:5}",
       r.status == 200 and _mres.get("isError") is True
       and _mdj == {"error": "err_insufficient_credits", "balance": 0, "cost": 5}
       and "error" not in md, f"{r.status} {_mtxt[:90]}")
-check("PF-M2 MCP denial 零 source ingress (upload_usage 0)",
-      _uu_pf == 0 and _gokapi_count() == _gk_before_pf)
+check("PF-M2 MCP denial 零 ingress (真实请求前后差分: Gokapi & upload_usage)",
+      _gk_after_pf == _gk_before_pf and _uu_after_pf == _uu_before_pf,
+      f"gokapi {_gk_before_pf}→{_gk_after_pf} usage {_uu_before_pf}→{_uu_after_pf}")
 # malformed base64 仍 -32602 (优先于 affordability):
 _mcp_bad = dict(_mcp_body)
 _mcp_bad["params"] = {"name": _pf_key.replace("/", "__"),
@@ -817,13 +883,6 @@ check("PF-R2 preflight PASS ≠ reservation: 余额变化后 check_affordability
       check_affordability(_pfr_id, _trrow) == {"error": "err_insufficient_credits",
                                                "balance": 0, "cost": 5})
 # authoritative gate 402 (真实 execute):
-def _pf_multipart(tool):
-    _b = b""
-    for k, v in {"tool": tool}.items():
-        _b += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
-    _b += b'--B\r\nContent-Disposition: form-data; name="file"; filename="r.png"\r\nContent-Type: image/png\r\n\r\n' + _png1 + b"\r\n--B--\r\n"
-    return _b
-
 _pfr_ck = _login(_pfr_name)
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("POST", "/api/uploads", _pf_multipart("share"), {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _pfr_ck})
@@ -924,6 +983,11 @@ check("G19 self-owned free 规则单点 (affordability 唯一实现, gate 消费
 check("G19b gate 不再第二份 owner_id==user 判定",
       'owner_id"] == user["id"]' not in _gate_src
       and "effective_quote" in _gate_src)
+check("G19c gate 不再直接调用 get_pricing (单次 quote snapshot)",
+      "get_pricing(" not in _gate_src)
+check("G19d gate 同一 quote 同时供 enabled 与 cost",
+      'quote["enabled"]' in _gate_src and 'quote["cost"]' in _gate_src
+      and _gate_src.index('quote["enabled"]') < _gate_src.index('quote["cost"]'))
 _aff_imports = [l for l in _aff_src.split("\n") if l.startswith(("import ", "from "))]
 import ast as _ast
 _aff_tree = _ast.parse(_aff_src)
@@ -934,7 +998,13 @@ _aff_imports_ast = [a.name for n in _ast.walk(_aff_tree)
 check("G20 preflight 模块不 import/call consume (AST 级)",
       not any("consume" in c for c in _aff_calls)
       and not any("consume" in i for i in _aff_imports_ast))
-check("G20b consume 仍由 gate authoritative 使用", "consume(" in _gate_src)
+check("G20b consume 仍只在 gate authoritative 使用 (affordability AST 零 consume)",
+      "consume(" in _gate_src
+      and not any("consume" in c for c in _aff_calls)
+      and not any("consume" in i for i in _aff_imports_ast))
+check("G24 affordability disabled path 先于余额 defer (enabled 检查在 spendable 之前)",
+      _aff_src.index('"enabled"]') < _aff_src.index("spendable_balance(")
+      or _aff_src.index('not quote["enabled"]') < _aff_src.index("spendable_balance("))
 check("G21 Web 无本地 cost-vs-balance 授权 (展示 cost badge 不属授权)",
       ".cost <= " not in _appjs_src and "cost <= balance" not in _appjs_src
       and "balance <" not in _appjs_src and "balance >=" not in _appjs_src
