@@ -13,6 +13,10 @@
   2. last_grant_period_start 列 — 同 (user,plan) 状态机层防重
   3. period_start 必须来自 Creem payload — 客户端不可控字段, 无伪造面
 
+补偿 eligibility: 仅 active / scheduled_cancel snapshot 进入 paid-period
+补偿; trialing / past_due / canceled / expired / unknown 不 grant 不改
+membership (provider 状态同步属 webhook handlers, 不在本模块)。
+
 失败语义: Creem API 任何异常 → 静默跳过 (登录路径 best-effort,
 webhook 仍是主通道); 绝不阻塞登录。
 """
@@ -73,51 +77,46 @@ def reconcile_user(user_id: int) -> dict:
     credits_total = 0
     for row in rows:
         sub_id = (row.get("provider_order_id") or "").removeprefix("sub:")
-        if not sub_id or not row.get("item_id"):
+        if not sub_id or not row.get("plan_id"):
             continue
         checked += 1
-        if row.get("status") == "expired":
-            continue
+        # Read-contract guard: explicit LEFT JOIN aliases only — never the
+        # ambiguous bare row["status"]/["created_at"]/["item_id"].
         sub = fetch_subscription(sub_id)
         if not sub:
-            continue
+            continue  # provider failure → best-effort skip
         from economy.subscription import _parse_ts
         period_start = _parse_ts(sub.get("current_period_start_date"))
         period_end = _parse_ts(sub.get("current_period_end_date"))
         if not period_start or not period_end:
             continue
-        if (sub.get("status") or "") not in (
-                "active", "scheduled_cancel", "past_due", "trialing"):
+        # Reconcile = compensation for LOST paid webhooks only. Provider
+        # state sync stays with the webhook handlers: only snapshots that
+        # read as "in a paid period" may enter compensation. trialing /
+        # past_due / canceled / expired / unknown never grant and never
+        # mutate membership through this path.
+        provider_status = (sub.get("status") or "")
+        if provider_status not in ("active", "scheduled_cancel"):
             continue
         last = row.get("last_grant_period_start")
         if last is not None and period_start <= int(last):
             continue  # 当期已授, 状态机层防重
         if period_end <= ts:
             continue  # 周期已过, 不补授
-        # 授信先行 (与 _ev_paid 同序): grant 幂等落账后
-        # 才写 last_grant_period_start — 判据列永远不超前于账。
+        # 唯一 paid-period implementation (webhook 与 reconcile 共享):
+        # grant(幂等) 先行 → upsert 状态戳; scheduled_cancel snapshot
+        # 保留 cancellation marker, 不被补授清除。
         try:
-            credits = 0
-            with db() as con:
-                plan = orders_repo.plan_by_id(con, row["item_id"])
-                if plan is None:
-                    continue
-                credits = int(plan["monthly_credits"] or 0)
+            from economy.subscription import apply_paid_period
+            result = apply_paid_period(
+                sub_id, sub,
+                scheduled_cancel=(provider_status == "scheduled_cancel"))
+            credits = int(result.get("credits") or 0)
             if credits > 0:
-                from economy.billing import grant
-                grant(user_id, credits, "grant_plan",
-                      ref_type="subscription_reconcile", ref_id=sub_id,
-                      idem_key=f"plan:{user_id}:{period_start}",
-                      note=f"plus cycle {period_start}-{period_end} (reconcile)")
                 credits_total += credits
                 granted += 1
                 log.info("subscription reconcile: user=%s sub=%s +%d credits",
                          user_id, sub_id, credits)
-            with db() as con:
-                orders_repo.upsert_user_plan(
-                    con, user_id, row["item_id"], "active",
-                    started_at=row.get("created_at") or ts,
-                    renews_at=period_end, period_start=period_start)
         except Exception:
             log.exception("subscription reconcile failed user=%s sub=%s",
                           user_id, sub_id)

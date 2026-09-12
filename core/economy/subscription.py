@@ -126,18 +126,24 @@ def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
     return order, plan, dict(row) if row else None
 
 
-def _ev_paid(sub_id: str, obj: dict) -> dict:
-    """The ONLY credit-granting path. period fields are Creem-authoritative.
+def apply_paid_period(sub_id: str, provider_subscription: dict, *,
+                      scheduled_cancel: bool = False) -> dict:
+    """The ONLY paid-period implementation (shared by webhook + reconcile).
 
-    授信先行 (崩溃一致性): grant 落账后才能写 last_grant_period_start
-    (upsert) — 该列被 reconcile 用作"当期已授"判据, 先写后授会在崩溃窗口
-    里留下"已授未到账"的撒谎留痕。顺序: grant(幂等) → upsert(状态戳)。"""
-    sub = obj.get("subscription") or obj
+    period fields are Creem-authoritative. 崩溃一致性顺序保持:
+    grant(幂等, idem_key plan:{uid}:{period_start}) 落账后才能写
+    last_grant_period_start (upsert) — 先写后授会在崩溃窗口里留下
+    "已授未到账"的撒谎留痕。
+
+    scheduled_cancel=True 时使用与 scheduled-cancel handler 一致的
+    marker 语义 (cancel_scheduled_at=now); 否则保留既有 marker 不清除。
+    """
+    sub = provider_subscription.get("subscription") or provider_subscription
     period_start = _parse_ts(sub.get("current_period_start_date"))
     period_end = _parse_ts(sub.get("current_period_end_date"))
     if not period_start or not period_end:
         raise KeyError("period_missing")
-    order, plan, _ = _bind_and_load(sub_id, obj)
+    order, plan, current = _bind_and_load(sub_id, provider_subscription)
     ts = now()
     status = "active" if period_end > ts else "expired"
     credits = 0
@@ -149,11 +155,22 @@ def _ev_paid(sub_id: str, obj: dict) -> dict:
               ref_type="subscription", ref_id=sub_id,
               idem_key=f"plan:{order['user_id']}:{period_start}",
               note=f"plus cycle {period_start}-{period_end}")
+    cancel_ts = None
+    if scheduled_cancel:
+        cancel_ts = ts
+    elif current and current.get("cancel_scheduled_at"):
+        cancel_ts = int(current["cancel_scheduled_at"])  # 保留既有 marker
     with db() as con:
         orders_repo.upsert_user_plan(
             con, order["user_id"], plan["id"], status,
-            started_at=order["created_at"], renews_at=period_end, period_start=period_start)
+            started_at=order["created_at"], renews_at=period_end,
+            period_start=period_start, cancel_scheduled_at=cancel_ts)
     return {"granted": True, "credits": credits, "status": status}
+
+
+def _ev_paid(sub_id: str, obj: dict) -> dict:
+    """Webhook paid event — delegates to the shared paid-period path."""
+    return apply_paid_period(sub_id, obj)
 
 
 def _ev_scheduled_cancel(sub_id: str, obj: dict) -> dict:

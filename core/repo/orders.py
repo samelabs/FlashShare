@@ -206,12 +206,30 @@ def sweep_expired_plans(con, ts: int) -> int:
 # ── subscriptions (reconcile: user → orders rows with sub: binding) ──
 
 def user_subscriptions(con, user_id: int) -> list:
-    """该用户全部 plan 订单 (含 sub 绑定/未绑定), reconcile 读取。"""
+    """该用户全部 plan 订单 (含 sub 绑定/未绑定), reconcile 读取。
+
+    Explicit LEFT JOIN read model: order fact 与 membership fact 显式
+    alias, 消费方不得再读含义模糊的裸 row["status"]/["created_at"]/
+    ["item_id"]。repo 只查询, 不做业务判断。
+    """
     return con.execute(
         """
-        SELECT id, kind, item_id, provider_order_id, status, created_at
-        FROM orders WHERE user_id = %s AND kind = 'plan'
-        ORDER BY id DESC
+        SELECT o.id                AS order_id,
+               o.item_id           AS plan_id,
+               o.provider_order_id AS provider_order_id,
+               o.status            AS order_status,
+               o.created_at        AS order_created_at,
+               up.status           AS membership_status,
+               up.started_at       AS membership_started_at,
+               up.renews_at        AS membership_renews_at,
+               up.last_grant_period_start AS last_grant_period_start,
+               up.cancel_scheduled_at     AS cancel_scheduled_at
+        FROM orders o
+        LEFT JOIN user_plans up
+          ON up.user_id = o.user_id
+         AND up.plan_id = o.item_id
+        WHERE o.user_id = %s AND o.kind = 'plan'
+        ORDER BY o.id DESC
         """, (user_id,)).fetchall()
 
 
