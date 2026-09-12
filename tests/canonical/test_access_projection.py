@@ -303,8 +303,46 @@ check("AP-G9 v1_me 无 plus policy / 无自拼 entitlement 值",
       and "download_limits" not in _v1_me)
 check("AP-G10 plan 是 access.membership payload alias",
       '"plan": access["membership"]' in _v1_me)
-check("AP-G11 credits 独立来自 spendable_balance",
-      "spendable_balance(" in _v1_me and "credits" not in json.dumps({"a": 1}) or True)
+# AP-G11 (AST 稳定版): v1_me 的返回 dict 里 "credits" 键的值表达式
+# 必须是对 spendable_balance(user["id"]) 的调用; 且该键不得取自
+# project()/access 结果 (credits 永不进 projection)。
+def _credits_guard():
+    import ast as _a
+    _body = "async def v1_me" + _v1_me.lstrip("async def v1_me").rstrip()
+    _body = "\n".join(l for l in _body.split("\n") if not l.startswith("@router"))
+    tree = _a.parse(_body)
+    ret = None
+    for node in _a.walk(tree):
+        if isinstance(node, _a.Return) and isinstance(node.value, _a.Dict):
+            ret = node.value
+            break
+    if ret is None:
+        return False, "no return dict"
+    kv = {}
+    for k, v in zip(ret.keys, ret.values):
+        if isinstance(k, _a.Constant):
+            kv[k.value] = v
+    cred = kv.get("credits")
+    if not isinstance(cred, _a.Call):
+        return False, "credits is not a call"
+    fn = cred.func
+    if not (isinstance(fn, _a.Name) and fn.id == "spendable_balance"):
+        return False, f"credits func = {getattr(fn, 'id', '?')}"
+    arg_ok = (len(cred.args) == 1 and isinstance(cred.args[0], _a.Subscript)
+              and isinstance(cred.args[0].value, _a.Name)
+              and cred.args[0].value.id == "user")
+    if not arg_ok:
+        return False, "credits arg is not user[...]"
+    # access 值是 project() 调用; credits 键独立于它
+    acc = kv.get("access")
+    acc_is_project = isinstance(acc, _a.Name) and acc.id == "access"
+    proj_call = any(isinstance(n, _a.Call) and isinstance(n.func, _a.Name)
+                    and n.func.id == "project" for n in _a.walk(tree))
+    return (arg_ok and acc_is_project and proj_call,
+            f"credits=spendable_balance(user[..]) ok={arg_ok}, access-from-project={proj_call}")
+_g11_ok, _g11_why = _credits_guard()
+check('AP-G11 credits 独立来自 spendable_balance(user["id"]) 且不由 project()/access 提供 (AST)',
+      _g11_ok, _g11_why)
 _v1_all = _v1
 check("AP-G11b v1_me 无 projection exception → Free/null fallback",
       "except" not in _v1_me)
