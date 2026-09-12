@@ -187,8 +187,18 @@ window.__afterI18n = function() {
   if (expSel && expLab) {
     const d = expSel.value;
     expLab.textContent = d === "1" ? "1 " + t("day_unit") : d + " " + t("days_unit");
+    // Dynamic options (value + generic unit) follow language switches too
+    Array.from(expSel.options).forEach(o => {
+      const n = parseInt(o.value, 10);
+      o.textContent = n + " " + t(n === 1 ? "day_unit" : "days_unit");
+    });
   }
-  if (dlSel && dlLab) dlLab.textContent = dlSel.value + " " + t("times_unit");
+  if (dlSel && dlLab) {
+    dlLab.textContent = dlSel.value + " " + t("times_unit");
+    Array.from(dlSel.options).forEach(o => {
+      o.textContent = parseInt(o.value, 10) + " " + t("times_unit");
+    });
+  }
   // Tool names: data-driven (tool modes v3) — resolveLabel 同链 (dict[lang]→en→首值)
   document.querySelectorAll("#homeTools .tool-tab").forEach(tab => {
     const tool = homeToolsData.find(t => t.id === tab.dataset.toolId);
@@ -384,8 +394,11 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
       }
       // Tool active → Step 2: execute tool
       showToolProcessing(resolveLabel(activeTool.label) || activeTool.id);
-      const expirySelect = form.querySelector("[name=\"expiryDays\"]");
-      const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
+      // Delivery selects live outside <form> in the DOM but are
+      // form-associated (form="uploadForm"); read via form.elements so
+      // FormData(form) and execute share the same controls.
+      const expirySelect = form.elements.namedItem("expiryDays");
+      const dlSelect = form.elements.namedItem("allowedDownloads");
       // Canonical ToolInvocation (Stage C): source.files[] 唯一 shape;
       // params 只含 tool params; delivery 独立字段; client_ref null = fresh。
       const fileList = data.files || [data.file];
@@ -895,8 +908,9 @@ async function retryTool() {
   if (!activeTool || !lastToolSource) return;
   const toolName = resolveLabel(activeTool.label) || activeTool.id;
   showToolProcessing(toolName);
-  const expirySelect = form.querySelector("[name=\"expiryDays\"]");
-  const dlSelect = form.querySelector("[name=\"allowedDownloads\"]");
+  // Same form-associated controls as the first execute path.
+  const expirySelect = form.elements.namedItem("expiryDays");
+  const dlSelect = form.elements.namedItem("allowedDownloads");
   try {
     const toolRes = await fetch("/api/tools/execute", {
       method: "POST",

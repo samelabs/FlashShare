@@ -330,6 +330,61 @@ except RuntimeError:
 finally:
     _wctx.project = _orig_project
 
+# ═══ 7f. Home delivery/ingress 从 entitlement truth 投影 (真实 HTTP) ═══
+import re as _re
+def _home_options(ck=None):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    conn.request("GET", "/", headers={"Cookie": ck} if ck else {})
+    r = conn.getresponse(); body = r.read().decode(); conn.close()
+    def opts(sel_id):
+        m = _re.search(rf'<select[^>]*id="{sel_id}"[^>]*>(.*?)</select>', body, _re.S)
+        if not m: return None, None
+        vals = _re.findall(r'<option value="(\d+)"', m.group(1))
+        sel = _re.findall(r'<option value="(\d+)" selected', m.group(1))
+        return [int(v) for v in vals], (int(sel[0]) if sel else None)
+    lim = _re.search(r'window\.__LIMITS__\s*=\s*(\{.*?\});', body, _re.S)
+    limits = json.loads(lim.group(1)) if lim else None
+    return r.status, opts("expiryDays"), opts("allowedDownloads"), limits
+
+FREE_EXP = list(FREE["expiry_days"]); FREE_DL = list(FREE["download_limits"])
+PLUS_EXP = list(_PLANS["plus"]["expiry_days"]); PLUS_DL = list(_PLANS["plus"]["download_limits"])
+
+st, (exp, dexp), (dl, ddl), lim = _home_options()   # anonymous
+check("HD-A1 匿名 expiry options == resolve_from_membership(None) Free",
+      st == 200 and exp == FREE_EXP, str(exp))
+check("HD-A2 匿名 download options == Free", dl == FREE_DL, str(dl))
+check("HD-A3 匿名 __LIMITS__ 四兼容字段+数组 来自 Free entitlement",
+      lim and lim["maxDays"] == max(FREE_EXP) and lim["maxDownloads"] == max(FREE_DL)
+      and lim["expiryDays"] == FREE_EXP and lim["downloadLimits"] == FREE_DL
+      and lim["dailyUploads"] == FREE["ingress_files_24h"], str(lim))
+
+st, (exp, dexp), (dl, ddl), lim = _home_options(_mf_ck)   # Free
+check("HD-F1 Free 登录 options == Free entitlement", st == 200 and exp == FREE_EXP and dl == FREE_DL)
+check("HD-F2 Free 默认选择 1/50 (属于 allowed set)", dexp == 1 and ddl == 50, f"{dexp}/{ddl}")
+
+st, (exp, dexp), (dl, ddl), lim = _home_options(_login_http(_mp))   # PLUS
+check("HD-P1 PLUS expiry == [1,3,7,30] (来自 projection 非模板分支)", exp == PLUS_EXP, str(exp))
+check("HD-P2 PLUS downloads == [1,10,50,100,200,1000]", dl == PLUS_DL, str(dl))
+check("HD-P3 PLUS __LIMITS__ 反映 plus entitlement",
+      lim and lim["maxDays"] == 30 and lim["maxDownloads"] == 1000
+      and lim["expiryDays"] == PLUS_EXP)
+
+st, (exp, dexp), (dl, ddl), lim = _home_options(_login_http(_me_))   # expired
+check("HD-E1 expired 精确回落 Free options", exp == FREE_EXP and dl == FREE_DL)
+
+# form association + 结构 proof:
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("GET", "/", headers={"Cookie": _mf_ck})
+r = conn.getresponse(); body = r.read().decode(); conn.close()
+check("HD-S1 两个 select 均 form=\"uploadForm\" (FormData 携带)",
+      'id="expiryDays" form="uploadForm"' in body
+      and 'id="allowedDownloads" form="uploadForm"' in body)
+_appjs = open(_os.path.join(_REPO, "static", "app.js"), encoding="utf-8").read()
+check("HD-S2 首次+retry execute 均经 form.elements (零 querySelector)",
+      _appjs.count('form.elements.namedItem("expiryDays")') == 2
+      and _appjs.count('form.elements.namedItem("allowedDownloads")') == 2
+      and 'form.querySelector("[name=' not in _appjs)
+
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
 import ast as _ast
@@ -431,6 +486,25 @@ _hdr = open(_os.path.join(_REPO, "app", "templates", "partials", "header.html"),
 check("AP-W7 header.html 不自行推导 membership (只读 my_plan)",
       "plan_of" not in _hdr and "project" not in _hdr and "membership" not in _hdr
       and "my_plan" in _hdr)
+_pages_src = open(_os.path.join(_REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
+_home_blk = _pages_src.split("async def home")[1].split("async def ")[0]
+_home_code = "\n".join(l for l in _home_blk.split("\n") if not l.strip().startswith("#"))
+check("AP-H1 home 不第二次 project() (消费 ctx[access])",
+      "project(" not in _home_code and 'ctx["access"]' in _home_blk)
+check("AP-H2 home entitlement 来自 ctx access 或 resolve_from_membership(None)",
+      "resolve_from_membership(None)" in _home_blk)
+check("AP-H3 home block 无 plus policy / 无 DAILY_* 直用 / 无硬编码 7/200",
+      '"plus"' not in _home_blk and "DAILY_UPLOADS" not in _home_blk
+      and "DAILY_BYTES" not in _home_blk
+      and "maxDays\": 7" not in _home_blk and "maxDownloads\": 200" not in _home_blk)
+_tmpl = open(_os.path.join(_REPO, "app", "templates", "home.html"), encoding="utf-8").read()
+_sel_blk = _tmpl[_tmpl.index('<select name="expiryDays"'):_tmpl.index('<form id="uploadForm"')]
+check("AP-H4 template options 用循环 (无固定 oneDay/threeDays/sevenDays 枚举)",
+      "for d in delivery_expiry_days" in _sel_blk
+      and "for n in delivery_download_limits" in _sel_blk
+      and "oneDay" not in _sel_blk and "sevenDays" not in _sel_blk)
+check("AP-H5 模板无 plus 分支 (PLUS 30/1000 来自数据非判断)",
+      "plus" not in _sel_blk.lower())
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
