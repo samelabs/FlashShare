@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import os
+import urllib.parse
 import urllib.request
 
 from config import BASE_URL
@@ -46,6 +47,17 @@ def create_checkout(order_id: int, package: dict, user: dict) -> dict:
     with urllib.request.urlopen(req, timeout=20) as resp:
         data = json.loads(resp.read())
     return {"ok": True, "checkout_url": data["checkout_url"], "checkout_id": data["id"]}
+
+
+def retrieve_checkout(checkout_id: str) -> dict:
+    """GET /v1/checkouts/{id} — status / checkout_url / subscription。
+    raises RuntimeError on API failure (caller fail loud, 不猜 TTL)。"""
+    req = urllib.request.Request(
+        _BASE + "/v1/checkouts/" + urllib.parse.quote(checkout_id),
+        method="GET", headers={"x-api-key": CREEM_API_KEY})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        data = json.loads(resp.read())
+    return data
 
 
 def verify_signature(raw_body: bytes, signature: str) -> bool:

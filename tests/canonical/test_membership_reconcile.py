@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Membership reconcile canonical invariants — 四事实边界合同.
 
-锁住: user_subscriptions 显式 read model、唯一 paid-period 实现、
+锁住: membership_row 显式 read model、唯一 paid-period 实现、
 补偿 eligibility (active/scheduled_cancel only)、scheduled_cancel
 marker 保留、last_grant 判据、ledger 幂等防线、provider failure
 best-effort。遵循 canonical fail-closed 规则。
@@ -72,6 +72,7 @@ def _seed_plan_order(uid, monthly_credits=100):
         " values (%s, 'plan', %s, 'creem', %s, 'paid', 500, %s, %s) returning id",
         (uid, plan_id, f"sub:test{uid}", _ts, _ts))
     oid = _cur.fetchone()[0]
+    # (sub id 返回纯 id; orders/memberships 落库带 sub: 前缀)
     # membership 建档 (新单行模型; fixture 直建, sub 唯一)
     _cur.execute(
         "insert into memberships (user_id, plan_id, provider_subscription_id,"
@@ -80,7 +81,7 @@ def _seed_plan_order(uid, monthly_credits=100):
         " on conflict (user_id) do update set plan_id=excluded.plan_id,"
         " provider_subscription_id=excluded.provider_subscription_id, status=excluded.status",
         (uid, plan_id, f"sub:test{uid}", "active", _ts, _ts))
-    return plan_id, oid, f"sub:test{uid}"
+    return plan_id, oid, f"test{uid}"
 
 def _sub_snapshot(status, p_start, p_end):
     return {"object": "subscription", "status": status,
@@ -101,21 +102,21 @@ def _ledger_grants(uid):
         "select count(*) from ledger where user_id=%s and kind='grant_plan'", (uid,))
     return _cur.fetchone()[0]
 
-# ═══ R1 — read contract ═══
+# ═══ R1 — read contract (单行 membership 模型) ═══
 u1, uid1 = _new_user("rc1")
 pid1, oid1, sub1 = _seed_plan_order(uid1)
 with db() as con:
-    rows = orders_repo.user_subscriptions(con, uid1)
-row = dict(rows[0])
-_required = {"order_id", "plan_id", "provider_order_id", "order_status",
-             "order_created_at", "membership_status", "membership_started_at",
-             "membership_renews_at", "last_grant_period_start",
-             "cancel_scheduled_at"}
-check("R1a user_subscriptions 显式 alias 字段齐全", _required <= set(row), str(sorted(row)))
-check("R1b order fact 正确 (order_status=paid, plan_id)",
-      row["order_status"] == "paid" and row["plan_id"] == pid1)
-check("R1c 无 membership 行时 membership_status 为 NULL (LEFT JOIN)",
-      row["membership_status"] is None and row["last_grant_period_start"] is None)
+    m = orders_repo.membership_row(con, uid1)
+    o = orders_repo.order_by_id_for_update(con, oid1)
+check("R1a membership_row 显式字段 (membership+plan join)",
+      m is not None and {"plan_id", "provider_subscription_id", "status",
+                         "renews_at", "last_grant_period_start",
+                         "cancel_scheduled_at", "code", "name"} <= set(dict(m)),
+      str(sorted(dict(m or {}).keys())))
+check("R1b order fact 正确 (paid, item=plan)",
+      dict(o)["status"] == "paid" and dict(o)["item_id"] == pid1)
+check("R1c fixture 建档后 membership 绑定 sub",
+      dict(m)["provider_subscription_id"] == f"sub:{sub1}")
 
 # ═══ R2 — active missing grant → exactly one grant ═══
 PS, PE = _ts - 3600, _ts + 2592000
@@ -170,8 +171,8 @@ check("R5 trialing: credits 零变 / membership 不被写成 active",
 u3, uid3 = _new_user("rc3")
 pid3, _, sub3 = _seed_plan_order(uid3)
 with db() as con:
-    orders_repo.upsert_membership(con, uid3, pid3, sub3, "past_due",
-                                  started_at=_ts, renews_at=PE)
+    orders_repo.upsert_membership_state(con, sub3, "past_due",
+                                        started_at=_ts, renews_at=PE)
 _bal6 = spendable_balance(uid3)
 _rec.fetch_subscription = _fake_fetch(_sub_snapshot("past_due", _iso(PS), _iso(PE)))
 r = _rec.reconcile_user(uid3)

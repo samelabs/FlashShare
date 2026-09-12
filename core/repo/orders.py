@@ -124,28 +124,6 @@ def plan_by_id_active(con, plan_id: int) -> Optional[dict]:
         "SELECT * FROM plans WHERE id = %s AND active", (plan_id,)).fetchone()
 
 
-def upsert_user_plan(con, user_id: int, plan_id: int, status: str,
-                     started_at: int, renews_at: int | None,
-                     period_start: int | None = None,
-                     cancel_scheduled_at: int | None = None) -> dict:
-    """状态机落库: 同 (user,plan) 复购=UPDATE。所有列幂等写 (SET 同值无副作用)。"""
-    return con.execute(
-        """
-        INSERT INTO user_plans (user_id, plan_id, status, started_at,
-                                renews_at, last_grant_period_start,
-                                cancel_scheduled_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (user_id, plan_id) DO UPDATE SET
-          status = EXCLUDED.status,
-          renews_at = EXCLUDED.renews_at,
-          last_grant_period_start = EXCLUDED.last_grant_period_start,
-          cancel_scheduled_at = EXCLUDED.cancel_scheduled_at,
-          updated_at = EXCLUDED.updated_at
-        RETURNING *
-        """,
-        (user_id, plan_id, status, started_at, renews_at,
-         period_start, cancel_scheduled_at, started_at)).fetchone()
-
 
 def membership_row(con, user_id: int) -> Optional[dict]:
     """用户唯一 current Membership (memberships.user_id PK 单行权威)。
@@ -172,12 +150,36 @@ def membership_by_sub(con, sub_id: str) -> Optional[dict]:
         """, (f"sub:{sub_id}",)).fetchone()
 
 
-def upsert_membership(con, user_id: int, plan_id: int, sub_id: str,
-                      status: str, started_at: int, renews_at: int | None,
-                      period_start: int | None = None,
-                      cancel_scheduled_at: int | None = None) -> dict:
-    """单行 membership 状态机: (user) 唯一; 同 sub 重放 = UPDATE;
-    status/period/marker 幂等写。plan change 走同 user 行的 plan_id 更新。"""
+class MembershipBindingError(RuntimeError):
+    """不同 provider subscription 试图替换 live/pending Membership —
+    普通 state update 禁止换绑; 重新首购须走显式 rebind (旧 Membership
+    已 definitively non-live 后由 bind_membership 完成)。"""
+
+
+def bind_membership(con, user_id: int, plan_id: int, sub_id: str,
+                    status: str, started_at: int, renews_at: int | None = None,
+                    period_start: int | None = None,
+                    cancel_scheduled_at: int | None = None) -> dict:
+    """首购/重新首购建档 (建立 provider subscription 绑定)。
+
+    仅当 user 无 Membership 或既有 Membership definitively non-live
+    (status ∉ active/canceled/past_due 且 renews_at ≤ now) 时允许;
+    live/pending Membership 存在时换绑 → MembershipBindingError fail loud,
+    原 Membership 不变。"""
+    sub_ref = f"sub:{sub_id}"
+    cur = con.execute(
+        "SELECT status, renews_at, provider_subscription_id FROM memberships"
+        " WHERE user_id = %s FOR UPDATE", (user_id,)).fetchone()
+    if cur is not None:
+        live = (cur["status"] in ("active", "canceled", "past_due")
+                and (cur["renews_at"] or 0) > 0)
+        if cur["provider_subscription_id"] == sub_ref and not live:
+            pass  # 同 sub 重绑 definitively-non-live 行 (收敛重放)
+        elif live:
+            raise MembershipBindingError(
+                f"binding conflict: user={user_id} current sub"
+                f" {cur['provider_subscription_id']} is live/pending")
+        # 非 live 且不同 sub: definitively non-live → 重新首购 rebind 允许
     return con.execute(
         """
         INSERT INTO memberships (user_id, plan_id, provider_subscription_id,
@@ -195,8 +197,53 @@ def upsert_membership(con, user_id: int, plan_id: int, sub_id: str,
           updated_at = EXCLUDED.updated_at
         RETURNING *
         """,
-        (user_id, plan_id, f"sub:{sub_id}", status, started_at, renews_at,
+        (user_id, plan_id, sub_ref, status, started_at, renews_at,
          period_start, cancel_scheduled_at, started_at)).fetchone()
+
+
+def upsert_membership_state(con, sub_id: str, status: str,
+                            started_at: int, renews_at: int | None,
+                            plan_id: int | None = None,
+                            period_start: int | None = None,
+                            cancel_scheduled_at: int | None = None) -> dict:
+    """同一 provider subscription 的状态/plan/period 幂等更新。
+
+    绝不换绑: 目标行必须已绑定 sub:{sub_id}; 否则 MembershipBindingError。
+    plan change (subscription.update) 走本函数的 plan_id 参数 — 同 sub。"""
+    cur = con.execute(
+        "SELECT user_id, plan_id FROM memberships"
+        " WHERE provider_subscription_id = %s FOR UPDATE", (f"sub:{sub_id}",)).fetchone()
+    if cur is None:
+        raise MembershipBindingError(
+            f"no membership bound to sub:{sub_id} — state update cannot bind")
+    return con.execute(
+        """
+        UPDATE memberships SET
+          plan_id = COALESCE(%s, plan_id),
+          status = %s,
+          renews_at = %s,
+          last_grant_period_start = COALESCE(%s, last_grant_period_start),
+          cancel_scheduled_at = %s,
+          updated_at = %s
+        WHERE provider_subscription_id = %s
+        RETURNING *
+        """,
+        (plan_id, status, renews_at, period_start, cancel_scheduled_at,
+         started_at, f"sub:{sub_id}")).fetchone()
+
+
+def lock_user_for_checkout(con, user_id: int) -> None:
+    """serialize concurrent subscribe intents for the same user."""
+    con.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
+
+
+def open_plan_order(con, user_id: int) -> Optional[dict]:
+    """该 user 最新的 open (pending) plan order — checkout intent 单点
+    (orders 即 purchase intent, 无第二套 intent 表)。"""
+    return con.execute(
+        "SELECT * FROM orders WHERE user_id = %s AND kind = 'plan'"
+        " AND status = 'pending' ORDER BY id DESC LIMIT 1",
+        (user_id,)).fetchone()
 
 
 def plan_by_product_id(con, product_id: str) -> Optional[dict]:
@@ -221,23 +268,12 @@ def plan_by_id(con, plan_id: int) -> Optional[dict]:
         "SELECT * FROM plans WHERE id = %s", (plan_id,)).fetchone()
 
 
-def user_plan_row(con, user_id: int, plan_id: int) -> Optional[dict]:
-    return con.execute(
-        "SELECT * FROM user_plans WHERE user_id=%s AND plan_id=%s",
-        (user_id, plan_id)).fetchone()
-
 
 def plan_credits(con, plan_id: int) -> int:
     row = con.execute(
         "SELECT monthly_credits FROM plans WHERE id=%s", (plan_id,)).fetchone()
     return int(row["monthly_credits"] or 0) if row else 0
 
-
-def set_cancel_scheduled(con, user_id: int, plan_id: int, ts: int) -> None:
-    con.execute(
-        """UPDATE user_plans SET cancel_scheduled_at=%s, updated_at=%s
-           WHERE user_id=%s AND plan_id=%s""",
-        (ts, ts, user_id, plan_id))
 
 
 def sweep_expired_plans(con, ts: int) -> int:
@@ -254,35 +290,6 @@ def sweep_expired_plans(con, ts: int) -> int:
 
 # ── subscriptions (reconcile: user → orders rows with sub: binding) ──
 
-def user_subscriptions(con, user_id: int) -> list:
-    """该用户全部 plan 订单 (含 sub 绑定/未绑定), reconcile 读取。
-
-    Explicit LEFT JOIN read model: order fact 与 membership fact 显式
-    alias, 消费方不得再读含义模糊的裸 row["status"]/["created_at"]/
-    ["item_id"]。repo 只查询, 不做业务判断。
-    """
-    return con.execute(
-        """
-        SELECT o.id                AS order_id,
-               o.item_id           AS plan_id,
-               o.provider_order_id AS provider_order_id,
-               o.status            AS order_status,
-               o.created_at        AS order_created_at,
-               up.status           AS membership_status,
-               up.started_at       AS membership_started_at,
-               up.renews_at        AS membership_renews_at,
-               up.last_grant_period_start AS last_grant_period_start,
-               up.cancel_scheduled_at     AS cancel_scheduled_at
-        FROM orders o
-        LEFT JOIN user_plans up
-          ON up.user_id = o.user_id
-         AND up.plan_id = o.item_id
-        WHERE o.user_id = %s AND o.kind = 'plan'
-        ORDER BY o.id DESC
-        """, (user_id,)).fetchall()
-
-
-# ── settings (KV) ──
 
 def setting(con, key: str) -> Optional[dict]:
     return con.execute(

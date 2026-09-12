@@ -51,6 +51,11 @@ def check(name, ok, detail=""):
     if not ok: FAIL.append(name)
 
 PG = TEST_DB.replace("postgresql+psycopg://", "postgresql://")
+# migration 子进程用文件传 DSN (与 runner 的 TEST_DB_URL 同源):
+_DSN_FILE = "/tmp/mg_gov_dsn.txt"
+with open(_DSN_FILE, "w") as _f:
+    _f.write(TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
+_os.environ["FLASHSHARE_TEST_DSN_FILE"] = _DSN_FILE
 _con = psycopg2.connect(PG); _con.autocommit = True
 _cur = _con.cursor()
 _ts = int(time.time())
@@ -140,19 +145,30 @@ check("G2b Plus current → Plus entitlements (整链跟随)",
       pp["membership"]["member"] is True and pp["entitlements"]["plan_code"] == "plus"
       and resolve(uidP)["plan_code"] == "plus")
 
-# ═══ 链3: 复购拦截 ═══
-# (subscribe guard 在 HTTP 层; 直调 membership 唯一性: 二次 bind 不同 sub → PK 冲突)
+# ═══ 链3: 不同 live sub → 拒绝换绑 ═══
+from repo.orders import MembershipBindingError as _MBE
 try:
     with db() as con:
-        orders_repo.upsert_membership(con, uidP, plan_plus, "mgsub2", "active",
-                                      started_at=_ts, renews_at=PE)
-    # upsert ON CONFLICT(user_id) 是 UPDATE — 同 user 换 sub = 行内换绑, 不是第二行:
+        orders_repo.upsert_membership_state(con, "mgsub2", "active",
+                                            started_at=_ts, renews_at=PE)
+    check("G3 不同 live sub state update → 拒绝换绑 (原行不变)", False, "no raise")
+except _MBE:
     m = _m_row(uidP)
     _cur.execute("select count(*) from memberships where user_id=%s", (uidP,))
-    check("G3 memberships 单行: 同 user 二次订阅不产生第二行 (行内绑定唯一)",
-          _cur.fetchone()[0] == 1, str(m))
+    check("G3 不同 live sub state update → 拒绝换绑 (原行不变)",
+          _cur.fetchone()[0] == 1 and m[1] == "sub:mgsub1"
+          and m[3] == PE and m[2] == "active", str(m))
 except Exception as exc:
-    check("G3 memberships 单行", False, str(exc))
+    check("G3 不同 live sub state update → 拒绝换绑", False, str(exc))
+try:
+    with db() as con:
+        orders_repo.bind_membership(con, uidP, plan_plus, "mgsub2", "active",
+                                    started_at=_ts, renews_at=PE)
+    check("G3b bind 在 live Membership 上 → 拒绝", False, "no raise")
+except _MBE:
+    _cur.execute("select count(*) from memberships where user_id=%s", (uidP,))
+    check("G3b bind 在 live Membership 上 → 拒绝 (sub 仍 mgsub1)",
+          _cur.fetchone()[0] == 1 and _m_row(uidP)[1] == "sub:mgsub1")
 
 # ═══ 链4: 第二付费 tier → 自己的 entitlement (非 Free) ═══
 _PRO_TIER = {
@@ -180,16 +196,22 @@ check("G4b entitlement_profile_exists 单点",
       and not entitlement_profile_exists("nope"))
 
 # ═══ 链5: subscription.update 换 tier (同一 sub) ═══
-res = _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product="price_pro", sub_id="mgsubT"))
+res = _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "price_pro"}, sub_id="mgsubT"))
 m = _m_row(uidT)
 pp = project(uidT)
 check("G5 update plan A→B: 同一 provider sub, membership/projection/entitlement 全变 B",
       m[0] == plan_pro and m[1] == "sub:mgsubT"
       and pp["entitlements"]["plan_code"] == "mg_test_pro"
       and resolve(uidT)["ingress_files_24h"] == 999, str(res))
+# product dict 单点提取 (canonical Creem 形态 + 历史兼容):
+check("G5c extract_product_id dict/string/product_id/空",
+      _sub.extract_product_id({"product": {"id": "prod_x"}}) == "prod_x"
+      and _sub.extract_product_id({"product": "price_y"}) == "price_y"
+      and _sub.extract_product_id({"product_id": "price_z"}) == "price_z"
+      and _sub.extract_product_id({}) == "")
 # update 无映射 → fail loud:
 try:
-    _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product="price_unknown", sub_id="mgsubT"))
+    _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "price_unknown"}, sub_id="mgsubT"))
     check("G5b product 无本地唯一映射 → KeyError fail loud", False, "no raise")
 except KeyError:
     check("G5b product 无本地唯一映射 → KeyError fail loud", True)
@@ -234,9 +256,17 @@ check("G9 reconcile 只跟 current Membership sub (不遍历历史 orders)",
       r["checked"] == 1 and r["granted"] == 1 and spendable_balance(uidR) == 100
       and _m_row(uidR)[0] == plan_r, f"r={r}")
 
-# ═══ 链10: unknown plan entitlement — read loud / auth safe ═══
+# ═══ 链10: unknown profile tier — 收费前拒绝 + 异常防线 ═══
+# 新逻辑: 无 profile 的付费档在 /subscribe 收费前拒绝 (plan_not_ready),
+# 不产生 order/checkout。此处直测 gate 消费的同一 profile 单点:
 uU, uidU = _new_user("mgU")
 plan_x = _seed_plan("mg_unknown_tier", 100, "price_x")
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidU,))
+check("G10pre unknown-profile plan 收费前拒绝 (gate 单点 + gate 后零 order)",
+      not entitlement_profile_exists("mg_unknown_tier")
+      and _cur.fetchone()[0] == 0)
+# 防御测试: 若 DB/外部异常导致未知 active Membership 已存在 (绕过 gate),
+# read 面 fail loud、authorization fail-safe — 异常防线, 非销售流程:
 _seed_order(uidU, plan_x, "mgsubU")
 _sub.bind_checkout({"id": "chU", "subscription": {"id": "mgsubU"}})
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubU"))
@@ -308,7 +338,172 @@ except Exception:
 # 前置扫描 (G11) 是权威 fail-closed 门。补: 直查是否插入了双 live 用户:
 _cur.execute("select count(*) from memberships where user_id=%s", (uidM,))
 _n = _cur.fetchone()[0]
-check("G11c 双 live 用户未被动迁移 (0 行入库)", _n == 0, f"n={_n}" if False else str(_n))
+check("G11c 双 live 用户未被动迁移 (0 行入库)", _n == 0, str(_n))
+# 清双 live → correlation: Plan A live(subA paid) + Plan B historical(subB 更新):
+_cur.execute("delete from user_plans where user_id=%s", (uidM,))
+_cur.execute("delete from orders where user_id=%s", (uidM,))
+_cur.execute("delete from memberships where user_id=%s", (uidM,))
+_cur.execute(
+    "insert into user_plans (user_id, plan_id, status, started_at, renews_at, updated_at)"
+    " values (%s, %s, 'active', %s, %s, %s), (%s, %s, 'expired', %s, %s, %s)",
+    (uidM, pm1, _ts - 100, FUT, _ts,
+     uidM, pm2, _ts - 90, _ts - 10, _ts))
+_seed_order(uidM, pm1, "mgsubMA")  # Plan A: subA paid (item 对齐)
+_cur.execute(
+    "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, created_at, paid_at)"
+    " values (%s, 'plan', %s, 'creem', 'sub:mgsubMB', 'paid', 500, %s, %s)",
+    (uidM, pm2, _ts + 5, _ts + 5))
+import subprocess
+def _sub_init(tag):
+    return subprocess.run(["/opt/flashshare/venv/bin/python", "-c", (
+        "import sys, os\n"
+        "sys.path.insert(0, %r)\n"
+        "sys.path.insert(0, os.path.join(%r, 'core'))\n"
+        "os.environ['DATABASE_URL'] = open(os.environ['FLASHSHARE_TEST_DSN_FILE']).read().strip()\n"
+        "os.environ.setdefault('FLASHSHARE_SESSION_SECRET', 'canonical-test')\n"
+        "from database import init_db\n"
+        "init_db()\n") % (_REPO, _REPO)],
+        capture_output=True, text=True,
+        env={**dict(__import__("os").environ),
+             "FLASHSHARE_TEST_DSN_FILE": _os.environ.get("FLASHSHARE_TEST_DSN_FILE", "")})
+r = _sub_init("corr")
+if r.returncode != 0:
+    check("G11d 迁移 plan/sub correlation (A live + subA)", False, (r.stderr or "")[-160:])
+else:
+    _cur.execute("select plan_id, provider_subscription_id from memberships where user_id=%s", (uidM,))
+    row = _cur.fetchone()
+    check("G11d 迁移 plan/sub correlation: Plan A live → 绑 subA (非 Plan B 的更新 subB)",
+          row is not None and row[0] == pm1 and row[1] == "sub:mgsubMA", str(row))
+# G11e: live 无同 plan paid sub order → migration FAIL (不伪造 legacy:*):
+_cur.execute("delete from memberships where user_id=%s", (uidM,))
+_cur.execute("update orders set status='failed' where user_id=%s and provider_order_id='sub:mgsubMA'", (uidM,))
+r2 = subprocess.run(["/opt/flashshare/venv/bin/python", "-c", (
+    "import sys, os\n"
+    "sys.path.insert(0, %r)\n"
+    "sys.path.insert(0, os.path.join(%r, 'core'))\n"
+    "os.environ['DATABASE_URL'] = open(os.environ['FLASHSHARE_TEST_DSN_FILE']).read().strip()\n"
+    "os.environ.setdefault('FLASHSHARE_SESSION_SECRET', 'canonical-test')\n"
+    "from database import init_db\n"
+    "try:\n"
+    "    init_db()\n"
+    "    print('NOT_BLOCKED')\n"
+    "except Exception as e:\n"
+    "    print('BLOCKED' if 'same-plan subscription order' in str(e) else 'OTHER:' + str(e)[:100])\n"
+    ) % (_REPO, _REPO)],
+    capture_output=True, text=True,
+    env={**dict(__import__("os").environ),
+         "FLASHSHARE_TEST_DSN_FILE": _os.environ.get("FLASHSHARE_TEST_DSN_FILE", "")})
+out2 = (r2.stdout or "").strip().splitlines()[-1] if (r2.stdout or "").strip() else "NOOUTPUT"
+check("G11e live 无 paid 同 plan sub → migration FAIL (不伪造 legacy:*)",
+      out2 == "BLOCKED", out2)
+# 清理该用户旧表行 → 迁移可跑 (后续段不受影响):
+_cur.execute("delete from user_plans where user_id=%s", (uidM,))
+_cur.execute("delete from orders where user_id=%s and provider_order_id in ('sub:mgsubMA','sub:mgsubMB','sub:mgsubM')", (uidM,))
+r3 = _sub_init("clean")
+check("G11f 旧表清理后迁移可跑 (0 残留)", r3.returncode == 0, (r3.stderr or "")[-120:])
+
+# ═══ 链12: /subscribe 序列化 — pending checkout reuse / race / profile gate ═══
+import asyncio
+from app.routes import topup as _topup
+_orig_auth = _topup._require_auth
+_topup._require_auth = lambda request: ({"id": uidP, "email": "t@t.co",
+                                        "username": uP}, None)
+_creem_calls = {"create": 0, "retrieve": {}}
+def _fake_create(order_id, package, user):
+    _creem_calls["create"] += 1
+    return {"ok": True, "checkout_url": f"https://creem.test/c/{order_id}",
+            "checkout_id": f"ch_fake_{order_id}"}
+_RT = {"ch_fake_EXPIRED": {"status": "expired", "checkout_url": "https://creem.test/e"},
+       "ch_fake_PEND": {"status": "pending", "checkout_url": "https://creem.test/p"},
+       "ch_fake_DONE": {"status": "completed", "checkout_url": "https://creem.test/d"}}
+def _fake_retrieve(cid):
+    _creem_calls["retrieve"][cid] = _creem_calls["retrieve"].get(cid, 0) + 1
+    if cid not in _RT:
+        raise RuntimeError("provider down")
+    return _RT[cid]
+from economy import creem as _creem_mod
+_orig_create, _orig_retrieve, _orig_enabled = (_creem_mod.create_checkout,
+    _creem_mod.retrieve_checkout, _creem_mod.creem_enabled)
+_creem_mod.create_checkout = _fake_create
+_creem_mod.retrieve_checkout = _fake_retrieve
+_creem_mod.creem_enabled = lambda: True
+
+class _FakeReq:
+    def __init__(self, body):
+        self._b = json.dumps(body).encode()
+    async def json(self):
+        return json.loads(self._b)
+
+async def _do_sub(uid_body):
+    return await _topup.subscribe_checkout(_FakeReq(uid_body))
+
+def _resp(jr):
+    if isinstance(jr, dict):
+        return 200, jr
+    return jr.status_code, json.loads(jr.body)
+
+# live member (fresh, paid) → plan_change_required, 零 create:
+uL, uidL = _new_user("mgL")
+_seed_order(uidL, plan_plus, "mgsubL")
+_sub.bind_checkout({"id": "chL", "subscription": {"id": "mgsubL"}})
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubL"))
+_topup._require_auth = lambda request: ({"id": uidL, "email": "t@t.co",
+                                        "username": uL}, None)
+_creem_calls["create"] = 0
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+check("G12 live member 再 subscribe → plan_change_required / 零 checkout",
+      st == 409 and d.get("error") == "plan_change_required"
+      and _creem_calls["create"] == 0, str(d))
+
+# 新用户首次 + pending reuse 序列:
+uS, uidS = _new_user("mgS")
+_topup._require_auth = lambda request: ({"id": uidS, "email": "t@t.co",
+                                        "username": uS}, None)
+_cur.execute("update plans set creem_price_id='price_plus' where id=%s", (plan_plus,))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select id from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidS,))
+_oi1 = _cur.fetchone()[0]
+check("G12b 首次 subscribe → 1 order + 1 create_checkout",
+      st == 200 and d.get("reused") is None and _creem_calls["create"] == 1
+      and _oi1 > 0, f"st={st} d={d}")
+# 第二次 (webhook 前) → retrieve pending → reuse URL, 不建第二 order/create:
+_RT[f"ch_fake_{_oi1}"] = {"status": "pending", "checkout_url": f"https://creem.test/c/{_oi1}"}
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidS,))
+_n_orders = _cur.fetchone()[0]
+check("G12c webhook 前再 subscribe → reuse 同一 checkout URL / 仍 1 order / 零新 create",
+      st == 200 and d.get("reused") is True and d.get("checkout_url") == f"https://creem.test/c/{_oi1}"
+      and _n_orders == 1 and _creem_calls["create"] == 1, f"st={st} d={d} n={_n_orders}")
+# expired → 终结旧 order, 重新创建:
+_RT[f"ch_fake_{_oi1}"] = {"status": "expired", "checkout_url": f"https://creem.test/c/{_oi1}"}
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan' and status='failed'", (uidS,))
+_nf = _cur.fetchone()[0]
+check("G12d expired checkout → 旧 order failed + 新 create",
+      st == 200 and _nf == 1 and _creem_calls["create"] == 2, f"st={st} failed={_nf}")
+# bind 后 paid 前 (membership active renews NULL) → 拒绝:
+_cur.execute("select id from orders where user_id=%s and kind='plan' and status='pending' order by id desc limit 1", (uidS,))
+_oi2 = _cur.fetchone()[0]
+with db() as con:
+    orders_repo.bind_membership(con, uidS, plan_plus, f"chfake{_oi2}", "active",
+                                started_at=_ts, renews_at=None)
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscription)",
+      st == 409 and d.get("error") == "plan_change_required"
+      and _creem_calls["create"] == 2, f"st={st} d={d}")
+# unknown-profile plan → 收费前拒绝 (plan_not_ready, 零 order 零 create):
+uQ, uidQ = _new_user("mgQ")
+_cur.execute("update plans set creem_price_id='price_q' where code='mg_unknown_tier'")
+_cur.execute("select id from plans where code='mg_unknown_tier'")
+_pq = _cur.fetchone()[0]
+_topup._require_auth = lambda request: ({"id": uidQ, "email": "t@t.co",
+                                        "username": uQ}, None)
+st, d = _resp(asyncio.run(_do_sub({"plan_id": _pq})))
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidQ,))
+check("G12f unknown-profile plan → plan_not_ready / 零 order / 零 checkout",
+      st == 422 and d.get("error") == "plan_not_ready"
+      and _cur.fetchone()[0] == 0 and _creem_calls["create"] == 2, f"st={st} d={d}")
+_topup._require_auth = _orig_auth
 
 # ═══ Source guards ═══
 _sub_src = open(_os.path.join(_REPO, "core", "economy", "subscription.py"), encoding="utf-8").read()
@@ -333,6 +528,39 @@ check("SG7 entitlement profile 单点 (_require_profile + 未知 raise)",
 _tmpl = open(_os.path.join(_REPO, "app", "templates", "account", "credits.html"), encoding="utf-8").read()
 check("SG8 Account badge 展示 my_plan.name (当前 tier)",
       "{{ my_plan.name }}" in _tmpl)
+check("SG9 旧 upsert_membership 单体 writer 已拆 (bind/state 语义分离)",
+      "def upsert_membership(" not in _repo_src
+      and "def bind_membership(" in _repo_src
+      and "def upsert_membership_state(" in _repo_src
+      and "MembershipBindingError" in _repo_src)
+_state_blk = _repo_src.split("def upsert_membership_state")[1].split("\ndef ")[0]
+check("SG10 state update 禁止换绑 (UPDATE 定位 sub, 无 sub 写列)",
+      "provider_subscription_id = " not in _state_blk.replace(
+          "WHERE provider_subscription_id = %s", "").replace(
+          "WHERE provider_subscription_id = %s FOR UPDATE", ""))
+_legacy_writers = ("def upsert_user_plan(", "def user_plan_row(",
+                   "def set_cancel_scheduled(", "def user_subscriptions(")
+check("SG11 legacy user_plans production writers 零残留",
+      all(w not in _repo_src for w in _legacy_writers)
+      and all(w not in _sub_src for w in _legacy_writers))
+_prod_refs = [l for l in _repo_src.split("\n") if "user_plans" in l and "migration" not in l.lower()]
+check("SG12 user_plans 仅 migration 语境出现 (repo)",
+      len(_prod_refs) == 0, str(_prod_refs[:3]))
+check("SG13 retrieve_checkout 存在 (provider 收敛单点)",
+      "def retrieve_checkout" in open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read())
+check("SG14 extract_product_id canonical dict 形态",
+      'isinstance(product, dict)' in _sub_src
+      and 'product.get("id")' in _sub_src)
+_topup_g = open(_os.path.join(_REPO, "app", "routes", "topup.py"), encoding="utf-8").read()
+check("SG15 /subscribe profile gate + open order 检查 + FOR UPDATE",
+      "entitlement_profile_exists" in _topup_g
+      and "lock_user_for_checkout" in _topup_g
+      and "open_plan_order" in _topup_g
+      and "retrieve_checkout" in _topup_g)
+_pages_g = open(_os.path.join(_REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
+check("SG16 Account 可售列表消费同一 profile 单点",
+      "entitlement_profile_exists" in _pages_g.split("def account_credits")[1][:2000]
+      if "def account_credits" in _pages_g else "active_plans" in _pages_g)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))

@@ -1,7 +1,7 @@
 """
 Subscription state machine (economy domain, v3 spec 2026-09-02).
 
-Creem subscription event family -> user_plans transitions + cycle credit.
+Creem subscription event family -> memberships transitions + cycle credit.
 Credit authority: subscription.paid ONLY (Creem docs guidance). Period
 boundaries are Creem-authoritative (current_period_start/end_date in the
 payload) — never locally computed. Idempotency layers:
@@ -69,7 +69,7 @@ def bind_checkout(obj: dict) -> dict:
             already = orders_repo.plan_order_by_sub_id(con, sub_id)
             if already is not None:
                 if orders_repo.membership_by_sub(con, sub_id) is None:
-                    orders_repo.upsert_membership(
+                    orders_repo.bind_membership(
                         con, already["user_id"], already["item_id"], sub_id,
                         "active", started_at=already["created_at"], renews_at=None)
                 return {"bound": True, "replay": True}
@@ -86,9 +86,15 @@ def bind_checkout(obj: dict) -> dict:
         if row is not None:
             existing = orders_repo.membership_by_sub(con, sub_id)
             if existing is None:
-                orders_repo.upsert_membership(
+                orders_repo.bind_membership(
                     con, row["user_id"], row["item_id"], sub_id, "active",
                     started_at=row["created_at"], renews_at=None)
+            # checkout 已 completed: order 推进为明确非-open (paid),
+            # 历史 pending 不永久挡住未来重新订阅。grant 只由 paid-period
+            # path 决定, 此处不改 granted 语义 (subscription 授信不走
+            # order:{id} idem, 由 plan:{uid}:{period} 兜底)。
+            if row["status"] == "pending":
+                orders_repo.mark_paid(con, row["id"], now())
     return _ev_sync(sub_id, obj)
 
 
@@ -116,6 +122,16 @@ def handle_event(event_type: str, obj: dict) -> dict:
 
 
 # ── per-event handlers ──
+
+def extract_product_id(sub: dict) -> str:
+    """provider payload product 单点提取 (canonical Creem 形态):
+    product = {"id": "prod_xxx"} dict → ["id"]; 兼容历史 string /
+    product_id 字段。空 → "" (caller fail loud)。"""
+    product = sub.get("product")
+    if isinstance(product, dict):
+        return str(product.get("id") or "")
+    return str(product or sub.get("product_id") or "")
+
 
 def _ev_ignored(sub_id: str, obj: dict) -> dict:
     log.info("subscription event ignored: sub=%s", sub_id)
@@ -189,9 +205,10 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
         cancel_ts = int(current["cancel_scheduled_at"])  # 保留既有 marker
     started = (current or {}).get("started_at") or order["created_at"]
     with db() as con:
-        orders_repo.upsert_membership(
-            con, order["user_id"], plan["id"], sub_id, status,
+        orders_repo.upsert_membership_state(
+            con, sub_id, status,
             started_at=started, renews_at=period_end,
+            plan_id=plan["id"],
             period_start=period_start, cancel_scheduled_at=cancel_ts)
     return {"granted": True, "credits": credits, "status": status}
 
@@ -210,7 +227,7 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
     entitlements 自然跟随新 tier。
     """
     sub = obj.get("subscription") or obj
-    product = str(sub.get("product") or sub.get("product_id") or "")
+    product = extract_product_id(sub)
     if not product:
         raise KeyError("product_missing")
     with db() as con:
@@ -220,9 +237,10 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
         m = orders_repo.membership_by_sub(con, sub_id)
         if m is None:
             raise KeyError("membership_not_found")
-        orders_repo.upsert_membership(
-            con, m["user_id"], plan["id"], sub_id, m["status"],
+        orders_repo.upsert_membership_state(
+            con, sub_id, m["status"],
             started_at=m["started_at"], renews_at=m["renews_at"],
+            plan_id=plan["id"],
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
     return {"updated": True, "plan": plan["code"]}
@@ -237,8 +255,8 @@ def _ev_scheduled_cancel(sub_id: str, obj: dict) -> dict:
             raise KeyError("membership_not_found")
         started = m["started_at"]
         renews = _parse_ts(sub.get("current_period_end_date")) or m["renews_at"]
-        orders_repo.upsert_membership(
-            con, m["user_id"], m["plan_id"], sub_id, m["status"],
+        orders_repo.upsert_membership_state(
+            con, sub_id, m["status"],
             started_at=started, renews_at=renews,
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=now())
@@ -258,8 +276,8 @@ def _ev_canceled(sub_id: str, obj: dict) -> dict:
         if m is None:
             raise KeyError("membership_not_found")
         renews = _period_end_of(obj, sub_id) or m["renews_at"]
-        orders_repo.upsert_membership(
-            con, m["user_id"], m["plan_id"], sub_id, "canceled",
+        orders_repo.upsert_membership_state(
+            con, sub_id, "canceled",
             started_at=m["started_at"], renews_at=renews,
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
@@ -272,8 +290,8 @@ def _ev_past_due(sub_id: str, obj: dict) -> dict:
         if m is None:
             raise KeyError("membership_not_found")
         # 宽限: 权益保留至原 renews_at (不抹) — 补扣成功由 paid 推进周期
-        orders_repo.upsert_membership(
-            con, m["user_id"], m["plan_id"], sub_id, "past_due",
+        orders_repo.upsert_membership_state(
+            con, sub_id, "past_due",
             started_at=m["started_at"], renews_at=m["renews_at"],
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
@@ -286,8 +304,8 @@ def _ev_expired(sub_id: str, obj: dict) -> dict:
         if m is None:
             raise KeyError("membership_not_found")
         renews = _period_end_of(obj, sub_id) or m["renews_at"]
-        orders_repo.upsert_membership(
-            con, m["user_id"], m["plan_id"], sub_id, "expired",
+        orders_repo.upsert_membership_state(
+            con, sub_id, "expired",
             started_at=m["started_at"], renews_at=renews,
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])

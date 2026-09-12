@@ -485,7 +485,7 @@ _SCHEMA_SQL = (
     # 再 renews_at DESC NULLS LAST)。
     """
     DO $$
-    DECLARE dup_count INT;
+    DECLARE dup_count INT; unbound_live INT;
     BEGIN
       SELECT count(*) INTO dup_count FROM (
         SELECT user_id FROM user_plans
@@ -495,6 +495,21 @@ _SCHEMA_SQL = (
       ) d;
       IF dup_count > 0 THEN
         RAISE EXCEPTION 'user_plans has %% users with multiple live memberships — manual adjudication required before migration', dup_count;
+      END IF;
+      -- live Membership 必须能对齐可靠 provider subscription (同 plan 的
+      -- paid sub: order); 找不到 → FAIL, 人工处理。绝不给 live 行伪造
+      -- legacy:* 绑定继续运行。
+      SELECT count(*) INTO unbound_live FROM user_plans up
+      WHERE up.status IN ('active','canceled','past_due')
+        AND COALESCE(up.renews_at, 0) > EXTRACT(EPOCH FROM now())::BIGINT
+        AND NOT EXISTS (
+          SELECT 1 FROM orders o2
+          WHERE o2.user_id = up.user_id AND o2.kind = 'plan'
+            AND o2.item_id = up.plan_id
+            AND o2.provider_order_id LIKE 'sub:%%'
+            AND o2.status = 'paid');
+      IF unbound_live > 0 THEN
+        RAISE EXCEPTION '%% live user_plans rows lack a paid same-plan subscription order — manual adjudication required before migration', unbound_live;
       END IF;
     END $$;
     """,
@@ -510,6 +525,7 @@ _SCHEMA_SQL = (
       SELECT DISTINCT ON (up.user_id) up.user_id, up.plan_id,
              (SELECT o2.provider_order_id FROM orders o2
               WHERE o2.user_id = up.user_id AND o2.kind = 'plan'
+                AND o2.item_id = up.plan_id
                 AND o2.provider_order_id LIKE 'sub:%%'
               ORDER BY o2.id DESC LIMIT 1) AS sub_id,
              up.status, up.started_at, up.renews_at, up.cancel_scheduled_at,
