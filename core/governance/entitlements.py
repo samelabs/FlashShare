@@ -70,17 +70,44 @@ for _code, _spec in _PLANS.items():
     _validate_against_protocol(_spec, _code)
 
 
+class EntitlementConfigurationError(RuntimeError):
+    """可售/active plan 缺 entitlement profile — 配置缺口 fail loud。
+
+    Read model (plan_of/projection 消费方) 传播; authorization
+    (resolve) 既有 exception → Free fail-safe 保持。
+    """
+
+
+def entitlement_profile_exists(plan_code: str) -> bool:
+    """公开单点: 某 plan code 是否有显式 entitlement profile。
+
+    约束: plan 可售 (active) → 必须有 profile (运营配置责任);
+    协议扩容 ≠ 自动授权 (profile 仍需显式声明, 与 _PLANS 同规)。
+    """
+    return plan_code in _PLANS
+
+
+def _require_profile(plan_code: str) -> dict:
+    spec = _PLANS.get(plan_code)
+    if spec is None:
+        # 用户已付费成为未知 tier: read 面必须 fail loud — 不悄悄给 Free。
+        raise EntitlementConfigurationError(
+            f"active plan '{plan_code}' has no entitlement profile")
+    return spec
+
+
 def resolve_from_membership(membership: dict | None) -> dict:
     """plan_of() public result → effective entitlement (纯函数单点)。
 
     输入只能是 economy.subscription.plan_of() 的公开结果 (或 None):
-    member == True 且 code 在 _PLANS → 对应 entitlement; 其余一切
-    (None / member=false / 未知 code) → Free fallback。
+    member == True → 该 code 的显式 profile (未知 code =
+    EntitlementConfigurationError — 付费用户不悄悄降 Free);
+    其余一切 (None / member=false) → Free fallback。
     Membership → Entitlement 的政策映射只存在于本模块 — 禁止任何
     消费方 (如 access projection) 复制 member/code 判定。
     """
-    if membership and membership.get("member") and membership.get("code") in _PLANS:
-        return dict(_PLANS[membership["code"]])
+    if membership and membership.get("member"):
+        return dict(_require_profile(membership["code"]))
     return dict(FREE)
 
 
@@ -94,9 +121,12 @@ def resolve(user_id: int) -> dict:
     """
     try:
         p = plan_of(user_id)
+        return resolve_from_membership(p)
     except Exception:
-        p = None
-    return resolve_from_membership(p)
+        # Authorization fail-safe (既有语义): membership fact 读取失败或
+        # 未知 active tier 无 profile → Free。read 面 (projection/API) 不走
+        # 本函数, 会 fail loud — 两个边界共存。
+        return dict(FREE)
 
 
 def check_delivery(user_id: int, delivery: dict) -> dict | None:

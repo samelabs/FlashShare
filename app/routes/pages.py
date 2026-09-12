@@ -500,8 +500,12 @@ async def account_credits(request: Request):
     # access projection (access["membership"] alias), never a second
     # plan_of() read here.
     from repo.orders import active_plans
+    from governance.entitlements import entitlement_profile_exists
     with db() as con:
-        plans = [dict(r) for r in active_plans(con)]
+        # 可售过滤与 /subscribe authoritative gate 同一 profile 单点:
+        # 无 entitlement profile 的 tier 不展示 (点击后必失败)。
+        plans = [dict(r) for r in active_plans(con)
+                 if entitlement_profile_exists(r["code"])]
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
                        granted_today=granted_today(user["id"]) if daily_amount > 0 else True,

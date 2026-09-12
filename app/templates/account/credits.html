@@ -67,7 +67,7 @@
     </div>
     {% if my_plan %}
     <div class="sub-status">
-      <span class="sub-badge{% if my_plan.member %} on{% endif %}" data-i18n="sub_plus_badge">{{ texts.sub_plus_badge }}</span>
+      <span class="sub-badge{% if my_plan.member %} on{% endif %}">{{ my_plan.name }}</span>
       <span class="sub-meta">
         {% if my_plan.member %}{{ texts.sub_until }} {{ fmt_ts(my_plan.renews_at) }}
         {% else %}{{ my_plan.status }}{% endif %}

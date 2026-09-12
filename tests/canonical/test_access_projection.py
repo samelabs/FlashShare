@@ -72,9 +72,9 @@ def _seed_plan(user_id, code, status, renews_at):
     else:
         plan_id = row[0]
     _cur.execute(
-        "insert into user_plans (user_id, plan_id, status, started_at, renews_at, updated_at)"
-        " values (%s, %s, %s, %s, %s, %s) on conflict do nothing",
-        (user_id, plan_id, status, _ts, renews_at, _ts))
+        "insert into memberships (user_id, plan_id, provider_subscription_id, status, started_at, renews_at, updated_at)"
+        " values (%s, %s, %s, %s, %s, %s, %s) on conflict do nothing",
+        (user_id, plan_id, f"sub:fx:{user_id}", status, _ts, renews_at, _ts))
 
 # ═══ 1. Free: 无 membership ═══
 u_f, id_f = _new_user("apf")

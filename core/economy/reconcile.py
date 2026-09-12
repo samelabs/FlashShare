@@ -71,17 +71,20 @@ def reconcile_user(user_id: int) -> dict:
     Returns: {checked, granted, credits} — granted=True 时 credits>0。
     """
     ts = now()
+    # 补偿通道只跟随 current Membership 的 provider subscription —
+    # 不再遍历历史 plan orders 猜当前订阅。
     with db() as con:
-        rows = orders_repo.user_subscriptions(con, user_id)
+        m = orders_repo.membership_row(con, user_id)
+    if m is None or not (m.get("provider_subscription_id") or "").startswith("sub:"):
+        return {"checked": 0, "granted": 0, "credits": 0}
     checked = granted = 0
     credits_total = 0
-    for row in rows:
-        sub_id = (row.get("provider_order_id") or "").removeprefix("sub:")
-        if not sub_id or not row.get("plan_id"):
+    for row in [dict(m)]:
+        sub_id = row["provider_subscription_id"].removeprefix("sub:")
+        if not sub_id:
             continue
         checked += 1
-        # Read-contract guard: explicit LEFT JOIN aliases only — never the
-        # ambiguous bare row["status"]/["created_at"]/["item_id"].
+        # Input = current Membership row (explicit membership fields).
         sub = fetch_subscription(sub_id)
         if not sub:
             continue  # provider failure → best-effort skip

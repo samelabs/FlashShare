@@ -459,6 +459,85 @@ _SCHEMA_SQL = (
        VALUES ('plus', 'PLUS', 10000, 30, 'monthly', 0, 0, TRUE,
                EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
        ON CONFLICT (code) DO NOTHING""",
+    # ── membership 单行权威 (governance closure): 一个 user 最多一个
+    # current Membership; provider subscription 是唯一绑定。user_plans
+    # 冻结为历史表 (schema 保留, 零写入)。──
+    """
+    CREATE TABLE IF NOT EXISTS memberships (
+      user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_id    BIGINT NOT NULL REFERENCES plans(id),
+      provider_subscription_id TEXT UNIQUE NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active','past_due','canceled','expired')),
+      started_at BIGINT NOT NULL,
+      renews_at  BIGINT,
+      cancel_scheduled_at     BIGINT,
+      last_grant_period_start BIGINT,
+      updated_at BIGINT,
+      PRIMARY KEY (user_id)
+    )
+    """,
+    "CREATE UNIQUE INDEX IF NOT EXISTS memberships_sub_idx ON memberships (provider_subscription_id)",
+    # fail-closed 一次性迁移: 先扫描旧表双 live (invariant violation) —
+    # 检出即 raise, init_db 中止 (不自动 newest/expensive/plus wins —
+    # 人工裁定)。0/1 live per user → 入 memberships; 幂等: 只迁尚无
+    # memberships 行的用户 (历史行迁作 deterministic 单行: live 优先,
+    # 再 renews_at DESC NULLS LAST)。
+    """
+    DO $$
+    DECLARE dup_count INT; unbound_live INT;
+    BEGIN
+      SELECT count(*) INTO dup_count FROM (
+        SELECT user_id FROM user_plans
+        WHERE status IN ('active','canceled','past_due')
+          AND COALESCE(renews_at, 0) > EXTRACT(EPOCH FROM now())::BIGINT
+        GROUP BY user_id HAVING count(*) > 1
+      ) d;
+      IF dup_count > 0 THEN
+        RAISE EXCEPTION 'user_plans has %% users with multiple live memberships — manual adjudication required before migration', dup_count;
+      END IF;
+      -- live Membership 必须能对齐可靠 provider subscription (同 plan 的
+      -- paid sub: order); 找不到 → FAIL, 人工处理。绝不给 live 行伪造
+      -- legacy:* 绑定继续运行。
+      SELECT count(*) INTO unbound_live FROM user_plans up
+      WHERE up.status IN ('active','canceled','past_due')
+        AND COALESCE(up.renews_at, 0) > EXTRACT(EPOCH FROM now())::BIGINT
+        AND NOT EXISTS (
+          SELECT 1 FROM orders o2
+          WHERE o2.user_id = up.user_id AND o2.kind = 'plan'
+            AND o2.item_id = up.plan_id
+            AND o2.provider_order_id LIKE 'sub:%%'
+            AND o2.status = 'paid');
+      IF unbound_live > 0 THEN
+        RAISE EXCEPTION '%% live user_plans rows lack a paid same-plan subscription order — manual adjudication required before migration', unbound_live;
+      END IF;
+    END $$;
+    """,
+    """
+    INSERT INTO memberships (user_id, plan_id, provider_subscription_id,
+                             status, started_at, renews_at,
+                             cancel_scheduled_at, last_grant_period_start, updated_at)
+    SELECT m.user_id, m.plan_id,
+           COALESCE(m.sub_id, 'legacy:' || m.user_id),
+           m.status, m.started_at, m.renews_at, m.cancel_scheduled_at,
+           m.last_grant_period_start, m.updated_at
+    FROM (
+      SELECT DISTINCT ON (up.user_id) up.user_id, up.plan_id,
+             (SELECT o2.provider_order_id FROM orders o2
+              WHERE o2.user_id = up.user_id AND o2.kind = 'plan'
+                AND o2.item_id = up.plan_id
+                AND o2.provider_order_id LIKE 'sub:%%'
+              ORDER BY o2.id DESC LIMIT 1) AS sub_id,
+             up.status, up.started_at, up.renews_at, up.cancel_scheduled_at,
+             up.last_grant_period_start, up.updated_at
+      FROM user_plans up
+      ORDER BY up.user_id,
+               (up.status IN ('active','canceled','past_due')
+                AND COALESCE(up.renews_at,0) > EXTRACT(EPOCH FROM now())::BIGINT) DESC,
+               up.renews_at DESC NULLS LAST, up.started_at DESC, up.plan_id DESC
+    ) m
+    WHERE NOT EXISTS (SELECT 1 FROM memberships mm WHERE mm.user_id = m.user_id)
+    """,
 )
 
 

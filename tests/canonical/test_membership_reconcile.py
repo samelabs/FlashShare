@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Membership reconcile canonical invariants — 四事实边界合同.
 
-锁住: user_subscriptions 显式 read model、唯一 paid-period 实现、
+锁住: membership_row 显式 read model、唯一 paid-period 实现、
 补偿 eligibility (active/scheduled_cancel only)、scheduled_cancel
 marker 保留、last_grant 判据、ledger 幂等防线、provider failure
 best-effort。遵循 canonical fail-closed 规则。
@@ -71,7 +71,17 @@ def _seed_plan_order(uid, monthly_credits=100):
         " status, amount_cents, created_at, paid_at)"
         " values (%s, 'plan', %s, 'creem', %s, 'paid', 500, %s, %s) returning id",
         (uid, plan_id, f"sub:test{uid}", _ts, _ts))
-    return plan_id, _cur.fetchone()[0], f"sub:test{uid}"
+    oid = _cur.fetchone()[0]
+    # (sub id 返回纯 id; orders/memberships 落库带 sub: 前缀)
+    # membership 建档 (新单行模型; fixture 直建, sub 唯一)
+    _cur.execute(
+        "insert into memberships (user_id, plan_id, provider_subscription_id,"
+        " status, started_at, renews_at, updated_at)"
+        " values (%s, %s, %s, %s, %s, NULL, %s)"
+        " on conflict (user_id) do update set plan_id=excluded.plan_id,"
+        " provider_subscription_id=excluded.provider_subscription_id, status=excluded.status",
+        (uid, plan_id, f"sub:test{uid}", "active", _ts, _ts))
+    return plan_id, oid, f"test{uid}"
 
 def _sub_snapshot(status, p_start, p_end):
     return {"object": "subscription", "status": status,
@@ -84,7 +94,7 @@ def _iso(epoch):
 def _plan_row(uid):
     _cur.execute(
         "select status, renews_at, last_grant_period_start, cancel_scheduled_at"
-        " from user_plans where user_id=%s", (uid,))
+        " from memberships where user_id=%s", (uid,))
     return _cur.fetchone()
 
 def _ledger_grants(uid):
@@ -92,21 +102,21 @@ def _ledger_grants(uid):
         "select count(*) from ledger where user_id=%s and kind='grant_plan'", (uid,))
     return _cur.fetchone()[0]
 
-# ═══ R1 — read contract ═══
+# ═══ R1 — read contract (单行 membership 模型) ═══
 u1, uid1 = _new_user("rc1")
 pid1, oid1, sub1 = _seed_plan_order(uid1)
 with db() as con:
-    rows = orders_repo.user_subscriptions(con, uid1)
-row = dict(rows[0])
-_required = {"order_id", "plan_id", "provider_order_id", "order_status",
-             "order_created_at", "membership_status", "membership_started_at",
-             "membership_renews_at", "last_grant_period_start",
-             "cancel_scheduled_at"}
-check("R1a user_subscriptions 显式 alias 字段齐全", _required <= set(row), str(sorted(row)))
-check("R1b order fact 正确 (order_status=paid, plan_id)",
-      row["order_status"] == "paid" and row["plan_id"] == pid1)
-check("R1c 无 membership 行时 membership_status 为 NULL (LEFT JOIN)",
-      row["membership_status"] is None and row["last_grant_period_start"] is None)
+    m = orders_repo.membership_row(con, uid1)
+    o = orders_repo.order_by_id_for_update(con, oid1)
+check("R1a membership_row 显式字段 (membership+plan join)",
+      m is not None and {"plan_id", "provider_subscription_id", "status",
+                         "renews_at", "last_grant_period_start",
+                         "cancel_scheduled_at", "code", "name"} <= set(dict(m)),
+      str(sorted(dict(m or {}).keys())))
+check("R1b order fact 正确 (paid, item=plan)",
+      dict(o)["status"] == "paid" and dict(o)["item_id"] == pid1)
+check("R1c fixture 建档后 membership 绑定 sub",
+      dict(m)["provider_subscription_id"] == f"sub:{sub1}")
 
 # ═══ R2 — active missing grant → exactly one grant ═══
 PS, PE = _ts - 3600, _ts + 2592000
@@ -136,7 +146,7 @@ check("R3 同 period 二次 reconcile: credits 零增 / ledger 零新行",
       f"r={r}")
 
 # ═══ R4 — ledger idempotency (marker 丢失) ═══
-_cur.execute("update user_plans set last_grant_period_start=NULL where user_id=%s", (uid1,))
+_cur.execute("update memberships set last_grant_period_start=NULL where user_id=%s", (uid1,))
 _bal4 = spendable_balance(uid1)
 _gr4 = _ledger_grants(uid1)
 r = _rec.reconcile_user(uid1)
@@ -150,18 +160,19 @@ check("R4b marker 自愈回 period_start (无第二笔账)", pr[2] == PS and _le
 # ═══ R5 — triaging ═══
 u2, uid2 = _new_user("rc2")
 _seed_plan_order(uid2)
+_cur.execute("delete from memberships where user_id=%s", (uid2,))  # R5 前提: 无 current membership
 _bal5 = spendable_balance(uid2)
 _rec.fetch_subscription = _fake_fetch(_sub_snapshot("trialing", _iso(PS), _iso(PE)))
 r = _rec.reconcile_user(uid2)
-check("R5 trialing: credits 零变 / 无 membership 行创建",
+check("R5 trialing: credits 零变 / membership 不被写成 active",
       spendable_balance(uid2) == _bal5 and _plan_row(uid2) is None, f"r={r}")
 
 # ═══ R6 — past_due ═══
 u3, uid3 = _new_user("rc3")
 pid3, _, sub3 = _seed_plan_order(uid3)
 with db() as con:
-    orders_repo.upsert_user_plan(con, uid3, pid3, "past_due", started_at=_ts,
-                                 renews_at=PE, period_start=PS)
+    orders_repo.upsert_membership_state(con, sub3, "past_due",
+                                        started_at=_ts, renews_at=PE)
 _bal6 = spendable_balance(uid3)
 _rec.fetch_subscription = _fake_fetch(_sub_snapshot("past_due", _iso(PS), _iso(PE)))
 r = _rec.reconcile_user(uid3)
@@ -191,6 +202,7 @@ check("R7c 二次 reconcile 零新 grant 且 cancellation marker 仍在",
 for st in ("canceled", "expired", "weird_state"):
     u5, uid5 = _new_user("rc8")
     _seed_plan_order(uid5)
+    _cur.execute("delete from memberships where user_id=%s", (uid5,))  # 前提: 无 current membership
     _bal8 = spendable_balance(uid5)
     _rec.fetch_subscription = _fake_fetch(_sub_snapshot(st, _iso(PS), _iso(PE)))
     r = _rec.reconcile_user(uid5)
@@ -200,6 +212,7 @@ for st in ("canceled", "expired", "weird_state"):
 # ═══ R9 — provider failure ═══
 u6, uid6 = _new_user("rc9")
 _seed_plan_order(uid6)
+_cur.execute("delete from memberships where user_id=%s", (uid6,))  # 前提: 无 current membership
 _bal9 = spendable_balance(uid6)
 _rec.fetch_subscription = lambda sub_id: None
 r = _rec.reconcile_user(uid6)  # 不抛
@@ -228,7 +241,8 @@ _rec_code = "\n".join(l for l in _rec_src.split("\n")
                       if not l.strip().startswith(("#", '"', "'")))
 check("SG1 reconcile 不 import/call billing.grant", "billing import grant" not in _rec_src
       and "grant(" not in _rec_code.replace("apply_paid_period(", "").replace("granted", ""))
-check("SG2 reconcile 不直接调用 upsert_user_plan", "upsert_user_plan" not in _rec_code)
+check("SG2 reconcile 不直接调用 membership writers (upsert_*)",
+      "upsert_membership(" not in _rec_code and "upsert_user_plan" not in _rec_code)
 check("SG3 reconcile 调用共享 paid-period helper", "apply_paid_period" in _rec_code)
 check("SG4 reconcile 无裸 row[\"status\"] 读取 (注释外)",
       'row["status"]' not in _rec_code and 'row.get("status")' not in _rec_code)
@@ -245,7 +259,7 @@ check("SG7 _ev_paid 与 reconcile 共用同一 helper",
 check("SG8 idem key 仍为 plan:{uid}:{period_start}",
       'f"plan:{order[\'user_id\']}:{period_start}"' in _paid_blk)
 check("SG9 grant 在 upsert 前 (顺序保持)",
-      _paid_blk.index("grant(") < _paid_blk.index("upsert_user_plan"))
+      _paid_blk.index("grant(") < _paid_blk.index("upsert_membership"))
 _auth_src = open(_os.path.join(_REPO, "app", "routes", "auth_route.py"), encoding="utf-8").read()
 check("SG10 _login_maintenance 仍调用 reconcile_user",
       "reconcile_user" in _auth_src)
