@@ -55,6 +55,7 @@ from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from identity.auth import public_user
 from economy.billing import spendable_balance
+from governance.access_projection import project
 from utils import (
     brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,
     bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
@@ -77,14 +78,13 @@ def ctx_base(request: Request) -> dict:
     lang = request.state.lang
     user = request.state.user
     from economy.billing import spendable_balance as get_balance
-    # 会员标识单点: 登录用户查订阅状态 (header PLUS 徽标/账户页同源)
-    my_plan = None
-    if user:
-        from economy.subscription import plan_of
-        try:
-            my_plan = plan_of(user["id"])
-        except Exception:
-            my_plan = None
+    # Membership fact via the access projection (read model):
+    # access.membership is canonical; my_plan is a legacy template
+    # compatibility alias of it — web_ctx holds no membership query of
+    # its own. Anonymous → access None. Projection fact-read failures
+    # propagate (never masked as Free). Credits stay an independent
+    # balance, outside the projection.
+    access = project(user["id"]) if user else None
     return {
         "request": request,
         "lang": lang,
@@ -97,7 +97,8 @@ def ctx_base(request: Request) -> dict:
         "user_json": public_user(user) if user else None,
         # Header credit chip (None for anonymous)
         "credits": get_balance(user["id"]) if user else None,
-        "my_plan": my_plan,
+        "access": access,
+        "my_plan": access["membership"] if access else None,
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
         "support_channel": PUBLIC_SUPPORT_CHANNEL,
