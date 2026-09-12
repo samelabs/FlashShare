@@ -1,48 +1,56 @@
 import json
 import time
 
-from config import DAILY_UPLOADS, DAILY_BYTES
 from database import db
+from governance.entitlements import resolve as _resolve_entitlement
 from repo import uploads as uploads_repo
 from repo import upload_usage as usage_repo
 from gokapi import delete_gokapi_file, _gokapi_connection, _gokapi_path, GOKAPI_KEY
 from utils import now, public_file_url
 
 
-def _quota_reason(row: dict, ip_count: int, incoming_bytes: int,
+def _quota_reason(row: dict, ent: dict, incoming_bytes: int,
                   incoming_count: int) -> str:
-    if int(row["c"]) + incoming_count > DAILY_UPLOADS:
+    if int(row["c"]) + incoming_count > ent["ingress_files_24h"]:
         return "err_quota_count"
-    if int(row["b"]) + incoming_bytes > DAILY_BYTES:
+    if int(row["b"]) + incoming_bytes > ent["ingress_bytes_24h"]:
         return "err_quota_size"
-    if int(ip_count) + incoming_count > DAILY_UPLOADS * 2:
-        return "err_quota_ip"
     return ""
 
 
 def check_quota(user_id: int, ip: str, incoming_bytes: int,
                 incoming_count: int = 1) -> tuple:
-    """Read-only quota preview against ingress facts."""
+    """Read-only quota preview against ingress facts.
+
+    Limits come from the user's effective entitlement (governance.
+    entitlements.resolve). ip is accepted for the audit-fact record but
+    takes no part in quota decisions.
+    """
     start = now() - 24 * 3600
+    ent = _resolve_entitlement(user_id)
     with db() as con:
         row = usage_repo.user_usage(con, user_id, start)
-        ip_count = usage_repo.ip_usage_count(con, ip, start)
-    reason = _quota_reason(row, ip_count, int(incoming_bytes), int(incoming_count))
+    reason = _quota_reason(row, ent, int(incoming_bytes), int(incoming_count))
     return (not reason, reason)
 
 
 def reserve_ingress(user_id: int, ip: str, sizes: list[int]) -> tuple:
-    """Atomically reserve the daily source-file ingress budget."""
+    """Atomically reserve the daily source-file ingress budget.
+
+    Same resolver and same limit semantics as check_quota; the check and
+    the insert both happen under the user row lock so same-user
+    concurrency cannot exceed the entitlement.
+    """
     clean = [int(s) for s in sizes]
     if not clean or any(s <= 0 for s in clean):
         return False, "err_empty_file", []
     start = now() - 24 * 3600
     ts = now()
+    ent = _resolve_entitlement(user_id)
     with db() as con:
         usage_repo.lock_user(con, user_id)
         row = usage_repo.user_usage(con, user_id, start)
-        ip_count = usage_repo.ip_usage_count(con, ip, start)
-        reason = _quota_reason(row, ip_count, sum(clean), len(clean))
+        reason = _quota_reason(row, ent, sum(clean), len(clean))
         if reason:
             return False, reason, []
         ids = usage_repo.insert_many(con, user_id, ip, clean, ts)

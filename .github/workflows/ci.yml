@@ -114,6 +114,8 @@ jobs:
             python tests/canonical/test_supply_accept_multi.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_supply_accept_multi.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_ingress_entitlement.py
 
       - name: Start Gokapi HTTP-boundary service
         shell: bash
@@ -162,6 +164,9 @@ jobs:
 
       - name: Supply accept/multi canonical
         run: python tests/canonical/test_supply_accept_multi.py
+
+      - name: Ingress entitlement canonical
+        run: python tests/canonical/test_ingress_entitlement.py
 
       - name: Failure diagnostics
         if: failure()
