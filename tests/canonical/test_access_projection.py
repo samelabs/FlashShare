@@ -265,6 +265,71 @@ check("ME-E1 expired: plan 保留真实 fact (member=false) == access.membership
 check("ME-E2 expired: entitlements.plan_code=free (fact ≠ entitlement)",
       d["access"]["entitlements"]["plan_code"] == "free")
 
+# ═══ 7d. Web base context 消费 projection (真实 HTTP 三态) ═══
+def _get_home(ck=None):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    headers = {"Cookie": ck} if ck else {}
+    conn.request("GET", "/", headers=headers)
+    r = conn.getresponse(); body = r.read().decode(); conn.close()
+    return r.status, body
+
+def _has_plus_badge(body):
+    return "plus-badge" in body and "PLUS" in body.split("plus-badge")[0][-200:] + body.split("plus-badge")[1][:20] if "plus-badge" in body else False
+
+# Free authenticated
+st, body = _get_home(_mf_ck)
+check("WC-F1 Free 登录 GET / → 200", st == 200, str(st))
+check("WC-F2 Free header 无 PLUS badge (与 project.membership=None 一致)",
+      not _has_plus_badge(body) and project(_mf_id)["membership"] is None)
+
+# PLUS authenticated
+st, body = _get_home(_login_http(_mp))
+check("WC-P1 PLUS 登录 GET / → 200 + header PLUS badge",
+      st == 200 and _has_plus_badge(body)
+      and project(_mp_id)["membership"]["member"] is True)
+
+# Expired
+st, body = _get_home(_login_http(_me_))
+check("WC-E1 expired 登录 GET / → 200 无 PLUS badge (fact 保留 member=false)",
+      st == 200 and not _has_plus_badge(body)
+      and project(_me_id)["membership"]["member"] is False)
+
+# Anonymous
+st, body = _get_home()
+check("WC-A1 匿名 GET / → 200 无 PLUS badge", st == 200 and not _has_plus_badge(body))
+
+# ═══ 7e. Read-model failure contract (函数级) ═══
+import app.web_ctx as _wctx
+_orig_project = _wctx.project
+def _boom_project(_uid):
+    raise RuntimeError("membership read failed")
+
+class _FakeReq:
+    state = type("S", (), {"lang": "en", "user": {"id": _mf_id, "username": "x"}})()
+
+_wctx.project = _boom_project
+try:
+    _wctx.ctx_base(_FakeReq())
+    check("WC-X1 web_ctx project 异常向上传播 (不伪装 access=None)", False, "no raise")
+except RuntimeError as _exc:
+    check("WC-X1 web_ctx project 异常向上传播 (不伪装 access=None)",
+          "membership read failed" in str(_exc))
+finally:
+    _wctx.project = _orig_project
+
+# 匿名不调用 project:
+_wctx.project = _boom_project
+class _AnonReq:
+    state = type("S", (), {"lang": "en", "user": None})()
+try:
+    _c = _wctx.ctx_base(_AnonReq())
+    check("WC-X2 匿名 context 不调用 project (access=None, my_plan=None)",
+          _c.get("access") is None and _c.get("my_plan") is None)
+except RuntimeError:
+    check("WC-X2 匿名 context 不调用 project", False, "anon raised")
+finally:
+    _wctx.project = _orig_project
+
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
 import ast as _ast
@@ -349,6 +414,23 @@ check("AP-G11b v1_me 无 projection exception → Free/null fallback",
 check("AP-G12 其它 v1 endpoint 未加 membership/credits 参数",
       _v1_all.count("project(") == 1
       and "membership" not in _v1_all.split("async def v1_tools")[1])
+_wctx_src = open(_os.path.join(_REPO, "app", "web_ctx.py"), encoding="utf-8").read()
+_wctx_code = "\n".join(l for l in _wctx_src.split("\n") if not l.strip().startswith("#"))
+check('AP-W1 web_ctx 使用 project(user["id"]) 消费 projection',
+      'project(user["id"])' in _wctx_src)
+check("AP-W2 web_ctx 不 import economy.subscription / 不调 plan_of",
+      "economy.subscription" not in _wctx_src and "plan_of" not in _wctx_code)
+check("AP-W3 web_ctx 无 plus policy 判断", '"plus"' not in _wctx_code)
+check('AP-W4 my_plan 明确来自 access["membership"]',
+      'access["membership"] if access else None' in _wctx_src)
+check("AP-W5 credits 仍来自 spendable_balance (独立)",
+      "spendable_balance" in _wctx_src)
+check("AP-W6 web_ctx 无 project 异常→None fallback",
+      "except" not in _wctx_src.split("def ctx_base")[1].split("return {")[0])
+_hdr = open(_os.path.join(_REPO, "app", "templates", "partials", "header.html"), encoding="utf-8").read()
+check("AP-W7 header.html 不自行推导 membership (只读 my_plan)",
+      "plan_of" not in _hdr and "project" not in _hdr and "membership" not in _hdr
+      and "my_plan" in _hdr)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
