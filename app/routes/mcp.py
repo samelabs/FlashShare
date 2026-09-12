@@ -143,6 +143,14 @@ async def _dispatch(request: Request, user: dict, msg: dict):
 
 
 def _tool_specs(user: dict) -> list:
+    # Discovery-layer projection: schema enums show THIS bearer's real
+    # entitlement (one access-projection read per _tool_specs call).
+    # Not an authorization surface — tools/call still runs the full
+    # authoritative chain regardless of what the schema advertised.
+    from governance.access_projection import project
+    ent = project(user["id"])["entitlements"]
+    expiry_enum = list(ent["expiry_days"])
+    downloads_enum = list(ent["download_limits"])
     specs = []
     for t in list_catalog(user["id"]):
         multi = bool(t.get("multi"))
@@ -179,8 +187,8 @@ def _tool_specs(user: dict) -> list:
             "type": "object",
             "description": "Result delivery policy (optional; defaults 1 day / 50 downloads)",
             "properties": {
-                "expiry_days": {"type": "integer", "enum": [1, 3, 7]},
-                "allowed_downloads": {"type": "integer", "enum": [1, 10, 50, 100, 200]},
+                "expiry_days": {"type": "integer", "enum": expiry_enum},
+                "allowed_downloads": {"type": "integer", "enum": downloads_enum},
             },
         }
         props["client_ref"] = {
