@@ -29,10 +29,11 @@ def project(user_id: int) -> dict:
     entitlement, 域边界必须可见。expiry/download 值输出 JSON-friendly
     list (内部 tuple 不外泄)。
     """
-    try:
-        membership = plan_of(user_id)
-    except Exception:
-        membership = None
+    # Fact-read failure propagates: a read model must not disguise a
+    # membership read fault as a Free user (membership=null). The
+    # authorization layer (entitlements.resolve) keeps its own fail-safe
+    # Free fallback — that boundary is intentional and stays there.
+    membership = plan_of(user_id)
     ent = resolve_from_membership(membership)
     return {
         "membership": membership,

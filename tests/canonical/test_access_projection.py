@@ -157,6 +157,24 @@ check("AP-S1 resolve(user_id) == resolve_from_membership(plan_of(user_id)) (三�
       and resolve(id_f) == resolve_from_membership(plan_of(id_f))
       and resolve(id_e) == resolve_from_membership(plan_of(id_e)))
 
+# ═══ 7b. Fact-read failure propagates (read model ≠ fail-safe 层) ═══
+import governance.access_projection as _apmod
+_orig_plan_of = _apmod.plan_of
+def _boom_plan_of(_uid):
+    raise RuntimeError("membership read failed")
+_apmod.plan_of = _boom_plan_of
+try:
+    project(id_f)
+    check("AP-X1 plan_of 异常向上传播 (不伪装 membership=null)", False, "no raise")
+except RuntimeError as _exc:
+    check("AP-X1 plan_of 异常向上传播 (不伪装 membership=null)",
+          "membership read failed" in str(_exc))
+finally:
+    _apmod.plan_of = _orig_plan_of
+# 恢复后正常:
+check("AP-X2 monkeypatch 恢复后 projection 正常",
+      project(id_f)["membership"] is None)
+
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
 import ast as _ast
@@ -180,6 +198,9 @@ check("AP-G4 消费 resolve_from_membership + usage_24h + plan_of",
 _ent_src = open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read()
 check("AP-G5 member/code 映射只存在于 entitlements (单点)",
       'membership.get("member")' in _ent_src)
+check("AP-G6 projection 无异常吞噬伪装 Free (except→membership=None)",
+      "except Exception:" not in _code
+      and "membership = None" not in _code)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
