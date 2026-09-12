@@ -355,7 +355,7 @@ _cur.execute(
     (uidM, pm2, _ts + 5, _ts + 5))
 import subprocess
 def _sub_init(tag):
-    return subprocess.run(["/opt/flashshare/venv/bin/python", "-c", (
+    return subprocess.run([sys.executable, "-c", (
         "import sys, os\n"
         "sys.path.insert(0, %r)\n"
         "sys.path.insert(0, os.path.join(%r, 'core'))\n"
@@ -377,7 +377,7 @@ else:
 # G11e: live 无同 plan paid sub order → migration FAIL (不伪造 legacy:*):
 _cur.execute("delete from memberships where user_id=%s", (uidM,))
 _cur.execute("update orders set status='failed' where user_id=%s and provider_order_id='sub:mgsubMA'", (uidM,))
-r2 = subprocess.run(["/opt/flashshare/venv/bin/python", "-c", (
+r2 = subprocess.run([sys.executable, "-c", (
     "import sys, os\n"
     "sys.path.insert(0, %r)\n"
     "sys.path.insert(0, os.path.join(%r, 'core'))\n"
