@@ -171,28 +171,21 @@ except _MBE:
           _cur.fetchone()[0] == 1 and _m_row(uidP)[1] == "sub:mgsub1")
 
 # ═══ 链4: 第二付费 tier → 自己的 entitlement (非 Free) ═══
-_PRO_TIER = {
-    "plan_code": "mg_test_pro", "ingress_files_24h": 999,
-    "ingress_bytes_24h": 20 * 1024 ** 3,
-    "expiry_days": (1, 3, 7, 30, 90), "download_limits": (1, 10, 50, 100, 200, 1000, 5000),
-}
-# fail-closed protocol-subset 校验会拒 90/5000 (平台枚举外) — 用合法值:
-_PRO_TIER["expiry_days"] = (1, 3, 7, 30)
-_PRO_TIER["download_limits"] = (1, 10, 50, 100, 200, 1000)
-_PLANS["mg_test_pro"] = _PRO_TIER
-from governance import entitlements as _ent_mod
-_ent_mod._validate_against_protocol(_PRO_TIER, "mg_test_pro")
+# 第二付费 tier 使用 canonical pro (provider product 只映射 plus/pro):
 uT, uidT = _new_user("mgT")
-plan_pro = _seed_plan("mg_test_pro", 500, "price_pro")
+_cur.execute("select id from plans where code='pro'")
+plan_pro = _cur.fetchone()[0]
+_cur.execute("update plans set creem_product_id='price_pro' where code='pro'")
+PRO_FILES, PRO_BYTES = 2000, 20 * 1024 ** 3
 _seed_order(uidT, plan_pro, "mgsubT")
 _sub.bind_checkout({"id": "chT", "subscription": {"id": "mgsubT"}})
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubT"))
 r = resolve(uidT)
-check("G4 第二 tier → 自己的 entitlement (999 files/20GiB, 绝不 Free)",
-      r["plan_code"] == "mg_test_pro" and r["ingress_files_24h"] == 999
-      and r["ingress_bytes_24h"] == 20 * 1024 ** 3, str(r["plan_code"]))
+check("G4 第二 tier (pro) → 自己的 entitlement (2000 files/20GiB, 绝不 Free)",
+      r["plan_code"] == "pro" and r["ingress_files_24h"] == PRO_FILES
+      and r["ingress_bytes_24h"] == PRO_BYTES, str(r["plan_code"]))
 check("G4b entitlement_profile_exists 单点",
-      entitlement_profile_exists("plus") and entitlement_profile_exists("mg_test_pro")
+      entitlement_profile_exists("plus") and entitlement_profile_exists("pro")
       and not entitlement_profile_exists("nope"))
 
 # ═══ 链5: subscription.update 换 tier (同一 sub) ═══
@@ -201,8 +194,8 @@ m = _m_row(uidT)
 pp = project(uidT)
 check("G5 update plan A→B: 同一 provider sub, membership/projection/entitlement 全变 B",
       m[0] == plan_pro and m[1] == "sub:mgsubT"
-      and pp["entitlements"]["plan_code"] == "mg_test_pro"
-      and resolve(uidT)["ingress_files_24h"] == 999, str(res))
+      and pp["entitlements"]["plan_code"] == "pro"
+      and resolve(uidT)["ingress_files_24h"] == PRO_FILES, str(res))
 # product dict 单点提取 (canonical Creem 形态 + 历史兼容):
 check("G5c extract_product_id dict/string/product_id/空",
       _sub.extract_product_id({"product": {"id": "prod_x"}}) == "prod_x"

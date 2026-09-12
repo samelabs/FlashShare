@@ -313,10 +313,20 @@ def clear_pending_downgrade(con, user_id: int) -> None:
 
 
 def plan_by_product_id(con, product_id: str) -> Optional[dict]:
-    """subscription.update: provider product/price → 本地唯一 plan。
-    无绑定或非唯一映射 → None (caller fail loud, 不猜)。"""
+    """subscription.update: provider product → 本地唯一 plan。
+
+    只映射 governance.tiers 的 canonical tier codes (plus/pro) —
+    effective product states = Free/Plus/Pro only。不要求 active=TRUE:
+    已停售 canonical plan 的历史 subscription lifecycle 仍可解析。
+    historical third-tier / unknown product → None (caller fail loud,
+    绝不把 current Membership 写成第三档)。"""
+    from governance.tiers import sellable_plan_codes
+    codes = sellable_plan_codes()
+    placeholders = ",".join(["%s"] * len(codes))
     rows = con.execute(
-        "SELECT * FROM plans WHERE creem_product_id = %s ORDER BY id", (product_id,)).fetchall()
+        f"SELECT * FROM plans WHERE creem_product_id = %s"
+        f" AND code IN ({placeholders}) ORDER BY id",
+        (product_id, *codes)).fetchall()
     return rows[0] if len(rows) == 1 else None
 
 

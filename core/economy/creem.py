@@ -84,12 +84,13 @@ def create_subscription_checkout(order_id: int, plan: dict, user: dict) -> dict:
 
 def upgrade_subscription(subscription_id: str, product_id: str,
                          update_behavior: str) -> dict:
-    """POST /v1/subscriptions/{id}/upgrade — product change。behavior 由
-    caller 域语义决定 (升级=proration-charge: 补差入 next invoice, 原
-    billing cycle 不重启; 降级=proration-none: next billing cycle 生效)。
+    """POST /v1/subscriptions/{id}/upgrade — product change。behavior 白名单
+    只含实际使用的 canonical 值: 升级=proration-charge-immediately (Creem
+    官方 canonical; proration-charge 已 deprecated 且行为等同, 生产不再
+    固化 deprecated alias), 降级=proration-none (next billing cycle 生效)。
     Membership 收敛由 subscription.update webhook 完成, 本调用不做任何
     本地 Membership 伪造。"""
-    if update_behavior not in ("proration-charge", "proration-none"):
+    if update_behavior not in ("proration-charge-immediately", "proration-none"):
         raise ValueError("invalid_update_behavior")
     return _post(f"/v1/subscriptions/{subscription_id}/upgrade", {
         "product_id": product_id,

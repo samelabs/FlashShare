@@ -179,10 +179,11 @@ async def plan_upgrade(request: Request):
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]
     try:
-        # 升级域语义: proration-charge — 补差入 next invoice, 原 billing
-        # cycle 不重启 (tier 立即 Pro, 本周期 credits 由 update 事件补差)
+        # 升级域语义: proration-charge-immediately — product 立即 Pro,
+        # prorated difference charged immediately, original billing date
+        # remains (本周期 credits 由 update 事件补差 100+400=500)
         creem.upgrade_subscription(sub_id, target["creem_product_id"],
-                                   update_behavior="proration-charge")
+                                   update_behavior="proration-charge-immediately")
     except Exception:
         return JSONResponse({"ok": False, "error": "upgrade_failed"}, 502)
     return {"ok": True, "upgrade": "initiated",
@@ -225,13 +226,15 @@ async def plan_downgrade(request: Request):
         return JSONResponse({"ok": False, "error": "not_a_downgrade"}, 409)
     with db() as con:
         target = plan_by_code(con, target_code)
-    if not target or not target["active"]:
+    # readiness (provider 调用前): canonical tier + active + product 绑定,
+    # 缺 product 不发给 Creem 换 502。
+    if not target or not target["active"] or not target["creem_product_id"]:
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     sub_id = current["provider_subscription_id"]
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]
     try:
-        creem.upgrade_subscription(sub_id, target["creem_product_id"] or "",
+        creem.upgrade_subscription(sub_id, target["creem_product_id"],
                                    update_behavior="proration-none")
     except Exception:
         return JSONResponse({"ok": False, "error": "downgrade_failed"}, 502)

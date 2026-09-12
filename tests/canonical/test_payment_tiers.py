@@ -237,18 +237,19 @@ def _fake_post(path, payload):
     return {"id": "ptsub10", "status": "active"}
 _orig_post = _creem._post
 _creem._post = _fake_post
-_creem.upgrade_subscription("ptsub10", "prod_pro", update_behavior="proration-charge")
-check("T9 upgrade → POST /v1/subscriptions/{id}/upgrade, target Pro product, proration-charge (原周期不重启)",
+_creem.upgrade_subscription("ptsub10", "prod_pro", update_behavior="proration-charge-immediately")
+check("T9 upgrade → target Pro product, proration-charge-immediately (canonical, 非 deprecated alias)",
       _up_called["path"] == "/v1/subscriptions/ptsub10/upgrade"
       and _up_called["payload"] == {"product_id": "prod_pro",
-                                    "update_behavior": "proration-charge"},
+                                    "update_behavior": "proration-charge-immediately"},
       str(_up_called))
-# behavior 白名单:
-try:
-    _creem.upgrade_subscription("ptsub10", "prod_pro", update_behavior="bogus")
-    check("T9b update_behavior 白名单 (route 不可自由传)", False, "no raise")
-except ValueError:
-    check("T9b update_behavior 白名单 (route 不可自由传)", True)
+# behavior 白名单 (deprecated proration-charge 生产禁用):
+for _bad in ("bogus", "proration-charge"):
+    try:
+        _creem.upgrade_subscription("ptsub10", "prod_pro", update_behavior=_bad)
+        check(f"T9b update_behavior 白名单拒 {_bad}", False, "no raise")
+    except ValueError:
+        check(f"T9b update_behavior 白名单拒 {_bad}", True)
 
 # ═══ T10: subscription.update Pro product → Membership/Projection Pro ═══
 _u10, uid10, _ = _seed_sub_user("pt10", "plus", "prod_plus", "ptsub10")
@@ -328,11 +329,19 @@ check("T13b Creem called once: product=Plus / behavior=proration-none → pendin
 check("T13c boundary 前 Membership 仍 Pro / entitlements Pro / 零追回",
       _pp13["membership"]["code"] == "pro" and _pp13["entitlements"]["plan_code"] == "pro"
       and _grants(uid13, "grant_plan") == 1 and spendable_balance(uid13) == 500)
-# schedule 期 provider 回声 (update 带 Plus product + pending 存在) → 不立即切换:
+# T13d: webhook-before-pending race — provider update 带 Plus product 先到
+# (route 尚未写 pending): 方向判定 (Pro>Plus) → 自建 pending + Membership 保持 Pro:
+_cur.execute("delete from pending_downgrades where user_id=%s", (uid13,))
 r_echo = _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_plus"}, sub_id="ptsub13"))
 _pp13b = project(uid13)
-check("T13d schedule 期 update 回声 product=Plus → deferred, Membership 仍 Pro",
-      r_echo.get("deferred") == "pending_downgrade" and _pp13b["membership"]["code"] == "pro")
+with db() as con:
+    _pend_echo = orders_repo.pending_downgrade(con, uid13)
+_cur.execute("select id from plans where code='plus'")
+_plus_id = _cur.fetchone()[0]
+check("T13d webhook 先于 route pending 到达 → deferred + 自建 pending(Plus) + Membership 仍 Pro",
+      r_echo.get("deferred") == "pending_downgrade"
+      and _pend_echo is not None and int(_pend_echo["target_plan_id"]) == _plus_id
+      and _pp13b["membership"]["code"] == "pro", str(r_echo))
 
 # ═══ T14: boundary provider 证明 ═══
 PS2, PE2 = _ts + 31 * 86400, _ts + 61 * 86400
@@ -357,6 +366,58 @@ check("T14b boundary provider=Plus → Membership Plus / 新周期 grant 100 / p
       _pp14["membership"]["code"] == "plus" and spendable_balance(uid13) == _bal14 + 100
       and _plan_credits_total(uid13, PS2) == 100 and _pend14 is None,
       f"code={_pp14['membership']['code']} bal_delta={spendable_balance(uid13)-_bal14}")
+_creem.upgrade_subscription = _orig_up13
+_topup_mod._require_auth = _orig_auth13
+
+# ═══ T16: boundary recovery — pending 缺失 + 新周期 provider product 下行 ═══
+_u16, uid16, _ = _seed_sub_user("pt16", "pro", "prod_pro", "ptsub16")
+# 模拟: Creem downgrade 成功但 route crash 未写 pending, update 也未被消费:
+PS4, PE4 = _ts + 31 * 86400, _ts + 61 * 86400
+_bal16 = spendable_balance(uid16)
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS4), _iso(PE4), product={"id": "prod_plus"}, sub_id="ptsub16"))
+_pp16 = project(uid16)
+check("T16 pending 缺失 + 新周期 provider=Plus → 恢复切换 Plus / grant 100 (非 500)",
+      _pp16["membership"]["code"] == "plus" and spendable_balance(uid16) == _bal16 + 100
+      and _plan_credits_total(uid16, PS4) == 100,
+      f"code={_pp16['membership']['code']} delta={spendable_balance(uid16)-_bal16}")
+
+# ═══ T17: third-tier provider product 拒绝 ═══
+_u17, uid17, _ = _seed_sub_user("pt17", "plus", "prod_plus", "ptsub17")
+_cur.execute(
+    "insert into plans (code, name, monthly_credits, period_days, period,"
+    " price_cents, creem_product_id, sort_order, active, created_at, updated_at)"
+    " values ('pt_biz', 'Biz', 999, 30, 'monthly', 900, 'prod_biz', 5, TRUE, %s, %s)"
+    " on conflict (code) do nothing", (_ts, _ts))
+try:
+    _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_biz"}, sub_id="ptsub17"))
+    check("T17 third-tier product → plan_not_mapped / Membership 不变", False, "no raise")
+except KeyError as e:
+    _pp17 = project(uid17)
+    check("T17 third-tier product → plan_not_mapped / Membership 不变 (仍 Plus)",
+          "plan_not_mapped" in str(e.args[0] if e.args else e)
+          and _pp17["membership"]["code"] == "plus", str(e))
+
+# ═══ T18: downgrade readiness — target 无 product → plan_not_ready / 零 provider 调用 ═══
+_u18, uid18, _ = _seed_sub_user("pt18", "pro", "prod_pro", "ptsub18")
+_cur.execute("update plans set creem_product_id='' where code='plus'")
+_topup_mod._require_auth = lambda request: ({"id": uid18, "email": "t@t.co",
+                                            "username": _u18}, None)
+_calls18 = []
+def _up18(sub, prod, update_behavior="x"):
+    _calls18.append(1)
+    return {"id": sub}
+_creem.upgrade_subscription = _up18
+class _Req18:
+    async def json(self):
+        return {"plan": "plus"}
+r18 = _aio.run(_topup_mod.plan_downgrade(_Req18()))
+check("T18 Plus 无 product → plan_not_ready / ZERO provider call",
+      getattr(r18, "status_code", 200) == 422 and len(_calls18) == 0,
+      f"st={getattr(r18, 'status_code', None)} calls={len(_calls18)}")
+with db() as con:
+    _pend18 = orders_repo.pending_downgrade(con, uid18)
+check("T18b pending 未写入", _pend18 is None)
+_cur.execute("update plans set creem_product_id='prod_plus' where code='plus'")
 _creem.upgrade_subscription = _orig_up13
 _topup_mod._require_auth = _orig_auth13
 
@@ -399,7 +460,7 @@ check("PG4 POST /samelabs/plans 创建能力已移除",
       and "not_canonical_tier" in _samelabs_src)
 check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       "def upgrade_subscription" in _creem_src
-      and '"proration-charge", "proration-none"' in _creem_src
+      and '"proration-charge-immediately", "proration-none"' in _creem_src
       and "upgrade_subscription(" in _topup_src)
 _sub_blk2 = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
 check("PG6 升级补差 ledger kind=grant_plan_upgrade / 幂等键含 target",
@@ -432,9 +493,22 @@ check("PG13 fulfill fail-closed (product/amount/currency 三合同)",
       and 'raise KeyError("currency_mismatch")' in _creem_src)
 check("PG14 downgrade = Creem proration-none 同步 (失败零 pending)",
       'update_behavior="proration-none"' in _topup_src)
-check("PG15 upgrade = proration-charge (原周期不重启)",
-      'update_behavior="proration-charge"' in _topup_src
-      and "proration-charge-immediately" not in _topup_src)
+check("PG15 upgrade = proration-charge-immediately (canonical)",
+      'update_behavior="proration-charge-immediately"' in _topup_src)
+import re as _re15
+_prod_bc = _re15.findall(r'["\']proration-charge["\']', _creem_src + _topup_src)
+check("PG16 production 零 deprecated proration-charge 精确 usage",
+      len(_prod_bc) == 0, str(_prod_bc))
+_pb_blk = _repo_src2.split("def plan_by_product_id")[1].split("\ndef ")[0]
+_pb_sql17 = [l for l in _pb_blk.split("\n") if "SELECT" in l or "code IN" in l or "creem_product_id = " in l]
+check("PG17 plan_by_product_id 消费 canonical tier codes (SQL 无 active 过滤)",
+      "sellable_plan_codes" in _pb_blk
+      and all("active" not in l for l in _pb_sql17), str(_pb_sql17)[:120])
+_sub_upd_blk = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
+_deferred_ret = _sub_upd_blk.split('"deferred": "pending_downgrade"')[0]
+check("PG18 下行 subscription.update 永不直接改 Membership (deferred 前写 pending)",
+      "deferred" in _sub_upd_blk and "set_pending_downgrade" in _sub_upd_blk
+      and "set_pending_downgrade" in _deferred_ret.split("if direction < 0:")[-1])
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
