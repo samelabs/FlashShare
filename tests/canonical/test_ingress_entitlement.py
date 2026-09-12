@@ -234,12 +234,52 @@ check("D-P4 intermediate custody 固定 1 day / 10 downloads (平台策略非权
 rf = resolve(id_f)
 rp = resolve(id_p)
 rx = resolve(id_x)
-check("D-E1 Free delivery 值域", rf["expiry_days"] == (1, 3, 7)
+check("D-E1 Free delivery 值域 = 显式 (1,3,7)+(1,10,50,100,200)",
+      rf["expiry_days"] == (1, 3, 7)
       and rf["download_limits"] == (1, 10, 50, 100, 200), str(rf))
-check("D-E2 PLUS delivery 值域", rp["expiry_days"] == (1, 3, 7, 30)
+check("D-E2 PLUS delivery 值域 = 显式 (1,3,7,30)+(1,10,50,100,200,1000)",
+      rp["expiry_days"] == (1, 3, 7, 30)
       and rp["download_limits"] == (1, 10, 50, 100, 200, 1000), str(rp))
 check("D-E3 未知 plan → Free delivery 值域", rx["expiry_days"] == (1, 3, 7)
       and rx["download_limits"] == (1, 10, 50, 100, 200), str(rx))
+
+# Entitlement 显式声明 guard: 不得从 platform enum 推导
+ent_src = open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read()
+_defs = ent_src.split('def _validate_against_protocol')[0]  # 定义区 (FREE/_PLANS)
+check("D-X1 entitlement 源无枚举推导 (comprehension/filter/slice)",
+      "tuple(d for d in" not in _defs
+      and "for d in EXPIRY_DAYS" not in _defs
+      and "for d in DOWNLOAD_LIMITS" not in _defs
+      and "EXPIRY_DAYS[:-" not in _defs and "DOWNLOAD_LIMITS[:-" not in _defs
+      and "EXPIRY_DAYS[" not in _defs and "DOWNLOAD_LIMITS[" not in _defs)
+check("D-X2 plan 定义不直接赋值 platform 全集",
+      '"expiry_days": EXPIRY_DAYS' not in _defs
+      and '"download_limits": DOWNLOAD_LIMITS' not in _defs)
+check("D-X3 fail-closed protocol-subset 校验存在 (显式→被支持, 不反向生成)",
+      "_validate_against_protocol" in ent_src
+      and "ConfigurationError" in ent_src)
+# 未来协议扩容 ≠ 自动授权 (独立构造验证, 不 monkeypatch production):
+from governance.entitlements import _validate_against_protocol, ConfigurationError
+_fut = dict(FREE)
+_fut["expiry_days"] = FREE["expiry_days"] + (60,)      # 假设平台未来加了 60 天
+_fut["download_limits"] = FREE["download_limits"] + (5000,)
+try:
+    _validate_against_protocol(_fut, "future-spec")
+    check("D-X4 协议未支持的 entitlement 值 → ConfigurationError", False, "no raise")
+except ConfigurationError:
+    check("D-X4 协议未支持的 entitlement 值 → ConfigurationError (fail closed)", True)
+# 若平台真扩了 enum, 既有 entitlement 档不变 (不自动获得):
+check("D-X5 Free/PLUS 声明独立于 protocol 全集 (重叠但非派生)",
+      FREE["expiry_days"] != EXPIRY_DAYS      # Free ⊂ 全集
+      and _PLANS["plus"]["expiry_days"] == EXPIRY_DAYS  # PLUS 恰等, 但显式字面声明 (D-X2 锁)
+      and set(FREE["download_limits"]) < set(DOWNLOAD_LIMITS))
+# 所有 entitlement 值 ⊆ platform enum (模块 import 成功即已过 fail-closed;
+# 此处显式断言一次):
+check("D-X6 全部 entitlement 值 ⊆ platform enum",
+      set(FREE["expiry_days"]) <= set(EXPIRY_DAYS)
+      and set(FREE["download_limits"]) <= set(DOWNLOAD_LIMITS)
+      and set(_PLANS["plus"]["expiry_days"]) <= set(EXPIRY_DAYS)
+      and set(_PLANS["plus"]["download_limits"]) <= set(DOWNLOAD_LIMITS))
 # resolver 契约完整形状:
 check("D-E4 resolve 返回五键 (ingress×2 + delivery×2 + plan_code)",
       set(rf) == {"plan_code", "ingress_files_24h", "ingress_bytes_24h",
