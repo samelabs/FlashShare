@@ -15,7 +15,7 @@ _CORE = _BASE / "core"
 sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
-from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES, DAILY_UPLOADS, DAILY_BYTES
+from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
@@ -356,14 +356,47 @@ async def home(request: Request):
         "url": BASE_URL,
     })
 
+    # Delivery/ingress entitlement projection — consume ctx_base's single
+    # access projection read (never a second project()); anonymous falls
+    # back to the canonical pure Free capability (resolve_from_membership
+    # (None)), never hand-written Free values. Web boundary converts the
+    # internal tuples to lists once, here.
+    if ctx.get("access"):
+        ent = ctx["access"]["entitlements"]
+    else:
+        from governance.entitlements import resolve_from_membership
+        _raw = resolve_from_membership(None)
+        ent = {"plan_code": _raw["plan_code"],
+               "ingress_files_24h": _raw["ingress_files_24h"],
+               "ingress_bytes_24h": _raw["ingress_bytes_24h"],
+               "expiry_days": list(_raw["expiry_days"]),
+               "download_limits": list(_raw["download_limits"])}
+    limits = {
+        "maxMb": max_mb,
+        "dailyUploads": ent["ingress_files_24h"],
+        "dailyMb": ent["ingress_bytes_24h"] // 1024 // 1024,
+        "maxDays": max(ent["expiry_days"]),
+        "maxDownloads": max(ent["download_limits"]),
+        "expiryDays": list(ent["expiry_days"]),
+        "downloadLimits": list(ent["download_limits"]),
+    }
+    # UI default preference (not entitlement policy): keep 1/50 when
+    # allowed, else the first allowed value.
+    def_exp = 1 if 1 in ent["expiry_days"] else ent["expiry_days"][0]
+    def_dl = 50 if 50 in ent["download_limits"] else ent["download_limits"][0]
+
     ctx.update({
         "shell_class": "",
         "share_url": home_share_url,
         "max_mb": max_mb,
-        "daily_uploads": DAILY_UPLOADS,
-        "daily_mb": DAILY_BYTES // 1024 // 1024,
+        "daily_uploads": ent["ingress_files_24h"],
+        "daily_mb": ent["ingress_bytes_24h"] // 1024 // 1024,
         "tools": tools,
-        "limits_json": json.dumps({"maxMb": max_mb, "dailyUploads": DAILY_UPLOADS, "dailyMb": DAILY_BYTES // 1024 // 1024, "maxDays": 7, "maxDownloads": 200}),
+        "delivery_expiry_days": list(ent["expiry_days"]),
+        "delivery_download_limits": list(ent["download_limits"]),
+        "delivery_default_expiry": def_exp,
+        "delivery_default_downloads": def_dl,
+        "limits_json": json.dumps(limits),
         "tools_json": json.dumps(tools, ensure_ascii=False),
         "JS": JS,
         "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),

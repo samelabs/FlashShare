@@ -65,21 +65,19 @@
     <div class="upload-divider"></div>
     <div class="controls">
       <label class="field"><span data-i18n="expiry">{{ texts.expiry }}</span>
-        <b><span id="expiryLabel">1 {{ texts.day_unit }}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
-        <select name="expiryDays" id="expiryDays">
-          <option value="1" data-i18n="oneDay">1 day</option>
-          <option value="3" data-i18n="threeDays">3 days</option>
-          <option value="7" data-i18n="sevenDays">7 days</option>
+        <b><span id="expiryLabel">{{ delivery_default_expiry }} {{ texts.day_unit }}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        <select name="expiryDays" id="expiryDays" form="uploadForm">
+          {% for d in delivery_expiry_days %}
+          <option value="{{ d }}" {% if d == delivery_default_expiry %}selected{% endif %}>{{ d }} {{ texts.day_unit if d == 1 else texts.days_unit }}</option>
+          {% endfor %}
         </select></b>
       </label>
       <label class="field"><span data-i18n="downloads">{{ texts.downloads }}</span>
-        <b><span id="downloadsLabel">50</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
-        <select name="allowedDownloads" id="allowedDownloads">
-          <option value="1" data-i18n="oneDownload">1 time</option>
-          <option value="10" data-i18n="tenDownloads">10 times</option>
-          <option value="50" data-i18n="fiftyDownloads" selected>50 times</option>
-          <option value="100" data-i18n="hundredDownloads">100 times</option>
-          <option value="200" data-i18n="twohundredDownloads">200 times</option>
+        <b><span id="downloadsLabel">{{ delivery_default_downloads }}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        <select name="allowedDownloads" id="allowedDownloads" form="uploadForm">
+          {% for n in delivery_download_limits %}
+          <option value="{{ n }}" {% if n == delivery_default_downloads %}selected{% endif %}>{{ n }} {{ texts.times_unit }}</option>
+          {% endfor %}
         </select></b>
       </label>
     </div>
