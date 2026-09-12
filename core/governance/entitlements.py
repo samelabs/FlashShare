@@ -48,6 +48,13 @@ _PLANS = {
         "expiry_days": (1, 3, 7, 30),
         "download_limits": (1, 10, 50, 100, 200, 1000),
     },
+    "pro": {
+        "plan_code": "pro",
+        "ingress_files_24h": 2000,
+        "ingress_bytes_24h": 20 * 1024 ** 3,
+        "expiry_days": (1, 3, 7, 30),
+        "download_limits": (1, 10, 50, 100, 200, 1000),
+    },
 }
 
 

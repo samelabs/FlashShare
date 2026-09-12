@@ -296,7 +296,7 @@ _SCHEMA_SQL = (
       period           TEXT NOT NULL DEFAULT 'monthly',
       price_cents      BIGINT NOT NULL DEFAULT 0,
       currency         TEXT NOT NULL DEFAULT 'USD',
-      creem_price_id   TEXT,
+      creem_product_id  TEXT,
       wechat_price_id  TEXT,
       sort_order       INT NOT NULL DEFAULT 0,
       active           BOOLEAN NOT NULL DEFAULT TRUE,
@@ -327,7 +327,7 @@ _SCHEMA_SQL = (
       credits          BIGINT NOT NULL,
       price_cents      BIGINT NOT NULL,
       currency         TEXT NOT NULL DEFAULT 'USD',
-      creem_price_id   TEXT,
+      creem_product_id  TEXT,
       wechat_price_id  TEXT,
       sort_order       INT NOT NULL DEFAULT 0,
       active           BOOLEAN NOT NULL DEFAULT TRUE,
@@ -453,12 +453,47 @@ _SCHEMA_SQL = (
     "ALTER TABLE user_plans DROP CONSTRAINT IF EXISTS user_plans_status_check",
     """ALTER TABLE user_plans ADD CONSTRAINT user_plans_status_check
        CHECK (status IN ('active','past_due','canceled','expired'))""",
-    # PLUS 档种子 (幂等; creem_price_id 留空待运营绑定)
+    # 列名对齐 Creem 真实合同 {"product_id": ...}: creem_price_id →
+    # creem_product_id (幂等; 旧库值原样保留)
+    """DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='plans' AND column_name='creem_price_id')
+         AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='plans' AND column_name='creem_product_id') THEN
+        ALTER TABLE plans RENAME COLUMN creem_price_id TO creem_product_id;
+      END IF;
+      IF EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='packages' AND column_name='creem_price_id')
+         AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='packages' AND column_name='creem_product_id') THEN
+        ALTER TABLE packages RENAME COLUMN creem_price_id TO creem_product_id;
+      END IF;
+    END $$""",
+    # canonical paid tiers 种子 (幂等; creem_product_id 留空待运营绑定,
+    # 未配置 → 不可售)。plus 历史行 monthly_credits 修正为 canonical 100
+    # (生产无付费用户, 无 grant 影响面)。
     """INSERT INTO plans (code, name, monthly_credits, period_days, period,
                          price_cents, sort_order, active, created_at, updated_at)
-       VALUES ('plus', 'PLUS', 10000, 30, 'monthly', 0, 0, TRUE,
+       VALUES ('plus', 'Plus', 100, 30, 'monthly', 0, 0, TRUE,
+               EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT),
+              ('pro', 'Pro', 500, 30, 'monthly', 0, 1, TRUE,
                EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
-       ON CONFLICT (code) DO NOTHING""",
+       ON CONFLICT (code) DO UPDATE SET
+         name = EXCLUDED.name,
+         monthly_credits = EXCLUDED.monthly_credits""",
+    # scheduled downgrade fact (Pro → Plus next renewal): Creem 官方 API
+    # 无原生 schedule product change — application-level pending fact,
+    # 周期边界由 reconcile/事件收敛时消费。
+    """
+    CREATE TABLE IF NOT EXISTS pending_downgrades (
+      user_id        BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      target_plan_id BIGINT NOT NULL REFERENCES plans(id),
+      effective_at   BIGINT NOT NULL,
+      created_at     BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM now())::BIGINT,
+      PRIMARY KEY (user_id)
+    )
+    """,
     # ── membership 单行权威 (governance closure): 一个 user 最多一个
     # current Membership; provider subscription 是唯一绑定。user_plans
     # 冻结为历史表 (schema 保留, 零写入)。──

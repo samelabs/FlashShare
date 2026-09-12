@@ -18,7 +18,7 @@
           <td class="sl-num"><input class="sl-input" style="width:90px" type="number" min="0" value="{{ p.price_cents }}" data-field="price_cents"></td>
           <td class="sl-num">{{ fmt_num(p.monthly_credits) }}</td>
           <td class="sl-num">{{ p.period_days }}</td>
-          <td><input class="sl-input sl-mono" style="width:180px" type="text" value="{{ p.creem_price_id or '' }}" placeholder="prod_…" data-field="creem_price_id" maxlength="64"></td>
+          <td><input class="sl-input sl-mono" style="width:180px" type="text" value="{{ p.creem_product_id or '' }}" placeholder="prod_…" data-field="creem_product_id" maxlength="64"></td>
           <td>
             {% if p.active %}<span class="sl-badge sl-b-ok">生效中</span>
             {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
@@ -31,13 +31,7 @@
       </tbody>
     </table>
   </div>
-  <form class="sl-form" id="planForm">
-    <input class="sl-input" type="text" id="planCode" placeholder="code 如 pro" maxlength="32" required>
-    <input class="sl-input" type="text" id="planName" placeholder="名称" maxlength="64" required>
-    <input class="sl-input" type="number" id="planPrice" placeholder="周期价(分)" min="0" style="flex:0 1 130px" required>
-    <input class="sl-input" type="number" id="planCredits" placeholder="每期积分" min="0" style="flex:0 1 130px" required>
-    <button type="submit" class="sl-btn sl-btn-primary" id="planCreate">创建档位</button>
-  </form>
+  <p class="sl-dim" style="margin:10px 2px 0">Canonical paid tiers 固定为 plus / pro; 可配置价格与 Creem product id, code 与每期积分为代码治理值。</p>
 </div>
 
 {% endblock %}

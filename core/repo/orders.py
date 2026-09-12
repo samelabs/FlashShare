@@ -69,7 +69,7 @@ def set_provider_order_id(con, order_id: int, provider_order_id: str) -> None:
 
 def active_packages(con) -> list:
     return con.execute(
-        "SELECT id, code, name, credits, price_cents, currency, creem_price_id "
+        "SELECT id, code, name, credits, price_cents, currency, creem_product_id "
         "FROM packages WHERE active ORDER BY sort_order, id").fetchall()
 
 
@@ -99,12 +99,14 @@ def insert_plan(con, code: str, name: str, monthly_credits: int,
 
 
 def update_plan_pricing(con, plan_id: int, price_cents: int,
-                        creem_price_id: str | None, ts: int) -> Optional[dict]:
+                        creem_product_id: str | None, ts: int) -> Optional[dict]:
+    """operator 只可改 price / Creem Product ID (code 与 canonical
+    monthly credits 不可经此修改 — 见 samelabs route 的 canonical 校验)。"""
     return con.execute(
         """
-        UPDATE plans SET price_cents=%s, creem_price_id=%s, updated_at=%s
+        UPDATE plans SET price_cents=%s, creem_product_id=%s, updated_at=%s
         WHERE id=%s RETURNING *
-        """, (price_cents, creem_price_id, ts, plan_id)).fetchone()
+        """, (price_cents, creem_product_id, ts, plan_id)).fetchone()
 
 
 def all_packages(con) -> list:
@@ -128,6 +130,14 @@ def active_plans(con) -> list:
     return con.execute(
         "SELECT * FROM plans WHERE active ORDER BY sort_order, price_cents"
     ).fetchall()
+
+
+def canonical_plans(con) -> list:
+    """sellable membership catalog: 仅 canonical paid tiers (plus/pro)。
+    DB 中历史其它 plan rows 保留但不进 sellable/current Membership。"""
+    return con.execute(
+        "SELECT * FROM plans WHERE active AND code IN ('plus','pro')"
+        " ORDER BY sort_order, price_cents").fetchall()
 
 
 def plan_by_id_active(con, plan_id: int) -> Optional[dict]:
@@ -256,11 +266,50 @@ def open_plan_order(con, user_id: int) -> Optional[dict]:
         (user_id,)).fetchone()
 
 
+def plan_by_code(con, code: str) -> Optional[dict]:
+    return con.execute("SELECT * FROM plans WHERE code = %s", (code,)).fetchone()
+
+
+def period_plan_credits(con, user_id: int, period_start: int) -> int:
+    """该 billing period 已获得的 plan-derived credits (grant_plan +
+    grant_plan_upgrade), 从 ledger 聚合推导 — 无第二余额字段。"""
+    prefix = f"plan:{user_id}:{period_start}"
+    upg_prefix = f"plan-upgrade:{user_id}:{period_start}:"
+    row = con.execute(
+        "SELECT COALESCE(SUM(delta), 0) AS total FROM ledger"
+        " WHERE user_id = %s AND kind IN ('grant_plan', 'grant_plan_upgrade')"
+        " AND (idem_key = %s OR idem_key LIKE %s)",
+        (user_id, prefix, upg_prefix + "%")).fetchone()
+    return int(row["total"] or 0)
+
+
+def pending_downgrade(con, user_id: int) -> Optional[dict]:
+    """scheduled downgrade fact (next renewal)。"""
+    return con.execute(
+        "SELECT target_plan_id, effective_at FROM pending_downgrades"
+        " WHERE user_id = %s", (user_id,)).fetchone()
+
+
+def set_pending_downgrade(con, user_id: int, target_plan_id: int,
+                          effective_at: int) -> None:
+    con.execute(
+        """INSERT INTO pending_downgrades (user_id, target_plan_id, effective_at)
+           VALUES (%s, %s, %s)
+           ON CONFLICT (user_id) DO UPDATE SET
+             target_plan_id = EXCLUDED.target_plan_id,
+             effective_at = EXCLUDED.effective_at""",
+        (user_id, target_plan_id, effective_at))
+
+
+def clear_pending_downgrade(con, user_id: int) -> None:
+    con.execute("DELETE FROM pending_downgrades WHERE user_id = %s", (user_id,))
+
+
 def plan_by_product_id(con, product_id: str) -> Optional[dict]:
     """subscription.update: provider product/price → 本地唯一 plan。
     无绑定或非唯一映射 → None (caller fail loud, 不猜)。"""
     rows = con.execute(
-        "SELECT * FROM plans WHERE creem_price_id = %s ORDER BY id", (product_id,)).fetchall()
+        "SELECT * FROM plans WHERE creem_product_id = %s ORDER BY id", (product_id,)).fetchall()
     return rows[0] if len(rows) == 1 else None
 
 

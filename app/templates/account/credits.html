@@ -47,7 +47,7 @@
       <div class="topup-item">
         <strong class="topup-credits">+{{ p.credits }}</strong>
         <span class="topup-price">${{ (p.price_cents / 100)|round(0)|int }}</span>
-        {% if topup_ready and p.creem_price_id %}
+        {% if topup_ready and credits_ready %}
         <button type="button" class="primary topup-buy" data-pkg="{{ p.id }}" data-i18n="topup_buy">{{ texts.topup_buy }}</button>
         {% else %}
         <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
@@ -82,8 +82,18 @@
         <strong class="topup-credits">+{{ pl.monthly_credits }}</strong>
         <span class="sub-period" data-i18n="sub_per_period">{{ texts.sub_per_period }}</span>
         <span class="topup-price">${{ (pl.price_cents / 100)|round(0)|int }}<span class="sub-per">/{{ pl.period_days }}d</span></span>
-        {% if topup_ready and pl.creem_price_id %}
-        <button type="button" class="primary sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
+        {% if topup_ready and pl.creem_product_id %}
+          {% if not my_plan or not my_plan.member %}
+          <button type="button" class="primary sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
+          {% elif pl.code == my_plan.code %}
+          <span class="topup-status" data-i18n="sub_current">{{ texts.sub_current }}</span>
+          {% elif pl.code == 'pro' and my_plan.code == 'plus' %}
+          <button type="button" class="primary sub-upgrade" data-plan="pro" data-i18n="sub_upgrade">{{ texts.sub_upgrade }}</button>
+          {% elif pl.code == 'plus' and my_plan.code == 'pro' %}
+          <button type="button" class="ghost sub-downgrade" data-plan="plus" data-i18n="sub_downgrade">{{ texts.sub_downgrade }}</button>
+          {% else %}
+          <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
+          {% endif %}
         {% else %}
         <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
         {% endif %}

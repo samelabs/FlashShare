@@ -494,23 +494,26 @@ async def account_credits(request: Request):
         pkgs = [dict(r) for r in active_packages(con)]
     import economy.creem as _creem
     topup_ready = _creem.creem_enabled()
+    from economy import creem as _creem_mod
+    credits_ready = bool(_creem_mod.credits_product_id())
     # subscription tier(s) purchasable catalog — a different concept from
     # the viewer's membership fact: active_plans() lists what can be
     # bought, while my_plan comes from _account_ctx → _ctx_base's single
     # access projection (access["membership"] alias), never a second
     # plan_of() read here.
-    from repo.orders import active_plans
+    from repo.orders import canonical_plans
     from governance.entitlements import entitlement_profile_exists
     with db() as con:
-        # 可售过滤与 /subscribe authoritative gate 同一 profile 单点:
-        # 无 entitlement profile 的 tier 不展示 (点击后必失败)。
-        plans = [dict(r) for r in active_plans(con)
+        # sellable = canonical paid tiers (plus/pro) × entitlement profile 单点:
+        # DB 历史 plan rows 不渲染为会员商品。
+        plans = [dict(r) for r in canonical_plans(con)
                  if entitlement_profile_exists(r["code"])]
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
                        granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
                        packages=pkgs, topup_ready=topup_ready,
+                       credits_ready=credits_ready,
                        plans=plans,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)

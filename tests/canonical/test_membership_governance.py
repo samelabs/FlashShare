@@ -80,10 +80,10 @@ def _new_user(prefix):
 def _seed_plan(code, credits=100, price_id=None):
     # 幂等 seed: plus 为 init_db 种子行, 其余测试自建
     _cur.execute(
-        "insert into plans (code, name, monthly_credits, price_cents, creem_price_id, created_at, updated_at)"
+        "insert into plans (code, name, monthly_credits, price_cents, creem_product_id, created_at, updated_at)"
         " values (%s, %s, %s, 500, %s, %s, %s)"
         " on conflict (code) do update set monthly_credits=excluded.monthly_credits,"
-        " creem_price_id=coalesce(plans.creem_price_id, excluded.creem_price_id)"
+        " creem_product_id=coalesce(plans.creem_product_id, excluded.creem_product_id)"
         " returning id",
         (code, code.upper(), credits, price_id, _ts, _ts))
     return _cur.fetchone()[0]
@@ -422,9 +422,11 @@ def _fake_retrieve(cid):
         raise RuntimeError("provider down")
     return _RT[cid]
 from economy import creem as _creem_mod
-_orig_create, _orig_retrieve, _orig_enabled = (_creem_mod.create_checkout,
+def _fake_sub_checkout(order_id, plan, user):
+    return _fake_create(order_id, plan, user)
+_orig_create, _orig_retrieve, _orig_enabled = (_creem_mod.create_subscription_checkout,
     _creem_mod.retrieve_checkout, _creem_mod.creem_enabled)
-_creem_mod.create_checkout = _fake_create
+_creem_mod.create_subscription_checkout = _fake_sub_checkout
 _creem_mod.retrieve_checkout = _fake_retrieve
 _creem_mod.creem_enabled = lambda: True
 
@@ -459,7 +461,7 @@ check("G12 live member 再 subscribe → plan_change_required / 零 checkout",
 uS, uidS = _new_user("mgS")
 _topup._require_auth = lambda request: ({"id": uidS, "email": "t@t.co",
                                         "username": uS}, None)
-_cur.execute("update plans set creem_price_id='price_plus' where id=%s", (plan_plus,))
+_cur.execute("update plans set creem_product_id='price_plus' where id=%s", (plan_plus,))
 st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 _cur.execute("select id from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidS,))
 _oi1 = _cur.fetchone()[0]
@@ -493,7 +495,7 @@ check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscriptio
       and _creem_calls["create"] == 2, f"st={st} d={d}")
 # unknown-profile plan → 收费前拒绝 (plan_not_ready, 零 order 零 create):
 uQ, uidQ = _new_user("mgQ")
-_cur.execute("update plans set creem_price_id='price_q' where code='mg_unknown_tier'")
+_cur.execute("update plans set creem_product_id='price_q' where code='mg_unknown_tier'")
 _cur.execute("select id from plans where code='mg_unknown_tier'")
 _pq = _cur.fetchone()[0]
 _topup._require_auth = lambda request: ({"id": uidQ, "email": "t@t.co",
@@ -587,7 +589,7 @@ check("G14b retrieve URL == /v1/checkouts?checkout_id=<quoted> (GET)",
       and _captured.get("method") == "GET" and out.get("status") == "pending",
       str(_captured))
 # 还原 creem patch (后续 suite 段不吃 fake):
-_creem_mod.create_checkout = _orig_create
+_creem_mod.create_subscription_checkout = _orig_create
 _creem_mod.retrieve_checkout = _orig_retrieve
 _creem_mod.creem_enabled = _orig_enabled
 

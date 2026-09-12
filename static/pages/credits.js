@@ -39,13 +39,44 @@
     });
   }
 
-  // 订阅 (周期 plan)
+  // 订阅 / 升级 / 降级 (canonical tiers: plus / pro)
   var subGrid = document.querySelector(".sub-grid");
   if (subGrid) {
     subGrid.addEventListener("click", function (e) {
-      var btn = e.target.closest(".sub-buy");
-      if (!btn) return;
-      checkout("/api/topup/subscribe", { plan_id: Number(btn.dataset.plan) }, btn);
+      var buy = e.target.closest(".sub-buy");
+      if (buy) {
+        checkout("/api/topup/subscribe", { plan_id: Number(buy.dataset.plan) }, buy);
+        return;
+      }
+      var up = e.target.closest(".sub-upgrade");
+      if (up) {
+        checkout("/api/topup/plan-upgrade", { plan: up.dataset.plan }, up);
+        return;
+      }
+      var down = e.target.closest(".sub-downgrade");
+      if (down) {
+        // next-renewal 语义: 成功后不跳转, 提示已排期
+        var orig = down.textContent;
+        down.disabled = true;
+        down.textContent = "…";
+        fetch("/api/topup/plan-downgrade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ plan: down.dataset.plan })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          if (d && d.ok) {
+            down.textContent = window.t ? window.t("sub_current") : "✓";
+            return;
+          }
+          down.disabled = false;
+          down.textContent = orig;
+          alert((d && d.error) || "error");
+        }).catch(function () {
+          down.disabled = false;
+          down.textContent = orig;
+        });
+      }
     });
   }
 })();
