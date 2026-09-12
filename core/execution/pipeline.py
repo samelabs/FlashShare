@@ -16,6 +16,13 @@ from governance.delivery import INTERMEDIATE_TTL_DAYS, INTERMEDIATE_DOWNLOAD_LIM
 from utils import generate_public_id, public_file_url
 
 
+class IngressBoundaryError(ValueError):
+    """Platform source-ingress hard boundary denial; args[0] = denial dict."""
+    def __init__(self, denial: dict):
+        super().__init__(denial["error"])
+        self.denial = denial
+
+
 def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> list[dict]:
     """Upload one logical source batch for v1/MCP.
 
@@ -33,6 +40,13 @@ def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> 
         if not body:
             raise ValueError("err_empty_file")
         checked.append((filename, ctype, body))
+
+    # Platform hard boundaries (20 files / single / batch) — authoritative
+    # single point, before any quota reservation or Gokapi storage.
+    from governance.ingress import validate_batch
+    denial = validate_batch([len(body) for _, _, body in checked])
+    if denial:
+        raise IngressBoundaryError(denial)
 
     ok, reason, usage_ids = reserve_ingress(
         user["id"], ip, [len(body) for _, _, body in checked])
