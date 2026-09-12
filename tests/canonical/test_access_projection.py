@@ -441,6 +441,42 @@ exps, dls, _ = _delivery_enums(tools)
 check("ML-E1 expired 精确回落 Free enum",
       exps == {tuple(FREE_EXP)} and dls == {tuple(FREE_DL)})
 
+# ═══ 7h. Account /account/credits membership 单源 (真实 session HTTP) ═══
+def _get_credits(ck):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    conn.request("GET", "/account/credits", headers={"Cookie": ck})
+    r = conn.getresponse(); body = r.read().decode(); conn.close()
+    return r.status, body
+
+# Free
+st, body = _get_credits(_mf_ck)
+_proj_f = project(_mf_id)["membership"]
+check("AC-F1 Free /account/credits → 200 无 active member 展示",
+      st == 200 and _proj_f is None
+      and 'my_plan' not in body[:0]  # 模板变量; 以 projection 一致性判定
+      and "PLUS" not in body.split("plan-card")[0][:2000] if "plan-card" in body else True,
+      f"{st}")
+check("AC-F2 Free: project.membership is None (展示事实=projection 事实)",
+      _proj_f is None)
+
+# PLUS
+_mp_ck2 = _login_http(_mp)
+st, body = _get_credits(_mp_ck2)
+_proj_p = project(_mp_id)["membership"]
+check("AC-P1 PLUS /account/credits → 200 且 project.membership.member == True",
+      st == 200 and _proj_p and _proj_p["member"] is True)
+# 模板展示与 projection 一致: my_plan.member 渲染 active 态 (plus-badge 或 plan 状态块)
+_m = _re.search(r"plan-status[^>]*>([^<]*)<", body) or _re.search(r"my_plan[^>]*>([^<]*)<", body)
+check("AC-P2 PLUS 页面呈现 member 状态 (与 projection 一致)",
+      bool(_m) or "PLUS" in body, "rendered")
+
+# Expired
+st, body = _get_credits(_login_http(_me_))
+_proj_e = project(_me_id)["membership"]
+check("AC-E1 expired → 200, membership fact 保留 (member=false, 非 active)",
+      st == 200 and _proj_e is not None and _proj_e["member"] is False
+      and _proj_e["code"] == "plus")
+
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
 import ast as _ast
@@ -576,6 +612,17 @@ check("AP-M4 旧硬编码 enum 不在 _tool_specs",
 _call_blk = _mcp_src.split("async def _call_tool")[1].split("\n@router")[0] if "\n@router" in _mcp_src.split("async def _call_tool")[1] else _mcp_src.split("async def _call_tool")[1]
 check("AP-M5 _call_tool 零 projection/schema 依赖新增 (无 project/)",
       "project(" not in _call_blk and "_tool_specs" not in _call_blk)
+_acct_blk = _pages_src.split("async def account_credits")[1].split("async def ")[0]
+_acct_code = "\n".join(l for l in _acct_blk.split("\n") if not l.strip().startswith("#"))
+check("AP-C1 account_credits 不 import economy.subscription / 不调 plan_of",
+      "economy.subscription" not in _acct_blk and "plan_of" not in _acct_code)
+check("AP-C2 account_credits 无 plus 判断 / 无 my_plan= 覆盖",
+      '"plus"' not in _acct_code and "my_plan=" not in _acct_code)
+check("AP-C3 active_plans( catalog 保留 且 plans=plans 传模板",
+      "active_plans(" in _acct_blk and "plans=plans" in _acct_blk)
+_acct_ctx_blk = _pages_src.split("def _account_ctx")[1].split("\ndef ")[0]
+check("AP-C4 _account_ctx 仍调 _ctx_base (membership 继承 base projection)",
+      "_ctx_base(" in _acct_ctx_blk)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))

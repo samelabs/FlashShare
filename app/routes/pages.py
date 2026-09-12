@@ -494,18 +494,20 @@ async def account_credits(request: Request):
         pkgs = [dict(r) for r in active_packages(con)]
     import economy.creem as _creem
     topup_ready = _creem.creem_enabled()
-    # subscription tier(s) + viewer's membership (v3 spec: 并列卡区)
+    # subscription tier(s) purchasable catalog — a different concept from
+    # the viewer's membership fact: active_plans() lists what can be
+    # bought, while my_plan comes from _account_ctx → _ctx_base's single
+    # access projection (access["membership"] alias), never a second
+    # plan_of() read here.
     from repo.orders import active_plans
-    from economy.subscription import plan_of
     with db() as con:
         plans = [dict(r) for r in active_plans(con)]
-    my_plan = plan_of(user["id"])
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
                        granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
                        packages=pkgs, topup_ready=topup_ready,
-                       plans=plans, my_plan=my_plan,
+                       plans=plans,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)
