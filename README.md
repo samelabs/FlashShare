@@ -57,13 +57,31 @@ FLASHSHARE_BASE_URL=https://your-domain
 
 | Method | Endpoint | 说明 |
 |---|---|---|
-| GET | `/api/v1/me` | 账户信息（id/用户名/余额） |
+| GET | `/api/v1/me` | 账户信息、积分余额与当前访问权益 |
 | GET | `/api/v1/tools` | 工具目录（含单价） |
 | POST | `/api/v1/uploads` | 上传源文件 |
 | POST | `/api/v1/execute` | 执行工具（client_ref 幂等） |
 | GET | `/api/v1/uploads/{id}` | 按公开 id 获取产出 |
 
 令牌在站内「API 令牌」页创建；`tools/call` 对同一工具调用复用 `client_ref` 重试返回原结果不重复扣费；失败自动退款。
+
+`GET /api/v1/me` 返回（节选）：
+
+```json
+{
+  "credits": 0,
+  "plan": null,
+  "access": {
+    "membership": null,
+    "entitlements": {"plan_code": "free", "ingress_files_24h": 100, "ingress_bytes_24h": 1073741824,
+                      "expiry_days": [1, 3, 7], "download_limits": [1, 10, 50, 100, 200]},
+    "usage": {"ingress_files_24h": 0, "ingress_bytes_24h": 0}
+  }
+}
+```
+
+`plan` 与 `access.membership` 等值（`plan` 是既有 v1 别名）；`access`
+是当前只读 access projection（会员事实 + 有效权益 + 24h 用量）。
 
 `POST /api/v1/execute` 请求体是 canonical ToolInvocation（`client_ref` 为
 v1 必填——agent/程序重试必须可幂等）：

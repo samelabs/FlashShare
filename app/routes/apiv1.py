@@ -33,12 +33,20 @@ async def v1_me(request: Request):
     user, err = _require_bearer(request)
     if err:
         return err
-    from economy.billing import spendable_balance as get_balance
-    from economy.subscription import plan_of
+    from economy.billing import spendable_balance
+    from governance.access_projection import project
     u = public_user(user)
     u.pop("email", None)
-    return {"ok": True, "user": u, "credits": get_balance(user["id"]),
-            "plan": plan_of(user["id"])}
+    # Single membership fact read: access.membership is the canonical
+    # projection; "plan" is a legacy v1 payload alias of the same value
+    # (never a second plan_of() read). Credits stay an independent
+    # top-level balance — they never enter the access projection.
+    # Projection fact-read failures propagate (no Free-masking here).
+    access = project(user["id"])
+    return {"ok": True, "user": u,
+            "credits": spendable_balance(user["id"]),
+            "plan": access["membership"],
+            "access": access}
 
 
 @router.get("/tools")

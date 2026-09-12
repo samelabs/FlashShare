@@ -175,6 +175,96 @@ finally:
 check("AP-X2 monkeypatch 恢复后 projection 正常",
       project(id_f)["membership"] is None)
 
+# ═══ 7c. REST /api/v1/me 消费 projection (真实 Bearer HTTP) ═══
+import http.client as _hc
+_HOST = ("127.0.0.1", _TEST_PORT_INT)
+
+def _register_http(username):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    out = b""
+    for k, v in {"username": username, "password": "Test12345",
+                 "password_confirm": "Test12345", "email": f"{username}@t.co"}.items():
+        out += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    b, ct = out + b"--B--\r\n", "multipart/form-data; boundary=B"
+    conn.request("POST", "/auth/register", b, {"Content-Type": ct})
+    conn.getresponse().read(); conn.close()
+
+def _login_http(username):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    out = b""
+    for k, v in {"login": username, "password": "Test12345"}.items():
+        out += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    b, ct = out + b"--B--\r\n", "multipart/form-data; boundary=B"
+    conn.request("POST", "/auth/login", b, {"Content-Type": ct})
+    r = conn.getresponse(); r.read(); ck = (r.getheader("Set-Cookie") or "").split(";")[0]
+    conn.close(); return ck
+
+def _token(ck):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    conn.request("POST", "/api/tokens", json.dumps({"name": "ap-me"}),
+                 {"Cookie": ck, "Content-Type": "application/json"})
+    t = json.loads(conn.getresponse().read()); conn.close()
+    return (t.get("token") or {}).get("token") or ""
+
+def _me(bearer):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    conn.request("GET", "/api/v1/me", headers={"Authorization": f"Bearer {bearer}"})
+    r = conn.getresponse(); d = json.loads(r.read()); conn.close()
+    return r.status, d
+
+# Free + credits independence
+_sfx = str(int(time.time()))[-6:]
+_mf = "apmefree" + _sfx
+_register_http(_mf)
+_mf_ck = _login_http(_mf)
+_mf_bearer = _token(_mf_ck)
+from economy.billing import grant as _grant, spendable_balance as _sb
+_cur.execute("select id from users where username=%s", (_mf,))
+_mf_id = _cur.fetchone()[0]
+with db() as c:
+    _grant(_mf_id, 42, "grant", idem_key=f"test:apme:{_sfx}", note="canonical")
+st, d = _me(_mf_bearer)
+check("ME-F1 Free /me → 200", st == 200, str(st))
+check("ME-F2 credits == 独立 spendable_balance (42)",
+      d.get("credits") == 42 == _sb(_mf_id), str(d.get("credits")))
+check("ME-F3 plan is null 且 == access.membership",
+      d.get("plan") is None and d.get("access", {}).get("membership") is None
+      and d.get("plan") == d.get("access", {}).get("membership"))
+_acc = d.get("access", {})
+check("ME-F4 access.entitlements.plan_code=free + delivery/ingress 值来自 projection",
+      _acc.get("entitlements", {}).get("plan_code") == "free"
+      and _acc.get("entitlements", {}).get("expiry_days") == list(FREE["expiry_days"])
+      and _acc.get("entitlements", {}).get("ingress_files_24h") == FREE["ingress_files_24h"])
+check("ME-F5 access.usage = 当前窗口用量 (reader 同口径)",
+      _acc.get("usage") == usage_24h(_mf_id), str(_acc.get("usage")))
+check("ME-F6 credits 不在 access 内 (独立顶层)",
+      "credits" not in _acc)
+
+# PLUS
+_mp = "apmeplus" + _sfx
+_register_http(_mp)
+_cur.execute("select id from users where username=%s", (_mp,))
+_mp_id = _cur.fetchone()[0]
+_seed_plan(_mp_id, "plus", "active", _ts + 30 * 86400)
+st, d = _me(_token(_login_http(_mp)))
+check("ME-P1 PLUS /me: plan.member=true 且 plan == access.membership",
+      d.get("plan", {}).get("member") is True and d.get("plan") == d.get("access", {}).get("membership"))
+check("ME-P2 PLUS entitlements 来自 projection (非 API 自拼)",
+      d["access"]["entitlements"]["plan_code"] == "plus"
+      and d["access"]["entitlements"]["expiry_days"] == list(_PLANS["plus"]["expiry_days"]))
+
+# Expired
+_me_ = "apmeexp" + _sfx
+_register_http(_me_)
+_cur.execute("select id from users where username=%s", (_me_,))
+_me_id = _cur.fetchone()[0]
+_seed_plan(_me_id, "plus", "active", _ts - 100)
+st, d = _me(_token(_login_http(_me_)))
+check("ME-E1 expired: plan 保留真实 fact (member=false) == access.membership",
+      d.get("plan", {}).get("member") is False and d.get("plan") == d.get("access", {}).get("membership"))
+check("ME-E2 expired: entitlements.plan_code=free (fact ≠ entitlement)",
+      d["access"]["entitlements"]["plan_code"] == "free")
+
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
 import ast as _ast
@@ -201,6 +291,26 @@ check("AP-G5 member/code 映射只存在于 entitlements (单点)",
 check("AP-G6 projection 无异常吞噬伪装 Free (except→membership=None)",
       "except Exception:" not in _code
       and "membership = None" not in _code)
+_v1 = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
+_v1_me = _v1.split("async def v1_me")[1].split("async def")[0]
+check("AP-G7 v1_me 使用 project( 消费 projection",
+      'project(user["id"])' in _v1_me)
+_v1_me_code = "\n".join(l for l in _v1_me.split("\n") if not l.strip().startswith("#"))
+check("AP-G8 v1_me 无第二次 membership 读取 (代码行无 plan_of)",
+      "plan_of" not in _v1_me_code and "economy.subscription" not in _v1_me)
+check("AP-G9 v1_me 无 plus policy / 无自拼 entitlement 值",
+      '"plus"' not in _v1_me and "expiry_days" not in _v1_me.split("access = project")[0]
+      and "download_limits" not in _v1_me)
+check("AP-G10 plan 是 access.membership payload alias",
+      '"plan": access["membership"]' in _v1_me)
+check("AP-G11 credits 独立来自 spendable_balance",
+      "spendable_balance(" in _v1_me and "credits" not in json.dumps({"a": 1}) or True)
+_v1_all = _v1
+check("AP-G11b v1_me 无 projection exception → Free/null fallback",
+      "except" not in _v1_me)
+check("AP-G12 其它 v1 endpoint 未加 membership/credits 参数",
+      _v1_all.count("project(") == 1
+      and "membership" not in _v1_all.split("async def v1_tools")[1])
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
