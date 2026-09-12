@@ -6,8 +6,8 @@ coerce_share_delivery 薄壳做 string → int (值域仍来自本模块常量,
 禁止复制第二份枚举)。
 """
 
-EXPIRY_DAYS = (1, 3, 7)
-DOWNLOAD_LIMITS = (1, 10, 50, 100, 200)
+EXPIRY_DAYS = (1, 3, 7, 30)
+DOWNLOAD_LIMITS = (1, 10, 50, 100, 200, 1000)
 DEFAULT_EXPIRY_DAYS = 1
 DEFAULT_ALLOWED_DOWNLOADS = 50
 

@@ -52,6 +52,16 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     except InvocationError:
         return None, {"ok": False, "error": "invalid_request"}, 422
 
+    # delivery entitlement authorization — 在 protocol validity 之后、
+    # tool resolve/params/gate 之前。entitlement denial 是 403 语义,
+    # 与 protocol invalid (422) 分开, 不合并回 validate_delivery。
+    from governance.entitlements import check_delivery
+    denial = check_delivery(user["id"], inv.delivery)
+    if denial:
+        body = {"ok": False}
+        body.update(denial)
+        return None, body, 403
+
     tool, terr = resolve_tool(inv.tool_id, user["id"])
     if terr:
         if terr == "disabled":

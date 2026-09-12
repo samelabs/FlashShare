@@ -154,6 +154,20 @@ async def create_upload(request: Request):
     has_tool = form.get("tool", "").strip()
     is_tool_source = bool(has_tool and has_tool != "share")
 
+    # Durable direct share: delivery entitlement check BEFORE any quota
+    # reservation or Gokapi storage. Tool-source uploads skip this — their
+    # custody is INTERMEDIATE_* platform policy and the canonical execute
+    # path owns result-delivery entitlement.
+    if not is_tool_source:
+        from governance.entitlements import check_delivery
+        denial = check_delivery(user["id"], {
+            "expiry_days": expiry_days,
+            "allowed_downloads": allowed_downloads})
+        if denial:
+            body = {"ok": False}
+            body.update(denial)
+            return JSONResponse(body, 403)
+
     pending = []
     total_incoming = 0
     if len(uploads) > 20:
