@@ -441,6 +441,49 @@ exps, dls, _ = _delivery_enums(tools)
 check("ML-E1 expired 精确回落 Free enum",
       exps == {tuple(FREE_EXP)} and dls == {tuple(FREE_DL)})
 
+# ═══ 7h. Account /account/credits membership 单源 (真实 session HTTP) ═══
+def _get_credits(ck):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    conn.request("GET", "/account/credits", headers={"Cookie": ck})
+    r = conn.getresponse(); body = r.read().decode(); conn.close()
+    return r.status, body
+
+# Free: 无 membership fact → Account subscription status block 不渲染。
+# 稳定 DOM marker (class 选择器), 不用 "PLUS" 字符串 (可售目录/header 可含)。
+st, body = _get_credits(_mf_ck)
+_proj_f = project(_mf_id)["membership"]
+check("AC-F1 Free /account/credits → 200, membership None, 无 sub-status / 无 sub-badge on",
+      st == 200 and _proj_f is None
+      and 'class="sub-status"' not in body
+      and 'class="sub-badge on"' not in body, f"{st}")
+
+# PLUS: Account membership block 真渲染 (非 header badge 借证)
+_mp_ck2 = _login_http(_mp)
+st, body = _get_credits(_mp_ck2)
+_proj_p = project(_mp_id)["membership"]
+check("AC-P1 PLUS /account/credits → 200, member=True, sub-status + sub-badge on 存在",
+      st == 200 and _proj_p and _proj_p["member"] is True
+      and 'class="sub-status"' in body
+      and 'class="sub-badge on"' in body, f"{st}")
+
+# Expired: fact 保留并展示 ≠ active member (badge 无 on 态)
+st, body = _get_credits(_login_http(_me_))
+_proj_e = project(_me_id)["membership"]
+check("AC-E1 expired → 200, fact 保留 (member=false), sub-status 在 / badge 无 on",
+      st == 200 and _proj_e is not None and _proj_e["member"] is False
+      and _proj_e["code"] == "plus"
+      and 'class="sub-status"' in body
+      and 'class="sub-badge' in body
+      and 'class="sub-badge on"' not in body, f"{st}")
+
+# 负向自检 guard: 本 Account HTTP 断言组永久禁止假通过模式
+_self_src = open(_os.path.abspath(__file__), encoding="utf-8").read()
+_acct_http_blk = _self_src.split("7h. Account")[1].split("8. Source-of-truth")[0]
+check("AC-N1 Account HTTP 断言无假通过模式 (else True / body[:0] / 裸 PLUS-in-body)",
+      "else True" not in _acct_http_blk
+      and "body[:0]" not in _acct_http_blk
+      and '"PLUS" in body' not in _acct_http_blk)
+
 # ═══ 8. Source-of-truth guards ═══
 _src = open(_os.path.join(_REPO, "core", "governance", "access_projection.py"), encoding="utf-8").read()
 import ast as _ast
@@ -576,6 +619,17 @@ check("AP-M4 旧硬编码 enum 不在 _tool_specs",
 _call_blk = _mcp_src.split("async def _call_tool")[1].split("\n@router")[0] if "\n@router" in _mcp_src.split("async def _call_tool")[1] else _mcp_src.split("async def _call_tool")[1]
 check("AP-M5 _call_tool 零 projection/schema 依赖新增 (无 project/)",
       "project(" not in _call_blk and "_tool_specs" not in _call_blk)
+_acct_blk = _pages_src.split("async def account_credits")[1].split("async def ")[0]
+_acct_code = "\n".join(l for l in _acct_blk.split("\n") if not l.strip().startswith("#"))
+check("AP-C1 account_credits 不 import economy.subscription / 不调 plan_of",
+      "economy.subscription" not in _acct_blk and "plan_of" not in _acct_code)
+check("AP-C2 account_credits 无 plus 判断 / 无 my_plan= 覆盖",
+      '"plus"' not in _acct_code and "my_plan=" not in _acct_code)
+check("AP-C3 active_plans( catalog 保留 且 plans=plans 传模板",
+      "active_plans(" in _acct_blk and "plans=plans" in _acct_blk)
+_acct_ctx_blk = _pages_src.split("def _account_ctx")[1].split("\ndef ")[0]
+check("AP-C4 _account_ctx 仍调 _ctx_base (membership 继承 base projection)",
+      "_ctx_base(" in _acct_ctx_blk)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
