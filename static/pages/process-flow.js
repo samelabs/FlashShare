@@ -25,6 +25,17 @@
     if (!fileList.length) return null;
     if (!window.__USER__) { location.href = "/auth/login"; return null; }
 
+    // Shared affordability preflight (advisory): for the tool that WILL
+    // execute, ask before any source upload starts. 402 → typed error,
+    // no upload. Other outcomes defer to the authoritative gate.
+    {
+      const execTool = tool && !tool.pass_through ? tool : null;
+      if (execTool && window.preflightToolAffordability) {
+        const pf = await window.preflightToolAffordability(execTool);
+        if (!pf.ok) throw new Error(errText(pf.error));
+      }
+    }
+
     const isMulti = !!(tool && tool.multi);
     // 4C-2: multi=false 显式多文件不静默截断/忽略 — typed 错误, 由 UI 呈现
     // (dispatch 对 files[] 越界同样 typed err_too_many_files)。

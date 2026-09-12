@@ -1,4 +1,29 @@
 const form = document.getElementById("uploadForm");
+
+// ── Shared web affordability preflight (advisory, read-only) ──
+// tool == null / pass_through → no preflight. Executable tool → ask
+// /api/tools/preflight BEFORE any upload XHR starts. An explicit
+// 402 err_insufficient_credits stops the flow (no FormData upload);
+// network/5xx stays advisory — the authoritative gate still decides.
+window.preflightToolAffordability = async function (tool) {
+  if (!tool || tool.pass_through) return { ok: true };
+  try {
+    const r = await fetch("/api/tools/preflight", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tool_id: tool.id }),
+    });
+    if (r.status === 402) {
+      const d = await r.json().catch(() => null);
+      if (d && d.error === "err_insufficient_credits") {
+        return { ok: false, error: "err_insufficient_credits" };
+      }
+    }
+    return { ok: true }; // advisory: any other outcome defers to the gate
+  } catch (e) {
+    return { ok: true }; // network failure — never a new authority
+  }
+};
 // ── Load self-check: version-skew (stale cached JS vs fresh HTML) must
 // fail LOUD, not silently half-bind events. ──
 // 单工具页 (tool_page) 没有 uploadForm/dropZone — 那是首页多工具入口的
@@ -302,6 +327,15 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
   const numFiles = file.files.length;
   submitBtn.disabled = true;
   submitBtn.innerHTML = `<div class="btn-spinner"></div>`;
+  // Affordability preflight BEFORE any upload XHR — a 402 denial means
+  // the file bytes never leave the browser.
+  const pf = await window.preflightToolAffordability(activeTool);
+  if (!pf.ok) {
+    showToolError(t(pf.error) !== pf.error ? t(pf.error) : t("failed"));
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
+    return;
+  }
   showResult(`<div class="upload-progress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="progressFill"></div></div><div class="upload-progress-text" id="progressText">0%</div></div>`);
   const formData = new FormData(form);
   // file input lives in the visual drop label (outside <form>) — append explicitly
