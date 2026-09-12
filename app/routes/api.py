@@ -50,6 +50,40 @@ from execution.dispatch import client_ip as _client_ip
 
 # ── Tools ──
 
+@router.post("/tools/preflight")
+async def tool_preflight(request: Request):
+    """Advisory read-only credits affordability preflight.
+
+    Never a reservation: no tool_call row, no ledger write, no ingress
+    reservation, no Gokapi access, no client_ref, no consume(). Only an
+    explicit affordability denial (402) blocks here; everything else —
+    including resolve failures — stays with the authoritative dispatch
+    chain. Executed before the browser starts uploading source files.
+    """
+    user, err = _require_auth(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    tool_id = body.get("tool_id") if isinstance(body, dict) else None
+    if not isinstance(tool_id, str) or not tool_id.strip():
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+
+    from governance.catalog import resolve
+    tool, terr = resolve(tool_id, user["id"])
+    if terr:
+        # Resolve/routing stays authoritative in dispatch — preflight only
+        # answers affordability, so it stays silent (ok) about tool state.
+        return {"ok": True}
+    from execution.affordability import check_affordability
+    denial = check_affordability(user["id"], tool)
+    if denial:
+        return JSONResponse({"ok": False, **denial}, 402)
+    return {"ok": True}
+
+
 @router.post("/tools/execute")
 async def execute_tool(request: Request):
     """Canonical ToolInvocation JSON → the single dispatch/gate chain."""

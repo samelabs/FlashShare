@@ -279,7 +279,24 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                 raise ValueError("files[] items must be objects")
             uploads.append(_decode_file(f.get("b64"), f.get("filename")))
     except (ValueError, binascii.Error) as exc:
+        # Malformed input outranks business affordability — protocol
+        # validation stays first so a low balance can never mask it.
         return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
+
+    # Advisory credits affordability BEFORE source ingress: a clear
+    # insufficiency answers as an application error (isError tool
+    # result) without uploading anything. Authoritative consume stays
+    # in the gate; this snapshot never reserves credits.
+    from governance.catalog import resolve as _resolve_tool
+    from execution.affordability import check_affordability
+    _tool_row, _terr = _resolve_tool(tool_key, user["id"])
+    if _terr is None:
+        _denial = check_affordability(user["id"], _tool_row)
+        if _denial:
+            return _rpc(mid, {
+                "content": [{"type": "text", "text": json.dumps(_denial)}],
+                "isError": True,
+            })
 
     ip = request.headers.get("X-Real-IP",
                              request.client.host if request.client else "").strip()

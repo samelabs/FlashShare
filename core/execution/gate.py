@@ -182,8 +182,10 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
 
     # Product rule: a provider may run their own tool for self-test/use without
     # paying themselves or the platform. The call fact still records success.
-    listed_cost = int(price["cost"])
-    cost = 0 if tool.get("owner_id") == user["id"] else listed_cost
+    # Effective cost (listed price × self-owned free) comes from the
+    # single combination point shared with the advisory preflight.
+    from execution.affordability import effective_quote
+    cost = effective_quote(user["id"], tool)["cost"]
     started = now()
 
     # Claim before charging/executing. The DB partial unique index makes this

@@ -664,6 +664,180 @@ check("NQ-2 quota denial 后 Gokapi object count 不增加 (真实 HTTP path, st
       and _after == _before and _before >= 0,
       f"before={_before} after={_after} status={r.status}")
 
+# ═══ 5g. Credits affordability preflight (advisory read-only) ═══
+from execution.affordability import effective_quote, check_affordability
+from economy.billing import spendable_balance, grant as _grant
+from governance.catalog import resolve as _catalog_resolve
+
+# priced tool fixture: 注册 owner + 定价工具
+def _seed_priced_tool(owner_id, tool_id, cost):
+    import json as _jsonx
+    ts = int(time.time())
+    tk = f"pf{owner_id}/{tool_id}"
+    _cur.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution, tool_type, label_json, icon, multi, pass_through, visibility, enabled, params_json, endpoint_json, created_at, updated_at)"
+        " values (%s, %s, %s, 'http', 'produce', %s, 'wand', false, false, 'public', true, '[]', '{\"url\": \"https://example.org/x\", \"timeout_s\": 30}', %s, %s)"
+        " on conflict do nothing",
+        (tk, owner_id, tool_id, _jsonx.dumps({"en": f"PF {tool_id}"}), ts, ts))
+    _cur.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, %s, true, 1)"
+        " on conflict (tool_id) do update set cost = excluded.cost, enabled = true",
+        (tk, cost))
+    return tk
+
+_pf_owner_name, _pf_owner_id = _register("pfown" + str(int(time.time()))[-5:])
+_pf_user_name, _pf_user_id = _register("pfusr" + str(int(time.time()))[-5:])
+_pf_key = _seed_priced_tool(_pf_owner_id, "paidtool", 5)
+_trow, _trr = _catalog_resolve(_pf_key, _pf_user_id)
+check("PF-P0 fixture: priced tool resolve ok", _trr is None and _trow is not None, str(_trr))
+
+# effective cost 单点
+check("PF-EC1 普通用户 + priced tool → listed cost 5",
+      effective_quote(_pf_user_id, _trow) == {"enabled": True, "cost": 5})
+_trow_self, _ = _catalog_resolve(_pf_key, _pf_owner_id)
+check("PF-EC2 self-owned priced tool → 0",
+      effective_quote(_pf_owner_id, _trow_self)["cost"] == 0)
+_cur.execute("update pricing set cost=0 where tool_id=%s", (_pf_key,))
+check("PF-EC3 cost=0 → 0", effective_quote(_pf_user_id, _trow)["cost"] == 0)
+_cur.execute("update pricing set cost=5 where tool_id=%s", (_pf_key,))
+
+# affordability: balance=0 cost=5 → 精确 denial
+_dn = check_affordability(_pf_user_id, _trow)
+check("PF-A1 balance=0 cost=5 → 精确 {err_insufficient_credits, balance:0, cost:5}",
+      _dn == {"error": "err_insufficient_credits", "balance": 0, "cost": 5}, str(_dn))
+# balance == cost → PASS
+with db() as c:
+    _grant(_pf_user_id, 5, "grant", idem_key=f"test:pf-a2:{int(time.time())}", note="canonical")
+_dn = check_affordability(_pf_user_id, _trow)
+check("PF-A2 balance == cost → None (恰好够)", _dn is None, str(_dn))
+# cost=0 → 不查余额不拒绝 (即使 balance 0 用户)
+check("PF-A3 self-owned → None (不查余额)",
+      check_affordability(_pf_owner_id, _trow_self) is None)
+
+# no mutation: denial 前后差分 (denial 用户 balance=0; 此前 PF-A2 grant 属另一用户)
+def _counts(uid):
+    _cur.execute("select count(*) from ledger where user_id=%s", (uid,))
+    l = _cur.fetchone()[0]
+    _cur.execute("select count(*) from tool_calls where user_id=%s", (uid,))
+    tc = _cur.fetchone()[0]
+    _cur.execute("select count(*) from upload_usage where user_id=%s", (uid,))
+    uu = _cur.fetchone()[0]
+    return l, tc, uu
+
+_pf_n1_name, _pf_n1_id = _register("pfn1" + str(int(time.time()))[-5:])
+_b = _counts(_pf_n1_id)
+_dn2 = check_affordability(_pf_n1_id, _trow)  # balance=0 用户 → denial (纯读)
+_b_after = _counts(_pf_n1_id)
+check("PF-N1 affordability denial 是纯只读 (前后差分零变)",
+      _dn2 == {"error": "err_insufficient_credits", "balance": 0, "cost": 5}
+      and _b_after == _b, f"denial={_dn2} before={_b} after={_b_after}")
+
+# Web endpoint: 真实 session
+_pfw_name, _pfw_id = _register("pfweb" + str(int(time.time()))[-5:])
+_pfw_ck = _login(_pfw_name)
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/tools/preflight", json.dumps({"tool_id": _pf_key}),
+             {"Cookie": _pfw_ck, "Content-Type": "application/json"})
+r = conn.getresponse(); wd = json.loads(r.read()); conn.close()
+check("PF-W1 Web preflight priced+balance0 → 402 {err, balance:0, cost:5}",
+      r.status == 402 and wd == {"ok": False, "error": "err_insufficient_credits",
+                                 "balance": 0, "cost": 5}, f"{r.status} {str(wd)[:90]}")
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/tools/preflight", json.dumps({"tool_id": "share"}),
+             {"Cookie": _pfw_ck, "Content-Type": "application/json"})
+r = conn.getresponse(); fd = json.loads(r.read()); conn.close()
+check("PF-W2 free tool preflight → 200 {ok:true}",
+      r.status == 200 and fd == {"ok": True}, f"{r.status} {fd}")
+# no-mutation for the endpoint path
+_b2 = _counts(_pfw_id)
+check("PF-W3 endpoint 零副作用 (无 call/ledger/usage)", _b2 == (0, 0, 0), str(_b2))
+
+# MCP real E2E: bearer + priced + balance 0
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/tokens", json.dumps({"name": "pf-mcp"}),
+             {"Cookie": _pfw_ck, "Content-Type": "application/json"})
+_pfm_tk = json.loads(conn.getresponse().read()); conn.close()
+_pfm_bearer = (_pfm_tk.get("token") or {}).get("token") or ""
+_mcp_files = [{"b64": base64.b64encode(_png1).decode(), "filename": "pf.png"}]
+_mcp_body = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+             "params": {"name": _pf_key.replace("/", "__"),
+                        "arguments": {"files": _mcp_files}}}
+conn = _hc.HTTPConnection(*_HOST, timeout=60)
+conn.request("POST", "/mcp", json.dumps(_mcp_body), {
+    "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+    "Authorization": f"Bearer {_pfm_bearer}"})
+r = conn.getresponse(); raw = r.read().decode(); conn.close()
+for line in raw.split("\n"):
+    if line.startswith("data:"):
+        md = json.loads(line[5:]); break
+else:
+    md = json.loads(raw)
+_mres = md.get("result") or {}
+_mtxt = ((_mres.get("content") or [{}])[0].get("text") or "")
+_mdj = json.loads(_mtxt) if _mtxt.startswith("{") else {}
+_gk_before_pf = _gokapi_count()
+_cur.execute("select count(*) from upload_usage where user_id=%s", (_pfw_id,))
+_uu_pf = _cur.fetchone()[0]
+check("PF-M1 MCP priced+balance0 → 200 isError err_insufficient_credits {balance:0, cost:5}",
+      r.status == 200 and _mres.get("isError") is True
+      and _mdj == {"error": "err_insufficient_credits", "balance": 0, "cost": 5}
+      and "error" not in md, f"{r.status} {_mtxt[:90]}")
+check("PF-M2 MCP denial 零 source ingress (upload_usage 0)",
+      _uu_pf == 0 and _gokapi_count() == _gk_before_pf)
+# malformed base64 仍 -32602 (优先于 affordability):
+_mcp_bad = dict(_mcp_body)
+_mcp_bad["params"] = {"name": _pf_key.replace("/", "__"),
+                      "arguments": {"files": [{"b64": "!!!", "filename": "x.png"}]}}
+conn = _hc.HTTPConnection(*_HOST, timeout=60)
+conn.request("POST", "/mcp", json.dumps(_mcp_bad), {
+    "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+    "Authorization": f"Bearer {_pfm_bearer}"})
+r = conn.getresponse(); raw = r.read().decode(); conn.close()
+for line in raw.split("\n"):
+    if line.startswith("data:"):
+        bd = json.loads(line[5:]); break
+else:
+    bd = json.loads(raw)
+check("PF-M3 malformed base64 → -32602 (优先于 affordability)",
+      (bd.get("error") or {}).get("code") == -32602, str(bd.get("error"))[:80])
+
+# Advisory race: preflight PASS 后余额合法消耗 → authoritative gate 402
+_pfr_name, _pfr_id = _register("pfrace" + str(int(time.time()))[-5:])
+with db() as c:
+    _grant(_pfr_id, 5, "grant", idem_key=f"test:pf-race:{int(time.time())}", note="canonical")
+_trrow, _ = _catalog_resolve(_pf_key, _pfr_id)
+check("PF-R1 race fixture: preflight PASS (balance=cost=5)",
+      check_affordability(_pfr_id, _trrow) is None)
+# 合法消耗掉余额 (grant 精确退回即消耗): 直接 consume 5
+from economy.billing import consume as _consume
+with db() as c:
+    _consume(_pfr_id, 5, "consume", idem_key=f"race-burn:{_pfr_id}:{int(time.time())}",
+             note="race burn")
+check("PF-R2 preflight PASS ≠ reservation: 余额变化后 check_affordability 反映新快照",
+      check_affordability(_pfr_id, _trrow) == {"error": "err_insufficient_credits",
+                                               "balance": 0, "cost": 5})
+# authoritative gate 402 (真实 execute):
+def _pf_multipart(tool):
+    _b = b""
+    for k, v in {"tool": tool}.items():
+        _b += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    _b += b'--B\r\nContent-Disposition: form-data; name="file"; filename="r.png"\r\nContent-Type: image/png\r\n\r\n' + _png1 + b"\r\n--B--\r\n"
+    return _b
+
+_pfr_ck = _login(_pfr_name)
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/uploads", _pf_multipart("share"), {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _pfr_ck})
+_up = json.loads(conn.getresponse().read()); conn.close()
+_files = [{"public_id": _up["file"]["publicId"], "source_token": _up["file"].get("sourceToken", "")}]
+_inv = {"tool_id": _pf_key, "source": {"files": _files}, "params": {},
+        "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": None}
+conn = _hc.HTTPConnection(*_HOST, timeout=60)
+conn.request("POST", "/api/tools/execute", json.dumps(_inv),
+             {"Cookie": _pfr_ck, "Content-Type": "application/json"})
+r = conn.getresponse(); ed = json.loads(r.read()); conn.close()
+check("PF-R3 authoritative gate 仍 402 err_insufficient_credits (最终权威不削弱)",
+      r.status == 402 and ed.get("error") == "err_insufficient_credits", f"{r.status} {str(ed)[:80]}")
+
 # ═══ 6. Source-of-truth guard ═══
 _up = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G1 sharing/uploads.py 不出现 plus (不认识会员名)",
@@ -742,6 +916,35 @@ check("G17 MCP IngressQuotaError → isError 分支存在 + generic fallback 仍
       and _mcp_up.count("except Exception as exc") >= 1)
 check("G18 pipeline quota 走 IngressQuotaError (非普通 ValueError)",
       "IngressQuotaError(denial)" in _pipe_src)
+_aff_src = open(_os.path.join(_REPO, "core", "execution", "affordability.py"), encoding="utf-8").read()
+_gate_src = open(_os.path.join(_REPO, "core", "execution", "gate.py"), encoding="utf-8").read()
+_appjs_src = open(_os.path.join(_REPO, "static", "app.js"), encoding="utf-8").read()
+check("G19 self-owned free 规则单点 (affordability 唯一实现, gate 消费 helper)",
+      'tool.get("owner_id") == user_id' in _aff_src)
+check("G19b gate 不再第二份 owner_id==user 判定",
+      'owner_id"] == user["id"]' not in _gate_src
+      and "effective_quote" in _gate_src)
+_aff_imports = [l for l in _aff_src.split("\n") if l.startswith(("import ", "from "))]
+import ast as _ast
+_aff_tree = _ast.parse(_aff_src)
+_aff_calls = [n.func.id for n in _ast.walk(_aff_tree)
+              if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Name)]
+_aff_imports_ast = [a.name for n in _ast.walk(_aff_tree)
+                    if isinstance(n, _ast.ImportFrom) for a in n.names]
+check("G20 preflight 模块不 import/call consume (AST 级)",
+      not any("consume" in c for c in _aff_calls)
+      and not any("consume" in i for i in _aff_imports_ast))
+check("G20b consume 仍由 gate authoritative 使用", "consume(" in _gate_src)
+check("G21 Web 无本地 cost-vs-balance 授权 (展示 cost badge 不属授权)",
+      ".cost <= " not in _appjs_src and "cost <= balance" not in _appjs_src
+      and "balance <" not in _appjs_src and "balance >=" not in _appjs_src
+      and ".cost > balance" not in _appjs_src)
+check("G22 MCP 不自拼 pricing+balance 判断 (走 check_affordability)",
+      "get_pricing" not in _mcp_src and "spendable_balance" not in _mcp_src
+      and "check_affordability" in _mcp_src)
+check("G23 generic REST upload 无 tool/pricing 参数",
+      "tool_id" not in _apiv1_src.split("async def v1_upload")[1].split("async def")[0]
+      if "async def v1_upload" in _apiv1_src else True)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
