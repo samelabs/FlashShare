@@ -27,6 +27,9 @@ CREEM_TEST = os.environ.get("CREEM_TEST_MODE", "").strip() in ("1", "true", "yes
 # Credits one-time Product: 所有 package 共用同一 Creem Product,
 # custom_price 由本地 order.amount_cents 决定 (客户端零 authoritative 输入)
 CREEM_CREDITS_PRODUCT_ID = os.environ.get("CREEM_CREDITS_PRODUCT_ID", "").strip()
+# shared Credits Product 的固定 currency (Creem Product 自带; 本地 Package
+# 必须一致才可售)
+CREEM_CREDITS_CURRENCY = os.environ.get("CREEM_CREDITS_CURRENCY", "").strip().upper()
 _BASE = "https://test-api.creem.io" if CREEM_TEST else "https://api.creem.io"
 
 
@@ -59,11 +62,13 @@ def _checkout_session(order_id: int, user: dict, product_payload: dict) -> dict:
 def create_credits_checkout(order_id: int, amount_cents: int, user: dict) -> dict:
     """Credits package checkout: 所有 package 共用 CREEM_CREDITS_PRODUCT_ID
     (one-time Product) + custom_price = 本地 order.amount_cents。"""
-    if not CREEM_CREDITS_PRODUCT_ID:
+    if not credits_ready():
         raise RuntimeError("credits_product_not_configured")
+    if not custom_price_in_range(amount_cents):
+        raise ValueError("custom_price_out_of_range")
     return _checkout_session(order_id, user, {
         "product_id": CREEM_CREDITS_PRODUCT_ID,
-        "custom_price": str(amount_cents),
+        "custom_price": int(amount_cents),
     })
 
 
@@ -77,18 +82,37 @@ def create_subscription_checkout(order_id: int, plan: dict, user: dict) -> dict:
     })
 
 
-def upgrade_subscription(subscription_id: str, product_id: str) -> dict:
-    """POST /v1/subscriptions/{id}/upgrade — product change, proration
-    charged immediately. Membership 收敛由 subscription.update webhook 完成,
-    本调用不做任何本地 Membership 伪造。"""
+def upgrade_subscription(subscription_id: str, product_id: str,
+                         update_behavior: str) -> dict:
+    """POST /v1/subscriptions/{id}/upgrade — product change。behavior 由
+    caller 域语义决定 (升级=proration-charge: 补差入 next invoice, 原
+    billing cycle 不重启; 降级=proration-none: next billing cycle 生效)。
+    Membership 收敛由 subscription.update webhook 完成, 本调用不做任何
+    本地 Membership 伪造。"""
+    if update_behavior not in ("proration-charge", "proration-none"):
+        raise ValueError("invalid_update_behavior")
     return _post(f"/v1/subscriptions/{subscription_id}/upgrade", {
         "product_id": product_id,
-        "update_behavior": "proration-charge-immediately",
+        "update_behavior": update_behavior,
     })
 
 
 def credits_product_id() -> str:
     return CREEM_CREDITS_PRODUCT_ID
+
+
+def credits_ready() -> bool:
+    """Credits 售卖 readiness: API key + shared Product + 固定 currency。"""
+    return bool(CREEM_API_KEY and CREEM_CREDITS_PRODUCT_ID and CREEM_CREDITS_CURRENCY)
+
+
+# Creem official custom_price bounds (cents)
+CUSTOM_PRICE_MIN = 100
+CUSTOM_PRICE_MAX = 99999999
+
+
+def custom_price_in_range(amount_cents: int) -> bool:
+    return CUSTOM_PRICE_MIN <= int(amount_cents) <= CUSTOM_PRICE_MAX
 
 
 def retrieve_checkout(checkout_id: str) -> dict:
@@ -113,7 +137,7 @@ def verify_signature(raw_body: bytes, signature: str) -> bool:
 
 
 def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
-            product_id: str = "") -> dict:
+            product_id: str = "", currency: str = "") -> dict:
     """checkout.completed: mark order paid + grant credits (idempotent).
     Returns {granted, credits} — granted=False means replay/no-op.
 
@@ -133,21 +157,33 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
             raise KeyError("order_not_found")
         if row["kind"] != "package":
             raise KeyError("wrong_order_kind")
-        # shared Credits Product: 错误 product → 零授信 (对账人工处理)
-        if CREEM_CREDITS_PRODUCT_ID and product_id and product_id != CREEM_CREDITS_PRODUCT_ID:
+        # fail-closed payment contract: shared Credits Product + amount +
+        # currency 全部必须显式匹配, 缺失即拒 (zero grant)。
+        if not CREEM_CREDITS_PRODUCT_ID or not product_id:
+            raise KeyError("product_missing")
+        if product_id != CREEM_CREDITS_PRODUCT_ID:
             import logging
             logging.getLogger("flashshare").warning(
                 "creem fulfill product mismatch: order=%s expected=%s got=%s",
                 row["id"], CREEM_CREDITS_PRODUCT_ID, product_id)
             raise KeyError("product_mismatch")
-        # 🟡(订阅S2 随批): 金额一致性 — Creem 侧金额与订单不符时拒绝授信
-        # (改价/异常事件), 运营对账后人工处理。amount_cents<=0 视为未知, 放行。
-        if amount_cents and row["amount_cents"] and int(amount_cents) != int(row["amount_cents"]):
+        if not amount_cents or int(amount_cents) <= 0:
+            raise KeyError("amount_missing")
+        if int(amount_cents) != int(row["amount_cents"]):
             import logging
             logging.getLogger("flashshare").warning(
                 "creem fulfill amount mismatch: order=%s expected=%s got=%s",
                 row["id"], row["amount_cents"], amount_cents)
             raise KeyError("amount_mismatch")
+        if not currency:
+            raise KeyError("currency_missing")
+        cur_local = (row["currency"] or "").upper()
+        if currency.upper() != cur_local or cur_local != CREEM_CREDITS_CURRENCY:
+            import logging
+            logging.getLogger("flashshare").warning(
+                "creem fulfill currency mismatch: order=%s local=%s webhook=%s configured=%s",
+                row["id"], cur_local, currency, CREEM_CREDITS_CURRENCY)
+            raise KeyError("currency_mismatch")
         order_id = row["id"]
         amount_note = f"topup {row['amount_cents'] / 100:.2f}{row['currency']}"
         pkg = _orders_repo.package_credits(con, row["item_id"])

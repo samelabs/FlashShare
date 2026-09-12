@@ -327,7 +327,7 @@ _SCHEMA_SQL = (
       credits          BIGINT NOT NULL,
       price_cents      BIGINT NOT NULL,
       currency         TEXT NOT NULL DEFAULT 'USD',
-      creem_product_id  TEXT,
+      legacy_creem_product_id TEXT,
       wechat_price_id  TEXT,
       sort_order       INT NOT NULL DEFAULT 0,
       active           BOOLEAN NOT NULL DEFAULT TRUE,
@@ -464,10 +464,12 @@ _SCHEMA_SQL = (
         ALTER TABLE plans RENAME COLUMN creem_price_id TO creem_product_id;
       END IF;
       IF EXISTS (SELECT 1 FROM information_schema.columns
-                 WHERE table_name='packages' AND column_name='creem_price_id')
-         AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='packages' AND column_name='creem_price_id') THEN
+        ALTER TABLE packages RENAME COLUMN creem_price_id TO legacy_creem_product_id;
+      END IF;
+      IF EXISTS (SELECT 1 FROM information_schema.columns
                  WHERE table_name='packages' AND column_name='creem_product_id') THEN
-        ALTER TABLE packages RENAME COLUMN creem_price_id TO creem_product_id;
+        ALTER TABLE packages RENAME COLUMN creem_product_id TO legacy_creem_product_id;
       END IF;
     END $$""",
     # canonical paid tiers 种子 (幂等; creem_product_id 留空待运营绑定,

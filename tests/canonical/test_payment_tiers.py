@@ -160,50 +160,74 @@ out = _creem.create_subscription_checkout(1235, {"creem_product_id": "prod_plus"
 check("T8 subscription checkout → Plus product / ZERO custom_price",
       _captured["payload"] == {"product_id": "prod_plus"}, str(_captured["payload"]))
 
-# ═══ 前合同: shared Credits Product / custom_price / wrong product / amount / replay ═══
+# ═══ 前合同: shared Credits Product / custom_price / webhook fail-closed ═══
 _os.environ["CREEM_CREDITS_PRODUCT_ID"] = "prod_credits"
+_os.environ["CREEM_CREDITS_CURRENCY"] = "USD"
+_os.environ.setdefault("CREEM_API_KEY", "test-key")
 import importlib
 importlib.reload(_creem)
 _captured2 = {}
 _creem._checkout_session = lambda order_id, user, pp: (_captured2.update(payload=pp) or {"ok": True, "checkout_url": "u", "checkout_id": "c"})
 _creem.create_credits_checkout(99, 2500, {"id": 1})
-check("P1 credits checkout: shared product + custom_price=amount",
+check("P1 credits checkout: shared product + custom_price int",
       _captured2["payload"]["product_id"] == "prod_credits"
-      and _captured2["payload"]["custom_price"] == "2500", str(_captured2["payload"]))
-# fulfill wrong product → zero grant:
+      and type(_captured2["payload"]["custom_price"]) is int
+      and _captured2["payload"]["custom_price"] == 2500, str(_captured2["payload"]))
+# 范围: 99 拒 / 100 允 / 99999999 允 / 100000000 拒 (创建 order 前判定):
+check("P2 custom_price 范围 100..99999999",
+      not _creem.custom_price_in_range(99) and _creem.custom_price_in_range(100)
+      and _creem.custom_price_in_range(99999999) and not _creem.custom_price_in_range(100000000))
+try:
+    _creem.create_credits_checkout(100, 99, {"id": 1})
+    check("P2b 越界 price → checkout API 拒绝 (provider 零调用)", False, "no raise")
+except ValueError:
+    check("P2b 越界 price → checkout API 拒绝 (provider 零调用)", "payload" not in _captured2 or _captured2["payload"].get("custom_price") != 99)
+# webhook fail-closed 矩阵:
 _u9, uid9 = _new_user("pt9")
+_cur.execute("insert into packages (code, name, credits, price_cents, currency, active, created_at, updated_at)"
+             " values ('pt_pkg', 'PT', 100, 500, 'USD', TRUE, %s, %s) on conflict (code) do nothing", (_ts, _ts))
+_cur.execute("select id from packages where code='pt_pkg'")
+_pkg9 = _cur.fetchone()[0]
 _cur.execute(
     "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, currency, created_at)"
-    " values (%s, 'package', 1, 'creem', 'ord_pt9', 'pending', 500, 'USD', %s) returning id", (uid9, _ts))
+    " values (%s, 'package', %s, 'creem', 'ord_pt9', 'pending', 500, 'USD', %s) returning id", (uid9, _pkg9, _ts))
 _oid9 = _cur.fetchone()[0]
-try:
-    _creem.fulfill("ord_pt9", "", 500, product_id="prod_WRONG")
-    check("P2 wrong product → ZERO grant (raise)", False, "no raise")
-except KeyError as e:
+def _try_fulfill(**kw):
+    try:
+        _creem.fulfill(kw.get("oid", "ord_pt9"), "", kw.get("amount", 500),
+                       product_id=kw.get("product", "prod_credits"),
+                       currency=kw.get("currency", "USD"))
+        return None
+    except KeyError as e:
+        return str(e.args[0] if e.args else e)
+_cases = [
+    ("P3 missing product → ZERO grant", dict(product=""), "product_missing"),
+    ("P4 wrong product → ZERO grant", dict(product="prod_WRONG"), "product_mismatch"),
+    ("P5 missing/zero amount → ZERO grant", dict(amount=0), "amount_missing"),
+    ("P6 wrong amount → ZERO grant", dict(amount=999), "amount_mismatch"),
+    ("P7 missing currency → ZERO grant", dict(currency=""), "currency_missing"),
+    ("P8 wrong currency → ZERO grant", dict(currency="EUR"), "currency_mismatch"),
+]
+for name, kw, expect in _cases:
+    err = _try_fulfill(**kw)
     _cur.execute("select count(*) from ledger where user_id=%s", (uid9,))
-    check("P2 wrong product → ZERO grant (raise)", "product_mismatch" in str(e) and _cur.fetchone()[0] == 0, str(e))
-# amount mismatch → zero:
-try:
-    _creem.fulfill("ord_pt9", "", 999, product_id="prod_credits")
-    check("P3 amount mismatch → ZERO grant", False, "no raise")
-except KeyError as e:
-    _cur.execute("select count(*) from ledger where user_id=%s", (uid9,))
-    check("P3 amount mismatch → ZERO grant", "amount_mismatch" in str(e) and _cur.fetchone()[0] == 0)
-# correct → grant once; replay → exactly once:
-_cur.execute("select credits from packages order by id limit 1")
-_pkgc = _cur.fetchone()
-_pkg_credits = _pkgc[0] if _pkgc else 100
-if not _pkgc:
-    _cur.execute("insert into packages (code, name, credits, price_cents, currency, active, created_at, updated_at)"
-                 " values ('pt_pkg', 'PT', 100, 500, 'USD', TRUE, %s, %s)", (_ts, _ts))
-    _cur.execute("update orders set item_id=(select id from packages where code='pt_pkg') where id=%s", (_oid9,))
-    _pkg_credits = 100
-r1 = _creem.fulfill("ord_pt9", "", 500, product_id="prod_credits")
+    check(name, err == expect and _cur.fetchone()[0] == 0, f"err={err}")
+# correct → exactly one; replay → still exactly one:
+r1 = _creem.fulfill("ord_pt9", "", 500, product_id="prod_credits", currency="USD")
 _bal = spendable_balance(uid9)
-r2 = _creem.fulfill("ord_pt9", "", 500, product_id="prod_credits")
-check("P4 correct product+amount → grant once; replay exactly once",
-      spendable_balance(uid9) == _pkg_credits and _grants(uid9, "grant_package") == 1,
+r2 = _creem.fulfill("ord_pt9", "", 500, product_id="prod_credits", currency="USD")
+check("P9 correct product+amount+currency → exactly one grant; replay 仍 one",
+      spendable_balance(uid9) == 100 and _grants(uid9, "grant_package") == 1,
       f"bal={spendable_balance(uid9)} grants={_grants(uid9,'grant_package')}")
+# credits readiness = API key + shared Product + currency (三者缺一不可):
+check("P10 credits_ready 需要 product+currency+key",
+      _creem.CREEM_CREDITS_CURRENCY == "USD" and _creem.credits_ready() is True)
+_os.environ["CREEM_CREDITS_CURRENCY"] = ""
+importlib.reload(_creem)
+check("P10b 无 currency → credits_ready False",
+      _creem.credits_ready() is False)
+_os.environ["CREEM_CREDITS_CURRENCY"] = "USD"
+importlib.reload(_creem)
 
 # ═══ T9: Plus → Pro upgrade call shape ═══
 _up_called = {}
@@ -213,12 +237,18 @@ def _fake_post(path, payload):
     return {"id": "ptsub10", "status": "active"}
 _orig_post = _creem._post
 _creem._post = _fake_post
-_creem.upgrade_subscription("ptsub10", "prod_pro")
-check("T9 upgrade → POST /v1/subscriptions/{id}/upgrade, target Pro product, proration-charge-immediately",
+_creem.upgrade_subscription("ptsub10", "prod_pro", update_behavior="proration-charge")
+check("T9 upgrade → POST /v1/subscriptions/{id}/upgrade, target Pro product, proration-charge (原周期不重启)",
       _up_called["path"] == "/v1/subscriptions/ptsub10/upgrade"
       and _up_called["payload"] == {"product_id": "prod_pro",
-                                    "update_behavior": "proration-charge-immediately"},
+                                    "update_behavior": "proration-charge"},
       str(_up_called))
+# behavior 白名单:
+try:
+    _creem.upgrade_subscription("ptsub10", "prod_pro", update_behavior="bogus")
+    check("T9b update_behavior 白名单 (route 不可自由传)", False, "no raise")
+except ValueError:
+    check("T9b update_behavior 白名单 (route 不可自由传)", True)
 
 # ═══ T10: subscription.update Pro product → Membership/Projection Pro ═══
 _u10, uid10, _ = _seed_sub_user("pt10", "plus", "prod_plus", "ptsub10")
@@ -249,28 +279,86 @@ check("T12 replay upgrade events → 补差 exactly once",
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="ptsub10"))
 check("T12b 同周期 paid 重放 → period total 仍 500 (不 100+400+500)",
       _plan_credits_total(uid10, PS) == 500, str(_plan_credits_total(uid10, PS)))
+# 下一正常 renewal (新 period, Pro product): 新周期 grant 500; 旧周期仍 500:
+PS3, PE3 = _ts + 61 * 86400, _ts + 91 * 86400
+_bal12 = spendable_balance(uid10)
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS3), _iso(PE3), product={"id": "prod_pro"}, sub_id="ptsub10"))
+check("T12c 下一 renewal: 新 period total = 500 (全额), 旧 period 仍 500 (非 1000)",
+      _plan_credits_total(uid10, PS3) == 500 and _plan_credits_total(uid10, PS) == 500
+      and spendable_balance(uid10) == _bal12 + 500,
+      f"new={_plan_credits_total(uid10, PS3)} old={_plan_credits_total(uid10, PS)}")
 
-# ═══ T13: Pro → Plus request → Membership 仍 Pro ═══
+# ═══ T13: Pro → Plus downgrade → Creem proration-none 同步 ═══
 _u13, uid13, _ = _seed_sub_user("pt13", "pro", "prod_pro", "ptsub13")
-_cur.execute("select id from plans where code='plus'")
-_sub.schedule_downgrade(uid13, _cur.fetchone()[0])
+# 路由级 fake (Creem 成功/失败两态):
+import asyncio as _aio
+from app.routes import topup as _topup_mod
+_orig_auth13 = _topup_mod._require_auth
+_topup_mod._require_auth = lambda request: ({"id": uid13, "email": "t@t.co",
+                                            "username": _u13}, None)
+_up_calls13 = []
+_orig_up13 = _creem.upgrade_subscription
+def _up13(sub, prod, update_behavior="x"):
+    _up_calls13.append({"sub": sub, "product": prod, "behavior": update_behavior})
+    if _up_calls13[0].get("fail"):
+        raise RuntimeError("provider down")
+    return {"id": sub}
+_creem.upgrade_subscription = _up13
+class _Req13:
+    async def json(self):
+        return {"plan": "plus"}
+# 失败态: Creem down → ZERO pending:
+_up_calls13.append({"fail": True})
+r_fail = _aio.run(_topup_mod.plan_downgrade(_Req13()))
+with db() as con:
+    _pend_fail = orders_repo.pending_downgrade(con, uid13)
+check("T13a Creem 失败 → downgrade_failed + ZERO pending",
+      getattr(r_fail, "status_code", 200) == 502 and _pend_fail is None,
+      f"r={getattr(r_fail, 'status_code', None)} pend={_pend_fail}")
+# 成功态: Creem called exactly once (Plus product + proration-none) → pending 写入:
+_up_calls13.clear()
+r_ok = _aio.run(_topup_mod.plan_downgrade(_Req13()))
+with db() as con:
+    _pend13 = orders_repo.pending_downgrade(con, uid13)
 _pp13 = project(uid13)
-check("T13 downgrade 请求后 Membership 仍 Pro / entitlements Pro / 零追回",
+check("T13b Creem called once: product=Plus / behavior=proration-none → pending fact 写入",
+      len(_up_calls13) == 1 and _up_calls13[0]["product"] == "prod_plus"
+      and _up_calls13[0]["behavior"] == "proration-none" and _pend13 is not None,
+      str(_up_calls13))
+check("T13c boundary 前 Membership 仍 Pro / entitlements Pro / 零追回",
       _pp13["membership"]["code"] == "pro" and _pp13["entitlements"]["plan_code"] == "pro"
       and _grants(uid13, "grant_plan") == 1 and spendable_balance(uid13) == 500)
+# schedule 期 provider 回声 (update 带 Plus product + pending 存在) → 不立即切换:
+r_echo = _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_plus"}, sub_id="ptsub13"))
+_pp13b = project(uid13)
+check("T13d schedule 期 update 回声 product=Plus → deferred, Membership 仍 Pro",
+      r_echo.get("deferred") == "pending_downgrade" and _pp13b["membership"]["code"] == "pro")
 
-# ═══ T14: period boundary → Plus / next-cycle 100 ═══
+# ═══ T14: boundary provider 证明 ═══
 PS2, PE2 = _ts + 31 * 86400, _ts + 61 * 86400
+# (a) provider product 仍 Pro → fail loud / 不本地降级 / 不清 pending:
+try:
+    _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS2), _iso(PE2), product={"id": "prod_pro"}, sub_id="ptsub13"))
+    check("T14a boundary provider=Pro → MUST NOT silently downgrade", False, "no raise")
+except KeyError as e:
+    _pp14a = project(uid13)
+    with db() as con:
+        _pend14a = orders_repo.pending_downgrade(con, uid13)
+    check("T14a boundary provider=Pro → raise / Membership 仍 Pro / pending 保留",
+          "downgrade_product_not_confirmed" in str(e)
+          and _pp14a["membership"]["code"] == "pro" and _pend14a is not None, str(e))
+# (b) provider product = Plus → Membership Plus / grant 100 / pending 清除:
 _bal14 = spendable_balance(uid13)
-_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS2), _iso(PE2), sub_id="ptsub13"))
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS2), _iso(PE2), product={"id": "prod_plus"}, sub_id="ptsub13"))
 _pp14 = project(uid13)
-check("T14 周期边界 → Membership Plus / 新周期 grant 100 / pending fact 清除",
-      _pp14["membership"]["code"] == "plus" and spendable_balance(uid13) == _bal14 + 100
-      and _plan_credits_total(uid13, PS2) == 100,
-      f"code={_pp14['membership']['code']} bal_delta={spendable_balance(uid13)-_bal14}")
 with db() as con:
     _pend14 = orders_repo.pending_downgrade(con, uid13)
-check("T14b pending downgrade fact 已消费", _pend14 is None)
+check("T14b boundary provider=Plus → Membership Plus / 新周期 grant 100 / pending 清除",
+      _pp14["membership"]["code"] == "plus" and spendable_balance(uid13) == _bal14 + 100
+      and _plan_credits_total(uid13, PS2) == 100 and _pend14 is None,
+      f"code={_pp14['membership']['code']} bal_delta={spendable_balance(uid13)-_bal14}")
+_creem.upgrade_subscription = _orig_up13
+_topup_mod._require_auth = _orig_auth13
 
 # ═══ T15: cancel → 当期保留 → 到期 Free ═══
 _u15, uid15, _ = _seed_sub_user("pt15", "plus", "prod_plus", "ptsub15")
@@ -309,8 +397,9 @@ check("PG3 checkout API 拆分 (credits vs subscription)",
 check("PG4 POST /samelabs/plans 创建能力已移除",
       '@router.post("/samelabs/plans")' not in _samelabs_src
       and "not_canonical_tier" in _samelabs_src)
-check("PG5 upgrade 走 provider API (无本地 Membership 伪造)",
-      "upgrade_subscription" in _creem_src and "proration-charge-immediately" in _creem_src
+check("PG5 upgrade 走 provider API (behavior 白名单域内)",
+      "def upgrade_subscription" in _creem_src
+      and '"proration-charge", "proration-none"' in _creem_src
       and "upgrade_subscription(" in _topup_src)
 _sub_blk2 = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
 check("PG6 升级补差 ledger kind=grant_plan_upgrade / 幂等键含 target",
@@ -325,6 +414,27 @@ check("PG8 canonical seeds (plus 100 / pro 500) + rename 迁移",
 _tmpl_src = open(_os.path.join(_REPO, "app", "templates", "account", "credits.html"), encoding="utf-8").read()
 check("PG9 Account 三态动作 (Subscribe/Current/Upgrade/Downgrade)",
       "sub-upgrade" in _tmpl_src and "sub-downgrade" in _tmpl_src and "sub_current" in _tmpl_src)
+_repo_src2 = open(_os.path.join(_REPO, "core", "repo", "orders.py"), encoding="utf-8").read()
+_apk_blk = _repo_src2.split("def active_packages")[1].split("\ndef ")[0]
+_apk_sql = [l for l in _apk_blk.split("\n") if l.strip().startswith('"SELECT') or "SELECT" in l][0]
+check("PG10 packages production SELECT 零 provider-product 列",
+      "creem_product_id" not in _apk_sql and "legacy" not in _apk_sql,
+      _apk_sql[:100])
+check("PG11 canonical_plans 消费 governance.tiers (参数化, 无字面 tier 复制)",
+      "sellable_plan_codes" in _repo_src2.split("def canonical_plans")[1].split("\ndef ")[0]
+      and "'plus','pro'" not in _repo_src2.split("def canonical_plans")[1].split("\ndef ")[0])
+check("PG12 custom_price int + range 前置",
+      '"custom_price": int(amount_cents)' in _creem_src
+      and "CUSTOM_PRICE_MIN = 100" in _creem_src and "CUSTOM_PRICE_MAX = 99999999" in _creem_src)
+check("PG13 fulfill fail-closed (product/amount/currency 三合同)",
+      'raise KeyError("product_missing")' in _creem_src
+      and 'raise KeyError("amount_missing")' in _creem_src
+      and 'raise KeyError("currency_mismatch")' in _creem_src)
+check("PG14 downgrade = Creem proration-none 同步 (失败零 pending)",
+      'update_behavior="proration-none"' in _topup_src)
+check("PG15 upgrade = proration-charge (原周期不重启)",
+      'update_behavior="proration-charge"' in _topup_src
+      and "proration-charge-immediately" not in _topup_src)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))

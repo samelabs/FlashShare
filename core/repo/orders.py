@@ -68,8 +68,11 @@ def set_provider_order_id(con, order_id: int, provider_order_id: str) -> None:
 # ── plans / packages ──
 
 def active_packages(con) -> list:
+    """production projection: shared Credits Product 模型下 Package 无
+    per-provider binding — 只暴露 id/code/name/credits/price_cents/
+    currency。历史 per-package Creem 值仅存 DB legacy 列, 不进此投影。"""
     return con.execute(
-        "SELECT id, code, name, credits, price_cents, currency, creem_product_id "
+        "SELECT id, code, name, credits, price_cents, currency "
         "FROM packages WHERE active ORDER BY sort_order, id").fetchall()
 
 
@@ -133,11 +136,15 @@ def active_plans(con) -> list:
 
 
 def canonical_plans(con) -> list:
-    """sellable membership catalog: 仅 canonical paid tiers (plus/pro)。
+    """sellable membership catalog: 仅 governance.tiers 的 canonical paid
+    tiers (唯一产品层事实源; 参数化, 不在 repo 复制业务 tier)。
     DB 中历史其它 plan rows 保留但不进 sellable/current Membership。"""
+    from governance.tiers import sellable_plan_codes
+    codes = sellable_plan_codes()
+    placeholders = ",".join(["%s"] * len(codes))
     return con.execute(
-        "SELECT * FROM plans WHERE active AND code IN ('plus','pro')"
-        " ORDER BY sort_order, price_cents").fetchall()
+        f"SELECT * FROM plans WHERE active AND code IN ({placeholders})"
+        " ORDER BY sort_order, price_cents", tuple(codes)).fetchall()
 
 
 def plan_by_id_active(con, plan_id: int) -> Optional[dict]:

@@ -495,7 +495,7 @@ async def account_credits(request: Request):
     import economy.creem as _creem
     topup_ready = _creem.creem_enabled()
     from economy import creem as _creem_mod
-    credits_ready = bool(_creem_mod.credits_product_id())
+    credits_ready = _creem_mod.credits_ready()
     # subscription tier(s) purchasable catalog — a different concept from
     # the viewer's membership fact: active_plans() lists what can be
     # bought, while my_plan comes from _account_ctx → _ctx_base's single

@@ -218,13 +218,20 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     credits = 0
     with db() as con:
         credits = orders_repo.plan_credits(con, plan["id"])
-    # pending downgrade (next renewal) 在新周期边界应用: 该 paid 事件代表
-    # 新周期开始 → 本地 plan 切到 target (provider product 变化由 upgrade
-    # API 无 schedule 能力时的 application fact 兑现), credits 按新 plan。
+    # pending downgrade (next renewal) 在新周期边界应用 — provider 必须实际
+    # 证明 product 已切换: provider snapshot product == pending target 的
+    # creem_product_id 才切换; 否则 fail loud (raise), 不本地发明降级、
+    # 不清 pending (Creem 重试/人工对账)。
     target_plan_id = None
     with db() as con:
         pend = orders_repo.pending_downgrade(con, order["user_id"])
         if pend is not None and int(pend["effective_at"] or 0) <= period_start:
+            tgt = orders_repo.plan_by_id(con, int(pend["target_plan_id"]))
+            provider_product = extract_product_id(
+                (provider_subscription.get("subscription") or provider_subscription))
+            if tgt is None or not tgt.get("creem_product_id") \
+                    or provider_product != tgt["creem_product_id"]:
+                raise KeyError("downgrade_product_not_confirmed")
             target_plan_id = int(pend["target_plan_id"])
             orders_repo.clear_pending_downgrade(con, order["user_id"])
     if target_plan_id is not None:
@@ -284,6 +291,11 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
         m = orders_repo.membership_by_sub(con, sub_id)
         if m is None:
             raise KeyError("membership_not_found")
+        pend = orders_repo.pending_downgrade(con, m["user_id"])
+        if pend is not None and int(pend["target_plan_id"]) == plan["id"]:
+            # schedule 期的 provider 回声 (product=target): pending 存在 →
+            # 不立即切换; 周期边界 paid + product 证明才切换。
+            return {"updated": False, "deferred": "pending_downgrade"}
         if m["plan_id"] != plan["id"]:
             from governance.tiers import TIER_PLAN_SPECS
             # tier change (同 sub): 升级方向 → 补差当周期 credits

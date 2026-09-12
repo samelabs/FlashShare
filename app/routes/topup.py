@@ -29,7 +29,13 @@ async def topup_checkout(request: Request):
     from utils import now
     with db() as con:
         pkg = package_by_id_active(con, package_id)
-    if not pkg or not creem.credits_product_id():
+    # 前置合同 (本地拒绝, 不让 provider 4xx 兜底): shared Product + 固定
+    # currency + custom_price 官方范围 — 全部在创建 order 之前。
+    if not pkg or not creem.credits_ready():
+        return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
+    if (pkg["currency"] or "").upper() != creem.CREEM_CREDITS_CURRENCY:
+        return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
+    if not creem.custom_price_in_range(pkg["price_cents"]):
         return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
     from repo.orders import insert_order, mark_failed, set_provider_order_id
     ts = now()
@@ -173,7 +179,10 @@ async def plan_upgrade(request: Request):
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]
     try:
-        creem.upgrade_subscription(sub_id, target["creem_product_id"])
+        # 升级域语义: proration-charge — 补差入 next invoice, 原 billing
+        # cycle 不重启 (tier 立即 Pro, 本周期 credits 由 update 事件补差)
+        creem.upgrade_subscription(sub_id, target["creem_product_id"],
+                                   update_behavior="proration-charge")
     except Exception:
         return JSONResponse({"ok": False, "error": "upgrade_failed"}, 502)
     return {"ok": True, "upgrade": "initiated",
@@ -182,10 +191,13 @@ async def plan_upgrade(request: Request):
 
 @router.post("/plan-downgrade")
 async def plan_downgrade(request: Request):
-    """Pro → Plus (next renewal): Creem 官方 upgrade/change API 无原生
-    schedule-product-change 能力 (仅 proration 立即语义) — 按 spec 建立
-    application pending downgrade fact (target_plan_id + effective_at =
-    current_period_end), 不做 provider workaround, 不改当前 Membership。"""
+    """Pro → Plus (next renewal): Creem 官方 product-change endpoint 同样
+    承载 downgrade — update_behavior=proration-none (官方语义: no
+    proration, change takes effect next billing cycle, no immediate
+    charge)。先同步 Creem; provider 成功后才写 pending_downgrades
+    (application expectation / local continuity fact, 非 Payment
+    authority)。Creem 失败 → ZERO pending。当前周期 Membership/entitlements
+    保持 Pro; 周期边界 provider product 必须实际为 Plus 才切换。"""
     user, err = _require_auth(request)
     if err:
         return err
@@ -215,6 +227,14 @@ async def plan_downgrade(request: Request):
         target = plan_by_code(con, target_code)
     if not target or not target["active"]:
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
+    sub_id = current["provider_subscription_id"]
+    if sub_id.startswith("sub:"):
+        sub_id = sub_id[4:]
+    try:
+        creem.upgrade_subscription(sub_id, target["creem_product_id"] or "",
+                                   update_behavior="proration-none")
+    except Exception:
+        return JSONResponse({"ok": False, "error": "downgrade_failed"}, 502)
     schedule_downgrade(user["id"], target["id"])
     return {"ok": True, "downgrade": "scheduled",
             "from": cur_code, "to": target_code,
@@ -283,7 +303,8 @@ async def creem_webhook(request: Request):
     try:
         res = creem.fulfill(order.get("id") or "", obj.get("id") or "",
                             int(order.get("amount") or 0),
-                            product_id=str(order.get("product") or ""))
+                            product_id=str(order.get("product") or ""),
+                            currency=str(order.get("currency") or ""))
     except KeyError as exc:
         # 🔴5 修复(批2a): order_not_found 可能是 checkout→provider_order_id
         # 写入窗口内的乱序到达。返回 500 让 Creem 重试(webhook 重试政策),
