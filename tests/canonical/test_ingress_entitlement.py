@@ -521,9 +521,7 @@ except _IBE as e:
           e.denial["error"] == "err_file_too_large", str(e.denial))
 _cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
 check("B-M3 被拒 batch 零 usage 残留 (storage 前)", _cur.fetchone()[0] == _all_usage)
-# MCP 端到端 isError 语义 (bearer): 用 apiv1 token? MCP 走同 bearer — 走真实 /mcp:
-# (token 创建入口属 identity 面, 此处以 pipeline 层契约 + dispatch 无 -32602 回归覆盖;
-#  HTTP 层 -32602 分流逻辑见 mcp.py except IngressBoundaryError → isError result)
+# MCP HTTP 层 isError 语义由 5f 段真实 /mcp E2E 覆盖 (bearer + tools/call)。
 
 # ═══ 5f. 真实 /mcp HTTP E2E (create user → API bearer token → tools/call) ═══
 _eu, _euid = _register("mcpe2e" + str(int(time.time()))[-6:])
@@ -642,6 +640,30 @@ _cur.execute("select count(*) from upload_usage where user_id=%s", (_wu_id,))
 check("NQ-1 quota denial 后 upload_usage 零新增",
       _cur.fetchone()[0] == FREE["ingress_files_24h"])
 
+# NQ-2: quota decision 在 Gokapi storage 之前 — 真实 HTTP path 前后对象计数不变
+def _gokapi_count():
+    conn = _hc.HTTPConnection(_HOST[0], _GOKAPI_PORT, timeout=15)
+    conn.request("GET", "/api/files/list", headers={"apikey": _GK_KEY})
+    r = conn.getresponse(); files = json.loads(r.read()); conn.close()
+    return len(files) if isinstance(files, list) else -1
+
+_GK_KEY = _os.environ.get("FLASHSHARE_GOKAPI_KEY", "")
+_GOKAPI_RAW = _os.environ.get("FLASHSHARE_GOKAPI_URL", "")
+_GOKAPI_PORT = int(_GOKAPI_RAW.rsplit(":", 1)[-1]) if ":" in _GOKAPI_RAW else 53898
+_before = _gokapi_count()
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+body = b""
+for k, v in {"tool": "share"}.items():
+    body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="z.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + _png1 + b"\r\n--B--\r\n"
+conn.request("POST", "/api/uploads", body, {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _wck})
+r = conn.getresponse(); _zd = json.loads(r.read()); conn.close()
+_after = _gokapi_count()
+check("NQ-2 quota denial 后 Gokapi object count 不增加 (真实 HTTP path, storage 前拒)",
+      r.status == 429 and _zd.get("error") == "err_ingress_files_24h"
+      and _after == _before and _before >= 0,
+      f"before={_before} after={_after} status={r.status}")
+
 # ═══ 6. Source-of-truth guard ═══
 _up = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G1 sharing/uploads.py 不出现 plus (不认识会员名)",
@@ -694,9 +716,27 @@ check("G15 三面不自行算 remaining (透传 denial, 排除注释)",
       "remaining" not in _code_lines(_apir)
       and "remaining" not in _code_lines(_apiv1_src)
       and "remaining" not in _code_lines(_mcp_src))
-check("G16 旧 key 零 active hit (err_quota_count/size)",
-      "err_quota_count" not in _apir + _apiv1_src + _mcp_src + _ups
-      and "err_quota_size" not in _apir + _apiv1_src + _mcp_src + _ups)
+# repo-wide active guard: 动态拼旧 key 防自匹配; 只扫文本源码, 排除缓存/生成物目录树中非源码部分
+_old_count_key = "err_quota_" + "count"
+_old_size_key = "err_quota_" + "size"
+_hits = []
+for _root_name in ("app", "core", "static", "templates", "tests"):
+    _base = _os.path.join(_REPO, _root_name)
+    for _dirpath, _dirnames, _filenames in _os.walk(_base):
+        _dirnames[:] = [d for d in _dirnames
+                        if d not in ("__pycache__", "node_modules", ".git")]
+        for _fn in _filenames:
+            if not _fn.endswith((".py", ".js", ".html", ".css", ".json", ".md", ".txt")):
+                continue
+            _fp = _os.path.join(_dirpath, _fn)
+            try:
+                _src = open(_fp, encoding="utf-8", errors="ignore").read()
+            except OSError:
+                continue
+            if _old_count_key in _src or _old_size_key in _src:
+                _hits.append(_os.path.relpath(_fp, _REPO))
+check("G16 旧 quota key repo-wide 零 active hit (app/core/static/templates/tests)",
+      not _hits, str(_hits[:6]))
 check("G17 MCP IngressQuotaError → isError 分支存在 + generic fallback 仍在",
       "IngressQuotaError" in _mcp_src
       and _mcp_up.count("except Exception as exc") >= 1)
