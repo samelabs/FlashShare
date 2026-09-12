@@ -422,6 +422,7 @@ SERVER_I18N = {
 
     "pager_prev": "Précédent",
     "pager_next": "Suivant",
+    "err_batch_too_large": "La taille totale des envois dépasse la limite",
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -832,6 +833,7 @@ SERVER_I18N = {
 
     "pager_prev": "이전",
     "pager_next": "다음",
+    "err_batch_too_large": "업로드 총 크기가 제한을 초과했습니다",
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1241,6 +1243,7 @@ SERVER_I18N = {
 
     "pager_prev": "Назад",
     "pager_next": "Далее",
+    "err_batch_too_large": "Общий размер загрузки превышает лимит",
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -1650,6 +1653,7 @@ SERVER_I18N = {
 
     "pager_prev": "السابق",
     "pager_next": "التالي",
+    "err_batch_too_large": "إجمالي حجم الرفع يتجاوز الحد",
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2060,6 +2064,7 @@ SERVER_I18N = {
 
     "pager_prev": "Zurück",
     "pager_next": "Weiter",
+    "err_batch_too_large": "Gesamtgröße der Uploads überschreitet das Limit",
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -2469,6 +2474,7 @@ SERVER_I18N = {
 
     "pager_prev": "Anterior",
     "pager_next": "Próxima",
+    "err_batch_too_large": "O tamanho total de envio excede o limite",
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -2878,6 +2884,7 @@ SERVER_I18N = {
 
     "pager_prev": "前へ",
     "pager_next": "次へ",
+    "err_batch_too_large": "アップロード合計サイズが制限を超えています",
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -3288,6 +3295,7 @@ SERVER_I18N = {
 
     "pager_prev": "上一页",
     "pager_next": "下一页",
+    "err_batch_too_large": "批量上传总大小超出限制",
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -3697,6 +3705,7 @@ SERVER_I18N = {
 
     "pager_prev": "Anterior",
     "pager_next": "Siguiente",
+    "err_batch_too_large": "El tamaño total de subida supera el límite",
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -4107,6 +4116,7 @@ SERVER_I18N = {
 
     "pager_prev": "Previous",
     "pager_next": "Next",
+    "err_batch_too_large": "Total upload size exceeds the batch limit",
 },
 }
 

@@ -23,7 +23,7 @@
 from governance.delivery import validate_delivery
 
 _ALLOWED_KEYS = {"tool_id", "source", "params", "delivery", "client_ref"}
-_MAX_FILES = 20
+from governance.ingress import MAX_FILES_PER_REQUEST as _MAX_FILES
 _MAX_CLIENT_REF = 128
 
 

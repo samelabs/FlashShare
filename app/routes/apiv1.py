@@ -9,7 +9,6 @@ import json
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from config import MAX_UPLOAD_BYTES
 from storage import read as storage_read
 from governance.catalog import list_catalog
 from gokapi import open_gokapi_download
@@ -67,13 +66,18 @@ async def v1_upload(request: Request):
         size = int(request.headers.get("content-length", "0") or 0)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    if size <= 0 or size > MAX_UPLOAD_BYTES:
-        return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
+    # Authoritative boundary via the shared ingress validator (single
+    # source for Web/REST/MCP); structured error contract.
+    from governance.ingress import validate_batch
+    denial = validate_batch([max(size, 0)])
+    if denial:
+        return JSONResponse({"ok": False, **denial}, 413)
     body = await request.body()
     if len(body) != size:
         size = len(body)
-        if size <= 0 or size > MAX_UPLOAD_BYTES:
-            return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
+        denial = validate_batch([max(size, 0)])
+        if denial:
+            return JSONResponse({"ok": False, **denial}, 413)
 
     ip = request.headers.get("X-Real-IP", request.client.host if request.client else "").strip()
     try:

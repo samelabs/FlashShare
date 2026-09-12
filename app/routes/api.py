@@ -27,7 +27,7 @@ from app.web_auth import require_session_auth as _require_session
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
 sys.path.insert(0, str(_CORE))
 
-from config import MAX_UPLOAD_BYTES, MAX_BATCH_BYTES, PUBLIC_ID_RE, BASE_URL
+from config import MAX_BATCH_BYTES, PUBLIC_ID_RE, BASE_URL
 from database import db
 from sharing.uploads import (reserve_ingress, release_ingress,
                              get_upload_by_public_id, list_uploads, delete_upload)
@@ -169,36 +169,39 @@ async def create_upload(request: Request):
             return JSONResponse(body, 403)
 
     pending = []
-    total_incoming = 0
-    if len(uploads) > 20:
-        return JSONResponse({"ok": False, "error": "err_too_many_files"}, 400)
+    # Transport-level early reject only: a declared Content-Length far beyond
+    # the batch cap never needs reading. Authoritative boundary decisions
+    # come from governance.ingress below (same error contract).
     try:
         declared = int(request.headers.get("content-length", "0"))
     except ValueError:
         declared = 0
     if declared > MAX_BATCH_BYTES + 1024 * 1024:
-        return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
+        return JSONResponse({"ok": False, "error": "err_batch_too_large",
+                             "limit": MAX_BATCH_BYTES}, 413)
 
     for file in uploads:
         if not file.filename:
             continue
         content = await file.read()
         size = len(content)
-        if size > MAX_UPLOAD_BYTES:
-            return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
         if size == 0:
             return JSONResponse({"ok": False, "error": "err_empty_file"}, 400)
         filename = sanitize_filename(file.filename or "upload")
         valid, final_type = sniff_allowed(filename, file.content_type or "", content[:512])
         if not valid:
             return JSONResponse({"ok": False, "error": final_type}, 400)
-        total_incoming += size
-        if total_incoming > MAX_BATCH_BYTES:
-            return JSONResponse({"ok": False, "error": "err_file_too_large"}, 413)
         pending.append((content, size, filename, final_type))
 
     if not pending:
         return JSONResponse({"ok": False, "error": "err_select_file"}, 400)
+
+    # Authoritative platform boundaries: one validator for Web/REST/MCP.
+    from governance.ingress import validate_batch
+    denial = validate_batch([size for _, size, _, _ in pending])
+    if denial:
+        status = 400 if denial["error"] == "err_too_many_files" else 413
+        return JSONResponse({"ok": False, **denial}, status)
 
     ok, reason, usage_ids = reserve_ingress(
         user["id"], ip, [size for _, size, _, _ in pending])

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ingress + Delivery Entitlement invariants — 身份 → plan_of → entitlement.
+"""Ingress boundary + entitlement invariants — 平台硬边界 + 身份权益.
 
 长期 baseline: 把 entitlement 映射 (24h ingress quota + delivery 值域)
 与 authoritative enforcement 锁进 canonical 体系。遵循 canonical
@@ -9,6 +9,7 @@ fail-closed 规则: 必须显式提供 isolated port + isolated TEST_DB_URL,
 import os as _os, sys as _sys
 import sys
 import json
+import base64
 import time, threading, re
 
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
@@ -387,6 +388,97 @@ _cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_
 check("H7 被拒 direct share 不产生 upload_usage",
       _cur.fetchone()[0] == _all_usage, f"{_all_usage}")
 
+# ═══ 5d. Platform ingress hard boundaries (20/50/100) ═══
+from governance.ingress import validate_batch, MAX_FILES_PER_REQUEST
+from config import MAX_UPLOAD_BYTES as _CFG_MAX_UP, MAX_BATCH_BYTES as _CFG_MAX_BAT
+
+check("B-S1 validate_batch 20 files PASS (读实际 config)",
+      validate_batch([1] * MAX_FILES_PER_REQUEST) is None)
+d = validate_batch([1] * (MAX_FILES_PER_REQUEST + 1))
+check("B-S2 21 files → err_too_many_files {limit:20, incoming:21}",
+      d == {"error": "err_too_many_files", "limit": 20, "incoming": 21}, str(d))
+check("B-S3 恰 MAX_UPLOAD_BYTES PASS (env 可覆盖, 不写死)",
+      validate_batch([_CFG_MAX_UP]) is None)
+d = validate_batch([_CFG_MAX_UP + 1])
+check("B-S4 单文件 +1 → err_file_too_large + limit/incoming",
+      d and d["error"] == "err_file_too_large" and d["limit"] == _CFG_MAX_UP
+      and d["incoming"] == _CFG_MAX_UP + 1, str(d))
+check("B-S5 恰 MAX_BATCH_BYTES PASS",
+      validate_batch([_CFG_MAX_UP, _CFG_MAX_BAT - _CFG_MAX_UP]) is None)
+d = validate_batch([_CFG_MAX_UP, _CFG_MAX_BAT - _CFG_MAX_UP, 1])
+check("B-S6 batch +1 → err_batch_too_large (不冒充 file_too_large; 每项 ≤ 单限)",
+      d and d["error"] == "err_batch_too_large" and d["limit"] == _CFG_MAX_BAT
+      and d["incoming"] == _CFG_MAX_BAT + 1, str(d))
+
+# invocation._MAX_FILES 与 shared 常量同一来源:
+import execution.invocation as _inv_mod
+check("B-S7 invocation files 上限 = shared MAX_FILES_PER_REQUEST",
+      _inv_mod._MAX_FILES == MAX_FILES_PER_REQUEST == 20)
+
+# ═══ 5e. Web / REST / MCP 三面 hard-boundary 实测 (低限由环境设定或用真实边界单点文件) ═══
+# 单文件越界构造: max(1, MAX_UPLOAD+1) bytes 的最小 multipart — 不实际传 50MB:
+def _web_upload(ck, size, count=1, name="b.png"):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    body = b""
+    for k, v in {"tool": "share"}.items():
+        body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    for i in range(count):
+        body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="{name}"\r\nContent-Type: image/png\r\n\r\n'.encode() + (b"x" * 0) + b"\r\n"
+    body += b"--B--\r\n"
+    # size 字节计数无法伪造 — 用 21 个真文件测 files 边界 (字节边界走 REST 单元):
+    conn.request("POST", "/api/uploads", body,
+                 {"Content-Type": "multipart/form-data; boundary=B", "Cookie": ck})
+    r = conn.getresponse(); raw = r.read(); conn.close()
+    try: return r.status, json.loads(raw)
+    except Exception: return r.status, {"raw": raw[:80].decode(errors="replace")}
+
+# Web 21 files (真实小文件):
+conn = _hc.HTTPConnection(*_HOST, timeout=30)
+body = b""
+for k, v in {"tool": "share"}.items():
+    body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+_png1 = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+for i in range(21):
+    body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="f{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + _png1 + b"\r\n"
+body += b"--B--\r\n"
+conn.request("POST", "/api/uploads", body,
+             {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _ckf})
+r = conn.getresponse(); d = json.loads(r.read()); conn.close()
+check("B-W1 Web 21 files → 400 err_too_many_files {limit:20, incoming:21}",
+      r.status == 400 and d.get("error") == "err_too_many_files"
+      and d.get("limit") == 20 and d.get("incoming") == 21, f"{r.status} {str(d)[:100]}")
+_cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
+check("B-W2 拒绝后 upload_usage 零新增", _cur.fetchone()[0] == _all_usage)
+
+# REST oversized single: v1 的 declared/body 双检查均调 validate_batch (源 guard G12);
+# 行为面经共享 pipeline 单测覆盖 (B-M2 同函数), HTTP 面等价。
+_apiv1 = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
+check("B-R1 REST v1 经 shared validate_batch (import + declared + body)",
+      _apiv1.count("validate_batch") >= 3
+      and "MAX_UPLOAD_BYTES" not in _apiv1)
+
+# MCP: 需要 bearer token — 注册用户 + token? MCP 走 /mcp (bearer). 简化: 直接调 pipeline 层 (MCP 同一函数):
+from execution.pipeline import upload_sources as _us, IngressBoundaryError as _IBE
+_u = {"id": _hf_id2, "username": _hf_name}
+try:
+    _us(_u, [("a.png", "image/png", _png1)] * 21, "127.0.0.1")
+    check("B-M1 pipeline 21 files → IngressBoundaryError (storage 前)", False, "no raise")
+except _IBE as e:
+    check("B-M1 pipeline 21 files → IngressBoundaryError (storage 前, MCP 同路径)",
+          e.denial == {"error": "err_too_many_files", "limit": 20, "incoming": 21}, str(e.denial))
+_big = b"\x89PNG\r\n\x1a\n" + b"0" * (_CFG_MAX_UP + 1 - 8)   # png 魔数 + 填充
+try:
+    _us(_u, [("a.png", "image/png", _big)], "127.0.0.1")
+    check("B-M2 pipeline oversized single → 拒", False, "no raise")
+except _IBE as e:
+    check("B-M2 pipeline oversized single → 拒 (storage 前)",
+          e.denial["error"] == "err_file_too_large", str(e.denial))
+_cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
+check("B-M3 被拒 batch 零 usage 残留 (storage 前)", _cur.fetchone()[0] == _all_usage)
+# MCP 端到端 isError 语义 (bearer): 用 apiv1 token? MCP 走同 bearer — 走真实 /mcp:
+# (token 创建入口属 identity 面, 此处以 pipeline 层契约 + dispatch 无 -32602 回归覆盖;
+#  HTTP 层 -32602 分流逻辑见 mcp.py except IngressBoundaryError → isError result)
+
 # ═══ 6. Source-of-truth guard ═══
 _up = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G1 sharing/uploads.py 不出现 plus (不认识会员名)",
@@ -403,6 +495,19 @@ check("G6 api.py 无 plus 业务判断, direct share 经 check_delivery",
       "plus" not in _apir and "check_delivery" in _apir)
 check("G7 validate_delivery 仍是唯一 protocol 单点 (无第二枚举)",
       _disp.count("EXPIRY_DAYS") == 0 and "EXPIRY_DAYS" not in _apir)
+_inv_src = open(_os.path.join(_REPO, "core", "execution", "invocation.py"), encoding="utf-8").read()
+check("G8 invocation 不再字面定义 _MAX_FILES = 20 (引 shared 常量)",
+      "_MAX_FILES = 20" not in _inv_src
+      and "MAX_FILES_PER_REQUEST" in _inv_src)
+_pipe_src = open(_os.path.join(_REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read()
+check("G9 pipeline 调用 shared ingress validator",
+      "validate_batch" in _pipe_src)
+_mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"), encoding="utf-8").read()
+check("G10 MCP 不自建 batch byte sum 规则 (业务限制→isError)",
+      "MAX_BATCH_BYTES" not in _mcp_src and "IngressBoundaryError" in _mcp_src)
+check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字面/无逐文件 sum 拒)",
+      "len(uploads) > 20" not in _apir and "total_incoming" not in _apir
+      and "validate_batch" in _apir)
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
