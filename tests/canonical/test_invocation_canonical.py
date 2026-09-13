@@ -419,6 +419,14 @@ check("B1 Tool Page + MCP page consume tool_hero identity macro",
       "tool_hero(" in tp_src and "tool_hero(" in tmcp_src
       and "tool_hero" in part_b)
 # B2 Tool Page no inline Tool icon renderer/fallback:
+_repo_cat = _rd("core", "repo", "catalog.py")
+_btk_blk = _repo_cat.split("def by_tool_key")[1].split("\ndef ")[0]
+check("B2a owner_handle 走 catalog projection (by_tool_key JOIN users)",
+      "owner_handle" in _btk_blk and "LEFT JOIN users u ON u.id = pt.owner_id" in _btk_blk)
+check("B2b route 零手工 owner_handle mutation (消费 projection)",
+      'tool_public["owner_handle"] =' not in pages_src
+      and 'handle = tool_public.get("owner_handle")' in pages_src
+      and "_owner_handle(tool.get" not in pages_src)
 check("B2 Tool Page 无 inline tool icon renderer/fallback",
       'icon_path(' not in tp_src and "icon_svg" not in tp_src
       and 'or "wand"' not in tp_src and "icon_svg | safe" not in tp_src)
@@ -448,12 +456,16 @@ check("B7 全局 endpoint/config 权威仅在 agents.html",
       and "Bearer fsk_" not in tmcp_src
       and "mcpServers" not in tmcp_src)
 # B8 per-tool MCP 链接全局 setup 而非复制:
-check("B8 per-tool MCP → /agents (不复制全局配置)",
-      'href="/agents"' in tmcp_src)
+check("B8 per-tool MCP → /agents, 零 HTTP API presentation",
+      'href="/agents"' in tmcp_src
+      and "/api/v1/execute" not in tmcp_src
+      and "HTTP" not in [l.strip() for l in tmcp_src.split("\n") if l.strip().startswith('<div class="t">')])
 # B9 /agents available tools 与 MCP tools/list 同源 (list_catalog):
-check("B9 /agents tools 消费 list_catalog (tools/list 同源)",
-      "list_catalog(None)" in pages_src
-      and "list_catalog(" in mcp_route_src)
+check("B9 /agents 与 MCP tools/list 同 viewer-aware canonical selector",
+      "list_catalog(viewer_id)" in pages_src
+      and 'viewer_id = user["id"] if user else None' in pages_src
+      and "list_catalog(user[\"id\"])" in mcp_route_src
+      and "list_catalog(None)" not in pages_src.split("def agents_page")[1])
 # B10 per-tool MCP identity 用 canonical mcp_name():
 check("B10 mcp_name 走 canonical (route 零手写 replace)",
       "from governance.catalog import resolve, catalog_item, mcp_name" in pages_src

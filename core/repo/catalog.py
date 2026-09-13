@@ -52,8 +52,13 @@ def market_rows(con, visibility_public: str, q: Optional[str],
         args + [limit, offset]).fetchall()
 
 def by_tool_key(con, tool_key: str) -> Optional[dict]:
+    """单工具 resolve 行 — JOIN users 携带 community 作者 handle,
+    使 single-tool 数据访问链 (resolve -> catalog_item -> row_to_item)
+    本身拿到 canonical owner_handle, 无需 route 重组 public shape。"""
     return con.execute(
-        "SELECT * FROM platform_tools WHERE tool_key = %s", (tool_key,)).fetchone()
+        "SELECT pt.*, u.username AS owner_handle FROM platform_tools pt "
+        "LEFT JOIN users u ON u.id = pt.owner_id "
+        "WHERE pt.tool_key = %s", (tool_key,)).fetchone()
 
 
 def tool_key_exists(con, tool_key: str) -> bool:

@@ -121,8 +121,10 @@ async def agents_page(request: Request):
     from governance.catalog import list_catalog, mcp_name
     from icons import tool_icon_svg
     ctx = _ctx_base(request)
+    user = request.state.user
+    viewer_id = user["id"] if user else None
     tools = []
-    for t in list_catalog(None):
+    for t in list_catalog(viewer_id):
         tools.append({
             "id": t["id"],
             "label": t["label"],
@@ -267,9 +269,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     # (owner_id → handle 上下文), 敏感字段 (endpoint_json/auth_token/
     # owner_id/trusted/timestamps) 绝不进入 tool/tools_json。
     tool_public = catalog_item(tool)
-    handle = _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None
-    if handle:
-        tool_public["owner_handle"] = handle
+    handle = tool_public.get("owner_handle")
     ctx = _ctx_base(request)
     ctx.update({
         "shell_class": "",
