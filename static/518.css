@@ -149,7 +149,7 @@ h1, h2 { letter-spacing: -0.02em; }
 .section-h .n { font-size: 12.5px; color: var(--muted); }
 .home-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .tool-tab { background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r); padding: 12.5px 13.5px; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: border-color var(--ease), background var(--ease); }
-.tool-tab svg, .tool-tab .tool-tab-icon svg { width: 19px; height: 19px; stroke: var(--body, var(--muted)); flex-shrink: 0; }
+.tool-tab svg, .tool-tab .tool-tab-icon svg { width: 19px; height: 19px; stroke: var(--body, var(--muted)); fill: none; flex-shrink: 0; }
 .tool-tab .tool-tab-icon { display: inline-flex; }
 .tool-tab .tool-tab-name { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; }
 .tool-tab .tool-cost { font-size: 11.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 6px; flex-shrink: 0; }
