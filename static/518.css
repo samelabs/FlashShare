@@ -168,8 +168,8 @@ h1, h2 { letter-spacing: -0.02em; }
 /* ── Topbar ───────────────────────────────────────────────── */
 .topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); padding: 0 max(var(--s2), calc((100vw - 880px) / 2 + var(--s2))); flex-shrink: 0; background: var(--card); z-index: var(--z-dropdown); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
 .brand { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; letter-spacing: -0.03em; text-decoration: none; white-space: nowrap; color: var(--ink); }
-.brand-mark { width: 24px; height: 24px; border-radius: 7px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.brand-mark svg { width: 14px; height: 14px; }
+.brand-mark { width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+.brand-mark img { width: 24px; height: 24px; display: block; }
 .brand-num { color: var(--accent); }
 .brand-dot { color: var(--ink); }
 .brand-plus { color: var(--ink); }
