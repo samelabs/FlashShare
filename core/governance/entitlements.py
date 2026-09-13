@@ -86,68 +86,41 @@ class EntitlementConfigurationError(RuntimeError):
 
 
 def entitlement_profile_exists(plan_code: str) -> bool:
-    """公开单点: 某 plan code 是否有显式 entitlement profile。
-
-    约束: plan 可售 (active) → 必须有 profile (运营配置责任);
-    协议扩容 ≠ 自动授权 (profile 仍需显式声明, 与 _PLANS 同规)。
-    """
+    """公开单点: 某 plan code 是否有显式 entitlement profile。"""
     return plan_code in _PLANS
+
+
+def plan_entitlement(plan_code: str) -> dict:
+    """Public read-only entitlement projection for membership product UI."""
+    return dict(_require_profile(plan_code))
 
 
 def _require_profile(plan_code: str) -> dict:
     spec = _PLANS.get(plan_code)
     if spec is None:
-        # 用户已付费成为未知 tier: read 面必须 fail loud — 不悄悄给 Free。
         raise EntitlementConfigurationError(
             f"active plan '{plan_code}' has no entitlement profile")
     return spec
 
 
 def resolve_from_membership(membership: dict | None) -> dict:
-    """plan_of() public result → effective entitlement (纯函数单点)。
-
-    输入只能是 economy.subscription.plan_of() 的公开结果 (或 None):
-    member == True → 该 code 的显式 profile (未知 code =
-    EntitlementConfigurationError — 付费用户不悄悄降 Free);
-    其余一切 (None / member=false) → Free fallback。
-    Membership → Entitlement 的政策映射只存在于本模块 — 禁止任何
-    消费方 (如 access projection) 复制 member/code 判定。
-    """
+    """plan_of() public result → effective entitlement (纯函数单点)。"""
     if membership and membership.get("member"):
         return dict(_require_profile(membership["code"]))
     return dict(FREE)
 
 
 def resolve(user_id: int) -> dict:
-    """user_id → effective entitlement。
-
-    返回 {plan_code, ingress_files_24h, ingress_bytes_24h,
-    expiry_days, download_limits}。判定只来自 plan_of() 的公开结果,
-    经 resolve_from_membership 单点映射; plan_of 抛错时按既有
-    Free fallback 行为处理。
-    """
+    """user_id → effective entitlement。"""
     try:
         p = plan_of(user_id)
         return resolve_from_membership(p)
     except Exception:
-        # Authorization fail-safe (既有语义): membership fact 读取失败或
-        # 未知 active tier 无 profile → Free。read 面 (projection/API) 不走
-        # 本函数, 会 fail loud — 两个边界共存。
         return dict(FREE)
 
 
 def check_delivery(user_id: int, delivery: dict) -> dict | None:
-    """delivery entitlement 单点检查 (authorization, 非 protocol validation)。
-
-    消费 resolve(user_id), 不自行读 plan_of()。输入 delivery 应为已通过
-    platform validate_delivery() 的 canonical 值。有权 → None;
-    无权 → 结构化 denial:
-
-    {"error": "err_expiry_not_entitled", "field": "expiry_days",
-     "requested": 30, "allowed": [1, 3, 7], "plan_code": "free"}
-
-    entitlement denial 是 403 语义, 绝不是 invalid_request。
-    """
+    """delivery entitlement 单点检查 (authorization, 非 protocol validation)。"""
     ent = resolve(user_id)
     ed = delivery.get("expiry_days")
     if ed not in ent["expiry_days"]:
