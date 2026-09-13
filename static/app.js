@@ -335,15 +335,14 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
   if (!file.files[0]) return;
   const isMulti = activeTool && activeTool.multi;
   const numFiles = file.files.length;
-  submitBtn.disabled = true;
-  submitBtn.innerHTML = `<div class="btn-spinner"></div>`;
+  submitBtn.disabled = true; // busy state = disabled dim; progress lives in the result area only
   // Affordability preflight BEFORE any upload XHR — a 402 denial means
   // the file bytes never leave the browser.
   const pf = await window.preflightToolAffordability(activeTool);
   if (!pf.ok) {
     showToolError(t(pf.error) !== pf.error ? t(pf.error) : t("failed"));
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
+    // label untouched during busy state — nothing to restore
     return;
   }
   showResult(`<div class="upload-progress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="progressFill"></div></div><div class="upload-progress-text" id="progressText">0%</div></div>`);
@@ -438,18 +437,18 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
       showResult(escapeHtml(err.message), true);
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
+      // label untouched during busy state — nothing to restore
     }
   };
   xhr.onerror = () => {
     showResult(escapeHtml(t("failed")), true);
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
+    // label untouched during busy state — nothing to restore
   };
   xhr.ontimeout = () => {
     showResult(escapeHtml(t("failed")), true);
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `${ICONS.upload}<span data-i18n="create">${t("create")}</span>`;
+    // label untouched during busy state — nothing to restore
   };
   xhr.send(formData);
 });

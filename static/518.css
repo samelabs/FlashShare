@@ -138,9 +138,9 @@ h1, h2 { letter-spacing: -0.02em; }
 .controls .field b svg { width: 13px; height: 13px; stroke: var(--muted); }
 .controls .field select { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .cta-row { margin: 14px 14px 16px; display: flex; justify-content: center; }
-.cta-row button { width: auto; min-width: 220px; max-width: 100%; border: 0; border-radius: 10px; background: var(--accent); color: var(--button-ink); font-size: 16px; font-weight: 700; padding: 14px 56px; font-family: inherit; cursor: pointer; transition: background var(--ease); }
+.cta-row button { width: auto; min-width: 0; max-width: 100%; border: 0; border-radius: 10px; background: var(--accent); color: var(--button-ink); font-size: 16px; font-weight: 700; padding: 13px 32px; font-family: inherit; cursor: pointer; transition: background var(--ease), opacity var(--ease); }
 .cta-row button:hover { background: var(--accent-hover); }
-.cta-row button:disabled { opacity: .78; cursor: pointer; }
+.cta-row button:disabled { opacity: .55; cursor: default; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* ── 工具区: 标题行 + 双列网格 ── */
