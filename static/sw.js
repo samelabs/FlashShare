@@ -1,5 +1,5 @@
-const CACHE_NAME = "flashshare-pwa-v86";
-const CORE_ASSETS = ["/offline", "/site.webmanifest", "/static/images/og-image.png", "/static/images/favicon.ico", "/static/images/apple-touch-icon.png"];
+const CACHE_NAME = "flashshare-pwa-v87";
+const CORE_ASSETS = ["/offline", "/site.webmanifest", "/static/images/og-image.png?v=2", "/static/images/favicon.ico?v=2", "/static/images/apple-touch-icon.png?v=2"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS)).then(() => self.skipWaiting()));
