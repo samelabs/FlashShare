@@ -16,22 +16,23 @@ function _pager(el, base, pageKey, page, total, per) {
   el.append(prev, mid, next);
 }
 
+function _usd(cents) {
+  return '$' + ((Number(cents) || 0) / 100).toFixed(2);
+}
+
 async function loadEarnings() {
   const r = await fetch('/api/earnings');
   if (!r.ok) return;
   const d = await r.json();
   const s = d.summary;
-  // C1: Earnings 的资产单位就是现金 USD — 主值直接 USD, 不再以
-  // credits 数字为主 + USD 小字 (消费积分属于 /account/credits)。
-  document.getElementById('eTotal').textContent = s.earned_usd || ('$' + (s.earned / 1000).toFixed(2));
-  document.getElementById('eAvail').textContent = s.available_usd || ('$' + (s.available / 1000).toFixed(2));
-  document.getElementById('ePending').textContent = s.pending_usd || ('$' + (s.pending / 1000).toFixed(2));
-  document.getElementById('eWithdrawn').textContent = s.withdrawn_usd || ('$' + (s.withdrawn / 1000).toFixed(2));
+  document.getElementById('eTotal').textContent = s.earned_usd || _usd(s.earned);
+  document.getElementById('eAvail').textContent = s.available_usd || _usd(s.available);
+  document.getElementById('ePending').textContent = s.pending_usd || _usd(s.pending);
+  document.getElementById('eWithdrawn').textContent = s.withdrawn_usd || _usd(s.withdrawn);
   ['eTotalUsd', 'eAvailUsd', 'ePendingUsd', 'eWithdrawnUsd'].forEach(id => {
     const n = document.getElementById(id); if (n) n.textContent = '';
   });
 
-  // per-tool revenue breakdown
   const bt = document.getElementById('byToolList');
   bt.innerHTML = '';
   if (!d.tools || !d.tools.length) {
@@ -42,12 +43,11 @@ async function loadEarnings() {
       row.className = 'wd-row';
       row.innerHTML = '<span class="wd-tool"></span><strong class="wd-amt"></strong>';
       row.querySelector('.wd-tool').textContent = t.tool;
-      row.querySelector('.wd-amt').textContent = '+$' + (t.earned / 1000).toFixed(2);
+      row.querySelector('.wd-amt').textContent = '+' + _usd(t.earned);
       bt.appendChild(row);
     }
   }
 
-  // revenue detail lines
   const rl = document.getElementById('revLines');
   rl.innerHTML = '';
   _pager(document.getElementById('revPager'), 'rev', 'rev_page', d.rev_page || 1, d.rev_total || 0, 50);
@@ -62,33 +62,31 @@ async function loadEarnings() {
       t.textContent = ln.tool + ' · ' + new Date(ln.ts * 1000).toLocaleString();
       const amt = document.createElement('strong');
       amt.className = 'wd-amt';
-      amt.textContent = '+$' + (ln.delta / 1000).toFixed(2);
+      amt.textContent = '+' + _usd(ln.delta);
       row.append(t, amt);
       rl.appendChild(row);
     }
   }
 
-  // withdrawal history
   const h = document.getElementById('earnHist');
   h.innerHTML = '';
   _pager(document.getElementById('wdPager'), 'wd', 'wd_page', d.wd_page || 1, d.wd_total || 0, 20);
   const none = document.getElementById('earnNone');
   if (!d.withdrawals || !d.withdrawals.length) { none.classList.remove('hidden'); }
   else {
-  none.classList.add('hidden');
-  for (const w of d.withdrawals) {
-    const row = document.createElement('div');
-    row.className = 'wd-row';
-    const st = document.createElement('span');
-    st.className = 'wd-st st-' + w.status;
-    st.textContent = _msg('earn_status_' + w.status);
-    const amt = document.createElement('strong');
-    amt.textContent = '-' + (w.usd || ('$' + (w.amount / 1000)));
-    row.append(Object.assign(document.createElement('span'), { textContent: '#' + w.id }), st, amt);
-    h.appendChild(row);
-  }
-
+    none.classList.add('hidden');
+    for (const w of d.withdrawals) {
+      const row = document.createElement('div');
+      row.className = 'wd-row';
+      const st = document.createElement('span');
+      st.className = 'wd-st st-' + w.status;
+      st.textContent = _msg('earn_status_' + w.status);
+      const amt = document.createElement('strong');
+      amt.textContent = '-' + (w.usd || _usd(w.amount));
+      row.append(Object.assign(document.createElement('span'), { textContent: '#' + w.id }), st, amt);
+      h.appendChild(row);
     }
+  }
 
   const hint = document.getElementById('withdrawHint');
   hint.textContent = _msg('earn_min').replace('{n}', (d.min_withdrawal_usd || '$10')) + ' · ' + _msg('earn_avail') + ' ' + (s.available_usd || '');
