@@ -1,4 +1,4 @@
-// credits page: top-up & subscription checkout wiring (审计F1: 按钮此前零接线)
+// credits page: top-up & membership actions
 (function () {
   "use strict";
 
@@ -14,7 +14,6 @@
     }).then(function (r) {
       return r.json().then(function (d) { return { ok: r.ok, data: d }; });
     }).then(function (res) {
-      // 支付跳转必须整页跳转 (checkout_url 指向 Creem 托管页)
       if (res.ok && res.data && res.data.checkout_url) {
         window.location.href = res.data.checkout_url;
         return;
@@ -29,7 +28,37 @@
     });
   }
 
-  // 充值 (一次性 package)
+  function planChange(url, plan, btn, mode) {
+    var orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "…";
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ plan: plan })
+    }).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+    }).then(function (res) {
+      if (res.ok && res.data && res.data.ok) {
+        if (mode === "upgrade") {
+          // Provider accepted the immediate plan change. The webhook is the
+          // authority for Membership + Credits; reload to converge the UI.
+          window.location.reload();
+          return;
+        }
+        btn.textContent = window.t ? window.t("sub_current") : "✓";
+        return;
+      }
+      btn.disabled = false;
+      btn.textContent = orig;
+      alert((res.data && res.data.error) || "error");
+    }).catch(function () {
+      btn.disabled = false;
+      btn.textContent = orig;
+    });
+  }
+
   var topupGrid = document.querySelector(".topup-grid");
   if (topupGrid) {
     topupGrid.addEventListener("click", function (e) {
@@ -39,7 +68,6 @@
     });
   }
 
-  // 订阅 / 升级 / 降级 (canonical tiers: plus / pro)
   var subGrid = document.querySelector(".sub-grid");
   if (subGrid) {
     subGrid.addEventListener("click", function (e) {
@@ -50,32 +78,12 @@
       }
       var up = e.target.closest(".sub-upgrade");
       if (up) {
-        checkout("/api/topup/plan-upgrade", { plan: up.dataset.plan }, up);
+        planChange("/api/topup/plan-upgrade", up.dataset.plan, up, "upgrade");
         return;
       }
       var down = e.target.closest(".sub-downgrade");
       if (down) {
-        // next-renewal 语义: 成功后不跳转, 提示已排期
-        var orig = down.textContent;
-        down.disabled = true;
-        down.textContent = "…";
-        fetch("/api/topup/plan-downgrade", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ plan: down.dataset.plan })
-        }).then(function (r) { return r.json(); }).then(function (d) {
-          if (d && d.ok) {
-            down.textContent = window.t ? window.t("sub_current") : "✓";
-            return;
-          }
-          down.disabled = false;
-          down.textContent = orig;
-          alert((d && d.error) || "error");
-        }).catch(function () {
-          down.disabled = false;
-          down.textContent = orig;
-        });
+        planChange("/api/topup/plan-downgrade", down.dataset.plan, down, "downgrade");
       }
     });
   }
