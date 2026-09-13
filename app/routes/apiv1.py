@@ -4,14 +4,11 @@ Bearer identity, canonical Catalog/ToolInvocation, shared source ingress and the
 single metering gate. Result reads obey the same DB lifecycle as public /f.
 """
 
-import json
-
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from storage import read as storage_read
 from governance.catalog import list_catalog
-from gokapi import open_gokapi_download
 from utils import sanitize_filename
 from identity.auth import public_user
 
@@ -226,48 +223,3 @@ async def hosted_rounded_corners(request: Request):
         "content_type": result["content_type"],
         "data_b64": _b64.b64encode(raw).decode(),
     }
-
-
-@router.post("/demo-echo")
-async def demo_echo(request: Request):
-    # Demo echo endpoint (open-platform market seed; contract-compliant)
-    import base64 as _b64
-    try:
-        payload = await request.json()
-    except Exception:
-        payload = {}
-    job_inputs = payload.get("job_inputs") or []
-    outputs = []
-    from security import verify_fetch_token
-    from urllib.parse import parse_qs
-    for item in job_inputs[:5]:
-        url = str(item.get("url") or "")
-        marker = "/api/source/"
-        idx = url.find(marker)
-        if idx < 0:
-            continue
-        path_and_query = url[idx + len(marker):]
-        gid, _, query = path_and_query.partition("?")
-        q = parse_qs(query)
-        u_raw = (q.get("u") or [""])[0]
-        t_raw = (q.get("t") or [""])[0]
-        if not u_raw.isdigit() or not t_raw:
-            continue
-        if not verify_fetch_token(t_raw, int(u_raw), gid):
-            continue
-        try:
-            status, headers, resp = open_gokapi_download(gid)
-            data = resp.read(50 * 1024 * 1024)
-            resp.close()
-        except Exception:
-            continue
-        if status != 200:
-            continue
-        outputs.append({
-            "filename": "echoed-" + str(item.get("filename") or "file"),
-            "content_type": str(item.get("content_type") or "application/octet-stream"),
-            "data_b64": _b64.b64encode(data).decode(),
-        })
-    body = outputs[0] if len(outputs) == 1 else {"files": outputs}
-    body["echo"] = True
-    return body

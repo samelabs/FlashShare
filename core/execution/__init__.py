@@ -8,7 +8,6 @@
 
 🔴 修复落位:
   🔴1 计费后校验失败 → 退费 (gate 的 fail 路径统一)
-  🔴6 demo_echo → 过 fetch token 校验 (apiv1 侧)
   🔴8 多文件上传中途失败 → 回滚已传 gokapi 件 (orchestrator)
 
 事务红线: fact 行 + 分账 ledger 同一事务 (gate.finish)。
