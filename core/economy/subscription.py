@@ -21,18 +21,17 @@ PLAN_STATUSES = ("active", "past_due", "canceled", "expired")
 
 
 def _parse_ts(val) -> int | None:
-    """Creem payload dates are ISO8601 or epoch-ms — normalise to epoch s.
-    加固 (审计🟡7): 无时区串按 UTC (幂等键不受部署机时区影响); nan/inf/超界归 None。"""
+    """Creem payload dates are ISO8601 or epoch-ms — normalise to epoch s."""
     if val is None:
         return None
     import datetime
     try:
         if isinstance(val, (int, float)):
             v = int(val)
-            if v != v or v in (1 << 63, -(1 << 63)):  # nan check / i64 边界
+            if v != v or v in (1 << 63, -(1 << 63)):
                 return None
             v = v // 1000 if v > 10**12 else v
-            return v if 0 < v < 4102444800 else None  # (1970, 2100) 钳制
+            return v if 0 < v < 4102444800 else None
         dt = datetime.datetime.fromisoformat(str(val).replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=datetime.timezone.utc)
@@ -43,8 +42,6 @@ def _parse_ts(val) -> int | None:
 
 
 def _resolve_subscription(con, sub_id: str) -> tuple[dict | None, dict | None]:
-    """sub id -> (order row, plan row). Binding happens at checkout.completed;
-    if the event arrives before that, retry semantics apply (caller returns 500)."""
     row = orders_repo.plan_order_by_sub_id(con, sub_id)
     if row is None:
         return None, None
@@ -53,10 +50,6 @@ def _resolve_subscription(con, sub_id: str) -> tuple[dict | None, dict | None]:
 
 
 def bind_checkout(obj: dict) -> dict:
-    """checkout.completed (subscription first purchase): bind sub id -> order,
-    then upsert the membership row. Credit is NEVER granted here (paid-only).
-    Binding commits in its own transaction; a sync failure afterwards leaves
-    the binding in place so Creem retries converge."""
     sub = obj.get("subscription") or {}
     sub_id = str(sub.get("id") or "")
     ch_id = str(obj.get("id") or "")
@@ -64,8 +57,6 @@ def bind_checkout(obj: dict) -> dict:
     with _db() as con:
         row = orders_repo.order_by_provider_id(con, "ch:" + ch_id)
         if row is None:
-            # 重放: 绑定已完成 (ch: 已被覆写为 sub:) → 幂等; membership 若
-            # 仍缺失 (旧数据/迁移前序列) 则此刻补建, 不再 500 重试环
             already = orders_repo.plan_order_by_sub_id(con, sub_id)
             if already is not None:
                 if orders_repo.membership_by_sub(con, sub_id) is None:
@@ -77,10 +68,6 @@ def bind_checkout(obj: dict) -> dict:
         if row["kind"] != "plan":
             return {"ignored": True}
         orders_repo.set_provider_order_id(con, row["id"], "sub:" + sub_id)
-    # 首购建档: memberships 单行 (user 唯一); 已有 current membership 的
-    # 二次首购路径由 /subscribe 入口拦截 (plan_change_required), 正常
-    # 不会到达这里; 到达则 PK 冲突 fail loud (不变量兜底)。
-    sub = obj.get("subscription") or {}
     with _db() as con:
         row = orders_repo.order_by_provider_id(con, "sub:" + sub_id)
         if row is not None:
@@ -89,18 +76,12 @@ def bind_checkout(obj: dict) -> dict:
                 orders_repo.bind_membership(
                     con, row["user_id"], row["item_id"], sub_id, "active",
                     started_at=row["created_at"], renews_at=None)
-            # checkout 已 completed: order 推进为明确非-open (paid),
-            # 历史 pending 不永久挡住未来重新订阅。grant 只由 paid-period
-            # path 决定, 此处不改 granted 语义 (subscription 授信不走
-            # order:{id} idem, 由 plan:{uid}:{period} 兜底)。
             if row["status"] == "pending":
                 orders_repo.mark_subscription_checkout_completed(con, row["id"], now())
     return _ev_sync(sub_id, obj)
 
 
 def handle_event(event_type: str, obj: dict) -> dict:
-    """Dispatch a Creem subscription-family event. Returns a small dict for
-    the webhook response; raises KeyError when binding is missing (retriable)."""
     sub = obj.get("subscription") or obj
     sub_id = str(sub.get("id") or "")
     handler = {
@@ -115,18 +96,12 @@ def handle_event(event_type: str, obj: dict) -> dict:
         "subscription.update": _ev_update,
     }.get(event_type)
     if handler is None:
-        # refund.created / dispute.created reach here via topup logging path
         log.warning("subscription event (no handler): %s sub=%s", event_type, sub_id)
         return {"ignored": True}
     return handler(sub_id, obj)
 
 
-# ── per-event handlers ──
-
 def schedule_downgrade(user_id: int, target_plan_id: int) -> dict:
-    """Pro → Plus next renewal: 只记录 pending fact (effective_at = 当前
-    renews_at), 不改当前 Membership/entitlements; 周期边界由下一周期
-    paid/reconcile 应用。"""
     with db() as con:
         m = orders_repo.membership_row(con, user_id)
         if m is None:
@@ -137,22 +112,12 @@ def schedule_downgrade(user_id: int, target_plan_id: int) -> dict:
 
 
 def membership_is_occupied(status: str, renews_at: int | None, ts: int) -> bool:
-    """occupied/current 单一语义 (route 与 binding path 共用, 禁第二套):
-
-    occupied = status ∈ (active, canceled, past_due) 且
-               (renews_at is None 或 renews_at > ts)
-    definitively non-live = expired, 或 live-state 但 renews_at ≤ ts
-    (bind 后未 paid 的 active+renews None 同样占用)。
-    """
     if status not in ("active", "canceled", "past_due"):
         return False
     return renews_at is None or renews_at > ts
 
 
 def extract_product_id(sub: dict) -> str:
-    """provider payload product 单点提取 (canonical Creem 形态):
-    product = {"id": "prod_xxx"} dict → ["id"]; 兼容历史 string /
-    product_id 字段。空 → "" (caller fail loud)。"""
     product = sub.get("product")
     if isinstance(product, dict):
         return str(product.get("id") or "")
@@ -165,7 +130,6 @@ def _ev_ignored(sub_id: str, obj: dict) -> dict:
 
 
 def _ev_sync(sub_id: str, obj: dict) -> dict:
-    """subscription.active: sync only, never grants (Creem guidance)."""
     with db() as con:
         order, plan = _resolve_subscription(con, sub_id)
     if order is None:
@@ -174,12 +138,6 @@ def _ev_sync(sub_id: str, obj: dict) -> dict:
 
 
 def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
-    """Provider subscription → (order, plan, membership) 定位。
-
-    Membership 定位以 memberships.provider_subscription_id 为权威
-    (不再从原始 Order.item_id 推断当前 plan); checkout.completed 绑定
-    尚未落地时 KeyError (retriable 500)。
-    """
     with db() as con:
         m = orders_repo.membership_by_sub(con, sub_id)
         if m is not None:
@@ -188,7 +146,6 @@ def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
                 raise KeyError("order_not_found")
             plan = orders_repo.plan_by_id(con, m["plan_id"])
             return dict(order), dict(plan), dict(m)
-        # 兼容路径: 事件早于 membership 行 (首购序列由 bind_checkout 建立)
         order, plan = _resolve_subscription(con, sub_id)
         if order is None or plan is None:
             raise KeyError("order_not_found")
@@ -197,16 +154,7 @@ def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
 
 def apply_paid_period(sub_id: str, provider_subscription: dict, *,
                       scheduled_cancel: bool = False) -> dict:
-    """The ONLY paid-period implementation (shared by webhook + reconcile).
-
-    period fields are Creem-authoritative. 崩溃一致性顺序保持:
-    grant(幂等, idem_key plan:{uid}:{period_start}) 落账后才能写
-    last_grant_period_start (upsert) — 先写后授会在崩溃窗口里留下
-    "已授未到账"的撒谎留痕。
-
-    scheduled_cancel=True 时使用与 scheduled-cancel handler 一致的
-    marker 语义 (cancel_scheduled_at=now); 否则保留既有 marker 不清除。
-    """
+    """Single paid-period implementation shared by webhook + reconcile."""
     sub = provider_subscription.get("subscription") or provider_subscription
     period_start = _parse_ts(sub.get("current_period_start_date"))
     period_end = _parse_ts(sub.get("current_period_end_date"))
@@ -215,17 +163,9 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     order, plan, current = _bind_and_load(sub_id, provider_subscription)
     ts = now()
     status = "active" if period_end > ts else "expired"
-    credits = 0
     with db() as con:
         credits = orders_repo.plan_credits(con, plan["id"])
-    # downgrade 周期边界 — provider paid snapshot 是最终权威:
-    #   a) pending due + provider product == target → 切换 + grant target 周期
-    #   b) pending due + provider product != target → fail loud, 不切不清
-    #   c) pending 缺失 (route crash / update 未消费) + 新周期
-    #      (period_start >= 旧 renews_at) + provider product 是 canonical
-    #      下行 tier → provider snapshot 自身即权威证明, 恢复连续性事实:
-    #      Membership → target, grant target 周期 credits (Plus 100, 非 500)。
-    #      pending 表不凌驾 provider paid snapshot。
+
     target_plan_id = None
     with db() as con:
         provider_product = extract_product_id(
@@ -254,25 +194,22 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
         with db() as con:
             plan = orders_repo.plan_by_id(con, target_plan_id)
             credits = orders_repo.plan_credits(con, target_plan_id)
-    # 周期 plan-derived credits 语义: 本 billing period 已获得的 plan credits
-    # (grant_plan + grant_plan_upgrade, 按 idem 前缀聚合) 补齐到当前 plan
-    # 的 canonical 值 — 升级补差后再收到本周期 paid 重放/新周期判断时,
-    # 总额始终收敛到该周期应得值, 绝不重复全额。
-    plan_total = credits
+
+    plan_total = int(credits or 0)
     with db() as con:
         already = orders_repo.period_plan_credits(con, order["user_id"], period_start)
-    if plan_total > already and plan_total > 0:
-        delta = plan_total - already
+    if plan_total > already:
         from economy.billing import grant
-        grant(order["user_id"], delta, "grant_plan",
+        grant(order["user_id"], plan_total - already, "grant_plan",
               ref_type="subscription", ref_id=sub_id,
               idem_key=f"plan:{order['user_id']}:{period_start}",
               note=f"{plan['code']} cycle {period_start}-{period_end}")
+
     cancel_ts = None
     if scheduled_cancel:
         cancel_ts = ts
     elif current and current.get("cancel_scheduled_at"):
-        cancel_ts = int(current["cancel_scheduled_at"])  # 保留既有 marker
+        cancel_ts = int(current["cancel_scheduled_at"])
     started = (current or {}).get("started_at") or order["created_at"]
     with db() as con:
         orders_repo.upsert_membership_state(
@@ -280,22 +217,15 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
             started_at=started, renews_at=period_end,
             plan_id=plan["id"],
             period_start=period_start, cancel_scheduled_at=cancel_ts)
-    return {"granted": True, "credits": credits, "status": status}
+    return {"granted": True, "credits": plan_total, "status": status}
 
 
 def _ev_paid(sub_id: str, obj: dict) -> dict:
-    """Webhook paid event — delegates to the shared paid-period path."""
     return apply_paid_period(sub_id, obj)
 
 
 def _ev_update(sub_id: str, obj: dict) -> dict:
-    """subscription.update: provider product 变化 → 同步 current Membership.plan。
-
-    provider payload 的 product/product_id → 本地唯一 plan (creem_product_id
-    绑定); 无唯一本地映射 → KeyError fail loud (retriable), 绝不猜 plan、
-    不回落原始 order.item_id。plan change 后 plan_of()/projection/
-    entitlements 自然跟随新 tier。
-    """
+    """Provider product change -> converge current Membership plan."""
     sub = obj.get("subscription") or obj
     product = extract_product_id(sub)
     if not product:
@@ -308,25 +238,26 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
         if m is None:
             raise KeyError("membership_not_found")
         if m["plan_id"] != plan["id"]:
-            from governance.tiers import TIER_ORDER, TIER_PLAN_SPECS
+            from governance.tiers import TIER_ORDER
             cur_plan = orders_repo.plan_by_id(con, m["plan_id"])
             direction = (TIER_ORDER.get(plan["code"], -1)
                          - TIER_ORDER.get(cur_plan["code"], -1)) if cur_plan else 1
             if direction > 0:
-                # upgrade (Plus→Pro): immediate Membership switch + 当周期
-                # credits 补差 (幂等 plan-upgrade:{uid}:{period}:{target})。
-                old_cr = TIER_PLAN_SPECS.get(cur_plan["code"], {}).get(
-                    "monthly_credits", cur_plan["monthly_credits"]) if cur_plan else 0
-                new_cr = TIER_PLAN_SPECS.get(plan["code"], {}).get(
-                    "monthly_credits", plan["monthly_credits"])
-                period_start = m["last_grant_period_start"] or 0
-                if new_cr > old_cr and period_start:
-                    adjustment = max(new_cr - old_cr, 0)
-                    from economy.billing import grant
-                    grant(m["user_id"], adjustment, "grant_plan_upgrade",
-                          ref_type="subscription", ref_id=sub_id,
-                          idem_key=f"plan-upgrade:{m['user_id']}:{period_start}:{plan['code']}",
-                          note=f"upgrade {cur_plan['code']}→{plan['code']} adj {adjustment}")
+                # Upgrade credit result is the target plan's configured period
+                # total minus what this billing period has already granted.
+                # This measures the user's real asset, not code-level tier constants.
+                period_start = int(m["last_grant_period_start"] or 0)
+                if period_start:
+                    already = orders_repo.period_plan_credits(
+                        con, m["user_id"], period_start)
+                    target_total = int(plan["monthly_credits"] or 0)
+                    adjustment = max(target_total - already, 0)
+                    if adjustment:
+                        from economy.billing import grant
+                        grant(m["user_id"], adjustment, "grant_plan_upgrade",
+                              ref_type="subscription", ref_id=sub_id,
+                              idem_key=f"plan-upgrade:{m['user_id']}:{period_start}:{plan['code']}",
+                              note=f"upgrade {cur_plan['code']}→{plan['code']} adj {adjustment}")
                 orders_repo.clear_pending_downgrade(con, m["user_id"])
                 orders_repo.upsert_membership_state(
                     con, sub_id, m["status"],
@@ -336,45 +267,34 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
                     cancel_scheduled_at=m["cancel_scheduled_at"])
                 return {"updated": True, "plan": plan["code"]}
             if direction < 0:
-                # downgrade (Pro→Plus): 方向由 canonical tier order 判定,
-                # 与 pending row 是否已写入无关 (webhook-before-pending race
-                # 免疫)。provider Product 已切是事实, 但当前 Pro 周期已付 →
-                # Membership/Entitlements 保持 Pro 到 period_end; 自建/幂等
-                # 收敛同一 pending fact (route 的 schedule_downgrade 之后
-                # 到达时为同值 upsert)。
                 orders_repo.set_pending_downgrade(
                     con, m["user_id"], plan["id"], int(m["renews_at"] or 0))
                 return {"updated": False, "deferred": "pending_downgrade",
                         "pending_target": plan["code"]}
-        # 同 plan 的 update: 状态/周期字段同步 (无 tier 变化)
     return {"updated": True, "plan": plan["code"]}
 
 
 def _ev_scheduled_cancel(sub_id: str, obj: dict) -> dict:
-    """End-of-period cancellation booked — membership stays active till renews_at."""
     sub = obj.get("subscription") or obj
     with db() as con:
         m = orders_repo.membership_by_sub(con, sub_id)
         if m is None:
             raise KeyError("membership_not_found")
-        started = m["started_at"]
         renews = _parse_ts(sub.get("current_period_end_date")) or m["renews_at"]
         orders_repo.upsert_membership_state(
             con, sub_id, m["status"],
-            started_at=started, renews_at=renews,
+            started_at=m["started_at"], renews_at=renews,
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=now())
     return {"scheduled_cancel": True}
 
 
 def _period_end_of(obj: dict, sub_id: str) -> int | None:
-    """payload 的当期周期 end; 缺失时回落到库中现值 (规范四: 当期权益到 period_end)。"""
     sub = obj.get("subscription") or obj
     return _parse_ts(sub.get("current_period_end_date"))
 
 
 def _ev_canceled(sub_id: str, obj: dict) -> dict:
-    """当期权益保留至 period_end (规范四) — 不抹 renews_at。"""
     with db() as con:
         m = orders_repo.membership_by_sub(con, sub_id)
         if m is None:
@@ -393,7 +313,6 @@ def _ev_past_due(sub_id: str, obj: dict) -> dict:
         m = orders_repo.membership_by_sub(con, sub_id)
         if m is None:
             raise KeyError("membership_not_found")
-        # 宽限: 权益保留至原 renews_at (不抹) — 补扣成功由 paid 推进周期
         orders_repo.upsert_membership_state(
             con, sub_id, "past_due",
             started_at=m["started_at"], renews_at=m["renews_at"],
@@ -417,8 +336,6 @@ def _ev_expired(sub_id: str, obj: dict) -> dict:
 
 
 def sweep_expired() -> int:
-    """Boot/daily fallback: expire memberships whose renews_at passed.
-    Status transition only — credits are NEVER clawed back here."""
     ts = now()
     with db() as con:
         n = orders_repo.sweep_expired_plans(con, ts)
@@ -428,11 +345,6 @@ def sweep_expired() -> int:
 
 
 def plan_of(user_id: int) -> dict | None:
-    """Identity single point (badge / API / backoffice all read here).
-
-    memberships.user_id PK 保证至多一行 — 无多行选择逻辑。member 语义
-    不变: 规范四 (canceled 当期内/past_due 宽限期保留至 renews_at)。
-    """
     with db() as con:
         row = orders_repo.membership_row(con, user_id)
     if row is None:
