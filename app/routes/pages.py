@@ -114,10 +114,24 @@ async def privacy(request: Request):
 
 @router.get("/agents", response_class=HTMLResponse)
 async def agents_page(request: Request):
-    """Agent support surface: HTTP API + MCP server + skill."""
+    """Agent support surface: global MCP connection authority + available
+    tool entities. 工具列表与 MCP tools/list 同一 eligibility/projection
+    (list_catalog — 同 governance.catalog selector, 文档面与实际能力不漂移)。"""
     from app.main import templates
+    from governance.catalog import list_catalog, mcp_name
+    from icons import tool_icon_svg
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": ""})
+    tools = []
+    for t in list_catalog(None):
+        tools.append({
+            "id": t["id"],
+            "label": t["label"],
+            "desc": t.get("desc"),
+            "origin": t.get("origin"),
+            "icon": tool_icon_svg(t.get("icon")),
+            "mcp_name": mcp_name(t["id"]),
+        })
+    ctx.update({"shell_class": "", "share_url": "", "agents_tools": tools})
     return templates.TemplateResponse(request, "agents.html", ctx)
 
 
@@ -241,7 +255,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     (public/unlisted → everyone when key known; private → owner only)。
 
     owner=None → first-party bare-id tool (官方工具, 无作者命名空间)."""
-    from governance.catalog import resolve, catalog_item
+    from governance.catalog import resolve, catalog_item, mcp_name
     user = request.state.user
     tool_key = f"{owner}/{tool_id}" if owner else tool_id
     tool, err = resolve(tool_key, user["id"] if user else None)
@@ -253,17 +267,18 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     # (owner_id → handle 上下文), 敏感字段 (endpoint_json/auth_token/
     # owner_id/trusted/timestamps) 绝不进入 tool/tools_json。
     tool_public = catalog_item(tool)
+    handle = _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None
+    if handle:
+        tool_public["owner_handle"] = handle
     ctx = _ctx_base(request)
-    from icons import icon_svg
-    tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "wand")
     ctx.update({
         "shell_class": "",
         "tool": tool_public,
         # LocalizedText 协议单链解析; tool_id 兜底属调用方 (协议注释见 app/main.py lt filter)
         "tool_name": resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id,
-        "handle": _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None,
+        "handle": handle,
         "stats": _public_stats(tool_key),
-        "mcp_name": tool_key.replace("/", "__"),
+        "mcp_name": mcp_name(tool_key),
         "is_mcp": mcp,
         "tools_json": json.dumps([tool_public], ensure_ascii=False),
         "limits_json": ctx.get("limits_json") or json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),

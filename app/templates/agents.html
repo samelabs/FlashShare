@@ -42,6 +42,21 @@
 
 
 
+  <h2>{{ texts.market_title }}</h2>
+  <p class="agents-intro" data-i18n="tools_section">{{ texts.tools_section }} · MCP</p>
+  <div class="agents-tools">
+    {% for t in agents_tools %}
+    <a class="agents-tool" href="/tool/{{ t.id }}/mcp">
+      <span class="agents-tool-icon">{{ t.icon | safe }}</span>
+      <span class="agents-tool-body">
+        <span class="agents-tool-name">{{ t.label | lt(lang) or t.id }}</span>
+        <span class="agents-tool-mcp mono">{{ t.mcp_name }}</span>
+      </span>
+      <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </a>
+    {% endfor %}
+  </div>
+
   <h2>{{ texts.agents_api_h }}</h2>
   <p>{{ texts.agents_api_desc2 }}</p>
   <div class="agents-endpoints">

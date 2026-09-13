@@ -35,3 +35,20 @@ variants. icon/fallback/label/desc/author/origin/cost/calls/href 全部
   {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
 </div>
 {%- endmacro %}
+
+{% macro tool_hero(t, lang, texts, tool_name, handle=None, mcp=False) -%}
+<div class="hero-mini toolpage-ident">
+  {{ tool_icon(t.icon, "toolpage-icon") }}
+  <div class="toolpage-ident-body">
+    <h1 class="hero-title">{{ tool_name }}</h1>
+    <p class="hero-sub toolpage-by">
+      {% if t.origin == 'community' %}
+      <span class="tcard-origin">{{ texts.market_community }}</span>
+      {% if handle %}<a class="toolpage-handle" href="/u/{{ handle }}">by @{{ handle }}</a>{% endif %}
+      {% else %}
+      <span class="tcard-origin">{{ texts.market_official }}</span>
+      {% endif %}
+    </p>
+  </div>
+</div>
+{%- endmacro %}

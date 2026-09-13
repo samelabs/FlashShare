@@ -406,6 +406,60 @@ check("PG19 production 零 deprecated icon fallback 字面 (wand 兜底仅 icons
       sum(_rd("app", "templates", t).count('or "wand"')
           for t in ("home.html", "tools_market.html", "user_page.html")) == 0)
 
+# ── Batch B: Tool Page identity / MCP capability expression guards ──
+tp_src = _rd("app", "templates", "tool_page.html")
+tmcp_src = _rd("app", "templates", "tool_mcp.html")
+agents_src = _rd("app", "templates", "agents.html")
+pages_src = _rd("app", "routes", "pages.py")
+mcp_route_src = _rd("app", "routes", "mcp.py")
+part_b = _rd("app", "templates", "partials", "tool_identity.html")
+db_src_b = _rd("core", "database.py")
+# B1 Tool Page consumes canonical identity macro/contract:
+check("B1 Tool Page + MCP page consume tool_hero identity macro",
+      "tool_hero(" in tp_src and "tool_hero(" in tmcp_src
+      and "tool_hero" in part_b)
+# B2 Tool Page no inline Tool icon renderer/fallback:
+check("B2 Tool Page 无 inline tool icon renderer/fallback",
+      'icon_path(' not in tp_src and "icon_svg" not in tp_src
+      and 'or "wand"' not in tp_src and "icon_svg | safe" not in tp_src)
+# B3 origin 无字符串 split 猜测 (route/template 均零):
+check("B3 origin 不走字符串 split/substr 猜测",
+      "split(\"/\")" not in tp_src and "'/' not in" not in tp_src
+      and "'/' in t.id" not in tp_src
+      and "tool_key.split" not in pages_src
+      and ".replace(\"/\", \"__\")" not in pages_src)
+# B4/B5 origin+author 双语义:
+check("B4 Community Tool Page: Community tag + by @handle 双表达",
+      "market_community" in part_b and "by @" in part_b
+      and 'href="/u/{{ handle }}"' in part_b)
+_hero_blk = part_b.split("{% macro tool_hero")[1].split("{%- endmacro %}")[0]
+_official_blk = _hero_blk.split("{% else %}")[1].split("{% endif %}")[0] if "{% else %}" in _hero_blk else ""
+check("B5 Official: Official tag, 零伪造 author",
+      "market_official" in _official_blk and "by @" not in _official_blk,
+      _official_blk[:80])
+# B6 单一执行流, 无 UI/MCP tabs:
+check("B6 Tool Page 单一主执行流 (无 UI/MCP tabs/mode switch)",
+      'id="toolRunForm"' in tp_src and 'class="tabs' not in tp_src
+      and "mode" not in tp_src.lower())
+# B7 全局 MCP endpoint/config 权威只在 /agents:
+check("B7 全局 endpoint/config 权威仅在 agents.html",
+      "{{ BASE_URL }}/mcp" in agents_src
+      and "{{ BASE_URL }}/mcp" not in tmcp_src
+      and "Bearer fsk_" not in tmcp_src
+      and "mcpServers" not in tmcp_src)
+# B8 per-tool MCP 链接全局 setup 而非复制:
+check("B8 per-tool MCP → /agents (不复制全局配置)",
+      'href="/agents"' in tmcp_src)
+# B9 /agents available tools 与 MCP tools/list 同源 (list_catalog):
+check("B9 /agents tools 消费 list_catalog (tools/list 同源)",
+      "list_catalog(None)" in pages_src
+      and "list_catalog(" in mcp_route_src)
+# B10 per-tool MCP identity 用 canonical mcp_name():
+check("B10 mcp_name 走 canonical (route 零手写 replace)",
+      "from governance.catalog import resolve, catalog_item, mcp_name" in pages_src
+      and '"mcp_name": mcp_name(tool_key)' in pages_src
+      and 'tool_key.replace("/", "__")' not in pages_src)
+
 print()
 print("FAIL:", FAIL if FAIL else "无 — 全绿")
 sys.exit(1 if FAIL else 0)

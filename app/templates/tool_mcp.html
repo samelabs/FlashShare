@@ -3,23 +3,14 @@
 {% block desc %}{{ tool_name|e }} via MCP{% if handle %} · @{{ handle }}{% endif %}{% endblock %}
 
 {% block content %}
+{% from "partials/tool_identity.html" import tool_hero with context %}
 <section class="acct-page toolpage">
-  <div class="hero-mini">
-    <h1 class="hero-title">{{ tool_name|e }}</h1>
-    <p class="hero-sub toolpage-by">
-      {% if handle %}
-      <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <span class="toolpage-handle">@{{ handle }}</span>
-      {% else %}
-      <span class="mkt-tag">{{ texts.market_official }}</span>
-      {% endif %}
-    </p>
-  </div>
+  {{ tool_hero(tool, lang, texts, tool_name, handle=handle) }}
 
   <div class="panel">
     <div class="t">MCP tools/call</div>
     <div class="d">
       <span data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</span>
-      <a href="/agents">MCP Quick start →</a>
     </div>
     <pre class="code-block">{
   "method": "tools/call",
@@ -36,12 +27,20 @@
     <button type="button" class="btn-secondary" id="copyMcp"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
   </div>
 
-  <div class="panel">
+  <div class="panel toolpage-integration">
     <div class="t">HTTP</div>
     <div class="d">
       POST <span class="mono">/api/v1/execute</span>
       <span data-i18n="tool_mcp_http_hint">{{ texts.tool_mcp_http_hint }}</span>
-      <a href="/agents">Bearer →</a>
+      <a class="toolpage-integration-link" href="/agents">{{ texts.agents_qs }} →</a>
+    </div>
+  </div>
+
+  <div class="panel toolpage-integration">
+    <div class="t" data-i18n="agents_mcp_h">{{ texts.agents_mcp_h }}</div>
+    <div class="d toolpage-integration-desc" data-i18n="agents_mcp_intro">{{ texts.agents_mcp_intro }}</div>
+    <div class="toolpage-integration-row">
+      <a class="toolpage-integration-link" href="/agents" data-i18n="agents_qs">{{ texts.agents_qs }}</a>
     </div>
   </div>
 
