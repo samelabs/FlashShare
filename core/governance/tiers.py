@@ -1,22 +1,22 @@
-"""Canonical membership tiers — 产品层唯一事实源.
+"""Canonical membership tier identity — product codes only.
 
-free = 无 paid Membership (无 plans row 要求);
-plus / pro = 仅有的两个 paid Membership tier. Route/template/admin
-禁止各自写字符串判断, 一律 import 本模块。
+free = no paid Membership;
+plus / pro = the only paid Membership tier identities.
 
-Entitlement profile 数值归 core/governance/entitlements.py (代码治理),
-本模块只承载 tier 身份与 canonical monthly credits。
+Commercial terms (price, included credits, provider product id) live in the
+plans table and are operator-configured. Entitlement values live in
+core/governance/entitlements.py. This module must not duplicate either.
 """
 
 PAID_TIER_CODES = ("plus", "pro")
 
-# canonical plan rows: code -> (name, monthly_credits)
+# Canonical identity only. No price / included-credit values are hard-coded.
 TIER_PLAN_SPECS = {
-    "plus": {"name": "Plus", "monthly_credits": 100},
-    "pro": {"name": "Pro", "monthly_credits": 500},
+    "plus": {"name": "Plus"},
+    "pro": {"name": "Pro"},
 }
 
-# tier 升降序 (仅用于 UI 语义: upgrade = 升到更高档)
+# tier order is used only for upgrade/downgrade direction.
 TIER_ORDER = {"free": 0, "plus": 1, "pro": 2}
 
 
@@ -25,5 +25,5 @@ def is_paid_tier(code: str | None) -> bool:
 
 
 def sellable_plan_codes() -> tuple:
-    """production sellable membership codes (数据库 plans 只能承载这些)."""
+    """Canonical paid membership codes."""
     return PAID_TIER_CODES
