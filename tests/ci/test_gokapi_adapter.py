@@ -16,6 +16,7 @@ from gokapi import (  # noqa: E402
     get_gokapi_file,
     list_gokapi_files,
     open_gokapi_download,
+    open_gokapi_internal_read,
     upload_to_gokapi,
 )
 
@@ -41,6 +42,22 @@ def main() -> None:
 
     ok, rows = list_gokapi_files()
     check("list is authoritative", ok and any(r.get("Id") == file_id for r in rows))
+
+    status, _headers, stream = open_gokapi_internal_read(file_id)
+    body = stream.read()
+    stream.close()
+    check("non-counting internal read succeeds", status == 200 and body == data)
+
+    row = get_gokapi_file(file_id)
+    check("internal read preserves counter", int(row.get("DownloadCount", -1)) == 0)
+
+    status, _headers, stream = open_gokapi_internal_read(file_id, "bytes=0-4")
+    body = stream.read()
+    stream.close()
+    check("non-counting range read succeeds", status == 206 and body == data[:5])
+
+    row = get_gokapi_file(file_id)
+    check("range preview preserves counter", int(row.get("DownloadCount", -1)) == 0)
 
     status, _headers, stream = open_gokapi_download(file_id)
     body = stream.read()
