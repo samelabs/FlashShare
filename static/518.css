@@ -107,6 +107,22 @@ h1, h2 { letter-spacing: -0.02em; }
 @media (max-width: 640px) { .hero-title { font-size: 23px; } }
 
 
+/* ── Quota visibility (rolling 24h, canonical projection display) ── */
+.quota-panel { margin-top: 12px; padding: 10px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.quota-head { display: flex; align-items: center; gap: 8px; }
+.quota-plan { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; color: var(--accent); background: var(--accent-soft); border-radius: 5px; padding: 1px 6px; }
+.quota-title { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); }
+.quota-rows { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.quota-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); }
+.quota-k { flex-shrink: 0; }
+.quota-v { font-variant-numeric: tabular-nums; text-align: right; min-width: 0; }
+.quota-v strong { color: var(--ink); font-weight: 700; }
+.quota-row.quota-warn .quota-v strong { color: #b8860b; }
+.quota-row.quota-hit .quota-v strong { color: var(--danger); }
+.quota-panel.quota-near { border-color: #b8860b55; }
+.quota-panel.quota-reached { border-color: var(--danger); }
+.quota-note { margin-top: 5px; font-size: 11.5px; color: var(--danger); }
+
 /* ── 开放模式条: hero下 ── */
 .open-callout { display: inline-flex; align-items: center; gap: 8px; margin: 14px auto 0;
   padding: 9px 16px; border-radius: 999px; background: var(--accent-soft); color: var(--accent);
@@ -586,6 +602,18 @@ select { width: auto; margin-top: 0; }
   .param-row-head .pr-label { grid-column: 1 / -1; }
   .pr-opt { grid-template-columns: 1fr auto; }
   .pr-opt .pr-opt-label { grid-column: 1 / -1; }
+  /* iOS focus zoom baseline: every focusable control computes >= 16px on
+     mobile, regardless of desktop density rules (specificity-safe: element
+     + class list, declared after the density rules it overrides). */
+  .pub-grid input, .pub-grid select, .pub-grid textarea,
+  .param-row-head input, .param-row-head select,
+  .pr-opt input, .pr-opt select, .pr-inline input, .pr-inline select,
+  .pr-default-wrap select, .lang-row .lang-pick, .lang-row input,
+  .auth-form input, .auth-form textarea, .acct-card .auth-form input,
+  .acct-card .auth-form textarea,
+  input, select, textarea {
+    font-size: 16px !important;
+  }
 }
 /* 族勾选器: chip 网格, 不勾=全部格式 */
 .fam-grid { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1010,6 +1038,8 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 
 @media (max-width: 640px) {
   .market-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* narrow phones: single column — content density beats forced 2-col */
+  .market-grid { grid-template-columns: 1fr; }
 }
 
 /* 双胶囊并排(发布+市场) */

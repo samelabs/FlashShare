@@ -631,6 +631,21 @@ _acct_ctx_blk = _pages_src.split("def _account_ctx")[1].split("\ndef ")[0]
 check("AP-C4 _account_ctx 仍调 _ctx_base (membership 继承 base projection)",
       "_ctx_base(" in _acct_ctx_blk)
 
+_home_blk = _pages_src.split("async def home(")[1].split("\n@router")[0]
+_home_code = "\n".join(l for l in _home_blk.split("\n") if not l.strip().startswith("#"))
+_quota_blk = _home_code.split("quota = None")[1].split("ctx.update(")[0] if "quota = None" in _home_code else ""
+check("AP-Q1 home quota 只消费 ctx access projection (无第二 project()/plan_of)",
+      _quota_blk.count("project(") == 0 and "plan_of" not in _quota_blk
+      and 'access["entitlements"]' in _quota_blk and 'access["usage"]' in _quota_blk)
+check("AP-Q2 quota remaining 是纯展示减法 (max(limit-used,0)), 不改写 entitlement 数值",
+      "max(files_limit - files_used, 0)" in _quota_blk
+      and "max(bytes_limit - bytes_used, 0)" in _quota_blk
+      and 'ingress_files_24h"] =' not in _quota_blk)
+check("AP-Q3 匿名 (access=None) 不渲染 quota (无伪装默认值)",
+      "quota = None" in _home_code and "if access is not None" in _home_code)
+check("AP-Q4 quota denial contract 未被复制/改写 (err_ingress_* 只在 ingress 路径)",
+      _quota_blk.count("err_ingress") == 0)
+
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
 _sys.exit(1 if FAIL else 0)

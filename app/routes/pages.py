@@ -380,10 +380,39 @@ async def home(request: Request):
     def_exp = 1 if 1 in ent["expiry_days"] else ent["expiry_days"][0]
     def_dl = 50 if 50 in ent["download_limits"] else ent["download_limits"][0]
 
+    # Quota visibility: rolling-24h ingress facts from the SAME canonical
+    # projection (ctx_base access read — no second project(), no local
+    # quota math; remaining is presentation-level subtraction only).
+    # Projection/read failure never masquerades as 0-used: ctx_base already
+    # propagates the fault, so this block simply never renders then.
+    quota = None
+    access = ctx.get("access")
+    if access is not None:
+        _ent = access["entitlements"]
+        _usage = access["usage"]
+        files_used = int(_usage["ingress_files_24h"])
+        files_limit = int(_ent["ingress_files_24h"])
+        bytes_used = int(_usage["ingress_bytes_24h"])
+        bytes_limit = int(_ent["ingress_bytes_24h"])
+        quota = {
+            "plan_code": _ent["plan_code"],
+            "files_used": files_used,
+            "files_limit": files_limit,
+            "files_remaining": max(files_limit - files_used, 0),
+            "bytes_used": bytes_used,
+            "bytes_limit": bytes_limit,
+            "bytes_remaining": max(bytes_limit - bytes_used, 0),
+            "files_near": files_limit and files_used * 100 >= files_limit * 80,
+            "bytes_near": bytes_limit and bytes_used * 100 >= bytes_limit * 80,
+            "files_reached": files_used >= files_limit,
+            "bytes_reached": bytes_used >= bytes_limit,
+        }
+
     ctx.update({
         "shell_class": "",
         "share_url": home_share_url,
         "max_mb": max_mb,
+        "quota": quota,
         "daily_uploads": ent["ingress_files_24h"],
         "daily_mb": ent["ingress_bytes_24h"] // 1024 // 1024,
         "tools": tools,

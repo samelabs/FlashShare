@@ -22,7 +22,7 @@ with open(_STATIC / "518.css", encoding="utf-8") as f:
 # Version stamp = content hash + mtime: content-converging edits (diverge then
 # reconverge) can collide on a pure content hash and serve stale edge caches.
 import os as _os
-_CSS_VERSION = "v42"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (footer policy links)
+_CSS_VERSION = "v43"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (footer policy links)
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 # app.js gets its OWN stamp: it changes independently of 518.css. Sharing
@@ -61,6 +61,15 @@ from utils import (
     bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
     close_icon_svg, history_icon_svg,
 )
+
+
+def fmt_bytes(n) -> str:
+    """Presentation-only byte formatting for quota display (no domain math)."""
+    n = int(n or 0)
+    for unit, div in (("GB", 1024 ** 3), ("MB", 1024 ** 2), ("KB", 1024)):
+        if n >= div:
+            return f"{n / div:.1f} {unit}"
+    return f"{n} B"
 
 
 def fmt_ts(ts) -> str:
@@ -110,6 +119,7 @@ def ctx_base(request: Request) -> dict:
         "app_js_version": APP_JS_VERSION,
         "i18n_version": _I18N_VERSION,
         "fmt_ts": fmt_ts,
+        "fmt_bytes": fmt_bytes,
         "year": datetime.datetime.now().year,
         # icon helpers
         "icon_svg": icon_svg,

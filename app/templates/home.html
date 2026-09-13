@@ -55,6 +55,26 @@
       <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
     </a>
     </div>
+    {% if quota %}
+    <div class="quota-panel{% if quota.files_reached or quota.bytes_reached %} quota-reached{% elif quota.files_near or quota.bytes_near %} quota-near{% endif %}" id="quotaPanel">
+      <div class="quota-head">
+        <span class="quota-plan">{{ quota.plan_code | upper }}</span>
+        <span class="quota-title" data-i18n="quota_title">{{ texts.quota_title }}</span>
+      </div>
+      <div class="quota-rows">
+        <div class="quota-row{% if quota.files_reached %} quota-hit{% elif quota.files_near %} quota-warn{% endif %}">
+          <span class="quota-k" data-i18n="quota_files">{{ texts.quota_files }}</span>
+          <span class="quota-v"><strong>{{ quota.files_used }}</strong> / {{ quota.files_limit }} · <span data-i18n="quota_remaining">{{ texts.quota_remaining }}</span> {{ quota.files_remaining }}</span>
+        </div>
+        <div class="quota-row{% if quota.bytes_reached %} quota-hit{% elif quota.bytes_near %} quota-warn{% endif %}">
+          <span class="quota-k" data-i18n="quota_bytes">{{ texts.quota_bytes }}</span>
+          <span class="quota-v"><strong>{{ fmt_bytes(quota.bytes_used) }}</strong> / {{ fmt_bytes(quota.bytes_limit) }} · <span data-i18n="quota_remaining">{{ texts.quota_remaining }}</span> {{ fmt_bytes(quota.bytes_remaining) }}</span>
+        </div>
+      </div>
+      {% if quota.files_reached or quota.bytes_reached %}<div class="quota-note" data-i18n="quota_reached">{{ texts.quota_reached }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   <div class="upload-card">
     <label class="drop" id="dropZone">
