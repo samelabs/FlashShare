@@ -150,9 +150,48 @@ def delete_gokapi_file(file_id: str) -> None:
 
 
 def open_gokapi_download(file_id: str):
+    """Open the public counted download path.
+
+    This is a delivery action: successful reads consume allowed_downloads.
+    Internal processing and in-site previews must use
+    open_gokapi_internal_read() instead.
+    """
     if not file_id:
         raise RuntimeError("missing_file_id")
     conn, _parsed = _gokapi_connection(timeout=300)
     conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(file_id)}"))
+    resp = conn.getresponse()
+    return resp.status, resp.getheaders(), resp
+
+
+def open_gokapi_internal_read(file_id: str, byte_range: str | None = None):
+    """Open Gokapi's authenticated non-counting file read API.
+
+    Gokapi >= 2.2 exposes GET /api/files/download/{id}. The API defaults to
+    not increasing DownloadCount; we still send increaseCounter=false
+    explicitly so internal custody/preview semantics cannot drift with an
+    upstream default. The API key must carry DOWNLOAD permission.
+
+    ``byte_range`` is an optional HTTP Range value (for example
+    ``bytes=0-1023``) used by ZIP metadata preview. Public/user downloads must
+    never call this helper because it intentionally bypasses the delivery
+    counter.
+    """
+    if not GOKAPI_KEY:
+        raise RuntimeError("Gokapi API key not configured")
+    if not file_id:
+        raise RuntimeError("missing_file_id")
+    headers = {
+        "apikey": GOKAPI_KEY,
+        "increaseCounter": "false",
+    }
+    if byte_range:
+        headers["Range"] = byte_range
+    conn, _parsed = _gokapi_connection(timeout=300)
+    conn.request(
+        "GET",
+        _gokapi_path(f"/api/files/download/{urllib.parse.quote(file_id)}"),
+        headers=headers,
+    )
     resp = conn.getresponse()
     return resp.status, resp.getheaders(), resp
