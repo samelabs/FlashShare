@@ -57,6 +57,7 @@ class Store:
             self._files.pop(file_id, None)
 
     def download(self, file_id: str) -> tuple[dict | None, bytes | None]:
+        """Public delivery read: consume one download slot."""
         with self._lock:
             row = self._files.get(file_id)
             if not row:
@@ -68,6 +69,14 @@ class Store:
             row["DownloadsRemaining"] = (
                 max(0, allowed - int(row["DownloadCount"])) if allowed > 0 else 0
             )
+            return self._public(row), bytes(row["_data"])
+
+    def read(self, file_id: str) -> tuple[dict | None, bytes | None]:
+        """Privileged API read: return bytes without changing counters."""
+        with self._lock:
+            row = self._files.get(file_id)
+            if not row:
+                return None, None
             return self._public(row), bytes(row["_data"])
 
     @staticmethod
@@ -138,6 +147,40 @@ class Handler(BaseHTTPRequestHandler):
     def _base_url(self) -> str:
         return f"http://{self.headers.get('Host', '127.0.0.1')}"
 
+    def _file_response(self, meta: dict | None, data: bytes | None) -> None:
+        if meta is None:
+            self.send_error(404)
+            return
+        if data is None:
+            self.send_error(410)
+            return
+
+        status = 200
+        start, end = 0, len(data) - 1
+        range_header = self.headers.get("Range", "")
+        if range_header:
+            match = re.fullmatch(r"bytes=(\d+)-(\d*)", range_header.strip())
+            if not match:
+                self.send_error(416)
+                return
+            start = int(match.group(1))
+            end = int(match.group(2)) if match.group(2) else end
+            if start < 0 or start >= len(data) or end < start:
+                self.send_error(416)
+                return
+            end = min(end, len(data) - 1)
+            data = data[start:end + 1]
+            status = 206
+
+        self.send_response(status)
+        self.send_header("Content-Type", meta["ContentType"])
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Accept-Ranges", "bytes")
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{meta['SizeBytes']}")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -164,41 +207,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, row)
             return
 
+        if path.startswith("/api/files/download/"):
+            if not self._authorized():
+                self._json(401, {"ErrorMessage": "unauthorized"})
+                return
+            file_id = path.rsplit("/", 1)[-1]
+            meta, data = STORE.read(file_id)
+            self._file_response(meta, data)
+            return
+
         if path == "/downloadFile":
             file_id = (parse_qs(parsed.query).get("id") or [""])[0]
             meta, data = STORE.download(file_id)
-            if meta is None:
-                self.send_error(404)
-                return
-            if data is None:
-                self.send_error(410)
-                return
-
-            status = 200
-            start, end = 0, len(data) - 1
-            range_header = self.headers.get("Range", "")
-            if range_header:
-                match = re.fullmatch(r"bytes=(\d+)-(\d*)", range_header.strip())
-                if not match:
-                    self.send_error(416)
-                    return
-                start = int(match.group(1))
-                end = int(match.group(2)) if match.group(2) else end
-                if start < 0 or start >= len(data) or end < start:
-                    self.send_error(416)
-                    return
-                end = min(end, len(data) - 1)
-                data = data[start:end + 1]
-                status = 206
-
-            self.send_response(status)
-            self.send_header("Content-Type", meta["ContentType"])
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Accept-Ranges", "bytes")
-            if status == 206:
-                self.send_header("Content-Range", f"bytes {start}-{end}/{meta['SizeBytes']}")
-            self.end_headers()
-            self.wfile.write(data)
+            self._file_response(meta, data)
             return
 
         self.send_error(404)
