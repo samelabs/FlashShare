@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 
 from storage import read as storage_read
 from governance.catalog import list_catalog
-from gokapi import open_gokapi_download
+from gokapi import open_gokapi_internal_read
 from utils import sanitize_filename
 from identity.auth import public_user
 
@@ -183,7 +183,9 @@ async def demo_echo(request: Request):
         if not verify_fetch_token(t_raw, int(u_raw), gid):
             continue
         try:
-            status, headers, resp = open_gokapi_download(gid)
+            # This endpoint is itself a tool processor. Reading its signed
+            # source is execution custody, not recipient delivery.
+            status, headers, resp = open_gokapi_internal_read(gid)
             data = resp.read(50 * 1024 * 1024)
             resp.close()
         except Exception:

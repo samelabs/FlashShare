@@ -15,7 +15,7 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from sharing.uploads import get_live_upload_by_public_id as _live_upload
-from gokapi import open_gokapi_download, get_gokapi_file
+from gokapi import open_gokapi_download, open_gokapi_internal_read, get_gokapi_file
 from utils import (
     public_file_url, format_bytes, format_ts,
     file_size_icon_svg, expiry_icon_svg, download_count_icon_svg, file_format_icon,
@@ -79,7 +79,8 @@ async def file_route(public_id: str, request: Request):
                 ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "download"
                 resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
                 return resp
-        # Fallback: stream via Python if no hotlink
+        # Fallback: stream via Python if no hotlink. This is still a public
+        # delivery action, therefore it intentionally uses the counted path.
         status, headers, stream = open_gokapi_download(upload["gokapi_id"])
         if status >= 400:
             return HTMLResponse("File unavailable", status=status)
@@ -158,7 +159,7 @@ async def file_qr(public_id: str):
 
 @router.get("/f/{public_id}/zip-list")
 async def file_zip_list(public_id: str, request: Request):
-    """List ZIP archive contents without downloading the whole file."""
+    """List ZIP archive contents without spending a download slot."""
     upload = _live_upload(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
@@ -172,20 +173,15 @@ async def file_zip_list(public_id: str, request: Request):
         live = get_gokapi_file(upload["gokapi_id"]) if upload["gokapi_id"] else None
         total = int((live or {}).get("SizeBytes") or 0)
 
-    import urllib.parse
-    from gokapi import _gokapi_connection, _gokapi_path
-
     def fetch_range(start: int, length: int) -> bytes:
-        conn, _ = _gokapi_connection(timeout=30)
+        status, _headers, stream = open_gokapi_internal_read(
+            upload["gokapi_id"], f"bytes={start}-{start + length - 1}")
         try:
-            conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(upload['gokapi_id'])}"),
-                         headers={"Range": f"bytes={start}-{start + length - 1}"})
-            resp = conn.getresponse()
-            if resp.status not in (200, 206):
+            if status not in (200, 206):
                 raise ValueError("range_unavailable")
-            return resp.read()
+            return stream.read()
         finally:
-            conn.close()
+            stream.close()
 
     from zip_preview import list_zip_remote
     try:
@@ -215,7 +211,7 @@ async def file_zip_list(public_id: str, request: Request):
 
 @router.get("/f/{public_id}/inline")
 async def file_inline(public_id: str, request: Request):
-    """Stream trusted embeddable file types inline for result preview."""
+    """Stream trusted embeddable types inline without spending downloads."""
     upload = _live_upload(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
@@ -226,13 +222,9 @@ async def file_inline(public_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "not_embeddable"}, 400)
 
     from urllib.parse import quote
-    # IMPLEMENTATION BLOCKED BY GOKAPI DEPLOYMENT CAPABILITY:
-    # in-site preview SHOULD NOT consume allowed_downloads (decided product
-    # semantics), but Gokapi v2.2.4 has no API-key non-counting read
-    # (/api/files/download/{id} is admin-session only). Preview keeps the
-    # counted path until the Gokapi upgrade / integration decision —
-    # bypassing Gokapi's private storage is not an option.
-    status, headers, stream = open_gokapi_download(upload["gokapi_id"])
+    # Product invariant: rendering inside 518 is observation, not delivery.
+    # Only an explicit public download may consume allowed_downloads.
+    status, headers, stream = open_gokapi_internal_read(upload["gokapi_id"])
     if status >= 400:
         return HTMLResponse("File unavailable", status=status)
 
