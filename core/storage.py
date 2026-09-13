@@ -10,24 +10,19 @@ from gokapi import (
     upload_to_gokapi,
     get_gokapi_file,
     delete_gokapi_file,
-    open_gokapi_internal_read,
+    open_gokapi_download,
 )
 
 
 def read(file_id: str):
-    """Read a file from storage for internal processing custody.
+    """Read a file from storage.
 
-    Internal reads are deliberately non-counting: tool execution, remote-tool
-    source fetches, retries, and server-side inspection must not spend a
-    recipient-facing allowed_downloads slot. Public delivery stays on the
-    counted /downloadFile path in the proxy route.
-
-    Returns (status, headers, stream) where stream is a seekable BytesIO.
-    Consuming the full response into memory is intentional — files are already
-    size-limited by the upload pipeline, and tool handlers need seekable input
-    (Image.open, identity passthrough, etc).
+    Returns (status, headers, stream) where stream is a seekable
+    BytesIO. Consuming the full response into memory is intentional
+    — files are already size-limited by the upload pipeline, and
+    tool handlers need seekable input (Image.open, identity passthrough, etc).
     """
-    status, headers, raw = open_gokapi_internal_read(file_id)
+    status, headers, raw = open_gokapi_download(file_id)
     data = raw.read() if hasattr(raw, "read") else b""
     if hasattr(raw, "close"):
         raw.close()
