@@ -27,7 +27,7 @@ import os
 
 from PIL import Image, ImageDraw
 
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import ToolError
 
 ACCEPTED = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -137,44 +137,8 @@ def rounded_corners_handler(tool_input: dict, params: dict) -> dict:
 
 
 # ── Registration ───────────────────────────────────────────
-
-register(
-    tool_id="rounded_corners",
-    tool_type=TYPE_PRODUCE,
-    label={
-        "en": "Rounded Corners", "zh": "圆角", "ja": "角丸",
-        "ko": "둥근 모서리", "es": "Esquinas redondeadas", "ar": "زوايا دائرية",
-        "de": "Abgerundete Ecken", "ru": "Скругление углов", "pt": "Cantos arredondados",
-        "fr": "Coins arrondis",
-    },
-    desc={
-        "en": "Add rounded corners to an image with transparent or white background.",
-        "zh": "给图片加圆角，支持透明或白色背景。",
-        "ja": "画像の角を丸くします。透明または白の背景に対応。",
-        "ko": "이미지에 둥근 모서리를 추가합니다. 투명 또는 흰색 배경 지원.",
-        "es": "Añade esquinas redondeadas con fondo transparente o blanco.",
-        "ar": "أضف زوايا دائرية بخلفية شفافة أو بيضاء.",
-        "de": "Fügt abgerundete Ecken mit transparentem oder weißem Hintergrund hinzu.",
-        "ru": "Скругляет углы изображения с прозрачным или белым фоном.",
-        "pt": "Adiciona cantos arredondados com fundo transparente ou branco.",
-        "fr": "Arrondit les coins avec fond transparent ou blanc.",
-    },
-    icon="crop",
-    accept=ACCEPTED,
-    handler=rounded_corners_handler,
-    params=[
-        {"key": "radius", "type": "enum", "label": {"en": "Corner size", "zh": "圆角大小"},
-         "options": [
-             {"value": "small", "label": {"en": "Small", "zh": "小"}},
-             {"value": "medium", "label": {"en": "Medium", "zh": "中"}},
-             {"value": "large", "label": {"en": "Large", "zh": "大"}},
-         ],
-         "default": "medium"},
-        {"key": "background", "type": "enum", "label": {"en": "Background", "zh": "背景"},
-         "options": [
-             {"value": "transparent", "label": {"en": "Transparent", "zh": "透明"}},
-             {"value": "white", "label": {"en": "White", "zh": "白色"}},
-         ],
-         "default": "transparent"},
-    ],
-)
+# Not registered as a first-party local tool. The tool lives on the user
+# chain: owner account systest548d51 publishes it with execution=http
+# against the hosted API surface /api/v1/tools/rounded-corners, which
+# calls rounded_corners_handler below. The registry module stays pure
+# (zero I/O deps); the endpoint owns pull/auth/landing.

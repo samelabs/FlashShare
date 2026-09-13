@@ -109,7 +109,12 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
         endpoint, data=body, method="POST",
-        headers={"Content-Type": "application/json", **headers})
+        headers={"Content-Type": "application/json",
+                 # Self-describing UA: default Python-urllib is blocked by
+                 # WAFs (e.g. Cloudflare browser-integrity 1010) on user
+                 # endpoints that sit behind one.
+                 "User-Agent": "518.PLUS-Dispatcher/1.0 (tool dispatch)",
+                 **headers})
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             return resp.status, resp.read(MAX_OUTPUT_BYTES + 1)
