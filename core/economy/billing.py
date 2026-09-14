@@ -38,10 +38,13 @@ def get_balance(user_id: int) -> int:
 # Ledger kinds that make up the SPENDABLE pool. provider_earn is NOT here:
 # earnings accumulate in their own pool, withdrawable only. This is the
 # dual-pool invariant (2026-08-26 global audit): consumption must never
-# eat into provider earnings.
+# eat into provider earnings. grant_plan_upgrade is the Plus→Pro mid-cycle
+# top-up difference — spendable exactly like the base grant_plan, or an
+# upgraded member would see +400 yet be unable to spend it.
 SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
                    "bonus", "topup", "consume", "refund", "adjust", "grant",
-                   "revoke", "manual_topup", "grant_plan", "grant_package")
+                   "revoke", "manual_topup", "grant_plan", "grant_package",
+                   "grant_plan_upgrade")
 
 
 def spendable_balance(user_id: int) -> int:
