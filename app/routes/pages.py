@@ -496,20 +496,33 @@ async def account_credits(request: Request):
     # bought, while my_plan comes from _account_ctx → _ctx_base's single
     # access projection (access["membership"] alias), never a second
     # plan_of() read here.
-    from repo.orders import canonical_plans
+    from repo.orders import canonical_plans, pending_downgrade as pending_row
     from governance.entitlements import entitlement_profile_exists
     with db() as con:
         # sellable = canonical paid tiers (plus/pro) × entitlement profile 单点:
         # DB 历史 plan rows 不渲染为会员商品。
         plans = [dict(r) for r in canonical_plans(con)
                  if entitlement_profile_exists(r["code"])]
+        # scheduled downgrade fact (next renewal) — same read model the
+        # subscription boundary consumes; surfaced so the page can render
+        # the pending state instead of a live downgrade button.
+        pd = pending_row(con, user["id"])
+    pending_downgrade = None
+    if pd is not None:
+        with db() as con:
+            from repo.orders import plan_by_id
+            tgt = plan_by_id(con, pd["target_plan_id"])
+        pending_downgrade = {
+            "code": tgt["code"] if tgt else "?",
+            "effective_at": pd["effective_at"],
+        } if tgt else None
     ctx = _account_ctx(request, "credits",
                        balance=get_balance(user["id"]),
                        granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
                        packages=pkgs, topup_ready=topup_ready,
                        credits_ready=credits_ready,
-                       plans=plans,
+                       plans=plans, pending_downgrade=pending_downgrade,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)
