@@ -63,7 +63,10 @@ _ts = int(time.time())
 sys.path.insert(0, _REPO)
 from app.main import app  # real ASGI app with the real routing table
 from app.web_auth import create_browser_session, COOKIE_NAME
-from starlette.testclient import TestClient
+import warnings as _w
+with _w.catch_warnings():
+    _w.simplefilter("ignore", DeprecationWarning)  # starlette prefers httpx2; httpx fallback warns
+    from starlette.testclient import TestClient
 
 _cur.execute("delete from packages where code='tc_pkg'")
 _cur.execute("delete from users where username like 'tc%'")
@@ -103,7 +106,11 @@ _creem.creem_enabled = lambda: True
 _creem.credits_ready = lambda: True
 _creem.CREEM_CREDITS_CURRENCY = "USD"  # checkout handler compares pkg currency to this constant
 
-# sellable plan fixture: bind creem_product_id on the seeded plus plan
+# sellable plan fixture: bind creem_product_id on the seeded plus plan.
+# Save the original value first — restore exactly what was there, never
+# assume NULL (a future non-NULL binding must survive this test).
+_cur.execute("select creem_product_id from plans where code='plus'")
+_plus_orig_pid = _cur.fetchone()[0]
 _cur.execute("update plans set creem_product_id='price_tc_plus' where code='plus'")
 
 client = TestClient(app)
@@ -171,7 +178,7 @@ for old in ("/subscribe", "/plan-upgrade", "/plan-downgrade"):
 # ── restore + cleanup ───────────────────────────────────────────────────
 (_creem.create_subscription_checkout, _creem.create_credits_checkout,
  _creem.creem_enabled, _creem.credits_ready, _creem.CREEM_CREDITS_CURRENCY) = _orig
-_cur.execute("update plans set creem_product_id=NULL where code='plus'")
+_cur.execute("update plans set creem_product_id=%s where code='plus'", (_plus_orig_pid,))
 _cur.execute("delete from packages where code='tc_pkg'")
 _cur.execute("delete from users where username like 'tc%'")
 

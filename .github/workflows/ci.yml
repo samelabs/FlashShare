@@ -124,6 +124,10 @@ jobs:
             python tests/canonical/test_membership_governance.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_payment_tiers.py
+          expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
+            python tests/canonical/test_topup_route_contract.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_topup_route_contract.py
           python tests/canonical/test_rounded_corners.py
 
       - name: Start Gokapi HTTP-boundary service
@@ -188,6 +192,9 @@ jobs:
 
       - name: Payment tiers canonical
         run: python tests/canonical/test_payment_tiers.py
+
+      - name: Topup route contract canonical
+        run: python tests/canonical/test_topup_route_contract.py
 
       - name: Failure diagnostics
         if: failure()
