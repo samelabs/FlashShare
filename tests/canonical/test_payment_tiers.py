@@ -254,8 +254,10 @@ for _bad in ("bogus", "proration-charge"):
 # ═══ T10: subscription.update Pro product → Membership/Projection Pro ═══
 _u10, uid10, _ = _seed_sub_user("pt10", "plus", "prod_plus", "ptsub10")
 _pp = project(uid10)
-check("T10pre update 前 Membership=Plus / 500 files",
-      _pp["entitlements"]["plan_code"] == "plus" and _pp["entitlements"]["ingress_files_24h"] == 500)
+check("T10pre update 前 Membership=Plus / 500 files / 本周期 spendable = 100",
+      _pp["entitlements"]["plan_code"] == "plus" and _pp["entitlements"]["ingress_files_24h"] == 500
+      and spendable_balance(uid10) == 100, f"bal={spendable_balance(uid10)}")
+_bal_pre_upgrade = spendable_balance(uid10)  # anchor BEFORE the upgrade event
 _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
 _pp = project(uid10)
 _r10 = resolve(uid10)
@@ -264,30 +266,38 @@ check("T10 update Pro product → Membership Pro / projection Pro / 2000 files /
       and _r10["ingress_files_24h"] == 2000 and _r10["ingress_bytes_24h"] == 20 * 1024**3,
       str(_pp["entitlements"]["plan_code"]))
 
-# ═══ T11: Plus 100 → upgrade 补差 +400 → period total 500 ═══
-_bal11 = spendable_balance(uid10)
+# ═══ T11: Plus 100 → upgrade 补差 +400 → 可消费余额 500 (行为合同) ═══
+# spendable 必须真的吃到 +400 (SPENDABLE_KINDS 含 grant_plan_upgrade),
+# 而不是只读两次相等 — 看似 +400 实则不能花的假验证。
 _adj = _grants(uid10, "grant_plan_upgrade")
 _total11 = _plan_credits_total(uid10, PS)
-check("T11 upgrade 补差 +400 / plan-derived period total = 500 (非 600)",
-      _adj == 1 and spendable_balance(uid10) == _bal11  # balance 已含在 update 内授
-      and _total11 == 500, f"adj_grants={_adj} total={_total11}")
+check("T11 upgrade 补差 +400 进 spendable (100→500) / grant exactly once / period total = 500",
+      _adj == 1 and spendable_balance(uid10) == _bal_pre_upgrade + 400
+      and _total11 == 500,
+      f"adj_grants={_adj} spendable={spendable_balance(uid10)} (pre={_bal_pre_upgrade}) total={_total11}")
 # 重放同 update:
+_bal_after_upgrade = spendable_balance(uid10)
 _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
 # ═══ T12: replay → exactly once ═══
-check("T12 replay upgrade events → 补差 exactly once",
-      _grants(uid10, "grant_plan_upgrade") == 1 and _plan_credits_total(uid10, PS) == 500)
+check("T12 replay upgrade events → 补差仍 exactly once / spendable 不再增加",
+      _grants(uid10, "grant_plan_upgrade") == 1
+      and spendable_balance(uid10) == _bal_after_upgrade
+      and _plan_credits_total(uid10, PS) == 500,
+      f"spendable={spendable_balance(uid10)} (anchor={_bal_after_upgrade})")
 # 同周期 paid 重放 → 不再全额 500:
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="ptsub10"))
-check("T12b 同周期 paid 重放 → period total 仍 500 (不 100+400+500)",
-      _plan_credits_total(uid10, PS) == 500, str(_plan_credits_total(uid10, PS)))
+check("T12b 同周期 paid 重放 → period total 仍 500 / spendable 不重复增加",
+      _plan_credits_total(uid10, PS) == 500
+      and spendable_balance(uid10) == _bal_after_upgrade,
+      f"total={_plan_credits_total(uid10, PS)} spendable={spendable_balance(uid10)}")
 # 下一正常 renewal (新 period, Pro product): 新周期 grant 500; 旧周期仍 500:
 PS3, PE3 = _ts + 61 * 86400, _ts + 91 * 86400
 _bal12 = spendable_balance(uid10)
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS3), _iso(PE3), product={"id": "prod_pro"}, sub_id="ptsub10"))
-check("T12c 下一 renewal: 新 period total = 500 (全额), 旧 period 仍 500 (非 1000)",
+check("T12c 下一 renewal: 新 period total = 500 (全额), 旧 period 仍 500 / spendable +500",
       _plan_credits_total(uid10, PS3) == 500 and _plan_credits_total(uid10, PS) == 500
       and spendable_balance(uid10) == _bal12 + 500,
-      f"new={_plan_credits_total(uid10, PS3)} old={_plan_credits_total(uid10, PS)}")
+      f"new={_plan_credits_total(uid10, PS3)} old={_plan_credits_total(uid10, PS)} spendable={spendable_balance(uid10)}")
 
 # ═══ T13: Pro → Plus downgrade → Creem proration-none 同步 ═══
 _u13, uid13, _ = _seed_sub_user("pt13", "pro", "prod_pro", "ptsub13")

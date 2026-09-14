@@ -53,7 +53,7 @@ async def topup_checkout(request: Request):
     return out
 
 
-@router.post("/subscribe")
+@router.post("/api/topup/subscribe")
 async def subscribe_checkout(request: Request):
     """订阅 checkout (v3 spec): plan 必须绑 creem_product_id 才可售。"""
     user, err = _require_auth(request)
@@ -141,7 +141,7 @@ async def subscribe_checkout(request: Request):
     return out
 
 
-@router.post("/plan-upgrade")
+@router.post("/api/topup/plan-upgrade")
 async def plan_upgrade(request: Request):
     """Plus → Pro (立即生效): 调 Creem upgrade (proration-charge-
     immediately)。本地 Membership 不伪造 — subscription.update webhook
@@ -190,7 +190,7 @@ async def plan_upgrade(request: Request):
             "from": cur_code, "to": target_code}
 
 
-@router.post("/plan-downgrade")
+@router.post("/api/topup/plan-downgrade")
 async def plan_downgrade(request: Request):
     """Pro → Plus (next renewal): Creem 官方 product-change endpoint 同样
     承载 downgrade — update_behavior=proration-none (官方语义: no
