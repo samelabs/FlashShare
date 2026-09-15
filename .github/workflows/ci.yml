@@ -125,6 +125,8 @@ jobs:
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_payment_tiers.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_plan_catalog.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_topup_route_contract.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_topup_route_contract.py
@@ -192,6 +194,9 @@ jobs:
 
       - name: Payment tiers canonical
         run: python tests/canonical/test_payment_tiers.py
+
+      - name: Plan catalog canonical
+        run: python tests/canonical/test_plan_catalog.py
 
       - name: Topup route contract canonical
         run: python tests/canonical/test_topup_route_contract.py

@@ -40,9 +40,22 @@ from repo import orders as orders_repo
 from economy import subscription as _sub
 from economy import reconcile as _rec
 from economy.billing import spendable_balance
-from governance.entitlements import (resolve, resolve_from_membership,
-                                     entitlement_profile_exists,
-                                     EntitlementConfigurationError, _PLANS)
+from governance.entitlements import (resolve, resolve_from_membership, entitlement_profile_exists, EntitlementConfigurationError)
+
+
+def _row_views():
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+    from governance import plan_catalog as _pc
+    _plans = {t.code: t.benefits.as_dict(t.code) for t in _pc.catalog() if not t.is_free}
+    return _plans.get("free"), _plans
+
+
+_PLANS = _row_views()
+from governance import plan_catalog as _pc
+
+def _refresh_catalog():
+    _pc.validate_config()
 from governance.access_projection import project
 
 FAIL = []
@@ -83,9 +96,11 @@ def _seed_plan(code, credits=100, price_id=None):
         "insert into plans (code, name, monthly_credits, price_cents, creem_product_id, created_at, updated_at)"
         " values (%s, %s, %s, 500, %s, %s, %s)"
         " on conflict (code) do update set monthly_credits=excluded.monthly_credits,"
-        " creem_product_id=coalesce(plans.creem_product_id, excluded.creem_product_id)"
+        " creem_product_id=coalesce(plans.creem_product_id, excluded.creem_product_id),"
+        " price_cents=excluded.price_cents"
         " returning id",
         (code, code.upper(), credits, price_id, _ts, _ts))
+    _refresh_catalog()
     return _cur.fetchone()[0]
 
 def _seed_order(uid, plan_id, sub_id):
@@ -176,6 +191,7 @@ uT, uidT = _new_user("mgT")
 _cur.execute("select id from plans where code='pro'")
 plan_pro = _cur.fetchone()[0]
 _cur.execute("update plans set creem_product_id='price_pro' where code='pro'")
+_refresh_catalog()
 PRO_FILES, PRO_BYTES = 2000, 20 * 1024 ** 3
 _seed_order(uidT, plan_pro, "mgsubT")
 _sub.bind_checkout({"id": "chT", "subscription": {"id": "mgsubT"}})
@@ -455,6 +471,7 @@ uS, uidS = _new_user("mgS")
 _topup._require_auth = lambda request: ({"id": uidS, "email": "t@t.co",
                                         "username": uS}, None)
 _cur.execute("update plans set creem_product_id='price_plus' where id=%s", (plan_plus,))
+_refresh_catalog()
 st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 _cur.execute("select id from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidS,))
 _oi1 = _cur.fetchone()[0]
@@ -489,6 +506,7 @@ check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscriptio
 # unknown-profile plan → 收费前拒绝 (plan_not_ready, 零 order 零 create):
 uQ, uidQ = _new_user("mgQ")
 _cur.execute("update plans set creem_product_id='price_q' where code='mg_unknown_tier'")
+_refresh_catalog()
 _cur.execute("select id from plans where code='mg_unknown_tier'")
 _pq = _cur.fetchone()[0]
 _topup._require_auth = lambda request: ({"id": uidQ, "email": "t@t.co",
@@ -499,6 +517,11 @@ check("G12f unknown-profile plan → plan_not_ready / 零 order / 零 checkout",
       st == 422 and d.get("error") == "plan_not_ready"
       and _cur.fetchone()[0] == 0 and _creem_calls["create"] == 2, f"st={st} d={d}")
 _topup._require_auth = _orig_auth
+# 夹具清场: mg_unknown_tier 回到"权益未配的缺口行" (可售性归零), 不污染后续套件的
+# sellable 目录断言
+_cur.execute("update plans set creem_product_id=NULL, price_cents=0"
+             " where code='mg_unknown_tier'")
+_refresh_catalog()
 
 # ═══ 链13: occupied/rebind 七态 (membership_is_occupied 单一语义) ═══
 _FUT2, _PAST2 = _ts + 15 * 86400, _ts - 15 * 86400

@@ -36,7 +36,19 @@ sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 import psycopg2
 from governance.access_projection import project
-from governance.entitlements import FREE, _PLANS, resolve, resolve_from_membership
+from governance.entitlements import (resolve, resolve_from_membership)
+
+
+def _row_views():
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+    from governance import plan_catalog as _pc
+    _free = _pc.free_tier().benefits.as_dict("free")
+    _plans = {t.code: t.benefits.as_dict(t.code) for t in _pc.catalog() if not t.is_free}
+    return _free, _plans
+
+
+FREE, _PLANS = _row_views()
 from economy.subscription import plan_of
 from sharing.uploads import usage_24h
 from repo import upload_usage as usage_repo
