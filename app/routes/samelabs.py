@@ -159,7 +159,7 @@ async def samelabs_plans(request: Request):
 
 
 # POST /samelabs/plans (任意创建 paid tier) 已移除: canonical paid tiers
-# 只有 plus/pro (governance.tiers), operator 只可配置 price / Creem
+# 只有 plans 行承载的 canonical paid tiers (plan_catalog), operator 只可配置 price / Creem
 # Product ID / active, 不可创建第三档或改 canonical credits。
 
 
@@ -180,13 +180,16 @@ async def samelabs_update_plan(plan_id: int, request: Request):
     # code 与 canonical monthly credits 不可经 operator 修改。
     from repo.orders import update_plan_pricing
     from repo.orders import plan_by_id
-    from governance.tiers import is_paid_tier
+    from governance.plan_catalog import is_paid_tier
     with db() as con:
         row = plan_by_id(con, plan_id)
     if row is None or not is_paid_tier(row["code"]):
         return JSONResponse({"ok": False, "error": "not_canonical_tier"}, 422)
     with db() as con:
         row = update_plan_pricing(con, plan_id, price, creem_product_id, now())
+    # plans 行是 Tier 唯一事实源, 进程内目录缓存必须随运营写入失效
+    from governance.plan_catalog import validate_config
+    validate_config()  # refresh=True + fail-closed 校验新配置
     if row is None:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "plan": dict(row)}

@@ -137,11 +137,13 @@ def active_plans(con) -> list:
 
 
 def canonical_plans(con) -> list:
-    """sellable membership catalog: 仅 governance.tiers 的 canonical paid
-    tiers (唯一产品层事实源; 参数化, 不在 repo 复制业务 tier)。
+    """sellable membership catalog: plan_catalog.sellable_catalog 的行集
+    (plans 行是唯一产品层事实源; 参数化, 不在 repo 复制业务 tier)。
     DB 中历史其它 plan rows 保留但不进 sellable/current Membership。"""
-    from governance.tiers import sellable_plan_codes
-    codes = sellable_plan_codes()
+    from governance import plan_catalog
+    codes = tuple(t.code for t in plan_catalog.sellable_catalog())
+    if not codes:
+        return []
     placeholders = ",".join(["%s"] * len(codes))
     return con.execute(
         f"SELECT * FROM plans WHERE active AND code IN ({placeholders})"
@@ -321,8 +323,9 @@ def plan_by_product_id(con, product_id: str) -> Optional[dict]:
     已停售 canonical plan 的历史 subscription lifecycle 仍可解析。
     historical third-tier / unknown product → None (caller fail loud,
     绝不把 current Membership 写成第三档)。"""
-    from governance.tiers import sellable_plan_codes
-    codes = sellable_plan_codes()
+    from governance import plan_catalog
+    codes = tuple(t.code for t in plan_catalog.catalog()
+                  if not t.is_free)
     placeholders = ",".join(["%s"] * len(codes))
     rows = con.execute(
         f"SELECT * FROM plans WHERE creem_product_id = %s"

@@ -241,15 +241,14 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
             target_plan_id = int(pend["target_plan_id"])
             orders_repo.clear_pending_downgrade(con, order["user_id"])
         elif pend is None and cur_plan is not None and m_cur is not None:
-            from governance.tiers import TIER_ORDER
-            by_product = orders_repo.plan_by_product_id(con, provider_product) \
-                if provider_product else None
-            if by_product is not None:
-                direction = (TIER_ORDER.get(by_product["code"], -1)
-                             - TIER_ORDER.get(cur_plan["code"], -1))
+            from governance import plan_catalog
+            by_product_tier = plan_catalog.by_product(provider_product)
+            if by_product_tier is not None:
+                direction = plan_catalog.direction(
+                    by_product_tier, plan_catalog.by_code(cur_plan["code"]))
                 old_renews = int(m_cur["renews_at"] or 0)
                 if direction < 0 and old_renews and period_start >= old_renews:
-                    target_plan_id = int(by_product["id"])
+                    target_plan_id = int(by_product_tier.id)
     if target_plan_id is not None:
         with db() as con:
             plan = orders_repo.plan_by_id(con, target_plan_id)
@@ -308,17 +307,17 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
         if m is None:
             raise KeyError("membership_not_found")
         if m["plan_id"] != plan["id"]:
-            from governance.tiers import TIER_ORDER, TIER_PLAN_SPECS
+            from governance import plan_catalog
             cur_plan = orders_repo.plan_by_id(con, m["plan_id"])
-            direction = (TIER_ORDER.get(plan["code"], -1)
-                         - TIER_ORDER.get(cur_plan["code"], -1)) if cur_plan else 1
+            direction = plan_catalog.direction(
+                plan_catalog.by_code(plan["code"]),
+                plan_catalog.by_code(cur_plan["code"])) if cur_plan else 1
             if direction > 0:
                 # upgrade (Plus→Pro): immediate Membership switch + 当周期
                 # credits 补差 (幂等 plan-upgrade:{uid}:{period}:{target})。
-                old_cr = TIER_PLAN_SPECS.get(cur_plan["code"], {}).get(
-                    "monthly_credits", cur_plan["monthly_credits"]) if cur_plan else 0
-                new_cr = TIER_PLAN_SPECS.get(plan["code"], {}).get(
-                    "monthly_credits", plan["monthly_credits"])
+                old_cr = plan_catalog.by_code(
+                    cur_plan["code"]).monthly_credits if cur_plan else 0
+                new_cr = plan_catalog.by_code(plan["code"]).monthly_credits
                 period_start = m["last_grant_period_start"] or 0
                 if new_cr > old_cr and period_start:
                     adjustment = max(new_cr - old_cr, 0)
