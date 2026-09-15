@@ -637,8 +637,8 @@ check("AP-C1 account_credits 不 import economy.subscription / 不调 plan_of",
       "economy.subscription" not in _acct_blk and "plan_of" not in _acct_code)
 check("AP-C2 account_credits 无 plus 判断 / 无 my_plan= 覆盖",
       '"plus"' not in _acct_code and "my_plan=" not in _acct_code)
-check("AP-C3 active_plans( catalog 保留 且 plans=plans 传模板",
-      "active_plans(" in _acct_blk and "plans=plans" in _acct_blk)
+check("AP-C3 canonical_plans( 行集目录 且 plans=plans 传模板",
+      "canonical_plans(" in _acct_blk and "plans=plans" in _acct_blk)
 _acct_ctx_blk = _pages_src.split("def _account_ctx")[1].split("\ndef ")[0]
 check("AP-C4 _account_ctx 仍调 _ctx_base (membership 继承 base projection)",
       "_ctx_base(" in _acct_ctx_blk)

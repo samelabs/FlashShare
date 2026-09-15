@@ -73,6 +73,8 @@
         {% else %}{{ my_plan.status }}{% endif %}
       </span>
       {% if my_plan.cancel_scheduled_at %}<span class="sub-warn" data-i18n="sub_ends_no_renew">{{ texts.sub_ends_no_renew }}</span>{% endif %}
+      {% if pending_downgrade %}<span class="sub-warn">{{ texts.sub_downgrade_scheduled.replace('{plan}', pending_downgrade.name).replace('{date}', fmt_ts(pending_downgrade.effective_at)) }}</span>{% endif %}
+      {# plan/date 插值属服务端事实, 语言切换由整页刷新承载 (与 sub_until 同模式) #}
     </div>
     {% endif %}
     {% if plans %}
@@ -81,21 +83,21 @@
       <div class="topup-item">
         <strong class="topup-credits">+{{ pl.monthly_credits }}</strong>
         <span class="sub-period" data-i18n="sub_per_period">{{ texts.sub_per_period }}</span>
-        <span class="topup-price">${{ (pl.price_cents / 100)|round(0)|int }}<span class="sub-per">/{{ pl.period_days }}d</span></span>
-        {% if topup_ready and pl.creem_product_id %}
-          {% if not my_plan or not my_plan.member %}
-          <button type="button" class="primary sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
-          {% elif pl.code == my_plan.code %}
-          <span class="topup-status" data-i18n="sub_current">{{ texts.sub_current }}</span>
-          {% elif pl.code == 'pro' and my_plan.code == 'plus' %}
-          <button type="button" class="primary sub-upgrade" data-plan="pro" data-i18n="sub_upgrade">{{ texts.sub_upgrade }}</button>
-          {% elif pl.code == 'plus' and my_plan.code == 'pro' %}
-          <button type="button" class="ghost sub-downgrade" data-plan="plus" data-i18n="sub_downgrade">{{ texts.sub_downgrade }}</button>
-          {% else %}
-          <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
-          {% endif %}
+        <span class="topup-price">{% if pl.ready %}${{ (pl.price_cents / 100)|round(0)|int }}<span class="sub-per">/{{ pl.period_days }}d</span>{% else %}{{ texts.sub_price_tbd }}{% endif %}</span>
+        {% if not pl.ready %}
+        <span class="topup-status" data-i18n="sub_soon">{{ texts.sub_soon }}</span>
+        {% elif pl.action == 'subscribe' %}
+        <button type="button" class="primary sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
+        {% elif pl.action == 'current' %}
+        <span class="topup-status" data-i18n="sub_current">{{ texts.sub_current }}</span>
+        {% elif pl.action == 'upgrade' %}
+        <button type="button" class="primary sub-upgrade" data-plan="{{ pl.code }}">{{ texts.sub_upgrade_btn|replace('{plan}', pl.name) }}</button>
+        {% elif pl.action == 'downgrade' %}
+        <button type="button" class="ghost sub-downgrade" data-plan="{{ pl.code }}">{{ texts.sub_downgrade_btn|replace('{plan}', pl.name) }}</button>
+        {% elif pl.action == 'pending' %}
+        <span class="topup-status" data-i18n="sub_downgrade_done">{{ texts.sub_downgrade_done }}</span>
         {% else %}
-        <span class="topup-status" data-i18n="topup_soon">{{ texts.topup_soon }}</span>
+        <span class="topup-status" data-i18n="sub_unavailable">{{ texts.sub_unavailable }}</span>
         {% endif %}
       </div>
       {% endfor %}
