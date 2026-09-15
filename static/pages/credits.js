@@ -22,8 +22,14 @@
       btn.disabled = false;
       btn.textContent = orig;
       var why = (res.data && res.data.error) || "error";
-      alert(why === "plan_not_ready" || why === "package_not_ready"
-        ? (window.t ? window.t("sub_soon") : "Not available yet") : why);
+      // 包未就绪与计划未就绪分键: 充值包错误不得显示会员文案
+      if (why === "package_not_ready") {
+        alert(window.t ? window.t("topup_soon") : "Not available yet");
+      } else if (why === "plan_not_ready") {
+        alert(window.t ? window.t("sub_soon") : "Not available yet");
+      } else {
+        alert(why);
+      }
     }).catch(function () {
       btn.disabled = false;
       btn.textContent = orig;
