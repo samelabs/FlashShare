@@ -495,17 +495,20 @@ async def account_credits(request: Request):
     # membership 商品投影 — 全部由 plans 行驱动, 服务端单点算 action,
     # 模板只渲染不判断 (零档名字符串)。membership fact 复用 _ctx_base
     # 的同一 access projection 读 (ctx 尚未构建, 此处先取 base 再传 extra)。
-    from repo.orders import canonical_plans, pending_downgrade as pending_row
+    from repo.orders import pending_downgrade as pending_row
+    from repo.orders import all_plans as orders_repo_all_paid
     from governance import plan_catalog
     _base = _ctx_base(request)  # access projection 单次读
     _membership = (_base.get("access") or {}).get("membership")
     with db() as con:
         pd = pending_row(con, user["id"])
-        tiers = [t for t in plan_catalog.sellable_catalog()
-                 if t.benefits_configured]
+        # 展示目录 = active paid 行 (未配齐的档显示 TBD 占位, 配好后即变可售);
+        # 可售性单点 = Tier.sellable (价>0 + product + benefits 配齐)
+        tiers = [t for t in plan_catalog.catalog()
+                 if t.active and not t.is_free]
         plan_ids = {t.id for t in tiers}
-        # 行 id → 行 dict (canonical_plans 与 catalog 同集, 取行字段用)
-        rows_by_id = {r["id"]: dict(r) for r in canonical_plans(con)
+        # 行 id → 行 dict (active paid 行全集, 直读行)
+        rows_by_id = {r["id"]: dict(r) for r in orders_repo_all_paid(con)
                       if r["id"] in plan_ids}
     # scheduled downgrade fact — 与订阅边界同一读模型; 页面据此渲染
     # 排期态而非可点的降级按钮。
@@ -540,7 +543,7 @@ async def account_credits(request: Request):
             "period_days": t.period_days,
             "price_cents": t.price_cents,
             "currency": t.currency,
-            "ready": bool(topup_ready and t.product_id and t.price_cents > 0),
+            "ready": bool(topup_ready and t.sellable and t.benefits_configured),
             "action": action,
         })
     ctx = _account_ctx(request, "credits", _base=_base,

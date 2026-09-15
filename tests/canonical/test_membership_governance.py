@@ -732,8 +732,8 @@ check("SG19b HTTP 全在锁事务外 (AST: 锁 with 块内无 retrieve/create)",
       and all("retrieve_checkout" not in b and "create_checkout" not in b
               for b in _locked_bodies))
 check("SG16 Account 可售列表消费同一 profile 单点",
-      "benefits_configured" in _pages_g.split("def account_credits")[1][:2200]
-      and "sellable_catalog" in _pages_g.split("def account_credits")[1][:2200])
+      "benefits_configured" in _pages_g.split("def account_credits")[1].split("async def ")[0]
+      and "plan_catalog.catalog()" in _pages_g.split("def account_credits")[1].split("async def ")[0])
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))

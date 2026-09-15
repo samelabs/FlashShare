@@ -9,21 +9,23 @@
   </div>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
-      <thead><tr><th>code</th><th>名称</th><th class="sl-num">积分</th><th class="sl-num">价格(分)</th><th>状态</th></tr></thead>
+      <thead><tr><th>code</th><th>名称</th><th class="sl-num">积分</th><th class="sl-num">价格(分)</th><th>状态</th><th></th></tr></thead>
       <tbody>
       {% for p in packages %}
-        <tr>
+        <tr data-pkg="{{ p.id }}">
           <td class="sl-mono">{{ p.code|e }}</td>
-          <td>{{ p.name|e }}</td>
-          <td class="sl-num">{{ fmt_num(p.credits) }}</td>
-          <td class="sl-num">{{ fmt_num(p.price_cents) }}</td>
+          <td><input class="sl-input" style="width:110px" type="text" value="{{ p.name|e }}" data-field="name" maxlength="64"></td>
+          <td class="sl-num"><input class="sl-input" style="width:90px" type="number" min="1" value="{{ p.credits }}" data-field="credits"></td>
+          <td class="sl-num"><input class="sl-input" style="width:90px" type="number" min="0" value="{{ p.price_cents }}" data-field="price_cents"></td>
           <td>
             {% if p.active %}<span class="sl-badge sl-b-ok">生效中</span>
             {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
+            <button type="button" class="sl-btn pkg-toggle" data-pkg="{{ p.id }}" data-active="{{ 1 if p.active else 0 }}">{{ "下架" if p.active else "上架" }}</button>
           </td>
+          <td><button type="button" class="sl-btn sl-btn-primary pkg-save" data-pkg="{{ p.id }}">保存</button></td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="sl-dim">暂无积分包</td></tr>
+        <tr><td colspan="6" class="sl-dim">暂无积分包</td></tr>
       {% endfor %}
       </tbody>
     </table>

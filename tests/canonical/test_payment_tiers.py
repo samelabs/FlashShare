@@ -119,8 +119,8 @@ with db() as con:  # 写并提交
 _pc.catalog(refresh=True)  # 提交后刷 — 事务内 refresh 读不到本事务未提交值
 with db() as con:
     _seed_sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
-check("T1 sellable tiers (seed contract) == ['plus','pro']",
-      _seed_sellable == ["plus", "pro"], str(_seed_sellable))
+check("T1 种子档 plus/pro 均在 sellable (行世界: 运营建档可扩)",
+      set(["plus", "pro"]) <= set(_seed_sellable), str(_seed_sellable))
 
 # ═══ T2: arbitrary third active plan 不进入 sellable ═══
 _cur.execute(
@@ -130,8 +130,8 @@ _cur.execute(
     " on conflict (code) do nothing", (_ts, _ts))
 with db() as con:
     sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
-check("T2 第三 active plan 不进 sellable catalog (canonical_plans 只 plus/pro)",
-      "pt_business" not in sellable and set(sellable) <= {"plus", "pro"}, str(sellable))
+check("T2 权益未配的 active 行不进 sellable (pt_business 缺 benefits)",
+      "pt_business" not in sellable, str(sellable))
 
 # ═══ T3/T4: tier entitlements ═══
 plus_ent = resolve_from_membership({"member": True, "code": "plus"})
@@ -479,9 +479,10 @@ check("PG3 checkout API 拆分 (credits vs subscription)",
       and "def create_subscription_checkout(" in _creem_src
       and "custom_price" in _cred_blk and "custom_price" not in _subx_blk,
       f"cred={_cred_blk!r} sub={_subx_blk!r}")
-check("PG4 POST /samelabs/plans 创建能力已移除",
-      '@router.post("/samelabs/plans")' not in _samelabs_src
-      and "not_canonical_tier" in _samelabs_src)
+check("PG4 POST /samelabs/plans 后台建档 + free 行保护 + 权益值域 fail-closed",
+      '@router.post("/samelabs/plans")' in _samelabs_src
+      and "not_editable_tier" in _samelabs_src
+      and "EXPIRY_DAYS" in _samelabs_src and "DOWNLOAD_LIMITS" in _samelabs_src)
 check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       "def upgrade_subscription" in _creem_src
       and '"proration-charge-immediately", "proration-none"' in _creem_src

@@ -83,7 +83,7 @@
     <div class="topup-grid sub-grid">
       {% for pl in plans %}
       <div class="topup-item">
-        <strong class="topup-credits">+{{ pl.monthly_credits }}</strong>
+        <strong class="topup-credits">{{ pl.name }} · +{{ pl.monthly_credits }}</strong>
         <span class="sub-period" data-i18n="sub_per_period">{{ texts.sub_per_period }}</span>
         <span class="topup-price">{% if pl.ready %}${{ (pl.price_cents / 100)|round(0)|int }}<span class="sub-per">/{{ pl.period_days }}d</span>{% else %}{{ texts.sub_price_tbd }}{% endif %}</span>
         {% if not pl.ready %}
