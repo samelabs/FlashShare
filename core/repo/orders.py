@@ -130,12 +130,6 @@ def insert_package(con, code: str, name: str, credits: int,
 
 # ── plans (subscription tiers) ──
 
-def active_plans(con) -> list:
-    return con.execute(
-        "SELECT * FROM plans WHERE active ORDER BY sort_order, price_cents"
-    ).fetchall()
-
-
 def canonical_plans(con) -> list:
     """sellable membership catalog: plan_catalog.sellable_catalog 的行集
     (plans 行是唯一产品层事实源; 参数化, 不在 repo 复制业务 tier)。
@@ -318,7 +312,7 @@ def clear_pending_downgrade(con, user_id: int) -> None:
 def plan_by_product_id(con, product_id: str) -> Optional[dict]:
     """subscription.update: provider product → 本地唯一 plan。
 
-    只映射 governance.tiers 的 canonical tier codes (plus/pro) —
+    只映射 plan_catalog 的 tier 行 codes —
     effective product states = Free/Plus/Pro only。不要求 active=TRUE:
     已停售 canonical plan 的历史 subscription lifecycle 仍可解析。
     historical third-tier / unknown product → None (caller fail loud,

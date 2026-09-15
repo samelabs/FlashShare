@@ -5,8 +5,7 @@ commerce, monthly credits, entitlement benefits — lives in the row;
 this module is the only constructor of Tier objects in the codebase
 and the only sanctioned way to compare or look up tiers.
 
-Mechanism (kept from the retired governance.tiers/entitlements
-dictionaries, unchanged in semantics):
+Mechanism:
   - direction(a, b)  a.order - b.order; inputs MUST be Tier objects.
     Codes entering comparisons always come from plans-row lookups
     (by_product / by_id), so unknown codes are structurally

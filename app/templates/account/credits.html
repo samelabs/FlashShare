@@ -65,14 +65,16 @@
     <div class="acct-card-head">
       <h2 data-i18n="sub_title">{{ texts.sub_title }}</h2>
     </div>
-    {% if my_plan %}
+    {% set m = access.membership if access else None %}
+    {% if m %}
     <div class="sub-status">
-      <span class="sub-badge{% if my_plan.member %} on{% endif %}">{{ my_plan.name }}</span>
+      <span class="sub-badge{% if m.member %} on{% endif %}">{{ m.name }}</span>
       <span class="sub-meta">
-        {% if my_plan.member %}{{ texts.sub_until }} {{ fmt_ts(my_plan.renews_at) }}
-        {% else %}{{ my_plan.status }}{% endif %}
+        {% if m.member %}{{ texts.sub_until }} {{ fmt_ts(m.renews_at) }}
+        {% elif m.status == 'expired' %}<span data-i18n="sub_status_expired">{{ texts.sub_status_expired }}</span>
+        {% else %}<span data-i18n="sub_status_inactive">{{ texts.sub_status_inactive }}</span>{% endif %}
       </span>
-      {% if my_plan.cancel_scheduled_at %}<span class="sub-warn" data-i18n="sub_ends_no_renew">{{ texts.sub_ends_no_renew }}</span>{% endif %}
+      {% if m.cancel_scheduled_at %}<span class="sub-warn" data-i18n="sub_ends_no_renew">{{ texts.sub_ends_no_renew }}</span>{% endif %}
       {% if pending_downgrade %}<span class="sub-warn">{{ texts.sub_downgrade_scheduled.replace('{plan}', pending_downgrade.name).replace('{date}', fmt_ts(pending_downgrade.effective_at)) }}</span>{% endif %}
       {# plan/date 插值属服务端事实, 语言切换由整页刷新承载 (与 sub_until 同模式) #}
     </div>

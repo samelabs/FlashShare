@@ -497,8 +497,8 @@ async def account_credits(request: Request):
     # 的同一 access projection 读 (ctx 尚未构建, 此处先取 base 再传 extra)。
     from repo.orders import canonical_plans, pending_downgrade as pending_row
     from governance import plan_catalog
-    _base = _ctx_base(request)  # 含 my_plan (access projection alias)
-    my_plan = _base["my_plan"]
+    _base = _ctx_base(request)  # access projection 单次读
+    _membership = (_base.get("access") or {}).get("membership")
     with db() as con:
         pd = pending_row(con, user["id"])
         tiers = [t for t in plan_catalog.sellable_catalog()
@@ -516,8 +516,8 @@ async def account_credits(request: Request):
             pending = {"code": tgt.code, "name": tgt.name,
                        "effective_at": pd["effective_at"]}
     # 观看者当前档 (Tier 对象; 非会员为 None)
-    my = plan_catalog.by_code(my_plan["code"]) \
-        if my_plan and my_plan.get("member") else None
+    my = plan_catalog.by_code(_membership["code"]) \
+        if _membership and _membership.get("member") else None
     plans = []
     for t in tiers:
         row = rows_by_id.get(t.id)

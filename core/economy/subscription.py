@@ -440,7 +440,9 @@ def plan_of(user_id: int) -> dict | None:
     ts = now()
     live = d["status"] in ("active", "canceled", "past_due") and (d["renews_at"] or 0) > ts
     return {
-        "code": d["code"], "name": d["name"], "status": d["status"],
+        "code": d["code"], "name": d["name"],
+        "badge": d["name"].upper(),  # header 徽标文案 (行 name 派生, 数据驱动)
+        "status": d["status"],
         "renews_at": d["renews_at"],
         "cancel_scheduled_at": d["cancel_scheduled_at"],
         "member": live,

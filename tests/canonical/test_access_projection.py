@@ -335,8 +335,8 @@ class _AnonReq:
     state = type("S", (), {"lang": "en", "user": None})()
 try:
     _c = _wctx.ctx_base(_AnonReq())
-    check("WC-X2 匿名 context 不调用 project (access=None, my_plan=None)",
-          _c.get("access") is None and _c.get("my_plan") is None)
+    check("WC-X2 匿名 context 不调用 project (access=None)",
+          _c.get("access") is None)
 except RuntimeError:
     check("WC-X2 匿名 context 不调用 project", False, "anon raised")
 finally:
@@ -587,16 +587,16 @@ check('AP-W1 web_ctx 使用 project(user["id"]) 消费 projection',
 check("AP-W2 web_ctx 不 import economy.subscription / 不调 plan_of",
       "economy.subscription" not in _wctx_src and "plan_of" not in _wctx_code)
 check("AP-W3 web_ctx 无 plus policy 判断", '"plus"' not in _wctx_code)
-check('AP-W4 my_plan 明确来自 access["membership"]',
-      'access["membership"] if access else None' in _wctx_src)
+check('AP-W4 membership 唯一形态 access["membership"] (无别名)',
+      'my_plan' not in _wctx_src)
 check("AP-W5 credits 仍来自 spendable_balance (独立)",
       "spendable_balance" in _wctx_src)
 check("AP-W6 web_ctx 无 project 异常→None fallback",
       "except" not in _wctx_src.split("def ctx_base")[1].split("return {")[0])
 _hdr = open(_os.path.join(_REPO, "app", "templates", "partials", "header.html"), encoding="utf-8").read()
-check("AP-W7 header.html 不自行推导 membership (只读 my_plan)",
-      "plan_of" not in _hdr and "project" not in _hdr and "membership" not in _hdr
-      and "my_plan" in _hdr)
+check("AP-W7 header.html 不自行推导 membership (只读 access.membership)",
+      "plan_of" not in _hdr and "project" not in _hdr
+      and "access.membership" in _hdr)
 _pages_src = open(_os.path.join(_REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
 _home_blk = _pages_src.split("async def home")[1].split("async def ")[0]
 _home_code = "\n".join(l for l in _home_blk.split("\n") if not l.strip().startswith("#"))
