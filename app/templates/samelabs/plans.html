@@ -5,62 +5,93 @@
 <div class="sl-panel">
   <div class="sl-panel-head">
     <h2>订阅档位</h2>
-    <span class="sl-panel-sub">价格单位: 分 / 周期 · 绑定 Creem product + 定价后上架可售 · 权益未配的行不可售</span>
+    <span class="sl-panel-sub">点击档位配置定价、权益与上下架</span>
   </div>
-  <div class="sl-tablewrap">
-    <table class="sl-tbl">
-      <thead><tr><th>code</th><th>名称</th><th class="sl-num">周期价(分)</th><th class="sl-num">每期积分</th><th class="sl-num">周期天数</th><th>Creem product id</th><th class="sl-num">24h件数</th><th class="sl-num">24h容量(MB)</th><th>时效档(天)</th><th>下载档</th><th class="sl-num">排序</th><th>状态</th><th class="sl-num">订阅</th><th></th></tr></thead>
-      <tbody>
-      {% for p in plans %}
-        <tr data-plan="{{ p.id }}">
-          <td class="sl-mono">{{ p.code|e }}</td>
-          <td><input class="sl-input" style="width:80px" type="text" value="{{ p.name|e }}" data-field="name" maxlength="64"></td>
-          <td class="sl-num"><input class="sl-input" style="width:80px" type="number" min="0" value="{{ p.price_cents }}" data-field="price_cents"></td>
-          <td class="sl-num"><input class="sl-input" style="width:80px" type="number" min="0" value="{{ p.monthly_credits }}" data-field="monthly_credits"></td>
-          <td class="sl-num"><input class="sl-input" style="width:64px" type="number" min="1" value="{{ p.period_days }}" data-field="period_days"></td>
-          <td><input class="sl-input sl-mono" style="width:150px" type="text" value="{{ p.creem_product_id or '' }}" placeholder="prod_…" data-field="creem_product_id" maxlength="64"></td>
-          <td class="sl-num"><input class="sl-input" style="width:70px" type="number" min="0" value="{{ p.ingress_files_24h }}" data-field="ingress_files_24h"></td>
-          <td class="sl-num"><input class="sl-input" style="width:90px" type="number" min="0" value="{{ (p.ingress_bytes_24h // 1048576) }}" data-field="ingress_mb"></td>
-          <td><input class="sl-input sl-mono" style="width:90px" type="text" value="{{ p.expiry_days|join(',') }}" placeholder="1,3,7,30" data-field="expiry_days"></td>
-          <td><input class="sl-input sl-mono" style="width:120px" type="text" value="{{ p.download_limits|join(',') }}" placeholder="1,10,50,100,200,1000" data-field="download_limits"></td>
-          <td class="sl-num"><input class="sl-input" style="width:56px" type="number" min="0" value="{{ p.sort_order }}" data-field="sort_order"></td>
-          <td>
-            {% if p.active %}<span class="sl-badge sl-b-ok">生效中</span>
-            {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
-            <button type="button" class="sl-btn plan-toggle" data-plan="{{ p.id }}" data-active="{{ 1 if p.active else 0 }}">{{ "下架" if p.active else "上架" }}</button>
-          </td>
-          <td class="sl-num">
-            {{ p.member_count }} 当前{% if p.pending_count %} · {{ p.pending_count }} 排期{% endif %}
-          </td>
-          <td><button type="button" class="sl-btn sl-btn-primary plan-save" data-plan="{{ p.id }}">保存</button></td>
-        </tr>
-      {% else %}
-        <tr><td colspan="14" class="sl-dim">暂无档位</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+
+  <div class="tier-list">
+    {% for p in plans %}
+    <button type="button" class="tier-card" data-plan="{{ p.id }}">
+      <div class="tier-card-main">
+        <span class="tier-card-name">{{ p.name|e }}</span>
+        <span class="tier-card-code sl-mono sl-dim">{{ p.code|e }}</span>
+      </div>
+      <div class="tier-card-facts">
+        <span class="tier-fact{% if not p.price_cents or not p.creem_product_id %} miss{% endif %}">
+          {% if p.price_cents %}${{ '%.0f'|format(p.price_cents / 100) }}{% if not p.creem_product_id %} · 未绑品{% endif %}{% else %}未定价{% endif %}
+        </span>
+        <span class="tier-fact{% if not p.expiry_days %} miss{% endif %}">{{ '+' ~ p.monthly_credits ~ ' 积分/' ~ p.period_days ~ '天' }}</span>
+        <span class="tier-fact{% if not p.expiry_days or not p.download_limits %} miss{% endif %}">
+          {% if p.expiry_days and p.download_limits %}权益已配{% else %}权益未配{% endif %}
+        </span>
+        <span class="tier-fact sl-dim">{{ p.member_count }} 订阅{% if p.pending_count %} · {{ p.pending_count }} 排期{% endif %}</span>
+      </div>
+      {% if p.active %}<span class="sl-badge sl-b-ok tier-card-state">生效中</span>
+      {% else %}<span class="sl-badge sl-b-muted tier-card-state">已停用</span>{% endif %}
+    </button>
+    {% else %}
+    <p class="sl-dim" style="padding:16px">暂无档位</p>
+    {% endfor %}
   </div>
-  <p class="sl-dim" style="margin:10px 2px 0">free 行为基础档不在此列; 权益枚举值域: 时效 {1,3,7,30} 天 / 下载 {1,10,50,100,200,1000}, 越界保存被拒。product 未绑或价格 0 的行不可售。</p>
 </div>
 
 <div class="sl-panel">
   <div class="sl-panel-head">
     <h2>新建档位</h2>
-    <span class="sl-panel-sub">code 创建后不可改; 权益可后补, 未配齐前不可售</span>
+    <span class="sl-panel-sub">code 创建后不可改 · 权益可后补, 未配齐前不可售</span>
   </div>
-  <form class="sl-form" id="planForm">
-    <input class="sl-input sl-mono" type="text" id="planCode" placeholder="code 如 business" maxlength="32" required>
-    <input class="sl-input" type="text" id="planName" placeholder="名称" maxlength="64" required>
-    <input class="sl-input" type="number" id="planCredits" placeholder="每期积分" min="0" style="flex:0 1 100px" required>
-    <input class="sl-input" type="number" id="planPrice" placeholder="周期价(分)" min="0" style="flex:0 1 100px" required>
-    <input class="sl-input" type="number" id="planPeriod" placeholder="周期天数" min="1" value="30" style="flex:0 1 100px">
-    <input class="sl-input sl-mono" type="text" id="planProduct" placeholder="Creem product id 可后补" maxlength="64">
-    <input class="sl-input sl-mono" type="text" id="planExpiry" placeholder="时效档 如 1,3,7,30">
-    <input class="sl-input sl-mono" type="text" id="planDownloads" placeholder="下载档 如 1,10,50,100,200,1000">
-    <button type="submit" class="sl-btn sl-btn-primary" id="planCreate">创建档位</button>
-  </form>
+  <div class="tier-list">
+    <button type="button" class="tier-card tier-card-add" id="tierAdd">
+      <span class="tier-card-main">＋ 新建订阅档位</span>
+      <span class="tier-card-facts"><span class="tier-fact sl-dim">定义 code、积分与定价</span></span>
+    </button>
+  </div>
+</div>
+
+<div class="modal hidden" id="tierModal">
+  <div class="modal-panel tier-editor">
+    <div class="tier-editor-head">
+      <h3 id="tierEditorTitle">档位配置</h3>
+      <span class="sl-badge sl-b-muted sl-mono" id="tierEditorCode"></span>
+      <button type="button" class="modal-close-btn" id="tierModalClose" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="tier-editor-body">
+      <div class="tier-fgroup">
+        <div class="tier-fgroup-title">销售</div>
+        <label class="tier-field"><span>周期价 (分)</span><input class="sl-input" type="number" min="0" id="f_price_cents"></label>
+        <label class="tier-field"><span>Creem product id</span><input class="sl-input sl-mono" type="text" id="f_creem_product_id" placeholder="prod_…" maxlength="64"></label>
+        <label class="tier-field tier-field-inline"><span>上架销售</span><input type="checkbox" id="f_active"></label>
+      </div>
+
+      <div class="tier-fgroup">
+        <div class="tier-fgroup-title">商品</div>
+        <label class="tier-field tier-field-create"><span>code (不可改)</span><input class="sl-input sl-mono" type="text" id="f_code" maxlength="32" placeholder="如 business"></label>
+        <label class="tier-field"><span>名称</span><input class="sl-input" type="text" id="f_name" maxlength="64"></label>
+        <label class="tier-field"><span>每期积分</span><input class="sl-input" type="number" min="0" id="f_monthly_credits"></label>
+        <label class="tier-field"><span>周期天数</span><input class="sl-input" type="number" min="1" id="f_period_days"></label>
+        <label class="tier-field"><span>排序</span><input class="sl-input" type="number" min="0" id="f_sort_order"></label>
+      </div>
+
+      <div class="tier-fgroup">
+        <div class="tier-fgroup-title">权益 (配齐才可售)</div>
+        <label class="tier-field"><span>24h 上传件数</span><input class="sl-input" type="number" min="0" id="f_ingress_files_24h"></label>
+        <label class="tier-field"><span>24h 容量 (MB)</span><input class="sl-input" type="number" min="0" id="f_ingress_mb"></label>
+        <label class="tier-field"><span>时效档 (逗号分隔)</span><input class="sl-input sl-mono" type="text" id="f_expiry_days" placeholder="1,3,7,30"></label>
+        <label class="tier-field"><span>下载档 (逗号分隔)</span><input class="sl-input sl-mono" type="text" id="f_download_limits" placeholder="1,10,50,100,200,1000"></label>
+        <p class="sl-dim tier-fgroup-note">值域: 时效 {1,3,7,30} 天 · 下载 {1,10,50,100,200,1000} — 越界保存被拒</p>
+      </div>
+    </div>
+
+    <div class="tier-editor-foot">
+      <span class="sl-dim" id="tierEditorHint"></span>
+      <button type="button" class="sl-btn sl-btn-primary" id="tierSave">保存</button>
+    </div>
+  </div>
 </div>
 
 {% endblock %}
 
-{% block script %}<script src="/static/pages/samelabs_plans.js?v={{ pages_version }}"></script>{% endblock %}
+{% block script %}
+<script>window.__SL_PLANS__ = {{ plans|tojson }};</script>
+<script src="/static/pages/samelabs_plans.js?v={{ pages_version }}"></script>
+{% endblock %}

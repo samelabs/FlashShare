@@ -334,3 +334,49 @@ body.sl-body {
 @media (max-width: 620px) {
   .sl-stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── 档位管理: 卡片列表 + 配置抽屉 ── */
+.tier-list { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.tier-card {
+  position: relative; display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px; text-align: left; cursor: pointer;
+  background: var(--sl-surface); border: 1px solid var(--sl-line);
+  border-radius: var(--r-md); transition: border-color .15s ease, background .15s ease;
+}
+.tier-card:hover { border-color: var(--accent); }
+.tier-card-main { display: flex; align-items: baseline; gap: 10px; }
+.tier-card-name { font-weight: 700; font-size: 15px; }
+.tier-card-code { font-size: 12px; }
+.tier-card-facts { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.tier-fact { font-size: 12.5px; color: var(--sl-dim, var(--muted)); }
+.tier-fact.miss { color: var(--accent); font-weight: 600; }
+.tier-card-state { position: absolute; top: 12px; right: 14px; }
+.tier-card-add { align-items: center; border-style: dashed; color: var(--muted); }
+.tier-card-add:hover { color: inherit; }
+
+.tier-editor { width: min(520px, 100%); }
+.tier-editor-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.tier-editor-head h3 { margin: 0; font-size: 16px; }
+.modal-close-btn {
+  margin-left: auto; border: none; background: none; cursor: pointer;
+  font-size: 15px; color: var(--muted); padding: 4px 8px; border-radius: var(--r-sm);
+}
+.modal-close-btn:hover { background: var(--line); color: inherit; }
+.tier-editor-body { display: flex; flex-direction: column; gap: 14px; }
+.tier-fgroup { border: 1px solid var(--sl-line); border-radius: var(--r-md); padding: 12px; }
+.tier-fgroup-title { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 10px; }
+.tier-field { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tier-field:last-child { margin-bottom: 0; }
+.tier-field > span { flex: 0 0 130px; font-size: 13px; color: var(--muted); }
+.tier-field .sl-input { flex: 1; }
+.tier-field-inline > span { flex: 1; }
+.tier-fgroup-note { margin: 8px 0 0; font-size: 11.5px; }
+.tier-editor-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.tier-editor-foot .sl-btn-primary { margin-left: auto; }
+@media (max-width: 560px) {
+  .tier-field { flex-direction: column; align-items: stretch; gap: 4px; }
+  .tier-field > span { flex: none; }
+  .tier-field-inline { flex-direction: row; align-items: center; }
+}
+
+.tier-field-create.hidden { display: none; }
