@@ -14,7 +14,7 @@
 <div class="sl-panel">
   <div class="sl-tablewrap">
     <table class="sl-tbl">
-      <thead><tr><th>ID</th><th>用户</th><th>状态</th><th class="sl-num">余额</th><th class="sl-num">成功调用</th><th>注册</th><th>最近登录</th><th>调整积分</th></tr></thead>
+      <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>会员</th><th class="sl-num">余额</th><th class="sl-num">成功调用</th><th>注册</th><th>最近登录</th><th>调整积分</th></tr></thead>
       <tbody>
       {% for u in users %}
         <tr data-uid="{{ u.id }}">
@@ -35,6 +35,12 @@
           <td>
             {% if u.status == 'samelabs' or u.status == 'admin' %}<span class="sl-badge sl-b-purple">{{ u.status|e }}</span>
             {% else %}<span class="sl-badge sl-b-info">{{ u.status|e }}</span>{% endif %}
+          </td>
+          <td>
+            {% if u.plan_name %}
+            <span class="sl-badge {{ 'sl-b-ok' if u.member_status == 'active' else 'sl-b-muted' }}">{{ u.plan_name|e }}</span>
+            {% if u.renews_at %}<span class="sl-dim" style="font-size:11px">{{ fmt_ts(u.renews_at) }}</span>{% endif %}
+            {% else %}<span class="sl-dim">—</span>{% endif %}
           </td>
           <td class="sl-num u-balance">{{ fmt_num(u.balance) }}</td>
           <td class="sl-num">{{ fmt_num(u.calls_ok) }}</td>

@@ -9,7 +9,7 @@
   </div>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
-      <thead><tr><th>code</th><th>名称</th><th class="sl-num">周期价(分)</th><th class="sl-num">每期积分</th><th class="sl-num">周期天数</th><th>Creem product id</th><th class="sl-num">24h件数</th><th class="sl-num">24h容量(MB)</th><th>时效档(天)</th><th>下载档</th><th class="sl-num">排序</th><th>状态</th><th></th></tr></thead>
+      <thead><tr><th>code</th><th>名称</th><th class="sl-num">周期价(分)</th><th class="sl-num">每期积分</th><th class="sl-num">周期天数</th><th>Creem product id</th><th class="sl-num">24h件数</th><th class="sl-num">24h容量(MB)</th><th>时效档(天)</th><th>下载档</th><th class="sl-num">排序</th><th>状态</th><th class="sl-num">订阅</th><th></th></tr></thead>
       <tbody>
       {% for p in plans %}
         <tr data-plan="{{ p.id }}">
@@ -29,10 +29,13 @@
             {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
             <button type="button" class="sl-btn plan-toggle" data-plan="{{ p.id }}" data-active="{{ 1 if p.active else 0 }}">{{ "下架" if p.active else "上架" }}</button>
           </td>
+          <td class="sl-num">
+            {{ p.member_count }} 当前{% if p.pending_count %} · {{ p.pending_count }} 排期{% endif %}
+          </td>
           <td><button type="button" class="sl-btn sl-btn-primary plan-save" data-plan="{{ p.id }}">保存</button></td>
         </tr>
       {% else %}
-        <tr><td colspan="13" class="sl-dim">暂无档位</td></tr>
+        <tr><td colspan="14" class="sl-dim">暂无档位</td></tr>
       {% endfor %}
       </tbody>
     </table>

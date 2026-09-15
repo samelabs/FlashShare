@@ -46,8 +46,14 @@ def users_overview(con, q: Optional[str]) -> list:
                u.last_login_at, u.avatar_url,
                COALESCE((SELECT SUM(delta) FROM ledger l WHERE l.user_id=u.id), 0) balance,
                (SELECT COUNT(*) FROM tool_calls tc WHERE tc.user_id=u.id
-                  AND tc.status='ok') calls_ok
+                  AND tc.status='ok') calls_ok,
+               m.plan_name, m.member_status, m.renews_at
         FROM users u
+        LEFT JOIN (
+            SELECT mm.user_id, p.name AS plan_name, mm.status AS member_status,
+                   mm.renews_at
+            FROM memberships mm JOIN plans p ON p.id = mm.plan_id
+        ) m ON m.user_id = u.id
     """
     if q:
         return con.execute(

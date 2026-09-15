@@ -156,7 +156,21 @@ async def samelabs_plans(request: Request):
     from repo.orders import all_plans
     with db() as con:
         rows = [r for r in all_plans(con) if r["code"] != "free"]  # 管理面: 全部 paid 行
-    ctx = _ctx(request, user, plans=[dict(r) for r in rows], fmt_num=_fmt_num, page="plans")
+        # 订阅计数: current memberships per plan (含 pending 排期目标) —
+        # 下架/改配前的事实依据
+        counts = {r["plan_id"]: int(r["n"]) for r in con.execute(
+            "SELECT plan_id, COUNT(*) n FROM memberships"
+            " WHERE status IN ('active','past_due','canceled') GROUP BY plan_id")}
+        pend = {r["target_plan_id"]: int(r["n"]) for r in con.execute(
+            "SELECT target_plan_id, COUNT(*) n FROM pending_downgrades"
+            " GROUP BY target_plan_id")}
+    plans = []
+    for r in rows:
+        d = dict(r)
+        d["member_count"] = int(counts.get(r["id"], 0))
+        d["pending_count"] = int(pend.get(r["id"], 0))
+        plans.append(d)
+    ctx = _ctx(request, user, plans=plans, fmt_num=_fmt_num, page="plans")
     return templates.TemplateResponse(request, "samelabs/plans.html", ctx)
 
 
