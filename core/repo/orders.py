@@ -87,7 +87,8 @@ def package_credits(con, package_id: int) -> Optional[dict]:
 
 
 def all_plans(con) -> list:
-    return con.execute("SELECT * FROM plans ORDER BY price_cents").fetchall()
+    return con.execute(
+        "SELECT * FROM plans ORDER BY sort_order, id").fetchall()
 
 
 def insert_plan(con, code: str, name: str, monthly_credits: int,

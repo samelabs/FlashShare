@@ -472,18 +472,48 @@ _SCHEMA_SQL = (
         ALTER TABLE packages RENAME COLUMN creem_product_id TO legacy_creem_product_id;
       END IF;
     END $$""",
-    # canonical paid tiers 种子 (幂等; creem_product_id 留空待运营绑定,
-    # 未配置 → 不可售)。plus 历史行 monthly_credits 修正为 canonical 100
-    # (生产无付费用户, 无 grant 影响面)。
+    # ── plan entitlements 数据化: plans 行承载 Tier 全量定义 ──
+    # 权益列 (值 = 迁移时点的 entitlements 代码字典快照, 一次性搬入;
+    # 之后 plans 行是唯一事实源, 运营经 samelabs PATCH 配置)。
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS ingress_files_24h INTEGER NOT NULL DEFAULT 0""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS ingress_bytes_24h BIGINT NOT NULL DEFAULT 0""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS expiry_days INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS download_limits INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS badge_key TEXT""",
+    # tier rows (幂等 INSERT-ONLY: seed 只保证行存在, 数值归运营/迁移,
+    # 启动永不覆盖 — 历史环境的已配置值必须存活)。
+    # free = 无 paid Membership 的基础档: 不可售 (无 product), credits 0。
     """INSERT INTO plans (code, name, monthly_credits, period_days, period,
-                         price_cents, sort_order, active, created_at, updated_at)
-       VALUES ('plus', 'Plus', 100, 30, 'monthly', 0, 0, TRUE,
+                         price_cents, currency, sort_order, active, badge_key,
+                         ingress_files_24h, ingress_bytes_24h, expiry_days, download_limits,
+                         created_at, updated_at)
+       VALUES ('free', 'Free', 0, 30, 'monthly', 0, 'USD', 0, TRUE, 'tier_free',
+               100, 1073741824, ARRAY[1,3,7], ARRAY[1,10,50,100,200],
                EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT),
-              ('pro', 'Pro', 500, 30, 'monthly', 0, 1, TRUE,
+              ('plus', 'Plus', 100, 30, 'monthly', 0, 'USD', 1, TRUE, 'tier_plus',
+               500, 5368709120, ARRAY[1,3,7,30], ARRAY[1,10,50,100,200,1000],
+               EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT),
+              ('pro', 'Pro', 500, 30, 'monthly', 0, 'USD', 2, TRUE, 'tier_pro',
+               2000, 21474836480, ARRAY[1,3,7,30], ARRAY[1,10,50,100,200,1000],
                EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
-       ON CONFLICT (code) DO UPDATE SET
-         name = EXCLUDED.name,
-         monthly_credits = EXCLUDED.monthly_credits""",
+       ON CONFLICT (code) DO NOTHING""",
+    # 迁移: 已存在的行补权益值 (只填空壳: 权益列仍为默认值0/空的行)。
+    # DO NOTHING 语义下老环境的 plus/pro 行缺新列值 → 此处补齐一次。
+    """UPDATE plans SET badge_key='tier_free',
+               ingress_files_24h=100, ingress_bytes_24h=1073741824,
+               expiry_days=ARRAY[1,3,7], download_limits=ARRAY[1,10,50,100,200],
+               updated_at=EXTRACT(EPOCH FROM now())::BIGINT
+       WHERE code='free' AND badge_key IS NULL""",
+    """UPDATE plans SET badge_key='tier_plus',
+               ingress_files_24h=500, ingress_bytes_24h=5368709120,
+               expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000],
+               updated_at=EXTRACT(EPOCH FROM now())::BIGINT
+       WHERE code='plus' AND badge_key IS NULL""",
+    """UPDATE plans SET badge_key='tier_pro',
+               ingress_files_24h=2000, ingress_bytes_24h=21474836480,
+               expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000],
+               updated_at=EXTRACT(EPOCH FROM now())::BIGINT
+       WHERE code='pro' AND badge_key IS NULL""",
     # scheduled downgrade fact (Pro → Plus next renewal): Creem 官方 API
     # 无原生 schedule product change — application-level pending fact,
     # 周期边界由 reconcile/事件收敛时消费。
