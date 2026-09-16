@@ -101,10 +101,10 @@ def db():
 
 
 # ── Schema ───────────────────────────────────────────────
-# Full PostgreSQL schema: 4 legacy tables (structure-equivalent ports of
-# the SQLite originals) + 8 platform tables (economics core). All
-# statements are CREATE ... IF NOT EXISTS — safe on every boot.
-# Column-by-column rationale: docs/plan/A2-ddl-draft.md (definitive).
+# The current schema, stated once. Every column of every table lives in
+# its CREATE TABLE statement; boot does CREATE IF NOT EXISTS + current
+# bootstrap INSERTs only — it never repairs, renames or backfills a
+# retired schema shape.
 
 _SCHEMA_SQL = (
     # ── users ──
@@ -123,6 +123,7 @@ _SCHEMA_SQL = (
       x_avatar_url   TEXT,
       x_profile_url  TEXT,
       status         TEXT NOT NULL DEFAULT 'active',
+      payout_channel TEXT,
       created_at     BIGINT NOT NULL,
       last_login_at  BIGINT NOT NULL,
       updated_at     BIGINT NOT NULL DEFAULT 0
@@ -257,8 +258,6 @@ _SCHEMA_SQL = (
     """,
     # Invocation identity is user + tool + client_ref. A running row owns the
     # execution; an ok row owns replay. Failed attempts leave the key reusable.
-    "DROP INDEX IF EXISTS tool_calls_client_ref_ok_idx",
-    "DROP INDEX IF EXISTS tool_calls_client_ref_idx",
     """
     CREATE UNIQUE INDEX IF NOT EXISTS tool_calls_client_ref_live_idx
       ON tool_calls(user_id, tool_id, client_ref)
@@ -297,6 +296,11 @@ _SCHEMA_SQL = (
       wechat_price_id  TEXT,
       sort_order       INT NOT NULL DEFAULT 0,
       active           BOOLEAN NOT NULL DEFAULT TRUE,
+      badge_key        TEXT,
+      ingress_files_24h INTEGER NOT NULL DEFAULT 0,
+      ingress_bytes_24h BIGINT NOT NULL DEFAULT 0,
+      expiry_days      INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      download_limits  INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
       created_at       BIGINT NOT NULL,
       updated_at       BIGINT NOT NULL
     )
@@ -413,40 +417,7 @@ _SCHEMA_SQL = (
     """
     CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)
     """,
-    # users.payout_channel (withdrawal destination, operator-read) — additive
-    "ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_channel TEXT",
     # ── subscription (plans/memberships) ──
-    # 工具简介 (tool modes v3 补: 名称/简介/模式/使用 — desc 与 label 同形 str|dict)
-    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS desc_json TEXT",
-    # legacy presets 通道退场: params_json 是唯一参数声明 (存量行已确认全空)
-    "ALTER TABLE platform_tools DROP COLUMN IF EXISTS presets_json",
-
-    # 推荐与排序 (管理后台遴选的权威全局工具呈现顺序)
-    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0",
-    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT FALSE",
-    "ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS pass_through BOOLEAN NOT NULL DEFAULT FALSE",
-    "ALTER TABLE platform_tools ALTER COLUMN icon SET DEFAULT 'wand'",
-    "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period_days INT NOT NULL DEFAULT 30",
-    "ALTER TABLE plans ADD COLUMN IF NOT EXISTS period TEXT NOT NULL DEFAULT 'monthly'",
-    # 列名对齐 Creem 真实合同 {"product_id": ...}: creem_price_id →
-    # creem_product_id (幂等; 旧库值原样保留)
-    """DO $$
-    BEGIN
-      IF EXISTS (SELECT 1 FROM information_schema.columns
-                 WHERE table_name='plans' AND column_name='creem_price_id')
-         AND NOT EXISTS (SELECT 1 FROM information_schema.columns
-                 WHERE table_name='plans' AND column_name='creem_product_id') THEN
-        ALTER TABLE plans RENAME COLUMN creem_price_id TO creem_product_id;
-      END IF;
-    END $$""",
-    # ── plan entitlements 数据化: plans 行承载 Tier 全量定义 ──
-    # 权益列 (值 = 迁移时点的 entitlements 代码字典快照, 一次性搬入;
-    # 之后 plans 行是唯一事实源, 运营经 samelabs PATCH 配置)。
-    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS ingress_files_24h INTEGER NOT NULL DEFAULT 0""",
-    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS ingress_bytes_24h BIGINT NOT NULL DEFAULT 0""",
-    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS expiry_days INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]""",
-    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS download_limits INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]""",
-    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS badge_key TEXT""",
     # tier rows (幂等 INSERT-ONLY: seed 只保证行存在, 数值归运营/迁移,
     # 启动永不覆盖 — 历史环境的已配置值必须存活)。
     # free = 无 paid Membership 的基础档: 不可售 (无 product), credits 0。
@@ -461,18 +432,6 @@ _SCHEMA_SQL = (
                2000, 21474836480, ARRAY[1,3,7,30], ARRAY[1,10,50,100,200,1000],
                EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
        ON CONFLICT (code) DO NOTHING""",
-    # 迁移: 已存在的行补权益值 (只填空壳: 权益列仍为默认值0/空的行)。
-    # DO NOTHING 语义下老环境的 plus/pro 行缺新列值 → 此处补齐一次。
-    """UPDATE plans SET badge_key='tier_plus',
-               ingress_files_24h=500, ingress_bytes_24h=5368709120,
-               expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000],
-               updated_at=EXTRACT(EPOCH FROM now())::BIGINT
-       WHERE code='plus' AND badge_key IS NULL""",
-    """UPDATE plans SET badge_key='tier_pro',
-               ingress_files_24h=2000, ingress_bytes_24h=21474836480,
-               expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000],
-               updated_at=EXTRACT(EPOCH FROM now())::BIGINT
-       WHERE code='pro' AND badge_key IS NULL""",
     # ── Tier 不变量 (race-safe, DB 层兜底) ──
     # 1) paid tier rank 严格全序: 两个不同 paid tier 不得共享 sort_order
     #    (direction = order 差; 同序 = direction 0 = 不可比)。free 与最低
@@ -540,16 +499,7 @@ def init_db() -> None:
                     EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
             ON CONFLICT (code) DO NOTHING
             """, (DAILY_UPLOADS, DAILY_BYTES))
-        # 历史空壳 free 行 (badge_key NULL) 补齐一次 — 数值同样取当前 env
-        con.execute(
-            """
-            UPDATE plans SET badge_key='tier_free',
-                   ingress_files_24h=%s, ingress_bytes_24h=%s,
-                   expiry_days=ARRAY[1,3,7], download_limits=ARRAY[1,10,50,100,200],
-                   updated_at=EXTRACT(EPOCH FROM now())::BIGINT
-            WHERE code='free' AND badge_key IS NULL
-            """, (DAILY_UPLOADS, DAILY_BYTES))
-        # Routine cleanup — same behaviour as the SQLite edition
+        # Routine cleanup
         con.execute("DELETE FROM oauth_states WHERE expires_at < %s", (ts,))
         con.execute("DELETE FROM sessions WHERE expires_at < %s", (ts,))
         # Quota facts only serve the rolling 24h window (queries read

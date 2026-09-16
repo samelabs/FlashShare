@@ -84,17 +84,46 @@ def seed_from_registry() -> dict:
 def _canonical_accept(tokens) -> list | None:
     """accept_json 行 → canonical extension token list (4C-2)。
 
-    Web/Tool Page/API/MCP 看到的 accept 必须是精确 extension contract。
-    存量行含非 canonical token (如历史 MIME) 时不 500、不猜格式 —
-    安全 fallback 原样保留 token。"""
-    if not tokens:
+    Stored contract: None = any / non-empty canonical ext list. Anything
+    else (empty list, MIME token, unknown token, bare string) is an
+    INVARIANT VIOLATION — raised, never silently projected."""
+    if tokens is None:
         return None
     from governance.formats import extensions_for_accept
-    try:
-        canon = extensions_for_accept(tokens)
-        return sorted(canon) if canon else None
-    except (KeyError, TypeError):
-        return sorted(str(t) for t in tokens if t)
+    canon = extensions_for_accept(tokens)  # typed raise on invalid
+    return sorted(canon) if canon else None
+
+
+def validate_catalog_rows() -> None:
+    """Startup invariant: every platform_tools row's stored accept must be
+    the current contract (NULL = any, or non-empty canonical ext list).
+    Violation aborts startup — catalog projection never guesses."""
+    from governance.formats import extensions_for_accept
+    with db() as con:
+        rows = con.execute(
+            "select tool_key, accept_json from platform_tools").fetchall()
+    for r in rows:
+        raw = r["accept_json"]
+        if raw is None or raw == "":
+            continue
+        try:
+            tokens = json.loads(raw)
+        except (TypeError, ValueError):
+            raise RuntimeError(
+                f"catalog invariant: tool {r['tool_key']} accept_json is "
+                f"not valid JSON (stored contract violation)") from None
+        if tokens is None:
+            continue
+        try:
+            canon = extensions_for_accept(tokens)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"catalog invariant: tool {r['tool_key']} accept_json "
+                f"violates the stored contract ({exc})") from None
+        if canon is None:
+            raise RuntimeError(
+                f"catalog invariant: tool {r['tool_key']} accept_json is "
+                f"empty/any-shaped but non-null")
 
 
 def is_official_id(tool_id: str) -> bool:

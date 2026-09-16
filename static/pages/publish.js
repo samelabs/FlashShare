@@ -11,7 +11,7 @@ const _curLang = () => (document.documentElement.lang || "en").slice(0, 2);
 // ── 场景格式族 + exact formats 勾选器 (4C-2: family=taxonomy, accept=exact
 // executable contract)。唯一事实源 = 服务端注入 window.__FORMAT_FAMILIES__,
 // 派生自 governance/formats.py; 本文件不维护任何 ext/MIME 镜像 ──
-const FORMAT_MANIFEST = window.__FORMAT_FAMILIES__ || { order: [], families: {}, mime_exts: {} };
+const FORMAT_MANIFEST = window.__FORMAT_FAMILIES__ || { order: [], families: {} };
 const FAM_KEYS = FORMAT_MANIFEST.order;
 const _famI18n = k => "family_" + k;
 const _famExts = k => (FORMAT_MANIFEST.families[k]?.exts) || [];
@@ -25,7 +25,7 @@ let selectedExts = new Set();
 
 function renderFamGrid(selFam, selExts, isCreate) {
   // isCreate: 新建态默认首族 (image) 且全选; 编辑态按回填数据;
-  // 编辑遇到完全未知 legacy accept → selFam=null 受控空态 (不默认 image)。
+  // 编辑遇到族外 accept token → selFam=null 受控空态 (不默认 image)。
   if (isCreate) {
     selFam = FAM_KEYS[0];
     selExts = _famExts(selFam);
@@ -52,7 +52,7 @@ function renderExtGrid() {
 function updateFamSummary() {
   const hint = document.getElementById("famHint");
   if (!selectedFam) {
-    // 受控空态: 未知 legacy accept, 必须由用户明确选族, 禁止静默覆盖
+    // 受控空态: 族外 accept token, 必须由用户明确选族, 禁止静默覆盖
     hint.textContent = "";
     return;
   }
@@ -65,34 +65,26 @@ function collectFamilies() {
 function collectAccept() {
   return [...selectedExts].sort();
 }
-// family inference: token 是 MIME → family.mimes 匹配; token 是 ".pdf" 这类
-// extension → family.exts 匹配 (canonical 与 legacy 双兼容)。
+// family inference: token 是 ".pdf" 这类 canonical extension → family.exts
+// 匹配。stored accept 只有 ext token 一种格式。
 function famKeyFromAccept(tokens) {
   const fams = new Set();
   (tokens || []).forEach(tok => {
     const t = String(tok || "").toLowerCase();
+    if (!t.startsWith(".")) return;
     for (const k of FAM_KEYS) {
       const f = FORMAT_MANIFEST.families[k];
-      if (!f) continue;
-      if (t.startsWith(".")) {
-        if (f.exts.includes(t)) fams.add(k);
-      } else if (f.mimes.includes(t)) {
-        fams.add(k);
-      }
+      if (f && f.exts.includes(t)) fams.add(k);
     }
   });
   return [...fams];
 }
-// accept tokens → canonical ext 集合 (编辑回填 UI 映射): ext token 直接保留;
-// 历史 MIME 行经 manifest.mime_exts 精确展开为 ext 全选供编辑。
+// accept tokens → canonical ext 集合 (编辑回填)。
 function extsFromAccept(tokens) {
-  const mimeExts = FORMAT_MANIFEST.mime_exts || {};
   const out = new Set();
   (tokens || []).forEach(tok => {
     const t = String(tok || "").toLowerCase();
-    if (!t) return;
     if (t.startsWith(".")) out.add(t);
-    else (mimeExts[t] || []).forEach(e => out.add(e));
   });
   return [...out].sort();
 }
@@ -370,7 +362,7 @@ async function submit() {
     }
   }
   const isEditPatch = !!_editId;   // Web PATCH: 空 desc = 显式删除当前 locale
-  // 4C-2: 受控空态 (未知 legacy accept) / 取消到 0 个 exact format → 拦截,
+  // 4C-2: 受控空态 (族外 accept token) / 取消到 0 个 exact format → 拦截,
   // 禁止在未明确选择时保存覆盖原 contract。
   if (!selectedFam || collectAccept().length === 0) {
     showErrors({ accept: "bad_format_family" });
@@ -433,7 +425,7 @@ function refill(t) {
   document.getElementById("fToolId").readOnly = true;      // id immutable
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
-  // 4C-2 编辑回填: 历史 MIME 行经 manifest.mime_exts 精确转 ext;
+  // 4C-2 编辑回填:
   // 完全未知 accept → famKey 为空 → 受控空态 (不默认 image, 不覆盖原声明)。
   const accExts = extsFromAccept(t.accept);
   const fams = famKeyFromAccept(t.accept);

@@ -46,7 +46,7 @@ def _check_localized(value, max_len: int, required: bool) -> str | dict | None:
     """LocalizedText canonical shape 校验。返回归一化值。
 
     str: 非空且 <= max_len; dict: 非空且每值为非空 str <= max_len。
-    required=False 时 None 通过。错误码沿用 bad_label (API 兼容)。
+    required=False 时 None 通过。错误码 = bad_label (label/desc 共用公开码)。
     """
     if value is None:
         if required:
@@ -65,10 +65,12 @@ def _check_localized(value, max_len: int, required: bool) -> str | dict | None:
 
 
 def _normalize_accept(accept) -> Optional[list]:
-    """canonical accept: None → None; 非 list/tuple/空 → bad_accept;
-    每个元素必须是 lowercase ext 且 ∈ formats.VOCAB_EXTS;
-    归一化为 sorted unique list。legacy MIME 兼容属 source/read adapter,
-    不属于 canonical validator。"""
+    """Stored accept contract, single shape pair:
+      None  → any platform-whitelisted format (explicit "any"; used by
+              current pass-through tools like share / zip_pack)
+      list  → non-empty canonical lowercase ext tokens ∈ VOCAB_EXTS,
+              normalized to a sorted unique list
+    Empty list / MIME token / unknown token / bare string → bad_accept."""
     from governance.formats import VOCAB_EXTS
     if accept is None:
         return None

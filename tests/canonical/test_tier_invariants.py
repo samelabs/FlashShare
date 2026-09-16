@@ -108,13 +108,14 @@ _free = next(t for t in _t if t.code == "free")
 check("INV3 operator/迁移后的 free 行不被 init_db 覆盖 (7/2MiB 存活)",
       _free.benefits.ingress_files_24h == 7 and _free.benefits.ingress_bytes_24h == 2097152,
       f"got {_free.benefits.ingress_files_24h}/{_free.benefits.ingress_bytes_24h}")
-# 空壳行 (badge NULL) 才补:
+# badge_key NULL 不再被 init_db 补齐 (historical backfill 已删) —
+# 空壳行属 schema violation, 由 validate_config 负责暴露而非修复。
 _cur.execute("update plans set badge_key=NULL where code='free'")
 _dbmod.init_db()
 _t = plan_catalog.catalog(refresh=True)
 _free = next(t for t in _t if t.code == "free")
-check("INV3b 空壳 free 行按 env 补齐 (badge NULL → 补)",
-      _free.badge_key == "tier_free", _free.badge_key)
+check("INV3b init_db 不再修 badge_key (无 backfill, NULL 存活)",
+      _free.badge_key == "", _free.badge_key)  # Tier 投影: NULL → ""
 
 # ═══ INV1: startup validate_config authority ═══
 # (a) free 缺失 → free_tier 抛 ConfigurationError

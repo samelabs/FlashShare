@@ -204,16 +204,17 @@ VOCAB_EXTS: frozenset[str] = frozenset().union(
 
 
 def extensions_for_accept(tokens) -> set[str] | None:
-    """Canonical AcceptToken 化 (4C-2 Tool Input Contract 单点)。
+    """Stored-accept → canonical extension set (Tool Input Contract 单点).
 
-    输入允许混合:
-      - canonical extension token: ".pdf" / ".dxf" (大小写不敏感,
-        lowercase 后必须属于平台 vocabulary = FAMILIES 全部 exts 并集)
-    输出: canonical 小写 extension token 集合。
+    Stored contract has exactly two shapes:
+      - None → any platform-whitelisted format (explicit "any" semantics;
+        used by current pass-through tools, e.g. share / zip_pack)
+      - non-empty list of canonical lowercase extension tokens → set(ext)
 
-    - None / [] → None (accept=不限制, 仍受平台 ALLOWED_EXT 总边界)
-    - string 裸值不是 token list → TypeError (禁止逐字符处理)
-    - 未知 token → KeyError(token), 由调用方决定容错策略
+    Everything else is INVALID — no second name for "any":
+      - [] (empty list) → ValueError
+      - bare string (not a list) → TypeError
+      - MIME token / unknown token / empty token → KeyError(token)
     """
     if tokens is None:
         return None
@@ -221,18 +222,20 @@ def extensions_for_accept(tokens) -> set[str] | None:
         raise TypeError("accept tokens must be a list, not a bare string")
     token_list = list(tokens)
     if not token_list:
-        return None
+        raise ValueError("accept=[] is invalid — use null for any-format")
     exts: set[str] = set()
     for tok in token_list:
         t = str(tok or "").strip().lower()
         if not t:
-            continue
+            raise ValueError("accept list contains an empty token")
         if t.startswith("."):
             if t not in VOCAB_EXTS:
                 raise KeyError(t)
             exts.add(t)
         else:
-            raise KeyError(t)  # 非 canonical ext token 不再解释
+            raise KeyError(t)
+    if not exts:
+        raise ValueError("accept list has no canonical tokens")
     return exts
 
 
@@ -244,15 +247,6 @@ def validate_family_key(key) -> tuple[str | None, str | None]:
     if not key or not isinstance(key, str) or key not in FAMILIES:
         return None, "bad_format_family"
     return key, None
-
-
-def validate_family_keys(keys) -> tuple[set[str] | None, str | None]:
-    """兼容入口 (旧多选调用方): 校验族键列表。新代码用 validate_family_key。"""
-    if not keys:
-        return None, "bad_format_family"  # 0930: 空声明已不可提交
-    if not isinstance(keys, list) or len(keys) != 1 or keys[0] not in FAMILIES:
-        return None, "bad_format_family"
-    return {keys[0]}, None
 
 
 def family_exts(key: str) -> frozenset[str]:
@@ -268,15 +262,9 @@ def format_manifest() -> dict:
     return {
         "order": list(FAMILY_ORDER),
         "families": {
-            key: {
-                "exts": sorted(FAMILIES[key].exts),
-                "mimes": sorted(FAMILIES[key].mimes),
-            }
+            key: {"exts": sorted(FAMILIES[key].exts)}
             for key in FAMILY_ORDER
         },
-        # 4C-2: 历史 MIME → canonical ext 精确转换表 (publish 编辑回填 UI 用),
-        # 直接从 MIME_EXTS 派生, 排序稳定。存储/执行协议只有 ext token。
-        "mime_exts": {m: sorted(e) for m, e in sorted(MIME_EXTS.items())},
     }
 
 

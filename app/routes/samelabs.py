@@ -583,7 +583,7 @@ async def samelabs_remote_create(request: Request):
         from governance.formats import extensions_for_accept
         try:
             canon = extensions_for_accept(tokens)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError):
             return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
         accept = sorted(canon) if canon else None
 

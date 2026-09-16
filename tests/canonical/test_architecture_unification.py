@@ -82,6 +82,42 @@ check("U2 无 legacy:<user> membership fabrication",
 check("U2 无 startup migration-to-memberships SQL (INSERT INTO memberships ... SELECT FROM user_plans)",
       "INSERT INTO memberships" not in _dbsrc)
 
+# U2b: startup schema 只有 current — 零 ALTER/DROP/RENAME/backfill
+check("U2b database.py 无 ALTER TABLE", "ALTER TABLE" not in _dbsrc)
+check("U2b 无 DROP COLUMN", "DROP COLUMN" not in _dbsrc)
+check("U2b 无 RENAME COLUMN", "RENAME COLUMN" not in _dbsrc)
+check("U2b 无 DROP INDEX (旧 index 清理)", "DROP INDEX" not in _dbsrc)
+check("U2b 无 creem_price_id rename migration", "creem_price_id" not in _dbsrc)
+check("U2b 无 presets_json migration", "presets_json" not in _dbsrc)
+check("U2b 无 historical UPDATE backfill (plans)", "UPDATE plans" not in _dbsrc)
+
+# U2c: fresh schema 的 current 列直接由 CREATE TABLE 获得
+def _cols(table, names):
+    _cur.execute(
+        "select column_name from information_schema.columns "
+        "where table_name=%s", (table,))
+    have = {r[0] for r in _cur.fetchall()}
+    return all(n in have for n in names), sorted(set(names) - have)
+
+ok, miss = _cols("users", ["payout_channel"])
+check("U2c users.payout_channel 在 CREATE TABLE", ok, miss)
+ok, miss = _cols("plans", ["period_days", "period", "badge_key",
+                           "ingress_files_24h", "ingress_bytes_24h",
+                           "expiry_days", "download_limits", "creem_product_id"])
+check("U2c plans entitlement/badge/period 列齐", ok, miss)
+ok, miss = _cols("platform_tools", ["desc_json", "sort_order", "featured",
+                                    "pass_through", "icon"])
+check("U2c platform_tools declaration 列齐", ok, miss)
+_cur.execute("select column_default from information_schema.columns "
+             "where table_name='platform_tools' and column_name='icon'")
+check("U2c platform_tools.icon DEFAULT 'wand'", _cur.fetchone()[0] is not None)
+check("U2c fresh 库无 presets_json 列", not _cols("platform_tools", ["presets_json"])[0])
+_cur.execute("select indexname from pg_indexes where tablename='tool_calls'")
+_idx = {r[0] for r in _cur.fetchall()}
+check("U2c tool_calls 当前 unique live idx 存在", "tool_calls_client_ref_live_idx" in _idx)
+check("U2c 无旧 tool_calls index", not ({"tool_calls_client_ref_ok_idx",
+                                         "tool_calls_client_ref_idx"} & _idx), _idx)
+
 # ═══ U3: accept 唯一 executable input contract (真实 route) ═══
 import time as _time
 ts = int(_time.time())
@@ -131,6 +167,86 @@ r = _post({"tool_id": f"au6{_u}", "accept": [".exe"]})  # 出族
 check("U3 out-of-family ext → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
 
+# ═══ U3b: stored accept semantics (extensions_for_accept 单点) ═══
+from governance.formats import extensions_for_accept as _efa
+check("U3b accept=None → None (explicit any)", _efa(None) is None)
+try:
+    _efa([]); check("U3b accept=[] rejected", False, "no raise")
+except ValueError:
+    check("U3b accept=[] rejected", True)
+try:
+    _efa(["application/pdf"]); check("U3b MIME token rejected", False, "no raise")
+except KeyError:
+    check("U3b MIME token rejected", True)
+try:
+    _efa(".pdf"); check("U3b bare string rejected", False, "no raise")
+except TypeError:
+    check("U3b bare string rejected", True)
+try:
+    _efa([".exe"]); check("U3b unknown ext rejected", False, "no raise")
+except KeyError:
+    check("U3b unknown ext rejected", True)
+check("U3b canonical list → set", _efa([".png", ".jpg"]) == {".png", ".jpg"})
+
+# ═══ U6: compatibility mechanisms absent ═══
+_fm = open(_os.path.join(_REPO, "core", "governance", "formats.py"), encoding="utf-8").read()
+check("U6 validate_family_keys absent", "def validate_family_keys" not in _fm)
+_fm_out = __import__("importlib").import_module("governance.formats").format_manifest()
+check("U6 format_manifest 无 mime_exts", "mime_exts" not in _fm_out)
+check("U6 format_manifest families 无 mimes",
+      all("mimes" not in v for v in _fm_out["families"].values()))
+_pj = open(_os.path.join(_REPO, "static", "pages", "publish.js"), encoding="utf-8").read()
+check("U6 publish.js 无 MIME accept conversion (mime_exts/mimes 零引用)",
+      "mime_exts" not in _pj and ".mimes" not in _pj)
+_cat = open(_os.path.join(_REPO, "core", "governance", "catalog.py"), encoding="utf-8").read()
+check("U6 catalog invalid accept 不原样返回 (无 token-preserve fallback)",
+      "sorted(str(t) for t in tokens" not in _cat)
+_earn = open(_os.path.join(_REPO, "core", "economy", "earnings.py"), encoding="utf-8").read()
+check("U6 earnings.ensure_schema absent", "def ensure_schema" not in _earn)
+_main = open(_os.path.join(_REPO, "app", "main.py"), encoding="utf-8").read()
+check("U6 main startup 无 ensure_schema call", "ensure_schema" not in _main)
+check("U6 main startup 有 validate_catalog_rows", "validate_catalog_rows()" in _main)
+
+# ═══ U3c: dispatch invalid stored accept → tool_unavailable (fail closed,
+# pre-metering: no tool_call row, no charge, no network) ═══
+_cur.execute("delete from pricing where tool_id='badaccept'")
+_cur.execute("delete from platform_tools where tool_key='badaccept'")
+_cur.execute(
+    "insert into platform_tools (tool_key, owner_id, tool_id, execution, tool_type,"
+    " label_json, icon, accept_json, multi, visibility, enabled, trusted,"
+    " created_at, updated_at) values (%s, NULL, %s, 'local', 'produce', '{}',"
+    " 'wand', '[\"application/pdf\"]', false, 'public', true, false, %s, %s)",
+    ("badaccept", "badaccept", ts, ts))
+_cur.execute(
+    "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",
+    ("badaccept", ts))
+_cur.execute("select coalesce(sum(delta),0) from ledger where user_id=%s", (_uid,))
+_l0 = _cur.fetchone()[0]
+_cur.execute("select count(*) from tool_calls where user_id=%s", (_uid,))
+_tc0 = _cur.fetchone()[0]
+from identity.apitokens import create_token as _mk_tok
+_vtok = _mk_tok(_uid, "au-test")["token"]  # Bearer path (v1 requires client_ref)
+r = client.post("/api/v1/execute",
+                json={"tool_id": "badaccept",
+                      "source": {"files": [{"public_id": "x" * 12, "source_token": "t"}]},
+                      "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 1},
+                      "client_ref": "au-ref-1"},
+                headers={"Authorization": f"Bearer {_vtok}"})
+_ok_status = r.status_code in (503, 404, 422)
+check("U3c invalid stored accept → tool_unavailable (pre-metering)",
+      _ok_status and r.json().get("error") == "tool_unavailable",
+      f"{r.status_code} {r.text[:80]}")
+_cur.execute("select coalesce(sum(delta),0) from ledger where user_id=%s", (_uid,))
+_l1 = _cur.fetchone()[0]
+_cur.execute("select count(*) from tool_calls where user_id=%s", (_uid,))
+_tc1 = _cur.fetchone()[0]
+check("U3c ledger unchanged", _l1 == _l0, (_l0, _l1))
+check("U3c tool_calls unchanged", _tc1 == _tc0, (_tc0, _tc1))
+
+# ═══ U7: v1 /me 无 plan 键 ═══
+_api = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
+check("U7 v1 /me 无 plan alias", '"plan":' not in _api)
+
 # ═══ U4: PostgreSQL-only app ═══
 _cfg = open(_os.path.join(_REPO, "core", "config.py"), encoding="utf-8").read()
 check("U4 config.py 无 DB_PATH", "DB_PATH" not in _cfg)
@@ -155,8 +271,10 @@ check("M backup.sh 无 gokapi-$ST typo (weekly 与 daily 文件名一致)",
 check("M backup.sh set -euo pipefail", "set -euo pipefail" in _bk)
 
 # 清场
-_cur.execute("delete from pricing where tool_id like %s", (f"{_u}/%",))
+_cur.execute("delete from pricing where tool_id like %s or tool_id = 'badaccept'", (f"{_u}/%",))
+_cur.execute("delete from platform_tools where tool_key like %s or tool_key = 'badaccept'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))
+_cur.execute("delete from api_tokens where user_id=%s", (_uid,))
 _cur.execute("delete from sessions where user_id=%s", (_uid,))
 _cur.execute("delete from users where id=%s", (_uid,))
 _con.close()
