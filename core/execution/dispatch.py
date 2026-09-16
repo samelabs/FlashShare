@@ -70,22 +70,18 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     tool["id"] = tool["tool_key"]
     tool["type"] = tool["tool_type"]
 
-    # Stored-contract validation BEFORE the metering gate: an invalid
-    # accept_json (empty list / MIME token / unknown token / bare string)
+    # Stored-contract validation BEFORE the metering gate, via THE
+    # single stored parser (formats.parse_stored_accept): SQL NULL = any;
+    # anything non-NULL that is not a valid non-empty canonical ext list
+    # ('' / 'null' / '[]' / JSON object / scalar / MIME / unknown token)
     # is a DB invariant violation — reject without claiming a tool_call,
     # charging credits, executing, or touching the network. This is not
     # a public error contract for dirty data; it mirrors the startup
     # catalog validator at the execution boundary.
-    stored_accept = tool.get("accept")
-    if stored_accept is None and tool.get("accept_json"):
+    from governance.formats import parse_stored_accept
+    if tool.get("accept_json") is not None:
         try:
-            stored_accept = json.loads(tool["accept_json"])
-        except (TypeError, ValueError):
-            stored_accept = ["<invalid-json>"]
-    if stored_accept is not None:
-        from governance.formats import extensions_for_accept
-        try:
-            extensions_for_accept(stored_accept)
+            parse_stored_accept(tool["accept_json"])
         except (KeyError, TypeError, ValueError):
             return None, {"ok": False, "error": "tool_unavailable"}, 503
 
@@ -133,14 +129,16 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         # 单点收口: web/token/MCP 三面共用本函数, 无旁路。
         # 4C-2: canonical AcceptToken — declared tokens (canonical ext)
         # → extensions_for_accept 精确扩展名集合, 上传 ext 必须 ∈ 该集合。
-        # validated above (pre-gate): here it can only be None=any or a
-        # valid canonical token list.
-        declared_accept = tool.get("accept")
-        if declared_accept is None and tool.get("accept_json"):
-            declared_accept = json.loads(tool["accept_json"])
-        if declared_accept:
+        # validated above (pre-gate): here it can only be SQL NULL=any
+        # or a valid canonical token list (single stored parser).
+        declared = tool.get("accept")
+        if declared is None and tool.get("accept_json") is not None:
+            from governance.formats import parse_stored_accept as _psa
+            declared = _psa(tool["accept_json"]) or []
+            declared = sorted(declared)
+        if declared:
             from governance.formats import extensions_for_accept as _efa
-            allowed_exts = _efa(declared_accept)
+            allowed_exts = _efa(declared)
             if allowed_exts:
                 import os as _os
                 for u in uploads:

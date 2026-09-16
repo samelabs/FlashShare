@@ -188,6 +188,35 @@ except KeyError:
     check("U3b unknown ext rejected", True)
 check("U3b canonical list → set", _efa([".png", ".jpg"]) == {".png", ".jpg"})
 
+# ═══ U3d: stored physical shapes — parse_stored_accept 单点 ═══
+from governance.formats import parse_stored_accept as _psa
+check("U3d stored SQL None → None (唯一 any)", _psa(None) is None)
+for _bad, _why in [("", "empty string"), ('null', "JSON null"),
+                   ("[]", "empty array"), ('{".png": 1}', "JSON object"),
+                   ('[".png", "image/png"]', "MIME array"),
+                   ('[".exe"]', "unknown ext"), ('[""]', "empty token"),
+                   ('".png"', "JSON scalar string"), ("not json", "invalid JSON")]:
+    try:
+        _psa(_bad); check(f"U3d stored {_why} → invalid", False, "no raise")
+    except (KeyError, TypeError, ValueError):
+        check(f"U3d stored {_why} → invalid", True)
+check("U3d stored canonical ext list → set",
+      _psa('[".png", ".jpg"]') == {".png", ".jpg"})
+
+# ═══ U3e: extensions_for_accept 严格 list-only ═══
+try:
+    _efa((".png",)); check("U3e tuple → TypeError", False, "no raise")
+except TypeError:
+    check("U3e tuple → TypeError", True)
+try:
+    _efa({".png"}); check("U3e set → TypeError", False, "no raise")
+except TypeError:
+    check("U3e set → TypeError", True)
+try:
+    _efa({".png": 1}); check("U3e dict → TypeError", False, "no raise")
+except TypeError:
+    check("U3e dict → TypeError", True)
+
 # ═══ U6: compatibility mechanisms absent ═══
 _fm = open(_os.path.join(_REPO, "core", "governance", "formats.py"), encoding="utf-8").read()
 check("U6 validate_family_keys absent", "def validate_family_keys" not in _fm)
@@ -217,6 +246,15 @@ _cur.execute(
     " created_at, updated_at) values (%s, NULL, %s, 'local', 'produce', '{}',"
     " 'wand', '[\"application/pdf\"]', false, 'public', true, false, %s, %s)",
     ("badaccept", "badaccept", ts, ts))
+for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
+    _cur.execute("delete from pricing where tool_id=%s", (_bk,))
+    _cur.execute("delete from platform_tools where tool_key=%s", (_bk,))
+    _cur.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution, tool_type,"
+        " label_json, icon, accept_json, multi, visibility, enabled, trusted,"
+        " created_at, updated_at) values (%s, NULL, %s, 'local', 'produce', '{}',"
+        " 'wand', %s, false, 'public', true, false, %s, %s)",
+        (_bk, _bk, _bj, ts, ts))
 _cur.execute(
     "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",
     ("badaccept", ts))
@@ -236,6 +274,16 @@ _ok_status = r.status_code in (503, 404, 422)
 check("U3c invalid stored accept → tool_unavailable (pre-metering)",
       _ok_status and r.json().get("error") == "tool_unavailable",
       f"{r.status_code} {r.text[:80]}")
+for _bk in ("badaccept2", "badaccept3"):
+    r2 = client.post("/api/v1/execute",
+                     json={"tool_id": _bk,
+                           "source": {"files": [{"public_id": "x" * 12, "source_token": "t"}]},
+                           "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 1},
+                           "client_ref": f"au-ref-{_bk}"},
+                     headers={"Authorization": f"Bearer {_vtok}"})
+    check(f"U3c stored {_bk} (''/'null') → pre-metering fail",
+          r2.status_code == 503 and r2.json().get("error") == "tool_unavailable",
+          f"{r2.status_code} {r2.text[:80]}")
 _cur.execute("select coalesce(sum(delta),0) from ledger where user_id=%s", (_uid,))
 _l1 = _cur.fetchone()[0]
 _cur.execute("select count(*) from tool_calls where user_id=%s", (_uid,))
@@ -271,8 +319,8 @@ check("M backup.sh 无 gokapi-$ST typo (weekly 与 daily 文件名一致)",
 check("M backup.sh set -euo pipefail", "set -euo pipefail" in _bk)
 
 # 清场
-_cur.execute("delete from pricing where tool_id like %s or tool_id = 'badaccept'", (f"{_u}/%",))
-_cur.execute("delete from platform_tools where tool_key like %s or tool_key = 'badaccept'", (f"{_u}/%",))
+_cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}/%",))
+_cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))
 _cur.execute("delete from api_tokens where user_id=%s", (_uid,))
 _cur.execute("delete from sessions where user_id=%s", (_uid,))

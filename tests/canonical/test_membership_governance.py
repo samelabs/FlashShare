@@ -212,11 +212,12 @@ check("G5 update plan A→B: 同一 provider sub, membership/projection/entitlem
       m[0] == plan_pro and m[1] == "sub:mgsubT"
       and pp["entitlements"]["plan_code"] == "pro"
       and resolve(uidT)["ingress_files_24h"] == PRO_FILES, str(res))
-# product dict 单点提取 (canonical Creem 形态 + 历史兼容):
-check("G5c extract_product_id dict/string/product_id/空",
+# product 单点提取 (Creem 当前两种合法形态; product_id-only 不再解释):
+check("G5c extract_product_id dict/string/其它→空",
       _sub.extract_product_id({"product": {"id": "prod_x"}}) == "prod_x"
       and _sub.extract_product_id({"product": "price_y"}) == "price_y"
-      and _sub.extract_product_id({"product_id": "price_z"}) == "price_z"
+      and _sub.extract_product_id({"product_id": "price_z"}) == ""
+      and _sub.extract_product_id({"product": 123}) == ""
       and _sub.extract_product_id({}) == "")
 # update 无映射 → fail loud:
 try:

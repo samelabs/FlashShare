@@ -218,9 +218,10 @@ def extensions_for_accept(tokens) -> set[str] | None:
     """
     if tokens is None:
         return None
-    if isinstance(tokens, str):
-        raise TypeError("accept tokens must be a list, not a bare string")
-    token_list = list(tokens)
+    if not isinstance(tokens, list):
+        raise TypeError(
+            f"accept tokens must be a list, got {type(tokens).__name__}")
+    token_list = tokens
     if not token_list:
         raise ValueError("accept=[] is invalid — use null for any-format")
     exts: set[str] = set()
@@ -239,10 +240,36 @@ def extensions_for_accept(tokens) -> set[str] | None:
     return exts
 
 
+def parse_stored_accept(raw: str | None) -> set[str] | None:
+    """THE single stored-accept parser (platform_tools.accept_json column).
+
+    Exactly two physical shapes are valid:
+      SQL NULL           → None (explicit "any platform-whitelisted format")
+      JSON text decoding to a NON-EMPTY list of canonical lowercase ext
+                         → set(ext)
+
+    Everything else is an invariant violation (typed raise):
+      '' (empty string), 'null', '[]', a JSON object, a JSON scalar,
+      MIME tokens, unknown ext tokens, empty tokens.
+    """
+    import json as _json
+    if raw is None:
+        return None
+    try:
+        decoded = _json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"stored accept is not valid JSON: {exc}") from None
+    if not isinstance(decoded, list):
+        raise ValueError(
+            f"stored accept must decode to a list, got "
+            f"{type(decoded).__name__}")
+    return extensions_for_accept(decoded)
+
+
 def validate_family_key(key) -> tuple[str | None, str | None]:
     """发布提交校验: 单个族键 (单选范式) → (family_key|None, err)。
 
-    缺失/非法 (含旧客户端数组形态) → (None, 'bad_format_family') —
+    non-string / unknown family → (None, 'bad_format_family') —
     单选必填, 无空语义。"""
     if not key or not isinstance(key, str) or key not in FAMILIES:
         return None, "bad_format_family"

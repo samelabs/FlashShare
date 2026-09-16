@@ -74,7 +74,7 @@ def _normalize_accept(accept) -> Optional[list]:
     from governance.formats import VOCAB_EXTS
     if accept is None:
         return None
-    if not isinstance(accept, (list, tuple)) or not accept:
+    if not isinstance(accept, list) or not accept:
         raise DeclarationError("bad_accept")
     out = set()
     for x in accept:
