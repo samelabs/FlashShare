@@ -35,14 +35,13 @@ async def v1_me(request: Request):
     u = public_user(user)
     u.pop("email", None)
     # Single membership fact read: access.membership is the canonical
-    # projection; "plan" is a legacy v1 payload alias of the same value
-    # (never a second plan_of() read). Credits stay an independent
-    # top-level balance — they never enter the access projection.
+    # projection and the payload's only name for it. Credits stay an
+    # independent top-level balance — they never enter the access
+    # projection.
     # Projection fact-read failures propagate (no Free-masking here).
     access = project(user["id"])
     return {"ok": True, "user": u,
             "credits": spendable_balance(user["id"]),
-            "plan": access["membership"],
             "access": access}
 
 

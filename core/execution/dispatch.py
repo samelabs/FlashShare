@@ -70,6 +70,21 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     tool["id"] = tool["tool_key"]
     tool["type"] = tool["tool_type"]
 
+    # Stored-contract validation BEFORE the metering gate, via THE
+    # single stored parser (formats.parse_stored_accept): SQL NULL = any;
+    # anything non-NULL that is not a valid non-empty canonical ext list
+    # ('' / 'null' / '[]' / JSON object / scalar / MIME / unknown token)
+    # is a DB invariant violation — reject without claiming a tool_call,
+    # charging credits, executing, or touching the network. This is not
+    # a public error contract for dirty data; it mirrors the startup
+    # catalog validator at the execution boundary.
+    from governance.formats import parse_stored_accept
+    if tool.get("accept_json") is not None:
+        try:
+            parse_stored_accept(tool["accept_json"])
+        except (KeyError, TypeError, ValueError):
+            return None, {"ok": False, "error": "tool_unavailable"}, 503
+
     params = inv.params
 
     # canonical params 是唯一参数事实源 — default 由 enforce_params_decl
@@ -81,7 +96,7 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         decl = []
 
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
-    # 无声明的工具 params 保持自由直传 (兼容现状)。
+    # params 声明是可选能力: 无声明的工具 params 自由直传。
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:
@@ -112,23 +127,18 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
         # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
         # 单点收口: web/token/MCP 三面共用本函数, 无旁路。
-        # 4C-2: canonical AcceptToken — declared tokens (canonical ext 或
-        # legacy MIME) → extensions_for_accept 精确扩展名集合, 上传 ext 必须
-        # ∈ 该集合。
-        declared_accept = tool.get("accept")
-        if declared_accept is None and tool.get("accept_json"):
-            try:
-                declared_accept = json.loads(tool["accept_json"])
-            except (TypeError, ValueError):
-                declared_accept = None
-        if declared_accept:
-            from governance.formats import extensions_for_accept
-            try:
-                allowed_exts = extensions_for_accept(declared_accept)
-            except (KeyError, TypeError):
-                # 声明含词表外 token (存量脏数据/裸串): 保持线上容错,
-                # 整体不拦截, 不产生 500。
-                allowed_exts = None
+        # 4C-2: canonical AcceptToken — declared tokens (canonical ext)
+        # → extensions_for_accept 精确扩展名集合, 上传 ext 必须 ∈ 该集合。
+        # validated above (pre-gate): here it can only be SQL NULL=any
+        # or a valid canonical token list (single stored parser).
+        declared = tool.get("accept")
+        if declared is None and tool.get("accept_json") is not None:
+            from governance.formats import parse_stored_accept as _psa
+            declared = _psa(tool["accept_json"]) or []
+            declared = sorted(declared)
+        if declared:
+            from governance.formats import extensions_for_accept as _efa
+            allowed_exts = _efa(declared)
             if allowed_exts:
                 import os as _os
                 for u in uploads:

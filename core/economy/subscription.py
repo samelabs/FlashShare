@@ -166,13 +166,17 @@ def membership_is_occupied(status: str, renews_at: int | None, ts: int) -> bool:
 
 
 def extract_product_id(sub: dict) -> str:
-    """provider payload product 单点提取 (canonical Creem 形态):
-    product = {"id": "prod_xxx"} dict → ["id"]; 兼容历史 string /
-    product_id 字段。空 → "" (caller fail loud)。"""
+    """Normalize the two current Creem subscription product representations
+    used by webhook/API sources:
+        sub["product"] = {"id": "prod_x"}  → "prod_x"
+        sub["product"] = "prod_x"          → "prod_x"
+    Missing/other shapes → "" (caller fails loud)."""
     product = sub.get("product")
     if isinstance(product, dict):
         return str(product.get("id") or "")
-    return str(product or sub.get("product_id") or "")
+    if isinstance(product, str):
+        return product
+    return ""
 
 
 def _ev_ignored(sub_id: str, obj: dict) -> dict:
@@ -204,7 +208,8 @@ def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
                 raise KeyError("order_not_found")
             plan = orders_repo.plan_by_id(con, m["plan_id"])
             return dict(order), dict(plan), dict(m)
-        # 兼容路径: 事件早于 membership 行 (首购序列由 bind_checkout 建立)
+        # current webhook/order race path: 事件早于 membership 行
+        # (首购序列由 bind_checkout 建立)
         order, plan = _resolve_subscription(con, sub_id)
         if order is None or plan is None:
             raise KeyError("order_not_found")

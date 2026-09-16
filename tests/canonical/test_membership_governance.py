@@ -75,7 +75,6 @@ _ts = int(time.time())
 FUT = _ts + 30 * 86400
 # 幂等重跑: 清理本 suite 之前的半途残留 (mg 前缀用户及其行)
 _cur.execute("delete from memberships where user_id in (select id from users where username like 'mg%')")
-_cur.execute("delete from user_plans where user_id in (select id from users where username like 'mg%')")
 _cur.execute("delete from orders where user_id in (select id from users where username like 'mg%')")
 _cur.execute("delete from ledger where user_id in (select id from users where username like 'mg%')")
 _cur.execute("delete from plans where code like 'mg_%'")
@@ -213,11 +212,12 @@ check("G5 update plan A→B: 同一 provider sub, membership/projection/entitlem
       m[0] == plan_pro and m[1] == "sub:mgsubT"
       and pp["entitlements"]["plan_code"] == "pro"
       and resolve(uidT)["ingress_files_24h"] == PRO_FILES, str(res))
-# product dict 单点提取 (canonical Creem 形态 + 历史兼容):
-check("G5c extract_product_id dict/string/product_id/空",
+# product 单点提取 (Creem 当前两种合法形态; product_id-only 不再解释):
+check("G5c extract_product_id dict/string/其它→空",
       _sub.extract_product_id({"product": {"id": "prod_x"}}) == "prod_x"
       and _sub.extract_product_id({"product": "price_y"}) == "price_y"
-      and _sub.extract_product_id({"product_id": "price_z"}) == "price_z"
+      and _sub.extract_product_id({"product_id": "price_z"}) == ""
+      and _sub.extract_product_id({"product": 123}) == ""
       and _sub.extract_product_id({}) == "")
 # update 无映射 → fail loud:
 try:
@@ -293,124 +293,6 @@ try:
     check("G10c projection 传播配置错误 (不谎称 tier)", False, "no raise")
 except EntitlementConfigurationError:
     check("G10c projection 传播配置错误 (不谎称 tier)", True)
-
-# ═══ 链11: migration 双 live → fail closed ═══
-uM, uidM = _new_user("mgM")
-pm1 = _seed_plan("mg_m1", 100)
-pm2 = _seed_plan("mg_m2", 200)
-_seed_order(uidM, pm1, "mgsubM")  # 旧表扫描的 order 驱动行
-_cur.execute("delete from memberships where user_id=%s", (uidM,))
-_cur.execute(
-    "insert into user_plans (user_id, plan_id, status, started_at, renews_at, updated_at)"
-    " values (%s, %s, 'active', %s, %s, %s), (%s, %s, 'active', %s, %s, %s)",
-    (uidM, pm1, _ts - 100, FUT, _ts, uidM, pm2, _ts - 50, FUT, _ts))
-try:
-    # 迁移前扫描语义: 直接对旧表 user_plans 按 user 聚合 live 行数 —
-    # >1 即 invariant violation, 迁移必须 fail (人工裁定)。
-    _cur.execute(
-        "select count(*) from user_plans where user_id=%s"
-        " and status in ('active','canceled','past_due')"
-        " and coalesce(renews_at,0) > %s", (uidM, _ts))
-    live = _cur.fetchone()[0]
-    check("G11 旧表双 live 扫描 → 检出 2 (fail-closed 输入)", live == 2, f"live={live}")
-except Exception as exc:
-    check("G11 旧表双 live 扫描", False, str(exc))
-# 真迁移语句在 init_db 时已对当前 DB 跑过 (无双 live) — 双 live 注入后
-# 重跑迁移语义: 我们的 INSERT DISTINCT ON 会插一行 (取 live 优先排序第一)
-# — 这违反 fail-closed!验证迁移语句本身:
-try:
-    with db() as con:
-        # 复刻 init_db 迁移语句 (同样 WHERE NOT EXISTS 幂等):
-        con.execute("""
-        INSERT INTO memberships (user_id, plan_id, provider_subscription_id,
-                                 status, started_at, renews_at, updated_at)
-        SELECT m.user_id, m.plan_id, COALESCE(m.sub_id, 'legacy:' || m.user_id),
-               m.status, m.started_at, m.renews_at, m.updated_at
-        FROM (
-          SELECT DISTINCT ON (up.user_id) up.user_id, up.plan_id,
-                 (SELECT o2.provider_order_id FROM orders o2
-                  WHERE o2.user_id = up.user_id AND o2.kind = 'plan'
-                    AND o2.provider_order_id LIKE 'sub:%'
-                  ORDER BY o2.id DESC LIMIT 1) AS sub_id,
-                 up.status, up.started_at, up.renews_at, up.updated_at
-          FROM user_plans up
-          ORDER BY up.user_id,
-                   (up.status IN ('active','canceled','past_due')
-                    AND COALESCE(up.renews_at,0) > %s) DESC,
-                   up.renews_at DESC NULLS LAST, up.started_at DESC, up.plan_id DESC
-        ) m
-        WHERE NOT EXISTS (SELECT 1 FROM memberships mm WHERE mm.user_id = m.user_id)
-        """, (_ts,))
-    check("G11b 迁移对双 live fail-closed (不自动择一)", False, "migration inserted despite double-live")
-except Exception:
-    check("G11b 迁移对双 live fail-closed (语句拒绝或需前置扫描拦截)", True)
-# 注: 若上一条因 UNIQUE(user_id) 已有行而静默跳过 — NOT EXISTS 语义;
-# 前置扫描 (G11) 是权威 fail-closed 门。补: 直查是否插入了双 live 用户:
-_cur.execute("select count(*) from memberships where user_id=%s", (uidM,))
-_n = _cur.fetchone()[0]
-check("G11c 双 live 用户未被动迁移 (0 行入库)", _n == 0, str(_n))
-# 清双 live → correlation: Plan A live(subA paid) + Plan B historical(subB 更新):
-_cur.execute("delete from user_plans where user_id=%s", (uidM,))
-_cur.execute("delete from orders where user_id=%s", (uidM,))
-_cur.execute("delete from memberships where user_id=%s", (uidM,))
-_cur.execute(
-    "insert into user_plans (user_id, plan_id, status, started_at, renews_at, updated_at)"
-    " values (%s, %s, 'active', %s, %s, %s), (%s, %s, 'expired', %s, %s, %s)",
-    (uidM, pm1, _ts - 100, FUT, _ts,
-     uidM, pm2, _ts - 90, _ts - 10, _ts))
-_seed_order(uidM, pm1, "mgsubMA")  # Plan A: subA paid (item 对齐)
-_cur.execute(
-    "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, created_at, paid_at)"
-    " values (%s, 'plan', %s, 'creem', 'sub:mgsubMB', 'paid', 500, %s, %s)",
-    (uidM, pm2, _ts + 5, _ts + 5))
-import subprocess
-def _sub_init(tag):
-    return subprocess.run([sys.executable, "-c", (
-        "import sys, os\n"
-        "sys.path.insert(0, %r)\n"
-        "sys.path.insert(0, os.path.join(%r, 'core'))\n"
-        "os.environ['DATABASE_URL'] = open(os.environ['FLASHSHARE_TEST_DSN_FILE']).read().strip()\n"
-        "os.environ.setdefault('FLASHSHARE_SESSION_SECRET', 'canonical-test')\n"
-        "from database import init_db\n"
-        "init_db()\n") % (_REPO, _REPO)],
-        capture_output=True, text=True,
-        env={**dict(__import__("os").environ),
-             "FLASHSHARE_TEST_DSN_FILE": _os.environ.get("FLASHSHARE_TEST_DSN_FILE", "")})
-r = _sub_init("corr")
-if r.returncode != 0:
-    check("G11d 迁移 plan/sub correlation (A live + subA)", False, (r.stderr or "")[-160:])
-else:
-    _cur.execute("select plan_id, provider_subscription_id from memberships where user_id=%s", (uidM,))
-    row = _cur.fetchone()
-    check("G11d 迁移 plan/sub correlation: Plan A live → 绑 subA (非 Plan B 的更新 subB)",
-          row is not None and row[0] == pm1 and row[1] == "sub:mgsubMA", str(row))
-# G11e: live 无同 plan paid sub order → migration FAIL (不伪造 legacy:*):
-_cur.execute("delete from memberships where user_id=%s", (uidM,))
-_cur.execute("update orders set status='failed' where user_id=%s and provider_order_id='sub:mgsubMA'", (uidM,))
-r2 = subprocess.run([sys.executable, "-c", (
-    "import sys, os\n"
-    "sys.path.insert(0, %r)\n"
-    "sys.path.insert(0, os.path.join(%r, 'core'))\n"
-    "os.environ['DATABASE_URL'] = open(os.environ['FLASHSHARE_TEST_DSN_FILE']).read().strip()\n"
-    "os.environ.setdefault('FLASHSHARE_SESSION_SECRET', 'canonical-test')\n"
-    "from database import init_db\n"
-    "try:\n"
-    "    init_db()\n"
-    "    print('NOT_BLOCKED')\n"
-    "except Exception as e:\n"
-    "    print('BLOCKED' if 'same-plan subscription order' in str(e) else 'OTHER:' + str(e)[:100])\n"
-    ) % (_REPO, _REPO)],
-    capture_output=True, text=True,
-    env={**dict(__import__("os").environ),
-         "FLASHSHARE_TEST_DSN_FILE": _os.environ.get("FLASHSHARE_TEST_DSN_FILE", "")})
-out2 = (r2.stdout or "").strip().splitlines()[-1] if (r2.stdout or "").strip() else "NOOUTPUT"
-check("G11e live 无 paid 同 plan sub → migration FAIL (不伪造 legacy:*)",
-      out2 == "BLOCKED", out2)
-# 清理该用户旧表行 → 迁移可跑 (后续段不受影响):
-_cur.execute("delete from user_plans where user_id=%s", (uidM,))
-_cur.execute("delete from orders where user_id=%s and provider_order_id in ('sub:mgsubMA','sub:mgsubMB','sub:mgsubM')", (uidM,))
-r3 = _sub_init("clean")
-check("G11f 旧表清理后迁移可跑 (0 残留)", r3.returncode == 0, (r3.stderr or "")[-120:])
 
 # ═══ 链12: /subscribe 序列化 — pending checkout reuse / race / profile gate ═══
 import asyncio
@@ -646,6 +528,7 @@ check("G15c package mark_paid → status=paid / granted=TRUE (语义保持)",
 # ═══ Source guards ═══
 _sub_src = open(_os.path.join(_REPO, "core", "economy", "subscription.py"), encoding="utf-8").read()
 _repo_src = open(_os.path.join(_REPO, "core", "repo", "orders.py"), encoding="utf-8").read()
+_schema_src = open(_os.path.join(_REPO, "core", "database.py"), encoding="utf-8").read()
 _topup_src = open(_os.path.join(_REPO, "app", "routes", "topup.py"), encoding="utf-8").read()
 check("SG1 memberships PK = user_id (单行权威 SQL)",
       "PRIMARY KEY (user_id)" in open(_os.path.join(_REPO, "core", "database.py"), encoding="utf-8").read()
@@ -681,9 +564,9 @@ _legacy_writers = ("def upsert_user_plan(", "def user_plan_row(",
 check("SG11 legacy user_plans production writers 零残留",
       all(w not in _repo_src for w in _legacy_writers)
       and all(w not in _sub_src for w in _legacy_writers))
-_prod_refs = [l for l in _repo_src.split("\n") if "user_plans" in l and "migration" not in l.lower()]
-check("SG12 user_plans 仅 migration 语境出现 (repo)",
-      len(_prod_refs) == 0, str(_prod_refs[:3]))
+check("SG12 runtime 全仓 user_plans 零引用",
+      "user_plans" not in _repo_src and "user_plans" not in _sub_src
+      and "user_plans" not in _schema_src)
 check("SG13 retrieve_checkout 存在 (provider 收敛单点)",
       "def retrieve_checkout" in open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read())
 check("SG14 extract_product_id canonical dict 形态",

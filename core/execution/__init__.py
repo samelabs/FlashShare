@@ -19,7 +19,7 @@ import json
 import secrets
 
 from database import db
-from repo.ledger import (call_by_client_ref, call_count_by_ref,
+from repo.ledger import (call_count_by_ref,
                          insert_call_failed, insert_call_ok,
                          insert_provider_earn_if_absent, total_balance)
 from utils import now

@@ -57,7 +57,9 @@ def register(tool_id, tool_type, label, icon, handler,
         accept: set/list of lowercase extension tokens or None, e.g.
                 {".jpg", ".jpeg", ".png"}. Tokens must be canonical
                 (governance.formats.VOCAB_EXTS). None means accept all
-                whitelisted formats.
+                whitelisted formats. The register() authoring adapter
+                normalizes to a sorted canonical list before the
+                ToolDeclaration validator (which is list-only).
         multi: bool. If True, this tool accepts multiple input files
                (e.g. PDF merge). Handler receives "sources" array.
                If False, handler receives a single "stream" (default).

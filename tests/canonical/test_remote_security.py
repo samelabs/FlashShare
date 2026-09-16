@@ -484,8 +484,12 @@ from cryptography.fernet import Fernet
 _vk = Fernet.generate_key().decode()
 rc, out, err = _run_vault(_vk, "s = seal('topsecret')\nassert s != 'topsecret' and s.startswith('enc1:')\nassert unseal(s) == 'topsecret'\nprint('RT')")
 check("VAULT valid key seal/roundtrip", rc == 0 and "RT" in out, f"rc={rc} {err[:80]}")
-rc, out, err = _run_vault(None, "assert unseal('legacy-plaintext') == 'legacy-plaintext'\nprint('LG')")
-check("VAULT legacy plaintext + no key passthrough", rc == 0 and "LG" in out, f"rc={rc} {err[:80]}")
+rc, out, err = _run_vault(None, "unseal('legacy-plaintext')")
+check("VAULT non-enc1 non-empty → VaultDecryptError (single format, fail closed)",
+      rc != 0 and "VaultDecryptError" in err, f"rc={rc} err={err[:80]}")
+rc, out, err = _run_vault(_vk, "unseal('legacy-plaintext')")
+check("VAULT non-enc1 non-empty + valid key → VaultDecryptError (no passthrough)",
+      rc != 0 and "VaultDecryptError" in err, f"rc={rc} err={err[:80]}")
 rc, out, err = _run_vault(_vk, "print(seal('tok'))")
 sealed = out
 rc, out, err = _run_vault(None, "unseal(%r)" % sealed)
@@ -554,7 +558,7 @@ _asess = create_browser_session(_auid)
 remote._resolve_host = _resolve({"pub.example": [(_socket.AF_INET, PUBLIC4)]})
 r = client.post("/api/usertools", json={
     "tool_id": "sectool2", "label": "Sec2", "url": "https://pub.example/x",
-    "format_families": "image"},
+    "format_families": "image", "accept": [".png"]},
     cookies={COOKIE_NAME: _asess})
 check("AUTH-fixture 预置工具建立", r.status_code == 200,
       f"{r.status_code} {r.text[:100]}")
@@ -562,7 +566,7 @@ check("AUTH-fixture 预置工具建立", r.status_code == 200,
 secrets_vault._f = Fernet(_VAULT_KEY)  # vault ON — 503 must not mask
 r = client.post("/api/usertools", json={
     "tool_id": "sectoolh", "label": "H", "url": "https://pub.example/x",
-    "format_families": "image",
+    "format_families": "image", "accept": [".png"],
     "auth_header": "Host", "auth_token": "sekrit"},
     cookies={COOKIE_NAME: _asess})
 check("AUTH-H1 create auth_header=Host → 422 bad_auth_header",
@@ -681,7 +685,7 @@ _restore_stack()
 remote._resolve_host = _resolve({"pub.example": [(_socket.AF_INET, PUBLIC4)]})
 r = client.post("/api/usertools", json={
     "tool_id": "sectoolp", "label": "P", "url": "https://example.com:notaport/x",
-    "format_families": "image"},
+    "format_families": "image", "accept": [".png"]},
     cookies={COOKIE_NAME: _asess})
 check("PORT-3 submission malformed port → 422 bad_url",
       r.status_code == 422 and r.json().get("error") == "bad_url",
@@ -710,7 +714,7 @@ u1, uid1 = _new_user("rs1")
 sess1 = create_browser_session(uid1)
 r = client.post("/api/usertools", json={
     "tool_id": "sectool1", "label": "Sec", "url": "https://pub.example/x",
-    "format_families": "image",
+    "format_families": "image", "accept": [".png"],
     "auth_header": "Authorization", "auth_token": "topsecret"},
     cookies={COOKIE_NAME: _asess})
 check("ROUTE user create + auth_token + no key → 503",
@@ -725,7 +729,7 @@ _cur.execute("delete from pricing where tool_id = %s", (f"{_au}/sectool3",))
 _cur.execute("delete from platform_tools where tool_key = %s", (f"{_au}/sectool3",))
 r = client.post("/api/usertools", json={
     "tool_id": "sectool3", "label": "Sec3", "url": "https://pub.example/x",
-    "format_families": "image"},
+    "format_families": "image", "accept": [".png"]},
     cookies={COOKIE_NAME: _asess})
 check("ROUTE user create without auth_token unaffected",
       r.status_code == 200 and r.json().get("ok"), f"{r.status_code} {r.text[:80]}")

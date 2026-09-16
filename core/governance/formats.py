@@ -203,99 +203,77 @@ VOCAB_EXTS: frozenset[str] = frozenset().union(
     *(_fam.exts for _fam in FAMILIES.values()))
 
 
-def _exts_for_mime(mime: str) -> set[str]:
-    """单个 legacy MIME → 具体扩展名集合; 未知 MIME → KeyError。"""
-    e = MIME_EXTS.get(mime)
-    if not e:
-        raise KeyError(mime)
-    return set(e)
-
-
-def families_for_mimes(mimes: list[str] | None) -> set[str] | None:
-    """MIME 声明 → 族集合 (存量声明映射, 分类/发现维度)。未知 MIME → KeyError 上抛。
-
-    mimes=None → None (accept=all 语义, 历史数据; 新发布为单选必填)。
-
-    4C-1: 执行闸门不再使用本函数 — 精确契约用 extensions_for_accept。
-    本函数保留供分类/发现消费方使用 (family 是分类维度)。"""
-    if not mimes:
-        return None
-    fams: set[str] = set()
-    for m in mimes:
-        f = MIME_TO_FAMILIES.get(m)
-        if not f:
-            raise KeyError(m)
-        fams |= f
-    return fams
-
-
-def extensions_for_mimes(mimes: list[str] | None) -> set[str] | None:
-    """[legacy compatibility wrapper] MIME 声明 → 具体扩展名集合。
-
-    4C-2 起 canonical 入口是 extensions_for_accept (同时理解 ext token 与
-    legacy MIME); 本函数只展开 MIME, 保留给仅处理 legacy MIME 的消费方与
-    family invariant, 实现不复制 (直接走 _exts_for_mime)。
-    None/[] → None; 未知 MIME → KeyError。"""
-    if not mimes:
-        return None
-    exts: set[str] = set()
-    for m in mimes:
-        exts |= _exts_for_mime(m)
-    return exts
-
-
 def extensions_for_accept(tokens) -> set[str] | None:
-    """Canonical AcceptToken 化 (4C-2 Tool Input Contract 单点)。
+    """Stored-accept → canonical extension set (Tool Input Contract 单点).
 
-    输入允许混合:
-      - canonical extension token: ".pdf" / ".dxf" (大小写不敏感,
-        lowercase 后必须属于平台 vocabulary = FAMILIES 全部 exts 并集)
-      - legacy MIME: "application/pdf" / "application/octet-stream"
-        (经 MIME_EXTS 展开成具体扩展名)
-    输出: canonical 小写 extension token 集合。
+    Stored contract has exactly two shapes:
+      - None → any platform-whitelisted format (explicit "any" semantics;
+        used by current pass-through tools, e.g. share / zip_pack)
+      - non-empty list of canonical lowercase extension tokens → set(ext)
 
-    - None / [] → None (accept=不限制, 仍受平台 ALLOWED_EXT 总边界)
-    - string 裸值不是 token list → TypeError (禁止逐字符处理)
-    - 未知 extension / MIME → KeyError(token), 由调用方决定容错策略
+    Everything else is INVALID — no second name for "any":
+      - [] (empty list) → ValueError
+      - bare string (not a list) → TypeError
+      - MIME token / unknown token / empty token → KeyError(token)
     """
     if tokens is None:
         return None
-    if isinstance(tokens, str):
-        raise TypeError("accept tokens must be a list, not a bare string")
-    token_list = list(tokens)
+    if not isinstance(tokens, list):
+        raise TypeError(
+            f"accept tokens must be a list, got {type(tokens).__name__}")
+    token_list = tokens
     if not token_list:
-        return None
+        raise ValueError("accept=[] is invalid — use null for any-format")
     exts: set[str] = set()
     for tok in token_list:
         t = str(tok or "").strip().lower()
         if not t:
-            continue
+            raise ValueError("accept list contains an empty token")
         if t.startswith("."):
             if t not in VOCAB_EXTS:
                 raise KeyError(t)
             exts.add(t)
         else:
-            exts |= _exts_for_mime(t)  # legacy MIME 展开
+            raise KeyError(t)
+    if not exts:
+        raise ValueError("accept list has no canonical tokens")
     return exts
+
+
+def parse_stored_accept(raw: str | None) -> set[str] | None:
+    """THE single stored-accept parser (platform_tools.accept_json column).
+
+    Exactly two physical shapes are valid:
+      SQL NULL           → None (explicit "any platform-whitelisted format")
+      JSON text decoding to a NON-EMPTY list of canonical lowercase ext
+                         → set(ext)
+
+    Everything else is an invariant violation (typed raise):
+      '' (empty string), 'null', '[]', a JSON object, a JSON scalar,
+      MIME tokens, unknown ext tokens, empty tokens.
+    """
+    import json as _json
+    if raw is None:
+        return None
+    try:
+        decoded = _json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"stored accept is not valid JSON: {exc}") from None
+    if not isinstance(decoded, list):
+        raise ValueError(
+            f"stored accept must decode to a list, got "
+            f"{type(decoded).__name__}")
+    return extensions_for_accept(decoded)
 
 
 def validate_family_key(key) -> tuple[str | None, str | None]:
     """发布提交校验: 单个族键 (单选范式) → (family_key|None, err)。
 
-    缺失/非法 (含旧客户端数组形态) → (None, 'bad_format_family') —
+    non-string / unknown family → (None, 'bad_format_family') —
     单选必填, 无空语义。"""
     if not key or not isinstance(key, str) or key not in FAMILIES:
         return None, "bad_format_family"
     return key, None
-
-
-def validate_family_keys(keys) -> tuple[set[str] | None, str | None]:
-    """兼容入口 (旧多选调用方): 校验族键列表。新代码用 validate_family_key。"""
-    if not keys:
-        return None, "bad_format_family"  # 0930: 空声明已不可提交
-    if not isinstance(keys, list) or len(keys) != 1 or keys[0] not in FAMILIES:
-        return None, "bad_format_family"
-    return {keys[0]}, None
 
 
 def family_exts(key: str) -> frozenset[str]:
@@ -311,15 +289,9 @@ def format_manifest() -> dict:
     return {
         "order": list(FAMILY_ORDER),
         "families": {
-            key: {
-                "exts": sorted(FAMILIES[key].exts),
-                "mimes": sorted(FAMILIES[key].mimes),
-            }
+            key: {"exts": sorted(FAMILIES[key].exts)}
             for key in FAMILY_ORDER
         },
-        # 4C-2: legacy MIME → canonical ext 精确转换表 (publish edit 回填用),
-        # 直接从 MIME_EXTS 派生, 排序稳定。
-        "mime_exts": {m: sorted(e) for m, e in sorted(MIME_EXTS.items())},
     }
 
 
@@ -335,13 +307,15 @@ def mime_in_families(mime: str | None, ext: str, fam_keys: set[str]) -> bool:
     return bool(sniff_ext_to_families(ext) & fam_keys)
 
 
-# 4C-1a 决定性 invariant: 用当前 family 发布协议写成 accept_json 的 MIME
-# 集合, runtime (extensions_for_mimes) 必须放行该族声明的每一个扩展名 —
-# 七个 family 全部成立。未来增改 family/MIME 词表违反此 invariant 即加载
-# 失败, 不允许 family 声称支持但精确执行闸门拒绝的格式。
+# 4C-1a 决定性 invariant: family 声明的 MIME 集合按 MIME_EXTS 展开, 必须
+# 恰等于该族 exts — 七个 family 全部成立。未来增改 family/MIME 词表违反此
+# invariant 即加载失败, 不允许 family 声称支持但精确执行闸门拒绝的格式。
 for _key, _fam in FAMILIES.items():
-    assert extensions_for_mimes(list(_fam.mimes)) == set(_fam.exts), (
-        f"family '{_key}' accept→ext 分叉: "
-        f"extensions_for_mimes(mimes)={sorted(extensions_for_mimes(list(_fam.mimes)))} "
+    _mime_union: set[str] = set()
+    for _m in _fam.mimes:
+        _mime_union |= set(MIME_EXTS[_m])
+    assert _mime_union == set(_fam.exts), (
+        f"family '{_key}' MIME→ext 分叉: "
+        f"MIME_EXTS 展开={sorted(_mime_union)} "
         f"!= exts={sorted(_fam.exts)}"
     )

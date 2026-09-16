@@ -253,15 +253,6 @@ def insert_call_failed(con, client_ref: str, user_id: int, tool_id: str,
          started_at, finished_at))
 
 
-def call_by_client_ref(con, user_id: int, client_ref: str) -> Optional[dict]:
-    """Legacy repo query kept for historical diagnostics; execution uses the
-    tool-scoped call_by_tool_client_ref()."""
-    return con.execute(
-        "SELECT * FROM tool_calls WHERE user_id = %s AND client_ref = %s "
-        "AND status = 'ok' ORDER BY id DESC LIMIT 1",
-        (user_id, client_ref)).fetchone()
-
-
 def call_count_by_ref(con, user_id: int, client_ref: str) -> int:
     return con.execute(
         "SELECT COUNT(*) AS n FROM tool_calls WHERE user_id = %s AND client_ref = %s",

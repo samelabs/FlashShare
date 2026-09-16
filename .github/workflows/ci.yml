@@ -117,6 +117,10 @@ jobs:
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_supply_accept_multi.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_architecture_unification.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_architecture_unification.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_ingress_entitlement.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_access_projection.py
@@ -183,6 +187,8 @@ jobs:
 
       - name: Supply accept/multi canonical
         run: python tests/canonical/test_supply_accept_multi.py
+      - name: Architecture unification canonical
+        run: python tests/canonical/test_architecture_unification.py
 
       - name: Remote security canonical
         run: python tests/canonical/test_remote_security.py

@@ -79,9 +79,6 @@ def _cleanup_own_rows():
         "delete from sessions where user_id in"
         " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
     _cur.execute(
-        "delete from user_plans where user_id in"
-        " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
-    _cur.execute(
         "delete from orders where user_id in"
         " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
     _cur.execute(
@@ -111,13 +108,14 @@ _free = next(t for t in _t if t.code == "free")
 check("INV3 operator/迁移后的 free 行不被 init_db 覆盖 (7/2MiB 存活)",
       _free.benefits.ingress_files_24h == 7 and _free.benefits.ingress_bytes_24h == 2097152,
       f"got {_free.benefits.ingress_files_24h}/{_free.benefits.ingress_bytes_24h}")
-# 空壳行 (badge NULL) 才补:
+# badge_key NULL 不再被 init_db 补齐 (historical backfill 已删) —
+# 空壳行属 schema violation, 由 validate_config 负责暴露而非修复。
 _cur.execute("update plans set badge_key=NULL where code='free'")
 _dbmod.init_db()
 _t = plan_catalog.catalog(refresh=True)
 _free = next(t for t in _t if t.code == "free")
-check("INV3b 空壳 free 行按 env 补齐 (badge NULL → 补)",
-      _free.badge_key == "tier_free", _free.badge_key)
+check("INV3b init_db 不再修 badge_key (无 backfill, NULL 存活)",
+      _free.badge_key == "", _free.badge_key)  # Tier 投影: NULL → ""
 
 # ═══ INV1: startup validate_config authority ═══
 # (a) free 缺失 → free_tier 抛 ConfigurationError
@@ -402,61 +400,6 @@ _vci()
 _creem.upgrade_subscription = _orig_upgrade
 _creem.creem_enabled = _orig_enabled
 
-# ═══ D-regression: legacy user_plans active+NULL migration 两 case ═══
-# Case 1: active + renews NULL 且无 paid sub:* order → 迁移 fail loud
-# Case 2: active + renews NULL 但有匹配 paid sub: order → 正常进 memberships
-#          (sub:<id> 绑定, renews NULL, occupied=True / effective=False), 绝不 legacy:*
-import psycopg2 as _pg2
-_ts2 = int(time.time())
-
-def _seed_up(uid, plan_id, status, renews):
-    _cur.execute(
-        "insert into user_plans (user_id, plan_id, status, started_at, renews_at)"
-        " values (%s, %s, %s, %s, %s)", (uid, plan_id, status, _ts2 - 86400, renews))
-
-# Case 1 用户
-_u3 = "dk" + uuid.uuid4().hex[:7]
-_cur.execute(
-    "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
-    " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id", (_u3, f"{_u3}@t.co", ts, ts))
-_dk1_uid = _cur.fetchone()[0]
-_seed_up(_dk1_uid, _plus_id, "active", None)  # 无 paid sub order → 必须 fail
-try:
-    _dbmod.init_db()
-    check("MG1 active+NULL 无 paid sub order → 迁移 fail loud", False, "no raise")
-except Exception as _e:
-    ok = "live user_plans rows lack" in str(_e) or "multiple live" in str(_e)
-    check("MG1 active+NULL 无 paid sub order → 迁移 fail loud", ok, str(_e)[:100])
-# 清掉 Case1 行
-_cur.execute("delete from user_plans where user_id=%s", (_dk1_uid,))
-
-# Case 2 用户: active+NULL + 匹配 paid sub: order → 正常迁移
-_u4 = "dl" + uuid.uuid4().hex[:7]
-_cur.execute(
-    "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
-    " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id", (_u4, f"{_u4}@t.co", ts, ts))
-_dk2_uid = _cur.fetchone()[0]
-_seed_up(_dk2_uid, _plus_id, "active", None)
-_cur.execute(
-    "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, created_at, paid_at)"
-    " values (%s, 'plan', %s, 'creem', 'sub:dklegacy', 'paid', 500, %s, %s)",
-    (_dk2_uid, _plus_id, _ts2 - 86400, _ts2 - 86400))
-try:
-    _dbmod.init_db()
-    _cur.execute("select provider_subscription_id, renews_at, status from memberships where user_id=%s", (_dk2_uid,))
-    _mrow = _cur.fetchone()
-    from economy.subscription import membership_is_effective as _eff_fn
-    check("MG2a active+NULL + paid sub order → memberships 行建立 (sub:dklegacy)",
-          _mrow is not None and _mrow[0] == "sub:dklegacy", str(_mrow))
-    check("MG2b renews_at 保持 NULL (bind 未 paid 周期语义)",
-          _mrow is not None and _mrow[1] is None, str(_mrow))
-    check("MG2c 绝不生成 legacy:* 绑定",
-          _mrow is not None and not str(_mrow[0]).startswith("legacy:"), str(_mrow))
-    _occupied = _mrow[2] in ("active", "canceled", "past_due") and (_mrow[1] is None or _mrow[1] > _ts2)
-    check("MG2d occupied=True / effective=False (slot 占住, 非有效付费会员)",
-          _occupied and not _eff_fn(_mrow[2], _mrow[1], _ts2), str(_mrow))
-except Exception as _e:
-    check("MG2 migration 正常执行", False, str(_e)[:120])
 # 清场
 _cleanup_own_rows()
 

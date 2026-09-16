@@ -151,7 +151,7 @@ except (TypeError, ValueError) as exc:
 # ═══ 6. Read-only (跨业务表计数前后不变) ═══
 def _tbl_counts():
     out = {}
-    for t in ("user_plans", "upload_usage", "ledger", "tool_calls"):
+    for t in ("memberships", "upload_usage", "ledger", "tool_calls"):
         _cur.execute(f"select count(*) from {t}")
         out[t] = _cur.fetchone()[0]
     return out
@@ -160,7 +160,7 @@ _b = _tbl_counts()
 for _ in range(3):
     project(id_p); project(id_f); project(id_u); project(id_e)
 _a = _tbl_counts()
-check("AP-R1 projection 纯只读 (user_plans/upload_usage/ledger/tool_calls 计数不变)",
+check("AP-R1 projection 纯只读 (memberships/upload_usage/ledger/tool_calls 计数不变)",
       _a == _b, f"before={_b} after={_a}")
 
 # ═══ 7. resolve 与 projection 同消费 resolve_from_membership (行为等价) ═══
@@ -239,9 +239,8 @@ st, d = _me(_mf_bearer)
 check("ME-F1 Free /me → 200", st == 200, str(st))
 check("ME-F2 credits == 独立 spendable_balance (42)",
       d.get("credits") == 42 == _sb(_mf_id), str(d.get("credits")))
-check("ME-F3 plan is null 且 == access.membership",
-      d.get("plan") is None and d.get("access", {}).get("membership") is None
-      and d.get("plan") == d.get("access", {}).get("membership"))
+check("ME-F3 /me 无 plan 键, access.membership is None",
+      "plan" not in d and d.get("access", {}).get("membership") is None)
 _acc = d.get("access", {})
 check("ME-F4 access.entitlements.plan_code=free + delivery/ingress 值来自 projection",
       _acc.get("entitlements", {}).get("plan_code") == "free"
@@ -259,8 +258,9 @@ _cur.execute("select id from users where username=%s", (_mp,))
 _mp_id = _cur.fetchone()[0]
 _seed_plan(_mp_id, "plus", "active", _ts + 30 * 86400)
 st, d = _me(_token(_login_http(_mp)))
-check("ME-P1 PLUS /me: plan.member=true 且 plan == access.membership",
-      d.get("plan", {}).get("member") is True and d.get("plan") == d.get("access", {}).get("membership"))
+check("ME-P1 PLUS /me: access.membership.member=true 且无 plan 键",
+      d.get("access", {}).get("membership", {}).get("member") is True
+      and "plan" not in d)
 check("ME-P2 PLUS entitlements 来自 projection (非 API 自拼)",
       d["access"]["entitlements"]["plan_code"] == "plus"
       and d["access"]["entitlements"]["expiry_days"] == list(_PLANS["plus"]["expiry_days"]))
@@ -272,8 +272,9 @@ _cur.execute("select id from users where username=%s", (_me_,))
 _me_id = _cur.fetchone()[0]
 _seed_plan(_me_id, "plus", "active", _ts - 100)
 st, d = _me(_token(_login_http(_me_)))
-check("ME-E1 expired: plan 保留真实 fact (member=false) == access.membership",
-      d.get("plan", {}).get("member") is False and d.get("plan") == d.get("access", {}).get("membership"))
+check("ME-E1 expired: access.membership 保留真实 fact (member=false), 无 plan 键",
+      d.get("access", {}).get("membership", {}).get("member") is False
+      and "plan" not in d)
 check("ME-E2 expired: entitlements.plan_code=free (fact ≠ entitlement)",
       d["access"]["entitlements"]["plan_code"] == "free")
 
@@ -532,8 +533,8 @@ check("AP-G8 v1_me 无第二次 membership 读取 (代码行无 plan_of)",
 check("AP-G9 v1_me 无 plus policy / 无自拼 entitlement 值",
       '"plus"' not in _v1_me and "expiry_days" not in _v1_me.split("access = project")[0]
       and "download_limits" not in _v1_me)
-check("AP-G10 plan 是 access.membership payload alias",
-      '"plan": access["membership"]' in _v1_me)
+check("AP-G10 v1_me 无 plan alias (access.membership 唯一名)",
+      '"plan"' not in _v1_me.split("return")[0] or '"plan":' not in _v1_me)
 # AP-G11 (AST 稳定版): v1_me 的返回 dict 里 "credits" 键的值表达式
 # 必须是对 spendable_balance(user["id"]) 的调用; 且该键不得取自
 # project()/access 结果 (credits 永不进 projection)。

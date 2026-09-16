@@ -645,7 +645,7 @@ async def account_tokens(request: Request):
     return templates.TemplateResponse(request, "account/tokens.html", ctx)
 
 
-# Legacy /auth/profile is intentionally gone (single-page account removed).
+# /auth/profile does not exist (single-page account model).
 # Profile/password POST handlers moved here from auth_route (account forms).
 
 @router.post("/account/profile")

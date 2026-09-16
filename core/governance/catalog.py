@@ -81,20 +81,33 @@ def seed_from_registry() -> dict:
     return {"added": added, "updated": updated}
 
 
-def _canonical_accept(tokens) -> list | None:
-    """accept_json 行 → canonical extension token list (4C-2)。
+def _canonical_accept(raw: str | None) -> list | None:
+    """accept_json column → canonical extension token list (4C-2).
 
-    Web/Tool Page/API/MCP 看到的 accept 必须是精确 extension contract:
-    legacy MIME 经 extensions_for_accept 展开成 ext。存量行含完全未知
-    token 时不 500、不猜格式 — 安全 fallback 原样保留 token。"""
-    if not tokens:
-        return None
-    from governance.formats import extensions_for_accept
-    try:
-        canon = extensions_for_accept(tokens)
-        return sorted(canon) if canon else None
-    except (KeyError, TypeError):
-        return sorted(str(t) for t in tokens if t)
+    Stored contract is parsed by THE single stored parser
+    (formats.parse_stored_accept): SQL NULL = any / valid JSON non-empty
+    canonical ext list. Anything else raises — never silently
+    projected."""
+    from governance.formats import parse_stored_accept
+    canon = parse_stored_accept(raw)  # typed raise on invalid
+    return sorted(canon) if canon else None
+
+
+def validate_catalog_rows() -> None:
+    """Startup invariant: every platform_tools row's stored accept must be
+    the current contract (NULL = any, or non-empty canonical ext list).
+    Violation aborts startup — catalog projection never guesses."""
+    from governance.formats import parse_stored_accept
+    with db() as con:
+        rows = con.execute(
+            "select tool_key, accept_json from platform_tools").fetchall()
+    for r in rows:
+        try:
+            parse_stored_accept(r["accept_json"])  # SQL NULL = valid any
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"catalog invariant: tool {r['tool_key']} accept_json "
+                f"violates the stored contract ({exc})") from None
 
 
 def is_official_id(tool_id: str) -> bool:
@@ -118,9 +131,8 @@ def row_to_item(row: dict, price: dict) -> dict:
         "label": json.loads(row["label_json"]),
         "icon": row["icon"],
         # 4C-2: 公开 accept 一律投影成 canonical extension tokens
-        # (legacy MIME 行在投影时精确展开; 未知 token 安全 fallback)。
-        "accept": _canonical_accept(
-            json.loads(row["accept_json"]) if row["accept_json"] else None),
+        # (stored parser 单点解释, 非法行 startup fail)。
+        "accept": _canonical_accept(row["accept_json"]),
         "multi": bool(row["multi"]),
         "pass_through": bool(row.get("pass_through") or False),
         "cost": int(price.get("cost") or 0),
@@ -128,7 +140,7 @@ def row_to_item(row: dict, price: dict) -> dict:
     # params 声明 (tool modes v3): 三面同构 — web 浮层/MCP inputSchema/详情同源
     item["params"] = json.loads(row["params_json"]) if row["params_json"] else None
     # 简介 (名称/简介/模式/使用): str|dict, 前端 resolveLabel 解析; 系统工具简介
-    # 在 i18n {id}_desc — 由前端 t() 双通道兼容
+    # 在 i18n {id}_desc — 前端 t() 双通道 (系统=i18n 键, 用户=desc_json)
     item["desc"] = json.loads(row["desc_json"]) if row.get("desc_json") else None
     # 遴选呈现 (后台管理): 推荐标记 + 排序
     item["featured"] = bool(row["featured"])
@@ -307,7 +319,9 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
         local = _get_local(tool["tool_id"])
         if local:
             tool["handler"] = local["handler"]
-            tool["accept"] = local["accept"]
+            # registry 运行时 accept 是 set — 此处 (authoring adapter) 转
+            # canonical sorted list, 下游 validator list-only。
+            tool["accept"] = sorted(local["accept"]) if local["accept"] else None
     return tool, None
 
 

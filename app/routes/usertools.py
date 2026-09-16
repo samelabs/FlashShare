@@ -121,31 +121,28 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
     if "accept" in raw or "format_families" in raw or not partial:
         # 4C-2 Tool Input Contract: format_families 保留为 authoring taxonomy;
         # accept 是 exact executable contract — 存库永远写 sorted canonical
-        # extension tokens。旧客户端只发 family (无 accept) → 解释为整族。
+        # extension tokens。accept 必须显式声明 (见下)。
         fam, ferr = validate_family_key(raw.get("format_families"))
         if ferr:
             return None, ferr
         fam_exts = set(FAMILIES[fam].exts)
-        # accept 缺失 vs 显式空数组语义 (4C-2-close):
-        #   raw 无 accept 键 / None → legacy client: 整族 canonical ext
-        #   显式 [] / 非 list / 空 token 结果 → bad_accept (显式空选择
-        #   不得静默扩大成整族)
+        # accept 是唯一 executable input contract, 必须显式声明:
+        #   缺失 / None / 非 list / 空 list / 空 token 结果 → bad_accept
+        #   (不猜测, 不从 family 扩面)。format_families 只是 authoring
+        #   taxonomy, 不再替 accept 生成 contract。
         raw_accept = raw.get("accept")
         if "accept" not in raw or raw_accept is None:
-            canon = set(fam_exts)
-        else:
-            if not isinstance(raw_accept, list):
-                return None, "bad_accept"
-            from governance.formats import extensions_for_accept
-            try:
-                canon = extensions_for_accept(raw_accept)
-            except (KeyError, TypeError):
-                return None, "bad_accept"
-            if not canon:
-                return None, "bad_accept"
-            # exact tokens 必须全部属于所选 family (operator remote 才允许跨族)
-            if not canon <= fam_exts:
-                return None, "bad_accept"
+            return None, "bad_accept"
+        if not isinstance(raw_accept, list):
+            return None, "bad_accept"
+        from governance.formats import extensions_for_accept
+        try:
+            canon = extensions_for_accept(raw_accept)
+        except (KeyError, TypeError, ValueError):
+            return None, "bad_accept"
+        # 声明的 accept token 必须落在所选 family 的 canonical ext 内
+        if not canon <= fam_exts:
+            return None, "bad_accept"
         fields["accept"] = sorted(canon)
 
     # 4C-2: multi 是标准 ToolDeclaration capability (不是 params)。
@@ -162,7 +159,7 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         return None, "bad_output_filename"
 
     if "output_content_type" in raw:
-        # 输出由端点决定, 平台不声明。字段不再写入 (存量 decl 原样保留)。
+        # 输出由端点决定, 平台不声明 — 提交该字段即拒绝。
         return None, "bad_output_content_type"
 
     if "visibility" in raw or not partial:

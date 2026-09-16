@@ -35,14 +35,6 @@ CREDITS_PER_USD = 1000         # 1 USD = 1000 credits; earnings shown in USD
 WITHDRAWAL_STATES = ("pending", "approved", "rejected", "paid")
 
 
-def ensure_schema() -> None:
-    """Schema now lives in database.py _SCHEMA_SQL (single source of truth,
-    批1归一). Kept as a no-op shim for existing callers (main.startup);
-    the withdrawals DDL here would be a second truth source.
-    """
-    return None
-
-
 def earnings_summary(user_id: int) -> dict:
     """Available = earned (provider_earn) − withdrawn (approved+paid) −
     pending requests. Derived live from the ledger; no cached counters."""

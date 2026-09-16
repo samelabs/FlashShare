@@ -248,13 +248,12 @@ async def startup():
         from governance.pricing import seed_pricing
         seeded = seed_pricing([t["id"] for t in _registry])
         logger.info("pricing seeded: +%d rows", seeded["added"])
-        from governance.catalog import seed_from_registry
+        from governance.catalog import seed_from_registry, validate_catalog_rows
         sync = seed_from_registry()
         logger.info("platform_tools seeded: +%d added, %d updated",
                     sync["added"], sync["updated"])
-        from economy.earnings import ensure_schema
-        ensure_schema()
-        logger.info("withdrawals schema ready")
+        validate_catalog_rows()
+        logger.info("catalog rows validated")
         from governance.platform import ensure_platform_account
         pid = ensure_platform_account()
         logger.info("platform account ready: id=%s", pid)

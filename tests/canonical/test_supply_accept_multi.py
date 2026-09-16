@@ -67,28 +67,19 @@ base = {"tool_id": "acctest", "label": {"en": "Acc"}, "execution": "http",
         "url": "https://httpbin.org/anything", "timeout_s": 30,
         "visibility": "private", "format_families": "document", "params": []}
 
-# A1: 无 accept → 全族
+# A1: 无 accept → bad_accept (accept 是显式必填 contract, 不猜全族)
 st, r = req("POST", "/api/usertools", base, cookie)
-check("A1 缺失 accept → 创建 ok", st == 200 and r.get("ok"), str(r))
-conn = http.client.HTTPConnection(*_HOST, timeout=30)
-conn.request("GET", "/api/usertools", None, {"Cookie": cookie})
-t = [x for x in json.loads(conn.getresponse().read())["tools"] if x["tool_id"] == "acctest"][0]
-conn.close()
-import sys as _s, os as _os
-_os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "x")
-_s.path.insert(0, os.path.join(_REPO, 'core'))
-from governance.formats import FAMILIES
-full_doc = sorted(FAMILIES["document"].exts)
-check("A1b 全族 canonical ext (与 FAMILIES[document].exts 一致)",
-      sorted(t["accept"]) == full_doc, f"{len(t['accept'])} exts")
+check("A1 缺失 accept → 422 bad_accept",
+      st == 422 and r.get("error") == "bad_accept", f"{st} {r}")
 
 # A2: accept=[] → bad_accept
 st, r = req("POST", "/api/usertools", dict(base, tool_id="acc2", accept=[]), cookie)
 check("A2 accept=[] → 422 bad_accept", st == 422 and r.get("error") == "bad_accept", f"{st} {r}")
 
-# A2b: accept=None → 与缺失同义 (全族)
+# A2b: accept=None → bad_accept (同缺失, 不兼容)
 st, r = req("POST", "/api/usertools", dict(base, tool_id="acc3", accept=None), cookie)
-check("A2b accept=None → 兼容全族 (创建 ok)", st == 200 and r.get("ok"), f"{st} {r}")
+check("A2b accept=None → 422 bad_accept",
+      st == 422 and r.get("error") == "bad_accept", f"{st} {r}")
 
 # A3: accept=[".pdf"] → [".pdf"]
 st, r = req("POST", "/api/usertools", dict(base, tool_id="acc4", accept=[".pdf"]), cookie)

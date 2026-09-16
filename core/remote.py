@@ -91,9 +91,10 @@ def auth_header_allowed(name: str) -> bool:
 
 
 def _reject_reserved_auth_headers(auth_headers: dict) -> None:
-    """Runtime defense for untrusted dispatch: legacy DB rows may carry a
-    reserved credential header even though submission now rejects them.
-    Fails typed BEFORE any network request; never logs the value."""
+    """Runtime defense for untrusted dispatch: a stored credential header
+    may claim a reserved name even though submission rejects them at the
+    boundary. Fails typed BEFORE any network request; never logs the
+    value."""
     for k in auth_headers:
         if k.strip().lower() in RESERVED_AUTH_HEADERS:
             raise RemoteError("bad_endpoint", "reserved credential header")
@@ -355,7 +356,7 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
                timeout_s: int, trusted: bool) -> tuple:
     body = json.dumps(payload).encode()
     if not trusted:
-        # Legacy-row defense: a reserved credential header (Host, framing,
+        # Stored-row defense: a reserved credential header (Host, framing,
         # ...) must fail typed BEFORE any network request.
         _reject_reserved_auth_headers(headers)
         # Untrusted: pinned transport with redirect + credential policy.
