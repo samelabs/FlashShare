@@ -360,9 +360,13 @@ check("U8 backup rotation: empty daily+weekly under pipefail → exit 0",
 _doc = open(_os.path.join(_REPO, "docs", "plan",
                           "ARCHITECTURE_UNIFICATION_DEPLOY_20260916.md"),
             encoding="utf-8").read()
-check("U8 deploy doc: backup 走 target worktree (非 /opt/flashshare 旧脚本)",
-      "/tmp/flashshare-deploy-$TARGET_SHA/scripts/backup.sh" in _doc
-      and "/opt/flashshare/scripts/backup.sh" not in _doc)
+_backup_lines = [ln.strip() for ln in _doc.splitlines()
+                 if "scripts/backup.sh" in ln]
+check("U8 deploy doc: backup 命令唯一且来自 /tmp target worktree",
+      len(_backup_lines) == 1
+      and "/tmp/flashshare-deploy-$TARGET_SHA/scripts/backup.sh"
+          in _backup_lines[0],
+      _backup_lines)
 check("U8 deploy doc: migration 走 target worktree SQL",
       "flashshare-deploy-$TARGET_SHA/docs/plan/ARCHITECTURE_UNIFICATION_DB_CLEANUP.sql" in _doc)
 check("U8 deploy doc: quiesced 顺序 (stop → SQL → ff → start)",
