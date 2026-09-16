@@ -10,7 +10,8 @@ Mechanism:
     Codes entering comparisons always come from plans-row lookups
     (by_product / by_id), so unknown codes are structurally
     unreachable here.
-  - sellable  = active AND price_cents > 0 AND product bound.
+  - sellable  = active AND price_cents > 0 AND product bound
+               AND benefits configured (expiry + download arrays).
   - startup validation: every sellable row's benefits must be a
     subset of the platform protocol values (fail-closed
     ConfigurationError, never silent pruning).

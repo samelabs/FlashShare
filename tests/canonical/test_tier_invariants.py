@@ -235,6 +235,185 @@ _cur.execute("delete from plans where code='inv11t'")
 _cur.execute("delete from users where username='invuser'")
 plan_catalog.catalog(refresh=True)
 
+# ═══ INV10/INV11 route-level: 真实 ASGI 路由 + provider 调用计数 ═══
+import uuid
+sys.path.insert(0, _REPO)
+from app.main import app
+from app.web_auth import create_browser_session, COOKIE_NAME
+import warnings as _w
+with _w.catch_warnings():
+    _w.simplefilter("ignore", DeprecationWarning)
+    from starlette.testclient import TestClient
+from economy import creem as _creem
+
+_client = TestClient(app)
+_prov_calls = {"upgrade": 0}
+_orig_upgrade = _creem.upgrade_subscription
+def _fake_upgrade(sub, prod, update_behavior="x"):
+    _prov_calls["upgrade"] += 1
+    return {"id": sub}
+_creem.upgrade_subscription = _fake_upgrade
+_orig_enabled = _creem.creem_enabled
+_creem.creem_enabled = lambda: True
+
+def _post(path, body, cookie):
+    r = _client.post(path, json=body, cookies={COOKIE_NAME: cookie},
+                     follow_redirects=False)
+    try:
+        d = r.json()
+    except Exception:
+        d = {"_raw": r.text[:120]}
+    return r.status_code, d
+
+# ── C1: bound-but-unpaid (active + renews_at=NULL) ──
+_u = "ti" + uuid.uuid4().hex[:7]
+_cur.execute(
+    "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
+    " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id", (_u, f"{_u}@t.co", ts, ts))
+_c1_uid = _cur.fetchone()[0]
+with db() as con:
+    _plus_id = orders_repo.plan_by_code(con, "plus")["id"]
+    _pro_id = orders_repo.plan_by_code(con, "pro")["id"]
+# pro 配齐可售 (upgrade/downgrade target 都有效), plus 是当前档
+_cur.execute("update plans set creem_product_id='prod_ti_pro', price_cents=1500 where code='pro'")
+_cur.execute("update plans set creem_product_id='prod_ti_plus', price_cents=500 where code='plus'")
+from governance.plan_catalog import validate_config as _vci
+_vci()
+_cur.execute(
+    "insert into memberships (user_id, plan_id, provider_subscription_id, status, started_at, renews_at)"
+    " values (%s, %s, 'sub:tiunpaid', 'active', %s, NULL)", (_c1_uid, _plus_id, ts))
+_c1_sess = create_browser_session(_c1_uid)
+_cur.execute("select renews_at, status from memberships where user_id=%s", (_c1_uid,))
+_m0 = _cur.fetchone()
+_cur.execute("select count(*) from ledger where user_id=%s", (_c1_uid,))
+_l0 = _cur.fetchone()[0]
+_cur.execute("select count(*) from pending_downgrades where user_id=%s", (_c1_uid,))
+_p0 = _cur.fetchone()[0]
+
+st, d = _post("/api/topup/plan-upgrade", {"plan": "pro"}, _c1_sess)
+check("INV10-R1 upgrade NULL-renews → 409 no_active_membership",
+      st == 409 and d.get("error") == "no_active_membership", f"st={st} d={d}")
+st, d = _post("/api/topup/plan-downgrade", {"plan": "pro"}, _c1_sess)
+check("INV10-R1b downgrade NULL-renews → 409 no_active_membership",
+      st == 409 and d.get("error") == "no_active_membership", f"st={st} d={d}")
+check("INV10-R2 provider calls = 0 (双请求)",
+      _prov_calls["upgrade"] == 0, _prov_calls)
+_cur.execute("select renews_at, status from memberships where user_id=%s", (_c1_uid,))
+check("INV10-R3 membership 行不变", _cur.fetchone() == _m0)
+_cur.execute("select count(*) from ledger where user_id=%s", (_c1_uid,))
+check("INV10-R4 ledger 不变", _cur.fetchone()[0] == _l0)
+_cur.execute("select count(*) from pending_downgrades where user_id=%s", (_c1_uid,))
+check("INV10-R5 pending_downgrades 零写入", _cur.fetchone()[0] == _p0 == 0)
+
+# ── C2: target 价+品+active 但 benefits 未配置 (有效会员) ──
+_u2 = "tj" + uuid.uuid4().hex[:7]
+_cur.execute(
+    "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
+    " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id", (_u2, f"{_u2}@t.co", ts, ts))
+_c2_uid = _cur.fetchone()[0]
+_cur.execute(
+    "insert into memberships (user_id, plan_id, provider_subscription_id, status, started_at, renews_at)"
+    " values (%s, %s, 'sub:tipaid', 'active', %s, %s)", (_c2_uid, _plus_id, ts, ts + 30*86400))
+_c2_sess = create_browser_session(_c2_uid)
+# target = pro 但清空 benefits (价/品保留) — upgrade direction 合法但 target 不可售
+_cur.execute("update plans set expiry_days=ARRAY[]::INTEGER[], download_limits=ARRAY[]::INTEGER[] where code='pro'")
+_vci()
+_cur.execute("select count(*) from ledger where user_id=%s", (_c2_uid,))
+_l2 = _cur.fetchone()[0]
+_cur.execute("select count(*) from pending_downgrades where user_id=%s", (_c2_uid,))
+_p2 = _cur.fetchone()[0]
+st, d = _post("/api/topup/plan-upgrade", {"plan": "pro"}, _c2_sess)
+check("INV11-R1 upgrade unconfigured target → 422 plan_not_ready",
+      st == 422 and d.get("error") == "plan_not_ready", f"st={st} d={d}")
+# downgrade direction: 清 TARGET(plus) 的 benefits (current=pro 保持完整可读)
+_cur.execute("update plans set creem_product_id='prod_ti_pro2', price_cents=1500, expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000] where code='pro'")
+_cur.execute("update plans set expiry_days=ARRAY[]::INTEGER[], download_limits=ARRAY[]::INTEGER[] where code='plus'")
+_cur.execute("update memberships set plan_id=%s where user_id=%s", (_pro_id, _c2_uid))
+_vci()
+st, d = _post("/api/topup/plan-downgrade", {"plan": "plus"}, _c2_sess)
+check("INV11-R1b downgrade unconfigured target → 422 plan_not_ready",
+      st == 422 and d.get("error") == "plan_not_ready", f"st={st} d={d}")
+check("INV11-R2 provider calls 仍 = 0",
+      _prov_calls["upgrade"] == 0, _prov_calls)
+_cur.execute("select count(*) from pending_downgrades where user_id=%s", (_c2_uid,))
+check("INV11-R3 pending 零写入", _cur.fetchone()[0] == _p2 == 0)
+_cur.execute("select count(*) from ledger where user_id=%s", (_c2_uid,))
+check("INV11-R4 ledger 不变", _cur.fetchone()[0] == _l2)
+
+# ── 恢复 fixture 原值 (不污染后续 suite) ──
+_cur.execute("update plans set creem_product_id=NULL, price_cents=0,"
+             " expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000] where code='pro'")
+_cur.execute("update plans set creem_product_id=NULL, price_cents=0,"
+             " expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000] where code='plus'")
+_cur.execute("delete from memberships where user_id in (%s, %s)", (_c1_uid, _c2_uid))
+_cur.execute("delete from pending_downgrades where user_id in (%s, %s)", (_c1_uid, _c2_uid))
+_cur.execute("delete from sessions where user_id in (%s, %s)", (_c1_uid, _c2_uid))
+_cur.execute("delete from users where id in (%s, %s)", (_c1_uid, _c2_uid))
+_vci()
+_creem.upgrade_subscription = _orig_upgrade
+_creem.creem_enabled = _orig_enabled
+
+# ═══ D-regression: legacy user_plans active+NULL migration 两 case ═══
+# Case 1: active + renews NULL 且无 paid sub:* order → 迁移 fail loud
+# Case 2: active + renews NULL 但有匹配 paid sub: order → 正常进 memberships
+#          (sub:<id> 绑定, renews NULL, occupied=True / effective=False), 绝不 legacy:*
+import psycopg2 as _pg2
+_ts2 = int(time.time())
+
+def _seed_up(uid, plan_id, status, renews):
+    _cur.execute(
+        "insert into user_plans (user_id, plan_id, status, started_at, renews_at)"
+        " values (%s, %s, %s, %s, %s)", (uid, plan_id, status, _ts2 - 86400, renews))
+
+# Case 1 用户
+_u3 = "dk" + uuid.uuid4().hex[:7]
+_cur.execute(
+    "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
+    " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id", (_u3, f"{_u3}@t.co", ts, ts))
+_dk1_uid = _cur.fetchone()[0]
+_seed_up(_dk1_uid, _plus_id, "active", None)  # 无 paid sub order → 必须 fail
+try:
+    _dbmod.init_db()
+    check("MG1 active+NULL 无 paid sub order → 迁移 fail loud", False, "no raise")
+except Exception as _e:
+    ok = "live user_plans rows lack" in str(_e) or "multiple live" in str(_e)
+    check("MG1 active+NULL 无 paid sub order → 迁移 fail loud", ok, str(_e)[:100])
+# 清掉 Case1 行
+_cur.execute("delete from user_plans where user_id=%s", (_dk1_uid,))
+
+# Case 2 用户: active+NULL + 匹配 paid sub: order → 正常迁移
+_u4 = "dl" + uuid.uuid4().hex[:7]
+_cur.execute(
+    "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
+    " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id", (_u4, f"{_u4}@t.co", ts, ts))
+_dk2_uid = _cur.fetchone()[0]
+_seed_up(_dk2_uid, _plus_id, "active", None)
+_cur.execute(
+    "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, created_at, paid_at)"
+    " values (%s, 'plan', %s, 'creem', 'sub:dklegacy', 'paid', 500, %s, %s)",
+    (_dk2_uid, _plus_id, _ts2 - 86400, _ts2 - 86400))
+try:
+    _dbmod.init_db()
+    _cur.execute("select provider_subscription_id, renews_at, status from memberships where user_id=%s", (_dk2_uid,))
+    _mrow = _cur.fetchone()
+    from economy.subscription import membership_is_effective as _eff_fn
+    check("MG2a active+NULL + paid sub order → memberships 行建立 (sub:dklegacy)",
+          _mrow is not None and _mrow[0] == "sub:dklegacy", str(_mrow))
+    check("MG2b renews_at 保持 NULL (bind 未 paid 周期语义)",
+          _mrow is not None and _mrow[1] is None, str(_mrow))
+    check("MG2c 绝不生成 legacy:* 绑定",
+          _mrow is not None and not str(_mrow[0]).startswith("legacy:"), str(_mrow))
+    _occupied = _mrow[2] in ("active", "canceled", "past_due") and (_mrow[1] is None or _mrow[1] > _ts2)
+    check("MG2d occupied=True / effective=False (slot 占住, 非有效付费会员)",
+          _occupied and not _eff_fn(_mrow[2], _mrow[1], _ts2), str(_mrow))
+except Exception as _e:
+    check("MG2 migration 正常执行", False, str(_e)[:120])
+# 清场
+_cur.execute("delete from memberships where user_id=%s", (_dk2_uid,))
+_cur.execute("delete from user_plans where user_id=%s", (_dk2_uid,))
+_cur.execute("delete from orders where user_id=%s", (_dk2_uid,))
+_cur.execute("delete from users where username in (%s, %s)", (_u3, _u4))
+
 print()
 if FAIL:
     print(f"FAIL: {len(FAIL)} — " + "; ".join(FAIL)); _sys.exit(1)

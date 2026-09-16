@@ -561,7 +561,7 @@ _SCHEMA_SQL = (
       SELECT count(*) INTO dup_count FROM (
         SELECT user_id FROM user_plans
         WHERE status IN ('active','canceled','past_due')
-          AND COALESCE(renews_at, 0) > EXTRACT(EPOCH FROM now())::BIGINT
+          AND (renews_at IS NULL OR renews_at > EXTRACT(EPOCH FROM now())::BIGINT)
         GROUP BY user_id HAVING count(*) > 1
       ) d;
       IF dup_count > 0 THEN
@@ -572,7 +572,7 @@ _SCHEMA_SQL = (
       -- legacy:* 绑定继续运行。
       SELECT count(*) INTO unbound_live FROM user_plans up
       WHERE up.status IN ('active','canceled','past_due')
-        AND COALESCE(up.renews_at, 0) > EXTRACT(EPOCH FROM now())::BIGINT
+        AND (up.renews_at IS NULL OR up.renews_at > EXTRACT(EPOCH FROM now())::BIGINT)
         AND NOT EXISTS (
           SELECT 1 FROM orders o2
           WHERE o2.user_id = up.user_id AND o2.kind = 'plan'
@@ -604,7 +604,7 @@ _SCHEMA_SQL = (
       FROM user_plans up
       ORDER BY up.user_id,
                (up.status IN ('active','canceled','past_due')
-                AND COALESCE(up.renews_at,0) > EXTRACT(EPOCH FROM now())::BIGINT) DESC,
+                AND (up.renews_at IS NULL OR up.renews_at > EXTRACT(EPOCH FROM now())::BIGINT)) DESC,
                up.renews_at DESC NULLS LAST, up.started_at DESC, up.plan_id DESC
     ) m
     WHERE NOT EXISTS (SELECT 1 FROM memberships mm WHERE mm.user_id = m.user_id)
