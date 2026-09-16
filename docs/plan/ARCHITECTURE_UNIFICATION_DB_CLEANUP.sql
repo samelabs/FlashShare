@@ -1284,19 +1284,115 @@ ALTER TABLE packages DROP COLUMN legacy_creem_product_id;
 
 -- ═══ Postconditions (abort everything if violated) ═══
 
+-- Vocabulary snapshot of the target code (exact VOCAB_EXTS at the audited
+-- SHA). This is a one-time deploy artifact, NOT a second runtime source of
+-- truth — the architecture canonical proves it equals sorted(VOCAB_EXTS).
 DO $$
 BEGIN
-  -- Every stored accept is canonical (NULL or non-empty canonical ext list).
+  -- Every stored accept is canonical: NULL, or a non-empty JSON array whose
+  -- every element is EXACTLY a member of the embedded target vocabulary
+  -- (rejects '.notreal', '.PNG', 'application/json', objects, scalars,
+  -- invalid JSON — strict equality, no regex).
   PERFORM 1 FROM platform_tools pt
+  CROSS JOIN LATERAL (
+    SELECT pt.accept_json::jsonb AS aj
+  ) j
   WHERE pt.accept_json IS NOT NULL
-    AND (pt.accept_json::jsonb = 'null'::jsonb
-         OR jsonb_typeof(pt.accept_json::jsonb) <> 'array'
-         OR jsonb_array_length(pt.accept_json::jsonb) = 0
-         OR EXISTS (SELECT 1 FROM jsonb_array_elements(pt.accept_json::jsonb) el
-                    WHERE el->>0 NOT LIKE '.%' OR el->>0 !~ '^\.[a-z0-9]+$'));
+    AND (
+      jsonb_typeof(j.aj) <> 'array'
+      OR jsonb_array_length(j.aj) = 0
+      OR EXISTS (
+        SELECT 1 FROM jsonb_array_elements(j.aj) el
+        WHERE jsonb_typeof(el) <> 'string'
+           OR el #>> '{}' NOT IN (
+             SELECT ext FROM (VALUES ('.3ds'),
+      ('.7z'),
+      ('.aac'),
+      ('.avi'),
+      ('.avif'),
+      ('.blend'),
+      ('.bmp'),
+      ('.bz2'),
+      ('.catpart'),
+      ('.css'),
+      ('.csv'),
+      ('.doc'),
+      ('.docx'),
+      ('.dwg'),
+      ('.dxf'),
+      ('.fbx'),
+      ('.flac'),
+      ('.gif'),
+      ('.glb'),
+      ('.gltf'),
+      ('.gz'),
+      ('.heic'),
+      ('.heif'),
+      ('.htm'),
+      ('.html'),
+      ('.iam'),
+      ('.ico'),
+      ('.iges'),
+      ('.igs'),
+      ('.jpeg'),
+      ('.jpg'),
+      ('.js'),
+      ('.json'),
+      ('.m4a'),
+      ('.md'),
+      ('.mkv'),
+      ('.mov'),
+      ('.mp3'),
+      ('.mp4'),
+      ('.obj'),
+      ('.odp'),
+      ('.ods'),
+      ('.odt'),
+      ('.ogg'),
+      ('.pdf'),
+      ('.png'),
+      ('.ppt'),
+      ('.pptx'),
+      ('.py'),
+      ('.rar'),
+      ('.rtf'),
+      ('.skp'),
+      ('.sldprt'),
+      ('.sql'),
+      ('.step'),
+      ('.stl'),
+      ('.stp'),
+      ('.svg'),
+      ('.tar'),
+      ('.tgz'),
+      ('.tif'),
+      ('.tiff'),
+      ('.ts'),
+      ('.txt'),
+      ('.wav'),
+      ('.webm'),
+      ('.webp'),
+      ('.xls'),
+      ('.xlsx'),
+      ('.xml'),
+      ('.xz'),
+      ('.yaml'),
+      ('.yml'),
+      ('.zip')) allowed_exts(ext))
+      )
+    );
   IF FOUND THEN
     RAISE EXCEPTION 'postcondition: non-canonical stored accept rows remain';
   END IF;
+  -- Invalid JSON text fails the ::jsonb cast itself — catch and classify
+  -- so the abort reads as an invariant message (still a full ROLLBACK).
+  BEGIN
+    PERFORM 1 FROM platform_tools pt
+    WHERE pt.accept_json IS NOT NULL
+      AND (pt.accept_json)::jsonb IS NULL;
+  EXCEPTION WHEN others THEN
+    RAISE EXCEPTION 'postcondition: accept_json contains invalid JSON text';
+  END;
   -- plans current columns all present.
   IF EXISTS (SELECT 1 FROM information_schema.columns
              WHERE table_name='plans' AND column_name IN

@@ -59,11 +59,16 @@ if [ "$DOW" = "7" ]; then
 fi
 
 # ── Rotation ──
-ls -1t "$DAILY_DIR"/pg-*.dump 2>/dev/null | tail -n +$((KEEP_DAILY + 1)) | while read -r f; do
+# Rotation — tolerate an empty directory: with set -o pipefail the exit
+# status of the pipeline is the LAST command's, but ls's "no match" error
+# must not leak either; guard it so zero-backup dirs rotate cleanly.
+{ ls -1t "$DAILY_DIR"/pg-*.dump 2>/dev/null || true; } |
+  tail -n +$((KEEP_DAILY + 1)) | while read -r f; do
   s="${f##*/pg-}"; s="${s%%.dump}"
   rm -f "$DAILY_DIR/pg-$s.dump" "$DAILY_DIR/gokapi-$s.tar.gz" "$DAILY_DIR/SHA256SUMS-$s"
 done
-ls -1t "$WEEKLY_DIR"/pg-*.dump 2>/dev/null | tail -n +$((KEEP_WEEKLY + 1)) | while read -r f; do
+{ ls -1t "$WEEKLY_DIR"/pg-*.dump 2>/dev/null || true; } |
+  tail -n +$((KEEP_WEEKLY + 1)) | while read -r f; do
   s="${f##*/pg-}"; s="${s%%.dump}"
   rm -f "$WEEKLY_DIR/pg-$s.dump" "$WEEKLY_DIR/gokapi-$s.tar.gz" "$WEEKLY_DIR/SHA256SUMS-$s"
 done
