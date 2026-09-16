@@ -56,6 +56,45 @@ _con = psycopg2.connect(PG); _con.autocommit = True
 _cur = _con.cursor()
 ts = int(time.time())
 
+
+def _fresh_paid_rank():
+    """当前共享库未占用的 paid rank (本 suite 任何非 rank-collision 夹具
+    都必须用它 — 共享 CI 顺序库里 rank 已被前序 suite 占满)。"""
+    _cur.execute(
+        "select coalesce(max(sort_order), 0) + 1 "
+        "from plans where code <> 'free'")
+    return int(_cur.fetchone()[0])
+
+
+# 套件自状态清理: 只清本 suite 的 inv*/ti*/tj*/dk*/dl*/invuser 命名域,
+# 绝不触碰前序 suite 的数据 (共享 canonical DB 合同)。
+def _cleanup_own_rows():
+    _cur.execute(
+        "delete from pending_downgrades where user_id in"
+        " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
+    _cur.execute(
+        "delete from memberships where user_id in"
+        " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
+    _cur.execute(
+        "delete from sessions where user_id in"
+        " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
+    _cur.execute(
+        "delete from user_plans where user_id in"
+        " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
+    _cur.execute(
+        "delete from orders where user_id in"
+        " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
+    _cur.execute(
+        "delete from users where username like 'invuser'"
+        " or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$'")
+    _cur.execute(
+        "delete from plans where code in"
+        " ('inv8tier', 'inv6tier', 'inv4tier', 'inv5tier', 'inv11t')")
+
+
+# 首跑前清一次: 上次异常退出遗留的本 suite 数据不得造成假失败/假通过
+_cleanup_own_rows()
+
 # ═══ INV2: Free env bootstrap — 本测试假设 schema 已 init (env 定制由跑套者预置,
 # 但可直接验证: 改 env 重 init 只在空壳时生效 — 用 runtime 断言法) ═══
 with db() as con:
@@ -102,8 +141,9 @@ _cur.execute("update plans set expiry_days=ARRAY[1,3,7] where code='free'")
 # (c) inactive paid 越界 → 抛 (协议安全覆盖全部行)
 _cur.execute("insert into plans (code, name, monthly_credits, price_cents, sort_order,"
              " active, creem_product_id, expiry_days, download_limits, created_at, updated_at)"
-             " values ('inv8tier', 'Inv8', 100, 500, 9, FALSE, 'prod_inv8',"
-             " ARRAY[5], ARRAY[10], %s, %s) on conflict (code) do nothing", (ts, ts))
+             " values ('inv8tier', 'Inv8', 100, 500, %s, FALSE, 'prod_inv8',"
+             " ARRAY[5], ARRAY[10], %s, %s) on conflict (code) do nothing",
+             (_fresh_paid_rank(), ts, ts))
 plan_catalog.catalog(refresh=True)
 try:
     plan_catalog.validate_config()
@@ -117,8 +157,9 @@ _cur.execute(
     "insert into plans (code, name, monthly_credits, price_cents, sort_order, active,"
     " creem_product_id, ingress_files_24h, ingress_bytes_24h, expiry_days,"
     " download_limits, created_at, updated_at)"
-    " values ('inv6tier', 'Inv6', 100, 500, 8, TRUE, 'prod_inv6', 10, 10485760,"
-    " ARRAY[]::INTEGER[], ARRAY[]::INTEGER[], %s, %s) on conflict (code) do nothing", (ts, ts))
+    " values ('inv6tier', 'Inv6', 100, 500, %s, TRUE, 'prod_inv6', 10, 10485760,"
+    " ARRAY[]::INTEGER[], ARRAY[]::INTEGER[], %s, %s) on conflict (code) do nothing",
+    (_fresh_paid_rank(), ts, ts))
 plan_catalog.catalog(refresh=True)
 _t6 = plan_catalog.by_code("inv6tier")
 check("INV6 价+品+active 但权益空 → sellable=False", _t6 is not None and not _t6.sellable,
@@ -149,8 +190,11 @@ try:
         " active, created_at, updated_at) values ('inv4tier', 'Inv4', 100, 500,"
         " %s, TRUE, %s, %s)", (int(existing["sort_order"]), ts, ts))
     check("INV4 duplicate paid sort_order → DB 拒绝", False, "insert succeeded")
-except psycopg2.IntegrityError:
-    check("INV4 duplicate paid sort_order → DB 拒绝", True)
+except psycopg2.IntegrityError as exc:
+    # 只有撞 rank 唯一约束才算本断言成立; 其它约束 (如 code 残留) 必须 FAIL
+    _cname = exc.diag.constraint_name
+    check("INV4 duplicate paid sort_order → DB 拒绝 (plans_paid_sort_order_uk)",
+          _cname == "plans_paid_sort_order_uk", f"constraint={_cname}")
 
 # ═══ INV5: duplicate creem_product_id → DB 拒绝 ═══
 _cur.execute("update plans set creem_product_id='prod_inv5' where code='pro'")
@@ -158,10 +202,14 @@ try:
     _cur.execute(
         "insert into plans (code, name, monthly_credits, price_cents, sort_order,"
         " active, creem_product_id, created_at, updated_at) values"
-        " ('inv5tier', 'Inv5', 100, 500, 7, TRUE, 'prod_inv5', %s, %s)", (ts, ts))
+        " ('inv5tier', 'Inv5', 100, 500, %s, TRUE, 'prod_inv5', %s, %s)",
+        (_fresh_paid_rank(), ts, ts))  # fresh rank: 本测试只验 product 唯一性
     check("INV5 duplicate product → DB 拒绝", False, "insert succeeded")
-except psycopg2.IntegrityError:
-    check("INV5 duplicate product → DB 拒绝", True)
+except psycopg2.IntegrityError as exc:
+    # 只有撞 product 唯一约束才算本断言成立; rank 冲突等其它约束必须 FAIL
+    _cname = exc.diag.constraint_name
+    check("INV5 duplicate product → DB 拒绝 (plans_product_binding_uk)",
+          _cname == "plans_product_binding_uk", f"constraint={_cname}")
 _cur.execute("delete from plans where code in ('inv5tier')")
 _cur.execute("update plans set creem_product_id=NULL where code='pro'")
 
@@ -203,8 +251,9 @@ _cur.execute(
     "insert into plans (code, name, monthly_credits, price_cents, sort_order, active,"
     " creem_product_id, ingress_files_24h, ingress_bytes_24h, expiry_days,"
     " download_limits, created_at, updated_at)"
-    " values ('inv11t', 'Inv11T', 2000, 900, 9, TRUE, 'prod_inv11', 10, 10485760,"
-    " ARRAY[]::INTEGER[], ARRAY[]::INTEGER[], %s, %s) on conflict (code) do nothing", (ts, ts))
+    " values ('inv11t', 'Inv11T', 2000, 900, %s, TRUE, 'prod_inv11', 10, 10485760,"
+    " ARRAY[]::INTEGER[], ARRAY[]::INTEGER[], %s, %s) on conflict (code) do nothing",
+    (_fresh_paid_rank(), ts, ts))
 plan_catalog.catalog(refresh=True)
 
 # upgrade 直调 (绕 HTTP: 函数面等价 — route 的判定逻辑在函数内)
@@ -409,10 +458,7 @@ try:
 except Exception as _e:
     check("MG2 migration 正常执行", False, str(_e)[:120])
 # 清场
-_cur.execute("delete from memberships where user_id=%s", (_dk2_uid,))
-_cur.execute("delete from user_plans where user_id=%s", (_dk2_uid,))
-_cur.execute("delete from orders where user_id=%s", (_dk2_uid,))
-_cur.execute("delete from users where username in (%s, %s)", (_u3, _u4))
+_cleanup_own_rows()
 
 print()
 if FAIL:
