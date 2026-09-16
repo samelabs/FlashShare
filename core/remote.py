@@ -73,6 +73,32 @@ def _resolve_host(hostname: str, port: int) -> list:
     return socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
 
 
+# ── Credential-header authority boundary (user endpoints) ──
+# User tools may carry API credentials in many header shapes (Authorization,
+# X-API-Key, Api-Key, Private-Token, ...), but never in headers the
+# TRANSPORT owns: routing/framing authority must not be developer input.
+RESERVED_AUTH_HEADERS = {
+    "host", "content-length", "content-type", "connection",
+    "transfer-encoding", "te", "trailer", "upgrade",
+    "proxy-connection", "expect", "user-agent",
+}
+
+
+def auth_header_allowed(name: str) -> bool:
+    """User-tool credential header validator (denylist, case-insensitive).
+    Operator (trusted) rows are NOT subject to this boundary."""
+    return name.strip().lower() not in RESERVED_AUTH_HEADERS
+
+
+def _reject_reserved_auth_headers(auth_headers: dict) -> None:
+    """Runtime defense for untrusted dispatch: legacy DB rows may carry a
+    reserved credential header even though submission now rejects them.
+    Fails typed BEFORE any network request; never logs the value."""
+    for k in auth_headers:
+        if k.strip().lower() in RESERVED_AUTH_HEADERS:
+            raise RemoteError("bad_endpoint", "reserved credential header")
+
+
 def guard_endpoint(url: str, trusted: bool) -> str:
     """Validate an endpoint URL before ANY platform request to it.
     Returns the normalized URL or raises RemoteError('ssrf_blocked')."""
@@ -90,7 +116,11 @@ def guard_endpoint(url: str, trusted: bool) -> str:
     if not parts.hostname:
         raise RemoteError("bad_endpoint", "no host")
     try:
-        infos = _resolve_host(parts.hostname, parts.port or 443)
+        port = parts.port or 443
+    except ValueError:
+        raise RemoteError("bad_endpoint", "malformed port")
+    try:
+        infos = _resolve_host(parts.hostname, port)
     except socket.gaierror:
         raise RemoteError("bad_endpoint", "dns failure")
     for info in infos:
@@ -172,12 +202,6 @@ def _validated_addresses(url: str) -> tuple:
     return hostname, port, authority, addrs
 
 
-def _origin_of(url: str) -> tuple:
-    parts = urllib.parse.urlsplit(url)
-    return (parts.scheme, (parts.hostname or "").lower(),
-            parts.port or 443)
-
-
 def _pinned_request(url: str, method: str, body: bytes | None,
                     headers: dict, timeout_s: int) -> tuple:
     """Single hop over the pinned transport. Returns (status, body,
@@ -192,8 +216,14 @@ def _pinned_request(url: str, method: str, body: bytes | None,
     path = parts.path or "/"
     if parts.query:
         path += "?" + parts.query
-    hop_headers = dict(headers)
-    hop_headers.setdefault("Host", authority)
+    # Transport-owned authority: Host (and framing headers) are forced —
+    # a caller-supplied Host must never override the URL authority, even
+    # if some future layer forgets to validate.
+    hop_headers = {k: v for k, v in headers.items()
+                   if k.strip().lower() not in ("host", "user-agent",
+                                                "content-length",
+                                                "transfer-encoding")}
+    hop_headers["Host"] = authority
     hop_headers.setdefault("User-Agent",
                            "518.PLUS-Dispatcher/1.0 (tool dispatch)")
 
@@ -242,16 +272,21 @@ def _pinned_request(url: str, method: str, body: bytes | None,
 
 
 _REDIRECT_STATUSES = (301, 302, 303, 307, 308)
-
-
-_REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 _ENTITY_HEADERS = ("content-type", "content-length")
 
 
-def _origin_of(url: str) -> tuple:
-    parts = urllib.parse.urlsplit(url)
-    return (parts.scheme, (parts.hostname or "").lower(),
-            parts.port or 443)
+def _origin_of(url: str) -> tuple | None:
+    """scheme+host+effective port; malformed port → None (caller fails
+    typed — a bare ValueError must never escape the redirect loop)."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return None
+    try:
+        port = parts.port or 443
+    except ValueError:
+        return None
+    return (parts.scheme, (parts.hostname or "").lower(), port)
 
 
 def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
@@ -291,7 +326,14 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
         if nparts.scheme != "https":
             raise RemoteError("redirect_blocked",
                               "redirect to non-https rejected")
-        if has_credential and _origin_of(new_url) != _origin_of(cur_url):
+        try:
+            _nport = nparts.port  # malformed port → typed, never ValueError
+        except ValueError:
+            raise RemoteError("redirect_blocked", "malformed redirect port")
+        new_origin = _origin_of(new_url)
+        if new_origin is None:
+            raise RemoteError("redirect_blocked", "malformed redirect url")
+        if has_credential and new_origin != _origin_of(cur_url):
             raise RemoteError(
                 "redirect_blocked",
                 "cross-origin redirect with credential rejected")
@@ -313,7 +355,11 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
                timeout_s: int, trusted: bool) -> tuple:
     body = json.dumps(payload).encode()
     if not trusted:
-        # Untrusted: pinned transport with redirect + credential policy
+        # Legacy-row defense: a reserved credential header (Host, framing,
+        # ...) must fail typed BEFORE any network request.
+        _reject_reserved_auth_headers(headers)
+        # Untrusted: pinned transport with redirect + credential policy.
+        # Transport forces Host/UA; credential headers ride along.
         hdrs = {"Content-Type": "application/json",
                 "User-Agent": "518.PLUS-Dispatcher/1.0 (tool dispatch)",
                 **headers}

@@ -505,7 +505,8 @@ _cur = _con.cursor()
 ts = int(time.time())
 _os.environ.pop("TOOL_VAULT_KEY", None)
 import secrets_vault
-secrets_vault._f = None
+_VAULT_KEY = Fernet.generate_key()
+secrets_vault._f = None  # default off; AUTH-H1 flips it on
 
 from app.main import app
 from app.web_auth import create_browser_session, COOKIE_NAME
@@ -514,63 +515,6 @@ with _w.catch_warnings():
     _w.simplefilter("ignore", DeprecationWarning)
     from starlette.testclient import TestClient
 client = TestClient(app)
-
-import uuid
-def _new_user(prefix):
-    u = prefix + uuid.uuid4().hex[:6]
-    _cur.execute(
-        "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
-        " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id",
-        (u, f"{u}@t.co", ts, ts))
-    return u, _cur.fetchone()[0]
-
-# route SSRF pre-check uses the real resolver in the app process — pin it
-# via the same production helper (dependency swap, algorithm unchanged)
-remote._resolve_host = _resolve({"pub.example": [(_socket.AF_INET, PUBLIC4)]})
-
-u1, uid1 = _new_user("rs1")
-sess1 = create_browser_session(uid1)
-r = client.post("/api/usertools", json={
-    "tool_id": "sectool1", "label": "Sec", "url": "https://pub.example/x",
-    "format_families": "image",
-    "auth_header": "Authorization", "auth_token": "topsecret"},
-    cookies={COOKIE_NAME: sess1})
-check("ROUTE user create + auth_token + no key → 503",
-      r.status_code == 503 and r.json().get("error") == "credential_vault_unavailable",
-      f"{r.status_code} {r.text[:80]}")
-_cur.execute("select count(*) from platform_tools where tool_key = %s", (f"{u1}/sectool1",))
-check("ROUTE zero platform_tools row", _cur.fetchone()[0] == 0)
-_cur.execute("select count(*) from pricing where tool_id = %s", (f"{u1}/sectool1",))
-check("ROUTE zero pricing row", _cur.fetchone()[0] == 0)
-
-r = client.post("/api/usertools", json={
-    "tool_id": "sectool2", "label": "Sec2", "url": "https://pub.example/x",
-    "format_families": "image"},
-    cookies={COOKIE_NAME: sess1})
-check("ROUTE user create without auth_token unaffected",
-      r.status_code == 200 and r.json().get("ok"), f"{r.status_code} {r.text[:80]}")
-
-r = client.patch("/api/usertools/sectool2", json={
-    "auth_header": "Authorization", "auth_token": "newsecret"},
-    cookies={COOKIE_NAME: sess1})
-check("ROUTE user update + new auth_token + no key → 503",
-      r.status_code == 503, f"{r.status_code} {r.text[:80]}")
-_cur.execute("select endpoint_json from platform_tools where tool_key = %s",
-             (f"{u1}/sectool2",))
-row = _cur.fetchone()
-check("ROUTE endpoint_json unchanged",
-      row is not None and "newsecret" not in (row[0] or ""), str(row)[:80])
-
-u2, uid2 = _new_user("rs2")
-_cur.execute("update users set status='samelabs' where id=%s", (uid2,))
-sess2 = create_browser_session(uid2)
-r = client.post("/samelabs/remote/create", json={
-    "tool_id": "secop1", "url": "https://pub.example/y",
-    "auth_header": "X-Key", "auth_token": "opsecret"},
-    cookies={COOKIE_NAME: sess2})
-check("ROUTE operator create + auth_token + no key → 503 (非409)",
-      r.status_code == 503 and r.json().get("error") == "credential_vault_unavailable",
-      f"{r.status_code} {r.text[:80]}")
 
 # ═══ DISP: vault failure → zero remote calls ═══
 import remote as _remote_mod
@@ -594,11 +538,226 @@ try:
 finally:
     _remote_mod.drive_http = _orig
 
+# ═══ AUTH: reserved credential-header boundary ═══
+# 本段自带 fixture + helper (不依赖 ROUTE 段变量顺序)
+import uuid as _uuid_a
+def _new_user_a(prefix):
+    _u = prefix + _uuid_a.uuid4().hex[:6]
+    _cur.execute(
+        "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
+        " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id",
+        (_u, f"{_u}@t.co", ts, ts))
+    return _u, _cur.fetchone()[0]
+_au, _auid = _new_user_a("ra")
+_asess = create_browser_session(_auid)
+# 预置一个合法工具 (H2 update 目标) — route pre-check 需要解析器钉扎
+remote._resolve_host = _resolve({"pub.example": [(_socket.AF_INET, PUBLIC4)]})
+r = client.post("/api/usertools", json={
+    "tool_id": "sectool2", "label": "Sec2", "url": "https://pub.example/x",
+    "format_families": "image"},
+    cookies={COOKIE_NAME: _asess})
+check("AUTH-fixture 预置工具建立", r.status_code == 200,
+      f"{r.status_code} {r.text[:100]}")
+# H1 create: reserved header + VALID vault → 422 bad_auth_header, zero write
+secrets_vault._f = Fernet(_VAULT_KEY)  # vault ON — 503 must not mask
+r = client.post("/api/usertools", json={
+    "tool_id": "sectoolh", "label": "H", "url": "https://pub.example/x",
+    "format_families": "image",
+    "auth_header": "Host", "auth_token": "sekrit"},
+    cookies={COOKIE_NAME: _asess})
+check("AUTH-H1 create auth_header=Host → 422 bad_auth_header",
+      r.status_code == 422 and r.json().get("error") == "bad_auth_header",
+      f"{r.status_code} {r.text[:80]}")
+_cur.execute("select count(*) from platform_tools where tool_key = %s",
+             (f"{_au}/sectoolh",))
+check("AUTH-H1 zero platform_tools write", _cur.fetchone()[0] == 0)
+_cur.execute("select count(*) from pricing where tool_id = %s",
+             (f"{_au}/sectoolh",))
+check("AUTH-H1 zero pricing write", _cur.fetchone()[0] == 0)
+secrets_vault._f = None
+
+# H2 update: reserved header on PATCH → 422, endpoint_json unchanged
+r = client.patch("/api/usertools/sectool2", json={
+    "auth_header": "Content-Length", "auth_token": "sekrit"},
+    cookies={COOKIE_NAME: _asess})
+check("AUTH-H2 update auth_header=Content-Length → 422 bad_auth_header",
+      r.status_code == 422 and r.json().get("error") == "bad_auth_header",
+      f"{r.status_code} {r.text[:80]}")
+_cur.execute("select endpoint_json from platform_tools where tool_key = %s",
+             (f"{_au}/sectool2",))
+row = _cur.fetchone()
+check("AUTH-H2 endpoint_json unchanged", row is not None and "sekrit" not in (row[0] or ""))
+
+# H3 normal names accepted by the validator (no tool persistence needed)
+from remote import auth_header_allowed as _aha
+check("AUTH-H3 Authorization allowed", _aha("Authorization"))
+check("AUTH-H3 X-API-Key allowed", _aha("X-API-Key"))
+check("AUTH-H3 Api-Key allowed", _aha("Api-Key"))
+check("AUTH-H3 Private-Token allowed", _aha("Private-Token"))
+check("AUTH-H3 X-Auth-Token allowed", _aha("X-Auth-Token"))
+check("AUTH-H3 host rejected (case-insensitive)", not _aha("host") and not _aha("HOST")
+      and not _aha("  Host  "))
+check("AUTH-H3 transfer-encoding rejected", not _aha("Transfer-Encoding"))
+
+# H4 legacy DB runtime defense: reserved header → zero network, typed fail
+_calls_h4 = {"n": 0}
+def _sentinel_h4(*a, **k):
+    _calls_h4["n"] += 1
+    return {"filename": "o.png", "content_type": "image/png", "bytes": b""}
+try:
+    from remote import _reject_reserved_auth_headers
+    raised = None
+    try:
+        _reject_reserved_auth_headers({"Host": "evil.example"})
+    except Exception as exc:
+        raised = exc
+    check("AUTH-H4 reserved header raises typed RemoteError",
+          isinstance(raised, RemoteError) and raised.code == "bad_endpoint", raised)
+    # full driver path (real drive_http, resolver pinned, no network):
+    # legacy row with Host credential → typed fail BEFORE any connect
+    rec = _install_stack(
+        resolve_map={"rt.example": [(_socket.AF_INET, PUBLIC4)]},
+        resp_script=[_RespDouble(200, b"ok")])
+    decl_h4 = {"url": "https://rt.example/api", "timeout_s": 30}
+    try:
+        remote.drive_http(decl_h4, [], {}, {"Host": "evil.example"}, trusted=False)
+        check("AUTH-H4 drive_http legacy reserved → typed fail", False, "no raise")
+    except RemoteError as exc:
+        check("AUTH-H4 drive_http legacy reserved → typed fail",
+              exc.code == "bad_endpoint", exc)
+    check("AUTH-H4 zero sockets connected (network = 0)",
+          len([s for s in rec.socks if s.connected]) == 0,
+          [s.connected for s in rec.socks])
+    _restore_stack()
+finally:
+    pass
+
+# H5 Host authority cannot be overridden by caller headers
+rec = _install_stack(
+    resolve_map={"pin.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(200, b"ok")])
+st, data = remote.pinned_request("https://pin.example/f", timeout_s=5,
+                                 headers={"Host": "attacker.example",
+                                          "Content-Length": "999"})
+_h = rec.conns[0].requests[0][3].get("Host") if rec.conns else None
+check("AUTH-H5 caller Host override ignored — transport authority wins",
+      _h == "pin.example", _h)
+_cl = rec.conns[0].requests[0][3].get("Content-Length")
+check("AUTH-H5 caller Content-Length stripped", _cl is None, _cl)
+_restore_stack()
+
+# ═══ PORT: malformed port typing ═══
+# PORT-1 redirect + credential: 302 → https://evil.example:notaport/x
+rec = _install_stack(
+    resolve_map={"same.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(302, b"", {"location": "https://evil.example:notaport/x"})])
+try:
+    remote.pinned_request("https://same.example/f",
+                          headers={"Authorization": "Bearer s"},
+                          timeout_s=5, has_credential=True)
+    check("PORT-1 malformed-port redirect + credential blocked", False, "no raise")
+except RemoteError as e:
+    check("PORT-1 malformed-port redirect + credential blocked",
+          e.code == "redirect_blocked", e)
+check("PORT-1 zero second requests (credential never sent)",
+      len(rec.conns) == 1, len(rec.conns))
+_restore_stack()
+
+# PORT-2 redirect no credential: same malformed port → typed, no ValueError
+rec = _install_stack(
+    resolve_map={"same.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(302, b"", {"location": "https://evil.example:notaport/x"})])
+try:
+    remote.pinned_request("https://same.example/f", timeout_s=5)
+    check("PORT-2 malformed-port redirect typed block", False, "no raise")
+except RemoteError as e:
+    check("PORT-2 malformed-port redirect typed block",
+          e.code == "redirect_blocked", e)
+except ValueError:
+    check("PORT-2 malformed-port redirect typed block", False, "raw ValueError escaped")
+_restore_stack()
+
+# PORT-3 route submission: malformed port → 422 bad_url, no row
+remote._resolve_host = _resolve({"pub.example": [(_socket.AF_INET, PUBLIC4)]})
+r = client.post("/api/usertools", json={
+    "tool_id": "sectoolp", "label": "P", "url": "https://example.com:notaport/x",
+    "format_families": "image"},
+    cookies={COOKIE_NAME: _asess})
+check("PORT-3 submission malformed port → 422 bad_url",
+      r.status_code == 422 and r.json().get("error") == "bad_url",
+      f"{r.status_code} {r.text[:80]}")
+_cur.execute("select count(*) from platform_tools where tool_key = %s",
+             (f"{_au}/sectoolp",))
+check("PORT-3 zero row written", _cur.fetchone()[0] == 0)
+
+#
+
+
+import uuid
+def _new_user(prefix):
+    u = prefix + uuid.uuid4().hex[:6]
+    _cur.execute(
+        "insert into users (username, email, password_hash, display_name, status, created_at, last_login_at)"
+        " values (%s, %s, 'x', 'T', 'active', %s, %s) returning id",
+        (u, f"{u}@t.co", ts, ts))
+    return u, _cur.fetchone()[0]
+
+# route SSRF pre-check uses the real resolver in the app process — pin it
+# via the same production helper (dependency swap, algorithm unchanged)
+remote._resolve_host = _resolve({"pub.example": [(_socket.AF_INET, PUBLIC4)]})
+
+u1, uid1 = _new_user("rs1")
+sess1 = create_browser_session(uid1)
+r = client.post("/api/usertools", json={
+    "tool_id": "sectool1", "label": "Sec", "url": "https://pub.example/x",
+    "format_families": "image",
+    "auth_header": "Authorization", "auth_token": "topsecret"},
+    cookies={COOKIE_NAME: _asess})
+check("ROUTE user create + auth_token + no key → 503",
+      r.status_code == 503 and r.json().get("error") == "credential_vault_unavailable",
+      f"{r.status_code} {r.text[:80]}")
+_cur.execute("select count(*) from platform_tools where tool_key = %s", (f"{_au}/sectool1",))
+check("ROUTE zero platform_tools row", _cur.fetchone()[0] == 0)
+_cur.execute("select count(*) from pricing where tool_id = %s", (f"{_au}/sectool1",))
+check("ROUTE zero pricing row", _cur.fetchone()[0] == 0)
+
+_cur.execute("delete from pricing where tool_id = %s", (f"{_au}/sectool3",))
+_cur.execute("delete from platform_tools where tool_key = %s", (f"{_au}/sectool3",))
+r = client.post("/api/usertools", json={
+    "tool_id": "sectool3", "label": "Sec3", "url": "https://pub.example/x",
+    "format_families": "image"},
+    cookies={COOKIE_NAME: _asess})
+check("ROUTE user create without auth_token unaffected",
+      r.status_code == 200 and r.json().get("ok"), f"{r.status_code} {r.text[:80]}")
+
+r = client.patch("/api/usertools/sectool3", json={
+    "auth_header": "Authorization", "auth_token": "newsecret"},
+    cookies={COOKIE_NAME: _asess})
+check("ROUTE user update + new auth_token + no key → 503",
+      r.status_code == 503, f"{r.status_code} {r.text[:80]}")
+_cur.execute("select endpoint_json from platform_tools where tool_key = %s",
+             (f"{_au}/sectool3",))
+row = _cur.fetchone()
+check("ROUTE endpoint_json unchanged",
+      row is not None and "newsecret" not in (row[0] or ""), str(row)[:80])
+
+u2, uid2 = _new_user("rs2")
+_cur.execute("update users set status='samelabs' where id=%s", (uid2,))
+sess2 = create_browser_session(uid2)
+r = client.post("/samelabs/remote/create", json={
+    "tool_id": "secop1", "url": "https://pub.example/y",
+    "auth_header": "X-Key", "auth_token": "opsecret"},
+    cookies={COOKIE_NAME: sess2})
+check("ROUTE operator create + auth_token + no key → 503 (非409)",
+      r.status_code == 503 and r.json().get("error") == "credential_vault_unavailable",
+      f"{r.status_code} {r.text[:80]}")
+
+
 # 清场
 _cur.execute("delete from pricing where tool_id like 'rs%/sec%' or tool_id = 'secop1'")
 _cur.execute("delete from platform_tools where tool_key like 'rs%' or tool_key = 'secop1'")
-_cur.execute("delete from sessions where user_id in (%s, %s)", (uid1, uid2))
-_cur.execute("delete from users where id in (%s, %s)", (uid1, uid2))
+_cur.execute("delete from sessions where user_id in (%s, %s) or user_id in (select id from users where username like 'ra%%')", (_auid, uid2))
+_cur.execute("delete from users where id in (%s, %s) or username like 'ra%%'", (_auid, uid2))
 _con.close()
 
 print()

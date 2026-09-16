@@ -111,6 +111,12 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         # 存原文; seal 只在 tool_supply.build_http_binding 组装时做一次
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
         fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
+        # Credential-header authority boundary (user tools only): the
+        # transport owns Host/framing — a developer credential may never
+        # claim those names. Trusted operator rows keep header freedom.
+        from remote import auth_header_allowed
+        if not auth_header_allowed(fields["auth_header"]):
+            return None, "bad_auth_header"
 
     if "accept" in raw or "format_families" in raw or not partial:
         # 4C-2 Tool Input Contract: format_families 保留为 authoring taxonomy;
