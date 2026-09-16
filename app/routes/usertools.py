@@ -111,6 +111,12 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         # 存原文; seal 只在 tool_supply.build_http_binding 组装时做一次
         fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
         fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
+        # Credential-header authority boundary (user tools only): the
+        # transport owns Host/framing — a developer credential may never
+        # claim those names. Trusted operator rows keep header freedom.
+        from remote import auth_header_allowed
+        if not auth_header_allowed(fields["auth_header"]):
+            return None, "bad_auth_header"
 
     if "accept" in raw or "format_families" in raw or not partial:
         # 4C-2 Tool Input Contract: format_families 保留为 authoring taxonomy;
@@ -217,6 +223,14 @@ async def create_user_tool(request: Request):
     tool_id = str(raw.get("tool_id") or "").strip()
     if not TOOL_ID_RE.match(tool_id):
         return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
+
+    # Credential boundary: a NEW non-empty secret cannot be persisted
+    # when the vault has no working key — refuse before any write.
+    if str(raw.get("auth_token") or "").strip():
+        from secrets_vault import vault_enabled
+        if not vault_enabled():
+            return JSONResponse(
+                {"ok": False, "error": "credential_vault_unavailable"}, 503)
     # Supply-side contract: ONE execution class — plain HTTP API.
     # (mcp forwarding removed 2026-08-26: agent-native MCP servers don't
     # need a broker; 518 IS the MCP surface northbound.)
@@ -378,6 +392,15 @@ async def update_user_tool(tool_id: str, request: Request):
         stats = _call_stats(tool_key, row["owner_id"])
         if stats["ok"] < 1:
             return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
+
+    # Credential boundary: a NEW non-empty secret cannot be persisted
+    # when the vault has no working key — refuse before any write
+    # (endpoint_json/pricing untouched).
+    if str(fields.get("auth_token") or "").strip():
+        from secrets_vault import vault_enabled
+        if not vault_enabled():
+            return JSONResponse(
+                {"ok": False, "error": "credential_vault_unavailable"}, 503)
 
     # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
     # 与运行时驱动看到的完全一致, 而非裸入参)

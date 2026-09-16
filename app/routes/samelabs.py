@@ -594,6 +594,13 @@ async def samelabs_remote_create(request: Request):
     # (旧 endpoint 组装段已删除, 不再存在第二份 seal)。
     from repo.catalog import tool_key_exists
     from governance.tool_supply import create_tool, build_http_binding, DeclarationError
+    # Credential boundary BEFORE any persistence — and before the broad
+    # except below, so VaultUnavailable can never masquerade as 409.
+    if auth_token:
+        from secrets_vault import vault_enabled
+        if not vault_enabled():
+            return JSONResponse(
+                {"ok": False, "error": "credential_vault_unavailable"}, 503)
     try:
         with db() as con:
             # typed duplicate check (unique index would 500 otherwise)

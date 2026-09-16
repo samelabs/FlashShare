@@ -132,8 +132,16 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
 
     auth_headers = {}
     if decl.get("auth_header") and decl.get("auth_token"):
-        from secrets_vault import unseal
-        auth_headers[decl["auth_header"]] = unseal(decl["auth_token"])
+        from secrets_vault import unseal, VaultUnavailable, VaultDecryptError
+        try:
+            auth_headers[decl["auth_header"]] = unseal(decl["auth_token"])
+        except (VaultUnavailable, VaultDecryptError) as exc:
+            # Never send anything to the endpoint and never log the
+            # secret: typed reason + tool identity only. Outward this is
+            # a normal remote execution failure (refund path unchanged).
+            logger.warning("remote tool %s credential unavailable: %s",
+                           tool["id"], type(exc).__name__)
+            raise ExecutionError("err_endpoint_failed") from exc
 
     loop = asyncio.get_event_loop()
     try:
