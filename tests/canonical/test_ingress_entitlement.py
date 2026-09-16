@@ -38,7 +38,19 @@ _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")  # config 
 sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 import psycopg2
-from governance.entitlements import resolve, check_delivery, FREE, _PLANS
+from governance.entitlements import (resolve, check_delivery)
+
+
+def _row_views():
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+    from governance import plan_catalog as _pc
+    _free = _pc.free_tier().benefits.as_dict("free")
+    _plans = {t.code: t.benefits.as_dict(t.code) for t in _pc.catalog() if not t.is_free}
+    return _free, _plans
+
+
+FREE, _PLANS = _row_views()
 from governance.delivery import (validate_delivery, EXPIRY_DAYS,
                                  DOWNLOAD_LIMITS, INTERMEDIATE_TTL_DAYS,
                                  INTERMEDIATE_DOWNLOAD_LIMIT)
@@ -76,8 +88,10 @@ def _seed_plan(user_id, code, status, renews_at):
     ts = int(time.time())
     if not row:
         _cur.execute(
-            "insert into plans (code, name, monthly_credits, price_cents, created_at, updated_at)"
-            " values (%s, %s, 0, 0, %s, %s) returning id", (code, code, ts, ts))
+            "insert into plans (code, name, monthly_credits, price_cents, sort_order, created_at, updated_at)"
+            " values (%s, %s, 0, 0,"
+            " (SELECT COALESCE(MAX(p.sort_order),0)+1 FROM plans p WHERE p.code <> 'free'),"
+            " %s, %s) returning id", (code, code, ts, ts))
         plan_id = _cur.fetchone()[0]
     else:
         plan_id = row[0]
@@ -291,8 +305,10 @@ check("D-E3 未知 plan → Free delivery 值域", rx["expiry_days"] == (1, 3, 7
       and rx["download_limits"] == (1, 10, 50, 100, 200), str(rx))
 
 # Entitlement 显式声明 guard: 不得从 platform enum 推导
+# (校验机制随 Tier 本体化迁至 plan_catalog; entitlements 仍是消费断言锚)
 ent_src = open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read()
-_defs = ent_src.split('def _validate_against_protocol')[0]  # 定义区 (FREE/_PLANS)
+_pc_src = open(_os.path.join(_REPO, "core", "governance", "plan_catalog.py"), encoding="utf-8").read()
+_defs = _pc_src.split("def _validate_against_protocol")[0]  # 定义区
 check("D-X1 entitlement 源无枚举推导 (comprehension/filter/slice)",
       "tuple(d for d in" not in _defs
       and "for d in EXPIRY_DAYS" not in _defs
@@ -303,17 +319,19 @@ check("D-X2 plan 定义不直接赋值 platform 全集",
       '"expiry_days": EXPIRY_DAYS' not in _defs
       and '"download_limits": DOWNLOAD_LIMITS' not in _defs)
 check("D-X3 fail-closed protocol-subset 校验存在 (显式→被支持, 不反向生成)",
-      "_validate_against_protocol" in ent_src
-      and "ConfigurationError" in ent_src)
+      "_validate_against_protocol" in _pc_src
+      and "ConfigurationError" in _pc_src)
 # 未来协议扩容 ≠ 自动授权 (独立构造验证, 不 monkeypatch production):
-from governance.entitlements import _validate_against_protocol, ConfigurationError
-_fut = dict(FREE)
-_fut["expiry_days"] = FREE["expiry_days"] + (60,)      # 假设平台未来加了 60 天
-_fut["download_limits"] = FREE["download_limits"] + (5000,)
+from governance.plan_catalog import Tier, ConfigurationError as _PCE, _validate_against_protocol
 try:
-    _validate_against_protocol(_fut, "future-spec")
+    _t_fut = {"id": 999999, "code": "future-spec", "name": "F", "badge_key": "",
+              "sort_order": 99, "active": True, "price_cents": 500, "currency": "USD",
+              "creem_product_id": "prod_fut", "monthly_credits": 1, "period_days": 30,
+              "ingress_files_24h": 1, "ingress_bytes_24h": 1,
+              "expiry_days": (1, 3, 7, 60), "download_limits": (1, 10, 50, 100, 200, 5000)}
+    _validate_against_protocol(Tier(_t_fut))
     check("D-X4 协议未支持的 entitlement 值 → ConfigurationError", False, "no raise")
-except ConfigurationError:
+except _PCE:
     check("D-X4 协议未支持的 entitlement 值 → ConfigurationError (fail closed)", True)
 # 若平台真扩了 enum, 既有 entitlement 档不变 (不自动获得):
 check("D-X5 Free/PLUS 声明独立于 protocol 全集 (重叠但非派生)",

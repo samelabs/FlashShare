@@ -109,9 +109,12 @@ _creem.CREEM_CREDITS_CURRENCY = "USD"  # checkout handler compares pkg currency 
 # sellable plan fixture: bind creem_product_id on the seeded plus plan.
 # Save the original value first — restore exactly what was there, never
 # assume NULL (a future non-NULL binding must survive this test).
-_cur.execute("select creem_product_id from plans where code='plus'")
-_plus_orig_pid = _cur.fetchone()[0]
-_cur.execute("update plans set creem_product_id='price_tc_plus' where code='plus'")
+_cur.execute("select creem_product_id, price_cents from plans where code='plus'")
+_plus_orig_pid, _plus_orig_price = _cur.fetchone()
+# sellable 合同 = active ∧ price>0 ∧ product 绑定; fixture 使 plus 真可售
+_cur.execute("update plans set creem_product_id='price_tc_plus', price_cents=500 where code='plus'")
+from governance.plan_catalog import validate_config as _vc
+_vc()  # fixture 直写行后刷新进程内目录缓存
 
 client = TestClient(app)
 
@@ -178,7 +181,8 @@ for old in ("/subscribe", "/plan-upgrade", "/plan-downgrade"):
 # ── restore + cleanup ───────────────────────────────────────────────────
 (_creem.create_subscription_checkout, _creem.create_credits_checkout,
  _creem.creem_enabled, _creem.credits_ready, _creem.CREEM_CREDITS_CURRENCY) = _orig
-_cur.execute("update plans set creem_product_id=%s where code='plus'", (_plus_orig_pid,))
+_cur.execute("update plans set creem_product_id=%s, price_cents=%s where code='plus'",
+             (_plus_orig_pid, _plus_orig_price))
 _cur.execute("delete from packages where code='tc_pkg'")
 _cur.execute("delete from users where username like 'tc%'")
 

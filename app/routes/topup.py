@@ -74,11 +74,11 @@ async def subscribe_checkout(request: Request):
         plan = plan_by_id_active(con, plan_id)
     if not plan or not plan["creem_product_id"]:
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
-    # 收费前配置 gate: 无 entitlement profile 的付费档不可售 (用户点击后
-    # 必失败的 plan 不产生 order/checkout)。同一单点供 Account 可售列表消费。
-    from governance.entitlements import entitlement_profile_exists
-    from governance.tiers import is_paid_tier
-    if not is_paid_tier(plan["code"]) or not entitlement_profile_exists(plan["code"]):
+    # 收费前配置 gate: 可售性单点 = Tier.sellable (active+定价+绑品+权益
+    # 配齐), 与 upgrade/downgrade/页面同一 authority。
+    from governance import plan_catalog
+    _tier = plan_catalog.by_code(plan["code"])
+    if not _tier or _tier.is_free or not _tier.sellable:
         return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     # 一个 user 同时最多一个 open plan checkout — users 行 FOR UPDATE
     # 串行化同 user 并发 subscribe。检查与 INSERT 同一事务: pending order
@@ -157,24 +157,29 @@ async def plan_upgrade(request: Request):
         target_code = str(raw.get("plan", "")).strip().lower()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from governance.tiers import PAID_TIER_CODES, TIER_ORDER
-    if target_code not in PAID_TIER_CODES:
+    from governance import plan_catalog
+    _target = plan_catalog.by_code(target_code)
+    if _target is None or _target.is_free:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from utils import now as _now
-    from economy.subscription import membership_is_occupied
+    from economy.subscription import membership_is_effective
     from repo.orders import membership_row, plan_by_code
     with db() as con:
         current = membership_row(con, user["id"])
-    if current is None or not membership_is_occupied(
+    # plan-change eligibility = effective paid (与 plan_of().member 同一定义);
+    # active+renews None (bind 未 paid) 占槽但不可升降级。
+    if current is None or not membership_is_effective(
             current["status"], current["renews_at"], _now()):
         return JSONResponse({"ok": False, "error": "no_active_membership"}, 409)
     cur_code = current["code"]
-    if TIER_ORDER.get(target_code, 0) <= TIER_ORDER.get(cur_code, 0):
+    if plan_catalog.direction(_target, plan_catalog.by_code(cur_code)) <= 0:
         return JSONResponse({"ok": False, "error": "not_an_upgrade"}, 409)
+    # target readiness 单点 = Tier.sellable (active+定价+绑品+权益配齐);
+    # 不再单独检查 active/product — 与 subscribe/页面同一 authority。
+    if not _target.sellable:
+        return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     with db() as con:
         target = plan_by_code(con, target_code)
-    if not target or not target["creem_product_id"] or not target["active"]:
-        return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     sub_id = current["provider_subscription_id"]
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]
@@ -210,26 +215,27 @@ async def plan_downgrade(request: Request):
         target_code = str(raw.get("plan", "")).strip().lower()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from governance.tiers import PAID_TIER_CODES, TIER_ORDER
-    if target_code not in PAID_TIER_CODES:
+    from governance import plan_catalog
+    _target = plan_catalog.by_code(target_code)
+    if _target is None or _target.is_free:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from utils import now as _now
-    from economy.subscription import membership_is_occupied, schedule_downgrade
+    from economy.subscription import membership_is_effective, schedule_downgrade
     from repo.orders import membership_row, plan_by_code
     with db() as con:
         current = membership_row(con, user["id"])
-    if current is None or not membership_is_occupied(
+    # plan-change eligibility = effective paid (与 plan_of().member 同一定义)
+    if current is None or not membership_is_effective(
             current["status"], current["renews_at"], _now()):
         return JSONResponse({"ok": False, "error": "no_active_membership"}, 409)
     cur_code = current["code"]
-    if TIER_ORDER.get(target_code, 0) >= TIER_ORDER.get(cur_code, 0):
+    if plan_catalog.direction(_target, plan_catalog.by_code(cur_code)) >= 0:
         return JSONResponse({"ok": False, "error": "not_a_downgrade"}, 409)
+    # target readiness 单点 = Tier.sellable (与 subscribe/页面同一 authority)
+    if not _target.sellable:
+        return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     with db() as con:
         target = plan_by_code(con, target_code)
-    # readiness (provider 调用前): canonical tier + active + product 绑定,
-    # 缺 product 不发给 Creem 换 502。
-    if not target or not target["active"] or not target["creem_product_id"]:
-        return JSONResponse({"ok": False, "error": "plan_not_ready"}, 422)
     sub_id = current["provider_subscription_id"]
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]

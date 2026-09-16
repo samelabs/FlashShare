@@ -36,7 +36,19 @@ sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 import psycopg2
 from governance.access_projection import project
-from governance.entitlements import FREE, _PLANS, resolve, resolve_from_membership
+from governance.entitlements import (resolve, resolve_from_membership)
+
+
+def _row_views():
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+    from governance import plan_catalog as _pc
+    _free = _pc.free_tier().benefits.as_dict("free")
+    _plans = {t.code: t.benefits.as_dict(t.code) for t in _pc.catalog() if not t.is_free}
+    return _free, _plans
+
+
+FREE, _PLANS = _row_views()
 from economy.subscription import plan_of
 from sharing.uploads import usage_24h
 from repo import upload_usage as usage_repo
@@ -323,8 +335,8 @@ class _AnonReq:
     state = type("S", (), {"lang": "en", "user": None})()
 try:
     _c = _wctx.ctx_base(_AnonReq())
-    check("WC-X2 匿名 context 不调用 project (access=None, my_plan=None)",
-          _c.get("access") is None and _c.get("my_plan") is None)
+    check("WC-X2 匿名 context 不调用 project (access=None)",
+          _c.get("access") is None)
 except RuntimeError:
     check("WC-X2 匿名 context 不调用 project", False, "anon raised")
 finally:
@@ -575,16 +587,16 @@ check('AP-W1 web_ctx 使用 project(user["id"]) 消费 projection',
 check("AP-W2 web_ctx 不 import economy.subscription / 不调 plan_of",
       "economy.subscription" not in _wctx_src and "plan_of" not in _wctx_code)
 check("AP-W3 web_ctx 无 plus policy 判断", '"plus"' not in _wctx_code)
-check('AP-W4 my_plan 明确来自 access["membership"]',
-      'access["membership"] if access else None' in _wctx_src)
+check('AP-W4 membership 唯一形态 access["membership"] (无别名)',
+      'my_plan' not in _wctx_src)
 check("AP-W5 credits 仍来自 spendable_balance (独立)",
       "spendable_balance" in _wctx_src)
 check("AP-W6 web_ctx 无 project 异常→None fallback",
       "except" not in _wctx_src.split("def ctx_base")[1].split("return {")[0])
 _hdr = open(_os.path.join(_REPO, "app", "templates", "partials", "header.html"), encoding="utf-8").read()
-check("AP-W7 header.html 不自行推导 membership (只读 my_plan)",
-      "plan_of" not in _hdr and "project" not in _hdr and "membership" not in _hdr
-      and "my_plan" in _hdr)
+check("AP-W7 header.html 不自行推导 membership (只读 access.membership)",
+      "plan_of" not in _hdr and "project" not in _hdr
+      and "access.membership" in _hdr)
 _pages_src = open(_os.path.join(_REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
 _home_blk = _pages_src.split("async def home")[1].split("async def ")[0]
 _home_code = "\n".join(l for l in _home_blk.split("\n") if not l.strip().startswith("#"))
@@ -625,8 +637,8 @@ check("AP-C1 account_credits 不 import economy.subscription / 不调 plan_of",
       "economy.subscription" not in _acct_blk and "plan_of" not in _acct_code)
 check("AP-C2 account_credits 无 plus 判断 / 无 my_plan= 覆盖",
       '"plus"' not in _acct_code and "my_plan=" not in _acct_code)
-check("AP-C3 active_plans( catalog 保留 且 plans=plans 传模板",
-      "active_plans(" in _acct_blk and "plans=plans" in _acct_blk)
+check("AP-C3 all_plans 行集目录 且 plans=plans 传模板",
+      "all_plans" in _acct_blk and "plans=plans" in _acct_blk)
 _acct_ctx_blk = _pages_src.split("def _account_ctx")[1].split("\ndef ")[0]
 check("AP-C4 _account_ctx 仍调 _ctx_base (membership 继承 base projection)",
       "_ctx_base(" in _acct_ctx_blk)

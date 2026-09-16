@@ -40,9 +40,22 @@ from repo import orders as orders_repo
 from economy import subscription as _sub
 from economy import reconcile as _rec
 from economy.billing import spendable_balance
-from governance.entitlements import (resolve, resolve_from_membership,
-                                     entitlement_profile_exists,
-                                     EntitlementConfigurationError, _PLANS)
+from governance.entitlements import (resolve, resolve_from_membership, entitlement_profile_exists, EntitlementConfigurationError)
+
+
+def _row_views():
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+    from governance import plan_catalog as _pc
+    _plans = {t.code: t.benefits.as_dict(t.code) for t in _pc.catalog() if not t.is_free}
+    return _plans.get("free"), _plans
+
+
+_PLANS = _row_views()
+from governance import plan_catalog as _pc
+
+def _refresh_catalog():
+    _pc.validate_config()
 from governance.access_projection import project
 
 FAIL = []
@@ -80,12 +93,15 @@ def _new_user(prefix):
 def _seed_plan(code, credits=100, price_id=None):
     # 幂等 seed: plus 为 init_db 种子行, 其余测试自建
     _cur.execute(
-        "insert into plans (code, name, monthly_credits, price_cents, creem_product_id, created_at, updated_at)"
-        " values (%s, %s, %s, 500, %s, %s, %s)"
+        "insert into plans (code, name, monthly_credits, price_cents, creem_product_id, sort_order, created_at, updated_at)"
+        " values (%s, %s, %s, 500, %s,"
+        " (SELECT COALESCE(MAX(p.sort_order),0)+1 FROM plans p WHERE p.code <> 'free'), %s, %s)"
         " on conflict (code) do update set monthly_credits=excluded.monthly_credits,"
-        " creem_product_id=coalesce(plans.creem_product_id, excluded.creem_product_id)"
+        " creem_product_id=coalesce(plans.creem_product_id, excluded.creem_product_id),"
+        " price_cents=excluded.price_cents"
         " returning id",
         (code, code.upper(), credits, price_id, _ts, _ts))
+    _refresh_catalog()
     return _cur.fetchone()[0]
 
 def _seed_order(uid, plan_id, sub_id):
@@ -176,6 +192,7 @@ uT, uidT = _new_user("mgT")
 _cur.execute("select id from plans where code='pro'")
 plan_pro = _cur.fetchone()[0]
 _cur.execute("update plans set creem_product_id='price_pro' where code='pro'")
+_refresh_catalog()
 PRO_FILES, PRO_BYTES = 2000, 20 * 1024 ** 3
 _seed_order(uidT, plan_pro, "mgsubT")
 _sub.bind_checkout({"id": "chT", "subscription": {"id": "mgsubT"}})
@@ -455,6 +472,7 @@ uS, uidS = _new_user("mgS")
 _topup._require_auth = lambda request: ({"id": uidS, "email": "t@t.co",
                                         "username": uS}, None)
 _cur.execute("update plans set creem_product_id='price_plus' where id=%s", (plan_plus,))
+_refresh_catalog()
 st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 _cur.execute("select id from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidS,))
 _oi1 = _cur.fetchone()[0]
@@ -489,6 +507,7 @@ check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscriptio
 # unknown-profile plan → 收费前拒绝 (plan_not_ready, 零 order 零 create):
 uQ, uidQ = _new_user("mgQ")
 _cur.execute("update plans set creem_product_id='price_q' where code='mg_unknown_tier'")
+_refresh_catalog()
 _cur.execute("select id from plans where code='mg_unknown_tier'")
 _pq = _cur.fetchone()[0]
 _topup._require_auth = lambda request: ({"id": uidQ, "email": "t@t.co",
@@ -499,6 +518,11 @@ check("G12f unknown-profile plan → plan_not_ready / 零 order / 零 checkout",
       st == 422 and d.get("error") == "plan_not_ready"
       and _cur.fetchone()[0] == 0 and _creem_calls["create"] == 2, f"st={st} d={d}")
 _topup._require_auth = _orig_auth
+# 夹具清场: mg_unknown_tier 回到"权益未配的缺口行" (可售性归零), 不污染后续套件的
+# sellable 目录断言
+_cur.execute("update plans set creem_product_id=NULL, price_cents=0"
+             " where code='mg_unknown_tier'")
+_refresh_catalog()
 
 # ═══ 链13: occupied/rebind 七态 (membership_is_occupied 单一语义) ═══
 _FUT2, _PAST2 = _ts + 15 * 86400, _ts - 15 * 86400
@@ -640,8 +664,8 @@ check("SG6 /subscribe 有 plan_change_required 拦截",
 check("SG7 entitlement profile 单点 (_require_profile + 未知 raise)",
       "_require_profile" in open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read())
 _tmpl = open(_os.path.join(_REPO, "app", "templates", "account", "credits.html"), encoding="utf-8").read()
-check("SG8 Account badge 展示 my_plan.name (当前 tier)",
-      "{{ my_plan.name }}" in _tmpl)
+check("SG8 Account badge 展示 access.membership.name (当前 tier)",
+      "{{ m.name }}" in _tmpl)
 check("SG9 旧 upsert_membership 单体 writer 已拆 (bind/state 语义分离)",
       "def upsert_membership(" not in _repo_src
       and "def bind_membership(" in _repo_src
@@ -666,8 +690,9 @@ check("SG14 extract_product_id canonical dict 形态",
       'isinstance(product, dict)' in _sub_src
       and 'product.get("id")' in _sub_src)
 _topup_g = open(_os.path.join(_REPO, "app", "routes", "topup.py"), encoding="utf-8").read()
-check("SG15 /subscribe profile gate + open order 检查 + FOR UPDATE",
-      "entitlement_profile_exists" in _topup_g
+check("SG15 /subscribe sellable gate (单点) + open order 检查 + FOR UPDATE",
+      "_tier.sellable" in _topup_g
+      and "membership_is_effective" in _topup_g
       and "lock_user_for_checkout" in _topup_g
       and "open_plan_order" in _topup_g
       and "retrieve_checkout" in _topup_g)
@@ -708,9 +733,9 @@ check("SG19b HTTP 全在锁事务外 (AST: 锁 with 块内无 retrieve/create)",
       bool(_locked_bodies)
       and all("retrieve_checkout" not in b and "create_checkout" not in b
               for b in _locked_bodies))
-check("SG16 Account 可售列表消费同一 profile 单点",
-      "entitlement_profile_exists" in _pages_g.split("def account_credits")[1][:2000]
-      if "def account_credits" in _pages_g else "active_plans" in _pages_g)
+check("SG16 Account 可售列表消费同一 sellable 单点",
+      "t.sellable" in _pages_g.split("def account_credits")[1].split("async def ")[0]
+      and "plan_catalog.catalog()" in _pages_g.split("def account_credits")[1].split("async def ")[0])
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))

@@ -40,7 +40,8 @@ from repo import orders as orders_repo
 from economy import subscription as _sub
 from economy.billing import spendable_balance
 from economy import creem as _creem
-from governance.tiers import PAID_TIER_CODES, TIER_PLAN_SPECS, is_paid_tier
+from governance import plan_catalog
+from governance.plan_catalog import is_paid_tier
 from governance.entitlements import resolve, resolve_from_membership, entitlement_profile_exists
 from governance.access_projection import project
 
@@ -106,20 +107,33 @@ def _plan_credits_total(uid, period_start):
     with db() as con:
         return orders_repo.period_plan_credits(con, uid, period_start)
 
-# ═══ T1: paid tier codes exactly plus/pro ═══
-check("T1 PAID_TIER_CODES == ('plus','pro')", PAID_TIER_CODES == ("plus", "pro"),
-      str(PAID_TIER_CODES))
+# ═══ T1: 种子+运营就绪合同 — 绑品定价后 sellable 恰好 plus/pro ═══
+# (init_db 种子: price=0 无 product → 不可售; 运营绑品+定价后进入销售。
+#  夹具: plus/pro 模拟就绪; 其它行存在也不进 sellable — 见 T2)
+from governance import plan_catalog as _pc
+with db() as con:  # 写并提交
+    con.execute("update plans set price_cents=500, creem_product_id='pt_plus_price'"
+                " where code='plus'")
+    con.execute("update plans set price_cents=1500, creem_product_id='pt_pro_price'"
+                " where code='pro'")
+_pc.catalog(refresh=True)  # 提交后刷 — 事务内 refresh 读不到本事务未提交值
+with db() as con:
+    _seed_sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
+check("T1 种子档 plus/pro 均在 sellable (行世界: 运营建档可扩)",
+      set(["plus", "pro"]) <= set(_seed_sellable), str(_seed_sellable))
 
 # ═══ T2: arbitrary third active plan 不进入 sellable ═══
 _cur.execute(
     "insert into plans (code, name, monthly_credits, period_days, period,"
     " price_cents, sort_order, active, created_at, updated_at)"
-    " values ('pt_business', 'Business', 999, 30, 'monthly', 900, 5, TRUE, %s, %s)"
+    " values ('pt_business', 'Business', 999, 30, 'monthly', 900,"
+    " (SELECT COALESCE(MAX(sort_order),0)+1 FROM plans WHERE code <> 'free'),"
+    " TRUE, %s, %s)"
     " on conflict (code) do nothing", (_ts, _ts))
 with db() as con:
     sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
-check("T2 第三 active plan 不进 sellable catalog (canonical_plans 只 plus/pro)",
-      "pt_business" not in sellable and set(sellable) <= {"plus", "pro"}, str(sellable))
+check("T2 权益未配的 active 行不进 sellable (pt_business 缺 benefits)",
+      "pt_business" not in sellable, str(sellable))
 
 # ═══ T3/T4: tier entitlements ═══
 plus_ent = resolve_from_membership({"member": True, "code": "plus"})
@@ -134,8 +148,8 @@ check("T4 Pro entitlement = 2000 files / 20GiB (protocol 不扩容)",
       and list(pro_ent["download_limits"]) == [1, 10, 50, 100, 200, 1000])
 
 # ═══ T5/T6: canonical monthly credits (tiers 单源 + DB rows) ═══
-check("T5 Plus monthly credits = 100", TIER_PLAN_SPECS["plus"]["monthly_credits"] == 100)
-check("T6 Pro monthly credits = 500", TIER_PLAN_SPECS["pro"]["monthly_credits"] == 500)
+check("T5 Plus monthly credits = 100", plan_catalog.by_code("plus").monthly_credits == 100)
+check("T6 Pro monthly credits = 500", plan_catalog.by_code("pro").monthly_credits == 500)
 with db() as con:
     _cur.execute("select code, monthly_credits from plans where code in ('plus','pro')")
     rows = dict(_cur.fetchall())
@@ -153,6 +167,7 @@ _creem._checkout_session = lambda order_id, user, pp: _fake_session(order_id, us
 _u7, uid7, _ = _seed_sub_user("pt7", "plus", "prod_plus", "ptsub7", paid=False)
 _cur.execute("update plans set creem_product_id='prod_pro' where code='pro'")
 _cur.execute("update plans set creem_product_id='prod_plus' where code='plus'")
+plan_catalog.validate_config()  # fixture 直接写行后刷新进程内目录缓存
 out = _creem.create_subscription_checkout(1234, {"creem_product_id": "prod_pro"}, {"id": uid7})
 check("T7 subscription checkout → Pro product / ZERO custom_price",
       _captured["payload"] == {"product_id": "prod_pro"}, str(_captured["payload"]))
@@ -396,7 +411,9 @@ _u17, uid17, _ = _seed_sub_user("pt17", "plus", "prod_plus", "ptsub17")
 _cur.execute(
     "insert into plans (code, name, monthly_credits, period_days, period,"
     " price_cents, creem_product_id, sort_order, active, created_at, updated_at)"
-    " values ('pt_biz', 'Biz', 999, 30, 'monthly', 900, 'prod_biz', 5, TRUE, %s, %s)"
+    " values ('pt_biz', 'Biz', 999, 30, 'monthly', 900, 'prod_biz',"
+    " (SELECT COALESCE(MAX(sort_order),0)+1 FROM plans WHERE code <> 'free'),"
+    " TRUE, %s, %s)"
     " on conflict (code) do nothing", (_ts, _ts))
 try:
     _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_biz"}, sub_id="ptsub17"))
@@ -410,6 +427,8 @@ except KeyError as e:
 # ═══ T18: downgrade readiness — target 无 product → plan_not_ready / 零 provider 调用 ═══
 _u18, uid18, _ = _seed_sub_user("pt18", "pro", "prod_pro", "ptsub18")
 _cur.execute("update plans set creem_product_id='' where code='plus'")
+# 直改 DB 模拟运营配置变更 — 目录缓存必须同步 (生产走 samelabs PATCH 自带刷新)
+plan_catalog.catalog(refresh=True)
 _topup_mod._require_auth = lambda request: ({"id": uid18, "email": "t@t.co",
                                             "username": _u18}, None)
 _calls18 = []
@@ -428,6 +447,7 @@ with db() as con:
     _pend18 = orders_repo.pending_downgrade(con, uid18)
 check("T18b pending 未写入", _pend18 is None)
 _cur.execute("update plans set creem_product_id='prod_plus' where code='plus'")
+plan_catalog.catalog(refresh=True)
 _creem.upgrade_subscription = _orig_up13
 _topup_mod._require_auth = _orig_auth13
 
@@ -444,15 +464,16 @@ check("T15b 到期 → Free / credits 不追回",
       and spendable_balance(uid15) == 100)
 
 # ═══ Source guards ═══
-_tiers_src = open(_os.path.join(_REPO, "core", "governance", "tiers.py"), encoding="utf-8").read()
+_tiers_src = open(_os.path.join(_REPO, "core", "governance", "plan_catalog.py"), encoding="utf-8").read()
 _ent_src = open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read()
 _creem_src = open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read()
 _topup_src = open(_os.path.join(_REPO, "app", "routes", "topup.py"), encoding="utf-8").read()
 _samelabs_src = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"), encoding="utf-8").read()
 _sub_src2 = open(_os.path.join(_REPO, "core", "economy", "subscription.py"), encoding="utf-8").read()
-check("PG1 tiers 单源: PAID_TIER_CODES + TIER_PLAN_SPECS",
-      'PAID_TIER_CODES = ("plus", "pro")' in _tiers_src
-      and '"monthly_credits": 100' in _tiers_src and '"monthly_credits": 500' in _tiers_src)
+check("PG1 Tier 唯一构造源 = plans 行 (catalog 无档位字面量)",
+      "class Tier" in _tiers_src
+      and '"plus"' not in _tiers_src.split("def direction")[0].split('"""')[-1]
+      and plan_catalog.by_code("plus") is not None)
 check("PG2 creem_price_id 零残留 (production)",
       "creem_price_id" not in _creem_src and "creem_price_id" not in _topup_src
       and "creem_price_id" not in _samelabs_src)
@@ -465,9 +486,10 @@ check("PG3 checkout API 拆分 (credits vs subscription)",
       and "def create_subscription_checkout(" in _creem_src
       and "custom_price" in _cred_blk and "custom_price" not in _subx_blk,
       f"cred={_cred_blk!r} sub={_subx_blk!r}")
-check("PG4 POST /samelabs/plans 创建能力已移除",
-      '@router.post("/samelabs/plans")' not in _samelabs_src
-      and "not_canonical_tier" in _samelabs_src)
+check("PG4 POST /samelabs/plans 后台建档 + free 行保护 + 权益值域 fail-closed",
+      '@router.post("/samelabs/plans")' in _samelabs_src
+      and "not_editable_tier" in _samelabs_src
+      and "EXPIRY_DAYS" in _samelabs_src and "DOWNLOAD_LIMITS" in _samelabs_src)
 check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       "def upgrade_subscription" in _creem_src
       and '"proration-charge-immediately", "proration-none"' in _creem_src
@@ -491,8 +513,8 @@ _apk_sql = [l for l in _apk_blk.split("\n") if l.strip().startswith('"SELECT') o
 check("PG10 packages production SELECT 零 provider-product 列",
       "creem_product_id" not in _apk_sql and "legacy" not in _apk_sql,
       _apk_sql[:100])
-check("PG11 canonical_plans 消费 governance.tiers (参数化, 无字面 tier 复制)",
-      "sellable_plan_codes" in _repo_src2.split("def canonical_plans")[1].split("\ndef ")[0]
+check("PG11 canonical_plans 消费 plan_catalog (参数化, 无字面 tier 复制)",
+      "plan_catalog" in _repo_src2.split("def canonical_plans")[1].split("\ndef ")[0]
       and "'plus','pro'" not in _repo_src2.split("def canonical_plans")[1].split("\ndef ")[0])
 check("PG12 custom_price int + range 前置",
       '"custom_price": int(amount_cents)' in _creem_src
@@ -511,8 +533,8 @@ check("PG16 production 零 deprecated proration-charge 精确 usage",
       len(_prod_bc) == 0, str(_prod_bc))
 _pb_blk = _repo_src2.split("def plan_by_product_id")[1].split("\ndef ")[0]
 _pb_sql17 = [l for l in _pb_blk.split("\n") if "SELECT" in l or "code IN" in l or "creem_product_id = " in l]
-check("PG17 plan_by_product_id 消费 canonical tier codes (SQL 无 active 过滤)",
-      "sellable_plan_codes" in _pb_blk
+check("PG17 plan_by_product_id 消费 plan_catalog (SQL 无 active 过滤)",
+      "plan_catalog" in _pb_blk
       and all("active" not in l for l in _pb_sql17), str(_pb_sql17)[:120])
 _sub_upd_blk = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
 _deferred_ret = _sub_upd_blk.split('"deferred": "pending_downgrade"')[0]

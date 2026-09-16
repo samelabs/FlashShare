@@ -28,6 +28,8 @@ BACKOFFICE_STATUSES = ("admin", "samelabs")
 
 # ── samelabs.css cache-busting (same pattern as pages.py _CSS_VERSION) ──
 import hashlib as _hashlib
+import re as _re
+from governance.delivery import EXPIRY_DAYS, DOWNLOAD_LIMITS
 from pathlib import Path as _Path
 
 _SL_CSS_VERSION = _hashlib.md5(
@@ -151,45 +153,197 @@ async def samelabs_plans(request: Request):
     if resp:
         return resp
     from app.main import templates
-    from repo.orders import canonical_plans
+    from repo.orders import all_plans
     with db() as con:
-        rows = canonical_plans(con)
-    ctx = _ctx(request, user, plans=[dict(r) for r in rows], fmt_num=_fmt_num, page="plans")
+        rows = [r for r in all_plans(con) if r["code"] != "free"]  # 管理面: 全部 paid 行
+        # 订阅计数: current memberships per plan (含 pending 排期目标) —
+        # 下架/改配前的事实依据
+        counts = {r["plan_id"]: int(r["n"]) for r in con.execute(
+            "SELECT plan_id, COUNT(*) n FROM memberships"
+            " WHERE status IN ('active','past_due','canceled') GROUP BY plan_id")}
+        pend = {r["target_plan_id"]: int(r["n"]) for r in con.execute(
+            "SELECT target_plan_id, COUNT(*) n FROM pending_downgrades"
+            " GROUP BY target_plan_id")}
+    plans = []
+    for r in rows:
+        d = dict(r)
+        d["member_count"] = int(counts.get(r["id"], 0))
+        d["pending_count"] = int(pend.get(r["id"], 0))
+        plans.append(d)
+    ctx = _ctx(request, user, plans=plans, fmt_num=_fmt_num, page="plans")
     return templates.TemplateResponse(request, "samelabs/plans.html", ctx)
 
 
-# POST /samelabs/plans (任意创建 paid tier) 已移除: canonical paid tiers
-# 只有 plus/pro (governance.tiers), operator 只可配置 price / Creem
-# Product ID / active, 不可创建第三档或改 canonical credits。
+_PLAN_INT_FIELDS = ("monthly_credits", "period_days", "price_cents",
+                    "sort_order", "ingress_files_24h", "ingress_bytes_24h")
 
 
-@router.patch("/samelabs/plans/{plan_id}")
-async def samelabs_update_plan(plan_id: int, request: Request):
+def _parse_plan_fields(raw: dict, *, creating: bool = False) -> dict | None:
+    """operator plan 字段解析 + 值域 fail-closed。返回 None = 请求非法。
+    权益枚举必须 ⊆ 平台协议 (delivery 单源); 越界值 422 拒绝, 绝不裁剪。"""
+    fields: dict = {}
+    if creating:
+        code = str(raw.get("code", "")).strip().lower()[:32]
+        if not code or not _re.fullmatch(r"[a-z][a-z0-9_]*", code) or code == "free":
+            return None
+        fields["code"] = code
+        for k in ("name",):
+            v = str(raw.get(k, "")).strip()[:64]
+            if not v:
+                return None
+            fields[k] = v
+        for k in _PLAN_INT_FIELDS:
+            v = raw.get(k, 0)
+            if not isinstance(v, int) or v < 0:
+                return None
+            fields[k] = v
+    else:
+        if "name" in raw:
+            v = str(raw["name"]).strip()[:64]
+            if not v:
+                return None
+            fields["name"] = v
+        for k in _PLAN_INT_FIELDS:
+            if k in raw:
+                v = raw[k]
+                if not isinstance(v, int) or v < 0:
+                    return None
+                fields[k] = v
+    if "creem_product_id" in raw or creating:
+        fields["creem_product_id"] = str(raw.get("creem_product_id", "")).strip()[:64] or None
+    if "active" in raw or creating:
+        if not isinstance(raw.get("active", True), bool):
+            return None
+        fields["active"] = bool(raw.get("active", True))
+    for k, allowed in (("expiry_days", EXPIRY_DAYS),
+                       ("download_limits", DOWNLOAD_LIMITS)):
+        if k in raw or (creating and raw.get(k) is not None):
+            v = raw.get(k)
+            if not isinstance(v, list) or not all(isinstance(x, int) for x in v):
+                return None
+            if any(x not in allowed for x in v):
+                return None  # 越界值 fail-closed, 不静默裁剪
+            fields[k] = v
+    return fields
+
+
+@router.post("/samelabs/plans")
+async def samelabs_create_plan(request: Request):
+    """创建新 paid tier 行 (plans 行 = 商品事实源; 新档不硬编码)。"""
     user, resp = _gate(request)
     if resp:
         return resp
     try:
         raw = await request.json()
-        price = int(raw.get("price_cents", -1))
-        creem_product_id = str(raw.get("creem_product_id", "")).strip()[:64] or None
-        if price < 0:
-            raise ValueError
+        fields = _parse_plan_fields(raw, creating=True)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    # canonical guard: 只有 plus/pro 可被配置 (price / Creem Product ID);
-    # code 与 canonical monthly credits 不可经 operator 修改。
-    from repo.orders import update_plan_pricing
-    from repo.orders import plan_by_id
-    from governance.tiers import is_paid_tier
+    if fields is None:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.orders import insert_plan
+    from database import db as _db
+    import psycopg2
+    try:
+        with _db() as con:
+            row = insert_plan(
+                con, fields["code"], fields["name"], fields["monthly_credits"],
+                fields["price_cents"], now(),
+                period_days=fields["period_days"] or 30,
+                sort_order=fields["sort_order"],
+                creem_product_id=fields["creem_product_id"],
+                ingress_files_24h=fields["ingress_files_24h"],
+                ingress_bytes_24h=fields["ingress_bytes_24h"],
+                expiry_days=fields.get("expiry_days") or (),
+                download_limits=fields.get("download_limits") or ())
+    except psycopg2.IntegrityError as exc:
+        # 唯一索引兜底: code 冲突 / paid rank 冲突 / product 已绑它档
+        msg = str(getattr(exc, "diag", None) and exc.diag.message_primary or exc)
+        if "plans_paid_sort_order_uk" in msg or "sort_order" in msg:
+            return JSONResponse({"ok": False, "error": "sort_order_taken"}, 409)
+        if "plans_product_binding_uk" in msg or "creem_product_id" in msg:
+            return JSONResponse({"ok": False, "error": "product_already_bound"}, 409)
+        return JSONResponse({"ok": False, "error": "code_taken"}, 409)
+    from governance.plan_catalog import validate_config
+    validate_config()  # refresh + fail-closed 校验
+    return {"ok": True, "plan": dict(row)}
+
+
+@router.patch("/samelabs/plans/{plan_id}")
+async def samelabs_update_plan(plan_id: int, request: Request):
+    """配置 paid tier 行: 名称/积分/周期/价格/product/权益/上下架/排序
+    (code 不可改; free 行是基础档非商品, 不可经此修改)。"""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        fields = _parse_plan_fields(raw)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    if fields is None or not fields:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.orders import update_plan, plan_by_id
+    from governance.plan_catalog import is_paid_tier
     with db() as con:
         row = plan_by_id(con, plan_id)
-    if row is None or not is_paid_tier(row["code"]):
-        return JSONResponse({"ok": False, "error": "not_canonical_tier"}, 422)
-    with db() as con:
-        row = update_plan_pricing(con, plan_id, price, creem_product_id, now())
+    if row is None:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    if not is_paid_tier(row["code"]):
+        return JSONResponse({"ok": False, "error": "not_editable_tier"}, 422)
+    import psycopg2
+    try:
+        with db() as con:
+            row = update_plan(con, plan_id, fields, now())
+    except psycopg2.IntegrityError as exc:
+        # 唯一索引兜底 (并发/撞既有行): rank 冲突 / product 已绑它档
+        msg = str(getattr(exc, "diag", None) and exc.diag.message_primary or exc)
+        if "plans_paid_sort_order_uk" in msg or "sort_order" in msg:
+            return JSONResponse({"ok": False, "error": "sort_order_taken"}, 409)
+        if "plans_product_binding_uk" in msg or "creem_product_id" in msg:
+            return JSONResponse({"ok": False, "error": "product_already_bound"}, 409)
+        raise
+    # plans 行是 Tier 唯一事实源, 进程内目录缓存必须随运营写入失效
+    from governance.plan_catalog import validate_config
+    validate_config()  # refresh=True + fail-closed 校验新配置
     if row is None:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "plan": dict(row)}
+
+
+@router.patch("/samelabs/packages/{package_id}")
+async def samelabs_update_package(package_id: int, request: Request):
+    """配置积分包行: 名称/积分/价格/上下架 (code 不可改)。"""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        fields = {}
+        if "name" in raw:
+            v = str(raw["name"]).strip()[:64]
+            if not v:
+                raise ValueError
+            fields["name"] = v
+        for k in ("credits", "price_cents"):
+            if k in raw:
+                v = raw[k]
+                if not isinstance(v, int) or v < 0:
+                    raise ValueError
+                fields[k] = v
+        if "active" in raw:
+            if not isinstance(raw["active"], bool):
+                raise ValueError
+            fields["active"] = raw["active"]
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    if not fields:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.orders import update_package
+    with db() as con:
+        row = update_package(con, package_id, fields, now())
+    if row is None:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True, "package": dict(row)}
 
 
 @router.patch("/samelabs/tools/{tool_key}/presentation")

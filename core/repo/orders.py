@@ -87,29 +87,75 @@ def package_credits(con, package_id: int) -> Optional[dict]:
 
 
 def all_plans(con) -> list:
-    return con.execute("SELECT * FROM plans ORDER BY price_cents").fetchall()
+    return con.execute(
+        "SELECT * FROM plans ORDER BY sort_order, id").fetchall()
 
 
 def insert_plan(con, code: str, name: str, monthly_credits: int,
-                price_cents: int, ts: int) -> dict:
+                price_cents: int, ts: int, *, period_days: int = 30,
+                sort_order: int = 0, creem_product_id: str | None = None,
+                ingress_files_24h: int = 0, ingress_bytes_24h: int = 0,
+                expiry_days=(), download_limits=()) -> dict:
+    """operator 创建新 paid tier 行。权益未配 (空数组) = 诚实不可售,
+    由 benefits_configured 门挡在 sellable 外, 直到运营补齐。"""
     return con.execute(
         """
-        INSERT INTO plans (code, name, monthly_credits, price_cents,
-                           active, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, TRUE, %s, %s) RETURNING *
+        INSERT INTO plans (code, name, monthly_credits, period_days, period,
+                           price_cents, creem_product_id, sort_order, active,
+                           ingress_files_24h, ingress_bytes_24h,
+                           expiry_days, download_limits,
+                           created_at, updated_at)
+        VALUES (%s, %s, %s, %s, 'monthly', %s, %s, %s, TRUE,
+                %s, %s, %s, %s, %s, %s) RETURNING *
         """,
-        (code, name, monthly_credits, price_cents, ts, ts)).fetchone()
+        (code, name, monthly_credits, period_days, price_cents,
+         creem_product_id, sort_order, ingress_files_24h, ingress_bytes_24h,
+         list(expiry_days), list(download_limits), ts, ts)).fetchone()
 
 
-def update_plan_pricing(con, plan_id: int, price_cents: int,
-                        creem_product_id: str | None, ts: int) -> Optional[dict]:
-    """operator 只可改 price / Creem Product ID (code 与 canonical
-    monthly credits 不可经此修改 — 见 samelabs route 的 canonical 校验)。"""
+def update_package(con, package_id: int, fields: dict, ts: int) -> Optional[dict]:
+    """operator 部分更新 packages 行 (键白名单: name/credits/price/active)。"""
+    sets, params = [], []
+    for k in ("name", "credits", "price_cents", "active"):
+        if k in fields:
+            sets.append(f"{k}=%s")
+            params.append(fields[k])
+    if not sets:
+        return package_by_id(con, package_id)
+    sets.append("updated_at=%s")
+    params.extend([ts, package_id])
     return con.execute(
-        """
-        UPDATE plans SET price_cents=%s, creem_product_id=%s, updated_at=%s
-        WHERE id=%s RETURNING *
-        """, (price_cents, creem_product_id, ts, plan_id)).fetchone()
+        f"UPDATE packages SET {', '.join(sets)} WHERE id=%s RETURNING *",
+        tuple(params)).fetchone()
+
+
+def package_by_id(con, package_id: int) -> Optional[dict]:
+    return con.execute(
+        "SELECT * FROM packages WHERE id = %s", (package_id,)).fetchone()
+
+
+_PLAN_EDITABLE = ("name", "monthly_credits", "period_days", "price_cents",
+                  "creem_product_id", "active", "sort_order",
+                  "ingress_files_24h", "ingress_bytes_24h",
+                  "expiry_days", "download_limits")
+
+
+def update_plan(con, plan_id: int, fields: dict, ts: int) -> Optional[dict]:
+    """operator 部分更新 plans 行 (fields 键 = _PLAN_EDITABLE 白名单,
+    值域校验在 route 层 fail-closed)。code 不可改 — 行身份。
+    list 字段 (expiry_days/download_limits) 传 tuple/list。"""
+    sets, params = [], []
+    for k in _PLAN_EDITABLE:
+        if k in fields:
+            sets.append(f"{k}=%s")
+            params.append(fields[k])
+    if not sets:
+        return plan_by_id(con, plan_id)
+    sets.append("updated_at=%s")
+    params.extend([ts, plan_id])
+    return con.execute(
+        f"UPDATE plans SET {', '.join(sets)} WHERE id=%s RETURNING *",
+        tuple(params)).fetchone()
 
 
 def all_packages(con) -> list:
@@ -129,18 +175,14 @@ def insert_package(con, code: str, name: str, credits: int,
 
 # ── plans (subscription tiers) ──
 
-def active_plans(con) -> list:
-    return con.execute(
-        "SELECT * FROM plans WHERE active ORDER BY sort_order, price_cents"
-    ).fetchall()
-
-
 def canonical_plans(con) -> list:
-    """sellable membership catalog: 仅 governance.tiers 的 canonical paid
-    tiers (唯一产品层事实源; 参数化, 不在 repo 复制业务 tier)。
+    """sellable membership catalog: plan_catalog.sellable_catalog 的行集
+    (plans 行是唯一产品层事实源; 参数化, 不在 repo 复制业务 tier)。
     DB 中历史其它 plan rows 保留但不进 sellable/current Membership。"""
-    from governance.tiers import sellable_plan_codes
-    codes = sellable_plan_codes()
+    from governance import plan_catalog
+    codes = tuple(t.code for t in plan_catalog.sellable_catalog())
+    if not codes:
+        return []
     placeholders = ",".join(["%s"] * len(codes))
     return con.execute(
         f"SELECT * FROM plans WHERE active AND code IN ({placeholders})"
@@ -315,13 +357,14 @@ def clear_pending_downgrade(con, user_id: int) -> None:
 def plan_by_product_id(con, product_id: str) -> Optional[dict]:
     """subscription.update: provider product → 本地唯一 plan。
 
-    只映射 governance.tiers 的 canonical tier codes (plus/pro) —
+    只映射 plan_catalog 的 tier 行 codes —
     effective product states = Free/Plus/Pro only。不要求 active=TRUE:
     已停售 canonical plan 的历史 subscription lifecycle 仍可解析。
     historical third-tier / unknown product → None (caller fail loud,
     绝不把 current Membership 写成第三档)。"""
-    from governance.tiers import sellable_plan_codes
-    codes = sellable_plan_codes()
+    from governance import plan_catalog
+    codes = tuple(t.code for t in plan_catalog.catalog()
+                  if not t.is_free)
     placeholders = ",".join(["%s"] * len(codes))
     rows = con.execute(
         f"SELECT * FROM plans WHERE creem_product_id = %s"

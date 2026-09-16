@@ -472,18 +472,52 @@ _SCHEMA_SQL = (
         ALTER TABLE packages RENAME COLUMN creem_product_id TO legacy_creem_product_id;
       END IF;
     END $$""",
-    # canonical paid tiers 种子 (幂等; creem_product_id 留空待运营绑定,
-    # 未配置 → 不可售)。plus 历史行 monthly_credits 修正为 canonical 100
-    # (生产无付费用户, 无 grant 影响面)。
+    # ── plan entitlements 数据化: plans 行承载 Tier 全量定义 ──
+    # 权益列 (值 = 迁移时点的 entitlements 代码字典快照, 一次性搬入;
+    # 之后 plans 行是唯一事实源, 运营经 samelabs PATCH 配置)。
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS ingress_files_24h INTEGER NOT NULL DEFAULT 0""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS ingress_bytes_24h BIGINT NOT NULL DEFAULT 0""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS expiry_days INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS download_limits INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]""",
+    """ALTER TABLE plans ADD COLUMN IF NOT EXISTS badge_key TEXT""",
+    # tier rows (幂等 INSERT-ONLY: seed 只保证行存在, 数值归运营/迁移,
+    # 启动永不覆盖 — 历史环境的已配置值必须存活)。
+    # free = 无 paid Membership 的基础档: 不可售 (无 product), credits 0。
     """INSERT INTO plans (code, name, monthly_credits, period_days, period,
-                         price_cents, sort_order, active, created_at, updated_at)
-       VALUES ('plus', 'Plus', 100, 30, 'monthly', 0, 0, TRUE,
+                         price_cents, currency, sort_order, active, badge_key,
+                         ingress_files_24h, ingress_bytes_24h, expiry_days, download_limits,
+                         created_at, updated_at)
+       VALUES ('plus', 'Plus', 100, 30, 'monthly', 0, 'USD', 1, TRUE, 'tier_plus',
+               500, 5368709120, ARRAY[1,3,7,30], ARRAY[1,10,50,100,200,1000],
                EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT),
-              ('pro', 'Pro', 500, 30, 'monthly', 0, 1, TRUE,
+              ('pro', 'Pro', 500, 30, 'monthly', 0, 'USD', 2, TRUE, 'tier_pro',
+               2000, 21474836480, ARRAY[1,3,7,30], ARRAY[1,10,50,100,200,1000],
                EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
-       ON CONFLICT (code) DO UPDATE SET
-         name = EXCLUDED.name,
-         monthly_credits = EXCLUDED.monthly_credits""",
+       ON CONFLICT (code) DO NOTHING""",
+    # 迁移: 已存在的行补权益值 (只填空壳: 权益列仍为默认值0/空的行)。
+    # DO NOTHING 语义下老环境的 plus/pro 行缺新列值 → 此处补齐一次。
+    """UPDATE plans SET badge_key='tier_plus',
+               ingress_files_24h=500, ingress_bytes_24h=5368709120,
+               expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000],
+               updated_at=EXTRACT(EPOCH FROM now())::BIGINT
+       WHERE code='plus' AND badge_key IS NULL""",
+    """UPDATE plans SET badge_key='tier_pro',
+               ingress_files_24h=2000, ingress_bytes_24h=21474836480,
+               expiry_days=ARRAY[1,3,7,30], download_limits=ARRAY[1,10,50,100,200,1000],
+               updated_at=EXTRACT(EPOCH FROM now())::BIGINT
+       WHERE code='pro' AND badge_key IS NULL""",
+    # ── Tier 不变量 (race-safe, DB 层兜底) ──
+    # 1) paid tier rank 严格全序: 两个不同 paid tier 不得共享 sort_order
+    #    (direction = order 差; 同序 = direction 0 = 不可比)。free 与最低
+    #    paid 可共用数字 (free 不参与 paid direction)。inactive paid tier
+    #    仍可能是 current Membership, 同样不得复用 rank。历史冲突 → 建
+    #    索引失败 → 启动 fail loud, 人工裁定。
+    """CREATE UNIQUE INDEX IF NOT EXISTS plans_paid_sort_order_uk
+       ON plans (sort_order) WHERE code <> 'free'""",
+    # 2) provider product → tier 唯一: by_product() 是 webhook/provider
+    #    snapshot → Tier 的 authority, 同一 product 绝不能映射两个 tier。
+    """CREATE UNIQUE INDEX IF NOT EXISTS plans_product_binding_uk
+       ON plans (creem_product_id) WHERE creem_product_id IS NOT NULL""",
     # scheduled downgrade fact (Pro → Plus next renewal): Creem 官方 API
     # 无原生 schedule product change — application-level pending fact,
     # 周期边界由 reconcile/事件收敛时消费。
@@ -527,7 +561,7 @@ _SCHEMA_SQL = (
       SELECT count(*) INTO dup_count FROM (
         SELECT user_id FROM user_plans
         WHERE status IN ('active','canceled','past_due')
-          AND COALESCE(renews_at, 0) > EXTRACT(EPOCH FROM now())::BIGINT
+          AND (renews_at IS NULL OR renews_at > EXTRACT(EPOCH FROM now())::BIGINT)
         GROUP BY user_id HAVING count(*) > 1
       ) d;
       IF dup_count > 0 THEN
@@ -538,7 +572,7 @@ _SCHEMA_SQL = (
       -- legacy:* 绑定继续运行。
       SELECT count(*) INTO unbound_live FROM user_plans up
       WHERE up.status IN ('active','canceled','past_due')
-        AND COALESCE(up.renews_at, 0) > EXTRACT(EPOCH FROM now())::BIGINT
+        AND (up.renews_at IS NULL OR up.renews_at > EXTRACT(EPOCH FROM now())::BIGINT)
         AND NOT EXISTS (
           SELECT 1 FROM orders o2
           WHERE o2.user_id = up.user_id AND o2.kind = 'plan'
@@ -570,7 +604,7 @@ _SCHEMA_SQL = (
       FROM user_plans up
       ORDER BY up.user_id,
                (up.status IN ('active','canceled','past_due')
-                AND COALESCE(up.renews_at,0) > EXTRACT(EPOCH FROM now())::BIGINT) DESC,
+                AND (up.renews_at IS NULL OR up.renews_at > EXTRACT(EPOCH FROM now())::BIGINT)) DESC,
                up.renews_at DESC NULLS LAST, up.started_at DESC, up.plan_id DESC
     ) m
     WHERE NOT EXISTS (SELECT 1 FROM memberships mm WHERE mm.user_id = m.user_id)
@@ -580,10 +614,36 @@ _SCHEMA_SQL = (
 
 def init_db() -> None:
     from utils import now
+    from config import DAILY_UPLOADS, DAILY_BYTES
     ts = now()
     with db() as con:
         for stmt in _SCHEMA_SQL:
             con.execute(stmt)
+        # ── Free Tier authority bootstrap ──
+        # env (DAILY_UPLOADS/DAILY_BYTES) 只是首次迁移输入: free 行不存在
+        # 时按当前 env 值创建; 行一旦存在, plans row 即唯一事实源, 后续
+        # 重启/改 env 不覆盖 (ON CONFLICT DO NOTHING + 补齐仅限空壳行)。
+        con.execute(
+            """
+            INSERT INTO plans (code, name, monthly_credits, period_days, period,
+                               price_cents, currency, sort_order, active, badge_key,
+                               ingress_files_24h, ingress_bytes_24h,
+                               expiry_days, download_limits,
+                               created_at, updated_at)
+            VALUES ('free', 'Free', 0, 30, 'monthly', 0, 'USD', 0, TRUE, 'tier_free',
+                    %s, %s, ARRAY[1,3,7], ARRAY[1,10,50,100,200],
+                    EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
+            ON CONFLICT (code) DO NOTHING
+            """, (DAILY_UPLOADS, DAILY_BYTES))
+        # 历史空壳 free 行 (badge_key NULL) 补齐一次 — 数值同样取当前 env
+        con.execute(
+            """
+            UPDATE plans SET badge_key='tier_free',
+                   ingress_files_24h=%s, ingress_bytes_24h=%s,
+                   expiry_days=ARRAY[1,3,7], download_limits=ARRAY[1,10,50,100,200],
+                   updated_at=EXTRACT(EPOCH FROM now())::BIGINT
+            WHERE code='free' AND badge_key IS NULL
+            """, (DAILY_UPLOADS, DAILY_BYTES))
         # Routine cleanup — same behaviour as the SQLite edition
         con.execute("DELETE FROM oauth_states WHERE expires_at < %s", (ts,))
         con.execute("DELETE FROM sessions WHERE expires_at < %s", (ts,))

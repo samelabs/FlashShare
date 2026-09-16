@@ -427,9 +427,10 @@ async def register_page(request: Request, error: str = ""):
 # ── Account pages: profile split into focused pages (/auth/profile removed) ──
 
 def _account_ctx(request: Request, page: str, **extra) -> dict:
+    """base=None 时复用调用方已取的 ctx_base (跳过重复 projection 读)。"""
     from app.main import templates  # noqa: F401
     from economy.billing import spendable_balance as get_balance
-    ctx = _ctx_base(request)
+    ctx = extra.pop("_base", None) or _ctx_base(request)
     ctx.update({
         "shell_class": "",
         "acct_page": page,
@@ -491,25 +492,67 @@ async def account_credits(request: Request):
     topup_ready = _creem.creem_enabled()
     from economy import creem as _creem_mod
     credits_ready = _creem_mod.credits_ready()
-    # subscription tier(s) purchasable catalog — a different concept from
-    # the viewer's membership fact: active_plans() lists what can be
-    # bought, while my_plan comes from _account_ctx → _ctx_base's single
-    # access projection (access["membership"] alias), never a second
-    # plan_of() read here.
-    from repo.orders import canonical_plans
-    from governance.entitlements import entitlement_profile_exists
+    # membership 商品投影 — 全部由 plans 行驱动, 服务端单点算 action,
+    # 模板只渲染不判断 (零档名字符串)。membership fact 复用 _ctx_base
+    # 的同一 access projection 读 (ctx 尚未构建, 此处先取 base 再传 extra)。
+    from repo.orders import pending_downgrade as pending_row
+    from repo.orders import all_plans as orders_repo_all_paid
+    from governance import plan_catalog
+    _base = _ctx_base(request)  # access projection 单次读
+    _membership = (_base.get("access") or {}).get("membership")
     with db() as con:
-        # sellable = canonical paid tiers (plus/pro) × entitlement profile 单点:
-        # DB 历史 plan rows 不渲染为会员商品。
-        plans = [dict(r) for r in canonical_plans(con)
-                 if entitlement_profile_exists(r["code"])]
-    ctx = _account_ctx(request, "credits",
+        pd = pending_row(con, user["id"])
+        # 展示目录 = active paid 行 (未配齐的档显示 TBD 占位, 配好后即变可售);
+        # 可售性单点 = Tier.sellable (价>0 + product + benefits 配齐)
+        tiers = [t for t in plan_catalog.catalog()
+                 if t.active and not t.is_free]
+        plan_ids = {t.id for t in tiers}
+        # 行 id → 行 dict (active paid 行全集, 直读行)
+        rows_by_id = {r["id"]: dict(r) for r in orders_repo_all_paid(con)
+                      if r["id"] in plan_ids}
+    # scheduled downgrade fact — 与订阅边界同一读模型; 页面据此渲染
+    # 排期态而非可点的降级按钮。
+    pending = None
+    if pd is not None:
+        tgt = plan_catalog.by_id(pd["target_plan_id"])
+        if tgt is not None and tgt.id in plan_ids:
+            pending = {"code": tgt.code, "name": tgt.name,
+                       "effective_at": pd["effective_at"]}
+    # 观看者当前档 (Tier 对象; 非会员为 None)
+    my = plan_catalog.by_code(_membership["code"]) \
+        if _membership and _membership.get("member") else None
+    plans = []
+    for t in tiers:
+        row = rows_by_id.get(t.id)
+        if row is None:
+            continue
+        # action 单点: subscribe / upgrade / downgrade / current / pending / none
+        if not my:
+            action = "subscribe"
+        elif t.id == my.id:
+            action = "current"
+        elif plan_catalog.direction(t, my) > 0:
+            action = "upgrade"
+        elif pending and pending["code"] == t.code:
+            action = "pending"  # 已排期切到该档 — 不再可点
+        else:
+            action = "downgrade"
+        plans.append({
+            "id": t.id, "code": t.code, "name": t.name,
+            "monthly_credits": t.monthly_credits,
+            "period_days": t.period_days,
+            "price_cents": t.price_cents,
+            "currency": t.currency,
+            "ready": bool(topup_ready and t.sellable),  # 可售性单点 = Tier.sellable
+            "action": action,
+        })
+    ctx = _account_ctx(request, "credits", _base=_base,
                        balance=get_balance(user["id"]),
                        granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
                        packages=pkgs, topup_ready=topup_ready,
                        credits_ready=credits_ready,
-                       plans=plans,
+                       plans=plans, pending_downgrade=pending,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)

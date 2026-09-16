@@ -232,6 +232,10 @@ async def _resource_housekeeping_loop():
 async def startup():
     global _housekeeping_task
     init_db()
+    # Tier 数据 fail-closed 校验: 非法 plans 行 (缺 free / 权益越界) 必须
+    # abort 启动 — 不留"流量已就绪但目录非法"的窗口。
+    from governance.plan_catalog import validate_config
+    validate_config()
     # Durable settlement for invocation facts left running by a dead process
     # (single-worker deployment). Runs after schema init, before traffic.
     from execution.gate import recover_abandoned_calls

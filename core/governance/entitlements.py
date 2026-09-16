@@ -1,84 +1,25 @@
-"""governance: entitlements — 用户身份 → 当前 Plan → effective entitlement.
+"""governance: entitlements — membership → effective entitlement.
 
-窄职责: 消费 economy.subscription.plan_of() 的公开结果 (member/code),
-映射出用户的 effective entitlement (24h ingress 配额 + delivery 值域)。
-不认识 Creem/subscription 状态机, 不写任何状态; Payment / Membership /
-Credits / Entitlements / Activities 是独立业务域, 本模块只做其中
-Entitlement 的单一事实源。
+瘦映射层 (Tier 本体化): profile 数值归 plans 行 (plan_catalog.Tier.
+benefits), 本模块只保留 Membership → Entitlement 的政策映射与两处
+边界语义, 不再内嵌任何档位字典:
 
-分层契约 (与 governance.delivery 分工, 禁止合并):
-- delivery.validate_delivery() 只回答"值是否属于平台 canonical protocol";
-- 本模块只回答"该用户当前是否有权使用该值"。
+- read 面 (projection/API): active 会员的 tier 行缺失/权益未配 →
+  EntitlementConfigurationError fail loud — 付费用户绝不悄悄降 Free。
+- authorization 面 (resolve): 读取异常 → Free fail-safe (既有语义,
+  与 read 面的 fail-loud 是有意共存的两条边界)。
 
-Entitlement 值必须显式声明 — 禁止从 platform enum 自动推导 (去差集/
-直接引用)。平台未来新增 protocol 值不等于任何 plan 自动获得授权;
-两个 contract 数值允许重叠, 但各自独立定义。模块初始化时 fail-closed
-校验: 所有 entitlement 值必须是 platform-supported 值, 非法即
-ConfigurationError (不静默剔除)。
-
-Free 默认配置只有一份事实源 (config 的 FLASHSHARE_DAILY_UPLOADS /
-FLASHSHARE_DAILY_MB)。无有效会员、未知 plan code → Free fallback。
+显式声明校验 (声明值 ⊆ platform protocol) 由 plan_catalog.
+validate_config() 在启动/运营写入时执行 — 协议扩容 ≠ 自动授权
+的语义不变。
 """
 
-from config import DAILY_UPLOADS, DAILY_BYTES
 from economy.subscription import plan_of
-from governance.delivery import EXPIRY_DAYS, DOWNLOAD_LIMITS
-
-
-class ConfigurationError(RuntimeError):
-    """Entitlement 声明引用了平台 protocol 不支持的值 — fail closed."""
-
-
-# 唯一 plan entitlement 定义: 每一档显式声明被授予的值。
-# 不从 EXPIRY_DAYS / DOWNLOAD_LIMITS 推导 — protocol 扩容 ≠ 自动授权。
-PLUS_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB
-
-FREE = {
-    "plan_code": "free",
-    "ingress_files_24h": DAILY_UPLOADS,
-    "ingress_bytes_24h": DAILY_BYTES,
-    "expiry_days": (1, 3, 7),
-    "download_limits": (1, 10, 50, 100, 200),
-}
-_PLANS = {
-    "plus": {
-        "plan_code": "plus",
-        "ingress_files_24h": 500,
-        "ingress_bytes_24h": PLUS_BYTES,
-        "expiry_days": (1, 3, 7, 30),
-        "download_limits": (1, 10, 50, 100, 200, 1000),
-    },
-    "pro": {
-        "plan_code": "pro",
-        "ingress_files_24h": 2000,
-        "ingress_bytes_24h": 20 * 1024 ** 3,
-        "expiry_days": (1, 3, 7, 30),
-        "download_limits": (1, 10, 50, 100, 200, 1000),
-    },
-}
-
-
-def _validate_against_protocol(spec: dict, name: str) -> None:
-    """fail-closed: entitlement 声明值 ⊆ platform protocol 值。
-
-    依赖方向是"显式声明 → 检查被 protocol 支持", 不是从 protocol
-    生成 entitlement。任何越界值直接 raise, 不剔除不回落。
-    """
-    bad_ed = [d for d in spec["expiry_days"] if d not in EXPIRY_DAYS]
-    bad_dl = [d for d in spec["download_limits"] if d not in DOWNLOAD_LIMITS]
-    if bad_ed or bad_dl:
-        raise ConfigurationError(
-            f"entitlement '{name}' declares values unsupported by the "
-            f"platform protocol: expiry={bad_ed} downloads={bad_dl}")
-
-
-_validate_against_protocol(FREE, "free")
-for _code, _spec in _PLANS.items():
-    _validate_against_protocol(_spec, _code)
+from governance import plan_catalog
 
 
 class EntitlementConfigurationError(RuntimeError):
-    """可售/active plan 缺 entitlement profile — 配置缺口 fail loud。
+    """可售/active plan 缺权益配置 — 配置缺口 fail loud。
 
     Read model (plan_of/projection 消费方) 传播; authorization
     (resolve) 既有 exception → Free fail-safe 保持。
@@ -86,54 +27,48 @@ class EntitlementConfigurationError(RuntimeError):
 
 
 def entitlement_profile_exists(plan_code: str) -> bool:
-    """公开单点: 某 plan code 是否有显式 entitlement profile。
-
-    约束: plan 可售 (active) → 必须有 profile (运营配置责任);
-    协议扩容 ≠ 自动授权 (profile 仍需显式声明, 与 _PLANS 同规)。
-    """
-    return plan_code in _PLANS
+    """公开单点: 某 plan code 的行存在且权益已配。"""
+    t = plan_catalog.by_code(plan_code)
+    return t is not None and t.benefits_configured
 
 
 def _require_profile(plan_code: str) -> dict:
-    spec = _PLANS.get(plan_code)
-    if spec is None:
-        # 用户已付费成为未知 tier: read 面必须 fail loud — 不悄悄给 Free。
+    t = plan_catalog.by_code(plan_code)
+    if t is None or not t.benefits_configured:
+        # 用户已付费成为未配档: read 面必须 fail loud — 不悄悄给 Free。
         raise EntitlementConfigurationError(
             f"active plan '{plan_code}' has no entitlement profile")
-    return spec
+    return t.benefits.as_dict(t.code)
 
 
 def resolve_from_membership(membership: dict | None) -> dict:
     """plan_of() public result → effective entitlement (纯函数单点)。
 
     输入只能是 economy.subscription.plan_of() 的公开结果 (或 None):
-    member == True → 该 code 的显式 profile (未知 code =
-    EntitlementConfigurationError — 付费用户不悄悄降 Free);
-    其余一切 (None / member=false) → Free fallback。
-    Membership → Entitlement 的政策映射只存在于本模块 — 禁止任何
-    消费方 (如 access projection) 复制 member/code 判定。
+    member == True → 该 tier 行的 benefits (未配档 =
+    EntitlementConfigurationError); 其余一切 (None / member=false) →
+    free 行 benefits。Membership → Entitlement 的政策映射只存在于
+    本模块 — 禁止任何消费方复制 member/code 判定。
     """
     if membership and membership.get("member"):
-        return dict(_require_profile(membership["code"]))
-    return dict(FREE)
+        return _require_profile(membership["code"])
+    return plan_catalog.free_tier().benefits.as_dict("free")
 
 
 def resolve(user_id: int) -> dict:
     """user_id → effective entitlement。
 
-    返回 {plan_code, ingress_files_24h, ingress_bytes_24h,
-    expiry_days, download_limits}。判定只来自 plan_of() 的公开结果,
-    经 resolve_from_membership 单点映射; plan_of 抛错时按既有
-    Free fallback 行为处理。
+    判定只来自 plan_of() 的公开结果, 经 resolve_from_membership
+    单点映射; plan_of 抛错时按既有 Free fallback 行为处理。
     """
     try:
         p = plan_of(user_id)
         return resolve_from_membership(p)
     except Exception:
-        # Authorization fail-safe (既有语义): membership fact 读取失败或
-        # 未知 active tier 无 profile → Free。read 面 (projection/API) 不走
-        # 本函数, 会 fail loud — 两个边界共存。
-        return dict(FREE)
+        # Authorization fail-safe (既有语义): membership fact 读取失败
+        # → Free。read 面 (projection/API) 不走本函数, 会 fail loud —
+        # 两个边界共存。
+        return plan_catalog.free_tier().benefits.as_dict("free")
 
 
 def check_delivery(user_id: int, delivery: dict) -> dict | None:
@@ -141,12 +76,7 @@ def check_delivery(user_id: int, delivery: dict) -> dict | None:
 
     消费 resolve(user_id), 不自行读 plan_of()。输入 delivery 应为已通过
     platform validate_delivery() 的 canonical 值。有权 → None;
-    无权 → 结构化 denial:
-
-    {"error": "err_expiry_not_entitled", "field": "expiry_days",
-     "requested": 30, "allowed": [1, 3, 7], "plan_code": "free"}
-
-    entitlement denial 是 403 语义, 绝不是 invalid_request。
+    无权 → 结构化 denial (403 语义, 绝不是 invalid_request)。
     """
     ent = resolve(user_id)
     ed = delivery.get("expiry_days")

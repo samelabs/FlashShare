@@ -131,13 +131,29 @@ def schedule_downgrade(user_id: int, target_plan_id: int) -> dict:
         m = orders_repo.membership_row(con, user_id)
         if m is None:
             raise KeyError("membership_not_found")
+        # effective_at 的唯一合法来源是当前 paid 周期边界; renews_at 缺失
+        # (bind 未 paid) 不允许排期 — 绝不落 effective_at=0。
+        if m["renews_at"] is None:
+            raise ValueError("renews_at_missing")
         orders_repo.set_pending_downgrade(
-            con, user_id, target_plan_id, int(m["renews_at"] or 0))
-    return {"scheduled": True, "effective_at": int(m["renews_at"] or 0)}
+            con, user_id, target_plan_id, int(m["renews_at"]))
+    return {"scheduled": True, "effective_at": int(m["renews_at"])}
+
+
+def membership_is_effective(status: str, renews_at: int | None, ts: int) -> bool:
+    """effective/current paid predicate — plan-change eligibility 单点。
+
+    与 plan_of().member 同一定义: status ∈ (active, canceled, past_due)
+    且 renews_at 非空且 > ts。occupied 但非 effective (active+renews None)
+    → 占槽 (不可二次 checkout) 但不可升降级、不算会员权益。"""
+    if status not in ("active", "canceled", "past_due"):
+        return False
+    return renews_at is not None and renews_at > ts
 
 
 def membership_is_occupied(status: str, renews_at: int | None, ts: int) -> bool:
-    """occupied/current 单一语义 (route 与 binding path 共用, 禁第二套):
+    """binding-slot 单一语义 (duplicate-checkout 防线专用; plan-change
+    eligibility 必须用 membership_is_effective):
 
     occupied = status ∈ (active, canceled, past_due) 且
                (renews_at is None 或 renews_at > ts)
@@ -241,15 +257,14 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
             target_plan_id = int(pend["target_plan_id"])
             orders_repo.clear_pending_downgrade(con, order["user_id"])
         elif pend is None and cur_plan is not None and m_cur is not None:
-            from governance.tiers import TIER_ORDER
-            by_product = orders_repo.plan_by_product_id(con, provider_product) \
-                if provider_product else None
-            if by_product is not None:
-                direction = (TIER_ORDER.get(by_product["code"], -1)
-                             - TIER_ORDER.get(cur_plan["code"], -1))
+            from governance import plan_catalog
+            by_product_tier = plan_catalog.by_product(provider_product)
+            if by_product_tier is not None:
+                direction = plan_catalog.direction(
+                    by_product_tier, plan_catalog.by_code(cur_plan["code"]))
                 old_renews = int(m_cur["renews_at"] or 0)
                 if direction < 0 and old_renews and period_start >= old_renews:
-                    target_plan_id = int(by_product["id"])
+                    target_plan_id = int(by_product_tier.id)
     if target_plan_id is not None:
         with db() as con:
             plan = orders_repo.plan_by_id(con, target_plan_id)
@@ -308,17 +323,17 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
         if m is None:
             raise KeyError("membership_not_found")
         if m["plan_id"] != plan["id"]:
-            from governance.tiers import TIER_ORDER, TIER_PLAN_SPECS
+            from governance import plan_catalog
             cur_plan = orders_repo.plan_by_id(con, m["plan_id"])
-            direction = (TIER_ORDER.get(plan["code"], -1)
-                         - TIER_ORDER.get(cur_plan["code"], -1)) if cur_plan else 1
+            direction = plan_catalog.direction(
+                plan_catalog.by_code(plan["code"]),
+                plan_catalog.by_code(cur_plan["code"])) if cur_plan else 1
             if direction > 0:
                 # upgrade (Plus→Pro): immediate Membership switch + 当周期
                 # credits 补差 (幂等 plan-upgrade:{uid}:{period}:{target})。
-                old_cr = TIER_PLAN_SPECS.get(cur_plan["code"], {}).get(
-                    "monthly_credits", cur_plan["monthly_credits"]) if cur_plan else 0
-                new_cr = TIER_PLAN_SPECS.get(plan["code"], {}).get(
-                    "monthly_credits", plan["monthly_credits"])
+                old_cr = plan_catalog.by_code(
+                    cur_plan["code"]).monthly_credits if cur_plan else 0
+                new_cr = plan_catalog.by_code(plan["code"]).monthly_credits
                 period_start = m["last_grant_period_start"] or 0
                 if new_cr > old_cr and period_start:
                     adjustment = max(new_cr - old_cr, 0)
@@ -439,9 +454,11 @@ def plan_of(user_id: int) -> dict | None:
         return None
     d = dict(row)
     ts = now()
-    live = d["status"] in ("active", "canceled", "past_due") and (d["renews_at"] or 0) > ts
+    live = membership_is_effective(d["status"], d["renews_at"], ts)
     return {
-        "code": d["code"], "name": d["name"], "status": d["status"],
+        "code": d["code"], "name": d["name"],
+        "badge": d["name"].upper(),  # header 徽标文案 (行 name 派生, 数据驱动)
+        "status": d["status"],
         "renews_at": d["renews_at"],
         "cancel_scheduled_at": d["cancel_scheduled_at"],
         "member": live,

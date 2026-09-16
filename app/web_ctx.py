@@ -79,11 +79,10 @@ def ctx_base(request: Request) -> dict:
     user = request.state.user
     from economy.billing import spendable_balance as get_balance
     # Membership fact via the access projection (read model):
-    # access.membership is canonical; my_plan is a legacy template
-    # compatibility alias of it — web_ctx holds no membership query of
-    # its own. Anonymous → access None. Projection fact-read failures
-    # propagate (never masked as Free). Credits stay an independent
-    # balance, outside the projection.
+    # access.membership is the single membership shape every template
+    # reads — no alias, no second name. Anonymous → access None.
+    # Projection fact-read failures propagate (never masked as Free).
+    # Credits stay an independent balance, outside the projection.
     access = project(user["id"]) if user else None
     return {
         "request": request,
@@ -98,7 +97,6 @@ def ctx_base(request: Request) -> dict:
         # Header credit chip (None for anonymous)
         "credits": get_balance(user["id"]) if user else None,
         "access": access,
-        "my_plan": access["membership"] if access else None,
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
         "support_channel": PUBLIC_SUPPORT_CHANNEL,
