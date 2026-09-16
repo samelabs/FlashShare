@@ -88,8 +88,10 @@ def _seed_plan(user_id, code, status, renews_at):
     ts = int(time.time())
     if not row:
         _cur.execute(
-            "insert into plans (code, name, monthly_credits, price_cents, created_at, updated_at)"
-            " values (%s, %s, 0, 0, %s, %s) returning id", (code, code, ts, ts))
+            "insert into plans (code, name, monthly_credits, price_cents, sort_order, created_at, updated_at)"
+            " values (%s, %s, 0, 0,"
+            " (SELECT COALESCE(MAX(p.sort_order),0)+1 FROM plans p WHERE p.code <> 'free'),"
+            " %s, %s) returning id", (code, code, ts, ts))
         plan_id = _cur.fetchone()[0]
     else:
         plan_id = row[0]

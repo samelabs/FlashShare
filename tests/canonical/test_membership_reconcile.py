@@ -62,8 +62,11 @@ def _new_user(prefix):
 
 def _seed_plan_order(uid, monthly_credits=100):
     _cur.execute(
-        "insert into plans (code, name, monthly_credits, price_cents, created_at, updated_at)"
-        " values (%s, %s, %s, 500, %s, %s) returning id",
+        "insert into plans (code, name, monthly_credits, price_cents, sort_order,"
+        " created_at, updated_at)"
+        " values (%s, %s, %s, 500,"
+        " (SELECT COALESCE(MAX(sort_order),0)+1 FROM plans WHERE code <> 'free'),"
+        " %s, %s) returning id",
         (f"plus{uid}", f"PLUS{uid}", monthly_credits, _ts, _ts))
     plan_id = _cur.fetchone()[0]
     _cur.execute(

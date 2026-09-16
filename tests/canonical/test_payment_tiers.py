@@ -126,7 +126,9 @@ check("T1 种子档 plus/pro 均在 sellable (行世界: 运营建档可扩)",
 _cur.execute(
     "insert into plans (code, name, monthly_credits, period_days, period,"
     " price_cents, sort_order, active, created_at, updated_at)"
-    " values ('pt_business', 'Business', 999, 30, 'monthly', 900, 5, TRUE, %s, %s)"
+    " values ('pt_business', 'Business', 999, 30, 'monthly', 900,"
+    " (SELECT COALESCE(MAX(sort_order),0)+1 FROM plans WHERE code <> 'free'),"
+    " TRUE, %s, %s)"
     " on conflict (code) do nothing", (_ts, _ts))
 with db() as con:
     sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
@@ -409,7 +411,9 @@ _u17, uid17, _ = _seed_sub_user("pt17", "plus", "prod_plus", "ptsub17")
 _cur.execute(
     "insert into plans (code, name, monthly_credits, period_days, period,"
     " price_cents, creem_product_id, sort_order, active, created_at, updated_at)"
-    " values ('pt_biz', 'Biz', 999, 30, 'monthly', 900, 'prod_biz', 5, TRUE, %s, %s)"
+    " values ('pt_biz', 'Biz', 999, 30, 'monthly', 900, 'prod_biz',"
+    " (SELECT COALESCE(MAX(sort_order),0)+1 FROM plans WHERE code <> 'free'),"
+    " TRUE, %s, %s)"
     " on conflict (code) do nothing", (_ts, _ts))
 try:
     _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_biz"}, sub_id="ptsub17"))
@@ -423,6 +427,8 @@ except KeyError as e:
 # ═══ T18: downgrade readiness — target 无 product → plan_not_ready / 零 provider 调用 ═══
 _u18, uid18, _ = _seed_sub_user("pt18", "pro", "prod_pro", "ptsub18")
 _cur.execute("update plans set creem_product_id='' where code='plus'")
+# 直改 DB 模拟运营配置变更 — 目录缓存必须同步 (生产走 samelabs PATCH 自带刷新)
+plan_catalog.catalog(refresh=True)
 _topup_mod._require_auth = lambda request: ({"id": uid18, "email": "t@t.co",
                                             "username": _u18}, None)
 _calls18 = []
@@ -441,6 +447,7 @@ with db() as con:
     _pend18 = orders_repo.pending_downgrade(con, uid18)
 check("T18b pending 未写入", _pend18 is None)
 _cur.execute("update plans set creem_product_id='prod_plus' where code='plus'")
+plan_catalog.catalog(refresh=True)
 _creem.upgrade_subscription = _orig_up13
 _topup_mod._require_auth = _orig_auth13
 

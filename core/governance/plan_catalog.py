@@ -94,8 +94,12 @@ class Tier:
 
     @property
     def sellable(self) -> bool:
+        """单一可售 authority: active 非 free + 定价 + 绑品 + 权益配齐。
+        所有消费面 (页面/subscribe/upgrade/downgrade) 只读本判定,
+        禁止自行重复实现 readiness。"""
         return (self.active and not self.is_free
-                and self.price_cents > 0 and bool(self.product_id))
+                and self.price_cents > 0 and bool(self.product_id)
+                and self.benefits_configured)
 
     @property
     def benefits_configured(self) -> bool:
@@ -176,8 +180,14 @@ def _validate_against_protocol(t: Tier) -> None:
 
 
 def validate_config() -> None:
-    """Startup / operator-write validation: every sellable tier's benefits
-    must be protocol-supported (fail-closed, never pruned)."""
-    for t in catalog(refresh=True):
-        if t.sellable or (t.active and not t.is_free):
-            _validate_against_protocol(t)
+    """Startup / operator-write validation (fail-closed, never pruned):
+    - free row 必须存在 (基础档缺席 = 配置崩坏, 启动即败)
+    - 每一行已声明的 expiry/download 值必须 ⊆ 平台协议 (空数组 = 未配置,
+      合法; 一旦有值, 越界即败) — inactive paid tier 仍可能是 current
+      Membership, protocol-value safety 覆盖全部行, 不止商品面。
+    """
+    for t in catalog(refresh=True):  # 先刷新: 后续判定全部基于当前 DB 行
+        pass
+    free_tier()  # 缺 free row → ConfigurationError
+    for t in catalog():
+        _validate_against_protocol(t)

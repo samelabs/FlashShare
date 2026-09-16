@@ -255,7 +255,13 @@ async def samelabs_create_plan(request: Request):
                 ingress_bytes_24h=fields["ingress_bytes_24h"],
                 expiry_days=fields.get("expiry_days") or (),
                 download_limits=fields.get("download_limits") or ())
-    except psycopg2.IntegrityError:
+    except psycopg2.IntegrityError as exc:
+        # 唯一索引兜底: code 冲突 / paid rank 冲突 / product 已绑它档
+        msg = str(getattr(exc, "diag", None) and exc.diag.message_primary or exc)
+        if "plans_paid_sort_order_uk" in msg or "sort_order" in msg:
+            return JSONResponse({"ok": False, "error": "sort_order_taken"}, 409)
+        if "plans_product_binding_uk" in msg or "creem_product_id" in msg:
+            return JSONResponse({"ok": False, "error": "product_already_bound"}, 409)
         return JSONResponse({"ok": False, "error": "code_taken"}, 409)
     from governance.plan_catalog import validate_config
     validate_config()  # refresh + fail-closed 校验
@@ -284,8 +290,18 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if not is_paid_tier(row["code"]):
         return JSONResponse({"ok": False, "error": "not_editable_tier"}, 422)
-    with db() as con:
-        row = update_plan(con, plan_id, fields, now())
+    import psycopg2
+    try:
+        with db() as con:
+            row = update_plan(con, plan_id, fields, now())
+    except psycopg2.IntegrityError as exc:
+        # 唯一索引兜底 (并发/撞既有行): rank 冲突 / product 已绑它档
+        msg = str(getattr(exc, "diag", None) and exc.diag.message_primary or exc)
+        if "plans_paid_sort_order_uk" in msg or "sort_order" in msg:
+            return JSONResponse({"ok": False, "error": "sort_order_taken"}, 409)
+        if "plans_product_binding_uk" in msg or "creem_product_id" in msg:
+            return JSONResponse({"ok": False, "error": "product_already_bound"}, 409)
+        raise
     # plans 行是 Tier 唯一事实源, 进程内目录缓存必须随运营写入失效
     from governance.plan_catalog import validate_config
     validate_config()  # refresh=True + fail-closed 校验新配置

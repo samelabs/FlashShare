@@ -93,8 +93,9 @@ def _new_user(prefix):
 def _seed_plan(code, credits=100, price_id=None):
     # 幂等 seed: plus 为 init_db 种子行, 其余测试自建
     _cur.execute(
-        "insert into plans (code, name, monthly_credits, price_cents, creem_product_id, created_at, updated_at)"
-        " values (%s, %s, %s, 500, %s, %s, %s)"
+        "insert into plans (code, name, monthly_credits, price_cents, creem_product_id, sort_order, created_at, updated_at)"
+        " values (%s, %s, %s, 500, %s,"
+        " (SELECT COALESCE(MAX(p.sort_order),0)+1 FROM plans p WHERE p.code <> 'free'), %s, %s)"
         " on conflict (code) do update set monthly_credits=excluded.monthly_credits,"
         " creem_product_id=coalesce(plans.creem_product_id, excluded.creem_product_id),"
         " price_cents=excluded.price_cents"
@@ -689,8 +690,9 @@ check("SG14 extract_product_id canonical dict 形态",
       'isinstance(product, dict)' in _sub_src
       and 'product.get("id")' in _sub_src)
 _topup_g = open(_os.path.join(_REPO, "app", "routes", "topup.py"), encoding="utf-8").read()
-check("SG15 /subscribe profile gate + open order 检查 + FOR UPDATE",
-      "entitlement_profile_exists" in _topup_g
+check("SG15 /subscribe sellable gate (单点) + open order 检查 + FOR UPDATE",
+      "_tier.sellable" in _topup_g
+      and "membership_is_effective" in _topup_g
       and "lock_user_for_checkout" in _topup_g
       and "open_plan_order" in _topup_g
       and "retrieve_checkout" in _topup_g)
@@ -731,8 +733,8 @@ check("SG19b HTTP 全在锁事务外 (AST: 锁 with 块内无 retrieve/create)",
       bool(_locked_bodies)
       and all("retrieve_checkout" not in b and "create_checkout" not in b
               for b in _locked_bodies))
-check("SG16 Account 可售列表消费同一 profile 单点",
-      "benefits_configured" in _pages_g.split("def account_credits")[1].split("async def ")[0]
+check("SG16 Account 可售列表消费同一 sellable 单点",
+      "t.sellable" in _pages_g.split("def account_credits")[1].split("async def ")[0]
       and "plan_catalog.catalog()" in _pages_g.split("def account_credits")[1].split("async def ")[0])
 
 print()

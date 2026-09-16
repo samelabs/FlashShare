@@ -131,13 +131,29 @@ def schedule_downgrade(user_id: int, target_plan_id: int) -> dict:
         m = orders_repo.membership_row(con, user_id)
         if m is None:
             raise KeyError("membership_not_found")
+        # effective_at 的唯一合法来源是当前 paid 周期边界; renews_at 缺失
+        # (bind 未 paid) 不允许排期 — 绝不落 effective_at=0。
+        if m["renews_at"] is None:
+            raise ValueError("renews_at_missing")
         orders_repo.set_pending_downgrade(
-            con, user_id, target_plan_id, int(m["renews_at"] or 0))
-    return {"scheduled": True, "effective_at": int(m["renews_at"] or 0)}
+            con, user_id, target_plan_id, int(m["renews_at"]))
+    return {"scheduled": True, "effective_at": int(m["renews_at"])}
+
+
+def membership_is_effective(status: str, renews_at: int | None, ts: int) -> bool:
+    """effective/current paid predicate — plan-change eligibility 单点。
+
+    与 plan_of().member 同一定义: status ∈ (active, canceled, past_due)
+    且 renews_at 非空且 > ts。occupied 但非 effective (active+renews None)
+    → 占槽 (不可二次 checkout) 但不可升降级、不算会员权益。"""
+    if status not in ("active", "canceled", "past_due"):
+        return False
+    return renews_at is not None and renews_at > ts
 
 
 def membership_is_occupied(status: str, renews_at: int | None, ts: int) -> bool:
-    """occupied/current 单一语义 (route 与 binding path 共用, 禁第二套):
+    """binding-slot 单一语义 (duplicate-checkout 防线专用; plan-change
+    eligibility 必须用 membership_is_effective):
 
     occupied = status ∈ (active, canceled, past_due) 且
                (renews_at is None 或 renews_at > ts)
@@ -438,7 +454,7 @@ def plan_of(user_id: int) -> dict | None:
         return None
     d = dict(row)
     ts = now()
-    live = d["status"] in ("active", "canceled", "past_due") and (d["renews_at"] or 0) > ts
+    live = membership_is_effective(d["status"], d["renews_at"], ts)
     return {
         "code": d["code"], "name": d["name"],
         "badge": d["name"].upper(),  # header 徽标文案 (行 name 派生, 数据驱动)

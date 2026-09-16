@@ -543,7 +543,7 @@ async def account_credits(request: Request):
             "period_days": t.period_days,
             "price_cents": t.price_cents,
             "currency": t.currency,
-            "ready": bool(topup_ready and t.sellable and t.benefits_configured),
+            "ready": bool(topup_ready and t.sellable),  # 可售性单点 = Tier.sellable
             "action": action,
         })
     ctx = _account_ctx(request, "credits", _base=_base,

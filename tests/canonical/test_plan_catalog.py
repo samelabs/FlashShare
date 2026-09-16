@@ -126,7 +126,8 @@ with db() as con:
         " ingress_files_24h, ingress_bytes_24h, expiry_days, download_limits,"
         " created_at, updated_at)"
         " values ('pc_biz', 'PC Business', 2000, 30, 'monthly', 9000, 'USD',"
-        " 'prod_pc_biz', 5, TRUE, 'tier_pc_biz', 800, %s, ARRAY[1,3,7],"
+        " 'prod_pc_biz', (SELECT COALESCE(MAX(p.sort_order),0)+1 FROM plans p"
+        " WHERE p.code <> 'free'), TRUE, 'tier_pc_biz', 800, %s, ARRAY[1,3,7],"
         " ARRAY[1,10,50,100], %s, %s)"
         " on conflict (code) do update set active=TRUE",
         (5 * 1024 ** 3, _ts, _ts))
