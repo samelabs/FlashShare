@@ -17,17 +17,23 @@ Sync mode contract (this file): execute() dispatches, waits (bounded by
 timeout_s), validates output, returns bytes. Callback/status verbs are
 the async extension (phase 3) — the four-verb bus stays additive.
 
-SSRF model:
+SSRF model (single authority per hop):
     - trusted endpoints (operator-managed rows, owner_id IS NULL):
       http and https, any host — the operator vouches (samelabs gate).
+      Trusted transport keeps the classic urllib driver.
     - user endpoints (owner_id NOT NULL): https ONLY, public unicast
-      IPs only — resolved-IP check defeats DNS rebinding; loopback /
-      link-local / private / reserved ranges rejected.
+      IPs only. Every hop (initial request AND each redirect) resolves
+      once, validates ALL resolved addresses, and pins the TCP connect
+      to one of the validated sockaddrs — the HTTP stack never
+      re-resolves the hostname, so DNS rebinding and redirect-SSRF
+      cannot swap in an unvalidated address between check and connect.
 """
 
+import http.client
 import ipaddress
 import json
 import socket
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,12 +43,13 @@ from config import MAX_UPLOAD_BYTES
 DEFAULT_TIMEOUT_S = 60
 MAX_TIMEOUT_S = 300
 MAX_OUTPUT_BYTES = MAX_UPLOAD_BYTES
+MAX_REDIRECTS = 5
 
 
 class RemoteError(Exception):
     """Typed failure. code is one of:
     ssrf_blocked | bad_endpoint | timeout | http_status | bad_output |
-    invalid_response
+    invalid_response | redirect_blocked
     The execute gate maps these to ToolError → refund + user error key.
     """
 
@@ -78,8 +85,7 @@ def guard_endpoint(url: str, trusted: bool) -> str:
     if not parts.hostname:
         raise RemoteError("bad_endpoint", "no host")
     try:
-        infos = socket.getaddrinfo(parts.hostname, parts.port or 443,
-                                   proto=socket.IPPROTO_TCP)
+        infos = _RESOLVE_HOOK(parts.hostname, parts.port or 443)
     except socket.gaierror:
         raise RemoteError("bad_endpoint", "dns failure")
     for info in infos:
@@ -102,11 +108,210 @@ def validate_output(filename: str, content_type: str, body: bytes) -> bytes:
     return body
 
 
+# ── Pinned HTTPS transport (untrusted URLs) ─────────────────────────────
+#
+# One authority per hop: resolve → validate every address → connect ONLY
+# to a validated sockaddr. http.client is driven over a raw socket so the
+# stack can never re-resolve the hostname behind our back. TLS SNI,
+# certificate hostname and the HTTP Host header all stay the ORIGINAL
+# hostname (the IP is a routing detail, not an identity).
+#
+# Hooks exist for deterministic canonical testing (resolver/connector
+# injection); production paths use the real socket/ssl defaults.
+
+def _prod_resolve(hostname, port):
+    return socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+
+
+def _prod_connect(sockaddr, timeout_s):
+    return sockaddr  # identity: caller performs the real connect
+
+
+_RESOLVE_HOOK = _prod_resolve
+_CONNECT_HOOK = _prod_connect
+
+
+def _set_test_hooks(resolve=None, connect=None):
+    global _RESOLVE_HOOK, _CONNECT_HOOK
+    _RESOLVE_HOOK = resolve or _prod_resolve
+    _CONNECT_HOOK = connect or _prod_connect
+
+
+def _validated_sockaddrs(url: str) -> tuple:
+    """Parse + resolve + validate ALL addresses for this hop.
+    Returns (hostname, port, [validated sockaddr, ...])."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        raise RemoteError("bad_endpoint", "unparseable url")
+    if parts.scheme != "https":
+        raise RemoteError("ssrf_blocked", "user endpoints must be https")
+    hostname = parts.hostname
+    if not hostname:
+        raise RemoteError("bad_endpoint", "no host")
+    port = parts.port or 443
+    try:
+        infos = _RESOLVE_HOOK(hostname, port)
+    except socket.gaierror:
+        raise RemoteError("bad_endpoint", "dns failure")
+    sockaddrs = []
+    for info in infos:
+        addr = str(info[4][0]).strip("%").strip("[]")
+        if not _is_public_ip(addr):
+            raise RemoteError("ssrf_blocked", f"non-public ip {addr}")
+        sa = info[4]
+        if sa[1] != port:  # normalise resolved port to the URL port
+            sa = (sa[0], port) + sa[2:]
+        sockaddrs.append(sa)
+    if not sockaddrs:
+        raise RemoteError("bad_endpoint", "no addresses")
+    return hostname, port, sockaddrs
+
+
+def _origin_of(url: str) -> tuple:
+    parts = urllib.parse.urlsplit(url)
+    return (parts.scheme, (parts.hostname or "").lower(),
+            parts.port or 443)
+
+
+def _pinned_request(url: str, method: str, body: bytes | None,
+                    headers: dict, timeout_s: int,
+                    send_credential: bool) -> tuple:
+    """Single hop over the pinned transport. Returns (status, headers, body,
+    new_url_if_redirect). Never follows redirects itself."""
+    hostname, port, sockaddrs = _validated_sockaddrs(url)
+    parts = urllib.parse.urlsplit(url)
+    path = parts.path or "/"
+    if parts.query:
+        path += "?" + parts.query
+
+    last_exc: Exception | None = None
+    for sa in sockaddrs:
+        sock = None
+        try:
+            target = _CONNECT_HOOK(sa, timeout_s)
+            if getattr(target, "_test_transport_double", False):
+                # deterministic test double: drive it directly, no real
+                # socket/HTTP stack (canonical security suite)
+                dbl_headers = dict(headers)
+                dbl_headers.setdefault("Host", hostname)
+                target.request(method, path, body=body, headers=dbl_headers)
+                resp = target.getresponse()
+                data = resp.read(MAX_OUTPUT_BYTES + 1)
+                return (resp.status, dict(resp.getheaders() or {}),
+                        data, resp.getheader("Location"))
+            if target is sa:  # production path: real connect + TLS wrap
+                raw = socket.create_connection(sa, timeout=timeout_s)
+                ctx = ssl.create_default_context()  # verify=REQUIRED, system CA
+                sock = ctx.wrap_socket(raw, server_hostname=hostname)
+            else:
+                sock = target  # test double: already-connected transport
+            conn = http.client.HTTPConnection(host=hostname, port=port,
+                                              timeout=timeout_s)
+            conn.sock = sock  # pin: HTTP stack reuses OUR validated socket
+            hop_headers = dict(headers)
+            hop_headers.setdefault("Host", hostname)
+            hop_headers.setdefault("User-Agent",
+                                   "518.PLUS-Dispatcher/1.0 (tool dispatch)")
+            if send_credential:
+                hop_headers.update(
+                    {k: v for k, v in headers.items()
+                     if k.lower() not in ("host", "user-agent",
+                                          "content-type", "content-length")})
+            conn.request(method, path, body=body, headers=hop_headers)
+            resp = conn.getresponse()
+            data = resp.read(MAX_OUTPUT_BYTES + 1)
+            new_url = resp.getheader("Location")
+            return resp.status, dict(resp.getheaders()), data, new_url
+        except RemoteError:
+            raise
+        except (socket.timeout, TimeoutError) as exc:
+            last_exc = exc
+            continue
+        except ssl.SSLCertVerificationError as exc:
+            # certificate/hostname verification against the ORIGINAL host
+            # failed — never downgraded for IP pinning
+            raise RemoteError("http_status",
+                              f"tls verify failed: {exc.verify_message}") from exc
+        except OSError as exc:
+            last_exc = exc
+            continue
+        finally:
+            if sock is not None and not isinstance(sock, http.client.HTTPConnection):
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+    raise RemoteError("http_status",
+                      f"connect failed: {last_exc}")
+
+
+_REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+
+
+def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
+                   headers: dict | None = None, timeout_s: int = 60,
+                   has_credential: bool = False) -> tuple:
+    """Untrusted-safe request with manual redirect handling.
+
+    Every hop re-validates: https-only, all resolved IPs public, connect
+    pinned to a validated sockaddr. Redirects cap at MAX_REDIRECTS; the
+    POST→GET downgrade on 301/302/303 drops the body (urllib parity).
+
+    Credential boundary: with has_credential=True a cross-origin redirect
+    (scheme/host/effective-port) is REJECTED — auth material must never
+    reach a second origin. Same-origin redirects keep it. Without a
+    credential, cross-origin redirects proceed through full revalidation.
+    """
+    headers = dict(headers or {})
+    cur_url = url
+    cur_method, cur_body = method, body
+    seen = {url}
+    for _hop in range(MAX_REDIRECTS + 1):
+        status, _hdrs, data, new_url = _pinned_request(
+            cur_url, cur_method, cur_body, headers, timeout_s,
+            send_credential=has_credential)
+        if status not in _REDIRECT_STATUSES:
+            return status, data
+        if not new_url:
+            raise RemoteError("redirect_blocked", "redirect without Location")
+        new_url = urllib.parse.urljoin(cur_url, new_url)
+        if new_url in seen:
+            raise RemoteError("redirect_blocked", "redirect loop")
+        try:
+            nparts = urllib.parse.urlsplit(new_url)
+        except ValueError:
+            raise RemoteError("redirect_blocked", "unparseable Location")
+        if nparts.scheme != "https":
+            raise RemoteError("redirect_blocked",
+                              "redirect to non-https rejected")
+        if has_credential and _origin_of(new_url) != _origin_of(cur_url):
+            raise RemoteError(
+                "redirect_blocked",
+                "cross-origin redirect with credential rejected")
+        seen.add(new_url)
+        cur_url = new_url
+        if status in (301, 302, 303) and cur_method != "GET":
+            cur_method, cur_body = "GET", None  # urllib parity: drop body
+    raise RemoteError("redirect_blocked", f"over {MAX_REDIRECTS} redirects")
+
+
 # ── HTTP driver (plain file-processing API) ──
 
 def _http_call(endpoint: str, payload: dict, headers: dict,
-               timeout_s: int) -> tuple:
+               timeout_s: int, trusted: bool) -> tuple:
     body = json.dumps(payload).encode()
+    if not trusted:
+        # Untrusted: pinned transport with redirect + credential policy
+        hdrs = {"Content-Type": "application/json",
+                "User-Agent": "518.PLUS-Dispatcher/1.0 (tool dispatch)",
+                **headers}
+        status, data = pinned_request(
+            endpoint, method="POST", body=body, headers=hdrs,
+            timeout_s=timeout_s, has_credential=bool(headers))
+        if status != 200:
+            raise RemoteError("http_status", f"{status}")
+        return status, data
     req = urllib.request.Request(
         endpoint, data=body, method="POST",
         headers={"Content-Type": "application/json",
@@ -126,7 +331,7 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
             raise RemoteError("timeout", str(exc.reason)) from exc
         raise RemoteError("http_status", str(exc)) from exc
     except socket.timeout as exc:
-        raise RemoteError("timeout", str(exc)) from exc
+        raise RemoteError("timeout", "") from exc
 
 
 def drive_http(endpoint_decl: dict, sources: list, params: dict,
@@ -144,7 +349,7 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
         ],
         "params": params,
     }
-    status, body = _http_call(url, payload, auth_headers, timeout_s)
+    status, body = _http_call(url, payload, auth_headers, timeout_s, trusted)
     if status != 200:
         raise RemoteError("http_status", f"{status}")
     try:
@@ -170,18 +375,24 @@ def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:
     """Platform fetches the produced file (delivery verb 3, URL variant).
 
     The URL is ENDPOINT-CONTROLLED — it goes through the SAME SSRF guard
-    as the endpoint itself. Untrusted tools: https + public IP only
-    (a malicious endpoint must not turn the platform into an internal
-    fetcher). Trusted (operator) rows keep the vouched exemption."""
+    as the endpoint itself. Untrusted tools: https + public IP only, and
+    the fetch itself rides the pinned transport (redirects re-validated
+    per hop) — a malicious endpoint must not turn the platform into an
+    internal fetcher. Trusted (operator) rows keep the vouched exemption."""
     if not str(output_url).startswith("https://"):
         raise RemoteError("bad_output", "output_url must be https")
-    guard_endpoint(str(output_url), trusted)
-    req = urllib.request.Request(output_url)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            return resp.read(MAX_OUTPUT_BYTES + 1)
-    except Exception as exc:
-        raise RemoteError("bad_output", f"output fetch failed: {exc}") from exc
+    if trusted:
+        req = urllib.request.Request(output_url)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                return resp.read(MAX_OUTPUT_BYTES + 1)
+        except Exception as exc:
+            raise RemoteError("bad_output", f"output fetch failed: {exc}") from exc
+    status, data = pinned_request(str(output_url), method="GET",
+                                  timeout_s=timeout_s)
+    if status != 200:
+        raise RemoteError("bad_output", f"output fetch status {status}")
+    return data
 
 
 def _wrap_raw(decl: dict, body: bytes, filename: str | None = None) -> dict:
@@ -227,5 +438,3 @@ def sniff_final_type(filename: str, declared: str, body: bytes) -> str:
     from security import sniff_allowed
     ok, final = sniff_allowed(filename, declared, body[:512])
     return final if ok else declared
-
-

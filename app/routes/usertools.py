@@ -217,6 +217,14 @@ async def create_user_tool(request: Request):
     tool_id = str(raw.get("tool_id") or "").strip()
     if not TOOL_ID_RE.match(tool_id):
         return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
+
+    # Credential boundary: a NEW non-empty secret cannot be persisted
+    # when the vault has no working key — refuse before any write.
+    if str(raw.get("auth_token") or "").strip():
+        from secrets_vault import vault_enabled
+        if not vault_enabled():
+            return JSONResponse(
+                {"ok": False, "error": "credential_vault_unavailable"}, 503)
     # Supply-side contract: ONE execution class — plain HTTP API.
     # (mcp forwarding removed 2026-08-26: agent-native MCP servers don't
     # need a broker; 518 IS the MCP surface northbound.)
@@ -378,6 +386,15 @@ async def update_user_tool(tool_id: str, request: Request):
         stats = _call_stats(tool_key, row["owner_id"])
         if stats["ok"] < 1:
             return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
+
+    # Credential boundary: a NEW non-empty secret cannot be persisted
+    # when the vault has no working key — refuse before any write
+    # (endpoint_json/pricing untouched).
+    if str(fields.get("auth_token") or "").strip():
+        from secrets_vault import vault_enabled
+        if not vault_enabled():
+            return JSONResponse(
+                {"ok": False, "error": "credential_vault_unavailable"}, 503)
 
     # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
     # 与运行时驱动看到的完全一致, 而非裸入参)
