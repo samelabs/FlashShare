@@ -2,7 +2,7 @@
 # FlashShare production backup: PostgreSQL dump + Gokapi data/config archive.
 # Rotation: keep 7 daily + 4 weekly; checksums; optional off-host upload via
 # rclone when FLASHSHARE_BACKUP_REMOTE is configured; failures log to journal.
-set -uo pipefail
+set -euo pipefail
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DOW="$(date -u +%u)"   # 1=Mon..7=Sun
@@ -54,7 +54,7 @@ rm -rf "$TMP_GK"
 # ── Weekly copy (Sunday) ──
 if [ "$DOW" = "7" ]; then
   cp "$PG_FILE" "$WEEKLY_DIR/pg-$STAMP.dump"
-  cp "$GK_FILE" "$WEEKLY_DIR/gokapi-$ST.tar.gz"
+  cp "$GK_FILE" "$WEEKLY_DIR/gokapi-$STAMP.tar.gz"
   ( cd "$WEEKLY_DIR" && sha256sum "pg-$STAMP.dump" "gokapi-$STAMP.tar.gz" > "SHA256SUMS-$STAMP" )
 fi
 
@@ -76,7 +76,7 @@ if [ -n "$REMOTE" ]; then
     rclone copy "$GK_FILE" "$REMOTE/daily/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
       || fail "rclone gokapi upload failed"
     [ "$DOW" = "7" ] && rclone copy "$WEEKLY_DIR/pg-$STAMP.dump" "$REMOTE/weekly/" 2>>/tmp/fsb-rclone.log || true
-    [ "$DOW" = "7" ] && rclone copy "$WEEKLY_DIR/gokapi-$ST.tar.gz" "$REMOTE/weekly/" 2>>/tmp/fsb-rclone.log || true
+    [ "$DOW" = "7" ] && rclone copy "$WEEKLY_DIR/gokapi-$STAMP.tar.gz" "$REMOTE/weekly/" 2>>/tmp/fsb-rclone.log || true
     log "off-host upload OK → $REMOTE"
   else
     log "FAILED: FLASHSHARE_BACKUP_REMOTE set but rclone not installed — off-host copy skipped"
