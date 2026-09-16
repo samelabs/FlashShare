@@ -1,9 +1,8 @@
 """/samelabs back-office: access control + shared helpers (batch C4).
 
-Gate model: users.status in ('admin','samelabs') grants back-office
-access (status 'admin' kept as a legacy alias; the path is /samelabs
-only). Sessions AND Bearer both work — the gate is the user row, not
-the channel.
+Gate model: users.status = 'samelabs' grants back-office access
+(the path is /samelabs only). Sessions AND Bearer both work — the gate
+is the user row, not the channel.
 
 Pages (server-rendered, no SPA):
     /samelabs            overview  — users count, calls, credits flow
@@ -24,7 +23,7 @@ from app.web_ctx import fmt_ts as _fmt_ts  # 单点 (治理4)
 
 router = APIRouter()
 
-BACKOFFICE_STATUSES = ("admin", "samelabs")
+BACKOFFICE_STATUSES = ("samelabs",)
 
 # ── samelabs.css cache-busting (same pattern as pages.py _CSS_VERSION) ──
 import hashlib as _hashlib
@@ -575,8 +574,8 @@ async def samelabs_remote_create(request: Request):
         from config import ALLOWED_EXT
         if ext not in ALLOWED_EXT:
             return JSONResponse({"ok": False, "error": "bad_output_filename"}, 422)
-    # 4C-2: 逗号分隔输入同时兼容 canonical ext (.png,.pdf) 与 legacy MIME
-    # (image/png); 统一过 extensions_for_accept, 存库只写 canonical ext。
+    # 4C-2: 逗号分隔输入只收 canonical ext (.png,.pdf); 统一过
+    # extensions_for_accept, 存库只写 canonical ext。
     # operator 受信供给允许跨 family; unknown token → bad_accept。
     accept = None
     if accept_raw:

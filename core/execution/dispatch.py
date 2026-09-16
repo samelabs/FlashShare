@@ -112,9 +112,8 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
         # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
         # 单点收口: web/token/MCP 三面共用本函数, 无旁路。
-        # 4C-2: canonical AcceptToken — declared tokens (canonical ext 或
-        # legacy MIME) → extensions_for_accept 精确扩展名集合, 上传 ext 必须
-        # ∈ 该集合。
+        # 4C-2: canonical AcceptToken — declared tokens (canonical ext)
+        # → extensions_for_accept 精确扩展名集合, 上传 ext 必须 ∈ 该集合。
         declared_accept = tool.get("accept")
         if declared_accept is None and tool.get("accept_json"):
             try:

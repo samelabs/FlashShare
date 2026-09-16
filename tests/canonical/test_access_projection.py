@@ -151,7 +151,7 @@ except (TypeError, ValueError) as exc:
 # ═══ 6. Read-only (跨业务表计数前后不变) ═══
 def _tbl_counts():
     out = {}
-    for t in ("user_plans", "upload_usage", "ledger", "tool_calls"):
+    for t in ("memberships", "upload_usage", "ledger", "tool_calls"):
         _cur.execute(f"select count(*) from {t}")
         out[t] = _cur.fetchone()[0]
     return out
@@ -160,7 +160,7 @@ _b = _tbl_counts()
 for _ in range(3):
     project(id_p); project(id_f); project(id_u); project(id_e)
 _a = _tbl_counts()
-check("AP-R1 projection 纯只读 (user_plans/upload_usage/ledger/tool_calls 计数不变)",
+check("AP-R1 projection 纯只读 (memberships/upload_usage/ledger/tool_calls 计数不变)",
       _a == _b, f"before={_b} after={_a}")
 
 # ═══ 7. resolve 与 projection 同消费 resolve_from_membership (行为等价) ═══

@@ -5,7 +5,6 @@ APP_NAME = "518.PLUS"
 SEO_TITLE = "518.PLUS"
 SEO_DESC = "Upload, share, done. Fast temporary file links with QR codes."
 
-DB_PATH = os.environ.get("FLASHSHARE_DB", "/var/lib/flashshare/flashshare.sqlite")
 BASE_URL = os.environ.get("FLASHSHARE_BASE_URL", "http://localhost:53843").rstrip("/")
 SOCIAL_IMAGE_PATH = "/static/images/og-image.png?v=2"
 SOCIAL_IMAGE_URL = f"{BASE_URL}{SOCIAL_IMAGE_PATH}"

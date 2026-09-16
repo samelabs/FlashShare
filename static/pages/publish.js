@@ -83,8 +83,8 @@ function famKeyFromAccept(tokens) {
   });
   return [...fams];
 }
-// accept tokens → canonical ext 集合: ext token 直接保留; legacy MIME 经
-// manifest.mime_exts 精确展开 (整族 MIME 自然展开为整族 exts 全选)。
+// accept tokens → canonical ext 集合 (编辑回填 UI 映射): ext token 直接保留;
+// 历史 MIME 行经 manifest.mime_exts 精确展开为 ext 全选供编辑。
 function extsFromAccept(tokens) {
   const mimeExts = FORMAT_MANIFEST.mime_exts || {};
   const out = new Set();
@@ -433,7 +433,7 @@ function refill(t) {
   document.getElementById("fToolId").readOnly = true;      // id immutable
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
-  // 4C-2 编辑回填: legacy MIME 经 manifest.mime_exts 精确转 ext;
+  // 4C-2 编辑回填: 历史 MIME 行经 manifest.mime_exts 精确转 ext;
   // 完全未知 accept → famKey 为空 → 受控空态 (不默认 image, 不覆盖原声明)。
   const accExts = extsFromAccept(t.accept);
   const fams = famKeyFromAccept(t.accept);

@@ -3,16 +3,18 @@
 Protects users' tool auth_token at rest: DB dump alone can no longer
 harvest third-party credentials. Key: TOOL_VAULT_KEY env (Fernet key).
 
-Contract:
+Contract (single format — enc1 is the ONLY stored secret format):
     seal("")            → ""            (no secret, nothing to protect)
     seal(secret) + key  → enc1:<ct>
     seal(secret) no key → VaultUnavailable  (fail closed — plaintext
                           at rest is NOT an acceptable new write)
-    unseal(legacy plaintext)   → passthrough (temporary read
-                          compatibility; re-seal migration is separate)
-    unseal(enc1:) + key        → plaintext
-    unseal(enc1:) no key       → VaultUnavailable
-    unseal(enc1:) wrong key    → VaultDecryptError
+    unseal("")                → ""
+    unseal("enc1:...") + key  → plaintext
+    unseal("enc1:...") no key → VaultUnavailable
+    unseal("enc1:...") wrong key → VaultDecryptError
+    unseal(non-enc1 non-empty) → VaultDecryptError (typed fail, zero
+                          network — there is no plaintext format, no
+                          reseal, no format guessing)
 
 vault_enabled() is true only when a valid Fernet key is loaded. A
 malformed key is unavailable, never an unclassified 500.
@@ -67,13 +69,14 @@ def seal(plaintext: str) -> str:
 
 
 def unseal(stored: str) -> str:
-    """Decrypt for the single dispatch path. Understands BOTH sealed
-    (enc1:…) and legacy plaintext rows — pre-migration data keeps
-    working; re-sealing is a separate migration, not a flag day."""
+    """Decrypt for the single dispatch path. enc1 is the ONLY stored
+    secret format: anything non-empty that is not enc1:… is a typed
+    VaultDecryptError — never a passthrough, never a re-seal."""
     if not stored:
         return stored
     if not stored.startswith(MARKER):
-        return stored          # legacy plaintext, untouched
+        raise VaultDecryptError(
+            "stored credential is not in the enc1 format")
     try:
         return _fernet().decrypt(stored[len(MARKER):].encode()).decode()
     except InvalidToken as exc:

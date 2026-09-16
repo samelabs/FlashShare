@@ -5,9 +5,10 @@ requests + history. The tools module owns tool CRUD. They share the
 ledger (core/economy/earnings.py) as the single source of truth.
 """
 
+from pathlib import Path
 import sys
 
-sys.path.insert(0, "/opt/flashshare/core")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "core"))
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse

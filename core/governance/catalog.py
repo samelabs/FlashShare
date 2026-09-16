@@ -84,9 +84,9 @@ def seed_from_registry() -> dict:
 def _canonical_accept(tokens) -> list | None:
     """accept_json 行 → canonical extension token list (4C-2)。
 
-    Web/Tool Page/API/MCP 看到的 accept 必须是精确 extension contract:
-    legacy MIME 经 extensions_for_accept 展开成 ext。存量行含完全未知
-    token 时不 500、不猜格式 — 安全 fallback 原样保留 token。"""
+    Web/Tool Page/API/MCP 看到的 accept 必须是精确 extension contract。
+    存量行含非 canonical token (如历史 MIME) 时不 500、不猜格式 —
+    安全 fallback 原样保留 token。"""
     if not tokens:
         return None
     from governance.formats import extensions_for_accept
@@ -118,7 +118,7 @@ def row_to_item(row: dict, price: dict) -> dict:
         "label": json.loads(row["label_json"]),
         "icon": row["icon"],
         # 4C-2: 公开 accept 一律投影成 canonical extension tokens
-        # (legacy MIME 行在投影时精确展开; 未知 token 安全 fallback)。
+        # (非 canonical token 安全 fallback 原样保留)。
         "accept": _canonical_accept(
             json.loads(row["accept_json"]) if row["accept_json"] else None),
         "multi": bool(row["multi"]),

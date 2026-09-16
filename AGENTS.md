@@ -109,7 +109,7 @@ Server Agent MUST NOT：
 
 - **站名** 518.PLUS（全部 SEO/meta/title/manifest），hero slogan = Flash Share。
 - **栈**：FastAPI + Jinja2 + Uvicorn（单 worker）+ Pillow + PostgreSQL + Gokapi + Nginx + Cloudflare。
-- **数据库**：PostgreSQL（`DATABASE_URL` 环境变量，psycopg）。历史 sqlite 残留勿验。
+- **数据库**：PostgreSQL 是唯一应用数据库（`DATABASE_URL` 环境变量，psycopg）。
 - **服务**：systemd unit `flashshare-api`；`KillMode=control-group`、`TimeoutStopSec=15`。
 - **平台第三记账主体**：users 行 `username='platform'`。两条收入：用户工具抽佣（platform_commission）+ 系统工具直销（platform_revenue）。
 - **双池账本**：消费池（spendable_balance 派生）与收益池（provider_earn，仅可提现）物理隔离；ledger 唯一事实源。
