@@ -162,7 +162,7 @@ def catalog_item(tool: dict) -> dict:
     pricing.enabled 的现有访问语义不变 (仅 list/search/owner 列表隐藏)。
     """
     from governance.pricing import get_pricing
-    price = get_pricing(tool["tool_key"]) or {"cost": 0, "enabled": True}
+    price = get_pricing(tool["tool_key"])  # missing row → disabled (fail closed)
     return row_to_item(tool, price)
 
 
@@ -219,7 +219,7 @@ def owner_public_tools(owner_id: int) -> list:
         rows = catalog_repo.public_rows_by_owner(con, owner_id, VIS_PUBLIC)
     out = []
     for row in rows:
-        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
+        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
         if not p["enabled"]:
             continue
         out.append(row_to_item(row, p))
@@ -247,7 +247,7 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     for row in rows:
         if not include_remote and row["execution"] != "local":
             continue
-        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
+        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
         if not p["enabled"]:
             continue
         result.append(row_to_item(row, p))

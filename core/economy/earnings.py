@@ -75,15 +75,26 @@ def withdrawal_count(user_id: int) -> int:
 
 def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> dict:
     """Provider asks to cash out. Request only — credits stay put until
-    operator approval (reject leaves the balance untouched)."""
+    operator approval (reject leaves the balance untouched).
+
+    Concurrency boundary: the users row lock (SELECT FOR UPDATE)
+    serializes same-provider requests, so available-calculation and the
+    pending INSERT commit as one unit — two concurrent requests can
+    never both see the same available and over-commit it.
+    """
     amount = int(amount)
     if amount < MIN_WITHDRAWAL:
         raise ValueError("withdrawal_min")
-    s = earnings_summary(user_id)
-    if amount > s["available"]:
-        raise ValueError("withdrawal_insufficient")
     ts = now()
     with db() as con:
+        ledger_repo.lock_user(con, user_id)   # serialization boundary
+        earned = ledger_repo.sum_kind(con, user_id, "provider_earn")
+        withdrawn = economy_repo.withdrawal_sum(
+            con, user_id, ("approved", "paid"))
+        pending = economy_repo.withdrawal_sum(con, user_id, ("pending",))
+        available = int(earned) - int(withdrawn) - int(pending)
+        if amount > available:
+            raise ValueError("withdrawal_insufficient")
         from repo import users as users_repo
         ch = users_repo.payout_channel_of(con, user_id)
         channel = (ch["payout_channel"] or "")[:120] if ch else ""
@@ -123,13 +134,10 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
             if int(avail) < int(row["amount"]):
                 con.rollback()
                 raise ValueError("withdrawal_insufficient")
-            # 🔴3 修复(批2a): withdraw 属 EARN 池支出, balance_after 记
-            # earn 池口径 = earned − (approved+paid 提现累计, 不含本行)。
-            # 原实现写全池 SUM, 导致 spendable 用户看到虚高余额行。
-            earned = ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
-            withdrawn_so_far = economy_repo.withdrawal_sum(
-                con, row["user_id"], ("approved", "paid"))
-            earn_pool_after = earned - withdrawn_so_far - int(row["amount"])
+            # withdraw 属 EARN 池支出; balance_after 与 provider_earn writer
+            # 同一单池口径 (earn_pool_balance = provider_earn − withdraw)。
+            earn_pool_after = ledger_repo.earn_pool_balance(
+                con, row["user_id"]) - int(row["amount"])
             ledger_repo.insert_row(con, row["user_id"], -int(row["amount"]),
                                    earn_pool_after, "withdraw",
                                    "withdrawal", str(row["id"]),

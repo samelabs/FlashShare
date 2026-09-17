@@ -45,7 +45,7 @@ document.querySelectorAll('.sl-adj').forEach(function (adj) {
         balEl.textContent = slFmt(r.data.balance_after);
         slToast('ok', '已' + (v > 0 ? '发放' : '扣除') + ' ' + Math.abs(v) + ' 积分',
                 user + ': ' + slFmt(before) + ' → ' + slFmt(r.data.balance_after));
-        reset();
+        reset(); resetAction();
       } else {
         var why = r.data && r.data.error ? r.data.error : '请求失败';
         slToast('err', '调整失败', user + ' · ' + why);

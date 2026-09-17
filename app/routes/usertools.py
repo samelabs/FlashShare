@@ -287,22 +287,23 @@ async def create_user_tool(request: Request):
         "binding": build_http_binding(fields),
     }
     try:
-        # Stage B-close: policy check + persistence 同事务; 对 owner 行
-        # SELECT ... FOR UPDATE 串行化同 owner 并发 create, 保证
-        # MAX_TOOLS_PER_USER 在并发下不被突破 (READ COMMITTED 下裸
-        # COUNT 会双读 19)。cap 是 user policy, 不进 supply domain。
+        # Stage B-close: policy check + declaration + commercial contract
+        # 同一事务; 对 owner 行 SELECT ... FOR UPDATE 串行化同 owner 并发
+        # create, 保证 MAX_TOOLS_PER_USER 在并发下不被突破 (READ COMMITTED
+        # 下裸 COUNT 会双读 19)。cap 是 user policy, 不进 supply domain。
+        from governance.pricing import create_tool_with_pricing
         with db() as con:
             lock_user_row(con, user["id"])
             if tool_key_exists(con, tool_key):
                 return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
             if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
                 return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
-            create_tool(declaration, con=con)
+            create_tool_with_pricing(declaration, fields["cost"],
+                                     admin_user_id=user["id"], con=con)
     except DeclarationError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 422)
-    # pricing row: owner-priced from day one
-    from governance.pricing import set_pricing
-    set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "bad_cost"}, 422)
     return {"ok": True, "tool_key": tool_key}
 
 

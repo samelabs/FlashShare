@@ -59,6 +59,18 @@ def sum_kind(con, user_id: int, kind: str) -> int:
     return int(row["s"])
 
 
+def earn_pool_balance(con, user_id: int) -> int:
+    """Earn-pool balance = provider_earn − withdraw movements. This is the
+    ONLY basis a provider_earning writer may use for balance_after — the
+    old total_balance() basis mixed spendable kinds into an earning row's
+    after-balance (wrong semantics on the same column)."""
+    row = con.execute(
+        "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
+        "WHERE user_id = %s AND kind IN ('provider_earn', 'withdraw')",
+        (user_id,)).fetchone()
+    return int(row["s"])
+
+
 def lock_user(con, user_id: int) -> None:
     """串行化锚点: 锁用户行, 使同用户并发变更排队 (调用方在事务内先调本函数)。"""
     con.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
