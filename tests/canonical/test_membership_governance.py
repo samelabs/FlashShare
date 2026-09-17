@@ -115,9 +115,11 @@ def _seed_order(uid, plan_id, sub_id):
 
 def _sub_snap(status, p_start, p_end, product=None, sub_id="mgsub1"):
     d = {"object": "subscription", "id": sub_id, "status": status,
-         "current_period_start_date": p_start, "current_period_end_date": p_end}
-    if product:
-        d["product"] = product
+         "current_period_start_date": p_start, "current_period_end_date": p_end,
+         # paid-proof contract: product + last_transaction_id must be present
+         # (subscription.paid is a provider payment proof, never bare status)
+         "product": product or {"id": "prod_mg"},
+         "last_transaction_id": f"txn_{sub_id}"}
     return d
 
 def _iso(epoch):
@@ -260,7 +262,12 @@ _cur.execute(
     "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, created_at, paid_at)"
     " values (%s, 'plan', %s, 'creem', 'sub:mg_old_sub', 'paid', 500, %s, %s)",
     (uidR, _old_plan, _ts, _ts))
-_rec.fetch_subscription = lambda sid: _sub_snap("active", _iso(PS), _iso(PE), sub_id=sid) if sid == "mgsubR" else None
+_snap_g9 = _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubR")
+_rec.fetch_subscription = lambda sid: _snap_g9 if sid == "mgsubR" else None
+_rec.fetch_transaction = lambda t: {"object": "transaction", "id": t,
+                                   "status": "paid", "type": "invoice",
+                                   "subscription": "mgsubR",
+                                   "period_start": PS, "period_end": PE}
 r = _rec.reconcile_user(uidR)
 check("G9 reconcile 只跟 current Membership sub (不遍历历史 orders)",
       r["checked"] == 1 and r["granted"] == 1 and spendable_balance(uidR) == 100

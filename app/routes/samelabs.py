@@ -252,6 +252,20 @@ async def samelabs_create_plan(request: Request):
     from repo.orders import insert_plan
     from database import db as _db
     import psycopg2
+    # Price authority write-through at creation: a product-bound plan
+    # mirrors its price to Creem BEFORE the local row commits; provider
+    # failure → no local commit (no sellable plan advertising a price
+    # the provider charges differently).
+    if fields.get("creem_product_id"):
+        from economy import creem as _creem
+        if not _creem.creem_enabled():
+            return JSONResponse({"ok": False, "error": "price_mirror_unavailable"}, 502)
+        try:
+            _creem.mirror_product_price(fields["creem_product_id"],
+                                        int(fields["price_cents"]),
+                                        str(fields.get("currency") or "USD"))
+        except Exception:
+            return JSONResponse({"ok": False, "error": "price_mirror_update_failed"}, 502)
     try:
         with _db() as con:
             row = insert_plan(
@@ -299,6 +313,24 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if not is_paid_tier(row["code"]):
         return JSONResponse({"ok": False, "error": "not_editable_tier"}, 422)
+    # Price authority write-through: when this edit touches price_cents
+    # (or currency-affecting facts) on a product-bound plan, the Creem
+    # mirror is updated FIRST; only a provider-confirmed update lets the
+    # local price commit. Provider failure → local price must NOT commit
+    # (UI can never show a new price the provider still charges old).
+    # Non-price edits never call Creem.
+    price_changed = "price_cents" in fields
+    product_id = (fields.get("creem_product_id") or row["creem_product_id"] or "")
+    if price_changed and product_id:
+        from economy import creem as _creem
+        currency = fields.get("currency") or row["currency"] or "USD"
+        if not _creem.creem_enabled():
+            return JSONResponse({"ok": False, "error": "price_mirror_unavailable"}, 502)
+        try:
+            _creem.mirror_product_price(product_id, int(fields["price_cents"]),
+                                        str(currency))
+        except Exception:
+            return JSONResponse({"ok": False, "error": "price_mirror_update_failed"}, 502)
     import psycopg2
     try:
         with db() as con:

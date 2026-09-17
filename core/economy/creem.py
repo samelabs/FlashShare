@@ -47,6 +47,23 @@ def _post(path: str, payload: dict) -> dict:
         return json.loads(resp.read())
 
 
+def _patch(path: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        _BASE + path, data=body, method="PATCH",
+        headers={"x-api-key": CREEM_API_KEY, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read())
+
+
+def _get(path: str) -> dict:
+    req = urllib.request.Request(
+        _BASE + path, method="GET",
+        headers={"x-api-key": CREEM_API_KEY})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read())
+
+
 def _checkout_session(order_id: int, user: dict, product_payload: dict) -> dict:
     payload = {
         "request_id": f"order:{order_id}",
@@ -74,12 +91,77 @@ def create_credits_checkout(order_id: int, amount_cents: int, user: dict) -> dic
 
 def create_subscription_checkout(order_id: int, plan: dict, user: dict) -> dict:
     """Subscription checkout: plan.creem_product_id, ZERO custom_price
-    (价格由 Creem Product 权威)。"""
+    (recurring 商品价格不可被 checkout 覆盖 — Creem 合同)。
+
+    Price authority: plans.price_cents/currency 是 518 唯一售价 authority;
+    Creem Product 是支付执行 mirror。checkout 前必须验证 mirror 与本地
+    商业事实一致 (product id + price + currency + recurring billing),
+    不一致 fail closed — 绝不静默按 provider 价格售卖, 也绝不在
+    customer checkout 路径反向改 518 Plan。"""
     if not plan.get("creem_product_id"):
         raise RuntimeError("plan_product_not_configured")
+    mirror_err = verify_product_mirror(
+        plan["creem_product_id"],
+        int(plan["price_cents"]), str(plan["currency"] or "").upper())
+    if mirror_err:
+        raise RuntimeError(f"price_mirror_mismatch:{mirror_err}")
     return _checkout_session(order_id, user, {
         "product_id": plan["creem_product_id"],
     })
+
+
+# Creem billing_type enum: recurring products only (a 'onetime' product
+# under a subscription plan is a configuration error — fail closed)
+_BILLING_TYPE_RECURRING = "recurring"
+
+
+def verify_product_mirror(product_id: str, price_cents: int,
+                          currency: str) -> str:
+    """Verify the Creem product mirror matches the 518 commercial fact.
+
+    Returns "" when consistent; otherwise a stable mismatch token
+    (one of price/currency/billing_type/not_found/not_configured) —
+    the caller fails closed on any non-empty value."""
+    if not CREEM_API_KEY or not product_id:
+        return "not_configured"
+    try:
+        data = _get(f"/v1/products/{product_id}")
+    except Exception:
+        return "not_found"
+    prod = data.get("object") == "product" and data or (
+        data.get("product") if isinstance(data.get("product"), dict) else None)
+    if not isinstance(prod, dict) or str(prod.get("id") or "") != product_id:
+        return "not_found"
+    if int(prod.get("price") or 0) != int(price_cents):
+        return "price"
+    if str(prod.get("currency") or "").upper() != currency.upper():
+        return "currency"
+    if str(prod.get("billing_type") or "") != _BILLING_TYPE_RECURRING:
+        return "billing_type"
+    return ""
+
+
+def mirror_product_price(product_id: str, price_cents: int,
+                         currency: str) -> dict:
+    """Write-through: push the 518 requested price into the Creem product
+    (recurring PATCH creates a new default price). Raises on provider
+    failure — the caller must NOT commit the local price when this fails,
+    so the UI can never show a price the provider still charges old."""
+    if not CREEM_API_KEY or not product_id:
+        raise RuntimeError("product_not_configured")
+    out = _patch(f"/v1/products/{product_id}", {
+        "price": int(price_cents),
+        "currency": str(currency).upper(),
+        "billing_type": _BILLING_TYPE_RECURRING,
+    })
+    # provider-confirmed mirror: response must reflect the requested fact
+    prod = out.get("object") == "product" and out or (
+        out.get("product") if isinstance(out.get("product"), dict) else None)
+    if not isinstance(prod, dict) \
+            or int(prod.get("price") or 0) != int(price_cents) \
+            or str(prod.get("currency") or "").upper() != str(currency).upper():
+        raise RuntimeError("price_mirror_confirm_failed")
+    return prod
 
 
 def upgrade_subscription(subscription_id: str, product_id: str,
@@ -187,8 +269,10 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
             raise KeyError("currency_mismatch")
         order_id = row["id"]
         amount_note = f"topup {row['amount_cents'] / 100:.2f}{row['currency']}"
-        pkg = _orders_repo.package_credits(con, row["item_id"])
-        credits = pkg["credits"] if pkg else 0
+        # fulfillment reads ONLY the frozen purchase fact — the live
+        # package row may have been edited since checkout and must never
+        # rewrite a checked-out order's granted quantity
+        credits = int(row["credits_snapshot"] or 0)
         user_id = row["user_id"]
     # 授信先行 (billing 幂等事务, idem order:{id}); mark_paid 是终态戳 —
     # granted=TRUE 蕴含 ledger 行已存在, 留痕永不撒谎 (崩溃一致性)。

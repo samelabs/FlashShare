@@ -9,15 +9,20 @@ from typing import Optional
 # ── orders (充值/订阅单) ──
 
 def insert_order(con, user_id: int, kind: str, item_id: int, provider: str,
-                 amount_cents: int, currency: str, ts: int) -> dict:
+                 amount_cents: int, currency: str, ts: int,
+                 credits_snapshot: int | None = None) -> dict:
+    """One-time purchase fact. credits_snapshot freezes the purchased
+    quantity at checkout time (package orders) — fulfillment reads ONLY
+    the snapshot, never the live catalog row."""
     return con.execute(
         """
         INSERT INTO orders (user_id, kind, item_id, provider, status,
-           amount_cents, currency, created_at)
-           VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s)
+           amount_cents, currency, credits_snapshot, created_at)
+           VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s, %s)
            RETURNING *
         """,
-        (user_id, kind, item_id, provider, amount_cents, currency, ts)).fetchone()
+        (user_id, kind, item_id, provider, amount_cents, currency,
+         credits_snapshot, ts)).fetchone()
 
 
 def order_by_id_for_update(con, order_id: int) -> Optional[dict]:
@@ -79,11 +84,6 @@ def active_packages(con) -> list:
 def package_by_id_active(con, package_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM packages WHERE id=%s AND active", (package_id,)).fetchone()
-
-
-def package_credits(con, package_id: int) -> Optional[dict]:
-    return con.execute(
-        "SELECT credits FROM packages WHERE id=%s", (package_id,)).fetchone()
 
 
 def all_plans(con) -> list:

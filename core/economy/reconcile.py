@@ -4,21 +4,25 @@
 路径但会丢。对账改为**登录时拉取**: 用户登录 → 若名下有活跃订阅且
 当期授信缺失 → 主动查 Creem API 补授。
 
-授信权威不变: subscription.paid webhook (实时, 毫秒级)。
-本模块是**补偿通道**: webhook 丢失后, 用户下次登录时补齐 — 账目最终
-实时, 无 cron 进程/循环任务。
+Proof model (payment-forward closure): the ONLY economic fact is a
+provider-confirmed successful subscription transaction. The webhook and
+this reconciliation channel prove the SAME transaction fact — they are
+not two authorities. Reconcile therefore never grants on subscription
+status alone: it retrieves the subscription, then retrieves the
+transaction named by last_transaction_id and requires it to be a paid
+invoice for THIS subscription and THIS period. Anything less → no grant.
 
 防作弊三重锁:
   1. idem_key plan:{uid}:{period_start} — 同期只授一次 (billing 层)
   2. last_grant_period_start 列 — 同 (user,plan) 状态机层防重
-  3. period_start 必须来自 Creem payload — 客户端不可控字段, 无伪造面
+  3. period/transaction 字段全部来自 Creem payload — 客户端不可控
 
-补偿 eligibility: 仅 active / scheduled_cancel snapshot 进入 paid-period
-补偿; trialing / past_due / canceled / expired / unknown 不 grant 不改
-membership (provider 状态同步属 webhook handlers, 不在本模块)。
+补偿 eligibility: scheduled_cancel 只是生命周期状态 — 当期若有
+matching paid transaction 仍可补偿; trialing / past_due / canceled /
+expired / unknown 不 grant 不改 membership。
 
 失败语义: Creem API 任何异常 → 静默跳过 (登录路径 best-effort,
-webhook 仍是主通道); 绝不阻塞登录。
+webhook 仍是主通道); 绝不阻塞登录; 失败时绝不 grant。
 """
 
 import json
@@ -64,6 +68,50 @@ def fetch_subscription(sub_id: str) -> dict | None:
         return None
 
 
+def fetch_transaction(txn_id: str) -> dict | None:
+    """Creem GET /v1/transactions?transaction_id= — 原始 payload。
+    失败/未配置返回 None (best-effort)。"""
+    key = _creem_key()
+    if not key or not txn_id:
+        return None
+    url = f"{_creem_base()}/v1/transactions?transaction_id={txn_id}"
+    req = urllib.request.Request(url, method="GET",
+                                 headers={"x-api-key": key,
+                                          "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        txn = data.get("object") == "transaction" and data or (
+            data.get("transaction") if isinstance(data.get("transaction"), dict) else None)
+        return txn
+    except Exception:
+        return None
+
+
+def transaction_proves_paid_period(txn: dict | None, sub_id: str,
+                                   period_start: int, period_end: int) -> bool:
+    """The paid-transaction proof predicate (single definition).
+
+    A transaction proves THIS period paid only when ALL hold:
+      status == paid; type == invoice (subscription payment);
+      transaction.subscription == this subscription id;
+      transaction.period_start/end == this subscription's period.
+    pending / refunded / partialRefund / chargedBack / wrong subscription /
+    wrong period / missing transaction → False. Never grants."""
+    if not isinstance(txn, dict):
+        return False
+    if str(txn.get("status") or "") != "paid":
+        return False
+    if str(txn.get("type") or "") != "invoice":
+        return False
+    if str(txn.get("subscription") or "") != sub_id:
+        return False
+    from economy.subscription import _parse_ts
+    tx_ps = _parse_ts(txn.get("period_start"))
+    tx_pe = _parse_ts(txn.get("period_end"))
+    return tx_ps == period_start and tx_pe == period_end
+
+
 def reconcile_user(user_id: int) -> dict:
     """登录触发: 检查该用户全部订阅, 当期 (period_start > last_grant)
     且授信缺失 → 拉 Creem API 补授。
@@ -94,10 +142,11 @@ def reconcile_user(user_id: int) -> dict:
         if not period_start or not period_end:
             continue
         # Reconcile = compensation for LOST paid webhooks only. Provider
-        # state sync stays with the webhook handlers: only snapshots that
-        # read as "in a paid period" may enter compensation. trialing /
-        # past_due / canceled / expired / unknown never grant and never
-        # mutate membership through this path.
+        # state sync stays with the webhook handlers: trialing / past_due /
+        # canceled / expired / unknown never grant and never mutate
+        # membership through this path. scheduled_cancel is a lifecycle
+        # marker only — its current period can still be healed WHEN a
+        # matching paid transaction proves it.
         provider_status = (sub.get("status") or "")
         if provider_status not in ("active", "scheduled_cancel"):
             continue
@@ -106,6 +155,17 @@ def reconcile_user(user_id: int) -> dict:
             continue  # 当期已授, 状态机层防重
         if period_end <= ts:
             continue  # 周期已过, 不补授
+        # Paid-transaction proof (never status-alone): the subscription
+        # must name last_transaction_id and that transaction must be a
+        # paid invoice for THIS subscription and THIS period. Any
+        # provider/API failure or mismatch → no grant (best-effort skip).
+        txn_id = str(sub.get("last_transaction_id") or "")
+        if not txn_id:
+            continue
+        txn = fetch_transaction(txn_id)
+        if not transaction_proves_paid_period(txn, sub_id,
+                                               period_start, period_end):
+            continue
         # 唯一 paid-period implementation (webhook 与 reconcile 共享):
         # grant(幂等) 先行 → upsert 状态戳; scheduled_cancel snapshot
         # 保留 cancellation marker, 不被补授清除。

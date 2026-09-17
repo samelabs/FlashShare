@@ -304,7 +304,28 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
 
 
 def _ev_paid(sub_id: str, obj: dict) -> dict:
-    """Webhook paid event — delegates to the shared paid-period path."""
+    """Webhook paid event — provider direct successful-payment proof.
+
+    The signed subscription.paid event IS the provider's proof, but it
+    must still carry the proof fields: subscription id, current period
+    start/end, product identity and last_transaction_id. A payload
+    missing proof fields fails loud (KeyError → 500 → Creem retries);
+    an active status alone NEVER substitutes for proof.
+    """
+    sub = obj.get("subscription") or obj
+    missing = []
+    if not sub_id:
+        missing.append("subscription_id")
+    if not _parse_ts(sub.get("current_period_start_date")):
+        missing.append("period_start")
+    if not _parse_ts(sub.get("current_period_end_date")):
+        missing.append("period_end")
+    if not extract_product_id(sub):
+        missing.append("product")
+    if not str(sub.get("last_transaction_id") or ""):
+        missing.append("last_transaction_id")
+    if missing:
+        raise KeyError("paid_proof_missing:" + ",".join(missing))
     return apply_paid_period(sub_id, obj)
 
 

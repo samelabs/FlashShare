@@ -74,10 +74,11 @@ def _new_user(prefix):
     return u, _cur.fetchone()[0]
 
 def _sub_snap(status, p_start, p_end, product=None, sub_id="ptsub"):
+    # paid-proof contract fields (product + last_transaction_id) required
     d = {"object": "subscription", "id": sub_id, "status": status,
-         "current_period_start_date": p_start, "current_period_end_date": p_end}
-    if product:
-        d["product"] = product
+         "current_period_start_date": p_start, "current_period_end_date": p_end,
+         "product": product or {"id": "prod_pt"},
+         "last_transaction_id": f"txn_{sub_id}"}
     return d
 
 def _iso(epoch):
@@ -164,14 +165,21 @@ def _fake_session(order_id, user, product_payload):
     return {"ok": True, "checkout_url": f"https://creem.test/{order_id}",
             "checkout_id": f"ch_{order_id}"}
 _creem._checkout_session = lambda order_id, user, pp: _fake_session(order_id, user, pp)
+# mirror verification isolated (product mirror contract covered by
+# test_payment_forward P3/P4; here the checkout payload shape is the target)
+_creem.verify_product_mirror = lambda pid, cents, cur: ""
 _u7, uid7, _ = _seed_sub_user("pt7", "plus", "prod_plus", "ptsub7", paid=False)
 _cur.execute("update plans set creem_product_id='prod_pro' where code='pro'")
 _cur.execute("update plans set creem_product_id='prod_plus' where code='plus'")
 plan_catalog.validate_config()  # fixture 直接写行后刷新进程内目录缓存
-out = _creem.create_subscription_checkout(1234, {"creem_product_id": "prod_pro"}, {"id": uid7})
+out = _creem.create_subscription_checkout(
+    1234, {"creem_product_id": "prod_pro", "price_cents": 999,
+           "currency": "USD"}, {"id": uid7})
 check("T7 subscription checkout → Pro product / ZERO custom_price",
       _captured["payload"] == {"product_id": "prod_pro"}, str(_captured["payload"]))
-out = _creem.create_subscription_checkout(1235, {"creem_product_id": "prod_plus"}, {"id": uid7})
+out = _creem.create_subscription_checkout(
+    1235, {"creem_product_id": "prod_plus", "price_cents": 499,
+           "currency": "USD"}, {"id": uid7})
 check("T8 subscription checkout → Plus product / ZERO custom_price",
       _captured["payload"] == {"product_id": "prod_plus"}, str(_captured["payload"]))
 
@@ -207,6 +215,8 @@ _cur.execute(
     "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, currency, created_at)"
     " values (%s, 'package', %s, 'creem', 'ord_pt9', 'pending', 500, 'USD', %s) returning id", (uid9, _pkg9, _ts))
 _oid9 = _cur.fetchone()[0]
+# checkout-time snapshot fact (canonical since the payment-forward batch)
+_cur.execute("update orders set credits_snapshot=(select credits from packages where id=%s) where provider_order_id='ord_pt9'", (_pkg9,))
 def _try_fulfill(**kw):
     try:
         _creem.fulfill(kw.get("oid", "ord_pt9"), "", kw.get("amount", 500),
