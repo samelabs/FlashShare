@@ -27,6 +27,16 @@ router = APIRouter()
 
 BACKOFFICE_STATUSES = ("samelabs",)
 
+
+class _PlanMirrorError(Exception):
+    """Operator plan write aborted at the provider-mirror stage.
+
+    Raised INSIDE the plan create/update transaction so the with-block
+    rolls the uncommitted local row back — the provider may or may not
+    have been reached, but the local plan never half-commits. Maps to
+    a 502 with a stable error token."""
+
+
 # ── samelabs.css cache-busting (same pattern as pages.py _CSS_VERSION) ──
 import hashlib as _hashlib
 import re as _re
@@ -252,20 +262,13 @@ async def samelabs_create_plan(request: Request):
     from repo.orders import insert_plan
     from database import db as _db
     import psycopg2
-    # Price authority write-through at creation: a product-bound plan
-    # mirrors its price to Creem BEFORE the local row commits; provider
-    # failure → no local commit (no sellable plan advertising a price
-    # the provider charges differently).
-    if fields.get("creem_product_id"):
-        from economy import creem as _creem
-        if not _creem.creem_enabled():
-            return JSONResponse({"ok": False, "error": "price_mirror_unavailable"}, 502)
-        try:
-            _creem.mirror_product_price(fields["creem_product_id"],
-                                        int(fields["price_cents"]),
-                                        str(fields.get("currency") or "USD"))
-        except Exception:
-            return JSONResponse({"ok": False, "error": "price_mirror_update_failed"}, 502)
+    # Operator control-plane narrow transaction (low-frequency admin
+    # write; NEVER spread to customer checkout/runtime payment paths):
+    #   open tx → INSERT uncommitted → DB unique constraints pass FIRST
+    #   → (if product-bound) mirror Creem → provider success → COMMIT.
+    # Local constraint failure → ZERO provider mutation. Provider
+    # failure → DB rollback — a failed local write can never pollute
+    # the provider mirror.
     try:
         with _db() as con:
             row = insert_plan(
@@ -278,8 +281,24 @@ async def samelabs_create_plan(request: Request):
                 ingress_bytes_24h=fields["ingress_bytes_24h"],
                 expiry_days=fields.get("expiry_days") or (),
                 download_limits=fields.get("download_limits") or ())
+            if fields.get("creem_product_id"):
+                from economy import creem as _creem
+                if not _creem.creem_enabled():
+                    raise _PlanMirrorError("price_mirror_unavailable")
+                try:
+                    _creem.mirror_product_price(fields["creem_product_id"],
+                                                int(fields["price_cents"]),
+                                                str(fields.get("currency") or "USD"))
+                except _PlanMirrorError:
+                    raise
+                except Exception:
+                    raise _PlanMirrorError("price_mirror_update_failed")
+    except _PlanMirrorError as exc:
+        # provider failure: the with-block raised → tx rolled back
+        return JSONResponse({"ok": False, "error": str(exc)}, 502)
     except psycopg2.IntegrityError as exc:
         # 唯一索引兜底: code 冲突 / paid rank 冲突 / product 已绑它档
+        # (constraints fired BEFORE any provider call — zero side effect)
         msg = str(getattr(exc, "diag", None) and exc.diag.message_primary or exc)
         if "plans_paid_sort_order_uk" in msg or "sort_order" in msg:
             return JSONResponse({"ok": False, "error": "sort_order_taken"}, 409)
@@ -313,40 +332,49 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if not is_paid_tier(row["code"]):
         return JSONResponse({"ok": False, "error": "not_editable_tier"}, 422)
+    # Operator control-plane narrow transaction (low-frequency admin
+    # write; NEVER spread to customer checkout/runtime payment paths).
     # Commercial mirror write-through: ANY commercial fact change — the
-    # price OR the product binding itself — closes at the operator write,
-    # not at customer checkout. The target product is contract-validated
-    # (recurring + monthly) and synced to the CURRENT 518 price first;
-    # only a provider-confirmed mirror lets the local row commit. Provider
-    # failure / wrong billing contract → local commit refused (no binding
-    # can land while advertising one price and charging another).
-    # Non-commercial edits (name/benefits/sort/active...) never call Creem.
+    # price OR the product binding itself — closes at the operator write.
+    # Order inside ONE transaction:
+    #   open tx + row UPDATE uncommitted → DB unique constraints pass
+    #   FIRST → (commercial change only) mirror Creem → provider success
+    #   → COMMIT. Local constraint failure (product/sort conflict) →
+    #   rollback with ZERO provider mutation — a failed rebind can never
+    #   reprice another plan's product. Provider failure → rollback, the
+    #   local plan is untouched. Non-commercial edits never call Creem.
     target_price = int(fields["price_cents"]) if "price_cents" in fields \
         else int(row["price_cents"])
     product_id = (fields.get("creem_product_id") if "creem_product_id" in fields
                   else row["creem_product_id"]) or ""
     commercial_change = ("price_cents" in fields) or ("creem_product_id" in fields)
-    if commercial_change and product_id:
-        from economy import creem as _creem
-        currency = fields.get("currency") or row["currency"] or "USD"
-        if not _creem.creem_enabled():
-            return JSONResponse({"ok": False, "error": "price_mirror_unavailable"}, 502)
-        try:
-            _creem.mirror_product_price(product_id, target_price,
-                                        str(currency))
-        except RuntimeError as exc:
-            err = "price_mirror_update_failed"
-            if "billing_contract" in str(exc) or "not_found" in str(exc):
-                err = "product_billing_contract_invalid"
-            return JSONResponse({"ok": False, "error": err}, 502)
-        except Exception:
-            return JSONResponse({"ok": False, "error": "price_mirror_update_failed"}, 502)
     import psycopg2
     try:
         with db() as con:
             row = update_plan(con, plan_id, fields, now())
+            if commercial_change and product_id:
+                from economy import creem as _creem
+                currency = fields.get("currency") or row["currency"] or "USD"
+                if not _creem.creem_enabled():
+                    raise _PlanMirrorError("price_mirror_unavailable")
+                try:
+                    _creem.mirror_product_price(product_id, target_price,
+                                                str(currency))
+                except _PlanMirrorError:
+                    raise
+                except RuntimeError as exc:
+                    err = "price_mirror_update_failed"
+                    if "billing_contract" in str(exc) or "not_found" in str(exc):
+                        err = "product_billing_contract_invalid"
+                    raise _PlanMirrorError(err)
+                except Exception:
+                    raise _PlanMirrorError("price_mirror_update_failed")
+    except _PlanMirrorError as exc:
+        # provider failure: with-block raised → tx rolled back
+        return JSONResponse({"ok": False, "error": str(exc)}, 502)
     except psycopg2.IntegrityError as exc:
         # 唯一索引兜底 (并发/撞既有行): rank 冲突 / product 已绑它档
+        # (constraints fired BEFORE any provider call — zero side effect)
         msg = str(getattr(exc, "diag", None) and exc.diag.message_primary or exc)
         if "plans_paid_sort_order_uk" in msg or "sort_order" in msg:
             return JSONResponse({"ok": False, "error": "sort_order_taken"}, 409)

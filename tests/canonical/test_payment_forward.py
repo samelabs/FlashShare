@@ -783,6 +783,143 @@ check("PM2-4e first-period order product mismatch → no grant",
       "paid_product_order_mismatch" in rr.get("err", "")
       and spendable_balance(mmD) == _bD, str(rr))
 
+# ═══ PM3: local constraints settle BEFORE any Creem side effect ═══
+# fixtures: two plans, two products
+_mirror_state["prod_sA"] = {"price": 999, "currency": "USD",
+                            "billing_type": "recurring",
+                            "billing_period": "every-month"}
+_mirror_state["prod_sB"] = {"price": 1999, "currency": "USD",
+                            "billing_type": "recurring",
+                            "billing_period": "every-month"}
+with db() as con:
+    _soA = int(con.execute(
+        "SELECT COALESCE(MAX(p.sort_order),0)+1 AS so FROM plans p WHERE p.code <> 'free'"
+    ).fetchone()["so"])
+rA = client.post("/samelabs/plans", json={
+    "code": f"plA_{_u}", "name": "A", "monthly_credits": 100,
+    "price_cents": 999, "creem_product_id": "prod_sA", "sort_order": _soA,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+planA = rA.json()["plan"]["id"]
+rB = client.post("/samelabs/plans", json={
+    "code": f"plB_{_u}", "name": "B", "monthly_credits": 2000,
+    "price_cents": 1999, "creem_product_id": "prod_sB", "sort_order": _soA + 1,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+planB = rB.json()["plan"]["id"]
+
+# PM3-1: rebind planA to planB's product → 409, zero PATCH, prod_sB price intact
+_n1 = len(_patch_payloads)
+r = client.patch(f"/samelabs/plans/{planA}", json={"creem_product_id": "prod_sB"},
+                 cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _bindA = con.execute("select creem_product_id from plans where id=%s",
+                         (planA,)).fetchone()["creem_product_id"]
+check("PM3-1 update 绑到已占用 product → 409 / 零 PATCH / 原价不变",
+      r.status_code == 409 and (r.json().get("error") == "product_already_bound")
+      and len(_patch_payloads) == _n1
+      and _bindA == "prod_sA"
+      and _mirror_state["prod_sB"]["price"] == 1999,
+      f"{r.status_code} patches {len(_patch_payloads)}-{_n1} bind={_bindA} "
+      f"prod_sB={_mirror_state['prod_sB']['price']}")
+
+# PM3-2: create with an already-bound product → 409, zero PATCH
+_n2 = len(_patch_payloads)
+r = client.post("/samelabs/plans", json={
+    "code": f"plC_{_u}", "name": "C", "monthly_credits": 100,
+    "price_cents": 500, "creem_product_id": "prod_sB", "sort_order": _soA + 2,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _cnt = con.execute("select count(*) c from plans where code=%s",
+                       (f"plC_{_u}",)).fetchone()["c"]
+check("PM3-2 create 用已占用 product → 409 / 零 PATCH / 行未落",
+      r.status_code == 409 and r.json().get("error") == "product_already_bound"
+      and len(_patch_payloads) == _n2 and int(_cnt) == 0,
+      f"{r.status_code} patches {len(_patch_payloads)}-{_n2} cnt={_cnt}")
+
+# PM3-3: create duplicate sort / duplicate code → 409, zero PATCH
+_n3 = len(_patch_payloads)
+r = client.post("/samelabs/plans", json={
+    "code": f"plD_{_u}", "name": "D", "monthly_credits": 100,
+    "price_cents": 500, "creem_product_id": "prod_sD", "sort_order": _soA,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+_mirror_state["prod_sD"] = {"price": 1, "currency": "USD",
+                            "billing_type": "recurring",
+                            "billing_period": "every-month"}
+r2 = client.post("/samelabs/plans", json={
+    "code": f"plA_{_u}", "name": "A2", "monthly_credits": 100,
+    "price_cents": 500, "creem_product_id": "prod_sD", "sort_order": _soA + 3,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+check("PM3-3 create duplicate sort/code → 409 / 零 PATCH",
+      r.status_code == 409 and r.json().get("error") == "sort_order_taken"
+      and r2.status_code == 409 and r2.json().get("error") == "code_taken"
+      and len(_patch_payloads) == _n3,
+      f"sort:{r.status_code} code:{r2.status_code} patches {len(_patch_payloads)}-{_n3}")
+
+# PM3-4: valid commercial update → provisional constraints → PATCH → commit
+_n4 = len(_patch_payloads)
+r = client.patch(f"/samelabs/plans/{planA}", json={"price_cents": 1099},
+                 cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _pA = con.execute("select price_cents from plans where id=%s",
+                      (planA,)).fetchone()["price_cents"]
+check("PM3-4 valid 改价 → Creem PATCH + DB commit",
+      r.status_code == 200 and len(_patch_payloads) == _n4 + 1
+      and _patch_payloads[-1][1]["price"] == 1099 and int(_pA) == 1099,
+      f"{r.status_code} patches {len(_patch_payloads)}-{_n4} pA={_pA}")
+
+# PM3-5: provider failure → DB rollback, plan fully unchanged
+_orig_patch_fn = _creem._patch
+def _boom_patch(path, payload):
+    raise RuntimeError("provider down")
+_creem._patch = _boom_patch
+r = client.patch(f"/samelabs/plans/{planA}", json={"price_cents": 2099},
+                 cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _pA2 = con.execute(
+        "select price_cents, creem_product_id from plans where id=%s",
+        (planA,)).fetchone()
+check("PM3-5 Creem 失败 → DB rollback, Plan 完全不变",
+      r.status_code == 502 and int(_pA2["price_cents"]) == 1099
+      and _pA2["creem_product_id"] == "prod_sA",
+      f"{r.status_code} plan={dict(_pA2)}")
+# create with provider failure → insert rolled back
+r = client.post("/samelabs/plans", json={
+    "code": f"plE_{_u}", "name": "E", "monthly_credits": 100,
+    "price_cents": 700, "creem_product_id": "prod_sD", "sort_order": _soA + 4,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _cntE = con.execute("select count(*) c from plans where code=%s",
+                        (f"plE_{_u}",)).fetchone()["c"]
+check("PM3-5b create Creem 失败 → insert rollback",
+      r.status_code == 502 and int(_cntE) == 0,
+      f"{r.status_code} cnt={_cntE}")
+_creem._patch = _orig_patch_fn
+
+# PM3-6: valid rebind → target mirror + local binding converge together
+_mirror_state["prod_sF"] = {"price": 1, "currency": "USD",
+                            "billing_type": "recurring",
+                            "billing_period": "every-month"}
+r = client.patch(f"/samelabs/plans/{planA}", json={"creem_product_id": "prod_sF"},
+                 cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _bindA2 = con.execute("select creem_product_id from plans where id=%s",
+                          (planA,)).fetchone()["creem_product_id"]
+check("PM3-6 valid rebind → target mirror 同步 (1099) + local binding 一起收敛",
+      r.status_code == 200 and _bindA2 == "prod_sF"
+      and _mirror_state["prod_sF"]["price"] == 1099,
+      f"{r.status_code} bind={_bindA2} mirror={_mirror_state['prod_sF']['price']}")
+
 # ═══ semantic guards ═══
 _csrc = open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read()
 check("S1 fulfillment 不再读 live package credits (源内无 package_credits 调用)",
@@ -810,6 +947,7 @@ with db() as con:
                 mmA, mmB, mmC, mmD):
         con.execute("delete from users where id=%s", (uid,))
     con.execute("delete from plans where id in (%s, %s)", (plan_id, plan2_id))
+    con.execute("delete from plans where id in (%s, %s)", (planA, planB))
     con.execute("delete from packages where id=%s", (pkg_id,))
 
 print()
