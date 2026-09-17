@@ -72,20 +72,14 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 # ── Auth helpers ──
 
 def get_user_from_request(request: Request):
-    """Session first, then Bearer/query-token capability identity."""
+    """Session first, then Bearer capability identity."""
     from database import db
-    from identity.apitokens import authenticate_token, TOKEN_PREFIX
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
+            from identity.apitokens import authenticate_token
             user = authenticate_token(auth[7:].strip())
-            if user:
-                request.state.auth_via = "token"
-            return user
-        qkey = request.query_params.get("key", "")
-        if qkey.startswith(TOKEN_PREFIX):
-            user = authenticate_token(qkey)
             if user:
                 request.state.auth_via = "token"
             return user
@@ -131,7 +125,7 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
 
     # Account namespace is the human browser surface. Capability tokens
-    # (Bearer/query-key) run tools/REST/MCP — they never render or mutate
+    # (Bearer) run tools/REST/MCP — they never render or mutate
     # the account pages. Anonymous browsers get the login redirect instead.
     if path == "/account" or path.startswith("/account/"):
         via = getattr(request.state, "auth_via", "")

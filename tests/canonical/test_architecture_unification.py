@@ -292,6 +292,54 @@ _tc1 = _cur.fetchone()[0]
 check("U3c ledger unchanged", _l1 == _l0, (_l0, _l1))
 check("U3c tool_calls unchanged", _tc1 == _tc0, (_tc0, _tc1))
 
+# ═══ U9: credential channel boundaries (真实 HTTP 边界) ═══
+# Operator authority stays users.status; the CHANNEL is what closes:
+# /samelabs accepts browser sessions only, ?key= query auth is gone.
+_cur.execute("update users set status='samelabs' where id=%s", (_uid,))
+r = client.get("/samelabs", cookies={COOKIE_NAME: sess}, follow_redirects=False)
+check("U9 operator session → /samelabs allowed",
+      r.status_code == 200, f"{r.status_code} {r.text[:80]}")
+r = client.get("/samelabs", headers={"Authorization": f"Bearer {_vtok}"},
+               follow_redirects=False)
+check("U9 operator bearer token → /samelabs denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+r = client.post("/samelabs/tools/x/pricing",
+                headers={"Authorization": f"Bearer {_vtok}"},
+                follow_redirects=False)
+check("U9 operator bearer token → /samelabs POST denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+r = client.get("/samelabs?key=" + _vtok, follow_redirects=False)
+check("U9 operator token via ?key= → /samelabs denied (query auth absent)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+_cur.execute("update users set status='active' where id=%s", (_uid,))
+r = client.get("/samelabs", cookies={COOKIE_NAME: sess}, follow_redirects=False)
+check("U9 normal browser session → /samelabs denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+r = client.get("/samelabs", follow_redirects=False)
+check("U9 anonymous → /samelabs denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+# query-token channel is structurally absent from the auth resolver
+_main_src = open(_os.path.join(_REPO, "app", "main.py"), encoding="utf-8").read()
+check("U9 main.py 无 query key 认证分支",
+      'query_params.get("key"' not in _main_src)
+check("U9 agents.html 无 ?key= 直连示例",
+      "?key=" not in open(_os.path.join(_REPO, "app", "templates", "agents.html"),
+                          encoding="utf-8").read())
+# Bearer + session keep working on the capability surface
+r = client.get("/api/v1/me", headers={"Authorization": f"Bearer {_vtok}"})
+check("U9 Bearer 在能力面 (v1 /me) 仍有效",
+      r.status_code == 200 and r.json().get("user", {}).get("username") == _u,
+      f"{r.status_code} {r.text[:80]}")
+r = client.get("/api/v1/me?key=" + _vtok)
+check("U9 ?key= 仅凭查询参数 → 能力面未认证",
+      r.status_code == 401, f"{r.status_code} {r.text[:80]}")
+_cur.execute("update users set status='active' where id=%s", (_uid,))
+
 # ═══ U7: v1 /me 无 plan 键 ═══
 _api = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
 check("U7 v1 /me 无 plan alias", '"plan":' not in _api)
