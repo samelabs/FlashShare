@@ -1,24 +1,28 @@
-"""repo: ledger — 账本/计量事实表数据访问 (批1b).
+"""repo: ledger — movement journal 数据访问.
 
 规则: 函数=(con,...)->rows, 参数化, 无事务/无业务判断。
-双池口径常量 SPENDABLE_KINDS 属 economy 域服务, 由调用方传入 kinds。
+journal 的 pool/unit 由经济域服务决定; balance_after 只表达
+所属 pool+unit 的余额 (schema CHECK 封住合法 pair)。
 """
 
 from typing import Optional, Sequence
 
 
-def insert_row(con, user_id: int, delta: int, balance_after: int, kind: str,
+def insert_row(con, user_id: int, pool: str, unit: str, delta: int,
+               balance_after: int, kind: str,
                ref_type: Optional[str], ref_id: Optional[str],
                idem_key: Optional[str], note: Optional[str],
                created_at: int) -> dict:
+    """Movement journal row. (pool, unit) is an explicit journal fact:
+    spendable/credit or provider_earning/usd_cent — enforced by CHECK."""
     return con.execute(
         """
-        INSERT INTO ledger (user_id, delta, balance_after, kind,
+        INSERT INTO ledger (user_id, pool, unit, delta, balance_after, kind,
                             ref_type, ref_id, idem_key, note, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING *
         """,
-        (user_id, delta, balance_after, kind, ref_type, ref_id,
+        (user_id, pool, unit, delta, balance_after, kind, ref_type, ref_id,
          idem_key, note, created_at)).fetchone()
 
 
@@ -41,13 +45,14 @@ def total_balance(con, user_id: int) -> int:
     return int(row["bal"])
 
 
-def pool_balance(con, user_id: int, kinds: Sequence[str]) -> int:
+def pool_balance(con, user_id: int, pool: str) -> int:
+    """Balance of one (pool, unit) pair — balance_after's only meaning."""
     row = con.execute(
         """
         SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger
-        WHERE user_id = %s AND kind = ANY(%s)
+        WHERE user_id = %s AND pool = %s
         """,
-        (user_id, list(kinds))).fetchone()
+        (user_id, pool)).fetchone()
     return int(row["bal"])
 
 
@@ -59,22 +64,30 @@ def sum_kind(con, user_id: int, kind: str) -> int:
     return int(row["s"])
 
 
+def cash_pool_balance(con, user_id: int, pool: str, unit: str) -> int:
+    row = con.execute(
+        "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
+        "WHERE user_id = %s AND pool = %s AND unit = %s",
+        (user_id, pool, unit)).fetchone()
+    return int(row["s"])
+
+
 def lock_user(con, user_id: int) -> None:
     """串行化锚点: 锁用户行, 使同用户并发变更排队 (调用方在事务内先调本函数)。"""
     con.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
 
 
-def history_paged(con, user_id: int, kinds: Sequence[str],
+def history_paged(con, user_id: int, pool: str,
                   size: int, offset: int) -> tuple:
     total = con.execute(
-        "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = ANY(%s)",
-        (user_id, list(kinds))).fetchone()["n"]
+        "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND pool = %s",
+        (user_id, pool)).fetchone()["n"]
     rows = con.execute(
         """
-        SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)
+        SELECT * FROM ledger WHERE user_id = %s AND pool = %s
         ORDER BY id DESC LIMIT %s OFFSET %s
         """,
-        (user_id, list(kinds), size, offset)).fetchall()
+        (user_id, pool, size, offset)).fetchall()
     return [dict(r) for r in rows], total
 
 
@@ -85,7 +98,7 @@ def earn_by_tool(con, user_id: int, limit: int = 100) -> list:
         """
         SELECT l.note AS tool_key, SUM(l.delta) AS earned, COUNT(*) AS payouts
         FROM ledger l
-        WHERE l.user_id = %s AND l.kind = 'provider_earn'
+        WHERE l.user_id = %s AND l.pool = 'provider_earning'
         GROUP BY l.note
         ORDER BY earned DESC LIMIT %s
         """,
@@ -94,13 +107,13 @@ def earn_by_tool(con, user_id: int, limit: int = 100) -> list:
 
 def earn_lines_paged(con, user_id: int, limit: int, offset: int) -> tuple:
     total = con.execute(
-        "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = 'provider_earn'",
+        "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND pool = 'provider_earning'",
         (user_id,)).fetchone()["n"]
     rows = con.execute(
         """
         SELECT l.delta, l.ref_type, l.ref_id, l.note, l.created_at
         FROM ledger l
-        WHERE l.user_id = %s AND l.kind = 'provider_earn'
+        WHERE l.user_id = %s AND l.pool = 'provider_earning'
         ORDER BY l.id DESC LIMIT %s OFFSET %s
         """,
         (user_id, limit, offset)).fetchall()
@@ -113,7 +126,7 @@ def earn_sum_joined_calls(con, user_id: int, tool_key: str) -> int:
         SELECT COALESCE(SUM(l.delta), 0) AS earned
         FROM ledger l
         JOIN tool_calls tc ON l.ref_id = tc.id::text
-        WHERE l.user_id = %s AND l.kind = 'provider_earn'
+        WHERE l.user_id = %s AND l.pool = 'provider_earning'
           AND tc.tool_id = %s
         """,
         (user_id, tool_key)).fetchone()
@@ -122,24 +135,25 @@ def earn_sum_joined_calls(con, user_id: int, tool_key: str) -> int:
 
 # ── 结算 (execution 域闸门在同一事务内调用) ──
 
-def insert_provider_earn_if_absent(con, owner_id: int, payout: int,
+def insert_provider_earn_if_absent(con, owner_id: int, payout_minor: int,
                                    balance_after: int, call_id,
                                    idem_key: str, note: str,
                                    created_at: int) -> None:
-    """分账行 (kind=provider_earn)。幂等由唯一索引保证, NOT EXISTS 防冲突。"""
+    """分账行 (pool=provider_earning, unit=usd_cent)。幂等由唯一索引保证,
+    NOT EXISTS 防冲突。"""
     con.execute(
         """
-        INSERT INTO ledger (user_id, delta, balance_after, kind,
+        INSERT INTO ledger (user_id, pool, unit, delta, balance_after, kind,
            ref_type, ref_id, idem_key, note, created_at)
-           SELECT %s, %s, %s,
-                  'provider_earn', 'tool_call', %s,
+           SELECT %s, 'provider_earning', 'usd_cent', %s, %s,
+                  'payout', 'tool_call', %s,
                   %s, %s, %s
            WHERE NOT EXISTS (
              SELECT 1 FROM ledger
              WHERE user_id = %s AND idem_key = %s
            )
         """,
-        (owner_id, payout, balance_after, str(call_id),
+        (owner_id, payout_minor, balance_after, str(call_id),
          idem_key, note, created_at,
          owner_id, idem_key))
 

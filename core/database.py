@@ -221,6 +221,8 @@ _SCHEMA_SQL = (
     CREATE TABLE IF NOT EXISTS ledger (
       id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      pool          TEXT NOT NULL,
+      unit          TEXT NOT NULL,
       delta         BIGINT NOT NULL,
       balance_after BIGINT NOT NULL,
       kind          TEXT NOT NULL,
@@ -228,7 +230,11 @@ _SCHEMA_SQL = (
       ref_id        TEXT,
       idem_key      TEXT,
       note          TEXT,
-      created_at    BIGINT NOT NULL
+      created_at    BIGINT NOT NULL,
+      CONSTRAINT ledger_pool_unit_ck CHECK (
+        (pool = 'spendable' AND unit = 'credit')
+        OR (pool = 'provider_earning' AND unit = 'usd_cent')
+      )
     )
     """,
     """
@@ -274,11 +280,15 @@ _SCHEMA_SQL = (
     # ── platform: pricing ──
     """
     CREATE TABLE IF NOT EXISTS pricing (
-      tool_id    TEXT PRIMARY KEY,
-      cost       BIGINT NOT NULL DEFAULT 0,
-      enabled    BOOLEAN NOT NULL DEFAULT TRUE,
-      updated_at BIGINT NOT NULL,
-      updated_by BIGINT
+      tool_id             TEXT PRIMARY KEY,
+      user_cost_credits   BIGINT NOT NULL DEFAULT 0,
+      provider_payout_minor BIGINT NOT NULL DEFAULT 0,
+      payout_currency     TEXT NOT NULL DEFAULT 'USD' CHECK (payout_currency IN ('USD')),
+      enabled             BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at          BIGINT NOT NULL,
+      updated_by          BIGINT,
+      CONSTRAINT pricing_nonnegative_ck CHECK (
+        user_cost_credits >= 0 AND provider_payout_minor >= 0)
     )
     """,
     # ── platform: plans ──
@@ -405,7 +415,8 @@ _SCHEMA_SQL = (
     CREATE TABLE IF NOT EXISTS withdrawals (
       id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      amount       BIGINT NOT NULL CHECK (amount > 0),
+      amount_minor BIGINT NOT NULL CHECK (amount_minor > 0),
+      currency     TEXT NOT NULL DEFAULT 'USD' CHECK (currency IN ('USD')),
       status       TEXT NOT NULL DEFAULT 'pending',
       note         TEXT,
       created_at   BIGINT NOT NULL,

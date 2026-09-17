@@ -35,29 +35,26 @@ def get_balance(user_id: int) -> int:
         return ledger_repo.total_balance(con, user_id)
 
 
-# Ledger kinds that make up the SPENDABLE pool. provider_earn is NOT here:
-# earnings accumulate in their own pool, withdrawable only. This is the
-# dual-pool invariant (2026-08-26 global audit): consumption must never
-# eat into provider earnings. grant_plan_upgrade is the Plus→Pro mid-cycle
-# top-up difference — spendable exactly like the base grant_plan, or an
-# upgraded member would see +400 yet be unable to spend it.
-SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
-                   "bonus", "topup", "consume", "refund", "adjust", "grant",
-                   "revoke", "manual_topup", "grant_plan", "grant_package",
-                   "grant_plan_upgrade")
+# The spendable pool: platform-internal consumption credits. Every kind
+# this service writes (grant/consume/refund/adjust) belongs to exactly one
+# journal pool — spendable/credit. Provider earnings and withdrawals are
+# CASH movements (provider_earning/usd_cent) written by economy.earnings /
+# economy.settlement, never by this module.
+SPENDABLE_POOL = "spendable"
+CREDIT_UNIT = "credit"
 
 
 def spendable_balance(user_id: int) -> int:
-    """Credits the user may spend (excludes provider_earn & withdraw rows)."""
+    """Credits the user may spend (the spendable pool only)."""
     with db() as con:
-        return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
+        return ledger_repo.pool_balance(con, user_id, SPENDABLE_POOL)
 
 
 def _balance_for_update(con, user_id: int) -> int:
     """Serialize on the users row; returns the SPENDABLE balance
-    (dual-pool: consume/refund/adjust only ever touch the spendable pool)."""
+    (consume/refund/adjust only ever touch the spendable pool)."""
     ledger_repo.lock_user(con, user_id)
-    return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
+    return ledger_repo.pool_balance(con, user_id, SPENDABLE_POOL)
 
 
 def grant(user_id: int, amount: int, kind: str, *,
@@ -79,7 +76,8 @@ def grant(user_id: int, amount: int, kind: str, *,
             prior = ledger_repo.by_idem_key(con, user_id, idem_key)
             if prior:
                 return dict(prior)
-        row = ledger_repo.insert_row(con, user_id, amount, bal + amount,
+        row = ledger_repo.insert_row(con, user_id, SPENDABLE_POOL,
+                                     CREDIT_UNIT, amount, bal + amount,
                                      kind, ref_type, ref_id, idem_key, note, ts)
     return dict(row)
 
@@ -103,7 +101,8 @@ def consume(user_id: int, cost: int, kind: str, *,
                 return dict(prior)
         if bal < cost:
             raise InsufficientCredits(bal, cost)
-        row = ledger_repo.insert_row(con, user_id, -cost, bal - cost,
+        row = ledger_repo.insert_row(con, user_id, SPENDABLE_POOL,
+                                     CREDIT_UNIT, -cost, bal - cost,
                                      kind, ref_type, ref_id, idem_key, note, ts)
     return dict(row)
 
@@ -113,7 +112,7 @@ def refund(user_id: int, amount: int, *,
            idem_key: str | None = None, note: str | None = None) -> dict:
     """Refund a prior charge — a NEW ledger row (delta > 0), never an UPDATE.
 
-    kind is fixed to 'refund'. idem_key semantics identical to grant().
+    Movement kind is fixed to 'refund' (spendable pool).
     """
     if amount <= 0:
         raise ValueError("refund amount must be positive")
@@ -124,7 +123,8 @@ def refund(user_id: int, amount: int, *,
             prior = ledger_repo.by_idem_key(con, user_id, idem_key)
             if prior:
                 return dict(prior)
-        row = ledger_repo.insert_row(con, user_id, amount, bal + amount,
+        row = ledger_repo.insert_row(con, user_id, SPENDABLE_POOL,
+                                     CREDIT_UNIT, amount, bal + amount,
                                      "refund", ref_type, ref_id,
                                      idem_key, note, ts)
     return dict(row)
@@ -138,11 +138,10 @@ def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
 def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, int]:
     """(rows_newest_first, total_count) for the account credits page.
 
-    Dual-pool (2026-08-26): spendable-side flow only — grants/topups/
-    consumes/refunds/adjusts. provider_earn & withdraw live on the
-    earnings page. One pool, two honest views.
+    Spendable-pool flow only — grants/topups/consumes/refunds/adjusts.
+    Cash movements (provider_earning/withdraw) live on the earnings page.
     """
     with db() as con:
-        rows, total = ledger_repo.history_paged(con, user_id, SPENDABLE_KINDS,
+        rows, total = ledger_repo.history_paged(con, user_id, SPENDABLE_POOL,
                                                 size, max(0, (page - 1) * size))
     return rows, total

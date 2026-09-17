@@ -10,14 +10,15 @@ from typing import Optional, Sequence
 
 # ── withdrawals ──
 
-def insert_withdrawal(con, user_id: int, amount: int, note, ts: int) -> dict:
+def insert_withdrawal(con, user_id: int, amount_minor: int, currency: str,
+                      note, ts: int) -> dict:
     return con.execute(
         """
         INSERT INTO withdrawals
-           (user_id, amount, status, note, created_at, txn_ref)
-           VALUES (%s, %s, 'pending', %s, %s, NULL) RETURNING *
+           (user_id, amount_minor, currency, status, note, created_at, txn_ref)
+           VALUES (%s, %s, %s, 'pending', %s, %s, NULL) RETURNING *
         """,
-        (user_id, amount, note, ts)).fetchone()
+        (user_id, amount_minor, currency, note, ts)).fetchone()
 
 
 def withdrawal_for_update(con, withdrawal_id: int) -> Optional[dict]:
@@ -52,7 +53,7 @@ def withdrawal_count(con, user_id: int) -> int:
 
 def withdrawal_sum(con, user_id: int, statuses: Sequence[str]) -> int:
     row = con.execute(
-        "SELECT COALESCE(SUM(amount), 0) AS s FROM withdrawals "
+        "SELECT COALESCE(SUM(amount_minor), 0) AS s FROM withdrawals "
         "WHERE user_id = %s AND status = ANY(%s)",
         (user_id, list(statuses))).fetchone()
     return int(row["s"])
@@ -61,7 +62,7 @@ def withdrawal_sum(con, user_id: int, statuses: Sequence[str]) -> int:
 def withdrawal_sum_excluding(con, user_id: int, statuses: Sequence[str],
                              exclude_id: int) -> int:
     row = con.execute(
-        "SELECT COALESCE(SUM(amount), 0) AS s FROM withdrawals "
+        "SELECT COALESCE(SUM(amount_minor), 0) AS s FROM withdrawals "
         "WHERE user_id = %s AND status = ANY(%s) AND id != %s",
         (user_id, list(statuses), exclude_id)).fetchone()
     return int(row["s"])

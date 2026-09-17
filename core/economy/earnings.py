@@ -1,27 +1,29 @@
-"""Provider earnings & withdrawals (C2C settlement surface, phase 3b).
+"""Provider earnings & withdrawals — the CASH account (usd_cent).
 
-The ledger stays the single source of truth: provider_earn rows ARE the
-earning record. This module adds:
+Provider Earnings are a cash ledger, never credits: the earning pool is
+pool='provider_earning', unit='usd_cent'. There is NO conversion between
+user_cost_credits and provider payout cash — they are independent
+commercial fields on the tool contract.
 
   earnings_summary(uid)  — aggregate view (total earned / withdrawn /
-                           available), derived from ledger + withdrawals
-  request_withdrawal()   — provider asks to cash out available credits;
+                           available), derived from the cash pool +
+                           withdrawals
+  request_withdrawal()   — provider asks to cash out available earnings;
                            lands as a withdrawal REQUEST row (status
                            pending) — no ledger mutation until the
                            operator approves. Payout rails (Stripe etc.)
-                           attach later; the bookkeeping loop is closed
-                           NOW: request → approve → deduct (ledger) →
-                           mark paid.
-  process_withdrawal()   — operator verb (/samelabs): approve (ledger
-                           consume 'withdraw' with idem withdrawal:{id})
-                           or reject (request stays, credits untouched).
+                           attach later; txn_ref stays the operator's
+                           external settlement reference.
+  process_withdrawal()   — operator verb (/samelabs): approve (cash
+                           movement on the provider_earning pool with
+                           idem withdrawal:{id}) or reject (request
+                           stays, earnings untouched).
 
 Red lines honored:
-  - face-value credits and cash NEVER mix in one row: withdrawals are
-    ledger consume rows (kind='withdraw') referencing the request id;
-    cash amounts are the operator's concern at the rail layer.
+  - cash and credits never mix: withdrawal movements live only on the
+    provider_earning pool; spendable credits are never withdrawable;
   - idempotency everywhere: withdrawal:{id} family; double-approve is
-    structurally impossible (status guard + unique idem).
+    structurally impossible (status guard + unique idem);
   - no partial state: approve = status flip + ledger row in ONE tx.
 """
 
@@ -30,27 +32,55 @@ from repo import economy as economy_repo
 from repo import ledger as ledger_repo
 from utils import now
 
-MIN_WITHDRAWAL = 10000         # credits = $10 (CREDITS_PER_USD=1000)
-CREDITS_PER_USD = 1000         # 1 USD = 1000 credits; earnings shown in USD
+# Cash withdrawal policy (independent of any credit unit):
+# minimum payout = $10.00 = 1000 usd_cent.
+MIN_WITHDRAWAL_MINOR = 1000
+WITHDRAWAL_CURRENCY = "USD"
 WITHDRAWAL_STATES = ("pending", "approved", "rejected", "paid")
+
+EARNING_POOL = "provider_earning"
+EARNING_UNIT = "usd_cent"
+
+
+def _fmt_usd(minor: int) -> str:
+    """usd_cent → display string, e.g. 2500 → '$25'. Integer cents only —
+    no floating point anywhere in the cash path."""
+    sign = "-" if minor < 0 else ""
+    minor = abs(int(minor))
+    if minor % 100 == 0:
+        return f"{sign}${minor // 100:,}"
+    return f"{sign}${minor // 100:,}.{minor % 100:02d}"
 
 
 def earnings_summary(user_id: int) -> dict:
-    """Available = earned (provider_earn) − withdrawn (approved+paid) −
-    pending requests. Derived live from the ledger; no cached counters."""
+    """Journal is authoritative: approved withdrawals are already movements
+    on the provider_earning pool, so the pool balance IS the available cash.
+    Pending requests are not yet movements → held back. Display fields:
+
+      earned_total  gross accrual (sum of payout movements, delta > 0)
+      withdrawn     approved+paid requests (display, from the table)
+      pending       pending requests
+      available     pool balance − pending = withdrawable now
+    """
     with db() as con:
-        earned = ledger_repo.sum_kind(con, user_id, "provider_earn")
+        pool = ledger_repo.cash_pool_balance(
+            con, user_id, EARNING_POOL, EARNING_UNIT)
+        earned_total = con.execute(
+            "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
+            "WHERE user_id = %s AND pool = %s AND delta > 0",
+            (user_id, EARNING_POOL)).fetchone()["s"]
         withdrawn = economy_repo.withdrawal_sum(
             con, user_id, ("approved", "paid"))
         pending = economy_repo.withdrawal_sum(con, user_id, ("pending",))
-    available = int(earned) - int(withdrawn) - int(pending)
-    return {"earned": int(earned), "withdrawn": int(withdrawn),
+    available = int(pool) - int(pending)
+    return {"earned": int(pool), "earned_total": int(earned_total),
+            "withdrawn": int(withdrawn),
             "pending": int(pending), "available": max(0, available)}
 
 
 def per_tool_revenue(user_id: int) -> list:
-    """Revenue breakdown per published tool (provider_earn rows joined to
-    the tool that generated them — note references the tool_key)."""
+    """Revenue breakdown per published tool (provider_earning movements
+    joined to the tool that generated them — note references the tool_key)."""
     with db() as con:
         rows = ledger_repo.earn_by_tool(con, user_id, limit=100)
     out = []
@@ -73,22 +103,26 @@ def withdrawal_count(user_id: int) -> int:
         return economy_repo.withdrawal_count(con, user_id)
 
 
-def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> dict:
-    """Provider asks to cash out. Request only — credits stay put until
+def request_withdrawal(user_id: int, amount_minor: int,
+                       currency: str = WITHDRAWAL_CURRENCY,
+                       note: str | None = None) -> dict:
+    """Provider asks to cash out. Request only — earnings stay put until
     operator approval (reject leaves the balance untouched)."""
-    amount = int(amount)
-    if amount < MIN_WITHDRAWAL:
+    amount_minor = int(amount_minor)
+    if currency != WITHDRAWAL_CURRENCY:
+        raise ValueError("withdrawal_currency_unsupported")
+    if amount_minor < MIN_WITHDRAWAL_MINOR:
         raise ValueError("withdrawal_min")
-    s = earnings_summary(user_id)
-    if amount > s["available"]:
+    s = earnings_summary(user_id)  # journal-authoritative available
+    if amount_minor > s["available"]:
         raise ValueError("withdrawal_insufficient")
     ts = now()
     with db() as con:
         from repo import users as users_repo
         ch = users_repo.payout_channel_of(con, user_id)
         channel = (ch["payout_channel"] or "")[:120] if ch else ""
-        row = economy_repo.insert_withdrawal(con, user_id, amount,
-                                             (note or "")[:200], ts)
+        row = economy_repo.insert_withdrawal(con, user_id, amount_minor,
+                                             currency, (note or "")[:200], ts)
     out = dict(row)
     out["payout_channel"] = channel  # surfaced for the operator queue
     return out
@@ -97,10 +131,9 @@ def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> di
 def process_withdrawal(withdrawal_id: int, approve: bool,
                        admin_user_id: int | None = None,
                        txn_ref: str | None = None) -> dict:
-    """Operator verb. Approve = ledger consume (kind='withdraw',
+    """Operator verb. Approve = cash movement (pool=provider_earning,
     idem withdrawal:{id}) + status flip, ONE transaction. Reject = flip
     only. Re-processing a finished request is a typed no-op error."""
-    from economy.billing import consume
     ts = now()
     with db() as con:
         row = economy_repo.withdrawal_for_update(con, withdrawal_id)
@@ -109,36 +142,39 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
         if row["status"] != "pending":
             raise ValueError("already_processed")
         if approve:
-            new_status = "approved"
             # EARN-pool gate (same accounting as the request path's
             # earnings_summary): withdrawal pays provider earnings only —
-            # top-up credits are NOT withdrawable. Available excluding this
-            # pending row = earned - (approved+paid) - other_pending.
+            # spendable credits are NOT withdrawable. Available excluding
+            # this pending row = earned - (approved+paid) - other_pending.
+            # pool balance already nets approved withdrawals (movements);
+            # only OTHER pending requests are still held back
             avail = (
-                ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
-                - economy_repo.withdrawal_sum_excluding(
-                    con, row["user_id"], ("approved", "paid"), withdrawal_id)
+                ledger_repo.cash_pool_balance(
+                    con, row["user_id"], EARNING_POOL, EARNING_UNIT)
                 - economy_repo.withdrawal_sum_excluding(
                     con, row["user_id"], ("pending",), withdrawal_id))
-            if int(avail) < int(row["amount"]):
+            if int(avail) < int(row["amount_minor"]):
                 con.rollback()
                 raise ValueError("withdrawal_insufficient")
-            # 🔴3 修复(批2a): withdraw 属 EARN 池支出, balance_after 记
-            # earn 池口径 = earned − (approved+paid 提现累计, 不含本行)。
-            # 原实现写全池 SUM, 导致 spendable 用户看到虚高余额行。
-            earned = ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
+            # balance_after is the provider_earning pool balance after this
+            # movement — earned − (approved+paid withdrawals incl. this one).
+            earned = ledger_repo.cash_pool_balance(
+                con, row["user_id"], EARNING_POOL, EARNING_UNIT)
             withdrawn_so_far = economy_repo.withdrawal_sum(
                 con, row["user_id"], ("approved", "paid"))
-            earn_pool_after = earned - withdrawn_so_far - int(row["amount"])
-            ledger_repo.insert_row(con, row["user_id"], -int(row["amount"]),
+            earn_pool_after = earned - withdrawn_so_far - int(row["amount_minor"])
+            ledger_repo.insert_row(con, row["user_id"],
+                                   EARNING_POOL, EARNING_UNIT,
+                                   -int(row["amount_minor"]),
                                    earn_pool_after, "withdraw",
                                    "withdrawal", str(row["id"]),
                                    f"withdrawal:{row['id']}",
                                    f"withdrawal #{row['id']}", ts)
         else:
-            new_status = "rejected"
+            pass  # reject: no earnings movement
         out = economy_repo.finish_withdrawal(
-            con, withdrawal_id, new_status, ts, admin_user_id,
+            con, withdrawal_id, "approved" if approve else "rejected",
+            ts, admin_user_id,
             (txn_ref or None) if approve else None)
     return dict(out)
 
@@ -151,8 +187,8 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
     out = []
     for r in rows:
         out.append({"delta": int(r["delta"]),
-                    "call_id": r["ref_id"],           # ref = tool_calls.id (批4 #17)
-                    "tool": (r["note"] or "").replace("payout ", ""),  # note = tool_key
+                    "call_id": r["ref_id"],           # ref = tool_calls.id
+                    "tool": (r["note"] or "").replace("payout ", ""),
                     "ts": int(r["created_at"])})
     return out, int(total)
 
@@ -162,7 +198,3 @@ def list_all_pending(limit: int = 50) -> list:
     with db() as con:
         rows = economy_repo.withdrawals_queue(con, limit)
     return [dict(r) for r in rows]
-
-def to_usd(credits: int) -> str:
-    """Credits → display USD string, e.g. 25000 → '$25'."""
-    return f"${credits / CREDITS_PER_USD:,.2f}".rstrip('0').rstrip('.') if credits % CREDITS_PER_USD else f"${credits // CREDITS_PER_USD:,}"

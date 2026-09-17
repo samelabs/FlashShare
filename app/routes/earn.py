@@ -2,7 +2,8 @@
 
 The money module owns: summary, per-tool revenue breakdown, withdrawal
 requests + history. The tools module owns tool CRUD. They share the
-ledger (core/economy/earnings.py) as the single source of truth.
+cash ledger (core/economy/earnings.py, usd_cent) as the single source
+of truth.
 """
 
 from pathlib import Path
@@ -16,9 +17,7 @@ from fastapi.responses import JSONResponse
 from config import COOKIE_NAME
 from database import db
 from economy import earnings
-from economy.earnings import to_usd
-from repo.sessions import user_by_session_token
-from security import token_hash
+from economy.earnings import _fmt_usd
 from utils import now
 
 router = APIRouter()
@@ -44,12 +43,11 @@ async def my_earnings(request: Request):
         wd_pg = 1
     rev_rows, rev_total = earnings.revenue_lines(user["id"], limit=50, offset=(rev_pg - 1) * 50)
     wd_rows = earnings.list_withdrawals(user["id"], limit=20, offset=(wd_pg - 1) * 20)
-    from economy.earnings import to_usd
     s = earnings.earnings_summary(user["id"])
     for k in ("earned", "available", "pending", "withdrawn"):
-        s[k + "_usd"] = to_usd(s[k])
+        s[k + "_usd"] = _fmt_usd(s[k])
     for w in wd_rows:
-        w["usd"] = to_usd(w["amount"])
+        w["usd"] = _fmt_usd(w["amount_minor"])
     return {
         "ok": True,
         "summary": s,
@@ -60,27 +58,30 @@ async def my_earnings(request: Request):
         "revenue_lines": rev_rows,
         "rev_total": rev_total,
         "rev_page": rev_pg,
-        "min_withdrawal": earnings.MIN_WITHDRAWAL,
-        "min_withdrawal_usd": to_usd(earnings.MIN_WITHDRAWAL),
+        "min_withdrawal": earnings.MIN_WITHDRAWAL_MINOR,
+        "min_withdrawal_usd": _fmt_usd(earnings.MIN_WITHDRAWAL_MINOR),
     }
 
 
 @router.post("/api/earnings/withdraw")
 async def request_withdraw(request: Request):
-    """Provider asks to cash out available credits (request → operator)."""
+    """Provider asks to cash out available earnings (request → operator).
+
+    Input contract is unambiguous cash minor units: amount_minor (usd_cent,
+    integer). No floating-point USD anywhere in the cash path.
+    """
     user, err = _require_auth(request)
     if err:
         return err
     try:
         raw = await request.json()
-        # UI takes USD (float); ledger stays credits (×1000)
-        usd = float(raw.get("usd", 0) or 0)
-        amount = int(round(usd * 1000))
+        amount_minor = int(raw.get("amount_minor", 0) or 0)
+        currency = str(raw.get("currency") or "USD")
         note = str(raw.get("note", ""))[:200]
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     try:
-        w = earnings.request_withdrawal(user["id"], amount, note)
+        w = earnings.request_withdrawal(user["id"], amount_minor, currency, note)
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, 422)
     return {"ok": True, "id": w["id"], "status": w["status"]}
