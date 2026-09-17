@@ -223,36 +223,6 @@ def call_by_tool_client_ref(con, user_id: int, tool_id: str,
     return dict(row) if row else None
 
 
-# Historical insert helpers are retained for non-gate maintenance/tests; the
-# production gate now claims a running fact first and finalizes that same row.
-def insert_call_ok(con, client_ref: str, user_id: int, tool_id: str,
-                   cost: int, upload_id, result_public_id,
-                   result_json, started_at: int, finished_at: int) -> dict:
-    return con.execute(
-        """
-        INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
-           cost_snapshot, upload_id, result_public_id, params_json,
-           result_json, started_at, finished_at)
-           VALUES (%s, %s, %s, 'ok', %s, %s, %s, %s, %s, %s, %s)
-           RETURNING id
-        """,
-        (client_ref, user_id, tool_id, cost, upload_id, result_public_id,
-         None, result_json, started_at, finished_at)).fetchone()
-
-
-def insert_call_failed(con, client_ref: str, user_id: int, tool_id: str,
-                       status: str, cost: int, error,
-                       started_at: int, finished_at: int) -> None:
-    con.execute(
-        """
-        INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
-           cost_snapshot, error, started_at, finished_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (client_ref, user_id, tool_id, status, cost, error,
-         started_at, finished_at))
-
-
 def call_count_by_ref(con, user_id: int, client_ref: str) -> int:
     return con.execute(
         "SELECT COUNT(*) AS n FROM tool_calls WHERE user_id = %s AND client_ref = %s",
