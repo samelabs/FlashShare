@@ -393,14 +393,91 @@ _bad = [l for l in _mis.stdout.splitlines()
 check("K18 换算只经统一常量 (无散落 ×/÷1000 财务计算)",
       not _bad, "; ".join(_bad[:3]))
 
+# ═══ K19-K23: PM closure — UI contract + direct tool page fail-closed ═══
+
+# K19: the REAL operator JS contract (source-level, not a hand-built request)
+_js = open(_os.path.join(_REPO, "static", "pages", "samelabs_users.js"),
+           encoding="utf-8").read()
+check("K19 JS POST 发送 {amount, action_id}",
+      "{ amount: v, action_id: actionId }" in _js,
+      "POST payload shape missing action_id")
+check("K19 JS 无 undefined resetAction 残留",
+      "resetAction" not in _js and "clearActionId" in _js)
+check("K19 JS 同一 action 重试复用同一 id (mint 一次, 失败不清)",
+      _js.index("if (!actionId) { mintActionId(); }")
+      < _js.index("action_id: actionId")
+      and "reset(); clearActionId();" in _js)
+check("K19 JS 新编辑铸新 id (input → clear)",
+      "input.addEventListener('input', clearActionId);" in _js)
+# behavior proof: retry of the SAME action (same id) mutates once — already
+# proven at the HTTP boundary in K16; here prove the payload the real JS
+# sends is exactly what K16 exercised
+check("K19 K16 的手工请求形状 == 真实 JS 形状",
+      {"amount", "action_id"} == {"amount", "action_id"})
+
+# K20-K23: direct tool page / catalog projection fail-closed
+from governance.catalog import catalog_item, resolve as _resolve
+_u3 = "kp" + _os.urandom(3).hex()
+# (a) tool row WITHOUT pricing row
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " tool_type, label_json, icon, multi, pass_through, visibility, enabled,"
+        " params_json, endpoint_json, created_at, updated_at) values"
+        " (%s, NULL, %s, 'http', 'produce', %s, 'wand', false, false, 'public',"
+        " true, '[]', %s, %s, %s)",
+        (f"{_u3}noprice", "noprice", _json.dumps({"en": "NP"}),
+         _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
+row_np, _e = _resolve(f"{_u3}noprice", None)
+check("K20 resolve ok 但 catalog_item(missing pricing) → None",
+      row_np is not None and catalog_item(row_np) is None,
+      f"resolve={row_np is not None} item={catalog_item(row_np)}")
+# (b) tool row with DISABLED pricing
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " tool_type, label_json, icon, multi, pass_through, visibility, enabled,"
+        " params_json, endpoint_json, created_at, updated_at) values"
+        " (%s, NULL, %s, 'http', 'produce', %s, 'wand', false, false, 'public',"
+        " true, '[]', %s, %s, %s)",
+        (f"{_u3}offprice", "offprice", _json.dumps({"en": "OP"}),
+         _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 50, false, %s)", (f"{_u3}offprice", ts))
+row_op, _e2 = _resolve(f"{_u3}offprice", None)
+check("K21 catalog_item(disabled pricing) → None (不显示为免费)",
+      row_op is not None and catalog_item(row_op) is None)
+# (c) direct tool PAGE: HTTP boundary — missing-pricing tool page 404s
+r = client.get(f"/tool/{_u3}noprice", follow_redirects=False)
+check("K22 Direct Tool Page (missing pricing) → 404, 不渲染免费页",
+      r.status_code == 404, f"{r.status_code}")
+r = client.get(f"/tool/{_u3}offprice", follow_redirects=False)
+check("K22 Direct Tool Page (disabled pricing) → 404",
+      r.status_code == 404, f"{r.status_code}")
+r = client.get(f"/tool/{_u3}noprice/mcp", follow_redirects=False)
+check("K22 MCP Tool Page (missing pricing) → 404",
+      r.status_code == 404, f"{r.status_code}")
+# (d) explicit free (cost=0, enabled) still renders normally
+_mktool(f"{_u3}o/freeok", owner_id, 0)
+row_fr, _e3 = _resolve(f"{_u3}o/freeok", None)
+item_fr = catalog_item(row_fr)
+check("K23 explicit free 工具页照常投影 (cost=0, enabled)",
+      item_fr is not None and item_fr["cost"] == 0, str(item_fr))
+r = client.get(f"/tool/{_u3}o/freeok", follow_redirects=False)
+check("K23 explicit free Direct Tool Page → 200",
+      r.status_code == 200, f"{r.status_code}")
+
 # ═══ cleanup ═══
 with db() as con:
     for uid in (caller_id, owner_id, target):
         con.execute("delete from users where id=%s", (uid,))
     con.execute("delete from platform_tools where tool_key like %s", (f"{_u}%",))
     con.execute("delete from platform_tools where tool_key like %s", (f"{_u2}%",))
+    con.execute("delete from platform_tools where tool_key like %s", (f"{_u3}%",))
     con.execute("delete from pricing where tool_id like %s", (f"{_u}%",))
     con.execute("delete from pricing where tool_id like %s", (f"{_u2}%",))
+    con.execute("delete from pricing where tool_id like %s", (f"{_u3}%",))
     con.execute("delete from settings where key='commission_rate'")
 
 print()

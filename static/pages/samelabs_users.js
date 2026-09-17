@@ -31,6 +31,17 @@ document.querySelectorAll('.sl-adj').forEach(function (adj) {
     if (e.key === 'Escape') reset();
   });
 
+  // Operator adjustment idempotency contract: one stable action_id per
+  // edited action — a network retry resends the SAME id (server replays
+  // the ledger idem key, no double mutation); a new edit mints a new id;
+  // a committed action clears it so the next adjustment starts fresh.
+  var actionId = null;
+  function mintActionId() {
+    actionId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+  function clearActionId() { actionId = null; }
+  input.addEventListener('input', clearActionId);
+
   btn.addEventListener('click', function () {
     var v = parseInt(input.value, 10);
     if (isNaN(v) || v === 0) {
@@ -39,13 +50,15 @@ document.querySelectorAll('.sl-adj').forEach(function (adj) {
       setTimeout(function () { input.style.borderColor = ''; }, 600);
       return;
     }
+    if (!actionId) { mintActionId(); }
     var before = parseInt(balEl.textContent.replace(/,/g, ''), 10);
-    slBusy(btn, slPost('/samelabs/users/' + uid + '/credits', { amount: v })).then(function (r) {
+    slBusy(btn, slPost('/samelabs/users/' + uid + '/credits',
+                       { amount: v, action_id: actionId })).then(function (r) {
       if (r.ok && r.data.ok) {
         balEl.textContent = slFmt(r.data.balance_after);
         slToast('ok', '已' + (v > 0 ? '发放' : '扣除') + ' ' + Math.abs(v) + ' 积分',
                 user + ': ' + slFmt(before) + ' → ' + slFmt(r.data.balance_after));
-        reset(); resetAction();
+        reset(); clearActionId();
       } else {
         var why = r.data && r.data.error ? r.data.error : '请求失败';
         slToast('err', '调整失败', user + ' · ' + why);

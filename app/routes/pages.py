@@ -253,6 +253,10 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     # (owner_id → handle 上下文), 敏感字段 (endpoint_json/auth_token/
     # owner_id/trusted/timestamps) 绝不进入 tool/tools_json。
     tool_public = catalog_item(tool)
+    if tool_public is None:
+        # pricing 缺行/停用 — 未完成商业创建的工具不渲染工具页
+        # (判定在 governance.catalog 单点, 此处不重复实现)
+        return None
     ctx = _ctx_base(request)
     from icons import icon_svg
     tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "wand")
