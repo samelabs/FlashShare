@@ -5,7 +5,7 @@
 <div class="sl-panel">
   <div class="sl-panel-head">
     <h2>提现申请</h2>
-    <span class="sl-panel-sub">审批即扣减积分账本（kind=withdraw, 幂等 withdrawal:{id}）；驳回不动账。</span>
+    <span class="sl-panel-sub">审批即记现金提现账（provider_earning/usd_cent, 幂等 withdrawal:{id}）；驳回不动账。</span>
   </div>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
@@ -17,7 +17,7 @@
         <tr data-wid="{{ w.id }}">
           <td>#{{ w.id }}</td>
           <td>{{ w.username|e }}</td>
-          <td>{{ w.amount }}</td>
+          <td>{{ '${:,.2f}'.format(w.amount_minor / 100) }} {{ w.currency }}</td>
           <td class="mono">{{ (w.payout_channel or '—')|e }}</td>
           <td><span class="sl-vis v-{{ w.status }}">{{ w.status }}</span></td>
           <td class="mono">{{ (w.txn_ref or '—')|e }}</td>

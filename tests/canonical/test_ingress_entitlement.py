@@ -698,8 +698,9 @@ def _seed_priced_tool(owner_id, tool_id, cost):
         " on conflict do nothing",
         (tk, owner_id, tool_id, _jsonx.dumps({"en": f"PF {tool_id}"}), ts, ts))
     _cur.execute(
-        "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, %s, true, 1)"
-        " on conflict (tool_id) do update set cost = excluded.cost, enabled = true",
+        "insert into pricing (tool_id, user_cost_credits, provider_payout_minor,"
+        " payout_currency, enabled, updated_at) values (%s, %s, 0, 'USD', true, 1)"
+        " on conflict (tool_id) do update set user_cost_credits = excluded.user_cost_credits, enabled = true",
         (tk, cost))
     return tk
 
@@ -710,14 +711,15 @@ _trow, _trr = _catalog_resolve(_pf_key, _pf_user_id)
 check("PF-P0 fixture: priced tool resolve ok", _trr is None and _trow is not None, str(_trr))
 
 # effective cost 单点
+_q1 = effective_quote(_pf_user_id, _trow)
 check("PF-EC1 普通用户 + priced tool → listed cost 5",
-      effective_quote(_pf_user_id, _trow) == {"enabled": True, "cost": 5})
+      _q1["enabled"] is True and _q1["cost"] == 5 and _q1["payout_minor"] == 0, str(_q1))
 _trow_self, _ = _catalog_resolve(_pf_key, _pf_owner_id)
 check("PF-EC2 self-owned priced tool → 0",
       effective_quote(_pf_owner_id, _trow_self)["cost"] == 0)
-_cur.execute("update pricing set cost=0 where tool_id=%s", (_pf_key,))
+_cur.execute("update pricing set user_cost_credits=0 where tool_id=%s", (_pf_key,))
 check("PF-EC3 cost=0 → 0", effective_quote(_pf_user_id, _trow)["cost"] == 0)
-_cur.execute("update pricing set cost=5 where tool_id=%s", (_pf_key,))
+_cur.execute("update pricing set user_cost_credits=5 where tool_id=%s", (_pf_key,))
 
 # affordability: balance=0 cost=5 → 精确 denial
 _dn = check_affordability(_pf_user_id, _trow)
@@ -778,7 +780,7 @@ conn.request("POST", "/api/tools/execute", json.dumps(_inv_d),
 r = conn.getresponse(); _ed = json.loads(r.read()); conn.close()
 check("PF-A7 authoritative execute 最终 403 tool_disabled",
       r.status == 403 and _ed.get("error") == "tool_disabled", f"{r.status} {str(_ed)[:70]}")
-_cur.execute("update pricing set enabled=true, cost=5 where tool_id=%s", (_pf_key,))
+_cur.execute("update pricing set enabled=true, user_cost_credits=5 where tool_id=%s", (_pf_key,))
 
 # no mutation: denial 前后差分 (denial 用户 balance=0; 此前 PF-A2 grant 属另一用户)
 def _counts(uid):

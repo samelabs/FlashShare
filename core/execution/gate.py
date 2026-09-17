@@ -12,13 +12,10 @@ import secrets
 
 from database import db
 from economy.billing import InsufficientCredits, consume, refund, spendable_balance
-from repo.ledger import (claim_call, finalize_call_failed, finalize_call_ok,
-                         insert_provider_earn_if_absent, total_balance)
+from repo.ledger import claim_call, finalize_call_failed
 from utils import now
 
 logger = logging.getLogger("flashshare")
-
-from governance.commission import commission_rate
 
 
 def _record_failure(call_id: int, error, status: str = "failed") -> bool:
@@ -120,37 +117,18 @@ def recover_abandoned_calls() -> dict:
 
 
 def _finish(user: dict, tool: dict, call_id: int, cost: int,
-            result: dict) -> dict:
-    """Finalize call fact + provider/platform split in one transaction.
+            payout_minor: int, result: dict) -> dict:
+    """Finalize the metering fact + cash settlement in one transaction.
 
-    Self-calls are free by policy, so cost is already zero before this point.
-    For metered calls the invariant is cost = provider payout + platform share,
-    or cost = platform revenue for first-party tools.
+    The gate owns no economic formulas: cost is the effective credits
+    quote; payout_minor is the declared provider payout from the tool's
+    commercial contract (0 for self-calls and first-party tools — see
+    settlement_quote). Settlement legs are economy.settlement's.
     """
-    owner_id = tool.get("owner_id")
-    payout = 0
-    if cost > 0 and owner_id and owner_id != user["id"]:
-        rate = commission_rate()
-        payout = cost - (cost * rate // 100)
-
     with db() as con:
-        finalize_call_ok(
-            con, call_id, result.get("publicId"),
-            json.dumps(result, ensure_ascii=False), now())
-        if cost > 0:
-            from governance.platform import record_platform_income
-            if payout > 0 and owner_id is not None:
-                base = total_balance(con, owner_id)
-                insert_provider_earn_if_absent(
-                    con, owner_id, payout, base + payout, call_id,
-                    f"payout:{call_id}", f"{tool['id']} payout", now())
-                record_platform_income(
-                    con, call_id, "platform_commission", cost - payout,
-                    f"{tool['id']} commission", now())
-            elif not owner_id:
-                record_platform_income(
-                    con, call_id, "platform_revenue", cost,
-                    f"{tool['id']} revenue", now())
+        from economy.settlement import accrue_tool_success
+        accrue_tool_success(con, call_id, tool, user["id"],
+                            payout_minor, result)
 
     out = {"ok": True, "type": tool["type"], "result": result,
            "call_id": call_id}
@@ -169,15 +147,16 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     tool_id = invocation.tool_id
     params = invocation.params
 
-    # Single effective-quote snapshot: enabled + cost both come from one
-    # effective_quote() read (listed price × self-owned free, the shared
-    # combination point with the advisory preflight). A gate invocation
-    # reads the pricing table exactly once.
+    # Single effective-quote snapshot: enabled + credits cost + declared
+    # cash payout all come from one effective_quote() read (listed price ×
+    # self-owned free, the shared combination point with the advisory
+    # preflight). A gate invocation reads the pricing table exactly once.
     from execution.affordability import effective_quote
     quote = effective_quote(user["id"], tool)
     if not quote["enabled"]:
         return None, {"ok": False, "error": "tool_disabled"}, 403
     cost = quote["cost"]
+    payout_minor = quote["payout_minor"] if cost > 0 else 0
 
     client_ref = invocation.client_ref or secrets.token_hex(16)
 
@@ -239,7 +218,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         return None, {"ok": False, "error": "err_metering_failed"}, 500
 
     try:
-        return _finish(user, tool, call_id, cost, result), None, None
+        return _finish(user, tool, call_id, cost, payout_minor, result), None, None
     except Exception:
         # Output execution may already have succeeded, but accounting is not
         # allowed to report success without the authoritative fact/split.

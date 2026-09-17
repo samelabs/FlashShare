@@ -10,9 +10,10 @@ from typing import Optional, Sequence
 
 def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
     """公开市场查询基座 (selection/search/pricing visibility):
-    enabled+public, LEFT JOIN pricing — cost=COALESCE(pricing.cost,0),
-    pricing 缺行=free+enabled, pricing.enabled=false 排除; 搜索范围仅
-    tool_key+label_json。返回 (FROM+WHERE 片段, 参数)。"""
+    enabled+public, INNER JOIN pricing (commercial terms are part of the
+    tool contract — a missing pricing row means the tool is not yet
+    commercially created and must not surface); pricing.enabled=false
+    排除; 搜索范围仅 tool_key+label_json。返回 (FROM+WHERE 片段, 参数)。"""
     where = "pt.enabled AND pt.visibility = %s"
     args: list = [visibility_public]
     if q:
@@ -22,8 +23,8 @@ def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
         args += [like, like]
     base = (
         "FROM platform_tools pt "
-        "LEFT JOIN pricing pr ON pr.tool_id = pt.tool_key "
-        f"WHERE {where} AND (pr.enabled IS NULL OR pr.enabled)")
+        "JOIN pricing pr ON pr.tool_id = pt.tool_key "
+        f"WHERE {where} AND pr.enabled")
     return base, args
 
 
@@ -45,7 +46,7 @@ def market_rows(con, visibility_public: str, q: Optional[str],
         "FROM platform_tools pt "
         "LEFT JOIN users u ON u.id = pt.owner_id ")
     return con.execute(
-        f"SELECT pt.*, COALESCE(pr.cost, 0) AS price_cost, "
+        f"SELECT pt.*, pr.user_cost_credits AS price_cost, "
         f"u.username AS owner_handle {base} "
         "ORDER BY pt.featured DESC, pt.sort_order, pt.id "
         "LIMIT %s OFFSET %s",
@@ -127,7 +128,10 @@ def retire_absent_first_party(con, live_keys: Sequence[str], ts: int) -> None:
 def owner_rows_joined(con, user_id: int) -> list:
     return con.execute(
         """
-        SELECT pt.*, u.username AS owner_name, p.cost, p.enabled AS priced
+        SELECT pt.*, u.username AS owner_name,
+               p.user_cost_credits AS cost,
+               p.provider_payout_minor, p.payout_currency,
+               p.enabled AS priced
         FROM platform_tools pt
         JOIN users u ON u.id = pt.owner_id
         LEFT JOIN pricing p ON p.tool_id = pt.tool_key
@@ -269,29 +273,37 @@ def all_remote_joined(con) -> list:
 
 def pricing_row(con, tool_id: str) -> Optional[dict]:
     return con.execute(
-        "SELECT tool_id, cost, enabled FROM pricing WHERE tool_id = %s",
+        "SELECT tool_id, user_cost_credits, provider_payout_minor,"
+        " payout_currency, enabled FROM pricing WHERE tool_id = %s",
         (tool_id,)).fetchone()
 
 
-def upsert_pricing(con, tool_id: str, cost: int, enabled: bool,
-                   ts: int, admin_user_id) -> dict:
+def upsert_pricing(con, tool_id: str, user_cost_credits: int,
+                   provider_payout_minor: int, payout_currency: str,
+                   enabled: bool, ts: int, admin_user_id) -> dict:
     return con.execute(
         """
-        INSERT INTO pricing (tool_id, cost, enabled, updated_at, updated_by)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO pricing (tool_id, user_cost_credits, provider_payout_minor,
+                             payout_currency, enabled, updated_at, updated_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (tool_id) DO UPDATE SET
-          cost = EXCLUDED.cost, enabled = EXCLUDED.enabled,
+          user_cost_credits = EXCLUDED.user_cost_credits,
+          provider_payout_minor = EXCLUDED.provider_payout_minor,
+          payout_currency = EXCLUDED.payout_currency,
+          enabled = EXCLUDED.enabled,
           updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
         RETURNING *
         """,
-        (tool_id, cost, enabled, ts, admin_user_id)).fetchone()
+        (tool_id, user_cost_credits, provider_payout_minor, payout_currency,
+         enabled, ts, admin_user_id)).fetchone()
 
 
 def seed_pricing_row(con, tool_id: str, ts: int) -> int:
     cur = con.execute(
         """
-        INSERT INTO pricing (tool_id, cost, enabled, updated_at)
-        VALUES (%s, 0, TRUE, %s)
+        INSERT INTO pricing (tool_id, user_cost_credits, provider_payout_minor,
+                             payout_currency, enabled, updated_at)
+        VALUES (%s, 0, 0, 'USD', TRUE, %s)
         ON CONFLICT (tool_id) DO NOTHING
         """,
         (tool_id, ts))

@@ -3,8 +3,7 @@
 活动=功能模块: 无活动表/触发器注册。
 本模块是第一个也是唯一的模块: 每日登录领积分。
 
-运营参数即模块常量 — 改额度/停用 = 改这里 + 重启 (与 commission_rate
-默认值同一模式)。历史沿袭 (与 activities 表时代逐字节对齐):
+运营参数即模块常量 — 改额度/停用 = 改这里 + 重启。历史沿袭 (与 activities 表时代逐字节对齐):
   amount 5 · kind 'grant_daily' · idem 'daily:{uid}:{yyyymmdd}'
   ledger note 'activity:daily_login'
 账本历史语义不变, 流水可继续按 note 聚合。

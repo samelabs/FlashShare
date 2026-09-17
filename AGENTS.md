@@ -44,7 +44,7 @@ Server Agent MUST NOT：
 - **Tool**：Declaration → Supply → Catalog → Invocation → Dispatch → Gate → Local/Remote → Result
 - **Sharing**：Upload → sniff/quota → Gokapi → upload record → public link → expiry/download limit → preview/download → cleanup
 - **Identity**：注册/登录/OAuth → session/Bearer → API token → ownership/visibility → profile/password/logout → operator authority
-- **Economy**：pricing → 消费池 → consume（幂等）→ 失败 refund → tool_call fact → provider earning/platform income → topup/withdrawal
+- **Economy**：pricing（user_cost_credits + provider_payout_minor 独立商业字段）→ 消费池 → consume（幂等）→ 失败 refund → tool_call fact → provider cash accrual → withdrawal
 
 ## C. Toolchain 冻结区
 
@@ -59,9 +59,10 @@ Server Agent MUST NOT：
   root/source/delivery 精确键集；params 显式 dict；client_ref null=fresh / 非空≤128=idempotent。
   MCP adapter 只对"缺失"填默认，显式非法值 → -32602。
 - **Execution / Settlement**：claim running → consume（idem=`call:{call_id}`）→ execute →
-  成功同事务 finalize ok + payout/commission/revenue；失败 refund 先于 finalize failed
+  成功同事务 finalize ok + declared payout accrual（cash）；失败 refund 先于 finalize failed
   （refund idem=`refund:ledger:{consume ledger id}`）；refund 失败 → call 保持 running + 500
   `err_metering_failed`；startup `recover_abandoned_calls()` 幂等恢复。不恢复 COUNT attempt。
+  经济公式归 economy 域（billing/settlement/earnings）；execution gate 只编排。
 - **Supply**：`core/governance/tool_supply.py` 是供给侧单点（validator/seal/persistence）。
 - **LocalizedText**：`string | Record<string,string>`；resolver fallback
   requested → en → first non-empty → ""；locale 属于文本值，不属于工具声明。
@@ -111,8 +112,8 @@ Server Agent MUST NOT：
 - **栈**：FastAPI + Jinja2 + Uvicorn（单 worker）+ Pillow + PostgreSQL + Gokapi + Nginx + Cloudflare。
 - **数据库**：PostgreSQL 是唯一应用数据库（`DATABASE_URL` 环境变量，psycopg）。
 - **服务**：systemd unit `flashshare-api`；`KillMode=control-group`、`TimeoutStopSec=15`。
-- **平台第三记账主体**：users 行 `username='platform'`。两条收入：用户工具抽佣（platform_commission）+ 系统工具直销（platform_revenue）。
-- **双池账本**：消费池（spendable_balance 派生）与收益池（provider_earn，仅可提现）物理隔离；ledger 唯一事实源。
+- **平台记账主体**：users 行 `username='platform'`（未来真实现金流的记账位；当前无运行时写入方——现金收入只能来自真实支付事实）。
+- **账本 movement journal**：每行显式 `pool`+`unit`（schema CHECK 封死合法对）：`spendable/credit`（消费积分）与 `provider_earning/usd_cent`（开发者现金收益）。`balance_after` 只表达所属 pool+unit 的余额。提现只动 provider_earning 池；credits 与 cash 无换算（无 CREDITS_PER_USD）。
 - **operator 权限**：users.status ∈ BACKOFFICE（如 'samelabs'），实时查库。
 - **MCP** 是北向主入口（streamable-http）；REST `/api/v1`；Web 三面同构 canonical invocation。
 - **文件生命周期**：Gokapi 是物理文件权威；518 是 public mapping/页面可见性权威；startup + hourly housekeeping，无 cron/scheduler 子系统。

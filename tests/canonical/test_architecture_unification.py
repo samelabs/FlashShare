@@ -257,7 +257,8 @@ for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
         " 'wand', %s, false, 'public', true, false, %s, %s)",
         (_bk, _bk, _bj, ts, ts))
 _cur.execute(
-    "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",
+    "insert into pricing (tool_id, user_cost_credits, provider_payout_minor,"
+    " payout_currency, enabled, updated_at) values (%s, 5, 0, 'USD', true, %s)",
     ("badaccept", ts))
 _cur.execute("select coalesce(sum(delta),0) from ledger where user_id=%s", (_uid,))
 _l0 = _cur.fetchone()[0]

@@ -11,8 +11,9 @@ Safety model (no review queue):
   - Landing identity: output_filename required with whitelisted ext
   - Per-user caps: max 20 tools, price 0..100000
   - Zero-trust output: sniff whitelist at every landing, no exemptions
-  - Economics: provider earns (price - commission) per successful call;
-    rate lives in settings (commission_rate, default 30%)
+  - Economics: commercial contract per tool = user_cost_credits (what a
+    caller pays) + provider_payout_minor (usd_cent the owner earns per
+    successful third-party call) — independent fields, no conversion
 
 Ownership boundaries:
   - tool_key namespace = owner username at creation time (renames do not
@@ -177,6 +178,16 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
             return None, "bad_cost"
         fields["cost"] = cost
 
+    # 独立现金收益字段 (usd_cent): 缺省 0; 与 cost 无任何换算关系
+    if "payout_minor" in raw:
+        try:
+            payout_minor = int(raw.get("payout_minor") or 0)
+        except (ValueError, TypeError):
+            return None, "bad_payout"
+        if not (0 <= payout_minor <= 10_000_000_00):
+            return None, "bad_payout"
+        fields["payout_minor"] = payout_minor
+
     return fields, None
 
 
@@ -287,22 +298,25 @@ async def create_user_tool(request: Request):
         "binding": build_http_binding(fields),
     }
     try:
-        # Stage B-close: policy check + persistence 同事务; 对 owner 行
-        # SELECT ... FOR UPDATE 串行化同 owner 并发 create, 保证
-        # MAX_TOOLS_PER_USER 在并发下不被突破 (READ COMMITTED 下裸
-        # COUNT 会双读 19)。cap 是 user policy, 不进 supply domain。
+        # Stage B-close: policy check + persistence + commercial contract
+        # 同事务; 对 owner 行 SELECT ... FOR UPDATE 串行化同 owner 并发
+        # create, 保证 MAX_TOOLS_PER_USER 在并发下不被突破 (READ COMMITTED
+        # 下裸 COUNT 会双读 19)。cap 是 user policy, 不进 supply domain。
+        from governance.pricing import create_tool_with_pricing
         with db() as con:
             lock_user_row(con, user["id"])
             if tool_key_exists(con, tool_key):
                 return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
             if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
                 return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
-            create_tool(declaration, con=con)
+            create_tool_with_pricing(declaration, fields["cost"],
+                                     fields.get("payout_minor", 0),
+                                     "USD", admin_user_id=user["id"],
+                                     con=con)
     except DeclarationError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 422)
-    # pricing row: owner-priced from day one
-    from governance.pricing import set_pricing
-    set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
     return {"ok": True, "tool_key": tool_key}
 
 
@@ -519,9 +533,14 @@ async def update_user_tool(tool_id: str, request: Request):
             sets["binding"] = merged_decl
         from governance.tool_supply import update_tool
         update_tool(tool_key, sets)
-    if "cost" in fields:
-        from governance.pricing import set_pricing
-        set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
+    if "cost" in fields or "payout_minor" in fields:
+        from governance.pricing import set_pricing, get_pricing
+        row = get_pricing(tool_key)
+        set_pricing(tool_key, fields.get("cost", int(row.get("user_cost_credits") or 0)),
+                    fields.get("payout_minor",
+                               int(row.get("provider_payout_minor") or 0)),
+                    row.get("payout_currency") or "USD",
+                    True, admin_user_id=user["id"])
     return {"ok": True}
 
 
@@ -539,5 +558,5 @@ async def delete_user_tool(tool_id: str, request: Request):
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         delete_tool_row(con, row["id"])
     from governance.pricing import set_pricing
-    set_pricing(tool_key, 0, False, admin_user_id=user["id"])
+    set_pricing(tool_key, 0, 0, "USD", False, admin_user_id=user["id"])
     return {"ok": True}

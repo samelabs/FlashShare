@@ -45,6 +45,8 @@ def _public_item(row: dict) -> dict:
         "enabled": row["enabled"],
         "trusted": bool(row["trusted"]),
         "cost": int(row.get("cost") or 0),
+        "payout_minor": int(row.get("provider_payout_minor") or 0),
+        "payout_currency": row.get("payout_currency") or "USD",
         "priced_enabled": bool(row.get("priced")),
         "url": decl.get("url", ""),
         "timeout_s": decl.get("timeout_s", 60),
@@ -61,8 +63,8 @@ def _public_item(row: dict) -> dict:
 
 
 def _call_stats(tool_key: str, owner_id: int | None = None) -> dict:
-    """Per-tool call stats + provider earnings (accurate join via payout
-    ledger rows referencing the call fact)."""
+    """Per-tool call stats + provider earnings in usd_cent (accurate join
+    via payout ledger rows referencing the call fact)."""
     from repo.ledger import call_stats_by_tool, earn_sum_joined_calls
     with db() as con:
         row = call_stats_by_tool(con, tool_key)

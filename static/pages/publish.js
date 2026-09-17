@@ -380,6 +380,7 @@ async function submit() {
     auth_header: document.getElementById("fAuthHeader").value.trim() || undefined,
     auth_token: document.getElementById("fAuthToken").value.trim() || undefined,
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
+    payout_minor: parseInt(document.getElementById("fPayout").value, 10) || 0,
     params: params.length ? params : undefined,
   };
   if (!_editId) body.visibility = "private";   // 新工具恒私有起步; 编辑态不动可见性 (防公开工具被编辑静默降级)
@@ -424,6 +425,7 @@ function refill(t) {
   document.getElementById("fToolId").value = t.tool_id;
   document.getElementById("fToolId").readOnly = true;      // id immutable
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
+  document.getElementById("fPayout").value = t.payout_minor != null ? t.payout_minor : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
   // 4C-2 编辑回填:
   // 完全未知 accept → famKey 为空 → 受控空态 (不默认 image, 不覆盖原声明)。

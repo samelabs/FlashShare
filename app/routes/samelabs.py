@@ -151,9 +151,17 @@ async def samelabs_set_pricing(tool_id: str, request: Request):
             raise ValueError
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from governance.pricing import set_pricing
-    row = set_pricing(tool_id, cost, enabled, admin_user_id=user["id"])
-    return {"ok": True, "pricing": {k: row[k] for k in ("tool_id", "cost", "enabled")}}
+    # payout 是商业合同的独立字段: 表单不编辑它时保留现值 (不会因改
+    # 单价意外清零开发者收益)。
+    from governance.pricing import set_pricing, get_pricing
+    current = get_pricing(tool_id)
+    payout_minor = int(current.get("provider_payout_minor") or 0)
+    currency = current.get("payout_currency") or "USD"
+    row = set_pricing(tool_id, cost, payout_minor, currency, enabled,
+                      admin_user_id=user["id"])
+    return {"ok": True, "pricing": {k: row[k] for k in (
+        "tool_id", "user_cost_credits", "provider_payout_minor",
+        "payout_currency", "enabled")}}
 
 
 @router.get("/samelabs/plans")
@@ -639,17 +647,17 @@ async def samelabs_remote_create(request: Request):
             }),
         }
         try:
-            create_tool(declaration)
+            # platform-owned row: atomic declaration + commercial contract
+            # (payout 0 — first-party tools never accrue provider cash)
+            from governance.pricing import create_tool_with_pricing
+            create_tool_with_pricing(declaration, cost, 0, "USD",
+                                     admin_user_id=user["id"])
         except DeclarationError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, 422)
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "bad_cost"}, 422)
     except Exception:
         return JSONResponse({"ok": False, "error": "duplicate_or_db"}, 409)
-    # seed pricing row so the metering gate can charge it
-    from governance.pricing import seed_pricing
-    seed_pricing([tool_id])
-    if cost > 0:
-        from governance.pricing import set_pricing
-        set_pricing(tool_id, cost, True, admin_user_id=user["id"])
     return {"ok": True, "tool_key": tool_id}
 
 
@@ -666,5 +674,5 @@ async def samelabs_remote_delete(tool_key: str, request: Request):
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         delete_tool_row(con, row["id"])
     from governance.pricing import set_pricing
-    set_pricing(tool_key, 0, False, admin_user_id=user["id"])
+    set_pricing(tool_key, 0, 0, "USD", False, admin_user_id=user["id"])
     return {"ok": True}

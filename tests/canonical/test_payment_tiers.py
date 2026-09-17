@@ -282,7 +282,7 @@ check("T10 update Pro product → Membership Pro / projection Pro / 2000 files /
       str(_pp["entitlements"]["plan_code"]))
 
 # ═══ T11: Plus 100 → upgrade 补差 +400 → 可消费余额 500 (行为合同) ═══
-# spendable 必须真的吃到 +400 (SPENDABLE_KINDS 含 grant_plan_upgrade),
+# spendable 必须真的吃到 +400 (spendable pool 覆盖 grant_plan_upgrade),
 # 而不是只读两次相等 — 看似 +400 实则不能花的假验证。
 _adj = _grants(uid10, "grant_plan_upgrade")
 _total11 = _plan_credits_total(uid10, PS)

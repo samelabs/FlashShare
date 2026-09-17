@@ -135,7 +135,7 @@ def row_to_item(row: dict, price: dict) -> dict:
         "accept": _canonical_accept(row["accept_json"]),
         "multi": bool(row["multi"]),
         "pass_through": bool(row.get("pass_through") or False),
-        "cost": int(price.get("cost") or 0),
+        "cost": int(price.get("user_cost_credits") or 0),
     }
     # params 声明 (tool modes v3): 三面同构 — web 浮层/MCP inputSchema/详情同源
     item["params"] = json.loads(row["params_json"]) if row["params_json"] else None
@@ -156,13 +156,13 @@ def catalog_item(tool: dict) -> dict:
 
     4A-fix5: Tool Page 单工具入口 — 与 list/search/owner 同一 projection
     (row_to_item) + pricing overlay。cost 来自 pricing 表 (single source),
-    platform_tools 无 cost 列。
+    platform_tools 无 cost 列; 缺行 = 未完成商业创建 (隐藏)。
 
     pricing.enabled 不参与本函数访问判定 — 可访问性由 resolve() 决定,
     pricing.enabled 的现有访问语义不变 (仅 list/search/owner 列表隐藏)。
     """
     from governance.pricing import get_pricing
-    price = get_pricing(tool["tool_key"]) or {"cost": 0, "enabled": True}
+    price = get_pricing(tool["tool_key"])
     return row_to_item(tool, price)
 
 
@@ -219,7 +219,8 @@ def owner_public_tools(owner_id: int) -> list:
         rows = catalog_repo.public_rows_by_owner(con, owner_id, VIS_PUBLIC)
     out = []
     for row in rows:
-        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
+        p = prices.get(row["tool_key"]) or {"user_cost_credits": 0,
+                                            "enabled": False}
         if not p["enabled"]:
             continue
         out.append(row_to_item(row, p))
@@ -247,7 +248,8 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     for row in rows:
         if not include_remote and row["execution"] != "local":
             continue
-        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
+        p = prices.get(row["tool_key"]) or {"user_cost_credits": 0,
+                                            "enabled": False}
         if not p["enabled"]:
             continue
         result.append(row_to_item(row, p))
@@ -266,7 +268,8 @@ def market_page(q: str | None = None, page: int = 1) -> dict:
     返回 {items, total, page, total_pages}。页边界 canonical 行为:
     非法/非正数页 → 1; 超过末页 → 末页 (空目录时 total_pages=1)。
     排序与可见性语义同 visible_to: featured DESC, sort_order, id;
-    pricing 缺行 = free + enabled, pricing.enabled=false 排除。
+    pricing INNER JOIN (商业合同是工具创建合同的一部分, 缺行不上面),
+    pricing.enabled=false 排除。
     Web 页码窗口 (ellipsis/page window) 属 presentation, 不在此层。
     """
     q = (q or "").strip() or None
@@ -278,7 +281,8 @@ def market_page(q: str | None = None, page: int = 1) -> dict:
         rows = catalog_repo.market_rows(
             con, VIS_PUBLIC, q, MARKET_PAGE_SIZE,
             (canonical_page - 1) * MARKET_PAGE_SIZE)
-    items = [row_to_item(row, {"cost": row["price_cost"], "enabled": True})
+    items = [row_to_item(row, {"user_cost_credits": row["price_cost"],
+                               "enabled": True})
              for row in rows]
     return {"items": items, "total": total, "page": canonical_page,
             "total_pages": total_pages}
