@@ -292,6 +292,101 @@ _tc1 = _cur.fetchone()[0]
 check("U3c ledger unchanged", _l1 == _l0, (_l0, _l1))
 check("U3c tool_calls unchanged", _tc1 == _tc0, (_tc0, _tc1))
 
+# ═══ U9: credential channel boundaries (真实 HTTP 边界) ═══
+# Operator authority stays users.status; the CHANNEL is what closes:
+# /samelabs accepts browser sessions only, ?key= query auth is gone.
+_cur.execute("update users set status='samelabs' where id=%s", (_uid,))
+r = client.get("/samelabs", cookies={COOKIE_NAME: sess}, follow_redirects=False)
+check("U9 operator session → /samelabs allowed",
+      r.status_code == 200, f"{r.status_code} {r.text[:80]}")
+r = client.get("/samelabs", headers={"Authorization": f"Bearer {_vtok}"},
+               follow_redirects=False)
+check("U9 operator bearer token → /samelabs denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+r = client.post("/samelabs/tools/x/pricing",
+                headers={"Authorization": f"Bearer {_vtok}"},
+                follow_redirects=False)
+check("U9 operator bearer token → /samelabs POST denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+r = client.get("/samelabs?key=" + _vtok, follow_redirects=False)
+check("U9 operator token via ?key= → /samelabs denied (query auth absent)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+_cur.execute("update users set status='active' where id=%s", (_uid,))
+r = client.get("/samelabs", cookies={COOKIE_NAME: sess}, follow_redirects=False)
+check("U9 normal browser session → /samelabs denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+r = client.get("/samelabs", follow_redirects=False)
+check("U9 anonymous → /samelabs denied (redirect)",
+      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
+      f"{r.status_code} {r.headers.get('location', '')}")
+# query-token channel is structurally absent from the auth resolver
+_main_src = open(_os.path.join(_REPO, "app", "main.py"), encoding="utf-8").read()
+check("U9 main.py 无 query key 认证分支",
+      'query_params.get("key"' not in _main_src)
+check("U9 agents.html 无 ?key= 直连示例",
+      "?key=" not in open(_os.path.join(_REPO, "app", "templates", "agents.html"),
+                          encoding="utf-8").read())
+# Bearer + session keep working on the capability surface
+r = client.get("/api/v1/me", headers={"Authorization": f"Bearer {_vtok}"})
+check("U9 Bearer 在能力面 (v1 /me) 仍有效",
+      r.status_code == 200 and r.json().get("user", {}).get("username") == _u,
+      f"{r.status_code} {r.text[:80]}")
+r = client.get("/api/v1/me?key=" + _vtok)
+check("U9 ?key= 仅凭查询参数 → 能力面未认证",
+      r.status_code == 401, f"{r.status_code} {r.text[:80]}")
+_cur.execute("update users set status='active' where id=%s", (_uid,))
+
+# ═══ U10: historical runtime paths absent ═══
+# C9: bcrypt-only password verification — no legacy format parser
+from security import hash_password as _hash_pw
+_BCRYPT_OK = _hash_pw("pw12345678")
+_LEGACY_HASH = "c2FsdA==:aGFzaA=="  # salt_b64:hash_b64 shape — retired format
+_sec_src = open(_os.path.join(_REPO, "core", "security.py"), encoding="utf-8").read()
+check("U10 security.py 无 legacy password parser (salt_b64)",
+      "salt_b64" not in _sec_src)
+check("U10 needs_rehash absent", "needs_rehash" not in _sec_src)
+_auth_src = open(_os.path.join(_REPO, "core", "identity", "auth.py"),
+                 encoding="utf-8").read()
+check("U10 login 无 migration-on-login rehash",
+      "needs_rehash" not in _auth_src)
+import security as _security_mod
+check("U10 verify_password: valid bcrypt → True",
+      _security_mod.verify_password("pw12345678", _BCRYPT_OK))
+check("U10 verify_password: malformed → False",
+      not _security_mod.verify_password("pw12345678", "not-a-hash"))
+check("U10 verify_password: legacy salt:hash format → False (fail closed)",
+      not _security_mod.verify_password("pw12345678", _LEGACY_HASH))
+check("U10 verify_password: empty stored → False",
+      not _security_mod.verify_password("pw12345678", ""))
+check("U10 verify_password: wrong password on bcrypt → False",
+      not _security_mod.verify_password("wrong-pass", _BCRYPT_OK))
+# C10: historical tool_call insert writers absent
+_ledger_src = open(_os.path.join(_REPO, "core", "repo", "ledger.py"),
+                   encoding="utf-8").read()
+check("U10 ledger.py 无 insert_call_ok/insert_call_failed",
+      "insert_call_ok" not in _ledger_src and "insert_call_failed" not in _ledger_src)
+_exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
+                 encoding="utf-8").read()
+check("U10 execution/__init__ 无 historical writer re-exports",
+      "insert_call_ok" not in _exec_src and "insert_call_failed" not in _exec_src)
+import repo.ledger as _ledger_mod
+check("U10 ledger 模块无 historical writer 符号",
+      not hasattr(_ledger_mod, "insert_call_ok")
+      and not hasattr(_ledger_mod, "insert_call_failed"))
+# C25: deploy runbook deletes (never archives/restores) the dead app sqlite
+_doc2 = open(_os.path.join(_REPO, "docs", "plan",
+                           "ARCHITECTURE_UNIFICATION_DEPLOY_20260916.md"),
+             encoding="utf-8").read()
+check("U10 deploy runbook 无 sqlite archive/restore 路径",
+      "retired-" not in _doc2 and "mv /var/lib/flashshare" not in _doc2
+      and "/var/backups/flashshare/retired" not in _doc2)
+check("U10 deploy runbook 明确 rm dead sqlite file",
+      "rm -f /var/lib/flashshare/flashshare.sqlite" in _doc2)
+
 # ═══ U7: v1 /me 无 plan 键 ═══
 _api = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
 check("U7 v1 /me 无 plan alias", '"plan":' not in _api)

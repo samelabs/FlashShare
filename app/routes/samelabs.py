@@ -1,8 +1,10 @@
 """/samelabs back-office: access control + shared helpers (batch C4).
 
-Gate model: users.status = 'samelabs' grants back-office access
-(the path is /samelabs only). Sessions AND Bearer both work — the gate
-is the user row, not the channel.
+Gate model: /samelabs is the manual operator control plane. Access =
+live browser session + users.status in BACKOFFICE_STATUSES. Capability
+tokens (Bearer) authenticate the API/MCP surfaces only — they never
+enter the back-office. The user row stays the operator authority;
+the credential channel is session-only.
 
 Pages (server-rendered, no SPA):
     /samelabs            overview  — users count, calls, credits flow
@@ -41,7 +43,15 @@ def is_operator(user: dict | None) -> bool:
 
 
 def _gate(request: Request):
-    """Return (user, None) for operators, else (None, response)."""
+    """Return (user, None) for operator browser sessions, else (None, response).
+
+    Session-only: the request must carry a live browser session whose user
+    row has back-office status. Bearer capability tokens are rejected here
+    even when the underlying account is an operator — the control plane is
+    not a token surface.
+    """
+    if getattr(request.state, "auth_via", "") != "session":
+        return None, RedirectResponse("/auth/login?next=/samelabs", status_code=302)
     user = getattr(request.state, "user", None)
     if not is_operator(user):
         return None, RedirectResponse("/auth/login?next=/samelabs", status_code=302)

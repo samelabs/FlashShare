@@ -63,9 +63,9 @@ Do NOT merge target code into /opt/flashshare to obtain scripts.
     SQL
     # I. remove dead env key (keep the .bak for rollback)
     sudo sed -i.bak-acct-unify '/^FLASHSHARE_DB=/d' /etc/flashshare.env
-    # J. archive retired sqlite (mv, not rm — rollback evidence)
-    sudo mv /var/lib/flashshare/flashshare.sqlite \
-      /var/backups/flashshare/retired-$(date -u +%Y%m%dT%H%M%SZ).sqlite
+    # J. delete the dead application sqlite artifact (PostgreSQL is the only
+    #    application DB; the file is not rollback evidence and is not archived)
+    sudo rm -f /var/lib/flashshare/flashshare.sqlite
     # K. production checkout ff-only to the approved SHA
     cd /opt/flashshare
     git merge --ff-only "$TARGET_SHA"
@@ -106,7 +106,6 @@ The DB now has the unified schema; OLD code must NOT be started against it
        sudo systemctl stop flashshare-api   # if partially started
        # restore DB from the step-2 backup (pg_restore -c the dump)
        sudo cp /etc/flashshare.env.bak-acct-unify /etc/flashshare.env
-       sudo mv /var/backups/flashshare/retired-*.sqlite /var/lib/flashshare/flashshare.sqlite
        cd /opt/flashshare && git checkout <original deployed SHA>
        sudo systemctl start flashshare-api
 

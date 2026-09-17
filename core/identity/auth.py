@@ -9,7 +9,7 @@ from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET
 from database import db
 from repo import users as users_repo
 from repo import sessions as sessions_repo
-from security import hash_password, verify_password, needs_rehash
+from security import hash_password, verify_password
 from utils import now
 
 
@@ -76,13 +76,8 @@ def authenticate_local(login: str, password: str) -> int | None:
         return None
     if not verify_password(password, row["password_hash"]):
         return None
-    ts = now()
-    if needs_rehash(row["password_hash"]):
-        new_hash = hash_password(password)
-        with db() as con:
-            users_repo.update_password_hash(con, row["id"], new_hash, ts)
     with db() as con:
-        users_repo.touch_login(con, row["id"], ts)
+        users_repo.touch_login(con, row["id"], now())
     return row["id"]
 
 

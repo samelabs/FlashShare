@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import hmac
 import os
@@ -70,24 +69,13 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, stored: str) -> bool:
-    if not stored:
+    """bcrypt is the only password format. Anything else fails closed."""
+    if not stored or not stored.startswith("$2"):
         return False
-    if stored.startswith("$2"):
-        try:
-            return bcrypt.checkpw(password.encode(), stored.encode())
-        except Exception:
-            return False
     try:
-        salt_b64, hash_b64 = stored.split(":", 1)
-        salt = base64.b64decode(salt_b64)
-        h = hashlib.sha256(salt + password.encode()).digest()
-        return base64.b64encode(h).decode() == hash_b64
+        return bcrypt.checkpw(password.encode(), stored.encode())
     except Exception:
         return False
-
-
-def needs_rehash(stored: str) -> bool:
-    return bool(stored) and not stored.startswith("$2")
 
 
 # ── One-time signed source-fetch tokens (remote tool execution) ──
