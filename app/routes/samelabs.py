@@ -439,22 +439,26 @@ async def samelabs_adjust_credits(user_id: int, request: Request):
         raw = await request.json()
         amount = int(raw.get("amount", 0))
         note = str(raw.get("note", ""))[:200]
+        # Stable action identity: the operator UI mints ONE id per edited
+        # action and resends it verbatim on network retry — a retried HTTP
+        # request replays the same ledger idem key instead of double
+        # mutating. A different action sends a different action_id.
+        action_id = str(raw.get("action_id", "")).strip()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    if not action_id or len(action_id) > 64:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from economy.billing import grant, consume, InsufficientCredits
-    # Each manual adjustment is a distinct event — idem must never collide
-    # (two ops in the same second would share a now()-second key).
-    import secrets as _secrets
-    nonce = f"{now()}:{_secrets.token_hex(8)}"
+    idem = f"adjust:{user['id']}:{action_id}"
     try:
         if amount > 0:
             row = grant(user_id, amount, "adjust",
                         note=note or "samelabs adjust",
-                        idem_key=f"adjust:{user['id']}:{nonce}")
+                        idem_key=idem)
         elif amount < 0:
             row = consume(user_id, -amount, "adjust",
                           note=note or "samelabs adjust",
-                          idem_key=f"adjust:{user['id']}:{nonce}")
+                          idem_key=idem)
         else:
             return JSONResponse({"ok": False, "error": "zero_amount"}, 422)
     except InsufficientCredits as exc:
@@ -639,17 +643,16 @@ async def samelabs_remote_create(request: Request):
             }),
         }
         try:
-            create_tool(declaration)
+            # atomic: declaration + commercial contract in one transaction
+            from governance.pricing import create_tool_with_pricing
+            create_tool_with_pricing(declaration, cost,
+                                     admin_user_id=user["id"])
         except DeclarationError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, 422)
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "bad_cost"}, 422)
     except Exception:
         return JSONResponse({"ok": False, "error": "duplicate_or_db"}, 409)
-    # seed pricing row so the metering gate can charge it
-    from governance.pricing import seed_pricing
-    seed_pricing([tool_id])
-    if cost > 0:
-        from governance.pricing import set_pricing
-        set_pricing(tool_id, cost, True, admin_user_id=user["id"])
     return {"ok": True, "tool_key": tool_id}
 
 

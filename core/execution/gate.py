@@ -12,8 +12,9 @@ import secrets
 
 from database import db
 from economy.billing import InsufficientCredits, consume, refund, spendable_balance
+from repo import ledger as ledger_repo
 from repo.ledger import (claim_call, finalize_call_failed, finalize_call_ok,
-                         insert_provider_earn_if_absent, total_balance)
+                         insert_provider_earn_if_absent)
 from utils import now
 
 logger = logging.getLogger("flashshare")
@@ -124,33 +125,49 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     """Finalize call fact + provider/platform split in one transaction.
 
     Self-calls are free by policy, so cost is already zero before this point.
-    For metered calls the invariant is cost = provider payout + platform share,
-    or cost = platform revenue for first-party tools.
+    Value conservation for metered calls, all in credits:
+
+      third-party tool:  user debit = provider earning + platform commission
+                         provider = cost - cost*rate//100
+                         platform = cost - provider
+      first-party tool:  user debit = platform revenue (full cost)
+
+    The third-party split writes BOTH legs whenever owner is set and the
+    caller is not the owner — including rate=100 (provider 0, platform
+    full cost) and rate=0 (provider full cost, platform 0). Zero legs
+    are skipped only when the leg amount is exactly 0.
     """
     owner_id = tool.get("owner_id")
     payout = 0
-    if cost > 0 and owner_id and owner_id != user["id"]:
+    commission = 0
+    if cost > 0 and owner_id is not None and owner_id != user["id"]:
         rate = commission_rate()
         payout = cost - (cost * rate // 100)
+        commission = cost - payout
 
     with db() as con:
         finalize_call_ok(
             con, call_id, result.get("publicId"),
             json.dumps(result, ensure_ascii=False), now())
-        if cost > 0:
+        if cost > 0 and owner_id is None:
+            # first-party: full cost is platform revenue
             from governance.platform import record_platform_income
-            if payout > 0 and owner_id is not None:
-                base = total_balance(con, owner_id)
+            record_platform_income(
+                con, call_id, "platform_revenue", cost,
+                f"{tool['id']} revenue", now())
+        elif cost > 0:
+            # third-party: two independent legs, conservation holds at
+            # every commission rate (0% / 30% / 100%)
+            if payout > 0:
+                base = ledger_repo.earn_pool_balance(con, owner_id)
                 insert_provider_earn_if_absent(
                     con, owner_id, payout, base + payout, call_id,
                     f"payout:{call_id}", f"{tool['id']} payout", now())
+            if commission > 0:
+                from governance.platform import record_platform_income
                 record_platform_income(
-                    con, call_id, "platform_commission", cost - payout,
+                    con, call_id, "platform_commission", commission,
                     f"{tool['id']} commission", now())
-            elif not owner_id:
-                record_platform_income(
-                    con, call_id, "platform_revenue", cost,
-                    f"{tool['id']} revenue", now())
 
     out = {"ok": True, "type": tool["type"], "result": result,
            "call_id": call_id}

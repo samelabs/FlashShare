@@ -10,9 +10,9 @@ from typing import Optional, Sequence
 
 def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
     """公开市场查询基座 (selection/search/pricing visibility):
-    enabled+public, LEFT JOIN pricing — cost=COALESCE(pricing.cost,0),
-    pricing 缺行=free+enabled, pricing.enabled=false 排除; 搜索范围仅
-    tool_key+label_json。返回 (FROM+WHERE 片段, 参数)。"""
+    enabled+public, INNER JOIN pricing (缺行=未完成商业创建, 不上面;
+    pricing.enabled=false 排除); 搜索范围仅 tool_key+label_json。
+    返回 (FROM+WHERE 片段, 参数)。"""
     where = "pt.enabled AND pt.visibility = %s"
     args: list = [visibility_public]
     if q:
@@ -22,8 +22,8 @@ def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
         args += [like, like]
     base = (
         "FROM platform_tools pt "
-        "LEFT JOIN pricing pr ON pr.tool_id = pt.tool_key "
-        f"WHERE {where} AND (pr.enabled IS NULL OR pr.enabled)")
+        "JOIN pricing pr ON pr.tool_id = pt.tool_key "
+        f"WHERE {where} AND pr.enabled")
     return base, args
 
 
@@ -45,7 +45,7 @@ def market_rows(con, visibility_public: str, q: Optional[str],
         "FROM platform_tools pt "
         "LEFT JOIN users u ON u.id = pt.owner_id ")
     return con.execute(
-        f"SELECT pt.*, COALESCE(pr.cost, 0) AS price_cost, "
+        f"SELECT pt.*, pr.cost AS price_cost, "
         f"u.username AS owner_handle {base} "
         "ORDER BY pt.featured DESC, pt.sort_order, pt.id "
         "LIMIT %s OFFSET %s",

@@ -73,9 +73,10 @@ async def request_withdraw(request: Request):
         return err
     try:
         raw = await request.json()
-        # UI takes USD (float); ledger stays credits (×1000)
-        usd = float(raw.get("usd", 0) or 0)
-        amount = int(round(usd * 1000))
+        # Withdrawal amount is an integer CREDITS value — no floating-point
+        # arithmetic in the money path. USD appears only at the payout
+        # presentation boundary (credits / 1000, display-only).
+        amount = int(raw.get("amount", 0) or 0)
         note = str(raw.get("note", ""))[:200]
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)

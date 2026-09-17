@@ -151,18 +151,25 @@ def row_to_item(row: dict, price: dict) -> dict:
     return item
 
 
-def catalog_item(tool: dict) -> dict:
+def catalog_item(tool: dict) -> dict | None:
     """Resolve 成功的 platform_tools row → canonical catalog item.
 
     4A-fix5: Tool Page 单工具入口 — 与 list/search/owner 同一 projection
     (row_to_item) + pricing overlay。cost 来自 pricing 表 (single source),
     platform_tools 无 cost 列。
 
-    pricing.enabled 不参与本函数访问判定 — 可访问性由 resolve() 决定,
-    pricing.enabled 的现有访问语义不变 (仅 list/search/owner 列表隐藏)。
+    Fail closed at the single point: a missing pricing row (tool not
+    commercially created) or pricing.enabled=false yields None — the
+    Direct Tool Page / MCP Tool Page must NOT render such a tool as a
+    free tool. Access adjudication stays in resolve(); the commercial
+    availability gate lives HERE, the one catalog authority (routes
+    never re-implement it). List/search/market exclude such rows via
+    their own pricing overlay — same rule, same module.
     """
     from governance.pricing import get_pricing
-    price = get_pricing(tool["tool_key"]) or {"cost": 0, "enabled": True}
+    price = get_pricing(tool["tool_key"])
+    if not price["enabled"]:
+        return None
     return row_to_item(tool, price)
 
 
@@ -219,7 +226,7 @@ def owner_public_tools(owner_id: int) -> list:
         rows = catalog_repo.public_rows_by_owner(con, owner_id, VIS_PUBLIC)
     out = []
     for row in rows:
-        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
+        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
         if not p["enabled"]:
             continue
         out.append(row_to_item(row, p))
@@ -247,7 +254,7 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     for row in rows:
         if not include_remote and row["execution"] != "local":
             continue
-        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": True}
+        p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
         if not p["enabled"]:
             continue
         result.append(row_to_item(row, p))
@@ -266,7 +273,8 @@ def market_page(q: str | None = None, page: int = 1) -> dict:
     返回 {items, total, page, total_pages}。页边界 canonical 行为:
     非法/非正数页 → 1; 超过末页 → 末页 (空目录时 total_pages=1)。
     排序与可见性语义同 visible_to: featured DESC, sort_order, id;
-    pricing 缺行 = free + enabled, pricing.enabled=false 排除。
+    pricing INNER JOIN (缺行=未完成商业创建, 不上面), pricing.enabled=false
+    排除。
     Web 页码窗口 (ellipsis/page window) 属 presentation, 不在此层。
     """
     q = (q or "").strip() or None

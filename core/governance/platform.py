@@ -77,8 +77,10 @@ def record_platform_income(con, call_id, kind: str, amount: int, note: str,
     if amount <= 0:
         return
     pid = ensure_platform_account(con)
-    # balance_after = 平台账户全池累计 (与 provider_earn 同口径)
-    base = ledger_repo.total_balance(con, pid)
+    # balance_after = 平台收入池口径 (platform_commission + platform_revenue
+    # — 平台账户的全部经济 kind), 与 provider_earn writer 的单池口径同规则
+    base = (ledger_repo.sum_kind(con, pid, "platform_commission")
+            + ledger_repo.sum_kind(con, pid, "platform_revenue"))
     idem = f"{kind}:{call_id}"
     if ledger_repo.idem_key_exists(con, pid, idem):
         return

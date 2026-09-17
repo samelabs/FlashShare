@@ -91,7 +91,7 @@ async function loadEarnings() {
     }
 
   const hint = document.getElementById('withdrawHint');
-  hint.textContent = _msg('earn_min').replace('{n}', (d.min_withdrawal_usd || '$10')) + ' · ' + _msg('earn_avail') + ' ' + (s.available_usd || '');
+  hint.textContent = _msg('earn_min').replace('{n}', (d.min_withdrawal || 10000)) + ' · ' + _msg('earn_avail') + ' ' + (s.available_usd || '');
 }
 
 document.getElementById('openWithdraw')?.addEventListener('click', () => {
@@ -103,12 +103,12 @@ _wModal?.addEventListener('click', e => { if (e.target === _wModal) _wModal.clas
 
 document.getElementById('submitWithdraw')?.addEventListener('click', async () => {
   const btn = document.getElementById('submitWithdraw');
-  const usd = parseFloat(document.getElementById('wAmount').value) || 0;
+  const amount = parseInt(document.getElementById('wAmount').value, 10) || 0;
   const note = document.getElementById('wNote').value.trim();
   btn.disabled = true;
   const r = await fetch('/api/earnings/withdraw', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usd, note })
+    body: JSON.stringify({ amount, note })
   });
   const d = await r.json();
   btn.disabled = false;

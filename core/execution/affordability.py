@@ -24,7 +24,7 @@ def effective_quote(user_id: int, tool: dict) -> dict:
     Returns {"enabled": bool, "cost": int} — cost is the effective charge
     the authoritative gate applies for this (user, tool) pair.
     """
-    price = get_pricing(tool["tool_key"]) or {"cost": 0, "enabled": True}
+    price = get_pricing(tool["tool_key"])  # missing row → disabled (fail closed)
     listed = int(price["cost"])
     cost = 0 if tool.get("owner_id") == user_id else listed
     return {"enabled": bool(price["enabled"]), "cost": cost}
