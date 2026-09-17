@@ -110,27 +110,46 @@ def create_subscription_checkout(order_id: int, plan: dict, user: dict) -> dict:
     })
 
 
-# Creem billing_type enum: recurring products only (a 'onetime' product
-# under a subscription plan is a configuration error — fail closed)
+# Creem billing contract for subscription plans: recurring, monthly.
+# The canonical paid Plan is a monthly contract — a yearly or one-time
+# product under a subscription plan is a configuration error (wrong
+# charge risk), fail closed everywhere.
 _BILLING_TYPE_RECURRING = "recurring"
+_BILLING_PERIOD_MONTHLY = "every-month"
+
+
+def _fetch_product(product_id: str) -> dict | None:
+    """GET /v1/products/{id} → product dict (two current payload shapes),
+    None on failure/absent."""
+    try:
+        data = _get(f"/v1/products/{product_id}")
+    except Exception:
+        return None
+    prod = data.get("object") == "product" and data or (
+        data.get("product") if isinstance(data.get("product"), dict) else None)
+    if isinstance(prod, dict) and str(prod.get("id") or "") == product_id:
+        return prod
+    return None
+
+
+def _billing_contract_ok(prod: dict) -> bool:
+    return (str(prod.get("billing_type") or "") == _BILLING_TYPE_RECURRING
+            and str(prod.get("billing_period") or "") == _BILLING_PERIOD_MONTHLY)
 
 
 def verify_product_mirror(product_id: str, price_cents: int,
                           currency: str) -> str:
     """Verify the Creem product mirror matches the 518 commercial fact.
 
-    Returns "" when consistent; otherwise a stable mismatch token
-    (one of price/currency/billing_type/not_found/not_configured) —
-    the caller fails closed on any non-empty value."""
+    Checks product id + price + currency + billing contract
+    (recurring + every-month). Returns "" when consistent; otherwise a
+    stable mismatch token (price/currency/billing_type/billing_period/
+    not_found/not_configured) — the caller fails closed on any non-empty
+    value. A same-price yearly product is NOT consistent."""
     if not CREEM_API_KEY or not product_id:
         return "not_configured"
-    try:
-        data = _get(f"/v1/products/{product_id}")
-    except Exception:
-        return "not_found"
-    prod = data.get("object") == "product" and data or (
-        data.get("product") if isinstance(data.get("product"), dict) else None)
-    if not isinstance(prod, dict) or str(prod.get("id") or "") != product_id:
+    prod = _fetch_product(product_id)
+    if prod is None:
         return "not_found"
     if int(prod.get("price") or 0) != int(price_cents):
         return "price"
@@ -138,30 +157,46 @@ def verify_product_mirror(product_id: str, price_cents: int,
         return "currency"
     if str(prod.get("billing_type") or "") != _BILLING_TYPE_RECURRING:
         return "billing_type"
+    if str(prod.get("billing_period") or "") != _BILLING_PERIOD_MONTHLY:
+        return "billing_period"
     return ""
 
 
 def mirror_product_price(product_id: str, price_cents: int,
                          currency: str) -> dict:
-    """Write-through: push the 518 requested price into the Creem product
-    (recurring PATCH creates a new default price). Raises on provider
-    failure — the caller must NOT commit the local price when this fails,
-    so the UI can never show a price the provider still charges old."""
+    """Write-through: push the 518 requested price into the Creem product.
+
+    The provider billing contract is NEVER rewritten here — 518 is the
+    price authority, not a billing-contract editor. Sequence:
+      1. GET the target product and require the correct contract
+         (id + recurring + every-month) — a one-time or yearly product
+         fails closed BEFORE any PATCH (a price change must not silently
+         'repair' a misconfigured product into recurring).
+      2. PATCH ONLY the commercial price facts (price + currency).
+      3. Re-confirm the response: id + price + currency + recurring +
+         every-month. Any inconsistency → operation failed → the caller
+         must NOT commit the local price.
+    """
     if not CREEM_API_KEY or not product_id:
         raise RuntimeError("product_not_configured")
+    prod = _fetch_product(product_id)
+    if prod is None:
+        raise RuntimeError("product_not_found")
+    if not _billing_contract_ok(prod):
+        raise RuntimeError("product_billing_contract_invalid")
     out = _patch(f"/v1/products/{product_id}", {
         "price": int(price_cents),
         "currency": str(currency).upper(),
-        "billing_type": _BILLING_TYPE_RECURRING,
     })
-    # provider-confirmed mirror: response must reflect the requested fact
-    prod = out.get("object") == "product" and out or (
+    confirmed = out.get("object") == "product" and out or (
         out.get("product") if isinstance(out.get("product"), dict) else None)
-    if not isinstance(prod, dict) \
-            or int(prod.get("price") or 0) != int(price_cents) \
-            or str(prod.get("currency") or "").upper() != str(currency).upper():
+    if not isinstance(confirmed, dict) \
+            or str(confirmed.get("id") or "") != product_id \
+            or int(confirmed.get("price") or 0) != int(price_cents) \
+            or str(confirmed.get("currency") or "").upper() != str(currency).upper() \
+            or not _billing_contract_ok(confirmed):
         raise RuntimeError("price_mirror_confirm_failed")
-    return prod
+    return confirmed
 
 
 def upgrade_subscription(subscription_id: str, product_id: str,

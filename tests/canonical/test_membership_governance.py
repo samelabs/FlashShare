@@ -117,8 +117,8 @@ def _sub_snap(status, p_start, p_end, product=None, sub_id="mgsub1"):
     d = {"object": "subscription", "id": sub_id, "status": status,
          "current_period_start_date": p_start, "current_period_end_date": p_end,
          # paid-proof contract: product + last_transaction_id must be present
-         # (subscription.paid is a provider payment proof, never bare status)
-         "product": product or {"id": "prod_mg"},
+         # AND the product must match the locally bound plan product
+         "product": product or {"id": "price_plus"},
          "last_transaction_id": f"txn_{sub_id}"}
     return d
 

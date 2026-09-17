@@ -97,7 +97,9 @@ def _seed_sub_user(prefix, plan_code, product, sub_id, paid=True):
         (uid, plan_id, f"sub:{sub_id}", _ts, _ts))
     _sub.bind_checkout({"id": "ch_" + sub_id, "subscription": {"id": sub_id}})
     if paid:
-        _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id=sub_id))
+        _sub.handle_event("subscription.paid",
+                          _sub_snap("active", _iso(PS), _iso(PE),
+                                    product={"id": product}, sub_id=sub_id))
     return u, uid, plan_id
 
 def _grants(uid, kind):
@@ -310,7 +312,7 @@ check("T12 replay upgrade events → 补差仍 exactly once / spendable 不再�
       and _plan_credits_total(uid10, PS) == 500,
       f"spendable={spendable_balance(uid10)} (anchor={_bal_after_upgrade})")
 # 同周期 paid 重放 → 不再全额 500:
-_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="ptsub10"))
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
 check("T12b 同周期 paid 重放 → period total 仍 500 / spendable 不重复增加",
       _plan_credits_total(uid10, PS) == 500
       and spendable_balance(uid10) == _bal_after_upgrade,

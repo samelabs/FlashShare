@@ -69,6 +69,8 @@ def _seed_plan_order(uid, monthly_credits=100):
         " %s, %s) returning id",
         (f"plus{uid}", f"PLUS{uid}", monthly_credits, _ts, _ts))
     plan_id = _cur.fetchone()[0]
+    _cur.execute("update plans set creem_product_id=%s, price_cents=500 where id=%s",
+                 (f"prod_rc_{uid}", plan_id))
     _cur.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
         " status, amount_cents, created_at, paid_at)"
@@ -86,10 +88,10 @@ def _seed_plan_order(uid, monthly_credits=100):
         (uid, plan_id, f"sub:test{uid}", "active", _ts, _ts))
     return plan_id, oid, f"test{uid}"
 
-def _sub_snapshot(status, p_start, p_end, sub_id="txn-sub"):
+def _sub_snapshot(status, p_start, p_end, sub_id="txn-sub", product=None):
     return {"object": "subscription", "id": sub_id, "status": status,
             "current_period_start_date": p_start, "current_period_end_date": p_end,
-            "product": {"id": "prod_rc"},
+            "product": {"id": product or f"prod_rc_default"},
             "last_transaction_id": f"txn-{sub_id}"}
 
 # paid-transaction proof fake: a paid invoice matching the snapshot's own
@@ -141,7 +143,7 @@ def _fake_fetch(snap):
 
 _bal0 = spendable_balance(uid1)
 _gr0 = _ledger_grants(uid1)
-_snap = _sub_snapshot("active", _iso(PS), _iso(PE), sub_id=sub1)
+_snap = _sub_snapshot("active", _iso(PS), _iso(PE), sub_id=sub1, product=f"prod_rc_{uid1}")
 _rec.fetch_subscription = _fake_fetch(_snap)
 _rec.fetch_transaction = _txn_fetch_for(_snap)
 r = _rec.reconcile_user(uid1)
@@ -192,7 +194,7 @@ with db() as con:
     orders_repo.upsert_membership_state(con, sub3, "past_due",
                                         started_at=_ts, renews_at=PE)
 _bal6 = spendable_balance(uid3)
-_snap = _sub_snapshot("past_due", _iso(PS), _iso(PE), sub_id=sub3)
+_snap = _sub_snapshot("past_due", _iso(PS), _iso(PE), sub_id=sub3, product=f"prod_rc_{uid3}")
 _rec.fetch_subscription = _fake_fetch(_snap)
 _rec.fetch_transaction = _txn_fetch_for(_snap)
 r = _rec.reconcile_user(uid3)
@@ -203,7 +205,7 @@ check("R6 past_due: 不 grant / membership 仍 past_due (reconcile 不强行 act
 # ═══ R7 — scheduled_cancel ═══
 u4, uid4 = _new_user("rc7")
 pid4, _, sub4 = _seed_plan_order(uid4)
-_snap = _sub_snapshot("scheduled_cancel", _iso(PS), _iso(PE), sub_id=sub4)
+_snap = _sub_snapshot("scheduled_cancel", _iso(PS), _iso(PE), sub_id=sub4, product=f"prod_rc_{uid4}")
 _rec.fetch_subscription = _fake_fetch(_snap)
 _rec.fetch_transaction = _txn_fetch_for(_snap)
 _bal7 = spendable_balance(uid4)

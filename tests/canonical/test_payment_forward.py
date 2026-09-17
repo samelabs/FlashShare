@@ -65,19 +65,33 @@ from economy import creem as _creem
 from economy import reconcile as _rec
 
 _mirror_state = {"prod_pc1": {"price": 999, "currency": "USD",
-                              "billing_type": "recurring"}}
+                              "billing_type": "recurring",
+                              "billing_period": "every-month"}}
 _patch_calls = {"n": 0, "fail": False, "last": None}
 _txns = {}          # txn_id -> transaction payload
 
 def _fake_mirror(product_id, price_cents, currency):
+    # mirror the REAL write-through contract: GET-first (billing contract
+    # must already be correct — never repaired), PATCH price/currency
+    # ONLY, response re-confirmed.
     _patch_calls["n"] += 1
-    _patch_calls["last"] = (product_id, price_cents, currency)
     if _patch_calls["fail"]:
         raise RuntimeError("provider down")
-    _mirror_state[product_id] = {"price": price_cents, "currency": currency,
-                                 "billing_type": "recurring"}
+    prod = _mirror_state.get(product_id)
+    if prod is None:
+        raise RuntimeError("product_not_found")
+    if prod["billing_type"] != "recurring" \
+            or prod.get("billing_period") != "every-month":
+        raise RuntimeError("product_billing_contract_invalid")
+    if "billing_type" in (_patch_calls.get("payload") or {}) \
+            or "billing_period" in (_patch_calls.get("payload") or {}):
+        raise RuntimeError("fake: PATCH must not carry billing contract")
+    _patch_calls["last"] = (product_id, price_cents, currency)
+    _mirror_state[product_id] = {**prod, "price": price_cents,
+                                 "currency": str(currency).upper()}
     return {"object": "product", "id": product_id, "price": price_cents,
-            "currency": currency, "billing_type": "recurring"}
+            "currency": str(currency).upper(),
+            "billing_type": "recurring", "billing_period": "every-month"}
 
 def _fake_verify(product_id, price_cents, currency):
     prod = _mirror_state.get(product_id)
@@ -89,7 +103,36 @@ def _fake_verify(product_id, price_cents, currency):
         return "currency"
     if prod["billing_type"] != "recurring":
         return "billing_type"
+    if prod.get("billing_period") != "every-month":
+        return "billing_period"
     return ""
+
+_patch_payloads = []
+_orig_creem_key = _creem.CREEM_API_KEY
+_orig_patch = _creem._patch
+def _spy_patch(path, payload):
+    _patch_payloads.append((path, dict(payload)))
+    prod_id = path.rsplit("/", 1)[-1]
+    prod = _mirror_state.get(prod_id)
+    if prod is None:
+        raise RuntimeError("product_not_found")
+    if "billing_type" in payload or "billing_period" in payload:
+        raise RuntimeError("patch_carries_billing_contract")
+    if prod["billing_type"] != "recurring" or prod.get("billing_period") != "every-month":
+        raise RuntimeError("product_billing_contract_invalid")
+    _mirror_state[prod_id] = {**prod, "price": payload["price"],
+                              "currency": payload["currency"]}
+    return {"object": "product", "id": prod_id, "price": payload["price"],
+            "currency": payload["currency"],
+            "billing_type": "recurring", "billing_period": "every-month"}
+_orig_fetch_prod = _creem._fetch_product
+def _spy_fetch_prod(pid):
+    prod = _mirror_state.get(pid)
+    return dict(prod) if prod else None
+# real mirror_product_price exercised against spied transport
+_creem._patch = _spy_patch
+_creem._fetch_product = _spy_fetch_prod
+_creem.CREEM_API_KEY = "test-key"  # real impl gates on the module constant
 
 _orig_creem = (_creem.mirror_product_price, _creem.verify_product_mirror,
                _creem.create_subscription_checkout, _creem.create_credits_checkout,
@@ -109,7 +152,9 @@ def _fake_credits_checkout(order_id, cents, user):
     _credits_chk["n"] += 1
     return {"ok": True, "checkout_url": f"https://creem.test/t/{order_id}",
             "checkout_id": f"ch_pc_{order_id}"}
-_creem.mirror_product_price = _fake_mirror
+_fake_mirror_full = _fake_mirror  # kept for direct-call assertions
+# route through the REAL implementation (transport spied) so the
+# GET-first / PATCH-payload / re-confirm contract is actually exercised
 _creem.verify_product_mirror = _fake_verify
 _creem.create_subscription_checkout = _fake_sub_checkout
 _creem.create_credits_checkout = _fake_credits_checkout
@@ -140,33 +185,40 @@ r = client.post("/samelabs/plans", json={
     "expiry_days": [7], "download_limits": [50],
 }, cookies={COOKIE_NAME: op_sess})
 check("P1 create bound plan → mirror write-through at creation",
-      r.status_code == 200 and _patch_calls["n"] == 1
-      and _mirror_state["prod_pc1"]["price"] == 999,
-      f"{r.status_code} patch={_patch_calls['n']}")
+      r.status_code == 200 and _mirror_state["prod_pc1"]["price"] == 999
+      and len(_patch_payloads) == 1,
+      f"{r.status_code} mirror={_mirror_state['prod_pc1']} n={len(_patch_payloads)}")
+check("P1a write-through PATCH 只带 price/currency (不夹带 billing contract)",
+      all(("billing_type" not in pl and "billing_period" not in pl)
+          for _, pl in _patch_payloads), str(_patch_payloads[:2]))
 plan_id = r.json()["plan"]["id"]
 
 # price update → Creem PATCH first, then local commit
 r = client.patch(f"/samelabs/plans/{plan_id}", json={"price_cents": 1499},
                  cookies={COOKIE_NAME: op_sess})
 check("P1 改价 → Creem Product update 被调用",
-      r.status_code == 200 and _patch_calls["n"] == 2
-      and _patch_calls["last"] == ("prod_pc1", 1499, "USD"),
-      f"{r.status_code} last={_patch_calls['last']}")
+      r.status_code == 200 and _mirror_state["prod_pc1"]["price"] == 1499
+      and _patch_payloads[-1] == (f"/v1/products/prod_pc1",
+                                  {"price": 1499, "currency": "USD"}),
+      f"{r.status_code} last={_patch_payloads[-1:]}")
 with db() as con:
     local_price = con.execute("select price_cents from plans where id=%s",
                               (plan_id,)).fetchone()["price_cents"]
 check("P1 provider 成功 → local price commit (1499)", int(local_price) == 1499)
 
-# non-price edit → NO Creem call
-n0 = _patch_calls["n"]
+# non-commercial edit → NO Creem call
+n0 = len(_patch_payloads)
 r = client.patch(f"/samelabs/plans/{plan_id}", json={"name": "Plus PC2"},
                  cookies={COOKIE_NAME: op_sess})
-check("P1 非价格修改不调用 Creem",
-      r.status_code == 200 and _patch_calls["n"] == n0,
-      f"{r.status_code} calls {_patch_calls['n']}-{n0}")
+check("P1 非商业字段修改不调用 Creem",
+      r.status_code == 200 and len(_patch_payloads) == n0,
+      f"{r.status_code} calls {len(_patch_payloads)}-{n0}")
 
 # ═══ P2: Creem update fail → local price NOT committed ═══
-_patch_calls["fail"] = True
+_orig_spy = _creem._patch
+def _failing_patch(path, payload):
+    raise RuntimeError("provider down")
+_creem._patch = _failing_patch
 r = client.patch(f"/samelabs/plans/{plan_id}", json={"price_cents": 1999},
                  cookies={COOKIE_NAME: op_sess})
 with db() as con:
@@ -175,7 +227,7 @@ with db() as con:
 check("P2 Creem 更新失败 → 502 + local price 不 commit",
       r.status_code == 502 and int(local_price2) == 1499,
       f"{r.status_code} price={local_price2}")
-_patch_calls["fail"] = False
+_creem._patch = _orig_spy
 
 # ═══ P3/P4: checkout verification (mirror consistent → allowed; mismatch → fail closed) ═══
 import urllib.parse as _up
@@ -523,6 +575,214 @@ try:
 except Exception as e:
     check("P16 provider 失败 → 不抛不 grant", False, str(e))
 
+# ═══ PM2-1: billing period in the mirror contract ═══
+# (create_subscription_checkout was restored to the real implementation
+# after the package section; re-fake it with the mirror-verified fake)
+_creem.create_subscription_checkout = _fake_sub_checkout
+_mirror_state["prod_pc1"]["price"] = 1499  # same price/currency, yearly period
+_mirror_state["prod_pc1"]["billing_period"] = "every-year"
+r_y = client.post("/api/topup/subscribe", json={"plan_id": plan_id},
+                  cookies={COOKIE_NAME: buyer_ck})
+# buyer already has a pending order → use a fresh buyer for cleanliness
+client.post("/auth/register", data={
+    "username": _u + "y1", "email": f"{_u}y1@t.co",
+    "password": "password123", "password_confirm": "password123"})
+_lgy = client.post("/auth/login", data={"login": _u + "y1", "password": "password123"},
+                   follow_redirects=False)
+_cky = _lgy.cookies.get(COOKIE_NAME) or ""
+r_y = client.post("/api/topup/subscribe", json={"plan_id": plan_id},
+                  cookies={COOKIE_NAME: _cky})
+check("PM2-1a every-year + 相同 price/currency → checkout rejected",
+      r_y.status_code == 502, r_y.status_code)
+_mirror_state["prod_pc1"]["billing_period"] = "every-month"
+r_m = client.post("/api/topup/subscribe", json={"plan_id": plan_id},
+                  cookies={COOKIE_NAME: _cky})
+check("PM2-1b every-month → checkout allowed",
+      r_m.status_code == 200 and r_m.json().get("ok"),
+      f"{r_m.status_code} {r_m.text[:120]}")
+
+# ═══ PM2-2: write-through never repairs billing contract ═══
+_mirror_state["prod_pc2"] = {"price": 500, "currency": "USD",
+                             "billing_type": "onetime",
+                             "billing_period": ""}
+_n_before = len(_patch_payloads)
+try:
+    _orig_creem[0].__call__ if False else None
+    # call the REAL implementation against the spied transport
+    import economy.creem as _cmod
+    _cmod.mirror_product_price("prod_pc2", 1499, "USD")
+    pm2_ok = False
+except RuntimeError as e:
+    pm2_ok = "billing_contract" in str(e)
+check("PM2-2 one-time product 改价 → fail closed (不 PATCH 不修复)",
+      pm2_ok and len(_patch_payloads) == _n_before,
+      f"patches {len(_patch_payloads)}-{_n_before}")
+_mirror_state["prod_pc3"] = {"price": 500, "currency": "USD",
+                             "billing_type": "recurring",
+                             "billing_period": "every-year"}
+_n_before = len(_patch_payloads)
+try:
+    import economy.creem as _cmod
+    _cmod.mirror_product_price("prod_pc3", 1499, "USD")
+    pm2b_ok = False
+except RuntimeError as e:
+    pm2b_ok = "billing_contract" in str(e)
+check("PM2-2b yearly recurring product 改价 → fail closed",
+      pm2b_ok and len(_patch_payloads) == _n_before)
+# PATCH payload never carries billing fields (all recorded payloads)
+check("PM2-2c 所有 PATCH payload 只含 price/currency",
+      all(set(pl.keys()) == {"price", "currency"} for _, pl in _patch_payloads),
+      str(_patch_payloads[:2]))
+
+# ═══ PM2-3: creem_product_id change closes at the operator write ═══
+# target monthly product at a different price → binding syncs target to CURRENT 518 price
+_mirror_state["prod_pcB"] = {"price": 999, "currency": "USD",
+                             "billing_type": "recurring",
+                             "billing_period": "every-month"}
+r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcB"},
+                 cookies={COOKIE_NAME: op_sess})
+check("PM2-3a 仅改 binding → target Product 被验证并同步到当前 518 价",
+      r.status_code == 200 and _mirror_state["prod_pcB"]["price"] == 1499
+      and _patch_payloads[-1][0] == "/v1/products/prod_pcB",
+      f"{r.status_code} target={_mirror_state['prod_pcB']}")
+# yearly target → local binding not committed
+_mirror_state["prod_pcY"] = {"price": 999, "currency": "USD",
+                             "billing_type": "recurring",
+                             "billing_period": "every-year"}
+r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcY"},
+                 cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    bound = con.execute("select creem_product_id from plans where id=%s",
+                        (plan_id,)).fetchone()["creem_product_id"]
+check("PM2-3b yearly target → binding 不 commit (仍 prod_pcB)",
+      r.status_code == 502 and bound == "prod_pcB", f"{r.status_code} bound={bound}")
+# provider failure → binding not committed
+def _fail_fetch(pid):
+    return None
+_orig_fp = _creem._fetch_product
+_creem._fetch_product = _fail_fetch
+r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcC"},
+                 cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    bound2 = con.execute("select creem_product_id from plans where id=%s",
+                         (plan_id,)).fetchone()["creem_product_id"]
+check("PM2-3c provider failure → binding 不 commit",
+      r.status_code == 502 and bound2 == "prod_pcB", f"{r.status_code} bound={bound2}")
+_creem._fetch_product = _orig_fp
+# valid monthly target → binding succeeds
+_mirror_state["prod_pcD"] = {"price": 100, "currency": "USD",
+                             "billing_type": "recurring",
+                             "billing_period": "every-month"}
+r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcD"},
+                 cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    bound3 = con.execute("select creem_product_id from plans where id=%s",
+                         (plan_id,)).fetchone()["creem_product_id"]
+check("PM2-3d valid monthly target → binding commit + 同步 1499",
+      r.status_code == 200 and bound3 == "prod_pcD"
+      and _mirror_state["prod_pcD"]["price"] == 1499,
+      f"{r.status_code} bound={bound3}")
+
+# ═══ PM2-4: paid-period product identity proof ═══
+def _mk_member_sub(uname, target_plan_id, product_binding):
+    """seed user + order + membership for product-identity cases"""
+    mm = _mkuser(uname)
+    ss = f"sub_pi_{uname}"
+    with db() as con:
+        con.execute(
+            "insert into orders (user_id, kind, item_id, provider,"
+            " provider_order_id, status, amount_cents, currency, created_at)"
+            " values (%s, 'plan', %s, 'creem', %s, 'pending', 1499, 'USD', %s)",
+            (mm, target_plan_id, "sub:" + ss, ts))
+        con.execute(
+            "insert into memberships (user_id, plan_id, provider_subscription_id,"
+            " status, started_at, renews_at, updated_at) values (%s, %s, %s,"
+            " 'active', %s, %s, %s)",
+            (mm, target_plan_id, "sub:" + ss, PS, PE, ts))
+        con.execute("update plans set creem_product_id=%s where id=%s",
+                    (product_binding, target_plan_id))
+    return mm, ss
+
+def _paid_evt(ss, product, with_txn=True):
+    ssub = {"object": "subscription", "id": ss, "status": "active",
+            "current_period_start_date": _iso(PS),
+            "current_period_end_date": _iso(PE),
+            "product": {"id": product}}
+    if with_txn:
+        ssub["last_transaction_id"] = f"txn_{ss}"
+    return ("subscription.paid", ssub)
+
+def _try_paid(ss, product):
+    et, obj = _paid_evt(ss, product)
+    try:
+        return {"ok": handle_event(et, obj)}
+    except KeyError as e:
+        return {"err": str(e)}
+
+# a second tier for mismatch cases
+with db() as con:
+    _so2 = int(con.execute(
+        "SELECT COALESCE(MAX(p.sort_order),0)+1 AS so FROM plans p WHERE p.code <> 'free'"
+    ).fetchone()["so"])
+_mirror_state["prod_pi_pro"] = {"price": 2999, "currency": "USD",
+                                "billing_type": "recurring",
+                                "billing_period": "every-month"}
+r2 = client.post("/samelabs/plans", json={
+    "code": f"pro_{_u}", "name": "Pro PI", "monthly_credits": 2000,
+    "price_cents": 2999, "creem_product_id": "prod_pi_pro", "sort_order": _so2,
+    "ingress_files_24h": 2000, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+plan2_id = r2.json()["plan"]["id"]
+
+# normal current product → grant
+mmA, ssA = _mk_member_sub(_u + "pa", plan_id, "prod_pi_plus")
+_bA = spendable_balance(mmA)
+rr = _try_paid(ssA, "prod_pi_plus")
+check("PM2-4a normal current product → grant",
+      "ok" in rr and spendable_balance(mmA) - _bA == 100, str(rr))
+
+# unknown product → no grant, fail loud
+mmB, ssB = _mk_member_sub(_u + "pb", plan_id, "prod_pi_plus")
+_bB = spendable_balance(mmB)
+rr = _try_paid(ssB, "prod_totally_unknown")
+check("PM2-4b unknown product → no grant (fail loud)",
+      "paid_product_unknown" in rr.get("err", "") and spendable_balance(mmB) == _bB,
+      str(rr))
+
+# unrelated known product (same or other tier but bound to another plan) →
+# higher tier before update sync → no grant
+mmC, ssC = _mk_member_sub(_u + "pc", plan_id, "prod_pi_plus")
+_bC = spendable_balance(mmC)
+rr = _try_paid(ssC, "prod_pi_pro")   # higher tier, Membership not synced
+check("PM2-4c higher product before update sync → no grant (retriable)",
+      "paid_product_not_synced" in rr.get("err", "")
+      and spendable_balance(mmC) == _bC, str(rr))
+
+# update sync then paid replay → correct grant at the new tier
+_lg2u = client  # membership sync via subscription.update handler
+_upd = {"object": "subscription", "id": ssC, "status": "active",
+        "current_period_start_date": _iso(PS), "current_period_end_date": _iso(PE),
+        "product": {"id": "prod_pi_pro"}, "last_transaction_id": "txn_upd"}
+try:
+    handle_event("subscription.update", _upd)
+    synced = True
+except Exception:
+    synced = False
+rr = _try_paid(ssC, "prod_pi_pro")
+check("PM2-4d update sync 后 paid replay → 正确按新 tier grant",
+      synced and "ok" in rr, f"synced={synced} rr={rr}")
+
+# first-period order product mismatch → no grant (delete membership to hit order path)
+mmD, ssD = _mk_member_sub(_u + "pd", plan_id, "prod_pi_plus")
+with db() as con:
+    con.execute("delete from memberships where user_id=%s", (mmD,))
+_bD = spendable_balance(mmD)
+rr = _try_paid(ssD, "prod_pi_pro")   # order says plus, provider says pro
+check("PM2-4e first-period order product mismatch → no grant",
+      "paid_product_order_mismatch" in rr.get("err", "")
+      and spendable_balance(mmD) == _bD, str(rr))
+
 # ═══ semantic guards ═══
 _csrc = open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read()
 check("S1 fulfillment 不再读 live package credits (源内无 package_credits 调用)",
@@ -539,13 +799,17 @@ check("S3 paid-period writer 仍只有一个 implementation (apply_paid_period)"
  _creem.create_subscription_checkout, _creem.create_credits_checkout,
  _creem.creem_enabled, _creem.credits_ready,
  _creem.CREEM_CREDITS_CURRENCY) = _orig_creem
+_creem._patch = _orig_patch
+_creem._fetch_product = _orig_fetch_prod
+_creem.CREEM_API_KEY = _orig_creem_key
 _rec.fetch_subscription, _rec.fetch_transaction = _orig_fetch_sub, _orig_fetch_txn
 
 # ═══ cleanup ═══
 with db() as con:
-    for uid in (buyer, op, member, member2, member3, member4):
+    for uid in (buyer, op, member, member2, member3, member4,
+                mmA, mmB, mmC, mmD):
         con.execute("delete from users where id=%s", (uid,))
-    con.execute("delete from plans where id=%s", (plan_id,))
+    con.execute("delete from plans where id in (%s, %s)", (plan_id, plan2_id))
     con.execute("delete from packages where id=%s", (pkg_id,))
 
 print()

@@ -236,6 +236,41 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     order, plan, current = _bind_and_load(sub_id, provider_subscription)
     ts = now()
     status = "active" if period_end > ts else "expired"
+    # ── paid product identity proof ──
+    # A provider-confirmed paid period carries a product; that product
+    # must map to a canonical Plan AND be consistent with the local
+    # subscription state — never grant a plan the provider did not bill:
+    #   current Membership exists → provider product must equal the
+    #     Membership plan's product (a higher-tier product before the
+    #     subscription.update sync fails loud for replay after sync;
+    #     pending-downgrade handling below is the only switch path)
+    #   no Membership yet (first period, order-located) → provider
+    #     product must equal the original order's plan product
+    #   unknown product (no canonical mapping) → fail loud, zero grant
+    provider_product = extract_product_id(sub)
+    if not provider_product:
+        raise KeyError("paid_product_missing")
+    if current is not None:
+        with db() as con:
+            cur_plan = orders_repo.plan_by_id(con, current["plan_id"])
+        if cur_plan is None or provider_product != cur_plan.get("creem_product_id"):
+            from governance import plan_catalog
+            mapped = plan_catalog.by_product(provider_product)
+            if mapped is None:
+                raise KeyError("paid_product_unknown")
+            # known but different tier — downgrade recovery is adjudicated
+            # below (pending / next-period lower tier); anything else
+            # (including a higher tier before subscription.update sync)
+            # fails loud for a later replay after Membership converges.
+            direction = plan_catalog.direction(
+                mapped, plan_catalog.by_code(cur_plan["code"])) if cur_plan else 0
+            if direction >= 0:
+                raise KeyError("paid_product_not_synced")
+    else:
+        # first paid period located via the original order
+        if not plan.get("creem_product_id") \
+                or provider_product != plan["creem_product_id"]:
+            raise KeyError("paid_product_order_mismatch")
     credits = 0
     with db() as con:
         credits = orders_repo.plan_credits(con, plan["id"])
@@ -249,8 +284,6 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     #      pending 表不凌驾 provider paid snapshot。
     target_plan_id = None
     with db() as con:
-        provider_product = extract_product_id(
-            (provider_subscription.get("subscription") or provider_subscription))
         pend = orders_repo.pending_downgrade(con, order["user_id"])
         m_cur = orders_repo.membership_row(con, order["user_id"])
         cur_plan = orders_repo.plan_by_id(con, m_cur["plan_id"]) if m_cur else None

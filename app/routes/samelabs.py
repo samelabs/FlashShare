@@ -313,22 +313,32 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if not is_paid_tier(row["code"]):
         return JSONResponse({"ok": False, "error": "not_editable_tier"}, 422)
-    # Price authority write-through: when this edit touches price_cents
-    # (or currency-affecting facts) on a product-bound plan, the Creem
-    # mirror is updated FIRST; only a provider-confirmed update lets the
-    # local price commit. Provider failure → local price must NOT commit
-    # (UI can never show a new price the provider still charges old).
-    # Non-price edits never call Creem.
-    price_changed = "price_cents" in fields
-    product_id = (fields.get("creem_product_id") or row["creem_product_id"] or "")
-    if price_changed and product_id:
+    # Commercial mirror write-through: ANY commercial fact change — the
+    # price OR the product binding itself — closes at the operator write,
+    # not at customer checkout. The target product is contract-validated
+    # (recurring + monthly) and synced to the CURRENT 518 price first;
+    # only a provider-confirmed mirror lets the local row commit. Provider
+    # failure / wrong billing contract → local commit refused (no binding
+    # can land while advertising one price and charging another).
+    # Non-commercial edits (name/benefits/sort/active...) never call Creem.
+    target_price = int(fields["price_cents"]) if "price_cents" in fields \
+        else int(row["price_cents"])
+    product_id = (fields.get("creem_product_id") if "creem_product_id" in fields
+                  else row["creem_product_id"]) or ""
+    commercial_change = ("price_cents" in fields) or ("creem_product_id" in fields)
+    if commercial_change and product_id:
         from economy import creem as _creem
         currency = fields.get("currency") or row["currency"] or "USD"
         if not _creem.creem_enabled():
             return JSONResponse({"ok": False, "error": "price_mirror_unavailable"}, 502)
         try:
-            _creem.mirror_product_price(product_id, int(fields["price_cents"]),
+            _creem.mirror_product_price(product_id, target_price,
                                         str(currency))
+        except RuntimeError as exc:
+            err = "price_mirror_update_failed"
+            if "billing_contract" in str(exc) or "not_found" in str(exc):
+                err = "product_billing_contract_invalid"
+            return JSONResponse({"ok": False, "error": err}, 502)
         except Exception:
             return JSONResponse({"ok": False, "error": "price_mirror_update_failed"}, 502)
     import psycopg2
