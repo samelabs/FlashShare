@@ -343,32 +343,38 @@ async def samelabs_update_plan(plan_id: int, request: Request):
     #   rollback with ZERO provider mutation — a failed rebind can never
     #   reprice another plan's product. Provider failure → rollback, the
     #   local plan is untouched. Non-commercial edits never call Creem.
-    target_price = int(fields["price_cents"]) if "price_cents" in fields \
-        else int(row["price_cents"])
-    product_id = (fields.get("creem_product_id") if "creem_product_id" in fields
-                  else row["creem_product_id"]) or ""
+    #
+    # The pre-transaction read above serves ONLY not_found / paid-tier
+    # eligibility. Mirror values are derived AFTER the in-transaction
+    # UPDATE, from the RETURNING row — never from the stale outer read:
+    # a concurrent writer may commit between that read and the row lock,
+    # and the mirror must reflect the row this transaction is committing
+    # (the UPDATE row lock is the serialization boundary).
     commercial_change = ("price_cents" in fields) or ("creem_product_id" in fields)
     import psycopg2
     try:
         with db() as con:
             row = update_plan(con, plan_id, fields, now())
-            if commercial_change and product_id:
-                from economy import creem as _creem
-                currency = fields.get("currency") or row["currency"] or "USD"
-                if not _creem.creem_enabled():
-                    raise _PlanMirrorError("price_mirror_unavailable")
-                try:
-                    _creem.mirror_product_price(product_id, target_price,
-                                                str(currency))
-                except _PlanMirrorError:
-                    raise
-                except RuntimeError as exc:
-                    err = "price_mirror_update_failed"
-                    if "billing_contract" in str(exc) or "not_found" in str(exc):
-                        err = "product_billing_contract_invalid"
-                    raise _PlanMirrorError(err)
-                except Exception:
-                    raise _PlanMirrorError("price_mirror_update_failed")
+            if commercial_change:
+                target_price = int(row["price_cents"])
+                target_product = row["creem_product_id"] or ""
+                target_currency = row["currency"] or "USD"
+                if target_product:
+                    from economy import creem as _creem
+                    if not _creem.creem_enabled():
+                        raise _PlanMirrorError("price_mirror_unavailable")
+                    try:
+                        _creem.mirror_product_price(target_product, target_price,
+                                                    str(target_currency))
+                    except _PlanMirrorError:
+                        raise
+                    except RuntimeError as exc:
+                        err = "price_mirror_update_failed"
+                        if "billing_contract" in str(exc) or "not_found" in str(exc):
+                            err = "product_billing_contract_invalid"
+                        raise _PlanMirrorError(err)
+                    except Exception:
+                        raise _PlanMirrorError("price_mirror_update_failed")
     except _PlanMirrorError as exc:
         # provider failure: with-block raised → tx rolled back
         return JSONResponse({"ok": False, "error": str(exc)}, 502)

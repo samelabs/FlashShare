@@ -920,6 +920,94 @@ check("PM3-6 valid rebind → target mirror 同步 (1099) + local binding 一起
       and _mirror_state["prod_sF"]["price"] == 1099,
       f"{r.status_code} bind={_bindA2} mirror={_mirror_state['prod_sF']['price']}")
 
+# ═══ PM4: forced-concurrency — mirror reads the in-tx final row ═══
+# Reproduces the stale-outer-read race EXACTLY:
+#   initial plan = 999 / prod_sA
+#   B: enters update_plan() but STALLS after the outer read, holding a
+#      pre-transaction snapshot of 999 (the old bug source)
+#   A: commits price 999 → 1499 while B is stalled
+#   B: proceeds — UPDATE product → prod_sB, then mirror
+# With the fix, B mirrors prod_sB → 1499 (the row B's tx commits),
+# NOT 999 (B's stale outer read).
+_mirror_state["prod_cA"] = {"price": 999, "currency": "USD",
+                            "billing_type": "recurring",
+                            "billing_period": "every-month"}
+_mirror_state["prod_cB"] = {"price": 1, "currency": "USD",
+                            "billing_type": "recurring",
+                            "billing_period": "every-month"}
+with db() as con:
+    _soC = int(con.execute(
+        "SELECT COALESCE(MAX(p.sort_order),0)+1 AS so FROM plans p WHERE p.code <> 'free'"
+    ).fetchone()["so"])
+rC = client.post("/samelabs/plans", json={
+    "code": f"plC1_{_u}", "name": "C1", "monthly_credits": 100,
+    "price_cents": 999, "creem_product_id": "prod_cA", "sort_order": _soC,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+planC = rC.json()["plan"]["id"]
+
+import threading
+# gate: B's transaction starts, then pauses AFTER its outer read +
+# BEFORE its UPDATE takes the row lock — A's full request commits in
+# that window.
+_b_entered = threading.Event()
+_b_release = threading.Event()
+_mirror_lock = threading.Lock()
+
+_orig_update_plan_mod = None
+from repo import orders as _orders_mod
+_orig_update_plan = _orders_mod.update_plan
+
+def _gated_update_plan(con, plan_id_, fields_, ts_):
+    # runs INSIDE the route's transaction: signal, then wait until A has
+    # fully committed, so B's UPDATE takes the row lock only afterwards
+    _b_entered.set()
+    _b_release.wait(timeout=30)
+    return _orig_update_plan(con, plan_id_, fields_, ts_)
+
+import app.routes.samelabs as _samelabs_mod
+# the route imports update_plan at function scope from repo.orders —
+# patch the module attribute it resolves at call time
+_orders_mod.update_plan = _gated_update_plan
+
+result_b = {}
+def _worker_b():
+    result_b["resp"] = client.patch(
+        f"/samelabs/plans/{planC}", json={"creem_product_id": "prod_cB"},
+        cookies={COOKIE_NAME: op_sess})
+
+tb = threading.Thread(target=_worker_b)
+tb.start()
+check("PM4 setup: B 进入事务并停在 row lock 前", _b_entered.wait(timeout=10))
+
+# A: full price update 999 → 1499, commits completely while B waits
+ra = client.patch(f"/samelabs/plans/{planC}", json={"price_cents": 1499},
+                  cookies={COOKIE_NAME: op_sess})
+check("PM4 A 改价 commit (999→1499)", ra.status_code == 200, ra.status_code)
+
+# release B: its UPDATE product → prod_cB runs under the row lock
+_b_release.set()
+tb.join(timeout=30)
+_orders_mod.update_plan = _orig_update_plan
+
+with db() as con:
+    _fin = con.execute("select price_cents, creem_product_id from plans where id=%s",
+                       (planC,)).fetchone()
+check("PM4 并发终态: local = 1499 / prod_cB",
+      int(_fin["price_cents"]) == 1499 and _fin["creem_product_id"] == "prod_cB",
+      str(dict(_fin)))
+check("PM4 mirror prod_cB = 1499 (事务内 final row, 绝非 stale 999)",
+      _mirror_state["prod_cB"]["price"] == 1499,
+      str(_mirror_state["prod_cB"]))
+check("PM4 B 请求本身成功", result_b.get("resp", None) is not None
+      and result_b["resp"].status_code == 200,
+      str(result_b.get("resp"))[:80])
+
+# cleanup PM4 plan
+with db() as con:
+    con.execute("delete from plans where id=%s", (planC,))
+
 # ═══ semantic guards ═══
 _csrc = open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read()
 check("S1 fulfillment 不再读 live package credits (源内无 package_credits 调用)",
