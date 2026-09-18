@@ -408,8 +408,13 @@ async def create_upload(request: Request):
             # receipt ok + exact canonical response in the SAME
             # transaction as the uploads landing — a response loss
             # replays the identical publicIds with zero new rows.
-            _receipt_ok(con, int(receipt["id"]),
-                        _json_dumps(records), now())
+            _fin_row = _receipt_ok(con, int(receipt["id"]),
+                                   _json_dumps(records), now())
+            if _fin_row is None:
+                # guarded transition refused INSIDE the transaction:
+                # uploads INSERT and receipt-ok must commit together or
+                # not at all — raising here rolls the whole thing back.
+                raise RuntimeError("ingress_request_not_running")
     except Exception:
         # STRICT tri-state: the landing transaction may have committed
         # before the ack was lost — reconcile the durable outcome.

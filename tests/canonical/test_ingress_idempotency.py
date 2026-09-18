@@ -456,6 +456,161 @@ else:
     ok_bh = True
 check("claim runtime hash validation (短/非hex/None → ValueError)", ok_bh)
 
+# ══════════ F-series: fail-loud finalize + fail-closed replay decoder ══════════
+from sharing.ingress_receipt import IngressUnresolved as _InUnres
+
+# F1: failed receipt → service finalize_ok raises (not silent None)
+uidF1 = _mkuser(_u + "f1")
+hF1 = ingress_request_hash("v1_source",
+                           [{"filename": "f1.bin", "content_type": "application/octet-stream",
+                             "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                           {})
+rctF1, uidsF1, _ = claim_ingress_quota(uidF1, "127.0.0.1", f"f1-{_u}", hF1, [len(PNG)])
+settle_failure(int(rctF1["id"]), uidsF1, uidF1)
+_f1_raised = False
+try:
+    finalize_ok(int(rctF1["id"]), [{"publicId": "NOPE"}])
+except RuntimeError as _e:
+    _f1_raised = "ingress_request_not_running" in str(_e)
+check("F1 failed receipt → finalize_ok raises ingress_request_not_running",
+      _f1_raised)
+
+# F2: direct-share landing tx — receipt 非 running → 整事务回滚 (uploads=0)
+uidF2 = _mkuser(_u + "f2")
+hF2 = ingress_request_hash("web_direct_share",
+                           [{"filename": "f2.png", "content_type": "image/png",
+                             "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                           {"expiry_days": 3, "allowed_downloads": 10})
+rctF2b, uidsF2b, _ = claim_ingress_quota(uidF2, "127.0.0.1", f"f2-{_u}", hF2, [len(PNG)])
+# 先把 receipt 置 failed (模拟 recovery 抢先 settle), 再跑 direct-share landing 事务:
+settle_failure(int(rctF2b["id"]), uidsF2b, uidF2)
+from repo.uploads import insert_record as _ins2
+from repo.ingress_requests import finalize_ok as _rfin2
+_rolled = False
+try:
+    with db() as con:
+        _ins2(con, uidF2, "127.0.0.1", "F2PID", "F2PID", "f2.png",
+              "image/png", len(PNG), 3, 10, ts + 3 * 86400,
+              "http://127.0.0.1:8113/f/F2PID", "", ts)
+        _row_fin = _rfin2(con, int(rctF2b["id"]), "[]", ts)
+        if _row_fin is None:
+            raise RuntimeError("ingress_request_not_running")
+except RuntimeError:
+    _rolled = True
+with db() as con:
+    _f2_uploads = int(con.execute(
+        "select count(*) c from uploads where user_id=%s", (uidF2,)).fetchone()["c"])
+check("F2 direct-share: 非 running receipt → raise in-tx → uploads=0",
+      _rolled and _f2_uploads == 0, f"rolled={_rolled} uploads={_f2_uploads}")
+
+# F3: MCP UNRESOLVED — Gokapi staging 成功 + finalize 抛 + resolver UNRESOLVED
+# 真实 uvicorn 是独立进程, 进程内 monkeypatch 不跨界 — 直接同进程调用
+# route 函数 _call_tool (patch service 层生效), 证明 UNRESOLVED 分支行为。
+import sharing.ingress_receipt as _irmod
+_orig_fin, _orig_ro = _irmod.finalize_ok, _irmod.resolve_outcome
+def _throw_fin(ingress_id, result):
+    raise RuntimeError("simulated ack loss")
+def _unres_resolve(ingress_id):
+    return {"outcome": _irmod.OUTCOME_UNRESOLVED}
+uidF3 = _mkuser(_u + "f3")
+conn3 = _hc.HTTPConnection(*_HOST, timeout=30)
+b_, ct_ = _form({"username": _u + "f3m", "password": "Test12345",
+                 "password_confirm": "Test12345", "email": f"{_u}f3m@t.co"})
+conn3.request("POST", "/auth/register", b_, {"Content-Type": ct_})
+conn3.getresponse().read()
+b_, ct_ = _form({"login": _u + "f3m", "password": "Test12345"})
+conn3.request("POST", "/auth/login", b_, {"Content-Type": ct_})
+r_ = conn3.getresponse(); r_.read()
+ckF3 = (r_.getheader("Set-Cookie") or "").split(";")[0]
+conn3.request("POST", "/api/tokens", json.dumps({"name": "f3"}).encode(),
+              {"Cookie": ckF3, "Content-Type": "application/json"})
+_bearerF3 = (json.loads(conn3.getresponse().read()).get("token") or {}).get("token")
+conn3.close()
+from economy.billing import grant as _g3
+_g3(uidF3, 100000, "manual_topup", note="f3")
+_gkF3_0 = _gk_count()
+import asyncio as _aio
+import app.routes.mcp as _mcpmod
+
+class _FakeReqF3:
+    headers = {"X-Real-IP": "127.0.0.1", "content-type": "application/json"}
+    client = type("C", (), {"host": "127.0.0.1"})()
+
+with db() as con:
+    _uF3row = dict(con.execute("select * from users where id=%s",
+                               (uidF3,)).fetchone())
+_irmod.finalize_ok = _throw_fin
+_irmod.resolve_outcome = _unres_resolve
+try:
+    _loop3 = _aio.new_event_loop()
+    _rpc_res = _loop3.run_until_complete(_mcpmod._call_tool(
+        _FakeReqF3(), _uF3row, 77,
+        {"name": "compress",
+         "arguments": {"files": [{"filename": "f3.png",
+                                  "b64": base64.b64encode(PNG).decode()}],
+                       "params": {},
+                       "delivery": {"expiry_days": 3, "allowed_downloads": 10},
+                       "client_ref": f"f3-{_u}-mcp"}}))
+    _loop3.close()
+finally:
+    _irmod.finalize_ok = _orig_fin
+    _irmod.resolve_outcome = _orig_ro
+_errF3 = _rpc_res.get("error") or {}
+with db() as con:
+    _f3_receipt = con.execute(
+        "select status from ingress_requests where user_id=%s and"
+        " request_ref=%s", (uidF3, f"f3-{_u}-mcp")).fetchone()
+    _f3_usage = int(con.execute(
+        "select count(*) c from upload_usage where user_id=%s",
+        (uidF3,)).fetchone()["c"])
+check("F3 MCP UNRESOLVED: err_ingress_unresolved + zero delete + usage kept + receipt running",
+      _errF3.get("message") == "err_ingress_unresolved"
+      and _gk_count() == _gkF3_0 + 1  # staged object kept (zero delete)
+      and _f3_usage == 1
+      and _f3_receipt is not None and _f3_receipt["status"] == "running",
+      f"err={_errF3} gk={_gkF3_0}->{_gk_count()} usage={_f3_usage} "
+      f"st={_f3_receipt and _f3_receipt['status']}")
+
+# F4: malformed replay — ok + '{bad' → claim raises IngressUnresolved
+uidF4 = _mkuser(_u + "f4")
+hF4 = ingress_request_hash("v1_source",
+                           [{"filename": "f4.bin", "content_type": "application/octet-stream",
+                             "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                           {})
+rctF4, uidsF4, _ = claim_ingress_quota(uidF4, "127.0.0.1", f"f4-{_u}", hF4, [len(PNG)])
+finalize_ok(int(rctF4["id"]), [{"publicId": "F4"}])
+with db() as con:
+    con.execute("update ingress_requests set result_json='{bad'"
+                " where id=%s", (rctF4["id"],))
+_f4_raised = False
+try:
+    claim_ingress_quota(uidF4, "127.0.0.1", f"f4-{_u}", hF4, [len(PNG)])
+except _InUnres:
+    _f4_raised = True
+with db() as con:
+    _f4_status = con.execute("select status from ingress_requests where id=%s",
+                             (rctF4["id"],)).fetchone()["status"]
+    _f4_usage = int(con.execute(
+        "select count(*) c from upload_usage where user_id=%s", (uidF4,)).fetchone()["c"])
+check("F4 malformed ok payload → IngressUnresolved + 零 mutation",
+      _f4_raised and _f4_status == "ok" and _f4_usage == 1)
+
+# F5: scalar replay — ok + '123'
+with db() as con:
+    con.execute("update ingress_requests set result_json='123'"
+                " where id=%s", (rctF4["id"],))
+_f5_raised = False
+try:
+    claim_ingress_quota(uidF4, "127.0.0.1", f"f4-{_u}", hF4, [len(PNG)])
+except _InUnres:
+    _f5_raised = True
+check("F5 scalar ok payload → IngressUnresolved", _f5_raised)
+
+# F6: resolve_outcome — ok + scalar → UNRESOLVED
+outF6 = resolve_outcome(int(rctF4["id"]))
+check("F6 resolve ok+scalar → OUTCOME_UNRESOLVED",
+      outF6["outcome"] == OUTCOME_UNRESOLVED, str(outF6)[:80])
+
 # ══════════ 8-10. receipt states (直接 service 层 fault-injection) ══════════
 from sharing.ingress_receipt import recover_abandoned_ingress_requests
 
@@ -610,7 +765,8 @@ with db() as con:
     _http_uids = [r["id"] for r in con.execute(
         "select id from users where username like %s",
         (f"{_u}%",)).fetchall()]
-_uids_all = [uid1, uid2, uid3, uidS, uidR, uidC, uidO, uidT, uidD2, uidU] + _http_uids
+_uids_all = [uid1, uid2, uid3, uidS, uidR, uidC, uidO, uidT, uidD2, uidU,
+              uidF1, uidF2, uidF3, uidF4] + _http_uids
 with db() as con:
     for uid in _uids_all:
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))

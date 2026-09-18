@@ -367,8 +367,12 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         from execution.pipeline import upload_to_gokapi as _gk_up
         from execution.pipeline import (INTERMEDIATE_TTL_DAYS as _ITTL,
                                         INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
+        from sharing.ingress_receipt import OUTCOME_UNRESOLVED
         import io as _io
         _gids = []
+        # Phase 1 — Gokapi staging. A staging failure is a KNOWN
+        # rollback (objects half-uploaded, receipt still running) and
+        # takes the generic cleanup below.
         try:
             infos = []
             for _fn, _ct, _body in _canon:
@@ -387,18 +391,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     "expireAt": _gk["FileInfo"].get("ExpireAt"),
                     "expiryDays": _ITTL, "allowedDownloads": _IDL,
                 })
-            try:
-                _receipt_ok(int(_receipt["id"]), infos)
-            except Exception:
-                # finalize commit-ack loss: strict tri-state reconcile
-                _out = _resolve_outcome(int(_receipt["id"]))
-                if _out["outcome"] == OUTCOME_DURABLE_OK:
-                    infos = (_out["result"] if isinstance(_out["result"], list)
-                             else [_out["result"]])
-                elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-                    raise RuntimeError("err_upload_failed")
-                else:
-                    raise RuntimeError("err_ingress_unresolved")
         except Exception as exc:
             from gokapi import delete_gokapi_file as _gk_del
             for _gid in _gids:
@@ -411,6 +403,34 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             except Exception:
                 pass
             return _rpc_err(mid, -32602, f"upload rejected: {exc}")
+
+        # Phase 2 — finalize with an EXPLICIT three-way outcome. The
+        # unresolved branch must NEVER fall into generic cleanup: zero
+        # Gokapi delete, zero quota release, zero receipt mutation.
+        try:
+            _receipt_ok(int(_receipt["id"]), infos)
+        except Exception:
+            _out = _resolve_outcome(int(_receipt["id"]))
+            if _out["outcome"] == OUTCOME_DURABLE_OK:
+                infos = (_out["result"] if isinstance(_out["result"], list)
+                         else [_out["result"]])
+            elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+                # the ONLY finalize-driven cleanup path: receipt still
+                # running proves the success transaction never landed.
+                from gokapi import delete_gokapi_file as _gk_del
+                for _gid in _gids:
+                    try:
+                        _gk_del(_gid)
+                    except Exception:
+                        pass
+                try:
+                    _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
+                except Exception:
+                    pass
+                return _rpc_err(mid, -32602, "upload rejected: err_upload_failed")
+            else:
+                # UNRESOLVED — server-side error, not invalid arguments
+                return _rpc_err(mid, -32000, "err_ingress_unresolved")
 
     source_files = [{"public_id": info["publicId"],
                      "source_token": info.get("sourceToken", "")}

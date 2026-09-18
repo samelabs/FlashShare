@@ -94,7 +94,7 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
             raise IngressConflict(dict(hist))
         if hist is not None and hist["status"] in ("running", "ok"):
             if hist["status"] == "ok" and hist["result_json"]:
-                return None, [], _json.loads(hist["result_json"])
+                return None, [], _decode_durable_result(hist["result_json"])
             raise IngressInProgress(dict(hist))
         if hist is not None:
             # earliest is failed/insufficient — a LATER ok receipt may
@@ -110,7 +110,7 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
                 (user_id, request_ref)).fetchone()
             if live is not None:
                 if live["status"] == "ok" and live["result_json"]:
-                    return None, [], _json.loads(live["result_json"])
+                    return None, [], _decode_durable_result(live["result_json"])
                 raise IngressInProgress(dict(live))
         row = usage_repo.user_usage(con, user_id, start)
         denial = _quota_denial(row, ent, sum(clean), len(clean))
@@ -147,12 +147,38 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
 
 def finalize_ok(ingress_id: int, canonical_result: list[dict] | dict) -> dict:
     """ONE transaction: receipt running → ok + exact canonical response.
-    The HTTP response is returned only after this commits."""
+    The HTTP response is returned only after this commits.
+
+    FAIL LOUD: if the receipt is no longer running (already settled by
+    recovery, a concurrent finalize, or a lost-ack retry), the guarded
+    UPDATE matches zero rows and we raise instead of letting the caller
+    treat a non-transition as success — the route-level reconciliation
+    then decides from the durable outcome."""
     with db() as con:
         row = _repo.finalize_ok(
             con, ingress_id, _json.dumps(canonical_result,
                                          ensure_ascii=False), now())
+        if row is None:
+            raise RuntimeError("ingress_request_not_running")
     return row
+
+
+def _decode_durable_result(raw) -> list | dict:
+    """Single fail-closed decoder for a receipt's stored result.
+
+    A durable-ok replay payload must be a JSON object or array — a
+    NULL/malformed/scalar stored value proves nothing about what the
+    caller originally received, so it resolves UNRESOLVED instead of
+    leaking a JSONDecodeError or fabricating a success."""
+    if not isinstance(raw, str):
+        raise IngressUnresolved("err_ingress_unresolved")
+    try:
+        parsed = _json.loads(raw)
+    except Exception:
+        raise IngressUnresolved("err_ingress_unresolved") from None
+    if not isinstance(parsed, (dict, list)):
+        raise IngressUnresolved("err_ingress_unresolved")
+    return parsed
 
 
 def settle_failure(ingress_id: int, usage_ids: list[int],
@@ -210,9 +236,10 @@ def resolve_outcome(ingress_id: int) -> dict:
         return {"outcome": OUTCOME_PROVEN_ROLLBACK, "row": dict(row)}
     if row["status"] == "ok":
         try:
-            stored = _json.loads(row["result_json"])
-        except Exception:
-            logger.exception("ingress ok receipt malformed id=%s", ingress_id)
+            stored = _decode_durable_result(row["result_json"])
+        except IngressUnresolved:
+            logger.exception("ingress ok receipt payload unresolvable id=%s",
+                             ingress_id)
             return {"outcome": OUTCOME_UNRESOLVED}
         return {"outcome": OUTCOME_DURABLE_OK, "row": dict(row),
                 "result": stored}
