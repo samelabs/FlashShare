@@ -407,6 +407,49 @@ check("C13 NULL snapshot → fail loud: terminal failed + refund exact + 零 spl
       and e13 == 0 and c13_ == 0,
       f"status={row13['status']} refund={n_ref13} e={e13} c={c13_}")
 
+# ══════════ C15: first-party invalid snapshot → validation 先于一切 landing ══════════
+u15 = _mkuser(_u + "c15")
+t15 = f"ctc15_{_u}"
+_mktool(t15, owner_id=None, cost=100)      # first-party
+_grant(u15, 10000, "manual_topup", note="ct")
+bal15_pre = spendable_balance(u15)
+
+async def _s15():
+    return _mkstaged("c15")
+
+_orig_finish15 = gate._finish
+def _finish_null15(*args, **kwargs):
+    kwargs["commission_rate_snapshot"] = None
+    return _orig_finish15(*args, **kwargs)
+gate._finish = _finish_null15
+try:
+    res15, err15, _ = _run(u15, t15, None, _s15)
+except Exception as _e15:
+    res15, err15 = None, _e15
+gate._finish = _orig_finish15
+with db() as con:
+    row15 = dict(con.execute(
+        "select status, upload_id, result_public_id from tool_calls"
+        " where user_id=%s and tool_id=%s order by id desc limit 1",
+        (u15, t15)).fetchone())
+    cid15 = int(con.execute(
+        "select id from tool_calls where user_id=%s and tool_id=%s"
+        " order by id desc limit 1", (u15, t15)).fetchone()["id"])
+    n_ref15 = int(con.execute(
+        "select count(*) c from ledger where user_id=%s and kind='refund'",
+        (u15,)).fetchone()["c"])
+    n_up15 = int(con.execute(
+        "select count(*) c from uploads where user_id=%s",
+        (u15,)).fetchone()["c"])
+e15, c15b, r15 = _split_for(cid15)
+check("C15 first-party NULL snapshot → failed + exact refund + uploads=0 + revenue/earn/commission 全 0",
+      row15["status"] == "failed"
+      and row15["upload_id"] is None and row15["result_public_id"] is None
+      and n_up15 == 0 and n_ref15 == 1
+      and spendable_balance(u15) == bal15_pre
+      and r15 == 0 and e15 == 0 and c15b == 0,
+      f"status={row15['status']} up={n_up15} refund={n_ref15} r={r15}")
+
 # ══════════ C14: claim_call runtime API rejects invalid snapshot ══════════
 from repo.ledger import claim_call as _claim
 def _claim_ok(snap):
@@ -439,7 +482,7 @@ check("S1 _finish 函数体零 commission_rate() 读取",
 
 # ══════════ cleanup ══════════
 _set_rate(30)
-_uids = [owner, u1, u2, u3, u5, u6, us, u9, ufb, ufg, u13]
+_uids = [owner, u1, u2, u3, u5, u6, us, u9, ufb, ufg, u13, u15]
 with db() as con:
     fp_ids = [r["id"] for r in con.execute(
         "select id from users where username like %s", (f"{_u}fp%",)).fetchall()]

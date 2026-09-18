@@ -147,19 +147,25 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     from execution.pipeline import land_tool_result
     from config import BASE_URL
 
+    # Validate the durable attempt fact BEFORE any settlement side effect
+    # (uploads landing, tool_call ok, earning/revenue). Every runtime
+    # attempt carries a claim-time snapshot (DB invariant: running →
+    # NOT NULL); the validation therefore applies to EVERY call —
+    # first-party/free/self-owned may not consume the rate, but they can
+    # never proceed on an invalid attempt snapshot. NULL/out-of-range is
+    # a writer bug, not a default-to-0% situation — fail loud and let
+    # the strict outcome reconcile settle the economic failure.
+    if (not isinstance(commission_rate_snapshot, int)
+            or not 0 <= commission_rate_snapshot <= 100):
+        raise RuntimeError("invalid_commission_snapshot")
+
     owner_id = tool.get("owner_id")
     payout = 0
     commission = 0
     if cost > 0 and owner_id is not None and owner_id != user["id"]:
         # claim-time snapshot ONLY — current settings are never read at
         # settlement; a config change mid-execution cannot re-split an
-        # in-flight attempt. A running attempt ALWAYS carries a snapshot
-        # (DB invariant); NULL/out-of-range here is a writer bug, not a
-        # default-to-0% (provider takes 100%) situation — fail loud and
-        # let the strict outcome reconcile settle the economic failure.
-        if (not isinstance(commission_rate_snapshot, int)
-                or not 0 <= commission_rate_snapshot <= 100):
-            raise RuntimeError("invalid_commission_snapshot")
+        # in-flight attempt.
         rate = commission_rate_snapshot
         payout = cost - (cost * rate // 100)
         commission = cost - payout
