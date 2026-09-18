@@ -5,6 +5,8 @@
 -- database.py carries the same constraints for fresh creates; this script
 -- is the explicit deploy-side counterpart.
 --
+-- Execute EXACTLY ONCE against the target deployed DB.
+--
 -- Rules of engagement (project policy):
 --   * Violations ABORT the transaction — fail loud, no data repair,
 --     no silent normalization, no compatibility columns.
@@ -60,7 +62,10 @@ BEGIN
   END IF;
 END $$;
 
--- ── 2. add constraints (idempotent via IF NOT EXISTS on name) ──
+-- ── 2. add constraints — ONE-TIME deploy only ──
+-- This block is intentionally NOT idempotent.
+-- Re-running after a successful deploy fails loud on existing constraint
+-- names; that is the deployment guard, not an error to suppress.
 ALTER TABLE plans
   ADD CONSTRAINT plans_period_days_ck CHECK (period_days > 0),
   ADD CONSTRAINT plans_monthly_credits_ck CHECK (monthly_credits >= 0),
