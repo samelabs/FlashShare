@@ -857,6 +857,95 @@ check("H7 allowlist violation → pricing rollback (cost 仍 10) + 500",
       r7.status_code == 500 and int(cost_now["cost"]) == 10,
       f"{r7.status_code} cost={cost_now['cost']}")
 
+# ══════════ I. unconditional target validation + pricing orphan gate ══════════
+
+# I1: unknown target + NULL snapshots → raise + zero insert
+_n_before = len(_audit_rows())
+try:
+    with db() as con:
+        _orig_rec(con, op, "x.test", "bogus_target", "t", None, None, ts)
+    check("I1 bogus target + NULL snapshots → raise + zero insert",
+          False, "no raise")
+except ValueError as e:
+    check("I1 bogus target + NULL snapshots → raise + zero insert",
+          "audit_target_type_unknown:bogus_target" in str(e)
+          and len(_audit_rows()) == _n_before, str(e))
+
+# I2: nonexistent pricing target (no tool row, no pricing row) → 404
+ghost = f"ghost_{_u}"
+r = _post(f"/samelabs/tools/{ghost}/pricing",
+          json={"cost": 50, "enabled": True},
+          cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    orphan = con.execute("select 1 from pricing where tool_id=%s",
+                         (ghost,)).fetchone()
+    ghost_aud = con.execute(
+        "select count(*) c from operator_audit where target_id=%s",
+        (ghost,)).fetchone()
+check("I2 nonexistent pricing target → 404 + zero pricing + zero audit",
+      r.status_code == 404 and orphan is None
+      and int(ghost_aud["c"]) == 0,
+      f"{r.status_code} orphan={bool(orphan)} aud={ghost_aud['c']}")
+
+# I3: two threads race the same nonexistent target → no orphan either way
+results3 = {}
+barrier3 = threading.Barrier(2)
+def _ghost_worker(tag):
+    barrier3.wait(timeout=15)
+    results3[tag] = _post(f"/samelabs/tools/{ghost}/pricing",
+                          json={"cost": 50, "enabled": True},
+                          cookies={COOKIE_NAME: op_sess})
+t3a = threading.Thread(target=_ghost_worker, args=("A",))
+t3b = threading.Thread(target=_ghost_worker, args=("B",))
+t3a.start(); t3b.start(); t3a.join(30); t3b.join(30)
+with db() as con:
+    orphan3 = con.execute("select 1 from pricing where tool_id=%s",
+                          (ghost,)).fetchone()
+    aud3 = int(con.execute(
+        "select count(*) c from operator_audit where target_id=%s",
+        (ghost,)).fetchone()["c"])
+check("I3 双线程 nonexistent target → 均 404 + 零 orphan pricing + 零 audit",
+      results3["A"].status_code == 404 and results3["B"].status_code == 404
+      and orphan3 is None and aud3 == 0,
+      f"A={results3['A'].status_code} B={results3['B'].status_code}"
+      f" orphan={bool(orphan3)} aud={aud3}")
+
+# I4: registered tool + missing pricing → repair allowed (pricing + audit)
+rt5 = f"oatool5_{_u}"
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " tool_type, label_json, icon, multi, pass_through, visibility,"
+        " enabled, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', 'produce', %s, 'wand', FALSE,"
+        " FALSE, 'public', TRUE, %s, %s)",
+        (rt5, rt5, _json3.dumps({"en": "R5"}), ts, ts))
+r = _post(f"/samelabs/tools/{rt5}/pricing",
+          json={"cost": 42, "enabled": True},
+          cookies={COOKIE_NAME: op_sess})
+rows5 = _audit_rows("pricing.update", rt5)
+check("I4 registered tool 缺 pricing → 正常创建 pricing + audit (before=NULL)",
+      r.status_code == 200 and len(rows5) == 1
+      and rows5[0]["before_json"] is None
+      and rows5[0]["after_json"]["cost"] == 42,
+      f"{r.status_code} {rows5[:1]}")
+
+# I5: retired pricing-only target → update + audit still work
+rt6 = f"oatool6_{_u}"
+with db() as con:
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 77, TRUE, %s)", (rt6, ts))
+r = _post(f"/samelabs/tools/{rt6}/pricing",
+          json={"cost": 88, "enabled": True},
+          cookies={COOKIE_NAME: op_sess})
+rows6 = _audit_rows("pricing.update", rt6)
+check("I5 retired pricing-only target → 正常 update + audit (77→88)",
+      r.status_code == 200 and len(rows6) == 1
+      and rows6[0]["before_json"]["cost"] == 77
+      and rows6[0]["after_json"]["cost"] == 88,
+      f"{r.status_code} {rows6[:1]}")
+
 print()
 print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")
 _sys.exit(1 if FAIL else 0)

@@ -241,9 +241,19 @@ async def samelabs_set_pricing(tool_id: str, request: Request):
     # (platform row gone, pricing row alive) fall back to a pricing-row
     # lock — existing retired semantics unchanged.
     with db() as con:
-        lock_row = tool_row_for_update(con, tool_id)
-        before = pricing_row(con, tool_id) if lock_row is not None \
-            else pricing_row_for_update(con, tool_id)
+        tool = tool_row_for_update(con, tool_id)
+        if tool is not None:
+            # registered tool: existing pricing or missing-pricing repair
+            # both allowed — the tool row is the serialization boundary
+            before = pricing_row(con, tool_id)
+        else:
+            # retired tool (platform row gone): pricing row must exist and
+            # is the serialization boundary — absent both rows means the
+            # target does not exist: 404, zero pricing row, zero audit,
+            # never an orphan pricing row
+            before = pricing_row_for_update(con, tool_id)
+            if before is None:
+                return JSONResponse({"ok": False, "error": "not_found"}, 404)
         row = set_pricing(tool_id, cost, enabled,
                           admin_user_id=user["id"], con=con)
         _audit_repo.record(con, user["id"], "pricing.update", "pricing",

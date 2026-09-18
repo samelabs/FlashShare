@@ -69,6 +69,12 @@ def record(con, actor_user_id: int, action: str, target_type: str,
     """
     if con is None:
         raise ValueError("operator_audit.record requires a caller transaction")
+    # target_type must be validated UNCONDITIONALLY, before any INSERT or
+    # snapshot projection — a bogus target with NULL snapshots must still
+    # fail with zero insert.
+    target_type = str(target_type)
+    if target_type not in TARGET_SAFE_KEYS:
+        raise ValueError(f"audit_target_type_unknown:{target_type}")
     return con.execute(
         """
         INSERT INTO operator_audit (actor_user_id, action, target_type,
