@@ -288,7 +288,8 @@ check("K13 withdrawal 可提现额 = provider_earn credits",
 # top up earnings above the 10000-credit minimum first
 from repo.ledger import claim_call, insert_provider_earn_if_absent
 with db() as con:
-    a, _c = claim_call(con, f"kc-wd-{_u}", caller_id, tool_30, 100, "{}", ts)
+    a, _c = claim_call(con, f"kc-wd-{_u}", caller_id, tool_30, 100, "{}", ts,
+                        commission_rate_snapshot=30)
 with db() as con:
     base = con.execute(
         "select coalesce(sum(delta),0) s from ledger where user_id=%s"
