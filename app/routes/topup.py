@@ -40,8 +40,11 @@ async def topup_checkout(request: Request):
     from repo.orders import insert_order, mark_failed, set_provider_order_id
     ts = now()
     with db() as con:
+        # purchase fact freeze: amount + currency + credits quantity —
+        # later package edits never rewrite a checked-out order
         order = insert_order(con, user["id"], "package", pkg["id"], "creem",
-                             pkg["price_cents"], pkg["currency"], ts)
+                             pkg["price_cents"], pkg["currency"], ts,
+                             credits_snapshot=int(pkg["credits"]))
     try:
         out = creem.create_credits_checkout(order["id"], pkg["price_cents"], user)
     except Exception:

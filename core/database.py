@@ -333,6 +333,7 @@ _SCHEMA_SQL = (
       status            TEXT NOT NULL DEFAULT 'pending',
       amount_cents      BIGINT NOT NULL,
       currency          TEXT NOT NULL DEFAULT 'USD',
+      credits_snapshot  BIGINT,
       granted           BOOLEAN NOT NULL DEFAULT FALSE,
       created_at        BIGINT NOT NULL,
       paid_at           BIGINT
