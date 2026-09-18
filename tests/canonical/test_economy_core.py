@@ -151,9 +151,12 @@ def _row(tk_):
     d = dict(row); d["id"] = d["tool_key"]; d["type"] = d["tool_type"]
     return d
 
+from execution.invocation import SourceFile as _SF
 class _Inv:
     def __init__(self, tool_id, ref):
         self.tool_id = tool_id; self.params = {}; self.client_ref = ref
+        self.files = [_SF("kc-in", "")]        # fingerprint 需要真实 shape
+        self.delivery = {"expiry_days": 7, "allowed_downloads": 5}
 
 import asyncio
 def _run(coro):
@@ -289,7 +292,7 @@ check("K13 withdrawal 可提现额 = provider_earn credits",
 from repo.ledger import claim_call, insert_provider_earn_if_absent
 with db() as con:
     a, _c = claim_call(con, f"kc-wd-{_u}", caller_id, tool_30, 100, "{}", ts,
-                        commission_rate_snapshot=30)
+                        commission_rate_snapshot=30, invocation_hash="f" * 64)
 with db() as con:
     base = con.execute(
         "select coalesce(sum(delta),0) s from ledger where user_id=%s"

@@ -84,7 +84,9 @@ FLASHSHARE_BASE_URL=https://your-domain
 是当前只读 access projection（会员事实 + 有效权益 + 24h 用量）。
 
 `POST /api/v1/execute` 请求体是 canonical ToolInvocation（`client_ref` 为
-v1 必填——agent/程序重试必须可幂等）：
+v1 必填——agent/程序重试必须可幂等）。`client_ref` 标识一个不可变的
+logical invocation：同一 ref 的 params/source/delivery 任一变化都会得到
+`409 idempotency_conflict`；改变操作内容必须换新的 `client_ref`：
 
 ```json
 {

@@ -112,7 +112,11 @@ _mktool(tool1, owner_id=None, cost=25)
 _grant(user1, 1000, "manual_topup", note="rs")
 
 from execution.invocation import ToolInvocation, SourceFile
+_ref_seq = [0]
 def _inv(tool_id, ref=None):
+    if ref is None:  # client_ref is required (operation identity); fixtures
+        _ref_seq[0] += 1  # default to a fresh unique ref per call
+        ref = f"fix:{tool_id}:{_ref_seq[0]}:{_u}"
     return ToolInvocation(tool_id=tool_id,
                           files=[SourceFile("p", "t")], params={},
                           delivery={"expiry_days": 7, "allowed_downloads": 5},
@@ -405,7 +409,8 @@ _grant(user8, 1000, "manual_topup", note="rs")
 with db() as con:
     from repo.ledger import claim_call
     anchor8, _ = claim_call(con, f"startup_{_u}", user8, tool8, 25, "{}", ts,
-                             commission_rate_snapshot=30)
+                             commission_rate_snapshot=30,
+                             invocation_hash="a" * 64)
 call8 = int(anchor8["id"])
 from economy.billing import consume as _consume
 _charge8 = _consume(user8, 25, "consume", ref_type="tool_call",
@@ -480,11 +485,17 @@ check("K2 non-ok + upload_id → DB reject",
                   " upload_id) values (%s,%s,%s,'failed',0,%s,%s,"
                   " (select min(id) from uploads))",
                   (f"kr2_{_u}", user9, tool9, ts, ts)))
-check("K3 ok + upload_id NULL 合法 (未来非文件成功不设限)",
+check("K3 ok + upload_id NULL 合法 (非文件成功不设限; hash 必带)",
       not _db_rejects("insert into tool_calls (client_ref, user_id,"
-                      " tool_id, status, cost_snapshot, started_at,"
-                      " finished_at) values (%s,%s,%s,'ok',0,%s,%s)",
-                      (f"kr3_{_u}", user9, tool9, ts, ts)))
+                      " tool_id, status, cost_snapshot, invocation_hash,"
+                      " started_at, finished_at) values"
+                      " (%s,%s,%s,'ok',0,%s,%s,%s)",
+                      (f"kr3_{_u}", user9, tool9, "c" * 64, ts, ts)))
+check("K3b ok + NULL invocation_hash → reject (replay authority 需 hash)",
+      _db_rejects("insert into tool_calls (client_ref, user_id,"
+                  " tool_id, status, cost_snapshot, started_at,"
+                  " finished_at) values (%s,%s,%s,'ok',0,%s,%s)",
+                  (f"kr3b_{_u}", user9, tool9, ts, ts)))
 
 # ══════════ L. direct share save_upload_record 不变 ══════════
 from execution.pipeline import save_upload_record
@@ -544,7 +555,8 @@ _mktool(toolM4, owner_id=None, cost=25)
 with db() as con:
     from repo.ledger import claim_call
     anchorM4, _ = claim_call(con, f"m4_{_u}", userM4, toolM4, 25, "{}", ts,
-                              commission_rate_snapshot=30)
+                              commission_rate_snapshot=30,
+                              invocation_hash="b" * 64)
 outM4 = resolve_success_outcome(int(anchorM4["id"]))
 check("M4 running → OUTCOME_PROVEN_ROLLBACK (唯一 refund 路径)",
       outM4["outcome"] == OUTCOME_PROVEN_ROLLBACK, str(outM4))

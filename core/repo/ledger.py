@@ -158,41 +158,72 @@ def insert_provider_earn_if_absent(con, owner_id: int, payout: int,
 
 # ── tool_calls (计量事实) ──
 
+_HEX64 = set("0123456789abcdef")
+
+
+def _valid_invocation_hash(value) -> bool:
+    return (isinstance(value, str) and len(value) == 64
+            and all(c in _HEX64 for c in value))
+
+
 def claim_call(con, client_ref: str, user_id: int, tool_id: str,
                cost: int, params_json: str, started_at: int,
-               commission_rate_snapshot: int) -> tuple[dict, bool]:
+               commission_rate_snapshot: int,
+               invocation_hash: str) -> tuple[dict, bool]:
     """Claim one logical invocation attempt before charging/executing.
 
     The partial unique index on (user_id, tool_id, client_ref) for
     running|ok rows makes concurrent retries converge here. Failed attempts do
-    not block a later retry with the same logical client_ref.
+    not block a later retry with the same logical client_ref — BUT only
+    for the SAME operation: client_ref is permanently bound to the
+    invocation_hash of its first claim. claim_call refuses (claimed=False,
+    no INSERT) when the earliest historical row for this ref carries a
+    different hash, or a NULL hash that proves nothing; the gate maps
+    that to 409 idempotency_conflict.
 
     commission_rate_snapshot is frozen at claim time and written in the
     SAME INSERT — the only snapshot writer. Settlement reads it from the
-    persisted row, never from current settings. Historical pre-snapshot
-    rows keep NULL (no fabricated economics).
+    persisted row, never from settings. invocation_hash likewise has
+    exactly ONE writer: this claim INSERT (64-char lowercase SHA-256
+    hex, runtime-validated). Historical pre-hash rows keep NULL.
 
-    Runtime validation mirrors the DB CHECK so caller bugs fail loud
-    here instead of surfacing as a PostgreSQL CHECK violation.
-
-    Returns (row, claimed). claimed=False means an existing running/ok anchor
-    already owns this logical invocation.
+    Returns (row, claimed). claimed=False means the returned anchor owns
+    the ref — live (running/ok) same-hash anchor, or a hash-mismatch/
+    NULL-hash conflict anchor for the gate to 409 on.
     """
     if (not isinstance(commission_rate_snapshot, int)
             or not 0 <= commission_rate_snapshot <= 100):
         raise ValueError("invalid_commission_rate_snapshot")
+    if not _valid_invocation_hash(invocation_hash):
+        raise ValueError("invalid_invocation_hash")
+    # client_ref ↔ fingerprint binding: the EARLIEST historical row is
+    # the authority. No rows → claim freely.
+    hist = con.execute(
+        """
+        SELECT invocation_hash, status, id FROM tool_calls
+        WHERE user_id=%s AND tool_id=%s AND client_ref=%s
+        ORDER BY id ASC LIMIT 1
+        """,
+        (user_id, tool_id, client_ref)).fetchone()
+    if hist is not None:
+        if hist["invocation_hash"] != invocation_hash:
+            # different operation under this ref (or NULL hash that
+            # cannot prove same-operation) → conflict, zero side effects
+            return dict(hist), False
+        # same operation: failed/insufficient history may re-claim
     row = con.execute(
         """
         INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
-           cost_snapshot, commission_rate_snapshot, params_json, started_at)
-        VALUES (%s, %s, %s, 'running', %s, %s, %s, %s)
+           cost_snapshot, commission_rate_snapshot, invocation_hash,
+           params_json, started_at)
+        VALUES (%s, %s, %s, 'running', %s, %s, %s, %s, %s)
         ON CONFLICT (user_id, tool_id, client_ref)
           WHERE status IN ('running','ok')
         DO NOTHING
         RETURNING *
         """,
         (client_ref, user_id, tool_id, cost, commission_rate_snapshot,
-         params_json, started_at)).fetchone()
+         invocation_hash, params_json, started_at)).fetchone()
     if row:
         return dict(row), True
     prior = con.execute(

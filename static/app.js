@@ -288,6 +288,7 @@ function ensureZipPreview(cb) {
 }
 
 if (!window.__TOOLPAGE__) file.addEventListener("change", () => {
+  pendingOperationRef = null; // operation input changed → new identity next submit
   if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (file.files.length > 0) {
     for (let i = 0; i < file.files.length; i++) {
@@ -329,6 +330,12 @@ if (!window.__TOOLPAGE__) dropZone.addEventListener("drop", event => {
     file.dispatchEvent(new Event("change"));
   }
 });
+// delivery selects are operation input too — changing them invalidates
+// the pending operation identity
+if (!window.__TOOLPAGE__) ["expiryDays", "allowedDownloads"].forEach(name => {
+  const el = form.elements.namedItem(name);
+  if (el) el.addEventListener("change", () => { pendingOperationRef = null; });
+});
 if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!window.__USER__) return location.href = "/auth/login";
@@ -346,7 +353,13 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
     return;
   }
   showResult(`<div class="upload-progress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="progressFill"></div></div><div class="upload-progress-text" id="progressText">0%</div></div>`);
+  // One user action = one operation ref, born at first submit and reused
+  // by upload + execute + retry until success or an input change.
+  if (!pendingOperationRef) pendingOperationRef = newOperationRef();
   const formData = new FormData(form);
+  // operation identity for the ingress-receipt batch (next batch): upload
+  // phase and execute phase carry the SAME client_ref.
+  formData.append("client_ref", pendingOperationRef);
   // file input lives in the visual drop label (outside <form>) — append explicitly
   Array.from(file.files).forEach((f, idx) => formData.append(idx === 0 ? "file" : "file", f));
   if (activeTool && activeTool.id !== "share") {
@@ -399,7 +412,8 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
       const expirySelect = form.elements.namedItem("expiryDays");
       const dlSelect = form.elements.namedItem("allowedDownloads");
       // Canonical ToolInvocation (Stage C): source.files[] 唯一 shape;
-      // params 只含 tool params; delivery 独立字段; client_ref null = fresh。
+      // params 只含 tool params; delivery 独立字段; client_ref = the
+      // retained operation identity (same ref as the upload phase).
       const fileList = data.files || [data.file];
       const toolParams = Object.assign({}, activeToolParams || {});
       const toolBody = {
@@ -410,7 +424,7 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
         },
-        client_ref: null,
+        client_ref: pendingOperationRef,
       };
       // Keep source reference for retry (originals survive until tool succeeds)
       lastToolSource = fileList.map(f => ({ publicId: f.publicId, sourceToken: f.sourceToken || "" }));
@@ -530,6 +544,20 @@ function extLabel(tok) {
 }
 let activeTool = null;
 let activeToolParams = {};  // spec v3: 确认时收集的 params 值
+
+// ── operation identity (client-generated, page-lifetime only) ──
+// One user action = one stable client_ref shared by upload + execute +
+// retry. Changed operation input (files/tool/params/delivery) drops the
+// pending ref so the next submit generates a fresh one. No localStorage,
+// no persistence: this only needs to survive a response-loss retry.
+function newOperationRef() {
+  const u = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID().replace(/-/g, "")
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, "0")).join("");
+  return "web:" + u;
+}
+let pendingOperationRef = null;
 let lastUploadResult = null;
 let lastToolSource = null;
 let homeToolsData = [];
@@ -553,6 +581,7 @@ function savedToolParams(toolId) {
 function commitToolSelection(tool) {
   activeTool = tool;
   activeToolParams = {};
+  pendingOperationRef = null; // operation input changed
   localStorage.setItem("flashshare_tool", tool.id);
   applyToolSelection();
 }
@@ -911,6 +940,10 @@ async function retryTool() {
   const expirySelect = form.elements.namedItem("expiryDays");
   const dlSelect = form.elements.namedItem("allowedDownloads");
   try {
+    // Retry reuses the SAME operation ref (response-loss safety): gate
+    // sees same ref + same fingerprint → replay (zero re-charge/re-execute)
+    // or, if the first attempt failed, a fresh attempt of the SAME op.
+    if (!pendingOperationRef) pendingOperationRef = newOperationRef();
     const toolRes = await fetch("/api/tools/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -922,12 +955,13 @@ async function retryTool() {
           expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
           allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
         },
-        client_ref: null,
+        client_ref: pendingOperationRef,
       }),
     });
     const toolData = await toolRes.json();
     if (!toolData.ok) { const ek = toolData.error || "failed"; showToolError(t(ek) !== ek ? t(ek) : t("failed"), lastUploadResult); return; }
     lastToolSource = null;
+    pendingOperationRef = null; // success — next submit is a new operation
     showShareResult(toolData.result);
     window._loadHistory && window._loadHistory();
   } catch (e) { showToolError(e.message, lastUploadResult); }

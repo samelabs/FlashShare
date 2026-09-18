@@ -19,7 +19,8 @@ BEGIN;
 -- ── 0. add the new nullable column (transactional DDL: a later preflight
 --        failure rolls this back together with everything else) ──
 ALTER TABLE tool_calls
-  ADD COLUMN commission_rate_snapshot INTEGER;
+  ADD COLUMN commission_rate_snapshot INTEGER,
+  ADD COLUMN invocation_hash TEXT;
 
 -- ── 1. pre-flight: existing data must satisfy every new invariant ──
 DO $$
@@ -52,6 +53,7 @@ BEGIN
            AND (upload_id IS NOT NULL OR result_public_id IS NOT NULL
                 OR result_json IS NOT NULL))
        OR (status = 'running' AND commission_rate_snapshot IS NULL)
+       OR (status IN ('running','ok') AND invocation_hash IS NULL)
        OR (commission_rate_snapshot IS NOT NULL
            AND (commission_rate_snapshot < 0
                 OR commission_rate_snapshot > 100));
@@ -94,6 +96,8 @@ ALTER TABLE pricing
   ADD CONSTRAINT pricing_cost_ck CHECK (cost >= 0);
 
 ALTER TABLE tool_calls
+  ADD CONSTRAINT tool_calls_live_invocation_hash_ck
+    CHECK (status NOT IN ('running','ok') OR invocation_hash IS NOT NULL),
   ADD CONSTRAINT tool_calls_commission_snapshot_range_ck
     CHECK (commission_rate_snapshot IS NULL
            OR commission_rate_snapshot BETWEEN 0 AND 100),

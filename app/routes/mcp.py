@@ -170,7 +170,7 @@ def _tool_specs(user: dict) -> list:
                 },
             },
         }
-        required = ["files"]
+        required = ["files", "client_ref"]
         decl = t.get("params") or []
         if decl:
             from governance.tool_params import to_input_schema_properties
@@ -193,7 +193,9 @@ def _tool_specs(user: dict) -> list:
         }
         props["client_ref"] = {
             "type": "string",
-            "description": "Idempotency ref: reuse to retry this tool call safely",
+            "description": "Required stable operation identity (max 128 chars): "
+                           "generate once per logical operation and reuse the "
+                           "same value to retry it safely",
         }
         label = t["label"]
         desc = f"{label.get('en') or t['id']}"
@@ -226,7 +228,6 @@ def _tool_specs(user: dict) -> list:
 
 
 async def _call_tool(request: Request, user: dict, mid, params: dict):
-    import secrets as _secrets
     from execution.pipeline import upload_sources as _upload_batch
     from execution.pipeline import IngressBoundaryError, IngressQuotaError
 
@@ -243,13 +244,13 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         })
     tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
 
-    if "client_ref" in args:
-        cr = args.get("client_ref")
-        if not isinstance(cr, str) or not cr.strip() or len(cr) > 128:
-            return _rpc_err(mid, -32602, "invalid client_ref")
-        client_ref = cr.strip()
-    else:
-        client_ref = f"mcp:{_secrets.token_hex(16)}"
+    # client_ref is REQUIRED and validated BEFORE any base64 decode,
+    # quota check, or Gokapi upload — a missing/invalid ref must never
+    # leave the caller having uploaded anything.
+    cr = args.get("client_ref")
+    if not isinstance(cr, str) or not cr.strip() or len(cr) > 128:
+        return _rpc_err(mid, -32602, "invalid client_ref")
+    client_ref = cr.strip()
 
     from governance.delivery import (validate_delivery, DEFAULT_EXPIRY_DAYS,
                                      DEFAULT_ALLOWED_DOWNLOADS)

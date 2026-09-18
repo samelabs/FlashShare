@@ -10,7 +10,7 @@ import os as _os, sys as _sys
 import sys
 import json
 import base64
-import time, threading, re
+import time, threading, re, uuid
 
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
 
@@ -424,7 +424,7 @@ assert resolve(_hf_id2)["plan_code"] == "free" and resolve(_hp_id2)["plan_code"]
 _ckf = _login(_hf_name); _ckp = _login(_hp_name)
 def _inv(ed, dl):
     return {"tool_id": "share", "source": {"files": [{"public_id": "nonexistent", "source_token": ""}]},
-            "params": {}, "delivery": {"expiry_days": ed, "allowed_downloads": dl}, "client_ref": None}
+            "params": {}, "delivery": {"expiry_days": ed, "allowed_downloads": dl}, "client_ref": f"ig-{uuid.uuid4().hex[:8]}"}
 
 st, d = _execute(_ckf, _inv(5, 50))
 check("H1 Free execute expiry=5 → 422 invalid_request (protocol 面)",
@@ -552,7 +552,10 @@ _bearer = (_tk.get("token") or {}).get("token") or ""
 check("ME-P0 fixture: 真实 API token 创建成功", bool(_bearer),
       f"cookie={'yes' if _eck else 'NO'} resp={str(_tk)[:80]}")
 
-def _mcp(arguments):
+def _mcp(arguments, with_ref=True):
+    if with_ref and "client_ref" not in arguments:
+        arguments = {**arguments,
+                     "client_ref": f"mcpe2e-{uuid.uuid4().hex[:8]}"}
     _body = {"jsonrpc": "2.0", "id": 7, "method": "tools/call",
              "params": {"name": "share", "arguments": arguments}}
     conn = _hc.HTTPConnection(*_HOST, timeout=60)
@@ -771,7 +774,7 @@ conn.request("POST", "/api/uploads", _pf_multipart("share"), {"Content-Type": "m
 _up_d = json.loads(conn.getresponse().read()); conn.close()
 _files_d = [{"public_id": _up_d["file"]["publicId"], "source_token": _up_d["file"].get("sourceToken", "")}]
 _inv_d = {"tool_id": _pf_key, "source": {"files": _files_d}, "params": {},
-          "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": None}
+          "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": f"ig-{uuid.uuid4().hex[:8]}"}
 conn = _hc.HTTPConnection(*_HOST, timeout=60)
 conn.request("POST", "/api/tools/execute", json.dumps(_inv_d),
              {"Cookie": _pfd_ck, "Content-Type": "application/json"})
@@ -827,7 +830,8 @@ _pfm_bearer = (_pfm_tk.get("token") or {}).get("token") or ""
 _mcp_files = [{"b64": base64.b64encode(_png1).decode(), "filename": "pf.png"}]
 _mcp_body = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
              "params": {"name": _pf_key.replace("/", "__"),
-                        "arguments": {"files": _mcp_files}}}
+                        "arguments": {"files": _mcp_files,
+                                      "client_ref": f"mcppf-{uuid.uuid4().hex[:8]}"}}}
 conn = _hc.HTTPConnection(*_HOST, timeout=60)
 conn.request("POST", "/mcp", json.dumps(_mcp_body), {
     "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
@@ -907,7 +911,7 @@ conn.request("POST", "/api/uploads", _pf_multipart("share"), {"Content-Type": "m
 _up = json.loads(conn.getresponse().read()); conn.close()
 _files = [{"public_id": _up["file"]["publicId"], "source_token": _up["file"].get("sourceToken", "")}]
 _inv = {"tool_id": _pf_key, "source": {"files": _files}, "params": {},
-        "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": None}
+        "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": f"ig-{uuid.uuid4().hex[:8]}"}
 conn = _hc.HTTPConnection(*_HOST, timeout=60)
 conn.request("POST", "/api/tools/execute", json.dumps(_inv),
              {"Cookie": _pfr_ck, "Content-Type": "application/json"})

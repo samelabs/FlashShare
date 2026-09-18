@@ -255,6 +255,10 @@ _SCHEMA_SQL = (
       started_at       BIGINT NOT NULL,
       finished_at      BIGINT,
       commission_rate_snapshot INTEGER,
+      invocation_hash    TEXT,
+      CONSTRAINT tool_calls_live_invocation_hash_ck
+        CHECK (status NOT IN ('running','ok')
+               OR invocation_hash IS NOT NULL),
       CONSTRAINT tool_calls_status_ck
         CHECK (status IN ('running','ok','failed','insufficient')),
       CONSTRAINT tool_calls_cost_snapshot_ck CHECK (cost_snapshot >= 0),
