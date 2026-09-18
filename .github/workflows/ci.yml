@@ -162,6 +162,17 @@ jobs:
             python tests/canonical/test_state_schema_invariants.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_state_schema_invariants.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_result_settlement_atomicity.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_result_settlement_atomicity.py
+          # semantic guards (do not replace behavior tests):
+          # orchestrator is staging-only and holds no source-deletion
+          # authority; finalize_call_ok is the single tool_calls.upload_id
+          # writer (staged-result cleanup lives in gate.py only)
+          test -z "$(grep -n save_upload_record core/execution/orchestrator.py)"
+          test -z "$(grep -n delete_gokapi_file core/execution/orchestrator.py)"
+          test "$(grep -rn "SET status='ok'" core/repo/ledger.py | wc -l)" = "1"
           python tests/canonical/test_rounded_corners.py
 
       - name: Start Gokapi HTTP-boundary service
@@ -258,6 +269,9 @@ jobs:
 
       - name: State schema invariants canonical
         run: python tests/canonical/test_state_schema_invariants.py
+
+      - name: Result settlement atomicity canonical
+        run: python tests/canonical/test_result_settlement_atomicity.py
 
       - name: Failure diagnostics
         if: failure()

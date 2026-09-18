@@ -1,7 +1,15 @@
 """execution/orchestrator — 三路执行编排 (批2e, 从 api.py 收编).
 
-local 单文件 / local 多文件 / remote。共享落地 spine:
-读源 → handler(subprocess) → storage write → DB 记录 → 清理源。
+local 单文件 / local 多文件 / remote。共享执行 spine:
+读源 → handler(subprocess) → stage physical result (Gokapi)。
+
+durable result settlement (uploads row / tool_calls binding /
+earning/revenue) 由 gate._finish 在单一 DB transaction 内落地。
+source lifecycle 不由 execution 删除: intermediate source 由 Gokapi
+INTERMEDIATE_TTL_DAYS 到期自清; durable upload source 沿用自己的
+uploads/Gokapi lifecycle。execution 只读 source, 不拥有 source
+deletion authority — settlement 失败不得销毁 invocation 输入
+(否则 failed attempt 的同源重试契约是假的, durable source 也会被误删)。
 
 🔴8 修复: 多文件上传(输入侧)的 gokapi 中途回滚在 api.create_upload 路由层
 (上传批次属于应用层动作); 本模块负责执行侧: 任一源读取失败 → 已读流全部
@@ -14,12 +22,11 @@ import logging
 
 from config import BASE_URL, MAX_UPLOAD_BYTES
 from database import db  # noqa: F401 (pipeline 内使用)
-from gokapi import delete_gokapi_file
 from storage import read as storage_read, write as storage_write
 from tools import ToolError
 
 from . import ExecutionError
-from .pipeline import save_upload_record
+from .pipeline import StagedResult
 
 logger = logging.getLogger("flashshare")
 
@@ -103,7 +110,6 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     allowed_downloads = delivery["allowed_downloads"]
 
     sources = []
-    gokapi_ids = []
     total = 0
     for upload in uploads:
         ud = dict(upload) if not isinstance(upload, dict) else upload
@@ -125,7 +131,6 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         total += len(data)
         sources.append((data, ud["file_name"], ud["content_type"],
                         len(data)))
-        gokapi_ids.append(ud["gokapi_id"])
 
     if tool.get("multi") and len(sources) >= 1:
         result = await _run_handler(pool, process_tool, tool["id"],
@@ -140,22 +145,26 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     gokapi_result = storage_write(
         io.BytesIO(output_bytes), result["filename"], result["content_type"],
         expiry_days, allowed_downloads, output_size)
-
-    ip = request_ctx.get("ip", "")
     info = gokapi_result.get("FileInfo", {})
-    record = save_upload_record(
-        user["id"], ip, info.get("Id", ""),
-        result["filename"], result["content_type"], output_size,
-        expiry_days, allowed_downloads, info.get("ExpireAt"),
-        info.get("UrlHotlink", ""), BASE_URL)
-    record["origSize"] = sources[0][0].__len__() if len(sources) == 1 else None
 
-    for gid in gokapi_ids:
-        try:
-            delete_gokapi_file(gid)
-        except Exception:
-            logger.warning("Failed to cleanup source %s after tool execution", gid)
-    return record
+    # staging-only: Gokapi 物理结果已落, 但 518 durable/public 身份
+    # (uploads row / publicId / downloadUrl) 由 gate 的 settlement
+    # transaction 生成 — 本函数绝不写 uploads。
+    staged = StagedResult(
+        gokapi_id=info.get("Id", ""),
+        filename=result["filename"],
+        content_type=result["content_type"],
+        size=output_size,
+        expiry_days=expiry_days,
+        allowed_downloads=allowed_downloads,
+        expire_at=info.get("ExpireAt"),
+        url_hotlink=info.get("UrlHotlink", ""),
+        ip=request_ctx.get("ip", ""),
+        orig_size=len(sources[0][0]) if len(sources) == 1 else None)
+
+    # source 不做 eager-delete (execution 只读 source; 生命周期归
+    # intermediate TTL / durable uploads 自身)
+    return staged
 
 
 async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
@@ -173,7 +182,6 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         raise ExecutionError("err_tool_not_configured")
     trusted = (tool.get("owner_id") is None) or bool(tool.get("trusted"))
     sources = []
-    gokapi_ids = []
     total = 0
     for upload in uploads:
         ud = dict(upload) if not isinstance(upload, dict) else upload
@@ -188,7 +196,6 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
             "fetch_url": (f"{BASE_URL}/api/source/{ud['gokapi_id']}"
                           f"?u={user['id']}&t={token}"),
         })
-        gokapi_ids.append(ud["gokapi_id"])
 
     auth_headers = {}
     if decl.get("auth_header") and decl.get("auth_token"):
@@ -221,17 +228,22 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         io.BytesIO(output_bytes), out["filename"], out["content_type"],
         expiry_days, allowed_downloads, output_size)
     info = gokapi_result.get("FileInfo", {})
-    record = save_upload_record(
-        user["id"], request_ctx.get("ip", ""), info.get("Id", ""),
-        out["filename"], out["content_type"], output_size,
-        expiry_days, allowed_downloads, info.get("ExpireAt"),
-        info.get("UrlHotlink", ""), BASE_URL)
-    for gid in gokapi_ids:
-        try:
-            delete_gokapi_file(gid)
-        except Exception:
-            logger.warning("Failed to cleanup source %s after remote execution", gid)
-    return record
+
+    # staging-only (与 local 同一 StagedResult 类型): durable/public
+    # landing 只发生在 gate settlement transaction。
+    staged = StagedResult(
+        gokapi_id=info.get("Id", ""),
+        filename=out["filename"],
+        content_type=out["content_type"],
+        size=output_size,
+        expiry_days=expiry_days,
+        allowed_downloads=allowed_downloads,
+        expire_at=info.get("ExpireAt"),
+        url_hotlink=info.get("UrlHotlink", ""),
+        ip=request_ctx.get("ip", ""))
+
+    # source 不做 eager-delete (与 local 同机制)
+    return staged
 
 
 import json  # noqa: E402

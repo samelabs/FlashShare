@@ -10,16 +10,18 @@ def insert_record(con, user_id: int, ip: str, public_id: str, gokapi_id: str,
                   filename: str, content_type: str, size: int,
                   expiry_days: int, allowed_downloads: int,
                   expire_at: Optional[int], url_download: str,
-                  url_hotlink: str, created_at: int) -> None:
-    con.execute(
+                  url_hotlink: str, created_at: int) -> int:
+    """RETURNING id — 旧调用方忽略返回值不受影响; tool-result settlement
+    用返回 id 绑定 tool_calls.upload_id。"""
+    return int(con.execute(
         """
         INSERT INTO uploads(user_id, ip, public_id, gokapi_id, file_name, content_type, size_bytes,
            expiry_days, allowed_downloads, expire_at, url_download, url_hotlink, created_at)
-        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
         """,
         (user_id, ip, public_id, gokapi_id, filename, content_type, size,
          expiry_days, allowed_downloads, expire_at, url_download,
-         url_hotlink, created_at))
+         url_hotlink, created_at)).fetchone()["id"])
 
 
 def public_id_exists(con, public_id: str) -> bool:

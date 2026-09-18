@@ -276,7 +276,7 @@ with db() as con:
         " returning id",
         (f"cr2_{_u}", tu, f"sstool_{_u}", ts)).fetchone()
 with db() as con:
-    finalize_call_ok(con, int(a2["id"]), "pub", "{}", ts)
+    finalize_call_ok(con, int(a2["id"]), None, "pub", "{}", ts)
 check("D6 running → ok 现有 writer 合法", True)
 check("D7 insufficient 终态合法",
       not _db_rejects(
