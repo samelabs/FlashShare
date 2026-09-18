@@ -148,24 +148,55 @@ finally:
     _tools._registry[:] = [t for t in _tools._registry
                            if t["id"] not in ("zz_at_cap", "zz_cap1")]
 
-# ══════════ C. storage bounded (fake oversized body) ══════════
+# ══════════ C. storage bounded (short-read fault injection, tiny cap) ══════════
 import storage as _storage_mod
-class _FakeRaw:
-    def __init__(self, data): self._d = data
-    def read(self, n=-1): return self._d[:n] if n and n > 0 else self._d
+import config as _cfg_mod
+
+class _ShortReadRaw:
+    """故意 short-read: 每次 read(n) 最多 2~3 bytes — 证明 chunked 逻辑
+    不依赖单次 read(n) 返回 n bytes 的语义。"""
+    def __init__(self, body): self._buf = memoryview(body); self._pos = 0
+    def read(self, n=-1):
+        if n is None or n < 0:
+            n = len(self._buf) - self._pos
+        take = min(n, 2 + (self._pos % 2))   # 2~3 bytes per call
+        chunk = bytes(self._buf[self._pos:self._pos + take])
+        self._pos += take
+        return chunk
     def close(self): self.closed = True
-_status, _hdrs, _body = None, None, None
-def _fake_open(file_id):
-    return 200, {}, _FakeRaw(b"q" * (MAX_UPLOAD_BYTES + 1))
+
+def _mk_open(body):
+    holder = {}
+    def _open(fid):
+        r = _ShortReadRaw(body)
+        holder["raw"] = r
+        return 200, {}, r
+    return _open, holder
+
 _orig_open = _storage_mod.open_gokapi_download
-_storage_mod.open_gokapi_download = _fake_open
+_orig_cap_c = _cfg_mod.MAX_UPLOAD_BYTES
+CAP_C = 32
+_cfg_mod.MAX_UPLOAD_BYTES = CAP_C
 try:
-    _storage_mod.read("whatever")
-    check("C1 storage 实际体>平台 cap → ValueError", False, "no raise")
-except ValueError:
-    check("C1 storage 实际体>平台 cap → ValueError", True)
+    _open1, _h1 = _mk_open(b"q" * (CAP_C + 1))
+    _storage_mod.open_gokapi_download = _open1
+    try:
+        _storage_mod.read("f1")
+        check("C1 storage cap+1 (short-read) → ValueError + stream 关闭",
+              False, "no raise")
+    except ValueError:
+        check("C1 storage cap+1 (short-read) → ValueError + stream 关闭",
+              getattr(_h1["raw"], "closed", False) is True)
+    _open2, _h2 = _mk_open(b"q" * CAP_C)
+    _storage_mod.open_gokapi_download = _open2
+    status_c, _hdrs_c, body_c = _storage_mod.read("f2")
+    check("C2 storage exact cap (short-read) → 成功读全 32 bytes + 关闭",
+          status_c == 200 and len(body_c.getvalue()) == CAP_C
+          and getattr(_h2["raw"], "closed", False) is True,
+          f"len={len(body_c.getvalue())}")
 finally:
     _storage_mod.open_gokapi_download = _orig_open
+    _cfg_mod.MAX_UPLOAD_BYTES = _orig_cap_c
 
 # ══════════ D. BrokenProcessPool: submit / await 注入 + CAS 重建 ══════════
 import asyncio
@@ -177,45 +208,79 @@ async def _run_with(pool):
     return await _run_handler(pool, lambda *a: None, "t",
                               (b"", "f", "t", 0), None, {})
 
+class _FakePool:
+    def __init__(self, tag): self.tag = tag; self.shut = False
+    _broken = False
+    def shutdown(self, **k): self.shut = True
+
 class _SubmitBroken:          # raises at submit (run_in_executor entry)
+    _broken = True
+    shut = False
+    def shutdown(self, **k): self.shut = True
     def submit(self, *a, **k):
         raise BrokenProcessPool("died at submit")
 
 class _AwaitBroken:           # submit ok, failure surfaces at await
+    _broken = True
+    shut = False
+    def shutdown(self, **k): self.shut = True
     def submit(self, *a, **k):
         import concurrent.futures as _cf
         fut = _cf.Future()
         fut.set_exception(BrokenProcessPool("died at await"))
         return fut
 
+_old_new_factory = pool_mod._new_pool
+_replacement_seq = iter(f"R{i}" for i in range(10))
+
+def _install_fake_global(observed):
+    """global _pool = observed broken pool; _new_pool → lightweight fake."""
+    pool_mod._pool = observed
+    pool_mod._new_pool = lambda: _FakePool(next(_replacement_seq))
+
+def _restore_real_pool():
+    pool_mod._new_pool = _old_new_factory
+    real = pool_mod._new_pool()
+    with pool_mod._pool_lock:
+        pool_mod._pool = real
+
+# D1: submit 阶段 — observed pool IS the global, CAS 真正触发
+sb = _SubmitBroken(); sb.shut = False
+_install_fake_global(sb)
 n0 = pool_mod.pool_reset_count()
 try:
-    asyncio.new_event_loop().run_until_complete(_run_with(_SubmitBroken()))
-    check("D1 submit 阶段 BrokenProcessPool → RuntimeError(worker_pool_broken)",
-          False, "no raise")
+    asyncio.new_event_loop().run_until_complete(_run_with(sb))
+    d1_raised = False
 except RuntimeError as e:
-    check("D1 submit 阶段 BrokenProcessPool → RuntimeError(worker_pool_broken)",
-          "worker_pool_broken" in str(e), str(e))
+    d1_raised = "worker_pool_broken" in str(e)
+d1_delta = pool_mod.pool_reset_count() - n0
+d1_new = pool_mod._pool
+check("D1 submit 阶段: RuntimeError + CAS reset delta=1 + global replaced + old shutdown",
+      d1_raised and d1_delta == 1 and d1_new is not sb
+      and isinstance(d1_new, _FakePool) and sb.shut,
+      f"raised={d1_raised} delta={d1_delta} new_is_old={d1_new is sb} shut={sb.shut}")
 
+# D2: await 阶段 — 重新安装新 observed pool, 同样断言
+ab = _AwaitBroken(); ab.shut = False
+_install_fake_global(ab)
 n1 = pool_mod.pool_reset_count()
 try:
-    asyncio.new_event_loop().run_until_complete(_run_with(_AwaitBroken()))
-    check("D2 await 阶段 BrokenProcessPool → RuntimeError(worker_pool_broken)",
-          False, "no raise")
+    asyncio.new_event_loop().run_until_complete(_run_with(ab))
+    d2_raised = False
 except RuntimeError as e:
-    check("D2 await 阶段 BrokenProcessPool → RuntimeError(worker_pool_broken)",
-          "worker_pool_broken" in str(e), str(e))
+    d2_raised = "worker_pool_broken" in str(e)
+d2_delta = pool_mod.pool_reset_count() - n1
+d2_new = pool_mod._pool
+check("D2 await 阶段: RuntimeError + CAS reset delta=1 + global replaced + old shutdown",
+      d2_raised and d2_delta == 1 and d2_new is not ab
+      and isinstance(d2_new, _FakePool) and ab.shut,
+      f"raised={d2_raised} delta={d2_delta} new_is_old={d2_new is ab} shut={ab.shut}")
+_restore_real_pool()
 
 # D3: CAS single replacement — N callers race reset_pool(observed_old)
-class _FakePool:
-    def __init__(self, tag): self.tag = tag; self.shut = False
-    _broken = False
-    def shutdown(self, **k): self.shut = True
-_old_new = pool_mod._new_pool
-_seq = iter(f"P{i}" for i in range(10))
-pool_mod._new_pool = lambda: _FakePool(next(_seq))
 try:
-    observed = pool_mod._pool
+    observed = _FakePool("cas-observed")
+    _install_fake_global(observed)
     import threading as _th
     barr = _th.Barrier(8)
     results = []
@@ -234,85 +299,102 @@ try:
           r_stale is results[0] and pool_mod.pool_reset_count() == cnt0)
     check("D3c get_pool() == replacement", pool_mod.get_pool() is results[0])
 finally:
-    pool_mod._new_pool = _old_new
-    real = pool_mod._new_pool()
-    with pool_mod._pool_lock:
-        pool_mod._pool = real
+    _restore_real_pool()
 
 # ══════════ E. 真实 gate 收敛 (worker_pool_broken → tool_failed/refund) ══════════
-from economy.billing import grant as _grant, spendable_balance
-from repo.ledger import by_idem_key
+_eb_user_id = None
+_eb_tool = None
+try:
+    from economy.billing import grant as _grant, spendable_balance
+    from repo.ledger import by_idem_key
 
-import json as _json
-user_id = _mkuser(_u + "u")
-with db() as con:
-    con.execute(
-        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, multi, pass_through, visibility,"
-        " enabled, created_at, updated_at)"
-        " values (%s, NULL, %s, 'local', 'produce', %s,"
-        " 'wand', FALSE, FALSE, 'public', TRUE, %s, %s)",
-        (f"ebtool_{_u}", f"ebtool_{_u}",
-         _json.dumps({"en": "EB"}), ts, ts))
-    con.execute(
-        "insert into pricing (tool_id, cost, enabled, updated_at)"
-        " values (%s, 25, TRUE, %s)", (f"ebtool_{_u}", ts))
-_grant(user_id, 1000, "manual_topup", note="eb fixture")
+    _eb_tool = f"ebtool_{_u}"
+    import json as _json
+    user_id = _mkuser(_u + "u")
+    _eb_user_id = user_id
+    with db() as con:
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+            " tool_type, label_json, icon, multi, pass_through, visibility,"
+            " enabled, created_at, updated_at)"
+            " values (%s, NULL, %s, 'local', 'produce', %s,"
+            " 'wand', FALSE, FALSE, 'public', TRUE, %s, %s)",
+            (f"ebtool_{_u}", f"ebtool_{_u}",
+             _json.dumps({"en": "EB"}), ts, ts))
+        con.execute(
+            "insert into pricing (tool_id, cost, enabled, updated_at)"
+            " values (%s, 25, TRUE, %s)", (f"ebtool_{_u}", ts))
+    _grant(user_id, 1000, "manual_topup", note="eb fixture")
 
-from execution.invocation import ToolInvocation, SourceFile
+    from execution.invocation import ToolInvocation, SourceFile
 
-inv = ToolInvocation(
-    tool_id=f"ebtool_{_u}",
-    files=[SourceFile("pub_x", "tok_x")],
-    params={}, delivery={"expiry_days": 7, "allowed_downloads": 10},
-    client_ref=None)
+    inv = ToolInvocation(
+        tool_id=f"ebtool_{_u}",
+        files=[SourceFile("pub_x", "tok_x")],
+        params={}, delivery={"expiry_days": 7, "allowed_downloads": 10},
+        client_ref=None)
 
-async def _boom():
-    raise RuntimeError("worker_pool_broken")
+    async def _boom():
+        raise RuntimeError("worker_pool_broken")
 
-from execution import gate
-bal_before = spendable_balance(user_id)
-result, err, status = asyncio.new_event_loop().run_until_complete(gate.run(
-    {"id": user_id},
-    {"id": f"ebtool_{_u}", "tool_key": f"ebtool_{_u}",
-     "type": "produce", "owner_id": None},
-    inv, _boom))
-check("E1 gate 响应: tool_failed / 500",
-      err is not None and err.get("error") == "tool_failed" and status == 500,
-      f"{err} {status}")
+    from execution import gate
+    bal_before = spendable_balance(user_id)
+    result, err, status = asyncio.new_event_loop().run_until_complete(gate.run(
+        {"id": user_id},
+        {"id": f"ebtool_{_u}", "tool_key": f"ebtool_{_u}",
+         "type": "produce", "owner_id": None},
+        inv, _boom))
+    check("E1 gate 响应: tool_failed / 500",
+          err is not None and err.get("error") == "tool_failed" and status == 500,
+          f"{err} {status}")
 
-with db() as con:
-    call = con.execute(
-        "select id, status, finished_at from tool_calls"
-        " where user_id=%s and tool_id=%s order by id desc limit 1",
-        (user_id, f"ebtool_{_u}")).fetchone()
-check("E2 tool_call terminal failed + finished_at 非空",
-      call is not None and call["status"] == "failed"
-      and call["finished_at"] is not None, str(dict(call) if call else None))
+    with db() as con:
+        call = con.execute(
+            "select id, status, finished_at from tool_calls"
+            " where user_id=%s and tool_id=%s order by id desc limit 1",
+            (user_id, f"ebtool_{_u}")).fetchone()
+    check("E2 tool_call terminal failed + finished_at 非空",
+          call is not None and call["status"] == "failed"
+          and call["finished_at"] is not None, str(dict(call) if call else None))
 
-call_id = int(call["id"])
-with db() as con:
-    charge = by_idem_key(con, user_id, f"call:{call_id}")
-    refund = by_idem_key(con, user_id, f"refund:ledger:{charge['id']}")
-check("E3 exact consume 存在 (-25)",
-      charge is not None and int(charge["delta"]) == -25,
-      str(dict(charge) if charge else None))
-check("E4 exact refund 存在且等额 (+25, 同一 charge 引用)",
-      refund is not None and int(refund["delta"]) == 25
-      and refund["ref_id"] == str(charge["id"]),
-      str(dict(refund) if refund else None))
-check("E5 最终余额恢复 (1000)",
-      spendable_balance(user_id) == bal_before,
-      f"{bal_before} → {spendable_balance(user_id)}")
-with db() as con:
-    n_refunds = int(con.execute(
-        "select count(*) c from ledger where user_id=%s and kind='refund'"
-        " and ref_id=%s", (user_id, str(charge["id"]))).fetchone()["c"])
-    running = int(con.execute(
-        "select count(*) c from tool_calls where user_id=%s"
-        " and status='running'", (user_id,)).fetchone()["c"])
-check("E6 无重复 refund / 无遗留 running",
-      n_refunds == 1 and running == 0, f"refunds={n_refunds} running={running}")
+    call_id = int(call["id"])
+    with db() as con:
+        charge = by_idem_key(con, user_id, f"call:{call_id}")
+        refund = by_idem_key(con, user_id, f"refund:ledger:{charge['id']}")
+    check("E3 exact consume 存在 (-25)",
+          charge is not None and int(charge["delta"]) == -25,
+          str(dict(charge) if charge else None))
+    check("E4 exact refund 存在且等额 (+25, 同一 charge 引用)",
+          refund is not None and int(refund["delta"]) == 25
+          and refund["ref_id"] == str(charge["id"]),
+          str(dict(refund) if refund else None))
+    check("E5 最终余额恢复 (1000)",
+          spendable_balance(user_id) == bal_before,
+          f"{bal_before} → {spendable_balance(user_id)}")
+    with db() as con:
+        n_refunds = int(con.execute(
+            "select count(*) c from ledger where user_id=%s and kind='refund'"
+            " and ref_id=%s", (user_id, str(charge["id"]))).fetchone()["c"])
+        running = int(con.execute(
+            "select count(*) c from tool_calls where user_id=%s"
+            " and status='running'", (user_id,)).fetchone()["c"])
+    check("E6 无重复 refund / 无遗留 running",
+          n_refunds == 1 and running == 0, f"refunds={n_refunds} running={running}")
+
+finally:
+    # FK-safe fixture cleanup: 只删本测试的实体 (随机前缀)
+    if _eb_user_id is not None:
+        with db() as con:
+            con.execute("delete from tool_calls where user_id=%s", (_eb_user_id,))
+            con.execute("delete from ledger where user_id=%s", (_eb_user_id,))
+    if _eb_tool is not None:
+        with db() as con:
+            con.execute("delete from pricing where tool_id=%s", (_eb_tool,))
+            con.execute("delete from platform_tools where tool_key=%s", (_eb_tool,))
+    if _eb_user_id is not None:
+        with db() as con:
+            con.execute("delete from users where id=%s", (_eb_user_id,))
+    print("cleanup: boundaries fixtures removed")
 
 # ══════════ F. semantic ══════════
 _orch_src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
