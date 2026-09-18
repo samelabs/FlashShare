@@ -638,13 +638,224 @@ check("G7 所有 audit 行均有 actor_user_id", n_no_actor == 0, str(n_no_actor
 import json as _json2
 offenders = []
 for r_ in _audit_rows():
+    allowed = _aud.TARGET_SAFE_KEYS.get(r_["target_type"])
     for col in ("before_json", "after_json"):
         v = r_.get(col)
         if v and isinstance(v, dict):
             for k in v:
-                if k not in _aud.SAFE_KEYS:
-                    offenders.append((r_["id"], col, k))
-check("G8 全部快照键 ∈ allowlist", not offenders, str(offenders[:3]))
+                if allowed is None or k not in allowed:
+                    offenders.append((r_["id"], r_["target_type"], col, k))
+check("G8 全部快照键 ∈ 该 target 的 allowlist", not offenders,
+      str(offenders[:3]))
+
+# ══════════ H. concurrency serialization + target allowlists ══════════
+import threading
+
+# H1/H2: concurrent remote delete → exactly one audit; loser not_found
+rt3 = f"oart3_{_u}"
+r = _post("/samelabs/remote/create", json={
+    "tool_id": rt3, "label": "CC", "url": "https://ops.example/cc",
+    "timeout_s": 30, "cost": 20,
+}, cookies={COOKIE_NAME: op_sess})
+check("H1pre concurrent-delete fixture created", r.status_code == 200,
+      str(r.status_code))
+results = {}
+barrier = threading.Barrier(2)
+
+def _del_worker(tag):
+    barrier.wait(timeout=15)
+    results[tag] = _post(f"/samelabs/remote/{rt3}/delete", json={},
+                         cookies={COOKIE_NAME: op_sess})
+
+t1 = threading.Thread(target=_del_worker, args=("A",))
+t2 = threading.Thread(target=_del_worker, args=("B",))
+t1.start(); t2.start(); t1.join(30); t2.join(30)
+with db() as con:
+    row_left = con.execute(
+        "select 1 from platform_tools where tool_key=%s", (rt3,)).fetchone()
+    aud_n = int(con.execute(
+        "select count(*) c from operator_audit where action='remote.delete'"
+        " and target_id=%s", (rt3,)).fetchone()["c"])
+    pr = con.execute(
+        "select enabled from pricing where tool_id=%s", (rt3,)).fetchone()
+sc_a, sc_b = results["A"].status_code, results["B"].status_code
+one_ok = (sc_a == 200) ^ (sc_b == 200)
+one_404 = (sc_a == 404) or (sc_b == 404)
+check("H1 concurrent delete → row absent / pricing disabled / audit=1 / 一成一 404",
+      row_left is None and not pr["enabled"] and aud_n == 1
+      and one_ok and one_404,
+      f"A={sc_a} B={sc_b} aud={aud_n} pr={dict(pr) if pr else None}")
+
+# H3: concurrent pricing update → second audit before = first committed after
+rt4 = f"oatool4_{_u}"
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " tool_type, label_json, icon, multi, pass_through, visibility,"
+        " enabled, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', 'produce', %s, 'wand', FALSE,"
+        " FALSE, 'public', TRUE, %s, %s)",
+        (rt4, rt4, _json3.dumps({"en": "CC4"}), ts, ts))
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 100, TRUE, %s)", (rt4, ts))
+
+_entered = threading.Event()
+_release = threading.Event()
+import repo.catalog as _cat_mod
+_orig_tfu = _cat_mod.tool_row_for_update
+_gate_state = {"armed": False, "stalled": False}
+
+def _gated_tfu(con, tool_key):
+    if tool_key == rt4 and _gate_state["armed"] \
+            and not _gate_state["stalled"]:
+        # FIRST armed caller (B) stalls AFTER entering the route but
+        # BEFORE taking the row lock — its before-read would be stale
+        # without lock-first ordering. A (next caller) proceeds.
+        _gate_state["stalled"] = True
+        _entered.set()
+        _release.wait(timeout=30)
+    return _orig_tfu(con, tool_key)
+
+_cat_mod.tool_row_for_update = _gated_tfu
+
+res_b = {}
+def _pricing_worker_b():
+    res_b["r"] = _post(f"/samelabs/tools/{rt4}/pricing",
+                       json={"cost": 300, "enabled": True},
+                       cookies={COOKIE_NAME: op_sess})
+
+_gate_state["armed"] = True
+tb = threading.Thread(target=_pricing_worker_b)
+tb.start()
+check("H3pre B entered and stalled before lock",
+      _entered.wait(timeout=10))
+rA = _post(f"/samelabs/tools/{rt4}/pricing",
+           json={"cost": 200, "enabled": True},
+           cookies={COOKIE_NAME: op_sess})
+_release.set()
+tb.join(30)
+_cat_mod.tool_row_for_update = _orig_tfu
+rows4 = _audit_rows("pricing.update", rt4)
+b_ok = res_b["r"].status_code == 200
+seq_ok = (rows4 and rows4[0]["after_json"]["cost"] == 200
+          and rows4[-1]["before_json"]["cost"] == 200
+          and rows4[-1]["after_json"]["cost"] == 300)
+check("H3 B audit before=200 (A 已 commit 的 after), 非 stale 100 → 300",
+      rA.status_code == 200 and b_ok and seq_ok and len(rows4) == 2,
+      f"A={rA.status_code} B={res_b['r'].status_code} "
+      f"rows={[(x['before_json'], x['after_json']) for x in rows4]}")
+
+# H4: concurrent package update → second audit before = first committed after
+with db() as con:
+    prow = con.execute(
+        "insert into packages (code, name, credits, price_cents, active,"
+        " created_at, updated_at) values (%s, 'CCPkg', 100, 999, TRUE, %s,"
+        " %s) returning id", (f"pkg4_{_u}", ts, ts)).fetchone()
+pkg4 = int(prow["id"])
+
+_pkg_entered = threading.Event()
+_pkg_release = threading.Event()
+import repo.orders as _ord_mod
+_orig_pbfu = _ord_mod.package_by_id_for_update
+_pgate = {"armed": False, "stalled": False}
+
+def _gated_pbfu(con, package_id):
+    if int(package_id) == pkg4 and _pgate["armed"] \
+            and not _pgate["stalled"]:
+        _pgate["stalled"] = True
+        _pkg_entered.set()
+        _pkg_release.wait(timeout=30)
+    return _orig_pbfu(con, package_id)
+
+_ord_mod.package_by_id_for_update = _gated_pbfu
+
+res_pb = {}
+def _pkg_worker_b():
+    res_pb["r"] = _patch(f"/samelabs/packages/{pkg4}",
+                         json={"credits": 800},
+                         cookies={COOKIE_NAME: op_sess})
+
+_pgate["armed"] = True
+tb2 = threading.Thread(target=_pkg_worker_b)
+tb2.start()
+check("H4pre B entered and stalled before package lock",
+      _pkg_entered.wait(timeout=10))
+rA2 = _patch(f"/samelabs/packages/{pkg4}", json={"credits": 500},
+             cookies={COOKIE_NAME: op_sess})
+_pkg_release.set()
+tb2.join(30)
+_ord_mod.package_by_id_for_update = _orig_pbfu
+rows5 = _audit_rows("package.update", str(pkg4))
+seq2_ok = (rows5 and rows5[0]["after_json"]["credits"] == 500
+           and rows5[-1]["before_json"]["credits"] == 500
+           and rows5[-1]["after_json"]["credits"] == 800)
+check("H4 B audit before=500 (A 已 commit), 非 stale 100 → 800",
+      rA2.status_code == 200 and res_pb["r"].status_code == 200
+      and seq2_ok and len(rows5) == 2,
+      f"A={rA2.status_code} B={res_pb['r'].status_code} "
+      f"rows={[(x['before_json'], x['after_json']) for x in rows5]}")
+
+# H5: pricing/presentation/remote-delete share the SAME tool-row boundary
+# (proved structurally: all three call tool_row_for_update /
+# platform_row_for_update which locks platform_tools.tool_key)
+_src_sam = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
+                encoding="utf-8").read()
+check("H5 三类 tool mutation 同走 tool-row FOR UPDATE 边界",
+      _src_sam.count("tool_row_for_update(") >= 2
+      and "platform_row_for_update(con, tool_key" in _src_sam)
+
+# H6: target-specific allowlist rejects foreign fields
+def _expect_record_raise(target, snap, label):
+    try:
+        with db() as con:
+            _orig_rec(con, op, "x.test", target, "t", None, snap, ts)
+        check(f"H6 {label} → record raises", False, "no raise")
+    except ValueError as e:
+        check(f"H6 {label} → record raises",
+              "not_allowed" in str(e) or "unknown" in str(e), str(e))
+
+_expect_record_raise("remote_tool", {"url": "https://x"}, "remote_tool+url")
+_expect_record_raise("withdrawal",
+                     {"creem_product_id": "prod_x"},
+                     "withdrawal+creem_product_id")
+_expect_record_raise("pricing", {"ledger_id": 1}, "pricing+ledger_id")
+try:
+    with db() as con:
+        _orig_rec(con, op, "x.test", "bogus_target", "t", None,
+                  {"anything": 1}, ts)
+    check("H6d unknown target_type → raise", False, "no raise")
+except ValueError as e:
+    check("H6d unknown target_type → raise",
+          "audit_target_type_unknown" in str(e), str(e))
+
+# H7: forced allowlist failure rolls the business transaction back
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " tool_type, label_json, icon, multi, pass_through, visibility,"
+        " enabled, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', 'produce', %s, 'wand', FALSE,"
+        " FALSE, 'public', TRUE, %s, %s)",
+        (rt4 + "z", rt4 + "z", _json3.dumps({"en": "ZZ"}), ts, ts))
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 10, TRUE, %s)", (rt4 + "z", ts))
+_orig_snap = _sam_mod._snap_pricing
+def _bad_snap(r):
+    d = _orig_snap(r)
+    return {**(d or {}), "url": "https://leak"} if d is not None else d
+_sam_mod._snap_pricing = _bad_snap
+r7 = _post(f"/samelabs/tools/{rt4}z/pricing",
+           json={"cost": 55, "enabled": True},
+           cookies={COOKIE_NAME: op_sess})
+_sam_mod._snap_pricing = _orig_snap
+with db() as con:
+    cost_now = con.execute("select cost from pricing where tool_id=%s",
+                           (rt4 + "z",)).fetchone()
+check("H7 allowlist violation → pricing rollback (cost 仍 10) + 500",
+      r7.status_code == 500 and int(cost_now["cost"]) == 10,
+      f"{r7.status_code} cost={cost_now['cost']}")
 
 print()
 print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")

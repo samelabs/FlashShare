@@ -12,26 +12,24 @@ _secret_scan 断言作为最后防线: 快照值里出现明显凭据形状即�
 import json
 from typing import Optional
 
-# 允许出现在 audit JSON 里的键 (按 target_type 投影后再进来;
-# 这里是全库 allowlist 上限 — 不在名单内的键直接 fail loud)。
-SAFE_KEYS = {
-    # pricing
-    "tool_id", "cost", "enabled", "updated_by",
-    # plan
-    "id", "code", "name", "monthly_credits", "period_days", "period",
-    "price_cents", "currency", "creem_product_id", "sort_order", "active",
-    "ingress_files_24h", "ingress_bytes_24h", "expiry_days",
-    "download_limits",
-    # package (subset of plan keys + credits)
-    "credits",
-    # tool presentation
-    "tool_key", "featured",
-    # remote tool (safe projection ONLY — never URL/endpoint/auth)
-    "execution", "tool_type", "visibility", "multi", "accept",
-    # user_credits
-    "user_id", "delta", "balance_before", "balance_after", "ledger_id",
-    # withdrawal
-    "amount", "status", "processed_by",
+# 按 target_type 的 allowlist — record() 强制: unknown target_type
+# fail loud; snapshot 任一键不属于该 target 的 allowlist 即 fail loud
+# (caller transaction rollback)。不做 value-redaction/blacklist。
+TARGET_SAFE_KEYS = {
+    "pricing": {"tool_id", "cost", "enabled"},
+    "plan": {"id", "code", "name", "monthly_credits", "period_days",
+             "period", "price_cents", "currency", "creem_product_id",
+             "sort_order", "active", "ingress_files_24h",
+             "ingress_bytes_24h", "expiry_days", "download_limits"},
+    "package": {"id", "code", "name", "credits", "price_cents",
+                "currency", "sort_order", "active"},
+    "tool": {"tool_key", "featured", "sort_order"},
+    "user_credits": {"user_id", "delta", "balance_before",
+                     "balance_after", "ledger_id"},
+    "withdrawal": {"id", "user_id", "amount", "status", "processed_by"},
+    "remote_tool": {"tool_key", "tool_id", "execution", "tool_type",
+                    "visibility", "enabled", "featured", "sort_order",
+                    "multi", "accept", "cost"},
 }
 
 _SECRET_MARKERS = ("password", "token", "secret", "auth_header",
@@ -39,15 +37,20 @@ _SECRET_MARKERS = ("password", "token", "secret", "auth_header",
                    "api_key", "credential", "session")
 
 
-def _project(snap: Optional[dict]) -> Optional[str]:
-    """allowlist 投影 + 凭据形状防线; None 透传 (before 可为 NULL)。"""
+def _project(snap: Optional[dict], target_type: str) -> Optional[str]:
+    """target-specific allowlist 投影 + 凭据形状防线; None 透传。
+    非法 snapshot 直接 raise → caller transaction rollback (不扫描、
+    不篡改、不静默裁剪)。"""
     if snap is None:
         return None
     if not isinstance(snap, dict):
         raise ValueError("audit snapshot must be dict or None")
+    allowed = TARGET_SAFE_KEYS.get(target_type)
+    if allowed is None:
+        raise ValueError(f"audit_target_type_unknown:{target_type}")
     out = {}
     for k, v in snap.items():
-        if k not in SAFE_KEYS:
+        if k not in allowed:
             raise ValueError(f"audit_snapshot_key_not_allowed:{k}")
         lk = k.lower()
         if any(m in lk for m in _SECRET_MARKERS):
@@ -76,7 +79,8 @@ def record(con, actor_user_id: int, action: str, target_type: str,
                   before_json, after_json, created_at
         """,
         (int(actor_user_id), str(action), str(target_type), str(target_id),
-         _project(before), _project(after), int(ts))).fetchone()
+         _project(before, str(target_type)), _project(after, str(target_type)),
+         int(ts))).fetchone()
 
 
 def list_recent(con, limit: int = 50, offset: int = 0) -> list:

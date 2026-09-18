@@ -233,11 +233,17 @@ async def samelabs_set_pricing(tool_id: str, request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from governance.pricing import set_pricing
-    from repo.catalog import pricing_row
-    # one transaction: before snapshot + pricing mutation + audit fact
-    # (audit failure → pricing rollback)
+    from repo.catalog import (tool_row_for_update, pricing_row,
+                             pricing_row_for_update)
+    # one transaction: serialize on the platform_tools row (the SAME
+    # boundary presentation update and remote delete use), read the
+    # before snapshot AFTER the lock, mutate, audit. Retired tools
+    # (platform row gone, pricing row alive) fall back to a pricing-row
+    # lock — existing retired semantics unchanged.
     with db() as con:
-        before = pricing_row(con, tool_id)
+        lock_row = tool_row_for_update(con, tool_id)
+        before = pricing_row(con, tool_id) if lock_row is not None \
+            else pricing_row_for_update(con, tool_id)
         row = set_pricing(tool_id, cost, enabled,
                           admin_user_id=user["id"], con=con)
         _audit_repo.record(con, user["id"], "pricing.update", "pricing",
@@ -513,9 +519,9 @@ async def samelabs_update_package(package_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     if not fields:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from repo.orders import update_package, package_by_id
+    from repo.orders import update_package, package_by_id_for_update
     with db() as con:
-        cur = package_by_id(con, package_id)
+        cur = package_by_id_for_update(con, package_id)
         if cur is None:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         before = _snap_package(cur)
@@ -539,11 +545,9 @@ async def samelabs_set_tool_presentation(tool_key: str, request: Request):
         sort_order = int(raw.get("sort_order", 0))
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from repo.catalog import set_tool_presentation
+    from repo.catalog import set_tool_presentation, tool_row_for_update
     with db() as con:
-        cur = con.execute(
-            "SELECT tool_key, featured, sort_order FROM platform_tools"
-            " WHERE tool_key = %s FOR UPDATE", (tool_key,)).fetchone()
+        cur = tool_row_for_update(con, tool_key)
         if cur is None:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         before = _snap_presentation(cur)
@@ -872,10 +876,13 @@ async def samelabs_remote_delete(tool_key: str, request: Request):
     # one local transaction: tool delete + pricing disable + audit —
     # all three commit or roll back together (audit failure → tool row
     # and pricing both unchanged)
-    from repo.catalog import id_of_platform_row, delete_tool_row
+    from repo.catalog import platform_row_for_update, delete_tool_row
     from governance.pricing import set_pricing
     with db() as con:
-        row = id_of_platform_row(con, tool_key, owner_id_is_null=True)
+        # lock FIRST: concurrent deletes serialize here; the loser
+        # re-evaluates after the winner commits → not_found, zero
+        # pricing mutation, zero second audit.
+        row = platform_row_for_update(con, tool_key, owner_id_is_null=True)
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         before = _snap_remote(_safe_remote_projection(con, tool_key))

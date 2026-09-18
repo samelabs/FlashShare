@@ -125,6 +125,13 @@ def insert_plan(con, code: str, name: str, monthly_credits: int,
          list(expiry_days), list(download_limits), ts, ts)).fetchone()
 
 
+def package_by_id_for_update(con, package_id: int) -> Optional[dict]:
+    """行锁读 packages (update audit 的 before 必须取自锁后状态)。"""
+    return con.execute(
+        "SELECT * FROM packages WHERE id = %s FOR UPDATE",
+        (package_id,)).fetchone()
+
+
 def update_package(con, package_id: int, fields: dict, ts: int) -> Optional[dict]:
     """operator 部分更新 packages 行 (键白名单: name/credits/price/active)。"""
     sets, params = [], []

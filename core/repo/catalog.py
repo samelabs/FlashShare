@@ -164,6 +164,28 @@ def owner_row_by_key(con, tool_key: str, user_id: int) -> Optional[dict]:
         (tool_key, user_id)).fetchone()
 
 
+def platform_row_for_update(con, tool_key: str,
+                            owner_id_is_null: bool = True) -> Optional[dict]:
+    """行锁读 platform_tools (operator delete/audit 的 serialization
+    boundary — 并发 delete 在此排队, 后到者 commit 后重读得 not_found)。"""
+    if owner_id_is_null:
+        return con.execute(
+            "SELECT * FROM platform_tools WHERE tool_key = %s"
+            " AND owner_id IS NULL FOR UPDATE", (tool_key,)).fetchone()
+    return con.execute(
+        "SELECT * FROM platform_tools WHERE tool_key = %s FOR UPDATE",
+        (tool_key,)).fetchone()
+
+
+def tool_row_for_update(con, tool_key: str) -> Optional[dict]:
+    """registered tool 的 pricing/presentation mutation 统一在
+    platform_tools.tool_key 行锁上串行 (同一 tool 的三类 operator
+    mutation 共用一个 serialization row; 无 lock table/version)。"""
+    return con.execute(
+        "SELECT * FROM platform_tools WHERE tool_key = %s FOR UPDATE",
+        (tool_key,)).fetchone()
+
+
 def id_of_platform_row(con, tool_key: str, owner_id_is_null: bool) -> Optional[dict]:
     if owner_id_is_null:
         return con.execute(
@@ -266,6 +288,14 @@ def all_remote_joined(con) -> list:
 
 
 # ── pricing ──
+
+def pricing_row_for_update(con, tool_id: str) -> Optional[dict]:
+    """pricing 行锁读 — platform row 不存在但 pricing row 存在
+    (retired tool) 时的 fallback serialization boundary。"""
+    return con.execute(
+        "SELECT * FROM pricing WHERE tool_id = %s FOR UPDATE",
+        (tool_id,)).fetchone()
+
 
 def pricing_row(con, tool_id: str) -> Optional[dict]:
     return con.execute(
