@@ -130,6 +130,32 @@ def refund(user_id: int, amount: int, *,
     return dict(row)
 
 
+def revoke(user_id: int, amount: int, *, ref_type: str | None = None,
+           ref_id: str | None = None, idem_key: str | None = None,
+           note: str | None = None) -> dict:
+    """Economic reversal of a prior payment grant — insert a NEGATIVE
+    delta with NO insufficient-balance check: a refund/chargeback must
+    revoke the exact granted amount even when the user already spent
+    it (balance_after < 0 is the natural debt outcome; no debt table).
+    kind is fixed to 'revoke'. Replays (same user_id+idem_key) return
+    the original row. The SINGLE payment-reversal writer — nothing
+    else may insert negative payment-reversal movements.
+    """
+    if amount <= 0:
+        raise ValueError("revoke amount must be positive")
+    ts = now()
+    with db() as con:
+        bal = _balance_for_update(con, user_id)  # users 行锁 = 串行化边界
+        if idem_key:
+            prior = ledger_repo.by_idem_key(con, user_id, idem_key)
+            if prior:
+                return dict(prior)
+        row = ledger_repo.insert_row(con, user_id, -amount, bal - amount,
+                                     "revoke", ref_type, ref_id,
+                                     idem_key, note, ts)
+    return dict(row)
+
+
 def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
     """REMOVED 2026-08-27: signup bonus decoupled from registration/billing."""
     return None

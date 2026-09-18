@@ -233,6 +233,10 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     period_end = _parse_ts(sub.get("current_period_end_date"))
     if not period_start or not period_end:
         raise KeyError("period_missing")
+    # paid proof identity — grants MUST carry the paid transaction ref
+    txn_ref = str(sub.get("last_transaction_id") or "")
+    if not txn_ref:
+        raise KeyError("paid_proof_missing:last_transaction_id")
     order, plan, current = _bind_and_load(sub_id, provider_subscription)
     ts = now()
     status = "active" if period_end > ts else "expired"
@@ -315,12 +319,25 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     with db() as con:
         already = orders_repo.period_plan_credits(con, order["user_id"], period_start)
     if plan_total > already and plan_total > 0:
-        delta = plan_total - already
+        # already == 0 → base cycle grant; already > 0 → the period was
+        # partially credited (e.g. mid-cycle upgrade) → top-up the exact
+        # difference as grant_plan_upgrade. Both kinds carry the paid
+        # transaction ref (ref_type=creem_transaction) — the single fact
+        # a later refund/chargeback reverses. Base idem plan:{uid}:{ps};
+        # upgrade idem plan-upgrade:{uid}:{ps}:{plan} (two distinct idem
+        # shapes → a base row never swallows an upgrade top-up).
         from economy.billing import grant
-        grant(order["user_id"], delta, "grant_plan",
-              ref_type="subscription", ref_id=sub_id,
-              idem_key=f"plan:{order['user_id']}:{period_start}",
-              note=f"{plan['code']} cycle {period_start}-{period_end}")
+        if already > 0:
+            grant(order["user_id"], plan_total - already,
+                  "grant_plan_upgrade",
+                  ref_type="creem_transaction", ref_id=txn_ref,
+                  idem_key=f"plan-upgrade:{order['user_id']}:{period_start}:{plan['code']}",
+                  note=f"{plan['code']} upgrade top-up {period_start}-{period_end}")
+        else:
+            grant(order["user_id"], plan_total, "grant_plan",
+                  ref_type="creem_transaction", ref_id=txn_ref,
+                  idem_key=f"plan:{order['user_id']}:{period_start}",
+                  note=f"{plan['code']} cycle {period_start}-{period_end}")
     cancel_ts = None
     if scheduled_cancel:
         cancel_ts = ts
@@ -388,19 +405,12 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
                 plan_catalog.by_code(plan["code"]),
                 plan_catalog.by_code(cur_plan["code"])) if cur_plan else 1
             if direction > 0:
-                # upgrade (Plus→Pro): immediate Membership switch + 当周期
-                # credits 补差 (幂等 plan-upgrade:{uid}:{period}:{target})。
-                old_cr = plan_catalog.by_code(
-                    cur_plan["code"]).monthly_credits if cur_plan else 0
-                new_cr = plan_catalog.by_code(plan["code"]).monthly_credits
-                period_start = m["last_grant_period_start"] or 0
-                if new_cr > old_cr and period_start:
-                    adjustment = max(new_cr - old_cr, 0)
-                    from economy.billing import grant
-                    grant(m["user_id"], adjustment, "grant_plan_upgrade",
-                          ref_type="subscription", ref_id=sub_id,
-                          idem_key=f"plan-upgrade:{m['user_id']}:{period_start}:{plan['code']}",
-                          note=f"upgrade {cur_plan['code']}→{plan['code']} adj {adjustment}")
+                # upgrade (Plus→Pro): Membership/Product sync ONLY.
+                # Zero Credits here — upgrade 补差授权已收进唯一
+                # apply_paid_period(): 只有 provider 的成功支付证明
+                # (subscription.paid 的 paid transaction) 才产生钱。
+                # Creem upgrade 的 proration-charge-immediately 会触发
+                # 新 paid event → replay 经 apply_paid_period 补差。
                 orders_repo.clear_pending_downgrade(con, m["user_id"])
                 orders_repo.upsert_membership_state(
                     con, sub_id, m["status"],
