@@ -259,7 +259,8 @@ check("PIN-P1 socket(family,socktype,proto) = resolver record",
       and s.proto == 6, s and (s.family, s.type, s.proto))
 check("PIN-P1 socket.connect == validated exact sockaddr",
       s is not None and s.connected == (PUBLIC4, 443), s and s.connected)
-check("PIN-P1 socket.settimeout honoured", s is not None and s.timeout == 7, s and s.timeout)
+check("PIN-P1 socket.settimeout honoured (total-deadline: remaining <= timeout_s)",
+      s is not None and s.timeout is not None and 0 < s.timeout <= 7, s and s.timeout)
 check("PIN-P1 TLS SNI = original hostname",
       rec.snis == ["pin.example"], rec.snis)
 method, path, body, hdrs = rec.conns[0].requests[0]
