@@ -758,6 +758,12 @@ check("ROUTE operator create + auth_token + no key → 503 (非409)",
 
 
 # 清场
+# uid2 被升为 samelabs operator 并驱动过 /samelabs/remote/create → 留下
+# operator_audit 行; actor FK 不带 CASCADE, 测试清理先删 audit 引用再删
+# actor (test-only cleanup; 生产 audit writer 保持 append-only)。
+_cur.execute("delete from operator_audit where actor_user_id in (%s, %s)"
+             " or actor_user_id in (select id from users where username like 'ra%%')",
+             (_auid, uid2))
 _cur.execute("delete from pricing where tool_id like 'rs%/sec%' or tool_id = 'secop1'")
 _cur.execute("delete from platform_tools where tool_key like 'rs%' or tool_key = 'secop1'")
 _cur.execute("delete from sessions where user_id in (%s, %s) or user_id in (select id from users where username like 'ra%%')", (_auid, uid2))

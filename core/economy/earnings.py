@@ -112,13 +112,21 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
     idem withdrawal:{id}) + status flip, ONE transaction. Reject = flip
     only. Re-processing a finished request is a typed no-op error."""
     from economy.billing import consume
+    from repo import operator_audit
     ts = now()
+
+    def _snap_w(r) -> dict:
+        # withdrawal allowlist ONLY — never payout channel / txn secrets
+        return {"id": int(r["id"]), "user_id": int(r["user_id"]),
+                "amount": int(r["amount"]), "status": str(r["status"])}
+
     with db() as con:
         row = economy_repo.withdrawal_for_update(con, withdrawal_id)
         if not row:
             raise KeyError("not_found")
         if row["status"] != "pending":
             raise ValueError("already_processed")
+        before = _snap_w(row)
         if approve:
             new_status = "approved"
             # EARN-pool gate (same accounting as the request path's
@@ -148,6 +156,14 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
         out = economy_repo.finish_withdrawal(
             con, withdrawal_id, new_status, ts, admin_user_id,
             (txn_ref or None) if approve else None)
+        # audit INSIDE the same domain transaction — failure rolls the
+        # withdrawal mutation (and its ledger consume) back with it.
+        operator_audit.record(
+            con, int(admin_user_id or 0),
+            "withdrawal.approve" if approve else "withdrawal.reject",
+            "withdrawal", str(withdrawal_id),
+            before, {**before, "status": new_status,
+                     "processed_by": int(admin_user_id or 0)}, ts)
     return dict(out)
 
 

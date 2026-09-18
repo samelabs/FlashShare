@@ -150,6 +150,10 @@ jobs:
             python tests/canonical/test_payment_forward.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_payment_reverse.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_operator_audit.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_operator_audit.py
           python tests/canonical/test_rounded_corners.py
 
       - name: Start Gokapi HTTP-boundary service
@@ -237,6 +241,9 @@ jobs:
 
       - name: Payment reverse canonical
         run: python tests/canonical/test_payment_reverse.py
+
+      - name: Operator audit canonical
+        run: python tests/canonical/test_operator_audit.py
 
       - name: Failure diagnostics
         if: failure()

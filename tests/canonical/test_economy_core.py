@@ -469,7 +469,12 @@ check("K23 explicit free Direct Tool Page → 200",
       r.status_code == 200, f"{r.status_code}")
 
 # ═══ cleanup ═══
+# caller_id 驱动过 /samelabs credits adjust → operator_audit 留有 actor
+# 引用; FK 无 CASCADE, 测试清理先删 audit 行 (test-only)。
 with db() as con:
+    con.execute(
+        "delete from operator_audit where actor_user_id = ANY(%s)",
+        ([u for u in (caller_id, owner_id, target) if u],))
     for uid in (caller_id, owner_id, target):
         con.execute("delete from users where id=%s", (uid,))
     con.execute("delete from platform_tools where tool_key like %s", (f"{_u}%",))

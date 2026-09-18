@@ -144,11 +144,20 @@ else:
 doc = open(os.path.join(_REPO, 'docs/plan/TOOLCHAIN_UNIFICATION.md')).read()
 check("E docs tool_type = view/peek/produce", "view / peek / produce" in doc and "share / produce" not in doc)
 
-# 清理 operator 测试账号 (可达 — 在退出前执行; 测试库终将 DROP, 这里只做轻量收尾)
+# 清理 operator 测试账号 (可达 — 在退出前执行; 测试库终将 DROP, 这里只做轻量收尾)。
+# 顺序: operator_audit 行先删 — actor FK (users.id) 不带 CASCADE, 测试清理
+# 必须先解除 audit 引用才能删 actor user; 这是 test-only cleanup, 不是生产
+# audit 删除机制 (生产 writer 保持 append-only)。
 import psycopg2 as _pg3
 _c3 = _pg3.connect(TEST_DB); _c3.autocommit = True
 _cur3 = _c3.cursor()
+_cur3.execute("select id from users where username='op4ctest'")
+_op_row = _cur3.fetchone()
+if _op_row:
+    _cur3.execute("delete from operator_audit where actor_user_id = %s",
+                  (_op_row[0],))
 _cur3.execute("delete from users where username='op4ctest'")
+_cur3.execute("delete from pricing where tool_id like 'mtest%' or tool_id like 'dbcheck%'")
 _cur3.execute("delete from platform_tools where tool_key like 'mtest%' or tool_key like 'dbcheck%'")
 _c3.close(); print("清理: cleaned")
 

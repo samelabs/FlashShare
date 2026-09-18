@@ -58,13 +58,22 @@ def is_enabled(tool_id: str) -> bool:
     return bool(get_pricing(tool_id)["enabled"])
 
 
-def set_pricing(tool_id: str, cost: int, enabled: bool, admin_user_id: int | None = None) -> dict:
-    """/samelabs updates a tool's price/switch (single writer)."""
+def set_pricing(tool_id: str, cost: int, enabled: bool,
+                admin_user_id: int | None = None, con=None) -> dict:
+    """/samelabs updates a tool's price/switch (single writer).
+
+    con 未传: 自开事务 (现有调用方不变); con 已传: 参与 caller 事务
+    (audit 与 pricing mutation 原子的窄扩展)。
+    """
     if cost < 0:
         raise ValueError("cost must be >= 0")
     ts = now()
-    with db() as con:
+    if con is not None:
         row = catalog_repo.upsert_pricing(con, tool_id, int(cost),
+                                          bool(enabled), ts, admin_user_id)
+        return dict(row)
+    with db() as own:
+        row = catalog_repo.upsert_pricing(own, tool_id, int(cost),
                                           bool(enabled), ts, admin_user_id)
     return dict(row)
 
