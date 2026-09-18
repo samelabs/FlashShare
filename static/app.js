@@ -399,6 +399,7 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
         } else {
           showShareResult(data.file);
         }
+        pendingOperationRef = null; // direct share complete — next submit is new
         form.reset();
         fileLabel.textContent = t("dropEmpty");
         window._loadHistory && window._loadHistory();
@@ -948,7 +949,14 @@ async function retryTool() {
     // Retry reuses the SAME operation ref (response-loss safety): gate
     // sees same ref + same fingerprint → replay (zero re-charge/re-execute)
     // or, if the first attempt failed, a fresh attempt of the SAME op.
-    if (!pendingOperationRef) pendingOperationRef = newOperationRef();
+    // A retry WITHOUT a retained ref is a logic bug — generating a new
+    // one here would mint a different logical operation and re-charge.
+    // Fail loud instead of silently doing the wrong thing.
+    if (!pendingOperationRef) {
+      showToolError(t("failed") + " (no operation ref)", lastUploadResult);
+      console.error("retryTool: no pendingOperationRef — refusing to mint a new identity");
+      return;
+    }
     const toolRes = await fetch("/api/tools/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

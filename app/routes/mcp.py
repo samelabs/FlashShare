@@ -319,9 +319,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         claim_ingress_quota as _claim_receipt,
         finalize_ok as _receipt_ok,
         settle_failure as _receipt_fail,
+        resolve_outcome as _resolve_outcome,
         IngressConflict as _IngressConflict,
         IngressInProgress as _IngressInProgress,
-        IngressQuotaDenied as _IngressQuotaDenied)
+        IngressQuotaDenied as _IngressQuotaDenied,
+        OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
     from utils import sanitize_filename as _san
     from security import sniff_allowed as _sniff, sign_source_token
     _canon = []
@@ -385,7 +387,18 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     "expireAt": _gk["FileInfo"].get("ExpireAt"),
                     "expiryDays": _ITTL, "allowedDownloads": _IDL,
                 })
-            _receipt_ok(int(_receipt["id"]), infos)
+            try:
+                _receipt_ok(int(_receipt["id"]), infos)
+            except Exception:
+                # finalize commit-ack loss: strict tri-state reconcile
+                _out = _resolve_outcome(int(_receipt["id"]))
+                if _out["outcome"] == OUTCOME_DURABLE_OK:
+                    infos = (_out["result"] if isinstance(_out["result"], list)
+                             else [_out["result"]])
+                elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+                    raise RuntimeError("err_upload_failed")
+                else:
+                    raise RuntimeError("err_ingress_unresolved")
         except Exception as exc:
             from gokapi import delete_gokapi_file as _gk_del
             for _gid in _gids:

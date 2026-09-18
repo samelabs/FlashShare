@@ -129,6 +129,9 @@ async def v1_upload(request: Request):
 
     from gokapi import upload_to_gokapi, delete_gokapi_file
     from execution.pipeline import INTERMEDIATE_TTL_DAYS, INTERMEDIATE_DOWNLOAD_LIMIT
+    from sharing.ingress_receipt import resolve_outcome as _resolve
+    from sharing.ingress_receipt import (OUTCOME_DURABLE_OK,
+                                         OUTCOME_PROVEN_ROLLBACK)
     gid = None
     try:
         gokapi = upload_to_gokapi(io.BytesIO(body), filename, final_type,
@@ -144,7 +147,22 @@ async def v1_upload(request: Request):
             "sourceToken": sign_source_token(user["id"], gid),
             "expireAt": gokapi["FileInfo"].get("ExpireAt"),
         }
-        _ing_ok(int(receipt["id"]), [handle])
+        try:
+            _ing_ok(int(receipt["id"]), [handle])
+        except Exception:
+            # finalize commit-ack loss: reconcile strict tri-state
+            import logging
+            logging.getLogger("flashshare").exception(
+                "v1 ingress finalize failed id=%s — reconciling", receipt["id"])
+            out = _resolve(int(receipt["id"]))
+            if out["outcome"] == OUTCOME_DURABLE_OK:
+                stored = out["result"]
+                stored = stored[0] if isinstance(stored, list) and stored else stored
+                return {"ok": True, "file": stored}
+            if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+                raise RuntimeError("err_upload_failed")
+            return JSONResponse(
+                {"ok": False, "error": "err_ingress_unresolved"}, 500)
         return {"ok": True, "file": handle}
     except Exception:
         if gid:

@@ -34,26 +34,35 @@ def by_id(con, ingress_id: int) -> dict | None:
 
 def finalize_ok(con, ingress_id: int, result_json: str,
                 finished_at: int) -> dict:
-    """Success finalize — status/result/finished_at in one UPDATE."""
+    """Success finalize — RUNNING → ok only, one UPDATE.
+
+    A receipt already terminal (failed/ok) can never be re-finalized:
+    RETURNING is empty and the caller gets None — a terminal rewrite
+    (e.g. overwriting a settled failure with ok, or double-finalize
+    racing recovery) is refused at the row level."""
     row = con.execute(
         """
         UPDATE ingress_requests
         SET status='ok', result_json=%s, finished_at=%s
-        WHERE id=%s
+        WHERE id=%s AND status='running'
         RETURNING *
         """,
         (result_json, finished_at, ingress_id)).fetchone()
-    return dict(row)
+    return dict(row) if row else None
 
 
 def settle_failed(con, ingress_id: int, finished_at: int) -> dict:
-    """Failure settlement — drop the stored result, terminal failed."""
+    """Failure settlement — RUNNING → failed only, one UPDATE.
+
+    Same guard as finalize_ok: a receipt already ok must never be
+    rewritten to failed (that would mark a durable success as failed);
+    already-failed stays idempotently untouched (None returned)."""
     row = con.execute(
         """
         UPDATE ingress_requests
         SET status='failed', result_json=NULL, finished_at=%s
-        WHERE id=%s
+        WHERE id=%s AND status='running'
         RETURNING *
         """,
         (finished_at, ingress_id)).fetchone()
-    return dict(row)
+    return dict(row) if row else None

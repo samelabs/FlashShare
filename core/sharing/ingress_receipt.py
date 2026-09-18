@@ -56,6 +56,18 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
     """
     from governance.entitlements import resolve as _resolve_entitlement
     from sharing.uploads import _quota_denial
+    # Canonicalize + validate the request identity HERE — the single
+    # entry point every surface (web/v1/MCP) funnels through. Bad
+    # identity fails loud before any lock/read/insert.
+    if not isinstance(request_ref, str):
+        raise ValueError("invalid_request_ref")
+    request_ref = request_ref.strip()
+    if not request_ref or len(request_ref) > 128:
+        raise ValueError("invalid_request_ref")
+    _HEX = set("0123456789abcdef")
+    if (not isinstance(request_hash, str) or len(request_hash) != 64
+            or any(c not in _HEX for c in request_hash)):
+        raise ValueError("invalid_request_hash")
     clean = [int(s) for s in sizes]
     if not clean or any(s <= 0 for s in clean):
         raise IngressQuotaDenied({"error": "err_empty_file"})
@@ -115,7 +127,7 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
             DO NOTHING
             RETURNING *
             """,
-            (user_id, request_ref.strip(), request_hash, list(usage_ids),
+            (user_id, request_ref, request_hash, list(usage_ids),
              ts)).fetchone()
         if receipt is None:
             # lost a live-unique race inside the same locked transaction —
@@ -144,16 +156,29 @@ def finalize_ok(ingress_id: int, canonical_result: list[dict] | dict) -> dict:
 
 
 def settle_failure(ingress_id: int, usage_ids: list[int],
-                   user_id: int) -> None:
-    """Failure settlement: release EXACT usage ids + receipt failed in
-    one transaction. Best-effort staged Gokapi cleanup happens in the
-    caller BEFORE this — physical objects are never this table's
-    authority."""
+                   user_id: int) -> bool:
+    """Failure settlement, ONE transaction, ORDER MATTERS:
+
+    1. guarded transition receipt running → failed (row-level; a
+       receipt already ok is NEVER rewritten to failed — its quota is
+       durable and stays);
+    2. only if the guard matched, delete the EXACT usage ids.
+
+    If the receipt was already terminal the usage rows are NOT
+    touched: an ok receipt's quota is durable (no speculative
+    release), and an already-failed receipt released its usage at its
+    own settlement (deleting again would be a no-op at best and a
+    double-release bug at worst). Best-effort staged Gokapi cleanup
+    happens in the caller BEFORE this.
+    Returns True when this call performed the settlement."""
     if not usage_ids:
         usage_ids = []
     with db() as con:
+        settled = _repo.settle_failed(con, ingress_id, now())
+        if settled is None:
+            return False
         usage_repo.delete_ids(con, user_id, usage_ids)
-        _repo.settle_failed(con, ingress_id, now())
+        return True
 
 
 OUTCOME_DURABLE_OK = "durable_ok"

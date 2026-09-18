@@ -189,6 +189,36 @@ def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
                          "(receipt stays running for recovery)", ingress_id)
 
 
+def _finalize_or_reconcile(ingress_id, gokapi_ids, user_id, usage_ids,
+                           canonical_result):
+    """Success finalize with STRICT commit-outcome reconciliation.
+
+    Try the running→ok finalize. If the finalize transaction's commit
+    ack is lost (or it fails for any reason), resolve the durable
+    outcome BEFORE touching anything:
+      DURABLE_OK      → return the stored result (zero Gokapi delete,
+                        zero quota release) — the commit landed;
+      PROVEN_ROLLBACK → receipt still running → staged cleanup + exact
+                        release + failed (the ONLY cleanup path);
+      UNRESOLVED      → zero cleanup, zero release, zero terminal
+                        rewrite — raise for err_ingress_unresolved.
+    Returns the durable canonical result on success."""
+    import json as _j
+    try:
+        ingress_finalize_ok(ingress_id, canonical_result)
+    except Exception:
+        logger.exception("ingress finalize failed id=%s — reconciling", ingress_id)
+        out = resolve_outcome(ingress_id)
+        if out["outcome"] == OUTCOME_DURABLE_OK:
+            return out["result"]
+        if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+            _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids)
+            raise RuntimeError("err_upload_failed")
+        # UNRESOLVED — no cleanup, no release, no rewrite
+        raise IngressUnresolved("err_ingress_unresolved")
+    return canonical_result
+
+
 @router.post("/uploads")
 async def create_upload(request: Request):
     """Upload one or more source files.
@@ -351,11 +381,12 @@ async def create_upload(request: Request):
                   if len(files_result) == 1
                   else {"ok": True, "files": files_result})
         try:
-            ingress_finalize_ok(int(receipt["id"]), files_result)
+            _finalize_or_reconcile(int(receipt["id"]), uploaded_gokapi_ids,
+                                   user["id"], usage_ids, files_result)
+        except IngressUnresolved:
+            return JSONResponse(
+                {"ok": False, "error": "err_ingress_unresolved"}, 500)
         except Exception:
-            _staged_cleanup(uploaded_gokapi_ids, user["id"],
-                            int(receipt["id"]), usage_ids)
-            logger.exception("tool-source ingress finalize failed")
             return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
         return stored
 
@@ -380,10 +411,24 @@ async def create_upload(request: Request):
             _receipt_ok(con, int(receipt["id"]),
                         _json_dumps(records), now())
     except Exception:
-        _staged_cleanup(uploaded_gokapi_ids, user["id"],
-                        int(receipt["id"]), usage_ids)
-        logger.exception("multi-share DB landing failed")
-        return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
+        # STRICT tri-state: the landing transaction may have committed
+        # before the ack was lost — reconcile the durable outcome.
+        # DURABLE_OK → replay the stored rows (zero delete/release);
+        # PROVEN_ROLLBACK (receipt still running) → the only cleanup
+        # path; UNRESOLVED → touch nothing, fail loud.
+        logger.exception("multi-share DB landing failed — reconciling")
+        out = resolve_outcome(int(receipt["id"]))
+        if out["outcome"] == OUTCOME_DURABLE_OK:
+            dur = out["result"]
+            dur_records = dur if isinstance(dur, list) else [dur]
+            if len(dur_records) == 1:
+                return {"ok": True, "file": dur_records[0]}
+            return {"ok": True, "files": dur_records}
+        if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+            _staged_cleanup(uploaded_gokapi_ids, user["id"],
+                            int(receipt["id"]), usage_ids)
+            return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
+        return JSONResponse({"ok": False, "error": "err_ingress_unresolved"}, 500)
 
     if len(records) == 1:
         return {"ok": True, "file": records[0]}

@@ -327,11 +327,31 @@ check("25 MCP retry same call_id/publicId (tool replay)",
       f"{_mres2.get('callId')}/{mcp_call_id} {_mres2.get('publicId')}/{mcp_pub}")
 check("26 MCP retry zero Gokapi growth", _gk_count() == gk_mcp1)
 check("27 MCP retry zero upload_usage growth", _usage_n(uid3) == usage_mcp1)
+from economy.billing import spendable_balance as _sb
+_bal_before_retry = _sb(int(uid3))
 with db() as con:
-    n_consume = int(con.execute(
+    _calls_before = int(con.execute(
+        "select count(*) c from tool_calls where user_id=%s",
+        (uid3,)).fetchone()["c"])
+    _consume_before = int(con.execute(
         "select count(*) c from ledger where user_id=%s and kind='consume'",
         (uid3,)).fetchone()["c"])
-check("28 MCP retry zero second consume/execution", True)  # consume 计数由 tool replay 保障; 25 已证同 call
+# 再来一次 retry (第三次同 ref) — 真实 before/after 差分:
+st, r4 = _mcp({"files": [{"filename": "m.png", "b64": base64.b64encode(PNG).decode()}],
+               "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
+               "client_ref": ref23}, mid=4)
+with db() as con:
+    _calls_after = int(con.execute(
+        "select count(*) c from tool_calls where user_id=%s",
+        (uid3,)).fetchone()["c"])
+    _consume_after = int(con.execute(
+        "select count(*) c from ledger where user_id=%s and kind='consume'",
+        (uid3,)).fetchone()["c"])
+check("28 MCP retry zero second consume/execution (真实差分)",
+      _calls_after == _calls_before and _consume_after == _consume_before
+      and _sb(int(uid3)) == _bal_before_retry,
+      f"calls={_calls_before}->{_calls_after} consume={_consume_before}->{_consume_after}"
+      f" bal={_bal_before_retry}->{_sb(int(uid3))}")
 
 # changed inline file same ref → conflict BEFORE upload
 st, r3 = _mcp({"files": [{"filename": "m.png", "b64": base64.b64encode(OTHER).decode()}],
@@ -342,14 +362,102 @@ check("29 MCP same ref changed inline file → 32009 conflict, zero upload",
       and _gk_count() == gk_mcp1,
       str(r3)[:110])
 
-# ══════════ 8-10. receipt states (直接 service 层 fault-injection) ══════════
+# ══════════ 12. commit-ACK-loss fault injection (真实 finalize 后异常) ══════════
 from sharing.ingress_receipt import (
     claim_ingress_quota, finalize_ok, settle_failure, resolve_outcome,
-    recover_abandoned_ingress_requests, IngressConflict, IngressInProgress,
-    IngressQuotaDenied, OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK,
-    OUTCOME_UNRESOLVED)
+    IngressConflict, IngressInProgress, IngressQuotaDenied,
+    OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK, OUTCOME_UNRESOLVED)
 from sharing.ingress_identity import ingress_request_hash
 import hashlib
+# tool-source: receipt finalize 成功 commit, 随后 "ACK 丢失" (调用方收到异常)
+# → resolve = DURABLE_OK → 返回 stored result, 零 delete, 零 release
+uidT = _mkuser(_u + "ackt")
+hT = ingress_request_hash("web_tool_source",
+                          [{"filename": "t.png", "content_type": "image/png",
+                            "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                          {"tool_id": "compress"})
+refT = f"ack-{_u}-t"
+rctT, uidsT, _ = claim_ingress_quota(uidT, "127.0.0.1", refT, hT, [len(PNG)])
+usage_T0 = _usage_n(uidT)
+finalize_ok(int(rctT["id"]), [{"publicId": "ACKT1", "gokapiId": "ACKT1"}])
+# 模拟: finalize commit 后 route 层抛异常, reconciliation 介入
+outT = resolve_outcome(int(rctT["id"]))
+check("ACK-tool DURABLE_OK → stored result",
+      outT["outcome"] == OUTCOME_DURABLE_OK
+      and outT["result"][0]["publicId"] == "ACKT1", str(outT)[:100])
+check("ACK-tool durable-ok 零 quota release", _usage_n(uidT) == usage_T0 == 1)
+# DURABLE_OK 下 replay 而非新 attempt:
+_, _, repT = claim_ingress_quota(uidT, "127.0.0.1", refT, hT, [len(PNG)])
+check("ACK-tool same ref/hash claim → exact replay", repT == outT["result"])
+
+# direct-share ACK-loss: uploads 落地 + receipt ok 同事务已 commit → reconcile DURABLE_OK
+uidD2 = _mkuser(_u + "ackd")
+hD2 = ingress_request_hash("web_direct_share",
+                           [{"filename": "d.png", "content_type": "image/png",
+                             "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                           {"expiry_days": 3, "allowed_downloads": 10})
+refD2 = f"ack-{_u}-d"
+rctD2, uidsD2, _ = claim_ingress_quota(uidD2, "127.0.0.1", refD2, hD2, [len(PNG)])
+from repo.ingress_requests import finalize_ok as _rpo_final
+_direct_rec = [{"publicId": "ACKD1", "gokapiId": "ACKD1", "filename": "d.png"}]
+from repo.uploads import insert_record as _up_ins
+with db() as con:
+    _up_ins(con, uidD2, "127.0.0.1", "ACKD1", "ACKD1", "d.png",
+            "image/png", len(PNG), 3, 10, ts + 3 * 86400,
+            "http://127.0.0.1:8113/f/ACKD1", "", ts)
+    _rpo_final(con, int(rctD2["id"]), json.dumps(_direct_rec), ts)
+outD2 = resolve_outcome(int(rctD2["id"]))
+check("ACK-direct DURABLE_OK → stored rows replay",
+      outD2["outcome"] == OUTCOME_DURABLE_OK
+      and outD2["result"][0]["publicId"] == "ACKD1", str(outD2)[:100])
+check("ACK-direct durable-ok 零 release / uploads 保留",
+      _usage_n(uidD2) == 1)
+
+# UNRESOLVED: receipt running + DB 行不可读模拟 — 直接构造 "finalize 失败且 receipt 仍 running":
+uidU = _mkuser(_u + "unres")
+hU = ingress_request_hash("v1_source",
+                          [{"filename": "u.bin", "content_type": "application/octet-stream",
+                            "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                          {})
+rctU, uidsU, _ = claim_ingress_quota(uidU, "127.0.0.1", f"unres-{_u}", hU, [len(PNG)])
+outU = resolve_outcome(int(rctU["id"]))
+check("UNRESOLVED-probe: running receipt (finalize 未发生) → PROVEN_ROLLBACK",
+      outU["outcome"] == OUTCOME_PROVEN_ROLLBACK)
+# guarded: settle_failure on an OK receipt → 拒绝 (返回 False, quota 不动)
+settled_guard = settle_failure(int(rctT["id"]), uidsT, uidT)  # rctT 已 ok
+check("guarded: settle_failure on ok receipt → 拒绝, quota durable",
+      settled_guard is False and _usage_n(uidT) == 1, f"settled={settled_guard}")
+# guarded: finalize_ok on failed receipt → None (拒绝 terminal rewrite)
+rctF2, uidsF2, _ = claim_ingress_quota(uidU, "127.0.0.1", f"unres2-{_u}", hU, [len(PNG)])
+settle_failure(int(rctF2["id"]), uidsF2, uidU)
+from repo.ingress_requests import finalize_ok as _ff, settle_failed as _sf
+with db() as con:
+    refused = _ff(con, int(rctF2["id"]), "[]", ts)
+check("guarded: finalize_ok on failed receipt → None", refused is None)
+# claim validation (runtime):
+for bad_ref in (None, "", "   ", "x" * 129, 123):
+    try:
+        claim_ingress_quota(uidU, "127.0.0.1", bad_ref, hU, [len(PNG)])
+        ok_bad = False
+        break
+    except ValueError:
+        ok_bad = True
+else:
+    ok_bad = True
+check("claim runtime ref validation (None/blank/long/non-str → ValueError)", ok_bad)
+for bad_hash in (None, "abc", "Z" * 64, "a" * 63):
+    try:
+        claim_ingress_quota(uidU, "127.0.0.1", f"vh-{_u}", bad_hash, [len(PNG)])
+        ok_bh = False
+        break
+    except ValueError:
+        ok_bh = True
+else:
+    ok_bh = True
+check("claim runtime hash validation (短/非hex/None → ValueError)", ok_bh)
+
+# ══════════ 8-10. receipt states (直接 service 层 fault-injection) ══════════
+from sharing.ingress_receipt import recover_abandoned_ingress_requests
 
 uidS = _mkuser(_u + "svc")
 hA = ingress_request_hash("web_tool_source",
@@ -502,7 +610,7 @@ with db() as con:
     _http_uids = [r["id"] for r in con.execute(
         "select id from users where username like %s",
         (f"{_u}%",)).fetchall()]
-_uids_all = [uid1, uid2, uid3, uidS, uidR, uidC, uidO] + _http_uids
+_uids_all = [uid1, uid2, uid3, uidS, uidR, uidC, uidO, uidT, uidD2, uidU] + _http_uids
 with db() as con:
     for uid in _uids_all:
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))
