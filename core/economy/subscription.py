@@ -238,6 +238,16 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     if not txn_ref:
         raise KeyError("paid_proof_missing:last_transaction_id")
     order, plan, current = _bind_and_load(sub_id, provider_subscription)
+    # ── reversed-period gate ──
+    # A durable economic reversal (revoke, idem payment-reversal:{txn})
+    # of a payment that funded THIS period invalidates its paid validity:
+    # an old subscription.paid replay must grant zero and leave an
+    # expired Membership expired. Scope is the PERIOD only — a later,
+    # independently paid new period grants normally.
+    with db() as con:
+        if orders_repo.period_has_payment_reversal(
+                con, int(order["user_id"]), period_start):
+            raise KeyError("paid_period_reversed")
     ts = now()
     status = "active" if period_end > ts else "expired"
     # ── paid product identity proof ──

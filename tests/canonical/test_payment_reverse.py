@@ -72,6 +72,7 @@ from economy import creem as _creem
 
 _TXNS = {}
 def _fake_fetch_transaction(txn_id):
+    _FETCHED.append(txn_id)
     t = _TXNS.get(txn_id)
     return dict(t) if t else None
 _rec.fetch_transaction = _fake_fetch_transaction
@@ -97,8 +98,21 @@ from fastapi.testclient import TestClient
 from app.main import app as _app
 client = TestClient(_app)
 
-def _fire(event_type, obj, txn_id):
-    """Fire a signed refund/dispute webhook; returns (status, json)."""
+_FETCHED = []   # txn ids the provider fetch actually received
+
+def _fire(event_type, txn_id, *, obj_id=None, obj_type=None,
+          txn_nested=True, txn_id_override=None):
+    """Fire a signed webhook with the REAL Creem shape:
+    event.id=evt_*; object.id=ref_*/disp_* (NOT the transaction id);
+    object.object=refund|dispute; object.transaction.id=tran_*.
+    Returns (status, json)."""
+    if obj_id is None:
+        obj_id = ("ref_" if event_type == "refund.created" else "disp_") + txn_id
+    obj = {"id": obj_id,
+           "object": obj_type or ("refund" if event_type == "refund.created"
+                                  else "dispute")}
+    if txn_nested:
+        obj["transaction"] = {"id": txn_id_override or txn_id}
     event = {"id": f"evt_{txn_id}", "eventType": event_type, "object": obj}
     raw, sig = _signed(event)
     r = client.post("/webhooks/creem", content=raw,
@@ -165,7 +179,7 @@ _TXNS[f"txn_{_u}r1"] = {
     "object": "transaction", "id": f"txn_{_u}r1", "status": "refunded",
     "type": "payment", "order": f"ord_{_u}",
 }
-sc, body = _fire("refund.created", {"id": f"txn_{_u}r1"}, f"txn_{_u}r1")
+sc, body = _fire("refund.created", f"txn_{_u}r1")
 check("A2 full refund → 200 + exact reversal fact",
       sc == 200 and body.get("reversed") is True and body.get("credits") == -10000,
       f"{sc} {body}")
@@ -178,14 +192,14 @@ check("A4 order terminal state = refunded", orow["status"] == "refunded"
       and orow["refunded_at"] is not None, str(dict(orow)))
 
 # replay same refund → no double revoke
-sc, body = _fire("refund.created", {"id": f"txn_{_u}r1"}, f"txn_{_u}r1")
+sc, body = _fire("refund.created", f"txn_{_u}r1")
 check("A5 refund replay → idempotent no double revoke (balance still -7000)",
       sc == 200 and spendable_balance(buyer) == -7000,
       f"{sc} bal={spendable_balance(buyer)}")
 
 # same transaction then disputed → still no second reversal
 _TXNS[f"txn_{_u}r1"] = {**_TXNS[f"txn_{_u}r1"], "status": "chargeback"}
-sc, body = _fire("dispute.created", {"id": f"txn_{_u}r1"}, f"txn_{_u}r1")
+sc, body = _fire("dispute.created", f"txn_{_u}r1")
 check("A6 refund→dispute same txn → single reversal only",
       sc == 200 and spendable_balance(buyer) == -7000,
       f"{sc} bal={spendable_balance(buyer)}")
@@ -206,7 +220,7 @@ _TXNS[f"txn_{_u}d1"] = {
     "type": "payment", "order": f"ord2_{_u}",
 }
 b0 = spendable_balance(buyer2)
-sc, body = _fire("dispute.created", {"id": f"txn_{_u}d1"}, f"txn_{_u}d1")
+sc, body = _fire("dispute.created", f"txn_{_u}d1")
 check("B1 dispute full chargeback → exact -10000",
       sc == 200 and spendable_balance(buyer2) == b0 - 10000,
       f"{sc} bal={spendable_balance(buyer2)}")
@@ -232,7 +246,7 @@ _TXNS[f"txn_{_u}p1"] = {
     "object": "transaction", "id": f"txn_{_u}p1", "status": "partially_refunded",
     "type": "payment", "order": f"ord3_{_u}",
 }
-sc, body = _fire("refund.created", {"id": f"txn_{_u}p1"}, f"txn_{_u}p1")
+sc, body = _fire("refund.created", f"txn_{_u}p1")
 check("C1 partial refund → 500 partial_refund_unresolved + zero mutation",
       sc == 500 and body.get("error") == "partial_refund_unresolved"
       and spendable_balance(buyer3) == b3_0,
@@ -244,7 +258,7 @@ check("C2 order untouched (still paid)", orow["status"] == "paid",
       str(dict(orow)))
 
 # ══════════ D. unknown txn / fetch failure → 500 + zero mutation ══════════
-sc, body = _fire("refund.created", {"id": "txn_unknown_rv"}, "txn_unknown_rv")
+sc, body = _fire("refund.created", "txn_unknown_rv")
 check("D1 unknown transaction → 500 zero mutation",
       sc == 500 and spendable_balance(buyer3) == b3_0,
       f"{sc} {body}")
@@ -253,7 +267,7 @@ _TXNS[f"txn_{_u}f1"] = {
     "object": "transaction", "id": f"txn_{_u}f1", "status": "refunded",
     "type": "payment", "order": f"ord3_{_u}",
 }
-sc, body = _fire("refund.created", {"id": f"txn_{_u}f1"}, f"txn_{_u}f1")
+sc, body = _fire("refund.created", f"txn_{_u}f1")
 check("D2 provider fetch failure → 500 zero mutation",
       sc == 500 and spendable_balance(buyer3) == b3_0,
       f"{sc} {body}")
@@ -279,7 +293,7 @@ _TXNS[f"txn_{_u}m1"] = {
     "object": "transaction", "id": f"txn_{_u}m1", "status": "refunded",
     "type": "payment", "order": f"ord4_{_u}",
 }
-sc, body = _fire("refund.created", {"id": f"txn_{_u}m1"}, f"txn_{_u}m1")
+sc, body = _fire("refund.created", f"txn_{_u}m1")
 check("D3 grant/snapshot mismatch → 500 fail loud, no guess",
       sc == 500 and "mismatch" in str(body.get("error")),
       f"{sc} {body}")
@@ -408,7 +422,7 @@ _TXNS[f"txn_{_u}s1a"] = {"object": "transaction", "id": f"txn_{_u}s1a",
                          "subscription": f"sub_{_u}s1",
                          "period_start": _iso(PS), "period_end": _iso(PE)}
 b_pre = spendable_balance(u1)
-sc, body = _fire("refund.created", {"id": f"txn_{_u}s1a"}, f"txn_{_u}s1a")
+sc, body = _fire("refund.created", f"txn_{_u}s1a")
 check("S3 base refund → exact -100 reversal",
       sc == 200 and spendable_balance(u1) == b_pre - 100,
       f"{sc} {body} bal={spendable_balance(u1)}")
@@ -423,7 +437,7 @@ _TXNS[f"txn_{_u}s1b"] = {"object": "transaction", "id": f"txn_{_u}s1b",
                          "subscription": f"sub_{_u}s1",
                          "period_start": _iso(PS), "period_end": _iso(PE)}
 b_pre = spendable_balance(u1)
-sc, body = _fire("refund.created", {"id": f"txn_{_u}s1b"}, f"txn_{_u}s1b")
+sc, body = _fire("refund.created", f"txn_{_u}s1b")
 check("S4 upgrade refund → exact -400 reversal",
       sc == 200 and spendable_balance(u1) == b_pre - 400,
       f"{sc} {body} bal={spendable_balance(u1)}")
@@ -438,7 +452,7 @@ _TXNS[f"txn_{_u}s5"] = {"object": "transaction", "id": f"txn_{_u}s5",
                         "status": "refunded", "type": "invoice",
                         "subscription": f"sub_{_u}s5",
                         "period_start": _iso(PS), "period_end": _iso(PE)}
-sc, body = _fire("refund.created", {"id": f"txn_{_u}s5"}, f"txn_{_u}s5")
+sc, body = _fire("refund.created", f"txn_{_u}s5")
 with db() as con:
     m5 = con.execute(
         "select status, renews_at from memberships where user_id=%s",
@@ -458,7 +472,7 @@ _TXNS[f"txn_{_u}s6"] = {"object": "transaction", "id": f"txn_{_u}s6",
                         "status": "chargeback", "type": "invoice",
                         "subscription": f"sub_{_u}s6",
                         "period_start": _iso(PS), "period_end": _iso(PE)}
-sc, body = _fire("dispute.created", {"id": f"txn_{_u}s6"}, f"txn_{_u}s6")
+sc, body = _fire("dispute.created", f"txn_{_u}s6")
 with db() as con:
     m6 = con.execute(
         "select status from memberships where user_id=%s", (u6,)).fetchone()
@@ -482,7 +496,7 @@ _TXNS[f"txn_{_u}s7old"] = {"object": "transaction", "id": f"txn_{_u}s7old",
                            "subscription": f"sub_{_u}s7",
                            "period_start": _iso(OLD_PS), "period_end": _iso(OLD_PE)}
 b_pre = spendable_balance(u7)
-sc, body = _fire("refund.created", {"id": f"txn_{_u}s7old"}, f"txn_{_u}s7old")
+sc, body = _fire("refund.created", f"txn_{_u}s7old")
 with db() as con:
     m7 = con.execute(
         "select status, renews_at, last_grant_period_start from memberships"
@@ -502,13 +516,13 @@ _TXNS[f"txn_{_u}s8w"] = {"object": "transaction", "id": f"txn_{_u}s8w",
                          "status": "refunded", "type": "invoice",
                          "subscription": "sub_somebody_else",
                          "period_start": _iso(PS), "period_end": _iso(PE)}
-sc, body = _fire("refund.created", {"id": f"txn_{_u}s8w"}, f"txn_{_u}s8w")
+sc, body = _fire("refund.created", f"txn_{_u}s8w")
 check("S8a unknown subscription order → 500 zero mutation",
       sc == 500 and spendable_balance(u8) == b8, f"{sc} {body}")
 _TXNS[f"txn_{_u}s8t"] = {"object": "transaction", "id": f"txn_{_u}s8t",
                          "status": "refunded", "type": "subscription",
                          "subscription": f"sub_{_u}s8"}
-sc, body = _fire("refund.created", {"id": f"txn_{_u}s8t"}, f"txn_{_u}s8t")
+sc, body = _fire("refund.created", f"txn_{_u}s8t")
 check("S8b wrong type → 500 zero mutation",
       sc == 500 and spendable_balance(u8) == b8, f"{sc} {body}")
 
@@ -532,10 +546,10 @@ b10 = spendable_balance(u10)
 import threading
 _res = {}
 def _fire10():
-    _res["r"] = _fire("refund.created", {"id": f"txn_{_u}s10"}, f"txn_{_u}s10")
+    _res["r"] = _fire("refund.created", f"txn_{_u}s10")
 t = threading.Thread(target=_fire10)
 t.start()
-sc2, _ = _fire("refund.created", {"id": f"txn_{_u}s10"}, f"txn_{_u}s10")
+sc2, _ = _fire("refund.created", f"txn_{_u}s10")
 t.join(timeout=30)
 rev_rows = None
 with db() as con:
@@ -545,6 +559,152 @@ with db() as con:
 check("S10 concurrent double fire → exactly one revoke row (-100 once)",
       spendable_balance(u10) == b10 - 100 and int(rev_rows["c"]) == 1,
       f"bal={spendable_balance(u10)} rows={dict(rev_rows)}")
+
+# ══════════ R. identity shape / reversed-period gate / recovery ══════════
+
+# R1/R2: official shapes — ref_x != tran_x, disp_x != tran_x; fetch MUST
+# receive the NESTED transaction id, never the refund/dispute object id.
+_FETCHED.clear()
+sc, body = _fire("refund.created", f"tran_{_u}x1",
+                 obj_id=f"ref_{_u}x1")
+check("R1 official refund shape: fetch receives tran_x (not ref_x)",
+      f"tran_{_u}x1" in _FETCHED and f"ref_{_u}x1" not in _FETCHED,
+      str(_FETCHED[-3:]))
+_FETCHED.clear()
+_TXNS[f"tran_{_u}x2"] = {"object": "transaction", "id": f"tran_{_u}x2",
+                         "status": "chargeback", "type": "payment",
+                         "order": f"ord2_{_u}"}
+sc, body = _fire("dispute.created", f"tran_{_u}x2", obj_id=f"disp_{_u}x2")
+check("R2 official dispute shape: fetch receives tran_x (not disp_x)",
+      _FETCHED and _FETCHED[-1] == f"tran_{_u}x2", str(_FETCHED[-2:]))
+
+# R3: missing nested transaction → 500 / zero mutation
+b_r3 = spendable_balance(buyer3)
+sc, body = _fire("refund.created", "txn_never_fetched", txn_nested=False)
+check("R3 missing nested transaction → 500 reversal_proof_missing + zero mutation",
+      sc == 500 and body.get("error") == "reversal_proof_missing"
+      and spendable_balance(buyer3) == b_r3, f"{sc} {body}")
+
+# R4: wrong object type → 500
+sc, body = _fire("refund.created", f"txn_{_u}s8",
+                 obj_type="dispute")
+check("R4 wrong object.object type → 500 object_type_mismatch",
+      sc == 500 and "object_type_mismatch" in str(body.get("error")),
+      f"{sc} {body}")
+
+# R5-R8: reversed-period replay gate + new-period recovery
+u_r = _seed_sub_user(_u + "rr", plus_id, "prod_rv_plus", f"sub_{_u}rr")
+_hev("subscription.paid", _sub_snap("active", PS, PE, "prod_rv_plus",
+                                    f"sub_{_u}rr", txn=f"tran_{_u}rr1"))
+b_base = spendable_balance(u_r)
+_TXNS[f"tran_{_u}rr1"] = {"object": "transaction", "id": f"tran_{_u}rr1",
+                          "status": "refunded", "type": "invoice",
+                          "subscription": f"sub_{_u}rr",
+                          "period_start": _iso(PS), "period_end": _iso(PE)}
+sc, body = _fire("refund.created", f"tran_{_u}rr1")
+with db() as con:
+    m_r = con.execute("select status, renews_at from memberships"
+                      " where user_id=%s", (u_r,)).fetchone()
+check("R5 current period refund → -100 + Membership expired",
+      sc == 200 and spendable_balance(u_r) == b_base - 100
+      and m_r["status"] == "expired",
+      f"{sc} {body} {dict(m_r)}")
+
+# R6: SAME period old paid replay → zero grant + remains expired
+b_r6 = spendable_balance(u_r)
+try:
+    _hev("subscription.paid", _sub_snap("active", PS, PE, "prod_rv_plus",
+                                        f"sub_{_u}rr", txn=f"tran_{_u}rr1"))
+    r6 = "no-raise"
+except KeyError as e:
+    r6 = str(e)
+with db() as con:
+    m_r6 = con.execute("select status from memberships where user_id=%s",
+                       (u_r,)).fetchone()
+check("R6 同 period 旧 paid replay → paid_period_reversed + zero grant + 仍 expired",
+      "paid_period_reversed" in r6 and spendable_balance(u_r) == b_r6
+      and m_r6["status"] == "expired",
+      f"{r6} bal={spendable_balance(u_r)} {dict(m_r6)}")
+
+# R7: SAME period ANOTHER old paid transaction replay → still gated
+# (the period itself is reversed; a different old txn of the same
+# period must not resurrect it either)
+b_r7 = spendable_balance(u_r)
+try:
+    _hev("subscription.paid", _sub_snap("active", PS, PE, "prod_rv_plus",
+                                        f"sub_{_u}rr", txn=f"tran_{_u}rr_old2"))
+    r7 = "no-raise"
+except KeyError as e:
+    r7 = str(e)
+check("R7 同 period 另一旧 paid txn replay → 仍被 gate + zero grant",
+      "paid_period_reversed" in r7 and spendable_balance(u_r) == b_r7,
+      f"{r7} bal={spendable_balance(u_r)}")
+
+# R8: NEW period, NEW matching paid transaction → normal recovery
+PS2, PE2 = ts + 86400, ts + 31 * 86400
+b_r8 = spendable_balance(u_r)
+_hev("subscription.paid", _sub_snap("active", PS2, PE2, "prod_rv_plus",
+                                    f"sub_{_u}rr", txn=f"tran_{_u}rr2"))
+with db() as con:
+    m_r8 = con.execute("select status, renews_at from memberships"
+                       " where user_id=%s", (u_r,)).fetchone()
+check("R8 新 period matching paid txn → 正常 +100 grant + Membership 重新 active",
+      spendable_balance(u_r) == b_r8 + 100 and m_r8["status"] == "active"
+      and int(m_r8["renews_at"]) == PE2,
+      f"bal={spendable_balance(u_r)} {dict(m_r8)}")
+
+# R9: missing / invalid period_end → zero reversal + 500
+u_r9 = _seed_sub_user(_u + "r9", plus_id, "prod_rv_plus", f"sub_{_u}r9")
+_hev("subscription.paid", _sub_snap("active", PS, PE, "prod_rv_plus",
+                                    f"sub_{_u}r9", txn=f"tran_{_u}r9"))
+b_r9 = spendable_balance(u_r9)
+_TXNS[f"tran_{_u}r9"] = {"object": "transaction", "id": f"tran_{_u}r9",
+                         "status": "refunded", "type": "invoice",
+                         "subscription": f"sub_{_u}r9",
+                         "period_start": _iso(PS), "period_end": None}
+sc, body = _fire("refund.created", f"tran_{_u}r9")
+_TXNS[f"tran_{_u}r9b"] = {"object": "transaction", "id": f"tran_{_u}r9b",
+                          "status": "refunded", "type": "invoice",
+                          "subscription": f"sub_{_u}r9",
+                          "period_start": _iso(PE),
+                          "period_end": _iso(PS)}   # end <= start
+scb, bodyb = _fire("refund.created", f"tran_{_u}r9b")
+check("R9 缺失/乱序 period_end → 500 + zero mutation (两形态)",
+      sc == 500 and "period_proof_invalid" in str(body.get("error"))
+      and scb == 500 and "period_proof_invalid" in str(bodyb.get("error"))
+      and spendable_balance(u_r9) == b_r9,
+      f"{sc}/{body.get('error')} {scb}/{bodyb.get('error')}")
+
+# R10: dispute no-grant path → order disputed (event semantics)
+u_r10 = _mkuser(_u + "r10")
+with db() as con:
+    o10 = con.execute(
+        "insert into orders (user_id, kind, item_id, provider,"
+        " provider_order_id, status, amount_cents, currency,"
+        " credits_snapshot, created_at) values (%s, 'package', %s,"
+        " 'creem', %s, 'pending', 999, 'USD', 0, %s) returning *",
+        (u_r10, pkg_id, f"ch:rv10_{_u}", ts)).fetchone()
+    order10 = int(o10["id"])
+# zero snapshot → fulfill marks paid with zero grant
+_creem.fulfill(f"ord10_{_u}", f"rv10_{_u}", 999,
+               product_id="prod_credits_rv", currency="USD")
+_TXNS[f"tran_{_u}r10"] = {"object": "transaction", "id": f"tran_{_u}r10",
+                          "status": "chargeback", "type": "payment",
+                          "order": f"ord10_{_u}"}
+b_r10 = spendable_balance(u_r10)
+sc, body = _fire("dispute.created", f"tran_{_u}r10")
+with db() as con:
+    or10 = con.execute("select status from orders where id=%s",
+                       (order10,)).fetchone()
+check("R10 dispute no-grant → zero mutation + order disputed",
+      sc == 200 and spendable_balance(u_r10) == b_r10
+      and or10["status"] == "disputed", f"{sc} {body} {dict(or10)}")
+
+# R11: subscription reversal replay → reversed=false / credits=0
+sc, body = _fire("refund.created", f"tran_{_u}rr1")
+check("R11 replay response 事实: reversed=false / credits=0",
+      sc == 200 and body.get("reversed") is False
+      and int(body.get("credits") or 0) == 0, f"{sc} {body}")
 
 print()
 print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")

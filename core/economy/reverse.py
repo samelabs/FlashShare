@@ -41,9 +41,15 @@ def reverse_payment(event_type: str, event: dict) -> dict:
     obj = event.get("object") or {}
     if not isinstance(obj, dict):
         obj = {}
-    txn = obj.get("transaction")
-    txn_id = str(obj.get("id") or
-                 (txn.get("id") if isinstance(txn, dict) else "") or "")
+    # Real Creem shape: event.id=evt_xxx; refund object.id=ref_xxx /
+    # dispute object.id=disp_xxx; the transaction id lives ONLY in
+    # object.transaction.id — never fall back to the refund/dispute
+    # object id (it names a different provider entity).
+    expected_obj = "refund" if event_type == "refund.created" else "dispute"
+    if str(obj.get("object") or "") != expected_obj:
+        raise KeyError("reversal_object_type_mismatch")
+    txn_obj = obj.get("transaction")
+    txn_id = str(txn_obj.get("id") or "") if isinstance(txn_obj, dict) else ""
     if not event_id or not txn_id:
         raise KeyError("reversal_proof_missing")
 
@@ -99,9 +105,12 @@ def _reverse_package(txn: dict, _is_dispute: bool = False) -> dict:
                                             f"order:{row['id']}")
     if grant_row is None or int(grant_row["delta"]) <= 0:
         # order recorded but no Credits were ever granted (e.g. zero
-        # snapshot): economic reversal amount = 0 → no-op convergence
+        # snapshot): economic reversal amount = 0 → no-op convergence;
+        # terminal state keeps the EVENT semantics (refund→refunded,
+        # dispute→disputed) exactly like the normal reversal path.
         with db() as con:
-            orders_repo.mark_refunded(con, int(row["id"]), now())
+            _t = mark_disputed if _is_dispute else mark_refunded
+            _t(con, int(row["id"]), now())
         return {"reversed": False, "credits": 0, "reason": "no_grant"}
     amount = int(grant_row["delta"])
     snapshot = int(row["credits_snapshot"] or 0)
@@ -135,8 +144,12 @@ def _reverse_subscription(txn: dict) -> dict:
     sub_id = str(txn.get("subscription") or "")
     from economy.subscription import _parse_ts
     period_start = _parse_ts(txn.get("period_start"))
+    period_end = _parse_ts(txn.get("period_end"))
     if not sub_id or not period_start:
         raise KeyError("subscription_ref_missing")
+    if not period_end or period_end <= period_start:
+        # incomplete/disordered period proof — fail closed, zero mutation
+        raise KeyError("subscription_period_proof_invalid")
 
     # locate the ORIGINAL user via the subscription's plan order — never
     # via current Membership (a historical period may no longer be the
@@ -164,12 +177,18 @@ def _reverse_subscription(txn: dict) -> dict:
         return {"reversed": False, "credits": 0, "reason": "no_grant"}
 
     from economy.billing import revoke
+    from repo import ledger as ledger_repo
+    with db() as con:
+        prior = ledger_repo.by_idem_key(con, user_id,
+                                        f"payment-reversal:{txn_id}")
     revoke(user_id, total,
            ref_type="creem_transaction", ref_id=txn_id,
            idem_key=f"payment-reversal:{txn_id}",
            note=f"subscription reversal sub:{sub_id} -{total}")
     _expire_if_current_period(user_id, sub_id, period_start, txn)
-    return {"reversed": True, "credits": -total, "kind": "subscription"}
+    first_time = prior is None
+    return {"reversed": first_time, "credits": -total if first_time else 0,
+            "kind": "subscription"}
 
 
 def _expire_if_current_period(user_id: int, sub_id: str,

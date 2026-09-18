@@ -365,6 +365,31 @@ def period_plan_credits(con, user_id: int, period_start: int) -> int:
     return grants + int(rev["total"] or 0)  # revoke delta < 0
 
 
+def period_has_payment_reversal(con, user_id: int, period_start: int) -> bool:
+    """该 billing period 的 plan-derived grants 中, 是否存在其支付交易已被
+    经济反转的 (grant ref -> creem_transaction, 对应 revoke 行存在)。
+    reversal scope = period: 只有被反转支付所属的周期被封, 新周期的
+    matching paid transaction 仍可正常授予。"""
+    row = con.execute(
+        """
+        SELECT 1 FROM ledger g
+        JOIN ledger r
+          ON r.user_id = g.user_id
+         AND r.kind = 'revoke'
+         AND r.ref_type = 'creem_transaction'
+         AND r.ref_id = g.ref_id
+         AND r.idem_key = 'payment-reversal:' || g.ref_id
+        WHERE g.user_id = %s
+          AND g.kind IN ('grant_plan', 'grant_plan_upgrade')
+          AND g.ref_type = 'creem_transaction'
+          AND (g.idem_key = %s OR g.idem_key LIKE %s)
+        LIMIT 1
+        """,
+        (user_id, f"plan:{user_id}:{period_start}",
+         f"plan-upgrade:{user_id}:{period_start}:%")).fetchone()
+    return row is not None
+
+
 def pending_downgrade(con, user_id: int) -> Optional[dict]:
     """scheduled downgrade fact (next renewal)。"""
     return con.execute(
