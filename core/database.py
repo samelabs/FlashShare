@@ -253,7 +253,14 @@ _SCHEMA_SQL = (
       params_json      TEXT,
       result_json      TEXT,
       started_at       BIGINT NOT NULL,
-      finished_at      BIGINT
+      finished_at      BIGINT,
+      CONSTRAINT tool_calls_status_ck
+        CHECK (status IN ('running','ok','failed','insufficient')),
+      CONSTRAINT tool_calls_cost_snapshot_ck CHECK (cost_snapshot >= 0),
+      CONSTRAINT tool_calls_running_open_ck
+        CHECK (status != 'running' OR finished_at IS NULL),
+      CONSTRAINT tool_calls_terminal_closed_ck
+        CHECK (status = 'running' OR finished_at IS NOT NULL)
     )
     """,
     # Invocation identity is user + tool + client_ref. A running row owns the
@@ -278,7 +285,8 @@ _SCHEMA_SQL = (
       cost       BIGINT NOT NULL DEFAULT 0,
       enabled    BOOLEAN NOT NULL DEFAULT TRUE,
       updated_at BIGINT NOT NULL,
-      updated_by BIGINT
+      updated_by BIGINT,
+      CONSTRAINT pricing_cost_ck CHECK (cost >= 0)
     )
     """,
     # ── platform: plans ──
@@ -302,7 +310,13 @@ _SCHEMA_SQL = (
       expiry_days      INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
       download_limits  INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
       created_at       BIGINT NOT NULL,
-      updated_at       BIGINT NOT NULL
+      updated_at       BIGINT NOT NULL,
+      CONSTRAINT plans_period_days_ck CHECK (period_days > 0),
+      CONSTRAINT plans_monthly_credits_ck CHECK (monthly_credits >= 0),
+      CONSTRAINT plans_price_cents_ck CHECK (price_cents >= 0),
+      CONSTRAINT plans_sort_order_ck CHECK (sort_order >= 0),
+      CONSTRAINT plans_ingress_files_ck CHECK (ingress_files_24h >= 0),
+      CONSTRAINT plans_ingress_bytes_ck CHECK (ingress_bytes_24h >= 0)
     )
     """,
     # ── platform: packages ──
@@ -318,7 +332,9 @@ _SCHEMA_SQL = (
       sort_order       INT NOT NULL DEFAULT 0,
       active           BOOLEAN NOT NULL DEFAULT TRUE,
       created_at       BIGINT NOT NULL,
-      updated_at       BIGINT NOT NULL
+      updated_at       BIGINT NOT NULL,
+      CONSTRAINT packages_credits_ck CHECK (credits > 0),
+      CONSTRAINT packages_price_cents_ck CHECK (price_cents >= 0)
     )
     """,
     # ── platform: orders ──
@@ -337,7 +353,12 @@ _SCHEMA_SQL = (
       granted           BOOLEAN NOT NULL DEFAULT FALSE,
       created_at        BIGINT NOT NULL,
       paid_at           BIGINT,
-      refunded_at       BIGINT
+      refunded_at       BIGINT,
+      CONSTRAINT orders_status_ck
+        CHECK (status IN ('pending','paid','failed','refunded','disputed')),
+      CONSTRAINT orders_amount_ck CHECK (amount_cents >= 0),
+      CONSTRAINT orders_credits_snapshot_ck
+        CHECK (credits_snapshot IS NULL OR credits_snapshot >= 0)
     )
     """,
     """
@@ -430,7 +451,9 @@ _SCHEMA_SQL = (
       created_at   BIGINT NOT NULL,
       processed_at BIGINT,
       processed_by BIGINT,
-      txn_ref      TEXT
+      txn_ref      TEXT,
+      CONSTRAINT withdrawals_status_ck
+        CHECK (status IN ('pending','approved','rejected','paid'))
     )
     """,
     """

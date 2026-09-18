@@ -308,8 +308,11 @@ def _parse_plan_fields(raw: dict, *, creating: bool = False) -> dict | None:
                 return None
             fields[k] = v
         for k in _PLAN_INT_FIELDS:
-            v = raw.get(k, 0)
-            if not isinstance(v, int) or v < 0:
+            # period_days 值域 >0 (create 未提供时默认 30 — 由 raw.get 的
+            # create default 提供, 不把显式非法 0 修成 30)
+            default = 30 if k == "period_days" else 0
+            v = raw.get(k, default)
+            if not isinstance(v, int) or v < 0 or (k == "period_days" and v <= 0):
                 return None
             fields[k] = v
     else:
@@ -321,7 +324,8 @@ def _parse_plan_fields(raw: dict, *, creating: bool = False) -> dict | None:
         for k in _PLAN_INT_FIELDS:
             if k in raw:
                 v = raw[k]
-                if not isinstance(v, int) or v < 0:
+                if not isinstance(v, int) or v < 0 \
+                        or (k == "period_days" and v <= 0):
                     return None
                 fields[k] = v
     if "creem_product_id" in raw or creating:
@@ -370,7 +374,7 @@ async def samelabs_create_plan(request: Request):
             row = insert_plan(
                 con, fields["code"], fields["name"], fields["monthly_credits"],
                 fields["price_cents"], now(),
-                period_days=fields["period_days"] or 30,
+                period_days=fields["period_days"],
                 sort_order=fields["sort_order"],
                 creem_product_id=fields["creem_product_id"],
                 ingress_files_24h=fields["ingress_files_24h"],
@@ -518,7 +522,9 @@ async def samelabs_update_package(package_id: int, request: Request):
         for k in ("credits", "price_cents"):
             if k in raw:
                 v = raw[k]
-                if not isinstance(v, int) or v < 0:
+                # credits 值域 >0 (与 create 一致); price_cents >=0
+                if not isinstance(v, int) or v < 0 \
+                        or (k == "credits" and v <= 0):
                     raise ValueError
                 fields[k] = v
         if "active" in raw:
