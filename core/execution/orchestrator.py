@@ -80,12 +80,13 @@ async def _run_handler(pool, process_tool, tool_id, single, multi_sources, param
                 pool, process_tool, tool_id, stream, filename, ctype,
                 size, params)
         return await fut
-    except BrokenProcessPool:
-        # worker 进程死亡 (submit 或 await 阶段): 本 invocation 按执行
-        # 失败收敛 (gate 的 exact refund + terminal failed); 池重建恢复
-        # 后续 capacity。不自动重跑已失败 invocation。
-        pool_mod.reset_pool("broken_process_pool")
-        raise ExecutionError("err_worker_died")
+    except BrokenProcessPool as exc:
+        # worker 进程死亡 (submit 或 await 阶段): CAS 重建池 (同一 broken
+        # pool 的并发观察者只产生一个 replacement), 本 invocation 重抛为
+        # 普通执行失败 → 既有 gate 收敛 (exact refund + terminal failed,
+        # 对外 tool_failed)。不自动重跑。
+        pool_mod.reset_pool(pool, "broken_process_pool")
+        raise RuntimeError("worker_pool_broken") from exc
 
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,

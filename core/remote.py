@@ -204,7 +204,7 @@ def _validated_addresses(url: str) -> tuple:
 
 
 def _pinned_request(url: str, method: str, body: bytes | None,
-                    headers: dict, timeout_s: float, deadline: float) -> tuple:
+                    headers: dict, timeout_s: int) -> tuple:
     """Single hop over the pinned transport. Returns (status, body,
     new_url_if_redirect). Never follows redirects itself.
 
@@ -212,11 +212,6 @@ def _pinned_request(url: str, method: str, body: bytes | None,
     proto), connect() receives the EXACT validated sockaddr — never the
     hostname — so no second DNS resolution can occur. Timeout failures
     stay typed as RemoteError('timeout')."""
-    # deadline first: an exhausted budget fails immediately without
-    # spending anything on resolution or connection
-    import time as _t0
-    if _t0.monotonic() >= deadline:
-        raise RemoteError("timeout", "total deadline exhausted")
     hostname, port, authority, addrs = _validated_addresses(url)
     parts = urllib.parse.urlsplit(url)
     path = parts.path or "/"
@@ -233,28 +228,18 @@ def _pinned_request(url: str, method: str, body: bytes | None,
     hop_headers.setdefault("User-Agent",
                            "518.PLUS-Dispatcher/1.0 (tool dispatch)")
 
-    import time as _time
     last_exc: Exception | None = None
     timed_out = False
     for family, socktype, proto, sa in addrs:
-        # 每个 address 只用剩余 deadline — 多地址不放大总耗时
-        remaining = deadline - _time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            last_exc = TimeoutError("total deadline exhausted")
-            break
         raw = tls_sock = None
         try:
             raw = socket.socket(family, socktype, proto)
-            raw.settimeout(remaining)
+            raw.settimeout(timeout_s)
             raw.connect(sa)  # exact validated sockaddr — never re-resolves
             ctx = ssl.create_default_context()  # verify=REQUIRED, system CA
-            remaining = deadline - _time.monotonic()
-            if remaining <= 0:
-                raise socket.timeout("deadline exhausted at TLS")
             tls_sock = ctx.wrap_socket(raw, server_hostname=hostname)
             conn = http.client.HTTPConnection(host=hostname, port=port,
-                                              timeout=max(0.001, remaining))
+                                              timeout=timeout_s)
             conn.sock = tls_sock  # pin: HTTP stack reuses OUR validated socket
             try:
                 conn.request(method, path, body=body, headers=hop_headers)
@@ -320,20 +305,14 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
     reach a second origin. Same-origin redirects keep it. Without a
     credential, cross-origin redirects proceed through full revalidation.
     """
-    import time as _time
-    # timeout_s = 整体 wall-clock budget: DNS / connect / TLS / redirect /
-    # response read 全部消费同一个 deadline, 每个 hop 只用剩余时间。
-    deadline = _time.monotonic() + timeout_s
     headers = dict(headers or {})
     cur_url = url
     cur_method, cur_body = method, body
     cur_headers = dict(headers)
     seen = {url}
     for _hop in range(MAX_REDIRECTS + 1):
-        if _time.monotonic() >= deadline:
-            raise RemoteError("timeout", "total deadline exhausted")
         status, data, new_url = _pinned_request(
-            cur_url, cur_method, cur_body, cur_headers, timeout_s, deadline)
+            cur_url, cur_method, cur_body, cur_headers, timeout_s)
         if status not in _REDIRECT_STATUSES:
             return status, data
         if not new_url:

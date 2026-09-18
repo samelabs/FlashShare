@@ -33,13 +33,19 @@ def get_pool() -> ProcessPoolExecutor:
         return _pool
 
 
-def reset_pool(reason: str = "unspecified") -> ProcessPoolExecutor:
-    """Shutdown 旧池 + 锁内新建。并发调用全部完成且池可用; 旧池
-    shutdown(wait=False) 不阻塞失败路径。返回新池。"""
+def reset_pool(expected_pool, reason: str = "unspecified") -> ProcessPoolExecutor:
+    """CAS-style 重建: 以调用者观察到的 broken pool identity 为准。
+    同一个 broken pool 被 N 个 caller 同时观察到时, 只有第一个完成
+    replacement (reset_count +1); 后续 caller 发现 _pool 已不是其
+    observed identity → 直接复用既有 replacement。旧池 shutdown 释放。
+    不创建 generation table / worker state machine。"""
     global _pool, _reset_count
     with _pool_lock:
+        if _pool is not expected_pool:
+            return _pool
         old = _pool
-        _pool = _new_pool()
+        replacement = _new_pool()
+        _pool = replacement
         _reset_count += 1
     if old is not None:
         try:
@@ -47,7 +53,7 @@ def reset_pool(reason: str = "unspecified") -> ProcessPoolExecutor:
         except Exception:
             logger.warning("old pool shutdown error during reset")
     logger.warning("execution pool reset #%d (%s)", _reset_count, reason)
-    return _pool
+    return replacement
 
 
 def pool_reset_count() -> int:
