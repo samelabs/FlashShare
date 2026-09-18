@@ -290,10 +290,10 @@ class _CommitAckLoss(Exception):
 # (连接断/ACK 丢失) — patch gate 模块的 db 工厂, 返回的连接 commit()
 # 先真提交再抛。
 _orig_finish = _gate_mod._finish
-def _finish_ack_loss(user, tool, call_id, cost, staged):
+def _finish_ack_loss(*args, **kwargs):
     # 真实执行 settlement (完整 commit), 然后模拟连接在 ACK 返回前断掉:
     # 客户端视角 _finish 抛异常, 但 durable fact 已提交。
-    _orig_finish(user, tool, call_id, cost, staged)
+    _orig_finish(*args, **kwargs)
     raise RuntimeError("ACK loss: connection dropped after commit")
 
 _gate_mod._finish = _finish_ack_loss
@@ -404,7 +404,8 @@ _mktool(tool8, owner_id=None, cost=25)
 _grant(user8, 1000, "manual_topup", note="rs")
 with db() as con:
     from repo.ledger import claim_call
-    anchor8, _ = claim_call(con, f"startup_{_u}", user8, tool8, 25, "{}", ts)
+    anchor8, _ = claim_call(con, f"startup_{_u}", user8, tool8, 25, "{}", ts,
+                             commission_rate_snapshot=30)
 call8 = int(anchor8["id"])
 from economy.billing import consume as _consume
 _charge8 = _consume(user8, 25, "consume", ref_type="tool_call",
@@ -542,7 +543,8 @@ toolM4 = f"rstm4_{_u}"
 _mktool(toolM4, owner_id=None, cost=25)
 with db() as con:
     from repo.ledger import claim_call
-    anchorM4, _ = claim_call(con, f"m4_{_u}", userM4, toolM4, 25, "{}", ts)
+    anchorM4, _ = claim_call(con, f"m4_{_u}", userM4, toolM4, 25, "{}", ts,
+                              commission_rate_snapshot=30)
 outM4 = resolve_success_outcome(int(anchorM4["id"]))
 check("M4 running → OUTCOME_PROVEN_ROLLBACK (唯一 refund 路径)",
       outM4["outcome"] == OUTCOME_PROVEN_ROLLBACK, str(outM4))

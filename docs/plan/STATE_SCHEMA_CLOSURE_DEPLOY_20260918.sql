@@ -16,6 +16,11 @@
 
 BEGIN;
 
+-- ── 0. add the new nullable column (transactional DDL: a later preflight
+--        failure rolls this back together with everything else) ──
+ALTER TABLE tool_calls
+  ADD COLUMN commission_rate_snapshot INTEGER;
+
 -- ── 1. pre-flight: existing data must satisfy every new invariant ──
 DO $$
 DECLARE violators BIGINT;
@@ -45,7 +50,8 @@ BEGIN
        OR (status <> 'running' AND finished_at IS NULL)
        OR (status <> 'ok'
            AND (upload_id IS NOT NULL OR result_public_id IS NOT NULL
-                OR result_json IS NOT NULL));
+                OR result_json IS NOT NULL))
+       OR (status = 'running' AND commission_rate_snapshot IS NULL);
   IF violators > 0 THEN
     RAISE EXCEPTION 'tool_calls invariant violations: % row(s)', violators;
   END IF;
@@ -85,6 +91,12 @@ ALTER TABLE pricing
   ADD CONSTRAINT pricing_cost_ck CHECK (cost >= 0);
 
 ALTER TABLE tool_calls
+  ADD CONSTRAINT tool_calls_commission_snapshot_range_ck
+    CHECK (commission_rate_snapshot IS NULL
+           OR commission_rate_snapshot BETWEEN 0 AND 100),
+  ADD CONSTRAINT tool_calls_running_commission_snapshot_ck
+    CHECK (status <> 'running'
+           OR commission_rate_snapshot IS NOT NULL),
   ADD CONSTRAINT tool_calls_status_ck
     CHECK (status IN ('running','ok','failed','insufficient')),
   ADD CONSTRAINT tool_calls_cost_snapshot_ck CHECK (cost_snapshot >= 0),

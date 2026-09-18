@@ -249,7 +249,8 @@ tu = _mkuser(_u + "tc")
 with db() as con:
     anchor = con.execute(
         "insert into tool_calls (client_ref, user_id, tool_id, status,"
-        " cost_snapshot, started_at) values (%s, %s, %s, 'running', 10, %s)"
+        " cost_snapshot, commission_rate_snapshot, started_at)"
+        " values (%s, %s, %s, 'running', 10, 30, %s)"
         " returning id",
         (f"cr_{_u}", tu, f"sstool_{_u}", ts)).fetchone()
 call_id = int(anchor["id"])
@@ -272,7 +273,8 @@ check("D5 terminal + 清空 finished_at → reject",
 with db() as con:
     a2 = con.execute(
         "insert into tool_calls (client_ref, user_id, tool_id, status,"
-        " cost_snapshot, started_at) values (%s, %s, %s, 'running', 0, %s)"
+        " cost_snapshot, commission_rate_snapshot, started_at)"
+        " values (%s, %s, %s, 'running', 0, 30, %s)"
         " returning id",
         (f"cr2_{_u}", tu, f"sstool_{_u}", ts)).fetchone()
 with db() as con:
@@ -284,6 +286,40 @@ check("D7 insufficient 终态合法",
           " cost_snapshot, started_at, finished_at) values"
           " (%s, %s, %s, 'insufficient', 0, %s, %s)",
           (f"cr3_{_u}", tu, f"sstool_{_u}", ts, ts)))
+check("D8 commission snapshot -1 → reject",
+      _db_rejects(
+          "insert into tool_calls (client_ref, user_id, tool_id, status,"
+          " cost_snapshot, commission_rate_snapshot, started_at) values"
+          " (%s, %s, %s, 'running', 10, -1, %s)",
+          (f"cr4_{_u}", tu, f"sstool_{_u}", ts)))
+check("D8b commission snapshot 101 → reject",
+      _db_rejects(
+          "insert into tool_calls (client_ref, user_id, tool_id, status,"
+          " cost_snapshot, commission_rate_snapshot, started_at) values"
+          " (%s, %s, %s, 'running', 10, 101, %s)",
+          (f"cr5_{_u}", tu, f"sstool_{_u}", ts)))
+check("D9 commission snapshot 0/100 边界合法",
+      not _db_rejects(
+          "insert into tool_calls (client_ref, user_id, tool_id, status,"
+          " cost_snapshot, commission_rate_snapshot, started_at) values"
+          " (%s, %s, %s, 'running', 10, 0, %s)",
+          (f"cr6_{_u}", tu, f"sstool_{_u}", ts))
+      and not _db_rejects(
+          "insert into tool_calls (client_ref, user_id, tool_id, status,"
+          " cost_snapshot, commission_rate_snapshot, started_at) values"
+          " (%s, %s, %s, 'running', 10, 100, %s)",
+          (f"cr7_{_u}", tu, f"sstool_{_u}", ts)))
+check("D10 running + NULL commission snapshot → reject",
+      _db_rejects(
+          "insert into tool_calls (client_ref, user_id, tool_id, status,"
+          " cost_snapshot, started_at) values (%s, %s, %s, 'running', 10, %s)",
+          (f"cr8_{_u}", tu, f"sstool_{_u}", ts)))
+check("D11 historical terminal (failed) NULL snapshot 合法",
+      not _db_rejects(
+          "insert into tool_calls (client_ref, user_id, tool_id, status,"
+          " cost_snapshot, started_at, finished_at) values"
+          " (%s, %s, %s, 'failed', 10, %s, %s)",
+          (f"cr9_{_u}", tu, f"sstool_{_u}", ts, ts)))
 
 # ══════════ E. withdrawals 状态域 ══════════
 wu = _mkuser(_u + "wd")

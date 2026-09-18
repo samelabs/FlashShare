@@ -159,12 +159,18 @@ def insert_provider_earn_if_absent(con, owner_id: int, payout: int,
 # ── tool_calls (计量事实) ──
 
 def claim_call(con, client_ref: str, user_id: int, tool_id: str,
-               cost: int, params_json: str, started_at: int) -> tuple[dict, bool]:
+               cost: int, params_json: str, started_at: int,
+               commission_rate_snapshot: int | None = None) -> tuple[dict, bool]:
     """Claim one logical invocation attempt before charging/executing.
 
     The partial unique index on (user_id, tool_id, client_ref) for
     running|ok rows makes concurrent retries converge here. Failed attempts do
     not block a later retry with the same logical client_ref.
+
+    commission_rate_snapshot is frozen at claim time and written in the
+    SAME INSERT — the only snapshot writer. Settlement reads it from the
+    persisted row, never from current settings. Historical pre-snapshot
+    rows keep NULL (no fabricated economics).
 
     Returns (row, claimed). claimed=False means an existing running/ok anchor
     already owns this logical invocation.
@@ -172,14 +178,15 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
     row = con.execute(
         """
         INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
-           cost_snapshot, params_json, started_at)
-        VALUES (%s, %s, %s, 'running', %s, %s, %s)
+           cost_snapshot, commission_rate_snapshot, params_json, started_at)
+        VALUES (%s, %s, %s, 'running', %s, %s, %s, %s)
         ON CONFLICT (user_id, tool_id, client_ref)
           WHERE status IN ('running','ok')
         DO NOTHING
         RETURNING *
         """,
-        (client_ref, user_id, tool_id, cost, params_json, started_at)).fetchone()
+        (client_ref, user_id, tool_id, cost, commission_rate_snapshot,
+         params_json, started_at)).fetchone()
     if row:
         return dict(row), True
     prior = con.execute(

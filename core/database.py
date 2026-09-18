@@ -254,9 +254,16 @@ _SCHEMA_SQL = (
       result_json      TEXT,
       started_at       BIGINT NOT NULL,
       finished_at      BIGINT,
+      commission_rate_snapshot INTEGER,
       CONSTRAINT tool_calls_status_ck
         CHECK (status IN ('running','ok','failed','insufficient')),
       CONSTRAINT tool_calls_cost_snapshot_ck CHECK (cost_snapshot >= 0),
+      CONSTRAINT tool_calls_commission_snapshot_range_ck
+        CHECK (commission_rate_snapshot IS NULL
+               OR commission_rate_snapshot BETWEEN 0 AND 100),
+      CONSTRAINT tool_calls_running_commission_snapshot_ck
+        CHECK (status <> 'running'
+               OR commission_rate_snapshot IS NOT NULL),
       CONSTRAINT tool_calls_running_open_ck
         CHECK (status != 'running' OR finished_at IS NULL),
       CONSTRAINT tool_calls_terminal_closed_ck

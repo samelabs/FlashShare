@@ -166,6 +166,10 @@ jobs:
             python tests/canonical/test_result_settlement_atomicity.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_result_settlement_atomicity.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_commission_effective_time.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_commission_effective_time.py
           # semantic guards (do not replace behavior tests):
           # orchestrator is staging-only and holds no source-deletion
           # authority; finalize_call_ok is the single tool_calls.upload_id
@@ -173,6 +177,7 @@ jobs:
           test -z "$(grep -n save_upload_record core/execution/orchestrator.py)"
           test -z "$(grep -n delete_gokapi_file core/execution/orchestrator.py)"
           test "$(grep -rn "SET status='ok'" core/repo/ledger.py | wc -l)" = "1"
+          python3 -c "s=open('core/execution/gate.py').read(); b=s.split('def _finish')[1].split(chr(10)+'def ')[0]; assert 'commission_rate()' not in b.replace('commission_rate_snapshot',''), '_finish must not read current commission config'"
           python tests/canonical/test_rounded_corners.py
 
       - name: Start Gokapi HTTP-boundary service
@@ -272,6 +277,9 @@ jobs:
 
       - name: Result settlement atomicity canonical
         run: python tests/canonical/test_result_settlement_atomicity.py
+
+      - name: Commission effective-time canonical
+        run: python tests/canonical/test_commission_effective_time.py
 
       - name: Failure diagnostics
         if: failure()

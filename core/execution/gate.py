@@ -121,7 +121,7 @@ def recover_abandoned_calls() -> dict:
 
 
 def _finish(user: dict, tool: dict, call_id: int, cost: int,
-            staged) -> dict:
+            staged, commission_rate_snapshot: int | None) -> dict:
     """The ONE success settlement transaction: durable result landing
     (uploads INSERT) + tool_call ok (upload_id/result binding) +
     provider/platform split — all-or-nothing. `staged` is a
@@ -132,7 +132,10 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     Value conservation for metered calls, all in credits:
 
       third-party tool:  user debit = provider earning + platform commission
-                         provider = cost - cost*rate//100
+                         provider = cost - cost*rate//100  (rate = the
+                                       CLAIM-TIME commission_rate_snapshot
+                                       persisted on the tool_call row —
+                                       never current settings)
                          platform = cost - provider
       first-party tool:  user debit = platform revenue (full cost)
 
@@ -148,7 +151,10 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     payout = 0
     commission = 0
     if cost > 0 and owner_id is not None and owner_id != user["id"]:
-        rate = commission_rate()
+        # claim-time snapshot ONLY — current settings are never read at
+        # settlement; a config change mid-execution cannot re-split an
+        # in-flight attempt
+        rate = int(commission_rate_snapshot or 0)
         payout = cost - (cost * rate // 100)
         commission = cost - payout
 
@@ -284,11 +290,16 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     started = now()
 
     # Claim before charging/executing. The DB partial unique index makes this
-    # race-safe for the same user + tool + client_ref.
+    # race-safe for the same user + tool + client_ref. The commission config
+    # read and the claim INSERT share ONE transaction: the resolved rate is
+    # frozen on the row at claim time; later settings changes only affect
+    # FUTURE claims, never this attempt's settlement.
     with db() as con:
+        rate_snapshot = commission_rate(con=con)
         anchor, claimed = claim_call(
             con, client_ref, user["id"], tool["id"], cost,
-            json.dumps(params, ensure_ascii=False), started)
+            json.dumps(params, ensure_ascii=False), started,
+            commission_rate_snapshot=rate_snapshot)
 
     if not claimed:
         if anchor.get("status") == "ok" and anchor.get("result_json"):
@@ -306,6 +317,10 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         return None, {"ok": False, "error": "err_call_in_progress"}, 409
 
     call_id = int(anchor["id"])
+    # snapshot authority = the PERSISTED attempt fact, not the stack value
+    # (a claimed=True row always carries its own claim-time snapshot; the
+    # runtime variable above only fed the INSERT)
+    rate_snapshot = anchor["commission_rate_snapshot"]
     charge = None
     if cost > 0:
         try:
@@ -336,7 +351,8 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         return None, {"ok": False, "error": "err_metering_failed"}, 500
 
     try:
-        return _finish(user, tool, call_id, cost, result), None, None
+        return _finish(user, tool, call_id, cost, result,
+                       rate_snapshot), None, None
     except Exception:
         # The settlement transaction MAY have committed despite the
         # exception (lost ACK) — never guess. Reconcile the durable fact
