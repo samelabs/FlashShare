@@ -1030,7 +1030,13 @@ _creem.CREEM_API_KEY = _orig_creem_key
 _rec.fetch_subscription, _rec.fetch_transaction = _orig_fetch_sub, _orig_fetch_txn
 
 # ═══ cleanup ═══
+# op 驱动过 /samelabs plan 写入 → operator_audit 留有 actor 引用;
+# FK 无 CASCADE, 测试清理先删 audit 行再删 actor users (test-only)。
 with db() as con:
+    con.execute(
+        "delete from operator_audit where actor_user_id = ANY(%s)",
+        ([u for u in (buyer, op, member, member2, member3, member4,
+                      mmA, mmB, mmC, mmD) if u],))
     for uid in (buyer, op, member, member2, member3, member4,
                 mmA, mmB, mmC, mmD):
         con.execute("delete from users where id=%s", (uid,))
