@@ -84,7 +84,9 @@ class Tier:
         self.currency = str(row["currency"] or "")
         self.product_id = row["creem_product_id"] or ""
         self.monthly_credits = int(row["monthly_credits"] or 0)
-        self.period_days = int(row["period_days"] or 30)
+        # DB 行是事实: period_days 由 DB CHECK 保证 >0, read-model 不再
+        # 把 0 fallback 成 30 (writer/read-model 漂移已收口)
+        self.period_days = int(row["period_days"])
         self.benefits = Benefits(
             row["ingress_files_24h"], row["ingress_bytes_24h"],
             row["expiry_days"] or (), row["download_limits"] or ())
