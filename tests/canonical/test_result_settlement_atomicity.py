@@ -64,6 +64,12 @@ from economy.billing import grant as _grant, spendable_balance
 from repo.ledger import by_idem_key
 from execution.pipeline import StagedResult, land_tool_result
 
+def row_id_of(res):
+    with db() as con:
+        return con.execute(
+            "select id from tool_calls where id=%s",
+            (res["call_id"],)).fetchone()["id"]
+
 def _mkstaged(tag="x", **kw):
     d = dict(gokapi_id=f"gk_{_u}_{tag}",
              filename="out.bin", content_type="application/octet-stream",
@@ -330,7 +336,10 @@ bal6 = spendable_balance(user6)
 
 _orig_rso = _gate_mod.resolve_success_outcome
 def _rso_unreachable(call_id):
-    return None          # DB outcome unreadable
+    # DB outcome unreadable → strict tri-state UNRESOLVED (返回值形状与
+    # 真实 resolve 一致)
+    from execution.gate import OUTCOME_UNRESOLVED
+    return {"outcome": OUTCOME_UNRESOLVED}
 _gate_mod.resolve_success_outcome = _rso_unreachable
 _gk_deleted6 = []
 _gk.delete_gokapi_file = lambda gid: _gk_deleted6.append(gid)
@@ -485,8 +494,158 @@ check("L1 direct share save_upload_record 行为不变 (publicId/downloadUrl)",
       rec_direct.get("publicId") and rec_direct.get("downloadUrl"),
       str(rec_direct)[:80])
 
+# ══════════ M. strict tri-state outcome regression ══════════
+from execution.gate import (OUTCOME_DURABLE_SUCCESS, OUTCOME_PROVEN_ROLLBACK,
+                            OUTCOME_UNRESOLVED, resolve_success_outcome)
+
+# M1/O1: ok + valid result_json → durable success (F 已覆盖, 单元级复证)
+check("M1 ok + valid json → OUTCOME_DURABLE_SUCCESS",
+      resolve_success_outcome(int(row_id_of(res5)))["outcome"]
+      == OUTCOME_DURABLE_SUCCESS)
+
+# M2/O2: ok + malformed result_json → UNRESOLVED (durable 经济事实不可退)
+userM = _mkuser(_u + "m2")
+toolM = f"rstm2_{_u}"
+_mktool(toolM, owner_id=None, cost=25)
+_grant(userM, 1000, "manual_topup", note="rs")
+resM, _, _ = _run_gate(userM, toolM, None, lambda: _stage_ok(toolM, tag="m2"))
+with db() as con:
+    cm2 = con.execute(
+        "select id from tool_calls where user_id=%s and tool_id=%s"
+        " order by id desc limit 1", (userM, toolM)).fetchone()
+    con.execute("update tool_calls set result_json='{malformed'"
+                " where id=%s", (cm2["id"],))
+balM_pre = spendable_balance(userM)     # 已 consume 25 (settlement 成功)
+outM = resolve_success_outcome(int(cm2["id"]))
+check("M2 ok + malformed json → OUTCOME_UNRESOLVED",
+      outM["outcome"] == OUTCOME_UNRESOLVED, str(outM))
+check("M2b 零 refund / status 仍 ok / 经济事实不动",
+      spendable_balance(userM) == balM_pre)
+with db() as con:
+    stM = con.execute("select status from tool_calls where id=%s",
+                      (cm2["id"],)).fetchone()
+    earnM = con.execute(
+        "select coalesce(sum(delta),0) s from ledger where"
+        " kind='platform_revenue' and ref_id=%s",
+        (str(cm2["id"]),)).fetchone()
+check("M2c status 仍 ok + revenue 保持", stM["status"] == "ok"
+      and int(earnM["s"]) == 25, f"{stM['status']} rev={earnM['s']}")
+
+# M3/O3: row missing → UNRESOLVED
+outM3 = resolve_success_outcome(987654321)
+check("M3 row missing → OUTCOME_UNRESOLVED",
+      outM3["outcome"] == OUTCOME_UNRESOLVED, str(outM3))
+
+# M4/O4: running → PROVEN_ROLLBACK (唯一可 refund 的状态)
+userM4 = _mkuser(_u + "m4")
+toolM4 = f"rstm4_{_u}"
+_mktool(toolM4, owner_id=None, cost=25)
+with db() as con:
+    from repo.ledger import claim_call
+    anchorM4, _ = claim_call(con, f"m4_{_u}", userM4, toolM4, 25, "{}", ts)
+outM4 = resolve_success_outcome(int(anchorM4["id"]))
+check("M4 running → OUTCOME_PROVEN_ROLLBACK (唯一 refund 路径)",
+      outM4["outcome"] == OUTCOME_PROVEN_ROLLBACK, str(outM4))
+
+# M5: terminal failed → UNRESOLVED (不许当 rollback)
+with db() as con:
+    from repo.ledger import finalize_call_failed
+    finalize_call_failed(con, int(anchorM4["id"]), "failed", "t", ts)
+outM5 = resolve_success_outcome(int(anchorM4["id"]))
+check("M5 terminal failed → OUTCOME_UNRESOLVED (不猜)",
+      outM5["outcome"] == OUTCOME_UNRESOLVED, str(outM5))
+
+# ══════════ N. source lifecycle: 不 eager-delete ══════════
+# N1: settlement rollback → source 保留 + 同 invocation 可重试成功
+userN = _mkuser(_u + "n1")
+toolN = f"rstn1_{_u}"
+_mktool(toolN, owner_id=None, cost=25)
+_grant(userN, 1000, "manual_topup", note="rs")
+refN = f"retry_{_u}"
+_src_deleted = []
+_gk2 = _gk
+_gk_orig2 = _gk2.delete_gokapi_file
+_gk2.delete_gokapi_file = lambda gid: _src_deleted.append(gid)
+# attempt 1: settlement fault (R1) → rollback → staged deleted, source live
+_pipe.land_tool_result = _land_fail_after_upload
+async def _stN():
+    return _mkstaged(tag="n1")
+try:
+    rN1, eN1, _ = _run_gate(userN, toolN, refN, _stN)
+finally:
+    _pipe.land_tool_result = _orig_land
+with db() as con:
+    tN1 = con.execute(
+        "select status from tool_calls where user_id=%s and tool_id=%s"
+        " and client_ref=%s order by id desc limit 1",
+        (userN, toolN, refN)).fetchone()
+    upN = con.execute(
+        "select count(*) c from uploads where user_id=%s",
+        (userN,)).fetchone()
+check("N1 attempt1 failed + 零 public result",
+      tN1["status"] == "failed" and int(upN["c"]) == 0,
+      f"{tN1['status']} up={upN['c']}")
+# staged result 被清 (attempt 输出), source 无关 (无删除权)
+check("N1b staged cleanup 只删 attempt result",
+      _mkstaged(tag="n1").gokapi_id in _src_deleted, str(_src_deleted))
+
+# attempt 2: 同 user/tool/client_ref/source — failed row 不挡 claim
+rN2, eN2, _ = _run_gate(userN, toolN, refN, _stN)
+with db() as con:
+    tN2 = con.execute(
+        "select status, upload_id from tool_calls where user_id=%s"
+        " and tool_id=%s and client_ref=%s order by id desc limit 1",
+        (userN, toolN, refN)).fetchone()
+    n_upN = int(con.execute(
+        "select count(*) c from uploads where user_id=%s",
+        (userN,)).fetchone()["c"])
+    n_refundN = int(con.execute(
+        "select count(*) c from ledger where user_id=%s and kind='refund'",
+        (userN,)).fetchone()["c"])
+check("N2 attempt2 同 invocation 重试成功 (failed 不占 live ref)",
+      rN2 is not None and rN2.get("ok") and tN2["status"] == "ok",
+      f"{rN2 and rN2.get('ok')} {tN2['status']}")
+check("N2b 最终恰一个 public result / consume1 已退",
+      n_upN == 1 and n_refundN == 1, f"up={n_upN} refunds={n_refundN}")
+check("N2c source 未被 execution 删除 (零 source delete)",
+      all(gid == _mkstaged(tag="n1").gokapi_id for gid in _src_deleted)
+      and len(_src_deleted) == 1, str(_src_deleted))
+_gk2.delete_gokapi_file = _gk_orig2
+
+# N3: durable source (uploads row) 不被 execution 删除
+userN3 = _mkuser(_u + "n3")
+toolN3 = f"rstn3_{_u}"
+_mktool(toolN3, owner_id=None, cost=0)
+_grant(userN3, 100, "manual_topup", note="rs")
+from repo.uploads import insert_record as _ins_up
+from utils import generate_public_id, public_file_url
+with db() as con:
+    pubN3 = generate_public_id(con)
+    dur_gid = f"durable_src_{_u}"
+    _ins_up(con, userN3, "127.0.0.1", pubN3, dur_gid, "in.txt",
+            "text/plain", 10, 30, 100, ts + 86400 * 30,
+            public_file_url(pubN3), "", ts)
+delN3 = []
+_gk2.delete_gokapi_file = lambda gid: delN3.append(gid)
+rN3, eN3, _ = _run_gate(userN3, toolN3, None, lambda: _stage_ok(toolN3, tag="n3"))
+_gk2.delete_gokapi_file = _gk_orig2
+with db() as con:
+    src_row = con.execute(
+        "select count(*) c from uploads where public_id=%s",
+        (pubN3,)).fetchone()
+check("N3 durable source 执行后不被删除 (row 保留 + 零 delete 调用)",
+      src_row is not None and int(src_row["c"]) == 1
+      and dur_gid not in delN3, f"rows={src_row['c']} deleted={delN3}")
+
+# semantic: orchestrator 无 source eager-delete
+_orch2 = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
+              encoding="utf-8").read()
+check("S1 orchestrator 零 delete_gokapi_file (source deletion authority 移除)",
+      "delete_gokapi_file" not in _orch2)
+
 # ══════════ cleanup (FK-safe, prefix-scoped) ══════════
-_uids = [user1, owner, user2, user3, user4, user5, user6, user7, user8, user9]
+_uids = [user1, owner, user2, user3, user4, user5, user6, user7, user8, user9,
+          userM, userM4, userN, userN3]
 with db() as con:
     for uid in _uids:
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))

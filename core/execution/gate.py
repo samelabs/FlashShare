@@ -189,22 +189,35 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     return out
 
 
-def resolve_success_outcome(call_id: int) -> dict | None:
-    """Durable reconciliation after a _finish exception.
+OUTCOME_DURABLE_SUCCESS = "durable_success"
+OUTCOME_PROVEN_ROLLBACK = "proven_rollback"
+OUTCOME_UNRESOLVED = "unresolved"
+
+
+def resolve_success_outcome(call_id: int) -> dict:
+    """Durable reconciliation after a _finish exception — STRICT tri-state.
 
     A commit-time exception does NOT prove the transaction failed — the
     commit may have landed and the ACK was lost. Read the authoritative
     tool_call row under FOR UPDATE (the settlement transaction has fully
     completed by the time the lock is granted):
 
-      status='ok'    → settlement IS durable: return the stored
-                       result_json (never regenerate, never refund,
-                       never delete the staged object)
-      status=running → settlement NOT durable: caller may clean up the
-                       staged object and settle failure
-      unreadable DB  → return None: unknown outcome must stay unresolved
-                       (no refund, no finalize, no staged delete — the
-                       existing running-row recovery settles later)
+      OUTCOME_DURABLE_SUCCESS — row exists, status='ok', result_json
+          parses: the settlement IS durable. Caller returns the stored
+          result; never refunds, never deletes the staged object.
+      OUTCOME_PROVEN_ROLLBACK — row exists AND status='running'. If the
+          success transaction had committed, status would already be
+          'ok'; a still-running row PROVES the settlement never became
+          durable. Only this outcome may clean up the staged result and
+          settle failure (exact refund → terminal failed).
+      OUTCOME_UNRESOLVED — anything else: row missing, unreadable DB,
+          a terminal status that reconciliation must not observe
+          (failed/insufficient), or status='ok' with a NULL/malformed/
+          unexpected result_json. A durable-ok settlement whose payload
+          is corrupted is still a durable economic fact — refunding it
+          would leak value — so it stays unresolved: no refund, no
+          failed finalize, no staged delete; the running/ok row plus
+          the existing durable recovery own the final disposition.
     """
     try:
         with db() as con:
@@ -213,15 +226,37 @@ def resolve_success_outcome(call_id: int) -> dict | None:
                 " WHERE id=%s FOR UPDATE", (call_id,)).fetchone()
     except Exception:
         logger.exception("outcome reconciliation failed call_id=%s", call_id)
-        return None
-    if row is None or row["status"] != "ok":
-        return {"durable": False}
+        return {"outcome": OUTCOME_UNRESOLVED}
+    if row is None:
+        logger.error("outcome reconciliation: tool_call row missing"
+                     " call_id=%s — unresolved", call_id)
+        return {"outcome": OUTCOME_UNRESOLVED}
+    if row["status"] == "running":
+        return {"outcome": OUTCOME_PROVEN_ROLLBACK}
+    if row["status"] != "ok":
+        # terminal failed/insufficient must not be observed here in
+        # single-worker execution; treat as anomalous fact, not a guess
+        logger.error("outcome reconciliation: unexpected terminal status"
+                     " %s call_id=%s — unresolved", row["status"], call_id)
+        return {"outcome": OUTCOME_UNRESOLVED}
+    raw = row["result_json"]
+    if not isinstance(raw, str):
+        logger.error("durable ok but result_json NULL call_id=%s"
+                     " — unresolved", call_id)
+        return {"outcome": OUTCOME_UNRESOLVED}
     try:
-        durable_result = json.loads(row["result_json"])
+        durable_result = json.loads(raw)
     except Exception:
-        logger.exception("durable result_json unreadable call_id=%s", call_id)
-        return {"durable": False}
-    return {"durable": True, "result": durable_result}
+        logger.exception("durable ok but result_json malformed call_id=%s"
+                         " — unresolved (economic fact stays durable)",
+                         call_id)
+        return {"outcome": OUTCOME_UNRESOLVED}
+    if not isinstance(durable_result, dict) \
+            or not durable_result.get("publicId"):
+        logger.error("durable ok but result_json shape unexpected"
+                     " call_id=%s — unresolved", call_id)
+        return {"outcome": OUTCOME_UNRESOLVED}
+    return {"outcome": OUTCOME_DURABLE_SUCCESS, "result": durable_result}
 
 
 async def run(user: dict, tool: dict, invocation, orchestrate):
@@ -308,12 +343,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         # first; only a provably-non-durable outcome may be cleaned up.
         logger.exception("metering finalize failed call_id=%s", call_id)
         outcome = resolve_success_outcome(call_id)
-        if outcome is None:
-            # DB outcome unreadable: keep the call running (durable
-            # recovery settles it); no refund, no finalize, no staged
-            # delete — an unknown state must not become a double refund.
-            return None, {"ok": False, "error": "err_metering_failed"}, 500
-        if outcome.get("durable"):
+        if outcome["outcome"] == OUTCOME_DURABLE_SUCCESS:
             # settlement IS durable: report the stored success, no refund,
             # no staged delete, no duplicate earning (already committed).
             out = {"ok": True, "type": tool["type"],
@@ -325,14 +355,22 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
                 except Exception:
                     logger.exception("balance fetch failed for UI chip")
             return out, None, None
-        # provably not durable: staged physical cleanup (best effort) then
-        # the existing failure settlement (exact refund → terminal failed).
-        from gokapi import delete_gokapi_file
-        try:
-            delete_gokapi_file(result.gokapi_id)
-        except Exception:
-            logger.warning("staged result cleanup failed call_id=%s gokapi=%s",
-                           call_id, result.gokapi_id)
-        if _settle_failure(user, tool_id, call_id, charge, "metering_failed"):
+        if outcome["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+            # ONLY a still-running row proves the settlement never became
+            # durable: staged physical cleanup (best effort — the staged
+            # object belongs to THIS attempt), then the existing failure
+            # settlement (exact refund → terminal failed).
+            from gokapi import delete_gokapi_file
+            try:
+                delete_gokapi_file(result.gokapi_id)
+            except Exception:
+                logger.warning("staged result cleanup failed call_id=%s"
+                               " gokapi=%s", call_id, result.gokapi_id)
+            if _settle_failure(user, tool_id, call_id, charge,
+                               "metering_failed"):
+                return None, {"ok": False, "error": "err_metering_failed"}, 500
             return None, {"ok": False, "error": "err_metering_failed"}, 500
+        # UNRESOLVED (missing row / unreadable DB / terminal status /
+        # durable-ok with corrupted payload): no refund, no finalize, no
+        # staged delete — the call keeps its durable state for recovery.
         return None, {"ok": False, "error": "err_metering_failed"}, 500

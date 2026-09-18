@@ -99,10 +99,13 @@ def upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) -
 def save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
                        expiry_days, allowed_downloads, expire_at,
                        url_hotlink, base_url: str, con=None) -> dict:
-    """Land one durable share/result row.
+    """Land one durable DIRECT-SHARE / non-tool result row.
 
-    con=None owns a transaction (normal tool result). A caller may supply a
-    connection to land a multi-share batch atomically.
+    Tool results no longer land here — they stage a StagedResult and the
+    gate settles uploads+binding+economics in one transaction
+    (land_tool_result). con=None owns a transaction (single direct
+    share). A caller may supply a connection to land a multi-share
+    batch atomically.
     """
     def _save(c):
         public_id = generate_public_id(c)
