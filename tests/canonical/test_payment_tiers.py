@@ -288,23 +288,27 @@ _bal_pre_upgrade = spendable_balance(uid10)  # anchor BEFORE the upgrade event
 _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
 _pp = project(uid10)
 _r10 = resolve(uid10)
-check("T10 update Pro product → Membership Pro / projection Pro / 2000 files / 20GiB",
+check("T10 update Pro product → Membership Pro / projection Pro / 2000 files / 20GiB (update 零授信)",
       _pp["membership"]["code"] == "pro" and _pp["entitlements"]["plan_code"] == "pro"
-      and _r10["ingress_files_24h"] == 2000 and _r10["ingress_bytes_24h"] == 20 * 1024**3,
-      str(_pp["entitlements"]["plan_code"]))
+      and _r10["ingress_files_24h"] == 2000 and _r10["ingress_bytes_24h"] == 20 * 1024**3
+      and spendable_balance(uid10) == _bal_pre_upgrade,
+      f"{_pp['entitlements']['plan_code']} bal={spendable_balance(uid10)}")
 
-# ═══ T11: Plus 100 → upgrade 补差 +400 → 可消费余额 500 (行为合同) ═══
-# spendable 必须真的吃到 +400 (SPENDABLE_KINDS 含 grant_plan_upgrade),
-# 而不是只读两次相等 — 看似 +400 实则不能花的假验证。
+# ═══ T11: upgrade 补差只由 apply_paid_period 产生 (paid-proof authority) ═══
+# Creem proration-charge-immediately 触发的新 paid event 携带 pro product
+# + 新 last_transaction_id → apply_paid_period 按 period-total 补差 +400。
+_bal_after_update = spendable_balance(uid10)
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
 _adj = _grants(uid10, "grant_plan_upgrade")
 _total11 = _plan_credits_total(uid10, PS)
-check("T11 upgrade 补差 +400 进 spendable (100→500) / grant exactly once / period total = 500",
-      _adj == 1 and spendable_balance(uid10) == _bal_pre_upgrade + 400
+check("T11 paid upgrade txn → apply_paid_period 补差 +400 (100→500) / exactly once / period total = 500",
+      _adj == 1 and spendable_balance(uid10) == _bal_after_update + 400
       and _total11 == 500,
-      f"adj_grants={_adj} spendable={spendable_balance(uid10)} (pre={_bal_pre_upgrade}) total={_total11}")
-# 重放同 update:
+      f"adj_grants={_adj} spendable={spendable_balance(uid10)} (pre={_bal_after_update}) total={_total11}")
+# 重放同 update + 同 paid:
 _bal_after_upgrade = spendable_balance(uid10)
 _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
 # ═══ T12: replay → exactly once ═══
 check("T12 replay upgrade events → 补差仍 exactly once / spendable 不再增加",
       _grants(uid10, "grant_plan_upgrade") == 1
@@ -507,8 +511,10 @@ check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       and '"proration-charge-immediately", "proration-none"' in _creem_src
       and "upgrade_subscription(" in _topup_src)
 _sub_blk2 = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
-check("PG6 升级补差 ledger kind=grant_plan_upgrade / 幂等键含 target",
-      "grant_plan_upgrade" in _sub_blk2 and "plan-upgrade:" in _sub_blk2)
+_sub_blk_paid = _sub_src2.split("def apply_paid_period")[1].split("\ndef _ev_")[0]
+check("PG6 升级补差在 apply_paid_period (paid-proof) / kind=grant_plan_upgrade / 幂等键含 target",
+      "grant_plan_upgrade" in _sub_blk_paid and "plan-upgrade:" in _sub_blk_paid
+      and "grant_plan_upgrade" not in _sub_blk2)
 check("PG7 period credits 从 ledger 聚合 (无第二余额字段)",
       "period_plan_credits" in _sub_src2 and "def period_plan_credits" in
       open(_os.path.join(_REPO, "core", "repo", "orders.py"), encoding="utf-8").read())

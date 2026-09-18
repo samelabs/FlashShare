@@ -289,10 +289,21 @@ async def creem_webhook(request: Request):
         return {"ok": True, **res}
 
     if event_type == "refund.created" or event_type == "dispute.created":
-        import logging
-        logging.getLogger("flashshare").warning(
-            "creem %s: obj=%s — operator review required", event_type, obj.get("id"))
-        return {"ok": True, "logged": True}
+        # exact economic reversal (single domain handler for both) —
+        # the route only verifies signature + parses, never adjudicates
+        from economy import reverse as _reverse
+        try:
+            res = _reverse.reverse_payment(event_type, event)
+        except KeyError as exc:
+            # missing proof / provider fetch failure / unknown txn /
+            # partial refund unresolved / status mismatch → 500 so
+            # Creem retry + failed-event surface keeps the entry point
+            import logging
+            logging.getLogger("flashshare").warning(
+                "creem %s: %s — retriable, zero mutation", event_type, exc)
+            return JSONResponse(
+                {"ok": False, "error": str(exc.args[0])}, 500)
+        return {"ok": True, **res}
 
     if event_type != "checkout.completed":
         return {"ok": True, "ignored": True}

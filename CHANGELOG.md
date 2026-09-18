@@ -5,7 +5,12 @@
 ## [Unreleased]
 
 ### Added
+- 退款/争议闭环：`refund.created` / `dispute.created` 签名验证后进入统一反向域处理器 —— 拉取 Creem Transaction 验证状态，按原始支付授予的精确数额做经济反转（余额可为负，不新建现金账本）；套餐退款按 grant 台账 + 冻结快照反转并落 refunded/disputed 终态；订阅退款按 `creem_transaction` 关联的 grant 行反转，当前付费周期被逆转时会员立即过期，历史周期反转不影响当前会员；`payment-reversal:{txn}` 幂等键统一 refund/dispute/replay/并发。部分退款 fail-closed（零变更 + 500 留人工面）。
+- 套餐订单身份收敛：支付成功时本地 order 的 provider 身份从 `ch:` 升级为 canonical `ord_`，replay/退款直接按订单号命中。
 - 调用防滥用：同用户 60 秒滑窗限流，超限返回 429。
+
+### Changed
+- `subscription.update` 不再直接发放升级补差积分：升级补差只由唯一的 `apply_paid_period()` 依据成功支付证明（paid transaction）产生；周期性 plan 授信台账引用改为 `creem_transaction`/交易号。
 
 ### Removed
 - 已部署客户端的 `?key=` 查询参数认证：正式凭据通道收敛为浏览器会话与 `Authorization: Bearer`（令牌不再进入 URL/访问日志）。MCP 直连示例同步移除。

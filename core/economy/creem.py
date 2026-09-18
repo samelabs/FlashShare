@@ -318,5 +318,10 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
               ref_type="order", ref_id=str(order_id),
               idem_key=f"order:{order_id}", note=amount_note)
     with db() as con:
+        # provider order identity 收敛: checkout 时只知道 ch:{id},
+        # 成功事件提供 canonical ord_{id} → 就地覆写, 后续 replay/
+        # refund/dispute 直接以 ord_xxx 命中同一行 (无 mapping table)。
+        if provider_order_id and row["provider_order_id"] != provider_order_id:
+            orders_repo.set_provider_order_id(con, order_id, provider_order_id)
         orders_repo.mark_paid(con, order_id, ts)
     return {"granted": True, "credits": credits}

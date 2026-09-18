@@ -64,6 +64,18 @@ def mark_failed(con, order_id: int) -> None:
         "UPDATE orders SET status='failed' WHERE id=%s", (order_id,))
 
 
+def mark_refunded(con, order_id: int, ts: int) -> None:
+    """package full-refund terminal state (economic reversal applied)."""
+    con.execute("UPDATE orders SET status='refunded', refunded_at=%s WHERE id=%s",
+                (ts, order_id))
+
+
+def mark_disputed(con, order_id: int, ts: int) -> None:
+    """dispute (chargeback) terminal state — same reversal semantics."""
+    con.execute("UPDATE orders SET status='disputed', refunded_at=%s WHERE id=%s",
+                (ts, order_id))
+
+
 def set_provider_order_id(con, order_id: int, provider_order_id: str) -> None:
     con.execute(
         "UPDATE orders SET provider_order_id=%s WHERE id=%s",
@@ -321,7 +333,10 @@ def plan_by_code(con, code: str) -> Optional[dict]:
 
 def period_plan_credits(con, user_id: int, period_start: int) -> int:
     """该 billing period 已获得的 plan-derived credits (grant_plan +
-    grant_plan_upgrade), 从 ledger 聚合推导 — 无第二余额字段。"""
+    grant_plan_upgrade), 从 ledger 聚合推导 — 无第二余额字段。
+    subscription payment reversal (kind=revoke, idem
+    payment-reversal:{txn}) 计入净额: 该周期支付被逆转后, 聚合不再
+    把已撤销的 grant 当作有效 (spec §9)。package reversal 不进本聚合。"""
     prefix = f"plan:{user_id}:{period_start}"
     upg_prefix = f"plan-upgrade:{user_id}:{period_start}:"
     row = con.execute(
@@ -329,7 +344,50 @@ def period_plan_credits(con, user_id: int, period_start: int) -> int:
         " WHERE user_id = %s AND kind IN ('grant_plan', 'grant_plan_upgrade')"
         " AND (idem_key = %s OR idem_key LIKE %s)",
         (user_id, prefix, upg_prefix + "%")).fetchone()
-    return int(row["total"] or 0)
+    grants = int(row["total"] or 0)
+    # reversals of grants whose ref transaction funded THIS period:
+    # revoke rows linked by creem_transaction ref to the same period's
+    # grant rows (matched via ref_id of this period's grant rows).
+    rev = con.execute(
+        """
+        SELECT COALESCE(SUM(l.delta), 0) AS total FROM ledger l
+        WHERE l.user_id = %s AND l.kind = 'revoke'
+          AND l.ref_type = 'creem_transaction'
+          AND l.ref_id IN (
+            SELECT g.ref_id FROM ledger g
+            WHERE g.user_id = %s
+              AND g.kind IN ('grant_plan', 'grant_plan_upgrade')
+              AND g.ref_type = 'creem_transaction'
+              AND (g.idem_key = %s OR g.idem_key LIKE %s)
+          )
+        """,
+        (user_id, user_id, prefix, upg_prefix + "%")).fetchone()
+    return grants + int(rev["total"] or 0)  # revoke delta < 0
+
+
+def period_has_payment_reversal(con, user_id: int, period_start: int) -> bool:
+    """该 billing period 的 plan-derived grants 中, 是否存在其支付交易已被
+    经济反转的 (grant ref -> creem_transaction, 对应 revoke 行存在)。
+    reversal scope = period: 只有被反转支付所属的周期被封, 新周期的
+    matching paid transaction 仍可正常授予。"""
+    row = con.execute(
+        """
+        SELECT 1 FROM ledger g
+        JOIN ledger r
+          ON r.user_id = g.user_id
+         AND r.kind = 'revoke'
+         AND r.ref_type = 'creem_transaction'
+         AND r.ref_id = g.ref_id
+         AND r.idem_key = 'payment-reversal:' || g.ref_id
+        WHERE g.user_id = %s
+          AND g.kind IN ('grant_plan', 'grant_plan_upgrade')
+          AND g.ref_type = 'creem_transaction'
+          AND (g.idem_key = %s OR g.idem_key LIKE %s)
+        LIMIT 1
+        """,
+        (user_id, f"plan:{user_id}:{period_start}",
+         f"plan-upgrade:{user_id}:{period_start}:%")).fetchone()
+    return row is not None
 
 
 def pending_downgrade(con, user_id: int) -> Optional[dict]:
