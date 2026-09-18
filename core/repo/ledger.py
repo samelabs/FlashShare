@@ -160,7 +160,7 @@ def insert_provider_earn_if_absent(con, owner_id: int, payout: int,
 
 def claim_call(con, client_ref: str, user_id: int, tool_id: str,
                cost: int, params_json: str, started_at: int,
-               commission_rate_snapshot: int | None = None) -> tuple[dict, bool]:
+               commission_rate_snapshot: int) -> tuple[dict, bool]:
     """Claim one logical invocation attempt before charging/executing.
 
     The partial unique index on (user_id, tool_id, client_ref) for
@@ -172,9 +172,15 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
     persisted row, never from current settings. Historical pre-snapshot
     rows keep NULL (no fabricated economics).
 
+    Runtime validation mirrors the DB CHECK so caller bugs fail loud
+    here instead of surfacing as a PostgreSQL CHECK violation.
+
     Returns (row, claimed). claimed=False means an existing running/ok anchor
     already owns this logical invocation.
     """
+    if (not isinstance(commission_rate_snapshot, int)
+            or not 0 <= commission_rate_snapshot <= 100):
+        raise ValueError("invalid_commission_rate_snapshot")
     row = con.execute(
         """
         INSERT INTO tool_calls (client_ref, user_id, tool_id, status,

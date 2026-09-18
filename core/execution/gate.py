@@ -121,7 +121,7 @@ def recover_abandoned_calls() -> dict:
 
 
 def _finish(user: dict, tool: dict, call_id: int, cost: int,
-            staged, commission_rate_snapshot: int | None) -> dict:
+            staged, commission_rate_snapshot: int) -> dict:
     """The ONE success settlement transaction: durable result landing
     (uploads INSERT) + tool_call ok (upload_id/result binding) +
     provider/platform split — all-or-nothing. `staged` is a
@@ -153,8 +153,14 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     if cost > 0 and owner_id is not None and owner_id != user["id"]:
         # claim-time snapshot ONLY — current settings are never read at
         # settlement; a config change mid-execution cannot re-split an
-        # in-flight attempt
-        rate = int(commission_rate_snapshot or 0)
+        # in-flight attempt. A running attempt ALWAYS carries a snapshot
+        # (DB invariant); NULL/out-of-range here is a writer bug, not a
+        # default-to-0% (provider takes 100%) situation — fail loud and
+        # let the strict outcome reconcile settle the economic failure.
+        if (not isinstance(commission_rate_snapshot, int)
+                or not 0 <= commission_rate_snapshot <= 100):
+            raise RuntimeError("invalid_commission_snapshot")
+        rate = commission_rate_snapshot
         payout = cost - (cost * rate // 100)
         commission = cost - payout
 

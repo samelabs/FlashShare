@@ -364,6 +364,71 @@ check("C12c invalid value → fallback 30 冻结",
       rowfg["commission_rate_snapshot"] == 30,
       str(rowfg["commission_rate_snapshot"]))
 
+# ══════════ C13: _finish NULL snapshot → fail loud ══════════
+u13 = _mkuser(_u + "c13")
+t13 = f"ctc13_{_u}"
+_mktool(t13, owner_id=owner, cost=100)
+_grant(u13, 10000, "manual_topup", note="ct")
+_set_rate(30)
+bal13_pre = spendable_balance(u13)
+
+async def _s13():
+    return _mkstaged("c13")
+
+# 真实 gate path: attempt 合法 claim/charge 后, success finish 收到 NULL snapshot
+_orig_finish13 = gate._finish
+def _finish_null_snapshot(*args, **kwargs):
+    kwargs["commission_rate_snapshot"] = None
+    return _orig_finish13(*args, **kwargs)
+gate._finish = _finish_null_snapshot
+try:
+    res13, err13, _ = _run(u13, t13, None, _s13, owner=owner)
+except Exception as _e13:
+    res13, err13 = None, _e13
+gate._finish = _orig_finish13
+with db() as con:
+    row13 = dict(con.execute(
+        "select status, upload_id, result_public_id from tool_calls"
+        " where user_id=%s and tool_id=%s order by id desc limit 1",
+        (u13, t13)).fetchone())
+    n_ref13 = int(con.execute(
+        "select count(*) c from ledger where user_id=%s and kind='refund'",
+        (u13,)).fetchone()["c"])
+e13, c13_, _ = _split_for(row13 and None or 0) if False else (None, None, None)
+with db() as con:
+    cid13 = con.execute(
+        "select id from tool_calls where user_id=%s and tool_id=%s"
+        " order by id desc limit 1", (u13, t13)).fetchone()["id"]
+e13, c13_, r13 = _split_for(cid13)
+check("C13 NULL snapshot → fail loud: terminal failed + refund exact + 零 split + 零 uploads",
+      row13["status"] == "failed"
+      and row13["upload_id"] is None and row13["result_public_id"] is None
+      and n_ref13 == 1 and spendable_balance(u13) == bal13_pre
+      and e13 == 0 and c13_ == 0,
+      f"status={row13['status']} refund={n_ref13} e={e13} c={c13_}")
+
+# ══════════ C14: claim_call runtime API rejects invalid snapshot ══════════
+from repo.ledger import claim_call as _claim
+def _claim_ok(snap):
+    try:
+        with db() as con:
+            _claim(con, f"c14ok_{_u}_{snap}", u9, t9, 0, "{}", ts,
+                   commission_rate_snapshot=snap)
+        return True
+    except ValueError:
+        return False
+def _claim_bad(snap):
+    try:
+        with db() as con:
+            _claim(con, f"c14bad_{_u}_{snap}", u9, t9, 0, "{}", ts,
+                   commission_rate_snapshot=snap)
+        return False
+    except ValueError:
+        return True
+check("C14 None / -1 / 101 reject; 0 / 100 合法",
+      _claim_bad(None) and _claim_bad(-1) and _claim_bad(101)
+      and _claim_ok(0) and _claim_ok(100))
+
 # semantic: _finish body must not read commission_rate()
 _gate_src = open(_os.path.join(_REPO, "core", "execution", "gate.py"),
                  encoding="utf-8").read()
@@ -374,7 +439,7 @@ check("S1 _finish 函数体零 commission_rate() 读取",
 
 # ══════════ cleanup ══════════
 _set_rate(30)
-_uids = [owner, u1, u2, u3, u5, u6, us, u9, ufb, ufg]
+_uids = [owner, u1, u2, u3, u5, u6, us, u9, ufb, ufg, u13]
 with db() as con:
     fp_ids = [r["id"] for r in con.execute(
         "select id from users where username like %s", (f"{_u}fp%",)).fetchall()]

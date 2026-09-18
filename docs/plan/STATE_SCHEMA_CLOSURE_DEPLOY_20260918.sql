@@ -51,7 +51,10 @@ BEGIN
        OR (status <> 'ok'
            AND (upload_id IS NOT NULL OR result_public_id IS NOT NULL
                 OR result_json IS NOT NULL))
-       OR (status = 'running' AND commission_rate_snapshot IS NULL);
+       OR (status = 'running' AND commission_rate_snapshot IS NULL)
+       OR (commission_rate_snapshot IS NOT NULL
+           AND (commission_rate_snapshot < 0
+                OR commission_rate_snapshot > 100));
   IF violators > 0 THEN
     RAISE EXCEPTION 'tool_calls invariant violations: % row(s)', violators;
   END IF;
