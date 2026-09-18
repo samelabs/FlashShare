@@ -343,6 +343,23 @@ _SCHEMA_SQL = (
     """
     CREATE INDEX IF NOT EXISTS orders_user_idx ON orders(user_id, created_at DESC)
     """,
+    # ── platform: operator_audit (append-only governance fact) ──
+    """
+    CREATE TABLE IF NOT EXISTS operator_audit (
+      id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      actor_user_id  BIGINT NOT NULL REFERENCES users(id),
+      action         TEXT NOT NULL,
+      target_type    TEXT NOT NULL,
+      target_id      TEXT NOT NULL,
+      before_json    JSONB,
+      after_json     JSONB,
+      created_at     BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS operator_audit_created_idx
+      ON operator_audit(created_at DESC, id DESC)
+    """,
     # ── platform: settings ──
     """
     CREATE TABLE IF NOT EXISTS settings (

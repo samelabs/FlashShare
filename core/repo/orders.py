@@ -440,6 +440,14 @@ def plan_order_by_sub_id(con, sub_id: str) -> Optional[dict]:
         """, (f"sub:{sub_id}",)).fetchone()
 
 
+def plan_by_id_for_update(con, plan_id: int) -> Optional[dict]:
+    """行锁读 (operator audit 的 in-tx before snapshot 用 — 不用事务外
+    stale row 作 before/after authority)。"""
+    return con.execute(
+        "SELECT * FROM plans WHERE id = %s FOR UPDATE",
+        (plan_id,)).fetchone()
+
+
 def plan_by_id(con, plan_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM plans WHERE id = %s", (plan_id,)).fetchone()

@@ -148,6 +148,77 @@ async def samelabs_tools(request: Request):
     return templates.TemplateResponse(request, "samelabs/tools.html", ctx)
 
 
+# ── operator audit: safe snapshot projections (allowlist ONLY) ──
+# 快照纪律: 只按 target_type 投影白名单字段; 绝不 blacklist 删秘密。
+from repo import operator_audit as _audit_repo
+
+
+def _snap_plan(r) -> dict:
+    if r is None:
+        return {}
+    return {k: r[k] for k in (
+        "id", "code", "name", "monthly_credits", "period_days", "period",
+        "price_cents", "currency", "creem_product_id", "sort_order",
+        "active", "ingress_files_24h", "ingress_bytes_24h",
+        "expiry_days", "download_limits") if k in r.keys()}
+
+
+def _snap_package(r) -> dict:
+    if r is None:
+        return {}
+    return {k: r[k] for k in ("id", "code", "name", "credits",
+                              "price_cents", "currency", "sort_order",
+                              "active") if k in r.keys()}
+
+
+def _snap_pricing(r) -> dict | None:
+    if r is None:
+        return None  # first-time pricing: before = NULL (create semantics)
+    return {"tool_id": r["tool_id"], "cost": int(r["cost"]),
+            "enabled": bool(r["enabled"])}
+
+
+def _snap_presentation(r) -> dict:
+    if r is None:
+        return {}
+    return {"tool_key": r["tool_key"], "featured": bool(r["featured"]),
+            "sort_order": int(r["sort_order"])}
+
+
+def _safe_remote_projection(con, tool_key: str) -> dict | None:
+    """tool + pricing 的 safe 字段投影 (allowlist; URL/endpoint_json/
+    auth/Vault 永不进入)。"""
+    row = con.execute(
+        """
+        SELECT t.tool_key, t.tool_id, t.execution, t.tool_type,
+               t.visibility, t.enabled, t.featured, t.sort_order, t.multi,
+               t.accept_json, p.cost
+        FROM platform_tools t LEFT JOIN pricing p ON p.tool_id = t.tool_id
+        WHERE t.tool_key = %s
+        """, (tool_key,)).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    if d.get("accept_json"):
+        import json as _json
+        try:
+            d["accept"] = _json.loads(d["accept_json"])
+        except Exception:
+            d["accept"] = None
+    d.pop("accept_json", None)
+    return d
+
+
+def _snap_remote(r) -> dict:
+    # remote allowlist ONLY — URL/endpoint_json/auth/Vault never enter audit
+    if r is None:
+        return {}
+    return {k: r[k] for k in ("tool_key", "tool_id", "execution",
+                              "tool_type", "visibility", "enabled",
+                              "featured", "sort_order", "multi", "accept",
+                              "cost") if k in r.keys()}
+
+
 @router.post("/samelabs/tools/{tool_id}/pricing")
 async def samelabs_set_pricing(tool_id: str, request: Request):
     user, resp = _gate(request)
@@ -162,7 +233,16 @@ async def samelabs_set_pricing(tool_id: str, request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from governance.pricing import set_pricing
-    row = set_pricing(tool_id, cost, enabled, admin_user_id=user["id"])
+    from repo.catalog import pricing_row
+    # one transaction: before snapshot + pricing mutation + audit fact
+    # (audit failure → pricing rollback)
+    with db() as con:
+        before = pricing_row(con, tool_id)
+        row = set_pricing(tool_id, cost, enabled,
+                          admin_user_id=user["id"], con=con)
+        _audit_repo.record(con, user["id"], "pricing.update", "pricing",
+                           str(tool_id), _snap_pricing(before),
+                           _snap_pricing(row), now())
     return {"ok": True, "pricing": {k: row[k] for k in ("tool_id", "cost", "enabled")}}
 
 
@@ -281,6 +361,11 @@ async def samelabs_create_plan(request: Request):
                 ingress_bytes_24h=fields["ingress_bytes_24h"],
                 expiry_days=fields.get("expiry_days") or (),
                 download_limits=fields.get("download_limits") or ())
+            # audit lands INSIDE the tx, BEFORE any Creem HTTP side
+            # effect: audit failure → rollback → ZERO provider call;
+            # Creem failure → rollback → zero committed audit row.
+            _audit_repo.record(con, user["id"], "plan.create", "plan",
+                               str(row["id"]), None, _snap_plan(row), now())
             if fields.get("creem_product_id"):
                 from economy import creem as _creem
                 if not _creem.creem_enabled():
@@ -324,7 +409,7 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     if fields is None or not fields:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from repo.orders import update_plan, plan_by_id
+    from repo.orders import update_plan, plan_by_id, plan_by_id_for_update
     from governance.plan_catalog import is_paid_tier
     with db() as con:
         row = plan_by_id(con, plan_id)
@@ -354,7 +439,12 @@ async def samelabs_update_plan(plan_id: int, request: Request):
     import psycopg2
     try:
         with db() as con:
+            # in-tx locked read → before snapshot (NOT the stale outer row)
+            before = _snap_plan(plan_by_id_for_update(con, plan_id))
             row = update_plan(con, plan_id, fields, now())
+            # audit BEFORE any Creem side effect, same transaction
+            _audit_repo.record(con, user["id"], "plan.update", "plan",
+                               str(plan_id), before, _snap_plan(row), now())
             if commercial_change:
                 target_price = int(row["price_cents"])
                 target_product = row["creem_product_id"] or ""
@@ -423,11 +513,17 @@ async def samelabs_update_package(package_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     if not fields:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    from repo.orders import update_package
+    from repo.orders import update_package, package_by_id
     with db() as con:
+        cur = package_by_id(con, package_id)
+        if cur is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        before = _snap_package(cur)
         row = update_package(con, package_id, fields, now())
-    if row is None:
-        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        if row is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        _audit_repo.record(con, user["id"], "package.update", "package",
+                           str(package_id), before, _snap_package(row), now())
     return {"ok": True, "package": dict(row)}
 
 
@@ -445,9 +541,16 @@ async def samelabs_set_tool_presentation(tool_key: str, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from repo.catalog import set_tool_presentation
     with db() as con:
+        cur = con.execute(
+            "SELECT tool_key, featured, sort_order FROM platform_tools"
+            " WHERE tool_key = %s FOR UPDATE", (tool_key,)).fetchone()
+        if cur is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        before = _snap_presentation(cur)
         row = set_tool_presentation(con, tool_key, featured, sort_order, now())
-    if row is None:
-        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        _audit_repo.record(con, user["id"], "tool.presentation.update",
+                           "tool", str(tool_key), before,
+                           _snap_presentation(row), now())
     return {"ok": True, "tool": dict(row)}
 
 
@@ -484,6 +587,8 @@ async def samelabs_create_package(request: Request):
     try:
         with db() as con:
             row = insert_package(con, code, name, credits, price, now())
+            _audit_repo.record(con, user["id"], "package.create", "package",
+                               str(row["id"]), None, _snap_package(row), now())
     except psycopg2.IntegrityError:
         return JSONResponse({"ok": False, "error": "code_taken"}, 409)
     return {"ok": True, "package": dict(row)}
@@ -526,17 +631,35 @@ async def samelabs_adjust_credits(user_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from economy.billing import grant, consume, InsufficientCredits
     idem = f"adjust:{user['id']}:{action_id}"
+    # ledger movement + audit fact in ONE transaction; same action_id
+    # replay → billing idem returns the ORIGINAL row → zero new audit.
     try:
-        if amount > 0:
-            row = grant(user_id, amount, "adjust",
-                        note=note or "samelabs adjust",
-                        idem_key=idem)
-        elif amount < 0:
-            row = consume(user_id, -amount, "adjust",
-                          note=note or "samelabs adjust",
-                          idem_key=idem)
-        else:
-            return JSONResponse({"ok": False, "error": "zero_amount"}, 422)
+        with db() as con:
+            if amount > 0:
+                row = grant(user_id, amount, "adjust",
+                            note=note or "samelabs adjust",
+                            idem_key=idem, con=con)
+            elif amount < 0:
+                row = consume(user_id, -amount, "adjust",
+                              note=note or "samelabs adjust",
+                              idem_key=idem, con=con)
+            else:
+                return JSONResponse({"ok": False, "error": "zero_amount"}, 422)
+            # one ledger movement ↔ one audit fact: a replayed action
+            # resolves to the SAME ledger row id → audit already exists
+            _already = _audit_repo.exists_for_ledger(con, int(row["id"]))
+            if not _already:
+                delta = int(row["delta"])
+                bal_after = int(row["balance_after"])
+                _audit_repo.record(
+                    con, user["id"], "credits.adjust", "user_credits",
+                    str(user_id),
+                    {"user_id": user_id, "balance_before": bal_after - delta,
+                     "balance_after": bal_after},
+                    {"user_id": user_id, "delta": delta,
+                     "balance_before": bal_after - delta,
+                     "balance_after": bal_after,
+                     "ledger_id": int(row["id"])}, now())
     except InsufficientCredits as exc:
         return JSONResponse({"ok": False, "error": "insufficient",
                              "balance": exc.balance}, 409)
@@ -719,10 +842,18 @@ async def samelabs_remote_create(request: Request):
             }),
         }
         try:
-            # atomic: declaration + commercial contract in one transaction
+            # atomic: declaration + commercial contract + audit fact in
+            # ONE transaction — audit failure rolls the tool+pricing
+            # creation back with it
             from governance.pricing import create_tool_with_pricing
-            create_tool_with_pricing(declaration, cost,
-                                     admin_user_id=user["id"])
+            with db() as con:
+                tool_key = create_tool_with_pricing(declaration, cost,
+                                                    admin_user_id=user["id"],
+                                                    con=con)
+                after = _snap_remote(_safe_remote_projection(con, tool_key))
+                _audit_repo.record(con, user["id"], "remote.create",
+                                   "remote_tool", str(tool_key), None,
+                                   after, now())
         except DeclarationError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, 422)
         except ValueError:
@@ -738,12 +869,19 @@ async def samelabs_remote_delete(tool_key: str, request: Request):
     user, resp = _gate(request)
     if resp:
         return resp
+    # one local transaction: tool delete + pricing disable + audit —
+    # all three commit or roll back together (audit failure → tool row
+    # and pricing both unchanged)
     from repo.catalog import id_of_platform_row, delete_tool_row
+    from governance.pricing import set_pricing
     with db() as con:
         row = id_of_platform_row(con, tool_key, owner_id_is_null=True)
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        before = _snap_remote(_safe_remote_projection(con, tool_key))
         delete_tool_row(con, row["id"])
-    from governance.pricing import set_pricing
-    set_pricing(tool_key, 0, False, admin_user_id=user["id"])
+        set_pricing(tool_key, 0, False,
+                    admin_user_id=user["id"], con=con)
+        _audit_repo.record(con, user["id"], "remote.delete",
+                           "remote_tool", str(tool_key), before, None, now())
     return {"ok": True}

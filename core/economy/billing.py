@@ -62,14 +62,26 @@ def _balance_for_update(con, user_id: int) -> int:
 
 def grant(user_id: int, amount: int, kind: str, *,
           ref_type: str | None = None, ref_id: str | None = None,
-          idem_key: str | None = None, note: str | None = None) -> dict:
+          idem_key: str | None = None, note: str | None = None,
+          con=None) -> dict:
     """Add credits. Replays (same user_id+idem_key) return the original row.
 
     kind: grant_signup | grant_plan | grant_package | grant_referral | adjust
+    con 未传: 自开事务 (现有调用方行为完全不变); con 已传: 参与 caller
+    事务 (operator audit 与 ledger movement 同事务的窄扩展)。
     """
     if amount <= 0:
         raise ValueError("grant amount must be positive")
     ts = now()
+    if con is not None:
+        bal = _balance_for_update(con, user_id)
+        if idem_key:
+            prior = ledger_repo.by_idem_key(con, user_id, idem_key)
+            if prior:
+                return dict(prior)
+        return dict(ledger_repo.insert_row(
+            con, user_id, amount, bal + amount,
+            kind, ref_type, ref_id, idem_key, note, ts))
     with db() as con:
         # 幂等检查在行锁之后(批2a 修复): 并发同 idem_key 的后到者在
         # _balance_for_update 的 users 行锁上排队, 先到者提交后才读到
@@ -86,7 +98,8 @@ def grant(user_id: int, amount: int, kind: str, *,
 
 def consume(user_id: int, cost: int, kind: str, *,
             ref_type: str | None = None, ref_id: str | None = None,
-            idem_key: str | None = None, note: str | None = None) -> dict:
+            idem_key: str | None = None, note: str | None = None,
+            con=None) -> dict:
     """Deduct credits. Raises InsufficientCredits if balance < cost.
 
     kind: consume | adjust (negative adjustments go through consume)
@@ -95,6 +108,17 @@ def consume(user_id: int, cost: int, kind: str, *,
     if cost <= 0:
         raise ValueError("consume cost must be positive")
     ts = now()
+    if con is not None:
+        bal = _balance_for_update(con, user_id)
+        if idem_key:
+            prior = ledger_repo.by_idem_key(con, user_id, idem_key)
+            if prior:
+                return dict(prior)
+        if bal < cost:
+            raise InsufficientCredits(bal, cost)
+        return dict(ledger_repo.insert_row(
+            con, user_id, -cost, bal - cost,
+            kind, ref_type, ref_id, idem_key, note, ts))
     with db() as con:
         bal = _balance_for_update(con, user_id)  # 行锁先行(幂等检查锁内, 批2a)
         if idem_key:
