@@ -167,6 +167,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_result_settlement_atomicity.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_ingress_idempotency.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_ingress_idempotency.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_operation_identity.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_operation_identity.py
@@ -185,6 +189,7 @@ jobs:
           test -z "$(grep -n 'secrets' core/execution/gate.py)"
           test "$(grep -c 'client_ref: *null' static/app.js)" = "0"
           grep -q 'required = \["files", "client_ref"\]' app/routes/mcp.py
+          grep -q 'idempotency_key_required' app/routes/apiv1.py
           test "$(grep -rn "SET status='ok'" core/repo/ledger.py | wc -l)" = "1"
           python3 -c "s=open('core/execution/gate.py').read(); b=s.split('def _finish')[1].split(chr(10)+'def ')[0]; assert 'commission_rate()' not in b.replace('commission_rate_snapshot',''), '_finish must not read current commission config'"
           python tests/canonical/test_rounded_corners.py
@@ -292,6 +297,9 @@ jobs:
 
       - name: Operation identity canonical
         run: python tests/canonical/test_operation_identity.py
+
+      - name: Ingress idempotency canonical
+        run: python tests/canonical/test_ingress_idempotency.py
 
       - name: Failure diagnostics
         if: failure()

@@ -444,10 +444,14 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
       // Sync header credit chip after a metered tool call
       if (window.__syncCredits && typeof toolData.balance === "number") window.__syncCredits(toolData.balance);
       showShareResult(toolData.result);
+      pendingOperationRef = null; // operation complete — next submit is new
       form.reset();
       fileLabel.textContent = t("dropEmpty");
       window._loadHistory && window._loadHistory();
     } catch (err) {
+      // XHR/parse failure: KEEP pendingOperationRef — the server may
+      // have succeeded; a same-input retry replays instead of
+      // double-charging.
       showResult(escapeHtml(err.message), true);
     } finally {
       submitBtn.disabled = false;
@@ -455,6 +459,7 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
     }
   };
   xhr.onerror = () => {
+    // network-level loss: keep the operation ref for a safe retry
     showResult(escapeHtml(t("failed")), true);
     submitBtn.disabled = false;
     // label untouched during busy state — nothing to restore

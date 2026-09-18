@@ -60,6 +60,7 @@ FLASHSHARE_BASE_URL=https://your-domain
 | GET | `/api/v1/me` | 账户信息、积分余额与当前访问权益 |
 | GET | `/api/v1/tools` | 工具目录（含单价） |
 | POST | `/api/v1/uploads` | 上传源文件 |
+| POST | `/api/v1/uploads` | 上传源文件（Idempotency-Key 幂等） |
 | POST | `/api/v1/execute` | 执行工具（client_ref 幂等） |
 | GET | `/api/v1/uploads/{id}` | 按公开 id 获取产出 |
 
@@ -82,6 +83,10 @@ FLASHSHARE_BASE_URL=https://your-domain
 
 `plan` 与 `access.membership` 等值（`plan` 是既有 v1 别名）；`access`
 是当前只读 access projection（会员事实 + 有效权益 + 24h 用量）。
+
+`POST /api/v1/uploads` 需要必填 header `Idempotency-Key`（非空、≤128 字符）：
+同一 key + 同一请求体重试返回同一 source handle；同 key 换内容返回
+`409 idempotency_conflict`。
 
 `POST /api/v1/execute` 请求体是 canonical ToolInvocation（`client_ref` 为
 v1 必填——agent/程序重试必须可幂等）。`client_ref` 标识一个不可变的

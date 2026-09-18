@@ -31,6 +31,12 @@ from config import MAX_BATCH_BYTES, PUBLIC_ID_RE, BASE_URL
 from database import db
 from sharing.uploads import (reserve_ingress, release_ingress,
                              get_upload_by_public_id, list_uploads, delete_upload)
+from sharing.ingress_receipt import (
+    claim_ingress_quota, finalize_ok as ingress_finalize_ok,
+    settle_failure as ingress_settle_failure, resolve_outcome,
+    IngressConflict, IngressInProgress, IngressQuotaDenied,
+    IngressUnresolved, OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
+from sharing.ingress_identity import ingress_request_hash
 from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
 from security import sniff_allowed, sign_source_token, verify_source_token
 from storage import read as storage_read, write as storage_write
@@ -161,6 +167,28 @@ async def client_error(request: Request):
     return {"ok": True}
 
 
+def _json_dumps(obj) -> str:
+    import json as _j
+    return _j.dumps(obj, ensure_ascii=False)
+
+
+def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
+    """Known-rollback settlement: best-effort delete staged objects, then
+    EXACT quota release + receipt failed in one transaction. If the DB
+    settlement itself fails, the receipt stays running — startup
+    recovery owns it; quota is never speculatively released."""
+    for gid in gokapi_ids:
+        try:
+            delete_gokapi_file(gid)
+        except Exception:
+            logger.warning("rollback: gokapi cleanup failed for %s", gid)
+    try:
+        ingress_settle_failure(ingress_id, usage_ids, user_id)
+    except Exception:
+        logger.exception("ingress failure settlement failed id=%s "
+                         "(receipt stays running for recovery)", ingress_id)
+
+
 @router.post("/uploads")
 async def create_upload(request: Request):
     """Upload one or more source files.
@@ -178,6 +206,14 @@ async def create_upload(request: Request):
     uploads = form.getlist("file")
     if not uploads:
         return JSONResponse({"ok": False, "error": "err_select_file"}, 400)
+
+    # Operation identity FIRST — before any quota reservation or Gokapi
+    # storage. A missing/invalid ref never leaves side effects behind.
+    client_ref = form.get("client_ref")
+    if not isinstance(client_ref, str) or not client_ref.strip() \
+            or len(client_ref.strip()) > 128:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    client_ref = client_ref.strip()
 
     ip = _client_ip(request)
     from governance.delivery import (coerce_share_delivery,
@@ -241,12 +277,38 @@ async def create_upload(request: Request):
         status = 400 if denial["error"] == "err_too_many_files" else 413
         return JSONResponse({"ok": False, **denial}, status)
 
-    ok, denial, usage_ids = reserve_ingress(
-        user["id"], ip, [size for _, size, _, _ in pending])
-    if not ok:
-        # Authoritative denial from reserve_ingress — the web layer never
-        # recomputes used/remaining, it only relays the full contract.
-        return JSONResponse({"ok": False, **denial}, 429)
+    # Canonical ingress content hash (after sanitize/sniff/validation).
+    import hashlib as _hl
+    kind = "web_tool_source" if is_tool_source else "web_direct_share"
+    context = ({"tool_id": has_tool} if is_tool_source
+               else {"expiry_days": expiry_days,
+                     "allowed_downloads": allowed_downloads})
+    req_hash = ingress_request_hash(
+        kind,
+        [{"filename": fn, "content_type": ct, "size": size,
+          "sha256": _hl.sha256(content).hexdigest()}
+         for content, size, fn, ct in pending],
+        context)
+    try:
+        receipt, usage_ids, replay_result = claim_ingress_quota(
+            user["id"], ip, client_ref, req_hash,
+            [size for _, size, _, _ in pending])
+    except IngressQuotaDenied as exc:
+        # Authoritative denial — the web layer never recomputes
+        # used/remaining, it only relays the full contract.
+        return JSONResponse({"ok": False, **exc.denial}, 429)
+    except IngressConflict:
+        return JSONResponse({"ok": False, "error": "idempotency_conflict"}, 409)
+    except IngressInProgress:
+        return JSONResponse({"ok": False, "error": "err_upload_in_progress"}, 409)
+    if replay_result is not None:
+        # same ref + same content, previously ok → exact stored response
+        if isinstance(replay_result, dict) and "file" in replay_result:
+            return replay_result
+        if isinstance(replay_result, list):
+            return {"ok": True, "files": replay_result} \
+                if len(replay_result) > 1 else {"ok": True, "file": replay_result[0]}
+        return replay_result
 
     source_expiry = INTERMEDIATE_TTL_DAYS if is_tool_source else expiry_days
     source_downloads = (INTERMEDIATE_DOWNLOAD_LIMIT
@@ -278,24 +340,29 @@ async def create_upload(request: Request):
                 "allowedDownloads": source_downloads,
             })
     except Exception:
-        for gid in uploaded_gokapi_ids:
-            try:
-                delete_gokapi_file(gid)
-            except Exception:
-                logger.warning("rollback: gokapi cleanup failed for %s", gid)
-        release_ingress(user["id"], usage_ids)
+        _staged_cleanup(uploaded_gokapi_ids, user["id"],
+                        int(receipt["id"]), usage_ids)
         logger.exception("multi-upload failed, %d files rolled back",
                          len(uploaded_gokapi_ids))
         return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
 
     if is_tool_source:
-        if len(files_result) == 1:
-            return {"ok": True, "file": files_result[0]}
-        return {"ok": True, "files": files_result}
+        stored = ({"ok": True, "file": files_result[0]}
+                  if len(files_result) == 1
+                  else {"ok": True, "files": files_result})
+        try:
+            ingress_finalize_ok(int(receipt["id"]), files_result)
+        except Exception:
+            _staged_cleanup(uploaded_gokapi_ids, user["id"],
+                            int(receipt["id"]), usage_ids)
+            logger.exception("tool-source ingress finalize failed")
+            return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
+        return stored
 
     # Direct-share landing: all public rows commit together. If DB landing
     # fails, storage and ingress reservation are rolled back as one request.
     from execution.pipeline import save_upload_record
+    from repo.ingress_requests import finalize_ok as _receipt_ok
     try:
         records = []
         with db() as con:
@@ -307,13 +374,14 @@ async def create_upload(request: Request):
                     fr["expireAt"], fr["hotlinkUrl"], BASE_URL,
                     con=con,
                 ))
+            # receipt ok + exact canonical response in the SAME
+            # transaction as the uploads landing — a response loss
+            # replays the identical publicIds with zero new rows.
+            _receipt_ok(con, int(receipt["id"]),
+                        _json_dumps(records), now())
     except Exception:
-        for gid in uploaded_gokapi_ids:
-            try:
-                delete_gokapi_file(gid)
-            except Exception:
-                logger.warning("share rollback: gokapi cleanup failed for %s", gid)
-        release_ingress(user["id"], usage_ids)
+        _staged_cleanup(uploaded_gokapi_ids, user["id"],
+                        int(receipt["id"]), usage_ids)
         logger.exception("multi-share DB landing failed")
         return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
 

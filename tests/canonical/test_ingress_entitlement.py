@@ -268,8 +268,10 @@ check("S3 upload 行删除不退款 24h usage (usage 仍 5)", left == 5, str(lef
 # 接受路径 (api/pipeline 调用点), output 落盘不产生新 upload_usage。静态守卫:
 _pipe = open(_os.path.join(_REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read()
 _api = open(_os.path.join(_REPO, "app", "routes", "api.py"), encoding="utf-8").read()
-check("S4 reserve_ingress 只出现在 source-accept 路径 (pipeline+api 各一处)",
-      _pipe.count("reserve_ingress(") == 1 and _api.count("reserve_ingress(") == 1)
+check("S4 quota 入口收敛: pipeline reserve 1 处; web api 走 receipt claim (零直接 reserve)",
+      _pipe.count("reserve_ingress(") == 1 and _api.count("reserve_ingress(") == 0
+      and _api.count("claim_ingress_quota(") >= 1,
+      f"pipe={_pipe.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
 # 引用既有 Stage C E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
 
@@ -396,7 +398,8 @@ def _share(ck, ed, dl):
     png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     body = b""
-    for k, v in {"tool": "share", "expiryDays": str(ed), "allowedDownloads": str(dl)}.items():
+    for k, v in {"tool": "share", "expiryDays": str(ed), "allowedDownloads": str(dl),
+                 "client_ref": f"sh-{uuid.uuid4().hex[:10]}"}.items():
         body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
     body += b'--B\r\nContent-Disposition: form-data; name="file"; filename="d.png\r\nContent-Type: image/png\r\n\r\n' + png + b"\r\n--B--\r\n"
     conn.request("POST", "/api/uploads", body,
@@ -484,7 +487,7 @@ check("B-S7 invocation files 上限 = shared MAX_FILES_PER_REQUEST",
 def _web_upload(ck, size, count=1, name="b.png"):
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     body = b""
-    for k, v in {"tool": "share"}.items():
+    for k, v in {"tool": "share", "client_ref": f"wu-{uuid.uuid4().hex[:8]}-1"}.items():
         body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
     for i in range(count):
         body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="{name}"\r\nContent-Type: image/png\r\n\r\n'.encode() + (b"x" * 0) + b"\r\n"
@@ -499,7 +502,7 @@ def _web_upload(ck, size, count=1, name="b.png"):
 # Web 21 files (真实小文件):
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 body = b""
-for k, v in {"tool": "share"}.items():
+for k, v in {"tool": "share", "client_ref": f"wu-{uuid.uuid4().hex[:8]}-2"}.items():
     body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
 _png1 = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 for i in range(21):
@@ -628,7 +631,7 @@ with db() as c:
     usage_repo.insert_many(c, _wu_id, "127.0.0.1", [1] * FREE["ingress_files_24h"], int(time.time()))
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 body = b""
-for k, v in {"tool": "share"}.items():
+for k, v in {"tool": "share", "client_ref": f"wu-{uuid.uuid4().hex[:8]}-3"}.items():
     body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
 body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="q.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + _png1 + b"\r\n--B--\r\n"
 conn.request("POST", "/api/uploads", body, {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _wck})
@@ -649,7 +652,8 @@ _wbearer = (_wtk.get("token") or {}).get("token") or ""
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("POST", "/api/v1/uploads", _png1, {
     "Content-Type": "image/png", "x-filename": "q.png",
-    "Content-Length": str(len(_png1)), "Authorization": f"Bearer {_wbearer}"})
+    "Content-Length": str(len(_png1)), "Authorization": f"Bearer {_wbearer}",
+    "Idempotency-Key": f"rq-{uuid.uuid4().hex[:10]}"})
 r = conn.getresponse(); rd = json.loads(r.read()); conn.close()
 check("RQ-1 REST quota denial: 429 + 同一结构 contract",
       r.status == 429 and rd.get("error") == "err_ingress_files_24h"
@@ -674,7 +678,7 @@ _GOKAPI_PORT = int(_GOKAPI_RAW.rsplit(":", 1)[-1]) if ":" in _GOKAPI_RAW else 53
 _before = _gokapi_count()
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 body = b""
-for k, v in {"tool": "share"}.items():
+for k, v in {"tool": "share", "client_ref": f"wu-{uuid.uuid4().hex[:8]}-4"}.items():
     body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
 body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="z.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + _png1 + b"\r\n--B--\r\n"
 conn.request("POST", "/api/uploads", body, {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _wck})
@@ -737,7 +741,8 @@ check("PF-A3 self-owned → None (不查余额)",
 
 def _pf_multipart(tool):
     _b = b""
-    for k, v in {"tool": tool}.items():
+    for k, v in {"tool": tool,
+                 "client_ref": f"pf-{uuid.uuid4().hex[:10]}"}.items():
         _b += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
     _b += b'--B\r\nContent-Disposition: form-data; name="file"; filename="r.png"\r\nContent-Type: image/png\r\n\r\n' + _png1 + b"\r\n--B--\r\n"
     return _b
@@ -944,13 +949,13 @@ check("G9 pipeline 调用 shared ingress validator",
       "validate_batch" in _pipe_src)
 _mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"), encoding="utf-8").read()
 check("G10 MCP 不自建 batch byte sum 规则 (业务限制→isError)",
-      "MAX_BATCH_BYTES" not in _mcp_src and "IngressBoundaryError" in _mcp_src)
+      "MAX_BATCH_BYTES" not in _mcp_src and "validate_batch" in _mcp_src)
 check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字面/无逐文件 sum 拒)",
       "len(uploads) > 20" not in _apir and "total_incoming" not in _apir
       and "validate_batch" in _apir)
-_mcp_up = _mcp_src.split("infos = _upload_batch")[1].split("raw = {")[0] if "infos = _upload_batch" in _mcp_src else ""
+_mcp_up = _mcp_src.split("_receipt, _usage_ids, _replay = _claim_receipt(")[1].split("source_files = [")[0] if "_claim_receipt(" in _mcp_src else ""
 check("G12 MCP upload 区保留 boundary/quota 专门分支 + generic Exception fallback",
-      "except (IngressBoundaryError, IngressQuotaError)" in _mcp_up
+      "IngressQuotaDenied" in _mcp_src and "isError" in _mcp_up
       and _mcp_up.count("except Exception as exc") >= 1, "")
 # G13: Web transport early-reject 与 authoritative validate_batch 输出同构
 # (ok/error/limit/incoming 四键; incoming=declared transport bytes)
@@ -992,8 +997,8 @@ for _root_name in ("app", "core", "static", "templates", "tests"):
                 _hits.append(_os.path.relpath(_fp, _REPO))
 check("G16 旧 quota key repo-wide 零 active hit (app/core/static/templates/tests)",
       not _hits, str(_hits[:6]))
-check("G17 MCP IngressQuotaError → isError 分支存在 + generic fallback 仍在",
-      "IngressQuotaError" in _mcp_src
+check("G17 MCP quota denial → isError 分支存在 + generic fallback 仍在",
+      "IngressQuotaDenied as exc" in _mcp_src
       and _mcp_up.count("except Exception as exc") >= 1)
 check("G18 pipeline quota 走 IngressQuotaError (非普通 ValueError)",
       "IngressQuotaError(denial)" in _pipe_src)

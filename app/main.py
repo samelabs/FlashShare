@@ -236,6 +236,14 @@ async def startup():
     recovered = recover_abandoned_calls()
     if recovered.get("scanned"):
         logger.info("startup call recovery: %s", recovered)
+    # Durable settlement for ingress receipts left running by a dead
+    # process: exact usage release + receipt failed; no Gokapi deletion
+    # (receipts never held durable object-id authority; orphans age out
+    # via the existing Gokapi TTL).
+    from sharing.ingress_receipt import recover_abandoned_ingress_requests
+    ing = recover_abandoned_ingress_requests()
+    if ing["scanned"]:
+        logger.info("startup ingress recovery: %s", ing)
     try:
         from tools import load_all, _registry
         load_all()

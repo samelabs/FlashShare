@@ -99,7 +99,8 @@ def upload(cookie, name=b"t.png", ct="image/png", extra=None):
     """上传一个 1x1 png 源文件, 返回 {publicId, sourceToken}"""
     png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
     conn = http.client.HTTPConnection(*_HOST, timeout=30)
-    fields = {"tool": "compress"}
+    fields = {"tool": "compress",
+              "client_ref": f"up-{uuid.uuid4().hex[:10]}"}
     if extra: fields.update(extra)
     b, ctt = mp(files=[(name.decode() if isinstance(name, bytes) else name, ct, png)], fields=fields)
     conn.request("POST", "/api/uploads", b, {"Content-Type": ctt, "Cookie": cookie})

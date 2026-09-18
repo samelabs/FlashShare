@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse, Response
 from storage import read as storage_read
 from governance.catalog import list_catalog
 from utils import sanitize_filename
+from security import sniff_allowed, sign_source_token
+import io
 from identity.auth import public_user
 
 router = APIRouter()
@@ -60,10 +62,21 @@ def _upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) 
 
 @router.post("/uploads")
 async def v1_upload(request: Request):
-    """Upload one tool source file and return its intermediate handle."""
+    """Upload one tool source file and return its intermediate handle.
+
+    Idempotency-Key header is REQUIRED (stripped non-empty, <=128) and
+    validated before quota reservation or any storage; same key + same
+    body replays the stored source handle, changed body → 409."""
     user, err = _require_bearer(request)
     if err:
         return err
+    idem = request.headers.get("idempotency-key")
+    if idem is None or idem == "":
+        return JSONResponse({"ok": False,
+                             "error": "idempotency_key_required"}, 422)
+    if not isinstance(idem, str) or not idem.strip() or len(idem.strip()) > 128:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    idem = idem.strip()
     try:
         ctype = request.headers.get("content-type", "")
         filename = sanitize_filename(request.headers.get("x-filename", "file"))
@@ -84,16 +97,68 @@ async def v1_upload(request: Request):
             return JSONResponse({"ok": False, **denial}, 413)
 
     ip = request.headers.get("X-Real-IP", request.client.host if request.client else "").strip()
-    from execution.pipeline import IngressQuotaError
+
+    # Ingress receipt: hash validated content, claim quota+receipt
+    # atomically (user lock → binding → quota → usage → receipt).
+    import hashlib as _hl
+    from sharing.ingress_identity import ingress_request_hash
+    from sharing.ingress_receipt import (
+        claim_ingress_quota, finalize_ok as _ing_ok,
+        settle_failure as _ing_fail, IngressConflict, IngressInProgress,
+        IngressQuotaDenied)
+    valid, final_type = sniff_allowed(filename, ctype, body[:512])
+    if not valid:
+        return JSONResponse({"ok": False, "error": final_type}, 415)
+    req_hash = ingress_request_hash(
+        "v1_source",
+        [{"filename": filename, "content_type": final_type,
+          "size": len(body), "sha256": _hl.sha256(body).hexdigest()}],
+        {})
     try:
-        return {"ok": True, "file": _upload_source(user, filename, ctype, body, ip)}
-    except IngressQuotaError as exc:
-        # Structured rolling-quota denial relayed verbatim — no local
-        # recomputation of used/remaining and no err_quota_* sniffing.
+        receipt, usage_ids, replay = claim_ingress_quota(
+            user["id"], ip, idem, req_hash, [len(body)])
+    except IngressQuotaDenied as exc:
         return JSONResponse({"ok": False, **exc.denial}, 429)
-    except ValueError as exc:
-        code = str(exc) or "err_upload_failed"
-        return JSONResponse({"ok": False, "error": code}, 415)
+    except IngressConflict:
+        return JSONResponse({"ok": False, "error": "idempotency_conflict"}, 409)
+    except IngressInProgress:
+        return JSONResponse({"ok": False, "error": "err_upload_in_progress"}, 409)
+    if replay is not None:
+        stored = replay[0] if isinstance(replay, list) and replay else replay
+        return {"ok": True, "file": stored}
+
+    from gokapi import upload_to_gokapi, delete_gokapi_file
+    from execution.pipeline import INTERMEDIATE_TTL_DAYS, INTERMEDIATE_DOWNLOAD_LIMIT
+    gid = None
+    try:
+        gokapi = upload_to_gokapi(io.BytesIO(body), filename, final_type,
+                                  INTERMEDIATE_TTL_DAYS,
+                                  INTERMEDIATE_DOWNLOAD_LIMIT, len(body))
+        gid = (gokapi.get("FileInfo", {}) or {}).get("Id", "")
+        if not gid:
+            raise RuntimeError("gokapi_missing_id")
+        handle = {
+            "name": filename, "filename": filename,
+            "contentType": final_type, "size": len(body),
+            "publicId": gid, "gokapiId": gid,
+            "sourceToken": sign_source_token(user["id"], gid),
+            "expireAt": gokapi["FileInfo"].get("ExpireAt"),
+        }
+        _ing_ok(int(receipt["id"]), [handle])
+        return {"ok": True, "file": handle}
+    except Exception:
+        if gid:
+            try:
+                delete_gokapi_file(gid)
+            except Exception:
+                pass
+        try:
+            _ing_fail(int(receipt["id"]), usage_ids, user["id"])
+        except Exception:
+            pass
+        import logging
+        logging.getLogger("flashshare").exception("v1 source upload failed")
+        return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
 
 
 @router.post("/execute")

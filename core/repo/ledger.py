@@ -196,6 +196,13 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
         raise ValueError("invalid_commission_rate_snapshot")
     if not _valid_invocation_hash(invocation_hash):
         raise ValueError("invalid_invocation_hash")
+    # Serialize same-user claims on the user row BEFORE any history read:
+    # without this lock, B could read "no history", pause, A could claim
+    # hash=A and even reach failed, and B's hash=B INSERT would then sail
+    # past the live-only partial unique index — breaking the permanent
+    # ref↔hash binding. The lock lives ONLY inside this short claim
+    # transaction; it never spans execution.
+    con.execute("SELECT id FROM users WHERE id=%s FOR UPDATE", (user_id,))
     # client_ref ↔ fingerprint binding: the EARLIEST historical row is
     # the authority. No rows → claim freely.
     hist = con.execute(
