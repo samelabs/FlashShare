@@ -22,11 +22,28 @@ def read(file_id: str):
     — files are already size-limited by the upload pipeline, and
     tool handlers need seekable input (Image.open, identity passthrough, etc).
     """
+    from config import MAX_UPLOAD_BYTES
     status, headers, raw = open_gokapi_download(file_id)
-    data = raw.read() if hasattr(raw, "read") else b""
-    if hasattr(raw, "close"):
-        raw.close()
-    return status, headers, io.BytesIO(data)
+    try:
+        # bounded chunked read: 不信任上游返回体大小, 也不依赖单次
+        # read(n) 的返回语义 (short-read 合法) — 最多累计 cap+1 即停,
+        # 超过平台单文件上限立即失败, 绝不整读进内存后再检查。
+        chunks = []
+        total = 0
+        chunk_size = 1024 * 1024
+        while total <= MAX_UPLOAD_BYTES:
+            want = min(chunk_size, MAX_UPLOAD_BYTES + 1 - total)
+            chunk = raw.read(want) if hasattr(raw, "read") else b""
+            if not chunk:
+                break
+            total += len(chunk)
+            chunks.append(chunk)
+    finally:
+        if hasattr(raw, "close"):
+            raw.close()
+    if total > MAX_UPLOAD_BYTES:
+        raise ValueError("storage body exceeds platform file cap")
+    return status, headers, io.BytesIO(b"".join(chunks))
 
 
 def write(stream, filename: str, content_type: str,

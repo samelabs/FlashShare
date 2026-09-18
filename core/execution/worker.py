@@ -64,8 +64,30 @@ def process_tool(tool_id: str, source_bytes: bytes, filename: str,
 
     tool_output = handler(tool_input, params)
 
-    # Read output bytes before returning (stream may not survive pickling)
-    output_bytes = tool_output["stream"].read()
+    # Bounded output read: at most MAX_UPLOAD_BYTES + 1 — anything over
+    # the platform file cap fails immediately, never buffered whole first.
+    # The handler stream is closed whether the read succeeds or not.
+    from config import MAX_UPLOAD_BYTES
+    stream = tool_output["stream"]
+    try:
+        chunks = []
+        total = 0
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_UPLOAD_BYTES:
+                raise ValueError("err_output_too_large")
+            chunks.append(chunk)
+        output_bytes = b"".join(chunks)
+    finally:
+        close = getattr(stream, "close", None)
+        if close is not None:
+            try:
+                close()
+            except Exception:
+                pass
 
     return {
         "output_bytes": output_bytes,

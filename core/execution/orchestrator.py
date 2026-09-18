@@ -12,7 +12,7 @@ import asyncio
 import io
 import logging
 
-from config import BASE_URL
+from config import BASE_URL, MAX_UPLOAD_BYTES
 from database import db  # noqa: F401 (pipeline 内使用)
 from gokapi import delete_gokapi_file
 from storage import read as storage_read, write as storage_write
@@ -26,19 +26,67 @@ logger = logging.getLogger("flashshare")
 MAX_MULTI_BYTES = 100 * 1024 * 1024
 
 
+class _SourceTooLarge(Exception):
+    """storage 实际返回体超出平台单文件上限 (fail before worker)。"""
+
+
+def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
+    """边读边判定的 bounded read — 不信任 DB 记录的 size_bytes, storage
+    实际返回多少就读多少, 超过 (单文件上限 / 剩余 multi 预算) 立即失败。
+    stream 无论如何都关闭。"""
+    try:
+        if declared_size and declared_size > budget:
+            raise _SourceTooLarge()
+        chunks = []
+        total = 0
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > budget:
+                raise _SourceTooLarge()
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        close = getattr(stream, "close", None)
+        if close is not None:
+            try:
+                close()
+            except Exception:
+                pass
+
+
 # Stage C: delivery 合法性在 invocation boundary (governance.delivery
 # validate_delivery) 已严格保证; orchestrator 直读 canonical delivery,
 # 不再从 params 取 lifecycle / silent fallback / 猜默认值。
 
 
 async def _run_handler(pool, process_tool, tool_id, single, multi_sources, params):
+    """worker 调用; BrokenProcessPool (worker 进程死亡) → 池重建 +
+    本 invocation 走 gate 失败收敛 (exact refund, terminal failed,
+    不自动重跑)。"""
+    from concurrent.futures.process import BrokenProcessPool
+    from . import pool as pool_mod
     loop = asyncio.get_event_loop()
-    if multi_sources is not None:
-        return await loop.run_in_executor(
-            pool, process_tool, tool_id, b"", "", "", 0, params, multi_sources)
-    stream, filename, ctype, size = single
-    return await loop.run_in_executor(
-        pool, process_tool, tool_id, stream, filename, ctype, size, params)
+    try:
+        if multi_sources is not None:
+            fut = loop.run_in_executor(
+                pool, process_tool, tool_id, b"", "", "", 0, params,
+                multi_sources)
+        else:
+            stream, filename, ctype, size = single
+            fut = loop.run_in_executor(
+                pool, process_tool, tool_id, stream, filename, ctype,
+                size, params)
+        return await fut
+    except BrokenProcessPool as exc:
+        # worker 进程死亡 (submit 或 await 阶段): CAS 重建池 (同一 broken
+        # pool 的并发观察者只产生一个 replacement), 本 invocation 重抛为
+        # 普通执行失败 → 既有 gate 收敛 (exact refund + terminal failed,
+        # 对外 tool_failed)。不自动重跑。
+        pool_mod.reset_pool(pool, "broken_process_pool")
+        raise RuntimeError("worker_pool_broken") from exc
 
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,
@@ -59,12 +107,24 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     total = 0
     for upload in uploads:
         ud = dict(upload) if not isinstance(upload, dict) else upload
-        total += ud["size_bytes"]
-        if total > MAX_MULTI_BYTES:
+        # 早期拒绝: DB 记录超限 → 不打 storage; 实际读取仍 bounded
+        # (storage 真实返回体不信任 DB size_bytes)
+        budget = min(MAX_UPLOAD_BYTES, MAX_MULTI_BYTES - total)
+        if budget < 0:
             raise ToolError("err_file_too_large")
-        status, headers, stream = storage_read(ud["gokapi_id"])
-        sources.append((stream.read(), ud["file_name"], ud["content_type"],
-                        ud["size_bytes"]))
+        try:
+            status, headers, stream = storage_read(ud["gokapi_id"])
+        except ValueError:
+            # storage 侧 bounded read 已拒 (实际体 > 平台单文件上限)
+            raise ToolError("err_file_too_large")
+        try:
+            data = _read_source_bounded(stream, int(ud["size_bytes"] or 0),
+                                        budget)
+        except _SourceTooLarge:
+            raise ToolError("err_file_too_large")
+        total += len(data)
+        sources.append((data, ud["file_name"], ud["content_type"],
+                        len(data)))
         gokapi_ids.append(ud["gokapi_id"])
 
     if tool.get("multi") and len(sources) >= 1:
