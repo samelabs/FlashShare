@@ -42,7 +42,10 @@ BEGIN
     WHERE status NOT IN ('running','ok','failed','insufficient')
        OR cost_snapshot < 0
        OR (status = 'running' AND finished_at IS NOT NULL)
-       OR (status <> 'running' AND finished_at IS NULL);
+       OR (status <> 'running' AND finished_at IS NULL)
+       OR (status <> 'ok'
+           AND (upload_id IS NOT NULL OR result_public_id IS NOT NULL
+                OR result_json IS NOT NULL));
   IF violators > 0 THEN
     RAISE EXCEPTION 'tool_calls invariant violations: % row(s)', violators;
   END IF;
@@ -88,7 +91,11 @@ ALTER TABLE tool_calls
   ADD CONSTRAINT tool_calls_running_open_ck
     CHECK (status != 'running' OR finished_at IS NULL),
   ADD CONSTRAINT tool_calls_terminal_closed_ck
-    CHECK (status = 'running' OR finished_at IS NOT NULL);
+    CHECK (status = 'running' OR finished_at IS NOT NULL),
+  ADD CONSTRAINT tool_calls_non_ok_no_result_ck
+    CHECK (status = 'ok'
+           OR (upload_id IS NULL AND result_public_id IS NULL
+               AND result_json IS NULL));
 
 ALTER TABLE withdrawals
   ADD CONSTRAINT withdrawals_status_ck

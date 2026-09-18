@@ -121,8 +121,12 @@ def recover_abandoned_calls() -> dict:
 
 
 def _finish(user: dict, tool: dict, call_id: int, cost: int,
-            result: dict) -> dict:
-    """Finalize call fact + provider/platform split in one transaction.
+            staged) -> dict:
+    """The ONE success settlement transaction: durable result landing
+    (uploads INSERT) + tool_call ok (upload_id/result binding) +
+    provider/platform split — all-or-nothing. `staged` is a
+    pipeline.StagedResult (physical Gokapi object only); every 518
+    public identity is born inside this transaction.
 
     Self-calls are free by policy, so cost is already zero before this point.
     Value conservation for metered calls, all in credits:
@@ -137,6 +141,9 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     full cost) and rate=0 (provider full cost, platform 0). Zero legs
     are skipped only when the leg amount is exactly 0.
     """
+    from execution.pipeline import land_tool_result
+    from config import BASE_URL
+
     owner_id = tool.get("owner_id")
     payout = 0
     commission = 0
@@ -146,9 +153,12 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
         commission = cost - payout
 
     with db() as con:
+        upload_id, public_result = land_tool_result(
+            con, user["id"], staged, BASE_URL)
         finalize_call_ok(
-            con, call_id, result.get("publicId"),
-            json.dumps(result, ensure_ascii=False), now())
+            con, call_id, upload_id,
+            public_result.get("publicId"),
+            json.dumps(public_result, ensure_ascii=False), now())
         if cost > 0 and owner_id is None:
             # first-party: full cost is platform revenue
             from governance.platform import record_platform_income
@@ -169,7 +179,7 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
                     con, call_id, "platform_commission", commission,
                     f"{tool['id']} commission", now())
 
-    out = {"ok": True, "type": tool["type"], "result": result,
+    out = {"ok": True, "type": tool["type"], "result": public_result,
            "call_id": call_id}
     if cost > 0:
         try:
@@ -177,6 +187,41 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
         except Exception:
             logger.exception("balance fetch failed for UI chip")
     return out
+
+
+def resolve_success_outcome(call_id: int) -> dict | None:
+    """Durable reconciliation after a _finish exception.
+
+    A commit-time exception does NOT prove the transaction failed — the
+    commit may have landed and the ACK was lost. Read the authoritative
+    tool_call row under FOR UPDATE (the settlement transaction has fully
+    completed by the time the lock is granted):
+
+      status='ok'    → settlement IS durable: return the stored
+                       result_json (never regenerate, never refund,
+                       never delete the staged object)
+      status=running → settlement NOT durable: caller may clean up the
+                       staged object and settle failure
+      unreadable DB  → return None: unknown outcome must stay unresolved
+                       (no refund, no finalize, no staged delete — the
+                       existing running-row recovery settles later)
+    """
+    try:
+        with db() as con:
+            row = con.execute(
+                "SELECT status, result_json FROM tool_calls"
+                " WHERE id=%s FOR UPDATE", (call_id,)).fetchone()
+    except Exception:
+        logger.exception("outcome reconciliation failed call_id=%s", call_id)
+        return None
+    if row is None or row["status"] != "ok":
+        return {"durable": False}
+    try:
+        durable_result = json.loads(row["result_json"])
+    except Exception:
+        logger.exception("durable result_json unreadable call_id=%s", call_id)
+        return {"durable": False}
+    return {"durable": True, "result": durable_result}
 
 
 async def run(user: dict, tool: dict, invocation, orchestrate):
@@ -258,9 +303,36 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     try:
         return _finish(user, tool, call_id, cost, result), None, None
     except Exception:
-        # Output execution may already have succeeded, but accounting is not
-        # allowed to report success without the authoritative fact/split.
+        # The settlement transaction MAY have committed despite the
+        # exception (lost ACK) — never guess. Reconcile the durable fact
+        # first; only a provably-non-durable outcome may be cleaned up.
         logger.exception("metering finalize failed call_id=%s", call_id)
+        outcome = resolve_success_outcome(call_id)
+        if outcome is None:
+            # DB outcome unreadable: keep the call running (durable
+            # recovery settles it); no refund, no finalize, no staged
+            # delete — an unknown state must not become a double refund.
+            return None, {"ok": False, "error": "err_metering_failed"}, 500
+        if outcome.get("durable"):
+            # settlement IS durable: report the stored success, no refund,
+            # no staged delete, no duplicate earning (already committed).
+            out = {"ok": True, "type": tool["type"],
+                   "result": outcome["result"], "call_id": call_id,
+                   "replay": True}
+            if cost > 0:
+                try:
+                    out["balance"] = spendable_balance(user["id"])
+                except Exception:
+                    logger.exception("balance fetch failed for UI chip")
+            return out, None, None
+        # provably not durable: staged physical cleanup (best effort) then
+        # the existing failure settlement (exact refund → terminal failed).
+        from gokapi import delete_gokapi_file
+        try:
+            delete_gokapi_file(result.gokapi_id)
+        except Exception:
+            logger.warning("staged result cleanup failed call_id=%s gokapi=%s",
+                           call_id, result.gokapi_id)
         if _settle_failure(user, tool_id, call_id, charge, "metering_failed"):
             return None, {"ok": False, "error": "err_metering_failed"}, 500
         return None, {"ok": False, "error": "err_metering_failed"}, 500

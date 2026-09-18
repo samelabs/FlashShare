@@ -19,7 +19,7 @@ from storage import read as storage_read, write as storage_write
 from tools import ToolError
 
 from . import ExecutionError
-from .pipeline import save_upload_record
+from .pipeline import StagedResult
 
 logger = logging.getLogger("flashshare")
 
@@ -140,22 +140,29 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     gokapi_result = storage_write(
         io.BytesIO(output_bytes), result["filename"], result["content_type"],
         expiry_days, allowed_downloads, output_size)
-
-    ip = request_ctx.get("ip", "")
     info = gokapi_result.get("FileInfo", {})
-    record = save_upload_record(
-        user["id"], ip, info.get("Id", ""),
-        result["filename"], result["content_type"], output_size,
-        expiry_days, allowed_downloads, info.get("ExpireAt"),
-        info.get("UrlHotlink", ""), BASE_URL)
-    record["origSize"] = sources[0][0].__len__() if len(sources) == 1 else None
+
+    # staging-only: Gokapi 物理结果已落, 但 518 durable/public 身份
+    # (uploads row / publicId / downloadUrl) 由 gate 的 settlement
+    # transaction 生成 — 本函数绝不写 uploads。
+    staged = StagedResult(
+        gokapi_id=info.get("Id", ""),
+        filename=result["filename"],
+        content_type=result["content_type"],
+        size=output_size,
+        expiry_days=expiry_days,
+        allowed_downloads=allowed_downloads,
+        expire_at=info.get("ExpireAt"),
+        url_hotlink=info.get("UrlHotlink", ""),
+        ip=request_ctx.get("ip", ""),
+        orig_size=len(sources[0][0]) if len(sources) == 1 else None)
 
     for gid in gokapi_ids:
         try:
             delete_gokapi_file(gid)
         except Exception:
             logger.warning("Failed to cleanup source %s after tool execution", gid)
-    return record
+    return staged
 
 
 async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
@@ -221,17 +228,26 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         io.BytesIO(output_bytes), out["filename"], out["content_type"],
         expiry_days, allowed_downloads, output_size)
     info = gokapi_result.get("FileInfo", {})
-    record = save_upload_record(
-        user["id"], request_ctx.get("ip", ""), info.get("Id", ""),
-        out["filename"], out["content_type"], output_size,
-        expiry_days, allowed_downloads, info.get("ExpireAt"),
-        info.get("UrlHotlink", ""), BASE_URL)
+
+    # staging-only (与 local 同一 StagedResult 类型): durable/public
+    # landing 只发生在 gate settlement transaction。
+    staged = StagedResult(
+        gokapi_id=info.get("Id", ""),
+        filename=out["filename"],
+        content_type=out["content_type"],
+        size=output_size,
+        expiry_days=expiry_days,
+        allowed_downloads=allowed_downloads,
+        expire_at=info.get("ExpireAt"),
+        url_hotlink=info.get("UrlHotlink", ""),
+        ip=request_ctx.get("ip", ""))
+
     for gid in gokapi_ids:
         try:
             delete_gokapi_file(gid)
         except Exception:
             logger.warning("Failed to cleanup source %s after remote execution", gid)
-    return record
+    return staged
 
 
 import json  # noqa: E402

@@ -193,17 +193,21 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
     return (dict(prior) if prior else {}), False
 
 
-def finalize_call_ok(con, call_id: int, result_public_id,
+def finalize_call_ok(con, call_id: int, upload_id: int | None,
+                     result_public_id,
                      result_json: str, finished_at: int) -> dict:
+    """Success finalize — 唯一 tool_calls.upload_id writer: durable result
+    binding 与 status/result 字段同一次 UPDATE 写入。"""
     row = con.execute(
         """
         UPDATE tool_calls
-        SET status='ok', result_public_id=%s, result_json=%s,
+        SET status='ok', upload_id=%s, result_public_id=%s, result_json=%s,
             error=NULL, finished_at=%s
         WHERE id=%s AND status='running'
         RETURNING *
         """,
-        (result_public_id, result_json, finished_at, call_id)).fetchone()
+        (upload_id, result_public_id, result_json, finished_at,
+         call_id)).fetchone()
     if not row:
         raise RuntimeError("tool_call_not_running")
     return dict(row)

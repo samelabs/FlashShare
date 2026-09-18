@@ -163,8 +163,14 @@ def _run(coro):
     finally:
         loop.close()
 
+from execution.pipeline import StagedResult
+
 async def _ok():
-    return {"publicId": "kc-out"}
+    # staged-only orchestrate: settlement 在 gate 事务内 landing
+    return StagedResult(gokapi_id="gk-kc-out", filename="kc.out",
+                        content_type="application/octet-stream", size=8,
+                        expiry_days=7, allowed_downloads=5,
+                        expire_at=None, url_hotlink="", ip="")
 
 def _gate(user, tool_row, ref):
     return _run(gate_run(user, tool_row, _Inv(tool_row["tool_key"], ref), _ok))

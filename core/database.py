@@ -260,7 +260,11 @@ _SCHEMA_SQL = (
       CONSTRAINT tool_calls_running_open_ck
         CHECK (status != 'running' OR finished_at IS NULL),
       CONSTRAINT tool_calls_terminal_closed_ck
-        CHECK (status = 'running' OR finished_at IS NOT NULL)
+        CHECK (status = 'running' OR finished_at IS NOT NULL),
+      CONSTRAINT tool_calls_non_ok_no_result_ck
+        CHECK (status = 'ok'
+               OR (upload_id IS NULL AND result_public_id IS NULL
+                   AND result_json IS NULL))
     )
     """,
     # Invocation identity is user + tool + client_ref. A running row owns the
