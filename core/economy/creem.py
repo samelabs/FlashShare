@@ -256,21 +256,36 @@ def verify_signature(raw_body: bytes, signature: str) -> bool:
 
 def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
             product_id: str = "", currency: str = "") -> dict:
-    """checkout.completed: mark order paid + grant credits (idempotent).
-    Returns {granted, credits} — granted=False means replay/no-op.
-
-    订单锁定+标记+套餐读取在同一事务内 (批1c 顺带修复: 原实现块外用 con
-    的连接逃逸); 授信仍走 billing.grant 的独立幂等事务 (order:{id} 键)。"""
+    """Legacy wrapper — the webhook now resolves the order via the SIGNED
+    request_id; kept for compatibility with in-repo callers only."""
     from repo import orders as _orders_repo
-    ts = now()
     with db() as con:
         row = None
         if provider_order_id:
             row = orders_repo.order_by_provider_id_for_update(con, provider_order_id)
         if row is None and checkout_id:
-            # webhook may arrive before checkout callback stores the id —
-            # fall back to checkout-id linkage (ch:{id})
             row = orders_repo.order_by_provider_id(con, "ch:" + checkout_id)
+        if row is None:
+            raise KeyError("order_not_found")
+    return fulfill_by_request_id(int(row["id"]), provider_order_id, checkout_id,
+                                 amount_cents, product_id, currency)
+
+
+def fulfill_by_request_id(order_id: int, provider_order_id: str,
+                          checkout_id: str, amount_cents: int,
+                          product_id: str = "", currency: str = "") -> dict:
+    """checkout.completed fulfillment, order located by SIGNED request_id
+    (order:<id>) and locked FOR UPDATE. Payment-contract validation
+    (kind/product/amount/currency + provider identity) runs BEFORE any
+    mutation; terminal reversal markers gate the grant; the paid
+    finalization uses the guarded complete_package_order writer.
+    Returns {granted, credits} — granted=False means replay/reversed
+    no-op. The grant-first crash-self-heal boundary is unchanged."""
+    from repo import orders as _orders_repo
+    ts = now()
+    with db() as con:
+        row = con.execute(
+            "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
         if row is None:
             raise KeyError("order_not_found")
         if row["kind"] != "package":
@@ -309,19 +324,28 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
         # rewrite a checked-out order's granted quantity
         credits = int(row["credits_snapshot"] or 0)
         user_id = row["user_id"]
-    # 授信先行 (billing 幂等事务, idem order:{id}); mark_paid 是终态戳 —
-    # granted=TRUE 蕴含 ledger 行已存在, 留痕永不撒谎 (崩溃一致性)。
-    # 崩溃自愈: 授信后崩溃 → 重试时 grant 幂等重放 + mark_paid 补戳。
+        # ── terminal gate: a reversed order NEVER re-grants and its
+        # marker is never rewritten by a (stale/replayed) success ──
+        if row["status"] in ("refunded", "disputed"):
+            return {"granted": False, "credits": 0,
+                    "reason": f"order_{row['status']}"}
+        if row["status"] == "paid":
+            return {"granted": False, "credits": 0, "reason": "replay"}
+    # 授信先行 (billing 幂等事务, idem order:{id}); 终态戳由 guarded
+    # writer 落 — granted=TRUE 蕴含 ledger 行已存在 (崩溃一致性)。
+    # 崩溃自愈: 授信后崩溃 → 重试时 grant 幂等重放 + paid 补戳。
     if credits > 0:
         from economy.billing import grant
         grant(user_id, credits, "grant_package",
               ref_type="order", ref_id=str(order_id),
               idem_key=f"order:{order_id}", note=amount_note)
+    # canonical provider identity: the success event's ord_* wins over
+    # the provisional ch:*; a mismatched existing canonical id fails loud
+    canonical = provider_order_id or ("ch:" + checkout_id)
+    if provider_order_id and row["provider_order_id"] != provider_order_id \
+            and not (row["provider_order_id"] or "").startswith("ch:") \
+            and row["provider_order_id"] is not None:
+        raise KeyError("provider_identity_conflict")
     with db() as con:
-        # provider order identity 收敛: checkout 时只知道 ch:{id},
-        # 成功事件提供 canonical ord_{id} → 就地覆写, 后续 replay/
-        # refund/dispute 直接以 ord_xxx 命中同一行 (无 mapping table)。
-        if provider_order_id and row["provider_order_id"] != provider_order_id:
-            orders_repo.set_provider_order_id(con, order_id, provider_order_id)
-        orders_repo.mark_paid(con, order_id, ts)
+        _orders_repo.complete_package_order(con, order_id, canonical, ts)
     return {"granted": True, "credits": credits}

@@ -214,11 +214,11 @@ _cur.execute("insert into packages (code, name, credits, price_cents, currency, 
 _cur.execute("select id from packages where code='pt_pkg'")
 _pkg9 = _cur.fetchone()[0]
 _cur.execute(
-    "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, currency, created_at)"
-    " values (%s, 'package', %s, 'creem', 'ord_pt9', 'pending', 500, 'USD', %s) returning id", (uid9, _pkg9, _ts))
+    "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, currency, credits_snapshot, created_at)"
+    " values (%s, 'package', %s, 'creem', 'ord_pt9', 'pending', 500, 'USD', 100, %s) returning id", (uid9, _pkg9, _ts))
 _oid9 = _cur.fetchone()[0]
-# checkout-time snapshot fact (canonical since the payment-forward batch)
-_cur.execute("update orders set credits_snapshot=(select credits from packages where id=%s) where provider_order_id='ord_pt9'", (_pkg9,))
+# checkout-time snapshot fact (canonical since the payment-forward batch;
+# written in the INSERT now that kind/snapshot is a schema invariant)
 def _try_fulfill(**kw):
     try:
         _creem.fulfill(kw.get("oid", "ord_pt9"), "", kw.get("amount", 500),

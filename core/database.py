@@ -404,7 +404,32 @@ _SCHEMA_SQL = (
         CHECK (status IN ('pending','paid','failed','refunded','disputed')),
       CONSTRAINT orders_amount_ck CHECK (amount_cents >= 0),
       CONSTRAINT orders_credits_snapshot_ck
-        CHECK (credits_snapshot IS NULL OR credits_snapshot >= 0)
+        CHECK (credits_snapshot IS NULL OR credits_snapshot >= 0),
+      CONSTRAINT orders_kind_ck
+        CHECK (kind IN ('package','plan')),
+      CONSTRAINT orders_kind_snapshot_ck
+        CHECK ((kind = 'package' AND credits_snapshot IS NOT NULL
+                AND credits_snapshot > 0)
+            OR (kind = 'plan' AND credits_snapshot IS NULL)),
+      CONSTRAINT orders_plan_status_ck
+        CHECK (kind <> 'plan' OR status IN ('pending','paid','failed')),
+      CONSTRAINT orders_plan_not_granted_ck
+        CHECK (kind <> 'plan' OR granted = FALSE),
+      CONSTRAINT orders_pending_failed_fields_ck
+        CHECK (status NOT IN ('pending','failed')
+               OR (granted = FALSE AND paid_at IS NULL
+                   AND refunded_at IS NULL)),
+      CONSTRAINT orders_paid_fields_ck
+        CHECK (status <> 'paid' OR paid_at IS NOT NULL),
+      CONSTRAINT orders_reversal_fields_ck
+        CHECK (status NOT IN ('refunded','disputed')
+               OR refunded_at IS NOT NULL),
+      CONSTRAINT orders_non_reversal_refund_ts_ck
+        CHECK (status IN ('refunded','disputed') OR refunded_at IS NULL),
+      CONSTRAINT orders_granted_kind_ck
+        CHECK (granted = FALSE OR kind = 'package'),
+      CONSTRAINT orders_package_paid_granted_ck
+        CHECK (kind <> 'package' OR status <> 'paid' OR granted = TRUE)
     )
     """,
     """

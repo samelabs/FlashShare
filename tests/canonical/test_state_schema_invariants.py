@@ -379,12 +379,21 @@ check("F3 invalid order status → reject",
                   " 'USD', %s)", (ou, ts)))
 ok_statuses = True
 for st in ("pending", "paid", "failed", "refunded", "disputed"):
+    # canonical field combinations: snapshot>0; paid carries paid_at(+granted);
+    # reversals carry refunded_at (granted reflects the prior paid fact)
+    granted = st in ("paid", "refunded", "disputed")
+    paid_at = ts if st in ("paid", "refunded", "disputed") else "NULL"
+    refunded_at = ts if st in ("refunded", "disputed") else "NULL"
     if _db_rejects("insert into orders (user_id, kind, item_id, provider,"
-                   " status, amount_cents, currency, created_at)"
-                   " values (%s, 'package', 1, 'creem', %s, 100, 'USD', %s)",
-                   (ou, st, ts)):
+                   " status, amount_cents, currency, credits_snapshot,"
+                   " granted, paid_at, refunded_at, created_at)"
+                   " values (%s, 'package', 1, 'creem', %s, 100, 'USD',"
+                   " 100, %s, %s, %s, %s)",
+                   (ou, st, granted,
+                    paid_at if paid_at != "NULL" else None,
+                    refunded_at if refunded_at != "NULL" else None, ts)):
         ok_statuses = False
-check("F4 五个既有 order 状态均合法", ok_statuses)
+check("F4 五个既有 order 状态均合法 (canonical 组合)", ok_statuses)
 
 # ══════════ cleanup (FK-safe, prefix-scoped only) ══════════
 # 分立事务: 每步独立提交, 单点失败不回滚其余清理

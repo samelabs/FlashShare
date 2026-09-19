@@ -52,15 +52,42 @@ def _resolve_subscription(con, sub_id: str) -> tuple[dict | None, dict | None]:
     return dict(row), dict(plan) if plan else None
 
 
-def bind_checkout(obj: dict) -> dict:
-    """checkout.completed (subscription first purchase): bind sub id -> order,
-    then upsert the membership row. Credit is NEVER granted here (paid-only).
-    Binding commits in its own transaction; a sync failure afterwards leaves
-    the binding in place so Creem retries converge."""
+def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
+    """checkout.completed (subscription first purchase), ONE DB
+    transaction: lock the exact plan order → guarded pending/failed→paid
+    with provider_order_id='sub:<id>' → bind Membership if missing →
+    COMMIT. A Membership failure rolls the order status AND identity
+    back together — 'order sub-bound but pending' or 'Membership bound
+    but order failed' cannot exist. Credit is NEVER granted here
+    (paid-only). Replay (paid + same sub + membership) is idempotent.
+    The order is located via the SIGNED request_id when provided; the
+    ch:/sub: lookups remain only for replay convergence of historical
+    sequences."""
     sub = obj.get("subscription") or {}
     sub_id = str(sub.get("id") or "")
     ch_id = str(obj.get("id") or "")
     from database import db as _db
+    from repo.orders import complete_plan_checkout
+    if order_id is not None:
+        # request_id path (canonical): one transaction end to end
+        with _db() as con:
+            row = con.execute(
+                "SELECT * FROM orders WHERE id=%s FOR UPDATE",
+                (order_id,)).fetchone()
+            if row is None:
+                raise KeyError("order_not_found")
+            if row["kind"] != "plan":
+                return {"ignored": True}
+            cur = row["provider_order_id"] or ""
+            # identity validation: NULL / ch:<this checkout> / sub:<this sub>
+            if cur and cur != f"sub:{sub_id}" and cur != f"ch:{ch_id}":
+                raise KeyError("provider_identity_conflict")
+            complete_plan_checkout(con, int(row["id"]), f"sub:{sub_id}", now())
+            if orders_repo.membership_by_sub(con, sub_id) is None:
+                orders_repo.bind_membership(
+                    con, row["user_id"], row["item_id"], sub_id, "active",
+                    started_at=row["created_at"], renews_at=None)
+        return _ev_sync(sub_id, obj)
     with _db() as con:
         row = orders_repo.order_by_provider_id(con, "ch:" + ch_id)
         if row is None:
@@ -89,10 +116,6 @@ def bind_checkout(obj: dict) -> dict:
                 orders_repo.bind_membership(
                     con, row["user_id"], row["item_id"], sub_id, "active",
                     started_at=row["created_at"], renews_at=None)
-            # checkout 已 completed: order 推进为明确非-open (paid),
-            # 历史 pending 不永久挡住未来重新订阅。grant 只由 paid-period
-            # path 决定, 此处不改 granted 语义 (subscription 授信不走
-            # order:{id} idem, 由 plan:{uid}:{period} 兜底)。
             if row["status"] == "pending":
                 orders_repo.mark_subscription_checkout_completed(con, row["id"], now())
     return _ev_sync(sub_id, obj)

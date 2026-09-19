@@ -116,9 +116,112 @@ def mark_disputed(con, order_id: int, ts: int) -> None:
 
 
 def set_provider_order_id(con, order_id: int, provider_order_id: str) -> None:
+    """LEGACY generic writer — retained ONLY for the subscription ch:* →
+    sub:* canonicalization inside bind_checkout (single guarded call
+    site). Route checkout-create responses use bind_checkout_id."""
     con.execute(
         "UPDATE orders SET provider_order_id=%s WHERE id=%s",
         (provider_order_id, order_id))
+
+
+def order_id_from_request_id(value) -> int:
+    """Signed-webhook order locator: the ONLY accepted request_id shape
+    is 'order:<positive integer>'. Returns the local order id
+    candidate; callers must still validate the full payment contract
+    (kind/product/amount/currency/provider identities) — request_id
+    locates, it never authorizes."""
+    if not isinstance(value, str) or not value.startswith("order:"):
+        raise ValueError("checkout_request_id_invalid")
+    raw = value[6:]
+    if not raw.isdigit() or raw[0] == "0" and len(raw) > 1:
+        raise ValueError("checkout_request_id_invalid")
+    oid = int(raw)
+    if oid <= 0:
+        raise ValueError("checkout_request_id_invalid")
+    return oid
+
+
+def bind_checkout_id(con, order_id: int, checkout_id: str) -> dict | None:
+    """The checkout-create response writer. Allowed ONLY when the order
+    is still pending with no provider identity, or is an idempotent
+    replay of the SAME ch:<id>. A late response must NEVER overwrite a
+    canonical identity the webhook already advanced (ord:*/sub:*); a
+    DIFFERENT checkout id on the same pending order is a hard conflict.
+    Returns the current row (dict) or raises."""
+    prefix = "ch:" + str(checkout_id)
+    row = con.execute(
+        "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
+    if row is None:
+        raise KeyError("order_not_found")
+    cur = row["provider_order_id"]
+    if cur is None:
+        con.execute(
+            "UPDATE orders SET provider_order_id=%s"
+            " WHERE id=%s AND status='pending' AND provider_order_id IS NULL",
+            (prefix, order_id))
+        return dict(con.execute(
+            "SELECT * FROM orders WHERE id=%s", (order_id,)).fetchone())
+    if cur == prefix:
+        return dict(row)  # replay — same checkout entity
+    if cur.startswith("ch:"):
+        raise KeyError("checkout_identity_conflict")
+    # canonical identity (ord:*/sub:*) already bound by the webhook —
+    # the late create response must not rewind it
+    return dict(row)
+
+
+def complete_package_order(con, order_id: int, provider_order_id: str,
+                           ts: int) -> dict | None:
+    """package terminal-paid writer: pending/failed → paid with the
+    CANONICAL provider order id (ord:*), granted=TRUE, paid_at
+    COALESCE. Validates the current provider identity first: NULL,
+    ch:<this checkout>, or the same canonical id; anything else fails
+    loud. Returns the row, or None when the guarded transition did not
+    apply (already terminal — reversal markers are NOT downgraded)."""
+    row = con.execute(
+        "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
+    if row is None:
+        raise KeyError("order_not_found")
+    if row["status"] not in ("pending", "failed"):
+        return dict(row)  # paid replay / refunded / disputed: no rewrite
+    cur = row["provider_order_id"]
+    if cur is not None and cur != provider_order_id \
+            and not cur.startswith("ch:"):
+        raise KeyError("provider_identity_conflict")
+    out = con.execute(
+        """
+        UPDATE orders
+        SET status='paid', granted=TRUE,
+            provider_order_id=%s,
+            paid_at=COALESCE(paid_at, %s)
+        WHERE id=%s AND status IN ('pending','failed')
+        RETURNING *
+        """,
+        (provider_order_id, ts, order_id)).fetchone()
+    return dict(out) if out else None
+
+
+def complete_plan_checkout(con, order_id: int, sub_provider_id: str,
+                           ts: int) -> dict | None:
+    """plan checkout-completed writer: pending/failed → paid with
+    provider_order_id='sub:<id>', paid_at COALESCE, granted stays
+    FALSE (cycle credits are the paid-period path's authority)."""
+    row = con.execute(
+        "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
+    if row is None:
+        raise KeyError("order_not_found")
+    if row["status"] not in ("pending", "failed"):
+        return dict(row)
+    out = con.execute(
+        """
+        UPDATE orders
+        SET status='paid', provider_order_id=%s,
+            paid_at=COALESCE(paid_at, %s)
+        WHERE id=%s AND status IN ('pending','failed')
+        RETURNING *
+        """,
+        (sub_provider_id, ts, order_id)).fetchone()
+    return dict(out) if out else None
 
 
 # ── plans / packages ──
