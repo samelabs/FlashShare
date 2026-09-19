@@ -8,7 +8,6 @@ tool, so different tools may safely reuse the same caller job id.
 
 import json
 import logging
-import secrets
 
 from database import db
 from economy.billing import InsufficientCredits, consume, refund, spendable_balance
@@ -294,7 +293,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         return None, {"ok": False, "error": "tool_disabled"}, 403
     cost = quote["cost"]
 
-    client_ref = invocation.client_ref or secrets.token_hex(16)
+    client_ref = invocation.client_ref
 
     from economy.antibuse import gate_ref_throttled
     if gate_ref_throttled(user["id"]):
@@ -306,14 +305,25 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     # read and the claim INSERT share ONE transaction: the resolved rate is
     # frozen on the row at claim time; later settings changes only affect
     # FUTURE claims, never this attempt's settlement.
+    from execution.invocation import invocation_fingerprint
+    invocation_hash = invocation_fingerprint(invocation)
+
     with db() as con:
         rate_snapshot = commission_rate(con=con)
         anchor, claimed = claim_call(
             con, client_ref, user["id"], tool["id"], cost,
             json.dumps(params, ensure_ascii=False), started,
-            commission_rate_snapshot=rate_snapshot)
+            commission_rate_snapshot=rate_snapshot,
+            invocation_hash=invocation_hash)
 
     if not claimed:
+        # The ref is bound to ONE canonical operation. A different
+        # fingerprint (or a NULL-hash historical row that cannot prove
+        # anything) is a conflict — ZERO charge, ZERO execution; the
+        # caller must use a new client_ref for different content.
+        anchor_hash = anchor.get("invocation_hash")
+        if anchor_hash != invocation_hash:
+            return None, {"ok": False, "error": "idempotency_conflict"}, 409
         if anchor.get("status") == "ok" and anchor.get("result_json"):
             try:
                 replay_result = json.loads(anchor["result_json"])

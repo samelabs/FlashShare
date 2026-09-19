@@ -16,10 +16,40 @@
 
 BEGIN;
 
+-- ── -1. create the ingress_requests side-effect receipt table (new
+--        fact — no history exists, nothing to backfill) ──
+CREATE TABLE ingress_requests (
+      id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      request_ref      TEXT NOT NULL,
+      request_hash     TEXT NOT NULL,
+      status           TEXT NOT NULL,
+      usage_ids        BIGINT[] NOT NULL,
+      result_json      TEXT,
+      started_at       BIGINT NOT NULL,
+      finished_at      BIGINT,
+
+      CONSTRAINT ingress_requests_status_ck
+        CHECK (status IN ('running','ok','failed')),
+      CONSTRAINT ingress_requests_running_open_ck
+        CHECK (status != 'running' OR finished_at IS NULL),
+      CONSTRAINT ingress_requests_terminal_closed_ck
+        CHECK (status = 'running' OR finished_at IS NOT NULL),
+      CONSTRAINT ingress_requests_ok_result_ck
+        CHECK (status != 'ok' OR result_json IS NOT NULL),
+      CONSTRAINT ingress_requests_non_ok_no_result_ck
+        CHECK (status = 'ok' OR result_json IS NULL)
+);
+
+CREATE UNIQUE INDEX ingress_requests_ref_live_idx
+  ON ingress_requests(user_id, request_ref)
+  WHERE status IN ('running','ok');
+
 -- ── 0. add the new nullable column (transactional DDL: a later preflight
 --        failure rolls this back together with everything else) ──
 ALTER TABLE tool_calls
-  ADD COLUMN commission_rate_snapshot INTEGER;
+  ADD COLUMN commission_rate_snapshot INTEGER,
+  ADD COLUMN invocation_hash TEXT;
 
 -- ── 1. pre-flight: existing data must satisfy every new invariant ──
 DO $$
@@ -52,6 +82,7 @@ BEGIN
            AND (upload_id IS NOT NULL OR result_public_id IS NOT NULL
                 OR result_json IS NOT NULL))
        OR (status = 'running' AND commission_rate_snapshot IS NULL)
+       OR (status IN ('running','ok') AND invocation_hash IS NULL)
        OR (commission_rate_snapshot IS NOT NULL
            AND (commission_rate_snapshot < 0
                 OR commission_rate_snapshot > 100));
@@ -94,6 +125,8 @@ ALTER TABLE pricing
   ADD CONSTRAINT pricing_cost_ck CHECK (cost >= 0);
 
 ALTER TABLE tool_calls
+  ADD CONSTRAINT tool_calls_live_invocation_hash_ck
+    CHECK (status NOT IN ('running','ok') OR invocation_hash IS NOT NULL),
   ADD CONSTRAINT tool_calls_commission_snapshot_range_ck
     CHECK (commission_rate_snapshot IS NULL
            OR commission_rate_snapshot BETWEEN 0 AND 100),

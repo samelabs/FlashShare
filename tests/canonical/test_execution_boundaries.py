@@ -332,7 +332,7 @@ try:
         tool_id=f"ebtool_{_u}",
         files=[SourceFile("pub_x", "tok_x")],
         params={}, delivery={"expiry_days": 7, "allowed_downloads": 10},
-        client_ref=None)
+        client_ref=f"eb:{_u}")
 
     async def _boom():
         raise RuntimeError("worker_pool_broken")

@@ -7,15 +7,18 @@
       "source": {"files": [{"public_id": "...", "source_token": "..."}]},
       "params": {"preset": "2mb"},
       "delivery": {"expiry_days": 7, "allowed_downloads": 200},
-      "client_ref": null
+      "client_ref": "web:9f2c..."
     }
 
 硬不变量:
 - 只有一种 schema; 单文件/多文件不改变 shape (只是 source.files 长度)。
 - params 只含 tool params; delivery 属平台产物交付, handler/remote
   endpoint 永远看不到。
-- client_ref: null = fresh invocation; 非空 string = user-scoped
-  idempotency/replay key (gate 语义不变)。
+- client_ref: 必填 non-empty string (<=128), client-generated stable
+  operation identity。same user+tool+ref 永远代表同一个 canonical
+  invocation fingerprint: same fingerprint → running=progress /
+  ok=replay / failed=可重试; different fingerprint → 409
+  idempotency_conflict (zero charge, zero execution)。
 - 旧协议 (flat source 字段 / delivery 混入 params) 出现即
   invalid_request — 无 compatibility adapter, 无双读。
 """
@@ -51,7 +54,7 @@ class ToolInvocation:
         self.files = files          # list[SourceFile], 1..20
         self.params = params        # dict (只含 tool params)
         self.delivery = delivery    # canonical {"expiry_days","allowed_downloads"}
-        self.client_ref = client_ref  # str | None
+        self.client_ref = client_ref  # str (required, non-empty, <=128)
 
     def to_json(self) -> dict:
         """canonical JSON shape (外部/内部一致)。"""
@@ -124,11 +127,40 @@ def parse_tool_invocation(raw) -> ToolInvocation:
         raise _bad() from None
 
     client_ref = raw.get("client_ref")
-    if client_ref is not None:
-        if not isinstance(client_ref, str):
-            raise _bad()
-        client_ref = client_ref.strip()
-        if not client_ref or len(client_ref) > _MAX_CLIENT_REF:
-            raise _bad()
+    if not isinstance(client_ref, str):
+        raise _bad()
+    client_ref = client_ref.strip()
+    if not client_ref or len(client_ref) > _MAX_CLIENT_REF:
+        raise _bad()
 
     return ToolInvocation(tool_id, parsed_files, params, delivery, client_ref)
+
+
+def invocation_fingerprint(invocation: ToolInvocation) -> str:
+    """SHA-256 hex of the canonical semantic payload of one operation.
+
+    Identity inputs (in this exact order-sensitive shape):
+      tool_id, source public_ids (ORDER PRESERVED), canonicalized params
+      (dispatch enforce_params_decl defaults already applied), delivery.
+
+    Deliberately EXCLUDED: client_ref (the identity KEY, not content),
+    source_token (authorization credential, not operation semantics —
+    swapping an equivalent token keeps the same fingerprint), user_id,
+    IP, pricing, commission. Same public_id under a different but
+    equivalent token is the SAME logical operation.
+
+    One helper only — web/MCP/REST all call this; nobody re-hashes
+    the raw HTTP JSON (a defaulted-omitted param and an explicitly
+    sent default must be the same operation).
+    """
+    import hashlib
+    import json as _json
+    payload = {
+        "tool_id": invocation.tool_id,
+        "source_public_ids": [f.public_id for f in invocation.files],
+        "params": dict(invocation.params),
+        "delivery": dict(invocation.delivery),
+    }
+    blob = _json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()

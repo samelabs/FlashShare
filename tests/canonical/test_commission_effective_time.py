@@ -92,7 +92,11 @@ def _mktool(tool_id, owner_id=None, cost=100):
 
 from execution.invocation import ToolInvocation, SourceFile
 
+_ref_seq = [0]
 def _inv(tool_id, ref=None):
+    if ref is None:  # client_ref is required (operation identity); fixtures
+        _ref_seq[0] += 1  # default to a fresh unique ref per call
+        ref = f"fix:{tool_id}:{_ref_seq[0]}:{_u}"
     return ToolInvocation(tool_id=tool_id, files=[SourceFile("p", "t")],
                           params={},
                           delivery={"expiry_days": 7, "allowed_downloads": 5},
@@ -308,20 +312,24 @@ _mktool(t9, owner_id=None, cost=10)
 check("C9 -1 / 101 reject, 0 / 100 合法",
       _db_rejects("insert into tool_calls (client_ref, user_id, tool_id,"
                   " status, cost_snapshot, commission_rate_snapshot,"
-                  " started_at) values (%s,%s,%s,'running',0,-1,%s)",
-                  (f"r1_{_u}", u9, t9, ts))
+                  " invocation_hash, started_at)"
+                  " values (%s,%s,%s,'running',0,-1,%s,%s)",
+                  (f"r1_{_u}", u9, t9, "e" * 64, ts))
       and _db_rejects("insert into tool_calls (client_ref, user_id, tool_id,"
                       " status, cost_snapshot, commission_rate_snapshot,"
-                      " started_at) values (%s,%s,%s,'running',0,101,%s)",
-                      (f"r2_{_u}", u9, t9, ts))
+                      " invocation_hash, started_at)"
+                      " values (%s,%s,%s,'running',0,101,%s,%s)",
+                      (f"r2_{_u}", u9, t9, "e" * 64, ts))
       and not _db_rejects(
           "insert into tool_calls (client_ref, user_id, tool_id, status,"
-          " cost_snapshot, commission_rate_snapshot, started_at)"
-          " values (%s,%s,%s,'running',0,0,%s)", (f"r3_{_u}", u9, t9, ts))
+          " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+          " started_at) values (%s,%s,%s,'running',0,0,%s,%s)",
+          (f"r3_{_u}", u9, t9, "e" * 64, ts))
       and not _db_rejects(
           "insert into tool_calls (client_ref, user_id, tool_id, status,"
-          " cost_snapshot, commission_rate_snapshot, started_at)"
-          " values (%s,%s,%s,'running',0,100,%s)", (f"r4_{_u}", u9, t9, ts)))
+          " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+          " started_at) values (%s,%s,%s,'running',0,100,%s,%s)",
+          (f"r4_{_u}", u9, t9, "e" * 64, ts)))
 check("C10 running + NULL snapshot → reject",
       _db_rejects("insert into tool_calls (client_ref, user_id, tool_id,"
                   " status, cost_snapshot, started_at)"
@@ -456,7 +464,7 @@ def _claim_ok(snap):
     try:
         with db() as con:
             _claim(con, f"c14ok_{_u}_{snap}", u9, t9, 0, "{}", ts,
-                   commission_rate_snapshot=snap)
+                   commission_rate_snapshot=snap, invocation_hash="d" * 64)
         return True
     except ValueError:
         return False
@@ -464,7 +472,7 @@ def _claim_bad(snap):
     try:
         with db() as con:
             _claim(con, f"c14bad_{_u}_{snap}", u9, t9, 0, "{}", ts,
-                   commission_rate_snapshot=snap)
+                   commission_rate_snapshot=snap, invocation_hash="d" * 64)
         return False
     except ValueError:
         return True

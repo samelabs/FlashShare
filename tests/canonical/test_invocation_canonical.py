@@ -99,7 +99,8 @@ def upload(cookie, name=b"t.png", ct="image/png", extra=None):
     """上传一个 1x1 png 源文件, 返回 {publicId, sourceToken}"""
     png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
     conn = http.client.HTTPConnection(*_HOST, timeout=30)
-    fields = {"tool": "compress"}
+    fields = {"tool": "compress",
+              "client_ref": f"up-{uuid.uuid4().hex[:10]}"}
     if extra: fields.update(extra)
     b, ctt = mp(files=[(name.decode() if isinstance(name, bytes) else name, ct, png)], fields=fields)
     conn.request("POST", "/api/uploads", b, {"Content-Type": ctt, "Cookie": cookie})
@@ -164,9 +165,14 @@ for name, raw in bad_cases:
 # params 缺失 → {}; delivery 缺失也拒 (两字段必须存在)
 check("A2 params 缺失 → invalid (C-close 精确五键)", parse_bad({"tool_id": "x", "source": {"files": [{"public_id": "fA", "source_token": ""}]}, "delivery": {"expiry_days": 1, "allowed_downloads": 50}}))
 check("A3 delivery 缺失拒", parse_bad({"tool_id": "x", "source": {"files": [{"public_id": "fA", "source_token": ""}]}}))
-check("A4 client_ref null OK", parse_ok({**GOOD, "client_ref": None})["client_ref"] is None)
+check("A4 client_ref null → invalid (required identity)", parse_bad({**GOOD, "client_ref": None}))
 for cr in ["", "x" * 129]:
     check(f"A5 拒 client_ref {cr[:12]!r}", parse_bad({**GOOD, "client_ref": cr}))
+for cr2 in ["   ", 123]:
+    check(f"A5b 拒 client_ref {cr2!r}", parse_bad({**GOOD, "client_ref": cr2}))
+check("A5c 缺 client_ref 键 → invalid", parse_bad(
+    {"tool_id": "x", "source": {"files": [{"public_id": "fA", "source_token": ""}]},
+     "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50}}))
 
 import re as _re
 # ═══ B: one source schema (dispatch 无 single/multi branch) ═══
@@ -203,20 +209,27 @@ st, r = req("POST", "/api/tools/execute", {
     "tool_id": "compress", "public_id": pid, "source_token": tok, "params": {}}, cookie)
 check("C2 旧 flat request → 422 invalid_request", st == 422 and r.get("error") == "invalid_request", f"{st} {r}")
 
-# E: client_ref 幂等 (源文件被上次执行消费 → 重新 upload; replay 用同 ref 不需要源)
-up_e = upload(cookie)
-pid, tok = up_e["file"]["publicId"], up_e["file"].get("sourceToken", "")
+# E: client_ref 幂等 = same ref + SAME fingerprint。canonical 规则下 ref
+# 绑定完整 operation (含 source public_id): 同 ref 重试必须用同一 source;
+# 换 source 重试 = 新 operation, 必须 new ref (否则 409)。
 st, r2 = req("POST", "/api/tools/execute", {
     "tool_id": "compress", "source": {"files": [{"public_id": pid, "source_token": tok}]},
-    "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
+    "params": {}, "delivery": {"expiry_days": 7, "allowed_downloads": 200},
     "client_ref": "sc-test-1"}, cookie)
-check("E1 同 client_ref → replay", r2.get("replay") is True and r2.get("ok"), str(r2)[:120])
+check("E1 同 client_ref + 同 payload (同 source) → replay", r2.get("replay") is True and r2.get("ok"), str(r2)[:120])
+up_e = upload(cookie)
+st, r2b = req("POST", "/api/tools/execute", {
+    "tool_id": "compress", "source": {"files": [{"public_id": up_e["file"]["publicId"], "source_token": up_e["file"].get("sourceToken", "")}]},
+    "params": {}, "delivery": {"expiry_days": 7, "allowed_downloads": 200},
+    "client_ref": "sc-test-1"}, cookie)
+check("E1b 同 ref + 新 source → 409 idempotency_conflict (ref 绑定 operation)",
+      st == 409 and r2b.get("error") == "idempotency_conflict", f"{st} {str(r2b)[:110]}")
 up_f = upload(cookie)
 st, r3 = req("POST", "/api/tools/execute", {
     "tool_id": "compress", "source": {"files": [{"public_id": up_f["file"]["publicId"], "source_token": up_f["file"].get("sourceToken", "")}]},
     "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
-    "client_ref": None}, cookie)
-check("E2 client_ref null → fresh (非 replay)", r3.get("ok") and not r3.get("replay"), str(r3)[:120])
+    "client_ref": f"fresh-{uuid.uuid4().hex[:8]}"}, cookie)
+check("E2 新 client_ref → fresh (非 replay)", r3.get("ok") and not r3.get("replay"), str(r3)[:120])
 
 # ═══ multi 工具: zip_pack 双文件 (one schema) ═══
 up2 = upload(cookie, name=b"b.png")
@@ -227,7 +240,7 @@ st, rz = req("POST", "/api/tools/execute", {
         {"public_id": up2["file"]["publicId"], "source_token": up2["file"].get("sourceToken", "")},
         {"public_id": up3["file"]["publicId"], "source_token": up3["file"].get("sourceToken", "")}]},
     "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
-    "client_ref": None}, cookie)
+    "client_ref": f"auto-{uuid.uuid4().hex[:8]}-2"}, cookie)
 check("B3 zip_pack files[2] 同一 schema ok", rz.get("ok"), f"{st} {str(rz)[:150]}")
 
 # multi=false + 2 files → err_too_many_files
@@ -237,7 +250,7 @@ st, rm = req("POST", "/api/tools/execute", {
         {"public_id": up2["file"]["publicId"], "source_token": ""},
         {"public_id": up3["file"]["publicId"], "source_token": ""}]},
     "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
-    "client_ref": None}, cookie)
+    "client_ref": f"auto-{uuid.uuid4().hex[:8]}-3"}, cookie)
 check("B4 multi=false files[2] → err_too_many_files", rm.get("error") == "err_too_many_files", f"{st} {rm}")
 
 # ═══ G: REST v1 ═══
@@ -305,12 +318,19 @@ all_have_files = all("files" in (t.get("inputSchema", {}).get("properties") or {
 no_b64 = all("file_b64" not in (t.get("inputSchema", {}).get("properties") or {}) for t in tools)
 check("H3 所有工具只有 files[] 模型", all_have_files and no_b64, f"{len(tools)} tools")
 check("H4 delivery schema 存在", "delivery" in (comp or {}).get("inputSchema", {}).get("properties", {}))
+_req_all = all("client_ref" in (t.get("inputSchema", {}).get("required") or [])
+               for t in tools if t["name"] != "catalog_search")
+_req_cs = ("client_ref" in (([t for t in tools if t["name"] == "catalog_search"]
+            or [{}])[0].get("inputSchema", {}).get("required") or []))
+check("H4b executable tools required 含 client_ref (catalog_search 不含)",
+      _req_all and not _req_cs)
 
 # MCP tools/call 真实执行 (session cookie)
 mbody = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
     "name": "compress",
     "arguments": {"files": [{"filename": "m.png", "b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}],
-                   "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10}}}}
+                   "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
+                   "client_ref": f"mcpexec-{{uuid.uuid4().hex[:8]}}"}}}
 conn = http.client.HTTPConnection(*_HOST, timeout=60)
 conn.request("POST", "/mcp", json.dumps(mbody), {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
 resp = conn.getresponse()
@@ -326,6 +346,36 @@ try:
 except Exception:
     pass
 check("H5 MCP tools/call canonical 执行 ok", mok, mtext[:150])
+
+# H6: missing client_ref → -32602, zero upload/zero tool_call (校验先于 decode/quota/upload)
+_gk_n = None
+try:
+    import urllib.request as _ur
+    with _ur.urlopen("http://127.0.0.1:53901/files", timeout=5) as _r:
+        _gk_n = len(json.loads(_r.read()))
+except Exception:
+    _gk_n = -1
+mbad = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+    "name": "compress",
+    "arguments": {"files": [{"filename": "n.png", "b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}],
+                   "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10}}}}
+conn = http.client.HTTPConnection(*_HOST, timeout=60)
+conn.request("POST", "/mcp", json.dumps(mbad), {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
+resp = conn.getresponse()
+try:
+    _mres_bad = json.loads(resp.read())
+except Exception:
+    _mres_bad = {}
+conn.close()
+_ec = _mres_bad.get("error", {}).get("code")
+try:
+    import urllib.request as _ur
+    with _ur.urlopen("http://127.0.0.1:53901/files", timeout=5) as _r:
+        _gk_n2 = len(json.loads(_r.read()))
+except Exception:
+    _gk_n2 = -1
+check("H6 MCP 缺 client_ref → -32602 + zero upload",
+      _ec == -32602 and (_gk_n2 in (-1, _gk_n) or _gk_n2 == _gk_n), f"code={_ec} gk={_gk_n}->{_gk_n2}")
 
 # ═══ I: selftest 删除 ═══
 conn = http.client.HTTPConnection(*_HOST, timeout=30)

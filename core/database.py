@@ -199,6 +199,36 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS upload_usage_ip_created_idx
       ON upload_usage(ip, created_at)
     """,
+    # ── platform: ingress_requests (side-effect receipt; not an upload SoT) ──
+    """
+    CREATE TABLE IF NOT EXISTS ingress_requests (
+      id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      request_ref      TEXT NOT NULL,
+      request_hash     TEXT NOT NULL,
+      status           TEXT NOT NULL,
+      usage_ids        BIGINT[] NOT NULL,
+      result_json      TEXT,
+      started_at       BIGINT NOT NULL,
+      finished_at      BIGINT,
+
+      CONSTRAINT ingress_requests_status_ck
+        CHECK (status IN ('running','ok','failed')),
+      CONSTRAINT ingress_requests_running_open_ck
+        CHECK (status != 'running' OR finished_at IS NULL),
+      CONSTRAINT ingress_requests_terminal_closed_ck
+        CHECK (status = 'running' OR finished_at IS NOT NULL),
+      CONSTRAINT ingress_requests_ok_result_ck
+        CHECK (status != 'ok' OR result_json IS NOT NULL),
+      CONSTRAINT ingress_requests_non_ok_no_result_ck
+        CHECK (status = 'ok' OR result_json IS NULL)
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS ingress_requests_ref_live_idx
+      ON ingress_requests(user_id, request_ref)
+      WHERE status IN ('running','ok')
+    """,
     # ── platform: api_tokens (agent/MCP/API channel; parallel to sessions) ──
     """
     CREATE TABLE IF NOT EXISTS api_tokens (
@@ -255,6 +285,10 @@ _SCHEMA_SQL = (
       started_at       BIGINT NOT NULL,
       finished_at      BIGINT,
       commission_rate_snapshot INTEGER,
+      invocation_hash    TEXT,
+      CONSTRAINT tool_calls_live_invocation_hash_ck
+        CHECK (status NOT IN ('running','ok')
+               OR invocation_hash IS NOT NULL),
       CONSTRAINT tool_calls_status_ck
         CHECK (status IN ('running','ok','failed','insufficient')),
       CONSTRAINT tool_calls_cost_snapshot_ck CHECK (cost_snapshot >= 0),

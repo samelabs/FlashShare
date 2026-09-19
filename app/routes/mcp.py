@@ -170,7 +170,7 @@ def _tool_specs(user: dict) -> list:
                 },
             },
         }
-        required = ["files"]
+        required = ["files", "client_ref"]
         decl = t.get("params") or []
         if decl:
             from governance.tool_params import to_input_schema_properties
@@ -193,7 +193,9 @@ def _tool_specs(user: dict) -> list:
         }
         props["client_ref"] = {
             "type": "string",
-            "description": "Idempotency ref: reuse to retry this tool call safely",
+            "description": "Required stable operation identity (max 128 chars): "
+                           "generate once per logical operation and reuse the "
+                           "same value to retry it safely",
         }
         label = t["label"]
         desc = f"{label.get('en') or t['id']}"
@@ -226,9 +228,7 @@ def _tool_specs(user: dict) -> list:
 
 
 async def _call_tool(request: Request, user: dict, mid, params: dict):
-    import secrets as _secrets
     from execution.pipeline import upload_sources as _upload_batch
-    from execution.pipeline import IngressBoundaryError, IngressQuotaError
 
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
@@ -243,13 +243,13 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         })
     tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
 
-    if "client_ref" in args:
-        cr = args.get("client_ref")
-        if not isinstance(cr, str) or not cr.strip() or len(cr) > 128:
-            return _rpc_err(mid, -32602, "invalid client_ref")
-        client_ref = cr.strip()
-    else:
-        client_ref = f"mcp:{_secrets.token_hex(16)}"
+    # client_ref is REQUIRED and validated BEFORE any base64 decode,
+    # quota check, or Gokapi upload — a missing/invalid ref must never
+    # leave the caller having uploaded anything.
+    cr = args.get("client_ref")
+    if not isinstance(cr, str) or not cr.strip() or len(cr) > 128:
+        return _rpc_err(mid, -32602, "invalid client_ref")
+    client_ref = cr.strip()
 
     from governance.delivery import (validate_delivery, DEFAULT_EXPIRY_DAYS,
                                      DEFAULT_ALLOWED_DOWNLOADS)
@@ -308,26 +308,138 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
 
     ip = request.headers.get("X-Real-IP",
                              request.client.host if request.client else "").strip()
+
+    # Ingress receipt: client_ref IS the request_ref. Same ref + same
+    # validated content replays the stored source handles (zero new
+    # Gokapi, zero new usage) so a response-loss retry flows into the
+    # SAME ToolInvocation fingerprint → gate replay.
+    import hashlib as _hl
+    from sharing.ingress_identity import ingress_request_hash
+    from sharing.ingress_receipt import (
+        claim_ingress_quota as _claim_receipt,
+        finalize_ok as _receipt_ok,
+        settle_failure as _receipt_fail,
+        resolve_outcome as _resolve_outcome,
+        IngressConflict as _IngressConflict,
+        IngressInProgress as _IngressInProgress,
+        IngressQuotaDenied as _IngressQuotaDenied,
+        IngressUnresolved as _IngressUnresolved,
+        OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
+    from utils import sanitize_filename as _san
+    from security import sniff_allowed as _sniff, sign_source_token
+    _canon = []
+    for _fn, _ct, _body in uploads:
+        _ok_t, _final_t = _sniff(_fn, _ct, _body[:512])
+        if not _ok_t:
+            return _rpc_err(mid, -32602, f"upload rejected: {_final_t}")
+        _canon.append(((_san(_fn), _final_t, _body)))
+    # Authoritative platform batch boundary (single validator for
+    # Web/REST/MCP) — BEFORE the receipt claim / quota / Gokapi.
+    from governance.ingress import validate_batch as _vbatch
+    _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
+    if _bdenial:
+        return _rpc(mid, {
+            "content": [{"type": "text", "text": json.dumps(_bdenial)}],
+            "isError": True,
+        })
+    _req_hash = ingress_request_hash(
+        "mcp_tool_source",
+        [{"filename": _fn, "content_type": _ct, "size": len(_b),
+          "sha256": _hl.sha256(_b).hexdigest()}
+         for _fn, _ct, _b in _canon],
+        {"tool_id": tool_key})
     try:
-        infos = _upload_batch(user, uploads, ip)
-        source_files = [{"public_id": info["publicId"],
-                         "source_token": info.get("sourceToken", "")}
-                        for info in infos]
-    except (IngressBoundaryError, IngressQuotaError) as exc:
-        # Platform business limits — hard boundaries and rolling quota —
-        # are tool results, not JSON-RPC syntax errors: they answer as
-        # isError content carrying the structured denial.
+        _receipt, _usage_ids, _replay = _claim_receipt(
+            user["id"], ip, client_ref, _req_hash,
+            [len(_b) for _, _, _b in _canon])
+    except _IngressConflict:
+        return _rpc_err(mid, 32009, "idempotency_conflict")
+    except _IngressInProgress:
+        return _rpc_err(mid, 32009, "err_upload_in_progress")
+    except _IngressQuotaDenied as exc:
         return _rpc(mid, {
             "content": [{"type": "text", "text": json.dumps(exc.denial)}],
             "isError": True,
         })
-    except ValueError as exc:
-        return _rpc_err(mid, -32602, f"upload rejected: {exc}")
-    except Exception as exc:
-        # Generic upload/storage failure fallback (pre-existing behavior):
-        # only IngressBoundaryError is specialized above; every other
-        # exception keeps the original rejection semantics.
-        return _rpc_err(mid, -32602, f"upload rejected: {exc}")
+    except _IngressUnresolved:
+        # unresolvable durable replay — server-side error, zero side
+        # effects; never leaks out of _call_tool
+        return _rpc_err(mid, -32000, "err_ingress_unresolved")
+
+    if _replay is not None:
+        infos = _replay if isinstance(_replay, list) else [_replay]
+    else:
+        from execution.pipeline import upload_to_gokapi as _gk_up
+        from execution.pipeline import (INTERMEDIATE_TTL_DAYS as _ITTL,
+                                        INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
+        from sharing.ingress_receipt import OUTCOME_UNRESOLVED
+        import io as _io
+        _gids = []
+        # Phase 1 — Gokapi staging. A staging failure is a KNOWN
+        # rollback (objects half-uploaded, receipt still running) and
+        # takes the generic cleanup below.
+        try:
+            infos = []
+            for _fn, _ct, _body in _canon:
+                _gk = _gk_up(_io.BytesIO(_body), _fn, _ct, _ITTL, _IDL,
+                             len(_body))
+                _fid = (_gk.get("FileInfo", {}) or {}).get("Id", "")
+                if not _fid:
+                    raise RuntimeError("gokapi_missing_id")
+                _gids.append(_fid)
+                infos.append({
+                    "name": _fn, "filename": _fn, "contentType": _ct,
+                    "size": len(_body), "downloadUrl": "",
+                    "hotlinkUrl": _gk["FileInfo"].get("UrlHotlink", ""),
+                    "publicId": _fid, "gokapiId": _fid,
+                    "sourceToken": sign_source_token(user["id"], _fid),
+                    "expireAt": _gk["FileInfo"].get("ExpireAt"),
+                    "expiryDays": _ITTL, "allowedDownloads": _IDL,
+                })
+        except Exception as exc:
+            from gokapi import delete_gokapi_file as _gk_del
+            for _gid in _gids:
+                try:
+                    _gk_del(_gid)
+                except Exception:
+                    pass
+            try:
+                _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
+            except Exception:
+                pass
+            return _rpc_err(mid, -32602, f"upload rejected: {exc}")
+
+        # Phase 2 — finalize with an EXPLICIT three-way outcome. The
+        # unresolved branch must NEVER fall into generic cleanup: zero
+        # Gokapi delete, zero quota release, zero receipt mutation.
+        try:
+            _receipt_ok(int(_receipt["id"]), infos)
+        except Exception:
+            _out = _resolve_outcome(int(_receipt["id"]))
+            if _out["outcome"] == OUTCOME_DURABLE_OK:
+                infos = (_out["result"] if isinstance(_out["result"], list)
+                         else [_out["result"]])
+            elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+                # the ONLY finalize-driven cleanup path: receipt still
+                # running proves the success transaction never landed.
+                from gokapi import delete_gokapi_file as _gk_del
+                for _gid in _gids:
+                    try:
+                        _gk_del(_gid)
+                    except Exception:
+                        pass
+                try:
+                    _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
+                except Exception:
+                    pass
+                return _rpc_err(mid, -32602, "upload rejected: err_upload_failed")
+            else:
+                # UNRESOLVED — server-side error, not invalid arguments
+                return _rpc_err(mid, -32000, "err_ingress_unresolved")
+
+    source_files = [{"public_id": info["publicId"],
+                     "source_token": info.get("sourceToken", "")}
+                    for info in infos]
 
     raw = {
         "tool_id": tool_key,
