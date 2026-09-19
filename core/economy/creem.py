@@ -132,6 +132,20 @@ def _fetch_product(product_id: str) -> dict | None:
     return None
 
 
+def _canonical_provider_price(prod: dict):
+    """The provider price as a CANONICAL integer fact (Creem contract:
+    integer cents). Returns the int when the provider explicitly stated
+    one (including a legitimate 0); None for anything that would need
+    an int() COERCION — bool (an int subclass but not a price), float
+    (150.7 would silently truncate to 150), numeric strings, missing.
+    A provider observation is a fact; this code never rewrites its
+    type."""
+    v = prod.get("price")
+    if isinstance(v, bool) or not isinstance(v, int):
+        return None
+    return v
+
+
 def _billing_contract_ok(prod: dict) -> bool:
     return (str(prod.get("billing_type") or "") == _BILLING_TYPE_RECURRING
             and str(prod.get("billing_period") or "") == _BILLING_PERIOD_MONTHLY)
@@ -170,7 +184,11 @@ def mirror_price_with_reconciliation(product_id: str, before_price: int,
         return MIRROR_UNRESOLVED
     if prod is None:
         return MIRROR_UNRESOLVED
-    _p = int(prod.get("price") or 0)
+    _p = _canonical_provider_price(prod)
+    if _p is None:
+        # a non-canonical provider price is not a provable fact — never
+        # truncated into an equality against intended/before
+        return MIRROR_UNRESOLVED
     _c = str(prod.get("currency") or "").upper()
     if _p == int(price_cents) and _c == str(currency).upper():
         return MIRROR_SUCCESS
@@ -211,7 +229,8 @@ def verify_product_mirror(product_id: str, price_cents: int,
     prod = _fetch_product(product_id)
     if prod is None:
         return "not_found"
-    if int(prod.get("price") or 0) != int(price_cents):
+    _v_price = _canonical_provider_price(prod)
+    if _v_price is None or _v_price != int(price_cents):
         return "price"
     if str(prod.get("currency") or "").upper() != currency.upper():
         return "currency"
@@ -250,9 +269,11 @@ def mirror_product_price(product_id: str, price_cents: int,
     })
     confirmed = out.get("object") == "product" and out or (
         out.get("product") if isinstance(out.get("product"), dict) else None)
+    _conf_price = _canonical_provider_price(confirmed) \
+        if isinstance(confirmed, dict) else None
     if not isinstance(confirmed, dict) \
             or str(confirmed.get("id") or "") != product_id \
-            or int(confirmed.get("price") or 0) != int(price_cents) \
+            or _conf_price is None or _conf_price != int(price_cents) \
             or str(confirmed.get("currency") or "").upper() != str(currency).upper() \
             or not _billing_contract_ok(confirmed):
         raise RuntimeError("price_mirror_confirm_failed")

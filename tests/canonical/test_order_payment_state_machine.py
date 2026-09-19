@@ -448,6 +448,88 @@ check("M-5 restore to before + verify", _ok_r and _prod_state["prod_m"]["price"]
 _ec2._fetch_product = _orig_fetch
 _ec2._patch = _orig_patch
 
+# ═══ MCP series: canonical provider price proof — no int() coercion ═══
+# The provider's price is a FACT: a non-canonical type (float/bool/
+# string) can never be coerced into the integer it "looks like".
+_ec2._fetch_product = _fake_fetch
+_ec2._patch = _patch_raise   # ambiguous PATCH for the GET paths
+
+# MCP-1: ambiguous PATCH + fresh GET price=150.7, intended=150 → the
+# float 150.7 must NOT equal intended 150 via truncation → UNRESOLVED
+_prod_state["prod_m"]["price"] = 150.7
+_mcp1 = _ec2.mirror_price_with_reconciliation("prod_m", 1000, "USD", 150, "USD")
+check("MCP-1 reconciliation GET price=150.7 vs intended 150 → UNRESOLVED (禁 truncation)",
+      _mcp1 == _ec2.MIRROR_UNRESOLVED, _mcp1)
+
+# MCP-2: ambiguous PATCH + fresh GET price=True (bool), before=1 → the
+# bool must not int()-equal 1 → UNRESOLVED
+_prod_state["prod_m"]["price"] = True
+_mcp2 = _ec2.mirror_price_with_reconciliation("prod_m", 1, "USD", 150, "USD")
+check("MCP-2 reconciliation GET price=True vs before 1 → UNRESOLVED (bool 非价格)",
+      _mcp2 == _ec2.MIRROR_UNRESOLVED, _mcp2)
+
+# MCP-3: ambiguous PATCH + fresh GET price="150" (string) → UNRESOLVED
+_prod_state["prod_m"]["price"] = "150"
+_mcp3 = _ec2.mirror_price_with_reconciliation("prod_m", 1000, "USD", 150, "USD")
+check("MCP-3 reconciliation GET price='150' (string) → UNRESOLVED (零 coercion)",
+      _mcp3 == _ec2.MIRROR_UNRESOLVED, _mcp3)
+
+# MCP-4: reconciliation explicit integer 0 IS a canonical fact
+_prod_state["prod_m"]["price"] = 0
+_mcp4 = _ec2.mirror_price_with_reconciliation("prod_m", 1000, "USD", 0, "USD")
+check("MCP-4 reconciliation GET price=0 (explicit int) vs intended 0 → SUCCESS",
+      _mcp4 == _ec2.MIRROR_SUCCESS, _mcp4)
+
+# MCP-5: PATCH response confirmation price=150.7, target=150 → the
+# mirror write must NOT confirm a float echo as the integer target
+_ec2._patch = lambda path, payload: {
+    "object": "product", "id": "prod_m", "price": 150.7,
+    "currency": payload.get("currency", "USD"),
+    "billing_type": "recurring", "billing_period": "every-month"}
+_mcp5_err = None
+try:
+    _ec2.mirror_product_price("prod_m", 150, "USD")
+except RuntimeError as e:
+    _mcp5_err = str(e)
+check("MCP-5 PATCH confirm price=150.7 vs target 150 → price_mirror_confirm_failed",
+      _mcp5_err == "price_mirror_confirm_failed", _mcp5_err)
+
+# MCP-6: PATCH response confirmation price=True, target=1 → fail
+_ec2._patch = lambda path, payload: {
+    "object": "product", "id": "prod_m", "price": True,
+    "currency": payload.get("currency", "USD"),
+    "billing_type": "recurring", "billing_period": "every-month"}
+_mcp6_err = None
+try:
+    _ec2.mirror_product_price("prod_m", 1, "USD")
+except RuntimeError as e:
+    _mcp6_err = str(e)
+check("MCP-6 PATCH confirm price=True vs target 1 → fail (bool 非价格)",
+      _mcp6_err == "price_mirror_confirm_failed", _mcp6_err)
+
+# MCP-7: post-commit verify provider price=150.7 vs target 150 →
+# non-empty mismatch token (never "consistent" via truncation)
+_prod_state["prod_m"]["price"] = 150.7
+_ec2._patch = _fake_patch
+_tok7 = _ec2.verify_product_mirror("prod_m", 150, "USD")
+check("MCP-7 verify price=150.7 vs target 150 → mismatch token",
+      _tok7 not in ("", None), _tok7)
+
+# MCP-8: verify provider price=True vs target 1 → mismatch token
+_prod_state["prod_m"]["price"] = True
+_tok8 = _ec2.verify_product_mirror("prod_m", 1, "USD")
+check("MCP-8 verify price=True vs target 1 → mismatch token",
+      _tok8 not in ("", None), _tok8)
+
+# MCP-9: verify explicit integer 0 vs target 0 → consistent ("")
+_prod_state["prod_m"]["price"] = 0
+_tok9 = _ec2.verify_product_mirror("prod_m", 0, "USD")
+check("MCP-9 verify price=0 vs target 0 → 一致 (explicit 0 合法)",
+      _tok9 == "", _tok9)
+
+_ec2._fetch_product = _orig_fetch
+_ec2._patch = _orig_patch
+
 # ══════════ R2 series: production-closure deviations (7 fixes) ══════════
 def _iso(epoch):
     import datetime
