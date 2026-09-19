@@ -166,64 +166,93 @@ def _proven_provider_price(prod: dict):
     return v
 
 
+def _snap_equal(a: dict, b: dict) -> bool:
+    """Exact equality over the _snap_plan allowlist (both sides must
+    carry every key)."""
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return False
+    keys = ("id", "code", "name", "monthly_credits", "period_days",
+            "period", "price_cents", "currency", "creem_product_id",
+            "sort_order", "active", "ingress_files_24h",
+            "ingress_bytes_24h", "expiry_days", "download_limits")
+    for k in keys:
+        if k not in a or k not in b:
+            return False
+        if a[k] != b[k]:
+            return False
+    return True
+
+
 def _classify_db_commit_outcome(plan_id, intended, before, actor_id,
                                 tx_started, action):
     """DB-commit-outcome closure for the plan commercial mirror — a
-    strict three-way verdict against EXACT snapshots.
+    strict three-way verdict against EXACT full-snapshot proofs.
 
     The provider provably carries the intended price, but the local
     COMMIT raised / its outcome is unknown. An INDEPENDENT fresh
-    connection reads the exact plan row and THIS operation's audit fact
-    (correlation boundary = tx_started + action + before→intended pair;
-    created_at is frozen when the transaction opens — a provider call
-    crossing a second boundary never loses the match, and a historical
-    same-price audit with a different before never matches).
+    connection reads the exact plan row and THIS operation's audit fact.
+    Correlation is the EXACT before_json → after_json snapshot PAIR of
+    this operation (both written inside the transaction from the locked
+    row / RETURNING row); actor/action/target and the frozen
+    tx_started boundary are additional constraints, never substitutes —
+    a same-second same-price audit of a DIFFERENT operation (e.g. a
+    stale audit while this PATCH only changes noncommercial fields)
+    can never satisfy the exact pair.
 
-      update:  row == intended + matching audit → DURABLE_SUCCESS
-               row == exact BEFORE + no matching audit → PROVEN_ROLLBACK
+      update:  row == exact intended full snapshot + exact-pair audit
+                  → DURABLE_SUCCESS
+               row == exact before full snapshot + no exact-pair audit
+                  → PROVEN_ROLLBACK
                any other row/audit combination → UNRESOLVED
-      create:  row == intended + matching audit → DURABLE_SUCCESS
-               row absent + no matching audit → PROVEN_ROLLBACK
+      create:  row == exact intended snapshot + exact audit → SUCCESS
+               row absent + no exact-pair audit → PROVEN_ROLLBACK
                any other → UNRESOLVED
     Never a second speculative mutation inside this classification.
     """
     from database import db as _fdb
+    import json as _json
     try:
         with _fdb() as con:
             row = con.execute(
                 "SELECT * FROM plans WHERE id=%s", (plan_id,)).fetchone()
-            audit = con.execute(
-                "SELECT 1 FROM operator_audit"
+            audits = con.execute(
+                "SELECT before_json, after_json FROM operator_audit"
                 " WHERE action=%s AND target_type='plan' AND target_id=%s"
                 "   AND actor_user_id=%s AND created_at>=%s"
-                "   AND after_json->>'price_cents'=%s"
-                " LIMIT 1",
-                (action, str(plan_id), int(actor_id), int(tx_started),
-                 str(intended["price_cents"]))).fetchone()
+                " ORDER BY id DESC LIMIT 20",
+                (action, str(plan_id), int(actor_id),
+                 int(tx_started))).fetchall()
     except Exception:
         return "unresolved", None
+    # exact THIS-operation audit: before_json == this op's exact before
+    # ({} for create) AND after_json == this op's exact intended
+    _match = False
+    for a in (audits or []):
+        try:
+            ab = a["before_json"] if isinstance(a["before_json"], dict) \
+                else _json.loads(a["before_json"] or "null")
+            aa = a["after_json"] if isinstance(a["after_json"], dict) \
+                else _json.loads(a["after_json"] or "null")
+        except Exception:
+            continue
+        _b_ok = ((before is None and not ab) or
+                 (before is not None and isinstance(ab, dict)
+                  and _snap_equal(ab, before)))
+        _a_ok = isinstance(aa, dict) and _snap_equal(aa, intended)
+        if _b_ok and _a_ok:
+            _match = True
+            break
     if row is None:
         # create: row absent — only "no THIS-operation audit" proves rollback
-        return ("rollback", None) if audit is None else ("unresolved", None)
-    cur_price = int(row["price_cents"] or 0)
-    cur_cur = str(row["currency"] or "")
-    cur_prod = str(row["creem_product_id"] or "")
-    _is_intended = (cur_price == int(intended["price_cents"])
-                    and cur_cur == str(intended.get("currency") or "")
-                    and cur_prod == str(intended.get("creem_product_id") or ""))
-    if _is_intended:
-        return ("success", dict(row)) if audit is not None \
-            else ("unresolved", None)
+        return ("rollback", None) if not _match else ("unresolved", None)
+    _snap_row = _snap_plan(row)
+    if _snap_equal(_snap_row, intended):
+        return ("success", dict(row)) if _match else ("unresolved", None)
     # NOT intended: PROVEN_ROLLBACK requires the row to be the EXACT
-    # before snapshot AND no matching THIS-operation audit — anything
-    # else (third-state row, or a matching audit over a foreign row)
-    # is unprovable.
+    # before snapshot AND no matching THIS-operation audit.
     if before is None:
         return "unresolved", None   # update must pass its exact before
-    _is_before = (cur_price == int(before["price_cents"])
-                  and cur_cur == str(before.get("currency") or "")
-                  and cur_prod == str(before.get("creem_product_id") or ""))
-    if _is_before and audit is None:
+    if _snap_equal(_snap_row, before) and not _match:
         return "rollback", dict(row)
     return "unresolved", None
 
@@ -518,10 +547,7 @@ async def samelabs_create_plan(request: Request):
             _bprice, _bcur = _mirror_before
             try:
                 outcome, _row2 = _classify_db_commit_outcome(
-                    int(row["id"]),
-                    {"price_cents": int(fields["price_cents"]),
-                     "currency": str(fields.get("currency") or "USD"),
-                     "creem_product_id": _prod},
+                    int(row["id"]), _snap_plan(row),
                     None, int(user["id"]), int(row["created_at"]),
                     "plan.create")
             except Exception:
@@ -550,10 +576,7 @@ async def samelabs_create_plan(request: Request):
         _bprice, _bcur = _mirror_before
         try:
             outcome, _row2 = _classify_db_commit_outcome(
-                int(row["id"]),
-                {"price_cents": int(fields["price_cents"]),
-                 "currency": str(fields.get("currency") or "USD"),
-                 "creem_product_id": _prod},
+                int(row["id"]), _snap_plan(row),
                 None, int(user["id"]), int(row["created_at"]),
                 "plan.create")
         except Exception:
@@ -629,10 +652,7 @@ async def samelabs_update_plan(plan_id: int, request: Request):
             # in-tx locked read → before snapshot (NOT the stale outer row)
             locked = plan_by_id_for_update(con, plan_id)
             before = _snap_plan(locked)
-            _db_before = {"price_cents": int(locked["price_cents"] or 0),
-                          "currency": str(locked["currency"] or ""),
-                          "creem_product_id":
-                              str(locked["creem_product_id"] or "")}
+            _db_before = _snap_plan(locked)   # EXACT full before snapshot
             # PRODUCT BINDING IMMUTABILITY: creem_product_id is a
             # stable provider binding identity. NULL→X binds; X→X is a
             # no-op; X→Y and X→NULL are FORBIDDEN — a rebind (or clear)
@@ -724,10 +744,7 @@ async def samelabs_update_plan(plan_id: int, request: Request):
             _bprice, _bcur = _mirror_before
             try:
                 outcome, _row2 = _classify_db_commit_outcome(
-                    int(plan_id),
-                    {"price_cents": int(row["price_cents"]),
-                     "currency": str(row["currency"] or "USD"),
-                     "creem_product_id": _prod},
+                    int(plan_id), _snap_plan(row),
                     _db_before, int(user["id"]), int(_tx_ts),
                     "plan.update")
             except Exception:
@@ -756,10 +773,7 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         _bp3, _bc3 = _mirror_before
         try:
             outcome3, _row3 = _classify_db_commit_outcome(
-                int(plan_id),
-                {"price_cents": int(row["price_cents"]),
-                 "currency": str(row["currency"] or "USD"),
-                 "creem_product_id": _prod3},
+                int(plan_id), _snap_plan(row),
                 _db_before, int(user["id"]), int(_tx_ts),
                 "plan.update")
         except Exception:

@@ -456,6 +456,46 @@ _ok7c, _d7c = _noncanon_case("s", "1500", False)    # update: string
 check("G7c update: provider price='1500' (string) → fail closed / 零 coercion",
       _ok7c, _d7c)
 
+# ── H-series: EXACT snapshot / audit correlation (mixed-field ops) ──
+# H1: same-second stale same-price audit + mixed-field rollback must
+#     NEVER classify as success.
+with db() as con:
+    # the plan currently carries price 150 (G5); make the current
+    # operation "price unchanged + name change"
+    _row_h = con.execute("select name, price_cents from plans where id=%s",
+                         (_pl["id"],)).fetchone()
+    _name_before_h = _row_h["name"]
+# stale audit: SAME actor/plan/action, same-second boundary, same after
+# price — but a FULL snapshot pair of a DIFFERENT (older) operation
+from repo import operator_audit as _oa
+with db() as con:
+    _oa.record(con, int(_op_id), "plan.update", "plan", str(_pl["id"]),
+               {"name": _name_before_h, "price_cents": 1000},
+               {"name": _name_before_h + "_STALE", "price_cents": 150},
+               int(ts) - 2)
+# inject: commit rollback + the route's mirror runs (provider mutated)
+_p_before_h1 = len(_patches)
+_dbmod.db = _db_rollback_then_raise
+_sml.db = _db_rollback_then_raise
+try:
+    _r_h1 = client.patch(f"/samelabs/plans/{_pl['id']}",
+                         json={"price_cents": 150,
+                               "name": _name_before_h + "_CURRENT"},
+                         cookies={COOKIE_NAME: op_ck})
+except Exception as exc:
+    _r_h1 = type("R", (), {"status_code": 0, "text": str(exc)})()
+finally:
+    _dbmod.db = _orig_db
+    _sml.db = _orig_sml_db
+with db() as con:
+    _row_h1 = con.execute("select name, price_cents from plans"
+                          " where id=%s", (_pl["id"],)).fetchone()
+_h1_was_success = _r_h1.status_code == 200
+check("H1 stale same-second same-price audit + mixed-field rollback → 绝不 SUCCESS",
+      (not _h1_was_success) and _row_h1["name"] == _name_before_h,
+      f"st={_r_h1.status_code} name={_row_h1['name']!r}"
+      f" (before={_name_before_h!r}) was_success={_h1_was_success}")
+
 # ── B-series: strict exact-before three-way classifier ──
 import app.routes.samelabs as _smlmod
 from repo import operator_audit as _oa
@@ -497,17 +537,19 @@ check("B2 create unexpected row exists → UNRESOLVED (absent 才 rollback)",
       f"absent={_v2[0]} existing={_v2b[0]}")
 
 # B3: durable commit identified across a second boundary — tx_started
-#     fixed before the provider call, audit written seconds later
+#     fixed before the provider call, audit written seconds later.
+#     Full-snapshot proof: row == intended, audit == exact pair.
 with db() as con:
     con.execute("update plans set price_cents=1699 where id=%s", (_pl["id"],))
+with db() as con:
+    _row_b3 = con.execute("select * from plans where id=%s",
+                          (_pl["id"],)).fetchone()
+    _snap_b3 = _smlmod._snap_plan(_row_b3)               # == intended
+    _before_b3 = dict(_snap_b3, price_cents=_snap_b3["price_cents"] - 200)
     _oa.record(con, int(_op_id), "plan.update", "plan", str(_pl["id"]),
-               {"price_cents": 1499}, {"price_cents": 1699}, int(ts) + 5)
+               _before_b3, _snap_b3, int(ts) + 5)
 _v3 = _smlmod._classify_db_commit_outcome(
-    int(_pl["id"]),
-    {"price_cents": 1699, "currency": "USD",
-     "creem_product_id": "prod_mc_x"},
-    {"price_cents": 1499, "currency": "USD",
-     "creem_product_id": "prod_mc_x"},
+    int(_pl["id"]), _snap_b3, _before_b3,
     int(_op_id), int(ts) - 3, "plan.update")
 check("B3 durable commit 跨秒后仍识别 matching audit → SUCCESS",
       _v3[0] == "success", str(_v3))
@@ -518,13 +560,9 @@ with db() as con:
     con.execute("delete from operator_audit where target_type='plan'"
                 " and target_id=%s", (str(_pl["id"]),))
     _oa.record(con, int(_op_id), "plan.update", "plan", str(_pl["id"]),
-               {"price_cents": 1499}, {"price_cents": 1699}, int(ts) - 7200)
+               _before_b3, dict(_snap_b3, name="OLD"), int(ts) - 7200)
 _v3b = _smlmod._classify_db_commit_outcome(
-    int(_pl["id"]),
-    {"price_cents": 1699, "currency": "USD",
-     "creem_product_id": "prod_mc_x"},
-    {"price_cents": 1499, "currency": "USD",
-     "creem_product_id": "prod_mc_x"},
+    int(_pl["id"]), _snap_b3, _before_b3,
     int(_op_id), int(ts) - 3, "plan.update")
 check("B3b 历史同价旧 audit (boundary 之前) 不误认 → 非 SUCCESS",
       _v3b[0] != "success", str(_v3b))
@@ -535,18 +573,62 @@ with db() as con:
     con.execute("delete from operator_audit where target_type='plan'"
                 " and target_id=%s", (str(_pl["id"]),))
 # (a real update always has before != intended; row==before here)
+with db() as con:
+    _row_b4 = con.execute("select * from plans where id=%s",
+                          (_pl["id"],)).fetchone()
+    _snap_b4 = _smlmod._snap_plan(_row_b4)               # row == before
+    _intended_b4 = dict(_snap_b4, price_cents=1899)       # != row
 _v4 = _smlmod._classify_db_commit_outcome(
-    int(_pl["id"]),
-    {"price_cents": 1899, "currency": "USD",
-     "creem_product_id": "prod_mc_x"},
-    {"price_cents": 1699, "currency": "USD",
-     "creem_product_id": "prod_mc_x"},   # row == exact before (1699)
+    int(_pl["id"]), _intended_b4, _snap_b4,
     int(_op_id), int(ts) - 3600, "plan.update")
 check("B4 exact-before row + no matching audit → PROVEN_ROLLBACK (仅此可 restore)",
       _v4[0] == "rollback", str(_v4))
 check("B4b UNRESOLVED verdict 全程零 provider restore",
       len(_patches) == _p_before_b,
       f"patches={len(_patches)} before={_p_before_b}")
+
+# H2: mixed-field durable commit + ACK-loss → the exact-pair audit
+#     proves THIS operation (noncommercial mutation included) → SUCCESS
+with db() as con:
+    _row_h2 = con.execute("select name from plans where id=%s",
+                          (_pl["id"],)).fetchone()
+    _name_h2 = _row_h2["name"]
+_dbmod.db = _db_commit_durable_then_raise
+_sml.db = _db_commit_durable_then_raise
+try:
+    _r_h2 = client.patch(f"/samelabs/plans/{_pl['id']}",
+                         json={"price_cents": 150,
+                               "name": _name_h2 + "_H2"},
+                         cookies={COOKIE_NAME: op_ck})
+except Exception:
+    _r_h2 = None
+finally:
+    _dbmod.db = _orig_db
+    _sml.db = _orig_sml_db
+with db() as con:
+    _row_h2b = con.execute("select name, price_cents from plans"
+                           " where id=%s", (_pl["id"],)).fetchone()
+check("H2 mixed-field durable commit + ACK-loss → exact-pair audit 证 SUCCESS (name 已落)",
+      _r_h2 is not None and _r_h2.status_code == 200
+      and _row_h2b["name"] == _name_h2 + "_H2",
+      f"st={_r_h2 and _r_h2.status_code} name={_row_h2b['name']!r}"
+      f" expect={_name_h2 + '_H2'!r}")
+
+# H3: full third-state row → UNRESOLVED (never rollback/restore)
+with db() as con:
+    con.execute("update plans set monthly_credits=777 where id=%s",
+                (_pl["id"],))
+    con.execute("delete from operator_audit where target_type='plan'"
+                " and target_id=%s", (str(_pl["id"]),))
+_v_h3 = _smlmod._classify_db_commit_outcome(
+    int(_pl["id"]), _snap_b3, _before_b3,
+    int(_op_id), int(ts) - 3600, "plan.update")
+check("H3 third-state row (monthly_credits 变) → UNRESOLVED",
+      _v_h3[0] == "unresolved", str(_v_h3))
+# restore for the sections that follow
+with db() as con:
+    con.execute("update plans set monthly_credits=100 where id=%s",
+                (_pl["id"],))
 
 # ── F5: compensation basis is the REAL provider GET snapshot ──
 _src = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
