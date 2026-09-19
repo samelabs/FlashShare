@@ -310,8 +310,15 @@ _topup._require_auth = lambda request: ({"id": uidP, "email": "t@t.co",
 _creem_calls = {"create": 0, "retrieve": {}}
 def _fake_create(order_id, package, user):
     _creem_calls["create"] += 1
-    return {"ok": True, "checkout_url": f"https://creem.test/c/{order_id}",
-            "checkout_id": f"ch_fake_{order_id}"}
+    cid = f"ch_fake_{order_id}"
+    url = f"https://creem.test/c/{order_id}"
+    # A successful provider create makes that checkout immediately
+    # retrievable by the same provider identity. Concurrency tests must
+    # model this contract; otherwise a loser that observes stored ch:*
+    # hits an artificial "provider down" path unrelated to Order
+    # convergence.
+    _RT[cid] = {"status": "pending", "checkout_url": url}
+    return {"ok": True, "checkout_url": url, "checkout_id": cid}
 _RT = {"ch_fake_EXPIRED": {"status": "expired", "checkout_url": "https://creem.test/e"},
        "ch_fake_PEND": {"status": "pending", "checkout_url": "https://creem.test/p"},
        "ch_fake_DONE": {"status": "completed", "checkout_url": "https://creem.test/d"}}
