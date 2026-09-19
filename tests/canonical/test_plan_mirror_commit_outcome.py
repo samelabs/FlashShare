@@ -457,41 +457,65 @@ check("G7c update: provider price='1500' (string) → fail closed / 零 coercion
       _ok7c, _d7c)
 
 # ── H-series: EXACT snapshot / audit correlation (mixed-field ops) ──
-# H1: same-second stale same-price audit + mixed-field rollback must
-#     NEVER classify as success.
+# H1 (deterministic): a stale audit INSIDE this operation's correlation
+# window (created_at >= the route's frozen tx_started) with the SAME
+# after price but a DIFFERENT full before→after pair must NEVER let a
+# mixed-field rollback classify as success. The route's now() is
+# frozen via injection — no wall-clock race.
+from repo import operator_audit as _oa
 with db() as con:
-    # the plan currently carries price 150 (G5); make the current
-    # operation "price unchanged + name change"
+    # the plan currently carries price 150 (G5); the current operation
+    # is "price unchanged + name change"
     _row_h = con.execute("select name, price_cents from plans where id=%s",
                          (_pl["id"],)).fetchone()
     _name_before_h = _row_h["name"]
-# stale audit: SAME actor/plan/action, same-second boundary, same after
-# price — but a FULL snapshot pair of a DIFFERENT (older) operation
-from repo import operator_audit as _oa
-with db() as con:
-    _oa.record(con, int(_op_id), "plan.update", "plan", str(_pl["id"]),
-               {"name": _name_before_h, "price_cents": 1000},
-               {"name": _name_before_h + "_STALE", "price_cents": 150},
-               int(ts) - 2)
-# inject: commit rollback + the route's mirror runs (provider mutated)
-_p_before_h1 = len(_patches)
-_dbmod.db = _db_rollback_then_raise
-_sml.db = _db_rollback_then_raise
+# freeze the route's clock AFTER recording the stale audit with an
+# earlier-or-equal timestamp, so the stale audit is provably inside
+# the boundary (stale_created >= frozen_tx_ts):
+import time as _time_h
+_frozen_now = int(_time_h.time())
+_orig_now_h = _sml.now
+_sml.now = lambda: _frozen_now
 try:
-    _r_h1 = client.patch(f"/samelabs/plans/{_pl['id']}",
-                         json={"price_cents": 150,
-                               "name": _name_before_h + "_CURRENT"},
-                         cookies={COOKIE_NAME: op_ck})
-except Exception as exc:
-    _r_h1 = type("R", (), {"status_code": 0, "text": str(exc)})()
+    with db() as con:
+        # stale audit: SAME actor/plan/action, created_at == the frozen
+        # tx boundary (>= tx_started), after price == intended price,
+        # but a FULL snapshot pair of a DIFFERENT operation
+        _oa.record(con, int(_op_id), "plan.update", "plan",
+                   str(_pl["id"]),
+                   {"name": _name_before_h, "price_cents": 1000},
+                   {"name": _name_before_h + "_STALE", "price_cents": 150},
+                   _frozen_now)
+    # inject: commit rollback + the route's mirror runs (provider mutated)
+    _p_before_h1 = len(_patches)
+    _dbmod.db = _db_rollback_then_raise
+    _sml.db = _db_rollback_then_raise
+    try:
+        _r_h1 = client.patch(f"/samelabs/plans/{_pl['id']}",
+                             json={"price_cents": 150,
+                                   "name": _name_before_h + "_CURRENT"},
+                             cookies={COOKIE_NAME: op_ck})
+    except Exception as exc:
+        _r_h1 = type("R", (), {"status_code": 0, "text": str(exc)})()
+    finally:
+        _dbmod.db = _orig_db
+        _sml.db = _orig_sml_db
 finally:
-    _dbmod.db = _orig_db
-    _sml.db = _orig_sml_db
+    _sml.now = _orig_now_h
 with db() as con:
     _row_h1 = con.execute("select name, price_cents from plans"
                           " where id=%s", (_pl["id"],)).fetchone()
+    # prove the stale audit is inside the boundary the classifier used
+    _stale_in_window = con.execute(
+        "select count(*) c from operator_audit"
+        " where target_type='plan' and target_id=%s"
+        "   and after_json->>'price_cents'='150'"
+        "   and created_at >= %s",
+        (str(_pl["id"]), _frozen_now)).fetchone()["c"]
 _h1_was_success = _r_h1.status_code == 200
-check("H1 stale same-second same-price audit + mixed-field rollback → 绝不 SUCCESS",
+check("H1d precondition: stale same-price audit 确在 frozen tx boundary 内",
+      _stale_in_window >= 1, f"in_window={_stale_in_window}")
+check("H1d stale in-window same-price audit + mixed-field rollback → 绝不 SUCCESS",
       (not _h1_was_success) and _row_h1["name"] == _name_before_h,
       f"st={_r_h1.status_code} name={_row_h1['name']!r}"
       f" (before={_name_before_h!r}) was_success={_h1_was_success}")
