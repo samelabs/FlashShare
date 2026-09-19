@@ -431,13 +431,18 @@ check("O28 dispute→refund(+flip) one revoke + marker disputed",
 from economy.subscription import bind_checkout as _bind_sub
 uidS3 = _mkuser(_u + "s3")
 with db() as con:
+    # shared-CI-db isolation: pick a sort rank unoccupied by an earlier
+    # suite fixture (plans_paid_sort_order_uk is global across suites)
+    _s3_sort = int(con.execute(
+        "select coalesce(max(sort_order), 0) + 1 s from plans"
+    ).fetchone()["s"])
     _planS3 = con.execute(
         "insert into plans (code, name, monthly_credits, price_cents,"
         " currency, active, creem_product_id, sort_order, period_days,"
         " ingress_files_24h, ingress_bytes_24h, created_at, updated_at)"
-        " values (%s, 'PS3', 100, 999, 'USD', TRUE, %s, 93, 30, 100,"
+        " values (%s, 'PS3', 100, 999, 'USD', TRUE, %s, %s, 30, 100,"
         " 104857600, %s, %s) returning *",
-        (f"ps3_{_u}", f"prod_ps3_{_u}", ts, ts)).fetchone()
+        (f"ps3_{_u}", f"prod_ps3_{_u}", _s3_sort, ts, ts)).fetchone()
 oS3 = _order(uidS3, "plan", _planS3["id"], f"pay:{_u}-s3", amount=999, credits=None)
 _ev = {"id": "ch_s3", "request_id": f"order:{oS3['id']}",
        "order": {"id": f"ord_s3_{_u}", "status": "paid", "type": "recurring",
@@ -537,14 +542,19 @@ import time as _tm
 uidPS = _mkuser(_u + "ps")
 _pl = None
 with db() as con:
+    # shared-CI-db isolation: dynamic sort rank (77 may already be
+    # occupied by an earlier suite in the single-database CI model)
+    _pc_sort = int(con.execute(
+        "select coalesce(max(sort_order), 0) + 1 s from plans"
+    ).fetchone()["s"])
     _pl = con.execute(
         "insert into plans (code, name, monthly_credits, price_cents,"
         " currency, active, creem_product_id, sort_order, period_days,"
         " ingress_files_24h, ingress_bytes_24h, created_at, updated_at)"
         " values (%s, 'PC Plan', 100, 999, 'USD', TRUE, 'prod_pc_plan',"
-        " 77, 30, 100, 104857600, %s, %s) on conflict (code) do update"
+        " %s, 30, 100, 104857600, %s, %s) on conflict (code) do update"
         " set monthly_credits=EXCLUDED.monthly_credits returning *",
-        (f"pcplan_{_u}", ts, ts)).fetchone()
+        (f"pcplan_{_u}", _pc_sort, ts, ts)).fetchone()
     _pl = dict(_pl)
 oS = _order(uidPS, "plan", _pl["id"], f"pay:{_u}-ps", amount=999,
             credits=None)
