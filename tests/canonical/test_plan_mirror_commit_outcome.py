@@ -322,6 +322,88 @@ check("G2 create: initial GET None → fail closed / 零 PATCH / row 未落",
 _fetch_none_first_update.armed = False
 _creem._fetch_product = _orig_fetch_g
 
+# ── G3/G4/G5: provider-before PRICE must be explicit (missing/None →
+#    fail closed; explicit legitimate 0 is a real fact) ──
+class _PartialHook:
+    """One-shot partial provider snapshot: valid id + currency but the
+    price key MISSING (or an explicit 0 for the positive case)."""
+    def __init__(self):
+        self.armed = False
+        self.pid = None
+        self.override = None
+    def __call__(self, pid):
+        if self.armed and pid == self.pid and self.override is not None:
+            self.armed = False
+            return dict(self.override)   # partial provider snapshot
+        return _orig_fetch_g(pid)
+_partial_hook = _PartialHook()
+_creem._fetch_product = _partial_hook
+
+# G3: update — id/currency present, price key missing → fail closed
+_p_before_g3 = len(_patches)
+_partial_hook.armed = True
+_partial_hook.pid = "prod_mc_x"
+_partial_hook.override = {"id": "prod_mc_x", "currency": "USD",
+                          "billing_type": "recurring",
+                          "billing_period": "every-month"}   # no price key
+_r_g3 = client.patch(f"/samelabs/plans/{_pl['id']}",
+                     json={"price_cents": 3777},
+                     cookies={COOKIE_NAME: op_ck})
+with db() as con:
+    _row_g3 = con.execute("select price_cents from plans where id=%s",
+                          (_pl["id"],)).fetchone()
+check("G3 update: snapshot missing price → 502 / 零 PATCH / local 不变",
+      _r_g3.status_code == 502
+      and str(_r_g3.json().get("error", "")).startswith("price_mirror")
+      and len(_patches) == _p_before_g3
+      and int(_row_g3["price_cents"]) != 3777,
+      f"{_r_g3.status_code} patches={len(_patches)}/{_p_before_g3}"
+      f" row={dict(_row_g3)}")
+
+# G4: create — id/currency present, price=None → fail closed, row absent
+_p_before_g4 = len(_patches)
+_partial_hook.armed = True
+_partial_hook.pid = "prod_mc_g4"
+_partial_hook.override = {"id": "prod_mc_g4", "currency": "USD",
+                          "price": None,
+                          "billing_type": "recurring",
+                          "billing_period": "every-month"}
+_r_g4 = client.post("/samelabs/plans", json={
+    "code": f"mcg4_{_u}", "name": "MC G4", "monthly_credits": 70,
+    "price_cents": 888, "creem_product_id": "prod_mc_g4",
+    "sort_order": _mc_sort + 6, "period_days": 30,
+    "ingress_files_24h": 50, "ingress_bytes_24h": 104857600},
+    cookies={COOKIE_NAME: op_ck})
+with db() as con:
+    _row_g4 = con.execute("select 1 from plans where code=%s",
+                          (f"mcg4_{_u}",)).fetchone()
+check("G4 create: snapshot price=None → 502 / 零 PATCH / row 未落",
+      _r_g4.status_code == 502
+      and str(_r_g4.json().get("error", "")).startswith("price_mirror")
+      and len(_patches) == _p_before_g4
+      and _row_g4 is None,
+      f"{_r_g4.status_code} patches={len(_patches)}/{_p_before_g4}"
+      f" row={_row_g4}")
+
+# G5: explicit legitimate price=0 is a PROVEN fact — not treated as
+#     missing; the update proceeds normally on the real (0, USD) before
+_prod_state["prod_mc_x"]["price"] = 0   # provider carries explicit 0
+_p_before_g5 = len(_patches)
+_r_g5 = client.patch(f"/samelabs/plans/{_pl['id']}",
+                     json={"price_cents": 150},
+                     cookies={COOKIE_NAME: op_ck})
+with db() as con:
+    _row_g5 = con.execute("select price_cents from plans where id=%s",
+                          (_pl["id"],)).fetchone()
+check("G5 显式合法 price=0 是真实 fact → 更新正常 (不误判 missing)",
+      _r_g5.status_code == 200 and int(_row_g5["price_cents"]) == 150
+      and len(_patches) == _p_before_g5 + 1
+      and _prod_state["prod_mc_x"]["price"] == 150,
+      f"{_r_g5.status_code} patches={len(_patches)}/{_p_before_g5}"
+      f" row={dict(_row_g5)} mirror={_prod_state['prod_mc_x']}")
+# restore provider/local price for the sections that follow
+_prod_state["prod_mc_x"]["price"] = 150
+
 # ── B-series: strict exact-before three-way classifier ──
 import app.routes.samelabs as _smlmod
 from repo import operator_audit as _oa

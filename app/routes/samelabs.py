@@ -463,10 +463,20 @@ async def samelabs_create_plan(request: Request):
                     _pb = _creem._fetch_product(fields["creem_product_id"])
                 except Exception:
                     _pb = None
+                # provider-before price must be an EXPLICIT, provable
+                # provider fact: missing / None / unparseable fails
+                # closed BEFORE any provider mutation. An explicit
+                # legitimate numeric 0 is a real fact, never treated as
+                # missing ("key absent" ≠ "value 0").
                 if not isinstance(_pb, dict) \
-                        or not str(_pb.get("currency") or "").strip():
+                        or not str(_pb.get("currency") or "").strip() \
+                        or "price" not in _pb or _pb["price"] is None:
                     raise _PlanMirrorError("price_mirror_unavailable")
-                _mirror_before = (int(_pb.get("price") or 0),
+                try:
+                    _pb_price = int(_pb["price"])
+                except (TypeError, ValueError):
+                    raise _PlanMirrorError("price_mirror_unavailable")
+                _mirror_before = (_pb_price,
                                   str(_pb.get("currency") or "").upper())
                 _mout = _creem.mirror_price_with_reconciliation(
                     fields["creem_product_id"], _mirror_before[0],
@@ -653,10 +663,18 @@ async def samelabs_update_plan(plan_id: int, request: Request):
                         _pb = _creem._fetch_product(target_product)
                     except Exception:
                         _pb = None
+                    # provider-before price must be an EXPLICIT,
+                    # provable provider fact (missing / None /
+                    # unparseable → fail closed before any mutation);
+                    # an explicit legitimate 0 is a real fact.
                     if not isinstance(_pb, dict) \
-                            or not str(_pb.get("currency") or "").strip():
+                            or not str(_pb.get("currency") or "").strip() \
+                            or "price" not in _pb or _pb["price"] is None:
                         raise _PlanMirrorError("price_mirror_unavailable")
-                    _before_price = int(_pb.get("price") or 0)
+                    try:
+                        _before_price = int(_pb["price"])
+                    except (TypeError, ValueError):
+                        raise _PlanMirrorError("price_mirror_unavailable")
                     _before_cur = str(_pb.get("currency") or "").upper()
                     _mirror_before = (_before_price, _before_cur)
                     try:
