@@ -153,6 +153,19 @@ async def samelabs_tools(request: Request):
 from repo import operator_audit as _audit_repo
 
 
+def _proven_provider_price(prod: dict):
+    """The provider-before price must be an EXPLICIT canonical integer
+    fact (Creem contract: integer cents). Anything that would need an
+    int() COERCION is not a proven fact and fails closed — including
+    floats (150.7 would silently truncate to 150), strings, and bool
+    (Python bool is an int subclass but not a price). An explicit
+    integer 0 is a legitimate fact."""
+    v = prod["price"]
+    if isinstance(v, bool) or not isinstance(v, int):
+        return None
+    return v
+
+
 def _classify_db_commit_outcome(plan_id, intended, before, actor_id,
                                 tx_started, action):
     """DB-commit-outcome closure for the plan commercial mirror — a
@@ -472,9 +485,8 @@ async def samelabs_create_plan(request: Request):
                         or not str(_pb.get("currency") or "").strip() \
                         or "price" not in _pb or _pb["price"] is None:
                     raise _PlanMirrorError("price_mirror_unavailable")
-                try:
-                    _pb_price = int(_pb["price"])
-                except (TypeError, ValueError):
+                _pb_price = _proven_provider_price(_pb)
+                if _pb_price is None:
                     raise _PlanMirrorError("price_mirror_unavailable")
                 _mirror_before = (_pb_price,
                                   str(_pb.get("currency") or "").upper())
@@ -671,9 +683,8 @@ async def samelabs_update_plan(plan_id: int, request: Request):
                             or not str(_pb.get("currency") or "").strip() \
                             or "price" not in _pb or _pb["price"] is None:
                         raise _PlanMirrorError("price_mirror_unavailable")
-                    try:
-                        _before_price = int(_pb["price"])
-                    except (TypeError, ValueError):
+                    _before_price = _proven_provider_price(_pb)
+                    if _before_price is None:
                         raise _PlanMirrorError("price_mirror_unavailable")
                     _before_cur = str(_pb.get("currency") or "").upper()
                     _mirror_before = (_before_price, _before_cur)

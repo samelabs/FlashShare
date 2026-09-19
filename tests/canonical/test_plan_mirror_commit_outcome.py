@@ -404,6 +404,58 @@ check("G5 显式合法 price=0 是真实 fact → 更新正常 (不误判 missin
 # restore provider/local price for the sections that follow
 _prod_state["prod_mc_x"]["price"] = 150
 
+# ── G6/G7: non-canonical price TYPES fail closed — no int() coercion
+#    may fabricate a before (float 150.7 → 150, bool True → 1) ──
+def _noncanon_case(tag, bad_price, is_create):
+    _p_before = len(_patches)
+    _partial_hook.armed = True
+    _partial_hook.pid = "prod_mc_x" if not is_create else f"prod_nc_{tag}"
+    _partial_hook.override = {"id": _partial_hook.pid, "currency": "USD",
+                              "price": bad_price,
+                              "billing_type": "recurring",
+                              "billing_period": "every-month"}
+    if is_create:
+        r = client.post("/samelabs/plans", json={
+            "code": f"mcnc{tag}_{_u}", "name": "MC NC", "monthly_credits": 90,
+            "price_cents": 1234, "creem_product_id": _partial_hook.pid,
+            "sort_order": _mc_sort + 10, "period_days": 30,
+            "ingress_files_24h": 50, "ingress_bytes_24h": 104857600},
+            cookies={COOKIE_NAME: op_ck})
+        with db() as con:
+            row = con.execute("select 1 from plans where code=%s",
+                              (f"mcnc{tag}_{_u}",)).fetchone()
+        return (r.status_code == 502
+                and str(r.json().get("error", "")).startswith("price_mirror")
+                and len(_patches) == _p_before and row is None,
+                f"{r.status_code} patches={len(_patches)}/{_p_before} row={row}")
+    r = client.patch(f"/samelabs/plans/{_pl['id']}",
+                     json={"price_cents": 1990},
+                     cookies={COOKIE_NAME: op_ck})
+    with db() as con:
+        row = con.execute("select price_cents from plans where id=%s",
+                          (_pl["id"],)).fetchone()
+    return (r.status_code == 502
+            and str(r.json().get("error", "")).startswith("price_mirror")
+            and len(_patches) == _p_before
+            and int(row["price_cents"]) != 1990,
+            f"{r.status_code} patches={len(_patches)}/{_p_before} row={dict(row)}")
+
+_ok6a, _d6a = _noncanon_case("f", 150.7, False)     # update: float
+check("G6a update: provider price=150.7 (float) → fail closed / 零 PATCH / local 不变",
+      _ok6a, _d6a)
+_ok6b, _d6b = _noncanon_case("fc", 150.7, True)     # create: float
+check("G6b create: provider price=150.7 (float) → fail closed / 零 PATCH / row 未落",
+      _ok6b, _d6b)
+_ok7a, _d7a = _noncanon_case("b", True, False)      # update: bool
+check("G7a update: provider price=True (bool) → fail closed / 零 PATCH",
+      _ok7a, _d7a)
+_ok7b, _d7b = _noncanon_case("bc", True, True)      # create: bool
+check("G7b create: provider price=True (bool) → fail closed / row 未落",
+      _ok7b, _d7b)
+_ok7c, _d7c = _noncanon_case("s", "1500", False)    # update: string
+check("G7c update: provider price='1500' (string) → fail closed / 零 coercion",
+      _ok7c, _d7c)
+
 # ── B-series: strict exact-before three-way classifier ──
 import app.routes.samelabs as _smlmod
 from repo import operator_audit as _oa
