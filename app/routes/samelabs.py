@@ -153,19 +153,25 @@ async def samelabs_tools(request: Request):
 from repo import operator_audit as _audit_repo
 
 
-def _classify_db_commit_outcome(plan_id, intended, actor_id, ts):
-    """DB-commit-outcome closure for the plan commercial mirror.
+def _classify_db_commit_outcome(plan_id, intended, before, actor_id,
+                                tx_started, action):
+    """DB-commit-outcome closure for the plan commercial mirror — a
+    strict three-way verdict against EXACT snapshots.
 
     The provider provably carries the intended price, but the local
     COMMIT raised / its outcome is unknown. An INDEPENDENT fresh
-    connection reads the exact plan row + the matching success audit
-    fact and classifies:
-      "success"   — row == intended AND the success audit durable
-                    (they committed together; nothing to do)
-      "rollback"  — update: row == exact before AND no success audit;
-                    create: row absent AND no audit → caller may run
-                    the rollback-gated provider restore
-      "unresolved" — DB unreadable / mixed row / audit contradiction
+    connection reads the exact plan row and THIS operation's audit fact
+    (correlation boundary = tx_started + action + before→intended pair;
+    created_at is frozen when the transaction opens — a provider call
+    crossing a second boundary never loses the match, and a historical
+    same-price audit with a different before never matches).
+
+      update:  row == intended + matching audit → DURABLE_SUCCESS
+               row == exact BEFORE + no matching audit → PROVEN_ROLLBACK
+               any other row/audit combination → UNRESOLVED
+      create:  row == intended + matching audit → DURABLE_SUCCESS
+               row absent + no matching audit → PROVEN_ROLLBACK
+               any other → UNRESOLVED
     Never a second speculative mutation inside this classification.
     """
     from database import db as _fdb
@@ -175,27 +181,37 @@ def _classify_db_commit_outcome(plan_id, intended, actor_id, ts):
                 "SELECT * FROM plans WHERE id=%s", (plan_id,)).fetchone()
             audit = con.execute(
                 "SELECT 1 FROM operator_audit"
-                " WHERE action IN ('plan.create','plan.update')"
-                "   AND target_type='plan' AND target_id=%s"
+                " WHERE action=%s AND target_type='plan' AND target_id=%s"
                 "   AND actor_user_id=%s AND created_at>=%s"
                 "   AND after_json->>'price_cents'=%s"
                 " LIMIT 1",
-                (str(plan_id), int(actor_id), int(ts),
+                (action, str(plan_id), int(actor_id), int(tx_started),
                  str(intended["price_cents"]))).fetchone()
     except Exception:
         return "unresolved", None
     if row is None:
+        # create: row absent — only "no THIS-operation audit" proves rollback
         return ("rollback", None) if audit is None else ("unresolved", None)
     cur_price = int(row["price_cents"] or 0)
     cur_cur = str(row["currency"] or "")
     cur_prod = str(row["creem_product_id"] or "")
-    if (cur_price == int(intended["price_cents"])
-            and cur_cur == str(intended.get("currency") or "")
-            and cur_prod == str(intended.get("creem_product_id") or "")):
+    _is_intended = (cur_price == int(intended["price_cents"])
+                    and cur_cur == str(intended.get("currency") or "")
+                    and cur_prod == str(intended.get("creem_product_id") or ""))
+    if _is_intended:
         return ("success", dict(row)) if audit is not None \
             else ("unresolved", None)
-    if audit is None:
-        return "rollback", dict(row)   # row == exact before, no audit
+    # NOT intended: PROVEN_ROLLBACK requires the row to be the EXACT
+    # before snapshot AND no matching THIS-operation audit — anything
+    # else (third-state row, or a matching audit over a foreign row)
+    # is unprovable.
+    if before is None:
+        return "unresolved", None   # update must pass its exact before
+    _is_before = (cur_price == int(before["price_cents"])
+                  and cur_cur == str(before.get("currency") or "")
+                  and cur_prod == str(before.get("creem_product_id") or ""))
+    if _is_before and audit is None:
+        return "rollback", dict(row)
     return "unresolved", None
 
 
@@ -477,7 +493,8 @@ async def samelabs_create_plan(request: Request):
                     {"price_cents": int(fields["price_cents"]),
                      "currency": str(fields.get("currency") or "USD"),
                      "creem_product_id": _prod},
-                    int(user["id"]), int(row["created_at"]))
+                    None, int(user["id"]), int(row["created_at"]),
+                    "plan.create")
             except Exception:
                 outcome, _row2 = "unresolved", None
             if outcome == "rollback":
@@ -508,7 +525,8 @@ async def samelabs_create_plan(request: Request):
                 {"price_cents": int(fields["price_cents"]),
                  "currency": str(fields.get("currency") or "USD"),
                  "creem_product_id": _prod},
-                int(user["id"]), int(row["created_at"]))
+                None, int(user["id"]), int(row["created_at"]),
+                "plan.create")
         except Exception:
             outcome, _row2 = "unresolved", None
         if outcome == "rollback":
@@ -575,11 +593,17 @@ async def samelabs_update_plan(plan_id: int, request: Request):
     # (the UPDATE row lock is the serialization boundary).
     commercial_change = ("price_cents" in fields) or ("creem_product_id" in fields)
     import psycopg2
+    _tx_ts = now()   # THIS operation's correlation boundary (frozen)
+    _db_before = None
     try:
         with db() as con:
             # in-tx locked read → before snapshot (NOT the stale outer row)
             locked = plan_by_id_for_update(con, plan_id)
             before = _snap_plan(locked)
+            _db_before = {"price_cents": int(locked["price_cents"] or 0),
+                          "currency": str(locked["currency"] or ""),
+                          "creem_product_id":
+                              str(locked["creem_product_id"] or "")}
             # PRODUCT BINDING IMMUTABILITY: creem_product_id is a
             # stable provider binding identity. NULL→X binds; X→X is a
             # no-op; X→Y and X→NULL are FORBIDDEN — a rebind (or clear)
@@ -663,7 +687,8 @@ async def samelabs_update_plan(plan_id: int, request: Request):
                     {"price_cents": int(row["price_cents"]),
                      "currency": str(row["currency"] or "USD"),
                      "creem_product_id": _prod},
-                    int(user["id"]), int(now()))
+                    _db_before, int(user["id"]), int(_tx_ts),
+                    "plan.update")
             except Exception:
                 outcome, _row2 = "unresolved", None
             if outcome == "rollback":
@@ -694,7 +719,8 @@ async def samelabs_update_plan(plan_id: int, request: Request):
                 {"price_cents": int(row["price_cents"]),
                  "currency": str(row["currency"] or "USD"),
                  "creem_product_id": _prod3},
-                int(user["id"]), int(now()))
+                _db_before, int(user["id"]), int(_tx_ts),
+                "plan.update")
         except Exception:
             outcome3, _row3 = "unresolved", None
         if outcome3 == "rollback":

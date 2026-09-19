@@ -8,6 +8,8 @@
 -- Execute EXACTLY ONCE against the target deployed DB.
 --
 -- Rules of engagement (project policy):
+--   * Order of operations: (1) new columns/tables, (2) FULL data
+--     preflight, (3) new unique indexes / CHECK constraints, (4) COMMIT.
 --   * Violations ABORT the transaction — fail loud, no data repair,
 --     no silent normalization, no compatibility columns.
 --   * The project is not live: on violation, STOP the deploy and surface
@@ -44,59 +46,6 @@ CREATE TABLE ingress_requests (
 CREATE UNIQUE INDEX ingress_requests_ref_live_idx
   ON ingress_requests(user_id, request_ref)
   WHERE status IN ('running','ok');
-
-CREATE UNIQUE INDEX orders_user_pending_plan_uk
-  ON orders(user_id)
-  WHERE kind = 'plan' AND status = 'pending';
-
-CREATE UNIQUE INDEX orders_user_item_pending_pkg_uk
-  ON orders(user_id, item_id)
-  WHERE kind = 'package' AND status = 'pending';
-
--- ── -1b. order field-combination invariants (kind/snapshot/status/
---         timestamps/granted). Historical rows violating these are
---         deployment-blocking facts, not auto-repairs. ──
-ALTER TABLE orders
-  ADD CONSTRAINT orders_kind_ck
-    CHECK (kind IN ('package','plan')),
-  ADD CONSTRAINT orders_kind_snapshot_ck
-    CHECK ((kind = 'package' AND credits_snapshot IS NOT NULL
-            AND credits_snapshot > 0)
-        OR (kind = 'plan' AND credits_snapshot IS NULL)),
-  ADD CONSTRAINT orders_plan_status_ck
-    CHECK (kind <> 'plan' OR status IN ('pending','paid','failed')),
-  ADD CONSTRAINT orders_plan_not_granted_ck
-    CHECK (kind <> 'plan' OR granted = FALSE),
-  ADD CONSTRAINT orders_plan_not_reversed_ck
-    CHECK (kind <> 'plan' OR status NOT IN ('refunded','disputed')),
-  ADD CONSTRAINT orders_pending_failed_fields_ck
-    CHECK (status NOT IN ('pending','failed')
-           OR (granted = FALSE AND paid_at IS NULL AND refunded_at IS NULL)),
-  ADD CONSTRAINT orders_pending_identity_ns_ck
-    CHECK (status IN ('pending','failed') OR provider_order_id IS NOT NULL),
-  ADD CONSTRAINT orders_pending_identity_ch_ck
-    CHECK (status NOT IN ('pending','failed') OR provider_order_id IS NULL
-           OR provider_order_id LIKE 'ch:%'),
-  ADD CONSTRAINT orders_package_paid_fields_ck
-    CHECK (kind <> 'package' OR status <> 'paid'
-           OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NULL
-               AND provider_order_id IS NOT NULL)),
-  ADD CONSTRAINT orders_package_reversal_fields_ck
-    CHECK (kind <> 'package' OR status NOT IN ('refunded','disputed')
-           OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NOT NULL
-               AND provider_order_id IS NOT NULL)),
-  ADD CONSTRAINT orders_plan_paid_fields_ck
-    CHECK (kind <> 'plan' OR status <> 'paid'
-           OR (granted = FALSE AND paid_at IS NOT NULL AND refunded_at IS NULL
-               AND provider_order_id LIKE 'sub:%')),
-  ADD CONSTRAINT orders_paid_fields_ck
-    CHECK (status <> 'paid' OR paid_at IS NOT NULL),
-  ADD CONSTRAINT orders_reversal_fields_ck
-    CHECK (status NOT IN ('refunded','disputed') OR refunded_at IS NOT NULL),
-  ADD CONSTRAINT orders_non_reversal_refund_ts_ck
-    CHECK (status IN ('refunded','disputed') OR refunded_at IS NULL),
-  ADD CONSTRAINT orders_granted_kind_ck
-    CHECK (granted = FALSE OR kind = 'package');
 
 -- ── 0. add the new nullable column (transactional DDL: a later preflight
 --        failure rolls this back together with everything else) ──
@@ -254,5 +203,60 @@ ALTER TABLE orders
   ADD CONSTRAINT orders_amount_ck CHECK (amount_cents >= 0),
   ADD CONSTRAINT orders_credits_snapshot_ck
     CHECK (credits_snapshot IS NULL OR credits_snapshot >= 0);
+
+-- ── -1b. order field-combination invariants (kind/snapshot/status/
+--         timestamps/granted). Historical rows violating these are
+--         deployment-blocking facts, not auto-repairs. ──
+ALTER TABLE orders
+  ADD CONSTRAINT orders_kind_ck
+    CHECK (kind IN ('package','plan')),
+  ADD CONSTRAINT orders_kind_snapshot_ck
+    CHECK ((kind = 'package' AND credits_snapshot IS NOT NULL
+            AND credits_snapshot > 0)
+        OR (kind = 'plan' AND credits_snapshot IS NULL)),
+  ADD CONSTRAINT orders_plan_status_ck
+    CHECK (kind <> 'plan' OR status IN ('pending','paid','failed')),
+  ADD CONSTRAINT orders_plan_not_granted_ck
+    CHECK (kind <> 'plan' OR granted = FALSE),
+  ADD CONSTRAINT orders_plan_not_reversed_ck
+    CHECK (kind <> 'plan' OR status NOT IN ('refunded','disputed')),
+  ADD CONSTRAINT orders_pending_failed_fields_ck
+    CHECK (status NOT IN ('pending','failed')
+           OR (granted = FALSE AND paid_at IS NULL AND refunded_at IS NULL)),
+  ADD CONSTRAINT orders_pending_identity_ns_ck
+    CHECK (status IN ('pending','failed') OR provider_order_id IS NOT NULL),
+  ADD CONSTRAINT orders_pending_identity_ch_ck
+    CHECK (status NOT IN ('pending','failed') OR provider_order_id IS NULL
+           OR provider_order_id LIKE 'ch:%'),
+  ADD CONSTRAINT orders_package_paid_fields_ck
+    CHECK (kind <> 'package' OR status <> 'paid'
+           OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NULL
+               AND provider_order_id IS NOT NULL)),
+  ADD CONSTRAINT orders_package_reversal_fields_ck
+    CHECK (kind <> 'package' OR status NOT IN ('refunded','disputed')
+           OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NOT NULL
+               AND provider_order_id IS NOT NULL)),
+  ADD CONSTRAINT orders_plan_paid_fields_ck
+    CHECK (kind <> 'plan' OR status <> 'paid'
+           OR (granted = FALSE AND paid_at IS NOT NULL AND refunded_at IS NULL
+               AND provider_order_id LIKE 'sub:%')),
+  ADD CONSTRAINT orders_paid_fields_ck
+    CHECK (status <> 'paid' OR paid_at IS NOT NULL),
+  ADD CONSTRAINT orders_reversal_fields_ck
+    CHECK (status NOT IN ('refunded','disputed') OR refunded_at IS NOT NULL),
+  ADD CONSTRAINT orders_non_reversal_refund_ts_ck
+    CHECK (status IN ('refunded','disputed') OR refunded_at IS NULL),
+  ADD CONSTRAINT orders_granted_kind_ck
+    CHECK (granted = FALSE OR kind = 'package');
+
+-- pending-intent unique indexes (data preflight above guarantees no
+-- duplicate pending groups exist, so index creation cannot fail soft)
+CREATE UNIQUE INDEX orders_user_pending_plan_uk
+  ON orders(user_id)
+  WHERE kind = 'plan' AND status = 'pending';
+
+CREATE UNIQUE INDEX orders_user_item_pending_pkg_uk
+  ON orders(user_id, item_id)
+  WHERE kind = 'package' AND status = 'pending';
 
 COMMIT;

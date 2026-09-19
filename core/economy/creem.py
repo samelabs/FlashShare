@@ -386,6 +386,19 @@ def fulfill_by_request_id(order_id: int, provider_order_id: str,
         # rewrite a checked-out order's granted quantity
         credits = int(row["credits_snapshot"] or 0)
         user_id = row["user_id"]
+        # ── FULL payment/identity proof BEFORE any Credits grant ──
+        # Successful payment identity MUST close on the REAL provider
+        # order id: a completed checkout always carries one. A missing
+        # provider order id is a proof failure — NEVER promoted to a
+        # paid final identity via the ch:* namespace.
+        if not provider_order_id or not str(provider_order_id).strip():
+            raise KeyError("provider_order_id_missing")
+        # If the local order already carries a provisional ch:* binding,
+        # the success proof must name the SAME checkout (prevents binding
+        # an unrelated checkout's completion onto this order).
+        _bound = row["provider_order_id"] or ""
+        if _bound.startswith("ch:") and checkout_id and _bound != "ch:" + checkout_id:
+            raise KeyError("checkout_identity_conflict")
         # ── terminal gate: a reversed order NEVER re-grants and its
         # marker is never rewritten by a (stale/replayed) success ──
         if row["status"] in ("refunded", "disputed"):
@@ -393,26 +406,16 @@ def fulfill_by_request_id(order_id: int, provider_order_id: str,
                     "reason": f"order_{row['status']}"}
         if row["status"] == "paid":
             return {"granted": False, "credits": 0, "reason": "replay"}
-    # 授信先行 (billing 幂等事务, idem order:{id}); 终态戳由 guarded
-    # writer 落 — granted=TRUE 蕴含 ledger 行已存在 (崩溃一致性)。
-    # 崩溃自愈: 授信后崩溃 → 重试时 grant 幂等重放 + paid 补戳。
+    # All proof passed — grant first (billing 幂等事务, idem order:{id});
+    # the terminal stamp lands via the guarded writer — granted=TRUE
+    # implies the ledger row exists (crash consistency). Crash
+    # self-heal: grant → crash → retry replays the idempotent grant and
+    # completes the paid stamp.
     if credits > 0:
         from economy.billing import grant
         grant(user_id, credits, "grant_package",
               ref_type="order", ref_id=str(order_id),
               idem_key=f"order:{order_id}", note=amount_note)
-    # Successful payment identity MUST close on the REAL provider order
-    # id: a completed checkout always carries one. A missing provider
-    # order id is a proof failure — NEVER promoted to a paid final
-    # identity via the ch:* namespace.
-    if not provider_order_id or not str(provider_order_id).strip():
-        raise KeyError("provider_order_id_missing")
-    # If the local order already carries a provisional ch:* binding, the
-    # success proof must name the SAME checkout (prevents binding an
-    # unrelated checkout's completion onto this order).
-    _bound = row["provider_order_id"] or ""
-    if _bound.startswith("ch:") and checkout_id and _bound != "ch:" + checkout_id:
-        raise KeyError("checkout_identity_conflict")
     # canonical promotion writer itself guards A→B conflicts
     with db() as con:
         _orders_repo.complete_package_order(con, order_id, provider_order_id, ts)

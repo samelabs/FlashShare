@@ -505,7 +505,14 @@ with db() as con:
 _prod_id_orig = _cr2.CREEM_CREDITS_PRODUCT_ID
 _cr2.CREEM_CREDITS_PRODUCT_ID = "prod_credits"
 try:
-    # missing provider order id → no paid / no grant
+    # missing provider order id → no paid / no grant — ZERO ledger row
+    def _grant_rows(uid, oid):
+        with db() as _c:
+            return _c.execute(
+                "select id, delta from ledger where user_id=%s and"
+                " ref_type='order' and ref_id=%s",
+                (uid, str(oid))).fetchall()
+    _before_a = _grant_rows(uidR2b, oR2b["id"])
     _err = None
     try:
         _cr2.fulfill_by_request_id(int(oR2b["id"]), "", "chk_x", 500,
@@ -515,14 +522,16 @@ try:
     with db() as con:
         _r = con.execute("select status, provider_order_id from orders"
                          " where id=%s", (oR2b["id"],)).fetchone()
-    check("R2-2a provider order id missing → KeyError + order 仍 pending",
+    check("R2-2a provider order id missing → KeyError + order 仍 pending + grant row 零变化",
           _err == "'provider_order_id_missing'"
-          and _r["status"] == "pending" and _r["provider_order_id"] is None,
-          f"{_err} {dict(_r)}")
+          and _r["status"] == "pending" and _r["provider_order_id"] is None
+          and _grant_rows(uidR2b, oR2b["id"]) == _before_a,
+          f"{_err} {dict(_r)} rows={_grant_rows(uidR2b, oR2b['id'])}")
 
-    # wrong checkout id vs bound ch: → conflict, no mutation
+    # wrong checkout id vs bound ch: → conflict, no mutation — ZERO ledger
     with db() as con:
         orders_repo.bind_checkout_id(con, oR2b["id"], "chk_real")
+    _before_b = _grant_rows(uidR2b, oR2b["id"])
     _err2 = None
     try:
         _cr2.fulfill_by_request_id(int(oR2b["id"]), "ord_r2b", "chk_OTHER",
@@ -533,10 +542,11 @@ try:
     with db() as con:
         _r2 = con.execute("select status, provider_order_id from orders"
                           " where id=%s", (oR2b["id"],)).fetchone()
-    check("R2-2b wrong checkout id → checkout_identity_conflict + 零 mutation",
+    check("R2-2b wrong checkout id → checkout_identity_conflict + 零 mutation + grant row 零变化",
           _err2 == "'checkout_identity_conflict'"
-          and _r2["status"] == "pending" and _r2["provider_order_id"] == "ch:chk_real",
-          f"{_err2} {dict(_r2)}")
+          and _r2["status"] == "pending" and _r2["provider_order_id"] == "ch:chk_real"
+          and _grant_rows(uidR2b, oR2b["id"]) == _before_b,
+          f"{_err2} {dict(_r2)} rows={_grant_rows(uidR2b, oR2b['id'])}")
 
     # correct proof → paid with REAL provider order id
     _res = _cr2.fulfill_by_request_id(int(oR2b["id"]), "ord_r2b", "chk_real",

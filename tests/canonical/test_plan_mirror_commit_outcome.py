@@ -247,6 +247,98 @@ check("F4 create commit failure → row absent + provider restored to before",
       and len(_patches) > _p_before,
       f"row={_row4} mirror={_prod_state['prod_mc_new']}")
 
+# ── B-series: strict exact-before three-way classifier ──
+import app.routes.samelabs as _smlmod
+from repo import operator_audit as _oa
+
+# B1: update commit unknown + DB third-state (row neither before nor
+#     intended) + no matching audit → UNRESOLVED, never rollback/restore
+with db() as con:
+    con.execute("update plans set price_cents=2099 where id=%s", (_pl["id"],))
+    con.execute("delete from operator_audit where target_type='plan'"
+                " and target_id=%s", (str(_pl["id"]),))
+_p_before_b = len(_patches)
+_v1 = _smlmod._classify_db_commit_outcome(
+    int(_pl["id"]),
+    {"price_cents": 2499, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},
+    {"price_cents": 1699, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},   # exact before
+    int(_op_id), int(ts) - 3600, "plan.update")
+check("B1 update third-state row + no audit → UNRESOLVED (never rollback)",
+      _v1[0] == "unresolved", str(_v1))
+check("B1b classifier 零 provider mutation",
+      len(_patches) == _p_before_b,
+      f"patches={len(_patches)} before={_p_before_b}")
+
+# B2: create commit unknown + unexpected row exists + no audit → UNRESOLVED
+#     (row absent stays the only PROVEN_ROLLBACK shape for create)
+_v2 = _smlmod._classify_db_commit_outcome(
+    999999,
+    {"price_cents": 777, "currency": "USD",
+     "creem_product_id": "prod_mc_new"},
+    None, int(_op_id), int(ts) - 3600, "plan.create")
+_v2b = _smlmod._classify_db_commit_outcome(
+    int(_pl["id"]),   # an EXISTING row where create expected none
+    {"price_cents": 777, "currency": "USD",
+     "creem_product_id": "prod_mc_new"},
+    None, int(_op_id), int(ts) - 3600, "plan.create")
+check("B2 create unexpected row exists → UNRESOLVED (absent 才 rollback)",
+      _v2[0] == "rollback" and _v2b[0] == "unresolved",
+      f"absent={_v2[0]} existing={_v2b[0]}")
+
+# B3: durable commit identified across a second boundary — tx_started
+#     fixed before the provider call, audit written seconds later
+with db() as con:
+    con.execute("update plans set price_cents=1699 where id=%s", (_pl["id"],))
+    _oa.record(con, int(_op_id), "plan.update", "plan", str(_pl["id"]),
+               {"price_cents": 1499}, {"price_cents": 1699}, int(ts) + 5)
+_v3 = _smlmod._classify_db_commit_outcome(
+    int(_pl["id"]),
+    {"price_cents": 1699, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},
+    {"price_cents": 1499, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},
+    int(_op_id), int(ts) - 3, "plan.update")
+check("B3 durable commit 跨秒后仍识别 matching audit → SUCCESS",
+      _v3[0] == "success", str(_v3))
+
+# B3b: historical same-price audit BEFORE this operation's boundary
+#      must never be mistaken for this operation's durable audit
+with db() as con:
+    con.execute("delete from operator_audit where target_type='plan'"
+                " and target_id=%s", (str(_pl["id"]),))
+    _oa.record(con, int(_op_id), "plan.update", "plan", str(_pl["id"]),
+               {"price_cents": 1499}, {"price_cents": 1699}, int(ts) - 7200)
+_v3b = _smlmod._classify_db_commit_outcome(
+    int(_pl["id"]),
+    {"price_cents": 1699, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},
+    {"price_cents": 1499, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},
+    int(_op_id), int(ts) - 3, "plan.update")
+check("B3b 历史同价旧 audit (boundary 之前) 不误认 → 非 SUCCESS",
+      _v3b[0] != "success", str(_v3b))
+
+# B4: compensation fires ONLY on exact PROVEN_ROLLBACK —
+#     exact-before row + no matching audit is the ONLY rollback shape
+with db() as con:
+    con.execute("delete from operator_audit where target_type='plan'"
+                " and target_id=%s", (str(_pl["id"]),))
+# (a real update always has before != intended; row==before here)
+_v4 = _smlmod._classify_db_commit_outcome(
+    int(_pl["id"]),
+    {"price_cents": 1899, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},
+    {"price_cents": 1699, "currency": "USD",
+     "creem_product_id": "prod_mc_x"},   # row == exact before (1699)
+    int(_op_id), int(ts) - 3600, "plan.update")
+check("B4 exact-before row + no matching audit → PROVEN_ROLLBACK (仅此可 restore)",
+      _v4[0] == "rollback", str(_v4))
+check("B4b UNRESOLVED verdict 全程零 provider restore",
+      len(_patches) == _p_before_b,
+      f"patches={len(_patches)} before={_p_before_b}")
+
 # ── F5: compensation basis is the REAL provider GET snapshot ──
 _src = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
             encoding="utf-8").read()
