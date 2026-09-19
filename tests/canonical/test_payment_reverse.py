@@ -676,19 +676,17 @@ check("R9 缺失/乱序 period_end → 500 + zero mutation (两形态)",
       and spendable_balance(u_r9) == b_r9,
       f"{sc}/{body.get('error')} {scb}/{bodyb.get('error')}")
 
-# R10: dispute no-grant path → order disputed (event semantics)
+# R10: dispute for an unbound / never-paid local intent → fail loud
 u_r10 = _mkuser(_u + "r10")
-# zero-snapshot package rows are now schema-illegal (orders_kind_snapshot_ck
-# requires credits_snapshot > 0). The canonical no-grant variant: an order
-# that was NEVER fulfilled (no grant fact) receiving a dispute — the
-# reversal path converges the marker with zero economic movement.
+# pending/failed rows may only carry NULL or ch:* identity. Therefore the
+# legal unresolved shape is: 518 has a pending local intent with NO final
+# provider identity, while the provider reversal references a canonical
+# order identity that 518 never bound. This must fail loud with zero
+# economic / Order mutation.
 with db() as con:
-    o10 = con.execute(
-        "insert into orders (user_id, kind, item_id, provider,"
-        " provider_order_id, status, amount_cents, currency,"
-        " credits_snapshot, created_at) values (%s, 'package', %s,"
-        " 'creem', %s, 'pending', 999, 'USD', 100, %s) returning *",
-        (u_r10, pkg_id, f"ord10_{_u}", ts)).fetchone()
+    o10 = orders_repo.insert_order(
+        con, u_r10, "package", pkg_id, "creem", 999, "USD", ts,
+        credits_snapshot=100)
     order10 = int(o10["id"])
 _TXNS[f"tran_{_u}r10"] = {"object": "transaction", "id": f"tran_{_u}r10",
                           "status": "chargeback", "type": "payment",
@@ -696,12 +694,14 @@ _TXNS[f"tran_{_u}r10"] = {"object": "transaction", "id": f"tran_{_u}r10",
 b_r10 = spendable_balance(u_r10)
 sc, body = _fire("dispute.created", f"tran_{_u}r10")
 with db() as con:
-    or10 = con.execute("select status from orders where id=%s",
-                       (order10,)).fetchone()
-check("R10 dispute on never-paid order → fail loud + zero mutation",
-      sc == 500 and "reversal_without_paid_proof" in str(body.get("error"))
+    or10 = con.execute(
+        "select status, provider_order_id from orders where id=%s",
+        (order10,)).fetchone()
+check("R10 dispute for unbound never-paid order → fail loud + zero mutation",
+      sc == 500 and "package_order_not_found" in str(body.get("error"))
       and spendable_balance(u_r10) == b_r10
-      and or10["status"] == "pending", f"{sc} {body} {dict(or10)}")
+      and or10["status"] == "pending" and or10["provider_order_id"] is None,
+      f"{sc} {body} {dict(or10)}")
 
 # R11: subscription reversal replay → reversed=false / credits=0
 sc, body = _fire("refund.created", f"tran_{_u}rr1")
