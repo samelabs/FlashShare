@@ -95,10 +95,12 @@ BEGIN
            AND provider_order_id NOT LIKE 'ch:%')
        OR (kind = 'package' AND status = 'paid'
            AND (NOT granted OR paid_at IS NULL OR refunded_at IS NOT NULL
-                OR provider_order_id IS NULL))
+                OR provider_order_id IS NULL
+                OR provider_order_id LIKE 'ch:%'))
        OR (kind = 'package' AND status IN ('refunded','disputed')
            AND (NOT granted OR paid_at IS NULL OR refunded_at IS NULL
-                OR provider_order_id IS NULL))
+                OR provider_order_id IS NULL
+                OR provider_order_id LIKE 'ch:%'))
        OR (kind = 'plan' AND status = 'paid'
            AND (granted OR paid_at IS NULL OR refunded_at IS NOT NULL
                 OR provider_order_id IS NULL
@@ -232,6 +234,11 @@ ALTER TABLE orders
     CHECK (kind <> 'package' OR status <> 'paid'
            OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NULL
                AND provider_order_id IS NOT NULL)),
+  ADD CONSTRAINT orders_package_terminal_identity_ck
+    CHECK (kind <> 'package'
+           OR status NOT IN ('paid','refunded','disputed')
+           OR provider_order_id IS NULL
+           OR provider_order_id NOT LIKE 'ch:%'),
   ADD CONSTRAINT orders_package_reversal_fields_ck
     CHECK (kind <> 'package' OR status NOT IN ('refunded','disputed')
            OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NOT NULL

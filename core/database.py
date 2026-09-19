@@ -432,6 +432,11 @@ _SCHEMA_SQL = (
                OR (granted = TRUE AND paid_at IS NOT NULL
                    AND refunded_at IS NULL
                    AND provider_order_id IS NOT NULL)),
+      CONSTRAINT orders_package_terminal_identity_ck
+        CHECK (kind <> 'package'
+               OR status NOT IN ('paid','refunded','disputed')
+               OR provider_order_id IS NULL
+               OR provider_order_id NOT LIKE 'ch:%%'),
       CONSTRAINT orders_package_reversal_fields_ck
         CHECK (kind <> 'package' OR status NOT IN ('refunded','disputed')
                OR (granted = TRUE AND paid_at IS NOT NULL

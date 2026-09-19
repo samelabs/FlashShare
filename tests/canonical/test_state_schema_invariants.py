@@ -397,10 +397,56 @@ for st in ("pending", "paid", "failed", "refunded", "disputed"):
         ok_statuses = False
 check("F4 五个既有 order 状态均合法 (canonical 组合)", ok_statuses)
 
+# ═══ F5: package terminal 状态禁止 provisional ch:* identity (writer
+# contract: successful payment closes on the REAL provider order id;
+# ch:* is pending/failed-only) ═══
+def _pkg_terminal_row(status, prov):
+    # per-row UNIQUE provider id (a shared id would turn a later
+    # UNIQUE violation into a fake "reject" and mask the real verdict)
+    return ("insert into orders (user_id, kind, item_id, provider,"
+            " provider_order_id, status, amount_cents, currency,"
+            " credits_snapshot, granted, paid_at, refunded_at,"
+            " created_at) values (%s, 'package', 1, 'creem', %s, %s,"
+            " 100, 'USD', 100, TRUE, %s, %s, %s)",
+            (ou, f"{prov}_{status}", status, ts,
+             ts if status in ("refunded", "disputed") else None, ts))
+
+check("F5a package paid + provider_order_id ch:* → DB reject",
+      _db_rejects(*_pkg_terminal_row("paid", "ch:chk_terminal")))
+check("F5b package refunded + ch:* → DB reject (terminal 范围含 reversal)",
+      _db_rejects(*_pkg_terminal_row("refunded", "ch:chk_terminal")))
+check("F5c package disputed + ch:* → DB reject",
+      _db_rejects(*_pkg_terminal_row("disputed", "ch:chk_terminal")))
+# pending/failed + ch:* 仍合法 (provisional namespace 的唯一合法阶段;
+# 独立 user 避开 one-pending-per-(user,item) partial unique)
+ou2 = _mkuser(_u + "ord2")
+with db() as con:
+    con.execute(
+        "insert into orders (user_id, kind, item_id, provider,"
+        " provider_order_id, status, amount_cents, currency,"
+        " credits_snapshot, created_at) values (%s, 'package', 1,"
+        " 'creem', %s, 'pending', 100, 'USD', 100, %s)",
+        (ou2, f"ch:pend_{_u}", ts))
+check("F5d pending + ch:* 仍合法 (provisional 阶段)",
+      not _db_rejects("update orders set status='failed' where"
+                      " provider_order_id=%s", (f"ch:pend_{_u}",)))
+# real canonical provider id 的 paid package 仍合法
+with db() as con:
+    con.execute(
+        "insert into orders (user_id, kind, item_id, provider,"
+        " provider_order_id, status, amount_cents, currency,"
+        " credits_snapshot, granted, paid_at, created_at)"
+        " values (%s, 'package', 1, 'creem', %s, 'paid', 100, 'USD',"
+        " 100, TRUE, %s, %s)",
+        (ou, f"ord_real_{_u}", ts, ts))
+check("F5e paid + real canonical provider id 仍合法",
+      not _db_rejects("update orders set refunded_at=%s where"
+                      " provider_order_id=%s", (None, f"ord_real_{_u}")))
+
 # ══════════ cleanup (FK-safe, prefix-scoped only) ══════════
 # 分立事务: 每步独立提交, 单点失败不回滚其余清理
 with db() as con:
-    for uid in (tu, wu, ou, op):
+    for uid in (tu, wu, ou, ou2, op):
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))
 with db() as con:
     con.execute("delete from tool_calls where user_id=%s", (tu,))
@@ -408,7 +454,7 @@ with db() as con:
     con.execute("delete from ledger where user_id=%s", (wu,))
     con.execute("delete from withdrawals where user_id=%s", (wu,))
 with db() as con:
-    con.execute("delete from orders where user_id=%s", (ou,))
+    con.execute("delete from orders where user_id in (%s, %s)", (ou, ou2))
 with db() as con:
     con.execute("delete from pricing where tool_id like %s", (f"sstool%_{_u}%",))
     con.execute("delete from platform_tools where tool_key like %s",
@@ -416,7 +462,7 @@ with db() as con:
 with db() as con:
     con.execute("delete from plans where code like %s", (f"ss%_{_u}",))
     con.execute("delete from packages where code like %s", (f"sspkg%_{_u}",))
-for uid in (tu, wu, ou, op):
+for uid in (tu, wu, ou, ou2, op):
     with db() as con:
         con.execute("delete from sessions where user_id=%s", (uid,))
         con.execute("delete from api_tokens where user_id=%s", (uid,))
