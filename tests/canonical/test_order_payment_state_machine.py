@@ -228,13 +228,19 @@ check("I-7 pending + canonical identity → schema 拒 (ch: namespace only)", _n
 from economy.subscription import bind_checkout as _bind, apply_paid_period
 uidS = _mkuser(_u + "s")
 with db() as con:
+    # canonical-integration runs suites sequentially against one DB;
+    # choose an actually free paid-plan rank instead of assuming 91 is
+    # unoccupied by an earlier suite fixture.
+    _sm_sort = int(con.execute(
+        "select coalesce(max(sort_order), 0) + 1 s from plans"
+    ).fetchone()["s"])
     _pl = con.execute(
         "insert into plans (code, name, monthly_credits, price_cents,"
         " currency, active, creem_product_id, sort_order, period_days,"
         " ingress_files_24h, ingress_bytes_24h, created_at, updated_at)"
         " values (%s, 'SM Plan', 100, 999, 'USD', TRUE, 'prod_sm_plan',"
-        " 91, 30, 100, 104857600, %s, %s) returning *",
-        (f"smplan_{_u}", ts, ts)).fetchone()
+        " %s, 30, 100, 104857600, %s, %s) returning *",
+        (f"smplan_{_u}", _sm_sort, ts, ts)).fetchone()
     _pl = dict(_pl)
 oS = None
 with db() as con:
