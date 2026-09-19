@@ -29,6 +29,8 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+_os.environ.setdefault("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53901")
+_os.environ.setdefault("FLASHSHARE_GOKAPI_KEY", "test-gk-key")
 
 FAIL = []
 COUNT = 0
@@ -611,6 +613,112 @@ outF6 = resolve_outcome(int(rctF4["id"]))
 check("F6 resolve ok+scalar → OUTCOME_UNRESOLVED",
       outF6["outcome"] == OUTCOME_UNRESOLVED, str(outF6)[:80])
 
+# ══════════ F7-F9: surface-level malformed durable-ok replay ══════════
+# 一个可登录用户 + 三个 ok receipt (malformed/scalar payload), 三入口重试:
+_ckS2 = _register(_u + "surf2")
+with db() as con:
+    uidW = con.execute("select id from users where username=%s",
+                       (_u + "surf2",)).fetchone()["id"]
+hS2 = ingress_request_hash("web_tool_source",
+                           [{"filename": "s.png", "content_type": "image/png",
+                             "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                           {"tool_id": "compress"})
+refW = f"surf-{_u}-w"
+rctW2, uidsW2, _ = claim_ingress_quota(uidW, "127.0.0.1", refW, hS2, [len(PNG)])
+finalize_ok(int(rctW2["id"]), [{"publicId": "SURFW2"}])
+with db() as con:
+    con.execute("update ingress_requests set result_json='{bad'"
+                " where id=%s", (rctW2["id"],))
+_gkW0 = _gk_count()
+_uuW0 = _usage_n(uidW)
+body, ct = _multipart([("s.png", PNG, "image/png")],
+                      {"tool": "compress", "client_ref": refW})
+stW, rW = _req("POST", "/api/uploads", body, {"Content-Type": ct, "Cookie": _ckS2})
+with db() as con:
+    _stW = con.execute("select status from ingress_requests where id=%s",
+                       (rctW2["id"],)).fetchone()["status"]
+check("F7 Web malformed replay → 500 err_ingress_unresolved + 零副作用",
+      stW == 500 and rW.get("error") == "err_ingress_unresolved"
+      and _gk_count() == _gkW0 and _usage_n(uidW) == _uuW0
+      and _stW == "ok",
+      f"{stW} {str(rW)[:80]} gk={_gkW0}->{_gk_count()} usage={_uuW0}->{_usage_n(uidW)}")
+
+# F8: v1 HTTP (同 receipt 形态, Idempotency-Key)
+connS = _hc.HTTPConnection(*_HOST, timeout=30)
+connS.request("POST", "/api/tokens", json.dumps({"name": "surf"}).encode(),
+              {"Cookie": _ckS2, "Content-Type": "application/json"})
+_bS = (json.loads(connS.getresponse().read()).get("token") or {}).get("token")
+connS.close()
+hV1 = ingress_request_hash("v1_source",
+                            [{"filename": "s.png", "content_type": "image/png",
+                              "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                            {})
+refV = f"surf-{_u}-v"
+rctV, uidsV, _ = claim_ingress_quota(uidW, "127.0.0.1", refV, hV1, [len(PNG)])
+finalize_ok(int(rctV["id"]), [{"publicId": "SURFV"}])
+with db() as con:
+    con.execute("update ingress_requests set result_json='123'"
+                " where id=%s", (rctV["id"],))
+_gkV0 = _gk_count()
+_uuV0 = _usage_n(uidW)
+stV, rV = _req("POST", "/api/v1/uploads", PNG, {
+    "Content-Type": "image/png", "x-filename": "s.png",
+    "Content-Length": str(len(PNG)),
+    "Authorization": f"Bearer {_bS}",
+    "Idempotency-Key": refV})
+with db() as con:
+    _stV = con.execute("select status from ingress_requests where id=%s",
+                       (rctV["id"],)).fetchone()["status"]
+check("F8 v1 scalar replay → 500 err_ingress_unresolved + 零副作用",
+      stV == 500 and rV.get("error") == "err_ingress_unresolved"
+      and _gk_count() == _gkV0 and _usage_n(uidW) == _uuV0
+      and _stV == "ok",
+      f"{stV} {str(rV)[:80]} gk={_gkV0}->{_gk_count()} usage={_uuV0}->{_usage_n(uidW)}")
+
+# F9: MCP JSON-RPC (同 receipt 形态, client_ref)
+hMCP = ingress_request_hash("mcp_tool_source",
+                             [{"filename": "s.png", "content_type": "image/png",
+                               "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                             {"tool_id": "compress"})
+refM = f"surf-{_u}-m"
+rctM, uidsM, _ = claim_ingress_quota(uidW, "127.0.0.1", refM, hMCP, [len(PNG)])
+finalize_ok(int(rctM["id"]), [{"publicId": "SURFM"}])
+with db() as con:
+    con.execute("update ingress_requests set result_json='[1,2]'"
+                " where id=%s", (rctM["id"],))  # list 合法 — 改 scalar 破坏:
+    con.execute("update ingress_requests set result_json='42'"
+                " where id=%s", (rctM["id"],))
+_gkM0 = _gk_count()
+_uuM0 = _usage_n(uidW)
+def _mcpS(arguments, name="compress", mid=99):
+    b_ = {"jsonrpc": "2.0", "id": mid, "method": "tools/call",
+          "params": {"name": name, "arguments": arguments}}
+    st_, r_ = _req("POST", "/mcp", b_, {
+        "Content-Type": "application/json", "Authorization": f"Bearer {_bS}",
+        "Accept": "application/json, text/event-stream"})
+    if isinstance(r_, str):
+        for _ln in r_.split("\n"):
+            if _ln.startswith("data:"):
+                r_ = json.loads(_ln[5:]); break
+        else:
+            r_ = json.loads(r_)
+    return st_, r_
+stM, rM = _mcpS({"files": [{"filename": "s.png",
+                            "b64": base64.b64encode(PNG).decode()}],
+                 "params": {}, "delivery": {"expiry_days": 3,
+                                            "allowed_downloads": 10},
+                 "client_ref": refM})
+with db() as con:
+    _stM = con.execute("select status from ingress_requests where id=%s",
+                       (rctM["id"],)).fetchone()["status"]
+_errM = rM.get("error") or {}
+check("F9 MCP scalar replay → -32000 err_ingress_unresolved + 零副作用",
+      _errM.get("code") == -32000
+      and _errM.get("message") == "err_ingress_unresolved"
+      and _gk_count() == _gkM0 and _usage_n(uidW) == _uuM0
+      and _stM == "ok",
+      f"err={_errM} gk={_gkM0}->{_gk_count()} usage={_uuM0}->{_usage_n(uidW)}")
+
 # ══════════ 8-10. receipt states (直接 service 层 fault-injection) ══════════
 from sharing.ingress_receipt import recover_abandoned_ingress_requests
 
@@ -766,7 +874,7 @@ with db() as con:
         "select id from users where username like %s",
         (f"{_u}%",)).fetchall()]
 _uids_all = [uid1, uid2, uid3, uidS, uidR, uidC, uidO, uidT, uidD2, uidU,
-              uidF1, uidF2, uidF3, uidF4] + _http_uids
+              uidF1, uidF2, uidF3, uidF4, uidW] + _http_uids
 with db() as con:
     for uid in _uids_all:
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))

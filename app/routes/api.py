@@ -331,6 +331,12 @@ async def create_upload(request: Request):
         return JSONResponse({"ok": False, "error": "idempotency_conflict"}, 409)
     except IngressInProgress:
         return JSONResponse({"ok": False, "error": "err_upload_in_progress"}, 409)
+    except IngressUnresolved:
+        # durable-ok replay payload unresolvable (NULL/malformed/scalar):
+        # fail closed BEFORE any storage side effect — zero new quota,
+        # zero Gokapi, the receipt stays exactly as it is.
+        return JSONResponse({"ok": False, "error": "err_ingress_unresolved"},
+                            500)
     if replay_result is not None:
         # same ref + same content, previously ok → exact stored response
         if isinstance(replay_result, dict) and "file" in replay_result:

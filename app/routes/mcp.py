@@ -323,6 +323,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         IngressConflict as _IngressConflict,
         IngressInProgress as _IngressInProgress,
         IngressQuotaDenied as _IngressQuotaDenied,
+        IngressUnresolved as _IngressUnresolved,
         OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
     from utils import sanitize_filename as _san
     from security import sniff_allowed as _sniff, sign_source_token
@@ -360,6 +361,10 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             "content": [{"type": "text", "text": json.dumps(exc.denial)}],
             "isError": True,
         })
+    except _IngressUnresolved:
+        # unresolvable durable replay — server-side error, zero side
+        # effects; never leaks out of _call_tool
+        return _rpc_err(mid, -32000, "err_ingress_unresolved")
 
     if _replay is not None:
         infos = _replay if isinstance(_replay, list) else [_replay]

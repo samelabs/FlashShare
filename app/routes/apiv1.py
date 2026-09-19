@@ -105,7 +105,7 @@ async def v1_upload(request: Request):
     from sharing.ingress_receipt import (
         claim_ingress_quota, finalize_ok as _ing_ok,
         settle_failure as _ing_fail, IngressConflict, IngressInProgress,
-        IngressQuotaDenied)
+        IngressQuotaDenied, IngressUnresolved)
     valid, final_type = sniff_allowed(filename, ctype, body[:512])
     if not valid:
         return JSONResponse({"ok": False, "error": final_type}, 415)
@@ -123,6 +123,10 @@ async def v1_upload(request: Request):
         return JSONResponse({"ok": False, "error": "idempotency_conflict"}, 409)
     except IngressInProgress:
         return JSONResponse({"ok": False, "error": "err_upload_in_progress"}, 409)
+    except IngressUnresolved:
+        # unresolvable durable replay — fail closed before any storage
+        return JSONResponse({"ok": False, "error": "err_ingress_unresolved"},
+                            500)
     if replay is not None:
         stored = replay[0] if isinstance(replay, list) and replay else replay
         return {"ok": True, "file": stored}
