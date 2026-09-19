@@ -207,7 +207,7 @@ jobs:
           test "$(grep -rn 'UPDATE orders SET' app/ core/ --include=*.py | grep -v 'repo/orders.py' | wc -l)" = "0"
           test -z "$(grep -A8 'create_credits_checkout(order' app/routes/topup.py | grep mark_failed)"
           grep -q 'order_id_from_request_id' app/routes/topup.py
-          grep -q 'client_ref: clientRef' static/pages/credits.js
+          test -z "$(grep -n 'client_ref' app/routes/topup.py static/pages/credits.js || true)"
           test "$(grep -rn "SET status='ok'" core/repo/ledger.py | wc -l)" = "1"
           python3 -c "s=open('core/execution/gate.py').read(); b=s.split('def _finish')[1].split(chr(10)+'def ')[0]; assert 'commission_rate()' not in b.replace('commission_rate_snapshot',''), '_finish must not read current commission config'"
           python tests/canonical/test_rounded_corners.py
