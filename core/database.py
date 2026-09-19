@@ -415,10 +415,34 @@ _SCHEMA_SQL = (
         CHECK (kind <> 'plan' OR status IN ('pending','paid','failed')),
       CONSTRAINT orders_plan_not_granted_ck
         CHECK (kind <> 'plan' OR granted = FALSE),
+      CONSTRAINT orders_plan_not_reversed_ck
+        CHECK (kind <> 'plan' OR status NOT IN ('refunded','disputed')),
       CONSTRAINT orders_pending_failed_fields_ck
         CHECK (status NOT IN ('pending','failed')
                OR (granted = FALSE AND paid_at IS NULL
                    AND refunded_at IS NULL)),
+      CONSTRAINT orders_pending_identity_ns_ck
+        CHECK (status IN ('pending','failed')
+               OR provider_order_id IS NOT NULL),
+      CONSTRAINT orders_pending_identity_ch_ck
+        CHECK (status <> 'pending'
+               OR provider_order_id IS NULL
+               OR provider_order_id LIKE 'ch:%%'),
+      CONSTRAINT orders_package_paid_fields_ck
+        CHECK (kind <> 'package' OR status <> 'paid'
+               OR (granted = TRUE AND paid_at IS NOT NULL
+                   AND refunded_at IS NULL
+                   AND provider_order_id IS NOT NULL)),
+      CONSTRAINT orders_package_reversal_fields_ck
+        CHECK (kind <> 'package' OR status NOT IN ('refunded','disputed')
+               OR (granted = TRUE AND paid_at IS NOT NULL
+                   AND refunded_at IS NOT NULL
+                   AND provider_order_id IS NOT NULL)),
+      CONSTRAINT orders_plan_paid_fields_ck
+        CHECK (kind <> 'plan' OR status <> 'paid'
+               OR (granted = FALSE AND paid_at IS NOT NULL
+                   AND refunded_at IS NULL
+                   AND provider_order_id LIKE 'sub:%%')),
       CONSTRAINT orders_paid_fields_ck
         CHECK (status <> 'paid' OR paid_at IS NOT NULL),
       CONSTRAINT orders_reversal_fields_ck
@@ -427,9 +451,7 @@ _SCHEMA_SQL = (
       CONSTRAINT orders_non_reversal_refund_ts_ck
         CHECK (status IN ('refunded','disputed') OR refunded_at IS NULL),
       CONSTRAINT orders_granted_kind_ck
-        CHECK (granted = FALSE OR kind = 'package'),
-      CONSTRAINT orders_package_paid_granted_ck
-        CHECK (kind <> 'package' OR status <> 'paid' OR granted = TRUE)
+        CHECK (granted = FALSE OR kind = 'package')
     )
     """,
     """
@@ -439,6 +461,16 @@ _SCHEMA_SQL = (
     CREATE UNIQUE INDEX IF NOT EXISTS orders_user_client_ref_uk
       ON orders(user_id, client_ref)
       WHERE client_ref IS NOT NULL
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_user_pending_plan_uk
+      ON orders(user_id)
+      WHERE kind = 'plan' AND status = 'pending'
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_user_item_pending_pkg_uk
+      ON orders(user_id, item_id)
+      WHERE kind = 'package' AND status = 'pending'
     """,
     # ── platform: operator_audit (append-only governance fact) ──
     """

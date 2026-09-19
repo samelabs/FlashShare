@@ -54,6 +54,14 @@ CREATE UNIQUE INDEX orders_user_client_ref_uk
   ON orders(user_id, client_ref)
   WHERE client_ref IS NOT NULL;
 
+CREATE UNIQUE INDEX orders_user_pending_plan_uk
+  ON orders(user_id)
+  WHERE kind = 'plan' AND status = 'pending';
+
+CREATE UNIQUE INDEX orders_user_item_pending_pkg_uk
+  ON orders(user_id, item_id)
+  WHERE kind = 'package' AND status = 'pending';
+
 -- ── -1b. order field-combination invariants (kind/snapshot/status/
 --         timestamps/granted). Historical rows violating these are
 --         deployment-blocking facts, not auto-repairs. ──
@@ -68,9 +76,28 @@ ALTER TABLE orders
     CHECK (kind <> 'plan' OR status IN ('pending','paid','failed')),
   ADD CONSTRAINT orders_plan_not_granted_ck
     CHECK (kind <> 'plan' OR granted = FALSE),
+  ADD CONSTRAINT orders_plan_not_reversed_ck
+    CHECK (kind <> 'plan' OR status NOT IN ('refunded','disputed')),
   ADD CONSTRAINT orders_pending_failed_fields_ck
     CHECK (status NOT IN ('pending','failed')
            OR (granted = FALSE AND paid_at IS NULL AND refunded_at IS NULL)),
+  ADD CONSTRAINT orders_pending_identity_ns_ck
+    CHECK (status IN ('pending','failed') OR provider_order_id IS NOT NULL),
+  ADD CONSTRAINT orders_pending_identity_ch_ck
+    CHECK (status <> 'pending' OR provider_order_id IS NULL
+           OR provider_order_id LIKE 'ch:%'),
+  ADD CONSTRAINT orders_package_paid_fields_ck
+    CHECK (kind <> 'package' OR status <> 'paid'
+           OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NULL
+               AND provider_order_id IS NOT NULL)),
+  ADD CONSTRAINT orders_package_reversal_fields_ck
+    CHECK (kind <> 'package' OR status NOT IN ('refunded','disputed')
+           OR (granted = TRUE AND paid_at IS NOT NULL AND refunded_at IS NOT NULL
+               AND provider_order_id IS NOT NULL)),
+  ADD CONSTRAINT orders_plan_paid_fields_ck
+    CHECK (kind <> 'plan' OR status <> 'paid'
+           OR (granted = FALSE AND paid_at IS NOT NULL AND refunded_at IS NULL
+               AND provider_order_id LIKE 'sub:%')),
   ADD CONSTRAINT orders_paid_fields_ck
     CHECK (status <> 'paid' OR paid_at IS NOT NULL),
   ADD CONSTRAINT orders_reversal_fields_ck
@@ -78,9 +105,7 @@ ALTER TABLE orders
   ADD CONSTRAINT orders_non_reversal_refund_ts_ck
     CHECK (status IN ('refunded','disputed') OR refunded_at IS NULL),
   ADD CONSTRAINT orders_granted_kind_ck
-    CHECK (granted = FALSE OR kind = 'package'),
-  ADD CONSTRAINT orders_package_paid_granted_ck
-    CHECK (kind <> 'package' OR status <> 'paid' OR granted = TRUE);
+    CHECK (granted = FALSE OR kind = 'package');
 
 -- ── 0. add the new nullable column (transactional DDL: a later preflight
 --        failure rolls this back together with everything else) ──
@@ -111,7 +136,7 @@ BEGIN
   END IF;
 
   SELECT COUNT(*) INTO violators FROM orders
-    WHERE kind NOT IN ('package','plan')
+    WHERE (kind NOT IN ('package','plan'))
        OR (kind = 'package' AND (credits_snapshot IS NULL
                                  OR credits_snapshot <= 0))
        OR (kind = 'plan' AND credits_snapshot IS NOT NULL)
@@ -123,9 +148,37 @@ BEGIN
        OR (status IN ('refunded','disputed') AND refunded_at IS NULL)
        OR (status NOT IN ('refunded','disputed') AND refunded_at IS NOT NULL)
        OR (granted AND kind <> 'package')
-       OR (kind = 'package' AND status = 'paid' AND NOT granted);
+       OR (kind = 'plan' AND status IN ('refunded','disputed'))
+       OR (status IN ('paid','refunded','disputed')
+           AND provider_order_id IS NULL)
+       OR (status = 'pending' AND provider_order_id IS NOT NULL
+           AND provider_order_id NOT LIKE 'ch:%')
+       OR (kind = 'package' AND status = 'paid'
+           AND (NOT granted OR paid_at IS NULL OR refunded_at IS NOT NULL
+                OR provider_order_id IS NULL))
+       OR (kind = 'package' AND status IN ('refunded','disputed')
+           AND (NOT granted OR paid_at IS NULL OR refunded_at IS NULL
+                OR provider_order_id IS NULL))
+       OR (kind = 'plan' AND status = 'paid'
+           AND (granted OR paid_at IS NULL OR refunded_at IS NOT NULL
+                OR provider_order_id IS NULL
+                OR provider_order_id NOT LIKE 'sub:%'));
   IF violators > 0 THEN
     RAISE EXCEPTION 'order invariant violators: % rows', violators;
+  END IF;
+
+  -- duplicate pending intents are deployment-blocking facts
+  SELECT COUNT(*) INTO violators FROM (
+    SELECT user_id FROM orders
+      WHERE kind='plan' AND status='pending'
+      GROUP BY user_id HAVING COUNT(*) > 1
+    UNION ALL
+    SELECT user_id FROM orders
+      WHERE kind='package' AND status='pending'
+      GROUP BY user_id, item_id HAVING COUNT(*) > 1
+  ) d;
+  IF violators > 0 THEN
+    RAISE EXCEPTION 'duplicate pending checkout intents: % groups', violators;
   END IF;
 
   SELECT COUNT(*) INTO violators FROM tool_calls

@@ -46,7 +46,7 @@ async def topup_checkout(request: Request):
         return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
     from repo.orders import (insert_order, bind_checkout_id,
                              order_by_client_ref_for_update,
-                             order_by_id_for_update)
+                             order_by_id_for_update, open_package_order)
     ts = now()
     with db() as con:
         # Same user + same client_ref = ONE immutable purchase intent.
@@ -61,12 +61,20 @@ async def topup_checkout(request: Request):
                     {"ok": False, "error": "idempotency_conflict"}, 409)
             order = dict(existing)
         else:
-            # purchase fact freeze: amount + currency + credits quantity —
-            # later package edits never rewrite a checked-out order
-            order = insert_order(con, user["id"], "package", pkg["id"], "creem",
-                                 pkg["price_cents"], pkg["currency"], ts,
-                                 credits_snapshot=int(pkg["credits"]),
-                                 client_ref=client_ref)
+            # ONE pending package intent per (user, package): an existing
+            # pending order (created under a different browser ref /
+            # response-loss) is RETRIED as the same logical purchase —
+            # same order row, same frozen facts, same request_id.
+            pend = open_package_order(con, user["id"], int(pkg["id"]))
+            if pend is not None:
+                order = dict(pend)
+            else:
+                # purchase fact freeze: amount + currency + credits —
+                # later package edits never rewrite a checked-out order
+                order = insert_order(con, user["id"], "package", pkg["id"], "creem",
+                                     pkg["price_cents"], pkg["currency"], ts,
+                                     credits_snapshot=int(pkg["credits"]),
+                                     client_ref=client_ref)
     # Same-ref retry state machine: everything except a pending order
     # without (or with a reusable ch:) provider identity answers from
     # local facts with ZERO provider create.
@@ -89,9 +97,31 @@ async def topup_checkout(request: Request):
             return {"ok": True, "checkout_url": co["checkout_url"],
                     "checkout_id": prov[3:], "reused": True}
         if st == "completed":
-            # webhook owns fulfillment; the retry converges there
-            return JSONResponse(
-                {"ok": False, "error": "checkout_unresolved"}, 502)
+            # Provider completed but the webhook never landed: converge
+            # LOCALLY through the SAME fulfillment domain handler —
+            # never a second checkout. Contract facts come from the
+            # retrieved object; failure answers retriable.
+            _prov_order = ((co.get("order") or {}).get("id")
+                           or (co.get("order_id") or ""))
+            _prov_amount = int((co.get("order") or {}).get("amount")
+                               or co.get("amount") or 0)
+            _prov_product = str((co.get("order") or {}).get("product")
+                                or co.get("product_id") or "")
+            _prov_currency = str((co.get("order") or {}).get("currency")
+                                 or co.get("currency") or "")
+            try:
+                res = creem.fulfill_by_request_id(
+                    int(order["id"]), str(_prov_order), prov[3:],
+                    _prov_amount, product_id=_prov_product,
+                    currency=_prov_currency)
+                return {"ok": True, "completed": True, "credits": res.get("credits")}
+            except KeyError as _exc:
+                import logging
+                logging.getLogger("flashshare").warning(
+                    "pending-retrieve completed convergence failed order=%s: %s",
+                    order["id"], _exc)
+                return JSONResponse(
+                    {"ok": False, "error": "checkout_unresolved"}, 502)
         if st in ("expired", "failed", "closed"):
             from repo.orders import mark_failed as _mf
             with db() as con:
@@ -424,7 +454,9 @@ async def creem_webhook(request: Request):
     # request_id is THE signed-webhook → local Order locator. It must
     # exist and match the exact 'order:<positive int>' shape we set at
     # checkout creation; provider_order_id / ch: / metadata are NOT
-    # identity authorities (no compatibility fallback).
+    # identity authorities (no compatibility fallback). request_id is a
+    # CORRELATION only — full payment proof validation still runs in the
+    # domain handler before any grant/mutation.
     from repo.orders import order_id_from_request_id
     try:
         _oid = order_id_from_request_id(obj.get("request_id"))
@@ -435,6 +467,14 @@ async def creem_webhook(request: Request):
             " (request_id=%r) — zero mutation", obj.get("request_id"))
         return JSONResponse(
             {"ok": False, "error": "checkout_request_id_invalid"}, 500)
+    # metadata correlation (observability fields, but if present they
+    # must agree with the signed locator — a mismatch is corruption)
+    _meta = obj.get("metadata") or {}
+    if isinstance(_meta, dict):
+        _m_oid = str(_meta.get("order_id") or "")
+        if _m_oid and _m_oid != str(_oid):
+            return JSONResponse(
+                {"ok": False, "error": "checkout_metadata_mismatch"}, 500)
     order = (obj.get("order") or {})
     try:
         res = creem.fulfill_by_request_id(

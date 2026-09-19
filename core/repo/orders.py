@@ -34,6 +34,19 @@ def insert_order(con, user_id: int, kind: str, item_id: int, provider: str,
          credits_snapshot, client_ref.strip(), ts)).fetchone()
 
 
+def open_package_order(con, user_id: int, item_id: int) -> Optional[dict]:
+    """The single pending package checkout intent for (user, package).
+    paid/failed/refunded/disputed never block a fresh purchase."""
+    return con.execute(
+        """
+        SELECT * FROM orders
+        WHERE user_id=%s AND kind='package' AND item_id=%s
+          AND status='pending'
+        ORDER BY id ASC LIMIT 1
+        """,
+        (user_id, item_id)).fetchone()
+
+
 def order_by_client_ref_for_update(con, user_id: int,
                                    client_ref: str) -> Optional[dict]:
     """Look up the order bound to this user's payment identity, row
@@ -64,28 +77,40 @@ def order_by_provider_id(con, provider_order_id: str) -> Optional[dict]:
         (provider_order_id,)).fetchone()
 
 
-def mark_paid(con, order_id: int, ts: int) -> None:
-    """package/top-up fulfillment 终态戳: grant 已由 billing 落账,
-    granted=TRUE 与 paid 同点写入。Evidence precedence: refunded/
-    disputed outrank a (stale) checkout.completed — never rewrite a
-    terminal reversal back to paid."""
-    con.execute(
-        """
-        UPDATE orders SET status='paid', granted=TRUE, paid_at=%s
-        WHERE id=%s AND status IN ('pending','failed')
-        """,
-        (ts, order_id))
+def mark_paid(con, order_id: int, ts: int,
+              provider_order_id: str = None) -> dict | None:
+    """LEGACY-NARROW package finalize kept for in-test compatibility —
+    production fulfillment uses complete_package_order (which also
+    promotes the canonical provider identity). Without a provider id
+    this can only mark a pending/failed order paid WITH a ch: identity
+    already present; refusing otherwise keeps the schema invariant
+    (paid ⇒ provider_order_id NOT NULL) intact."""
+    row = con.execute(
+        "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
+    if row is None:
+        raise KeyError("order_not_found")
+    cur = row["provider_order_id"]
+    if provider_order_id is None and not (cur or "").startswith("ch:"):
+        raise KeyError("provider_identity_required")
+    ident = provider_order_id or cur
+    return complete_package_order(con, order_id, ident, ts)
 
 
-def mark_subscription_checkout_completed(con, order_id: int, ts: int) -> None:
-    """subscription checkout.completed 窄 writer: 只推进 payment/order
-    状态 (paid + paid_at), 不写 granted — cycle credits 由后续
-    subscription.paid 的 paid-period path 授予, 两事实分离。
-    Plan orders never leave the pending/failed/paid domain."""
-    con.execute(
-        "UPDATE orders SET status='paid', paid_at=%s"
-        " WHERE id=%s AND status IN ('pending','failed')",
-        (ts, order_id))
+def mark_subscription_checkout_completed(con, order_id: int, ts: int,
+                                          sub_provider_id: str = None) -> dict | None:
+    """LEGACY-NARROW plan finalize — production binding uses
+    complete_plan_checkout (identity + status atomically). Without a
+    sub id this can only complete an order that ALREADY carries its
+    sub: identity; refusing otherwise keeps the schema invariant
+    (plan paid ⇒ provider_order_id LIKE 'sub:%')."""
+    row = con.execute(
+        "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
+    if row is None:
+        raise KeyError("order_not_found")
+    ident = sub_provider_id or row["provider_order_id"]
+    if not (ident or "").startswith("sub:"):
+        raise KeyError("subscription_identity_required")
+    return complete_plan_checkout(con, order_id, ident, ts)
 
 
 def mark_failed(con, order_id: int) -> None:
@@ -99,29 +124,25 @@ def mark_failed(con, order_id: int) -> None:
 
 def mark_refunded(con, order_id: int, ts: int) -> None:
     """package full-refund terminal state (economic reversal applied).
-    disputed outranks refund — the marker never downgrades."""
+    disputed outranks refund — the marker never downgrades.
+    refunded_at is the FIRST economic reversal projection time: replays
+    and refunded→disputed flips keep the original timestamp."""
     con.execute(
-        "UPDATE orders SET status='refunded', refunded_at=%s"
-        " WHERE id=%s AND status IN ('pending','failed','paid','refunded')",
+        "UPDATE orders SET status='refunded',"
+        " refunded_at=COALESCE(refunded_at, %s)"
+        " WHERE id=%s AND status IN ('paid','refunded')",
         (ts, order_id))
 
 
 def mark_disputed(con, order_id: int, ts: int) -> None:
     """dispute (chargeback) terminal state — top of the evidence
-    precedence; once disputed, no event rewrites the marker."""
+    precedence; once disputed, no event rewrites the marker.
+    refunded_at keeps the FIRST reversal time across the flip."""
     con.execute(
-        "UPDATE orders SET status='disputed', refunded_at=%s"
-        " WHERE id=%s AND status IN ('pending','failed','paid','refunded','disputed')",
+        "UPDATE orders SET status='disputed',"
+        " refunded_at=COALESCE(refunded_at, %s)"
+        " WHERE id=%s AND status IN ('paid','refunded','disputed')",
         (ts, order_id))
-
-
-def set_provider_order_id(con, order_id: int, provider_order_id: str) -> None:
-    """LEGACY generic writer — retained ONLY for the subscription ch:* →
-    sub:* canonicalization inside bind_checkout (single guarded call
-    site). Route checkout-create responses use bind_checkout_id."""
-    con.execute(
-        "UPDATE orders SET provider_order_id=%s WHERE id=%s",
-        (provider_order_id, order_id))
 
 
 def order_id_from_request_id(value) -> int:
@@ -182,12 +203,15 @@ def complete_package_order(con, order_id: int, provider_order_id: str,
         "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
     if row is None:
         raise KeyError("order_not_found")
-    if row["status"] not in ("pending", "failed"):
-        return dict(row)  # paid replay / refunded / disputed: no rewrite
     cur = row["provider_order_id"]
     if cur is not None and cur != provider_order_id \
             and not cur.startswith("ch:"):
+        # canonical A → canonical B is a hard conflict on EVERY state —
+        # checked BEFORE the terminal no-op branch so replays under a
+        # different canonical id can never silently pass.
         raise KeyError("provider_identity_conflict")
+    if row["status"] not in ("pending", "failed"):
+        return dict(row)  # paid replay / refunded / disputed: no rewrite
     out = con.execute(
         """
         UPDATE orders

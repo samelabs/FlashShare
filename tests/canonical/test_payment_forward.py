@@ -393,9 +393,10 @@ with db() as con:
     prows = con.execute("select id from plans where id=%s", (plan_id,)).fetchone()
     oid = con.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
-        " status, amount_cents, currency, created_at) values (%s, 'plan', %s,"
-        " 'creem', %s, 'pending', 1499, 'USD', %s) returning id",
-        (member, plan_id, "sub:" + sub_id, ts)).fetchone()["id"]
+        " status, amount_cents, currency, paid_at, created_at) values"
+        " (%s, 'plan', %s, 'creem', %s, 'paid', 1499, 'USD', %s, %s)"
+        " returning id",
+        (member, plan_id, "sub:" + sub_id, ts, ts)).fetchone()["id"]
     con.execute(
         "insert into memberships (user_id, plan_id, provider_subscription_id,"
         " status, started_at, renews_at, updated_at) values (%s, %s, %s,"
@@ -462,9 +463,10 @@ sub2 = f"sub_pc2_{_u}"
 with db() as con:
     oid2 = con.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
-        " status, amount_cents, currency, created_at) values (%s, 'plan', %s,"
-        " 'creem', %s, 'pending', 1499, 'USD', %s) returning id",
-        (member2, plan_id, "sub:" + sub2, ts)).fetchone()["id"]
+        " status, amount_cents, currency, paid_at, created_at) values"
+        " (%s, 'plan', %s, 'creem', %s, 'paid', 1499, 'USD', %s, %s)"
+        " returning id",
+        (member2, plan_id, "sub:" + sub2, ts, ts)).fetchone()["id"]
     con.execute(
         "insert into memberships (user_id, plan_id, provider_subscription_id,"
         " status, started_at, renews_at, updated_at) values (%s, %s, %s,"
@@ -498,9 +500,9 @@ sub3 = f"sub_pc3_{_u}"
 with db() as con:
     con.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
-        " status, amount_cents, currency, created_at) values (%s, 'plan', %s,"
-        " 'creem', %s, 'pending', 1499, 'USD', %s)",
-        (member3, plan_id, "sub:" + sub3, ts))
+        " status, amount_cents, currency, paid_at, created_at) values"
+        " (%s, 'plan', %s, 'creem', %s, 'paid', 1499, 'USD', %s, %s)",
+        (member3, plan_id, "sub:" + sub3, ts, ts))
     con.execute(
         "insert into memberships (user_id, plan_id, provider_subscription_id,"
         " status, started_at, renews_at, updated_at) values (%s, %s, %s,"
@@ -552,9 +554,9 @@ sub4 = f"sub_pc4_{_u}"
 with db() as con:
     con.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
-        " status, amount_cents, currency, created_at) values (%s, 'plan', %s,"
-        " 'creem', %s, 'pending', 1499, 'USD', %s)",
-        (member4, plan_id, "sub:" + sub4, ts))
+        " status, amount_cents, currency, paid_at, created_at) values"
+        " (%s, 'plan', %s, 'creem', %s, 'paid', 1499, 'USD', %s, %s)",
+        (member4, plan_id, "sub:" + sub4, ts, ts))
     # local row stays 'active' (DB CHECK vocabulary) with the lifecycle
     # marker set — reconcile's eligibility looks at the PROVIDER snapshot
     con.execute(
@@ -657,9 +659,9 @@ check("PM2-2c 所有 PATCH payload 只含 price/currency",
 r_guard = client.patch(f"/samelabs/plans/{plan_id}",
                        json={"creem_product_id": "prod_pcB"},
                        cookies={COOKIE_NAME: op_sess})
-check("PM2-3g rebind on bound-membership plan → 409 refused",
+check("PM2-3g rebind on bound-membership plan → 409 product_binding_immutable",
       r_guard.status_code == 409
-      and "rebind_forbidden" in str(r_guard.json().get("error", "")),
+      and "product_binding_immutable" in str(r_guard.json().get("error", "")),
       f"{r_guard.status_code} {r_guard.text[:90]}")
 with db() as con:
     _so2 = con.execute(
@@ -680,10 +682,11 @@ _mirror_state["prod_pcB"] = {"price": 999, "currency": "USD",
                              "billing_period": "every-month"}
 r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "prod_pcB"},
                  cookies={COOKIE_NAME: op_sess})
-check("PM2-3a 仅改 binding → target Product 被验证并同步到当前 518 价",
-      r.status_code == 200 and _mirror_state["prod_pcB"]["price"] == 1499
-      and _patch_payloads[-1][0] == "/v1/products/prod_pcB",
-      f"{r.status_code} target={_mirror_state['prod_pcB']}")
+check("PM2-3a product rebind A→B → 409 forbidden (binding immutable)",
+      r.status_code == 409
+      and "product_binding_immutable" in str(r.json().get("error", ""))
+      and _mirror_state["prod_pcB"]["price"] == 999,   # provider untouched
+      f"{r.status_code} {r.text[:90]} target={_mirror_state['prod_pcB']}")
 # yearly target → local binding not committed
 _mirror_state["prod_pcY"] = {"price": 999, "currency": "USD",
                              "billing_type": "recurring",
@@ -693,8 +696,8 @@ r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "pro
 with db() as con:
     bound = con.execute("select creem_product_id from plans where id=%s",
                         (rb_plan_id,)).fetchone()["creem_product_id"]
-check("PM2-3b yearly target → binding 不 commit (仍 prod_pcB)",
-      r.status_code == 502 and bound == "prod_pcB", f"{r.status_code} bound={bound}")
+check("PM2-3b yearly rebind → 409 (仍 prod_pcA)",
+      r.status_code == 409 and bound == "prod_pcA", f"{r.status_code} bound={bound}")
 # provider failure → binding not committed
 def _fail_fetch(pid):
     return None
@@ -705,8 +708,8 @@ r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "pro
 with db() as con:
     bound2 = con.execute("select creem_product_id from plans where id=%s",
                          (rb_plan_id,)).fetchone()["creem_product_id"]
-check("PM2-3c provider failure → binding 不 commit",
-      r.status_code == 502 and bound2 == "prod_pcB", f"{r.status_code} bound={bound2}")
+check("PM2-3c provider failure rebind → 409 (仍 prod_pcA)",
+      r.status_code == 409 and bound2 == "prod_pcA", f"{r.status_code} bound={bound2}")
 _creem._fetch_product = _orig_fp
 # valid monthly target → binding succeeds
 _mirror_state["prod_pcD"] = {"price": 100, "currency": "USD",
@@ -717,9 +720,9 @@ r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "pro
 with db() as con:
     bound3 = con.execute("select creem_product_id from plans where id=%s",
                          (rb_plan_id,)).fetchone()["creem_product_id"]
-check("PM2-3d valid monthly target → binding commit + 同步 1499",
-      r.status_code == 200 and bound3 == "prod_pcD"
-      and _mirror_state["prod_pcD"]["price"] == 1499,
+check("PM2-3d valid monthly rebind → 409 (binding immutable; 仅 NULL→X 合法)",
+      r.status_code == 409 and bound3 == "prod_pcA"
+      and _mirror_state["prod_pcD"]["price"] == 100,
       f"{r.status_code} bound={bound3}")
 
 # ═══ PM2-4: paid-period product identity proof ═══
@@ -730,9 +733,10 @@ def _mk_member_sub(uname, target_plan_id, product_binding):
     with db() as con:
         con.execute(
             "insert into orders (user_id, kind, item_id, provider,"
-            " provider_order_id, status, amount_cents, currency, created_at)"
-            " values (%s, 'plan', %s, 'creem', %s, 'pending', 1499, 'USD', %s)",
-            (mm, target_plan_id, "sub:" + ss, ts))
+            " provider_order_id, status, amount_cents, currency, paid_at,"
+            " created_at) values (%s, 'plan', %s, 'creem', %s, 'paid',"
+            " 1499, 'USD', %s, %s)",
+            (mm, target_plan_id, "sub:" + ss, ts, ts))
         con.execute(
             "insert into memberships (user_id, plan_id, provider_subscription_id,"
             " status, started_at, renews_at, updated_at) values (%s, %s, %s,"
@@ -856,8 +860,9 @@ r = client.patch(f"/samelabs/plans/{planA}", json={"creem_product_id": "prod_sB"
 with db() as con:
     _bindA = con.execute("select creem_product_id from plans where id=%s",
                          (planA,)).fetchone()["creem_product_id"]
-check("PM3-1 update 绑到已占用 product → 409 / 零 PATCH / 原价不变",
-      r.status_code == 409 and (r.json().get("error") == "product_already_bound")
+check("PM3-1 rebind A→B → 409 product_binding_immutable / 零 PATCH / 原价不变",
+      r.status_code == 409
+      and (r.json().get("error") == "product_binding_immutable")
       and len(_patch_payloads) == _n1
       and _bindA == "prod_sA"
       and _mirror_state["prod_sB"]["price"] == 1999,
@@ -954,9 +959,9 @@ r = client.patch(f"/samelabs/plans/{planA}", json={"creem_product_id": "prod_sF"
 with db() as con:
     _bindA2 = con.execute("select creem_product_id from plans where id=%s",
                           (planA,)).fetchone()["creem_product_id"]
-check("PM3-6 valid rebind → target mirror 同步 (1099) + local binding 一起收敛",
-      r.status_code == 200 and _bindA2 == "prod_sF"
-      and _mirror_state["prod_sF"]["price"] == 1099,
+check("PM3-6 rebind → 409 forbidden (binding immutable; mirror 不动)",
+      r.status_code == 409 and _bindA2 == "prod_sA"
+      and _mirror_state["prod_sF"]["price"] == 1,
       f"{r.status_code} bind={_bindA2} mirror={_mirror_state['prod_sF']['price']}")
 
 # ═══ PM4: forced-concurrency — mirror reads the in-tx final row ═══
@@ -1012,8 +1017,9 @@ _orders_mod.update_plan = _gated_update_plan
 
 result_b = {}
 def _worker_b():
+    # price-only concurrency (rebind forbidden by binding immutability)
     result_b["resp"] = client.patch(
-        f"/samelabs/plans/{planC}", json={"creem_product_id": "prod_cB"},
+        f"/samelabs/plans/{planC}", json={"price_cents": 799},
         cookies={COOKIE_NAME: op_sess})
 
 tb = threading.Thread(target=_worker_b)
@@ -1033,13 +1039,13 @@ _orders_mod.update_plan = _orig_update_plan
 with db() as con:
     _fin = con.execute("select price_cents, creem_product_id from plans where id=%s",
                        (planC,)).fetchone()
-check("PM4 并发终态: local = 1499 / prod_cB",
-      int(_fin["price_cents"]) == 1499 and _fin["creem_product_id"] == "prod_cB",
+check("PM4 并发终态: 最后提交者胜 (A 1499) / binding 不变",
+      int(_fin["price_cents"]) == 1499 and _fin["creem_product_id"] == "prod_cA",
       str(dict(_fin)))
-check("PM4 mirror prod_cB = 1499 (事务内 final row, 绝非 stale 999)",
-      _mirror_state["prod_cB"]["price"] == 1499,
-      str(_mirror_state["prod_cB"]))
-check("PM4 B 请求本身成功", result_b.get("resp", None) is not None
+check("PM4 mirror prod_cA = 1499 (A 事务内 final row, 绝非 stale 999)",
+      _mirror_state["prod_cA"]["price"] == 1499,
+      str(_mirror_state["prod_cA"]))
+check("PM4 B 请求本身成功 (price-only)", result_b.get("resp", None) is not None
       and result_b["resp"].status_code == 200,
       str(result_b.get("resp"))[:80])
 

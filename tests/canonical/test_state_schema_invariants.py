@@ -385,11 +385,13 @@ for st in ("pending", "paid", "failed", "refunded", "disputed"):
     paid_at = ts if st in ("paid", "refunded", "disputed") else "NULL"
     refunded_at = ts if st in ("refunded", "disputed") else "NULL"
     if _db_rejects("insert into orders (user_id, kind, item_id, provider,"
-                   " status, amount_cents, currency, credits_snapshot,"
-                   " granted, paid_at, refunded_at, created_at)"
-                   " values (%s, 'package', 1, 'creem', %s, 100, 'USD',"
-                   " 100, %s, %s, %s, %s)",
-                   (ou, st, granted,
+                   " provider_order_id, status, amount_cents, currency,"
+                   " credits_snapshot, granted, paid_at, refunded_at,"
+                   " created_at) values (%s, 'package', 1, 'creem',"
+                   " %s, %s, 100, 'USD', 100, %s, %s, %s, %s)",
+                   (ou,
+                    f"ord_f4_{st}" if st != "pending" and st != "failed" else None,
+                    st, granted,
                     paid_at if paid_at != "NULL" else None,
                     refunded_at if refunded_at != "NULL" else None, ts)):
         ok_statuses = False

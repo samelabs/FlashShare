@@ -100,6 +100,11 @@ def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
             # identity validation: NULL / ch:<this checkout> / sub:<this sub>
             if cur and cur != f"sub:{sub_id}" and cur != f"ch:{ch_id}":
                 raise KeyError("provider_identity_conflict")
+            # occupied-Membership guard: a membership bound to a
+            # DIFFERENT subscription is never silently replaced
+            _occ = orders_repo.membership_row(con, int(row["user_id"]))
+            if _occ is not None and _occ["provider_subscription_id"] != f"sub:{sub_id}":
+                raise KeyError("membership_occupied")
             complete_plan_checkout(con, int(row["id"]), f"sub:{sub_id}", now())
             if orders_repo.membership_by_sub(con, sub_id) is None:
                 orders_repo.bind_membership(
@@ -109,33 +114,45 @@ def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
     with _db() as con:
         row = orders_repo.order_by_provider_id(con, "ch:" + ch_id)
         if row is None:
-            # 重放: 绑定已完成 (ch: 已被覆写为 sub:) → 幂等; membership 若
-            # 仍缺失 (旧数据/迁移前序列) 则此刻补建, 不再 500 重试环
+            # Replayed completion (ch: already promoted to sub:): converge
+            # through the SAME guarded completion — order status AND
+            # membership settle atomically; never a partial binding with
+            # the order left pending.
             already = orders_repo.plan_order_by_sub_id(con, sub_id)
             if already is not None:
-                if orders_repo.membership_by_sub(con, sub_id) is None:
-                    orders_repo.bind_membership(
-                        con, already["user_id"], already["item_id"], sub_id,
-                        "active", started_at=already["created_at"], renews_at=None)
-                return {"bound": True, "replay": True}
+                return bind_checkout(obj, order_id=int(already["id"]))
             raise KeyError("order_not_found")
         if row["kind"] != "plan":
             return {"ignored": True}
-        orders_repo.set_provider_order_id(con, row["id"], "sub:" + sub_id)
-    # 首购建档: memberships 单行 (user 唯一); 已有 current membership 的
-    # 二次首购路径由 /subscribe 入口拦截 (plan_change_required), 正常
-    # 不会到达这里; 到达则 PK 冲突 fail loud (不变量兜底)。
-    sub = obj.get("subscription") or {}
+    # ONE transaction: guarded promotion + completion + membership (the
+    # request_id branch's semantics applied to the ch:-located row).
     with _db() as con:
-        row = orders_repo.order_by_provider_id(con, "sub:" + sub_id)
-        if row is not None:
-            existing = orders_repo.membership_by_sub(con, sub_id)
-            if existing is None:
-                orders_repo.bind_membership(
-                    con, row["user_id"], row["item_id"], sub_id, "active",
-                    started_at=row["created_at"], renews_at=None)
-            if row["status"] == "pending":
-                orders_repo.mark_subscription_checkout_completed(con, row["id"], now())
+        row = orders_repo.order_by_provider_id_for_update(con, "ch:" + ch_id)
+        if row is None:
+            # lost the promotion race — converge via the sub identity
+            already = orders_repo.plan_order_by_sub_id(con, sub_id)
+            if already is not None:
+                row = dict(already)
+            else:
+                raise KeyError("order_not_found")
+        _occ2 = orders_repo.membership_row(con, int(row["user_id"]))
+        if _occ2 is not None and _occ2["provider_subscription_id"] != f"sub:{sub_id}":
+            raise KeyError("membership_occupied")
+        _proof_plan = orders_repo.plan_by_id(con, int(row["item_id"]))
+        _wo = obj.get("order") or {}
+        if _proof_plan is not None:
+            _wa = int(_wo.get("amount") or 0)
+            _wp = str(_wo.get("product") or "")
+            if _wa and _wa != int(row["amount_cents"]):
+                raise KeyError("checkout_amount_mismatch")
+            if (_proof_plan.get("creem_product_id") and _wp
+                    and _wp != _proof_plan["creem_product_id"]):
+                raise KeyError("checkout_product_mismatch")
+        complete_plan_checkout(con, int(row["id"]), f"sub:{sub_id}", now())
+        if orders_repo.membership_by_sub(con, sub_id) is None:
+            orders_repo.bind_membership(
+                con, row["user_id"], row["item_id"], sub_id, "active",
+                started_at=row["created_at"], renews_at=None)
     return _ev_sync(sub_id, obj)
 
 

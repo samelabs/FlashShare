@@ -390,13 +390,11 @@ async def samelabs_create_plan(request: Request):
                 from economy import creem as _creem
                 if not _creem.creem_enabled():
                     raise _PlanMirrorError("price_mirror_unavailable")
-                try:
-                    _creem.mirror_product_price(fields["creem_product_id"],
-                                                int(fields["price_cents"]),
-                                                str(fields.get("currency") or "USD"))
-                except _PlanMirrorError:
-                    raise
-                except Exception:
+                _mout = _creem.mirror_price_with_reconciliation(
+                    fields["creem_product_id"], 0, "",
+                    int(fields["price_cents"]),
+                    str(fields.get("currency") or "USD"))
+                if _mout != _creem.MIRROR_SUCCESS:
                     raise _PlanMirrorError("price_mirror_update_failed")
     except _PlanMirrorError as exc:
         # provider failure: the with-block raised → tx rolled back
@@ -462,23 +460,29 @@ async def samelabs_update_plan(plan_id: int, request: Request):
             # in-tx locked read → before snapshot (NOT the stale outer row)
             locked = plan_by_id_for_update(con, plan_id)
             before = _snap_plan(locked)
-            # LIFECYCLE GUARD: changing (or clearing) a paid plan's
-            # product binding while a Membership is bound to this plan
-            # would sever the ongoing subscription/payment lifecycle
-            # (period product proof, reversal location, upgrade paths
-            # all key off the product). Refuse loud; rebind is only
-            # legal before any subscription exists on the plan.
-            _rebinding = ("creem_product_id" in fields and (
-                (fields.get("creem_product_id") or None)
-                != (locked["creem_product_id"] or None)))
-            if _rebinding:
-                _bound = con.execute(
-                    "SELECT 1 FROM memberships m JOIN plans p"
-                    " ON p.id = m.plan_id WHERE p.id = %s LIMIT 1",
-                    (plan_id,)).fetchone()
-                if _bound is not None:
+            # PRODUCT BINDING IMMUTABILITY: creem_product_id is a
+            # stable provider binding identity. NULL→X binds; X→X is a
+            # no-op; X→Y and X→NULL are FORBIDDEN — a rebind (or clear)
+            # would sever every existing subscription/payment lifecycle
+            # keyed off the product (period proof, reversal location,
+            # upgrade paths), bound or not. Product migration is a
+            # separate mechanism, not a PATCH.
+            if "creem_product_id" in fields:
+                _cur_p = locked["creem_product_id"] or None
+                _new_p = fields.get("creem_product_id") or None
+                if _cur_p is not None and _new_p != _cur_p:
                     return JSONResponse(
-                        {"ok": False, "error": "plan_in_use_rebind_forbidden"}, 409)
+                        {"ok": False, "error": "product_binding_immutable"}, 409)
+            # PENDING-CHECKOUT PRICE FREEZE: a pending plan order froze
+            # this plan's amount at checkout; retry must submit the SAME
+            # purchase intent, so the live price may not move under it.
+            if "price_cents" in fields:
+                _pend = con.execute(
+                    "SELECT 1 FROM orders WHERE kind='plan' AND item_id=%s"
+                    " AND status='pending' LIMIT 1", (plan_id,)).fetchone()
+                if _pend is not None:
+                    return JSONResponse(
+                        {"ok": False, "error": "plan_checkout_pending"}, 409)
             row = update_plan(con, plan_id, fields, now())
             # audit BEFORE any Creem side effect, same transaction
             _audit_repo.record(con, user["id"], "plan.update", "plan",
@@ -491,18 +495,27 @@ async def samelabs_update_plan(plan_id: int, request: Request):
                     from economy import creem as _creem
                     if not _creem.creem_enabled():
                         raise _PlanMirrorError("price_mirror_unavailable")
+                    # exact provider-before snapshot (for ambiguity proof)
                     try:
-                        _creem.mirror_product_price(target_product, target_price,
-                                                    str(target_currency))
-                    except _PlanMirrorError:
-                        raise
+                        _pb = _creem._fetch_product(target_product) or {}
+                    except Exception:
+                        _pb = {}
+                    _before_price = int(_pb.get("price") or 0)
+                    _before_cur = str(_pb.get("currency") or "").upper()
+                    try:
+                        _mout = _creem.mirror_price_with_reconciliation(
+                            target_product, _before_price, _before_cur,
+                            target_price, str(target_currency))
                     except RuntimeError as exc:
                         err = "price_mirror_update_failed"
                         if "billing_contract" in str(exc) or "not_found" in str(exc):
                             err = "product_billing_contract_invalid"
                         raise _PlanMirrorError(err)
-                    except Exception:
+                    if _mout == _creem.MIRROR_ROLLBACK:
+                        # proven provider no-mutation → local rollback
                         raise _PlanMirrorError("price_mirror_update_failed")
+                    if _mout == _creem.MIRROR_UNRESOLVED:
+                        raise _PlanMirrorError("price_mirror_commit_unresolved")
     except _PlanMirrorError as exc:
         # provider failure: with-block raised → tx rolled back
         return JSONResponse({"ok": False, "error": str(exc)}, 502)

@@ -137,6 +137,66 @@ def _billing_contract_ok(prod: dict) -> bool:
             and str(prod.get("billing_period") or "") == _BILLING_PERIOD_MONTHLY)
 
 
+MIRROR_SUCCESS = "success"
+MIRROR_ROLLBACK = "rollback"
+MIRROR_UNRESOLVED = "unresolved"
+
+
+def mirror_price_with_reconciliation(product_id: str, before_price: int,
+                                     before_currency: str,
+                                     price_cents: int, currency: str) -> str:
+    """Two-stage commercial mirror with PROVEN commit-outcome.
+
+    Provider stage: snapshot the exact provider-before commercial facts,
+    PATCH, and on an ambiguous exception re-GET — exact-intended ⇒
+    success; exact-before ⇒ proven provider rollback; neither/unreadable
+    ⇒ unresolved (never guess, never auto-mutate again).
+
+    Returns MIRROR_SUCCESS only when the provider provably carries the
+    intended price (either confirmed by PATCH or proven by fresh GET);
+    MIRROR_ROLLBACK when the provider provably still carries the exact
+    before facts; MIRROR_UNRESOLVED otherwise. The CALLER owns the local
+    transaction and the (rollback-gated) compensation restore.
+    """
+    try:
+        mirror_product_price(product_id, int(price_cents), str(currency))
+        return MIRROR_SUCCESS
+    except Exception:
+        pass
+    # ambiguous — fresh GET decides
+    try:
+        prod = _fetch_product(product_id)
+    except Exception:
+        return MIRROR_UNRESOLVED
+    if prod is None:
+        return MIRROR_UNRESOLVED
+    _p = int(prod.get("price") or 0)
+    _c = str(prod.get("currency") or "").upper()
+    if _p == int(price_cents) and _c == str(currency).upper():
+        return MIRROR_SUCCESS
+    if _p == int(before_price) and _c == str(before_currency).upper():
+        return MIRROR_ROLLBACK
+    return MIRROR_UNRESOLVED
+
+
+def restore_product_price(product_id: str, before_price: int,
+                          before_currency: str) -> bool:
+    """Rollback-gated compensation: restore the provider to the exact
+    before commercial facts. True only when a fresh read proves the
+    provider carries the before state again (PATCH confirmed or GET
+    verified); ambiguous/failed restore ⇒ False (caller reports
+    unresolved — never pretends)."""
+    out = mirror_price_with_reconciliation(
+        product_id, int(before_price), str(before_currency),
+        int(before_price), str(before_currency))
+    if out == MIRROR_SUCCESS:
+        return True
+    # intended == before here, so ROLLBACK also means "already at before"
+    if out == MIRROR_ROLLBACK:
+        return True
+    return False
+
+
 def verify_product_mirror(product_id: str, price_cents: int,
                           currency: str) -> str:
     """Verify the Creem product mirror matches the 518 commercial fact.

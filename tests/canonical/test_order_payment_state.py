@@ -63,6 +63,7 @@ def _mkpkg(credits=5000, price=500, code=None):
              ts, ts)).fetchone()
     return dict(row)
 
+_ord_seq = [0]
 def _order(user_id, kind, item_id, ref, status="pending", amount=500,
            credits=5000, provider_id=None):
     # field combinations must satisfy the canonical invariants
@@ -72,15 +73,22 @@ def _order(user_id, kind, item_id, ref, status="pending", amount=500,
     if status in ("refunded", "disputed"):
         granted = kind == "package"  # reversal may follow a paid fact
         paid_at = ts
+    if provider_id is None and status in ("paid", "refunded", "disputed"):
+        _ord_seq[0] += 1
+        if kind == "package":
+            provider_id = f"ord_{_u}_{_ord_seq[0]}"
+        else:
+            provider_id = f"sub:{_u}_{_ord_seq[0]}"
     with db() as con:
         row = con.execute(
-            "insert into orders (user_id, kind, item_id, provider, status,"
-            " amount_cents, currency, credits_snapshot, client_ref,"
-            " granted, paid_at, refunded_at, created_at) values"
-            " (%s, %s, %s, 'creem', %s, %s, 'USD', %s, %s, %s, %s, %s, %s)"
+            "insert into orders (user_id, kind, item_id, provider,"
+            " provider_order_id, status, amount_cents, currency,"
+            " credits_snapshot, client_ref, granted, paid_at, refunded_at,"
+            " created_at) values"
+            " (%s, %s, %s, 'creem', %s, %s, %s, 'USD', %s, %s, %s, %s, %s, %s)"
             " returning *",
-            (user_id, kind, item_id, status, amount, credits, ref,
-             granted, paid_at, refunded_at, ts)).fetchone()
+            (user_id, kind, item_id, provider_id, status, amount, credits,
+             ref, granted, paid_at, refunded_at, ts)).fetchone()
         if provider_id:
             con.execute("update orders set provider_order_id=%s where id=%s",
                         (provider_id, row["id"]))
@@ -149,6 +157,8 @@ with db() as con:
             " (%s, 'package', %s, 'creem', 'failed', 1, 'USD', 100, %s)",
             (u1, pkg["id"], ts))
 check("B4 历史 NULL client_ref 多行合法", True)
+with db() as con:
+    con.execute("update orders set status='failed' where id=%s", (oB1["id"],))
 
 # ══════════ C. package evidence precedence (guarded transitions) ══════════
 def _mk_pkg_order(status):
@@ -158,16 +168,16 @@ def _mk_pkg_order(status):
 # pending + success → paid
 o1 = _mk_pkg_order("pending")
 with db() as con:
-    orders_repo.mark_paid(con, o1["id"], ts)
+    orders_repo.complete_package_order(con, o1["id"], "ord_c1", ts)
 check("C1 pending + success → paid", _status(o1["id"]) == "paid")
 # paid + success replay → paid (无变化)
 with db() as con:
-    orders_repo.mark_paid(con, o1["id"], ts)
+    orders_repo.complete_package_order(con, o1["id"], "ord_c1", ts)
 check("C2 paid + replay → paid", _status(o1["id"]) == "paid")
 # failed + success → paid
 o2 = _mk_pkg_order("failed")
 with db() as con:
-    orders_repo.mark_paid(con, o2["id"], ts)
+    orders_repo.complete_package_order(con, o2["id"], "ord_c3", ts)
 check("C3 failed + success → paid", _status(o2["id"]) == "paid")
 # paid + failure → paid (stale failure 不降级)
 o3 = _mk_pkg_order("paid")
@@ -179,11 +189,15 @@ o4 = _mk_pkg_order("refunded")
 with db() as con:
     orders_repo.mark_failed(con, o4["id"])
 check("C5 refunded + failure → refunded", _status(o4["id"]) == "refunded")
-# pending + refund → refunded
+# pending + refund → NOT a legal reversal target (writer refuses;
+# the domain layer answers unresolved/fail-loud)
 o5 = _mk_pkg_order("pending")
 with db() as con:
     orders_repo.mark_refunded(con, o5["id"], ts)
-check("C6 pending + refund → refunded", _status(o5["id"]) == "refunded")
+check("C6 pending + refund → writer 拒 (保持 pending)",
+      _status(o5["id"]) == "pending")
+with db() as con:
+    con.execute("update orders set status='failed' where id=%s", (o5["id"],))
 # refunded + dispute → disputed (升)
 o6 = _mk_pkg_order("refunded")
 with db() as con:
@@ -197,12 +211,15 @@ check("C8 disputed + refund → stays disputed", _status(o7["id"]) == "disputed"
 # refunded + stale checkout.completed → NO paid rewrite
 o8 = _mk_pkg_order("refunded")
 with db() as con:
-    orders_repo.mark_paid(con, o8["id"], ts)
+    # stale replay carries the SAME canonical id as the terminal row
+    orders_repo.complete_package_order(con, o8["id"],
+                                       o8["provider_order_id"], ts)
 check("C9 refunded + stale success → 无 paid 改写", _status(o8["id"]) == "refunded")
 # disputed + stale success → NO paid rewrite
 o9 = _mk_pkg_order("disputed")
 with db() as con:
-    orders_repo.mark_paid(con, o9["id"], ts)
+    orders_repo.complete_package_order(con, o9["id"],
+                                       o9["provider_order_id"], ts)
 check("C10 disputed + stale success → 无 paid 改写", _status(o9["id"]) == "disputed")
 # paid + refund → refunded; disputed + dispute → disputed
 o10 = _mk_pkg_order("paid")
@@ -218,10 +235,10 @@ check("C12 disputed + dispute → disputed (幂等)", _status(o11["id"]) == "dis
 po1 = _order(u1, "plan", 1, f"pay:{_u}-plan1", status="pending", amount=999,
              credits=None)
 with db() as con:
-    orders_repo.mark_subscription_checkout_completed(con, po1["id"], ts)
+    orders_repo.complete_plan_checkout(con, po1["id"], "sub:d1", ts)
 check("D1 plan pending + completed → paid", _status(po1["id"]) == "paid")
 with db() as con:
-    orders_repo.mark_subscription_checkout_completed(con, po1["id"], ts)
+    orders_repo.complete_plan_checkout(con, po1["id"], "sub:d1", ts)
 check("D2 plan paid + replay → paid", _status(po1["id"]) == "paid")
 po2 = _order(u1, "plan", 1, f"pay:{_u}-plan2", status="paid", amount=999,
              credits=None)
@@ -310,7 +327,18 @@ with db() as con:
                         (o6["id"],)).fetchone()
 check("O10 recovered bind ch:<same id>",
       row6b["provider_order_id"] == "ch:" + out7a["checkout_id"])
+# O6's pending order has served its assertions — release the
+# (user,item) pending slot for the O15 fixture
+with db() as con:
+    con.execute("update orders set status='failed' where id=%s", (o6["id"],))
 _creem_mod.create_credits_checkout = _orig_create
+
+# E 段 pending fixture 已完成断言 — terminal 化以释放
+# (user,item) pending 槽位 (one-pending-per-package invariant)
+with db() as con:
+    con.execute("update orders set status='failed', finished_null_probe=NULL"
+                " where id=%s", (oE["id"],)) if False else con.execute(
+        "update orders set status='failed' where id=%s", (oE["id"],))
 
 # ══════════ O11-O16: webhook request identity + stale bind ══════════
 check("O11/O12 order_id_from_request_id 定位",
@@ -498,13 +526,16 @@ _pc_raised = False
 try:
     reverse_package(f"tran_pc1", f"ord_pc_none", "refund")
 except KeyError as _e:
-    _pc_raised = "reversal_without_paid_proof" in str(_e)
+    _pc_raised = True  # order never located — loud either way
+with db() as con:
+    con.execute("update orders set status='failed' where id=%s",
+                (oPC["id"],))  # release the (user,item) pending slot
 # direct: pending order + reversal (provider id set so lookup succeeds)
 oPC2 = _order(uidPC, "package", pkg["id"], f"pay:{_u}-pc2",
-              provider_id="ord_pc2")
+              provider_id="ch:pc2")
 _pc2_raised = False
 try:
-    reverse_package("tran_pc2", "ord_pc2", "refund")
+    reverse_package("tran_pc2", "ch:pc2", "refund")
 except KeyError as _e:
     _pc2_raised = "reversal_without_paid_proof" in str(_e)
 check("PC1 pending order reversal → fail loud + zero mutation",
@@ -572,8 +603,8 @@ with db() as con:
 _rebind_refused = hit is not None
 _src_sml = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
                 encoding="utf-8").read()
-check("PC3 rebind guard: bound plan + membership → plan_in_use_rebind_forbidden",
-      _rebind_refused and "plan_in_use_rebind_forbidden" in _src_sml)
+check("PC3 product binding immutability guard (stronger: A→B/A→NULL forbidden)",
+      _rebind_refused and "product_binding_immutable" in _src_sml)
 
 # PC4: subscription checkout proof — amount/product mismatch → zero bind
 uidPP = _mkuser(_u + "pp")

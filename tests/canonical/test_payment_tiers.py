@@ -73,12 +73,14 @@ def _new_user(prefix):
         (u, f"{u}@t.co", _ts, _ts))
     return u, _cur.fetchone()[0]
 
-def _sub_snap(status, p_start, p_end, product=None, sub_id="ptsub"):
-    # paid-proof contract fields (product + last_transaction_id) required
+def _sub_snap(status, p_start, p_end, product=None, sub_id="ptsub",
+              txn=None):
+    # paid-proof contract fields (product + last_transaction_id) required;
+    # a mid-cycle upgrade charge is a DISTINCT provider transaction
     d = {"object": "subscription", "id": sub_id, "status": status,
          "current_period_start_date": p_start, "current_period_end_date": p_end,
          "product": product or {"id": "prod_pt"},
-         "last_transaction_id": f"txn_{sub_id}"}
+         "last_transaction_id": txn or f"txn_{sub_id}"}
     return d
 
 def _iso(epoch):
@@ -95,7 +97,9 @@ def _seed_sub_user(prefix, plan_code, product, sub_id, paid=True):
         " status, amount_cents, created_at, paid_at)"
         " values (%s, 'plan', %s, 'creem', %s, 'paid', 500, %s, %s) returning id",
         (uid, plan_id, f"sub:{sub_id}", _ts, _ts))
-    _sub.bind_checkout({"id": "ch_" + sub_id, "subscription": {"id": sub_id}})
+    _sub.bind_checkout({"id": "ch_" + sub_id,
+                        "order": {"amount": 500, "product": ""},
+                        "subscription": {"id": sub_id}})
     if paid:
         _sub.handle_event("subscription.paid",
                           _sub_snap("active", _iso(PS), _iso(PE),
@@ -215,13 +219,13 @@ _cur.execute("select id from packages where code='pt_pkg'")
 _pkg9 = _cur.fetchone()[0]
 _cur.execute(
     "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, currency, credits_snapshot, created_at)"
-    " values (%s, 'package', %s, 'creem', 'ord_pt9', 'pending', 500, 'USD', 100, %s) returning id", (uid9, _pkg9, _ts))
+    " values (%s, 'package', %s, 'creem', 'ch:pt9', 'pending', 500, 'USD', 100, %s) returning id", (uid9, _pkg9, _ts))
 _oid9 = _cur.fetchone()[0]
 # checkout-time snapshot fact (canonical since the payment-forward batch;
 # written in the INSERT now that kind/snapshot is a schema invariant)
 def _try_fulfill(**kw):
     try:
-        _creem.fulfill(kw.get("oid", "ord_pt9"), "", kw.get("amount", 500),
+        _creem.fulfill(kw.get("oid", ""), kw.get("ch", "pt9"), kw.get("amount", 500),
                        product_id=kw.get("product", "prod_credits"),
                        currency=kw.get("currency", "USD"))
         return None
@@ -240,9 +244,9 @@ for name, kw, expect in _cases:
     _cur.execute("select count(*) from ledger where user_id=%s", (uid9,))
     check(name, err == expect and _cur.fetchone()[0] == 0, f"err={err}")
 # correct → exactly one; replay → still exactly one:
-r1 = _creem.fulfill("ord_pt9", "", 500, product_id="prod_credits", currency="USD")
+r1 = _creem.fulfill("", "pt9", 500, product_id="prod_credits", currency="USD")
 _bal = spendable_balance(uid9)
-r2 = _creem.fulfill("ord_pt9", "", 500, product_id="prod_credits", currency="USD")
+r2 = _creem.fulfill("", "pt9", 500, product_id="prod_credits", currency="USD")
 check("P9 correct product+amount+currency → exactly one grant; replay 仍 one",
       spendable_balance(uid9) == 100 and _grants(uid9, "grant_package") == 1,
       f"bal={spendable_balance(uid9)} grants={_grants(uid9,'grant_package')}")
@@ -298,7 +302,7 @@ check("T10 update Pro product → Membership Pro / projection Pro / 2000 files /
 # Creem proration-charge-immediately 触发的新 paid event 携带 pro product
 # + 新 last_transaction_id → apply_paid_period 按 period-total 补差 +400。
 _bal_after_update = spendable_balance(uid10)
-_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10"))
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "prod_pro"}, sub_id="ptsub10", txn=f"txn_{_u7}up10"))
 _adj = _grants(uid10, "grant_plan_upgrade")
 _total11 = _plan_credits_total(uid10, PS)
 check("T11 paid upgrade txn → apply_paid_period 补差 +400 (100→500) / exactly once / period total = 500",
