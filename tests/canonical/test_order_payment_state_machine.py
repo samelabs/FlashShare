@@ -77,10 +77,10 @@ def _pkg_order(uid, pkg_id, status="pending", prov=None, ref=None):
         row = con.execute(
             "insert into orders (user_id, kind, item_id, provider,"
             " provider_order_id, status, amount_cents, currency,"
-            " credits_snapshot, client_ref, granted, paid_at, refunded_at,"
+            " credits_snapshot, granted, paid_at, refunded_at,"
             " created_at) values (%s, 'package', %s, 'creem', %s, %s, 500,"
-            " 'USD', 5000, %s, %s, %s, %s, %s) returning *",
-            (uid, pkg_id, prov, status, ref or f"sm:{_u}:{_os.urandom(3).hex()}",
+            " 'USD', 5000, %s, %s, %s, %s) returning *",
+            (uid, pkg_id, prov, status,
              granted, paid_at, refunded_at, ts)).fetchone()
     return dict(row)
 
@@ -202,10 +202,10 @@ try:
     with db() as con:
         con.execute(
             "insert into orders (user_id, kind, item_id, provider, status,"
-            " amount_cents, currency, credits_snapshot, client_ref,"
+            " amount_cents, currency, credits_snapshot,"
             " created_at) values (%s, 'package', %s, 'creem', 'pending',"
-            " 500, 'USD', 5000, %s, %s)",
-            (uid, pkg["id"], f"sm:{_u}:dup", ts))
+            " 500, 'USD', 5000, %s)",
+            (uid, pkg["id"], ts))
 except Exception:
     _dupe = True
 check("I-6 same (user,item) second pending → unique 拒 (并发兜底)", _dupe)
@@ -240,12 +240,14 @@ oS = None
 with db() as con:
     oS = con.execute(
         "insert into orders (user_id, kind, item_id, provider, status,"
-        " amount_cents, currency, client_ref, created_at) values"
-        " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s, %s)"
-        " returning *", (uidS, _pl["id"], f"sm:{_u}:s", ts)).fetchone()
+        " amount_cents, currency, created_at) values"
+        " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s)"
+        " returning *", (uidS, _pl["id"], ts)).fetchone()
     oS = dict(oS)
 _ev = {"id": "ch_sm", "request_id": f"order:{oS['id']}",
-       "order": {"amount": 999, "product": "prod_sm_plan"},
+       "order": {"id": "ord_sm", "status": "paid", "type": "recurring",
+                  "amount": 999, "currency": "USD",
+                  "product": "prod_sm_plan"},
        "subscription": {"id": "sub_sm"}}
 _bind(_ev, order_id=oS["id"])
 with db() as con:
@@ -267,13 +269,15 @@ uidS2 = _mkuser(_u + "s2")
 with db() as con:
     oS2 = dict(con.execute(
         "insert into orders (user_id, kind, item_id, provider, status,"
-        " amount_cents, currency, client_ref, created_at) values"
-        " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s, %s)"
-        " returning *", (uidS2, _pl["id"], f"sm:{_u}:s2", ts)).fetchone())
+        " amount_cents, currency, created_at) values"
+        " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s)"
+        " returning *", (uidS2, _pl["id"], ts)).fetchone())
 _err = False
 try:
     _bind({"id": "ch_sm2", "request_id": f"order:{oS2['id']}",
-           "order": {"amount": 500, "product": "prod_sm_plan"},
+           "order": {"id": "ord_sm2", "status": "paid", "type": "recurring",
+                      "amount": 500, "currency": "USD",
+                      "product": "prod_sm_plan"},
            "subscription": {"id": "sub_sm2"}}, order_id=oS2["id"])
 except KeyError as e:
     _err = "amount" in str(e)
@@ -292,9 +296,9 @@ try:
     with db() as con:
         con.execute(
             "insert into orders (user_id, kind, item_id, provider, status,"
-            " amount_cents, currency, client_ref, created_at) values"
-            " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s, %s)",
-            (uidS2, _pl["id"], f"sm:{_u}:s2b", ts))
+            " amount_cents, currency, created_at) values"
+            " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s)",
+            (uidS2, _pl["id"], ts))
 except Exception:
     _dup_plan = True
 check("S-4 second pending plan order per user → unique 拒", _dup_plan)
@@ -304,11 +308,14 @@ uidS3 = _mkuser(_u + "s3")
 with db() as con:
     oS3 = dict(con.execute(
         "insert into orders (user_id, kind, item_id, provider,"
-        " provider_order_id, status, amount_cents, currency, client_ref,"
+        " provider_order_id, status, amount_cents, currency,"
         " created_at) values (%s, 'plan', %s, 'creem', 'ch:ch_s3',"
-        " 'pending', 999, 'USD', %s, %s) returning *",
-        (uidS3, _pl["id"], f"sm:{_u}:s3", ts)).fetchone())
-_bind({"id": "ch_s3", "order": {"amount": 999, "product": "prod_sm_plan"},
+        " 'pending', 999, 'USD', %s) returning *",
+        (uidS3, _pl["id"], ts)).fetchone())
+_bind({"id": "ch_s3",
+       "order": {"id": "ord_s3", "status": "paid", "type": "recurring",
+                  "amount": 999, "currency": "USD",
+                  "product": "prod_sm_plan"},
        "subscription": {"id": "sub_s3"}})
 with db() as con:
     _rS3 = con.execute("select status, provider_order_id from orders"
@@ -379,9 +386,9 @@ uidOP = _mkuser(_u + "op")
 with db() as con:
     con.execute(
         "insert into orders (user_id, kind, item_id, provider, status,"
-        " amount_cents, currency, client_ref, created_at) values"
-        " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s, %s)",
-        (uidOP, _pl["id"], f"sm:{_u}:op", ts))
+        " amount_cents, currency, created_at) values"
+        " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s)",
+        (uidOP, _pl["id"], ts))
 with db() as con:
     _hit = con.execute(
         "SELECT 1 FROM orders WHERE kind='plan' AND item_id=%s"
@@ -435,8 +442,307 @@ check("M-5 restore to before + verify", _ok_r and _prod_state["prod_m"]["price"]
 _ec2._fetch_product = _orig_fetch
 _ec2._patch = _orig_patch
 
+# ══════════ R2 series: production-closure deviations (7 fixes) ══════════
+def _iso(epoch):
+    import datetime
+    return datetime.datetime.fromtimestamp(
+        epoch, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ── R2-1: payment client_ref fully absent ──
+import subprocess as _sp
+_grep = _sp.run(["grep", "-rn", "client_ref", "app/routes/topup.py",
+                 "static/pages/credits.js"], capture_output=True, text=True,
+                cwd=_REPO).stdout.strip()
+check("R2-1a payment surface 零 client_ref 引用 (topup route + credits.js)",
+      _grep == "", _grep[:100])
+with db() as con:
+    _cols = [r["column_name"] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns"
+        " WHERE table_name='orders'").fetchall()]
+check("R2-1b orders 表无 client_ref 列", "client_ref" not in _cols)
+with db() as con:
+    _idx = [r["indexname"] for r in con.execute(
+        "SELECT indexname FROM pg_indexes WHERE tablename='orders'").fetchall()]
+check("R2-1c orders_user_client_ref_uk 不存在",
+      "orders_user_client_ref_uk" not in _idx)
+
+# ambiguous create retry → SAME order (repo-level, provider fake)
+import economy.creem as _creem_r2
+class _FakeCreemR2:
+    def __init__(self):
+        self.entities = {}
+    def create_credits_checkout(self, order_id, amount, user):
+        rid = f"order:{order_id}"
+        if rid not in self.entities:
+            self.entities[rid] = {"checkout_id": f"chk_{order_id}"}
+        return {"ok": True, "checkout_url": "https://x/" + self.entities[rid]["checkout_id"],
+                "checkout_id": self.entities[rid]["checkout_id"]}
+_fk2 = _FakeCreemR2()
+_orig_cc = _creem_r2.create_credits_checkout
+uidR2 = _mkuser(_u + "r2")
+with db() as con:
+    oR2 = dict(orders_repo.insert_order(
+        con, uidR2, "package", pkg["id"], "creem", 500, "USD", ts,
+        credits_snapshot=5000))
+_fk2.create_credits_checkout(oR2["id"], 500, {"id": uidR2})
+_fk2.create_credits_checkout(oR2["id"], 500, {"id": uidR2})  # retry
+with db() as con:
+    _nR2 = int(con.execute(
+        "SELECT count(*) c FROM orders WHERE user_id=%s AND kind='package'"
+        " AND item_id=%s AND status='pending'",
+        (uidR2, pkg["id"])).fetchone()["c"])
+check("R2-1d ambiguous-create retry → 同一 pending Order + 1 provider entity",
+      _nR2 == 1 and len(_fk2.entities) == 1)
+
+# ── R2-2: package paid identity = real provider order id ──
+from economy import creem as _cr2
+uidR2b = _mkuser(_u + "r2b")
+with db() as con:
+    oR2b = dict(orders_repo.insert_order(
+        con, uidR2b, "package", pkg["id"], "creem", 500, "USD", ts,
+        credits_snapshot=5000))
+_prod_id_orig = _cr2.CREEM_CREDITS_PRODUCT_ID
+_cr2.CREEM_CREDITS_PRODUCT_ID = "prod_credits"
+try:
+    # missing provider order id → no paid / no grant
+    _err = None
+    try:
+        _cr2.fulfill_by_request_id(int(oR2b["id"]), "", "chk_x", 500,
+                                   product_id="prod_credits", currency="USD")
+    except KeyError as e:
+        _err = str(e)
+    with db() as con:
+        _r = con.execute("select status, provider_order_id from orders"
+                         " where id=%s", (oR2b["id"],)).fetchone()
+    check("R2-2a provider order id missing → KeyError + order 仍 pending",
+          _err == "'provider_order_id_missing'"
+          and _r["status"] == "pending" and _r["provider_order_id"] is None,
+          f"{_err} {dict(_r)}")
+
+    # wrong checkout id vs bound ch: → conflict, no mutation
+    with db() as con:
+        orders_repo.bind_checkout_id(con, oR2b["id"], "chk_real")
+    _err2 = None
+    try:
+        _cr2.fulfill_by_request_id(int(oR2b["id"]), "ord_r2b", "chk_OTHER",
+                                   500, product_id="prod_credits",
+                                   currency="USD")
+    except KeyError as e:
+        _err2 = str(e)
+    with db() as con:
+        _r2 = con.execute("select status, provider_order_id from orders"
+                          " where id=%s", (oR2b["id"],)).fetchone()
+    check("R2-2b wrong checkout id → checkout_identity_conflict + 零 mutation",
+          _err2 == "'checkout_identity_conflict'"
+          and _r2["status"] == "pending" and _r2["provider_order_id"] == "ch:chk_real",
+          f"{_err2} {dict(_r2)}")
+
+    # correct proof → paid with REAL provider order id
+    _res = _cr2.fulfill_by_request_id(int(oR2b["id"]), "ord_r2b", "chk_real",
+                                      500, product_id="prod_credits",
+                                      currency="USD")
+    with db() as con:
+        _r3 = con.execute("select status, provider_order_id from orders"
+                          " where id=%s", (oR2b["id"],)).fetchone()
+    check("R2-2c 完整 proof → paid + canonical ord id (非 ch:)",
+          _res.get("granted") and _r3["status"] == "paid"
+          and _r3["provider_order_id"] == "ord_r2b",
+          f"{_res} {dict(_r3)}")
+finally:
+    _cr2.CREEM_CREDITS_PRODUCT_ID = _prod_id_orig
+
+# ── R2-3: subscription proof predicate — each required field missing ──
+uidR2c = _mkuser(_u + "r2c")
+with db() as con:
+    oR2c = dict(con.execute(
+        "insert into orders (user_id, kind, item_id, provider, status,"
+        " amount_cents, currency, created_at) values"
+        " (%s, 'plan', %s, 'creem', 'pending', 999, 'USD', %s)"
+        " returning *", (uidR2c, _pl["id"], ts)).fetchone())
+_full = {"id": "ch_r2c",
+         "order": {"id": "ord_r2c", "status": "paid", "type": "recurring",
+                    "amount": 999, "currency": "USD",
+                    "product": "prod_sm_plan"},
+         "subscription": {"id": "sub_r2c"}}
+import copy as _copy
+_bad_proofs = {
+    "checkout_id":      {"id": "", "order": _full["order"], "subscription": _full["subscription"]},
+    "subscription_id":  {"id": "ch_r2c", "order": _full["order"], "subscription": {"id": ""}},
+    "provider_order_id": {"id": "ch_r2c", "order": {**_full["order"], "id": ""},
+                          "subscription": _full["subscription"]},
+    "status_not_paid":  {"id": "ch_r2c", "order": {**_full["order"], "status": "pending"},
+                         "subscription": _full["subscription"]},
+    "type_not_recurring": {"id": "ch_r2c", "order": {**_full["order"], "type": "onetime"},
+                           "subscription": _full["subscription"]},
+    "amount_mismatch":  {"id": "ch_r2c", "order": {**_full["order"], "amount": 100},
+                         "subscription": _full["subscription"]},
+    "currency_missing": {"id": "ch_r2c", "order": {**_full["order"], "currency": ""},
+                         "subscription": _full["subscription"]},
+    "currency_mismatch": {"id": "ch_r2c", "order": {**_full["order"], "currency": "EUR"},
+                          "subscription": _full["subscription"]},
+    "product_missing":  {"id": "ch_r2c", "order": {**_full["order"], "product": ""},
+                         "subscription": _full["subscription"]},
+    "product_mismatch": {"id": "ch_r2c", "order": {**_full["order"], "product": "prod_OTHER"},
+                         "subscription": _full["subscription"]},
+}
+_all_zero = True
+for _nm, _ev in _bad_proofs.items():
+    _e = None
+    try:
+        _bind(_ev, order_id=oR2c["id"])
+    except KeyError as exc:
+        _e = str(exc)
+    if _e is None:
+        _all_zero = False
+        check(f"R2-3 {_nm} → fail loud", False, "no exception")
+with db() as con:
+    _rc = con.execute("select status, provider_order_id from orders"
+                      " where id=%s", (oR2c["id"],)).fetchone()
+    _mc = int(con.execute("select count(*) c from memberships where"
+                          " user_id=%s", (uidR2c,)).fetchone()["c"])
+check("R2-3 全部 10 种 proof 缺失/错配 → KeyError + 零 Order/零 Membership mutation",
+      _all_zero and _rc["status"] == "pending"
+      and _rc["provider_order_id"] is None and _mc == 0,
+      f"{dict(_rc)} m={_mc}")
+# full proof then binds
+_bind(_full, order_id=oR2c["id"])
+with db() as con:
+    _rc2 = con.execute("select status, provider_order_id from orders"
+                       " where id=%s", (oR2c["id"],)).fetchone()
+check("R2-3 完整 proof → paid + sub: canonical",
+      _rc2["status"] == "paid" and _rc2["provider_order_id"] == "sub:sub_r2c",
+      dict(_rc2))
+
+# paid replay same sub ok / different sub conflict
+_bind(_full, order_id=oR2c["id"])
+_ev_other = _copy.deepcopy(_full)
+_ev_other["subscription"] = {"id": "sub_OTHER"}
+_e3 = None
+try:
+    _bind(_ev_other, order_id=oR2c["id"])
+except KeyError as exc:
+    _e3 = str(exc)
+with db() as con:
+    _rc3 = con.execute("select status, provider_order_id from orders"
+                       " where id=%s", (oR2c["id"],)).fetchone()
+check("R2-3b paid + same sub replay ok / paid + different sub → conflict",
+      _e3 in ("'subscription_identity_conflict'",
+              "'provider_identity_conflict'")
+      and _rc3["provider_order_id"] == "sub:sub_r2c",
+      f"{_e3} {dict(_rc3)}")
+# writer-level monotonicity (complete_plan_checkout direct):
+_e3b = None
+try:
+    with db() as con:
+        orders_repo.complete_plan_checkout(con, oR2c["id"], "sub:sub_OTHER", ts)
+except KeyError as exc:
+    _e3b = str(exc)
+check("R2-3c writer 守 sub monotonicity (paid + sub:B → conflict)",
+      _e3b == "'subscription_identity_conflict'", _e3b)
+
+# ── R2-4: package reversal requires exact positive grant ──
+from economy import reverse as _rev2
+uidR2d = _mkuser(_u + "r2d")
+with db() as con:
+    # paid WITHOUT any grant (writer-direct; snapshot positive, ledger
+    # empty) — the DB no longer permits zero-snapshot package rows
+    oR2d = dict(orders_repo.insert_order(
+        con, uidR2d, "package", pkg["id"], "creem", 500, "USD", ts,
+        credits_snapshot=5000))
+    orders_repo.complete_package_order(con, oR2d["id"], f"ord_r2d_{_u}", ts)
+_e4 = None
+try:
+    _rev2._reverse_package({"id": f"txn_r2d_{_u}", "order": f"ord_r2d_{_u}"})
+except KeyError as exc:
+    _e4 = str(exc)
+with db() as con:
+    _rd = con.execute("select status from orders where id=%s",
+                      (oR2d["id"],)).fetchone()
+check("R2-4a paid + missing grant → fail loud + 零 terminal mutation",
+      _e4 == "'original_grant_missing'" and _rd["status"] == "paid",
+      f"{_e4} {dict(_rd)}")
+
+# grant != snapshot mismatch
+uidR2e = _mkuser(_u + "r2e")
+with db() as con:
+    oR2e = dict(orders_repo.insert_order(
+        con, uidR2e, "package", pkg["id"], "creem", 500, "USD", ts,
+        credits_snapshot=5000))
+_prod_id_orig2 = _cr2.CREEM_CREDITS_PRODUCT_ID
+_cr2.CREEM_CREDITS_PRODUCT_ID = "prod_credits"
+try:
+    _cr2.fulfill_by_request_id(int(oR2e["id"]), f"ord_r2e_{_u}", "chk_r2e",
+                                500, product_id="prod_credits", currency="USD")
+finally:
+    _cr2.CREEM_CREDITS_PRODUCT_ID = _prod_id_orig2
+with db() as con:
+    con.execute("update ledger set delta=3000 where"
+                " ref_type='order' and ref_id=%s", (str(oR2e["id"]),))
+_e5 = None
+try:
+    _rev2._reverse_package({"id": f"txn_r2e_{_u}", "order": f"ord_r2e_{_u}"})
+except KeyError as exc:
+    _e5 = str(exc)
+with db() as con:
+    _re = con.execute("select status from orders where id=%s",
+                      (oR2e["id"],)).fetchone()
+check("R2-4b grant != snapshot → grant_snapshot_mismatch + 零 terminal",
+      _e5 == "'grant_snapshot_mismatch'" and _re["status"] == "paid",
+      f"{_e5} {dict(_re)}")
+
+# ── R2-5: apply_paid_period replay — wrong ref_type not matched + true movement ──
+uidR2f = _mkuser(_u + "r2f")
+with db() as con:
+    oR2f = dict(con.execute(
+        "insert into orders (user_id, kind, item_id, provider,"
+        " provider_order_id, status, amount_cents, currency, created_at,"
+        " paid_at) values (%s, 'plan', %s, 'creem', 'sub:sub_r2f', 'paid',"
+        " 999, 'USD', %s, %s) returning *",
+        (uidR2f, _pl["id"], ts, ts)).fetchone())
+    _m2 = con.execute(
+        "insert into memberships (user_id, plan_id, provider_subscription_id,"
+        " status, started_at, renews_at) values (%s, %s, 'sub:sub_r2f',"
+        " 'active', %s, %s) returning *",
+        (uidR2f, _pl["id"], ts, ts + 30*86400)).fetchone()
+PS2, PE2 = ts, ts + 30*86400
+_snap2 = {"object": "subscription", "id": "sub_r2f", "status": "active",
+          "current_period_start_date": _iso(PS2), "current_period_end_date": _iso(PE2),
+          "product": {"id": "prod_sm_plan"},
+          "last_transaction_id": f"txn_r2f_{_u}"}
+with db() as con:
+    _live_credits = int(con.execute(
+        "select monthly_credits from plans where id=%s",
+        (_pl["id"],)).fetchone()["monthly_credits"])
+_r5a = apply_paid_period("sub_r2f", _snap2)
+check("R2-5a first apply → granted=True, credits=live plan 值恰一次",
+      _r5a["granted"] is True and _r5a["credits"] == _live_credits, _r5a)
+# wrong ref_type row sharing the txn ref must NOT be matched as replay grant
+with db() as con:
+    con.execute(
+        "insert into ledger (user_id, kind, delta, balance_after, ref_type,"
+        " ref_id, idem_key, note, created_at) values (%s, 'grant_plan', 999,"
+        " 999, 'other_type', %s, %s, 'x', %s)",
+        (uidR2f, f"txn_r2f_{_u}", f"wrong-rt-{_u}", ts))
+# live plan edit 100 → 150, then replay SAME txn
+with db() as con:
+    con.execute("update plans set monthly_credits=150 where id=%s", (_pl["id"],))
+_r5b = apply_paid_period("sub_r2f", _snap2)
+with db() as con:
+    _tot = int(con.execute(
+        "select coalesce(sum(delta),0) s from ledger where user_id=%s"
+        " and kind in ('grant_plan','grant_plan_upgrade')"
+        " and ref_type='creem_transaction'", (uidR2f,)).fetchone()["s"])
+check("R2-5b same-txn replay → granted=False credits=0 / ledger 不变 / wrong ref_type 不命中",
+      _r5b["granted"] is False and _r5b["credits"] == 0
+      and _tot == _live_credits,
+      f"{_r5b} tot={_tot}")
+with db() as con:
+    con.execute("update plans set monthly_credits=100 where id=%s", (_pl["id"],))
+
 # ═══ cleanup ═══
-_uids_all = [uid, uidS, uidS2, uidS3, uidOP]
+_uids_all = [uid, uidS, uidS2, uidS3, uidOP, uidR2, uidR2b, uidR2c,
+             uidR2d, uidR2e, uidR2f]
 with db() as con:
     for _uid2 in _uids_all:
         con.execute("delete from operator_audit where actor_user_id=%s", (_uid2,))

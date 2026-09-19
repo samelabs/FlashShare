@@ -395,7 +395,6 @@ _SCHEMA_SQL = (
       amount_cents      BIGINT NOT NULL,
       currency          TEXT NOT NULL DEFAULT 'USD',
       credits_snapshot  BIGINT,
-      client_ref        TEXT,
       granted           BOOLEAN NOT NULL DEFAULT FALSE,
       created_at        BIGINT NOT NULL,
       paid_at           BIGINT,
@@ -425,7 +424,7 @@ _SCHEMA_SQL = (
         CHECK (status IN ('pending','failed')
                OR provider_order_id IS NOT NULL),
       CONSTRAINT orders_pending_identity_ch_ck
-        CHECK (status <> 'pending'
+        CHECK (status NOT IN ('pending','failed')
                OR provider_order_id IS NULL
                OR provider_order_id LIKE 'ch:%%'),
       CONSTRAINT orders_package_paid_fields_ck
@@ -456,11 +455,6 @@ _SCHEMA_SQL = (
     """,
     """
     CREATE INDEX IF NOT EXISTS orders_user_idx ON orders(user_id, created_at DESC)
-    """,
-    """
-    CREATE UNIQUE INDEX IF NOT EXISTS orders_user_client_ref_uk
-      ON orders(user_id, client_ref)
-      WHERE client_ref IS NOT NULL
     """,
     """
     CREATE UNIQUE INDEX IF NOT EXISTS orders_user_pending_plan_uk

@@ -110,18 +110,20 @@ def _reverse_package(txn: dict, _is_dispute: bool = False) -> dict:
     # paper over with a terminal marker.
     if row["status"] not in ("paid", "refunded", "disputed"):
         raise KeyError("reversal_without_paid_proof")
-    if grant_row is None or int(grant_row["delta"]) <= 0:
-        # PAID order with no grant fact (zero-credit snapshot variant):
-        # economic reversal amount = 0 → no-op convergence; the terminal
-        # marker keeps the EVENT semantics. This is reachable ONLY from
-        # a paid fact (gate above) — never fabricated from pending.
-        with db() as con:
-            _t = mark_disputed if _is_dispute else mark_refunded
-            _t(con, int(row["id"]), now())
-        return {"reversed": False, "credits": 0, "reason": "no_grant"}
-    amount = int(grant_row["delta"])
     snapshot = int(row["credits_snapshot"] or 0)
-    if snapshot and amount != snapshot:
+    # Economic reversal requires the EXACT original positive grant:
+    # idem order:{id}, delta == credits_snapshot > 0. Missing grant,
+    # non-positive delta, or a grant that disagrees with the frozen
+    # purchase fact is an unprovable state — fail loud with ZERO
+    # revoke and ZERO Order mutation (no "no_grant" terminal lie).
+    if grant_row is None:
+        raise KeyError("original_grant_missing")
+    amount = int(grant_row["delta"])
+    if amount <= 0:
+        raise KeyError("original_grant_non_positive")
+    if snapshot <= 0:
+        raise KeyError("credits_snapshot_non_positive")
+    if amount != snapshot:
         # grant vs frozen purchase fact disagree — fail loud, never guess
         raise KeyError("grant_snapshot_mismatch")
     from economy.billing import revoke
@@ -178,9 +180,12 @@ def _reverse_subscription(txn: dict) -> dict:
             """, (user_id, txn_id)).fetchall()
     total = sum(int(r["delta"]) for r in rows) if rows else 0
     if total <= 0:
-        # never granted from this transaction (or already reversed and
-        # replayed): idempotent no-op — do NOT guess from current Plan
-        # monthly_credits
+        # This transaction never minted Credits (a legal zero-credit
+        # Plan, or already reversed and replayed). ZERO revoke happens —
+        # but a reversal of the CURRENT paid period still ends the
+        # membership's paid validity: the economic fact is the payment
+        # transaction, not the (possibly zero) credits movement.
+        _expire_if_current_period(user_id, sub_id, period_start, txn)
         return {"reversed": False, "credits": 0, "reason": "no_grant"}
 
     from economy.billing import revoke

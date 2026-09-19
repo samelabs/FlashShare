@@ -45,15 +45,6 @@ CREATE UNIQUE INDEX ingress_requests_ref_live_idx
   ON ingress_requests(user_id, request_ref)
   WHERE status IN ('running','ok');
 
--- ── -2. orders.client_ref — client payment identity (new fact; history
---        stays NULL, nothing backfilled) ──
-ALTER TABLE orders
-  ADD COLUMN client_ref TEXT;
-
-CREATE UNIQUE INDEX orders_user_client_ref_uk
-  ON orders(user_id, client_ref)
-  WHERE client_ref IS NOT NULL;
-
 CREATE UNIQUE INDEX orders_user_pending_plan_uk
   ON orders(user_id)
   WHERE kind = 'plan' AND status = 'pending';
@@ -84,7 +75,7 @@ ALTER TABLE orders
   ADD CONSTRAINT orders_pending_identity_ns_ck
     CHECK (status IN ('pending','failed') OR provider_order_id IS NOT NULL),
   ADD CONSTRAINT orders_pending_identity_ch_ck
-    CHECK (status <> 'pending' OR provider_order_id IS NULL
+    CHECK (status NOT IN ('pending','failed') OR provider_order_id IS NULL
            OR provider_order_id LIKE 'ch:%'),
   ADD CONSTRAINT orders_package_paid_fields_ck
     CHECK (kind <> 'package' OR status <> 'paid'

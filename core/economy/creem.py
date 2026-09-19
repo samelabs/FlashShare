@@ -350,6 +350,8 @@ def fulfill_by_request_id(order_id: int, provider_order_id: str,
             raise KeyError("order_not_found")
         if row["kind"] != "package":
             raise KeyError("wrong_order_kind")
+        if not checkout_id or not str(checkout_id).strip():
+            raise KeyError("checkout_id_missing")
         # fail-closed payment contract: shared Credits Product + amount +
         # currency 全部必须显式匹配, 缺失即拒 (zero grant)。
         if not CREEM_CREDITS_PRODUCT_ID or not product_id:
@@ -399,13 +401,19 @@ def fulfill_by_request_id(order_id: int, provider_order_id: str,
         grant(user_id, credits, "grant_package",
               ref_type="order", ref_id=str(order_id),
               idem_key=f"order:{order_id}", note=amount_note)
-    # canonical provider identity: the success event's ord_* wins over
-    # the provisional ch:*; a mismatched existing canonical id fails loud
-    canonical = provider_order_id or ("ch:" + checkout_id)
-    if provider_order_id and row["provider_order_id"] != provider_order_id \
-            and not (row["provider_order_id"] or "").startswith("ch:") \
-            and row["provider_order_id"] is not None:
-        raise KeyError("provider_identity_conflict")
+    # Successful payment identity MUST close on the REAL provider order
+    # id: a completed checkout always carries one. A missing provider
+    # order id is a proof failure — NEVER promoted to a paid final
+    # identity via the ch:* namespace.
+    if not provider_order_id or not str(provider_order_id).strip():
+        raise KeyError("provider_order_id_missing")
+    # If the local order already carries a provisional ch:* binding, the
+    # success proof must name the SAME checkout (prevents binding an
+    # unrelated checkout's completion onto this order).
+    _bound = row["provider_order_id"] or ""
+    if _bound.startswith("ch:") and checkout_id and _bound != "ch:" + checkout_id:
+        raise KeyError("checkout_identity_conflict")
+    # canonical promotion writer itself guards A→B conflicts
     with db() as con:
-        _orders_repo.complete_package_order(con, order_id, canonical, ts)
+        _orders_repo.complete_package_order(con, order_id, provider_order_id, ts)
     return {"granted": True, "credits": credits}

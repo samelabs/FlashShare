@@ -10,28 +10,22 @@ from typing import Optional
 
 def insert_order(con, user_id: int, kind: str, item_id: int, provider: str,
                  amount_cents: int, currency: str, ts: int,
-                 credits_snapshot: int | None = None,
-                 client_ref: str = None) -> dict:
-    """One-time purchase fact. credits_snapshot freezes the purchased
-    quantity at checkout time (package orders) — fulfillment reads ONLY
-    the snapshot, never the live catalog row.
-
-    client_ref: the REQUIRED (runtime) client payment identity. Same
-    user + same ref permanently denotes one immutable purchase intent;
-    the unique partial index (orders_user_client_ref_uk) makes a
-    double-claim fail at the row level. Historical rows keep NULL."""
-    if (not isinstance(client_ref, str) or not client_ref.strip()
-            or len(client_ref.strip()) > 128):
-        raise ValueError("invalid_client_ref")
+                 credits_snapshot: int | None = None) -> dict:
+    """One-time purchase intent. Purchase identity = Order.id; the
+    provider request identity is request_id=order:<id>. A pending order
+    (same user, same item / same user for plans) is retried as the SAME
+    logical purchase — never a second row. credits_snapshot freezes the
+    purchased quantity at checkout time (package orders) — fulfillment
+    reads ONLY the snapshot, never the live catalog row."""
     return con.execute(
         """
         INSERT INTO orders (user_id, kind, item_id, provider, status,
-           amount_cents, currency, credits_snapshot, client_ref, created_at)
-           VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s, %s, %s)
+           amount_cents, currency, credits_snapshot, created_at)
+           VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s, %s)
            RETURNING *
         """,
         (user_id, kind, item_id, provider, amount_cents, currency,
-         credits_snapshot, client_ref.strip(), ts)).fetchone()
+         credits_snapshot, ts)).fetchone()
 
 
 def open_package_order(con, user_id: int, item_id: int) -> Optional[dict]:
@@ -45,19 +39,6 @@ def open_package_order(con, user_id: int, item_id: int) -> Optional[dict]:
         ORDER BY id ASC LIMIT 1
         """,
         (user_id, item_id)).fetchone()
-
-
-def order_by_client_ref_for_update(con, user_id: int,
-                                   client_ref: str) -> Optional[dict]:
-    """Look up the order bound to this user's payment identity, row
-    locked for the claim transaction."""
-    return con.execute(
-        """
-        SELECT * FROM orders
-        WHERE user_id = %s AND client_ref = %s
-        ORDER BY id ASC LIMIT 1 FOR UPDATE
-        """,
-        (user_id, client_ref)).fetchone()
 
 
 def order_by_id_for_update(con, order_id: int) -> Optional[dict]:
@@ -229,13 +210,20 @@ def complete_plan_checkout(con, order_id: int, sub_provider_id: str,
                            ts: int) -> dict | None:
     """plan checkout-completed writer: pending/failed → paid with
     provider_order_id='sub:<id>', paid_at COALESCE, granted stays
-    FALSE (cycle credits are the paid-period path's authority)."""
+    FALSE (cycle credits are the paid-period path's authority).
+    Subscription identity monotonicity is enforced by the WRITER, not
+    the caller: pending/failed + sub:A → paid; paid + sub:A → replay
+    (returned unchanged); paid + sub:B → hard conflict."""
     row = con.execute(
         "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
     if row is None:
         raise KeyError("order_not_found")
-    if row["status"] not in ("pending", "failed"):
-        return dict(row)
+    cur = row["provider_order_id"] or ""
+    if cur and cur != sub_provider_id and not cur.startswith("ch:"):
+        # sub:A → sub:B is a conflict on EVERY state (including paid
+        # replay); a provisional ch:* binding converges UP to its own
+        # canonical sub id (the caller's proof validated the match).
+        raise KeyError("subscription_identity_conflict")
     out = con.execute(
         """
         UPDATE orders

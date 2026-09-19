@@ -186,6 +186,10 @@ jobs:
             python tests/canonical/test_commission_effective_time.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_commission_effective_time.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_plan_mirror_commit_outcome.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_plan_mirror_commit_outcome.py
           # semantic guards (do not replace behavior tests):
           # orchestrator is staging-only and holds no source-deletion
           # authority; finalize_call_ok is the single tool_calls.upload_id
@@ -314,6 +318,9 @@ jobs:
 
       - name: Order payment state machine canonical
         run: python tests/canonical/test_order_payment_state_machine.py
+
+      - name: Plan mirror commit-outcome canonical
+        run: python tests/canonical/test_plan_mirror_commit_outcome.py
 
       - name: Order payment state canonical
         run: python tests/canonical/test_order_payment_state.py

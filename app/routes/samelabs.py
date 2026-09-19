@@ -153,6 +153,52 @@ async def samelabs_tools(request: Request):
 from repo import operator_audit as _audit_repo
 
 
+def _classify_db_commit_outcome(plan_id, intended, actor_id, ts):
+    """DB-commit-outcome closure for the plan commercial mirror.
+
+    The provider provably carries the intended price, but the local
+    COMMIT raised / its outcome is unknown. An INDEPENDENT fresh
+    connection reads the exact plan row + the matching success audit
+    fact and classifies:
+      "success"   — row == intended AND the success audit durable
+                    (they committed together; nothing to do)
+      "rollback"  — update: row == exact before AND no success audit;
+                    create: row absent AND no audit → caller may run
+                    the rollback-gated provider restore
+      "unresolved" — DB unreadable / mixed row / audit contradiction
+    Never a second speculative mutation inside this classification.
+    """
+    from database import db as _fdb
+    try:
+        with _fdb() as con:
+            row = con.execute(
+                "SELECT * FROM plans WHERE id=%s", (plan_id,)).fetchone()
+            audit = con.execute(
+                "SELECT 1 FROM operator_audit"
+                " WHERE action IN ('plan.create','plan.update')"
+                "   AND target_type='plan' AND target_id=%s"
+                "   AND actor_user_id=%s AND created_at>=%s"
+                "   AND after_json->>'price_cents'=%s"
+                " LIMIT 1",
+                (str(plan_id), int(actor_id), int(ts),
+                 str(intended["price_cents"]))).fetchone()
+    except Exception:
+        return "unresolved", None
+    if row is None:
+        return ("rollback", None) if audit is None else ("unresolved", None)
+    cur_price = int(row["price_cents"] or 0)
+    cur_cur = str(row["currency"] or "")
+    cur_prod = str(row["creem_product_id"] or "")
+    if (cur_price == int(intended["price_cents"])
+            and cur_cur == str(intended.get("currency") or "")
+            and cur_prod == str(intended.get("creem_product_id") or "")):
+        return ("success", dict(row)) if audit is not None \
+            else ("unresolved", None)
+    if audit is None:
+        return "rollback", dict(row)   # row == exact before, no audit
+    return "unresolved", None
+
+
 def _snap_plan(r) -> dict:
     if r is None:
         return {}
@@ -386,12 +432,22 @@ async def samelabs_create_plan(request: Request):
             # Creem failure → rollback → zero committed audit row.
             _audit_repo.record(con, user["id"], "plan.create", "plan",
                                str(row["id"]), None, _snap_plan(row), now())
+            _mirror_before = None
             if fields.get("creem_product_id"):
                 from economy import creem as _creem
                 if not _creem.creem_enabled():
                     raise _PlanMirrorError("price_mirror_unavailable")
+                # compensation basis = the REAL provider-before facts
+                # (fresh GET snapshot), never a fabricated 0/"" pair
+                try:
+                    _pb = _creem._fetch_product(fields["creem_product_id"]) or {}
+                except Exception:
+                    raise _PlanMirrorError("price_mirror_unavailable")
+                _mirror_before = (int(_pb.get("price") or 0),
+                                  str(_pb.get("currency") or "").upper())
                 _mout = _creem.mirror_price_with_reconciliation(
-                    fields["creem_product_id"], 0, "",
+                    fields["creem_product_id"], _mirror_before[0],
+                    _mirror_before[1],
                     int(fields["price_cents"]),
                     str(fields.get("currency") or "USD"))
                 if _mout != _creem.MIRROR_SUCCESS:
@@ -408,6 +464,70 @@ async def samelabs_create_plan(request: Request):
         if "plans_product_binding_uk" in msg or "creem_product_id" in msg:
             return JSONResponse({"ok": False, "error": "product_already_bound"}, 409)
         return JSONResponse({"ok": False, "error": "code_taken"}, 409)
+    except psycopg2.Error:
+        # COMMIT failed / outcome unknown AFTER the provider provably
+        # carries the intended facts — classify from a fresh connection
+        if locals().get("_mirror_before") and fields.get("creem_product_id"):
+            from economy import creem as _ccreem
+            _prod = fields["creem_product_id"]
+            _bprice, _bcur = _mirror_before
+            try:
+                outcome, _row2 = _classify_db_commit_outcome(
+                    int(row["id"]),
+                    {"price_cents": int(fields["price_cents"]),
+                     "currency": str(fields.get("currency") or "USD"),
+                     "creem_product_id": _prod},
+                    int(user["id"]), int(row["created_at"]))
+            except Exception:
+                outcome, _row2 = "unresolved", None
+            if outcome == "rollback":
+                if not _ccreem.restore_product_price(_prod, _bprice, _bcur):
+                    return JSONResponse(
+                        {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
+                return JSONResponse(
+                    {"ok": False, "error": "price_mirror_local_rollback"}, 502)
+            if outcome == "success":
+                from governance.plan_catalog import validate_config
+                validate_config()
+                return {"ok": True, "plan": dict(row)}
+            return JSONResponse(
+                {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
+        raise
+    # ── DB COMMIT-OUTCOME CLOSURE (provider already proven intended) ──
+    # The block above exited cleanly, but the COMMIT itself can still
+    # fail (connection drop at commit) with the row's fate unknown.
+    # Classify via an INDEPENDENT fresh DB read; only a PROVEN local
+    # rollback may restore the provider to the exact before facts.
+    if _mirror_before is not None and fields.get("creem_product_id"):
+        from economy import creem as _ccreem
+        _prod = fields["creem_product_id"]
+        _bprice, _bcur = _mirror_before
+        try:
+            outcome, _row2 = _classify_db_commit_outcome(
+                int(row["id"]),
+                {"price_cents": int(fields["price_cents"]),
+                 "currency": str(fields.get("currency") or "USD"),
+                 "creem_product_id": _prod},
+                int(user["id"]), int(row["created_at"]))
+        except Exception:
+            outcome, _row2 = "unresolved", None
+        if outcome == "rollback":
+            if not _ccreem.restore_product_price(_prod, _bprice, _bcur):
+                import logging
+                logging.getLogger("flashshare").critical(
+                    "plan create mirror UNRESOLVED: product=%s before=%s/%s"
+                    " intended=%s restore-unprovable",
+                    _prod, _bprice, _bcur, fields["price_cents"])
+                return JSONResponse(
+                    {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
+        elif outcome == "unresolved":
+            import logging
+            logging.getLogger("flashshare").critical(
+                "plan create mirror UNRESOLVED: product=%s before=%s/%s"
+                " intended=%s db-outcome-unprovable",
+                _prod, _bprice, _bcur, fields["price_cents"])
+            return JSONResponse(
+                {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
     from governance.plan_catalog import validate_config
     validate_config()  # refresh + fail-closed 校验
     return {"ok": True, "plan": dict(row)}
@@ -502,6 +622,7 @@ async def samelabs_update_plan(plan_id: int, request: Request):
                         _pb = {}
                     _before_price = int(_pb.get("price") or 0)
                     _before_cur = str(_pb.get("currency") or "").upper()
+                    _mirror_before = (_before_price, _before_cur)
                     try:
                         _mout = _creem.mirror_price_with_reconciliation(
                             target_product, _before_price, _before_cur,
@@ -528,6 +649,71 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         if "plans_product_binding_uk" in msg or "creem_product_id" in msg:
             return JSONResponse({"ok": False, "error": "product_already_bound"}, 409)
         raise
+    except psycopg2.Error:
+        # COMMIT failed / outcome unknown AFTER the provider provably
+        # carries the intended facts — classify from a fresh connection
+        if locals().get("_mirror_before") and commercial_change \
+                and row["creem_product_id"]:
+            from economy import creem as _ccreem
+            _prod = row["creem_product_id"]
+            _bprice, _bcur = _mirror_before
+            try:
+                outcome, _row2 = _classify_db_commit_outcome(
+                    int(plan_id),
+                    {"price_cents": int(row["price_cents"]),
+                     "currency": str(row["currency"] or "USD"),
+                     "creem_product_id": _prod},
+                    int(user["id"]), int(now()))
+            except Exception:
+                outcome, _row2 = "unresolved", None
+            if outcome == "rollback":
+                if not _ccreem.restore_product_price(_prod, _bprice, _bcur):
+                    return JSONResponse(
+                        {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
+                return JSONResponse(
+                    {"ok": False, "error": "price_mirror_local_rollback"}, 502)
+            if outcome == "success":
+                from governance.plan_catalog import validate_config
+                validate_config()
+                return {"ok": True, "plan": dict(row)}
+            return JSONResponse(
+                {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
+        raise
+    # ── DB COMMIT-OUTCOME CLOSURE (provider already proven intended) ──
+    # A clean block exit does not prove the COMMIT landed (connection
+    # drop at commit leaves the row's fate unknown). Classify via an
+    # INDEPENDENT fresh DB read; only a PROVEN rollback may restore.
+    if commercial_change and row["creem_product_id"] \
+            and locals().get("_mirror_before"):
+        from economy import creem as _ccreem3
+        _prod3 = row["creem_product_id"]
+        _bp3, _bc3 = _mirror_before
+        try:
+            outcome3, _row3 = _classify_db_commit_outcome(
+                int(plan_id),
+                {"price_cents": int(row["price_cents"]),
+                 "currency": str(row["currency"] or "USD"),
+                 "creem_product_id": _prod3},
+                int(user["id"]), int(now()))
+        except Exception:
+            outcome3, _row3 = "unresolved", None
+        if outcome3 == "rollback":
+            if not _ccreem3.restore_product_price(_prod3, _bp3, _bc3):
+                import logging
+                logging.getLogger("flashshare").critical(
+                    "plan update mirror UNRESOLVED: product=%s before=%s/%s"
+                    " intended=%s restore-unprovable",
+                    _prod3, _bp3, _bc3, row["price_cents"])
+                return JSONResponse(
+                    {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
+        elif outcome3 == "unresolved":
+            import logging
+            logging.getLogger("flashshare").critical(
+                "plan update mirror UNRESOLVED: product=%s before=%s/%s"
+                " intended=%s db-outcome-unprovable",
+                _prod3, _bp3, _bc3, row["price_cents"])
+            return JSONResponse(
+                {"ok": False, "error": "price_mirror_commit_unresolved"}, 502)
     # POST-COMMIT READ-BACK: the transaction above has committed; re-GET
     # the product and confirm the provider now carries the committed
     # price/currency. This closes the residual crash window (PATCH

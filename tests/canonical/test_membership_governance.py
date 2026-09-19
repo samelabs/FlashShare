@@ -150,7 +150,7 @@ plan_plus = _seed_plan("plus", 100, "price_plus")
 _cur.execute("select id from plans where code='plus' and id != %s", (plan_plus,))
 oid = _seed_order(uidP, plan_plus, "mgsub1")
 # 首购建档 (bind_checkout 的 membership 建立):
-_sub.bind_checkout({"id": "ch1", "order": {"amount": 500, "product": ""}, "subscription": {"id": "mgsub1"}})
+_sub.bind_checkout({"id": "ch1", "order": {"id": "ord_mg1", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsub1"}})
 # paid → grant + membership active:
 res = _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE)))
 m = _m_row(uidP)
@@ -196,7 +196,7 @@ _cur.execute("update plans set creem_product_id='price_pro' where code='pro'")
 _refresh_catalog()
 PRO_FILES, PRO_BYTES = 2000, 20 * 1024 ** 3
 _seed_order(uidT, plan_pro, "mgsubT")
-_sub.bind_checkout({"id": "chT", "order": {"amount": 500, "product": ""}, "subscription": {"id": "mgsubT"}})
+_sub.bind_checkout({"id": "chT", "order": {"id": "ord_mgT", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_pro"}, "subscription": {"id": "mgsubT"}})
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubT"))
 r = resolve(uidT)
 check("G4 第二 tier (pro) → 自己的 entitlement (2000 files/20GiB, 绝不 Free)",
@@ -255,7 +255,7 @@ check("G8 period end → Free (membership fact 保留, entitlements free)",
 uR, uidR = _new_user("mgR")
 plan_r = _seed_plan("plus", 100, "price_plus")
 _seed_order(uidR, plan_r, "mgsubR")
-_sub.bind_checkout({"id": "chR", "order": {"amount": 500, "product": ""}, "subscription": {"id": "mgsubR"}})
+_sub.bind_checkout({"id": "chR", "order": {"id": "ord_mgR", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubR"}})
 # 历史 plan order (非当前 sub) — reconcile 不得遍历它:
 _old_plan = _seed_plan("mg_old", 777)
 _cur.execute(
@@ -285,7 +285,7 @@ check("G10pre unknown-profile plan 收费前拒绝 (gate 单点 + gate 后零 or
 # 防御测试: 若 DB/外部异常导致未知 active Membership 已存在 (绕过 gate),
 # read 面 fail loud、authorization fail-safe — 异常防线, 非销售流程:
 _seed_order(uidU, plan_x, "mgsubU")
-_sub.bind_checkout({"id": "chU", "order": {"amount": 500, "product": ""}, "subscription": {"id": "mgsubU"}})
+_sub.bind_checkout({"id": "chU", "order": {"id": "ord_mgU", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_x"}, "subscription": {"id": "mgsubU"}})
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubU"))
 try:
     resolve_from_membership({"member": True, "code": "mg_unknown_tier"})
@@ -346,12 +346,12 @@ def _resp(jr):
 # live member (fresh, paid) → plan_change_required, 零 create:
 uL, uidL = _new_user("mgL")
 _seed_order(uidL, plan_plus, "mgsubL")
-_sub.bind_checkout({"id": "chL", "order": {"amount": 500, "product": ""}, "subscription": {"id": "mgsubL"}})
+_sub.bind_checkout({"id": "chL", "order": {"id": "ord_mgL", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubL"}})
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubL"))
 _topup._require_auth = lambda request: ({"id": uidL, "email": "t@t.co",
                                         "username": uL}, None)
 _creem_calls["create"] = 0
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-1"})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 check("G12 live member 再 subscribe → plan_change_required / 零 checkout",
       st == 409 and d.get("error") == "plan_change_required"
       and _creem_calls["create"] == 0, str(d))
@@ -362,7 +362,7 @@ _topup._require_auth = lambda request: ({"id": uidS, "email": "t@t.co",
                                         "username": uS}, None)
 _cur.execute("update plans set creem_product_id='price_plus' where id=%s", (plan_plus,))
 _refresh_catalog()
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-2"})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 _cur.execute("select id from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidS,))
 _oi1 = _cur.fetchone()[0]
 check("G12b 首次 subscribe → 1 order + 1 create_checkout",
@@ -370,7 +370,7 @@ check("G12b 首次 subscribe → 1 order + 1 create_checkout",
       and _oi1 > 0, f"st={st} d={d}")
 # 第二次 (webhook 前) → retrieve pending → reuse URL, 不建第二 order/create:
 _RT[f"ch_fake_{_oi1}"] = {"status": "pending", "checkout_url": f"https://creem.test/c/{_oi1}"}
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-3"})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidS,))
 _n_orders = _cur.fetchone()[0]
 check("G12c webhook 前再 subscribe → reuse 同一 checkout URL / 仍 1 order / 零新 create",
@@ -378,7 +378,7 @@ check("G12c webhook 前再 subscribe → reuse 同一 checkout URL / 仍 1 order
       and _n_orders == 1 and _creem_calls["create"] == 1, f"st={st} d={d} n={_n_orders}")
 # expired → 终结旧 order, 重新创建:
 _RT[f"ch_fake_{_oi1}"] = {"status": "expired", "checkout_url": f"https://creem.test/c/{_oi1}"}
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-4"})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan' and status='failed'", (uidS,))
 _nf = _cur.fetchone()[0]
 check("G12d expired checkout → 旧 order failed + 新 create",
@@ -389,7 +389,7 @@ _oi2 = _cur.fetchone()[0]
 with db() as con:
     orders_repo.bind_membership(con, uidS, plan_plus, f"chfake{_oi2}", "active",
                                 started_at=_ts, renews_at=None)
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-5"})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscription)",
       st == 409 and d.get("error") == "plan_change_required"
       and _creem_calls["create"] == 2, f"st={st} d={d}")
@@ -401,7 +401,7 @@ _cur.execute("select id from plans where code='mg_unknown_tier'")
 _pq = _cur.fetchone()[0]
 _topup._require_auth = lambda request: ({"id": uidQ, "email": "t@t.co",
                                         "username": uQ}, None)
-st, d = _resp(asyncio.run(_do_sub({"plan_id": _pq, "client_ref": "mgsub-6"})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": _pq})))
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidQ,))
 check("G12f unknown-profile plan → plan_not_ready / 零 order / 零 checkout",
       st == 422 and d.get("error") == "plan_not_ready"
@@ -455,7 +455,7 @@ _barrier = threading.Barrier(2)
 _results = []
 def _worker():
     _barrier.wait()
-    _results.append(_resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-7"}))))
+    _results.append(_resp(asyncio.run(_do_sub({"plan_id": plan_plus}))))
 _t1 = threading.Thread(target=_worker)
 _t2 = threading.Thread(target=_worker)
 _t1.start(); _t2.start(); _t1.join(); _t2.join()
@@ -463,9 +463,10 @@ _cur.execute("select count(*) from orders where user_id=%s and kind='plan' and s
 _np = _cur.fetchone()[0]
 _ok200 = sum(1 for st, _ in _results if st == 200)
 _inprog = sum(1 for st, d in _results if d.get("error") == "subscription_in_progress")
-check("G14 同 user 两线程并发 /subscribe → 恰 1 pending order / 恰 1 create_checkout",
-      _np == 1 and _creem_calls["create"] == 1 and _ok200 == 1 and _inprog == 1,
-      f"orders={_np} creates={_creem_calls['create']} results={_results}")
+_chk_ids = {d.get("checkout_id") for st, d in _results if st == 200}
+check("G14 同 user 两线程并发 /subscribe → 恰 1 pending Order / 同一 checkout entity",
+      _np == 1 and _ok200 == 2 and len(_chk_ids) == 1,
+      f"orders={_np} creates={_creem_calls['create']} ch={_chk_ids} results={_results}")
 _topup._require_auth = _orig_auth
 # retrieve URL proof: 真 retrieve_checkout + 捕获 Request.get_full_url:
 import io as _io
@@ -506,7 +507,7 @@ _seed_order(uidV, plan_v, "mgsubV")  # pending plan order
 _cur.execute("select id, status, granted from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidV,))
 _ov_id, _ov_status, _ov_granted = _cur.fetchone()
 # checkout.completed (bind) — payment 完成, credits 未授:
-_res15 = _sub.bind_checkout({"id": "chV", "order": {"amount": 500, "product": ""}, "subscription": {"id": "mgsubV"}})
+_res15 = _sub.bind_checkout({"id": "chV", "order": {"id": "ord_mgV", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubV"}})
 _cur.execute("select status, granted from orders where id=%s", (_ov_id,))
 _st15, _gr15 = _cur.fetchone()
 check("G15 checkout.completed 后 order: status=paid / granted=FALSE (cycle credits 未授)",

@@ -52,6 +52,48 @@ def _resolve_subscription(con, sub_id: str) -> tuple[dict | None, dict | None]:
     return dict(row), dict(plan) if plan else None
 
 
+def _require_checkout_proof(obj: dict, row: dict, plan: dict) -> None:
+    """Frozen-contract proof for subscription FIRST checkout completion.
+    EVERY completion path validates the same predicate BEFORE any
+    Order/Membership mutation; a missing required field is a failure,
+    never a skip-the-check. Required:
+      checkout id, subscription id, provider order id, provider order
+      status == paid, provider order type == recurring, amount ==
+      frozen orders.amount_cents, currency == frozen orders.currency,
+      product == the Plan's immutable creem_product_id."""
+    sub = obj.get("subscription") or {}
+    sub_id = str(sub.get("id") or "")
+    ch_id = str(obj.get("id") or "")
+    w_order = obj.get("order") or {}
+    p_order_id = str(w_order.get("id") or "")
+    p_status = str(w_order.get("status") or "")
+    p_type = str(w_order.get("type") or "")
+    amount = int(w_order.get("amount") or 0)
+    product = str(w_order.get("product") or "")
+    currency = str(w_order.get("currency") or "")
+    if not ch_id.strip():
+        raise KeyError("checkout_id_missing")
+    if not sub_id.strip():
+        raise KeyError("subscription_id_missing")
+    if not p_order_id.strip():
+        raise KeyError("provider_order_id_missing")
+    if p_status != "paid":
+        raise KeyError("checkout_not_paid")
+    if p_type != "recurring":
+        raise KeyError("checkout_not_recurring")
+    if amount != int(row["amount_cents"]):
+        raise KeyError("checkout_amount_mismatch")
+    if not currency.strip():
+        raise KeyError("currency_missing")
+    if currency.upper() != (row["currency"] or "").upper():
+        raise KeyError("checkout_currency_mismatch")
+    if not product.strip():
+        raise KeyError("product_missing")
+    plan_product = plan.get("creem_product_id") if plan else None
+    if not plan_product or product != plan_product:
+        raise KeyError("checkout_product_mismatch")
+
+
 def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
     """checkout.completed (subscription first purchase), ONE DB
     transaction: lock the exact plan order → guarded pending/failed→paid
@@ -88,14 +130,7 @@ def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
             _plan = orders_repo.plan_by_id(con, int(row["item_id"]))
             if _plan is None:
                 raise KeyError("plan_not_found")
-            _w_order = obj.get("order") or {}
-            _w_amount = int(_w_order.get("amount") or 0)
-            _w_product = str(_w_order.get("product") or "")
-            if _w_amount != int(row["amount_cents"]):
-                raise KeyError("checkout_amount_mismatch")
-            if _plan.get("creem_product_id") and _w_product \
-                    and _w_product != _plan["creem_product_id"]:
-                raise KeyError("checkout_product_mismatch")
+            _require_checkout_proof(obj, row, _plan)
             cur = row["provider_order_id"] or ""
             # identity validation: NULL / ch:<this checkout> / sub:<this sub>
             if cur and cur != f"sub:{sub_id}" and cur != f"ch:{ch_id}":
@@ -139,15 +174,9 @@ def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
         if _occ2 is not None and _occ2["provider_subscription_id"] != f"sub:{sub_id}":
             raise KeyError("membership_occupied")
         _proof_plan = orders_repo.plan_by_id(con, int(row["item_id"]))
-        _wo = obj.get("order") or {}
-        if _proof_plan is not None:
-            _wa = int(_wo.get("amount") or 0)
-            _wp = str(_wo.get("product") or "")
-            if _wa and _wa != int(row["amount_cents"]):
-                raise KeyError("checkout_amount_mismatch")
-            if (_proof_plan.get("creem_product_id") and _wp
-                    and _wp != _proof_plan["creem_product_id"]):
-                raise KeyError("checkout_product_mismatch")
+        if _proof_plan is None:
+            raise KeyError("plan_not_found")
+        _require_checkout_proof(obj, row, _proof_plan)
         complete_plan_checkout(con, int(row["id"]), f"sub:{sub_id}", now())
         if orders_repo.membership_by_sub(con, sub_id) is None:
             orders_repo.bind_membership(
@@ -403,16 +432,22 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     #     legitimate and follows the existing grant_plan_upgrade shape.
     _is_replay = False
     if already > 0 and target_plan_id is None:
+        # Same-transaction replay lookup is EXACT: grants carry
+        # ref_type='creem_transaction' — a row under any other ref_type
+        # sharing this ref_id must never be mistaken for this paid
+        # transaction's grant.
         with db() as con:
             _seen = con.execute(
                 "SELECT 1 FROM ledger WHERE user_id=%s AND kind IN"
-                " ('grant_plan','grant_plan_upgrade') AND ref_id=%s LIMIT 1",
+                " ('grant_plan','grant_plan_upgrade')"
+                " AND ref_type='creem_transaction' AND ref_id=%s LIMIT 1",
                 (order["user_id"], txn_ref)).fetchone()
         _is_replay = _seen is not None
     if _is_replay:
         plan_total = already
     else:
         plan_total = credits
+    _moved = 0
     if plan_total > already and plan_total > 0:
         # already == 0 → base cycle grant; already > 0 → the period was
         # partially credited (e.g. mid-cycle upgrade) → top-up the exact
@@ -423,16 +458,21 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
         # shapes → a base row never swallows an upgrade top-up).
         from economy.billing import grant
         if already > 0:
-            grant(order["user_id"], plan_total - already,
+            _moved = plan_total - already
+            grant(order["user_id"], _moved,
                   "grant_plan_upgrade",
                   ref_type="creem_transaction", ref_id=txn_ref,
                   idem_key=f"plan-upgrade:{order['user_id']}:{period_start}:{plan['code']}",
                   note=f"{plan['code']} upgrade top-up {period_start}-{period_end}")
         else:
-            grant(order["user_id"], plan_total, "grant_plan",
+            _moved = plan_total
+            grant(order["user_id"], _moved, "grant_plan",
                   ref_type="creem_transaction", ref_id=txn_ref,
                   idem_key=f"plan:{order['user_id']}:{period_start}",
                   note=f"{plan['code']} cycle {period_start}-{period_end}")
+        _granted_now = True
+    else:
+        _granted_now = False
     cancel_ts = None
     if scheduled_cancel:
         cancel_ts = ts
@@ -445,7 +485,11 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
             started_at=started, renews_at=period_end,
             plan_id=plan["id"],
             period_start=period_start, cancel_scheduled_at=cancel_ts)
-    return {"granted": True, "credits": credits, "status": status}
+    # Return the TRUE movement of THIS call: a same-transaction replay
+    # (or any converged no-op) grants nothing — granted=False, credits=0
+    # — even though the live Plan row says otherwise. Reconcile counts
+    # and logs follow the actual movement.
+    return {"granted": _granted_now, "credits": _moved, "status": status}
 
 
 def _ev_paid(sub_id: str, obj: dict) -> dict:

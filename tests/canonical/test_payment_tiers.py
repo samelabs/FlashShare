@@ -89,16 +89,19 @@ def _iso(epoch):
 
 def _seed_sub_user(prefix, plan_code, product, sub_id, paid=True):
     u, uid = _new_user(prefix)
-    _cur.execute("select id from plans where code=%s", (plan_code,))
+    _cur.execute("select id, creem_product_id from plans where code=%s", (plan_code,))
     row = _cur.fetchone()
     plan_id = row[0]
+    _plan_product = row[1] or product   # fall back to the seeded binding
     _cur.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
-        " status, amount_cents, created_at, paid_at)"
-        " values (%s, 'plan', %s, 'creem', %s, 'paid', 500, %s, %s) returning id",
+        " status, amount_cents, currency, created_at, paid_at)"
+        " values (%s, 'plan', %s, 'creem', %s, 'paid', 500, 'USD', %s, %s) returning id",
         (uid, plan_id, f"sub:{sub_id}", _ts, _ts))
     _sub.bind_checkout({"id": "ch_" + sub_id,
-                        "order": {"amount": 500, "product": ""},
+                        "order": {"id": "ord_" + sub_id, "status": "paid",
+                                  "type": "recurring", "amount": 500,
+                                  "currency": "USD", "product": _plan_product},
                         "subscription": {"id": sub_id}})
     if paid:
         _sub.handle_event("subscription.paid",
@@ -244,9 +247,9 @@ for name, kw, expect in _cases:
     _cur.execute("select count(*) from ledger where user_id=%s", (uid9,))
     check(name, err == expect and _cur.fetchone()[0] == 0, f"err={err}")
 # correct → exactly one; replay → still exactly one:
-r1 = _creem.fulfill("", "pt9", 500, product_id="prod_credits", currency="USD")
+r1 = _creem.fulfill(f"ord_pt9_{_ts}", "pt9", 500, product_id="prod_credits", currency="USD")
 _bal = spendable_balance(uid9)
-r2 = _creem.fulfill("", "pt9", 500, product_id="prod_credits", currency="USD")
+r2 = _creem.fulfill(f"ord_pt9_{_ts}", "pt9", 500, product_id="prod_credits", currency="USD")
 check("P9 correct product+amount+currency → exactly one grant; replay 仍 one",
       spendable_balance(uid9) == 100 and _grants(uid9, "grant_package") == 1,
       f"bal={spendable_balance(uid9)} grants={_grants(uid9,'grant_package')}")

@@ -25,13 +25,6 @@ async def topup_checkout(request: Request):
         package_id = int(raw.get("package_id", 0))
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    # Client payment identity FIRST — missing/invalid never creates a
-    # local order and never reaches the provider.
-    client_ref = raw.get("client_ref") if isinstance(raw, dict) else None
-    if (not isinstance(client_ref, str) or not client_ref.strip()
-            or len(client_ref.strip()) > 128):
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    client_ref = client_ref.strip()
     from repo.orders import package_by_id_active
     from utils import now
     with db() as con:
@@ -45,37 +38,25 @@ async def topup_checkout(request: Request):
     if not creem.custom_price_in_range(pkg["price_cents"]):
         return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
     from repo.orders import (insert_order, bind_checkout_id,
-                             order_by_client_ref_for_update,
-                             order_by_id_for_update, open_package_order)
+                             open_package_order)
     ts = now()
     with db() as con:
-        # Same user + same client_ref = ONE immutable purchase intent.
-        # A different kind/item under the same ref is a conflict (zero
-        # new order, zero provider call); a same-intent retry reuses the
-        # FIRST order's frozen amount/currency/credits snapshot — later
-        # catalog edits never re-price a logical purchase.
-        existing = order_by_client_ref_for_update(con, user["id"], client_ref)
-        if existing is not None:
-            if existing["kind"] != "package" or int(existing["item_id"]) != int(pkg["id"]):
-                return JSONResponse(
-                    {"ok": False, "error": "idempotency_conflict"}, 409)
-            order = dict(existing)
+        # Purchase intent identity = Order.id. ONE pending package
+        # intent per (user, package): an existing pending order
+        # (response-loss retry, another browser) is RETRIED as the
+        # same logical purchase — same row, same frozen facts, same
+        # provider request_id=order:<id>. Terminal orders never block
+        # a fresh purchase.
+        pend = open_package_order(con, user["id"], int(pkg["id"]))
+        if pend is not None:
+            order = dict(pend)
         else:
-            # ONE pending package intent per (user, package): an existing
-            # pending order (created under a different browser ref /
-            # response-loss) is RETRIED as the same logical purchase —
-            # same order row, same frozen facts, same request_id.
-            pend = open_package_order(con, user["id"], int(pkg["id"]))
-            if pend is not None:
-                order = dict(pend)
-            else:
-                # purchase fact freeze: amount + currency + credits —
-                # later package edits never rewrite a checked-out order
-                order = insert_order(con, user["id"], "package", pkg["id"], "creem",
-                                     pkg["price_cents"], pkg["currency"], ts,
-                                     credits_snapshot=int(pkg["credits"]),
-                                     client_ref=client_ref)
-    # Same-ref retry state machine: everything except a pending order
+            # purchase fact freeze: amount + currency + credits —
+            # later package edits never rewrite a checked-out order
+            order = insert_order(con, user["id"], "package", pkg["id"], "creem",
+                                 pkg["price_cents"], pkg["currency"], ts,
+                                 credits_snapshot=int(pkg["credits"]))
+    # Pending retry state machine: everything except a pending order
     # without (or with a reusable ch:) provider identity answers from
     # local facts with ZERO provider create.
     prov = order.get("provider_order_id") or ""
@@ -138,7 +119,7 @@ async def topup_checkout(request: Request):
     except Exception:
         # Unknown provider outcome (timeout / conn reset / 5xx / ACK
         # loss) is NOT a failure proof: the order stays pending and the
-        # caller retries the SAME client_ref (checkout_unresolved).
+        # caller retries the SAME pending Order (checkout_unresolved).
         return JSONResponse({"ok": False, "error": "checkout_unresolved"}, 502)
     with db() as con:
         bind_checkout_id(con, order["id"], out["checkout_id"])
@@ -159,17 +140,9 @@ async def subscribe_checkout(request: Request):
         plan_id = int(raw.get("plan_id", 0))
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    # Client payment identity FIRST — missing/invalid never creates a
-    # local order and never reaches the provider.
-    client_ref = raw.get("client_ref") if isinstance(raw, dict) else None
-    if (not isinstance(client_ref, str) or not client_ref.strip()
-            or len(client_ref.strip()) > 128):
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    client_ref = client_ref.strip()
     from repo.orders import (plan_by_id_active, insert_order, bind_checkout_id,
                              membership_row, open_plan_order,
-                             lock_user_for_checkout, mark_failed,
-                             order_by_client_ref_for_update)
+                             lock_user_for_checkout, mark_failed)
     with db() as con:
         plan = plan_by_id_active(con, plan_id)
     if not plan or not plan["creem_product_id"]:
@@ -198,31 +171,28 @@ async def subscribe_checkout(request: Request):
                 "current_plan": current["code"],
                 "requested_plan": plan["code"],
             }, 409)
-        # Same ref = ONE immutable first-checkout intent (same rule as
-        # packages: different kind/item under the ref → conflict). A
-        # same-intent retry REUSES the bound order: a pending order
-        # without a provider id (unresolved first attempt — mirror
-        # rejection, network loss) proceeds to provider creation on the
-        # SAME order; anything further along is in-progress and the
-        # pending-convergence/webhook path owns it.
-        existing = order_by_client_ref_for_update(con, user["id"], client_ref)
-        if existing is not None:
-            if existing["kind"] != "plan" or int(existing["item_id"]) != int(plan["id"]):
-                return JSONResponse(
-                    {"ok": False, "error": "idempotency_conflict"}, 409)
-            if (existing["status"] == "pending"
-                    and not existing["provider_order_id"]):
-                order = dict(existing)   # reuse — no second order row
-            else:
+        # First-checkout intent identity = Order.id. ONE open plan
+        # checkout per user: the pending order (however reached —
+        # unresolved first attempt with no provider id, mirror
+        # rejection, network loss) is RETRIED on the SAME row with the
+        # SAME provider request_id=order:<id>; anything further along
+        # is in-progress and the pending-convergence/webhook path owns
+        # it. Concurrency is serialized by the users row lock held for
+        # the whole claim transaction.
+        pending = open_plan_order(con, user["id"])
+        order = None
+        if pending is None:
+            order = insert_order(con, user["id"], "plan", plan["id"], "creem",
+                                 plan["price_cents"], plan["currency"], _ts)
+        elif not (pending["provider_order_id"] or ""):
+            # unresolved first attempt (no provider id yet) on the SAME
+            # plan → retry the SAME order row / same request_id; a
+            # different plan under the single open intent is not this
+            # purchase — it stays in_progress until resolved.
+            if int(pending["item_id"]) != int(plan["id"]):
                 return JSONResponse(
                     {"ok": False, "error": "subscription_in_progress"}, 409)
-        else:
-            pending = open_plan_order(con, user["id"])
-            order = None
-            if pending is None:
-                order = insert_order(con, user["id"], "plan", plan["id"], "creem",
-                                     plan["price_cents"], plan["currency"], _ts,
-                                     client_ref=client_ref)
+            order = dict(pending)
     # open pending checkout 收敛 (事务外):
     if order is None:
         prov_id = pending["provider_order_id"] or ""
@@ -249,13 +219,12 @@ async def subscribe_checkout(request: Request):
             if pending2 is not None:
                 return JSONResponse({"ok": False, "error": "subscription_in_progress"}, 409)
             order = insert_order(con, user["id"], "plan", plan["id"], "creem",
-                                 plan["price_cents"], plan["currency"], _ts,
-                                 client_ref=client_ref)
+                                 plan["price_cents"], plan["currency"], _ts)
     try:
         out = creem.create_subscription_checkout(order["id"], dict(plan), user)
     except Exception:
         # Unknown provider outcome is not a failure proof — order stays
-        # pending; same client_ref retry converges on it.
+        # pending; the next subscribe call retries the SAME Order.
         return JSONResponse({"ok": False, "error": "checkout_unresolved"}, 502)
     with db() as con:
         bind_checkout_id(con, order["id"], out["checkout_id"])

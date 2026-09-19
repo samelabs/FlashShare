@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Order/payment state closure canonical.
 
-Checkout identity (client_ref) → local order → provider request →
+Purchase intent identity = Order.id; provider request →
 recovery transitions → evidence precedence → reversal ordering →
 plan-order domain. Real repo/route helpers over an isolated DB; fault
 injection only.
@@ -83,12 +83,12 @@ def _order(user_id, kind, item_id, ref, status="pending", amount=500,
         row = con.execute(
             "insert into orders (user_id, kind, item_id, provider,"
             " provider_order_id, status, amount_cents, currency,"
-            " credits_snapshot, client_ref, granted, paid_at, refunded_at,"
+            " credits_snapshot, granted, paid_at, refunded_at,"
             " created_at) values"
-            " (%s, %s, %s, 'creem', %s, %s, %s, 'USD', %s, %s, %s, %s, %s, %s)"
+            " (%s, %s, %s, 'creem', %s, %s, %s, 'USD', %s, %s, %s, %s, %s)"
             " returning *",
             (user_id, kind, item_id, provider_id, status, amount, credits,
-             ref, granted, paid_at, refunded_at, ts)).fetchone()
+             granted, paid_at, refunded_at, ts)).fetchone()
         if provider_id:
             con.execute("update orders set provider_order_id=%s where id=%s",
                         (provider_id, row["id"]))
@@ -108,47 +108,26 @@ u2 = _mkuser(_u + "b")
 pkg = _mkpkg()
 pkg2 = _mkpkg(credits=10000, price=1000)
 
-# ══════════ A. client_ref 契约 (route helper 级 = parser 语义) ══════════
-def _valid_ref(r):
-    return (isinstance(r, str) and bool(r.strip())
-            and len(r.strip()) <= 128)
-check("A1 insert_order 拒 missing/blank/长/非串 ref",
-      all(not _valid_ref(x) for x in (None, "", "   ", "x" * 129, 123)))
-_raised = 0
-for bad in (None, "", "   ", "x" * 129, 123):
-    try:
-        with db() as con:
-            orders_repo.insert_order(con, u1, "package", pkg["id"], "creem",
-                                     500, "USD", ts, credits_snapshot=5000,
-                                     client_ref=bad)
-    except ValueError:
-        _raised += 1
-check("A2 insert_order runtime 拒 5 种非法 ref (零行落地)",
-      _raised == 5)
-
-# ══════════ B. same ref = immutable intent ══════════
-refB = f"pay:{_u}-1"
+# ══════════ A/B. purchase intent identity = Order.id ══════════
+# No payment client_ref exists: insert_order takes none, and the
+# single-pending-intent repos converge retries onto the same row.
 with db() as con:
     oB1 = dict(orders_repo.insert_order(
         con, u1, "package", pkg["id"], "creem", 500, "USD", ts,
-        credits_snapshot=5000, client_ref=refB))
+        credits_snapshot=5000))
+check("A1 insert_order 无 client_ref 契约 (pending 落地)",
+      oB1["status"] == "pending" and "client_ref" not in oB1)
 with db() as con:
-    row = orders_repo.order_by_client_ref_for_update(con, u1, refB)
-check("B1 order_by_client_ref 命中同 ref", row is not None and row["id"] == oB1["id"])
+    pend = orders_repo.open_package_order(con, u1, int(pkg["id"]))
+check("B1 open_package_order 收敛同一 pending row",
+      pend is not None and pend["id"] == oB1["id"])
 with db() as con:
-    row2 = orders_repo.order_by_client_ref_for_update(con, u2, refB)
-check("B2 不同 user 同 ref 不命中 (user-scoped)", row2 is None)
-# 同 ref 第二次 insert → unique 拒
-_dup = False
-try:
-    with db() as con:
-        orders_repo.insert_order(con, u1, "package", pkg["id"], "creem",
-                                 500, "USD", ts, credits_snapshot=5000,
-                                 client_ref=refB)
-except Exception:
-    _dup = True
-check("B3 同 user+ref 双 insert → unique 拒", _dup)
-# 历史 NULL ref 合法 (多行; canonical 组合不变量仍需满足)
+    orders_repo.mark_failed(con, oB1["id"])
+with db() as con:
+    pend2 = orders_repo.open_package_order(con, u1, int(pkg["id"]))
+check("B2 terminal 后不挡新购买 (open=None)",
+      pend2 is None)
+# 多行同 status 合法 (无全局唯一约束; pending 唯一性由 partial index 兜)
 with db() as con:
     for _ in range(2):
         con.execute(
@@ -156,9 +135,7 @@ with db() as con:
             " amount_cents, currency, credits_snapshot, created_at) values"
             " (%s, 'package', %s, 'creem', 'failed', 1, 'USD', 100, %s)",
             (u1, pkg["id"], ts))
-check("B4 历史 NULL client_ref 多行合法", True)
-with db() as con:
-    con.execute("update orders set status='failed' where id=%s", (oB1["id"],))
+check("B3 多 failed 行合法 (无 ref 全局唯一)", True)
 
 # ══════════ C. package evidence precedence (guarded transitions) ══════════
 def _mk_pkg_order(status):
@@ -254,15 +231,15 @@ _plan_guard = ("kind\"] != \"package" in _src_rev) or ('kind"] == "package' in _
 check("D4 reverse 只处理 package (plan order 不进 reversal writer)", _plan_guard)
 
 # ══════════ E. checkout_unresolved 语义 (route helper 级) ══════════
-# provider create 异常 → pending 保持 (不 mark_failed) — 由 route 源码
-# 语义 + 事务行为测试 (HTTP 层在 test_payment_forward 覆盖 route);
-# 这里直证: pending order 在 unknown-outcome 后仍 pending 且可被同 ref 复用。
+# provider create 异常 → pending 保持 (不 mark_failed) — HTTP 层在
+# test_payment_forward 覆盖; 这里直证: pending order 在 unknown-outcome
+# 后仍 pending 且 retry 收敛到同一 Order.id。
 oE = _order(u1, "package", pkg["id"], f"pay:{_u}-unres")
 check("E1 unknown provider outcome → order 仍 pending (无 failed 改写)",
       _status(oE["id"]) == "pending")
 with db() as con:
-    again = orders_repo.order_by_client_ref_for_update(con, u1, f"pay:{_u}-unres")
-check("E2 同 ref retry 命中同一 pending order (无新单)", again["id"] == oE["id"])
+    again = orders_repo.open_package_order(con, u1, int(pkg["id"]))
+check("E2 retry 收敛同一 pending order (无新单)", again["id"] == oE["id"])
 
 # ══════════ O6-O10: provider response-loss recovery ══════════
 _creem_state = {"created": [], "raise_next": False}
@@ -294,7 +271,7 @@ from app.routes import topup as _topup_mod
 with db() as con:
     o6 = dict(orders_repo.insert_order(
         con, uid6, "package", pkg["id"], "creem", 500, "USD", ts,
-        credits_snapshot=5000, client_ref=ref6))
+        credits_snapshot=5000))
 _creem_state["raise_next"] = True   # provider actually creates, response lost
 try:
     _fk.create_credits_checkout(o6["id"], 500, {"id": uid6, "email": "x@t.co"})
@@ -312,8 +289,9 @@ out7a = _fk.create_credits_checkout(o6["id"], 500, {"id": uid6})
 out7b = _fk.create_credits_checkout(o6["id"], 500, {"id": uid6})  # retry, same request_id
 with db() as con:
     n6 = con.execute("select count(*) c from orders where user_id=%s"
-                     " and client_ref=%s", (uid6, ref6)).fetchone()["c"]
-check("O7 same-ref retry → same local order (1 row)", n6 == 1)
+                     " and kind='package' and item_id=%s"
+                     " and status='pending'", (uid6, pkg["id"])).fetchone()["c"]
+check("O7 pending-intent retry → same local order (1 pending row)", n6 == 1)
 check("O8/O9 provider request-id idempotency → 1 checkout entity",
       len(_fk.entities) == 1 and out7a["checkout_id"] == out7b["checkout_id"]
       and _fk.n_create == 3,  # 1 (lost) + 2 calls, 1 entity
@@ -452,9 +430,19 @@ check("O28 dispute→refund(+flip) one revoke + marker disputed",
 # O30-O33: subscription atomic bind + race
 from economy.subscription import bind_checkout as _bind_sub
 uidS3 = _mkuser(_u + "s3")
-oS3 = _order(uidS3, "plan", 1, f"pay:{_u}-s3", amount=999, credits=None)
+with db() as con:
+    _planS3 = con.execute(
+        "insert into plans (code, name, monthly_credits, price_cents,"
+        " currency, active, creem_product_id, sort_order, period_days,"
+        " ingress_files_24h, ingress_bytes_24h, created_at, updated_at)"
+        " values (%s, 'PS3', 100, 999, 'USD', TRUE, %s, 93, 30, 100,"
+        " 104857600, %s, %s) returning *",
+        (f"ps3_{_u}", f"prod_ps3_{_u}", ts, ts)).fetchone()
+oS3 = _order(uidS3, "plan", _planS3["id"], f"pay:{_u}-s3", amount=999, credits=None)
 _ev = {"id": "ch_s3", "request_id": f"order:{oS3['id']}",
-       "order": {"amount": 999, "product": ""},
+       "order": {"id": f"ord_s3_{_u}", "status": "paid", "type": "recurring",
+                  "amount": 999, "currency": "USD",
+                  "product": f"prod_ps3_{_u}"},
        "subscription": {"id": "sub_s3"}}
 _bind_sub(_ev, order_id=oS3["id"])
 with db() as con:
@@ -566,7 +554,9 @@ _subobj = {"id": f"ch_{_u}s", "subscription": {
     "current_period_start_date": _ps, "current_period_end_date": _ps + 30*86400,
     "last_transaction_id": f"tran_{_u}ps", "product": "prod_pc_plan"}}
 from economy.subscription import bind_checkout as _bc
-_bc({"id": f"ch_{_u}s", "order": {"amount": 999, "product": "prod_pc_plan"},
+_bc({"id": f"ch_{_u}s",
+     "order": {"id": f"ord_{_u}s", "status": "paid", "type": "recurring",
+                "amount": 999, "currency": "USD", "product": "prod_pc_plan"},
      "subscription": {"id": f"sub_{_u}s"},
      "request_id": f"order:{oS['id']}"}, order_id=oS["id"])
 r_ps1 = apply_paid_period(f"sub_{_u}s", _subobj)
@@ -585,7 +575,9 @@ from database import db as _dbx
 uidPR = _mkuser(_u + "pr")
 oPR = _order(uidPR, "plan", _pl["id"], f"pay:{_u}-pr", amount=999,
              credits=None)
-_bc({"id": f"ch_{_u}pr", "order": {"amount": 999, "product": "prod_pc_plan"},
+_bc({"id": f"ch_{_u}pr",
+     "order": {"id": f"ord_{_u}pr", "status": "paid", "type": "recurring",
+                "amount": 999, "currency": "USD", "product": "prod_pc_plan"},
      "subscription": {"id": f"sub_{_u}pr"},
      "request_id": f"order:{oPR['id']}"}, order_id=oPR["id"])
 with db() as con:
@@ -612,13 +604,17 @@ oPP = _order(uidPP, "plan", _pl["id"], f"pay:{_u}-pp", amount=999,
              credits=None)
 _pp_amt = _pp_prod = False
 try:
-    _bc({"id": f"ch_{_u}pp", "order": {"amount": 500, "product": "prod_pc_plan"},
+    _bc({"id": f"ch_{_u}pp",
+         "order": {"id": f"ord_{_u}pp", "status": "paid", "type": "recurring",
+                    "amount": 500, "currency": "USD", "product": "prod_pc_plan"},
          "subscription": {"id": f"sub_{_u}pp"},
          "request_id": f"order:{oPP['id']}"}, order_id=oPP["id"])
 except KeyError as _e:
     _pp_amt = "checkout_amount_mismatch" in str(_e)
 try:
-    _bc({"id": f"ch_{_u}pp2", "order": {"amount": 999, "product": "prod_OTHER"},
+    _bc({"id": f"ch_{_u}pp2",
+         "order": {"id": f"ord_{_u}pp2", "status": "paid", "type": "recurring",
+                    "amount": 999, "currency": "USD", "product": "prod_OTHER"},
          "subscription": {"id": f"sub_{_u}pp2"},
          "request_id": f"order:{oPP['id']}"}, order_id=oPP["id"])
 except KeyError as _e:
