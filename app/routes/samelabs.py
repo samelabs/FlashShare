@@ -453,11 +453,18 @@ async def samelabs_create_plan(request: Request):
                 from economy import creem as _creem
                 if not _creem.creem_enabled():
                     raise _PlanMirrorError("price_mirror_unavailable")
-                # compensation basis = the REAL provider-before facts
-                # (fresh GET snapshot), never a fabricated 0/"" pair
+                # compensation basis = the PROVEN provider-before facts.
+                # An unprovable GET (failure/absent → None) can NEVER be
+                # degraded to a fabricated (0, "") before: the whole
+                # write — PATCH and any later compensation — would run
+                # on a guessed state. Fail closed BEFORE any provider
+                # mutation.
                 try:
-                    _pb = _creem._fetch_product(fields["creem_product_id"]) or {}
+                    _pb = _creem._fetch_product(fields["creem_product_id"])
                 except Exception:
+                    _pb = None
+                if not isinstance(_pb, dict) \
+                        or not str(_pb.get("currency") or "").strip():
                     raise _PlanMirrorError("price_mirror_unavailable")
                 _mirror_before = (int(_pb.get("price") or 0),
                                   str(_pb.get("currency") or "").upper())
@@ -639,11 +646,16 @@ async def samelabs_update_plan(plan_id: int, request: Request):
                     from economy import creem as _creem
                     if not _creem.creem_enabled():
                         raise _PlanMirrorError("price_mirror_unavailable")
-                    # exact provider-before snapshot (for ambiguity proof)
+                    # exact provider-before snapshot (for ambiguity
+                    # proof). Unprovable GET (None) fails closed BEFORE
+                    # any provider mutation — never a fabricated (0,"").
                     try:
-                        _pb = _creem._fetch_product(target_product) or {}
+                        _pb = _creem._fetch_product(target_product)
                     except Exception:
-                        _pb = {}
+                        _pb = None
+                    if not isinstance(_pb, dict) \
+                            or not str(_pb.get("currency") or "").strip():
+                        raise _PlanMirrorError("price_mirror_unavailable")
                     _before_price = int(_pb.get("price") or 0)
                     _before_cur = str(_pb.get("currency") or "").upper()
                     _mirror_before = (_before_price, _before_cur)

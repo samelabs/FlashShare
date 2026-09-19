@@ -250,6 +250,78 @@ check("F4 create commit failure → row absent + provider restored to before",
       and len(_patches) > _p_before,
       f"row={_row4} mirror={_prod_state['prod_mc_new']}")
 
+# ── G-series: provider-before proof — UNKNOWN never becomes a
+#    compensable state. Inject the initial _fetch_product() returning
+#    None (GET failure) and prove: zero PATCH, zero restore, local
+#    rollback, no fabricated (0, "") before. ──
+_ops_sequential = dict(_patches)   # snapshot counters
+_nb_create = len(_patches)
+_nb_update = len(_patches)
+
+# G1: update path — initial GET unprovable → fail closed BEFORE any PATCH
+_orig_fetch_g = _creem._fetch_product
+def _fetch_none_first_update(pid):
+    if pid == "prod_mc_x" and not _fetch_none_first_update.done:
+        _fetch_none_first_update.done = True
+        return None            # provider GET failure → unprovable before
+    return _orig_fetch_g(pid)
+# arm only at G1 time: the FIRST prod_mc_x fetch from here on returns None
+class _Armable:
+    def __init__(self):
+        self.armed = False
+        self.none_ids = set()   # per-product one-shot None
+    def __call__(self, pid):
+        if self.armed and pid in self.none_ids:
+            self.none_ids.discard(pid)   # one shot per product
+            return None
+        return _orig_fetch_g(pid)
+_fetch_none_first_update = _Armable()
+_fetch_none_first_update.armed = True
+_fetch_none_first_update.none_ids.add("prod_mc_x")
+_creem._fetch_product = _fetch_none_first_update
+_p_before_g = len(_patches)
+_r_g1 = client.patch(f"/samelabs/plans/{_pl['id']}",
+                     json={"price_cents": 3456},
+                     cookies={COOKIE_NAME: op_ck})
+with db() as con:
+    _row_g1 = con.execute("select price_cents from plans where id=%s",
+                          (_pl["id"],)).fetchone()
+check("G1 update: initial GET None → fail closed / 零 PATCH / local 不变",
+      _r_g1.status_code == 502
+      and str(_r_g1.json().get("error", "")).startswith("price_mirror")
+      and len(_patches) == _p_before_g
+      and int(_row_g1["price_cents"]) != 3456,
+      f"{_r_g1.status_code} {str(_r_g1.json())[:80]}"
+      f" patches={len(_patches)}/{_p_before_g} row={dict(_row_g1)}")
+_fetch_none_first_update.armed = False   # disarm for later sections
+
+# G2: create path — initial GET unprovable → fail closed BEFORE any PATCH
+_prod_state["prod_mc_g2"] = {"price": 4321, "currency": "USD",
+                             "billing_type": "recurring",
+                             "billing_period": "every-month"}
+# arm the one-shot None for the create path's initial GET
+_fetch_none_first_update.armed = True
+_fetch_none_first_update.none_ids.add("prod_mc_g2")
+_p_before_g2 = len(_patches)
+_r_g2 = client.post("/samelabs/plans", json={
+    "code": f"mcg2_{_u}", "name": "MC G2", "monthly_credits": 60,
+    "price_cents": 555, "creem_product_id": "prod_mc_g2",
+    "sort_order": _mc_sort + 5, "period_days": 30,
+    "ingress_files_24h": 50, "ingress_bytes_24h": 104857600},
+    cookies={COOKIE_NAME: op_ck})
+with db() as con:
+    _row_g2 = con.execute("select 1 from plans where code=%s",
+                          (f"mcg2_{_u}",)).fetchone()
+check("G2 create: initial GET None → fail closed / 零 PATCH / row 未落",
+      _r_g2.status_code == 502
+      and str(_r_g2.json().get("error", "")).startswith("price_mirror")
+      and len(_patches) == _p_before_g2
+      and _row_g2 is None,
+      f"{_r_g2.status_code} patches={len(_patches)}/{_p_before_g2}"
+      f" row={_row_g2}")
+_fetch_none_first_update.armed = False
+_creem._fetch_product = _orig_fetch_g
+
 # ── B-series: strict exact-before three-way classifier ──
 import app.routes.samelabs as _smlmod
 from repo import operator_audit as _oa
