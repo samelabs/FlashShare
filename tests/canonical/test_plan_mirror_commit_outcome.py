@@ -60,13 +60,16 @@ with db() as con:
         " 'OP', 'samelabs', %s, %s) returning id",
         (_u + "op", f"{_u}op@t.co", ts, ts)).fetchone()
     _op_id = int(op["id"])
+    _mc_sort = int(con.execute(
+        "select coalesce(max(sort_order), 0) + 1 s from plans"
+    ).fetchone()["s"])
     _pl = con.execute(
         "insert into plans (code, name, monthly_credits, price_cents,"
         " currency, active, creem_product_id, sort_order, period_days,"
         " ingress_files_24h, ingress_bytes_24h, created_at, updated_at)"
-        " values (%s, 'MC', 100, 1000, 'USD', TRUE, %s, 94, 30, 100,"
+        " values (%s, 'MC', 100, 1000, 'USD', TRUE, %s, %s, 30, 100,"
         " 104857600, %s, %s) returning *",
-        (f"mcplan_{_u}", "prod_mc_x", ts, ts)).fetchone()
+        (f"mcplan_{_u}", "prod_mc_x", _mc_sort, ts, ts)).fetchone()
     _pl = dict(_pl)
 sess = create_browser_session(_op_id)
 op_ck = sess  # token string
@@ -231,7 +234,7 @@ try:
     r4 = client.post("/samelabs/plans", json={
         "code": f"mcnew_{_u}", "name": "MC New", "monthly_credits": 50,
         "price_cents": 777, "creem_product_id": "prod_mc_new",
-        "sort_order": 95, "period_days": 30,
+        "sort_order": _mc_sort + 1, "period_days": 30,
         "ingress_files_24h": 50, "ingress_bytes_24h": 104857600},
         cookies={COOKIE_NAME: op_ck})
 except Exception as exc:

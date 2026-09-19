@@ -131,11 +131,14 @@ def _iso(v):
 buyer = _mkuser(_u + "b1")
 # a credits package
 with db() as con:
+    _rv_pkg_sort = int(con.execute(
+        "select coalesce(max(sort_order), 0) + 1 s from packages"
+    ).fetchone()["s"])
     pkg = con.execute(
         "insert into packages (code, name, credits, price_cents, currency,"
         " active, sort_order, created_at, updated_at) values (%s, 'RV Pkg',"
-        " 10000, 999, 'USD', TRUE, 99, %s, %s) returning id",
-        (f"pkg_{_u}", ts, ts)).fetchone()
+        " 10000, 999, 'USD', TRUE, %s, %s, %s) returning id",
+        (f"pkg_{_u}", _rv_pkg_sort, ts, ts)).fetchone()
     pkg_id = int(pkg["id"])
 
 # local order (as checkout would create) with frozen snapshot 10000
@@ -316,7 +319,12 @@ op = _mkuser(_u + "op")
 with db() as con:
     con.execute("update users set status='samelabs' where id=%s", (op,))
 op_sess = create_browser_session(op)
-def _mkplan(code, prod, price, monthly, so):
+def _mkplan(code, prod, price, monthly, so=None):
+    if so is None:
+        with db() as _c:
+            so = int(_c.execute(
+                "select coalesce(max(sort_order), 0) + 1 s from plans"
+            ).fetchone()["s"])
     _creem.CREEM_API_KEY = "test-key"
     r = client.post("/samelabs/plans", json={
         "code": f"{code}_{_u}", "name": code.upper(), "monthly_credits": monthly,
@@ -351,8 +359,8 @@ _cm._fetch_product = _fp
 _cm._patch = _pt
 _cm.CREEM_API_KEY = "test-key"
 
-plus_id = _mkplan("rvplus", "prod_rv_plus", 999, 100, 91)
-pro_id = _mkplan("rvpro", "prod_rv_pro", 2999, 500, 92)
+plus_id = _mkplan("rvplus", "prod_rv_plus", 999, 100)
+pro_id = _mkplan("rvpro", "prod_rv_pro", 2999, 500)
 
 PS = ts - 5 * 86400
 PE = ts + 25 * 86400

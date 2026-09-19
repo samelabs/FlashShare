@@ -654,7 +654,7 @@ check("PM2-2c 所有 PATCH payload 只含 price/currency",
 # fresh never-subscribed plan for the commit/rollback matrix, and prove
 # the guard on the bound one first.
 r_guard = client.patch(f"/samelabs/plans/{plan_id}",
-                       json={"creem_product_id": "prod_pcB"},
+                       json={"creem_product_id": f"prod_pcB_{_u}"},
                        cookies={COOKIE_NAME: op_sess})
 check("PM2-3g rebind on bound-membership plan → 409 product_binding_immutable",
       r_guard.status_code == 409
@@ -667,34 +667,34 @@ with db() as con:
 from repo.orders import insert_plan as _ins_plan
 with db() as con:
     _rb = _ins_plan(con, f"plus_{_u}rb", "Plus RB", 500, 1499, ts,
-                    sort_order=int(_so2), creem_product_id="prod_pcA",
+                    sort_order=int(_so2), creem_product_id=f"prod_pcA_{_u}",
                     ingress_files_24h=500, ingress_bytes_24h=524288000,
                     expiry_days=(7,), download_limits=(50,))
     rb_plan_id = int(_rb["id"])
 from governance import plan_catalog as _pc
 _pc.catalog(refresh=True)   # operator create path refreshes; mirror here
 # target monthly product at a different price → binding syncs target to CURRENT 518 price
-_mirror_state["prod_pcB"] = {"price": 999, "currency": "USD",
+_mirror_state[f"prod_pcB_{_u}"] = {"price": 999, "currency": "USD",
                              "billing_type": "recurring",
                              "billing_period": "every-month"}
-r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "prod_pcB"},
+r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": f"prod_pcB_{_u}"},
                  cookies={COOKIE_NAME: op_sess})
 check("PM2-3a product rebind A→B → 409 forbidden (binding immutable)",
       r.status_code == 409
       and "product_binding_immutable" in str(r.json().get("error", ""))
-      and _mirror_state["prod_pcB"]["price"] == 999,   # provider untouched
-      f"{r.status_code} {r.text[:90]} target={_mirror_state['prod_pcB']}")
+      and _mirror_state[f"prod_pcB_{_u}"]["price"] == 999,   # provider untouched
+      f"{r.status_code} {r.text[:90]} target={_mirror_state.get('prod_pcB_' + _u)}")
 # yearly target → local binding not committed
-_mirror_state["prod_pcY"] = {"price": 999, "currency": "USD",
+_mirror_state[f"prod_pcY_{_u}"] = {"price": 999, "currency": "USD",
                              "billing_type": "recurring",
                              "billing_period": "every-year"}
-r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "prod_pcY"},
+r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": f"prod_pcY_{_u}"},
                  cookies={COOKIE_NAME: op_sess})
 with db() as con:
     bound = con.execute("select creem_product_id from plans where id=%s",
                         (rb_plan_id,)).fetchone()["creem_product_id"]
 check("PM2-3b yearly rebind → 409 (仍 prod_pcA)",
-      r.status_code == 409 and bound == "prod_pcA", f"{r.status_code} bound={bound}")
+      r.status_code == 409 and bound == f"prod_pcA_{_u}", f"{r.status_code} bound={bound}")
 # provider failure → binding not committed
 def _fail_fetch(pid):
     return None
@@ -706,7 +706,7 @@ with db() as con:
     bound2 = con.execute("select creem_product_id from plans where id=%s",
                          (rb_plan_id,)).fetchone()["creem_product_id"]
 check("PM2-3c provider failure rebind → 409 (仍 prod_pcA)",
-      r.status_code == 409 and bound2 == "prod_pcA", f"{r.status_code} bound={bound2}")
+      r.status_code == 409 and bound2 == f"prod_pcA_{_u}", f"{r.status_code} bound={bound2}")
 _creem._fetch_product = _orig_fp
 # valid monthly target → binding succeeds
 _mirror_state["prod_pcD"] = {"price": 100, "currency": "USD",
@@ -718,7 +718,7 @@ with db() as con:
     bound3 = con.execute("select creem_product_id from plans where id=%s",
                          (rb_plan_id,)).fetchone()["creem_product_id"]
 check("PM2-3d valid monthly rebind → 409 (binding immutable; 仅 NULL→X 合法)",
-      r.status_code == 409 and bound3 == "prod_pcA"
+      r.status_code == 409 and bound3 == f"prod_pcA_{_u}"
       and _mirror_state["prod_pcD"]["price"] == 100,
       f"{r.status_code} bound={bound3}")
 

@@ -153,10 +153,10 @@ def _no_secrets(rows):
 
 # mirror fakes for plan routes (Creem isolated)
 from economy import creem as _creem
-_MIRROR = {"prod_oa1": {"price": 999, "currency": "USD",
+_MIRROR = {f"prod_oa1_{_u}": {"price": 999, "currency": "USD",
                         "billing_type": "recurring",
                         "billing_period": "every-month"},
-           "prod_oa2": {"price": 1999, "currency": "USD",
+           f"prod_oa2_{_u}": {"price": 1999, "currency": "USD",
                         "billing_type": "recurring",
                         "billing_period": "every-month"}}
 _orig_fp = _creem._fetch_product
@@ -239,7 +239,7 @@ with db() as con:
         " WHERE p.code <> 'free'").fetchone()["so"])
 r = _post("/samelabs/plans", json={
     "code": f"oaplus_{_u}", "name": "OA Plus", "monthly_credits": 100,
-    "price_cents": 999, "creem_product_id": "prod_oa1", "sort_order": _so,
+    "price_cents": 999, "creem_product_id": f"prod_oa1_{_u}", "sort_order": _so,
     "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
     "expiry_days": [7], "download_limits": [50],
 }, cookies={COOKIE_NAME: op_sess})
@@ -258,7 +258,7 @@ _PATCH_LOG.clear()
 _aud.record = _audit_fail_on("plan.create")[1]
 r = _post("/samelabs/plans", json={
     "code": f"oax_{_u}", "name": "OA X", "monthly_credits": 100,
-    "price_cents": 999, "creem_product_id": "prod_oa2",
+    "price_cents": 999, "creem_product_id": f"prod_oa2_{_u}",
     "sort_order": _so + 1, "ingress_files_24h": 500,
     "ingress_bytes_24h": 524288000, "expiry_days": [7],
     "download_limits": [50],
@@ -280,7 +280,7 @@ _PATCH_LOG.clear()
 n_audit = len(_audit_rows())
 r = _post("/samelabs/plans", json={
     "code": f"oay_{_u}", "name": "OA Y", "monthly_credits": 100,
-    "price_cents": 999, "creem_product_id": "prod_oa1",
+    "price_cents": 999, "creem_product_id": f"prod_oa1_{_u}",
     "sort_order": _so + 2, "ingress_files_24h": 500,
     "ingress_bytes_24h": 524288000, "expiry_days": [7],
     "download_limits": [50],
