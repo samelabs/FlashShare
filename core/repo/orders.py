@@ -10,19 +10,41 @@ from typing import Optional
 
 def insert_order(con, user_id: int, kind: str, item_id: int, provider: str,
                  amount_cents: int, currency: str, ts: int,
-                 credits_snapshot: int | None = None) -> dict:
+                 credits_snapshot: int | None = None,
+                 client_ref: str = None) -> dict:
     """One-time purchase fact. credits_snapshot freezes the purchased
     quantity at checkout time (package orders) — fulfillment reads ONLY
-    the snapshot, never the live catalog row."""
+    the snapshot, never the live catalog row.
+
+    client_ref: the REQUIRED (runtime) client payment identity. Same
+    user + same ref permanently denotes one immutable purchase intent;
+    the unique partial index (orders_user_client_ref_uk) makes a
+    double-claim fail at the row level. Historical rows keep NULL."""
+    if (not isinstance(client_ref, str) or not client_ref.strip()
+            or len(client_ref.strip()) > 128):
+        raise ValueError("invalid_client_ref")
     return con.execute(
         """
         INSERT INTO orders (user_id, kind, item_id, provider, status,
-           amount_cents, currency, credits_snapshot, created_at)
-           VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s, %s)
+           amount_cents, currency, credits_snapshot, client_ref, created_at)
+           VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s, %s, %s)
            RETURNING *
         """,
         (user_id, kind, item_id, provider, amount_cents, currency,
-         credits_snapshot, ts)).fetchone()
+         credits_snapshot, client_ref.strip(), ts)).fetchone()
+
+
+def order_by_client_ref_for_update(con, user_id: int,
+                                   client_ref: str) -> Optional[dict]:
+    """Look up the order bound to this user's payment identity, row
+    locked for the claim transaction."""
+    return con.execute(
+        """
+        SELECT * FROM orders
+        WHERE user_id = %s AND client_ref = %s
+        ORDER BY id ASC LIMIT 1 FOR UPDATE
+        """,
+        (user_id, client_ref)).fetchone()
 
 
 def order_by_id_for_update(con, order_id: int) -> Optional[dict]:
@@ -44,36 +66,53 @@ def order_by_provider_id(con, provider_order_id: str) -> Optional[dict]:
 
 def mark_paid(con, order_id: int, ts: int) -> None:
     """package/top-up fulfillment 终态戳: grant 已由 billing 落账,
-    granted=TRUE 与 paid 同点写入。"""
+    granted=TRUE 与 paid 同点写入。Evidence precedence: refunded/
+    disputed outrank a (stale) checkout.completed — never rewrite a
+    terminal reversal back to paid."""
     con.execute(
-        "UPDATE orders SET status='paid', granted=TRUE, paid_at=%s WHERE id=%s",
+        """
+        UPDATE orders SET status='paid', granted=TRUE, paid_at=%s
+        WHERE id=%s AND status IN ('pending','failed')
+        """,
         (ts, order_id))
 
 
 def mark_subscription_checkout_completed(con, order_id: int, ts: int) -> None:
     """subscription checkout.completed 窄 writer: 只推进 payment/order
     状态 (paid + paid_at), 不写 granted — cycle credits 由后续
-    subscription.paid 的 paid-period path 授予, 两事实分离。"""
+    subscription.paid 的 paid-period path 授予, 两事实分离。
+    Plan orders never leave the pending/failed/paid domain."""
     con.execute(
-        "UPDATE orders SET status='paid', paid_at=%s WHERE id=%s",
+        "UPDATE orders SET status='paid', paid_at=%s"
+        " WHERE id=%s AND status IN ('pending','failed')",
         (ts, order_id))
 
 
 def mark_failed(con, order_id: int) -> None:
+    """Provider-terminal failure/expiry proof only. paid/refunded/
+    disputed outrank failure evidence — a later stale failure never
+    downgrades a terminal order."""
     con.execute(
-        "UPDATE orders SET status='failed' WHERE id=%s", (order_id,))
+        "UPDATE orders SET status='failed'"
+        " WHERE id=%s AND status = 'pending'", (order_id,))
 
 
 def mark_refunded(con, order_id: int, ts: int) -> None:
-    """package full-refund terminal state (economic reversal applied)."""
-    con.execute("UPDATE orders SET status='refunded', refunded_at=%s WHERE id=%s",
-                (ts, order_id))
+    """package full-refund terminal state (economic reversal applied).
+    disputed outranks refund — the marker never downgrades."""
+    con.execute(
+        "UPDATE orders SET status='refunded', refunded_at=%s"
+        " WHERE id=%s AND status IN ('pending','failed','paid','refunded')",
+        (ts, order_id))
 
 
 def mark_disputed(con, order_id: int, ts: int) -> None:
-    """dispute (chargeback) terminal state — same reversal semantics."""
-    con.execute("UPDATE orders SET status='disputed', refunded_at=%s WHERE id=%s",
-                (ts, order_id))
+    """dispute (chargeback) terminal state — top of the evidence
+    precedence; once disputed, no event rewrites the marker."""
+    con.execute(
+        "UPDATE orders SET status='disputed', refunded_at=%s"
+        " WHERE id=%s AND status IN ('pending','failed','paid','refunded','disputed')",
+        (ts, order_id))
 
 
 def set_provider_order_id(con, order_id: int, provider_order_id: str) -> None:

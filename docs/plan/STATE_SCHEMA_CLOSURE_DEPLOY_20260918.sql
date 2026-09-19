@@ -45,6 +45,15 @@ CREATE UNIQUE INDEX ingress_requests_ref_live_idx
   ON ingress_requests(user_id, request_ref)
   WHERE status IN ('running','ok');
 
+-- ── -2. orders.client_ref — client payment identity (new fact; history
+--        stays NULL, nothing backfilled) ──
+ALTER TABLE orders
+  ADD COLUMN client_ref TEXT;
+
+CREATE UNIQUE INDEX orders_user_client_ref_uk
+  ON orders(user_id, client_ref)
+  WHERE client_ref IS NOT NULL;
+
 -- ── 0. add the new nullable column (transactional DDL: a later preflight
 --        failure rolls this back together with everything else) ──
 ALTER TABLE tool_calls

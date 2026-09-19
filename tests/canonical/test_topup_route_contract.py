@@ -118,7 +118,12 @@ _vc()  # fixture 直写行后刷新进程内目录缓存
 
 client = TestClient(app)
 
+_ps_seq = [0]
 def _post(path, body, cookie):
+    if path in ("/api/topup/subscribe", "/api/topup/checkout"):
+        # client payment identity is required by the canonical contract
+        _ps_seq[0] += 1
+        body = {**body, "client_ref": f"tr:{_ps_seq[0]}:{_ps_seq[0]}"}
     r = client.post(path, json=body, cookies={COOKIE_NAME: cookie},
                     follow_redirects=False)
     try:
