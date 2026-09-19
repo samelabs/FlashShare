@@ -210,7 +210,15 @@ async def subscribe_checkout(request: Request):
         if st in ("pending", "processing") and co.get("checkout_url"):
             return {"ok": True, "checkout_url": co["checkout_url"],
                     "checkout_id": prov_id[3:], "reused": True}
-        # expired (或其它终态) → 终结旧 order, 走下方重新创建
+        # Only an EXPLICIT provider-terminal status releases the open
+        # intent (same whitelist as the package path). pending/processing
+        # without a URL, blank/unknown/future nonterminal statuses are
+        # NOT terminal proof — the pending Order is kept, no second
+        # order or checkout is ever created on a guess.
+        if st not in ("expired", "failed", "closed"):
+            return JSONResponse(
+                {"ok": False, "error": "subscription_in_progress"}, 409)
+        # terminal (expired/failed/closed) → 终结旧 order, 走下方重新创建
         with db() as con:
             mark_failed(con, pending["id"])
         with db() as con:

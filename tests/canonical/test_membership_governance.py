@@ -390,7 +390,56 @@ _cur.execute("select count(*) from orders where user_id=%s and kind='plan' and s
 _nf = _cur.fetchone()[0]
 check("G12d expired checkout → 旧 order failed + 新 create",
       st == 200 and _nf == 1 and _creem_calls["create"] == 2, f"st={st} failed={_nf}")
-# bind 后 paid 前 (membership active renews NULL) → 拒绝:
+# ── G12f 系列: nonterminal / unknown retrieve status 不得当 terminal proof ──
+# 场景: 用户重新走到 pending+ch 状态 (G12d 建了新 order+create; 复用该 order)
+_cur.execute("select id, provider_order_id from orders where user_id=%s"
+             " and kind='plan' and status='pending' order by id desc limit 1", (uidS,))
+_orow = _cur.fetchone()
+_oi_f, _ch_f = _orow[0], _orow[1]
+_RT[_ch_f[3:]] = {"status": "pending"}   # pending NO checkout_url
+_nc = _creem_calls["create"]
+st_f1, d_f1 = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidS,))
+_n1 = _cur.fetchone()[0]
+_cur.execute("select status from orders where id=%s", (_oi_f,))
+_s1 = _cur.fetchone()[0]
+check("G12f-1 pending 无 checkout_url → 原 Order 仍 pending / 零新 create / 零新 Order",
+      _s1 == "pending" and _n1 == 2 and _creem_calls["create"] == _nc
+      and st_f1 in (200, 409, 502) and not (st_f1 == 200 and d_f1.get("checkout_id") not in (None, _ch_f[3:])),
+      f"st={st_f1} d={d_f1} status={_s1} n={_n1} creates={_creem_calls['create']}/{_nc}")
+_RT[_ch_f[3:]] = {"status": "processing"}   # processing NO url
+st_f2, d_f2 = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select status from orders where id=%s", (_oi_f,))
+_s2 = _cur.fetchone()[0]
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidS,))
+_n2 = _cur.fetchone()[0]
+check("G12f-2 processing 无 checkout_url → 同上 (intent 不释放)",
+      _s2 == "pending" and _n2 == 2 and _creem_calls["create"] == _nc, f"st={st_f2} status={_s2} n={_n2}")
+_RT[_ch_f[3:]] = {"status": "mystery_future_state", "checkout_url": "https://creem.test/x"}
+st_f3, d_f3 = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select status from orders where id=%s", (_oi_f,))
+_s3 = _cur.fetchone()[0]
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidS,))
+_n3 = _cur.fetchone()[0]
+check("G12f-3 unknown status (mystery) → 不 mark_failed / 不建第二 Order/checkout",
+      _s3 == "pending" and _n3 == 2 and _creem_calls["create"] == _nc, f"st={st_f3} status={_s3} n={_n3}")
+_RT[_ch_f[3:]] = {"status": "", "checkout_url": "https://creem.test/x"}
+st_f4, d_f4 = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select status from orders where id=%s", (_oi_f,))
+_s4 = _cur.fetchone()[0]
+_cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidS,))
+_n4 = _cur.fetchone()[0]
+check("G12f-4 blank/missing status → 同上 fail-closed",
+      _s4 == "pending" and _n4 == 2 and _creem_calls["create"] == _nc, f"st={st_f4} status={_s4} n={_n4}")
+# failed (terminal whitelist 成员) 确认仍 terminalize:
+_RT[_ch_f[3:]] = {"status": "failed", "checkout_url": "https://creem.test/x"}
+_nc5 = _creem_calls["create"]
+st_f5, d_f5 = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+_cur.execute("select status from orders where id=%s", (_oi_f,))
+_s5 = _cur.fetchone()[0]
+check("G12f-5 failed (terminal) → 仍 terminalize + 新 create",
+      _s5 == "failed" and _creem_calls["create"] == _nc5 + 1, f"st={st_f5} status={_s5}")
+# 重新抓当前 pending order 供后续段落:
 _cur.execute("select id from orders where user_id=%s and kind='plan' and status='pending' order by id desc limit 1", (uidS,))
 _oi2 = _cur.fetchone()[0]
 with db() as con:
@@ -399,7 +448,7 @@ with db() as con:
 st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
 check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscription)",
       st == 409 and d.get("error") == "plan_change_required"
-      and _creem_calls["create"] == 2, f"st={st} d={d}")
+      and _creem_calls["create"] == 3, f"st={st} d={d}")
 # unknown-profile plan → 收费前拒绝 (plan_not_ready, 零 order 零 create):
 uQ, uidQ = _new_user("mgQ")
 _cur.execute("update plans set creem_product_id='price_q' where code='mg_unknown_tier'")
@@ -412,7 +461,7 @@ st, d = _resp(asyncio.run(_do_sub({"plan_id": _pq})))
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidQ,))
 check("G12f unknown-profile plan → plan_not_ready / 零 order / 零 checkout",
       st == 422 and d.get("error") == "plan_not_ready"
-      and _cur.fetchone()[0] == 0 and _creem_calls["create"] == 2, f"st={st} d={d}")
+      and _cur.fetchone()[0] == 0 and _creem_calls["create"] == 3, f"st={st} d={d}")
 _topup._require_auth = _orig_auth
 # 夹具清场: mg_unknown_tier 回到"权益未配的缺口行" (可售性归零), 不污染后续套件的
 # sellable 目录断言
