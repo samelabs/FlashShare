@@ -44,8 +44,9 @@ async def topup_checkout(request: Request):
         return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
     if not creem.custom_price_in_range(pkg["price_cents"]):
         return JSONResponse({"ok": False, "error": "package_not_ready"}, 422)
-    from repo.orders import (insert_order, set_provider_order_id,
-                             order_by_client_ref_for_update)
+    from repo.orders import (insert_order, bind_checkout_id,
+                             order_by_client_ref_for_update,
+                             order_by_id_for_update)
     ts = now()
     with db() as con:
         # Same user + same client_ref = ONE immutable purchase intent.
@@ -66,6 +67,41 @@ async def topup_checkout(request: Request):
                                  pkg["price_cents"], pkg["currency"], ts,
                                  credits_snapshot=int(pkg["credits"]),
                                  client_ref=client_ref)
+    # Same-ref retry state machine: everything except a pending order
+    # without (or with a reusable ch:) provider identity answers from
+    # local facts with ZERO provider create.
+    prov = order.get("provider_order_id") or ""
+    if order["status"] in ("refunded", "disputed"):
+        return JSONResponse({"ok": False, "error": "checkout_closed"}, 409)
+    if order["status"] == "paid":
+        return {"ok": True, "completed": True}
+    if order["status"] == "failed":
+        return JSONResponse({"ok": False, "error": "checkout_failed"}, 409)
+    if prov.startswith("ch:"):
+        # provider entity exists — retrieve instead of re-create
+        try:
+            co = creem.retrieve_checkout(prov[3:])
+        except Exception:
+            return JSONResponse(
+                {"ok": False, "error": "checkout_unresolved"}, 502)
+        st = str(co.get("status") or "")
+        if st in ("pending", "processing") and co.get("checkout_url"):
+            return {"ok": True, "checkout_url": co["checkout_url"],
+                    "checkout_id": prov[3:], "reused": True}
+        if st == "completed":
+            # webhook owns fulfillment; the retry converges there
+            return JSONResponse(
+                {"ok": False, "error": "checkout_unresolved"}, 502)
+        if st in ("expired", "failed", "closed"):
+            from repo.orders import mark_failed as _mf
+            with db() as con:
+                _mf(con, order["id"])   # provider-terminal proof
+            return JSONResponse(
+                {"ok": False, "error": f"checkout_{st}"}, 409)
+        return JSONResponse({"ok": False, "error": "checkout_unresolved"}, 502)
+    # pending + NULL provider id → (re)create; SAME request_id=order:<id>
+    # makes the provider side idempotent (response-loss recovery: the
+    # retry returns the SAME checkout entity, never a duplicate).
     try:
         out = creem.create_credits_checkout(order["id"],
                                             int(order["amount_cents"]), user)
@@ -75,7 +111,7 @@ async def topup_checkout(request: Request):
         # caller retries the SAME client_ref (checkout_unresolved).
         return JSONResponse({"ok": False, "error": "checkout_unresolved"}, 502)
     with db() as con:
-        set_provider_order_id(con, order["id"], "ch:" + out["checkout_id"])
+        bind_checkout_id(con, order["id"], out["checkout_id"])
     return out
 
 
@@ -100,7 +136,7 @@ async def subscribe_checkout(request: Request):
             or len(client_ref.strip()) > 128):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     client_ref = client_ref.strip()
-    from repo.orders import (plan_by_id_active, insert_order, set_provider_order_id,
+    from repo.orders import (plan_by_id_active, insert_order, bind_checkout_id,
                              membership_row, open_plan_order,
                              lock_user_for_checkout, mark_failed,
                              order_by_client_ref_for_update)
@@ -192,7 +228,7 @@ async def subscribe_checkout(request: Request):
         # pending; same client_ref retry converges on it.
         return JSONResponse({"ok": False, "error": "checkout_unresolved"}, 502)
     with db() as con:
-        set_provider_order_id(con, order["id"], "ch:" + out["checkout_id"])
+        bind_checkout_id(con, order["id"], out["checkout_id"])
     return out
 
 
@@ -361,12 +397,23 @@ async def creem_webhook(request: Request):
         return {"ok": True, "ignored": True}
 
     # checkout.completed: subscription first-purchase vs plain package order
+    # request_id is required for subscription first-checkout binding too
+    from repo.orders import order_id_from_request_id as _parse_rid
+    try:
+        _sub_oid = _parse_rid(obj.get("request_id"))
+    except ValueError:
+        import logging
+        logging.getLogger("flashshare").warning(
+            "creem webhook checkout(sub): request_id missing/malformed"
+            " (request_id=%r) — zero mutation", obj.get("request_id"))
+        return JSONResponse(
+            {"ok": False, "error": "checkout_request_id_invalid"}, 500)
     if obj.get("subscription"):
-        # 订阅首购: 绑定 sub id → order + 建档 (授信只由 subscription.paid 驱动)。
-        # 域函数内部保证绑定先提交; sync 失败 → 500 重试, 绑定已在可收敛。
+        # 订阅首购: ONE transaction — order paid + sub:<id> + Membership
+        # 一起提交 (授信只由 subscription.paid 驱动)。
         from economy import subscription as _sub
         try:
-            res = _sub.bind_checkout(obj)
+            res = _sub.bind_checkout(obj, order_id=_sub_oid)
         except KeyError as exc:
             import logging
             logging.getLogger("flashshare").warning(
@@ -374,12 +421,27 @@ async def creem_webhook(request: Request):
             return JSONResponse({"ok": False, "error": str(exc.args[0])}, 500)
         return {"ok": True, **res}
 
+    # request_id is THE signed-webhook → local Order locator. It must
+    # exist and match the exact 'order:<positive int>' shape we set at
+    # checkout creation; provider_order_id / ch: / metadata are NOT
+    # identity authorities (no compatibility fallback).
+    from repo.orders import order_id_from_request_id
+    try:
+        _oid = order_id_from_request_id(obj.get("request_id"))
+    except ValueError:
+        import logging
+        logging.getLogger("flashshare").warning(
+            "creem webhook checkout.completed: request_id missing/malformed"
+            " (request_id=%r) — zero mutation", obj.get("request_id"))
+        return JSONResponse(
+            {"ok": False, "error": "checkout_request_id_invalid"}, 500)
     order = (obj.get("order") or {})
     try:
-        res = creem.fulfill(order.get("id") or "", obj.get("id") or "",
-                            int(order.get("amount") or 0),
-                            product_id=str(order.get("product") or ""),
-                            currency=str(order.get("currency") or ""))
+        res = creem.fulfill_by_request_id(
+            _oid, order.get("id") or "", obj.get("id") or "",
+            int(order.get("amount") or 0),
+            product_id=str(order.get("product") or ""),
+            currency=str(order.get("currency") or ""))
     except KeyError as exc:
         # 🔴5 修复(批2a): order_not_found 可能是 checkout→provider_order_id
         # 写入窗口内的乱序到达。返回 500 让 Creem 重试(webhook 重试政策),

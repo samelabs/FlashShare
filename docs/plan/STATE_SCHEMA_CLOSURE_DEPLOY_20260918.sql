@@ -54,6 +54,34 @@ CREATE UNIQUE INDEX orders_user_client_ref_uk
   ON orders(user_id, client_ref)
   WHERE client_ref IS NOT NULL;
 
+-- ── -1b. order field-combination invariants (kind/snapshot/status/
+--         timestamps/granted). Historical rows violating these are
+--         deployment-blocking facts, not auto-repairs. ──
+ALTER TABLE orders
+  ADD CONSTRAINT orders_kind_ck
+    CHECK (kind IN ('package','plan')),
+  ADD CONSTRAINT orders_kind_snapshot_ck
+    CHECK ((kind = 'package' AND credits_snapshot IS NOT NULL
+            AND credits_snapshot > 0)
+        OR (kind = 'plan' AND credits_snapshot IS NULL)),
+  ADD CONSTRAINT orders_plan_status_ck
+    CHECK (kind <> 'plan' OR status IN ('pending','paid','failed')),
+  ADD CONSTRAINT orders_plan_not_granted_ck
+    CHECK (kind <> 'plan' OR granted = FALSE),
+  ADD CONSTRAINT orders_pending_failed_fields_ck
+    CHECK (status NOT IN ('pending','failed')
+           OR (granted = FALSE AND paid_at IS NULL AND refunded_at IS NULL)),
+  ADD CONSTRAINT orders_paid_fields_ck
+    CHECK (status <> 'paid' OR paid_at IS NOT NULL),
+  ADD CONSTRAINT orders_reversal_fields_ck
+    CHECK (status NOT IN ('refunded','disputed') OR refunded_at IS NOT NULL),
+  ADD CONSTRAINT orders_non_reversal_refund_ts_ck
+    CHECK (status IN ('refunded','disputed') OR refunded_at IS NULL),
+  ADD CONSTRAINT orders_granted_kind_ck
+    CHECK (granted = FALSE OR kind = 'package'),
+  ADD CONSTRAINT orders_package_paid_granted_ck
+    CHECK (kind <> 'package' OR status <> 'paid' OR granted = TRUE);
+
 -- ── 0. add the new nullable column (transactional DDL: a later preflight
 --        failure rolls this back together with everything else) ──
 ALTER TABLE tool_calls
@@ -80,6 +108,24 @@ BEGIN
   SELECT COUNT(*) INTO violators FROM pricing WHERE cost < 0;
   IF violators > 0 THEN
     RAISE EXCEPTION 'pricing invariant violations: % row(s)', violators;
+  END IF;
+
+  SELECT COUNT(*) INTO violators FROM orders
+    WHERE kind NOT IN ('package','plan')
+       OR (kind = 'package' AND (credits_snapshot IS NULL
+                                 OR credits_snapshot <= 0))
+       OR (kind = 'plan' AND credits_snapshot IS NOT NULL)
+       OR (kind = 'plan' AND status NOT IN ('pending','paid','failed'))
+       OR (kind = 'plan' AND granted)
+       OR (status IN ('pending','failed')
+           AND (granted OR paid_at IS NOT NULL OR refunded_at IS NOT NULL))
+       OR (status = 'paid' AND paid_at IS NULL)
+       OR (status IN ('refunded','disputed') AND refunded_at IS NULL)
+       OR (status NOT IN ('refunded','disputed') AND refunded_at IS NOT NULL)
+       OR (granted AND kind <> 'package')
+       OR (kind = 'package' AND status = 'paid' AND NOT granted);
+  IF violators > 0 THEN
+    RAISE EXCEPTION 'order invariant violators: % rows', violators;
   END IF;
 
   SELECT COUNT(*) INTO violators FROM tool_calls

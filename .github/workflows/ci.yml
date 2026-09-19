@@ -194,6 +194,12 @@ jobs:
           test "$(grep -c 'client_ref: *null' static/app.js)" = "0"
           grep -q 'required = \["files", "client_ref"\]' app/routes/mcp.py
           grep -q 'idempotency_key_required' app/routes/apiv1.py
+          # payment identity/precedence guards (behavior tests are the authority)
+          grep -q 'checkout_request_id_invalid' app/routes/topup.py
+          test "$(grep -rn 'UPDATE orders SET' app/ core/ --include=*.py | grep -v 'repo/orders.py' | wc -l)" = "0"
+          test -z "$(grep -A8 'create_credits_checkout(order' app/routes/topup.py | grep mark_failed)"
+          grep -q 'order_id_from_request_id' app/routes/topup.py
+          grep -q 'client_ref: clientRef' static/pages/credits.js
           test "$(grep -rn "SET status='ok'" core/repo/ledger.py | wc -l)" = "1"
           python3 -c "s=open('core/execution/gate.py').read(); b=s.split('def _finish')[1].split(chr(10)+'def ')[0]; assert 'commission_rate()' not in b.replace('commission_rate_snapshot',''), '_finish must not read current commission config'"
           python tests/canonical/test_rounded_corners.py

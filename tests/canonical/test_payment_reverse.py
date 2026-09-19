@@ -362,9 +362,10 @@ def _seed_sub_user(name, plan_id, product, sub_id):
     with db() as con:
         con.execute(
             "insert into orders (user_id, kind, item_id, provider,"
-            " provider_order_id, status, amount_cents, currency, created_at)"
-            " values (%s, 'plan', %s, 'creem', %s, 'paid', 999, 'USD', %s)",
-            (uid, plan_id, "sub:" + sub_id, ts))
+            " provider_order_id, status, amount_cents, currency, paid_at,"
+            " created_at) values (%s, 'plan', %s, 'creem', %s, 'paid', 999,"
+            " 'USD', %s, %s)",
+            (uid, plan_id, "sub:" + sub_id, ts, ts))
         con.execute(
             "insert into memberships (user_id, plan_id, provider_subscription_id,"
             " status, started_at, renews_at, last_grant_period_start, updated_at)"
@@ -677,17 +678,18 @@ check("R9 缺失/乱序 period_end → 500 + zero mutation (两形态)",
 
 # R10: dispute no-grant path → order disputed (event semantics)
 u_r10 = _mkuser(_u + "r10")
+# zero-snapshot package rows are now schema-illegal (orders_kind_snapshot_ck
+# requires credits_snapshot > 0). The canonical no-grant variant: an order
+# that was NEVER fulfilled (no grant fact) receiving a dispute — the
+# reversal path converges the marker with zero economic movement.
 with db() as con:
     o10 = con.execute(
         "insert into orders (user_id, kind, item_id, provider,"
         " provider_order_id, status, amount_cents, currency,"
         " credits_snapshot, created_at) values (%s, 'package', %s,"
-        " 'creem', %s, 'pending', 999, 'USD', 0, %s) returning *",
-        (u_r10, pkg_id, f"ch:rv10_{_u}", ts)).fetchone()
+        " 'creem', %s, 'pending', 999, 'USD', 100, %s) returning *",
+        (u_r10, pkg_id, f"ord10_{_u}", ts)).fetchone()
     order10 = int(o10["id"])
-# zero snapshot → fulfill marks paid with zero grant
-_creem.fulfill(f"ord10_{_u}", f"rv10_{_u}", 999,
-               product_id="prod_credits_rv", currency="USD")
 _TXNS[f"tran_{_u}r10"] = {"object": "transaction", "id": f"tran_{_u}r10",
                           "status": "chargeback", "type": "payment",
                           "order": f"ord10_{_u}"}
