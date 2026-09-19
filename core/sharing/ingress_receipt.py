@@ -92,9 +92,13 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
             (user_id, request_ref)).fetchone()
         if hist is not None and hist["request_hash"] != request_hash:
             raise IngressConflict(dict(hist))
-        if hist is not None and hist["status"] in ("running", "ok"):
-            if hist["status"] == "ok" and hist["result_json"]:
-                return None, [], _decode_durable_result(hist["result_json"])
+        if hist is not None and hist["status"] == "ok":
+            # payload validity has ONE authority: _decode_durable_result.
+            # No truthiness pre-check — an ok receipt with an empty or
+            # otherwise unresolvable payload resolves UNRESOLVED here,
+            # never a silent in-progress/conflict fallback.
+            return None, [], _decode_durable_result(hist["result_json"])
+        if hist is not None and hist["status"] == "running":
             raise IngressInProgress(dict(hist))
         if hist is not None:
             # earliest is failed/insufficient — a LATER ok receipt may
@@ -109,7 +113,7 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
                 """,
                 (user_id, request_ref)).fetchone()
             if live is not None:
-                if live["status"] == "ok" and live["result_json"]:
+                if live["status"] == "ok":
                     return None, [], _decode_durable_result(live["result_json"])
                 raise IngressInProgress(dict(live))
         row = usage_repo.user_usage(con, user_id, start)

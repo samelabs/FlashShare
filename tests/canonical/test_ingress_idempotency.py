@@ -719,6 +719,55 @@ check("F9 MCP scalar replay → -32000 err_ingress_unresolved + 零副作用",
       and _stM == "ok",
       f"err={_errM} gk={_gkM0}->{_gk_count()} usage={_uuM0}->{_usage_n(uidW)}")
 
+# ══════════ F10/F11: empty-payload durable ok — decoder is sole authority ══════════
+uidF10 = _mkuser(_u + "f10")
+hF10 = ingress_request_hash("v1_source",
+                            [{"filename": "f10.bin", "content_type": "application/octet-stream",
+                              "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+                            {})
+# F10: earliest ok + result_json='' → IngressUnresolved
+rct10, uids10, _ = claim_ingress_quota(uidF10, "127.0.0.1", f"f10-{_u}", hF10, [len(PNG)])
+finalize_ok(int(rct10["id"]), [{"publicId": "F10"}])
+with db() as con:
+    con.execute("update ingress_requests set result_json='' where id=%s",
+                (rct10["id"],))
+_f10_raised = False
+try:
+    claim_ingress_quota(uidF10, "127.0.0.1", f"f10-{_u}", hF10, [len(PNG)])
+except _InUnres:
+    _f10_raised = True
+with db() as con:
+    _f10_status = con.execute(
+        "select status from ingress_requests where id=%s",
+        (rct10["id"],)).fetchone()["status"]
+check("F10 earliest ok + empty payload → IngressUnresolved + 零新 usage + receipt 仍 ok",
+      _f10_raised and _usage_n(uidF10) == 1 and _f10_status == "ok",
+      f"raised={_f10_raised} usage={_usage_n(uidF10)} st={_f10_status}")
+
+# F11: failed history + later live ok(result_json='') → IngressUnresolved
+uidF11 = _mkuser(_u + "f11")
+rct11a, uids11a, _ = claim_ingress_quota(uidF11, "127.0.0.1", f"f11-{_u}",
+                                         hF10, [len(PNG)])
+settle_failure(int(rct11a["id"]), uids11a, uidF11)   # failed history
+rct11b, uids11b, _ = claim_ingress_quota(uidF11, "127.0.0.1", f"f11-{_u}",
+                                         hF10, [len(PNG)])  # same hash retry
+finalize_ok(int(rct11b["id"]), [{"publicId": "F11"}])
+with db() as con:
+    con.execute("update ingress_requests set result_json='' where id=%s",
+                (rct11b["id"],))
+_f11_raised = False
+try:
+    claim_ingress_quota(uidF11, "127.0.0.1", f"f11-{_u}", hF10, [len(PNG)])
+except _InUnres:
+    _f11_raised = True
+with db() as con:
+    _f11_live = con.execute(
+        "select status from ingress_requests where id=%s",
+        (rct11b["id"],)).fetchone()["status"]
+check("F11 failed→ok + later live ok empty payload → IngressUnresolved + 零新 usage + 仍 ok",
+      _f11_raised and _usage_n(uidF11) == 1 and _f11_live == "ok",
+      f"raised={_f11_raised} usage={_usage_n(uidF11)} st={_f11_live}")
+
 # ══════════ 8-10. receipt states (直接 service 层 fault-injection) ══════════
 from sharing.ingress_receipt import recover_abandoned_ingress_requests
 
@@ -874,7 +923,7 @@ with db() as con:
         "select id from users where username like %s",
         (f"{_u}%",)).fetchall()]
 _uids_all = [uid1, uid2, uid3, uidS, uidR, uidC, uidO, uidT, uidD2, uidU,
-              uidF1, uidF2, uidF3, uidF4, uidW] + _http_uids
+              uidF1, uidF2, uidF3, uidF4, uidW, uidF10, uidF11] + _http_uids
 with db() as con:
     for uid in _uids_all:
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))
