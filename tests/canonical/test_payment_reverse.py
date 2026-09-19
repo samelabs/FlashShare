@@ -698,9 +698,10 @@ sc, body = _fire("dispute.created", f"tran_{_u}r10")
 with db() as con:
     or10 = con.execute("select status from orders where id=%s",
                        (order10,)).fetchone()
-check("R10 dispute no-grant → zero mutation + order disputed",
-      sc == 200 and spendable_balance(u_r10) == b_r10
-      and or10["status"] == "disputed", f"{sc} {body} {dict(or10)}")
+check("R10 dispute on never-paid order → fail loud + zero mutation",
+      sc == 500 and "reversal_without_paid_proof" in str(body.get("error"))
+      and spendable_balance(u_r10) == b_r10
+      and or10["status"] == "pending", f"{sc} {body} {dict(or10)}")
 
 # R11: subscription reversal replay → reversed=false / credits=0
 sc, body = _fire("refund.created", f"tran_{_u}rr1")

@@ -650,11 +650,35 @@ check("PM2-2c 所有 PATCH payload 只含 price/currency",
       str(_patch_payloads[:2]))
 
 # ═══ PM2-3: creem_product_id change closes at the operator write ═══
+# Rebind is legal ONLY on a plan with NO bound membership (lifecycle
+# guard) — the subscription-carrying plan above must be refused. Use a
+# fresh never-subscribed plan for the commit/rollback matrix, and prove
+# the guard on the bound one first.
+r_guard = client.patch(f"/samelabs/plans/{plan_id}",
+                       json={"creem_product_id": "prod_pcB"},
+                       cookies={COOKIE_NAME: op_sess})
+check("PM2-3g rebind on bound-membership plan → 409 refused",
+      r_guard.status_code == 409
+      and "rebind_forbidden" in str(r_guard.json().get("error", "")),
+      f"{r_guard.status_code} {r_guard.text[:90]}")
+with db() as con:
+    _so2 = con.execute(
+        "SELECT COALESCE(MAX(p.sort_order),0)+1 AS so FROM plans p"
+        " WHERE p.code <> 'free'").fetchone()["so"]
+from repo.orders import insert_plan as _ins_plan
+with db() as con:
+    _rb = _ins_plan(con, f"plus_{_u}rb", "Plus RB", 500, 1499, ts,
+                    sort_order=int(_so2), creem_product_id="prod_pcA",
+                    ingress_files_24h=500, ingress_bytes_24h=524288000,
+                    expiry_days=(7,), download_limits=(50,))
+    rb_plan_id = int(_rb["id"])
+from governance import plan_catalog as _pc
+_pc.catalog(refresh=True)   # operator create path refreshes; mirror here
 # target monthly product at a different price → binding syncs target to CURRENT 518 price
 _mirror_state["prod_pcB"] = {"price": 999, "currency": "USD",
                              "billing_type": "recurring",
                              "billing_period": "every-month"}
-r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcB"},
+r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "prod_pcB"},
                  cookies={COOKIE_NAME: op_sess})
 check("PM2-3a 仅改 binding → target Product 被验证并同步到当前 518 价",
       r.status_code == 200 and _mirror_state["prod_pcB"]["price"] == 1499
@@ -664,11 +688,11 @@ check("PM2-3a 仅改 binding → target Product 被验证并同步到当前 518 
 _mirror_state["prod_pcY"] = {"price": 999, "currency": "USD",
                              "billing_type": "recurring",
                              "billing_period": "every-year"}
-r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcY"},
+r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "prod_pcY"},
                  cookies={COOKIE_NAME: op_sess})
 with db() as con:
     bound = con.execute("select creem_product_id from plans where id=%s",
-                        (plan_id,)).fetchone()["creem_product_id"]
+                        (rb_plan_id,)).fetchone()["creem_product_id"]
 check("PM2-3b yearly target → binding 不 commit (仍 prod_pcB)",
       r.status_code == 502 and bound == "prod_pcB", f"{r.status_code} bound={bound}")
 # provider failure → binding not committed
@@ -676,11 +700,11 @@ def _fail_fetch(pid):
     return None
 _orig_fp = _creem._fetch_product
 _creem._fetch_product = _fail_fetch
-r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcC"},
+r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "prod_pcC"},
                  cookies={COOKIE_NAME: op_sess})
 with db() as con:
     bound2 = con.execute("select creem_product_id from plans where id=%s",
-                         (plan_id,)).fetchone()["creem_product_id"]
+                         (rb_plan_id,)).fetchone()["creem_product_id"]
 check("PM2-3c provider failure → binding 不 commit",
       r.status_code == 502 and bound2 == "prod_pcB", f"{r.status_code} bound={bound2}")
 _creem._fetch_product = _orig_fp
@@ -688,11 +712,11 @@ _creem._fetch_product = _orig_fp
 _mirror_state["prod_pcD"] = {"price": 100, "currency": "USD",
                              "billing_type": "recurring",
                              "billing_period": "every-month"}
-r = client.patch(f"/samelabs/plans/{plan_id}", json={"creem_product_id": "prod_pcD"},
+r = client.patch(f"/samelabs/plans/{rb_plan_id}", json={"creem_product_id": "prod_pcD"},
                  cookies={COOKIE_NAME: op_sess})
 with db() as con:
     bound3 = con.execute("select creem_product_id from plans where id=%s",
-                         (plan_id,)).fetchone()["creem_product_id"]
+                         (rb_plan_id,)).fetchone()["creem_product_id"]
 check("PM2-3d valid monthly target → binding commit + 同步 1499",
       r.status_code == 200 and bound3 == "prod_pcD"
       and _mirror_state["prod_pcD"]["price"] == 1499,

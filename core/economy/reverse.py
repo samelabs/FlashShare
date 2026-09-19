@@ -103,11 +103,18 @@ def _reverse_package(txn: dict, _is_dispute: bool = False) -> dict:
         from repo import ledger as ledger_repo
         grant_row = ledger_repo.by_idem_key(con, int(row["user_id"]),
                                             f"order:{row['id']}")
+    # PRE-STATE GATE: a reversal may only land on an order that was
+    # actually PAID (the payment it reverses provably completed).
+    # pending/failed means the provider reversal references a purchase
+    # 518 never saw complete — an unresolved fact, not something to
+    # paper over with a terminal marker.
+    if row["status"] not in ("paid", "refunded", "disputed"):
+        raise KeyError("reversal_without_paid_proof")
     if grant_row is None or int(grant_row["delta"]) <= 0:
-        # order recorded but no Credits were ever granted (e.g. zero
-        # snapshot): economic reversal amount = 0 → no-op convergence;
-        # terminal state keeps the EVENT semantics (refund→refunded,
-        # dispute→disputed) exactly like the normal reversal path.
+        # PAID order with no grant fact (zero-credit snapshot variant):
+        # economic reversal amount = 0 → no-op convergence; the terminal
+        # marker keeps the EVENT semantics. This is reachable ONLY from
+        # a paid fact (gate above) — never fabricated from pending.
         with db() as con:
             _t = mark_disputed if _is_dispute else mark_refunded
             _t(con, int(row["id"]), now())

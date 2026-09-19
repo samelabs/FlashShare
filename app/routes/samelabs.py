@@ -460,7 +460,25 @@ async def samelabs_update_plan(plan_id: int, request: Request):
     try:
         with db() as con:
             # in-tx locked read → before snapshot (NOT the stale outer row)
-            before = _snap_plan(plan_by_id_for_update(con, plan_id))
+            locked = plan_by_id_for_update(con, plan_id)
+            before = _snap_plan(locked)
+            # LIFECYCLE GUARD: changing (or clearing) a paid plan's
+            # product binding while a Membership is bound to this plan
+            # would sever the ongoing subscription/payment lifecycle
+            # (period product proof, reversal location, upgrade paths
+            # all key off the product). Refuse loud; rebind is only
+            # legal before any subscription exists on the plan.
+            _rebinding = ("creem_product_id" in fields and (
+                (fields.get("creem_product_id") or None)
+                != (locked["creem_product_id"] or None)))
+            if _rebinding:
+                _bound = con.execute(
+                    "SELECT 1 FROM memberships m JOIN plans p"
+                    " ON p.id = m.plan_id WHERE p.id = %s LIMIT 1",
+                    (plan_id,)).fetchone()
+                if _bound is not None:
+                    return JSONResponse(
+                        {"ok": False, "error": "plan_in_use_rebind_forbidden"}, 409)
             row = update_plan(con, plan_id, fields, now())
             # audit BEFORE any Creem side effect, same transaction
             _audit_repo.record(con, user["id"], "plan.update", "plan",
@@ -497,6 +515,25 @@ async def samelabs_update_plan(plan_id: int, request: Request):
         if "plans_product_binding_uk" in msg or "creem_product_id" in msg:
             return JSONResponse({"ok": False, "error": "product_already_bound"}, 409)
         raise
+    # POST-COMMIT READ-BACK: the transaction above has committed; re-GET
+    # the product and confirm the provider now carries the committed
+    # price/currency. This closes the residual crash window (PATCH
+    # applied provider-side, local commit outcome unprovable): any
+    # divergence surfaces IMMEDIATELY as an explicit error instead of
+    # drifting — and re-running the same update converges idempotently
+    # (GET-first mirror + in-tx row lock).
+    if commercial_change and row["creem_product_id"]:
+        from economy import creem as _creem2
+        try:
+            _merr = _creem2.verify_product_mirror(
+                row["creem_product_id"], int(row["price_cents"]),
+                str(row["currency"] or "USD"))
+        except Exception:
+            _merr = "verify_unavailable"
+        if _merr:
+            return JSONResponse(
+                {"ok": False, "error": "price_mirror_divergence",
+                 "detail": str(_merr)}, 502)
     # plans 行是 Tier 唯一事实源, 进程内目录缓存必须随运营写入失效
     from governance.plan_catalog import validate_config
     validate_config()  # refresh=True + fail-closed 校验新配置

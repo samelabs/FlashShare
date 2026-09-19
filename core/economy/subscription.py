@@ -78,6 +78,24 @@ def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
                 raise KeyError("order_not_found")
             if row["kind"] != "plan":
                 return {"ignored": True}
+            # ── checkout payment-contract proof ──
+            # The signed completion must match the local purchase fact:
+            # the plan row's CURRENT product/price is authoritative here
+            # (first checkout: rebind is refused while any membership
+            # could exist — and this plan has none yet — so live == the
+            # fact frozen at checkout). Mismatched amount/product is a
+            # provider-vs-local divergence, never a silent bind.
+            _plan = orders_repo.plan_by_id(con, int(row["item_id"]))
+            if _plan is None:
+                raise KeyError("plan_not_found")
+            _w_order = obj.get("order") or {}
+            _w_amount = int(_w_order.get("amount") or 0)
+            _w_product = str(_w_order.get("product") or "")
+            if _w_amount != int(row["amount_cents"]):
+                raise KeyError("checkout_amount_mismatch")
+            if _plan.get("creem_product_id") and _w_product \
+                    and _w_product != _plan["creem_product_id"]:
+                raise KeyError("checkout_product_mismatch")
             cur = row["provider_order_id"] or ""
             # identity validation: NULL / ch:<this checkout> / sub:<this sub>
             if cur and cur != f"sub:{sub_id}" and cur != f"ch:{ch_id}":
@@ -348,9 +366,36 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     # (grant_plan + grant_plan_upgrade, 按 idem 前缀聚合) 补齐到当前 plan
     # 的 canonical 值 — 升级补差后再收到本周期 paid 重放/新周期判断时,
     # 总额始终收敛到该周期应得值, 绝不重复全额。
-    plan_total = credits
+    # REPLAY STABILITY: once this period carries granted facts
+    # (already > 0) the LIVE plan.monthly_credits is no longer an
+    # authority for it — a later operator credit edit must never make a
+    # same-transaction replay mint the difference. Only a verified
+    # switch to a genuinely different plan (target_plan_id above) may
+    # change the period's total; otherwise plan_total freezes at the
+    # already-granted amount.
     with db() as con:
         already = orders_repo.period_plan_credits(con, order["user_id"], period_start)
+    # REPLAY vs SWITCH, decided by the paid proof itself:
+    #   replay — THIS transaction already funded a grant this period
+    #     (its idem/base row exists): the live plan.monthly_credits is
+    #     no longer an authority for the period; freeze at the granted
+    #     amount so a later operator credit edit can never mint the
+    #     difference on a same-transaction replay.
+    #   switch — a NEW transaction under a genuinely different plan
+    #     (upgrade top-up path): the top-up to the new plan's total is
+    #     legitimate and follows the existing grant_plan_upgrade shape.
+    _is_replay = False
+    if already > 0 and target_plan_id is None:
+        with db() as con:
+            _seen = con.execute(
+                "SELECT 1 FROM ledger WHERE user_id=%s AND kind IN"
+                " ('grant_plan','grant_plan_upgrade') AND ref_id=%s LIMIT 1",
+                (order["user_id"], txn_ref)).fetchone()
+        _is_replay = _seen is not None
+    if _is_replay:
+        plan_total = already
+    else:
+        plan_total = credits
     if plan_total > already and plan_total > 0:
         # already == 0 → base cycle grant; already > 0 → the period was
         # partially credited (e.g. mid-cycle upgrade) → top-up the exact

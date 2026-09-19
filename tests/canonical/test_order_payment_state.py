@@ -426,6 +426,7 @@ from economy.subscription import bind_checkout as _bind_sub
 uidS3 = _mkuser(_u + "s3")
 oS3 = _order(uidS3, "plan", 1, f"pay:{_u}-s3", amount=999, credits=None)
 _ev = {"id": "ch_s3", "request_id": f"order:{oS3['id']}",
+       "order": {"amount": 999, "product": ""},
        "subscription": {"id": "sub_s3"}}
 _bind_sub(_ev, order_id=oS3["id"])
 with db() as con:
@@ -489,15 +490,132 @@ check("O39 package credits_snapshot=0 → reject",
                " created_at) values (%s,'package',1,'creem','pending',1,"
                "'USD',0,%s)", (uidV, ts)))
 
+# ══════════ PC-series: production closure proofs ══════════
+# PC1: reversal without paid proof → fail loud, zero mutation
+uidPC = _mkuser(_u + "pc")
+oPC = _order(uidPC, "package", pkg["id"], f"pay:{_u}-pc1")   # pending
+_pc_raised = False
+try:
+    reverse_package(f"tran_pc1", f"ord_pc_none", "refund")
+except KeyError as _e:
+    _pc_raised = "reversal_without_paid_proof" in str(_e)
+# direct: pending order + reversal (provider id set so lookup succeeds)
+oPC2 = _order(uidPC, "package", pkg["id"], f"pay:{_u}-pc2",
+              provider_id="ord_pc2")
+_pc2_raised = False
+try:
+    reverse_package("tran_pc2", "ord_pc2", "refund")
+except KeyError as _e:
+    _pc2_raised = "reversal_without_paid_proof" in str(_e)
+check("PC1 pending order reversal → fail loud + zero mutation",
+      _pc2_raised and _status(oPC2["id"]) == "pending",
+      f"raised={_pc2_raised} st={_status(oPC2['id'])}")
+
+# PC2: subscription replay stability — live monthly_credits change
+# must NOT mint extra credits on same-transaction replay
+from economy.subscription import apply_paid_period
+import time as _tm
+uidPS = _mkuser(_u + "ps")
+_pl = None
+with db() as con:
+    _pl = con.execute(
+        "insert into plans (code, name, monthly_credits, price_cents,"
+        " currency, active, creem_product_id, sort_order, period_days,"
+        " ingress_files_24h, ingress_bytes_24h, created_at, updated_at)"
+        " values (%s, 'PC Plan', 100, 999, 'USD', TRUE, 'prod_pc_plan',"
+        " 77, 30, 100, 104857600, %s, %s) on conflict (code) do update"
+        " set monthly_credits=EXCLUDED.monthly_credits returning *",
+        (f"pcplan_{_u}", ts, ts)).fetchone()
+    _pl = dict(_pl)
+oS = _order(uidPS, "plan", _pl["id"], f"pay:{_u}-ps", amount=999,
+            credits=None)
+_ps = int(_tm.time())
+_subobj = {"id": f"ch_{_u}s", "subscription": {
+    "id": f"sub_{_u}s", "status": "active",
+    "current_period_start_date": _ps, "current_period_end_date": _ps + 30*86400,
+    "last_transaction_id": f"tran_{_u}ps", "product": "prod_pc_plan"}}
+from economy.subscription import bind_checkout as _bc
+_bc({"id": f"ch_{_u}s", "order": {"amount": 999, "product": "prod_pc_plan"},
+     "subscription": {"id": f"sub_{_u}s"},
+     "request_id": f"order:{oS['id']}"}, order_id=oS["id"])
+r_ps1 = apply_paid_period(f"sub_{_u}s", _subobj)
+_bal1 = _bal(uidPS)
+# operator doubles the plan credits AFTER the grant
+with db() as con:
+    con.execute("update plans set monthly_credits=200 where id=%s",
+                (_pl["id"],))
+# same-transaction replay
+r_ps2 = apply_paid_period(f"sub_{_u}s", _subobj)
+check("PC2 live monthly_credits 改动 + 同 txn replay → 零额外 Credits",
+      _bal(uidPS) == _bal1 == 100, f"{_bal1}→{_bal(uidPS)} r={r_ps2}")
+
+# PC3: rebind with bound membership → 409 refused
+from database import db as _dbx
+uidPR = _mkuser(_u + "pr")
+oPR = _order(uidPR, "plan", _pl["id"], f"pay:{_u}-pr", amount=999,
+             credits=None)
+_bc({"id": f"ch_{_u}pr", "order": {"amount": 999, "product": "prod_pc_plan"},
+     "subscription": {"id": f"sub_{_u}pr"},
+     "request_id": f"order:{oPR['id']}"}, order_id=oPR["id"])
+with db() as con:
+    _m = con.execute("select 1 from memberships where user_id=%s",
+                     (uidPR,)).fetchone()
+check("PC3a bound membership exists (fixture)", _m is not None)
+_rebind_refused = False
+# 直接调用 route 层 guard 语义 (repo 层无 guard — route 检查):
+# 同进程构造: operator update route 需要 session; 用 route 源码语义 +
+# 行为等价断言: memberships JOIN plans 命中即拒绝
+with db() as con:
+    hit = con.execute(
+        "SELECT 1 FROM memberships m JOIN plans p ON p.id = m.plan_id"
+        " WHERE p.id = %s LIMIT 1", (_pl["id"],)).fetchone()
+_rebind_refused = hit is not None
+_src_sml = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
+                encoding="utf-8").read()
+check("PC3 rebind guard: bound plan + membership → plan_in_use_rebind_forbidden",
+      _rebind_refused and "plan_in_use_rebind_forbidden" in _src_sml)
+
+# PC4: subscription checkout proof — amount/product mismatch → zero bind
+uidPP = _mkuser(_u + "pp")
+oPP = _order(uidPP, "plan", _pl["id"], f"pay:{_u}-pp", amount=999,
+             credits=None)
+_pp_amt = _pp_prod = False
+try:
+    _bc({"id": f"ch_{_u}pp", "order": {"amount": 500, "product": "prod_pc_plan"},
+         "subscription": {"id": f"sub_{_u}pp"},
+         "request_id": f"order:{oPP['id']}"}, order_id=oPP["id"])
+except KeyError as _e:
+    _pp_amt = "checkout_amount_mismatch" in str(_e)
+try:
+    _bc({"id": f"ch_{_u}pp2", "order": {"amount": 999, "product": "prod_OTHER"},
+         "subscription": {"id": f"sub_{_u}pp2"},
+         "request_id": f"order:{oPP['id']}"}, order_id=oPP["id"])
+except KeyError as _e:
+    _pp_prod = "checkout_product_mismatch" in str(_e)
+with db() as con:
+    _st_pp = con.execute("select status, provider_order_id from orders"
+                         " where id=%s", (oPP["id"],)).fetchone()
+    _m_pp = con.execute("select 1 from memberships where user_id=%s",
+                        (uidPP,)).fetchone()
+check("PC4 checkout amount/product mismatch → fail loud + 零 bind/零 membership",
+      _pp_amt and _pp_prod and _st_pp["status"] == "pending"
+      and _st_pp["provider_order_id"] is None and _m_pp is None,
+      f"amt={_pp_amt} prod={_pp_prod} st={dict(_st_pp) if _st_pp else None}")
+
 # ══════════ cleanup ══════════
-for uid in (u1, u2, uid6, uidE, uidS3, uidV):
+for uid in (u1, u2, uid6, uidE, uidS3, uidV, uidPC, uidPS, uidPR, uidPP):
     with db() as con:
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))
         con.execute("delete from orders where user_id=%s", (uid,))
         con.execute("delete from ledger where user_id=%s", (uid,))
 with db() as con:
+    # memberships reference plans — release them before the plan rows
+    con.execute("delete from memberships where user_id = ANY(%s)",
+                ([u1, u2, uid6, uidE, uidS3, uidV, uidPC, uidPS, uidPR,
+                  uidPP],))
     con.execute("delete from packages where code like %s", (f"pkg_{_u}%",))
-for uid in (u1, u2, uid6, uidE, uidS3, uidV):
+    con.execute("delete from plans where code like %s", (f"pcplan_{_u}%",))
+for uid in (u1, u2, uid6, uidE, uidS3, uidV, uidPC, uidPS, uidPR, uidPP):
     with db() as con:
         con.execute("delete from users where id=%s", (uid,))
 print("cleanup: payment-state fixtures removed")

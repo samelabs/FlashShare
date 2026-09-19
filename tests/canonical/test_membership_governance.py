@@ -351,7 +351,7 @@ _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), s
 _topup._require_auth = lambda request: ({"id": uidL, "email": "t@t.co",
                                         "username": uL}, None)
 _creem_calls["create"] = 0
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-1"})))
 check("G12 live member 再 subscribe → plan_change_required / 零 checkout",
       st == 409 and d.get("error") == "plan_change_required"
       and _creem_calls["create"] == 0, str(d))
@@ -362,7 +362,7 @@ _topup._require_auth = lambda request: ({"id": uidS, "email": "t@t.co",
                                         "username": uS}, None)
 _cur.execute("update plans set creem_product_id='price_plus' where id=%s", (plan_plus,))
 _refresh_catalog()
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-2"})))
 _cur.execute("select id from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidS,))
 _oi1 = _cur.fetchone()[0]
 check("G12b 首次 subscribe → 1 order + 1 create_checkout",
@@ -370,7 +370,7 @@ check("G12b 首次 subscribe → 1 order + 1 create_checkout",
       and _oi1 > 0, f"st={st} d={d}")
 # 第二次 (webhook 前) → retrieve pending → reuse URL, 不建第二 order/create:
 _RT[f"ch_fake_{_oi1}"] = {"status": "pending", "checkout_url": f"https://creem.test/c/{_oi1}"}
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-3"})))
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidS,))
 _n_orders = _cur.fetchone()[0]
 check("G12c webhook 前再 subscribe → reuse 同一 checkout URL / 仍 1 order / 零新 create",
@@ -378,7 +378,7 @@ check("G12c webhook 前再 subscribe → reuse 同一 checkout URL / 仍 1 order
       and _n_orders == 1 and _creem_calls["create"] == 1, f"st={st} d={d} n={_n_orders}")
 # expired → 终结旧 order, 重新创建:
 _RT[f"ch_fake_{_oi1}"] = {"status": "expired", "checkout_url": f"https://creem.test/c/{_oi1}"}
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-4"})))
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan' and status='failed'", (uidS,))
 _nf = _cur.fetchone()[0]
 check("G12d expired checkout → 旧 order failed + 新 create",
@@ -389,7 +389,7 @@ _oi2 = _cur.fetchone()[0]
 with db() as con:
     orders_repo.bind_membership(con, uidS, plan_plus, f"chfake{_oi2}", "active",
                                 started_at=_ts, renews_at=None)
-st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-5"})))
 check("G12e bind 后 paid 前 → plan_change_required (不建第二 subscription)",
       st == 409 and d.get("error") == "plan_change_required"
       and _creem_calls["create"] == 2, f"st={st} d={d}")
@@ -401,7 +401,7 @@ _cur.execute("select id from plans where code='mg_unknown_tier'")
 _pq = _cur.fetchone()[0]
 _topup._require_auth = lambda request: ({"id": uidQ, "email": "t@t.co",
                                         "username": uQ}, None)
-st, d = _resp(asyncio.run(_do_sub({"plan_id": _pq})))
+st, d = _resp(asyncio.run(_do_sub({"plan_id": _pq, "client_ref": "mgsub-6"})))
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidQ,))
 check("G12f unknown-profile plan → plan_not_ready / 零 order / 零 checkout",
       st == 422 and d.get("error") == "plan_not_ready"
@@ -455,7 +455,7 @@ _barrier = threading.Barrier(2)
 _results = []
 def _worker():
     _barrier.wait()
-    _results.append(_resp(asyncio.run(_do_sub({"plan_id": plan_plus}))))
+    _results.append(_resp(asyncio.run(_do_sub({"plan_id": plan_plus, "client_ref": "mgsub-7"}))))
 _t1 = threading.Thread(target=_worker)
 _t2 = threading.Thread(target=_worker)
 _t1.start(); _t2.start(); _t1.join(); _t2.join()
@@ -522,8 +522,8 @@ check("G15b subscription.paid 后: grant_plan 恰一笔 / credits +100 / members
 # package/top-up mark_paid 语义保持 (窄 DB proof):
 uW, uidW = _new_user("mgW")
 _cur.execute(
-    "insert into orders (user_id, kind, item_id, provider, status, amount_cents, currency, created_at)"
-    " values (%s, 'package', 1, 'creem', 'pending', 500, 'USD', %s) returning id",
+    "insert into orders (user_id, kind, item_id, provider, status, amount_cents, currency, credits_snapshot, created_at)"
+    " values (%s, 'package', 1, 'creem', 'pending', 500, 'USD', 100, %s) returning id",
     (uidW, _ts))
 _ow = _cur.fetchone()[0]
 with db() as con:
