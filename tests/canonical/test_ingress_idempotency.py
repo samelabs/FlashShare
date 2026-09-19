@@ -127,7 +127,8 @@ def _ingress_n(user_id, ref=None):
 
 def _gk_count():
     import urllib.request as _ur
-    req = _ur.Request("http://127.0.0.1:53901/api/files/list",
+    base = _os.environ.get("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53901").rstrip("/")
+    req = _ur.Request(base + "/api/files/list",
                       headers={"apikey": _os.environ.get(
                           "FLASHSHARE_GOKAPI_KEY", "test-gk-key")})
     with _ur.urlopen(req, timeout=5) as r:
