@@ -393,12 +393,24 @@ def fulfill_by_request_id(order_id: int, provider_order_id: str,
         # paid final identity via the ch:* namespace.
         if not provider_order_id or not str(provider_order_id).strip():
             raise KeyError("provider_order_id_missing")
-        # If the local order already carries a provisional ch:* binding,
-        # the success proof must name the SAME checkout (prevents binding
-        # an unrelated checkout's completion onto this order).
+        # The FINAL provider Order identity may never use the local
+        # provisional namespace: ch:* exists only on pending/failed
+        # checkout bindings. (Judged by the reserved prefix only — the
+        # provider's own id format is not 518 schema authority.)
+        if str(provider_order_id).startswith("ch:"):
+            raise KeyError("provider_order_id_invalid_namespace")
+        # Identity monotonicity against the STORED binding, BEFORE the
+        # terminal gate / any grant:
+        #   provisional ch:A  → proof must name this same checkout
+        #   canonical final A → replay must carry A; anything else is a
+        #                       hard provider_identity_conflict
         _bound = row["provider_order_id"] or ""
-        if _bound.startswith("ch:") and checkout_id and _bound != "ch:" + checkout_id:
-            raise KeyError("checkout_identity_conflict")
+        if _bound.startswith("ch:"):
+            if checkout_id and _bound != "ch:" + checkout_id:
+                raise KeyError("checkout_identity_conflict")
+        elif _bound:
+            if provider_order_id != _bound:
+                raise KeyError("provider_identity_conflict")
         # ── terminal gate: a reversed order NEVER re-grants and its
         # marker is never rewritten by a (stale/replayed) success ──
         if row["status"] in ("refunded", "disputed"):

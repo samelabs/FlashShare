@@ -91,7 +91,7 @@ BEGIN
        OR (kind = 'plan' AND status IN ('refunded','disputed'))
        OR (status IN ('paid','refunded','disputed')
            AND provider_order_id IS NULL)
-       OR (status = 'pending' AND provider_order_id IS NOT NULL
+       OR (status IN ('pending','failed') AND provider_order_id IS NOT NULL
            AND provider_order_id NOT LIKE 'ch:%')
        OR (kind = 'package' AND status = 'paid'
            AND (NOT granted OR paid_at IS NULL OR refunded_at IS NOT NULL

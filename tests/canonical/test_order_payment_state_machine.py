@@ -559,6 +559,78 @@ try:
           _res.get("granted") and _r3["status"] == "paid"
           and _r3["provider_order_id"] == "ord_r2b",
           f"{_res} {dict(_r3)}")
+
+    # ── canonical replay cannot bypass the writer conflict ──
+    def _bal_rows(uid2, oid2):
+        with db() as _c:
+            return _c.execute(
+                "select id, delta from ledger where user_id=%s and"
+                " ref_type='order' and ref_id=%s",
+                (uid2, str(oid2))).fetchall()
+    with db() as con:
+        _r3_full = con.execute(
+            "select status, provider_order_id, paid_at from orders"
+            " where id=%s", (oR2b["id"],)).fetchone()
+    _snap_paid = (dict(_r3_full), _bal_rows(uidR2b, oR2b["id"]))
+
+    # paid ord_A + replay proof ord_A → terminal replay no-op
+    _rep = _cr2.fulfill_by_request_id(int(oR2b["id"]), "ord_r2b", "chk_real",
+                                      500, product_id="prod_credits",
+                                      currency="USD")
+    with db() as con:
+        _r4 = con.execute("select status, provider_order_id, paid_at"
+                          " from orders where id=%s",
+                          (oR2b["id"],)).fetchone()
+    check("R2-2d paid ord_A + replay proof ord_A → no-op (replay, 不重写)",
+          _rep.get("granted") is False and _rep.get("reason") == "replay"
+          and _r4["status"] == "paid"
+          and _r4["provider_order_id"] == "ord_r2b"
+          and int(_r4["paid_at"]) == int(_snap_paid[0]["paid_at"])
+          and _bal_rows(uidR2b, oR2b["id"]) == _snap_paid[1],
+          f"{_rep} {dict(_r4)}")
+
+    # paid ord_A + proof ord_B → conflict, ZERO ledger/Order mutation
+    _errB = None
+    try:
+        _cr2.fulfill_by_request_id(int(oR2b["id"]), "ord_r2B_OTHER",
+                                   "chk_real", 500,
+                                   product_id="prod_credits", currency="USD")
+    except KeyError as e:
+        _errB = str(e)
+    with db() as con:
+        _r5 = con.execute("select status, provider_order_id, paid_at"
+                          " from orders where id=%s",
+                          (oR2b["id"],)).fetchone()
+    check("R2-2e paid ord_A + proof ord_B → provider_identity_conflict + 零 mutation",
+          _errB == "'provider_identity_conflict'"
+          and _r5["status"] == "paid"
+          and _r5["provider_order_id"] == "ord_r2b"
+          and int(_r5["paid_at"]) == int(_snap_paid[0]["paid_at"])
+          and _bal_rows(uidR2b, oR2b["id"]) == _snap_paid[1],
+          f"{_errB} {dict(_r5)}")
+
+    # incoming final provider id ch:* → reject BEFORE any paid identity
+    uidR2c2 = _mkuser(_u + "r2c2")
+    with db() as con:
+        oR2c2 = dict(orders_repo.insert_order(
+            con, uidR2c2, "package", pkg["id"], "creem", 500, "USD", ts,
+            credits_snapshot=5000))
+    _errC = None
+    try:
+        _cr2.fulfill_by_request_id(int(oR2c2["id"]), "ch:evil", "chk_ev",
+                                   500, product_id="prod_credits",
+                                   currency="USD")
+    except KeyError as e:
+        _errC = str(e)
+    with db() as con:
+        _r6 = con.execute("select status, provider_order_id from orders"
+                          " where id=%s", (oR2c2["id"],)).fetchone()
+    check("R2-2f incoming final id ch:* → 拒 (paid 永不落 ch: identity) + 零 grant",
+          _errC == "'provider_order_id_invalid_namespace'"
+          and _r6["status"] == "pending"
+          and _r6["provider_order_id"] is None
+          and _bal_rows(uidR2c2, oR2c2["id"]) == [],
+          f"{_errC} {dict(_r6)}")
 finally:
     _cr2.CREEM_CREDITS_PRODUCT_ID = _prod_id_orig
 
@@ -752,7 +824,7 @@ with db() as con:
 
 # ═══ cleanup ═══
 _uids_all = [uid, uidS, uidS2, uidS3, uidOP, uidR2, uidR2b, uidR2c,
-             uidR2d, uidR2e, uidR2f]
+             uidR2d, uidR2e, uidR2f, uidR2c2]
 with db() as con:
     for _uid2 in _uids_all:
         con.execute("delete from operator_audit where actor_user_id=%s", (_uid2,))

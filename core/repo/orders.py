@@ -184,6 +184,11 @@ def complete_package_order(con, order_id: int, provider_order_id: str,
         "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
     if row is None:
         raise KeyError("order_not_found")
+    # The paid final identity may never be the local provisional
+    # namespace (ch:* is pending/failed-only), enforced by the WRITER
+    # itself — callers cannot bypass it.
+    if str(provider_order_id).startswith("ch:"):
+        raise KeyError("provider_order_id_invalid_namespace")
     cur = row["provider_order_id"]
     if cur is not None and cur != provider_order_id \
             and not cur.startswith("ch:"):
