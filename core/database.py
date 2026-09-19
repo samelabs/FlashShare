@@ -395,6 +395,7 @@ _SCHEMA_SQL = (
       amount_cents      BIGINT NOT NULL,
       currency          TEXT NOT NULL DEFAULT 'USD',
       credits_snapshot  BIGINT,
+      client_ref        TEXT,
       granted           BOOLEAN NOT NULL DEFAULT FALSE,
       created_at        BIGINT NOT NULL,
       paid_at           BIGINT,
@@ -408,6 +409,11 @@ _SCHEMA_SQL = (
     """,
     """
     CREATE INDEX IF NOT EXISTS orders_user_idx ON orders(user_id, created_at DESC)
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS orders_user_client_ref_uk
+      ON orders(user_id, client_ref)
+      WHERE client_ref IS NOT NULL
     """,
     # ── platform: operator_audit (append-only governance fact) ──
     """

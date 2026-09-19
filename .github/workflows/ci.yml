@@ -171,6 +171,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_ingress_idempotency.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_order_payment_state.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_order_payment_state.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_operation_identity.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_operation_identity.py
@@ -297,6 +301,9 @@ jobs:
 
       - name: Operation identity canonical
         run: python tests/canonical/test_operation_identity.py
+
+      - name: Order payment state canonical
+        run: python tests/canonical/test_order_payment_state.py
 
       - name: Ingress idempotency canonical
         run: python tests/canonical/test_ingress_idempotency.py

@@ -243,7 +243,13 @@ with db() as con:
         "select id from users where username=%s", (_u + "b",)).fetchone()["id"])
 check("P0 buyer 注册+登录 ok", lg.status_code == 302 and buyer_ck, lg.status_code)
 
+_api_seq = [0]
 def _api(path, body):
+    # client payment identity is required (canonical contract); each
+    # logical purchase gets a fresh ref unless the test overrides it.
+    _api_seq[0] += 1
+    body = {**body, "client_ref": body.get("client_ref")
+            or f"pf:{_u}:{_api_seq[0]}"}
     r = client.post(path, json=body, cookies={COOKIE_NAME: buyer_ck})
     try:
         return r.status_code, r.json()
@@ -264,11 +270,13 @@ client.post("/auth/register", data={
 lg2 = client.post("/auth/login", data={"login": _u + "b2", "password": "password123"},
                   follow_redirects=False)
 _ck2 = lg2.cookies.get(COOKIE_NAME) or ""
-r_mis = client.post("/api/topup/subscribe", json={"plan_id": plan_id},
+r_mis = client.post("/api/topup/subscribe",
+                    json={"plan_id": plan_id,
+                          "client_ref": f"pf:{_u}:mis"},
                     cookies={COOKIE_NAME: _ck2})
 st2, d2 = r_mis.status_code, r_mis.json()
 check("P4 mirror mismatch → checkout fail closed (不按 Creem 价售卖)",
-      st2 == 502 and "checkout_failed" in str(d2.get("error", "")),
+      st2 == 502 and "checkout_unresolved" in str(d2.get("error", "")),
       f"{st2} {str(d2)[:90]}")
 with db() as con:
     local_price3 = con.execute("select price_cents from plans where id=%s",
@@ -581,7 +589,8 @@ except Exception as e:
 _creem.create_subscription_checkout = _fake_sub_checkout
 _mirror_state["prod_pc1"]["price"] = 1499  # same price/currency, yearly period
 _mirror_state["prod_pc1"]["billing_period"] = "every-year"
-r_y = client.post("/api/topup/subscribe", json={"plan_id": plan_id},
+r_y = client.post("/api/topup/subscribe",
+                  json={"plan_id": plan_id, "client_ref": f"pf:{_u}:y0"},
                   cookies={COOKIE_NAME: buyer_ck})
 # buyer already has a pending order → use a fresh buyer for cleanliness
 client.post("/auth/register", data={
@@ -590,14 +599,20 @@ client.post("/auth/register", data={
 _lgy = client.post("/auth/login", data={"login": _u + "y1", "password": "password123"},
                    follow_redirects=False)
 _cky = _lgy.cookies.get(COOKIE_NAME) or ""
-r_y = client.post("/api/topup/subscribe", json={"plan_id": plan_id},
+r_y = client.post("/api/topup/subscribe",
+                  json={"plan_id": plan_id, "client_ref": f"pf:{_u}:y1"},
                   cookies={COOKIE_NAME: _cky})
 check("PM2-1a every-year + 相同 price/currency → checkout rejected",
       r_y.status_code == 502, r_y.status_code)
 _mirror_state["prod_pc1"]["billing_period"] = "every-month"
-r_m = client.post("/api/topup/subscribe", json={"plan_id": plan_id},
+# Canonical retry semantics: the PM2-1a attempt ended unresolved
+# (mirror rejection is a pre-provider failure, order stays pending), so
+# the SAME logical purchase retries with the SAME client_ref and must
+# now succeed through the pending order.
+r_m = client.post("/api/topup/subscribe",
+                  json={"plan_id": plan_id, "client_ref": f"pf:{_u}:y1"},
                   cookies={COOKIE_NAME: _cky})
-check("PM2-1b every-month → checkout allowed",
+check("PM2-1b every-month + same-ref retry → checkout allowed",
       r_m.status_code == 200 and r_m.json().get("ok"),
       f"{r_m.status_code} {r_m.text[:120]}")
 
