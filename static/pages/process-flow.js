@@ -1,8 +1,16 @@
 // ── process-flow: 全局处理流 (单源) ──────────────────────────────
-// 上传 → (工具执行) → 结果呈现。任何入口 (首页表单 / 工具页一控件 /
-// 用户页快捷使用) 都调用同一函数; 首页表单绑定仍在 app.js, 此处只提供
-// 编程式入口 + 结果/进度呈现 (依赖 app.js 已加载: t/showResult/
-// showToolProcessing/showToolError/showShareResult 均为 app.js 单源)。
+// executable tool 的唯一浏览器执行链: 首页表单与 /tool/... 一控件都走
+// runToolFlow。纯 share 直传同样经此 (share = pass_through 语义), app.js
+// 不再维护第二套 upload→execute→retry。
+//
+// Operation identity (硬 invariant):
+//   同一次用户动作 (从第一次 upload 到成功或用户明确换输入) 只有一个
+//   client_ref。Retry 复用既有 ref + frozen invocation (files/tool/
+//   params/delivery) — upload response loss 重传同一 files+ref (ingress
+//   receipt replay), execute response loss / tool_failed 只重放 execute
+//   (绝不再 upload)。成功清 pending; 换输入 (新文件/新 tool/参数/delivery)
+//   invalidate 旧 operation, 下一动作才 mint 新 ref。
+//   ref 唯一生成器 = app.js newOperationRef (window.newOperationRef)。
 (function () {
   "use strict";
 
@@ -11,54 +19,65 @@
     return m || "failed";
   }
 
-  /**
-   * runToolFlow(tool, files, opts) → Promise<result|null>
-   * tool: catalog item 形状 {id,label,params,multi,cost,...}
-   *       传 null/undefined = 无工具直传 (share 语义)。
-   * files: FileList | File[]
-   * opts: {params, expiryDays, allowedDownloads,
-   *        onProgress(pct, speedStr), signal}
-   */
-  async function runToolFlow(tool, files, opts) {
-    opts = opts || {};
-    const fileList = Array.from(files || []);
-    if (!fileList.length) return null;
-    if (!window.__USER__) { location.href = "/auth/login"; return null; }
+  // ── Logical operation state (module-private) ──
+  // {ref, files(File[]), tool, params, delivery, sources(uploaded handles), phase}
+  // phase: "idle" | "running" | "upload-retry" | "execute-retry"
+  let op = null;
 
-    // Shared affordability preflight (advisory): for the tool that WILL
-    // execute, ask before any source upload starts. 402 → typed error,
-    // no upload. Other outcomes defer to the authoritative gate.
-    {
-      const execTool = tool && !tool.pass_through ? tool : null;
-      if (execTool && window.preflightToolAffordability) {
-        const pf = await window.preflightToolAffordability(execTool);
-        if (!pf.ok) throw new Error(errText(pf.error));
-      }
+  function invalidateOperation() {
+    op = null;
+  }
+
+  function sameFiles(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
     }
+    return true;
+  }
 
-    const isMulti = !!(tool && tool.multi);
-    // 4C-2: multi=false 显式多文件不静默截断/忽略 — typed 错误, 由 UI 呈现
-    // (dispatch 对 files[] 越界同样 typed err_too_many_files)。
-    if (!isMulti && fileList.length > 1) {
-      throw new Error(errText("err_too_many_files"));
-    }
+  function sameDelivery(x, y) {
+    return !!x && !!y && x.expiry_days === y.expiry_days
+        && x.allowed_downloads === y.allowed_downloads;
+  }
 
-    // Step 1: upload (multipart, XHR for progress)
+  // Input change → invalidate the retained operation. A changed input set
+  // is a NEW user action; the next run mints a fresh ref.
+  function fingerprintChanged(tool, files, params, delivery) {
+    if (!op) return false;
+    if ((tool ? tool.id : null) !== (op.tool ? op.tool.id : null)) return true;
+    if (!sameFiles(files, op.files)) return true;
+    if (JSON.stringify(params || {}) !== JSON.stringify(op.params || {})) return true;
+    if (!sameDelivery(delivery, op.delivery)) return true;
+    return false;
+  }
+
+  // Concurrent-run guard: while an operation is running on this surface,
+  // mouse / keyboard / drag-drop entries all land here and are refused.
+  // Returns true when a second operation was blocked.
+  function blockConcurrentRun() {
+    return !!op && op.phase === "running";
+  }
+
+  function uploadLeg() {
+    // (Re)upload the FROZEN files with the FROZEN ref — same ref on the
+    // first attempt and on upload-response-loss retry, so the server's
+    // ingress receipt replays instead of minting a second logical op.
     const formData = new FormData();
-    fileList.forEach(f => formData.append("file", f));
-    // 工具中间件语义: 带 tool 字段 → 上传不落分享记录 (仅 execute 产物落库)
-    if (tool) formData.append("tool", tool.id);
-    const up = await new Promise((resolve, reject) => {
+    op.files.forEach(f => formData.append("file", f));
+    if (op.tool) formData.append("tool", op.tool.id);
+    formData.append("client_ref", op.ref);
+    return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/uploads");
       xhr.timeout = 900000;
       const t0 = Date.now();
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && opts.onProgress) {
+        if (e.lengthComputable && op.onProgress) {
           const pct = Math.min(99, Math.round(e.loaded / e.total * 100));
           const elapsed = (Date.now() - t0) / 1000;
           const bps = elapsed > 0 ? e.loaded / elapsed : 0;
-          opts.onProgress(pct, bps);
+          op.onProgress(pct, bps);
         }
       };
       xhr.onload = () => {
@@ -72,50 +91,202 @@
       xhr.ontimeout = () => reject(new Error(errText("failed")));
       xhr.send(formData);
     });
+  }
 
-    // Pass-through (share 语义): 工具声明 pass_through=true 才直传,
-    // 不从 presets/params/multi 推断 (无参执行型工具会被误判)。
-    const hasExec = tool && !tool.pass_through;
-    if (!hasExec) {
-      const f = up.files ? up.files[0] : up.file;
-      window.showShareResult && window.showShareResult(f);
-      window._loadHistory && window._loadHistory();
-      return f;
-    }
-
-    // Step 2: execute tool — canonical ToolInvocation (Stage C):
-    // source.files[] 唯一 shape (single/multi 只是长度不同);
-    // params 只含 tool params; delivery 独立; client_ref=null= fresh。
-    window.showToolProcessing &&
-      window.showToolProcessing(window.resolveLabel ? window.resolveLabel(tool.label) || tool.id : tool.id);
-    const uploaded = up.files || [up.file];
-    const params = Object.assign({}, opts.params || {});
+  function executeLeg() {
+    // Execute the FROZEN invocation (handles from the first successful
+    // upload) with the SAME ref. Retry after execute response loss or
+    // tool_failed replays this leg — zero second upload.
     const body = {
-      tool_id: tool.id,
-      source: { files: uploaded.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
-      params: params,
-      delivery: { expiry_days: opts.expiryDays || 1, allowed_downloads: opts.allowedDownloads || 50 },
-      client_ref: null,
+      tool_id: op.tool.id,
+      source: { files: op.sources.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
+      params: op.params,
+      delivery: op.delivery,
+      client_ref: op.ref,
     };
-    const res = await fetch("/api/tools/execute", {
+    return fetch("/api/tools/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      const ref = up.files ? up.files[0] : up.file;
-      window.showToolError && window.showToolError(errText(data.error), ref);
-      return null;
-    }
-    if (window.__syncCredits && typeof data.balance === "number") {
-      window.__syncCredits(data.balance);
-    }
-    window.showShareResult && window.showShareResult(data.result);
-    window._loadHistory && window._loadHistory();
-    return data.result;
+    }).then(res => res.json());
   }
 
-  // app.js 函数是非模块脚本顶层声明 = window 属性, 编程式入口可直接用。
+  /**
+   * runToolFlow(tool, files, opts) → Promise<result|null>
+   * tool: catalog item 形状 {id,label,params,multi,pass_through,cost,...}
+   *       传 null/undefined = 无工具直传 (share 语义)。
+   * files: FileList | File[]
+   * opts: {params, expiryDays, allowedDownloads,
+   *        onProgress(pct, bps), onError(message, ref)}
+   */
+  async function runToolFlow(tool, files, opts) {
+    opts = opts || {};
+    // Concurrent-run guard (hard invariant): while an operation is in
+    // flight on this surface, ANY second entry — mouse, keyboard or
+    // drag-drop — is refused here (not just CSS pointer-events).
+    if (blockConcurrentRun()) return null;
+    const fileList = Array.from(files || []);
+    if (!fileList.length) return null;
+    if (!window.__USER__) { location.href = "/auth/login"; return null; }
+    if (typeof window.newOperationRef !== "function") {
+      throw new Error(errText("failed"));
+    }
+
+    let params = Object.assign({}, opts.params || {});
+    let delivery = {
+      expiry_days: opts.expiryDays || 1,
+      allowed_downloads: opts.allowedDownloads || 50,
+    };
+
+    // Frozen operation: an input change invalidates the old operation and
+    // a new ref is minted for the next action. An unchanged input keeps
+    // the retained ref (response-loss retry path). On a retry re-entry
+    // with the frozen inputs, keep the retained ref and delivery verbatim.
+    const isRetry = !!op && op.phase !== "running"
+        && (op.phase === "upload-retry" || op.phase === "execute-retry")
+        && !fingerprintChanged(tool, fileList, params, delivery);
+    if (isRetry) {
+      // retry carries the FROZEN params/delivery, not the re-entry opts
+      params = op.params;
+      delivery = op.delivery;
+    } else if (fingerprintChanged(tool, fileList, params, delivery)) {
+      invalidateOperation();
+    }
+
+    const isMulti = !!(tool && tool.multi);
+    // 4C-2: multi=false 显式多文件不静默截断/忽略 — typed 错误, 由 UI 呈现
+    // (dispatch 对 files[] 越界同样 typed err_too_many_files)。
+    if (!isMulti && fileList.length > 1) {
+      invalidateOperation();
+      throw new Error(errText("err_too_many_files"));
+    }
+
+    if (isRetry) {
+      // retry re-entry: keep the retained ref (frozen operation) — do NOT
+      // mint. upload-retry (sources null) re-uploads below; execute-retry
+      // replays execute with the retained handles.
+      op.phase = "running";
+    } else {
+      // Fresh operation: ONE ref minted per user action (single generator).
+      op = {
+        ref: window.newOperationRef(),
+        files: fileList,
+        tool: tool || null,
+        params: params,
+        delivery: delivery,
+        sources: null,
+        onProgress: opts.onProgress || null,
+        phase: "running",
+      };
+    }
+
+    try {
+      // Shared affordability preflight (advisory): for the tool that WILL
+      // execute, ask before any source upload starts. 402 → typed error,
+      // no upload. Other outcomes defer to the authoritative gate.
+      const execTool = tool && !tool.pass_through ? tool : null;
+      if (execTool && !isRetry && window.preflightToolAffordability) {
+        const pf = await window.preflightToolAffordability(execTool);
+        if (!pf.ok) {
+          invalidateOperation();
+          throw new Error(errText(pf.error));
+        }
+      }
+
+      // Step 1: upload — skipped ONLY when retrying with retained handles.
+      if (!isRetry || !op.sources) {
+        const up = await uploadLeg();
+        const uploaded = up.files || [up.file];
+        op.sources = uploaded.map(f => ({ publicId: f.publicId, sourceToken: f.sourceToken || "" }));
+      }
+
+      // Pass-through (share 语义): 工具声明 pass_through=true 才直传,
+      // 不从 presets/params/multi 推断 (无参执行型工具会被误判)。
+      const hasExec = tool && !tool.pass_through;
+      if (!hasExec) {
+        const f = op.sources[0] ? { publicId: op.sources[0].publicId } : null;
+        op = null; // direct share complete — next submit is new
+        // Pass-through surfaces render their own result (caller handles it);
+        // kept out of this module for the homepage (app.js) / tool page.
+        return { passthrough: true, files: fileList };
+      }
+
+      // Step 2: execute tool — canonical ToolInvocation (Stage C):
+      // source.files[] 唯一 shape (single/multi 只是长度不同);
+      // params 只含 tool params; delivery 独立; client_ref = the operation
+      // identity minted for THIS run (identical to the upload leg's ref).
+      window.showToolProcessing &&
+        window.showToolProcessing(window.resolveLabel ? window.resolveLabel(tool.label) || tool.id : tool.id);
+
+      let data;
+      try {
+        data = await executeLeg();
+      } catch (e) {
+        // execute response loss — keep ref + sources for retry
+        op.phase = "execute-retry";
+        throw e;
+      }
+      if (!data.ok) {
+        // tool_failed → explicit retry continues the SAME ref + fingerprint
+        op.phase = "execute-retry";
+        const ref = null;
+        if (opts.onError) opts.onError(errText(data.error), ref);
+        else window.showToolError && window.showToolError(errText(data.error), null);
+        return null;
+      }
+      if (window.__syncCredits && typeof data.balance === "number") {
+        window.__syncCredits(data.balance);
+      }
+      window.showShareResult && window.showShareResult(data.result);
+      window._loadHistory && window._loadHistory();
+      op = null; // success — pending operation cleared
+      return data.result;
+    } catch (e) {
+      // Upload-leg response loss (network error / timeout / parse) lands
+      // here: the ref and any sources are KEPT — the next retry re-enters
+      // with the frozen operation. Typed business errors (preflight,
+      // too-many-files) already invalidated the operation before throwing.
+      if (op && op.phase === "running") op.phase = "upload-retry";
+      throw e;
+    }
+  }
+
+  // Explicit retry entry (wired by the UI layer to the error card's Retry
+  // button). Re-enters runToolFlow with the FROZEN operation — same ref,
+  // same files/tool/params/delivery; upload-leg response loss re-uploads
+  // the same files for receipt replay, execute loss / tool_failed replays
+  // execute only.
+  window.retryLastToolOperation = function () {
+    if (!op) return null;
+    if (op.phase === "running") return null;
+    const frozen = op;
+    op.phase = frozen.sources ? "execute-retry" : "upload-retry";
+    return runToolFlow(frozen.tool, frozen.files, {
+      params: frozen.params,
+      expiryDays: frozen.delivery.expiry_days,
+      allowedDownloads: frozen.delivery.allowed_downloads,
+      onProgress: frozen.onProgress,
+    });
+  };
+
+  // True while an operation is in flight — surfaces use this to refuse
+  // mouse / keyboard / drag-drop second entries.
+  window.toolOperationBusy = function () {
+    return blockConcurrentRun();
+  };
+
+  // True when a frozen operation is retained and can be retried (upload
+  // response loss / execute response loss / tool_failed). Preflight and
+  // validation failures invalidate the operation → false → the UI must
+  // NOT render a Retry button.
+  window.canRetryToolOperation = function () {
+    return !!op && op.phase !== "running"
+        && (op.phase === "upload-retry" || op.phase === "execute-retry");
+  };
+
+  // Input-change hook: surfaces call this when files/tool/params/delivery
+  // change so the next action mints a fresh operation.
+  window.invalidateToolOperation = invalidateOperation;
+
   window.runToolFlow = runToolFlow;
 })();

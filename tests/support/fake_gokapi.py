@@ -21,6 +21,8 @@ class Store:
         self._lock = threading.Lock()
         self._seq = 0
         self._files: dict[str, dict] = {}
+        # test-only: fail the internal download endpoint with this status
+        self.fail_internal: str | None = None
 
     def add(self, name: str, content_type: str, data: bytes,
             expiry_days: int, allowed_downloads: int, base_url: str) -> dict:
@@ -68,6 +70,15 @@ class Store:
             row["DownloadsRemaining"] = (
                 max(0, allowed - int(row["DownloadCount"])) if allowed > 0 else 0
             )
+            return self._public(row), bytes(row["_data"])
+
+    def internal_download(self, file_id: str) -> tuple[dict | None, bytes | None]:
+        """Authenticated API read (apikey + increaseCounter=false): never
+        consumes the public download allowance."""
+        with self._lock:
+            row = self._files.get(file_id)
+            if not row:
+                return None, None
             return self._public(row), bytes(row["_data"])
 
     @staticmethod
@@ -201,6 +212,61 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
+        if path.startswith("/api/files/download/") and STORE.fail_internal:
+            # test-only channel-failure injection (set via /ci/fail-internal):
+            # the authenticated non-counting read endpoint fails on demand
+            mode = STORE.fail_internal
+            if mode == "401":
+                self._json(401, {"ErrorMessage": "unauthorized"})
+            elif mode == "404":
+                self._json(404, {"ErrorMessage": "not_found"})
+            elif mode == "500":
+                self._json(500, {"ErrorMessage": "boom"})
+            else:
+                self.send_error(500)
+            return
+
+        if path.startswith("/api/files/download/"):
+            # Official authenticated non-counting read:
+            #   apikey required; increaseCounter=false honored (the
+            #   counter only moves on /downloadFile).
+            if not self._authorized():
+                self._json(401, {"ErrorMessage": "unauthorized"})
+                return
+            file_id = path[len("/api/files/download/"):]
+            meta, data = STORE.internal_download(file_id)
+            if meta is None:
+                self._json(404, {"ErrorMessage": "not_found"})
+                return
+            assert data is not None  # internal_download returns data iff row exists
+
+            status = 200
+            start, end = 0, len(data) - 1
+            range_header = self.headers.get("Range", "")
+            if range_header:
+                match = re.fullmatch(r"bytes=(\d+)-(\d*)", range_header.strip())
+                if not match:
+                    self.send_error(416)
+                    return
+                start = int(match.group(1))
+                end = int(match.group(2)) if match.group(2) else end
+                if start < 0 or start >= len(data) or end < start:
+                    self.send_error(416)
+                    return
+                end = min(end, len(data) - 1)
+                data = data[start:end + 1]
+                status = 206
+
+            self.send_response(status)
+            self.send_header("Content-Type", meta["ContentType"])
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Accept-Ranges", "bytes")
+            if status == 206:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{meta['SizeBytes']}")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         self.send_error(404)
 
     def do_POST(self) -> None:
@@ -228,6 +294,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"Result": "ERROR", "ErrorMessage": str(exc)})
                 return
             self._json(200, {"Result": "OK", "FileInfo": meta})
+            return
+
+        if path == "/ci/fail-internal":
+            if not self._authorized():
+                self._json(401, {"ErrorMessage": "unauthorized"})
+                return
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                body = json.loads(self.rfile.read(size) or b"{}")
+            except Exception:
+                body = {}
+            mode = body.get("mode")
+            STORE.fail_internal = mode if mode in ("401", "404", "500") else None
+            self._json(200, {"Result": "OK", "fail_internal": STORE.fail_internal})
             return
 
         if path == "/api/files/delete":

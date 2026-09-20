@@ -156,3 +156,91 @@ def open_gokapi_download(file_id: str):
     conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(file_id)}"))
     resp = conn.getresponse()
     return resp.status, resp.getheaders(), resp
+
+
+class InternalDownloadUnavailable(RuntimeError):
+    """The authenticated non-counting Gokapi channel is unavailable.
+
+    Raised by open_gokapi_internal_download when the official API
+    cannot serve a non-counting read. Callers must surface a typed
+    preview_unavailable (503) — a preview must NEVER fall back to the
+    counted public download path.
+    """
+
+
+def open_gokapi_internal_download(file_id: str, range_header: str | None = None):
+    """THE internal read primitive: non-counting authenticated stream.
+
+    Uses ONLY the official authenticated API:
+        GET /api/files/download/{id}
+        apikey: GOKAPI_KEY
+        increaseCounter: false
+        optional Range header
+
+    No /downloadFile fallback, no sqlite, no data-dir access. Returns
+    (status, headers, response) like open_gokapi_download. Any non-2xx
+    raises InternalDownloadUnavailable instead of leaking a counted
+    fallback path.
+    """
+    if not file_id:
+        raise InternalDownloadUnavailable("missing_file_id")
+    if not GOKAPI_KEY:
+        raise InternalDownloadUnavailable("api_key_not_configured")
+    conn, _parsed = _gokapi_connection(timeout=300)
+    headers = {"apikey": GOKAPI_KEY, "increaseCounter": "false"}
+    if range_header:
+        headers["Range"] = range_header
+    conn.request("GET",
+                 _gokapi_path(f"/api/files/download/{urllib.parse.quote(file_id)}"),
+                 headers=headers)
+    resp = conn.getresponse()
+    if resp.status not in (200, 206):
+        try:
+            resp.read()
+        finally:
+            conn.close()
+        raise InternalDownloadUnavailable(f"gokapi_api_{resp.status}")
+    return resp.status, resp.getheaders(), resp
+
+
+def verify_download_permission() -> None:
+    """Startup capability probe (fail-closed, task 7).
+
+    Proves the configured service key passes Gokapi's DOWNLOAD permission
+    gate BEFORE the app accepts traffic. Read-only: no file is written
+    and no counter moves (increaseCounter: false).
+
+    Strategy: list files via the same key (proves the key authenticates),
+    then issue an internal download probe against a known file id —
+    either from the listing or a synthetic probe id. A 401/403 on the
+    download endpoint means the key lacks DOWNLOAD permission:
+        raise InternalDownloadUnavailable("gokapi_download_permission_missing")
+    so main.py startup fails-closed with a clear log line, instead of
+    every tool call and preview failing at user time.
+    """
+    if not GOKAPI_KEY:
+        raise InternalDownloadUnavailable("api_key_not_configured")
+    ok, files = list_gokapi_files()
+    if not ok:
+        raise InternalDownloadUnavailable("gokapi_unreachable")
+    probe_id = (files[0].get("id") or files[0].get("Id")) if files else "__capability_probe__"
+    conn, _parsed = _gokapi_connection(timeout=10)
+    try:
+        conn.request(
+            "GET",
+            _gokapi_path(f"/api/files/download/{urllib.parse.quote(probe_id)}"),
+            headers={"apikey": GOKAPI_KEY, "increaseCounter": "false"},
+        )
+        resp = conn.getresponse()
+        if resp.status in (401, 403):
+            # fail-closed: DOWNLOAD permission missing on this key
+            raise InternalDownloadUnavailable("gokapi_download_permission_missing")
+        if resp.status == 200:
+            resp.read()  # drain (only when a real file was probed)
+        # 404 / 206 for the synthetic id both prove the permission gate
+        # was passed (auth accepted) — the id simply does not exist.
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

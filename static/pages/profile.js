@@ -1,6 +1,18 @@
+// Profile page: X unbind flows through the site-wide async confirm
+// authority (app.js window.confirmAction) — never native confirm(), and
+// never raw i18n source in the dialog text.
 document.getElementById('unbindX')?.addEventListener('click', async () => {
-  if (!confirm('window.t("confirmUnbindX")')) return;
+  const ok = await window.confirmAction({
+    title: window.t("xUnbind"),
+    message: window.t("confirmUnbindX"),
+    confirmLabel: window.t("confirm"),
+    cancelLabel: window.t("cancel"),
+  });
+  if (!ok) return;
   const r = await fetch('/auth/x/unbind', { method: 'POST' });
   if (r.ok) location.reload();
-  else { const d = await r.json(); alert(d.error || 'error'); }
+  else {
+    const d = await r.json().catch(() => ({}));
+    alert(window._errm ? window._errm(d.error || 'failed') : (d.error || 'error'));
+  }
 });

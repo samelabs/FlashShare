@@ -469,6 +469,11 @@ select { width: auto; margin-top: 0; }
 .tool-panel input { width: 100%; border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: var(--s2) var(--s3); color: var(--ink); background: var(--bg); box-sizing: border-box; }
 .tool-panel input:focus { outline: none; border-color: var(--accent); }
 .tool-panel-actions { display: flex; gap: var(--s2); justify-content: flex-end; margin-top: var(--s3); }
+/* Site-wide confirm authority modal (app.js confirmAction) — reuses
+   .modal/.modal-panel/.action-btn; only the text layout is new. */
+.confirm-panel { width: min(400px, 100%); }
+.confirm-panel .confirm-title { margin: 0 0 var(--s2); font-size: var(--text-lg); font-weight: 700; }
+.confirm-panel .confirm-text { margin: 0 0 var(--s3); color: var(--muted); }
 
 /* ── Footer ───────────────────────────────────────────────── */
 .site-footer { background: var(--bg); padding: var(--s3) var(--s2) max(var(--s3), env(safe-area-inset-bottom)); text-align: center; }
@@ -856,6 +861,16 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 
 /* ── QR modal image ── */
 .qr-code { display: block; width: 200px; height: 200px; margin: 0 auto; padding: var(--s2); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); }
+/* VIS-007: QR modal shows an explicit loading state (spinner) until the
+   SVG has loaded — never a 1–2s blank panel; failed load gets an error
+   surface instead of an empty box. */
+.qr-code.qr-loading {
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M21 12a9 9 0 1 1-6.2-8.56'/%3E%3C/svg%3E") center / 28px no-repeat;
+  animation: qr-spin 0.9s linear infinite;
+}
+.qr-code.qr-error { background: var(--bg); position: relative; }
+.qr-code.qr-error::after { content: "⚠"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 28px; opacity: 0.55; }
+@keyframes qr-spin { to { transform: rotate(360deg); } }
 
 /* ── Layout hooks that carry meaning, not just JS anchors ── */
 .acct-daily-info { min-width: 0; }

@@ -6,53 +6,29 @@ const landingUrl = document.getElementById("landingUrl");
 copyBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(landingUrl.value);
   const orig = copyBtn.innerHTML;
-  copyBtn.innerHTML = '__PAGE__.icons.check';
+  copyBtn.innerHTML = window.iconSvg("check");
   copyBtn.style.color = "var(--accent)";
   copyBtn.style.borderColor = "var(--accent)";
   setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);
 });
 
-const _pwa = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const _pwa = window.isStandalonePWA ? window.isStandalonePWA()
+  : (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
 const dlBtn = document.querySelector('a.action-btn.primary[download]');
 if (dlBtn && _pwa) {
   dlBtn.removeAttribute('href');
-  dlBtn.addEventListener('click', async () => {
-    const url = __PAGE__.dlUrl;
-    const fname = __PAGE__.fileName;
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('fetch failed');
-      const blob = await res.blob();
-      const file = new File([blob], fname || 'download', { type: blob.type || 'application/octet-stream' });
-      if (navigator.share) {
-        await navigator.share({ files: [file], title: fname || 'download' });
-        return;
-      }
-    } catch(e) {
-      if(e.name === 'AbortError') return;
-      console.warn('download failed:', e.message);
-    }
-    window.location.href = __PAGE__.dlUrl;
+  dlBtn.addEventListener('click', () => {
+    // Site-wide PWA download authority (base-engine.js): URL share /
+    // secondary-context handoff — never fetches the body and never
+    // navigates the current PWA window.
+    window.pwaDownload && window.pwaDownload(__PAGE__.dlUrl, __PAGE__.fileName);
   });
 }
 const shareImgBtn = document.getElementById("shareImgBtn");
-shareImgBtn.addEventListener("click", async () => {
-  const imgUrl = __PAGE__.dlUrl;
-  const fname = __PAGE__.fileName;
-  try {
-    const res = await fetch(imgUrl);
-    if (!res.ok) throw new Error("fetch failed");
-    const blob = await res.blob();
-    const file = new File([blob], fname || "download", { type: blob.type || "application/octet-stream" });
-    if (navigator.share) {
-      await navigator.share({ files: [file], title: fname || "download" });
-      return;
-    }
-  } catch(e) {
-    if(e.name === 'AbortError') return;
-    console.warn('share failed:', e.message);
-  }
-  window.location.href = __PAGE__.dlUrl;
+shareImgBtn.addEventListener("click", () => {
+  // Explicit share-file action: site-wide authority (canShare gate; a
+  // standalone-PWA failure never navigates the current window).
+  window.shareFileViaURL && window.shareFileViaURL(__PAGE__.dlUrl, __PAGE__.fileName, shareImgBtn);
 });
 
 const qrBtn = document.getElementById("qrBtn");
@@ -71,7 +47,7 @@ function closeToolModal() { toolModal.classList.add("hidden"); toolModalBody.inn
 document.getElementById("toolModalClose").addEventListener("click", closeToolModal);
 toolModal.addEventListener("click", (e) => { if (e.target === toolModal) closeToolModal(); });
 
-function toolLoading() { return '<div class="tool-loading">window.t("loading")</div>'; }
+function toolLoading() { return '<div class="tool-loading">' + window.t("loading") + '</div>'; }
 const _errMap = window.__I18N__ ? (window.__I18N__[window.__LANG] || {}) : {};
 function toolError(msg) {
   if (msg && _errMap[msg]) msg = _errMap[msg];
@@ -98,7 +74,7 @@ function openRename(pid) {
   const oldName = h1.textContent.trim();
   const dotIdx = oldName.lastIndexOf(".");
   const stem = dotIdx > 0 ? oldName.substring(0, dotIdx) : oldName;
-  openToolModal('<div class="tool-panel"><h3>window.t("rename")</h3><input type="text" id="renameInput" value="' + stem.replace(/"/g, '&quot;') + '" maxlength="200"><div class="tool-panel-actions"><button class="action-btn primary" id="renameConfirm">✓</button></div></div>');
+  openToolModal('<div class="tool-panel"><h3>' + window.t("rename") + '</h3><input type="text" id="renameInput" value="' + stem.replace(/"/g, '&quot;') + '" maxlength="200"><div class="tool-panel-actions"><button class="action-btn primary" id="renameConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
   const input = document.getElementById("renameInput");
   input.focus(); input.select();
   document.getElementById("renameConfirm").addEventListener("click", async () => {
@@ -115,7 +91,7 @@ function openRename(pid) {
 }
 
 function openDelete(pid) {
-  openToolModal('<div class="tool-panel"><h3>window.t("delete")</h3><p class="tool-confirm-text">window.t("confirmDelete")</p><div class="tool-panel-actions"><button class="action-btn" id="delCancel">✕</button><button class="action-btn primary" id="delConfirm">✓</button></div></div>');
+  openToolModal('<div class="tool-panel"><h3>' + window.t("delete") + '</h3><p class="tool-confirm-text">' + window.t("confirmDelete") + '</p><div class="tool-panel-actions"><button class="action-btn" id="delCancel">' + (window.iconSvg ? window.iconSvg("x") : "✕") + '</button><button class="action-btn primary" id="delConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
   document.getElementById("delCancel").addEventListener("click", closeToolModal);
   document.getElementById("delConfirm").addEventListener("click", async () => {
     openToolModal(toolLoading());

@@ -99,6 +99,9 @@ function svgIcon(name) {
   const path = _IC[name] || _IC.info || "";
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
 }
+// Canonical icon renderer — site-wide single source (task 8: no raw
+// `__PAGE__.icons.check` / `✓` literals in page scripts).
+window.iconSvg = svgIcon;
 const ICONS = {
   upload: `<span class="button-icon" aria-hidden="true">${svgIcon("upload")}</span>`,
   open: svgIcon("open"),
@@ -289,6 +292,7 @@ function ensureZipPreview(cb) {
 
 if (!window.__TOOLPAGE__) file.addEventListener("change", () => {
   pendingOperationRef = null; // operation input changed → new identity next submit
+  window.invalidateToolOperation && window.invalidateToolOperation();
   if (!window.__USER__) { location.href = "/auth/login"; return; }
   if (file.files.length > 0) {
     for (let i = 0; i < file.files.length; i++) {
@@ -303,7 +307,9 @@ if (!window.__TOOLPAGE__) file.addEventListener("change", () => {
     if (file.files.length === 1) {
       fileLabel.textContent = t("dropSelected", { name: file.files[0].name, size: fmtSize(file.files[0].size) });
     } else {
-      fileLabel.textContent = file.files.length + " files · " + fmtSize(Array.from(file.files).reduce((s,f) => s+f.size, 0));
+      // VIS-003 fix: multi-file count uses the canonical i18n key — no
+      // hard-coded English ("2 files"), count + word + total size.
+      fileLabel.textContent = file.files.length + " " + t("tool_multi_files") + " · " + fmtSize(Array.from(file.files).reduce((s,f) => s+f.size, 0));
     }
   } else {
     fileLabel.textContent = t("dropEmpty");
@@ -334,148 +340,125 @@ if (!window.__TOOLPAGE__) dropZone.addEventListener("drop", event => {
 // the pending operation identity
 if (!window.__TOOLPAGE__) ["expiryDays", "allowedDownloads"].forEach(name => {
   const el = form.elements.namedItem(name);
-  if (el) el.addEventListener("change", () => { pendingOperationRef = null; });
+  if (el) el.addEventListener("change", () => {
+    pendingOperationRef = null;
+    window.invalidateToolOperation && window.invalidateToolOperation();
+  });
 });
 if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!window.__USER__) return location.href = "/auth/login";
   if (!file.files[0]) return;
+  if (window.toolOperationBusy && window.toolOperationBusy()) return; // one operation per surface
   const isMulti = activeTool && activeTool.multi;
-  const numFiles = file.files.length;
   submitBtn.disabled = true; // busy state = disabled dim; progress lives in the result area only
-  // Affordability preflight BEFORE any upload XHR — a 402 denial means
-  // the file bytes never leave the browser.
-  const pf = await window.preflightToolAffordability(activeTool);
-  if (!pf.ok) {
-    showToolError(t(pf.error) !== pf.error ? t(pf.error) : t("failed"));
-    submitBtn.disabled = false;
-    // label untouched during busy state — nothing to restore
-    return;
-  }
   showResult(`<div class="upload-progress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="progressFill"></div></div><div class="upload-progress-text" id="progressText">0%</div></div>`);
-  // One user action = one operation ref, born at first submit and reused
-  // by upload + execute + retry until success or an input change.
-  if (!pendingOperationRef) pendingOperationRef = newOperationRef();
-  const formData = new FormData(form);
-  // operation identity for the ingress-receipt batch (next batch): upload
-  // phase and execute phase carry the SAME client_ref.
-  formData.append("client_ref", pendingOperationRef);
-  // file input lives in the visual drop label (outside <form>) — append explicitly
-  Array.from(file.files).forEach((f, idx) => formData.append(idx === 0 ? "file" : "file", f));
-  if (activeTool && activeTool.id !== "share") {
-    formData.append("tool", activeTool.id);
-    // spec v3: 模式控件值随执行提交 (服务端按声明校验/剥离)
-    if (activeToolParams && Object.keys(activeToolParams).length) {
-      formData.append("params", JSON.stringify(activeToolParams));
-    }
-  }
-  const fileSize = Array.from(file.files).reduce((s,f) => s+f.size, 0);
-  const startTime = Date.now();
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/api/uploads");
-  // Bound the request so a stalled upload cannot leave the UI spinning forever
-  xhr.timeout = 900000;
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) {
-      const pct = Math.min(99, Math.round(e.loaded / e.total * 100));
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const speed = e.loaded > 0 && elapsed > 0 ? formatSpeed(e.loaded, parseFloat(elapsed)) : "";
-      const fill = document.getElementById("progressFill");
-      const text = document.getElementById("progressText");
-      if (fill) fill.style.width = pct + "%";
-      if (text) text.textContent = (activeTool ? t("uploading") + " · " : "") + pct + "%" + (speed ? " · " + speed : "");
-    }
-  };
-  xhr.onload = async () => {
-    const fill = document.getElementById("progressFill");
-    if (fill) fill.style.width = "100%";
-    try {
-      const data = JSON.parse(xhr.responseText);
-      if (xhr.status >= 400 || !data.ok) { const ek = data.error || "failed"; throw new Error(t(ek) !== ek ? t(ek) : t("failed")); }
-      // No tool (or default share tool) → show result directly
-      if (isPassThrough(activeTool)) {
-        if (data.files) {
-          data.files.forEach((f, i) => setTimeout(() => showShareResult(f), i * 100));
-        } else {
-          showShareResult(data.file);
-        }
-        pendingOperationRef = null; // direct share complete — next submit is new
-        form.reset();
-        fileLabel.textContent = t("dropEmpty");
-        window._loadHistory && window._loadHistory();
-        return;
-      }
-      // Tool active → Step 2: execute tool
-      showToolProcessing(resolveLabel(activeTool.label) || activeTool.id);
-      // Delivery selects live outside <form> in the DOM but are
-      // form-associated (form="uploadForm"); read via form.elements so
-      // FormData(form) and execute share the same controls.
-      const expirySelect = form.elements.namedItem("expiryDays");
-      const dlSelect = form.elements.namedItem("allowedDownloads");
-      // Canonical ToolInvocation (Stage C): source.files[] 唯一 shape;
-      // params 只含 tool params; delivery 独立字段; client_ref = the
-      // retained operation identity (same ref as the upload phase).
-      const fileList = data.files || [data.file];
-      const toolParams = Object.assign({}, activeToolParams || {});
-      const toolBody = {
-        tool_id: activeTool.id,
-        source: { files: fileList.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
-        params: toolParams,
-        delivery: {
-          expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
-          allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
+  // Executable tools ride the shared process-flow authority (ONE upload→
+  // execute→retry chain, ONE client_ref per logical operation, frozen
+  // invocation for retries). app.js keeps only the surfaces: progress
+  // paint, busy state, and the pass-through result card.
+  const files = Array.from(file.files);
+  const activeId = activeTool ? activeTool.id : null;
+  try {
+    if (activeTool && activeTool.id !== "share" && !activeTool.pass_through) {
+      const result = await window.runToolFlow(activeTool, files, {
+        params: Object.assign({}, activeToolParams || {}),
+        expiryDays: (form.elements.namedItem("expiryDays") || {}).value ? parseInt(form.elements.namedItem("expiryDays").value) : 1,
+        allowedDownloads: (form.elements.namedItem("allowedDownloads") || {}).value ? parseInt(form.elements.namedItem("allowedDownloads").value) : 50,
+        onProgress: (pct, bps) => {
+          const fill = document.getElementById("progressFill");
+          const text = document.getElementById("progressText");
+          const elapsed = ((Date.now() - (form.__t0 || Date.now())) / 1000).toFixed(1);
+          const speed = bps > 0 && elapsed > 0 ? formatSpeed(pct > 0 ? pct * 1024 : 0, parseFloat(elapsed)) : "";
+          if (fill) fill.style.width = pct + "%";
+          if (text) text.textContent = t("uploading") + " · " + pct + "%" + (speed ? " · " + speed : "");
         },
-        client_ref: pendingOperationRef,
-      };
-      // Keep source reference for retry (originals survive until tool succeeds)
-      lastToolSource = fileList.map(f => ({ publicId: f.publicId, sourceToken: f.sourceToken || "" }));
-      const toolRes = await fetch("/api/tools/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toolBody),
+        onError: (msg) => {
+          window.showToolError && window.showToolError(msg, null, activeTool ? () =>
+            window.retryLastToolOperation && window.retryLastToolOperation() : null);
+        },
       });
-      const toolData = await toolRes.json();
-      if (!toolData.ok) {
-        const ref = (data.files ? data.files[0] : data.file);
-        const ek = toolData.error || "failed";
-        showToolError(t(ek) !== ek ? t(ek) : t("failed"), ref);
-        return;
+      if (result && result.passthrough) {
+        // pass-through handled by process-flow's share branch
       }
-      lastUploadResult = toolData.result;
-      // Sync header credit chip after a metered tool call
-      if (window.__syncCredits && typeof toolData.balance === "number") window.__syncCredits(toolData.balance);
-      showShareResult(toolData.result);
-      pendingOperationRef = null; // operation complete — next submit is new
       form.reset();
       fileLabel.textContent = t("dropEmpty");
-      window._loadHistory && window._loadHistory();
-    } catch (err) {
-      // XHR/parse failure: KEEP pendingOperationRef — the server may
-      // have succeeded; a same-input retry replays instead of
-      // double-charging.
-      showResult(escapeHtml(err.message), true);
-    } finally {
-      submitBtn.disabled = false;
-      // label untouched during busy state — nothing to restore
+      pendingOperationRef = null;
+      return;
     }
-  };
-  xhr.onerror = () => {
-    // network-level loss: keep the operation ref for a safe retry
-    showResult(escapeHtml(t("failed")), true);
+    // Pass-through share direct upload (NOT the tool operation identity —
+    // share ingress has its own one-shot identity below).
+    if (!pendingOperationRef) pendingOperationRef = newOperationRef();
+    const formData = new FormData(form);
+    formData.append("client_ref", pendingOperationRef);
+    files.forEach((f) => formData.append("file", f));
+    const startTime = Date.now();
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/uploads");
+    xhr.timeout = 900000;
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.min(99, Math.round(e.loaded / e.total * 100));
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const speed = e.loaded > 0 && elapsed > 0 ? formatSpeed(e.loaded, parseFloat(elapsed)) : "";
+        const fill = document.getElementById("progressFill");
+        const text = document.getElementById("progressText");
+        if (fill) fill.style.width = pct + "%";
+        if (text) text.textContent = (activeTool ? t("uploading") + " · " : "") + pct + "%" + (speed ? " · " + speed : "");
+      }
+    };
+    const data = await new Promise((resolve, reject) => {
+      xhr.onload = () => {
+        try {
+          const d = JSON.parse(xhr.responseText);
+          if (xhr.status >= 400 || !d.ok) { const ek = d.error || "failed"; reject(new Error(t(ek) !== ek ? t(ek) : t("failed"))); return; }
+          resolve(d);
+        } catch (err) { reject(new Error(t("failed"))); }
+      };
+      xhr.onerror = () => reject(new Error(t("failed")));
+      xhr.ontimeout = () => reject(new Error(t("failed")));
+      xhr.send(formData);
+    });
+    if (data.files) {
+      data.files.forEach((f, i) => setTimeout(() => showShareResult(f), i * 100));
+    } else {
+      showShareResult(data.file);
+    }
+    pendingOperationRef = null; // direct share complete — next submit is new
+    form.reset();
+    fileLabel.textContent = t("dropEmpty");
+    window._loadHistory && window._loadHistory();
+  } catch (err) {
+    // upload/execute failure — process-flow retains the operation ONLY
+    // for retryable failures (response loss / tool_failed); preflight and
+    // validation failures invalidate it. The Retry button exists only
+    // when a frozen operation can actually be replayed — never a dead
+    // button.
+    if (window.showToolError && activeTool && activeTool.id !== "share") {
+      const cb = window.canRetryToolOperation && window.canRetryToolOperation()
+        ? () => {
+            const p = window.retryLastToolOperation && window.retryLastToolOperation();
+            if (p && typeof p.catch === "function") p.catch(() => {});
+          }
+        : null;
+      window.showToolError(err.message, null, cb);
+    } else {
+      showResult(escapeHtml(err.message), true);
+    }
+  } finally {
     submitBtn.disabled = false;
-    // label untouched during busy state — nothing to restore
-  };
-  xhr.ontimeout = () => {
-    showResult(escapeHtml(t("failed")), true);
-    submitBtn.disabled = false;
-    // label untouched during busy state — nothing to restore
-  };
-  xhr.send(formData);
+  }
 });
 // loadHistory moved to footer.html (shared nav behavior)
 function renderModal(upload) {
   modalTitle.textContent = t("qrCode");
   modalMeta.innerHTML = `<span><strong>${escapeHtml(upload.file_name)}</strong></span><span>${t("expiresLabel")}<strong>${fmtDate(upload.expire_at)}</strong></span>`;
+  // VIS-007: no 1–2s blank panel — explicit loading state until the SVG
+  // has actually loaded; error state if it never does.
+  modalQr.classList.add("qr-loading");
+  modalQr.removeAttribute("src");
+  modalQr.onload = () => modalQr.classList.remove("qr-loading", "qr-error");
+  modalQr.onerror = () => { modalQr.classList.remove("qr-loading"); modalQr.classList.add("qr-error"); };
   modalQr.src = `${upload.url_download}/qr.svg`;
   modalUrl.value = upload.url_download;
   modalOpen.href = upload.url_download;
@@ -504,7 +487,15 @@ if (!window.__TOOLPAGE__) modalCopy.addEventListener("click", async () => {
   modalCopy.textContent = t("copied");
 });
 async function deleteUpload(upload, triggerButton = null) {
-  if (!upload || !confirm(t("confirmDelete"))) return;
+  if (!upload) return;
+  // Site-wide confirm authority (VIS-006): modal confirm, no native dialog.
+  const ok = await window.confirmAction({
+    title: t("delete"),
+    message: t("confirmDelete"),
+    confirmLabel: t("delete"),
+    cancelLabel: t("cancel"),
+  });
+  if (!ok) return;
   const originalHtml = triggerButton ? triggerButton.innerHTML : "";
   if (triggerButton) {
     triggerButton.disabled = true;
@@ -563,9 +554,11 @@ function newOperationRef() {
         .map(b => b.toString(16).padStart(2, "0")).join("");
   return "web:" + u;
 }
+// Web operation-ref generator — the ONLY one. Exposed for the shared
+// process-flow entry so tool pages mint identity through this single
+// source (no second UUID implementation anywhere).
+window.newOperationRef = newOperationRef;
 let pendingOperationRef = null;
-let lastUploadResult = null;
-let lastToolSource = null;
 let homeToolsData = [];
 
 // 4A-fix3: 单点读取某 tool_id 保存的 canonical params (localStorage 权威源)。
@@ -861,8 +854,7 @@ function applyToolSelection(skipStateReset) {
   }
   result.classList.add("hidden");
   lastErrorKey = null;
-  lastUploadResult = null;
-  lastToolSource = null;
+  window.invalidateToolOperation && window.invalidateToolOperation(); // input changed → fresh ref next run
   document.body.dataset.tool = activeTool ? activeTool.id : "";
 
   const formatTags = document.querySelector(".drop-formats");
@@ -928,84 +920,35 @@ function showToolProcessing(toolName) {
   showResult(`<div class="tool-processing"><div class="upload-spinner"></div><span>${escapeHtml(toolName)} · ${t("processing")}</span></div>`);
 }
 
-function showToolError(message, originalFile) {
+// Task-2 error contract: explicit retry callback decides whether a Retry
+// button exists at all — no dead buttons. The message is already
+// user-facing (process-flow maps unknown codes to t("failed")); machine
+// error codes are never rendered raw.
+function showToolError(message, originalFile, retryCallback) {
   const origUrl = originalFile && (originalFile.downloadUrl || originalFile.url) ? (originalFile.downloadUrl || originalFile.url) : "";
   const origLink = origUrl ? `<a class="overlay-btn primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
-  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(message)}</div><div class="result-buttons"><button class="overlay-btn" id="toolRetry" type="button">${t("retry")}</button>${origLink}</div></div>`, true);
-  const retryBtn = document.getElementById("toolRetry");
-  if (retryBtn && lastUploadResult) {
-    retryBtn.addEventListener("click", () => retryTool());
+  const retryBtn = typeof retryCallback === "function"
+    ? `<button class="overlay-btn" id="toolRetry" type="button">${t("retry")}</button>` : "";
+  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(message)}</div><div class="result-buttons">${retryBtn}${origLink}</div></div>`, true);
+  const btn = document.getElementById("toolRetry");
+  if (btn && typeof retryCallback === "function") {
+    btn.addEventListener("click", retryCallback);
   }
-}
-
-async function retryTool() {
-  if (!activeTool || !lastToolSource) return;
-  const toolName = resolveLabel(activeTool.label) || activeTool.id;
-  showToolProcessing(toolName);
-  // Same form-associated controls as the first execute path.
-  const expirySelect = form.elements.namedItem("expiryDays");
-  const dlSelect = form.elements.namedItem("allowedDownloads");
-  try {
-    // Retry reuses the SAME operation ref (response-loss safety): gate
-    // sees same ref + same fingerprint → replay (zero re-charge/re-execute)
-    // or, if the first attempt failed, a fresh attempt of the SAME op.
-    // A retry WITHOUT a retained ref is a logic bug — generating a new
-    // one here would mint a different logical operation and re-charge.
-    // Fail loud instead of silently doing the wrong thing.
-    if (!pendingOperationRef) {
-      showToolError(t("failed") + " (no operation ref)", lastUploadResult);
-      console.error("retryTool: no pendingOperationRef — refusing to mint a new identity");
-      return;
-    }
-    const toolRes = await fetch("/api/tools/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tool_id: activeTool.id,
-        source: { files: lastToolSource.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
-        params: Object.assign({}, activeToolParams || {}),
-        delivery: {
-          expiry_days: expirySelect ? parseInt(expirySelect.value) : 1,
-          allowed_downloads: dlSelect ? parseInt(dlSelect.value) : 50,
-        },
-        client_ref: pendingOperationRef,
-      }),
-    });
-    const toolData = await toolRes.json();
-    if (!toolData.ok) { const ek = toolData.error || "failed"; showToolError(t(ek) !== ek ? t(ek) : t("failed"), lastUploadResult); return; }
-    lastToolSource = null;
-    pendingOperationRef = null; // success — next submit is a new operation
-    showShareResult(toolData.result);
-    window._loadHistory && window._loadHistory();
-  } catch (e) { showToolError(e.message, lastUploadResult); }
 }
 
 // Stable icon paths via unified registry
 
 async function shareFile(url, filename, btn) {
-  var orig = btn ? btn.innerHTML : "";
-  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="btn-spinner"></div>'; }
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return false;
-    const blob = await res.blob();
-    const file = new File([blob], filename || "download", { type: blob.type || "application/octet-stream" });
-    if (navigator.share) {
-      await navigator.share({ files: [file], title: filename || "download" });
-      return true;
-    }
-  } catch (e) {
-    if (e.name === "AbortError") return true;
-    console.warn("share failed:", e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
+  // Delegates to the site-wide share authority (base-engine.js).
+  // Kept as a thin alias so existing call sites stay unchanged.
+  if (window.shareFileViaURL) return window.shareFileViaURL(url, filename, btn);
   return false;
 }
 
 function isStandalonePWA() {
-  return window.matchMedia('(display-mode: standalone)').matches
-      || window.navigator.standalone === true;
+  return window.isStandalonePWA ? window.isStandalonePWA()
+      : (window.matchMedia('(display-mode: standalone)').matches
+          || window.navigator.standalone === true);
 }
 
 function showQrModal(qrUrl) {
@@ -1053,7 +996,12 @@ function showShareResult(file) {
   actions += `<button class="action-btn" id="${qrId}" type="button" aria-label="QR">${svgIcon("qr")}</button>`;
   actions += `<a class="action-btn" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}"><span class="x-glyph" aria-hidden="true">𝕏</span></a>`;
 
-  const isImg = file.contentType && file.contentType.startsWith("image/");
+  // Same rule as the server inline/detail embeddable check: raster /
+  // inlineable images auto-preview; image/svg+xml never embeds via
+  // /inline (server rejects it — no client-side second SVG preview).
+  const isImg = file.contentType
+      && file.contentType.startsWith("image/")
+      && file.contentType.toLowerCase() !== "image/svg+xml";
   const inlineUrl = `/f/${file.publicId}/inline`;
   const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(inlineUrl)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
   const zipCt = file.contentType || "";
@@ -1092,21 +1040,78 @@ function showShareResult(file) {
   if (qrBtn) qrBtn.addEventListener("click", () => showQrModal(url + "/qr.svg"));
   const zipBtn = document.getElementById(zipBtnId);
   if (zipBtn) ensureZipPreview(() => window.zipPreview && window.zipPreview.wireRemotePreview(zipBtn, file.publicId));
-  // PWA standalone: download button uses navigator.share instead of <a download>
+  // PWA standalone: download goes through the site-wide authority
+  // (base-engine.js pwaDownload — URL share / secondary context; the
+  // current PWA window is never navigated).
   if (pwa) {
     const dlBtn = document.querySelector('.result-card .action-btn.primary');
-    if (dlBtn) dlBtn.addEventListener("click", async () => {
-      const ok = await shareFile(dlUrl, file.filename || file.name || "download", dlBtn);
-      if (!ok) window.location.href = dlUrl;
+    if (dlBtn) dlBtn.addEventListener("click", () => {
+      window.pwaDownload && window.pwaDownload(dlUrl, file.filename || file.name || "download");
     });
   }
   const shareImgBtn = document.getElementById(shareImgId);
   if (shareImgBtn) shareImgBtn.addEventListener("click", async () => {
     const ok = await shareFile(dlUrl, file.filename || file.name || "download", shareImgBtn);
-    if (!ok) window.location.href = dlUrl;
+    if (!ok) window.open(dlUrl, "_blank", "noopener");
   });
 }
 
 // Load tools on page load
 if (!window.__TOOLPAGE__) loadHomeTools();
 window.applyI18n();
+
+// ── Site-wide async confirm authority (task 8 / VIS-006 closure) ──
+// One modal-based confirm for core destructive operations: history
+// delete, detail delete, profile X unbind, token revoke, homepage
+// upload delete. Replaces native confirm() everywhere: backdrop cancel,
+// Escape cancel, focus lands on the primary action, focus restored on
+// close — mobile/WebView safe (no browser native dialog dependency).
+window.confirmAction = function (opts) {
+  return new Promise((resolve) => {
+    let layer = document.getElementById("confirmModal");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.id = "confirmModal";
+      layer.className = "modal hidden";
+      layer.setAttribute("role", "dialog");
+      layer.setAttribute("aria-modal", "true");
+      layer.innerHTML =
+        '<div class="modal-panel confirm-panel">' +
+        '<h3 id="confirmModalTitle" class="confirm-title"></h3>' +
+        '<p id="confirmModalText" class="confirm-text"></p>' +
+        '<div class="tool-panel-actions">' +
+        '<button class="action-btn" id="confirmModalCancel" type="button"></button>' +
+        '<button class="action-btn primary" id="confirmModalOk" type="button"></button>' +
+        "</div></div>";
+      document.body.appendChild(layer);
+    }
+    const titleEl = document.getElementById("confirmModalTitle");
+    const textEl = document.getElementById("confirmModalText");
+    const okBtn = document.getElementById("confirmModalOk");
+    const cancelBtn = document.getElementById("confirmModalCancel");
+    titleEl.textContent = opts.title || "";
+    textEl.textContent = opts.message || "";
+    okBtn.textContent = opts.confirmLabel || t("confirm");
+    cancelBtn.textContent = opts.cancelLabel || t("cancel");
+
+    const prevFocus = document.activeElement;
+    let settled = false;
+    function done(val) {
+      if (settled) return;
+      settled = true;
+      layer.classList.add("hidden");
+      document.removeEventListener("keydown", onKey, true);
+      if (prevFocus && prevFocus.focus) prevFocus.focus();
+      resolve(val);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); done(false); }
+    }
+    okBtn.addEventListener("click", () => done(true));
+    cancelBtn.addEventListener("click", () => done(false));
+    layer.addEventListener("click", (e) => { if (e.target === layer) done(false); });
+    document.addEventListener("keydown", onKey, true);
+    layer.classList.remove("hidden");
+    okBtn.focus(); // focus lands on the primary action
+  });
+};

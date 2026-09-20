@@ -36,6 +36,37 @@ from tools import load_all
 
 load_all()
 
+# ── Runtime source identity (task 9) ──
+# Computed ONCE at startup — no per-request git exec. /healthz carries
+# source_sha + source_dirty so an operator can see (and deploy postflight
+# can assert) exactly which commit production is running. "unknown" keeps
+# health semantics (200) but must be rejected by deploy postflight.
+import subprocess as _subprocess
+
+_SOURCE_IDENTITY: dict = {}
+
+
+def _compute_source_identity() -> dict:
+    try:
+        sha = _subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip()
+        dirty = _subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip()
+        return {"source_sha": sha, "source_dirty": bool(dirty)}
+    except Exception:
+        return {"source_sha": "unknown", "source_dirty": False}
+
+
+_SOURCE_IDENTITY.update(_compute_source_identity())
+
+
+def source_identity() -> dict:
+    return dict(_SOURCE_IDENTITY)
+
 # ── Logging ──
 import os as _os
 _LOG_DIR = _os.environ.get("FLASHSHARE_LOG_DIR", "/var/log/flashshare")
@@ -165,7 +196,9 @@ async def auth_middleware(request: Request, call_next):
 
 @app.get("/healthz")
 async def healthz():
-    return {"ok": True, "status": "healthy"}
+    resp = {"ok": True, "status": "healthy"}
+    resp.update(source_identity())
+    return resp
 
 
 @app.exception_handler(Exception)
@@ -226,6 +259,16 @@ async def _resource_housekeeping_loop():
 async def startup():
     global _housekeeping_task
     init_db()
+    # Gokapi capability probe (task 7): fail-closed BEFORE traffic. If the
+    # service key lacks DOWNLOAD permission the whole tool/preview chain
+    # would fail at user time — abort startup with the explicit marker.
+    from gokapi import verify_download_permission, InternalDownloadUnavailable
+    try:
+        verify_download_permission()
+        logger.info("gokapi capability probe: download permission OK")
+    except InternalDownloadUnavailable as exc:
+        logger.error("gokapi capability probe failed: %s", exc)
+        raise RuntimeError(f"gokapi capability probe failed: {exc}") from exc
     # Tier 数据 fail-closed 校验: 非法 plans 行 (缺 free / 权益越界) 必须
     # abort 启动 — 不留"流量已就绪但目录非法"的窗口。
     from governance.plan_catalog import validate_config

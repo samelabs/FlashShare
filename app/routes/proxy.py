@@ -172,23 +172,31 @@ async def file_zip_list(public_id: str, request: Request):
         total = int((live or {}).get("SizeBytes") or 0)
 
     import urllib.parse
-    from gokapi import _gokapi_connection, _gokapi_path
+    from gokapi import open_gokapi_internal_download, InternalDownloadUnavailable
 
     def fetch_range(start: int, length: int) -> bytes:
-        conn, _ = _gokapi_connection(timeout=30)
+        # Internal non-counting read primitive (authenticated API,
+        # increaseCounter=false) — preview must never consume a public
+        # download allowance. InternalDownloadUnavailable propagates
+        # UNTRANSLATED: it is a channel failure (503), never a ZIP
+        # complexity classification (422).
+        status, _headers, resp = open_gokapi_internal_download(
+            upload["gokapi_id"],
+            range_header=f"bytes={start}-{start + length - 1}")
         try:
-            conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(upload['gokapi_id'])}"),
-                         headers={"Range": f"bytes={start}-{start + length - 1}"})
-            resp = conn.getresponse()
-            if resp.status not in (200, 206):
-                raise ValueError("range_unavailable")
+            if status not in (200, 206):
+                raise InternalDownloadUnavailable(f"gokapi_api_{status}")
             return resp.read()
         finally:
-            conn.close()
+            resp.close()
 
     from zip_preview import list_zip_remote
     try:
         entries = await asyncio.to_thread(list_zip_remote, fetch_range, total)
+    except InternalDownloadUnavailable:
+        # authenticated non-counting channel unavailable → typed 503;
+        # NEVER fall back to the counted public download path.
+        return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
     except ValueError as exc:
         reason = str(exc)
         if reason == "empty_archive":
@@ -225,15 +233,19 @@ async def file_inline(public_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "not_embeddable"}, 400)
 
     from urllib.parse import quote
-    # IMPLEMENTATION BLOCKED BY GOKAPI DEPLOYMENT CAPABILITY:
-    # in-site preview SHOULD NOT consume allowed_downloads (decided product
-    # semantics), but Gokapi v2.2.4 has no API-key non-counting read
-    # (/api/files/download/{id} is admin-session only). Preview keeps the
-    # counted path until the Gokapi upgrade / integration decision —
-    # bypassing Gokapi's private storage is not an option.
-    status, headers, stream = open_gokapi_download(upload["gokapi_id"])
+    from gokapi import open_gokapi_internal_download, InternalDownloadUnavailable
+    # In-site preview must NOT consume allowed_downloads (decided product
+    # semantics). Preview reads ride the authenticated non-counting
+    # internal primitive ONLY — if that channel is unavailable the preview
+    # fails typed (503 preview_unavailable); it NEVER falls back to the
+    # counted public download path.
+    try:
+        status, headers, stream = open_gokapi_internal_download(upload["gokapi_id"])
+    except InternalDownloadUnavailable:
+        return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
     if status >= 400:
-        return HTMLResponse("File unavailable", status=status)
+        stream.close()
+        return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
 
     safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
     ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "document"

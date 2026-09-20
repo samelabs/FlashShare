@@ -97,9 +97,15 @@
   async function run(files) {
     if (!files || !files.length) return;
     if (!window.__USER__) { location.href = "/auth/login"; return; }
+    // Concurrent-run guard: while an operation is in flight, mouse
+    // (change/drop) AND keyboard (Enter/Space→picker→change) entries all
+    // land here — refuse a second operation (task-3 invariant, not CSS).
+    if (window.toolOperationBusy && window.toolOperationBusy()) return;
+    // VIS fix: multi-file count uses canonical i18n ("2 Files"), no
+    // hard-coded English and no error-key reuse.
     if (fileName) {
       fileName.textContent = files.length > 1
-        ? `${files.length} ${t("err_too_many_files") !== "err_too_many_files" ? "" : ""}`.trim() || `${files.length} files`
+        ? `${files.length} ${t("tool_multi_files")}`
         : files[0].name;
     }
     fileLabel.classList.add("busy");
@@ -112,10 +118,32 @@
                       : Math.round(bps) + " B/s";
           if (fileName) fileName.textContent = `${t("uploading")} ${pct}% · ${speed}`;
         },
+        onError: (msg) => {
+          // typed failure → error card with a REAL retry callback (same
+          // frozen operation — same ref, no second upload)
+          window.showToolError && window.showToolError(msg, null, () => {
+            const p = window.retryLastToolOperation && window.retryLastToolOperation();
+            if (p && typeof p.catch === "function") p.catch(() => {});
+          });
+        },
       });
-      if (r && fileName) fileName.textContent = "";
+      // terminal success OR failure must both restore the file status line
+      // and busy state — the stale "Uploading 99%" residue (VIS-004) is the
+      // success-only-clear bug; clear unconditionally here.
+      if (fileName) fileName.textContent = files.length > 1 ? `${files.length} ${t("tool_multi_files")}` : files[0].name;
     } catch (e) {
-      window.showResult && window.showResult(esc(e.message), true);
+      // upload-leg failure: restore the chosen-file label (operation is
+      // retained in process-flow for retry), then render the typed error —
+      // Retry button only when the frozen operation can actually replay.
+      if (fileName) fileName.textContent = files.length > 1 ? `${files.length} ${t("tool_multi_files")}` : files[0].name;
+      const cb = window.canRetryToolOperation && window.canRetryToolOperation()
+        ? () => {
+            const p = window.retryLastToolOperation && window.retryLastToolOperation();
+            if (p && typeof p.catch === "function") p.catch(() => {});
+          }
+        : null;
+      if (window.showToolError) window.showToolError(e.message, null, cb);
+      else window.showResult && window.showResult(esc(e.message), true);
     } finally {
       fileLabel.classList.remove("busy");
       if (fileInput) fileInput.value = "";

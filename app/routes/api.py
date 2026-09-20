@@ -121,7 +121,11 @@ async def fetch_source(request: Request, gokapi_id: str):
     info = get_gokapi_file(gokapi_id)
     if not info:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    status, headers, stream = storage_read(gokapi_id)
+    from gokapi import InternalDownloadUnavailable
+    try:
+        status, headers, stream = storage_read(gokapi_id)
+    except InternalDownloadUnavailable:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if status >= 400:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     data = stream.read()

@@ -225,7 +225,11 @@ async def v1_fetch(public_id: str, request: Request):
             "size": upload["size_bytes"],
             "expireAt": upload["expire_at"],
         }}
-    status, headers, stream = storage_read(upload["gokapi_id"])
+    from gokapi import InternalDownloadUnavailable
+    try:
+        status, headers, stream = storage_read(upload["gokapi_id"])
+    except InternalDownloadUnavailable:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if status >= 400:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     data = stream.read()
@@ -264,7 +268,11 @@ def _pull_signed_source(url: str) -> bytes | None:
         return None
     if not verify_fetch_token(t_raw, int(u_raw), gid):
         return None
-    status, _headers, stream = storage_read(gid)
+    from gokapi import InternalDownloadUnavailable
+    try:
+        status, _headers, stream = storage_read(gid)
+    except InternalDownloadUnavailable:
+        return None
     try:
         if status >= 400:
             return None

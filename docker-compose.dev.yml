@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
 
   gokapi:
-    image: docker.io/f0rc3/gokapi:latest
+    image: docker.io/f0rc3/gokapi:2.2.4
     container_name: flashshare-dev-gokapi
     ports:
       - "53842:53842"

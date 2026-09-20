@@ -1101,8 +1101,14 @@ async def samelabs_remote_create(request: Request):
         if not isinstance(multi, bool):
             return JSONResponse({"ok": False, "error": "bad_multi"}, 422)
         cost = int(raw.get("cost", 0))
-        output_filename = str(raw.get("output_filename", "")).strip()
-        output_content_type = str(raw.get("output_content_type", "")).strip()
+        # Output landing identity is endpoint-product-owned (既定产品裁定):
+        # output_filename / output_content_type are NOT ToolDeclaration
+        # fields. Explicitly carrying either → typed 422, never silently
+        # re-supported.
+        if "output_filename" in raw:
+            return JSONResponse({"ok": False, "error": "bad_output_filename"}, 422)
+        if "output_content_type" in raw:
+            return JSONResponse({"ok": False, "error": "bad_output_content_type"}, 422)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     import re as _re
@@ -1115,15 +1121,9 @@ async def samelabs_remote_create(request: Request):
         return JSONResponse({"ok": False, "error": "bad_url"}, 422)
     if not (5 <= timeout_s <= 300):
         return JSONResponse({"ok": False, "error": "bad_timeout"}, 422)
-    # Raw-bytes delivery needs a whitelisted landing identity: sniff
-    # validates the filename extension, so output_filename is REQUIRED
-    # with a whitelisted extension when the endpoint may return raw bytes.
-    if output_filename:
-        import os as _os
-        ext = _os.path.splitext(output_filename)[1].lower()
-        from config import ALLOWED_EXT
-        if ext not in ALLOWED_EXT:
-            return JSONResponse({"ok": False, "error": "bad_output_filename"}, 422)
+    # Raw-bytes delivery identity: endpoint-product-owned. No declared
+    # output filename — the execution layer sniffs the product magic
+    # (result.<ext>) when the endpoint returns bare bytes (core/remote).
     # 4C-2: 逗号分隔输入只收 canonical ext (.png,.pdf); 统一过
     # extensions_for_accept, 存库只写 canonical ext。
     # operator 受信供给允许跨 family; unknown token → bad_accept。
@@ -1174,8 +1174,6 @@ async def samelabs_remote_create(request: Request):
                 "url": url, "timeout_s": timeout_s,
                 **({"auth_header": auth_header} if auth_header else {}),
                 **({"auth_token": auth_token} if auth_token else {}),
-                **({"output_filename": output_filename} if output_filename else {}),
-                **({"output_content_type": output_content_type} if output_content_type else {}),
             }),
         }
         try:

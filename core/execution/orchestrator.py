@@ -27,6 +27,7 @@ from tools import ToolError
 
 from . import ExecutionError
 from .pipeline import StagedResult
+from gokapi import InternalDownloadUnavailable
 
 logger = logging.getLogger("flashshare")
 
@@ -120,6 +121,11 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
             raise ToolError("err_file_too_large")
         try:
             status, headers, stream = storage_read(ud["gokapi_id"])
+        except InternalDownloadUnavailable as exc:
+            # source read rides the authenticated non-counting channel;
+            # if that channel is unavailable the invocation fails typed —
+            # never a silent counted fallback.
+            raise ExecutionError("tool_failed") from exc
         except ValueError:
             # storage 侧 bounded read 已拒 (实际体 > 平台单文件上限)
             raise ToolError("err_file_too_large")

@@ -28,7 +28,14 @@ async function loadTokens() {
       span.textContent = window.t("revokeToken");
       btn.appendChild(span);
       btn.addEventListener('click', async () => {
-        if (!confirm(window.t("confirmRevokeToken"))) return;
+        // Site-wide confirm authority — no native confirm() (VIS-006).
+        const ok = await window.confirmAction({
+          title: window.t("revokeToken"),
+          message: window.t("confirmRevokeToken"),
+          confirmLabel: window.t("revokeToken"),
+          cancelLabel: window.t("cancel"),
+        });
+        if (!ok) return;
         const rr = await fetch(`/api/tokens/${t.id}/revoke`, { method: 'POST' });
         if (rr.ok) loadTokens();
         else { const dd = await rr.json(); alert(dd.error || 'error'); }

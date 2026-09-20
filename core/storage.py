@@ -10,7 +10,7 @@ from gokapi import (
     upload_to_gokapi,
     get_gokapi_file,
     delete_gokapi_file,
-    open_gokapi_download,
+    open_gokapi_internal_download,
 )
 
 
@@ -21,9 +21,15 @@ def read(file_id: str):
     BytesIO. Consuming the full response into memory is intentional
     — files are already size-limited by the upload pipeline, and
     tool handlers need seekable input (Image.open, identity passthrough, etc).
+
+    Read authority: platform internal reads (local tool source reads,
+    remote /api/source fetches) are execution/presentation custody —
+    they ride the authenticated non-counting primitive ONLY and never
+    consume a recipient's download allowance. Real recipient downloads
+    stay on the counted /downloadFile path.
     """
     from config import MAX_UPLOAD_BYTES
-    status, headers, raw = open_gokapi_download(file_id)
+    status, headers, raw = open_gokapi_internal_download(file_id)
     try:
         # bounded chunked read: 不信任上游返回体大小, 也不依赖单次
         # read(n) 的返回语义 (short-read 合法) — 最多累计 cap+1 即停,

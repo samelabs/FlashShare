@@ -11,8 +11,6 @@ document.getElementById('remoteCreate').addEventListener('submit', function (e) 
     accept: f.accept.value.trim(),
     multi: !!(f.multi && f.multi.checked),   // 真 boolean (checkbox)
     cost: parseInt(f.cost.value, 10) || 0,
-    output_filename: f.output_filename.value.trim(),
-    output_content_type: f.output_content_type.value.trim(),
   };
   slBusy(f.querySelector('button[type=submit]'), slPost('/samelabs/remote/create', payload)).then(function (r) {
     if (r.ok && r.data.ok) {
@@ -22,7 +20,8 @@ document.getElementById('remoteCreate').addEventListener('submit', function (e) 
       var why = { bad_tool_id: 'tool_id 非法(小写字母开头,2-41位)',
                   bad_url: 'URL 非法',
                   bad_timeout: '超时需 5-300',
-                  bad_output_filename: '输出名扩展名不在白名单',
+                  bad_output_filename: '输出声明字段已下线 — 输出由端点产物决定',
+                  bad_output_content_type: '输出声明字段已下线 — 输出由端点产物决定',
                   duplicate_or_db: 'tool_id 已存在或写入失败' }[r.data.error] || r.data.error || '请求失败';
       slToast('err', '创建失败', why);
     }
