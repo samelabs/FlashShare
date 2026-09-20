@@ -150,11 +150,12 @@ with db() as con:
         " returning *", (buyer, pkg_id, f"ch:rv_{_u}", ts)).fetchone()
     order_id = int(o["id"])
 
-# fulfill it via the real fulfillment (ord identity convergence, spec#2)
+# fulfill it via the canonical fulfillment (real Order.id, spec#2)
 _creem.CREEM_CREDITS_PRODUCT_ID = "prod_credits_rv"
 _creem.CREEM_CREDITS_CURRENCY = "USD"
-res = _creem.fulfill(f"ord_{_u}", f"rv_{_u}", 999,
-                     product_id="prod_credits_rv", currency="USD")
+res = _creem.fulfill_by_request_id(
+    order_id, provider_order_id=f"ord_{_u}", checkout_id=f"rv_{_u}",
+    amount_cents=999, product_id="prod_credits_rv", currency="USD")
 check("A0 fulfill grants 10000 (snapshot) + provider id 收敛 ord_xxx",
       res.get("granted") and int(res.get("credits")) == 10000,
       str(res))
@@ -216,8 +217,9 @@ with db() as con:
         " values (%s, 'package', %s, 'creem', %s, 'pending', 999, 'USD', 10000, %s)"
         " returning *", (buyer2, pkg_id, f"ch:rv2_{_u}", ts)).fetchone()
     order2_id = int(o2["id"])
-_creem.fulfill(f"ord2_{_u}", f"rv2_{_u}", 999,
-               product_id="prod_credits_rv", currency="USD")
+_creem.fulfill_by_request_id(
+    order2_id, provider_order_id=f"ord2_{_u}", checkout_id=f"rv2_{_u}",
+    amount_cents=999, product_id="prod_credits_rv", currency="USD")
 _TXNS[f"txn_{_u}d1"] = {
     "object": "transaction", "id": f"txn_{_u}d1", "status": "chargeback",
     "type": "payment", "order": f"ord2_{_u}",
@@ -242,8 +244,9 @@ with db() as con:
         " values (%s, 'package', %s, 'creem', %s, 'pending', 999, 'USD', 10000, %s)"
         " returning *", (buyer3, pkg_id, f"ch:rv3_{_u}", ts)).fetchone()
     order3_id = int(o3["id"])
-_creem.fulfill(f"ord3_{_u}", f"rv3_{_u}", 999,
-               product_id="prod_credits_rv", currency="USD")
+_creem.fulfill_by_request_id(
+    order3_id, provider_order_id=f"ord3_{_u}", checkout_id=f"rv3_{_u}",
+    amount_cents=999, product_id="prod_credits_rv", currency="USD")
 b3_0 = spendable_balance(buyer3)
 _TXNS[f"txn_{_u}p1"] = {
     "object": "transaction", "id": f"txn_{_u}p1", "status": "partially_refunded",
@@ -285,8 +288,9 @@ with db() as con:
         " values (%s, 'package', %s, 'creem', %s, 'pending', 999, 'USD', 10000, %s)"
         " returning *", (buyer4, pkg_id, f"ch:rv4_{_u}", ts)).fetchone()
     order4_id = int(o4["id"])
-_creem.fulfill(f"ord4_{_u}", f"rv4_{_u}", 999,
-               product_id="prod_credits_rv", currency="USD")
+_creem.fulfill_by_request_id(
+    order4_id, provider_order_id=f"ord4_{_u}", checkout_id=f"rv4_{_u}",
+    amount_cents=999, product_id="prod_credits_rv", currency="USD")
 # doctor the grant ledger delta to disagree with the snapshot
 with db() as con:
     con.execute(

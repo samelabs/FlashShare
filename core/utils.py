@@ -65,49 +65,6 @@ def file_ext_label(name: str) -> str:
     return ext[:4] or "FILE"
 
 
-# ── SVG icon functions ──
-# All delegate to the unified icon registry (icons.py / Heroicons v2).
-# These wrappers exist for backward compatibility with existing call sites.
-
-from icons import icon_svg as _icon_svg_wrapper
-
-
-def upload_icon_svg() -> str:
-    return _icon_svg_wrapper("upload")
-
-
-def close_icon_svg() -> str:
-    return _icon_svg_wrapper("close")
-
-
-def brand_icon_svg() -> str:
-    return _icon_svg_wrapper("brand")
-
-
-def file_size_icon_svg() -> str:
-    return _icon_svg_wrapper("file_size")
-
-
-def upload_count_icon_svg() -> str:
-    return _icon_svg_wrapper("upload_count")
-
-
-def bandwidth_icon_svg() -> str:
-    return _icon_svg_wrapper("bandwidth")
-
-
-def expiry_icon_svg() -> str:
-    return _icon_svg_wrapper("expiry")
-
-
-def download_count_icon_svg() -> str:
-    return _icon_svg_wrapper("download_count")
-
-
-def history_icon_svg() -> str:
-    return _icon_svg_wrapper("history")
-
-
 # ── Format category icons ──
 # SVG paths sourced from icons.py (single source of truth)
 # Format: category → (css_class, label, svg_paths)

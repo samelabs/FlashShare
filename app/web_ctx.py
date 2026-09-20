@@ -56,13 +56,6 @@ from icons import _ICONS, icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
 from identity.auth import public_user
 from economy.billing import spendable_balance
 from governance.access_projection import project
-from utils import (
-    brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,
-    bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
-    close_icon_svg, history_icon_svg,
-)
-
-
 def fmt_ts(ts) -> str:
     """Unix ts → local time string for templates.
 
@@ -114,9 +107,9 @@ def ctx_base(request: Request) -> dict:
         "icon_path": icon_path,
         # Tool identity single renderer (fallback 单源在 core/icons.py)
         "icon_tool_svg": _tool_icon_svg,
-        "brand_icon": brand_icon_svg(),
-        "close_icon": close_icon_svg(),
-        "history_icon_svg": history_icon_svg(),
+        "brand_icon": icon_svg("favicon"),
+        "close_icon": icon_svg("close"),
+        "history_icon_svg": icon_svg("history"),
     }
 
 

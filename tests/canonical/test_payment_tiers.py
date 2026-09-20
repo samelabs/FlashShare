@@ -95,14 +95,15 @@ def _seed_sub_user(prefix, plan_code, product, sub_id, paid=True):
     _plan_product = row[1] or product   # fall back to the seeded binding
     _cur.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
-        " status, amount_cents, currency, created_at, paid_at)"
-        " values (%s, 'plan', %s, 'creem', %s, 'paid', 500, 'USD', %s, %s) returning id",
-        (uid, plan_id, f"sub:{sub_id}", _ts, _ts))
+        " status, amount_cents, currency, created_at)"
+        " values (%s, 'plan', %s, 'creem', %s, 'pending', 500, 'USD', %s) returning id",
+        (uid, plan_id, f"ch:ch_{sub_id}", _ts))
+    _oid = _cur.fetchone()[0]
     _sub.bind_checkout({"id": "ch_" + sub_id,
                         "order": {"id": "ord_" + sub_id, "status": "paid",
                                   "type": "recurring", "amount": 500,
                                   "currency": "USD", "product": _plan_product},
-                        "subscription": {"id": sub_id}})
+                        "subscription": {"id": sub_id}}, order_id=_oid)
     if paid:
         _sub.handle_event("subscription.paid",
                           _sub_snap("active", _iso(PS), _iso(PE),
@@ -228,9 +229,11 @@ _oid9 = _cur.fetchone()[0]
 # written in the INSERT now that kind/snapshot is a schema invariant)
 def _try_fulfill(**kw):
     try:
-        _creem.fulfill(kw.get("oid", ""), kw.get("ch", "pt9"), kw.get("amount", 500),
-                       product_id=kw.get("product", "prod_credits"),
-                       currency=kw.get("currency", "USD"))
+        _creem.fulfill_by_request_id(
+            _oid9, provider_order_id=kw.get("oid", f"ord_pt9_{_ts}"),
+            checkout_id=kw.get("ch", "pt9"), amount_cents=kw.get("amount", 500),
+            product_id=kw.get("product", "prod_credits"),
+            currency=kw.get("currency", "USD"))
         return None
     except KeyError as e:
         return str(e.args[0] if e.args else e)
@@ -247,9 +250,13 @@ for name, kw, expect in _cases:
     _cur.execute("select count(*) from ledger where user_id=%s", (uid9,))
     check(name, err == expect and _cur.fetchone()[0] == 0, f"err={err}")
 # correct → exactly one; replay → still exactly one:
-r1 = _creem.fulfill(f"ord_pt9_{_ts}", "pt9", 500, product_id="prod_credits", currency="USD")
+r1 = _creem.fulfill_by_request_id(
+    _oid9, provider_order_id=f"ord_pt9_{_ts}", checkout_id="pt9",
+    amount_cents=500, product_id="prod_credits", currency="USD")
 _bal = spendable_balance(uid9)
-r2 = _creem.fulfill(f"ord_pt9_{_ts}", "pt9", 500, product_id="prod_credits", currency="USD")
+r2 = _creem.fulfill_by_request_id(
+    _oid9, provider_order_id=f"ord_pt9_{_ts}", checkout_id="pt9",
+    amount_cents=500, product_id="prod_credits", currency="USD")
 check("P9 correct product+amount+currency → exactly one grant; replay 仍 one",
       spendable_balance(uid9) == 100 and _grants(uid9, "grant_package") == 1,
       f"bal={spendable_balance(uid9)} grants={_grants(uid9,'grant_package')}")
@@ -526,9 +533,9 @@ check("PG7 period credits 从 ledger 聚合 (无第二余额字段)",
       "period_plan_credits" in _sub_src2 and "def period_plan_credits" in
       open(_os.path.join(_REPO, "core", "repo", "orders.py"), encoding="utf-8").read())
 _db_src = open(_os.path.join(_REPO, "core", "database.py"), encoding="utf-8").read()
-check("PG8 canonical seeds (plus 100 / pro 500) + rename 迁移",
-      "'plus', 'Plus', 100" in _db_src.replace('"', "'") or ("'plus'" in _db_src and "'pro'" in _db_src)
-      and "RENAME COLUMN creem_price_id TO creem_product_id" in _db_src)
+# T5/T6 behavior-verify the canonical seeds; test_architecture_unification
+# proves no RENAME / old migration exists — no source-string migration claim
+# is needed here.
 _tmpl_src = open(_os.path.join(_REPO, "app", "templates", "account", "credits.html"), encoding="utf-8").read()
 check("PG9 Account 三态动作 (Subscribe/Current/Upgrade/Downgrade)",
       "sub-upgrade" in _tmpl_src and "sub-downgrade" in _tmpl_src and "sub_current" in _tmpl_src)

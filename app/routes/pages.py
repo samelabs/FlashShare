@@ -31,11 +31,7 @@ from app.web_ctx import fmt_ts as _fmt_ts  # 单点 (治理4, UTC)
 
 load_all()  # auto-discover every tools_*.py
 from identity.auth import public_user
-from utils import (
-    brand_icon_svg, upload_icon_svg, file_size_icon_svg, upload_count_icon_svg,
-    bandwidth_icon_svg, expiry_icon_svg, download_count_icon_svg,
-    close_icon_svg, history_icon_svg,
-)
+
 
 router = APIRouter()
 
@@ -400,12 +396,12 @@ async def home(request: Request):
         "JS": JS,
         "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
         "og_desc": texts.get("subtitle", texts.get("seo_desc", "")),
-        "file_size_icon": file_size_icon_svg(),
-        "upload_count_icon": upload_count_icon_svg(),
-        "bandwidth_icon": bandwidth_icon_svg(),
-        "expiry_icon": expiry_icon_svg(),
-        "download_count_icon": download_count_icon_svg(),
-        "upload_icon": upload_icon_svg(),
+        "file_size_icon": icon_svg("file_size"),
+        "upload_count_icon": icon_svg("upload_count"),
+        "bandwidth_icon": icon_svg("bandwidth"),
+        "expiry_icon": icon_svg("expiry"),
+        "download_count_icon": icon_svg("download_count"),
+        "upload_icon": icon_svg("upload"),
     })
     return templates.TemplateResponse(request, "home.html", ctx)
 

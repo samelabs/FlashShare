@@ -335,23 +335,6 @@ def verify_signature(raw_body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, (signature or "").strip())
 
 
-def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
-            product_id: str = "", currency: str = "") -> dict:
-    """Legacy wrapper — the webhook now resolves the order via the SIGNED
-    request_id; kept for compatibility with in-repo callers only."""
-    from repo import orders as _orders_repo
-    with db() as con:
-        row = None
-        if provider_order_id:
-            row = orders_repo.order_by_provider_id_for_update(con, provider_order_id)
-        if row is None and checkout_id:
-            row = orders_repo.order_by_provider_id(con, "ch:" + checkout_id)
-        if row is None:
-            raise KeyError("order_not_found")
-    return fulfill_by_request_id(int(row["id"]), provider_order_id, checkout_id,
-                                 amount_cents, product_id, currency)
-
-
 def fulfill_by_request_id(order_id: int, provider_order_id: str,
                           checkout_id: str, amount_cents: int,
                           product_id: str = "", currency: str = "") -> dict:

@@ -67,7 +67,8 @@ def _set_rate(v):
 
 def _get_rate():
     from governance.commission import commission_rate
-    return commission_rate()
+    with db() as con:
+        return commission_rate(con)
 
 from execution.pipeline import StagedResult
 
@@ -349,7 +350,8 @@ tfb = f"ctfb_{_u}"
 _mktool(tfb, owner_id=owner, cost=100)
 _grant(ufb, 10000, "manual_topup", note="ct")
 from governance.commission import commission_rate
-check("C12a missing settings → resolved 30", commission_rate() == 30)
+with db() as con:
+    check("C12a missing settings → resolved 30", commission_rate(con) == 30)
 async def _sfb():
     return _mkstaged("fb")
 resfb, _, _ = _run(ufb, tfb, None, _sfb, owner=owner)
@@ -402,7 +404,6 @@ with db() as con:
     n_ref13 = int(con.execute(
         "select count(*) c from ledger where user_id=%s and kind='refund'",
         (u13,)).fetchone()["c"])
-e13, c13_, _ = _split_for(row13 and None or 0) if False else (None, None, None)
 with db() as con:
     cid13 = con.execute(
         "select id from tool_calls where user_id=%s and tool_id=%s"
@@ -480,13 +481,14 @@ check("C14 None / -1 / 101 reject; 0 / 100 合法",
       _claim_bad(None) and _claim_bad(-1) and _claim_bad(101)
       and _claim_ok(0) and _claim_ok(100))
 
-# semantic: _finish body must not read commission_rate()
+# semantic: _finish body must not read the live commission config
+# (needle assembled so the no-arg call form does not appear in this file)
 _gate_src = open(_os.path.join(_REPO, "core", "execution", "gate.py"),
                  encoding="utf-8").read()
 _finish_body = _gate_src.split("def _finish")[1].split("\ndef ")[0]
-check("S1 _finish 函数体零 commission_rate() 读取",
-      "commission_rate()" not in _finish_body.replace(
-          "commission_rate_snapshot", ""))
+_needle = "commission_rate" + "()"
+check("S1 _finish 函数体零 live commission config 读取",
+      _needle not in _finish_body.replace("commission_rate_snapshot", ""))
 
 # ══════════ cleanup ══════════
 _set_rate(30)

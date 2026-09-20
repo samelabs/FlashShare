@@ -103,14 +103,20 @@ def _seed_plan(code, credits=100, price_id=None):
     _refresh_catalog()
     return _cur.fetchone()[0]
 
-def _seed_order(uid, plan_id, sub_id):
+def _seed_order(uid, plan_id, sub_id, ch_id=None):
+    """canonical first-checkout fixture: pending plan Order, provider
+    identity = the webhook checkout binding ch:<id>, paid_at NULL.
+    Completion happens through bind_checkout(order_id=...)'s guarded
+    complete_plan_checkout writer — never a pre-paid historical row.
+    ch_id MUST be the checkout.completed obj.id the test will deliver
+    (bind_checkout validates the ch: identity match)."""
     _cur.execute(
         "insert into orders (user_id, kind, item_id, provider, provider_order_id,"
-        " status, amount_cents, created_at, paid_at)"
-        " values (%s, 'plan', %s, 'creem', %s, 'paid', 500, %s, %s)"
+        " status, amount_cents, currency, created_at)"
+        " values (%s, 'plan', %s, 'creem', %s, 'pending', 500, 'USD', %s)"
         " on conflict (provider_order_id) do update set item_id=excluded.item_id"
         " returning id",
-        (uid, plan_id, f"sub:{sub_id}", _ts, _ts))
+        (uid, plan_id, f"ch:{ch_id or sub_id}", _ts))
     return _cur.fetchone()[0]
 
 def _sub_snap(status, p_start, p_end, product=None, sub_id="mgsub1"):
@@ -148,9 +154,9 @@ check("G1 Free: membership None + Free entitlements + usage",
 uP, uidP = _new_user("mgP")
 plan_plus = _seed_plan("plus", 100, "price_plus")
 _cur.execute("select id from plans where code='plus' and id != %s", (plan_plus,))
-oid = _seed_order(uidP, plan_plus, "mgsub1")
+oid = _seed_order(uidP, plan_plus, "mgsub1", ch_id="ch1")
 # 首购建档 (bind_checkout 的 membership 建立):
-_sub.bind_checkout({"id": "ch1", "order": {"id": "ord_mg1", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsub1"}})
+_sub.bind_checkout({"id": "ch1", "order": {"id": "ord_mg1", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsub1"}}, order_id=oid)
 # paid → grant + membership active:
 res = _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE)))
 m = _m_row(uidP)
@@ -195,8 +201,8 @@ plan_pro = _cur.fetchone()[0]
 _cur.execute("update plans set creem_product_id='price_pro' where code='pro'")
 _refresh_catalog()
 PRO_FILES, PRO_BYTES = 2000, 20 * 1024 ** 3
-_seed_order(uidT, plan_pro, "mgsubT")
-_sub.bind_checkout({"id": "chT", "order": {"id": "ord_mgT", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_pro"}, "subscription": {"id": "mgsubT"}})
+_oidT = _seed_order(uidT, plan_pro, "mgsubT", ch_id="chT")
+_sub.bind_checkout({"id": "chT", "order": {"id": "ord_mgT", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_pro"}, "subscription": {"id": "mgsubT"}}, order_id=_oidT)
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubT"))
 r = resolve(uidT)
 check("G4 第二 tier (pro) → 自己的 entitlement (2000 files/20GiB, 绝不 Free)",
@@ -254,8 +260,8 @@ check("G8 period end → Free (membership fact 保留, entitlements free)",
 # ═══ 链9: reconcile 跟 current Membership sub ═══
 uR, uidR = _new_user("mgR")
 plan_r = _seed_plan("plus", 100, "price_plus")
-_seed_order(uidR, plan_r, "mgsubR")
-_sub.bind_checkout({"id": "chR", "order": {"id": "ord_mgR", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubR"}})
+_oidR = _seed_order(uidR, plan_r, "mgsubR", ch_id="chR")
+_sub.bind_checkout({"id": "chR", "order": {"id": "ord_mgR", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubR"}}, order_id=_oidR)
 # 历史 plan order (非当前 sub) — reconcile 不得遍历它:
 _old_plan = _seed_plan("mg_old", 777)
 _cur.execute(
@@ -284,8 +290,8 @@ check("G10pre unknown-profile plan 收费前拒绝 (gate 单点 + gate 后零 or
       and _cur.fetchone()[0] == 0)
 # 防御测试: 若 DB/外部异常导致未知 active Membership 已存在 (绕过 gate),
 # read 面 fail loud、authorization fail-safe — 异常防线, 非销售流程:
-_seed_order(uidU, plan_x, "mgsubU")
-_sub.bind_checkout({"id": "chU", "order": {"id": "ord_mgU", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_x"}, "subscription": {"id": "mgsubU"}})
+_oidU = _seed_order(uidU, plan_x, "mgsubU", ch_id="chU")
+_sub.bind_checkout({"id": "chU", "order": {"id": "ord_mgU", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_x"}, "subscription": {"id": "mgsubU"}}, order_id=_oidU)
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubU"))
 try:
     resolve_from_membership({"member": True, "code": "mg_unknown_tier"})
@@ -352,8 +358,8 @@ def _resp(jr):
 
 # live member (fresh, paid) → plan_change_required, 零 create:
 uL, uidL = _new_user("mgL")
-_seed_order(uidL, plan_plus, "mgsubL")
-_sub.bind_checkout({"id": "chL", "order": {"id": "ord_mgL", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubL"}})
+_oidL = _seed_order(uidL, plan_plus, "mgsubL", ch_id="chL")
+_sub.bind_checkout({"id": "chL", "order": {"id": "ord_mgL", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubL"}}, order_id=_oidL)
 _sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS), _iso(PE), sub_id="mgsubL"))
 _topup._require_auth = lambda request: ({"id": uidL, "email": "t@t.co",
                                         "username": uL}, None)
@@ -559,11 +565,11 @@ _creem_mod.creem_enabled = _orig_enabled
 # ═══ 链15: subscription checkout 两事实分离 (order paid vs cycle credits) ═══
 uV, uidV = _new_user("mgV")
 plan_v = plan_plus
-_seed_order(uidV, plan_v, "mgsubV")  # pending plan order
+_seed_order(uidV, plan_v, "mgsubV", ch_id="chV")  # pending plan order
 _cur.execute("select id, status, granted from orders where user_id=%s and kind='plan' order by id desc limit 1", (uidV,))
 _ov_id, _ov_status, _ov_granted = _cur.fetchone()
 # checkout.completed (bind) — payment 完成, credits 未授:
-_res15 = _sub.bind_checkout({"id": "chV", "order": {"id": "ord_mgV", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubV"}})
+_res15 = _sub.bind_checkout({"id": "chV", "order": {"id": "ord_mgV", "status": "paid", "type": "recurring", "amount": 500, "currency": "USD", "product": "price_plus"}, "subscription": {"id": "mgsubV"}}, order_id=_ov_id)
 _cur.execute("select status, granted from orders where id=%s", (_ov_id,))
 _st15, _gr15 = _cur.fetchone()
 check("G15 checkout.completed 后 order: status=paid / granted=FALSE (cycle credits 未授)",
@@ -576,7 +582,7 @@ _ng15 = _cur.fetchone()[0]
 check("G15b subscription.paid 后: grant_plan 恰一笔 / credits +100 / membership marker 更新",
       _ng15 == 1 and spendable_balance(uidV) == _bal15 + 100
       and _m_row(uidV)[4] == PS, f"grants={_ng15} bal={spendable_balance(uidV)}")
-# package/top-up mark_paid 语义保持 (窄 DB proof):
+# package/top-up canonical finalize 语义保持 (窄 DB proof):
 uW, uidW = _new_user("mgW")
 _cur.execute(
     "insert into orders (user_id, kind, item_id, provider, provider_order_id, status, amount_cents, currency, credits_snapshot, created_at)"
@@ -586,7 +592,7 @@ _ow = _cur.fetchone()[0]
 with db() as con:
     orders_repo.complete_package_order(con, _ow, "ord_mgW", _ts)
 _cur.execute("select status, granted from orders where id=%s", (_ow,))
-check("G15c package mark_paid → status=paid / granted=TRUE (语义保持)",
+check("G15c package complete_package_order → status=paid / granted=TRUE (语义保持)",
       _cur.fetchone() == ("paid", True))
 
 # ═══ Source guards ═══
@@ -664,9 +670,8 @@ check("SG19 INSERT 在每个锁事务内 (AST; 两处 lock = 首建+expired-recr
       len(_locked_bodies) == 2
       and all("insert_order" in b for b in _locked_bodies))
 _bind_blk = _sub_src.split("def bind_checkout")[1].split("\ndef ")[0]
-check("SG20 bind_checkout 不调用 mark_paid (complete_plan_checkout 域 writer)",
-      "mark_paid(" not in _bind_blk
-      and "complete_plan_checkout(" in _bind_blk)
+check("SG20 bind_checkout 只经 canonical complete_plan_checkout 域 writer",
+      "complete_plan_checkout(" in _bind_blk)
 _subw_blk = _repo_src.split("\ndef complete_plan_checkout")[1].split("\ndef ")[0]
 _upd_i = _subw_blk.index("UPDATE orders")
 _subw_sql = _subw_blk[_upd_i:_subw_blk.index("RETURNING", _upd_i)]
@@ -675,7 +680,6 @@ check("SG21 plan checkout writer: guarded paid, never granted",
       and "status='paid'" in _subw_sql and "paid_at=COALESCE" in _subw_sql
       and "status IN ('pending','failed')" in _subw_sql,
       _subw_sql[:120])
-_orig_paid_blk = _repo_src.split("def mark_paid")[1].split("\ndef ")[0]
 check("SG22 package finalize writer 保持 granted=TRUE (complete_package_order)",
       "granted=TRUE" in _repo_src.split("def complete_package_order")[1].split("\ndef ")[0])
 check("SG19b HTTP 全在锁事务外 (AST: 锁 with 块内无 retrieve/create)",

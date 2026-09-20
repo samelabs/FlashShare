@@ -17,8 +17,7 @@ sys.path.insert(0, str(_BASE))
 from sharing.uploads import get_live_upload_by_public_id as _live_upload
 from gokapi import open_gokapi_download, get_gokapi_file
 from utils import (
-    public_file_url, format_bytes, format_ts,
-    file_size_icon_svg, expiry_icon_svg, download_count_icon_svg, file_format_icon,
+    public_file_url, format_bytes, format_ts, file_format_icon,
     html_escape,
 )
 from i18n import LOCALE_TAGS, server_text
@@ -138,9 +137,9 @@ async def file_route(public_id: str, request: Request):
         "escaped_url": html_escape(url),
         "dl_url": f"/f/{pid}?download=1",
         "inline_url": f"/f/{pid}/inline",
-        "file_size_icon": file_size_icon_svg(),
-        "expiry_icon": expiry_icon_svg(),
-        "download_count_icon": download_count_icon_svg(),
+        "file_size_icon": icon_svg("file_size"),
+        "expiry_icon": icon_svg("expiry"),
+        "download_count_icon": icon_svg("download_count"),
     })
     ctx["file_format_icon"] = lambda: file_format_icon(upload["file_name"])
     return templates.TemplateResponse(request, "detail.html", ctx)

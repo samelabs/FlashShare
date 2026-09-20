@@ -277,9 +277,6 @@ def _mcp(arguments, name="compress", mid=1):
 
 with db() as con:
     con.execute("update users set status='active' where id=%s", (uid3,))
-    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
-                " created_at) values (%s, 100000, 100000, 'manual_topup', %s)"
-                " on conflict do nothing", (uid3, ts)) if False else None
 # credits for MCP metered call
 from economy.billing import grant as _grant
 _grant(int(uid3), 100000, "manual_topup", note="ig")
@@ -885,7 +882,8 @@ with db() as con:
         (tO, tO, json.dumps({"en": "IG"}), ts, ts))
     con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                 " values (%s, 0, TRUE, %s)", (tO, ts))
-rate = commission_rate()
+with db() as con:
+    rate = commission_rate(con)
 invA = ToolInvocation(tO, [SourceFile("pA", "")], {},
                       {"expiry_days": 7, "allowed_downloads": 5}, f"race-{_u}")
 hashA = invocation_fingerprint(invA)

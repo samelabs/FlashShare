@@ -162,7 +162,8 @@ def _calls(user_id, tool_id, ref):
             " and client_ref=%s order by id", (user_id, tool_id, ref)).fetchall()]
 
 owner = _mkuser(_u + "owner")
-rate = commission_rate()
+with db() as con:
+    rate = commission_rate(con)
 
 # ══════════ O12-O17: replay ══════════
 uR = _mkuser(_u + "replay")

@@ -308,42 +308,39 @@ r = client.patch(f"/samelabs/packages/{pkg_id}", json={"credits": 20000},
 check("P7 operator 改 package → 20000 (live 行可变)", r.status_code == 200)
 
 # fulfillment reads ONLY the snapshot → grants 10000, not 20000
-_out = _creem.fulfill(provider_order_id=f"ch_pc_{order['id']}",
-                      checkout_id="", amount_cents=1000,
-                      product_id="whatever-credits-product",
-                      currency="USD") if False else None
-# restore real fulfill (only checkout fakes needed isolation)
+# restore real checkout fakes boundary (only checkout fakes needed isolation)
 _creem.mirror_product_price, _creem.verify_product_mirror = _orig_creem[0], _orig_creem[1]
 _creem.create_subscription_checkout = _orig_creem[2]
 _creem.create_credits_checkout = _orig_creem[3]
 from economy.billing import spendable_balance
 _bal0 = spendable_balance(buyer)
-_out = _orig_creem and None
-# set the shared product contract env pieces fulfill checks
+# set the shared product contract env pieces fulfill_by_request_id checks
 _creem.CREEM_CREDITS_PRODUCT_ID = "prod_credits_shared"
-# fulfill validates product/amount/currency against order row + env
+# canonical fulfillment: the REAL local Order.id + canonical provider id
 try:
-    _creem.fulfill(provider_order_id=f"ord_pc_{order['id']}",
-                   checkout_id=f"ch_pc_{order['id']}",
-                   amount_cents=1000, product_id="prod_credits_shared",
-                   currency="USD")
+    _creem.fulfill_by_request_id(
+        int(order["id"]), provider_order_id=f"ord_pc_{order['id']}",
+        checkout_id=f"ch_pc_{order['id']}",
+        amount_cents=1000, product_id="prod_credits_shared",
+        currency="USD")
     granted = spendable_balance(buyer) - _bal0
 except Exception as e:
     granted = f"ERR {e}"
 check("P7 fulfillment 只读 snapshot → grant 10000 (非 live 20000)",
       granted == 10000, str(granted))
 
-# replay: same order fulfilled again → no double grant
+# replay: SAME Order.id + SAME canonical provider_order_id + SAME checkout
+# identity → guarded writer no-op, zero double grant
 _bal1 = spendable_balance(buyer)
-try:
-    _creem.fulfill(provider_order_id=f"ord_pc_{order['id']}_r",
-                   checkout_id=f"ch_pc_{order['id']}",
-                   amount_cents=1000, product_id="prod_credits_shared",
-                   currency="USD")
-except Exception:
-    pass
+_replay = _creem.fulfill_by_request_id(
+    int(order["id"]), provider_order_id=f"ord_pc_{order['id']}",
+    checkout_id=f"ch_pc_{order['id']}",
+    amount_cents=1000, product_id="prod_credits_shared",
+    currency="USD")
 check("P8 webhook replay 不 double grant",
-      spendable_balance(buyer) == _bal1, f"{_bal1} → {spendable_balance(buyer)}")
+      _replay.get("granted") is False and _replay.get("reason") == "replay"
+      and spendable_balance(buyer) == _bal1,
+      f"{_bal1} → {spendable_balance(buyer)} {_replay}")
 
 # reverse direction: package raised BEFORE checkout → snapshot freezes high value
 with db() as con:
@@ -366,10 +363,11 @@ with db() as con:
                          (order2["id"],)).fetchone()["provider_order_id"]
 _ch2 = _prov2[3:] if str(_prov2).startswith("ch:") else f"ch_pc_{order2['id']}"
 try:
-    _creem.fulfill(provider_order_id=f"ord_pc_{order2['id']}",
-                   checkout_id=_ch2,
-                   amount_cents=999, product_id="prod_credits_shared",
-                   currency="USD")
+    _creem.fulfill_by_request_id(
+        int(order2["id"]), provider_order_id=f"ord_pc_{order2['id']}",
+        checkout_id=_ch2,
+        amount_cents=999, product_id="prod_credits_shared",
+        currency="USD")
     check("P8b amount mismatch fail closed", False, "no raise")
 except KeyError as e:
     check("P8b amount mismatch fail closed", "amount_mismatch" in str(e), str(e))
@@ -621,7 +619,6 @@ _mirror_state["prod_pc2"] = {"price": 500, "currency": "USD",
                              "billing_period": ""}
 _n_before = len(_patch_payloads)
 try:
-    _orig_creem[0].__call__ if False else None
     # call the REAL implementation against the spied transport
     import economy.creem as _cmod
     _cmod.mirror_product_price("prod_pc2", 1499, "USD")

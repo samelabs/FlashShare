@@ -94,7 +94,7 @@ def _require_checkout_proof(obj: dict, row: dict, plan: dict) -> None:
         raise KeyError("checkout_product_mismatch")
 
 
-def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
+def bind_checkout(obj: dict, order_id: int) -> dict:
     """checkout.completed (subscription first purchase), ONE DB
     transaction: lock the exact plan order → guarded pending/failed→paid
     with provider_order_id='sub:<id>' → bind Membership if missing →
@@ -102,81 +102,41 @@ def bind_checkout(obj: dict, order_id: int | None = None) -> dict:
     back together — 'order sub-bound but pending' or 'Membership bound
     but order failed' cannot exist. Credit is NEVER granted here
     (paid-only). Replay (paid + same sub + membership) is idempotent.
-    The order is located via the SIGNED request_id when provided; the
-    ch:/sub: lookups remain only for replay convergence of historical
-    sequences."""
+    The order is located via the SIGNED request_id."""
     sub = obj.get("subscription") or {}
     sub_id = str(sub.get("id") or "")
     ch_id = str(obj.get("id") or "")
     from database import db as _db
     from repo.orders import complete_plan_checkout
-    if order_id is not None:
-        # request_id path (canonical): one transaction end to end
-        with _db() as con:
-            row = con.execute(
-                "SELECT * FROM orders WHERE id=%s FOR UPDATE",
-                (order_id,)).fetchone()
-            if row is None:
-                raise KeyError("order_not_found")
-            if row["kind"] != "plan":
-                return {"ignored": True}
-            # ── checkout payment-contract proof ──
-            # The signed completion must match the local purchase fact:
-            # the plan row's CURRENT product/price is authoritative here
-            # (first checkout: rebind is refused while any membership
-            # could exist — and this plan has none yet — so live == the
-            # fact frozen at checkout). Mismatched amount/product is a
-            # provider-vs-local divergence, never a silent bind.
-            _plan = orders_repo.plan_by_id(con, int(row["item_id"]))
-            if _plan is None:
-                raise KeyError("plan_not_found")
-            _require_checkout_proof(obj, row, _plan)
-            cur = row["provider_order_id"] or ""
-            # identity validation: NULL / ch:<this checkout> / sub:<this sub>
-            if cur and cur != f"sub:{sub_id}" and cur != f"ch:{ch_id}":
-                raise KeyError("provider_identity_conflict")
-            # occupied-Membership guard: a membership bound to a
-            # DIFFERENT subscription is never silently replaced
-            _occ = orders_repo.membership_row(con, int(row["user_id"]))
-            if _occ is not None and _occ["provider_subscription_id"] != f"sub:{sub_id}":
-                raise KeyError("membership_occupied")
-            complete_plan_checkout(con, int(row["id"]), f"sub:{sub_id}", now())
-            if orders_repo.membership_by_sub(con, sub_id) is None:
-                orders_repo.bind_membership(
-                    con, row["user_id"], row["item_id"], sub_id, "active",
-                    started_at=row["created_at"], renews_at=None)
-        return _ev_sync(sub_id, obj)
+    # request_id path (canonical): one transaction end to end
     with _db() as con:
-        row = orders_repo.order_by_provider_id(con, "ch:" + ch_id)
+        row = con.execute(
+            "SELECT * FROM orders WHERE id=%s FOR UPDATE",
+            (order_id,)).fetchone()
         if row is None:
-            # Replayed completion (ch: already promoted to sub:): converge
-            # through the SAME guarded completion — order status AND
-            # membership settle atomically; never a partial binding with
-            # the order left pending.
-            already = orders_repo.plan_order_by_sub_id(con, sub_id)
-            if already is not None:
-                return bind_checkout(obj, order_id=int(already["id"]))
             raise KeyError("order_not_found")
         if row["kind"] != "plan":
             return {"ignored": True}
-    # ONE transaction: guarded promotion + completion + membership (the
-    # request_id branch's semantics applied to the ch:-located row).
-    with _db() as con:
-        row = orders_repo.order_by_provider_id_for_update(con, "ch:" + ch_id)
-        if row is None:
-            # lost the promotion race — converge via the sub identity
-            already = orders_repo.plan_order_by_sub_id(con, sub_id)
-            if already is not None:
-                row = dict(already)
-            else:
-                raise KeyError("order_not_found")
-        _occ2 = orders_repo.membership_row(con, int(row["user_id"]))
-        if _occ2 is not None and _occ2["provider_subscription_id"] != f"sub:{sub_id}":
-            raise KeyError("membership_occupied")
-        _proof_plan = orders_repo.plan_by_id(con, int(row["item_id"]))
-        if _proof_plan is None:
+        # ── checkout payment-contract proof ──
+        # The signed completion must match the local purchase fact:
+        # the plan row's CURRENT product/price is authoritative here
+        # (first checkout: rebind is refused while any membership
+        # could exist — and this plan has none yet — so live == the
+        # fact frozen at checkout). Mismatched amount/product is a
+        # provider-vs-local divergence, never a silent bind.
+        _plan = orders_repo.plan_by_id(con, int(row["item_id"]))
+        if _plan is None:
             raise KeyError("plan_not_found")
-        _require_checkout_proof(obj, row, _proof_plan)
+        _require_checkout_proof(obj, row, _plan)
+        cur = row["provider_order_id"] or ""
+        # identity validation: NULL / ch:<this checkout> / sub:<this sub>
+        if cur and cur != f"sub:{sub_id}" and cur != f"ch:{ch_id}":
+            raise KeyError("provider_identity_conflict")
+        # occupied-Membership guard: a membership bound to a
+        # DIFFERENT subscription is never silently replaced
+        _occ = orders_repo.membership_row(con, int(row["user_id"]))
+        if _occ is not None and _occ["provider_subscription_id"] != f"sub:{sub_id}":
+            raise KeyError("membership_occupied")
         complete_plan_checkout(con, int(row["id"]), f"sub:{sub_id}", now())
         if orders_repo.membership_by_sub(con, sub_id) is None:
             orders_repo.bind_membership(

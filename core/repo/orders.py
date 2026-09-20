@@ -46,52 +46,10 @@ def order_by_id_for_update(con, order_id: int) -> Optional[dict]:
         "SELECT * FROM orders WHERE id = %s FOR UPDATE", (order_id,)).fetchone()
 
 
-def order_by_provider_id_for_update(con, provider_order_id: str) -> Optional[dict]:
-    return con.execute(
-        "SELECT * FROM orders WHERE provider_order_id = %s FOR UPDATE",
-        (provider_order_id,)).fetchone()
-
-
 def order_by_provider_id(con, provider_order_id: str) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM orders WHERE provider_order_id = %s",
         (provider_order_id,)).fetchone()
-
-
-def mark_paid(con, order_id: int, ts: int,
-              provider_order_id: str = None) -> dict | None:
-    """LEGACY-NARROW package finalize kept for in-test compatibility —
-    production fulfillment uses complete_package_order (which also
-    promotes the canonical provider identity). Without a provider id
-    this can only mark a pending/failed order paid WITH a ch: identity
-    already present; refusing otherwise keeps the schema invariant
-    (paid ⇒ provider_order_id NOT NULL) intact."""
-    row = con.execute(
-        "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
-    if row is None:
-        raise KeyError("order_not_found")
-    cur = row["provider_order_id"]
-    if provider_order_id is None and not (cur or "").startswith("ch:"):
-        raise KeyError("provider_identity_required")
-    ident = provider_order_id or cur
-    return complete_package_order(con, order_id, ident, ts)
-
-
-def mark_subscription_checkout_completed(con, order_id: int, ts: int,
-                                          sub_provider_id: str = None) -> dict | None:
-    """LEGACY-NARROW plan finalize — production binding uses
-    complete_plan_checkout (identity + status atomically). Without a
-    sub id this can only complete an order that ALREADY carries its
-    sub: identity; refusing otherwise keeps the schema invariant
-    (plan paid ⇒ provider_order_id LIKE 'sub:%')."""
-    row = con.execute(
-        "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
-    if row is None:
-        raise KeyError("order_not_found")
-    ident = sub_provider_id or row["provider_order_id"]
-    if not (ident or "").startswith("sub:"):
-        raise KeyError("subscription_identity_required")
-    return complete_plan_checkout(con, order_id, ident, ts)
 
 
 def mark_failed(con, order_id: int) -> None:
@@ -246,7 +204,7 @@ def complete_plan_checkout(con, order_id: int, sub_provider_id: str,
 def active_packages(con) -> list:
     """production projection: shared Credits Product 模型下 Package 无
     per-provider binding — 只暴露 id/code/name/credits/price_cents/
-    currency。历史 per-package Creem 值仅存 DB legacy 列, 不进此投影。"""
+    currency。"""
     return con.execute(
         "SELECT id, code, name, credits, price_cents, currency "
         "FROM packages WHERE active ORDER BY sort_order, id").fetchall()

@@ -314,9 +314,7 @@ _creem_mod.create_credits_checkout = _orig_create
 # E 段 pending fixture 已完成断言 — terminal 化以释放
 # (user,item) pending 槽位 (one-pending-per-package invariant)
 with db() as con:
-    con.execute("update orders set status='failed', finished_null_probe=NULL"
-                " where id=%s", (oE["id"],)) if False else con.execute(
-        "update orders set status='failed' where id=%s", (oE["id"],))
+    con.execute("update orders set status='failed' where id=%s", (oE["id"],))
 
 # ══════════ O11-O16: webhook request identity + stale bind ══════════
 check("O11/O12 order_id_from_request_id 定位",

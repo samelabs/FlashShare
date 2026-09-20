@@ -95,7 +95,6 @@ pkg = _mkpkg()
 
 # ═══ Package transition matrix ═══
 o = _pkg_order(uid, pkg["id"])
-orders_repo.mark_paid(con := None, 1, ts) if False else None
 with db() as con:
     orders_repo.complete_package_order(con, o["id"], "ord_a", ts)
 check("P-t1 pending→paid", _st(o["id"])["status"] == "paid")
@@ -322,7 +321,7 @@ _bind({"id": "ch_s3",
        "order": {"id": "ord_s3", "status": "paid", "type": "recurring",
                   "amount": 999, "currency": "USD",
                   "product": "prod_sm_plan"},
-       "subscription": {"id": "sub_s3"}})
+       "subscription": {"id": "sub_s3"}}, order_id=oS3["id"])
 with db() as con:
     _rS3 = con.execute("select status, provider_order_id from orders"
                        " where id=%s", (oS3["id"],)).fetchone()

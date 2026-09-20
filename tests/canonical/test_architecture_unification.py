@@ -478,6 +478,49 @@ check("U8 deploy doc: 无无效 ?| 空 array verify",
       "?| ARRAY[]" not in _doc)
 
 
+# ═══ U11: greenfield runtime absence guards (module introspection) ═══
+# The greenfield codebase keeps ONE canonical payment path; the retired
+# compatibility surface must stay absent (introspection, not source copy).
+import inspect as _inspect
+import importlib as _importlib
+
+_economy_creem = _importlib.import_module("economy.creem")
+_repo_orders_mod = _importlib.import_module("repo.orders")
+_economy_sub = _importlib.import_module("economy.subscription")
+_gov_commission = _importlib.import_module("governance.commission")
+_utils_mod = _importlib.import_module("utils")
+
+check("U11 economy.creem 无 legacy fulfill (唯一入口 fulfill_by_request_id)",
+      not hasattr(_economy_creem, "fulfill")
+      and hasattr(_economy_creem, "fulfill_by_request_id"))
+check("U11 repo.orders 无 mark_paid",
+      not hasattr(_repo_orders_mod, "mark_paid"))
+check("U11 repo.orders 无 mark_subscription_checkout_completed",
+      not hasattr(_repo_orders_mod, "mark_subscription_checkout_completed"))
+check("U11 repo.orders 无 order_by_provider_id_for_update",
+      not hasattr(_repo_orders_mod, "order_by_provider_id_for_update"))
+check("U11 repo.orders 保留 canonical helpers (order_by_provider_id /"
+      " plan_order_by_sub_id / membership_by_sub)",
+      hasattr(_repo_orders_mod, "order_by_provider_id")
+      and hasattr(_repo_orders_mod, "plan_order_by_sub_id")
+      and hasattr(_repo_orders_mod, "membership_by_sub"))
+
+def _param_required(fn, name):
+    p = _inspect.signature(fn).parameters[name]
+    return p.default is _inspect.Parameter.empty
+
+check("U11 bind_checkout.order_id 为必填参数 (无 None fallback)",
+      _param_required(_economy_sub.bind_checkout, "order_id"))
+check("U11 commission_rate.con 为必填参数 (无 standalone read)",
+      _param_required(_gov_commission.commission_rate, "con"))
+
+_icon_wrappers = ("upload_icon_svg", "close_icon_svg", "brand_icon_svg",
+                  "file_size_icon_svg", "upload_count_icon_svg",
+                  "bandwidth_icon_svg", "expiry_icon_svg",
+                  "download_count_icon_svg", "history_icon_svg")
+check("U11 utils 无 9 个 backward-compat icon wrapper",
+      not [w for w in _icon_wrappers if hasattr(_utils_mod, w)])
+
 _cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))
