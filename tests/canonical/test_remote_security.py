@@ -819,6 +819,95 @@ except Exception as exc:
 finally:
     _restore_stack()
 
+# ═══ ENV-MIME: JSON envelope MIME ≠ product MIME (regression) ═══
+# trusted endpoint path (urllib driver) — the response Content-Type IS
+# the JSON envelope; it must NEVER become the wrapped product's MIME.
+class _UrllibRespDouble:
+    def __init__(self, status, body, ctype):
+        self.status = status
+        self._body = body
+        self.headers = {"Content-Type": ctype} if ctype else {}
+        self._read = False
+    def read(self, n=-1): return self._body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+def _patch_urllib_open(resp):
+    _saved_open = remote.urllib.request.urlopen
+    remote.urllib.request.urlopen = lambda req, timeout=None: resp
+    return _saved_open
+
+# ENV-1: envelope application/json + PNG data_b64, NO JSON content_type
+# → canonical image/png (from filename + byte validation)
+_saved_open = _patch_urllib_open(_UrllibRespDouble(
+    200,
+    json.dumps({"filename": "result.png",
+                "data_b64": _b64.b64encode(_png_bytes()).decode()}).encode(),
+    "application/json"))
+try:
+    out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                            [], {}, {}, trusted=True)
+    check("ENV-1 JSON envelope MIME not inherited (filename=result.png)",
+          out["filename"] == "result.png", out)
+    check("ENV-1 result content_type == image/png",
+          out["content_type"] == "image/png", out["content_type"])
+except Exception as exc:
+    check("ENV-1 JSON envelope MIME not inherited", False, exc)
+finally:
+    remote.urllib.request.urlopen = _saved_open
+
+# ENV-2: JSON explicit content_type=image/png → image/png
+_saved_open = _patch_urllib_open(_UrllibRespDouble(
+    200,
+    json.dumps({"filename": "result.png", "content_type": "image/png",
+                "data_b64": _b64.b64encode(_png_bytes()).decode()}).encode(),
+    "application/json"))
+try:
+    out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                            [], {}, {}, trusted=True)
+    check("ENV-2 JSON explicit content_type honored",
+          out["content_type"] == "image/png", out["content_type"])
+except Exception as exc:
+    check("ENV-2 JSON explicit content_type honored", False, exc)
+finally:
+    remote.urllib.request.urlopen = _saved_open
+
+# ENV-3: raw PNG response, HTTP Content-Type=image/png → image/png
+# (raw-bytes mode legitimately keeps the response Content-Type)
+_saved_open = _patch_urllib_open(_UrllibRespDouble(
+    200, _png_bytes(), "image/png"))
+try:
+    out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                            [], {}, {}, trusted=True)
+    check("ENV-3 raw PNG response keeps image/png",
+          out["filename"] == "result.png" and out["content_type"] == "image/png",
+          out)
+except Exception as exc:
+    check("ENV-3 raw PNG response keeps image/png", False, exc)
+finally:
+    remote.urllib.request.urlopen = _saved_open
+
+# ENV-4: output_url variant — envelope MIME must not leak into the
+# pulled product either (JSON metadata only)
+_saved_open = _patch_urllib_open(_UrllibRespDouble(
+    200,
+    json.dumps({"filename": "pulled.png",
+                "output_url": "https://pub.example/fetch.png"}).encode(),
+    "application/json"))
+_pulled_saved = remote._pull_output_url
+try:
+    remote._pull_output_url = lambda url, t, tr: _png_bytes()
+    out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                            [], {}, {}, trusted=True)
+    check("ENV-4 output_url product MIME from bytes, not envelope",
+          out["filename"] == "pulled.png" and out["content_type"] == "image/png",
+          out)
+except Exception as exc:
+    check("ENV-4 output_url product MIME from bytes", False, exc)
+finally:
+    remote._pull_output_url = _pulled_saved
+    remote.urllib.request.urlopen = _saved_open
+
 # OUT-5: canonical writer erases legacy binding keys on any write
 from governance.tool_supply import build_http_binding
 _legacy = {"url": "https://pub.example/old", "timeout_s": 30,

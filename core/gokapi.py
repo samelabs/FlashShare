@@ -194,7 +194,7 @@ def open_gokapi_internal_download(file_id: str, range_header: str | None = None)
                  _gokapi_path(f"/api/files/download/{urllib.parse.quote(file_id)}"),
                  headers=headers)
     resp = conn.getresponse()
-    if resp.status >= 400:
+    if resp.status not in (200, 206):
         try:
             resp.read()
         finally:

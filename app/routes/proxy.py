@@ -178,23 +178,26 @@ async def file_zip_list(public_id: str, request: Request):
     def fetch_range(start: int, length: int) -> bytes:
         # Internal non-counting read primitive (authenticated API,
         # increaseCounter=false) — preview must never consume a public
-        # download allowance.
+        # download allowance. InternalDownloadUnavailable propagates
+        # UNTRANSLATED: it is a channel failure (503), never a ZIP
+        # complexity classification (422).
+        status, _headers, resp = open_gokapi_internal_download(
+            upload["gokapi_id"],
+            range_header=f"bytes={start}-{start + length - 1}")
         try:
-            status, _headers, resp = open_gokapi_internal_download(
-                upload["gokapi_id"],
-                range_header=f"bytes={start}-{start + length - 1}")
-            try:
-                if status not in (200, 206):
-                    raise ValueError("range_unavailable")
-                return resp.read()
-            finally:
-                resp.close()
-        except InternalDownloadUnavailable:
-            raise ValueError("range_unavailable")
+            if status not in (200, 206):
+                raise InternalDownloadUnavailable(f"gokapi_api_{status}")
+            return resp.read()
+        finally:
+            resp.close()
 
     from zip_preview import list_zip_remote
     try:
         entries = await asyncio.to_thread(list_zip_remote, fetch_range, total)
+    except InternalDownloadUnavailable:
+        # authenticated non-counting channel unavailable → typed 503;
+        # NEVER fall back to the counted public download path.
+        return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
     except ValueError as exc:
         reason = str(exc)
         if reason == "empty_archive":

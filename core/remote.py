@@ -428,16 +428,20 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
         # raw-bytes mode: body IS the file
         return _wrap_raw(body, content_type=resp_ctype)
     # json mode: {filename?, content_type?, data_b64 | output_url}
+    # resp_ctype here is the JSON ENVELOPE's Content-Type — product MIME
+    # comes only from the JSON product metadata (out.content_type) or, in
+    # its absence, from the canonical filename + byte validation. The
+    # envelope MIME must never be inherited by the wrapped product.
     if "output_url" in out:
         data = _pull_output_url(out["output_url"], timeout_s, trusted)
-        return _wrap_raw(data, out.get("filename"), out.get("content_type") or resp_ctype)
+        return _wrap_raw(data, out.get("filename"), out.get("content_type"))
     if "data_b64" in out:
         import base64
         try:
             data = base64.b64decode(out["data_b64"], validate=True)
         except Exception as exc:
             raise RemoteError("bad_output", "b64 decode failed") from exc
-        return _wrap_raw(data, out.get("filename"), out.get("content_type") or resp_ctype)
+        return _wrap_raw(data, out.get("filename"), out.get("content_type"))
     raise RemoteError("invalid_response", "no data_b64/output_url/raw body")
 
 

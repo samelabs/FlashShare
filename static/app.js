@@ -1044,7 +1044,12 @@ function showShareResult(file) {
   actions += `<button class="action-btn" id="${qrId}" type="button" aria-label="QR">${svgIcon("qr")}</button>`;
   actions += `<a class="action-btn" href="${escapeHtml(share)}" target="_blank" rel="noreferrer" aria-label="${t("shareX")}"><span class="x-glyph" aria-hidden="true">𝕏</span></a>`;
 
-  const isImg = file.contentType && file.contentType.startsWith("image/");
+  // Same rule as the server inline/detail embeddable check: raster /
+  // inlineable images auto-preview; image/svg+xml never embeds via
+  // /inline (server rejects it — no client-side second SVG preview).
+  const isImg = file.contentType
+      && file.contentType.startsWith("image/")
+      && file.contentType.toLowerCase() !== "image/svg+xml";
   const inlineUrl = `/f/${file.publicId}/inline`;
   const preview = isImg ? `<div class="result-preview"><img src="${escapeHtml(inlineUrl)}" alt="${escapeHtml(file.filename || file.name || "")}" loading="lazy" decoding="async"></div>` : "";
   const zipCt = file.contentType || "";

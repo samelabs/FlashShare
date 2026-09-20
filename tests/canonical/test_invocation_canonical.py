@@ -490,6 +490,19 @@ if _sess_uid is not None:
     _from_config = importlib.import_module("config")
     _ck_val = f"{_from_config.COOKIE_NAME}={_sid}"
 
+    def _gk_set_fail(mode):
+        """flip the fake gokapi internal-endpoint failure mode (CI double)"""
+        import http.client as _hc
+        _gu = _os.environ.get("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53898")
+        _ghost, _gport = _gu.split("//")[1].split(":")
+        _gconn = _hc.HTTPConnection(_ghost, int(_gport), timeout=10)
+        _body = json.dumps({"mode": mode})
+        _gconn.request("POST", "/ci/fail-internal", _body,
+                       {"Content-Type": "application/json",
+                        "apikey": _os.environ.get("FLASHSHARE_GOKAPI_KEY", ""),
+                        "Content-Length": str(len(_body))})
+        _gresp = _gconn.getresponse(); _gresp.read(); _gconn.close()
+
     def _upload_raw(cookie, name, ct, data):
         """raw multipart upload (arbitrary bytes) on the share path"""
         conn = http.client.HTTPConnection(*_HOST, timeout=30)
@@ -552,10 +565,11 @@ if _sess_uid is not None:
             _rz = _upload_raw(_ck_val, "real.zip", "application/zip", _buf.getvalue())
             if _rz.get("ok") and (_rz.get("file") or _rz.get("files")):
                 _rf = _rz.get("file") or _rz["files"][0]
+                _rpid = _rf["publicId"]
                 from gokapi import get_gokapi_file as _ggf2
                 _c3 = _pg().cursor()
                 _c3.execute("select gokapi_id from uploads where public_id=%s",
-                            (_rf["publicId"],))
+                            (_rpid,))
                 _gid = _c3.fetchone()[0]
                 _zc0 = int((_ggf2(_gid) or {}).get("DownloadCount", -1))
                 st_z, _hz, bz = _get_raw(f"/f/{_rf['publicId']}/zip-list")
@@ -564,6 +578,26 @@ if _sess_uid is not None:
                 _zc1 = int((_ggf2(_gid) or {}).get("DownloadCount", -1))
                 check("INL-6 zip-list internal reads do not increase count",
                       _zc1 == _zc0, f"before={_zc0} after={_zc1}")
+
+                # INL-7: internal-channel failure → typed 503, never 422
+                # (channel failure is NOT ZIP complexity). The fake
+                # gokapi fails the authenticated endpoint on demand.
+                for _mode in ("401", "404"):
+                    _gk_set_fail(_mode)
+                    try:
+                        st_f, _hf, bf = _get_raw(f"/f/{_rpid}/zip-list")
+                        _jf = {}
+                        try:
+                            _jf = json.loads(bf)
+                        except Exception:
+                            pass
+                        check(f"INL-7 internal fail {_mode} → 503 preview_unavailable",
+                              st_f == 503 and _jf.get("error") == "preview_unavailable",
+                              f"{st_f} {str(_jf)[:80]}")
+                        check(f"INL-7 internal fail {_mode} never 422",
+                              st_f != 422, st_f)
+                    finally:
+                        _gk_set_fail(None)
             else:
                 check("INL-5 zip fixture upload ok", False, str(_rz)[:120])
         else:

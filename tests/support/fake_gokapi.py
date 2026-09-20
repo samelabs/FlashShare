@@ -21,6 +21,8 @@ class Store:
         self._lock = threading.Lock()
         self._seq = 0
         self._files: dict[str, dict] = {}
+        # test-only: fail the internal download endpoint with this status
+        self.fail_internal: str | None = None
 
     def add(self, name: str, content_type: str, data: bytes,
             expiry_days: int, allowed_downloads: int, base_url: str) -> dict:
@@ -210,6 +212,20 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
+        if path.startswith("/api/files/download/") and STORE.fail_internal:
+            # test-only channel-failure injection (set via /ci/fail-internal):
+            # the authenticated non-counting read endpoint fails on demand
+            mode = STORE.fail_internal
+            if mode == "401":
+                self._json(401, {"ErrorMessage": "unauthorized"})
+            elif mode == "404":
+                self._json(404, {"ErrorMessage": "not_found"})
+            elif mode == "500":
+                self._json(500, {"ErrorMessage": "boom"})
+            else:
+                self.send_error(500)
+            return
+
         if path.startswith("/api/files/download/"):
             # Official authenticated non-counting read:
             #   apikey required; increaseCounter=false honored (the
@@ -278,6 +294,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"Result": "ERROR", "ErrorMessage": str(exc)})
                 return
             self._json(200, {"Result": "OK", "FileInfo": meta})
+            return
+
+        if path == "/ci/fail-internal":
+            if not self._authorized():
+                self._json(401, {"ErrorMessage": "unauthorized"})
+                return
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                body = json.loads(self.rfile.read(size) or b"{}")
+            except Exception:
+                body = {}
+            mode = body.get("mode")
+            STORE.fail_internal = mode if mode in ("401", "404", "500") else None
+            self._json(200, {"Result": "OK", "fail_internal": STORE.fail_internal})
             return
 
         if path == "/api/files/delete":

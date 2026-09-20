@@ -44,6 +44,7 @@ jobs:
         run: |
           node tests/ci/test_web_flow_contract.js
           node tests/ci/test_pwa_download_contract.js
+          node tests/ci/test_result_image_rule_contract.js
       - name: Source-of-truth guards
         shell: bash
         run: |
