@@ -173,13 +173,13 @@ def _mk_open(body):
         return 200, {}, r
     return _open, holder
 
-_orig_open = _storage_mod.open_gokapi_download
+_orig_open = _storage_mod.open_gokapi_internal_download
 _orig_cap_c = _cfg_mod.MAX_UPLOAD_BYTES
 CAP_C = 32
 _cfg_mod.MAX_UPLOAD_BYTES = CAP_C
 try:
     _open1, _h1 = _mk_open(b"q" * (CAP_C + 1))
-    _storage_mod.open_gokapi_download = _open1
+    _storage_mod.open_gokapi_internal_download = _open1
     try:
         _storage_mod.read("f1")
         check("C1 storage cap+1 (short-read) → ValueError + stream 关闭",
@@ -188,14 +188,14 @@ try:
         check("C1 storage cap+1 (short-read) → ValueError + stream 关闭",
               getattr(_h1["raw"], "closed", False) is True)
     _open2, _h2 = _mk_open(b"q" * CAP_C)
-    _storage_mod.open_gokapi_download = _open2
+    _storage_mod.open_gokapi_internal_download = _open2
     status_c, _hdrs_c, body_c = _storage_mod.read("f2")
     check("C2 storage exact cap (short-read) → 成功读全 32 bytes + 关闭",
           status_c == 200 and len(body_c.getvalue()) == CAP_C
           and getattr(_h2["raw"], "closed", False) is True,
           f"len={len(body_c.getvalue())}")
 finally:
-    _storage_mod.open_gokapi_download = _orig_open
+    _storage_mod.open_gokapi_internal_download = _orig_open
     _cfg_mod.MAX_UPLOAD_BYTES = _orig_cap_c
 
 # ══════════ D. BrokenProcessPool: submit / await 注入 + CAS 重建 ══════════
