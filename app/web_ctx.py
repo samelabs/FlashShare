@@ -107,7 +107,7 @@ def ctx_base(request: Request) -> dict:
         "icon_path": icon_path,
         # Tool identity single renderer (fallback 单源在 core/icons.py)
         "icon_tool_svg": _tool_icon_svg,
-        "brand_icon": icon_svg("favicon"),
+        "brand_icon": "",
         "close_icon": icon_svg("close"),
         "history_icon_svg": icon_svg("history"),
     }
