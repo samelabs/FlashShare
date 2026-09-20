@@ -521,6 +521,45 @@ _icon_wrappers = ("upload_icon_svg", "close_icon_svg", "brand_icon_svg",
 check("U11 utils 无 9 个 backward-compat icon wrapper",
       not [w for w in _icon_wrappers if hasattr(_utils_mod, w)])
 
+# ═══ U11: output declaration vocabulary residue guards ═══
+# The output declaration mechanism is retired: output identity is
+# endpoint-artifact-owned. Production UI/templates/JS must not resurrect
+# it. (Server explicit-rejection guards and canonical tests legitimately
+# reference the raw field names — those are protocol, not UI.)
+import glob as _glob
+_ui_files = (
+    _glob.glob(_os.path.join(_REPO, "app", "templates", "**", "*.html"),
+               recursive=True)
+    + _glob.glob(_os.path.join(_REPO, "static", "**", "*.js"),
+                 recursive=True))
+_residue = []
+for _fp in _ui_files:
+    if _fp.replace("\\", "/").endswith("static/i18n.js"):
+        continue  # generated artifact, guarded below via source dict
+    _txt = open(_fp, encoding="utf-8").read()
+    for _needle in ('mytools_f_out', 'mytools_err_output_filename_required'):
+        if _needle in _txt:
+            _residue.append((_fp, _needle))
+    # DOM field targeting of the retired payload fields in publish UI
+    if _fp.endswith("publish.js"):
+        for _needle in ('"output_filename"', '"output_content_type"'):
+            if _needle in _txt:
+                _residue.append((_fp, _needle))
+check("U11 UI/模板/JS 无 output declaration 死键 (mytools_f_out/"
+      "mytools_err_output_filename_required)",
+      not _residue, str(_residue[:3]))
+
+_i18n_src = open(_os.path.join(_REPO, "core", "i18n.py"),
+                 encoding="utf-8").read()
+check("U11 canonical i18n 源无死键 (10 语言全删)",
+      "mytools_f_out" not in _i18n_src
+      and "mytools_err_output_filename_required" not in _i18n_src)
+check("U11 guard 文案 = retired-field 语义 (非 filename-required/ext/MIME 语义)",
+      "Output declaration field retired" in _i18n_src
+      and "Output filename is required" not in _i18n_src
+      and "Output extension not allowed" not in _i18n_src
+      and "Invalid output type" not in _i18n_src)
+
 _cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))

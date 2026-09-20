@@ -404,7 +404,6 @@ async function submit() {
     bad_tool_id: "tool_id", tool_id_taken: "tool_id",
     bad_label: "label", bad_desc: "desc",
     bad_accept: "accept", bad_format_family: "accept", bad_multi: "multi",
-    bad_output_filename: "output_filename", bad_output_content_type: "output_content_type",
     bad_cost: "cost", too_many_tools: "tool_id",
   };
   if (map[d.error]) { showErrors({ [map[d.error]]: d.error }); return; }
