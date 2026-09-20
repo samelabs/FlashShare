@@ -68,3 +68,83 @@ window.resolveLabel = function (label) {
   }
   return "";
 };
+
+/*
+ * ── PWA download authority (site-wide single point) ─────────────────
+ * The ONLY standalone-PWA download policy. All download entries
+ * (result card, history, detail page) call window.pwaDownload /
+ * window.shareFileViaURL; nobody re-implements the standalone branch.
+ *
+ * Standalone hard constraints (product decision):
+ *   - never fetch the file body, never build Blob/File for downloads
+ *   - never navigate the current PWA window to the download URL
+ *   - Web Share available → share the URL itself ({title, url});
+ *     user cancel (AbortError) is a normal end, no fallback
+ *   - no Web Share → secondary browsing context (_blank) handoff
+ *   - non-standalone browsers keep the plain download behavior
+ */
+window.isStandalonePWA = function () {
+  return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+      || window.navigator.standalone === true;
+};
+window.pwaDownload = async function (downloadUrl, title) {
+  // standalone-only path; callers must use plain download elsewhere
+  title = title || "download";
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: title, url: downloadUrl });
+    } catch (e) {
+      if (e && e.name === "AbortError") return true; // user cancel = normal end
+      // share failed: secondary context handoff — NEVER current-window nav
+      _pwaSecondaryHandoff(downloadUrl);
+    }
+    return true;
+  }
+  _pwaSecondaryHandoff(downloadUrl);
+  return true;
+};
+function _pwaSecondaryHandoff(downloadUrl) {
+  try {
+    var a = document.createElement("a");
+    a.href = downloadUrl;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (e) { /* last resort: open in secondary context */ }
+}
+// Explicit "share the FILE" action (distinct from download): may read the
+// File, but must gate on canShare({files}) and, inside a standalone PWA,
+// must never fall back to navigating the current window.
+window.shareFileViaURL = async function (url, filename, btn) {
+  var orig = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="btn-spinner"></div>'; }
+  var restore = function () { if (btn) { btn.disabled = false; btn.innerHTML = orig; } };
+  var filesShareable = !!(navigator.canShare && navigator.share);
+  if (filesShareable) {
+    try {
+      var res = await fetch(url);
+      if (res.ok) {
+        var blob = await res.blob();
+        var file = new File([blob], filename || "download", { type: blob.type || "application/octet-stream" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename || "download" });
+          restore();
+          return true;
+        }
+      }
+    } catch (e) {
+      if (e && e.name === "AbortError") { restore(); return true; }
+      // fall through: share URL instead — never navigate current window
+    }
+  }
+  try {
+    if (navigator.share) { await navigator.share({ title: filename || "download", url: url }); restore(); return true; }
+  } catch (e) {
+    if (e && e.name === "AbortError") { restore(); return true; }
+  }
+  _pwaSecondaryHandoff(url);
+  restore();
+  return true;
+};

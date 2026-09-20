@@ -156,3 +156,48 @@ def open_gokapi_download(file_id: str):
     conn.request("GET", _gokapi_path(f"/downloadFile?id={urllib.parse.quote(file_id)}"))
     resp = conn.getresponse()
     return resp.status, resp.getheaders(), resp
+
+
+class InternalDownloadUnavailable(RuntimeError):
+    """The authenticated non-counting Gokapi channel is unavailable.
+
+    Raised by open_gokapi_internal_download when the official API
+    cannot serve a non-counting read. Callers must surface a typed
+    preview_unavailable (503) — a preview must NEVER fall back to the
+    counted public download path.
+    """
+
+
+def open_gokapi_internal_download(file_id: str, range_header: str | None = None):
+    """THE internal read primitive: non-counting authenticated stream.
+
+    Uses ONLY the official authenticated API:
+        GET /api/files/download/{id}
+        apikey: GOKAPI_KEY
+        increaseCounter: false
+        optional Range header
+
+    No /downloadFile fallback, no sqlite, no data-dir access. Returns
+    (status, headers, response) like open_gokapi_download. Any non-2xx
+    raises InternalDownloadUnavailable instead of leaking a counted
+    fallback path.
+    """
+    if not file_id:
+        raise InternalDownloadUnavailable("missing_file_id")
+    if not GOKAPI_KEY:
+        raise InternalDownloadUnavailable("api_key_not_configured")
+    conn, _parsed = _gokapi_connection(timeout=300)
+    headers = {"apikey": GOKAPI_KEY, "increaseCounter": "false"}
+    if range_header:
+        headers["Range"] = range_header
+    conn.request("GET",
+                 _gokapi_path(f"/api/files/download/{urllib.parse.quote(file_id)}"),
+                 headers=headers)
+    resp = conn.getresponse()
+    if resp.status >= 400:
+        try:
+            resp.read()
+        finally:
+            conn.close()
+        raise InternalDownloadUnavailable(f"gokapi_api_{resp.status}")
+    return resp.status, resp.getheaders(), resp

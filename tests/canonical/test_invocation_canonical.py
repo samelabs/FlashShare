@@ -95,12 +95,12 @@ def db_query(sql):
     except Exception:
         return [("ERR",)]
 
-def upload(cookie, name=b"t.png", ct="image/png", extra=None):
+def upload(cookie, name=b"t.png", ct="image/png", extra=None, no_tool=False):
     """上传一个 1x1 png 源文件, 返回 {publicId, sourceToken}"""
     png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
     conn = http.client.HTTPConnection(*_HOST, timeout=30)
-    fields = {"tool": "compress",
-              "client_ref": f"up-{uuid.uuid4().hex[:10]}"}
+    fields = {} if no_tool else {"tool": "compress"}
+    fields["client_ref"] = f"up-{uuid.uuid4().hex[:10]}"
     if extra: fields.update(extra)
     b, ctt = mp(files=[(name.decode() if isinstance(name, bytes) else name, ct, png)], fields=fields)
     conn.request("POST", "/api/uploads", b, {"Content-Type": ctt, "Cookie": cookie})
@@ -455,6 +455,123 @@ check("G8 home tool-tab 为执行 surface (partial div role=button, home 无导�
 check("PG19 production 零 deprecated icon fallback 字面 (wand 兜底仅 icons.py)",
       sum(_rd("app", "templates", t).count('or "wand"')
           for t in ("home.html", "tools_market.html", "user_page.html")) == 0)
+
+
+# ═══ INL: preview must not consume download allowance ═══
+# upload a real PNG (share path: no tool) → inline + zip-list read via
+# the internal non-counting primitive; ?download=1 stays counted.
+def _get_raw(path, cookie=None):
+    conn = http.client.HTTPConnection(*_HOST, timeout=30)
+    h = {}
+    if cookie: h["Cookie"] = cookie
+    conn.request("GET", path, "", h)
+    resp = conn.getresponse()
+    body = resp.read()
+    hdrs = {k.lower(): v for k, v in resp.getheaders()}
+    conn.close()
+    return resp.status, hdrs, body
+
+_sess_uid = None
+_c = _pg().cursor()
+_c.execute("select id from users where username=%s", (uname,))
+_row = _c.fetchone()
+if _row:
+    _sess_uid = _row[0]
+if _sess_uid is None:
+    # fall back: any seeded canonical user
+    _c.execute("select id from users order by id limit 1")
+    _r2 = _c.fetchone()
+    _sess_uid = _r2[0] if _r2 else None
+if _sess_uid is not None:
+    import importlib
+    sys.path.insert(0, _REPO)
+    _wa = importlib.import_module("app.web_auth")
+    _sid = _wa.create_browser_session(_sess_uid)
+    _from_config = importlib.import_module("config")
+    _ck_val = f"{_from_config.COOKIE_NAME}={_sid}"
+
+    def _upload_raw(cookie, name, ct, data):
+        """raw multipart upload (arbitrary bytes) on the share path"""
+        conn = http.client.HTTPConnection(*_HOST, timeout=30)
+        fields = {"client_ref": f"rz-{uuid.uuid4().hex[:8]}"}
+        b, ctt = mp(files=[(name, ct, data)], fields=fields)
+        conn.request("POST", "/api/uploads", b,
+                     {"Content-Type": ctt, "Cookie": cookie})
+        resp = conn.getresponse()
+        d = json.loads(resp.read())
+        conn.close()
+        return d
+    # share path (no tool field): the upload lands a live share record
+    _up = upload(_ck_val, name=b"prev.png", ct="image/png",
+                 extra={"client_ref": f"prev-{uuid.uuid4().hex[:8]}"}, no_tool=True)
+    if _up.get("ok") and (_up.get("file") or _up.get("files")):
+        _f = _up.get("file") or _up["files"][0]
+        _pid = _f["publicId"]
+        from gokapi import get_gokapi_file as _ggf
+        def _count():
+            _meta = _ggf(_f.get("gokapiId") or "")
+            # lookup by uploads row when the API answer lacks the id
+            if not _meta:
+                _c2 = _pg().cursor()
+                _c2.execute("select gokapi_id from uploads where public_id=%s", (_pid,))
+                _r3 = _c2.fetchone()
+                if _r3 and _r3[0]:
+                    _meta = _ggf(_r3[0])
+            return int((_meta or {}).get("DownloadCount", -1))
+        _before = _count()
+        st_i, _h_i, _b_i = _get_raw(f"/f/{_pid}/inline")
+        check("INL-1 inline preview 200 (image/png)",
+              st_i == 200 and _h_i.get("content-type", "").startswith("image/png"),
+              f"{st_i} {_h_i.get('content-type')}")
+        check("INL-2 inline read does not increase download count",
+              _count() == _before, f"before={_before} after={_count()}")
+        st_d, h_d, _b_d = _get_raw(f"/f/{_pid}?download=1", cookie=_ck_val)
+        check("INL-3 user download still counted (302 to hotlink or stream)",
+              st_d in (200, 302), st_d)
+        # The 302 hands the browser the counted public gokapi URL. CI has
+        # no Nginx, so follow it against the gokapi service directly —
+        # exactly what the browser does — one real user download.
+        if st_d == 302 and h_d.get("location"):
+            _loc = h_d["location"]
+            _gh = http.client.HTTPConnection(
+                os.environ["FLASHSHARE_GOKAPI_URL"].split("//")[1].split(":")[0],
+                int(os.environ["FLASHSHARE_GOKAPI_URL"].rsplit(":", 1)[1]),
+                timeout=30)
+            _gh.request("GET", _loc, "", {})
+            _gr = _gh.getresponse(); _gr.read(); _gh.close()
+        check("INL-4 download increases count exactly once",
+              _count() == _before + 1, f"before={_before} after={_count()}")
+        import zipfile as _zf_mod, io as _io
+        _buf = _io.BytesIO()
+        with _zf_mod.ZipFile(_buf, "w") as _za:
+            _za.writestr("a.txt", "hello")
+        _zip = _upload_raw(_ck_val, "prev.zip", "application/zip", _buf.getvalue())
+        if _zip.get("ok") and (_zip.get("file") or _zip.get("files")):
+            _zf = _zip.get("file") or _zip["files"][0]
+            _zpid = _zf["publicId"]
+            _rz = _upload_raw(_ck_val, "real.zip", "application/zip", _buf.getvalue())
+            if _rz.get("ok") and (_rz.get("file") or _rz.get("files")):
+                _rf = _rz.get("file") or _rz["files"][0]
+                from gokapi import get_gokapi_file as _ggf2
+                _c3 = _pg().cursor()
+                _c3.execute("select gokapi_id from uploads where public_id=%s",
+                            (_rf["publicId"],))
+                _gid = _c3.fetchone()[0]
+                _zc0 = int((_ggf2(_gid) or {}).get("DownloadCount", -1))
+                st_z, _hz, bz = _get_raw(f"/f/{_rf['publicId']}/zip-list")
+                check("INL-5 zip-list 200 ok",
+                      st_z == 200 and json.loads(bz).get("ok"), st_z)
+                _zc1 = int((_ggf2(_gid) or {}).get("DownloadCount", -1))
+                check("INL-6 zip-list internal reads do not increase count",
+                      _zc1 == _zc0, f"before={_zc0} after={_zc1}")
+            else:
+                check("INL-5 zip fixture upload ok", False, str(_rz)[:120])
+        else:
+            check("INL zip fixture upload ok", False, str(_zip)[:120])
+    else:
+        check("INL preview fixture upload ok", False, str(_up)[:120])
+else:
+    check("INL fixture user available", False, "no user row")
 
 print()
 print("FAIL:", FAIL if FAIL else "无 — 全绿")

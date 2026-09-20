@@ -227,12 +227,17 @@ def validate_tool_patch(patch: dict) -> dict:
 def build_http_binding(fields: dict, existing: Optional[dict] = None) -> dict:
     """从已校验字段组装 HTTP endpoint binding (PATCH 对 existing merge)。
 
-    字段: url / timeout_s / auth_header / auth_token /
-    output_filename / output_content_type (由 source policy 决定是否允许,
-    本函数不拒绝)。auth secret 只在这里 seal 一次 (全仓 supply 路径
-    唯一 seal 入口)。
+    字段: url / timeout_s / auth_header / auth_token。auth secret 只在
+    这里 seal 一次 (全仓 supply 路径唯一 seal 入口)。
+
+    Output landing identity is endpoint-product-owned (既定产品裁定):
+    output_filename / output_content_type are NOT binding fields. Any
+    canonical write through here drops those legacy keys from an
+    existing binding — runtime ignores them, writers erase them.
     """
     decl = dict(existing or {})
+    decl.pop("output_filename", None)
+    decl.pop("output_content_type", None)
     if "url" in fields:
         decl["url"] = fields["url"]
     if "timeout_s" in fields:
@@ -242,10 +247,6 @@ def build_http_binding(fields: dict, existing: Optional[dict] = None) -> dict:
     if "auth_token" in fields:
         from secrets_vault import seal
         decl["auth_token"] = seal(fields["auth_token"])
-    if "output_filename" in fields:
-        decl["output_filename"] = fields["output_filename"]
-    if "output_content_type" in fields:
-        decl["output_content_type"] = fields["output_content_type"]
     return decl
 
 

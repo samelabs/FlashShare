@@ -51,11 +51,9 @@
       <input type="checkbox" name="multi" id="remoteMulti"><span>允许多文件输入</span>
     </label>
     <input class="sl-input" name="cost" type="number" min="0" value="0" placeholder="单价积分" style="flex:0 1 100px">
-    <input class="sl-input" name="output_filename" placeholder="输出名 如 out.png" style="flex:1 1 130px">
-    <input class="sl-input" name="output_content_type" placeholder="输出类型 如 image/png" style="flex:1 1 150px">
     <button type="submit" class="sl-btn sl-btn-primary">创建</button>
   </form>
-  <p class="sl-dim" style="margin:10px var(--s4) 0">裸 bytes 交付模式必须填"输出名"（扩展名需在平台白名单内，如 .png/.pdf）；JSON data_b64 模式可留空由端点提供文件名。</p>
+  <p class="sl-dim" style="margin:10px var(--s4) 0">输出落地身份由端点产物决定：裸 bytes 按魔数嗅探生成 result.&lt;ext&gt;；JSON 模式可用端点返回的 filename/content_type。工具声明不配置输出。</p>
 </div>
 
 {% endblock %}

@@ -39,6 +39,11 @@ jobs:
           while IFS= read -r file; do
             node --check "$file"
           done < <(git ls-files '*.js')
+
+      - name: Web-flow JS behavior contract
+        run: |
+          node tests/ci/test_web_flow_contract.js
+          node tests/ci/test_pwa_download_contract.js
       - name: Source-of-truth guards
         shell: bash
         run: |

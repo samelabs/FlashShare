@@ -354,6 +354,7 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
 
 def _http_call(endpoint: str, payload: dict, headers: dict,
                timeout_s: int, trusted: bool) -> tuple:
+    """Returns (status, body, endpoint_response_content_type|None)."""
     body = json.dumps(payload).encode()
     if not trusted:
         # Stored-row defense: a reserved credential header (Host, framing,
@@ -369,7 +370,10 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
             timeout_s=timeout_s, has_credential=bool(headers))
         if status != 200:
             raise RemoteError("http_status", f"{status}")
-        return status, data
+        # Pinned transport returns the body only — no response identity.
+        # Raw-byte products on this path carry no endpoint content_type;
+        # landing MIME is derived from the canonical filename + bytes.
+        return status, data, None
     req = urllib.request.Request(
         endpoint, data=body, method="POST",
         headers={"Content-Type": "application/json",
@@ -380,7 +384,8 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
                  **headers})
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            return resp.status, resp.read(MAX_OUTPUT_BYTES + 1)
+            ctype = resp.headers.get("Content-Type")
+            return resp.status, resp.read(MAX_OUTPUT_BYTES + 1), ctype
     except urllib.error.HTTPError as exc:
         detail = exc.read(500).decode("utf-8", "replace")
         raise RemoteError("http_status", f"{exc.code} {detail}") from exc
@@ -414,25 +419,25 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
         ],
         "params": params,
     }
-    status, body = _http_call(url, payload, auth_headers, timeout_s, trusted)
+    status, body, resp_ctype = _http_call(url, payload, auth_headers, timeout_s, trusted)
     if status != 200:
         raise RemoteError("http_status", f"{status}")
     try:
         out = json.loads(body)
     except Exception:
         # raw-bytes mode: body IS the file
-        return _wrap_raw(endpoint_decl, body)
+        return _wrap_raw(body, content_type=resp_ctype)
     # json mode: {filename?, content_type?, data_b64 | output_url}
     if "output_url" in out:
         data = _pull_output_url(out["output_url"], timeout_s, trusted)
-        return _wrap_raw(endpoint_decl, data, out.get("filename"))
+        return _wrap_raw(data, out.get("filename"), out.get("content_type") or resp_ctype)
     if "data_b64" in out:
         import base64
         try:
             data = base64.b64decode(out["data_b64"], validate=True)
         except Exception as exc:
             raise RemoteError("bad_output", "b64 decode failed") from exc
-        return _wrap_raw(endpoint_decl, data, out.get("filename"))
+        return _wrap_raw(data, out.get("filename"), out.get("content_type") or resp_ctype)
     raise RemoteError("invalid_response", "no data_b64/output_url/raw body")
 
 
@@ -460,19 +465,41 @@ def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:
     return data
 
 
-def _wrap_raw(decl: dict, body: bytes, filename: str | None = None) -> dict:
-    # Landing identity: endpoint-provided filename > sniffed placeholder.
-    # 文件名是开发者 API 自定义机制, 平台不限定 — 端点返回什么
-    # 用什么; 端点未给时用产物魔数定型生成占位名 (result.<ext>)。
+def _wrap_raw(body: bytes, filename: str | None = None,
+              content_type: str | None = None) -> dict:
+    """Wrap raw endpoint product bytes into a canonical landing result.
+
+    Inputs are the PRODUCT itself (endpoint-declared identity only):
+      body — the product bytes; filename — optional endpoint filename;
+      content_type — optional endpoint response content_type.
+    No endpoint TOOL declaration is consulted here (既定产品裁定:
+    output landing identity is endpoint-product-owned).
+
+    Landing identity: endpoint filename > sniffed placeholder
+    (result.<ext> by product magic). MIME: endpoint content_type, but a
+    blank or generic application/octet-stream value never overrides a
+    MIME the platform itself can determine from the canonical filename
+    + byte validation (sniff_allowed falls back to mimetypes).
+    """
     if not filename:
         ext = _sniff_ext(body[:64])
         if not ext:
             raise RemoteError("bad_output", "unknown output format (no filename given)")
         filename = "result" + ext
     name = filename
-    ctype = decl.get("output_content_type") or "application/octet-stream"
-    validated = validate_output(name, ctype, body)
-    return {"filename": name, "content_type": sniff_final_type(name, ctype, body),
+    given_ctype = (content_type or "").strip().lower()
+    if given_ctype in ("", "application/octet-stream"):
+        given_ctype = ""  # placeholder — do NOT let it mask the real MIME
+    validated = validate_output(name, given_ctype, body)
+    final_type = sniff_final_type(name, given_ctype, body)
+    # sniff_final_type returns the declared type when sniff_allowed cannot
+    # determine better; with an empty declaration it resolves via
+    # mimetypes on the canonical filename. A non-generic endpoint type
+    # wins as-is (validated above); a generic one must never survive.
+    if not given_ctype and (not final_type or final_type.lower() == "application/octet-stream"):
+        import mimetypes as _mt
+        final_type = _mt.guess_type(name)[0] or "application/octet-stream"
+    return {"filename": name, "content_type": final_type,
             "bytes": validated}
 
 

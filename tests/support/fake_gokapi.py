@@ -70,6 +70,15 @@ class Store:
             )
             return self._public(row), bytes(row["_data"])
 
+    def internal_download(self, file_id: str) -> tuple[dict | None, bytes | None]:
+        """Authenticated API read (apikey + increaseCounter=false): never
+        consumes the public download allowance."""
+        with self._lock:
+            row = self._files.get(file_id)
+            if not row:
+                return None, None
+            return self._public(row), bytes(row["_data"])
+
     @staticmethod
     def _public(row: dict) -> dict:
         return {k: v for k, v in row.items() if not k.startswith("_")}
@@ -173,6 +182,47 @@ class Handler(BaseHTTPRequestHandler):
             if data is None:
                 self.send_error(410)
                 return
+
+            status = 200
+            start, end = 0, len(data) - 1
+            range_header = self.headers.get("Range", "")
+            if range_header:
+                match = re.fullmatch(r"bytes=(\d+)-(\d*)", range_header.strip())
+                if not match:
+                    self.send_error(416)
+                    return
+                start = int(match.group(1))
+                end = int(match.group(2)) if match.group(2) else end
+                if start < 0 or start >= len(data) or end < start:
+                    self.send_error(416)
+                    return
+                end = min(end, len(data) - 1)
+                data = data[start:end + 1]
+                status = 206
+
+            self.send_response(status)
+            self.send_header("Content-Type", meta["ContentType"])
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Accept-Ranges", "bytes")
+            if status == 206:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{meta['SizeBytes']}")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if path.startswith("/api/files/download/"):
+            # Official authenticated non-counting read:
+            #   apikey required; increaseCounter=false honored (the
+            #   counter only moves on /downloadFile).
+            if not self._authorized():
+                self._json(401, {"ErrorMessage": "unauthorized"})
+                return
+            file_id = path[len("/api/files/download/"):]
+            meta, data = STORE.internal_download(file_id)
+            if meta is None:
+                self._json(404, {"ErrorMessage": "not_found"})
+                return
+            assert data is not None  # internal_download returns data iff row exists
 
             status = 200
             start, end = 0, len(data) - 1

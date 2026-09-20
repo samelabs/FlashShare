@@ -8,7 +8,9 @@ enter as DATA rows.
 Safety model (no review queue):
   - SSRF pre-check at submission: https + resolved public IPs required
     (same guard the driver applies per-call; fail early, fail typed)
-  - Landing identity: output_filename required with whitelisted ext
+  - Landing identity: endpoint-product-owned (result.<ext> sniff for
+    bare bytes; endpoint filename/content_type in JSON mode) — output
+    declaration fields are rejected on submission
   - Per-user caps: max 20 tools, price 0..100000
   - Zero-trust output: sniff whitelist at every landing, no exemptions
   - Economics: provider earns (price - commission) per successful call;

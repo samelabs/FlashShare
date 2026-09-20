@@ -43,11 +43,23 @@
       throw new Error(errText("err_too_many_files"));
     }
 
+    // ONE user run = ONE operation identity. Born here (single mint per
+    // run via app.js newOperationRef — the only web generator) and shared
+    // verbatim by the upload and execute legs of THIS run.
+    if (typeof window.newOperationRef !== "function") {
+      throw new Error(errText("failed"));
+    }
+    const operationRef = window.newOperationRef();
+
     // Step 1: upload (multipart, XHR for progress)
     const formData = new FormData();
     fileList.forEach(f => formData.append("file", f));
     // 工具中间件语义: 带 tool 字段 → 上传不落分享记录 (仅 execute 产物落库)
     if (tool) formData.append("tool", tool.id);
+    // operation identity for the ingress-receipt batch — MUST equal the
+    // execute leg's client_ref below (backend requires canonical
+    // non-empty client_ref on both endpoints).
+    formData.append("client_ref", operationRef);
     const up = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/uploads");
@@ -85,7 +97,8 @@
 
     // Step 2: execute tool — canonical ToolInvocation (Stage C):
     // source.files[] 唯一 shape (single/multi 只是长度不同);
-    // params 只含 tool params; delivery 独立; client_ref=null= fresh。
+    // params 只含 tool params; delivery 独立; client_ref = the operation
+    // identity minted for THIS run (identical to the upload leg's ref).
     window.showToolProcessing &&
       window.showToolProcessing(window.resolveLabel ? window.resolveLabel(tool.label) || tool.id : tool.id);
     const uploaded = up.files || [up.file];
@@ -95,7 +108,7 @@
       source: { files: uploaded.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
       params: params,
       delivery: { expiry_days: opts.expiryDays || 1, allowed_downloads: opts.allowedDownloads || 50 },
-      client_ref: null,
+      client_ref: operationRef,
     };
     const res = await fetch("/api/tools/execute", {
       method: "POST",

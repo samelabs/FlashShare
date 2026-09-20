@@ -563,6 +563,10 @@ function newOperationRef() {
         .map(b => b.toString(16).padStart(2, "0")).join("");
   return "web:" + u;
 }
+// Web operation-ref generator — the ONLY one. Exposed for the shared
+// process-flow entry so tool pages mint identity through this single
+// source (no second UUID implementation anywhere).
+window.newOperationRef = newOperationRef;
 let pendingOperationRef = null;
 let lastUploadResult = null;
 let lastToolSource = null;
@@ -983,29 +987,16 @@ async function retryTool() {
 // Stable icon paths via unified registry
 
 async function shareFile(url, filename, btn) {
-  var orig = btn ? btn.innerHTML : "";
-  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="btn-spinner"></div>'; }
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return false;
-    const blob = await res.blob();
-    const file = new File([blob], filename || "download", { type: blob.type || "application/octet-stream" });
-    if (navigator.share) {
-      await navigator.share({ files: [file], title: filename || "download" });
-      return true;
-    }
-  } catch (e) {
-    if (e.name === "AbortError") return true;
-    console.warn("share failed:", e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-  }
+  // Delegates to the site-wide share authority (base-engine.js).
+  // Kept as a thin alias so existing call sites stay unchanged.
+  if (window.shareFileViaURL) return window.shareFileViaURL(url, filename, btn);
   return false;
 }
 
 function isStandalonePWA() {
-  return window.matchMedia('(display-mode: standalone)').matches
-      || window.navigator.standalone === true;
+  return window.isStandalonePWA ? window.isStandalonePWA()
+      : (window.matchMedia('(display-mode: standalone)').matches
+          || window.navigator.standalone === true);
 }
 
 function showQrModal(qrUrl) {
@@ -1092,18 +1083,19 @@ function showShareResult(file) {
   if (qrBtn) qrBtn.addEventListener("click", () => showQrModal(url + "/qr.svg"));
   const zipBtn = document.getElementById(zipBtnId);
   if (zipBtn) ensureZipPreview(() => window.zipPreview && window.zipPreview.wireRemotePreview(zipBtn, file.publicId));
-  // PWA standalone: download button uses navigator.share instead of <a download>
+  // PWA standalone: download goes through the site-wide authority
+  // (base-engine.js pwaDownload — URL share / secondary context; the
+  // current PWA window is never navigated).
   if (pwa) {
     const dlBtn = document.querySelector('.result-card .action-btn.primary');
-    if (dlBtn) dlBtn.addEventListener("click", async () => {
-      const ok = await shareFile(dlUrl, file.filename || file.name || "download", dlBtn);
-      if (!ok) window.location.href = dlUrl;
+    if (dlBtn) dlBtn.addEventListener("click", () => {
+      window.pwaDownload && window.pwaDownload(dlUrl, file.filename || file.name || "download");
     });
   }
   const shareImgBtn = document.getElementById(shareImgId);
   if (shareImgBtn) shareImgBtn.addEventListener("click", async () => {
     const ok = await shareFile(dlUrl, file.filename || file.name || "download", shareImgBtn);
-    if (!ok) window.location.href = dlUrl;
+    if (!ok) window.open(dlUrl, "_blank", "noopener");
   });
 }
 

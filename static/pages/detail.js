@@ -12,47 +12,23 @@ copyBtn.addEventListener("click", async () => {
   setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);
 });
 
-const _pwa = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const _pwa = window.isStandalonePWA ? window.isStandalonePWA()
+  : (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
 const dlBtn = document.querySelector('a.action-btn.primary[download]');
 if (dlBtn && _pwa) {
   dlBtn.removeAttribute('href');
-  dlBtn.addEventListener('click', async () => {
-    const url = __PAGE__.dlUrl;
-    const fname = __PAGE__.fileName;
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('fetch failed');
-      const blob = await res.blob();
-      const file = new File([blob], fname || 'download', { type: blob.type || 'application/octet-stream' });
-      if (navigator.share) {
-        await navigator.share({ files: [file], title: fname || 'download' });
-        return;
-      }
-    } catch(e) {
-      if(e.name === 'AbortError') return;
-      console.warn('download failed:', e.message);
-    }
-    window.location.href = __PAGE__.dlUrl;
+  dlBtn.addEventListener('click', () => {
+    // Site-wide PWA download authority (base-engine.js): URL share /
+    // secondary-context handoff — never fetches the body and never
+    // navigates the current PWA window.
+    window.pwaDownload && window.pwaDownload(__PAGE__.dlUrl, __PAGE__.fileName);
   });
 }
 const shareImgBtn = document.getElementById("shareImgBtn");
-shareImgBtn.addEventListener("click", async () => {
-  const imgUrl = __PAGE__.dlUrl;
-  const fname = __PAGE__.fileName;
-  try {
-    const res = await fetch(imgUrl);
-    if (!res.ok) throw new Error("fetch failed");
-    const blob = await res.blob();
-    const file = new File([blob], fname || "download", { type: blob.type || "application/octet-stream" });
-    if (navigator.share) {
-      await navigator.share({ files: [file], title: fname || "download" });
-      return;
-    }
-  } catch(e) {
-    if(e.name === 'AbortError') return;
-    console.warn('share failed:', e.message);
-  }
-  window.location.href = __PAGE__.dlUrl;
+shareImgBtn.addEventListener("click", () => {
+  // Explicit share-file action: site-wide authority (canShare gate; a
+  // standalone-PWA failure never navigates the current window).
+  window.shareFileViaURL && window.shareFileViaURL(__PAGE__.dlUrl, __PAGE__.fileName, shareImgBtn);
 });
 
 const qrBtn = document.getElementById("qrBtn");

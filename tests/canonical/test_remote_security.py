@@ -757,6 +757,103 @@ check("ROUTE operator create + auth_token + no key → 503 (非409)",
       f"{r.status_code} {r.text[:80]}")
 
 
+
+# ═══ OUTPUT-DECL RETIREMENT: runtime behavior (no tool declaration) ═══
+# Landing identity is endpoint-product-owned. _wrap_raw takes the
+# PRODUCT (bytes + optional endpoint filename/content_type) — never a
+# tool declaration dict.
+import base64 as _b64
+import struct as _struct
+
+def _png_bytes():
+    ihdr = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + _struct.pack(
+        ">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    return ihdr + b"\x00\x00\x00\x00IEND\xae\x42\x60\x82"
+
+# OUT-1: real PNG bytes, NO output declaration → result.png + image/png
+try:
+    out = remote._wrap_raw(_png_bytes())
+    check("OUT-1 raw PNG no declaration → filename result.png",
+          out["filename"] == "result.png", out["filename"])
+    check("OUT-1 raw PNG no declaration → canonical image/png",
+          out["content_type"] == "image/png", out["content_type"])
+except Exception as exc:
+    check("OUT-1 raw PNG no declaration → result.png/image/png", False, exc)
+
+# OUT-2: generic octet-stream never masks the real MIME
+try:
+    out = remote._wrap_raw(_png_bytes(), content_type="application/octet-stream")
+    check("OUT-2 generic octet-stream not masking image/png",
+          out["content_type"] == "image/png", out["content_type"])
+except Exception as exc:
+    check("OUT-2 generic octet-stream not masking", False, exc)
+
+# OUT-3: explicit endpoint content_type survives (JSON mode path)
+try:
+    out = remote._wrap_raw(_png_bytes(), "photo.png", "image/png")
+    check("OUT-3 endpoint content_type honored",
+          out["filename"] == "photo.png" and out["content_type"] == "image/png",
+          out)
+except Exception as exc:
+    check("OUT-3 endpoint content_type honored", False, exc)
+
+# OUT-4: JSON-mode product identity flows into canonical result via
+# drive_http (resolver pinned; data_b64 PNG + filename + content_type)
+rec_o = _install_stack(
+    resolve_map={"out.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(200, json.dumps({
+        "filename": "prod.png",
+        "content_type": "image/png",
+        "data_b64": _b64.b64encode(_png_bytes()).decode(),
+    }).encode())])
+try:
+    decl_o = {"url": "https://out.example/api", "timeout_s": 30}
+    out = remote.drive_http(decl_o, [], {}, {}, trusted=False)
+    check("OUT-4 JSON content_type enters canonical result",
+          out["filename"] == "prod.png" and out["content_type"] == "image/png",
+          out)
+    check("OUT-4 legacy output_* binding keys ignored by runtime",
+          "output_filename" not in decl_o and "output_content_type" not in decl_o)
+except Exception as exc:
+    check("OUT-4 JSON content_type enters canonical result", False, exc)
+finally:
+    _restore_stack()
+
+# OUT-5: canonical writer erases legacy binding keys on any write
+from governance.tool_supply import build_http_binding
+_legacy = {"url": "https://pub.example/old", "timeout_s": 30,
+           "output_filename": "legacy.png", "output_content_type": "image/png"}
+_merged = build_http_binding({"timeout_s": 60}, _legacy)
+check("OUT-5 build_http_binding pops legacy output keys",
+      "output_filename" not in _merged and "output_content_type" not in _merged,
+      _merged)
+check("OUT-5 merge kept canonical fields",
+      _merged["url"].endswith("/old") and _merged["timeout_s"] == 60, _merged)
+
+# OUT-6: operator route rejects explicit legacy fields (typed 422)
+r = client.post("/samelabs/remote/create", json={
+    "tool_id": "secopout", "url": "https://pub.example/o",
+    "output_filename": "x.png"}, cookies={COOKIE_NAME: sess2})
+check("OUT-6 operator create output_filename → 422 bad_output_filename",
+      r.status_code == 422 and r.json().get("error") == "bad_output_filename",
+      f"{r.status_code} {r.text[:80]}")
+r = client.post("/samelabs/remote/create", json={
+    "tool_id": "secopout", "url": "https://pub.example/o",
+    "output_content_type": "image/png"}, cookies={COOKIE_NAME: sess2})
+check("OUT-6 operator create output_content_type → 422",
+      r.status_code == 422 and r.json().get("error") == "bad_output_content_type",
+      f"{r.status_code} {r.text[:80]}")
+_cur.execute("select count(*) from platform_tools where tool_key = 'secopout'")
+check("OUT-6 zero rows written for rejected payloads",
+      _cur.fetchone()[0] == 0)
+
+# OUT-7: owner projection no longer carries the retired fields
+from governance.user_tools import _owner_rows
+_proj = _owner_rows(uid2)
+check("OUT-7 owner projection has no output_filename/output_content_type",
+      all("output_filename" not in p and "output_content_type" not in p
+          for p in _proj), [sorted(p) for p in _proj][:1])
+
 # 清场
 # uid2 被升为 samelabs operator 并驱动过 /samelabs/remote/create → 留下
 # operator_audit 行; actor FK 不带 CASCADE, 测试清理先删 audit 引用再删
