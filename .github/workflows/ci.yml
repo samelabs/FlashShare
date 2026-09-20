@@ -232,6 +232,24 @@ jobs:
       - name: Gokapi adapter contract
         run: python tests/ci/test_gokapi_adapter.py
 
+      - name: Gokapi capability probe contract
+        run: python tests/ci/test_gokapi_capability_probe.py
+
+      - name: Runtime identity contract (healthz source_sha/dirty)
+        run: python tests/ci/test_healthz_identity.py
+
+      - name: Web flow JS behavior contract
+        run: node tests/ci/test_web_flow_contract.js
+
+      - name: UI error/retry JS contract
+        run: node tests/ci/test_ui_error_contract.js
+
+      - name: PWA download JS contract
+        run: node tests/ci/test_pwa_download_contract.js
+
+      - name: Result image rule JS contract
+        run: node tests/ci/test_result_image_rule_contract.js
+
       - name: Start real FlashShare app
         shell: bash
         run: |

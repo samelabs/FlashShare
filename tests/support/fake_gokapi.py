@@ -218,8 +218,13 @@ class Handler(BaseHTTPRequestHandler):
             mode = STORE.fail_internal
             if mode == "401":
                 self._json(401, {"ErrorMessage": "unauthorized"})
+            elif mode == "403":
+                self._json(403, {"ErrorMessage": "forbidden"})
             elif mode == "404":
-                self._json(404, {"ErrorMessage": "not_found"})
+                # contract-shaped missing-file body (real v2.2.4)
+                self._json(404, {"Result": "error", "ErrorMessage": "file not found", "ErrorCode": 5})
+            elif mode == "405":
+                self.send_error(405, "method not allowed")
             elif mode == "500":
                 self._json(500, {"ErrorMessage": "boom"})
             else:
@@ -236,7 +241,9 @@ class Handler(BaseHTTPRequestHandler):
             file_id = path[len("/api/files/download/"):]
             meta, data = STORE.internal_download(file_id)
             if meta is None:
-                self._json(404, {"ErrorMessage": "not_found"})
+                # real v2.2.4 contract body for a missing file
+                # (auth gate passed; ErrorCode 5 = file not found)
+                self._json(404, {"Result": "error", "ErrorMessage": "file not found", "ErrorCode": 5})
                 return
             assert data is not None  # internal_download returns data iff row exists
 
@@ -306,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 body = {}
             mode = body.get("mode")
-            STORE.fail_internal = mode if mode in ("401", "404", "500") else None
+            STORE.fail_internal = mode if mode in ("401", "403", "404", "405", "500") else None
             self._json(200, {"Result": "OK", "fail_internal": STORE.fail_internal})
             return
 

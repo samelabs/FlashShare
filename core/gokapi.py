@@ -204,26 +204,42 @@ def open_gokapi_internal_download(file_id: str, range_header: str | None = None)
 
 
 def verify_download_permission() -> None:
-    """Startup capability probe (fail-closed, task 7).
+    """Startup capability probe (fail-closed).
 
     Proves the configured service key passes Gokapi's DOWNLOAD permission
     gate BEFORE the app accepts traffic. Read-only: no file is written
     and no counter moves (increaseCounter: false).
 
-    Strategy: list files via the same key (proves the key authenticates),
-    then issue an internal download probe against a known file id —
-    either from the listing or a synthetic probe id. A 401/403 on the
-    download endpoint means the key lacks DOWNLOAD permission:
-        raise InternalDownloadUnavailable("gokapi_download_permission_missing")
-    so main.py startup fails-closed with a clear log line, instead of
-    every tool call and preview failing at user time.
+    Rules (strict — "anything but 401/403" is NOT a pass):
+      - list_gokapi_files() yields a real file id → probe THAT id:
+          200 / 206            → capability available (response drained)
+          401 / 403            → gokapi_download_permission_missing
+          ANY other status     → gokapi_download_capability_unknown
+                                 (fail-closed; includes 404 on a real id,
+                                 5xx, 405 — the channel is not provably
+                                 usable, so startup must not guess)
+      - storage empty → synthetic probe id. A synthetic id can only
+        prove auth-passed via the REAL v2.2.4 contract's exact
+        missing-file response (verified: HTTP 404 with JSON body
+        {"Result":"error","ErrorCode":5,"ErrorMessage":"file not found"};
+        a wrong route yields chi's plain-text "404 page not found",
+        a missing permission yields 401/403 BEFORE the file lookup):
+          that exact status + body → auth gate passed (capability for
+          real files is asserted by the release-gate v2.2.4 proof,
+          not assumed here)
+          401 / 403              → gokapi_download_permission_missing
+          ANY other status/body  → gokapi_download_capability_unknown
+        Anything but the contract-proven response fails closed.
     """
     if not GOKAPI_KEY:
         raise InternalDownloadUnavailable("api_key_not_configured")
     ok, files = list_gokapi_files()
     if not ok:
         raise InternalDownloadUnavailable("gokapi_unreachable")
-    probe_id = (files[0].get("id") or files[0].get("Id")) if files else "__capability_probe__"
+    if files:
+        probe_id = files[0].get("id") or files[0].get("Id")
+    else:
+        probe_id = "__capability_probe__"
     conn, _parsed = _gokapi_connection(timeout=10)
     try:
         conn.request(
@@ -232,13 +248,27 @@ def verify_download_permission() -> None:
             headers={"apikey": GOKAPI_KEY, "increaseCounter": "false"},
         )
         resp = conn.getresponse()
-        if resp.status in (401, 403):
-            # fail-closed: DOWNLOAD permission missing on this key
+        status = resp.status
+        try:
+            body = resp.read()  # always drain before close
+        except Exception:
+            body = b""
+        if status in (401, 403):
             raise InternalDownloadUnavailable("gokapi_download_permission_missing")
-        if resp.status == 200:
-            resp.read()  # drain (only when a real file was probed)
-        # 404 / 206 for the synthetic id both prove the permission gate
-        # was passed (auth accepted) — the id simply does not exist.
+        if files:
+            if status not in (200, 206):
+                # real file + anything else = channel not provably usable
+                raise InternalDownloadUnavailable(f"gokapi_download_capability_unknown_{status}")
+        else:
+            # synthetic id: only the real-v2.2.4-proven missing-file
+            # response counts as auth-passed; everything else (incl. a
+            # plain-text 404 from a wrong route) fails closed
+            contract_miss = (
+                status != 404
+                or b'"ErrorCode":5' not in body
+            )
+            if contract_miss:
+                raise InternalDownloadUnavailable(f"gokapi_download_capability_unknown_{status}")
     finally:
         try:
             conn.close()

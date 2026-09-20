@@ -116,8 +116,7 @@ Server Agent MUST NOT：
 - **operator 权限**：users.status ∈ BACKOFFICE（如 'samelabs'），实时查库。
 - **MCP** 是北向主入口（streamable-http）；REST `/api/v1`；Web 三面同构 canonical invocation。
 - **文件生命周期**：Gokapi 是物理文件权威；518 是 public mapping/页面可见性权威；startup + hourly housekeeping，无 cron/scheduler 子系统。
-- **站内预览语义**（已决定，实现受阻）：internal preview SHOULD NOT 消耗 allowed_downloads；
-  但 Gokapi v2.2.4 无 API-key non-counting 读通道。见 DEVELOPMENT.md 的 Gokapi 约束。**禁止穿透 Gokapi 私有存储（sqlite/schema/content 目录）实现预览**。当前 preview 走 counted path（IMPLEMENTATION BLOCKED BY GOKAPI DEPLOYMENT CAPABILITY）。
+- **站内预览语义**（已实现）：internal preview 走 `/api/files/download/{id}`（`increaseCounter:false`）authenticated non-counting 通道，不消耗 allowed_downloads；service API key 必须拥有 DOWNLOAD permission（v2.2.4 `ApiPermDownload`），startup capability probe fail-closed 验证。**禁止穿透 Gokapi 私有存储（sqlite/schema/content 目录）实现预览**。见 DEVELOPMENT.md 的 Gokapi 约束（含 disposable 真实 v2.2.4 实测证据）。
 
 ## 前端分层契约（违者必炸）
 

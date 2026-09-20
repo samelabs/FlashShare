@@ -144,8 +144,24 @@ FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
 
 ## Gokapi 集成约束（已验证事实）
 
-- 生产 Gokapi = **v2.2.4**。
-- `GET /api/files/download/{id}` 用 apikey 返回 **401**（admin-session scope）——当前版本**没有**可用的 API-key non-counting 读通道。
-- `/downloadFile` 强制计数（`increaseCounter:false` 无效）。
-- 因此：**站内预览不消耗下载次数**是已决定的产品语义，但实现等待 Gokapi 升级或明确的 deployment-level integration 决策。
-- **DO NOT bypass Gokapi abstraction**：不读它的私有 sqlite / schema / content 目录，不做同机文件系统 fallback。
+- 生产目标 Gokapi = **v2.2.4**（disposable 同版本实例实测，见下）。
+- `GET /api/files/download/{id}`（header `apikey`，`increaseCounter: false`）是 **authenticated API-key non-counting internal read contract**：200 全量 / 206 Range，DownloadCount 不动。
+- service API key 必须拥有 **DOWNLOAD permission**（v2.2.4 `ApiPermDownload`，位 512）；无该 permission 时 internal read 实际返回 **401**（`{"Result":"error","ErrorMessage":"Unauthorized","ErrorCode":2}`，鉴权门在文件查找之前）。早期记录的"401（admin-session scope）"实为 key 缺 DOWNLOAD permission 所致，并非通道不存在。
+- missing file（permission 通过后）= **404** + `{"Result":"error","ErrorMessage":"file not found","ErrorCode":5}`；startup probe 的 synthetic id 分支据此 exact response 判 auth-passed，其余一切 status/body fail-closed（`gokapi_download_permission_missing` / `gokapi_download_capability_unknown_*`）。
+- `/downloadFile` 是 recipient counted path：**200 且 DownloadCount +1**（实测 0→1）。
+- **禁止 sqlite/data-dir/private-storage fallback**：不读 Gokapi 私有 sqlite/schema/content 目录，不做同机文件系统 fallback。
+- **验证分层**：fake Gokapi CI（`tests/support/fake_gokapi.py`）只验证 518 adapter contract；真实 v2.2.4 compatibility proof 是 release gate，不由 fake 替代。
+
+### Disposable 真实 v2.2.4 实测证据（2026-09-20，本机同 binary `/opt/gokapi/gokapi` 独立实例）
+
+| 项 | 实测 |
+| --- | --- |
+| image/version | Gokapi v2.2.4（Go build `9a4b289c`，非 docker 原生 binary） |
+| key permissions | full key = VIEW\|UPLOAD\|DELETE\|API_MOD\|EDIT\|DOWNLOAD（543）；对照 key 同权但无 DOWNLOAD（31） |
+| upload initial DownloadCount | 0 |
+| internal full read | **200**（32 B 全量一致），DownloadCount 0→0 |
+| internal Range read | **206**（`Range: bytes=0-9`，10 B），DownloadCount 0→0 |
+| `/downloadFile`（recipient counted） | **200**，DownloadCount **0→1** |
+| 无 DOWNLOAD permission 的 internal read | **401**（ErrorCode 2，无计数移动） |
+| synthetic missing id（empty storage） | full key → **404** ErrorCode 5；no-perm key → **401**（可严格区分 route-missing ≠ permission-pass+file-missing） |
+| startup probe | 有 DOWNLOAD 权限 key → PASS；无权限 key → fail-closed `gokapi_download_permission_missing` |
