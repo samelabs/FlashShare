@@ -945,12 +945,6 @@ async function shareFile(url, filename, btn) {
   return false;
 }
 
-function isStandalonePWA() {
-  return window.isStandalonePWA ? window.isStandalonePWA()
-      : (window.matchMedia('(display-mode: standalone)').matches
-          || window.navigator.standalone === true);
-}
-
 function showQrModal(qrUrl) {
   let qrModal = document.getElementById("homeQrModal");
   if (!qrModal) {
@@ -979,7 +973,10 @@ function showShareResult(file) {
   const shareImgId = `shareimg-${Date.now()}`;
   const zipBtnId = `zipbtn-${Date.now()}`;
   const meta = fmtSize(file.size);
-  const pwa = isStandalonePWA();
+  // PWA detection authority is base-engine.js window.isStandalonePWA —
+  // app.js never re-declares it (a same-name top-level function here
+  // shadowed the engine property and recursed infinitely).
+  const pwa = window.isStandalonePWA();
 
   let actions;
   if (pwa) {
@@ -1059,59 +1056,3 @@ function showShareResult(file) {
 // Load tools on page load
 if (!window.__TOOLPAGE__) loadHomeTools();
 window.applyI18n();
-
-// ── Site-wide async confirm authority (task 8 / VIS-006 closure) ──
-// One modal-based confirm for core destructive operations: history
-// delete, detail delete, profile X unbind, token revoke, homepage
-// upload delete. Replaces native confirm() everywhere: backdrop cancel,
-// Escape cancel, focus lands on the primary action, focus restored on
-// close — mobile/WebView safe (no browser native dialog dependency).
-window.confirmAction = function (opts) {
-  return new Promise((resolve) => {
-    let layer = document.getElementById("confirmModal");
-    if (!layer) {
-      layer = document.createElement("div");
-      layer.id = "confirmModal";
-      layer.className = "modal hidden";
-      layer.setAttribute("role", "dialog");
-      layer.setAttribute("aria-modal", "true");
-      layer.innerHTML =
-        '<div class="modal-panel confirm-panel">' +
-        '<h3 id="confirmModalTitle" class="confirm-title"></h3>' +
-        '<p id="confirmModalText" class="confirm-text"></p>' +
-        '<div class="tool-panel-actions">' +
-        '<button class="action-btn" id="confirmModalCancel" type="button"></button>' +
-        '<button class="action-btn primary" id="confirmModalOk" type="button"></button>' +
-        "</div></div>";
-      document.body.appendChild(layer);
-    }
-    const titleEl = document.getElementById("confirmModalTitle");
-    const textEl = document.getElementById("confirmModalText");
-    const okBtn = document.getElementById("confirmModalOk");
-    const cancelBtn = document.getElementById("confirmModalCancel");
-    titleEl.textContent = opts.title || "";
-    textEl.textContent = opts.message || "";
-    okBtn.textContent = opts.confirmLabel || t("confirm");
-    cancelBtn.textContent = opts.cancelLabel || t("cancel");
-
-    const prevFocus = document.activeElement;
-    let settled = false;
-    function done(val) {
-      if (settled) return;
-      settled = true;
-      layer.classList.add("hidden");
-      document.removeEventListener("keydown", onKey, true);
-      if (prevFocus && prevFocus.focus) prevFocus.focus();
-      resolve(val);
-    }
-    function onKey(e) {
-      if (e.key === "Escape") { e.preventDefault(); done(false); }
-    }
-    okBtn.addEventListener("click", () => done(true));
-    cancelBtn.addEventListener("click", () => done(false));
-    layer.addEventListener("click", (e) => { if (e.target === layer) done(false); });
-    document.addEventListener("keydown", onKey, true);
-    layer.classList.remove("hidden");
-    okBtn.focus(); // focus lands on the primary action
-  });
-};

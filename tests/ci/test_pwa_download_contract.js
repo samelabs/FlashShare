@@ -75,6 +75,18 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
 }
 
 (async () => {
+  // 0. authority structure (RC-VIS-001): base-engine.js is the ONLY
+  //    isStandalonePWA authority; app.js must not re-declare it.
+  {
+    const appjs = fs.readFileSync(path.join(REPO, "static", "app.js"), "utf8");
+    assert.ok(!/function\s+isStandalonePWA\s*\(/.test(appjs),
+      "app.js must not declare a top-level isStandalonePWA (recursion shadow)");
+    assert.ok(/const\s+pwa\s*=\s*window\.isStandalonePWA\(\)/.test(appjs),
+      "app.js success path consumes window.isStandalonePWA() directly");
+    assert.ok(!/isStandalonePWA\s*:\s*\(\)\s*=>/.test(appjs),
+      "app.js carries no second detection (no inline alias)");
+  }
+
   // 1. standalone + Web Share → share URL, zero fetch/blob/file, no nav
   {
     const { sandbox, events } = makeSandbox({ standalone: true, webShare: true });
@@ -129,5 +141,59 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
     console.log("✓ non-standalone: helper not engaged (plain download path)");
   }
 
-  console.log("PASS: PWA download authority contract (5 groups)");
+  // 6. confirmAction authority (RC-VIS-002): base-engine.js owns the only
+  //    site-wide window.confirmAction; app.js defines none; tokens/profile
+  //    consume it directly. Behavior: promise resolves per button/Escape.
+  {
+    const appjs = fs.readFileSync(path.join(REPO, "static", "app.js"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    assert.ok(!/window\.confirmAction\s*=/.test(appjs),
+      "app.js no longer defines confirmAction");
+    const engine = fs.readFileSync(path.join(REPO, "static", "pages", "base-engine.js"), "utf8");
+    assert.strictEqual((engine.match(/window\.confirmAction\s*=/g) || []).length, 1,
+      "base-engine.js defines exactly one canonical confirmAction");
+    for (const f of ["tokens.js", "profile.js"]) {
+      const s = fs.readFileSync(path.join(REPO, "static", "pages", f), "utf8");
+      assert.ok(/window\.confirmAction\s*\(/.test(s), f + " consumes the site-wide authority");
+    }
+    // behavioral: run the REAL engine confirmAction in the sandbox DOM
+    const { sandbox: cs } = makeSandbox({ standalone: false });
+    const els = {};
+    const el = (id) => (els[id] = els[id] || {
+      id, textContent: "", innerHTML: "", listeners: {}, focus: () => {},
+      classList: { add: (...c) => { els[id]._cls = (els[id]._cls || []).concat(c); },
+                   remove: () => {}, contains: () => false },
+      setAttribute: () => {}, appendChild: () => {},
+      addEventListener: (ev, fn) => { els[id].listeners[ev] = fn; },
+    });
+    cs.document = {
+      getElementById: (id) => el(id),
+      createElement: () => el("created"),
+      addEventListener: () => {}, removeEventListener: () => {},
+      body: { appendChild: () => {} },
+    };
+    cs.addEventListener = () => {}; cs.removeEventListener = () => {};
+    vm.runInContext(engine, cs, { filename: "base-engine.js" });
+    // engine installs its own window.t at load — override AFTER load with the
+    // fallback-label i18n the confirm authority must consume
+    cs.__I18N__ = { en: { confirm: "Confirm", cancel: "Cancel" } };
+    cs.__LANG = "en";
+    assert.strictEqual(typeof cs.confirmAction, "function", "engine exposes confirmAction");
+    const p = cs.confirmAction({ title: "T", message: "M", confirmLabel: "Yes", cancelLabel: "No" });
+    assert.strictEqual(els.confirmModalTitle.textContent, "T", "title rendered");
+    assert.strictEqual(els.confirmModalText.textContent, "M", "message rendered");
+    assert.strictEqual(els.confirmModalOk.textContent, "Yes", "primary label from caller");
+    assert.strictEqual(els.confirmModalCancel.textContent, "No", "cancel label from caller");
+    els.confirmModalOk.listeners.click();
+    assert.strictEqual(await p, true, "primary resolves true");
+    const p2 = cs.confirmAction({ title: "T2" });
+    // fallback labels via window.t
+    assert.strictEqual(els.confirmModalOk.textContent, "Confirm", "fallback confirm label = window.t('confirm')");
+    assert.strictEqual(els.confirmModalCancel.textContent, "Cancel", "fallback cancel label = window.t('cancel')");
+    els.confirmModalCancel.listeners.click();
+    assert.strictEqual(await p2, false, "cancel resolves false");
+    console.log("✓ confirmAction authority: engine-only definition, tokens/profile consume, behavior intact");
+  }
+
+  console.log("PASS: PWA download authority contract (7 groups)");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -41,7 +41,6 @@ function runShowShareResult(file, contentType) {
   });
   const sandbox = {
     console,
-    window: {},
     document: {
       getElementById: (id) => calls.byId.get(id) || null,
       querySelector: () => null,
@@ -56,7 +55,7 @@ function runShowShareResult(file, contentType) {
     showResult: (html) => { calls.resultHTML.push(html); },
     showQrModal: noop,
     ensureZipPreview: noop,
-    isStandalonePWA: () => false,
+    window: { isStandalonePWA: () => false },
     shareFile: async () => true,
     URLSearchParams, Date, Math, JSON,
     setTimeout: (fn) => fn(),

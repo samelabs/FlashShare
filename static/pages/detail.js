@@ -46,6 +46,11 @@ function openToolModal(html) { toolModalBody.innerHTML = html; toolModal.classLi
 function closeToolModal() { toolModal.classList.add("hidden"); toolModalBody.innerHTML = ""; }
 document.getElementById("toolModalClose").addEventListener("click", closeToolModal);
 toolModal.addEventListener("click", (e) => { if (e.target === toolModal) closeToolModal(); });
+// Keyboard contract: Escape closes the visible toolModal (close button
+// and backdrop already close it — this is the one missing cancel path).
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !toolModal.classList.contains("hidden")) closeToolModal();
+});
 
 function toolLoading() { return '<div class="tool-loading">' + window.t("loading") + '</div>'; }
 const _errMap = window.__I18N__ ? (window.__I18N__[window.__LANG] || {}) : {};

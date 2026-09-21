@@ -18,6 +18,9 @@ const vm = require("vm");
 const assert = require("assert");
 
 const REPO = path.resolve(__dirname, "..", "..");
+// helper shared with the ui-error contract: get the result element a
+// sandbox's app.js closed over
+function resultShared(ctx) { return ctx.document.__resultEl; }
 
 // ── minimal DOM ──
 const elements = {};
@@ -43,6 +46,7 @@ sandbox.window = sandbox;
 const resultEl = fakeEl("result");
 sandbox.document = {
   getElementById: (id) => (id === "result" ? resultEl : (elements[id] = elements[id] || fakeEl(id))),
+  __resultEl: resultEl,
   querySelector: () => null,
   querySelectorAll: () => [],
   createElement: (tag) => fakeEl(tag),
@@ -58,7 +62,10 @@ sandbox.confirm = () => { throw new Error("native confirm() must not be called")
 sandbox.__I18N__ = { en: {} };
 sandbox.t = (k) => ({ failed: "Upload failed", retry: "Retry", confirm: "Confirm",
   cancel: "Cancel", delete: "Delete", confirmDelete: "Delete this file?",
-  uploading: "Uploading", processing: "Processing..." }[k] || k);
+  uploading: "Uploading", processing: "Processing...", downloadFile: "Download",
+  ready: "Link ready", shareText: "Shared via 518.PLUS", shareImg: "Share image",
+  copy: "Copy", shareX: "Share on X", zip_preview_btn: "Preview ZIP",
+  print_btn: "Print", share: "Share" }[k] || k);
 sandbox.window.t = sandbox.t;
 sandbox.__USER__ = { id: 1 };
 sandbox.__TOOLS__ = [];
@@ -111,6 +118,56 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
   const detail = fs.readFileSync(path.join(REPO, "static", "pages", "detail.js"), "utf8");
   assert.ok(!/'>window\.t\(|>window\.t\(/.test(detail), "detail.js has no raw window.t literal in HTML strings");
   assert.ok(!/'__PAGE__\.icons/.test(detail), "detail.js uses the canonical icon renderer");
+  // RC-VIS-003: behavioral proof — Escape closes the visible detail toolModal.
+  {
+    const dEls = {};
+    const dEl = (id) => (dEls[id] = dEls[id] || {
+      id, listeners: {}, innerHTML: "",
+      classList: { _h: true, add(c) { if (c === "hidden") this._h = true; },
+                   remove(c) { if (c === "hidden") this._h = false; },
+                   contains(c) { return c === "hidden" ? this._h : false; } },
+      addEventListener: (ev, fn) => { dEls[id].listeners[ev] = fn; },
+      getAttribute: () => null, setAttribute: () => {}, appendChild: () => {},
+      querySelector: () => null, querySelectorAll: () => [], dataset: {},
+      textContent: "", style: {}, focus: () => {}, value: "",
+    });
+    const docListeners = {};
+    const dsb = vm.createContext({
+      console, setTimeout: (fn) => fn(), clearTimeout: () => {},
+      location: { href: "https://ci.test/d", reload: () => {} },
+      URL, URLSearchParams,
+    });
+    dsb.window = dsb;
+    dsb.addEventListener = (ev, fn) => { docListeners[ev] = fn; };
+    dsb.document = {
+      getElementById: (id) => dEl(id),
+      querySelector: () => null, querySelectorAll: () => [],
+      createElement: () => dEl("created"),
+      addEventListener: (ev, fn) => { docListeners[ev] = fn; },
+      removeEventListener: () => {},
+      documentElement: dEl("html"), head: dEl("head"), body: dEl("body"), cookie: "",
+    };
+    dsb.navigator = { clipboard: { writeText: async () => {} } };
+    dsb.matchMedia = () => ({ matches: false });
+    dsb.fetch = async () => ({ ok: true, json: async () => ({ ok: true }) });
+    dsb.t = sandbox.t; dsb.window.t = dsb.t;
+    dsb.__I18N__ = { en: {} }; dsb.__LANG__ = "en";
+    dsb.__PAGE__ = { publicId: "p1", dlUrl: "/f/p1?download=1", fileName: "a.png" };
+    dsb.iconSvg = () => "<svg></svg>";
+    try {
+      vm.runInContext(detail, dsb, { filename: "detail.js" });
+    } catch (e) {
+      // detail.js touches more DOM than we mock; only the Escape contract
+      // matters here — require the keydown listener registered before any throw
+    }
+    assert.ok(docListeners.keydown, "detail.js registers a document keydown (Escape) handler");
+    // modal hidden by default → open state, then Escape must re-hide
+    dEls.toolModal.classList.remove("hidden");
+    assert.strictEqual(dEls.toolModal.classList.contains("hidden"), false, "modal open");
+    docListeners.keydown({ key: "Escape", preventDefault: () => {} });
+    assert.strictEqual(dEls.toolModal.classList.contains("hidden"), true,
+      "Escape closes the visible toolModal (RC-VIS-003)");
+  }
   for (const f of ["profile.js", "tokens.js", "footer.js"]) {
     const src = fs.readFileSync(path.join(REPO, "static", "pages", f), "utf8");
     // strip comments, then ban a REAL native confirm( call (window.confirmAction
@@ -129,5 +186,110 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
   assert.ok(!/function\s+retryTool|retryTool\s*=/.test(appjs), "app.js: retryTool removed");
   assert.ok(appjs.includes("runToolFlow"), "app.js delegates to the process-flow authority");
 
-  console.log("PASS: UI error/retry contract (5 groups)");
+  // 6. PWA detection authority (RC-VIS-001): base-engine.js owns the ONLY
+  //    isStandalonePWA; app.js must not declare a same-name top-level
+  //    function (that declaration shadowed the engine property and made
+  //    every success path recurse → RangeError).
+  assert.ok(!/function\s+isStandalonePWA\s*\(/.test(appjs),
+    "app.js: no top-level function isStandalonePWA (engine authority shadow ban)");
+  assert.ok(!/(?:^|\n)\s*(?:const|let|var)\s+isStandalonePWA\s*=/.test(appjs),
+    "app.js: no isStandalonePWA alias/second detection");
+  assert.ok(/const\s+pwa\s*=\s*window\.isStandalonePWA\(\)/.test(appjs),
+    "app.js: showShareResult consumes the canonical window.isStandalonePWA()");
+
+  // 7. behavioral: the success path itself must not recurse. Simulate the
+  //    exact failure mode: engine loaded, then app.js — call showShareResult
+  //    with a fake file and assert a result card renders (no RangeError).
+  {
+    // minimal engine pieces app.js expects before its own load
+    const engineResultEl = fakeEl("result");
+    const engineSandbox = vm.createContext({
+      console, setTimeout: (fn) => fn(), clearTimeout: () => {},
+      location: { href: "https://ci.test/", reload: () => {} },
+      URL, URLSearchParams,
+    });
+    engineSandbox.window = engineSandbox;
+    engineSandbox.addEventListener = () => {}; engineSandbox.removeEventListener = () => {};
+    engineSandbox.document = {
+      getElementById: (id) => (id === "result" ? engineResultEl : fakeEl(id)),
+      __resultEl: engineResultEl,
+      querySelector: () => null, querySelectorAll: () => [],
+      createElement: () => fakeEl("x"), addEventListener: () => {}, removeEventListener: () => {},
+      documentElement: fakeEl("html"), head: fakeEl("head"), body: fakeEl("body"), cookie: "",
+    };
+    engineSandbox.navigator = { sendBeacon: () => {} };
+    engineSandbox.matchMedia = (q) => ({ matches: q.includes("standalone") });
+    engineSandbox.fetch = async () => ({ ok: true, json: async () => ({ ok: true }) });
+    vm.runInContext(
+      fs.readFileSync(path.join(REPO, "static", "pages", "base-engine.js"), "utf8"),
+      engineSandbox, { filename: "base-engine.js" });
+    assert.strictEqual(engineSandbox.isStandalonePWA(), true, "engine authority live in sandbox");
+
+    // now load app.js INTO THE SAME context (engine present, like home.html)
+    const shared = engineSandbox;
+    shared.t = sandbox.t;
+    shared.window.t = sandbox.t;
+    shared.applyI18n = () => {};
+    shared.window.applyI18n = shared.applyI18n;
+    shared.__USER__ = { id: 1 };
+    shared.__TOOLS__ = [];
+    shared.__LANG__ = "en";
+    shared.__I18N__ = { en: {} };
+    shared.__ICONS__ = { check: "<path d='c'/>", copy: "<path/>", info: "<path/>", download: "<path/>", share: "<path/>", qr: "<path/>", print: "<path/>", eye: "<path/>" };
+    vm.runInContext(fs.readFileSync(path.join(REPO, "static", "pages", "common.js"), "utf8"), shared);
+    let shareErr = null;
+    try {
+      vm.runInContext(appSrc, shared, { filename: "app.js" });
+      shared.showShareResult({
+        downloadUrl: "https://ci.test/f/abc", url: "https://ci.test/f/abc",
+        publicId: "abc", filename: "out.png", name: "out.png", size: 1234,
+        contentType: "image/png",
+      });
+    } catch (e) { shareErr = e; }
+    assert.ok(!shareErr, "showShareResult must not throw with engine loaded (recursion regression): " + (shareErr && shareErr.message));
+    assert.ok(resultShared(shared).innerHTML.includes("result-card"),
+      "success result card rendered in shared context");
+  }
+
+  // 8. standalone PWA download branch still wired through the engine
+  //    authority (pwaDownload listener attached when engine says standalone)
+  {
+    const s2 = vm.createContext({
+      console, setTimeout: (fn) => fn(), clearTimeout: () => {},
+      location: { href: "https://ci.test/", reload: () => {} },
+      URL, URLSearchParams,
+    });
+    s2.window = s2;
+    s2.addEventListener = () => {}; s2.removeEventListener = () => {};
+    const s2ResultEl = fakeEl("result");
+    s2.document = {
+      getElementById: (id) => (id === "result" ? s2ResultEl : fakeEl(id)),
+      __resultEl: s2ResultEl,
+      querySelector: () => null, querySelectorAll: () => [],
+      createElement: () => fakeEl("x"), addEventListener: () => {}, removeEventListener: () => {},
+      documentElement: fakeEl("html"), head: fakeEl("head"), body: fakeEl("body"), cookie: "",
+    };
+    s2.navigator = { clipboard: { writeText: async () => {} } };
+    s2.matchMedia = (q) => ({ matches: q.includes("standalone") });
+    s2.fetch = async () => ({ ok: true, json: async () => ({ ok: true }) });
+    vm.runInContext(
+      fs.readFileSync(path.join(REPO, "static", "pages", "base-engine.js"), "utf8"),
+      s2, { filename: "base-engine.js" });
+    s2.t = sandbox.t; s2.window.t = s2.t;
+    s2.applyI18n = () => {}; s2.window.applyI18n = s2.applyI18n;
+    s2.__USER__ = { id: 1 }; s2.__TOOLS__ = []; s2.__LANG__ = "en"; s2.__I18N__ = { en: {} };
+    s2.__ICONS__ = { check: "<path d='c'/>", copy: "<path/>", info: "<path/>", download: "<path/>", share: "<path/>", qr: "<path/>", print: "<path/>", eye: "<path/>" };
+    vm.runInContext(fs.readFileSync(path.join(REPO, "static", "pages", "common.js"), "utf8"), s2);
+    vm.runInContext(appSrc, s2, { filename: "app.js" });
+    assert.strictEqual(typeof s2.pwaDownload, "function", "engine pwaDownload present");
+    assert.strictEqual(s2.isStandalonePWA(), true, "engine says standalone");
+    // app.js showShareResult in standalone renders a BUTTON (not <a download>)
+    s2.showShareResult({ downloadUrl: "https://ci.test/f/z", url: "https://ci.test/f/z",
+      publicId: "z", filename: "a.zip", name: "a.zip", size: 10, contentType: "application/zip" });
+    const html = resultShared(s2).innerHTML;
+    assert.ok(!/<a[^>]+download\b/.test(html), "standalone: no <a download> anchor");
+    assert.ok(/<button[^>]+aria-label="Download/.test(html), "standalone: download BUTTON rendered");
+  }
+
+  console.log("PASS: UI error/retry contract (9 groups)");
 })().catch((e) => { console.error(e); process.exit(1); });

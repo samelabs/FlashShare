@@ -148,3 +148,62 @@ window.shareFileViaURL = async function (url, filename, btn) {
   restore();
   return true;
 };
+
+// ── Site-wide async confirm authority (VIS-006 / RC-VIS-002) ──
+// One modal-based confirm for core destructive operations: history
+// delete, detail delete, profile X unbind, token revoke, homepage
+// upload delete. Lives in base-engine.js because only this file is
+// loaded by every page (tokens/profile don't include app.js) — that is
+// what "site-wide authority" means here. Replaces native confirm()
+// everywhere: backdrop cancel, Escape cancel, focus lands on the
+// primary action, focus restored on close — mobile/WebView safe (no
+// browser native dialog dependency).
+window.confirmAction = function (opts) {
+  return new Promise((resolve) => {
+    let layer = document.getElementById("confirmModal");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.id = "confirmModal";
+      layer.className = "modal hidden";
+      layer.setAttribute("role", "dialog");
+      layer.setAttribute("aria-modal", "true");
+      layer.innerHTML =
+        '<div class="modal-panel confirm-panel">' +
+        '<h3 id="confirmModalTitle" class="confirm-title"></h3>' +
+        '<p id="confirmModalText" class="confirm-text"></p>' +
+        '<div class="tool-panel-actions">' +
+        '<button class="action-btn" id="confirmModalCancel" type="button"></button>' +
+        '<button class="action-btn primary" id="confirmModalOk" type="button"></button>' +
+        "</div></div>";
+      document.body.appendChild(layer);
+    }
+    const titleEl = document.getElementById("confirmModalTitle");
+    const textEl = document.getElementById("confirmModalText");
+    const okBtn = document.getElementById("confirmModalOk");
+    const cancelBtn = document.getElementById("confirmModalCancel");
+    titleEl.textContent = opts.title || "";
+    textEl.textContent = opts.message || "";
+    okBtn.textContent = opts.confirmLabel || window.t("confirm");
+    cancelBtn.textContent = opts.cancelLabel || window.t("cancel");
+
+    const prevFocus = document.activeElement;
+    let settled = false;
+    function done(val) {
+      if (settled) return;
+      settled = true;
+      layer.classList.add("hidden");
+      document.removeEventListener("keydown", onKey, true);
+      if (prevFocus && prevFocus.focus) prevFocus.focus();
+      resolve(val);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); done(false); }
+    }
+    okBtn.addEventListener("click", () => done(true));
+    cancelBtn.addEventListener("click", () => done(false));
+    layer.addEventListener("click", (e) => { if (e.target === layer) done(false); });
+    document.addEventListener("keydown", onKey, true);
+    layer.classList.remove("hidden");
+    okBtn.focus(); // focus lands on the primary action
+  });
+};
