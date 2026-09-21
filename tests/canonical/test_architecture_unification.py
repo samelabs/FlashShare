@@ -588,6 +588,17 @@ check("C33 DELETE 单事务: delete_tool_row 与 set_pricing(con=con) 同一 db(
       and _del_fn33.group(0).find("delete_tool_row") <
           _del_fn33.group(0).find("set_pricing"))
 
+# C34: platform_tools declaration partial writer is single and canonical
+_cat34 = open(_os2.path.join(_REPO, "core", "repo", "catalog.py"),
+              encoding="utf-8").read()
+_ts34 = open(_os2.path.join(_REPO, "core", "governance", "tool_supply.py"),
+             encoding="utf-8").read()
+check("C34 repo.catalog 无 dead duplicate writer update_fields",
+      "def update_fields" not in _cat34)
+check("C34 declaration partial writer 仍为 update_tool_row 且 tool_supply 消费",
+      "def update_tool_row" in _cat34
+      and "from repo.catalog import update_tool_row" in _ts34)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

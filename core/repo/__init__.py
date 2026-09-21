@@ -6,7 +6,7 @@
 #      transaction boundaries belong to domain services (batch 2).
 #   2. No business rules: validation/aggregation semantics stay in services.
 #   3. Parameterized: every value goes through %s; column names for
-#      update_fields come from service-layer whitelists, never user input.
+#      update_tool_row come from service-layer whitelists, never user input.
 #   4. Domain isolation: core/<domain>/ may only import its own repo file
 #      (assertion A4).
 #

@@ -274,14 +274,6 @@ def update_tool_row(con, tool_key: str, sets: dict) -> None:
         (*sets.values(), tool_key))
 
 
-def update_fields(con, tool_key: str, sets: dict) -> None:
-    """部分更新 (键=列名, 值=参数化)。列名由服务层白名单产生, 非用户输入。"""
-    assign = ", ".join(f"{k} = %s" for k in sets)
-    con.execute(
-        f"UPDATE platform_tools SET {assign} WHERE tool_key = %s",
-        (*sets.values(), tool_key))
-
-
 def delete_tool_row(con, row_id: int) -> None:
     con.execute("DELETE FROM platform_tools WHERE id = %s", (row_id,))
 
