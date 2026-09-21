@@ -53,6 +53,23 @@ jobs:
             printf '%s\n' "$tracked_env"
             exit 1
           fi
+      - name: Release metadata contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f VERSION ]; then
+            echo "VERSION file is missing"
+            exit 1
+          fi
+          version="$(head -n 1 VERSION)"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+$'; then
+            echo "VERSION must be major.minor, got: $version"
+            exit 1
+          fi
+          if ! grep -qF "## [$version]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no release heading for [$version]"
+            exit 1
+          fi
 
   canonical:
     name: canonical-integration
