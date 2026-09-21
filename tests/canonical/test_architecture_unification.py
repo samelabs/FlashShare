@@ -729,6 +729,20 @@ check("C43 production static tree 无内部原型目录 static/proto",
       not _os2.path.exists(_os2.path.join(_REPO, "static", "proto"))
       and not _os2.path.isdir(_os2.path.join(_REPO, "static", "proto")))
 
+# C44: privacy handler consumes canonical params only (no silent fallback)
+_tr44 = open(_os2.path.join(_REPO, "core", "tools_registry.py"),
+             encoding="utf-8").read()
+_priv44 = _re33.search(
+    r"def privacy_handler.*?(?=\ndef |\nclass )", _tr44, _re33.DOTALL)
+check("C44 privacy_handler 无 silent preset fallback",
+      _priv44 is not None
+      and 'params.get("preset"' not in _priv44.group(0)
+      and "PRESETS.get(" not in _priv44.group(0))
+check("C44 privacy_handler 直接消费 canonical preset",
+      _priv44 is not None
+      and 'preset = params["preset"]' in _priv44.group(0)
+      and 'p = PRESETS[preset]' in _priv44.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

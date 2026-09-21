@@ -70,9 +70,13 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
     if not ct.startswith("image/"):
         raise ToolError("err_format_not_supported")
 
-    # ---- CP6.2: Parameter resolution (security boundary, silent fallback) ----
-    preset = params.get("preset", "standard")
-    p = PRESETS.get(preset, PRESETS["standard"])
+    # ---- CP6.2: Parameter resolution (canonical params only) ----
+    # Dispatch (governance.tool_params.enforce_params_decl) is the sole
+    # params authority: missing → declaration default injected, illegal
+    # enum → 422 before the handler runs. The handler reads the canonical
+    # value directly and fails loud on any bypass, never guesses standard.
+    preset = params["preset"]
+    p = PRESETS[preset]
 
     # ---- CP6.3: Decode + orient + downscale ----
     img = Image.open(tool_input["stream"])
