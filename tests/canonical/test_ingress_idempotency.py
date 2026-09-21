@@ -379,7 +379,8 @@ hT = ingress_request_hash("web_tool_source",
 refT = f"ack-{_u}-t"
 rctT, uidsT, _ = claim_ingress_quota(uidT, "127.0.0.1", refT, hT, [len(PNG)])
 usage_T0 = _usage_n(uidT)
-finalize_ok(int(rctT["id"]), [{"publicId": "ACKT1", "gokapiId": "ACKT1"}])
+with db() as con:
+    finalize_ok(con, int(rctT["id"]), [{"publicId": "ACKT1", "gokapiId": "ACKT1"}])
 # 模拟: finalize commit 后 route 层抛异常, reconciliation 介入
 outT = resolve_outcome(int(rctT["id"]))
 check("ACK-tool DURABLE_OK → stored result",
@@ -469,7 +470,8 @@ rctF1, uidsF1, _ = claim_ingress_quota(uidF1, "127.0.0.1", f"f1-{_u}", hF1, [len
 settle_failure(int(rctF1["id"]), uidsF1, uidF1)
 _f1_raised = False
 try:
-    finalize_ok(int(rctF1["id"]), [{"publicId": "NOPE"}])
+    with db() as con:
+        finalize_ok(con, int(rctF1["id"]), [{"publicId": "NOPE"}])
 except RuntimeError as _e:
     _f1_raised = "ingress_request_not_running" in str(_e)
 check("F1 failed receipt → finalize_ok raises ingress_request_not_running",
@@ -508,7 +510,7 @@ check("F2 direct-share: 非 running receipt → raise in-tx → uploads=0",
 # route 函数 _call_tool (patch service 层生效), 证明 UNRESOLVED 分支行为。
 import sharing.ingress_receipt as _irmod
 _orig_fin, _orig_ro = _irmod.finalize_ok, _irmod.resolve_outcome
-def _throw_fin(ingress_id, result):
+def _throw_fin(con, ingress_id, result):
     raise RuntimeError("simulated ack loss")
 def _unres_resolve(ingress_id):
     return {"outcome": _irmod.OUTCOME_UNRESOLVED}
@@ -578,7 +580,8 @@ hF4 = ingress_request_hash("v1_source",
                              "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
                            {})
 rctF4, uidsF4, _ = claim_ingress_quota(uidF4, "127.0.0.1", f"f4-{_u}", hF4, [len(PNG)])
-finalize_ok(int(rctF4["id"]), [{"publicId": "F4"}])
+with db() as con:
+    finalize_ok(con, int(rctF4["id"]), [{"publicId": "F4"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='{bad'"
                 " where id=%s", (rctF4["id"],))
@@ -623,7 +626,8 @@ hS2 = ingress_request_hash("web_tool_source",
                            {"tool_id": "compress"})
 refW = f"surf-{_u}-w"
 rctW2, uidsW2, _ = claim_ingress_quota(uidW, "127.0.0.1", refW, hS2, [len(PNG)])
-finalize_ok(int(rctW2["id"]), [{"publicId": "SURFW2"}])
+with db() as con:
+    finalize_ok(con, int(rctW2["id"]), [{"publicId": "SURFW2"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='{bad'"
                 " where id=%s", (rctW2["id"],))
@@ -653,7 +657,8 @@ hV1 = ingress_request_hash("v1_source",
                             {})
 refV = f"surf-{_u}-v"
 rctV, uidsV, _ = claim_ingress_quota(uidW, "127.0.0.1", refV, hV1, [len(PNG)])
-finalize_ok(int(rctV["id"]), [{"publicId": "SURFV"}])
+with db() as con:
+    finalize_ok(con, int(rctV["id"]), [{"publicId": "SURFV"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='123'"
                 " where id=%s", (rctV["id"],))
@@ -680,7 +685,8 @@ hMCP = ingress_request_hash("mcp_tool_source",
                              {"tool_id": "compress"})
 refM = f"surf-{_u}-m"
 rctM, uidsM, _ = claim_ingress_quota(uidW, "127.0.0.1", refM, hMCP, [len(PNG)])
-finalize_ok(int(rctM["id"]), [{"publicId": "SURFM"}])
+with db() as con:
+    finalize_ok(con, int(rctM["id"]), [{"publicId": "SURFM"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='[1,2]'"
                 " where id=%s", (rctM["id"],))  # list 合法 — 改 scalar 破坏:
@@ -725,7 +731,8 @@ hF10 = ingress_request_hash("v1_source",
                             {})
 # F10: earliest ok + result_json='' → IngressUnresolved
 rct10, uids10, _ = claim_ingress_quota(uidF10, "127.0.0.1", f"f10-{_u}", hF10, [len(PNG)])
-finalize_ok(int(rct10["id"]), [{"publicId": "F10"}])
+with db() as con:
+    finalize_ok(con, int(rct10["id"]), [{"publicId": "F10"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='' where id=%s",
                 (rct10["id"],))
@@ -749,7 +756,8 @@ rct11a, uids11a, _ = claim_ingress_quota(uidF11, "127.0.0.1", f"f11-{_u}",
 settle_failure(int(rct11a["id"]), uids11a, uidF11)   # failed history
 rct11b, uids11b, _ = claim_ingress_quota(uidF11, "127.0.0.1", f"f11-{_u}",
                                          hF10, [len(PNG)])  # same hash retry
-finalize_ok(int(rct11b["id"]), [{"publicId": "F11"}])
+with db() as con:
+    finalize_ok(con, int(rct11b["id"]), [{"publicId": "F11"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='' where id=%s",
                 (rct11b["id"],))
@@ -810,7 +818,8 @@ except IngressConflict:
     check("10 failed changed hash → conflict", True)
 
 # 13: commit-ACK durable ok → replay no cleanup
-finalize_ok(int(rct2["id"]), [{"publicId": "X1"}])
+with db() as con:
+    finalize_ok(con, int(rct2["id"]), [{"publicId": "X1"}])
 out = resolve_outcome(int(rct2["id"]))
 check("13 outcome durable_ok + stored result",
       out["outcome"] == OUTCOME_DURABLE_OK and out["result"][0]["publicId"] == "X1")

@@ -171,11 +171,6 @@ async def client_error(request: Request):
     return {"ok": True}
 
 
-def _json_dumps(obj) -> str:
-    import json as _j
-    return _j.dumps(obj, ensure_ascii=False)
-
-
 def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
     """Known-rollback settlement: best-effort delete staged objects, then
     EXACT quota release + receipt failed in one transaction. If the DB
@@ -209,7 +204,9 @@ def _finalize_or_reconcile(ingress_id, gokapi_ids, user_id, usage_ids,
     Returns the durable canonical result on success."""
     import json as _j
     try:
-        ingress_finalize_ok(ingress_id, canonical_result)
+        from database import db as _db
+        with _db() as con:
+            ingress_finalize_ok(con, ingress_id, canonical_result)
     except Exception:
         logger.exception("ingress finalize failed id=%s — reconciling", ingress_id)
         out = resolve_outcome(ingress_id)
@@ -403,7 +400,6 @@ async def create_upload(request: Request):
     # Direct-share landing: all public rows commit together. If DB landing
     # fails, storage and ingress reservation are rolled back as one request.
     from execution.pipeline import save_upload_record
-    from repo.ingress_requests import finalize_ok as _receipt_ok
     try:
         records = []
         with db() as con:
@@ -417,14 +413,11 @@ async def create_upload(request: Request):
                 ))
             # receipt ok + exact canonical response in the SAME
             # transaction as the uploads landing — a response loss
-            # replays the identical publicIds with zero new rows.
-            _fin_row = _receipt_ok(con, int(receipt["id"]),
-                                   _json_dumps(records), now())
-            if _fin_row is None:
-                # guarded transition refused INSIDE the transaction:
-                # uploads INSERT and receipt-ok must commit together or
-                # not at all — raising here rolls the whole thing back.
-                raise RuntimeError("ingress_request_not_running")
+            # replays the identical publicIds with zero new rows. The
+            # canonical sharing finalize raises inside the transaction
+            # when the guarded transition is refused, rolling the
+            # uploads INSERT back with it.
+            ingress_finalize_ok(con, int(receipt["id"]), records)
     except Exception:
         # STRICT tri-state: the landing transaction may have committed
         # before the ack was lost — reconcile the durable outcome.

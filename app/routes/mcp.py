@@ -412,8 +412,10 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         # Phase 2 — finalize with an EXPLICIT three-way outcome. The
         # unresolved branch must NEVER fall into generic cleanup: zero
         # Gokapi delete, zero quota release, zero receipt mutation.
+        from database import db as _db
         try:
-            _receipt_ok(int(_receipt["id"]), infos)
+            with _db() as con:
+                _receipt_ok(con, int(_receipt["id"]), infos)
         except Exception:
             _out = _resolve_outcome(int(_receipt["id"]))
             if _out["outcome"] == OUTCOME_DURABLE_OK:

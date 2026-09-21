@@ -388,6 +388,37 @@ import repo.users as _users_repo_mod
 check("U26 users repo 提供 update_status 纯 primitive",
       hasattr(_users_repo_mod, "update_status"))
 
+# C27: ingress receipt persistence/domain authority seam closed
+_ig_src = open(_os.path.join(_REPO, "core", "sharing", "ingress_receipt.py"),
+               encoding="utf-8").read()
+check("U27 ingress_receipt.py 无 con.execute 直接 SQL",
+      "con.execute" not in _ig_src and "cursor" not in _ig_src)
+check("U27 ingress_receipt.py 无 ingress_requests raw SQL 语句",
+      "FROM ingress_requests" not in _ig_src
+      and "INSERT INTO ingress_requests" not in _ig_src
+      and "UPDATE ingress_requests" not in _ig_src)
+check("U27 ingress_receipt claim/finalize/resolve 只经 repo primitives",
+      "_repo.earliest_by_ref" in _ig_src and "_repo.live_by_ref" in _ig_src
+      and "_repo.insert_running" in _ig_src and "_repo.by_id_for_update" in _ig_src
+      and "_repo.running_receipts" in _ig_src
+      and "_repo.finalize_ok" in _ig_src and "_repo.settle_failed" in _ig_src)
+_ig_repo_src = open(_os.path.join(_REPO, "core", "repo",
+                                  "ingress_requests.py"),
+                    encoding="utf-8").read()
+check("U27 ingress_requests 表 SQL 单一 repo authority",
+      "FROM ingress_requests" in _ig_repo_src
+      and "INSERT INTO ingress_requests" in _ig_repo_src)
+_api_src = open(_os.path.join(_REPO, "app", "routes", "api.py"),
+                encoding="utf-8").read()
+check("U27 routes/api.py 不直接 import repo.ingress_requests",
+      "repo.ingress_requests" not in _api_src
+      and "repo import ingress_requests" not in _api_src)
+check("U27 routes/api.py receipt finalize 走 canonical sharing finalize",
+      "ingress_finalize_ok(con," in _api_src
+      and "_receipt_ok(con," not in _api_src)
+check("U27 sharing finalize_ok 是 caller-transaction 形式 (con, ingress_id)",
+      "def finalize_ok(con, ingress_id" in _ig_src)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

@@ -152,7 +152,9 @@ async def v1_upload(request: Request):
             "expireAt": gokapi["FileInfo"].get("ExpireAt"),
         }
         try:
-            _ing_ok(int(receipt["id"]), [handle])
+            from database import db as _db
+            with _db() as con:
+                _ing_ok(con, int(receipt["id"]), [handle])
         except Exception:
             # finalize commit-ack loss: reconcile strict tri-state
             import logging

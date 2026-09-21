@@ -81,15 +81,8 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
         # the two repo steps. Simplest correct composition: lock user,
         # read binding, decide quota, insert usage, insert receipt — all
         # in THIS transaction via repo primitives.
-        con.execute("SELECT id FROM users WHERE id=%s FOR UPDATE", (user_id,))
-        hist = con.execute(
-            """
-            SELECT id, request_hash, status, result_json
-            FROM ingress_requests
-            WHERE user_id=%s AND request_ref=%s
-            ORDER BY id ASC LIMIT 1
-            """,
-            (user_id, request_ref)).fetchone()
+        usage_repo.lock_user(con, user_id)
+        hist = _repo.earliest_by_ref(con, user_id, request_ref)
         if hist is not None and hist["request_hash"] != request_hash:
             raise IngressConflict(dict(hist))
         if hist is not None and hist["status"] == "ok":
@@ -104,14 +97,7 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
             # earliest is failed/insufficient — a LATER ok receipt may
             # still own the live slot (failed-then-succeeded history):
             # replay it instead of re-claiming under the same ref.
-            live = con.execute(
-                """
-                SELECT * FROM ingress_requests
-                WHERE user_id=%s AND request_ref=%s
-                  AND status IN ('running','ok')
-                ORDER BY id DESC LIMIT 1
-                """,
-                (user_id, request_ref)).fetchone()
+            live = _repo.live_by_ref(con, user_id, request_ref)
             if live is not None:
                 if live["status"] == "ok":
                     return None, [], _decode_durable_result(live["result_json"])
@@ -121,49 +107,34 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
         if denial:
             raise IngressQuotaDenied(denial)
         usage_ids = usage_repo.insert_many(con, user_id, ip, clean, ts)
-        receipt = con.execute(
-            """
-            INSERT INTO ingress_requests (user_id, request_ref, request_hash,
-               status, usage_ids, started_at)
-            VALUES (%s, %s, %s, 'running', %s, %s)
-            ON CONFLICT (user_id, request_ref)
-              WHERE status IN ('running','ok')
-            DO NOTHING
-            RETURNING *
-            """,
-            (user_id, request_ref, request_hash, list(usage_ids),
-             ts)).fetchone()
+        receipt = _repo.insert_running(con, user_id, request_ref,
+                                       request_hash, list(usage_ids), ts)
         if receipt is None:
             # lost a live-unique race inside the same locked transaction —
             # impossible for a different hash (binding above), only a same
             # hash concurrent claim; treat as in-progress.
-            prior = con.execute(
-                """
-                SELECT * FROM ingress_requests
-                WHERE user_id=%s AND request_ref=%s
-                  AND status IN ('running','ok')
-                ORDER BY id DESC LIMIT 1
-                """,
-                (user_id, request_ref)).fetchone()
+            prior = _repo.live_by_ref(con, user_id, request_ref)
             raise IngressInProgress(dict(prior) if prior else {})
         return dict(receipt), list(usage_ids), None
 
 
-def finalize_ok(ingress_id: int, canonical_result: list[dict] | dict) -> dict:
-    """ONE transaction: receipt running → ok + exact canonical response.
-    The HTTP response is returned only after this commits.
+def finalize_ok(con, ingress_id: int,
+                canonical_result: list[dict] | dict) -> dict:
+    """Canonical receipt finalize under the CALLER's transaction: receipt
+    running → ok + exact canonical JSON response. The caller commits —
+    for direct-share this lands uploads rows + receipt-ok in ONE commit;
+    for tool-source the caller opens its own `with db() as con:`.
 
     FAIL LOUD: if the receipt is no longer running (already settled by
     recovery, a concurrent finalize, or a lost-ack retry), the guarded
     UPDATE matches zero rows and we raise instead of letting the caller
     treat a non-transition as success — the route-level reconciliation
     then decides from the durable outcome."""
-    with db() as con:
-        row = _repo.finalize_ok(
-            con, ingress_id, _json.dumps(canonical_result,
-                                         ensure_ascii=False), now())
-        if row is None:
-            raise RuntimeError("ingress_request_not_running")
+    row = _repo.finalize_ok(
+        con, ingress_id, _json.dumps(canonical_result,
+                                     ensure_ascii=False), now())
+    if row is None:
+        raise RuntimeError("ingress_request_not_running")
     return row
 
 
@@ -228,9 +199,7 @@ def resolve_outcome(ingress_id: int) -> dict:
     """
     try:
         with db() as con:
-            row = con.execute(
-                "SELECT * FROM ingress_requests WHERE id=%s FOR UPDATE",
-                (ingress_id,)).fetchone()
+            row = _repo.by_id_for_update(con, ingress_id)
     except Exception:
         logger.exception("ingress outcome read failed id=%s", ingress_id)
         return {"outcome": OUTCOME_UNRESOLVED}
@@ -258,14 +227,10 @@ def recover_abandoned_ingress_requests() -> dict:
     the existing Gokapi TTL."""
     recovered = 0
     with db() as con:
-        rows = con.execute(
-            "SELECT id, user_id, usage_ids FROM ingress_requests"
-            " WHERE status='running'").fetchall()
+        rows = _repo.running_receipts(con)
     for r in rows:
         with db() as con:
-            live = con.execute(
-                "SELECT status FROM ingress_requests WHERE id=%s"
-                " FOR UPDATE", (r["id"],)).fetchone()
+            live = _repo.by_id_for_update(con, int(r["id"]))
             if live is None or live["status"] != "running":
                 continue
             usage_repo.delete_ids(con, int(r["user_id"]),
