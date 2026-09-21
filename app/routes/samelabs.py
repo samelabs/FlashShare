@@ -375,17 +375,13 @@ async def samelabs_plans(request: Request):
     if resp:
         return resp
     from app.main import templates
-    from repo.orders import all_plans
+    from repo import orders as _orders_repo
     with db() as con:
-        rows = [r for r in all_plans(con) if r["code"] != "free"]  # 管理面: 全部 paid 行
+        rows = [r for r in _orders_repo.all_plans(con) if r["code"] != "free"]  # 管理面: 全部 paid 行
         # 订阅计数: current memberships per plan (含 pending 排期目标) —
-        # 下架/改配前的事实依据
-        counts = {r["plan_id"]: int(r["n"]) for r in con.execute(
-            "SELECT plan_id, COUNT(*) n FROM memberships"
-            " WHERE status IN ('active','past_due','canceled') GROUP BY plan_id")}
-        pend = {r["target_plan_id"]: int(r["n"]) for r in con.execute(
-            "SELECT target_plan_id, COUNT(*) n FROM pending_downgrades"
-            " GROUP BY target_plan_id")}
+        # 下架/改配前的事实依据 (count 读取走 repo.orders primitives)
+        counts = _orders_repo.membership_counts_by_plan(con)
+        pend = _orders_repo.pending_downgrade_counts_by_plan(con)
     plans = []
     for r in rows:
         d = dict(r)

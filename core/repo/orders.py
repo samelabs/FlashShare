@@ -592,6 +592,21 @@ def plan_credits(con, plan_id: int) -> int:
 
 
 
+def membership_counts_by_plan(con) -> dict:
+    """current membership 数 per plan_id (active/past_due/canceled)。"""
+    return {r["plan_id"]: int(r["n"]) for r in con.execute(
+        "SELECT plan_id, COUNT(*) n FROM memberships"
+        " WHERE status IN ('active','past_due','canceled')"
+        " GROUP BY plan_id").fetchall()}
+
+
+def pending_downgrade_counts_by_plan(con) -> dict:
+    """pending downgrade 数 per target_plan_id。"""
+    return {r["target_plan_id"]: int(r["n"]) for r in con.execute(
+        "SELECT target_plan_id, COUNT(*) n FROM pending_downgrades"
+        " GROUP BY target_plan_id").fetchall()}
+
+
 def sweep_expired_plans(con, ts: int) -> int:
     """过期 membership → expired。状态转移 only, 授信永不在此发生。"""
     cur = con.execute(

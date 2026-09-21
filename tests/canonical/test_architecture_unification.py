@@ -611,6 +611,21 @@ check("C35 _safe_remote_projection 消费 repo.catalog canonical read primitives
       and "by_tool_key(con, tool_key)" in _proj35.group(0)
       and "pricing_row(con, tool_key)" in _proj35.group(0))
 
+# C36: /samelabs/plans membership counts read via repo.orders primitives
+_plans36 = _re33.search(
+    r"async def samelabs_plans.*?(?=\n@router|\nasync def )", _sl35,
+    _re33.DOTALL)
+if _plans36 is None:  # last-function fallback
+    _plans36 = _re33.search(r"async def samelabs_plans.*", _sl35, _re33.DOTALL)
+check("C36 samelabs_plans 无 route-layer memberships/pending_downgrades SQL",
+      _plans36 is not None
+      and "FROM memberships" not in _plans36.group(0)
+      and "FROM pending_downgrades" not in _plans36.group(0))
+check("C36 samelabs_plans 计数消费 repo.orders primitives",
+      _plans36 is not None
+      and "_orders_repo.membership_counts_by_plan(con)" in _plans36.group(0)
+      and "_orders_repo.pending_downgrade_counts_by_plan(con)" in _plans36.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
