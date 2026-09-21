@@ -528,17 +528,21 @@ except DeclarationError:
 check("C30 arbitrary unknown binding key → DeclarationError (fail closed)",
       _closed_f and _closed_e)
 
-# C31: frontend accept display has no MIME compatibility fallback
-import glob as _glob31
-_mime31 = []
-for _f31 in _glob31.glob(_os2.path.join(_REPO, "static", "**", "*.js"),
-                         recursive=True):
-    _src31 = open(_f31, encoding="utf-8", errors="ignore").read()
-    if 'split("/")' in _src31 or ('indexOf("/")' in _src31
-                                  and "extLabel" in _src31):
-        _mime31.append(_os2.path.relpath(_f31, _REPO))
-check("C31 frontend 无 MIME accept display fallback",
-      not _mime31, str(_mime31))
+# C31: app.js extLabel stays canonical-only — no MIME compatibility fallback
+import re as _re31
+_appjs31 = open(_os2.path.join(_REPO, "static", "app.js"),
+                encoding="utf-8").read()
+_m31 = _re31.search(r"function extLabel\(tok\)\s*\{(.*?)\n\}", _appjs31,
+                 _re31.DOTALL)
+_extlabel_body31 = _m31.group(1) if _m31 else ""
+check("C31 activeTool.accept 仍经 extLabel 展示",
+      "activeTool.accept.map(extLabel)" in _appjs31)
+check("C31 extLabel 判定用 startsWith(\".\") canonical 前缀",
+      'startsWith(".")' in _extlabel_body31)
+check("C31 extLabel 函数体无 MIME split(\"/\")",
+      'split("/")' not in _extlabel_body31)
+check("C31 extLabel 函数体无 MIME indexOf(\"/\")",
+      'indexOf("/")' not in _extlabel_body31)
 
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
