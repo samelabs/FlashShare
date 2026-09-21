@@ -2,7 +2,8 @@
 
 Gate model: /samelabs is the manual operator control plane. Access =
 live browser session + users.status in BACKOFFICE_STATUSES. Capability
-tokens (Bearer) authenticate the API/MCP surfaces only — they never
+tokens (Bearer) authenticate the machine surfaces (MCP / hosted tool
+endpoints) only — they never
 enter the back-office. The user row stays the operator authority;
 the credential channel is session-only.
 

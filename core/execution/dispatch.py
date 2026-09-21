@@ -1,6 +1,6 @@
 """execution/dispatch — 统一执行请求入口 (Stage C: canonical ToolInvocation).
 
-Web(api.py) / REST v1 / MCP 三面构造完全相同的 canonical ToolInvocation,
+Web(api.py) / MCP 两面构造完全相同的 canonical ToolInvocation,
 dispatch 只认识这一种 schema:
 
     parse_tool_invocation(raw)

@@ -139,6 +139,6 @@ def rounded_corners_handler(tool_input: dict, params: dict) -> dict:
 # ── Registration ───────────────────────────────────────────
 # Not registered as a first-party local tool. The tool lives on the user
 # chain: owner account systest548d51 publishes it with execution=http
-# against the hosted API surface /api/v1/tools/rounded-corners, which
+# against the hosted southbound surface /tool-endpoints/rounded-corners, which
 # calls rounded_corners_handler below. The registry module stays pure
 # (zero I/O deps); the endpoint owns pull/auth/landing.

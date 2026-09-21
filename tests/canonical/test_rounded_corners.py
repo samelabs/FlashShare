@@ -1,10 +1,10 @@
-"""Rounded corners tool — user-chain guards (hosted API form).
+"""Rounded corners tool — user-chain guards (hosted southbound form).
 
 The tool is no longer a first-party registry entry: it lives on the user
 chain under owner systest548d51 with execution=http against the hosted
-API surface /api/v1/tools/rounded-corners. Guards assert BOTH halves of
-that reality: the pure handler module, and the API surface contract.
-No DB, no HTTP — pure source assertions.
+southbound surface /tool-endpoints/rounded-corners. Guards assert BOTH
+halves of that reality: the pure handler module, and the southbound
+endpoint contract. No DB, no HTTP — pure source assertions.
 """
 import os as _os
 import sys as _sys
@@ -48,15 +48,20 @@ check("RC5 radius 物理钳制 (不超过短边一半)",
 check("RC6 import 面白名单 (禁 gokapi/db/网络)",
       _import_lines == _ALLOWED_IMPORTS)
 
-_api = open(_os.path.join(_repo, "app", "routes", "apiv1.py"), encoding="utf-8").read()
-check("RC7 托管 API 面存在 (/api/v1/tools/rounded-corners)",
-      '@router.post("/tools/rounded-corners")' in _api)
+_ht = open(_os.path.join(_repo, "app", "routes", "hosted_tools.py"), encoding="utf-8").read()
+check("RC7 托管 southbound 面存在 (/tool-endpoints/rounded-corners)",
+      '@router.post("/rounded-corners")' in _ht
+      and "prefix=\"/tool-endpoints\"" in open(
+          _os.path.join(_repo, "app", "main.py"), encoding="utf-8").read())
 check("RC8 端点走签名拉取闸 (verify_fetch_token, 无旁路)",
-      "_pull_signed_source" in _api and "verify_fetch_token" in _api)
-check("RC9 端点要求 Bearer (与用户端点同合同)",
-      'via != "token"' in _api)
+      "_pull_signed_source" in _ht and "verify_fetch_token" in _ht)
+check("RC9 端点要求 Bearer (machine surface 认证)",
+      'via != "token"' in _ht)
 check("RC10 端点输出 data_b64 (json mode 合同)",
-      '"data_b64"' in _api)
+      '"data_b64"' in _ht)
+check("RC11 无旧 /api/v1 namespace 残留 (无 alias)",
+      "/api/v1" not in _ht
+      and not _os.path.exists(_os.path.join(_repo, "app", "routes", "apiv1.py")))
 
 print()
 print("FAIL: " + (", ".join(_FAIL) if _FAIL else "无 — 全绿"))

@@ -114,7 +114,7 @@ Server Agent MUST NOT：
 - **平台第三记账主体**：users 行 `username='platform'`。两条收入：用户工具抽佣（platform_commission）+ 系统工具直销（platform_revenue）。
 - **双池账本**：消费池（spendable_balance 派生）与收益池（provider_earn，仅可提现）物理隔离；ledger 唯一事实源。
 - **operator 权限**：users.status ∈ BACKOFFICE（如 'samelabs'），实时查库。
-- **MCP** 是北向主入口（streamable-http）；REST `/api/v1`；Web 三面同构 canonical invocation。
+- **MCP** 是唯一正式 northbound machine surface（streamable-http）；Web 是人类消费面；两者同构 canonical invocation。开发者 HTTP 工具端点是 southbound execution contract，不是公开 API。
 - **文件生命周期**：Gokapi 是物理文件权威；518 是 public mapping/页面可见性权威；startup + hourly housekeeping，无 cron/scheduler 子系统。
 - **站内预览语义**（已实现）：internal preview 走 `/api/files/download/{id}`（`increaseCounter:false`）authenticated non-counting 通道，不消耗 allowed_downloads；service API key 必须拥有 DOWNLOAD permission（v2.2.4 `ApiPermDownload`），startup capability probe fail-closed 验证。**禁止穿透 Gokapi 私有存储（sqlite/schema/content 目录）实现预览**。见 DEVELOPMENT.md 的 Gokapi 约束（含 disposable 真实 v2.2.4 实测证据）。
 

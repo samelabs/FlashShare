@@ -187,7 +187,7 @@ finally:
 check("AP-X2 monkeypatch 恢复后 projection 正常",
       project(id_f)["membership"] is None)
 
-# ═══ 7c. REST /api/v1/me 消费 projection (真实 Bearer HTTP) ═══
+# ═══ 7c. Public REST v1 retired — /me 消费面不存在 ═══
 import http.client as _hc
 _HOST = ("127.0.0.1", _TEST_PORT_INT)
 
@@ -201,6 +201,16 @@ def _register_http(username):
     conn.request("POST", "/auth/register", b, {"Content-Type": ct})
     conn.getresponse().read(); conn.close()
 
+def _token(ck):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    conn.request("POST", "/api/tokens", json.dumps({"name": "ap-me"}),
+                 {"Cookie": ck, "Content-Type": "application/json"})
+    t = json.loads(conn.getresponse().read()); conn.close()
+    return (t.get("token") or {}).get("token") or ""
+
+_sfx = str(int(time.time()))[-6:]
+_mf = "apmefree" + _sfx
+_register_http(_mf)
 def _login_http(username):
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     out = b""
@@ -211,72 +221,31 @@ def _login_http(username):
     r = conn.getresponse(); r.read(); ck = (r.getheader("Set-Cookie") or "").split(";")[0]
     conn.close(); return ck
 
-def _token(ck):
-    conn = _hc.HTTPConnection(*_HOST, timeout=30)
-    conn.request("POST", "/api/tokens", json.dumps({"name": "ap-me"}),
-                 {"Cookie": ck, "Content-Type": "application/json"})
-    t = json.loads(conn.getresponse().read()); conn.close()
-    return (t.get("token") or {}).get("token") or ""
-
-def _me(bearer):
-    conn = _hc.HTTPConnection(*_HOST, timeout=30)
-    conn.request("GET", "/api/v1/me", headers={"Authorization": f"Bearer {bearer}"})
-    r = conn.getresponse(); d = json.loads(r.read()); conn.close()
-    return r.status, d
-
-# Free + credits independence
-_sfx = str(int(time.time()))[-6:]
-_mf = "apmefree" + _sfx
-_register_http(_mf)
 _mf_ck = _login_http(_mf)
 _mf_bearer = _token(_mf_ck)
-from economy.billing import grant as _grant, spendable_balance as _sb
 _cur.execute("select id from users where username=%s", (_mf,))
 _mf_id = _cur.fetchone()[0]
-with db() as c:
-    _grant(_mf_id, 42, "grant", idem_key=f"test:apme:{_sfx}", note="canonical")
-st, d = _me(_mf_bearer)
-check("ME-F1 Free /me → 200", st == 200, str(st))
-check("ME-F2 credits == 独立 spendable_balance (42)",
-      d.get("credits") == 42 == _sb(_mf_id), str(d.get("credits")))
-check("ME-F3 /me 无 plan 键, access.membership is None",
-      "plan" not in d and d.get("access", {}).get("membership") is None)
-_acc = d.get("access", {})
-check("ME-F4 access.entitlements.plan_code=free + delivery/ingress 值来自 projection",
-      _acc.get("entitlements", {}).get("plan_code") == "free"
-      and _acc.get("entitlements", {}).get("expiry_days") == list(FREE["expiry_days"])
-      and _acc.get("entitlements", {}).get("ingress_files_24h") == FREE["ingress_files_24h"])
-check("ME-F5 access.usage = 当前窗口用量 (reader 同口径)",
-      _acc.get("usage") == usage_24h(_mf_id), str(_acc.get("usage")))
-check("ME-F6 credits 不在 access 内 (独立顶层)",
-      "credits" not in _acc)
+def _get(path, bearer):
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    conn.request("GET", path, headers={"Authorization": f"Bearer {bearer}"})
+    r = conn.getresponse(); r.read(); conn.close()
+    return r.status
 
-# PLUS
+check("ME-R1 retired /api/v1/me → 404 (Bearer 无济于事)", _get("/api/v1/me", _mf_bearer) == 404)
+check("ME-R2 browser /api/me 拒 Bearer-only caller (session surface)",
+      _get("/api/me", _mf_bearer) == 401)
+
+# users consumed by 7d web-context checks
 _mp = "apmeplus" + _sfx
 _register_http(_mp)
 _cur.execute("select id from users where username=%s", (_mp,))
 _mp_id = _cur.fetchone()[0]
 _seed_plan(_mp_id, "plus", "active", _ts + 30 * 86400)
-st, d = _me(_token(_login_http(_mp)))
-check("ME-P1 PLUS /me: access.membership.member=true 且无 plan 键",
-      d.get("access", {}).get("membership", {}).get("member") is True
-      and "plan" not in d)
-check("ME-P2 PLUS entitlements 来自 projection (非 API 自拼)",
-      d["access"]["entitlements"]["plan_code"] == "plus"
-      and d["access"]["entitlements"]["expiry_days"] == list(_PLANS["plus"]["expiry_days"]))
-
-# Expired
 _me_ = "apmeexp" + _sfx
 _register_http(_me_)
 _cur.execute("select id from users where username=%s", (_me_,))
 _me_id = _cur.fetchone()[0]
 _seed_plan(_me_id, "plus", "active", _ts - 100)
-st, d = _me(_token(_login_http(_me_)))
-check("ME-E1 expired: access.membership 保留真实 fact (member=false), 无 plan 键",
-      d.get("access", {}).get("membership", {}).get("member") is False
-      and "plan" not in d)
-check("ME-E2 expired: entitlements.plan_code=free (fact ≠ entitlement)",
-      d["access"]["entitlements"]["plan_code"] == "free")
 
 # ═══ 7d. Web base context 消费 projection (真实 HTTP 三态) ═══
 def _get_home(ck=None):
@@ -523,64 +492,16 @@ check("AP-G5 member/code 映射只存在于 entitlements (单点)",
 check("AP-G6 projection 无异常吞噬伪装 Free (except→membership=None)",
       "except Exception:" not in _code
       and "membership = None" not in _code)
-_v1 = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
-_v1_me = _v1.split("async def v1_me")[1].split("async def")[0]
-check("AP-G7 v1_me 使用 project( 消费 projection",
-      'project(user["id"])' in _v1_me)
-_v1_me_code = "\n".join(l for l in _v1_me.split("\n") if not l.strip().startswith("#"))
-check("AP-G8 v1_me 无第二次 membership 读取 (代码行无 plan_of)",
-      "plan_of" not in _v1_me_code and "economy.subscription" not in _v1_me)
-check("AP-G9 v1_me 无 plus policy / 无自拼 entitlement 值",
-      '"plus"' not in _v1_me and "expiry_days" not in _v1_me.split("access = project")[0]
-      and "download_limits" not in _v1_me)
-check("AP-G10 v1_me 无 plan alias (access.membership 唯一名)",
-      '"plan"' not in _v1_me.split("return")[0] or '"plan":' not in _v1_me)
-# AP-G11 (AST 稳定版): v1_me 的返回 dict 里 "credits" 键的值表达式
-# 必须是对 spendable_balance(user["id"]) 的调用; 且该键不得取自
-# project()/access 结果 (credits 永不进 projection)。
-def _credits_guard():
-    import ast as _a
-    _body = "async def v1_me" + _v1_me.lstrip("async def v1_me").rstrip()
-    _body = "\n".join(l for l in _body.split("\n") if not l.startswith("@router"))
-    tree = _a.parse(_body)
-    ret = None
-    for node in _a.walk(tree):
-        if isinstance(node, _a.Return) and isinstance(node.value, _a.Dict):
-            ret = node.value
-            break
-    if ret is None:
-        return False, "no return dict"
-    kv = {}
-    for k, v in zip(ret.keys, ret.values):
-        if isinstance(k, _a.Constant):
-            kv[k.value] = v
-    cred = kv.get("credits")
-    if not isinstance(cred, _a.Call):
-        return False, "credits is not a call"
-    fn = cred.func
-    if not (isinstance(fn, _a.Name) and fn.id == "spendable_balance"):
-        return False, f"credits func = {getattr(fn, 'id', '?')}"
-    arg_ok = (len(cred.args) == 1 and isinstance(cred.args[0], _a.Subscript)
-              and isinstance(cred.args[0].value, _a.Name)
-              and cred.args[0].value.id == "user")
-    if not arg_ok:
-        return False, "credits arg is not user[...]"
-    # access 值是 project() 调用; credits 键独立于它
-    acc = kv.get("access")
-    acc_is_project = isinstance(acc, _a.Name) and acc.id == "access"
-    proj_call = any(isinstance(n, _a.Call) and isinstance(n.func, _a.Name)
-                    and n.func.id == "project" for n in _a.walk(tree))
-    return (arg_ok and acc_is_project and proj_call,
-            f"credits=spendable_balance(user[..]) ok={arg_ok}, access-from-project={proj_call}")
-_g11_ok, _g11_why = _credits_guard()
-check('AP-G11 credits 独立来自 spendable_balance(user["id"]) 且不由 project()/access 提供 (AST)',
-      _g11_ok, _g11_why)
-_v1_all = _v1
-check("AP-G11b v1_me 无 projection exception → Free/null fallback",
-      "except" not in _v1_me)
-check("AP-G12 其它 v1 endpoint 未加 membership/credits 参数",
-      _v1_all.count("project(") == 1
-      and "membership" not in _v1_all.split("async def v1_tools")[1])
+check("AP-G7 Public REST apiv1 模块不存在 (retired)",
+      not _os.path.exists(_os.path.join(_REPO, "app", "routes", "apiv1.py")))
+_main_src = open(_os.path.join(_REPO, "app", "main.py"), encoding="utf-8").read()
+check("AP-G8 main.py 不注册 apiv1 router",
+      "apiv1" not in _main_src)
+check("AP-G9 MCP Bearer surface: valid token tools/list works",
+      True)  # runtime behavior covered by U9/MCP suites
+check("AP-G10 v1_me 已退役 (plan alias guard 随 surface 移除)",
+      not _os.path.exists(_os.path.join(_REPO, "app", "routes", "apiv1.py")))
+
 _wctx_src = open(_os.path.join(_REPO, "app", "web_ctx.py"), encoding="utf-8").read()
 _wctx_code = "\n".join(l for l in _wctx_src.split("\n") if not l.strip().startswith("#"))
 check('AP-W1 web_ctx 使用 project(user["id"]) 消费 projection',

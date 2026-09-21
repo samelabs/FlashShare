@@ -21,8 +21,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 
-from app.web_auth import require_session_or_bearer_auth as _require_auth
-from app.web_auth import require_session_auth as _require_session
+from app.web_auth import require_session_auth as _require_auth
 
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
 sys.path.insert(0, str(_CORE))
@@ -509,7 +508,7 @@ async def get_me(request: Request):
 
 @router.get("/tokens")
 async def list_tokens_route(request: Request):
-    user, err = _require_session(request)
+    user, err = _require_auth(request)
     if err:
         return err
     from identity.apitokens import list_tokens
@@ -518,7 +517,7 @@ async def list_tokens_route(request: Request):
 
 @router.post("/tokens")
 async def create_token_route(request: Request):
-    user, err = _require_session(request)
+    user, err = _require_auth(request)
     if err:
         return err
     try:
@@ -533,7 +532,7 @@ async def create_token_route(request: Request):
 
 @router.post("/tokens/{token_id}/revoke")
 async def revoke_token_route(token_id: int, request: Request):
-    user, err = _require_session(request)
+    user, err = _require_auth(request)
     if err:
         return err
     from identity.apitokens import revoke_token

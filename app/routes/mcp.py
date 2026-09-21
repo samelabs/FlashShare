@@ -1,6 +1,6 @@
 """MCP server at /mcp — stateless streamable HTTP.
 
-The agent channel reuses the same boundaries as /api/v1: Bearer identity,
+The agent channel authenticates with a Bearer identity and
 canonical Catalog, source ingress pipeline, ToolInvocation and metering gate.
 Methods: initialize | notifications/initialized | ping | tools/list | tools/call.
 """
@@ -111,7 +111,7 @@ async def _dispatch(request: Request, user: dict, msg: dict):
                 "518.PLUS capability platform. tools/list is paginated "
                 "(pass cursor for the next page); meta tool 'catalog_search' "
                 "finds tools by keyword when the catalog is large. Every "
-                "call is metered in credits (/api/v1/me); pass client_ref "
+                "call is metered in credits; pass client_ref "
                 "on tools/call to retry safely — replays return the "
                 "original result without re-charging. Catalog version: "
                 f"{catalog_version()} — re-list when it changes."

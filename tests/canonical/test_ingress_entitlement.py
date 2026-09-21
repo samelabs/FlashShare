@@ -517,12 +517,9 @@ check("B-W1 Web 21 files → 400 err_too_many_files {limit:20, incoming:21}",
 _cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
 check("B-W2 拒绝后 upload_usage 零新增", _cur.fetchone()[0] == _all_usage)
 
-# REST oversized single: v1 的 declared/body 双检查均调 validate_batch (源 guard G12);
-# 行为面经共享 pipeline 单测覆盖 (B-M2 同函数), HTTP 面等价。
-_apiv1 = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
-check("B-R1 REST v1 经 shared validate_batch (import + declared + body)",
-      _apiv1.count("validate_batch") >= 3
-      and "MAX_UPLOAD_BYTES" not in _apiv1)
+# Public REST v1 retired — ingress boundary 单点在 pipeline (Web/MCP 同函数, B-M2 已测)。
+check("B-R1 apiv1 模块不存在 (v1 uploads 退役)",
+      not _os.path.exists(_os.path.join(_REPO, "app", "routes", "apiv1.py")))
 
 # MCP: 需要 bearer token — 注册用户 + token? MCP 走 /mcp (bearer). 简化: 直接调 pipeline 层 (MCP 同一函数):
 from execution.pipeline import upload_sources as _us, IngressBoundaryError as _IBE
@@ -643,22 +640,15 @@ check("WQ-1 Web quota denial: 429 + 六字段完整",
       and wd.get("incoming") == 1 and wd.get("remaining") == 0
       and wd.get("plan_code") == "free", f"{r.status} {str(wd)[:110]}")
 
-# REST 真实: bearer token 上传 → 429 同结构
-conn = _hc.HTTPConnection(*_HOST, timeout=30)
-conn.request("POST", "/api/tokens", json.dumps({"name": "quota-e2e"}),
-             {"Cookie": _wck, "Content-Type": "application/json"})
-_wtk = json.loads(conn.getresponse().read()); conn.close()
-_wbearer = (_wtk.get("token") or {}).get("token") or ""
+# Public REST v1 uploads retired — bearer call on the retired path stays 404.
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("POST", "/api/v1/uploads", _png1, {
     "Content-Type": "image/png", "x-filename": "q.png",
-    "Content-Length": str(len(_png1)), "Authorization": f"Bearer {_wbearer}",
+    "Content-Length": str(len(_png1)),
+    "Authorization": "Bearer fsk_retired_" + uuid.uuid4().hex,
     "Idempotency-Key": f"rq-{uuid.uuid4().hex[:10]}"})
-r = conn.getresponse(); rd = json.loads(r.read()); conn.close()
-check("RQ-1 REST quota denial: 429 + 同一结构 contract",
-      r.status == 429 and rd.get("error") == "err_ingress_files_24h"
-      and rd.get("limit") == FREE["ingress_files_24h"]
-      and rd.get("remaining") == 0 and rd.get("plan_code") == "free", f"{r.status} {str(rd)[:110]}")
+r = conn.getresponse(); r.read(); conn.close()
+check("RQ-1 retired /api/v1/uploads → 404", r.status == 404, str(r.status))
 
 # denial 无残留 (upload_usage 不增; Gokapi 面由 pipeline 顺序保证)
 _cur.execute("select count(*) from upload_usage where user_id=%s", (_wu_id,))
@@ -968,13 +958,12 @@ _ups = open(_os.path.join(_REPO, "core", "sharing", "uploads.py"), encoding="utf
 check("G14 sharing/uploads.py 是 quota denial 唯一构造点 (_quota_denial 单点)",
       "_quota_denial" in _ups and "err_ingress_files_24h" not in _apir
       and "err_ingress_files_24h" not in _mcp_src, "")
-_apiv1_src = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
+_apiv1_src = ""  # Public REST v1 retired (module absent)
 def _code_lines(src):
     return "\n".join(l for l in src.split("\n")
                      if not l.strip().startswith("#") and "recomputation" not in l)
-check("G15 三面不自行算 remaining (透传 denial, 排除注释)",
+check("G15 消费面不自行算 remaining (透传 denial, 排除注释)",
       "remaining" not in _code_lines(_apir)
-      and "remaining" not in _code_lines(_apiv1_src)
       and "remaining" not in _code_lines(_mcp_src))
 # repo-wide active guard: 动态拼旧 key 防自匹配; 只扫文本源码, 排除缓存/生成物目录树中非源码部分
 _old_count_key = "err_quota_" + "count"

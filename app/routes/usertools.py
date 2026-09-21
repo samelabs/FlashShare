@@ -29,7 +29,7 @@ import re
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from app.web_auth import require_session_or_bearer_auth as _require_auth  # 单点 (治理)
+from app.web_auth import require_session_auth as _require_auth  # 单点 (治理)
 
 from database import db
 from i18n import SERVER_I18N as _SUPPORTED_LANGS  # 发布端多语言键白名单

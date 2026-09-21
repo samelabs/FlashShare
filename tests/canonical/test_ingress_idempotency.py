@@ -223,34 +223,22 @@ check("18 direct-share replay one uploads row", ups17b == ups17 == 1,
       f"{ups17}->{ups17b}")
 check("19 direct-share replay one ingress usage", _usage_n(uid2) == 1)
 
-# ══════════ 20-22. REST v1 ══════════
+# ══════════ 20-22. Public REST v1 retired ══════════
 ck3 = _register(_u + "v1")
-# bearer token
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("POST", "/api/tokens", json.dumps({"name": "ig"}).encode(),
              {"Cookie": ck3, "Content-Type": "application/json"})
 _tk = json.loads(conn.getresponse().read()); conn.close()
 bearer = (_tk.get("token") or {}).get("token") or ""
 BH = {"Content-Type": "image/png", "x-filename": "v.png",
-      "Authorization": f"Bearer {bearer}"}
+      "Authorization": f"Bearer {bearer}", "Idempotency-Key": f"v1k-{_u}-1"}
 with db() as con:
     uid3 = con.execute("select id from users where username=%s",
                        (_u + "v1",)).fetchone()["id"]
 st, r = _req("POST", "/api/v1/uploads", PNG, BH)
-check("20 v1 missing Idempotency-Key → 422 idempotency_key_required",
-      st == 422 and r.get("error") == "idempotency_key_required", f"{st} {str(r)[:80]}")
+check("20 retired /api/v1/uploads → 404 (无兼容 alias)",
+      st == 404, f"{st} {str(r)[:80]}")
 check("20b zero usage", _usage_n(uid3) == 0)
-k21 = f"v1k-{_u}-1"
-st, r = _req("POST", "/api/v1/uploads", PNG, {**BH, "Idempotency-Key": k21})
-check("21a v1 first upload ok", st == 200 and r.get("ok") and r["file"].get("publicId"),
-      f"{st} {str(r)[:90]}")
-v1pid = r["file"]["publicId"]
-st, r = _req("POST", "/api/v1/uploads", PNG, {**BH, "Idempotency-Key": k21})
-check("21 v1 same key+body replay → same handle",
-      st == 200 and r["file"]["publicId"] == v1pid, f"{st} {str(r)[:90]}")
-st, r = _req("POST", "/api/v1/uploads", OTHER, {**BH, "Idempotency-Key": k21})
-check("22 v1 changed body same key → 409",
-      st == 409 and r.get("error") == "idempotency_conflict", f"{st} {str(r)[:80]}")
 
 # ══════════ 23-29. MCP ══════════
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
@@ -645,30 +633,29 @@ check("F7 Web malformed replay → 500 err_ingress_unresolved + 零副作用",
       and _stW == "ok",
       f"{stW} {str(rW)[:80]} gk={_gkW0}->{_gk_count()} usage={_uuW0}->{_usage_n(uidW)}")
 
-# F8: v1 HTTP (同 receipt 形态, Idempotency-Key)
+# F8/F9 tokens (surf): web cookie mint + machine bearer
 connS = _hc.HTTPConnection(*_HOST, timeout=30)
 connS.request("POST", "/api/tokens", json.dumps({"name": "surf"}).encode(),
               {"Cookie": _ckS2, "Content-Type": "application/json"})
 _bS = (json.loads(connS.getresponse().read()).get("token") or {}).get("token")
 connS.close()
-hV1 = ingress_request_hash("v1_source",
-                            [{"filename": "s.png", "content_type": "image/png",
-                              "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
-                            {})
+
+# F8: scalar stored payload (同 receipt 形态, web surface)
 refV = f"surf-{_u}-v"
-rctV, uidsV, _ = claim_ingress_quota(uidW, "127.0.0.1", refV, hV1, [len(PNG)])
+body, ct = _multipart([("s.png", PNG, "image/png")],
+                      {"tool": "compress", "client_ref": refV})
+stV, rV = _req("POST", "/api/uploads", body, {"Content-Type": ct, "Cookie": _ckS2})
 with db() as con:
-    finalize_ok(con, int(rctV["id"]), [{"publicId": "SURFV"}])
-with db() as con:
-    con.execute("update ingress_requests set result_json='123'"
-                " where id=%s", (rctV["id"],))
+    _rV = con.execute("select id from ingress_requests where user_id=%s"
+                      " and request_ref=%s", (uidW, refV)).fetchone()
+    rctV = dict(_rV) if _rV else {"id": 0}
+    if _rV:
+        # the web route already finalized ok — poison the stored payload only
+        con.execute("update ingress_requests set result_json='123'"
+                    " where id=%s", (rctV["id"],))
 _gkV0 = _gk_count()
 _uuV0 = _usage_n(uidW)
-stV, rV = _req("POST", "/api/v1/uploads", PNG, {
-    "Content-Type": "image/png", "x-filename": "s.png",
-    "Content-Length": str(len(PNG)),
-    "Authorization": f"Bearer {_bS}",
-    "Idempotency-Key": refV})
+stV, rV = _req("POST", "/api/uploads", body, {"Content-Type": ct, "Cookie": _ckS2})
 with db() as con:
     _stV = con.execute("select status from ingress_requests where id=%s",
                        (rctV["id"],)).fetchone()["status"]

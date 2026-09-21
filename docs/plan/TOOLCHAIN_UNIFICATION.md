@@ -21,7 +21,7 @@
 3. **execution binding** — local handler 或 HTTP endpoint 声明
 
 除此之外，身份、展示、输入契约、参数契约、能力声明的**形状完全同构**；
-Web 首页、Tool Page、`/api/v1`、MCP 四个消费面看到的是同一份 projection。
+Web 首页、Tool Page、MCP 各消费面看到的是同一份 projection。
 
 ---
 
@@ -79,7 +79,7 @@ invocation adapter。
 5. **multi 属于 ToolDeclaration**：不是 params；multi=true 允许 1..20，
    >20 与 multi=false 显式多文件形态都返回 typed `err_too_many_files`，
    任何入口（dispatch / MCP / process-flow）都不得静默截断。
-6. **四面同一 accept/multi**：Web 首页、Tool Page、`/api/v1`、MCP 对同一
+6. **各面同一 accept/multi**：Web 首页、Tool Page、MCP 对同一
    工具看到的 accept token 列表与 multi 布尔完全一致，来自同一 canonical
    Catalog projection（`governance.catalog.row_to_item()`）。
 
@@ -95,7 +95,7 @@ operator 入口都从它派生，禁止第二份手写格式表。
 |---|---|---|---|
 | **legacy MIME accept**（DB 存量行 / runtime 声明含 MIME） | 历史工具与用户存量数据以 MIME 存储 | accept 一律 canonical extension token；读时由 `extensions_for_accept` 展开、projection 时 canonicalize | 存量行全部重写为 ext，且 `extensions_for_mimes` 无消费者后删除 MIME 展开分支 |
 | **legacy presets**（presets_json 与 params_json 双轨） | 一方工具旧预设模型 | canonical params 声明；projection 有 params 时 presets=None | 一方 registry 全部迁移到 params 声明 |
-| ~~lifecycle 混 params 外层旧 envelope~~ **已删除（阶段 C 完成）** | — | ToolInvocation delivery envelope 独立字段 | Web/API/MCP 已全部切换 canonical invocation |
+| ~~lifecycle 混 params 外层旧 envelope~~ **已删除（阶段 C 完成）** | — | ToolInvocation delivery envelope 独立字段 | Web/MCP 已全部切换 canonical invocation |
 | ~~compatibility selftest endpoint~~ **已删除（阶段 C 完成）** | — | 作者从真实工具页 `/tool/{owner}/{tool_id}` 走 runToolFlow 完整消费链 | endpoint 已删除；self_test_required 发布门与 UI 自测概念保留 |
 | ~~first-party `register()` 仍接受 MIME creation input~~ **已删除（阶段 B 完成）** | — | register 直接声明 canonical ext；seed 无需再 canonicalize | 已随阶段 B 迁移全部一方源码并删除 shim |
 
@@ -134,7 +134,7 @@ operator 入口都从它派生，禁止第二份手写格式表。
   值域单源 `governance.delivery`，严格类型无强转）/ `client_ref`
   （null = fresh；非空 = 幂等键，scope = (user_id, tool_id, client_ref)，
   gate 语义不变）。
-  Web（app.js + process-flow runToolFlow）/ REST v1 / MCP 构造完全相同的
+  Web（app.js + process-flow runToolFlow）/ MCP 构造完全相同的
   canonical invocation；dispatch 只认这一种 schema，旧 flat shape 一律
   422 invalid_request，无 compatibility adapter。delivery/client_ref 等
   平台字段不泄漏给 handler 与 remote endpoint。lifecycle 旧 envelope 与
@@ -151,7 +151,7 @@ operator 入口都从它派生，禁止第二份手写格式表。
 
 - system / user / operator 三类 declaration **同构**（仅 ownership / trust /
   execution binding 不同）。
-- Web / API / MCP / Tool Page 的 projection **同构**（同一 row_to_item）。
+- Web / MCP / Tool Page 的 projection **同构**（同一 row_to_item）。
 - execution **无旁路**：自测、MCP、Web、token 调用全部经过同一
   dispatch → gate → endpoint 链路。
 - 所有 compatibility shim 都在第 4 节登记，且具备明确删除条件；shim 只做

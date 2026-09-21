@@ -264,27 +264,38 @@ _l0 = _cur.fetchone()[0]
 _cur.execute("select count(*) from tool_calls where user_id=%s", (_uid,))
 _tc0 = _cur.fetchone()[0]
 from identity.apitokens import create_token as _mk_tok
-_vtok = _mk_tok(_uid, "au-test")["token"]  # Bearer path (v1 requires client_ref)
-r = client.post("/api/v1/execute",
-                json={"tool_id": "badaccept",
-                      "source": {"files": [{"public_id": "x" * 12, "source_token": "t"}]},
-                      "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 1},
-                      "client_ref": "au-ref-1"},
-                headers={"Authorization": f"Bearer {_vtok}"})
-_ok_status = r.status_code in (503, 404, 422)
+_vtok = _mk_tok(_uid, "au-test")["token"]  # Bearer path (MCP)
+def _mcp_call(mid, tool, args):
+    return client.post("/mcp", json={"jsonrpc": "2.0", "id": mid,
+                                     "method": "tools/call",
+                                     "params": {"name": tool, "arguments": args}},
+                       headers={"Authorization": f"Bearer {_vtok}"})
+def _mcp_err(r):
+    try:
+        return (r.json().get("result", {}).get("content", [{}])[0].get("text", "") or "")
+    except Exception:
+        return r.text
+from economy.billing import grant as _grant28
+_grant28(_uid, 500, "manual_topup", idem_key=f"au-u3c:{_uid}", note="au")
+_cur.execute("select coalesce(sum(delta),0) from ledger where user_id=%s", (_uid,))
+_l0 = _cur.fetchone()[0]
+r = _mcp_call(1, "badaccept",
+              {"files": [{"filename": "x.png", "b64": "iVBORw0KGgo="}],
+               "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 1},
+               "client_ref": "au-ref-1"})
+_ok_status = r.status_code == 200
+_err_txt = _mcp_err(r)
 check("U3c invalid stored accept → tool_unavailable (pre-metering)",
-      _ok_status and r.json().get("error") == "tool_unavailable",
-      f"{r.status_code} {r.text[:80]}")
-for _bk in ("badaccept2", "badaccept3"):
-    r2 = client.post("/api/v1/execute",
-                     json={"tool_id": _bk,
-                           "source": {"files": [{"public_id": "x" * 12, "source_token": "t"}]},
-                           "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 1},
-                           "client_ref": f"au-ref-{_bk}"},
-                     headers={"Authorization": f"Bearer {_vtok}"})
+      _ok_status and "tool_unavailable" in _err_txt,
+      f"{r.status_code} {_err_txt[:80]}")
+for _n, _bk in enumerate(("badaccept2", "badaccept3"), start=2):
+    r2 = _mcp_call(_n, _bk,
+                   {"files": [{"filename": "x.png", "b64": "iVBORw0KGgo="}],
+                    "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 1},
+                    "client_ref": f"au-ref-{_bk}"})
     check(f"U3c stored {_bk} (''/'null') → pre-metering fail",
-          r2.status_code == 503 and r2.json().get("error") == "tool_unavailable",
-          f"{r2.status_code} {r2.text[:80]}")
+          r2.status_code == 200 and "tool_unavailable" in _mcp_err(r2),
+          f"{r2.status_code} {_mcp_err(r2)[:80]}")
 _cur.execute("select coalesce(sum(delta),0) from ledger where user_id=%s", (_uid,))
 _l1 = _cur.fetchone()[0]
 _cur.execute("select count(*) from tool_calls where user_id=%s", (_uid,))
@@ -330,14 +341,23 @@ check("U9 main.py 无 query key 认证分支",
 check("U9 agents.html 无 ?key= 直连示例",
       "?key=" not in open(_os.path.join(_REPO, "app", "templates", "agents.html"),
                           encoding="utf-8").read())
-# Bearer + session keep working on the capability surface
-r = client.get("/api/v1/me", headers={"Authorization": f"Bearer {_vtok}"})
-check("U9 Bearer 在能力面 (v1 /me) 仍有效",
-      r.status_code == 200 and r.json().get("user", {}).get("username") == _u,
-      f"{r.status_code} {r.text[:80]}")
-r = client.get("/api/v1/me?key=" + _vtok)
-check("U9 ?key= 仅凭查询参数 → 能力面未认证",
+# Bearer works on the machine surface (MCP), never on browser routes.
+r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 91,
+                              "method": "initialize",
+                              "params": {"protocolVersion": "2025-06-18"}},
+                headers={"Authorization": f"Bearer {_vtok}"})
+check("U9 Bearer 在 machine surface (/mcp initialize) 有效",
+      r.status_code == 200 and "serverInfo" in r.text, f"{r.status_code} {r.text[:80]}")
+r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 92,
+                              "method": "initialize",
+                              "params": {"protocolVersion": "2025-06-18"}})
+check("U9 anonymous /mcp → 401", r.status_code == 401, f"{r.status_code}")
+r = client.get("/api/me", headers={"Authorization": f"Bearer {_vtok}"})
+check("U9 Bearer 在 browser surface (/api/me) 被拒",
       r.status_code == 401, f"{r.status_code} {r.text[:80]}")
+r = client.get("/api/v1/me", headers={"Authorization": f"Bearer {_vtok}"})
+check("U9 retired /api/v1/me → 404",
+      r.status_code == 404, f"{r.status_code} {r.text[:80]}")
 _cur.execute("update users set status='active' where id=%s", (_uid,))
 
 # ═══ U10: historical runtime paths absent ═══
@@ -419,6 +439,43 @@ check("U27 routes/api.py receipt finalize 走 canonical sharing finalize",
 check("U27 sharing finalize_ok 是 caller-transaction 形式 (con, ingress_id)",
       "def finalize_ok(con, ingress_id" in _ig_src)
 
+# C28: Public REST v1 retired — MCP is the only northbound machine surface
+import os as _os2
+check("U28 app/routes/apiv1.py 不存在",
+      not _os2.path.exists(_os2.path.join(_REPO, "app", "routes", "apiv1.py")))
+_main28 = open(_os2.path.join(_REPO, "app", "main.py"), encoding="utf-8").read()
+check("U28 main.py 不 import/注册 apiv1",
+      "apiv1" not in _main28)
+check("U28 main.py 注册 hosted_tools (/tool-endpoints)",
+      "hosted_tools" in _main28 and '"/tool-endpoints"' in _main28)
+check("U28 apiv1 router prefix 无 /api/v1 注册",
+      '"/api/v1"' not in _main28)
+_mcp28 = open(_os2.path.join(_REPO, "app", "routes", "mcp.py"),
+              encoding="utf-8").read()
+check("U28 MCP source 无 /api/v1 叙事",
+      "/api/v1" not in _mcp28)
+_web_auth28 = open(_os2.path.join(_REPO, "app", "web_auth.py"),
+                   encoding="utf-8").read()
+check("U28 require_session_or_bearer_auth 已删 (browser 面 session-only)",
+      "require_session_or_bearer_auth" not in _web_auth28)
+check("U28 Bearer 解析仅限 machine surface (/mcp + /tool-endpoints)",
+      'path == "/mcp"' in _main28 and '"/tool-endpoints/"' in _main28)
+# production templates/JS 无 Public REST active expression
+_tpl28 = (open(_os2.path.join(_REPO, "app", "templates", "agents.html"),
+               encoding="utf-8").read()
+          + open(_os2.path.join(_REPO, "app", "templates", "tool_mcp.html"),
+                 encoding="utf-8").read())
+check("U28 templates 无 /api/v1 能力表达", "/api/v1" not in _tpl28)
+_i18n28 = open(_os2.path.join(_REPO, "core", "i18n.py"), encoding="utf-8").read()
+check("U28 i18n 无 Public REST 文案键 (agents_ep_*/agents_api_*/tool_mcp_http_hint)",
+      all(k not in _i18n28 for k in
+          ("agents_ep_me", "agents_api_h", "agents_api_desc2",
+           "tool_mcp_http_hint")))
+_hosted28 = open(_os2.path.join(_REPO, "app", "routes", "hosted_tools.py"),
+                 encoding="utf-8").read()
+check("U28 hosted_tools 走同一 token authority (authenticate 面 via auth_via token)",
+      'via != "token"' in _hosted28 and "verify_fetch_token" in _hosted28)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
@@ -437,9 +494,9 @@ check("U10 deploy runbook 无 sqlite archive/restore 路径",
 check("U10 deploy runbook 明确 rm dead sqlite file",
       "rm -f /var/lib/flashshare/flashshare.sqlite" in _doc2)
 
-# ═══ U7: v1 /me 无 plan 键 ═══
-_api = open(_os.path.join(_REPO, "app", "routes", "apiv1.py"), encoding="utf-8").read()
-check("U7 v1 /me 无 plan alias", '"plan":' not in _api)
+# ═══ U7: Public REST v1 retired ═══
+check("U7 app/routes/apiv1.py 不存在",
+      not _os.path.exists(_os.path.join(_REPO, "app", "routes", "apiv1.py")))
 
 # ═══ U4: PostgreSQL-only app ═══
 _cfg = open(_os.path.join(_REPO, "core", "config.py"), encoding="utf-8").read()

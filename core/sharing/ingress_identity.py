@@ -1,6 +1,6 @@
 """sharing/ingress_identity — the single ingress request hash.
 
-One helper for Web / REST v1 / MCP: the canonical content identity of a
+One helper for Web / MCP: the canonical content identity of a
 side-effecting source ingress. Computed AFTER filename sanitize, content
 sniff/resolve, and full body validation — never on raw transport bytes.
 File array order is preserved. IP / user_id / request_ref are excluded:

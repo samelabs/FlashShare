@@ -110,7 +110,7 @@ async def privacy(request: Request):
 
 @router.get("/agents", response_class=HTMLResponse)
 async def agents_page(request: Request):
-    """Agent support surface: HTTP API + MCP server + skill."""
+    """Agent support surface: the MCP server."""
     from app.main import templates
     ctx = _ctx_base(request)
     ctx.update({"shell_class": "", "share_url": ""})

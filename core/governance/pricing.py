@@ -12,7 +12,7 @@ A MISSING pricing row fails closed: the tool is not commercially
 created and reads as disabled — never free-by-default.
 
 The metering point is ONE place: the tool execution gate. Every
-billable execution path (web UI, /api/v1, MCP) funnels through
+billable execution path (web UI, MCP) funnels through
 execute with client_ref idempotency + cost snapshot, so credits are
 charged exactly once per logical call.
 """

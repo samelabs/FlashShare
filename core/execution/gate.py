@@ -1,4 +1,4 @@
-"""execution/gate — one metering/idempotency gate for Web, REST v1 and MCP.
+"""execution/gate — one metering/idempotency gate for Web and MCP.
 
 A tool_call row is claimed before charge/execution. Its id is the durable
 attempt identity used by the ledger; success finalizes that same row, failure

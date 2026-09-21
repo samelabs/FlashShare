@@ -103,10 +103,24 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 # ── Auth helpers ──
 
 def get_user_from_request(request: Request):
-    """Session first, then Bearer capability identity."""
+    """Browser session identity for the web surface; Bearer tokens are
+    resolved only for the machine surfaces (/mcp and /tool-endpoints)
+    that explicitly authenticate with them. A Bearer header never turns
+    its holder into a logged-in web user on browser routes."""
     from database import db
     token = request.cookies.get(COOKIE_NAME)
-    if not token:
+    if token:
+        try:
+            from repo.sessions import user_by_session_token
+            with db() as con:
+                row = user_by_session_token(con, token_hash(token), now())
+            if row:
+                request.state.auth_via = "session"
+            return dict(row) if row else None
+        except Exception:
+            return None
+    path = request.url.path
+    if path == "/mcp" or path.startswith("/tool-endpoints/"):
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
             from identity.apitokens import authenticate_token
@@ -114,16 +128,7 @@ def get_user_from_request(request: Request):
             if user:
                 request.state.auth_via = "token"
             return user
-        return None
-    try:
-        from repo.sessions import user_by_session_token
-        with db() as con:
-            row = user_by_session_token(con, token_hash(token), now())
-        if row:
-            request.state.auth_via = "session"
-        return dict(row) if row else None
-    except Exception:
-        return None
+    return None
 
 
 def detect_lang(request: Request) -> str:
@@ -144,7 +149,7 @@ def detect_lang(request: Request) -> str:
 import asyncio
 
 _concurrency = asyncio.Semaphore(8)
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/api/v1/uploads", "/mcp",
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/tool-endpoints/", "/mcp",
                 "/auth/login", "/auth/register")
 # Mutating account identity/credentials is a browser-session surface. Capability
 # tokens may run tools/API, but cannot use themselves to mint/alter account
@@ -212,14 +217,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Routes ──
 
-from app.routes import pages, api, auth_route, proxy, apiv1, samelabs, mcp, usertools  # noqa: E402
+from app.routes import pages, api, auth_route, proxy, hosted_tools, samelabs, mcp, usertools  # noqa: E402
 
 app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
-app.include_router(apiv1.router, prefix="/api/v1")
 app.include_router(auth_route.router, prefix="/auth")
 app.include_router(samelabs.router)
 app.include_router(mcp.router)
+app.include_router(hosted_tools.router, prefix="/tool-endpoints")
 from app.routes import topup  # noqa: E402
 app.include_router(topup.router)
 app.include_router(usertools.router)

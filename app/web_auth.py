@@ -24,14 +24,6 @@ def require_session_auth(request: Request):
     return dict(row), None
 
 
-def require_session_or_bearer_auth(request: Request):
-    """Product capability surface: browser session or API token."""
-    user = getattr(request.state, "user", None)
-    if not user:
-        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
-    return user, None
-
-
 def create_browser_session(user_id: int) -> str:
     """Create one fresh browser credential and persist only its HMAC hash."""
     token = b64url(secrets.token_bytes(32))

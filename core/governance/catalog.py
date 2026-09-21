@@ -7,7 +7,7 @@ the DATABASE the runtime source of truth for the catalog:
     startup:  load_all() → seed_from_registry() → rows exist
     catalog:  list_catalog() reads rows (pricing overlay here, one place)
     resolve:  resolve(tool_key, viewer) — the single routing entry for all
-              three consumption surfaces (web grid, /api/v1, MCP)
+              the consumption surfaces (web grid, MCP)
 
 Why: the platform thesis — new capabilities enter as DATA rows (user tools,
 remote execution classes), never as code changes. First-party tools are just
@@ -173,7 +173,7 @@ def catalog_item(tool: dict) -> dict | None:
     return row_to_item(tool, price)
 
 
-# ── Catalog (single source for web home, /api/v1/tools, MCP tools/list) ──
+# ── Catalog (single source for web home, MCP tools/list) ──
 
 def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> list:
     """518-native tool search: prefix/substring match across name (all label
@@ -241,8 +241,8 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     own private/unlisted tools (owner surface). Public listing (web home
     for anonymous) passes None → public rows only.
     include_remote: False strips execution=http|mcp rows — the web home
-    grid is local-only until the remote-tool UX ships; /api/v1 and MCP
-    keep them (programmatic surfaces are the remote-first consumers).
+    grid is local-only until the remote-tool UX ships; MCP keeps them
+    (programmatic surface is the remote-first consumer).
     """
     from governance.pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}

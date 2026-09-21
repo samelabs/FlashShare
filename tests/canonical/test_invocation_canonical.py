@@ -253,49 +253,18 @@ st, rm = req("POST", "/api/tools/execute", {
     "client_ref": f"auto-{uuid.uuid4().hex[:8]}-3"}, cookie)
 check("B4 multi=false files[2] → err_too_many_files", rm.get("error") == "err_too_many_files", f"{st} {rm}")
 
-# ═══ G: REST v1 ═══
-# 需 bearer token — 用测试账号已有 token? 生成: users 表 token 字段/专用路由
-# 直接为测试用户 mint 一个 token (security.token_hash 单向 — 造已知明文+hash 插行)
-PLAIN = "fsk_sctest_" + uuid.uuid4().hex
-import psycopg2 as _pgm
-sys.path.insert(0, os.path.join(_REPO, 'core'))
-from security import token_hash as _th
-_cm = _pgm.connect(TEST_DB); _cm.autocommit = True
-_curm = _cm.cursor()
-_curm.execute('select id from users where username=%s', (uname,))
-_uid = _curm.fetchone()[0]
-_curm.execute('insert into api_tokens (user_id, name, token_hash, prefix, status, created_at) values (%s, %s, %s, %s, %s, %s)', (_uid, 'sctest', _th(PLAIN), 'sctest', 'active', 1))
-_cm.close()
-print('minted (direct)')
-bearer = PLAIN
-if True:
-    st, r = req("POST", "/api/v1/execute", {
-        "tool_id": "compress", "source": {"files": [{"public_id": pid, "source_token": tok}]},
-        "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
-        "client_ref": "v1-job-1"}, None)
-    # req() 不支持 auth header — 手动
-    conn = http.client.HTTPConnection(*_HOST, timeout=60)
-    conn.request("POST", "/api/v1/execute", json.dumps({
-        "tool_id": "compress", "source": {"files": [{"public_id": pid, "source_token": tok}]},
-        "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
-        "client_ref": "v1-job-1"}), {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
-    resp = conn.getresponse(); r = json.loads(resp.read()); st = resp.status; conn.close()
-    check("G1 v1 canonical PASS", r.get("ok"), f"{st} {str(r)[:150]}")
-    conn = http.client.HTTPConnection(*_HOST, timeout=60)
-    conn.request("POST", "/api/v1/execute", json.dumps({
-        "tool_id": "compress", "public_id": pid, "source_token": tok, "params": {},
-        "client_ref": "v1-flat-1"}),
-        {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
-    resp = conn.getresponse(); r2 = json.loads(resp.read()); st2 = resp.status; conn.close()
-    check("G2 v1 旧 flat → 422", st2 == 422 and r2.get("error") == "invalid_request", f"{st2} {r2}")
-    conn = http.client.HTTPConnection(*_HOST, timeout=60)
-    conn.request("POST", "/api/v1/execute", json.dumps({
-        "tool_id": "compress", "source": {"files": [{"public_id": pid, "source_token": tok}]},
-        "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
-        "client_ref": None}), {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
-    resp = conn.getresponse(); r3 = json.loads(resp.read()); st3 = resp.status; conn.close()
-    check("G3 v1 client_ref null → client_ref_required", st3 == 422 and r3.get("error") == "client_ref_required", f"{st3} {r3}")
-
+# ═══ G: Public REST v1 retired ═══
+# real token for the MCP section below (minted via the test user's session)
+_conn_g = http.client.HTTPConnection(*_HOST, timeout=30)
+_conn_g.request("POST", "/api/tokens", json.dumps({"name": "scc"}),
+                {"Cookie": cookie, "Content-Type": "application/json"})
+_tk_g = json.loads(_conn_g.getresponse().read()); _conn_g.close()
+bearer = (_tk_g.get("token") or {}).get("token") or ""
+conn = http.client.HTTPConnection(*_HOST, timeout=30)
+conn.request("POST", "/api/v1/execute", json.dumps({}),
+             {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
+resp = conn.getresponse(); resp.read(); st = resp.status; conn.close()
+check("G-R1 retired /api/v1/execute → 404", st == 404, str(st))
 
 # ═══ H: MCP ═══
 mc = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
@@ -330,7 +299,7 @@ mbody = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
     "name": "compress",
     "arguments": {"files": [{"filename": "m.png", "b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}],
                    "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
-                   "client_ref": f"mcpexec-{{uuid.uuid4().hex[:8]}}"}}}
+                   "client_ref": f"mcpexec-{uuid.uuid4().hex[:8]}"}}}
 conn = http.client.HTTPConnection(*_HOST, timeout=60)
 conn.request("POST", "/mcp", json.dumps(mbody), {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
 resp = conn.getresponse()
@@ -386,7 +355,7 @@ check("I1 selftest endpoint 已删 (404/405)", sc_st in (404, 405), str(sc_st))
 # ═══ J: 旧协议生产代码清零 ═══
 srcs = {}
 for f in ['core/execution/dispatch.py', 'core/execution/gate.py', 'core/execution/orchestrator.py',
-          'core/execution/invocation.py', 'app/routes/api.py', 'app/routes/apiv1.py', 'app/routes/mcp.py',
+          'core/execution/invocation.py', 'app/routes/api.py', 'app/routes/mcp.py',
           'static/app.js', 'static/pages/process-flow.js']:
     srcs[f] = open(os.path.join(_REPO, f)).read()
 strip_pat = re.compile(r'"""[\s\S]*?"""|"[^"]*"|' + chr(39) + '[^' + chr(39) + ']*' + chr(39) + r'|//[^\n]*|#[^\n]*', re.S)

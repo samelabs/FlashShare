@@ -91,10 +91,6 @@ def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> 
         raise
 
 
-def upload_source(user: dict, filename: str, ctype: str, body: bytes, ip: str) -> dict:
-    """Single-file wrapper used by REST v1."""
-    return upload_sources(user, [(filename, ctype, body)], ip)[0]
-
 
 def save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
                        expiry_days, allowed_downloads, expire_at,

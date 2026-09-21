@@ -81,7 +81,7 @@ Do NOT merge target code into /opt/flashshare to obtain scripts.
     # O. smoke
     #  - home page renders; tool grid loads
     #  - image tool executes a .png end-to-end
-    #  - /api/v1/me (Bearer) returns access.membership, no plan key
+    #  - MCP Bearer identity reads access projection; no plan key
     #  - /samelabs loads for a status=samelabs account
     # P. remove the temporary target worktree
     git worktree remove /tmp/flashshare-deploy-$TARGET_SHA

@@ -39,23 +39,6 @@
     <button type="button" class="btn-secondary" id="copyConf">{{ texts['copy'] }}</button>
   </div>
 
-
-
-  <h2>{{ texts.agents_api_h }}</h2>
-  <p>{{ texts.agents_api_desc2 }}</p>
-  <div class="agents-endpoints">
-    <table class="agents-table">
-      <thead><tr><th>Method</th><th>Endpoint</th><th>{{ texts.agents_ep_desc }}</th></tr></thead>
-      <tbody>
-        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/me</td><td>{{ texts.agents_ep_me }}</td></tr>
-        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/tools</td><td>{{ texts.agents_ep_tools }}</td></tr>
-        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/uploads</td><td>{{ texts.agents_ep_upload }}</td></tr>
-        <tr><td><span class="ep-post">POST</span></td><td class="mono">/api/v1/execute</td><td>{{ texts.agents_ep_exec }}</td></tr>
-        <tr><td><span class="ep-get">GET</span></td><td class="mono">/api/v1/uploads/{id}</td><td>{{ texts.agents_ep_fetch }}</td></tr>
-      </tbody>
-    </table>
-  </div>
-
   <div class="agents-market-link">
     <a class="open-callout" href="/tools">
       <span data-i18n="market_title">{{ texts.market_title }}</span>

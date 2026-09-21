@@ -10,7 +10,6 @@
 - 🔧 内置文件工具：图片压缩 / 截图美化 / 隐私净化（剥元数据与 AI 水印）/ 图片转 PDF / PDF 合并 / 文档转 PDF / ICO 图标 / 裁白边 / ZIP 打包
 - 🧩 开放工具链：第三方以 HTTP API 契约接入自己的工具，平台负责计量与分发
 - 🤖 MCP 服务端（Streamable HTTP）：任意 MCP 客户端可调用全部工具，按次计费、失败自动退款
-- 🛠️ REST API v1（Bearer Token）：程序与智能体接入
 - 💰 双池账本：积分（消费）/ 收益（可提现）物理隔离
 - 🌍 10 种语言界面，阿拉伯语 RTL 原生支持
 - 👤 用户账号：本地注册或 X (Twitter) OAuth，支持绑定/解绑
@@ -48,70 +47,11 @@ FLASHSHARE_BASE_URL=https://your-domain
 
 ## API
 
-### MCP（推荐，智能体接入）
+### MCP（智能体 / 程序接入的唯一正式通道）
 
 端点 `https://your-domain/mcp`（Streamable HTTP），Bearer Token 认证。
-在任意 MCP 客户端添加服务端 URL + Token 即可调用全部工具。
-
-### REST API v1（程序接入）
-
-| Method | Endpoint | 说明 |
-|---|---|---|
-| GET | `/api/v1/me` | 账户信息、积分余额与当前访问权益 |
-| GET | `/api/v1/tools` | 工具目录（含单价） |
-| POST | `/api/v1/uploads` | 上传源文件 |
-| POST | `/api/v1/uploads` | 上传源文件（Idempotency-Key 幂等） |
-| POST | `/api/v1/execute` | 执行工具（client_ref 幂等） |
-| GET | `/api/v1/uploads/{id}` | 按公开 id 获取产出 |
-
-令牌在站内「API 令牌」页创建；`tools/call` 对同一工具调用复用 `client_ref` 重试返回原结果不重复扣费；失败自动退款。
-
-`GET /api/v1/me` 返回（节选）：
-
-```json
-{
-  "credits": 0,
-  "plan": null,
-  "access": {
-    "membership": null,
-    "entitlements": {"plan_code": "free", "ingress_files_24h": 100, "ingress_bytes_24h": 1073741824,
-                      "expiry_days": [1, 3, 7], "download_limits": [1, 10, 50, 100, 200]},
-    "usage": {"ingress_files_24h": 0, "ingress_bytes_24h": 0}
-  }
-}
-```
-
-`plan` 与 `access.membership` 等值（`plan` 是既有 v1 别名）；`access`
-是当前只读 access projection（会员事实 + 有效权益 + 24h 用量）。
-
-`POST /api/v1/uploads` 需要必填 header `Idempotency-Key`（非空、≤128 字符）：
-同一 key + 同一请求体重试返回同一 source handle；同 key 换内容返回
-`409 idempotency_conflict`。
-
-`POST /api/v1/execute` 请求体是 canonical ToolInvocation（`client_ref` 为
-v1 必填——agent/程序重试必须可幂等）。`client_ref` 标识一个不可变的
-logical invocation：同一 ref 的 params/source/delivery 任一变化都会得到
-`409 idempotency_conflict`；改变操作内容必须换新的 `client_ref`：
-
-```json
-{
-  "tool_id": "compress",
-  "source": {
-    "files": [
-      { "public_id": "fXXXXXXXXXXXX", "source_token": "st_..." }
-    ]
-  },
-  "params": { "preset": "2mb" },
-  "delivery": { "expiry_days": 7, "allowed_downloads": 200 },
-  "client_ref": "my-job-123"
-}
-```
-
-顶层只允许这五个键；旧扁平字段（`public_id`/`public_ids`/
-`source_token`/`source_tokens`、`params.expiry_days`/
-`params.allowed_downloads`）一律 422 `invalid_request`。
-`delivery.expiry_days ∈ {1,3,7}`、`delivery.allowed_downloads ∈
-{1,10,50,100,200}`，无字符串强转。
+在任意 MCP 客户端添加服务端 URL + Token 即可调用全部工具：`tools/list`
+分页发现、`catalog_search` 关键字检索、`tools/call` canonical 调用。
 
 ## 用户工具声明协议
 
