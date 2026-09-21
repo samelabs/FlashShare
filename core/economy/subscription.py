@@ -393,14 +393,13 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
         # Same-transaction replay lookup is EXACT: grants carry
         # ref_type='creem_transaction' — a row under any other ref_type
         # sharing this ref_id must never be mistaken for this paid
-        # transaction's grant.
+        # transaction's grant. 判定 = repo primitive rows 非空与否
+        # (存在性/business decision 留 economy 层)。
+        from repo import ledger as ledger_repo
         with db() as con:
-            _seen = con.execute(
-                "SELECT 1 FROM ledger WHERE user_id=%s AND kind IN"
-                " ('grant_plan','grant_plan_upgrade')"
-                " AND ref_type='creem_transaction' AND ref_id=%s LIMIT 1",
-                (order["user_id"], txn_ref)).fetchone()
-        _is_replay = _seen is not None
+            _seen_rows = ledger_repo.subscription_grants_by_transaction(
+                con, order["user_id"], txn_ref)
+        _is_replay = bool(_seen_rows)
     if _is_replay:
         plan_total = already
     else:

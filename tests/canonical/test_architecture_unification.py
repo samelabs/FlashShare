@@ -666,6 +666,20 @@ check("C39 total 求和仍留 economy 层",
       _rev39 is not None
       and 'total = sum(int(r["delta"]) for r in rows)' in _rev39.group(0))
 
+# C40: subscription replay probe reads via the same repo primitive
+_sub40_src = open(_os2.path.join(_REPO, "core", "economy", "subscription.py"),
+                  encoding="utf-8").read()
+_paid40 = _re33.search(
+    r"def apply_paid_period.*?(?=\ndef )", _sub40_src, _re33.DOTALL)
+check("C40 apply_paid_period 函数体无 con.execute",
+      _paid40 is not None and "con.execute" not in _paid40.group(0))
+check("C40 replay 判定消费 subscription_grants_by_transaction (无第二个 exists primitive)",
+      _paid40 is not None
+      and "subscription_grants_by_transaction(" in _paid40.group(0))
+check("C40 _is_replay 判定仍留 economy 层",
+      _paid40 is not None
+      and "_is_replay = bool(_seen_rows)" in _paid40.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
