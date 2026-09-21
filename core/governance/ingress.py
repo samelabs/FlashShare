@@ -5,7 +5,7 @@ authoritative 校验。不认识 User/Membership/Plan/Credits/rolling quota/
 Gokapi — 那些属于 entitlements 与 pipeline 的各自职责。
 
 边界值来自 config (FLASHSHARE_MAX_UPLOAD_MB / FLASHSHARE_MAX_BATCH_MB,
-默认 50/100MB) — 只此一份事实源。Web / REST / MCP / pipeline 全部
+默认 50/100MB) — 只此一份事实源。Web / MCP / pipeline 全部
 消费本模块, 禁止任何面自己维护第二份 20/50/100 判定。
 
 错误为结构化 denial dict (轻量, 非错误框架):

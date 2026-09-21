@@ -334,7 +334,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             return _rpc_err(mid, -32602, f"upload rejected: {_final_t}")
         _canon.append(((_san(_fn), _final_t, _body)))
     # Authoritative platform batch boundary (single validator for
-    # Web/REST/MCP) — BEFORE the receipt claim / quota / Gokapi.
+    # Web/MCP) — BEFORE the receipt claim / quota / Gokapi.
     from governance.ingress import validate_batch as _vbatch
     _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
     if _bdenial:

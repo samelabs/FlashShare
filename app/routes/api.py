@@ -300,7 +300,7 @@ async def create_upload(request: Request):
     if not pending:
         return JSONResponse({"ok": False, "error": "err_select_file"}, 400)
 
-    # Authoritative platform boundaries: one validator for Web/REST/MCP.
+    # Authoritative platform boundaries: one validator for Web/MCP.
     from governance.ingress import validate_batch
     denial = validate_batch([size for _, size, _, _ in pending])
     if denial:

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Ingress idempotency canonical — request receipts for source ingress.
 
-Web /api/uploads (client_ref), REST v1 /uploads (Idempotency-Key) and
-MCP tools/call (client_ref) share ONE receipt mechanism: same ref/hash
-→ replay the exact stored response with zero new quota/Gokapi; changed
-content under the same ref → 409 idempotency_conflict with zero side
-effects. Real HTTP surfaces + real DB. Fault injection only.
+Web /api/uploads (client_ref) and MCP tools/call (client_ref) share ONE
+receipt mechanism: same ref/hash → replay the exact stored response with
+zero new quota/Gokapi; changed content under the same ref → 409
+idempotency_conflict with zero side effects. Real HTTP surfaces + real
+DB. Fault injection only. The retired Public REST v1 /uploads path is
+probed only as a 404 negative below.
 """
 
 import os as _os

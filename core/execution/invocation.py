@@ -149,7 +149,7 @@ def invocation_fingerprint(invocation: ToolInvocation) -> str:
     IP, pricing, commission. Same public_id under a different but
     equivalent token is the SAME logical operation.
 
-    One helper only — web/MCP/REST all call this; nobody re-hashes
+    One helper only — Web/MCP all call this; nobody re-hashes
     the raw HTTP JSON (a defaulted-omitted param and an explicitly
     sent default must be the same operation).
     """

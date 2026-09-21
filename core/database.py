@@ -229,7 +229,7 @@ _SCHEMA_SQL = (
       ON ingress_requests(user_id, request_ref)
       WHERE status IN ('running','ok')
     """,
-    # ── platform: api_tokens (agent/MCP/API channel; parallel to sessions) ──
+    # ── platform: api_tokens (MCP/agent credential; parallel to sessions) ──
     """
     CREATE TABLE IF NOT EXISTS api_tokens (
       id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

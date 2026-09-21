@@ -152,17 +152,19 @@ _concurrency = asyncio.Semaphore(8)
 _HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/tool-endpoints/", "/mcp",
                 "/auth/login", "/auth/register")
 # Mutating account identity/credentials is a browser-session surface. Capability
-# tokens may run tools/API, but cannot use themselves to mint/alter account
-# credentials. Token CRUD and X bind/unbind also enforce session at their routes.
+# tokens may run the machine surfaces (MCP / hosted tool endpoints), but cannot
+# use themselves to mint/alter account credentials. Token CRUD and X bind/unbind
+# also enforce session at their routes.
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     request.state.user = get_user_from_request(request)
     request.state.lang = detect_lang(request)
     path = request.url.path
 
-    # Account namespace is the human browser surface. Capability tokens
-    # (Bearer) run tools/REST/MCP — they never render or mutate
-    # the account pages. Anonymous browsers get the login redirect instead.
+    # Account namespace is the human browser surface (session-only).
+    # Capability tokens (Bearer) serve MCP and the hosted tool endpoints —
+    # they never render or mutate the account pages. Anonymous browsers get
+    # the login redirect instead.
     if path == "/account" or path.startswith("/account/"):
         via = getattr(request.state, "auth_via", "")
         if not request.state.user:
