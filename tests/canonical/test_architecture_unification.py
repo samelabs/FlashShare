@@ -724,6 +724,11 @@ check("C42 init_db 消费 repo cleanup primitives",
 check("C42 Free Tier bootstrap INSERT INTO plans 保留",
       _init42 is not None and "INSERT INTO plans" in _init42.group(0))
 
+# C43: no internal prototype assets in the production static tree
+check("C43 production static tree 无内部原型目录 static/proto",
+      not _os2.path.exists(_os2.path.join(_REPO, "static", "proto"))
+      and not _os2.path.isdir(_os2.path.join(_REPO, "static", "proto")))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
