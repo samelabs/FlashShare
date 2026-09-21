@@ -531,13 +531,12 @@ const homeTools = document.getElementById("homeTools");
 const toolOverlay = document.getElementById("toolOverlay");
 const toolOverlayBody = document.getElementById("toolOverlayBody");
 const toolOverlayClose = document.getElementById("toolOverlayClose");
-// 4C-2: 删除 ACCEPT_TAGS MIME 手写镜像 — Catalog 已输出 canonical extension
-// token (".pdf"), 展示统一用 extLabel (".jpeg"→"JPEG"); 偶发 legacy fallback
-// token (含 "/") 简单取末段可读, 不再维护 MIME→格式全集。
+// 4C-2: catalog accept 只输出 canonical extension token (".pdf") —
+// 展示统一用 extLabel (".jpeg"→"JPEG")。无 MIME fallback: 非 "." 前缀
+// token 不进展示 (stored invalid accept 在服务端已 fail-closed)。
 function extLabel(tok) {
   const t = String(tok || "");
-  const tail = t.indexOf("/") >= 0 ? t.split("/").pop() : t;
-  return tail.replace(/^\./, "").toUpperCase();
+  return t.startsWith(".") ? t.slice(1).toUpperCase() : "";
 }
 let activeTool = null;
 let activeToolParams = {};  // spec v3: 确认时收集的 params 值
