@@ -212,18 +212,16 @@ def _classify_db_commit_outcome(plan_id, intended, before, actor_id,
     Never a second speculative mutation inside this classification.
     """
     from database import db as _fdb
+    from repo.orders import plan_by_id as _plan_by_id
+    from repo.operator_audit import recent_pair_rows as _recent_pair_rows
     import json as _json
     try:
         with _fdb() as con:
-            row = con.execute(
-                "SELECT * FROM plans WHERE id=%s", (plan_id,)).fetchone()
-            audits = con.execute(
-                "SELECT before_json, after_json FROM operator_audit"
-                " WHERE action=%s AND target_type='plan' AND target_id=%s"
-                "   AND actor_user_id=%s AND created_at>=%s"
-                " ORDER BY id DESC LIMIT 20",
-                (action, str(plan_id), int(actor_id),
-                 int(tx_started))).fetchall()
+            row = _plan_by_id(con, plan_id)
+            audits = _recent_pair_rows(
+                con, action=action, target_type="plan",
+                target_id=str(plan_id), actor_user_id=int(actor_id),
+                created_at_gte=int(tx_started), limit=20)
     except Exception:
         return "unresolved", None
     # exact THIS-operation audit: before_json == this op's exact before

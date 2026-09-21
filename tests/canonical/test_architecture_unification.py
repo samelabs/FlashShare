@@ -626,6 +626,18 @@ check("C36 samelabs_plans 计数消费 repo.orders primitives",
       and "_orders_repo.membership_counts_by_plan(con)" in _plans36.group(0)
       and "_orders_repo.pending_downgrade_counts_by_plan(con)" in _plans36.group(0))
 
+# C37: plan mirror commit-outcome classifier reads via repo primitives
+_cls37 = _re33.search(
+    r"def _classify_db_commit_outcome.*?(?=\ndef )", _sl35, _re33.DOTALL)
+check("C37 classifier 函数体无 con.execute",
+      _cls37 is not None and "con.execute" not in _cls37.group(0))
+check("C37 classifier 消费 repo.orders.plan_by_id + repo.operator_audit read primitive",
+      _cls37 is not None
+      and "_plan_by_id(con, plan_id)" in _cls37.group(0)
+      and "_recent_pair_rows(" in _cls37.group(0))
+check("C37 classifier 仍用独立 fresh connection",
+      _cls37 is not None and "with _fdb() as con:" in _cls37.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

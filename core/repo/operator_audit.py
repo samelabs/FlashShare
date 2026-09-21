@@ -101,6 +101,21 @@ def list_recent(con, limit: int = 50, offset: int = 0) -> list:
         """, (int(limit), int(offset))).fetchall()
 
 
+def recent_pair_rows(con, action: str, target_type: str, target_id: str,
+                     actor_user_id: int, created_at_gte: int,
+                     limit: int = 20) -> list:
+    """newest-first 只读: 满足 (action, target_type, target_id,
+    actor_user_id, created_at >= created_at_gte) 的 before/after 快照对
+    rows。纯 persistence query — 快照相等/分类判定属于调用方。"""
+    return con.execute(
+        """SELECT before_json, after_json FROM operator_audit
+        WHERE action=%s AND target_type=%s AND target_id=%s
+          AND actor_user_id=%s AND created_at >= %s
+        ORDER BY id DESC LIMIT %s""",
+        (str(action), str(target_type), str(target_id),
+         int(actor_user_id), int(created_at_gte), int(limit))).fetchall()
+
+
 def exists_for_ledger(con, ledger_id: int) -> bool:
     """credits.adjust 幂等伴生: 该 ledger 行是否已有对应 audit 事实
     (one ledger movement ↔ one audit fact)。"""
