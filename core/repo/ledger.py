@@ -22,6 +22,19 @@ def insert_row(con, user_id: int, delta: int, balance_after: int, kind: str,
          idem_key, note, created_at)).fetchone()
 
 
+def subscription_grants_by_transaction(con, user_id: int,
+                                        txn_id: str) -> list:
+    """THIS Creem transaction 实际产生的原始 subscription credits grants:
+    kind ∈ (grant_plan, grant_plan_upgrade), ref_type='creem_transaction',
+    ref_id=txn_id。纯 persistence query — 求和/反转判定属于 economy 层。"""
+    return con.execute(
+        """
+        SELECT id, delta, kind FROM ledger
+        WHERE user_id = %s AND kind IN ('grant_plan', 'grant_plan_upgrade')
+          AND ref_type = 'creem_transaction' AND ref_id = %s
+        """, (int(user_id), str(txn_id))).fetchall()
+
+
 def by_idem_key(con, user_id: int, idem_key: str) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM ledger WHERE user_id = %s AND idem_key = %s",

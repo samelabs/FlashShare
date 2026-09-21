@@ -171,13 +171,10 @@ def _reverse_subscription(txn: dict) -> dict:
 
     # exact grants for THIS transaction: kind ∈ (grant_plan,
     # grant_plan_upgrade) AND ref_type='creem_transaction' AND ref_id=txn
+    from repo import ledger as ledger_repo
     with db() as con:
-        rows = con.execute(
-            """
-            SELECT id, delta, kind FROM ledger
-            WHERE user_id = %s AND kind IN ('grant_plan', 'grant_plan_upgrade')
-              AND ref_type = 'creem_transaction' AND ref_id = %s
-            """, (user_id, txn_id)).fetchall()
+        rows = ledger_repo.subscription_grants_by_transaction(con, user_id,
+                                                              txn_id)
     total = sum(int(r["delta"]) for r in rows) if rows else 0
     if total <= 0:
         # This transaction never minted Credits (a legal zero-credit

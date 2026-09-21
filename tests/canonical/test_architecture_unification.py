@@ -652,6 +652,20 @@ check("C38 parse_stored_accept 仍由 governance 层调用",
       _val38 is not None
       and "from governance.formats import parse_stored_accept" in _val38.group(0))
 
+# C39: subscription reversal ledger read via repo primitive
+_rev39_src = open(_os2.path.join(_REPO, "core", "economy", "reverse.py"),
+                  encoding="utf-8").read()
+_rev39 = _re33.search(
+    r"def _reverse_subscription.*?(?=\ndef )", _rev39_src, _re33.DOTALL)
+check("C39 _reverse_subscription 函数体无 con.execute",
+      _rev39 is not None and "con.execute" not in _rev39.group(0))
+check("C39 _reverse_subscription 消费 repo.ledger subscription grant primitive",
+      _rev39 is not None
+      and "subscription_grants_by_transaction(con, user_id," in _rev39.group(0))
+check("C39 total 求和仍留 economy 层",
+      _rev39 is not None
+      and 'total = sum(int(r["delta"]) for r in rows)' in _rev39.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
