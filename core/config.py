@@ -2,6 +2,27 @@ import os
 import re
 
 APP_NAME = "518.PLUS"
+
+# ── Product version authority (single source: repo root VERSION) ──
+# The machine-readable release authority is the VERSION file; every runtime
+# product-version expression derives from it. No fallback, no git/tag/
+# changelog inference — a missing or malformed VERSION fails loudly.
+
+
+def _read_product_version() -> str:
+    import pathlib
+    vf = pathlib.Path(__file__).resolve().parent.parent / "VERSION"
+    try:
+        raw = vf.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"VERSION file unreadable: {vf}") from exc
+    v = raw.strip()
+    if not re.fullmatch(r"[0-9]+\.[0-9]+", v):
+        raise RuntimeError(f"VERSION malformed: {raw!r} (expected major.minor)")
+    return v
+
+
+PRODUCT_VERSION = _read_product_version()
 SEO_TITLE = "518.PLUS"
 SEO_DESC = "Upload, share, done. Fast temporary file links with QR codes."
 

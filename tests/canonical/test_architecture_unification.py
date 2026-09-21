@@ -342,12 +342,17 @@ check("U9 agents.html 无 ?key= 直连示例",
       "?key=" not in open(_os.path.join(_REPO, "app", "templates", "agents.html"),
                           encoding="utf-8").read())
 # Bearer works on the machine surface (MCP), never on browser routes.
+_ver9 = open(_os.path.join(_REPO, "VERSION"), encoding="utf-8").read().strip()
 r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 91,
                               "method": "initialize",
                               "params": {"protocolVersion": "2025-06-18"}},
                 headers={"Authorization": f"Bearer {_vtok}"})
 check("U9 Bearer 在 machine surface (/mcp initialize) 有效",
       r.status_code == 200 and "serverInfo" in r.text, f"{r.status_code} {r.text[:80]}")
+check("U9 initialize serverInfo.version == root VERSION",
+      r.status_code == 200
+      and r.json()["result"]["serverInfo"]["version"] == _ver9,
+      r.text[:120])
 r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 92,
                               "method": "initialize",
                               "params": {"protocolVersion": "2025-06-18"}})
@@ -543,6 +548,20 @@ check("C31 extLabel 函数体无 MIME split(\"/\")",
       'split("/")' not in _extlabel_body31)
 check("C31 extLabel 函数体无 MIME indexOf(\"/\")",
       'indexOf("/")' not in _extlabel_body31)
+
+# C32: single product version authority (root VERSION)
+_ver32 = open(_os2.path.join(_REPO, "VERSION"), encoding="utf-8").read()
+check("C32 VERSION 为 major.minor 唯一 release authority",
+      _ver32 == "1.0\n" and _re31.fullmatch(r"[0-9]+\.[0-9]+", _ver32.strip()))
+sys.path.insert(0, _os2.path.join(_REPO, "core"))
+from config import PRODUCT_VERSION as _PV32  # noqa: E402
+check("C32 runtime PRODUCT_VERSION == root VERSION",
+      _PV32 == _ver32.strip() == "1.0")
+_mcp32 = open(_os2.path.join(_REPO, "app", "routes", "mcp.py"),
+              encoding="utf-8").read()
+check("C32 MCP serverInfo.version 消费 derived PRODUCT_VERSION",
+      '"version": PRODUCT_VERSION' in _mcp32)
+check("C32 mcp.py 无硬编码 1.0.0 产品版本", '"1.0.0"' not in _mcp32)
 
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()

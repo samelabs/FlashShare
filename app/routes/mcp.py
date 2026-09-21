@@ -12,7 +12,7 @@ import json
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from config import MAX_UPLOAD_BYTES
+from config import MAX_UPLOAD_BYTES, PRODUCT_VERSION
 from governance.catalog import list_catalog, resolve as resolve_tool, mcp_name
 from governance.tool_params import resolve_label
 from utils import sanitize_filename
@@ -106,7 +106,7 @@ async def _dispatch(request: Request, user: dict, msg: dict):
         return _rpc(mid, {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": True}},
-            "serverInfo": {"name": "518plus", "version": "1.0.0"},
+            "serverInfo": {"name": "518plus", "version": PRODUCT_VERSION},
             "instructions": (
                 "518.PLUS capability platform. tools/list is paginated "
                 "(pass cursor for the next page); meta tool 'catalog_search' "
