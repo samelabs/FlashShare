@@ -264,6 +264,14 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
         params).fetchone()
 
 
+def accept_contract_rows(con) -> list:
+    """全量 (tool_key, accept_json) rows — 不过滤任何行 (enabled/disabled、
+    public/private/unlisted 全包含)。startup stored-accept invariant 校验
+    目标是全部存储行; 解析/判定属于 governance 层。"""
+    return con.execute(
+        "SELECT tool_key, accept_json FROM platform_tools").fetchall()
+
+
 def update_tool_row(con, tool_key: str, sets: dict) -> None:
     """通用部分更新 (键=列名; sets 已由 tool_supply 映射)。"""
     if not sets:

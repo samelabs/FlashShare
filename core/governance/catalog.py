@@ -98,9 +98,9 @@ def validate_catalog_rows() -> None:
     the current contract (NULL = any, or non-empty canonical ext list).
     Violation aborts startup — catalog projection never guesses."""
     from governance.formats import parse_stored_accept
+    from repo.catalog import accept_contract_rows
     with db() as con:
-        rows = con.execute(
-            "select tool_key, accept_json from platform_tools").fetchall()
+        rows = accept_contract_rows(con)
     for r in rows:
         try:
             parse_stored_accept(r["accept_json"])  # SQL NULL = valid any

@@ -638,6 +638,20 @@ check("C37 classifier 消费 repo.orders.plan_by_id + repo.operator_audit read p
 check("C37 classifier 仍用独立 fresh connection",
       _cls37 is not None and "with _fdb() as con:" in _cls37.group(0))
 
+# C38: catalog startup invariant reads via repo primitive
+_gcat38 = open(_os2.path.join(_REPO, "core", "governance", "catalog.py"),
+               encoding="utf-8").read()
+_val38 = _re33.search(
+    r"def validate_catalog_rows.*?(?=\ndef )", _gcat38, _re33.DOTALL)
+check("C38 validate_catalog_rows 函数体无 con.execute",
+      _val38 is not None and "con.execute" not in _val38.group(0))
+check("C38 validate_catalog_rows 消费 repo.catalog.accept_contract_rows",
+      _val38 is not None
+      and "accept_contract_rows(con)" in _val38.group(0))
+check("C38 parse_stored_accept 仍由 governance 层调用",
+      _val38 is not None
+      and "from governance.formats import parse_stored_accept" in _val38.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
