@@ -599,6 +599,18 @@ check("C34 declaration partial writer 仍为 update_tool_row 且 tool_supply 消
       "def update_tool_row" in _cat34
       and "from repo.catalog import update_tool_row" in _ts34)
 
+# C35: samelabs remote audit projection reads via repo primitives
+_sl35 = open(_os2.path.join(_REPO, "app", "routes", "samelabs.py"),
+             encoding="utf-8").read()
+_proj35 = _re33.search(
+    r"def _safe_remote_projection.*?(?=\ndef )", _sl35, _re33.DOTALL)
+check("C35 _safe_remote_projection 无 route-layer con.execute",
+      _proj35 is not None and "con.execute" not in _proj35.group(0))
+check("C35 _safe_remote_projection 消费 repo.catalog canonical read primitives",
+      _proj35 is not None
+      and "by_tool_key(con, tool_key)" in _proj35.group(0)
+      and "pricing_row(con, tool_key)" in _proj35.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

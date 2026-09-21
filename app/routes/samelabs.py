@@ -293,25 +293,26 @@ def _snap_presentation(r) -> dict:
 
 def _safe_remote_projection(con, tool_key: str) -> dict | None:
     """tool + pricing 的 safe 字段投影 (allowlist; URL/endpoint_json/
-    auth/Vault 永不进入)。"""
-    row = con.execute(
-        """
-        SELECT t.tool_key, t.tool_id, t.execution, t.tool_type,
-               t.visibility, t.enabled, t.featured, t.sort_order, t.multi,
-               t.accept_json, p.cost
-        FROM platform_tools t LEFT JOIN pricing p ON p.tool_id = t.tool_id
-        WHERE t.tool_key = %s
-        """, (tool_key,)).fetchone()
+    auth/Vault 永不进入)。行读取走 repo.catalog canonical primitives,
+    投影语义留在本层; pricing 缺失 = cost 无事实值 (原 LEFT JOIN 语义,
+    不猜 free/default)。"""
+    from repo import catalog as _catalog_repo
+    row = _catalog_repo.by_tool_key(con, tool_key)
     if row is None:
         return None
-    d = dict(row)
-    if d.get("accept_json"):
+    d = {k: row[k] for k in ("tool_key", "tool_id", "execution", "tool_type",
+                             "visibility", "enabled", "featured",
+                             "sort_order", "multi")}
+    accept_json = row["accept_json"]
+    if accept_json:
         import json as _json
         try:
-            d["accept"] = _json.loads(d["accept_json"])
+            d["accept"] = _json.loads(accept_json)
         except Exception:
             d["accept"] = None
-    d.pop("accept_json", None)
+    pr = _catalog_repo.pricing_row(con, tool_key)
+    # pricing 缺失 → cost None (原 LEFT JOIN 语义, 无事实值不猜 free)
+    d["cost"] = pr["cost"] if pr is not None else None
     return d
 
 
