@@ -563,6 +563,31 @@ check("C32 MCP serverInfo.version 消费 derived PRODUCT_VERSION",
       '"version": PRODUCT_VERSION' in _mcp32)
 check("C32 mcp.py 无硬编码 1.0.0 产品版本", '"1.0.0"' not in _mcp32)
 
+# C33: user tool PATCH/DELETE — platform_tools + pricing in ONE transaction
+_ut33 = open(_os2.path.join(_REPO, "app", "routes", "usertools.py"),
+             encoding="utf-8").read()
+import re as _re33
+_patch_fn33 = _re33.search(
+    r"async def update_user_tool.*?(?=\n@router|\nasync def )", _ut33, _re33.DOTALL)
+_del_fn33 = _re33.search(
+    r"async def delete_user_tool.*", _ut33, _re33.DOTALL)
+check("C33 PATCH 单事务: update_tool(con=con) 与 set_pricing(con=con) 同一 db()",
+      _patch_fn33 is not None
+      and _patch_fn33.group(0).count("with db() as con:") == 1
+      and "update_tool(tool_key, sets, con=con)" in _patch_fn33.group(0)
+      and 'admin_user_id=user["id"], con=con' in _patch_fn33.group(0))
+check("C33 PATCH snapshot 行锁在事务内 (owner_row_for_update)",
+      _patch_fn33 is not None
+      and 'owner_row_for_update(con, tool_key, user["id"])' in _patch_fn33.group(0)
+      and "owner_row_by_key" not in _patch_fn33.group(0))
+check("C33 DELETE 单事务: delete_tool_row 与 set_pricing(con=con) 同一 db()",
+      _del_fn33 is not None
+      and _del_fn33.group(0).count("with db() as con:") == 1
+      and 'delete_tool_row(con, row["id"])' in _del_fn33.group(0)
+      and 'admin_user_id=user["id"], con=con' in _del_fn33.group(0)
+      and _del_fn33.group(0).find("delete_tool_row") <
+          _del_fn33.group(0).find("set_pricing"))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

@@ -309,12 +309,15 @@ def create_tool(decl: dict, con=None) -> str:
     return decl["tool_key"]
 
 
-def update_tool(tool_key: str, patch: dict) -> None:
+def update_tool(tool_key: str, patch: dict, con=None) -> None:
     """对既有工具应用 canonical declaration patch。
 
     patch 先经 validate_tool_patch (字段级 canonical, 不静默强转);
     LocalizedText locale patch / params locale merge 等由 source
     adapter 先算完 final canonical value。DB 列序列化/updated_at 单点。
+
+    con 未传: 自开事务; con 已传: 参与 caller 事务 (declaration 与
+    pricing 等同一次用户操作的商业 mutation 必须同一事务提交/回滚)。
     """
     patch = validate_tool_patch(patch)
     from repo.catalog import update_tool_row
@@ -347,8 +350,11 @@ def update_tool(tool_key: str, patch: dict) -> None:
     if not sets:
         return
     sets["updated_at"] = now()
-    with _db() as con:
+    if con is not None:
         update_tool_row(con, tool_key, sets)
+        return
+    with _db() as own:
+        update_tool_row(own, tool_key, sets)
 
 
 def upsert_seed_tool(decl: dict) -> bool:

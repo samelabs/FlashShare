@@ -164,6 +164,14 @@ def owner_row_by_key(con, tool_key: str, user_id: int) -> Optional[dict]:
         (tool_key, user_id)).fetchone()
 
 
+def owner_row_for_update(con, tool_key: str, user_id: int) -> Optional[dict]:
+    """Owner-scoped platform_tools 行锁读 — 用户 tool mutation 的 serialization
+    boundary (并发 PATCH/DELETE 在此排队, snapshot 与 mutation 同事务)。"""
+    return con.execute(
+        "SELECT * FROM platform_tools WHERE tool_key = %s AND owner_id = %s"
+        " FOR UPDATE", (tool_key, user_id)).fetchone()
+
+
 def platform_row_for_update(con, tool_key: str,
                             owner_id_is_null: bool = True) -> Optional[dict]:
     """行锁读 platform_tools (operator delete/audit 的 serialization

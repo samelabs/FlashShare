@@ -354,15 +354,6 @@ async def update_user_tool(tool_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    from repo.catalog import owner_row_by_key
-    tool_key = f"{user['username']}/{tool_id}"
-    with db() as con:
-        row = owner_row_by_key(con, tool_key, user["id"])
-    if not row:
-        return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    if not TOOL_ID_RE.match(tool_id or ""):
-        return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
-
     try:
         raw = await request.json()
     except Exception:
@@ -375,161 +366,175 @@ async def update_user_tool(tool_id: str, request: Request):
     if edit_locale and edit_locale not in _SUPPORTED_LANGS:
         return JSONResponse({"ok": False, "error": "bad_edit_locale"}, 422)
 
-    fields, ferr = _validate_submission(raw, partial=True,
+    from repo.catalog import owner_row_for_update
+    tool_key = f"{user['username']}/{tool_id}"
+    # Snapshot + declaration + pricing mutations share ONE transaction:
+    # the row lock keeps the snapshot the mutation actually applies to.
+    # (declaration update 与 pricing 同 commit / 同 rollback。)
+    with db() as con:
+        row = owner_row_for_update(con, tool_key, user["id"])
+        if not row:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        if not TOOL_ID_RE.match(tool_id or ""):
+            return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
+
+        fields, ferr = _validate_submission(raw, partial=True,
                                         trusted_ok=bool(row["trusted"]),
                                         edit_locale=edit_locale)
-    if ferr:
-        return JSONResponse({"ok": False, "error": ferr}, 422)
+        if ferr:
+            return JSONResponse({"ok": False, "error": ferr}, 422)
 
-    existing_decl = {}
-    try:
-        existing_decl = json.loads(row["endpoint_json"] or "{}")
-    except Exception:
-        pass
-
-    # visibility cannot jump private→public directly (self-test gate:
-    # at least one successful self-call recorded first)
-    new_vis = fields.get("visibility")
-    if new_vis == "public" and row["visibility"] != "public":
-        stats = _call_stats(tool_key, row["owner_id"])
-        if stats["ok"] < 1:
-            return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
-
-    # Credential boundary: a NEW non-empty secret cannot be persisted
-    # when the vault has no working key — refuse before any write
-    # (endpoint_json/pricing untouched).
-    if str(fields.get("auth_token") or "").strip():
-        from secrets_vault import vault_enabled
-        if not vault_enabled():
-            return JSONResponse(
-                {"ok": False, "error": "credential_vault_unavailable"}, 503)
-
-    # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
-    # 与运行时驱动看到的完全一致, 而非裸入参)
-    from governance.tool_supply import build_http_binding
-    merged_decl = build_http_binding(
-        {k: fields[k] for k in
-         ("url", "timeout_s", "auth_header", "auth_token") if k in fields},
-        existing_decl)
-    if "url" in fields and not row["trusted"]:
-        from remote import guard_endpoint, RemoteError
+        existing_decl = {}
         try:
-            guard_endpoint(merged_decl["url"], trusted=False)
-        except RemoteError:
-            return JSONResponse({"ok": False, "error": "https_required"}, 422)
+            existing_decl = json.loads(row["endpoint_json"] or "{}")
+        except Exception:
+            pass
 
-    sets = {}
-    if "label" in fields:
-        if edit_locale:
-            # Web locale patch 语义 (批 2 协议, 唯一):
-            #   携 X-518-Edit-Locale 的 PATCH 上, str 与 dict 都是 locale patch —
-            #   str 只写该 locale; dict 逐 locale 覆写; 未提及的语言一律不动。
-            #   空值 = 显式删除该 locale。
-            # 无此头的 API PATCH = 替换语义 (dict 即全集, 见下方 else 分支)。
+        # visibility cannot jump private→public directly (self-test gate:
+        # at least one successful self-call recorded first)
+        new_vis = fields.get("visibility")
+        if new_vis == "public" and row["visibility"] != "public":
+            stats = _call_stats(tool_key, row["owner_id"])
+            if stats["ok"] < 1:
+                return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
+
+        # Credential boundary: a NEW non-empty secret cannot be persisted
+        # when the vault has no working key — refuse before any write
+        # (endpoint_json/pricing untouched).
+        if str(fields.get("auth_token") or "").strip():
+            from secrets_vault import vault_enabled
+            if not vault_enabled():
+                return JSONResponse(
+                    {"ok": False, "error": "credential_vault_unavailable"}, 503)
+
+        # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
+        # 与运行时驱动看到的完全一致, 而非裸入参)
+        from governance.tool_supply import build_http_binding
+        merged_decl = build_http_binding(
+            {k: fields[k] for k in
+             ("url", "timeout_s", "auth_header", "auth_token") if k in fields},
+            existing_decl)
+        if "url" in fields and not row["trusted"]:
+            from remote import guard_endpoint, RemoteError
             try:
-                old_label = json.loads(row["label_json"] or "{}")
-            except Exception:
-                old_label = {}
-            new_label = fields["label"]
-            if isinstance(new_label, dict):
-                # fallback no-change 判定永远基于 old_snapshot (原始旧 dict),
-                # 与 merged 累积状态无关 — locale 间互不顺序依赖 (批 2c)
-                merged = dict(old_label) if isinstance(old_label, dict) else {}
-                for lg, txt in new_label.items():
-                    if lg not in _SUPPORTED_LANGS:
-                        continue
-                    merged = patch_locale_guard(old_label, merged, lg, str(txt or ""))
-                # dict 全空提交 (全部清空) → 不写, 保留原值
-                if isinstance(merged, dict) and merged:
-                    sets["label"] = merged
-            else:
-                # fallback 物化防护: 提交值 == 旧值在当前 locale 的 resolver
-                # 结果 → 发布者未修改 (表单显示的就是 fallback), 不写。
-                cur = resolve_label(old_label, edit_locale)
-                if cur and str(new_label or "").strip() == cur:
-                    pass  # 未修改 — 保留原 dict, 不创建/覆写 locale 键
-                else:
-                    merged = patch_locale(old_label, edit_locale, str(new_label or ""))
+                guard_endpoint(merged_decl["url"], trusted=False)
+            except RemoteError:
+                return JSONResponse({"ok": False, "error": "https_required"}, 422)
+
+        sets = {}
+        if "label" in fields:
+            if edit_locale:
+                # Web locale patch 语义 (批 2 协议, 唯一):
+                #   携 X-518-Edit-Locale 的 PATCH 上, str 与 dict 都是 locale patch —
+                #   str 只写该 locale; dict 逐 locale 覆写; 未提及的语言一律不动。
+                #   空值 = 显式删除该 locale。
+                # 无此头的 API PATCH = 替换语义 (dict 即全集, 见下方 else 分支)。
+                try:
+                    old_label = json.loads(row["label_json"] or "{}")
+                except Exception:
+                    old_label = {}
+                new_label = fields["label"]
+                if isinstance(new_label, dict):
+                    # fallback no-change 判定永远基于 old_snapshot (原始旧 dict),
+                    # 与 merged 累积状态无关 — locale 间互不顺序依赖 (批 2c)
+                    merged = dict(old_label) if isinstance(old_label, dict) else {}
+                    for lg, txt in new_label.items():
+                        if lg not in _SUPPORTED_LANGS:
+                            continue
+                        merged = patch_locale_guard(old_label, merged, lg, str(txt or ""))
+                    # dict 全空提交 (全部清空) → 不写, 保留原值
                     if isinstance(merged, dict) and merged:
                         sets["label"] = merged
-                    elif isinstance(merged, str) and merged:
-                        sets["label"] = {"en": merged}
-                    # merged 为 "" (删光了所有语言) → 不写 label, 保留原值
-        else:
-            sets["label"] = (fields["label"] if isinstance(fields["label"], dict)
-                else {"en": fields["label"]})
-    if "visibility" in fields:
-        sets["visibility"] = fields["visibility"]
-    if "accept" in fields:
-        sets["accept"] = fields["accept"]
-    if "multi" in fields:  # 4C-2: PATCH 仅在提交 multi 时更新
-        # _validate_submission 已保证 bool; 不再二次强转 (supply 边界
-        # validate_tool_patch 同样拒非 bool — 双层都不静默修正)。
-        sets["multi"] = fields["multi"]
-    if "enabled" in raw:
-        # 不做 bool(raw) 强转 — 非 bool 交 supply patch validator 拒
-        # (bad_enabled), 与 declaration 语义一致。
-        sets["enabled"] = raw.get("enabled")
-    if "desc" in raw:
-        d = raw.get("desc")
-        if edit_locale:
-            # Web locale patch: str 与 dict 同协议 (见 label 分支注释) —
-            # str 只写该 locale + fallback 物化防护; dict 逐 locale merge。
-            try:
-                old_desc = json.loads(row["desc_json"] or "{}")
-            except Exception:
-                old_desc = {}
-            old_dict = old_desc if isinstance(old_desc, dict) else {}
-            cur = resolve_label(old_desc, edit_locale) if old_desc else ""
-            if isinstance(d, dict):
-                # 同 label: no-change 基于 old_snapshot, 顺序无关
-                merged = dict(old_dict)
-                for lg, txt in d.items():
-                    if lg not in _SUPPORTED_LANGS:
-                        continue
-                    merged = patch_locale_guard(old_dict, merged, lg, str(txt or "").strip()[:200])
-                sets["desc"] = merged or None
-            else:
-                new_txt = str(d or "").strip()[:200]
-                if cur and new_txt == cur:
-                    pass  # 未修改 — 保留原 dict
                 else:
-                    merged = patch_locale(old_dict, edit_locale, new_txt)
+                    # fallback 物化防护: 提交值 == 旧值在当前 locale 的 resolver
+                    # 结果 → 发布者未修改 (表单显示的就是 fallback), 不写。
+                    cur = resolve_label(old_label, edit_locale)
+                    if cur and str(new_label or "").strip() == cur:
+                        pass  # 未修改 — 保留原 dict, 不创建/覆写 locale 键
+                    else:
+                        merged = patch_locale(old_label, edit_locale, str(new_label or ""))
+                        if isinstance(merged, dict) and merged:
+                            sets["label"] = merged
+                        elif isinstance(merged, str) and merged:
+                            sets["label"] = {"en": merged}
+                        # merged 为 "" (删光了所有语言) → 不写 label, 保留原值
+            else:
+                sets["label"] = (fields["label"] if isinstance(fields["label"], dict)
+                    else {"en": fields["label"]})
+        if "visibility" in fields:
+            sets["visibility"] = fields["visibility"]
+        if "accept" in fields:
+            sets["accept"] = fields["accept"]
+        if "multi" in fields:  # 4C-2: PATCH 仅在提交 multi 时更新
+            # _validate_submission 已保证 bool; 不再二次强转 (supply 边界
+            # validate_tool_patch 同样拒非 bool — 双层都不静默修正)。
+            sets["multi"] = fields["multi"]
+        if "enabled" in raw:
+            # 不做 bool(raw) 强转 — 非 bool 交 supply patch validator 拒
+            # (bad_enabled), 与 declaration 语义一致。
+            sets["enabled"] = raw.get("enabled")
+        if "desc" in raw:
+            d = raw.get("desc")
+            if edit_locale:
+                # Web locale patch: str 与 dict 同协议 (见 label 分支注释) —
+                # str 只写该 locale + fallback 物化防护; dict 逐 locale merge。
+                try:
+                    old_desc = json.loads(row["desc_json"] or "{}")
+                except Exception:
+                    old_desc = {}
+                old_dict = old_desc if isinstance(old_desc, dict) else {}
+                cur = resolve_label(old_desc, edit_locale) if old_desc else ""
+                if isinstance(d, dict):
+                    # 同 label: no-change 基于 old_snapshot, 顺序无关
+                    merged = dict(old_dict)
+                    for lg, txt in d.items():
+                        if lg not in _SUPPORTED_LANGS:
+                            continue
+                        merged = patch_locale_guard(old_dict, merged, lg, str(txt or "").strip()[:200])
                     sets["desc"] = merged or None
-        elif isinstance(d, dict):
-            clean = {k: str(v).strip()[:200] for k, v in d.items()
-                     if k in _SUPPORTED_LANGS and str(v).strip()}
-            sets["desc"] = clean or None
-        else:
-            d = str(d or "").strip()[:200]
-            sets["desc"] = {"en": d} if d else None
-    if "params" in raw:
-        # params 声明 (spec v3): 结构全量替换; Web 编辑时三个 LocalizedText
-        # 叶子 (label/placeholder/options[].label) 对旧声明做 locale merge —
-        # parameter 按 key 对齐, option 按 value 对齐, 禁止按 index。
-        from governance.tool_params import (validate_params_decl, ParamsDeclError,
-                                            merge_params_decl)
-        try:
-            decl = validate_params_decl(raw.get("params"))
-        except ParamsDeclError as exc:
-            return JSONResponse({"ok": False, "error": str(exc)}, 422)
-        if edit_locale and decl:
+                else:
+                    new_txt = str(d or "").strip()[:200]
+                    if cur and new_txt == cur:
+                        pass  # 未修改 — 保留原 dict
+                    else:
+                        merged = patch_locale(old_dict, edit_locale, new_txt)
+                        sets["desc"] = merged or None
+            elif isinstance(d, dict):
+                clean = {k: str(v).strip()[:200] for k, v in d.items()
+                         if k in _SUPPORTED_LANGS and str(v).strip()}
+                sets["desc"] = clean or None
+            else:
+                d = str(d or "").strip()[:200]
+                sets["desc"] = {"en": d} if d else None
+        if "params" in raw:
+            # params 声明 (spec v3): 结构全量替换; Web 编辑时三个 LocalizedText
+            # 叶子 (label/placeholder/options[].label) 对旧声明做 locale merge —
+            # parameter 按 key 对齐, option 按 value 对齐, 禁止按 index。
+            from governance.tool_params import (validate_params_decl, ParamsDeclError,
+                                                merge_params_decl)
             try:
-                old_decl = json.loads(row["params_json"] or "[]")
-            except Exception:
-                old_decl = []
-            decl = merge_params_decl(old_decl, decl, edit_locale)
-        sets["params"] = decl or None
-    # 阶段 B: canonical patch → tool_supply 单点序列化/写库
-    # (merged_decl = build_http_binding 产物, binding 结构与 operator 一致)
-    if sets or fields:
-        if row["execution"] == "http":
-            sets["binding"] = merged_decl
-        from governance.tool_supply import update_tool
-        update_tool(tool_key, sets)
-    if "cost" in fields:
-        from governance.pricing import set_pricing
-        set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
+                decl = validate_params_decl(raw.get("params"))
+            except ParamsDeclError as exc:
+                return JSONResponse({"ok": False, "error": str(exc)}, 422)
+            if edit_locale and decl:
+                try:
+                    old_decl = json.loads(row["params_json"] or "[]")
+                except Exception:
+                    old_decl = []
+                decl = merge_params_decl(old_decl, decl, edit_locale)
+            sets["params"] = decl or None
+        # 阶段 B: canonical patch → tool_supply 单点序列化/写库
+        # (merged_decl = build_http_binding 产物, binding 结构与 operator 一致)
+        if sets or fields:
+            if row["execution"] == "http":
+                sets["binding"] = merged_decl
+            from governance.tool_supply import update_tool
+            update_tool(tool_key, sets, con=con)
+
+        if "cost" in fields:
+            from governance.pricing import set_pricing
+            set_pricing(tool_key, fields["cost"], True,
+                        admin_user_id=user["id"], con=con)
     return {"ok": True}
 
 
@@ -539,13 +544,15 @@ async def delete_user_tool(tool_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    from repo.catalog import owner_row_by_key, delete_tool_row
+    from repo.catalog import owner_row_for_update, delete_tool_row
     tool_key = f"{user['username']}/{tool_id}"
+    # Tool row deletion and pricing disable share ONE transaction —
+    # a pricing write failure rolls the deletion back with it.
     with db() as con:
-        row = owner_row_by_key(con, tool_key, user["id"])
+        row = owner_row_for_update(con, tool_key, user["id"])
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         delete_tool_row(con, row["id"])
-    from governance.pricing import set_pricing
-    set_pricing(tool_key, 0, False, admin_user_id=user["id"])
+        from governance.pricing import set_pricing
+        set_pricing(tool_key, 0, False, admin_user_id=user["id"], con=con)
     return {"ok": True}
