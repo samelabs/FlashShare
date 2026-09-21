@@ -680,6 +680,31 @@ check("C40 _is_replay 判定仍留 economy 层",
       _paid40 is not None
       and "_is_replay = bool(_seen_rows)" in _paid40.group(0))
 
+# C41: execution tool_calls reads via repo primitives
+_gate41_src = open(_os2.path.join(_REPO, "core", "execution", "gate.py"),
+                   encoding="utf-8").read()
+_rec41 = _re33.search(
+    r"def recover_abandoned_calls.*?(?=\ndef )", _gate41_src, _re33.DOTALL)
+check("C41 recover_abandoned_calls 函数体无 con.execute",
+      _rec41 is not None and "con.execute" not in _rec41.group(0))
+check("C41 recovery 消费 running-call repo primitive",
+      _rec41 is not None and "rows = running_calls(con)" in _rec41.group(0))
+_out41 = _re33.search(
+    r"def resolve_success_outcome.*?(?=\\nasync def )", _gate41_src, _re33.DOTALL)
+if _out41 is None:
+    _out41 = _re33.search(r"def resolve_success_outcome.*",
+                          _gate41_src, _re33.DOTALL)
+check("C41 resolve_success_outcome 函数体无 con.execute",
+      _out41 is not None and "con.execute" not in _out41.group(0))
+check("C41 commit-outcome 消费 call_outcome_for_update primitive",
+      _out41 is not None
+      and "call_outcome_for_update(con, call_id)" in _out41.group(0))
+_led41 = open(_os2.path.join(_REPO, "core", "repo", "ledger.py"),
+              encoding="utf-8").read()
+check("C41 FOR UPDATE 保留在 repo primitive 中",
+      'SELECT status, result_json FROM tool_calls'
+      in _led41 and "FOR UPDATE" in _led41)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

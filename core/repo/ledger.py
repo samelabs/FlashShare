@@ -171,6 +171,23 @@ def insert_provider_earn_if_absent(con, owner_id: int, payout: int,
 
 # ── tool_calls (计量事实) ──
 
+
+def running_calls(con) -> list:
+    """startup recovery worklist: 全部 status='running' rows, ORDER BY id。
+    纯 persistence query — recovery classification 属于 execution.gate。"""
+    return con.execute(
+        "SELECT id, user_id, tool_id FROM tool_calls"
+        " WHERE status = 'running' ORDER BY id").fetchall()
+
+
+def call_outcome_for_update(con, call_id: int):
+    """行锁读单条 call fact (status, result_json) — success-commit
+    outcome reconciliation 的 durable read。纯 persistence query —
+    success/rollback/unresolved 分类属于 execution.gate。"""
+    return con.execute(
+        "SELECT status, result_json FROM tool_calls"
+        " WHERE id=%s FOR UPDATE", (int(call_id),)).fetchone()
+
 _HEX64 = set("0123456789abcdef")
 
 

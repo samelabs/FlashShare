@@ -85,13 +85,11 @@ def recover_abandoned_calls() -> dict:
     finalize failed. Any refund failure keeps the row running for the next
     restart. No queue table, no cron — the running fact IS the worklist.
     """
-    from repo.ledger import by_idem_key
+    from repo.ledger import by_idem_key, running_calls
     out = {"scanned": 0, "failed_no_charge": 0, "refunded": 0,
            "kept_running": 0}
     with db() as con:
-        rows = con.execute(
-            "SELECT id, user_id, tool_id FROM tool_calls "
-            "WHERE status = 'running' ORDER BY id").fetchall()
+        rows = running_calls(con)
     out["scanned"] = len(rows)
     for row in rows:
         call_id = int(row["id"])
@@ -236,11 +234,10 @@ def resolve_success_outcome(call_id: int) -> dict:
           failed finalize, no staged delete; the running/ok row plus
           the existing durable recovery own the final disposition.
     """
+    from repo.ledger import call_outcome_for_update
     try:
         with db() as con:
-            row = con.execute(
-                "SELECT status, result_json FROM tool_calls"
-                " WHERE id=%s FOR UPDATE", (call_id,)).fetchone()
+            row = call_outcome_for_update(con, call_id)
     except Exception:
         logger.exception("outcome reconciliation failed call_id=%s", call_id)
         return {"outcome": OUTCOME_UNRESOLVED}
