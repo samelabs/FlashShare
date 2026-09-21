@@ -648,10 +648,15 @@ def init_db() -> None:
                     EXTRACT(EPOCH FROM now())::BIGINT, EXTRACT(EPOCH FROM now())::BIGINT)
             ON CONFLICT (code) DO NOTHING
             """, (DAILY_UPLOADS, DAILY_BYTES))
-        # Routine cleanup
-        con.execute("DELETE FROM oauth_states WHERE expires_at < %s", (ts,))
-        con.execute("DELETE FROM sessions WHERE expires_at < %s", (ts,))
+        # Routine cleanup — persistence mutation authority is the repo
+        # primitives (same ones the hourly housekeeping consumes); local
+        # imports keep the schema module decoupled at load time.
+        from repo.sessions import delete_expired_oauth, delete_expired
+        from repo.upload_usage import purge_before
+        delete_expired_oauth(con, ts)
+        delete_expired(con, ts)
         # Quota facts only serve the rolling 24h window (queries read
         # created_at > now-24h); older rows have no business value.
-        con.execute("DELETE FROM upload_usage WHERE created_at < %s",
-                    (ts - 24 * 3600,))
+        # purge_before uses created_at <= cutoff — the canonical window
+        # complement of created_at > now-24h.
+        purge_before(con, ts - 24 * 3600)

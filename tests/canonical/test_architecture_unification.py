@@ -705,6 +705,25 @@ check("C41 FOR UPDATE 保留在 repo primitive 中",
       'SELECT status, result_json FROM tool_calls'
       in _led41 and "FOR UPDATE" in _led41)
 
+# C42: init_db runtime cleanup consumes repo primitives
+_db42 = open(_os2.path.join(_REPO, "core", "database.py"),
+             encoding="utf-8").read()
+_init42 = _re33.search(r"def init_db.*?(?=\ndef )", _db42, _re33.DOTALL)
+if _init42 is None:
+    _init42 = _re33.search(r"def init_db.*", _db42, _re33.DOTALL)
+check("C42 init_db 函数体无三个 direct DELETE",
+      _init42 is not None
+      and "DELETE FROM oauth_states" not in _init42.group(0)
+      and "DELETE FROM sessions" not in _init42.group(0)
+      and "DELETE FROM upload_usage" not in _init42.group(0))
+check("C42 init_db 消费 repo cleanup primitives",
+      _init42 is not None
+      and "delete_expired_oauth(con, ts)" in _init42.group(0)
+      and "delete_expired(con, ts)" in _init42.group(0)
+      and "purge_before(con, ts - 24 * 3600)" in _init42.group(0))
+check("C42 Free Tier bootstrap INSERT INTO plans 保留",
+      _init42 is not None and "INSERT INTO plans" in _init42.group(0))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
