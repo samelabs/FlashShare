@@ -218,7 +218,8 @@ jobs:
           test -z "$(grep -n 'secrets' core/execution/gate.py)"
           test "$(grep -c 'client_ref: *null' static/app.js)" = "0"
           grep -q 'required = \["files", "client_ref"\]' app/routes/mcp.py
-          grep -q 'idempotency_key_required' app/routes/apiv1.py
+          # Public REST v1 retired: apiv1 module must stay absent
+          test ! -e app/routes/apiv1.py
           # payment identity/precedence guards (behavior tests are the authority)
           grep -q 'checkout_request_id_invalid' app/routes/topup.py
           test "$(grep -rn 'UPDATE orders SET' app/ core/ --include=*.py | grep -v 'repo/orders.py' | wc -l)" = "0"
