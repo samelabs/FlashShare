@@ -476,6 +476,28 @@ _hosted28 = open(_os2.path.join(_REPO, "app", "routes", "hosted_tools.py"),
 check("U28 hosted_tools 走同一 token authority (authenticate 面 via auth_via token)",
       'via != "token"' in _hosted28 and "verify_fetch_token" in _hosted28)
 
+# C29: orders table SQL lives only in repo/orders.py
+import glob as _glob29
+_orders_sql_files = []
+for _f29 in _glob29.glob(_os2.path.join(_REPO, "app", "**", "*.py"), recursive=True) + \
+             _glob29.glob(_os2.path.join(_REPO, "core", "**", "*.py"), recursive=True):
+    if "__pycache__" in _f29 or _f29.endswith(_os2.path.join("repo", "orders.py")):
+        continue
+    _src29 = open(_f29, encoding="utf-8", errors="ignore").read()
+    if any(_pat29 in _src29 for _pat29 in
+           ("FROM orders", "INTO orders", "UPDATE orders")):
+        _orders_sql_files.append(_os2.path.relpath(_f29, _REPO))
+check("U29 production 非 repo/orders.py 无 orders SQL",
+      not _orders_sql_files, str(_orders_sql_files))
+_creem29 = open(_os2.path.join(_REPO, "core", "economy", "creem.py"),
+                encoding="utf-8").read()
+_sub29 = open(_os2.path.join(_REPO, "core", "economy", "subscription.py"),
+              encoding="utf-8").read()
+check("U29 creem/subscription orders 读走 repo primitive",
+      "order_by_id_for_update(con, order_id)" in _creem29
+      and "order_by_id_for_update(con, order_id)" in _sub29
+      and "FROM orders" not in _creem29 and "FROM orders" not in _sub29)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

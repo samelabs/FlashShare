@@ -152,6 +152,7 @@ async def samelabs_tools(request: Request):
 # ── operator audit: safe snapshot projections (allowlist ONLY) ──
 # 快照纪律: 只按 target_type 投影白名单字段; 绝不 blacklist 删秘密。
 from repo import operator_audit as _audit_repo
+from repo import orders as _orders_repo
 
 
 def _proven_provider_price(prod: dict):
@@ -671,10 +672,7 @@ async def samelabs_update_plan(plan_id: int, request: Request):
             # this plan's amount at checkout; retry must submit the SAME
             # purchase intent, so the live price may not move under it.
             if "price_cents" in fields:
-                _pend = con.execute(
-                    "SELECT 1 FROM orders WHERE kind='plan' AND item_id=%s"
-                    " AND status='pending' LIMIT 1", (plan_id,)).fetchone()
-                if _pend is not None:
+                if _orders_repo.has_pending_plan_order(con, plan_id):
                     return JSONResponse(
                         {"ok": False, "error": "plan_checkout_pending"}, 409)
             row = update_plan(con, plan_id, fields, now())

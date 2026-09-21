@@ -348,8 +348,7 @@ def fulfill_by_request_id(order_id: int, provider_order_id: str,
     from repo import orders as _orders_repo
     ts = now()
     with db() as con:
-        row = con.execute(
-            "SELECT * FROM orders WHERE id=%s FOR UPDATE", (order_id,)).fetchone()
+        row = _orders_repo.order_by_id_for_update(con, order_id)
         if row is None:
             raise KeyError("order_not_found")
         if row["kind"] != "package":

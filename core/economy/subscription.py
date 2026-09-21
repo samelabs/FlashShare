@@ -110,9 +110,7 @@ def bind_checkout(obj: dict, order_id: int) -> dict:
     from repo.orders import complete_plan_checkout
     # request_id path (canonical): one transaction end to end
     with _db() as con:
-        row = con.execute(
-            "SELECT * FROM orders WHERE id=%s FOR UPDATE",
-            (order_id,)).fetchone()
+        row = orders_repo.order_by_id_for_update(con, order_id)
         if row is None:
             raise KeyError("order_not_found")
         if row["kind"] != "plan":

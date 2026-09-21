@@ -46,6 +46,13 @@ def order_by_id_for_update(con, order_id: int) -> Optional[dict]:
         "SELECT * FROM orders WHERE id = %s FOR UPDATE", (order_id,)).fetchone()
 
 
+def has_pending_plan_order(con, plan_id: int) -> bool:
+    """True when a pending plan checkout froze this plan's live price."""
+    return con.execute(
+        "SELECT 1 FROM orders WHERE kind='plan' AND item_id=%s"
+        " AND status='pending' LIMIT 1", (plan_id,)).fetchone() is not None
+
+
 def order_by_provider_id(con, provider_order_id: str) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM orders WHERE provider_order_id = %s",
