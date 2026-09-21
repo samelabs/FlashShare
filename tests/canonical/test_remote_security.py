@@ -908,16 +908,27 @@ finally:
     remote._pull_output_url = _pulled_saved
     remote.urllib.request.urlopen = _saved_open
 
-# OUT-5: canonical writer erases legacy binding keys on any write
-from governance.tool_supply import build_http_binding
+# OUT-5: binding composition is a closed vocabulary — legacy/unknown keys
+# are rejected fail-closed (DeclarationError), never carried or persisted
+from governance.tool_supply import build_http_binding, DeclarationError
 _legacy = {"url": "https://pub.example/old", "timeout_s": 30,
            "output_filename": "legacy.png", "output_content_type": "image/png"}
-_merged = build_http_binding({"timeout_s": 60}, _legacy)
-check("OUT-5 build_http_binding pops legacy output keys",
-      "output_filename" not in _merged and "output_content_type" not in _merged,
+try:
+    build_http_binding({"timeout_s": 60}, _legacy)
+    _closed = False
+except DeclarationError:
+    _closed = True
+check("OUT-5 unknown/retired keys in existing → DeclarationError (fail closed)",
+      _closed)
+_clean = {"url": "https://pub.example/old", "timeout_s": 30,
+          "auth_header": "X-Key"}
+_merged = build_http_binding({"timeout_s": 60}, _clean)
+check("OUT-5 composed binding contains only canonical keys",
+      set(_merged) <= {"url", "timeout_s", "auth_header", "auth_token"},
       _merged)
 check("OUT-5 merge kept canonical fields",
-      _merged["url"].endswith("/old") and _merged["timeout_s"] == 60, _merged)
+      _merged["url"].endswith("/old") and _merged["timeout_s"] == 60
+      and _merged["auth_header"] == "X-Key", _merged)
 
 # OUT-6: operator route rejects explicit legacy fields (typed 422)
 r = client.post("/samelabs/remote/create", json={

@@ -498,6 +498,36 @@ check("U29 creem/subscription orders 读走 repo primitive",
       and "order_by_id_for_update(con, order_id)" in _sub29
       and "FROM orders" not in _creem29 and "FROM orders" not in _sub29)
 
+# C30: HTTP binding vocabulary closure (legacy output fields retired)
+_ts30 = open(_os2.path.join(_REPO, "core", "governance", "tool_supply.py"),
+             encoding="utf-8").read()
+check("C30 tool_supply 无退休 output binding 字段名",
+      "output_filename" not in _ts30 and "output_content_type" not in _ts30)
+check("C30 binding vocabulary 为封闭四键",
+      '_BINDING_KEYS = ("url", "timeout_s", "auth_header", "auth_token")' in _ts30)
+sys.path.insert(0, _os2.path.join(_REPO, "core"))
+from governance.tool_supply import build_http_binding, DeclarationError  # noqa: E402
+_b30 = build_http_binding(
+    {"url": "https://vocab.example/api", "timeout_s": 30},
+    {"url": "https://old.example", "timeout_s": 90, "auth_header": "X-Key",
+     "auth_token": "sealed:x"})
+check("C30 build_http_binding 只含四 canonical keys",
+      set(_b30) == {"url", "timeout_s", "auth_header", "auth_token"}, _b30)
+check("C30 PATCH 保留未修改的合法 canonical fields",
+      _b30["auth_header"] == "X-Key" and _b30["timeout_s"] == 30, _b30)
+_closed_f = _closed_e = False
+try:
+    build_http_binding({"url": "https://x.example", "custom_key": "v"})
+except DeclarationError:
+    _closed_f = True
+try:
+    build_http_binding({"timeout_s": 60},
+                       {"url": "https://o.example", "output_filename": "l.png"})
+except DeclarationError:
+    _closed_e = True
+check("C30 arbitrary unknown binding key → DeclarationError (fail closed)",
+      _closed_f and _closed_e)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

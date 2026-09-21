@@ -286,7 +286,9 @@ async def create_user_tool(request: Request):
         "pass_through": False,
         "visibility": fields["visibility"],
         "enabled": True,
-        "binding": build_http_binding(fields),
+        "binding": build_http_binding(
+            {k: fields[k] for k in
+             ("url", "timeout_s", "auth_header", "auth_token") if k in fields}),
     }
     try:
         # Stage B-close: policy check + declaration + commercial contract
@@ -405,7 +407,10 @@ async def update_user_tool(tool_id: str, request: Request):
     # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
     # 与运行时驱动看到的完全一致, 而非裸入参)
     from governance.tool_supply import build_http_binding
-    merged_decl = build_http_binding(fields, existing_decl)
+    merged_decl = build_http_binding(
+        {k: fields[k] for k in
+         ("url", "timeout_s", "auth_header", "auth_token") if k in fields},
+        existing_decl)
     if "url" in fields and not row["trusted"]:
         from remote import guard_endpoint, RemoteError
         try:

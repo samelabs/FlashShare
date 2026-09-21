@@ -19,6 +19,10 @@ first-party seed 语义 / pricing) 留在各 source adapter, 不进 validator。
 
 DB 列映射 (declaration → column) 只存在于本文件的 _serialize_row。
 HTTP binding composition 与 auth seal 唯一入口 = build_http_binding。
+
+HTTP binding canonical vocabulary (exact): url / timeout_s / auth_header /
+auth_token。Validator 与 composer 都以这四键为封闭集 — vocabulary 之外的
+binding key 一律 DeclarationError("bad_binding"), 不得持久化或透传。
 create_tool(update 同理)支持 caller-owned transaction (con=);
 policy 事务与 persistence 可同事务, cap 逻辑本身不进 supply domain。
 """
@@ -94,6 +98,9 @@ def _normalize_params(params):
         raise DeclarationError(str(exc)) from exc
 
 
+_BINDING_KEYS = ("url", "timeout_s", "auth_header", "auth_token")
+
+
 def validate_tool_declaration(decl: dict) -> dict:
     """校验并归一化一个 canonical ToolDeclaration (与来源无关)。
 
@@ -143,6 +150,8 @@ def validate_tool_declaration(decl: dict) -> dict:
     binding = decl.get("binding")
     if decl["execution"] == "http":
         if not isinstance(binding, dict) or not binding.get("url"):
+            raise DeclarationError("bad_binding")
+        if any(k not in _BINDING_KEYS for k in binding):
             raise DeclarationError("bad_binding")
         url = str(binding["url"])
         if not url.startswith(("http://", "https://")):
@@ -213,6 +222,8 @@ def validate_tool_patch(patch: dict) -> dict:
         if b is not None:
             if not isinstance(b, dict) or not b.get("url"):
                 raise DeclarationError("bad_binding")
+            if any(k not in _BINDING_KEYS for k in b):
+                raise DeclarationError("bad_binding")
             if not str(b["url"]).startswith(("http://", "https://")):
                 raise DeclarationError("bad_binding")
             ts = b.get("timeout_s", 60)
@@ -227,17 +238,18 @@ def validate_tool_patch(patch: dict) -> dict:
 def build_http_binding(fields: dict, existing: Optional[dict] = None) -> dict:
     """从已校验字段组装 HTTP endpoint binding (PATCH 对 existing merge)。
 
-    字段: url / timeout_s / auth_header / auth_token。auth secret 只在
-    这里 seal 一次 (全仓 supply 路径唯一 seal 入口)。
-
-    Output landing identity is endpoint-product-owned (既定产品裁定):
-    output_filename / output_content_type are NOT binding fields. Any
-    canonical write through here drops those legacy keys from an
-    existing binding — runtime ignores them, writers erase them.
+    结果只由 _BINDING_KEYS 封闭词汇表组成 (exact vocabulary:
+    url / timeout_s / auth_header / auth_token); existing 中任何
+    vocabulary 之外的键不会被带入 — composer 不透传未知键。auth secret
+    只在这里 seal 一次 (全仓 supply 路径唯一 seal 入口)。Output landing
+    identity is endpoint-product-owned (既定产品裁定), binding 不携带
+    output 字段。
     """
-    decl = dict(existing or {})
-    decl.pop("output_filename", None)
-    decl.pop("output_content_type", None)
+    if any(k not in _BINDING_KEYS for k in fields):
+        raise DeclarationError("bad_binding")
+    if existing is not None and any(k not in _BINDING_KEYS for k in existing):
+        raise DeclarationError("bad_binding")
+    decl = {k: existing[k] for k in _BINDING_KEYS if existing and k in existing}
     if "url" in fields:
         decl["url"] = fields["url"]
     if "timeout_s" in fields:
