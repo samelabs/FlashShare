@@ -45,9 +45,7 @@ def _ensure(con) -> int:
         if row:
             return _platform_id
         _platform_id = None  # 账户被删 (不应发生), 重建
-    row = con.execute(
-        "SELECT id FROM users WHERE username = %s", (PLATFORM_USERNAME,)
-    ).fetchone()
+    row = users_repo.id_by_username(con, PLATFORM_USERNAME)
     if row:
         _platform_id = row["id"]
         return _platform_id
@@ -55,8 +53,7 @@ def _ensure(con) -> int:
     created = users_repo.insert_local(con, PLATFORM_USERNAME, None, None,
                                       "518.PLUS Platform", ts)
     # 不可登录: 冻结状态 + 无 password_hash (authenticate_local 双重拒绝)
-    con.execute("UPDATE users SET status = 'suspended' WHERE id = %s",
-                (created["id"],))
+    users_repo.update_status(con, created["id"], "suspended")
     _platform_id = created["id"]
     logger.info("platform account ensured: id=%s", _platform_id)
     return _platform_id
@@ -84,30 +81,16 @@ def record_platform_income(con, call_id, kind: str, amount: int, note: str,
     idem = f"{kind}:{call_id}"
     if ledger_repo.idem_key_exists(con, pid, idem):
         return
-    con.execute(
-        """
-        INSERT INTO ledger (user_id, delta, balance_after, kind,
-                            ref_type, ref_id, idem_key, note, created_at)
-        VALUES (%s, %s, %s, %s, 'tool_call', %s, %s, %s, %s)
-        """,
-        (pid, amount, base + amount, kind, call_id, idem, note, ts))
+    ledger_repo.insert_row(con, pid, amount, base + amount, kind,
+                           "tool_call", call_id, idem, note, ts)
 
 
 def platform_income_summary() -> dict:
     """平台收入汇总 (运营报表): 抽佣 / 直销 / 合计。"""
     pid = ensure_platform_account()
     with db() as con:
-        rows = con.execute(
-            """
-            SELECT kind, COALESCE(SUM(delta), 0) AS total
-            FROM ledger WHERE user_id = %s GROUP BY kind
-            """,
-            (pid,)).fetchall()
-    out = {"commission": 0, "revenue": 0, "total": 0}
-    for r in rows:
-        if r["kind"] == "platform_commission":
-            out["commission"] = int(r["total"])
-        elif r["kind"] == "platform_revenue":
-            out["revenue"] = int(r["total"])
-    out["total"] = out["commission"] + out["revenue"]
+        commission = ledger_repo.sum_kind(con, pid, "platform_commission")
+        revenue = ledger_repo.sum_kind(con, pid, "platform_revenue")
+    out = {"commission": commission, "revenue": revenue,
+           "total": commission + revenue}
     return out

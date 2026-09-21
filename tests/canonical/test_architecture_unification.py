@@ -369,6 +369,25 @@ _ledger_src = open(_os.path.join(_REPO, "core", "repo", "ledger.py"),
                    encoding="utf-8").read()
 check("U10 ledger.py 无 insert_call_ok/insert_call_failed",
       "insert_call_ok" not in _ledger_src and "insert_call_failed" not in _ledger_src)
+# C26: governance.platform is orchestration only — no direct SQL/persistence
+_pf_src = open(_os.path.join(_REPO, "core", "governance", "platform.py"),
+               encoding="utf-8").read()
+check("U26 platform.py 无 con.execute 直接 SQL",
+      "con.execute" not in _pf_src and "cursor" not in _pf_src)
+check("U26 platform.py 无 raw SQL 语句",
+      "SELECT " not in _pf_src and "INSERT INTO" not in _pf_src
+      and "UPDATE " not in _pf_src and "DELETE FROM" not in _pf_src)
+check("U26 platform.py 记账只经 ledger_repo.insert_row",
+      "ledger_repo.insert_row" in _pf_src
+      and "INSERT INTO ledger" not in _pf_src)
+check("U26 platform.py principal/status 只经 users_repo",
+      "users_repo.id_by_username" in _pf_src
+      and "users_repo.update_status" in _pf_src
+      and "UPDATE users" not in _pf_src)
+import repo.users as _users_repo_mod
+check("U26 users repo 提供 update_status 纯 primitive",
+      hasattr(_users_repo_mod, "update_status"))
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
