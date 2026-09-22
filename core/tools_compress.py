@@ -43,9 +43,12 @@ def compress_handler(tool_input, params):
     if not ct.startswith("image/"):
         raise ToolError("err_format_not_supported")
 
-    # ---- CP6.2: Parameter resolution ----
-    preset = params.get("preset", "2mb")
-    target = TARGETS.get(preset, TARGETS["2mb"])
+    # ---- CP6.2: Parameter resolution (canonical params only) ----
+    # enforce_params_decl is the sole params authority: missing →
+    # declaration default injected, illegal enum → 422 before the handler
+    # runs. Direct canonical read; fail loud on any bypass.
+    preset = params["preset"]
+    target = TARGETS[preset]
     orig_size = tool_input.get("size", 0)
 
     # ---- CP6.3: Already under target → pass through ----

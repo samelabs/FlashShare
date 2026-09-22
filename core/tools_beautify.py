@@ -282,9 +282,12 @@ def beautify_handler(tool_input, params):
     if not ct.startswith("image/"):
         raise ToolError("err_format_not_supported")
 
-    # ── 2. Parameter resolution ──
-    preset = params.get("preset", "aurora")
-    p = PRESETS.get(preset, PRESETS["aurora"])
+    # ── 2. Parameter resolution (canonical params only) ──
+    # enforce_params_decl is the sole params authority: missing →
+    # declaration default injected, illegal enum → 422 before the handler
+    # runs. Direct canonical read; fail loud on any bypass.
+    preset = params["preset"]
+    p = PRESETS[preset]
 
     # ── 3. Decode + orient + downscale ──
     img = Image.open(tool_input["stream"])

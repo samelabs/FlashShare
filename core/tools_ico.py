@@ -61,9 +61,12 @@ def ico_handler(tool_input, params):
         top = (h - side) // 2
         img = img.crop((left, top, left + side, top + side))
 
-    # Resolve preset
-    preset = params.get("preset", "ico_32")
-    (tw, th) = ICO_PRESETS.get(preset, ICO_PRESETS["ico_32"])[0]
+    # Resolve preset (canonical params only) — enforce_params_decl is the
+    # sole params authority: missing → declaration default injected,
+    # illegal enum → 422 before the handler runs. Direct canonical read;
+    # fail loud on any bypass.
+    preset = params["preset"]
+    (tw, th) = ICO_PRESETS[preset][0]
 
     # Generate ICO — let Pillow resize from source in one step
     # (pre-resizing then saving adds unwanted extra sizes + double-scaling blur)

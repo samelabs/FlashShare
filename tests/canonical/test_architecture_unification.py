@@ -743,6 +743,25 @@ check("C44 privacy_handler 直接消费 canonical preset",
       and 'preset = params["preset"]' in _priv44.group(0)
       and 'p = PRESETS[preset]' in _priv44.group(0))
 
+# C45: remaining first-party registered enum-param handlers consume
+# canonical params only (no silent default/fallback)
+def _body45(fname, fnpat):
+    t = open(_os2.path.join(_REPO, "core", fname), encoding="utf-8").read()
+    m = _re33.search(fnpat, t, _re33.DOTALL)
+    return m.group(0) if m else ""
+_cp45 = _body45("tools_compress.py", r"def compress_handler.*?(?=\ndef |\nregister\()")
+_by45 = _body45("tools_beautify.py", r"def beautify_handler.*?(?=\ndef |\nregister\()")
+_ic45 = _body45("tools_ico.py", r"def ico_handler.*?(?=\ndef |\nregister\()")
+for _nm45, _b45, _d45 in (
+        ("compress", _cp45, "TARGETS.get("),
+        ("beautify", _by45, "PRESETS.get("),
+        ("ico", _ic45, "ICO_PRESETS.get(")):
+    check(f"C45 {_nm45} handler 无 silent preset fallback",
+          _b45 != "" and 'params.get("preset"' not in _b45
+          and _d45 not in _b45)
+    check(f"C45 {_nm45} handler 直接消费 canonical preset",
+          _b45 != "" and 'preset = params["preset"]' in _b45)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",
