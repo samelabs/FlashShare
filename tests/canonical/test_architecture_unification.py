@@ -806,6 +806,13 @@ for _root47, _dirs47, _fs47 in _os2.walk(_REPO):
             check(f"C47 {_rel47} 无 /api/files/list transport",
                   '"/api/files/list"' not in _t47)
 
+# C48: no dead storage_read re-export in execution/source — canonical read
+# callers import storage.read directly
+_src48 = open(_os2.path.join(_REPO, "core", "execution", "source.py"),
+              encoding="utf-8").read()
+check("C48 execution/source 无 storage_read re-export",
+      "storage_read" not in _src48)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

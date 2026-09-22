@@ -7,7 +7,6 @@ _resolve_upload: public_id → upload dict。
 
 from security import verify_source_token
 from sharing.uploads import get_upload_by_public_id
-from storage import read as storage_read  # noqa: F401 (re-export for orchestrator)
 from storage import info as storage_info
 
 
