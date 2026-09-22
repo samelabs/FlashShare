@@ -7,7 +7,7 @@
 ```
 用户 → Cloudflare → Nginx → Uvicorn:8000 (FastAPI, 单 worker)
   ├── app/main.py            实例 + 中间件 (auth/quota/语言检测/recovery hook)
-  ├── app/routes/            pages / auth / api(v1) / proxy(/f) / mcp / earn / topup / samelabs / usertools
+  ├── app/routes/            pages / auth / api(browser-internal) / proxy(/f) / mcp / earn / topup / samelabs / usertools
   ├── core/execution/        invocation(五键 parser) / dispatch(四面单入口) / gate(计量+settlement) / orchestrator
   ├── core/governance/       tool_supply(供给单点) / catalog / pricing / formats(格式族单源) / platform / delivery
   ├── core/economy/          billing(双池) / earnings / reconcile / subscription / creem
@@ -30,7 +30,7 @@
 - `tests/ci/` CI 边界契约测试
 - `tests/support/` CI test service；不得复制 518 业务逻辑
 - `docs/plan/` 架构计划文档（TOOLCHAIN_UNIFICATION.md 等）
-- `scripts/` 一次性迁移脚本
+- `scripts/` production backup / restore-proof 运维脚本 + systemd units/timers
 
 ## Prerequisites
 
