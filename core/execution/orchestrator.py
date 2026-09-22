@@ -187,10 +187,21 @@ def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
         return None
     from urllib.parse import urlsplit
     from security import sign_hosted_exec_token
+
+    def _effective_port(parts) -> int | None:
+        """Origin-effective port: explicit port wins; otherwise the
+        scheme default (https 443 / http 80). Any other scheme yields
+        None and is never same-origin for the hosted mint."""
+        if parts.port:
+            return parts.port
+        return {"https": 443, "http": 80}.get(parts.scheme)
+
     ep = urlsplit(endpoint_url)
     base = urlsplit(BASE_URL)
-    if ep.scheme != base.scheme or (ep.port or base.port) != (base.port or ep.port) \
-            or (ep.hostname or "").lower() != (base.hostname or "").lower():
+    if (ep.scheme != base.scheme
+            or (ep.hostname or "").lower() != (base.hostname or "").lower()
+            or _effective_port(ep) is None
+            or _effective_port(ep) != _effective_port(base)):
         return None
     path = ep.path or "/"
     if not path.startswith("/tool-endpoints/"):

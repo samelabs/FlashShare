@@ -198,6 +198,26 @@ check("HX5c trusted=True + foreign origin → None",
 check("HX5d trusted=True + same-origin non-/tool-endpoints/* path → None",
       _mint_hosted_capability(f"{BASE}/api/other", _srcs, {}, trusted=True) is None)
 
+# HX5f: effective-port origin comparison (real behavior per BASE_URL variant)
+def _mint_with_base(base_url, endpoint, trusted=True):
+    _orch.BASE_URL = base_url
+    try:
+        return _mint_hosted_capability(endpoint, _srcs, {}, trusted=trusted)
+    finally:
+        _orch.BASE_URL = BASE
+
+check("HX5f1 https base + :8443 endpoint → None (explicit port mismatch)",
+      _mint_with_base("https://example.test", "https://example.test:8443/tool-endpoints/x") is None)
+check("HX5f2 https base + :443 endpoint → minted (effective port equal)",
+      _mint_with_base("https://example.test", "https://example.test:443/tool-endpoints/x") is not None)
+check("HX5f3 :8443 base + portless https endpoint → None (443 ≠ 8443)",
+      _mint_with_base("https://example.test:8443", "https://example.test/tool-endpoints/x") is None)
+check("HX5f4 http base + :80 endpoint → minted (effective port equal)",
+      _mint_with_base("http://example.test", "http://example.test:80/tool-endpoints/x") is not None)
+check("HX5f5 trusted=False same-origin case remains None",
+      _mint_with_base("https://example.test", "https://example.test/tool-endpoints/x",
+                      trusted=False) is None)
+
 # HX5e: execute_remote's canonical trusted fact is what reaches the mint —
 # untrusted rows mint nothing even at the canonical call boundary.
 import inspect as _inspect  # noqa: E402
