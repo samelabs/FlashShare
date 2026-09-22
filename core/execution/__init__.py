@@ -13,17 +13,6 @@
 事务红线: fact 行 + 分账 ledger 同一事务 (gate.finish)。
 """
 
-import asyncio
-import io
-import json
-import secrets
-
-from database import db
-from repo.ledger import (call_count_by_ref,
-                         insert_provider_earn_if_absent, total_balance)
-from utils import now
-
-
 class ExecutionError(Exception):
     """编排层错误: code = i18n error key。"""
 
