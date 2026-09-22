@@ -56,7 +56,7 @@ Server Agent MUST NOT：
 - **Catalog**：canonical projection 形状；official 判定 = owner 关系（bare id ↔ `/` in id）三面等价。
 - **ToolInvocation**：精确五键
   `{tool_id, source:{files:[{public_id, source_token}]}, params, delivery:{expiry_days, allowed_downloads}, client_ref}`；
-  root/source/delivery 精确键集；params 显式 dict；client_ref null=fresh / 非空≤128=idempotent。
+  root/source/delivery 精确键集；params 显式 dict；client_ref 必填 non-empty string（≤128），作为 client-generated stable operation identity；null / missing 均拒绝。
   MCP adapter 只对"缺失"填默认，显式非法值 → -32602。
 - **Execution / Settlement**：claim running → consume（idem=`call:{call_id}`）→ execute →
   成功同事务 finalize ok + payout/commission/revenue；失败 refund 先于 finalize failed
