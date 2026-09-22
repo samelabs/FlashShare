@@ -85,6 +85,15 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         except (KeyError, TypeError, ValueError):
             return None, {"ok": False, "error": "tool_unavailable"}, 503
 
+    # Stored execution class: exactly the canonical supply vocabulary
+    # (local | http). Anything else — including the retired 'mcp' notion —
+    # is a stored contract violation: rejected HERE, before the metering
+    # gate (no claim, no charge, no network) and with no default-else
+    # local fallback. Mirrors the startup catalog invariant.
+    from governance.tool_supply import _EXECUTIONS
+    if tool.get("execution") not in _EXECUTIONS:
+        return None, {"ok": False, "error": "tool_unavailable"}, 503
+
     params = inv.params
 
     # canonical params 是唯一参数事实源 — default 由 enforce_params_decl
@@ -148,19 +157,27 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
 
         from .orchestrator import execute_local, execute_remote
         from tools import ToolError as _TE
-        try:
-            if tool.get("execution") in ("http", "mcp"):
+
+        # Stored execution class already validated pre-gate (canonical
+        # vocabulary only, no default-else local branch). Here: exactly
+        # the two admitted classes.
+        _exec = tool.get("execution")
+        if _exec == "http":
+            try:
                 return await execute_remote(request_ctx, tool, uploads,
                                             params, user, inv.delivery)
-            # local: worker pool 由调用方注入; 未注入 → 执行域自持池
-            if process_tool is None or pool is None:
-                from .pool import get_pool, default_process_tool
-                return await execute_local(request_ctx, tool, uploads,
-                                           params, user,
-                                           default_process_tool(), get_pool(),
-                                           inv.delivery)
-            return await execute_local(request_ctx, tool, uploads, params, user,
-                                       process_tool, pool, inv.delivery)
+            except _TE as exc:
+                raise ExecutionError(str(exc)) from exc
+        # local (validated): worker pool 由调用方注入; 未注入 → 执行域自持池
+        if process_tool is None or pool is None:
+            from .pool import get_pool, default_process_tool
+            _pt, _pl = default_process_tool(), get_pool()
+        else:
+            _pt, _pl = process_tool, pool
+        try:
+            return await execute_local(request_ctx, tool, uploads,
+                                       params, user, _pt, _pl,
+                                       inv.delivery)
         except _TE as exc:
             raise ExecutionError(str(exc)) from exc
 

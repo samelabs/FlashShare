@@ -652,9 +652,21 @@ _val38 = _re33.search(
     r"def validate_catalog_rows.*?(?=\ndef )", _gcat38, _re33.DOTALL)
 check("C38 validate_catalog_rows 函数体无 con.execute",
       _val38 is not None and "con.execute" not in _val38.group(0))
-check("C38 validate_catalog_rows 消费 repo.catalog.accept_contract_rows",
+check("C38 validate_catalog_rows 消费 repo.catalog.catalog_contract_rows",
       _val38 is not None
-      and "accept_contract_rows(con)" in _val38.group(0))
+      and "catalog_contract_rows(con)" in _val38.group(0))
+check("C38 startup invariant 校验 execution ∈ canonical supply vocabulary",
+      _val38 is not None
+      and "from governance.tool_supply import _EXECUTIONS" in _val38.group(0)
+      and 'r["execution"] not in _EXECUTIONS' in _val38.group(0))
+_disp58 = open(_os2.path.join(_REPO, "core", "execution", "dispatch.py"),
+               encoding="utf-8").read()
+check("C58 dispatch 无 execution='mcp' 当 remote 的分支",
+      '"http", "mcp"' not in _disp58)
+_pre58 = _disp58.find("tool.get(\"execution\") not in _EXECUTIONS")
+_gate58 = _disp58.find("gate_run(")
+check("C58 dispatch execution vocabulary 校验在 metering gate 之前",
+      0 < _pre58 < _gate58)
 check("C38 parse_stored_accept 仍由 governance 层调用",
       _val38 is not None
       and "from governance.formats import parse_stored_accept" in _val38.group(0))

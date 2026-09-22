@@ -25,8 +25,8 @@ from repo import catalog as catalog_repo
 from utils import now
 
 # Visibility ladder (data field, owner-settable — no human gate).
-# Validation of stored values happens at write time (samelabs/remote and
-# the future user-submission endpoint), not read time.
+# Validation of stored values happens at write time (the operator
+# samelabs surface and the user publishing/source adapter), not read time.
 VIS_PRIVATE = "private"    # owner only
 VIS_UNLISTED = "unlisted"  # callable when the key is known, never listed
 VIS_PUBLIC = "public"      # grid + every caller's tools/list
@@ -94,13 +94,17 @@ def _canonical_accept(raw: str | None) -> list | None:
 
 
 def validate_catalog_rows() -> None:
-    """Startup invariant: every platform_tools row's stored accept must be
-    the current contract (NULL = any, or non-empty canonical ext list).
-    Violation aborts startup — catalog projection never guesses."""
+    """Startup invariant: every platform_tools row's stored accept AND
+    execution must be the current contract (accept: NULL = any, or
+    non-empty canonical ext list; execution: the canonical supply
+    vocabulary local|http — no second vocabulary here). Violation aborts
+    startup regardless of enabled/visibility — the catalog projection
+    never guesses."""
     from governance.formats import parse_stored_accept
-    from repo.catalog import accept_contract_rows
+    from governance.tool_supply import _EXECUTIONS
+    from repo.catalog import catalog_contract_rows
     with db() as con:
-        rows = accept_contract_rows(con)
+        rows = catalog_contract_rows(con)
     for r in rows:
         try:
             parse_stored_accept(r["accept_json"])  # SQL NULL = valid any
@@ -108,6 +112,11 @@ def validate_catalog_rows() -> None:
             raise RuntimeError(
                 f"catalog invariant: tool {r['tool_key']} accept_json "
                 f"violates the stored contract ({exc})") from None
+        if r["execution"] not in _EXECUTIONS:
+            raise RuntimeError(
+                f"catalog invariant: tool {r['tool_key']} execution "
+                f"'{r['execution']}' outside the canonical vocabulary "
+                f"{_EXECUTIONS}")
 
 
 def is_official_id(tool_id: str) -> bool:
@@ -240,7 +249,7 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
     viewer_id: when given, the result additionally includes the viewer's
     own private/unlisted tools (owner surface). Public listing (web home
     for anonymous) passes None → public rows only.
-    include_remote: False strips execution=http|mcp rows — the web home
+    include_remote: False strips execution=http rows — the web home
     grid is local-only until the remote-tool UX ships; MCP keeps them
     (programmatic surface is the remote-first consumer).
     """
@@ -303,8 +312,8 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
       error: 'not_found' | 'disabled' | 'forbidden'
 
     Key grammar: bare id ('beautify') = first-party; 'owner/tool' = user
-    namespace (user tools land as data rows in Phase 3 — resolve() already
-    speaks the grammar so no surface changes then).
+    namespace (user tools are current data rows — resolve() speaks the
+    grammar today).
 
     Visibility is enforced HERE so the three surfaces cannot diverge:
       public    → everyone

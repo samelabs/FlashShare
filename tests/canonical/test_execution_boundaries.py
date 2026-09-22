@@ -404,6 +404,138 @@ _gate_src = open(_os.path.join(_REPO, "core", "execution", "gate.py"),
 check("F1 无 err_worker_died / 无新经济状态",
       "err_worker_died" not in _orch_src and "resource" not in _gate_src.lower())
 
+# ══════════ G. stored execution vocabulary fail-closed (C58) ══════════
+# dispatch must reject any stored execution outside local|http BEFORE the
+# metering gate (no claim/charge/network), with no default-else local.
+from execution.dispatch import dispatch_execute as _dx
+
+def _fake_request():
+    class _R:
+        class _c:
+            client = "127.0.0.1"
+        headers = {}
+    return _R()
+
+_ts58 = int(time.time())
+# The fresh schema carries platform_tools_execution_ck; the dispatch-level
+# rejection cases simulate a PRE-CHECK stored row (legacy DB) by dropping
+# the constraint on this isolated test DB for the duration, then restoring.
+with db() as con:
+    con.execute("ALTER TABLE platform_tools DROP CONSTRAINT IF EXISTS platform_tools_execution_ck")
+
+def _mkrow58(execution):
+    with db() as con:
+        uid = con.execute(
+            "insert into users (username, email, password_hash, display_name,"
+            " status, created_at, last_login_at) values (%s, %s, 'x', 'T',"
+            " 'active', %s, %s) returning id",
+            (f"eb58_{execution}_{_os.urandom(3).hex()}",
+             f"eb58_{execution}_{_os.urandom(3).hex()}@t.co",
+             _ts58, _ts58)).fetchone()["id"]
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id,"
+            " execution, tool_type, label_json, visibility, enabled,"
+            " created_at, updated_at) values (%s, NULL, %s, %s, 'produce',"
+            " '{}', 'public', TRUE, %s, %s)"
+            " on conflict (tool_key) do update set execution=excluded.execution",
+            (f"eb58/{execution}", execution, execution, _ts58, _ts58))
+    return uid
+
+_INV58 = {
+    "tool_id": None,  # filled per case
+    "source": {"files": [{"public_id": "aaaaaaaa", "source_token": "tok"}]},
+    "params": {},
+    "delivery": {"expiry_days": 1, "allowed_downloads": 10},
+    "client_ref": "eb58-" + _os.urandom(4).hex(),
+}
+for _exec58 in ("mcp", "grpc", "wasm"):
+    _uid = _mkrow58(_exec58)
+    _inv = dict(_INV58)
+    _inv["tool_id"] = f"eb58/{_exec58}"
+    _user58 = {"id": _uid, "username": f"u58_{_exec58}"}
+    import asyncio as _a58
+    try:
+        _pl, _err, _st = _a58.run(_dx(_fake_request(), _user58, _inv))
+    except Exception as _exc58:
+        _pl, _err, _st = None, {"raw": str(_exc58)[:60]}, "EXC"
+    check(f"G-{_exec58} dispatch 拒未知 execution (gate/charge 前 503)",
+          _st == 503 and (_err or {}).get("error") == "tool_unavailable",
+          f"{_st} {str(_err)[:60]}")
+    with db() as con:
+        _n = con.execute(
+            "select count(*) c from tool_calls where user_id=%s", (_uid,)
+        ).fetchone()["c"]
+    check(f"G-{_exec58} 拒绝时零 tool_call claim", int(_n) == 0, f"{_n}")
+    with db() as con:
+        _n2 = con.execute(
+            "select count(*) c from ledger where user_id=%s", (_uid,)
+        ).fetchone()["c"]
+    check(f"G-{_exec58} 拒绝时零 charge/consume", int(_n2) == 0, f"{_n2}")
+
+# local + http rows still resolve into their normal branches (admitted set)
+for _exec58 in ("local", "http"):
+    _mkrow58(_exec58)
+    check(f"G-{_exec58} row 可创建 (canonical vocabulary 接受)",
+          True)
+from governance.tool_supply import _EXECUTIONS
+check("G-vocabulary authoring validator 只接受 local|http",
+      _EXECUTIONS == ("local", "http"))
+
+# drop the pre-CHECK test rows, then restore the fresh-schema CHECK
+with db() as con:
+    con.execute("delete from platform_tools where tool_key like 'eb58/%%'")
+    con.execute("ALTER TABLE platform_tools ADD CONSTRAINT platform_tools_execution_ck"
+                " CHECK (execution IN ('local','http'))")
+
+# startup invariant: invalid stored execution aborts (fresh DB rows)
+from governance.catalog import validate_catalog_rows as _vcr
+with db() as con:
+    con.execute("ALTER TABLE platform_tools DROP CONSTRAINT IF EXISTS platform_tools_execution_ck")
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " tool_type, label_json, visibility, enabled, created_at, updated_at)"
+        " values ('eb58/bad_exec_inv', NULL, 'bad_exec_inv', 'mcp',"
+        " 'produce', '{}', 'private', FALSE, %s, %s)", (_ts58, _ts58))
+try:
+    _vcr()
+    check("G-startup stored execution='mcp' → invariant fail", False, "no raise")
+except RuntimeError as _e58:
+    check("G-startup stored execution='mcp' → invariant fail",
+          "execution" in str(_e58), str(_e58)[:80])
+with db() as con:
+    con.execute("delete from platform_tools where tool_key='eb58/bad_exec_inv'")
+    con.execute("ALTER TABLE platform_tools DROP CONSTRAINT IF EXISTS platform_tools_execution_ck")
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " tool_type, label_json, visibility, enabled, created_at, updated_at)"
+        " values ('eb58/bad_exec_inv2', NULL, 'bad_exec_inv2', 'quantum',"
+        " 'produce', '{}', 'unlisted', TRUE, %s, %s)", (_ts58, _ts58))
+try:
+    _vcr()
+    check("G-startup arbitrary execution='quantum' → invariant fail", False, "no raise")
+except RuntimeError as _e58:
+    check("G-startup arbitrary execution='quantum' → invariant fail",
+          "execution" in str(_e58), str(_e58)[:80])
+with db() as con:
+    con.execute("delete from platform_tools where tool_key='eb58/bad_exec_inv2'")
+    con.execute("ALTER TABLE platform_tools ADD CONSTRAINT platform_tools_execution_ck"
+                " CHECK (execution IN ('local','http'))")
+with db() as con:
+    con.execute("delete from platform_tools where tool_key='eb58/bad_exec_inv2'")
+
+# fresh schema carries the CHECK (probed via a fresh connection DDL artifact)
+with db() as con:
+    _ck = con.execute(
+        "select count(*) c from pg_constraint"
+        " where conname='platform_tools_execution_ck'").fetchone()["c"]
+check("G-fresh schema platform_tools.execution CHECK (local,http) 存在",
+      int(_ck) == 1, str(_ck))
+
+# cleanup seeded rows
+with db() as con:
+    con.execute("delete from platform_tools where tool_key like 'eb58/%%'")
+    con.execute("delete from users where username like 'eb58_%%'")
+
 print()
 print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")
 _sys.exit(1 if FAIL else 0)

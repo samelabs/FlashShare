@@ -500,8 +500,8 @@ _SCHEMA_SQL = (
     # ── platform: platform_tools (tool registry — data-state rows) ──
     # The runtime source of truth for the tool catalog. First-party tools are
     # seeded here at startup from register() declarations (code = creation
-    # format, DB = runtime truth). Remote/http/mcp execution classes and
-    # namespaced user tools (owner/tool_id) land as data rows later —
+    # format, DB = runtime truth). Remote (http) execution and namespaced
+    # user tools (owner/tool_id) are current data rows —
     # resolve() is execution-class-agnostic and origin-agnostic.
     # trusted: operator-adoption flag. User rows default FALSE (SSRF guard
     # enforces https + public IPs); TRUE only via /samelabs (institutional
@@ -515,7 +515,11 @@ _SCHEMA_SQL = (
                                            -- NULL = first-party seed
       tool_id        TEXT NOT NULL,          -- bare id within namespace
       execution      TEXT NOT NULL DEFAULT 'local',
-                                           -- local | http | mcp (future)
+                                           -- local | http (current execution classes)
+                                           -- mcp is a northbound surface, NOT an execution class
+                                           -- CHECK below pins the current vocabulary
+                                           -- (startup catalog invariant enforces it for
+                                           --  pre-CHECK stored rows; no migration/backfill)
       tool_type      TEXT NOT NULL DEFAULT 'produce',
                                            -- produce | view | peek
       label_json     TEXT NOT NULL,          -- {lang: display_name}
@@ -529,8 +533,9 @@ _SCHEMA_SQL = (
                                            -- TRUE = 直传工具: 上传即结果, 无执行步 (share)
       visibility     TEXT NOT NULL DEFAULT 'public',
                                            -- public | unlisted | private
-      endpoint_json  TEXT,                   -- remote execution decl (future)
-      params_json    TEXT,                   -- typed params schema (future)
+      endpoint_json  TEXT,                   -- http execution binding (url/timeout/auth)
+      params_json    TEXT,                   -- typed params declaration
+      CONSTRAINT platform_tools_execution_ck CHECK (execution IN ('local','http')),
       enabled        BOOLEAN NOT NULL DEFAULT TRUE,
       trusted        BOOLEAN NOT NULL DEFAULT FALSE,
       created_at     BIGINT NOT NULL,
