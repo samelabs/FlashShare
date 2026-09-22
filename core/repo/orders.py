@@ -607,18 +607,6 @@ def pending_downgrade_counts_by_plan(con) -> dict:
         " GROUP BY target_plan_id").fetchall()}
 
 
-def sweep_expired_plans(con, ts: int) -> int:
-    """过期 membership → expired。状态转移 only, 授信永不在此发生。"""
-    cur = con.execute(
-        """
-        UPDATE memberships SET status='expired', updated_at=%s
-        WHERE status IN ('active','past_due') AND renews_at IS NOT NULL
-          AND renews_at < %s
-        RETURNING user_id
-        """, (ts, ts))
-    return len(cur.fetchall())
-
-
 # ── subscriptions (reconcile: user → orders rows with sub: binding) ──
 
 

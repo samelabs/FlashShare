@@ -596,17 +596,6 @@ def _ev_expired(sub_id: str, obj: dict) -> dict:
     return {"status": "expired"}
 
 
-def sweep_expired() -> int:
-    """Boot/daily fallback: expire memberships whose renews_at passed.
-    Status transition only — credits are NEVER clawed back here."""
-    ts = now()
-    with db() as con:
-        n = orders_repo.sweep_expired_plans(con, ts)
-    if n:
-        log.info("subscription sweep: %d membership(s) expired", n)
-    return n
-
-
 def plan_of(user_id: int) -> dict | None:
     """Identity single point (badge / API / backoffice all read here).
 
