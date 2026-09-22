@@ -592,12 +592,15 @@ def plan_credits(con, plan_id: int) -> int:
 
 
 
-def membership_counts_by_plan(con) -> dict:
-    """current membership 数 per plan_id (active/past_due/canceled)。"""
+def membership_counts_by_plan(con, ts: int) -> dict:
+    """effective membership 数 per plan_id — 与 canonical
+    membership_is_effective predicate 同构 (named query, 无 domain import):
+    status active/past_due/canceled 且 renews_at 非空且 > ts。"""
     return {r["plan_id"]: int(r["n"]) for r in con.execute(
         "SELECT plan_id, COUNT(*) n FROM memberships"
         " WHERE status IN ('active','past_due','canceled')"
-        " GROUP BY plan_id").fetchall()}
+        " AND renews_at IS NOT NULL AND renews_at > %s"
+        " GROUP BY plan_id", (ts,)).fetchall()}
 
 
 def pending_downgrade_counts_by_plan(con) -> dict:

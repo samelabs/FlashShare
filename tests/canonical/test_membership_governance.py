@@ -690,6 +690,56 @@ check("SG16 Account 可售列表消费同一 sellable 单点",
       "t.sellable" in _pages_g.split("def account_credits")[1].split("async def ")[0]
       and "plan_catalog.catalog()" in _pages_g.split("def account_credits")[1].split("async def ")[0])
 
+# ═══ MC: /samelabs/plans member_count == canonical effective predicate ═══
+# membership_counts_by_plan(con, ts) 必须与 membership_is_effective 同义:
+# status live + renews_at 非空 + > ts。七格行为矩阵, raw 行直接铺。
+_cur.execute(
+    "insert into plans (code, name, monthly_credits, price_cents,"
+    " creem_product_id, created_at, updated_at)"
+    " values ('mcmat', 'MC Matrix', 1, 500, 'price_mcmat', %s, %s)"
+    " on conflict (code) do update set updated_at=excluded.updated_at"
+    " returning id", (_ts, _ts))
+_mc_plan = _cur.fetchone()[0]
+_cur.execute("delete from memberships where provider_subscription_id like 'mcmat%%'")
+_NOW = int(time.time())
+_FUT_MC, _PAST_MC = _NOW + 86400, _NOW - 86400
+_MC_ROWS = [
+    ("mcmat_a1", "active",   _FUT_MC, True),   # active + future → counted
+    ("mcmat_c1", "canceled", _FUT_MC, True),   # canceled + future → counted
+    ("mcmat_p1", "past_due", _FUT_MC, True),   # past_due + future → counted
+    ("mcmat_a2", "active",   None,    False),  # active + NULL renews → not
+    ("mcmat_a3", "active",   _PAST_MC, False), # active + past renews → not
+    ("mcmat_c2", "canceled", _PAST_MC, False),
+    ("mcmat_p2", "past_due", _PAST_MC, False),
+    ("mcmat_e1", "expired",  _FUT_MC, False),  # expired + future → not
+]
+for _i, (_sid, _st, _rn, _) in enumerate(_MC_ROWS):
+    _cur.execute(
+        "insert into users (username, display_name, status, created_at,"
+        " last_login_at) values (%s, 'MC', 'active', %s, %s) returning id",
+        (f"mcmat_u{_i}_{_NOW}", _NOW, _NOW))
+    _mc_uid = _cur.fetchone()[0]
+    _cur.execute(
+        "insert into memberships (user_id, plan_id, provider_subscription_id,"
+        " status, started_at, renews_at, updated_at)"
+        " values (%s, %s, %s, %s, %s, %s, %s)",
+        (_mc_uid, _mc_plan, _sid, _st, _NOW - 7200, _rn, _NOW))
+from database import db as _mc_db
+with _mc_db() as _mc_con:
+    _counts = orders_repo.membership_counts_by_plan(_mc_con, _NOW)
+_got = int(_counts.get(_mc_plan, 0))
+check("MC1 member_count == canonical effective (3 counted of 8 rows)",
+      _got == 3, f"got {_got} of {len(_MC_ROWS)}")
+from economy.subscription import membership_is_effective as _mie
+for _sid, _st, _rn, _want in _MC_ROWS:
+    _cur.execute("select user_id from memberships where provider_subscription_id=%s", (_sid,))
+    _uid = _cur.fetchone()[0]
+    check(f"MC2 {_sid} ({_st}, renews={_rn and 'future' if _rn and _rn > _NOW else (_rn and 'past' or 'NULL')}) repo==predicate",
+          _mie(_st, _rn, _NOW) == _want)
+_cur.execute("delete from memberships where provider_subscription_id like 'mcmat%%'")
+_cur.execute("delete from plans where code='mcmat'")
+_cur.execute("delete from users where username like 'mcmat_u%%'")
+
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
 _sys.exit(1 if FAIL else 0)

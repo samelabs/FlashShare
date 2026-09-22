@@ -626,8 +626,12 @@ check("C36 samelabs_plans 无 route-layer memberships/pending_downgrades SQL",
       and "FROM pending_downgrades" not in _plans36.group(0))
 check("C36 samelabs_plans 计数消费 repo.orders primitives",
       _plans36 is not None
-      and "_orders_repo.membership_counts_by_plan(con)" in _plans36.group(0)
+      and "_orders_repo.membership_counts_by_plan(con, _ts)" in _plans36.group(0)
       and "_orders_repo.pending_downgrade_counts_by_plan(con)" in _plans36.group(0))
+check("C36 samelabs_plans 单请求单一 ts (now() 一次, 传入 effective count)",
+      _plans36 is not None
+      and "_ts = now()" in _plans36.group(0)
+      and _plans36.group(0).count("now()") == 1)
 
 # C37: plan mirror commit-outcome classifier reads via repo primitives
 _cls37 = _re33.search(

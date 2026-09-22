@@ -374,11 +374,13 @@ async def samelabs_plans(request: Request):
         return resp
     from app.main import templates
     from repo import orders as _orders_repo
+    _ts = now()
     with db() as con:
         rows = [r for r in _orders_repo.all_plans(con) if r["code"] != "free"]  # 管理面: 全部 paid 行
-        # 订阅计数: current memberships per plan (含 pending 排期目标) —
-        # 下架/改配前的事实依据 (count 读取走 repo.orders primitives)
-        counts = _orders_repo.membership_counts_by_plan(con)
+        # 订阅计数: effective memberships per plan — 与 canonical
+        # membership_is_effective 同义 (single ts per request)。
+        # 含 pending 排期目标 — 下架/改配前的事实依据 (count 读取走 repo.orders primitives)
+        counts = _orders_repo.membership_counts_by_plan(con, _ts)
         pend = _orders_repo.pending_downgrade_counts_by_plan(con)
     plans = []
     for r in rows:
