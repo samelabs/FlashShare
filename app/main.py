@@ -104,9 +104,10 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 def get_user_from_request(request: Request):
     """Browser session identity for the web surface; Bearer tokens are
-    resolved only for the machine surfaces (/mcp and /tool-endpoints)
-    that explicitly authenticate with them. A Bearer header never turns
-    its holder into a logged-in web user on browser routes."""
+    resolved only for the /mcp machine surface that authenticates with
+    them. The hosted /tool-endpoints/* surface authorizes with the
+    dispatch-minted HMAC hosted-execution capability, not any Bearer.
+    A Bearer header never turns its holder into a logged-in web user."""
     from database import db
     token = request.cookies.get(COOKIE_NAME)
     if token:
@@ -120,7 +121,7 @@ def get_user_from_request(request: Request):
         except Exception:
             return None
     path = request.url.path
-    if path == "/mcp" or path.startswith("/tool-endpoints/"):
+    if path == "/mcp":
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
             from identity.apitokens import authenticate_token

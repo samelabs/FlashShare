@@ -173,6 +173,35 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     return staged
 
 
+def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict) -> str | None:
+    """Mint the /tool-endpoints/* execution capability for trusted
+    same-origin hosted endpoints; None for everything else.
+
+    Trust boundary: only operator-managed rows (owner_id IS NULL) reach
+    here with a hosted URL — the existing trusted execution fact. The
+    payload digest covers job_inputs + params, so the capability cannot
+    be spliced onto a different input set."""
+    from urllib.parse import urlsplit
+    from security import sign_hosted_exec_token
+    ep = urlsplit(endpoint_url)
+    base = urlsplit(BASE_URL)
+    if ep.scheme != base.scheme or (ep.port or base.port) != (base.port or ep.port) \
+            or (ep.hostname or "").lower() != (base.hostname or "").lower():
+        return None
+    path = ep.path or "/"
+    if not path.startswith("/tool-endpoints/"):
+        return None
+    payload = {
+        "job_inputs": [
+            {"filename": s["filename"], "content_type": s["content_type"],
+             "size": s["size"], "url": s["fetch_url"]}
+            for s in sources
+        ],
+        "params": params,
+    }
+    return sign_hosted_exec_token(path, payload)
+
+
 async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
     """remote (http) 编排: 拉 URL 签名 → drive_http → 零信任落地。
 
@@ -204,6 +233,14 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         })
 
     auth_headers = {}
+    # Hosted-execution capability: for TRUSTED endpoints whose URL origin
+    # equals the platform's own BASE_URL under /tool-endpoints/*, mint the
+    # short-lived HMAC capability that is the sole /tool-endpoints/*
+    # authority. Untrusted (user) rows never receive one — they cannot
+    # self-authorize onto the hosted surface.
+    _hosted_cap = _mint_hosted_capability(decl.get("url") or "", sources, params)
+    if _hosted_cap:
+        auth_headers["X-Hosted-Execution"] = _hosted_cap
     if decl.get("auth_header") and decl.get("auth_token"):
         from secrets_vault import unseal, VaultUnavailable, VaultDecryptError
         try:

@@ -463,8 +463,9 @@ _web_auth28 = open(_os2.path.join(_REPO, "app", "web_auth.py"),
                    encoding="utf-8").read()
 check("U28 require_session_or_bearer_auth 已删 (browser 面 session-only)",
       "require_session_or_bearer_auth" not in _web_auth28)
-check("U28 Bearer 解析仅限 machine surface (/mcp + /tool-endpoints)",
-      'path == "/mcp"' in _main28 and '"/tool-endpoints/"' in _main28)
+check("U28 Bearer 解析仅限 /mcp (hosted 面走 HMAC capability)",
+      'path == "/mcp"' in _main28
+      and 'path.startswith("/tool-endpoints/")' not in _main28)
 # production templates/JS 无 Public REST active expression
 _tpl28 = (open(_os2.path.join(_REPO, "app", "templates", "agents.html"),
                encoding="utf-8").read()
@@ -478,8 +479,10 @@ check("U28 i18n 无 Public REST 文案键 (agents_ep_*/agents_api_*/tool_mcp_htt
            "tool_mcp_http_hint")))
 _hosted28 = open(_os2.path.join(_REPO, "app", "routes", "hosted_tools.py"),
                  encoding="utf-8").read()
-check("U28 hosted_tools 走同一 token authority (authenticate 面 via auth_via token)",
-      'via != "token"' in _hosted28 and "verify_fetch_token" in _hosted28)
+check("U28 hosted_tools authority = dispatch-minted HMAC capability (非 Bearer)",
+      "verify_hosted_exec_token" in _hosted28
+      and "verify_fetch_token" in _hosted28
+      and 'via != "token"' not in _hosted28)
 
 # C29: orders table SQL lives only in repo/orders.py
 import glob as _glob29

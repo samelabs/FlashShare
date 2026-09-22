@@ -55,8 +55,14 @@ check("RC7 托管 southbound 面存在 (/tool-endpoints/rounded-corners)",
           _os.path.join(_repo, "app", "main.py"), encoding="utf-8").read())
 check("RC8 端点走签名拉取闸 (verify_fetch_token, 无旁路)",
       "_pull_signed_source" in _ht and "verify_fetch_token" in _ht)
-check("RC9 端点要求 Bearer (machine surface 认证)",
-      'via != "token"' in _ht)
+check("RC9 端点要求 dispatch-minted hosted capability (非 Bearer)",
+      "verify_hosted_exec_token" in _ht
+      and 'via != "token"' not in _ht
+      and 'auth_via' not in _ht)
+_route_body = _ht[_ht.find("async def hosted_rounded_corners"):]
+check("RC9b capability 验证先于 source 消费 (verify 在 pull 之前)",
+      0 <= _route_body.find("verify_hosted_exec_token")
+      < _route_body.find("_pull_signed_source"))
 check("RC10 端点输出 data_b64 (json mode 合同)",
       '"data_b64"' in _ht)
 check("RC11 无旧 /api/v1 namespace 残留 (无 alias)",

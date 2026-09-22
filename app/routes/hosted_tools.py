@@ -49,15 +49,21 @@ def _pull_signed_source(url: str) -> bytes | None:
 @router.post("/rounded-corners")
 async def hosted_rounded_corners(request: Request):
     """Hosted rounded-corners tool (user-chain form). multi=false: first
-    input only, mirroring the tool declaration."""
-    user = getattr(request.state, "user", None)
-    via = getattr(request.state, "auth_via", "session")
-    if not user or via != "token":
-        return JSONResponse({"ok": False, "error": "auth_required"}, 401)
+    input only, mirroring the tool declaration.
+
+    Authority: the short-lived HMAC hosted-execution capability minted by
+    canonical trusted dispatch for this exact path + outbound payload.
+    Ordinary API Bearer tokens are NOT authorization here, and the source
+    capability inside the payload is never touched before hosted auth
+    passes."""
     try:
         payload = await request.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from security import verify_hosted_exec_token
+    cap = request.headers.get("x-hosted-execution", "")
+    if not cap or not verify_hosted_exec_token(cap, "/tool-endpoints/rounded-corners", payload):
+        return JSONResponse({"ok": False, "error": "auth_required"}, 401)
     inputs = payload.get("job_inputs") or []
     if not inputs:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
