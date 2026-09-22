@@ -25,6 +25,13 @@
   let op = null;
 
   function invalidateOperation() {
+    // A RUNNING operation is never invalidated from outside: a change event
+    // racing the submit (input change fired while the upload/execute legs are
+    // already in flight) must not null the live op — that orphans the
+    // operation state (progress handlers crash on null op, the retry
+    // affordance is lost). Input changes while running are simply ignored;
+    // the surface's own submit path already refuses concurrent runs.
+    if (op && op.phase === "running") return;
     op = null;
   }
 

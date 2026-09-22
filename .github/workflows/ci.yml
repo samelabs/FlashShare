@@ -374,3 +374,126 @@ jobs:
           cat /tmp/fake-gokapi.log 2>/dev/null || true
           echo "=== PostgreSQL service ==="
           docker logs "${{ job.services.postgres.id }}" 2>&1 | tail -200 || true
+
+  browser:
+    name: browser-runtime
+    runs-on: ubuntu-latest
+    needs: fast
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flashshare
+          POSTGRES_PASSWORD: flashshare-ci
+          POSTGRES_DB: flashshare_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U flashshare -d flashshare_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql+psycopg://flashshare:flashshare-ci@127.0.0.1:5432/flashshare_ci
+      TEST_DB_URL: postgresql://flashshare:flashshare-ci@127.0.0.1:5432/flashshare_ci
+      FLASHSHARE_SESSION_SECRET: ci-session-secret-not-production
+      FLASHSHARE_GOKAPI_URL: http://127.0.0.1:53898
+      FLASHSHARE_GOKAPI_KEY: ci-gokapi-key
+      FLASHSHARE_BASE_URL: http://127.0.0.1:8100
+      FLASHSHARE_LOG_DIR: /tmp/flashshare-ci-log
+      FLASHSHARE_TEST_PORT: "8100"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Install pinned playwright-core
+        run: npm install --no-save playwright-core@1.55.0
+      - name: Install Chromium for playwright-core
+        run: npx playwright-core install --with-deps chromium
+      - name: Fail-closed browser gate guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          expect_exit_2() {
+            set +e
+            "$@" >/tmp/bguard.out 2>/tmp/bguard.err
+            code=$?
+            set -e
+            if [ "$code" -ne 2 ]; then
+              echo "expected exit 2, got $code: $*"
+              cat /tmp/bguard.err
+              exit 1
+            fi
+          }
+          expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
+            node tests/browser/test_runtime_gate.js
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            node tests/browser/test_runtime_gate.js
+      - name: Start Gokapi HTTP-boundary service
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/support/fake_gokapi.py \
+            --host 127.0.0.1 --port 53898 --key "$FLASHSHARE_GOKAPI_KEY" \
+            >/tmp/fake-gokapi.log 2>&1 &
+          echo $! >/tmp/fake-gokapi.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:53898/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/fake-gokapi.log
+          exit 1
+      - name: Start real FlashShare app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$FLASHSHARE_LOG_DIR"
+          python -m uvicorn app.main:app \
+            --host 127.0.0.1 --port 8100 --workers 1 \
+            >/tmp/flashshare-app.log 2>&1 &
+          echo $! >/tmp/flashshare-app.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8100/healthz >/dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat /tmp/flashshare-app.pid)" 2>/dev/null; then
+              cat /tmp/flashshare-app.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat /tmp/flashshare-app.log
+          exit 1
+      - name: Browser runtime gate (Chromium E2E + screenshots)
+        env:
+          PLAYWRIGHT_CORE_PATH: ${{ github.workspace }}/node_modules/playwright-core
+          GATE_ARTIFACTS: /tmp/fs-browser-gate-artifacts
+        run: node tests/browser/test_runtime_gate.js
+      - name: Upload screenshots artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-runtime-screenshots
+          path: /tmp/fs-browser-gate-artifacts/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== FlashShare app log ==="
+          cat /tmp/flashshare-app.log 2>/dev/null || true
+          echo "=== fake Gokapi log ==="
+          cat /tmp/fake-gokapi.log 2>/dev/null || true
+          echo "=== PostgreSQL service ==="
+          docker logs "${{ job.services.postgres.id }}" 2>&1 | tail -200 || true

@@ -12,7 +12,7 @@
   <form method="post" action="/auth/register" class="auth-form" id="registerForm">
     <label>
       <span data-i18n="usernameHint">{{ texts.usernameHint }}</span>
-      <input type="text" name="username" id="regUsername" required autocomplete="username" minlength="5" maxlength="32" pattern="[A-Za-z0-9_-]{5,32}">
+      <input type="text" name="username" id="regUsername" required autocomplete="username" minlength="5" maxlength="32" pattern="[A-Za-z0-9_\-]{5,32}">
     </label>
     <label>
       <span data-i18n="emailLabel">{{ texts.emailLabel }}</span>
