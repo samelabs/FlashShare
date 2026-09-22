@@ -88,7 +88,7 @@ Server Agent MUST NOT：
 
 - feature/test 分支禁止对 production DB 跑 `init_db`。
 - 涉及 schema 的验收一律使用 isolated test DB（建临时库 → 跑分支代码 init_db+seed → 验收 → DROP）。
-- deployment migration 与代码切换一起进行（新进程 startup 自动 init_db）。
+- production startup `init_db()` 只执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；retired-schema migration / repair / backfill 不属于 startup mechanism。
 - 两套代码不在同一 production DB 混跑。
 
 ## G. 验证
