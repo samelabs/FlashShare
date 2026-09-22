@@ -127,7 +127,7 @@ FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
 - 部署 = ff-only 同步 main → restart unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
-- schema migration 由新进程 startup `init_db()` 自动执行，与代码切换一体。
+- startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 
 ## Production backup（scripts/）
