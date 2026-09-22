@@ -1,3 +1,49 @@
-<p>We offer two ways to sign in: a local account (username and password) or X OAuth. A local account stores your username, email address, and password hash, along with account and profile fields you provide or that are required to run the service. When you sign in with X, we store the X account identifiers and public profile fields used for account binding and display; we do not read your timeline, direct messages, or following list, and we never post on your behalf.</p>
-<p>Upload and tool-processing records store the file name, size, download link, expiry time, upload time, and basic access origin, used for quota control, metered settlement, auditing, and troubleshooting.</p>
-<p>Earnings from tools you publish and your consumption records are kept as ledger entries, used for settlement, withdrawals, and reconciliation. After content expires or is deleted, some records may be retained for settlement and auditing purposes.</p>
+<p>Effective date: 2026-09-22</p>
+
+<p>This policy describes what 518.PLUS stores about you and why, in plain language. The scope follows what the running code actually does.</p>
+
+<h2>1. Local Accounts</h2>
+<p>With a local account we store your username, email address, a password hash (the password itself is never stored), and the account and profile fields you provide or that running the service requires (such as language preference and account status).</p>
+
+<h2>2. X OAuth</h2>
+<p>When you sign in with X, we store the X account identifier and public profile fields used for account binding and display: your X user id, username, display name and avatar URL. We do not read your timeline, direct messages or following list, and we never post on your behalf.</p>
+
+<h2>3. Sessions and Cookies</h2>
+<p>Signing in creates a server-side session and a session cookie in your browser. The cookie keeps you signed in; sessions expire and are cleaned up routinely.</p>
+
+<h2>4. API Tokens</h2>
+<p>API tokens (<code>fsk_</code> prefix) used for MCP authentication are stored only as a hash with metadata (name, prefix, status, creation and last-use timestamps). The full token value is shown to you exactly once, at creation; it is not stored in readable form and cannot be recovered. If you lose it, create a new one.</p>
+
+<h2>5. Uploads and Tool Processing</h2>
+<p>Upload and tool-processing records store the file name, size, content type, download link, expiry time, upload time and basic access origin, used for quota control, metered settlement, auditing and troubleshooting.</p>
+
+<h2>6. Tool Invocation, Metering and Ledger</h2>
+<p>Each metered tool call is recorded as a tool call fact and as ledger entries covering the charge, refunds of failed calls, provider earnings and platform commission. These accounting records support settlement, reconciliation and dispute handling.</p>
+
+<h2>7. Membership, Orders and Payments</h2>
+<p>Membership state, orders and payment records (plan or package, amount, currency, provider transaction reference, status) are stored to manage your subscription and credit purchases and for reconciliation.</p>
+
+<h2>8. Provider Earnings and Withdrawals</h2>
+<p>If you publish tools, your earnings and withdrawal requests are recorded in the ledger and a withdrawal register (amount, requested payout channel as you provided it, review and processing status), used for settlement and payouts.</p>
+
+<h2>9. Third-Party Tools</h2>
+<p>When you run a third-party HTTP tool, your source files are passed to that tool's developer: the platform gives the endpoint a time-limited, signed download URL for each file, plus file name, content type, size and your tool parameters. The developer's endpoint downloads and processes the files outside the platform. The platform does not control that endpoint. Use judgement about which files you send to third-party tools.</p>
+
+<h2>10. File Storage Boundary</h2>
+<p>Uploaded files are stored in a dedicated file storage service (Gokapi) that the platform operates. The platform database holds the mapping, visibility and lifecycle records; the storage service holds the bytes. Expiry and download limits are enforced through these records.</p>
+
+<h2>11. Payment Processor Boundary</h2>
+<p>Payments and subscriptions are processed by our payment provider (Creem). Billing details you enter at payment time are handled by the provider under its own terms; the platform receives and stores the transaction reference, amount and status needed for your orders and reconciliation.</p>
+
+<h2>12. Operations, Security and Audit</h2>
+<p>We keep runtime logs and records for security, anti-abuse, auditing, reconciliation and troubleshooting, including operator actions taken on accounts, tools and content. Browser-side error reports sent by the page help detect and fix failures.</p>
+
+<h2>13. Retention: Different Lifecycles</h2>
+<p>Files and shares have their own lifecycle: they expire and are deleted according to the expiry and download limit you chose. Economic records (charges, earnings, withdrawals), security and audit records live on a different, longer lifecycle, because settlement, anti-abuse and audit duties outlive any single file. Deleting a file does not erase these accounting and security records.</p>
+
+<h2>14. Your Rights and Contact</h2>
+<p>Depending on the law of your place of residence, you may have rights such as access to, correction or deletion of your personal data. Where deleting data would break accounting or security duties, we may retain the minimum records those duties require. To exercise rights or ask about this policy, use the support channel shown on this page.</p>
+
+<h2>15. Changes and Effective Date</h2>
+<p>This policy may be updated as the service evolves; the effective date at the top reflects the current version, and updates are published on this page.
+</p>
