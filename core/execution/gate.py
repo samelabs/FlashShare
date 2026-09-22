@@ -395,9 +395,9 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
             # durable: staged physical cleanup (best effort — the staged
             # object belongs to THIS attempt), then the existing failure
             # settlement (exact refund → terminal failed).
-            from gokapi import delete_gokapi_file
+            from storage import delete as storage_delete
             try:
-                delete_gokapi_file(result.gokapi_id)
+                storage_delete(result.gokapi_id)
             except Exception:
                 logger.warning("staged result cleanup failed call_id=%s"
                                " gokapi=%s", call_id, result.gokapi_id)

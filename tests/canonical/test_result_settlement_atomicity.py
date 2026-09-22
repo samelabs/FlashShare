@@ -273,9 +273,9 @@ _grant(user5, 1000, "manual_topup", note="rs")
 bal5 = spendable_balance(user5)
 
 _deleted = []
-import gokapi as _gk
-_orig_del = _gk.delete_gokapi_file
-_gk.delete_gokapi_file = lambda gid: _deleted.append(gid)
+import storage as _gk
+_orig_del = _gk.delete
+_gk.delete = lambda gid: _deleted.append(gid)
 
 # 制造: settlement COMMIT 成功但 _finish 在 commit 后抛 (模拟 ACK 丢失):
 _orig_spend = None
@@ -329,7 +329,7 @@ check("F4 durable ok → 无重复 earning (恰 1)", n_earn5 == 1, str(n_earn5))
 durable_rj = _json.loads(t5["result_json"])
 check("F5 返回的是 durable result_json (同 publicId)",
       res5["result"]["publicId"] == durable_rj["publicId"])
-_gk.delete_gokapi_file = _orig_del
+_gk.delete = _orig_del
 
 # ══════════ G. outcome DB 不可读 → unresolved (case C) ══════════
 user6 = _mkuser(_u + "u6")
@@ -346,7 +346,7 @@ def _rso_unreachable(call_id):
     return {"outcome": OUTCOME_UNRESOLVED}
 _gate_mod.resolve_success_outcome = _rso_unreachable
 _gk_deleted6 = []
-_gk.delete_gokapi_file = lambda gid: _gk_deleted6.append(gid)
+_gk.delete = lambda gid: _gk_deleted6.append(gid)
 # 让 _finish 本身失败 (R1 fault) + outcome 不可读 → unresolved
 _pipe.land_tool_result = _land_fail_after_upload
 try:
@@ -376,7 +376,7 @@ _grant(user7, 1000, "manual_topup", note="rs")
 bal7 = spendable_balance(user7)
 _staged7 = _mkstaged(tag="cleanup7")
 _gk_deleted7 = []
-_gk.delete_gokapi_file = lambda gid: _gk_deleted7.append(gid)
+_gk.delete = lambda gid: _gk_deleted7.append(gid)
 async def _stage7():
     return _staged7
 _pipe.land_tool_result = _land_fail_after_upload
@@ -399,7 +399,7 @@ with db() as con:
         (user7,)).fetchone()["c"]
 check("H3 零 public result (uploads=0 / failed)",
       t7["status"] == "failed" and int(up7) == 0)
-_gk.delete_gokapi_file = _orig_del
+_gk.delete = _orig_del
 
 # ══════════ I. startup recovery: running+charge 无 result → refund+failed ══════════
 user8 = _mkuser(_u + "u8")
@@ -578,8 +578,8 @@ _grant(userN, 1000, "manual_topup", note="rs")
 refN = f"retry_{_u}"
 _src_deleted = []
 _gk2 = _gk
-_gk_orig2 = _gk2.delete_gokapi_file
-_gk2.delete_gokapi_file = lambda gid: _src_deleted.append(gid)
+_gk_orig2 = _gk2.delete
+_gk2.delete = lambda gid: _src_deleted.append(gid)
 # attempt 1: settlement fault (R1) → rollback → staged deleted, source live
 _pipe.land_tool_result = _land_fail_after_upload
 async def _stN():
@@ -624,7 +624,7 @@ check("N2b 最终恰一个 public result / consume1 已退",
 check("N2c source 未被 execution 删除 (零 source delete)",
       all(gid == _mkstaged(tag="n1").gokapi_id for gid in _src_deleted)
       and len(_src_deleted) == 1, str(_src_deleted))
-_gk2.delete_gokapi_file = _gk_orig2
+_gk2.delete = _gk_orig2
 
 # N3: durable source (uploads row) 不被 execution 删除
 userN3 = _mkuser(_u + "n3")
@@ -640,9 +640,9 @@ with db() as con:
             "text/plain", 10, 30, 100, ts + 86400 * 30,
             public_file_url(pubN3), "", ts)
 delN3 = []
-_gk2.delete_gokapi_file = lambda gid: delN3.append(gid)
+_gk2.delete = lambda gid: delN3.append(gid)
 rN3, eN3, _ = _run_gate(userN3, toolN3, None, lambda: _stage_ok(toolN3, tag="n3"))
-_gk2.delete_gokapi_file = _gk_orig2
+_gk2.delete = _gk_orig2
 with db() as con:
     src_row = con.execute(
         "select count(*) c from uploads where public_id=%s",

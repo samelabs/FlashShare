@@ -15,7 +15,8 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from sharing.uploads import get_live_upload_by_public_id as _live_upload
-from gokapi import open_gokapi_download, get_gokapi_file
+from gokapi import open_gokapi_download
+from storage import info as storage_info
 from utils import (
     public_file_url, format_bytes, format_ts, file_format_icon,
     html_escape,
@@ -100,7 +101,7 @@ async def file_route(public_id: str, request: Request):
                                           "X-Content-Type-Options": "nosniff"})
 
     # Detail page via Jinja2
-    live = get_gokapi_file(upload["gokapi_id"]) if upload["gokapi_id"] else None
+    live = storage_info(upload["gokapi_id"]) if upload["gokapi_id"] else None
     expire_at = (live or {}).get("ExpireAt") or upload["expire_at"]
     total = upload["allowed_downloads"]
     remaining = (live or {}).get("DownloadsRemaining")
@@ -168,7 +169,7 @@ async def file_zip_list(public_id: str, request: Request):
 
     total = int(upload["size_bytes"] or 0)
     if total <= 0:
-        live = get_gokapi_file(upload["gokapi_id"]) if upload["gokapi_id"] else None
+        live = storage_info(upload["gokapi_id"]) if upload["gokapi_id"] else None
         total = int((live or {}).get("SizeBytes") or 0)
 
     import urllib.parse

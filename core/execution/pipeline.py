@@ -8,7 +8,7 @@ results use save_upload_record and never consume ingress quota.
 import io
 
 from database import db
-from gokapi import upload_to_gokapi, delete_gokapi_file
+from storage import write as storage_write, delete as storage_delete
 from repo.uploads import insert_record
 from security import sign_source_token, sniff_allowed
 from sharing.uploads import reserve_ingress, release_ingress
@@ -64,7 +64,7 @@ def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> 
     out = []
     try:
         for filename, ctype, body in checked:
-            gokapi = upload_to_gokapi(
+            gokapi = storage_write(
                 io.BytesIO(body), filename, ctype,
                 INTERMEDIATE_TTL_DAYS, INTERMEDIATE_DOWNLOAD_LIMIT, len(body))
             info = gokapi.get("FileInfo", {})
@@ -84,7 +84,7 @@ def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> 
     except Exception:
         for fid in uploaded_ids:
             try:
-                delete_gokapi_file(fid)
+                storage_delete(fid)
             except Exception:
                 pass
         release_ingress(user["id"], usage_ids)

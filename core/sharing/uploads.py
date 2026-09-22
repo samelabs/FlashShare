@@ -5,7 +5,8 @@ from database import db
 from governance.entitlements import resolve as _resolve_entitlement
 from repo import uploads as uploads_repo
 from repo import upload_usage as usage_repo
-from gokapi import delete_gokapi_file, _gokapi_connection, _gokapi_path, GOKAPI_KEY
+from gokapi import _gokapi_connection, _gokapi_path, GOKAPI_KEY
+from storage import delete as storage_delete
 from utils import now, public_file_url
 
 
@@ -182,7 +183,7 @@ def delete_upload(upload_id: int, user_id: int) -> bool:
     with db() as con:
         uploads_repo.delete_upload_row(con, upload_id, user_id)
     try:
-        delete_gokapi_file(row["gokapi_id"])
+        storage_delete(row["gokapi_id"])
     except Exception:
         import logging
         logging.getLogger("flashshare").warning(

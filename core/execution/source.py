@@ -8,7 +8,7 @@ _resolve_upload: public_id → upload dict。
 from security import verify_source_token
 from sharing.uploads import get_upload_by_public_id
 from storage import read as storage_read  # noqa: F401 (re-export for orchestrator)
-from gokapi import get_gokapi_file
+from storage import info as storage_info
 
 
 def resolve_upload_sync(public_id: str, user: dict, token: str):
@@ -23,7 +23,7 @@ def resolve_upload_sync(public_id: str, user: dict, token: str):
         return None, "not_found"
     if not verify_source_token(token, user["id"], public_id):
         return None, "forbidden"
-    gokapi_info = get_gokapi_file(public_id)
+    gokapi_info = storage_info(public_id)
     if not gokapi_info:
         return None, "not_found"
     return {

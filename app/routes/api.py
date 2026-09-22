@@ -36,9 +36,9 @@ from sharing.ingress_receipt import (
     IngressConflict, IngressInProgress, IngressQuotaDenied,
     IngressUnresolved, OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
 from sharing.ingress_identity import ingress_request_hash
-from gokapi import upload_to_gokapi, get_gokapi_file, delete_gokapi_file
 from security import sniff_allowed, sign_source_token, verify_source_token
-from storage import read as storage_read, write as storage_write
+from storage import (read as storage_read, write as storage_write,
+                     info as storage_info, delete as storage_delete)
 from tools import ToolError
 from execution.source import resolve_upload
 from identity.auth import public_user
@@ -117,7 +117,7 @@ async def fetch_source(request: Request, gokapi_id: str):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if not verify_fetch_token(token, int(user_id_raw), gokapi_id):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    info = get_gokapi_file(gokapi_id)
+    info = storage_info(gokapi_id)
     if not info:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     from gokapi import InternalDownloadUnavailable
@@ -177,7 +177,7 @@ def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
     recovery owns it; quota is never speculatively released."""
     for gid in gokapi_ids:
         try:
-            delete_gokapi_file(gid)
+            storage_delete(gid)
         except Exception:
             logger.warning("rollback: gokapi cleanup failed for %s", gid)
     try:
@@ -354,8 +354,8 @@ async def create_upload(request: Request):
     uploaded_gokapi_ids = []
     try:
         for content, size, filename, final_type in pending:
-            gokapi = upload_to_gokapi(io.BytesIO(content), filename, final_type,
-                                      source_expiry, source_downloads, size)
+            gokapi = storage_write(io.BytesIO(content), filename, final_type,
+                                   source_expiry, source_downloads, size)
             info = gokapi.get("FileInfo", {})
             gid = info.get("Id", "")
             if not gid:

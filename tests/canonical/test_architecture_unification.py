@@ -762,6 +762,25 @@ for _nm45, _b45, _d45 in (
     check(f"C45 {_nm45} handler 直接消费 canonical preset",
           _b45 != "" and 'preset = params["preset"]' in _b45)
 
+# C46: generic Gokapi concrete operations are only used by the storage
+# adapter (and its gokapi implementation); production callers go through
+# storage.write/read/delete/info
+_gen46 = ("upload_to_gokapi", "get_gokapi_file", "delete_gokapi_file")
+for _root46, _dirs46, _fs46 in _os2.walk(_REPO):
+    if ".git" in _root46.split(_os2.sep):
+        continue
+    for _f46 in _fs46:
+        if not _f46.endswith(".py") or "__pycache__" in _root46:
+            continue
+        _p46 = _os2.path.join(_root46, _f46)
+        _rel46 = _os2.path.relpath(_p46, _REPO)
+        if _rel46.startswith(("core/gokapi.py", "core/storage.py", "tests/")):
+            continue  # adapter+impl own the concrete ops; tests patch them
+        _t46 = open(_p46, encoding="utf-8").read()
+        for _sym46 in _gen46:
+            check(f"C46 {_rel46} 不直接使用 concrete {_sym46}",
+                  _sym46 not in _t46)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

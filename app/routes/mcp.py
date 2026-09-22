@@ -369,7 +369,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if _replay is not None:
         infos = _replay if isinstance(_replay, list) else [_replay]
     else:
-        from execution.pipeline import upload_to_gokapi as _gk_up
+        from storage import write as _gk_up
         from execution.pipeline import (INTERMEDIATE_TTL_DAYS as _ITTL,
                                         INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
         from sharing.ingress_receipt import OUTCOME_UNRESOLVED
@@ -397,7 +397,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     "expiryDays": _ITTL, "allowedDownloads": _IDL,
                 })
         except Exception as exc:
-            from gokapi import delete_gokapi_file as _gk_del
+            from storage import delete as _gk_del
             for _gid in _gids:
                 try:
                     _gk_del(_gid)
@@ -424,7 +424,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
                 # the ONLY finalize-driven cleanup path: receipt still
                 # running proves the success transaction never landed.
-                from gokapi import delete_gokapi_file as _gk_del
+                from storage import delete as _gk_del
                 for _gid in _gids:
                     try:
                         _gk_del(_gid)
