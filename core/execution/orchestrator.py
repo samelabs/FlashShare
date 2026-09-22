@@ -173,14 +173,18 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     return staged
 
 
-def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict) -> str | None:
+def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
+                            trusted: bool) -> str | None:
     """Mint the /tool-endpoints/* execution capability for trusted
     same-origin hosted endpoints; None for everything else.
 
-    Trust boundary: only operator-managed rows (owner_id IS NULL) reach
-    here with a hosted URL — the existing trusted execution fact. The
-    payload digest covers job_inputs + params, so the capability cannot
-    be spliced onto a different input set."""
+    Trust is an explicit caller input — the canonical execution trust
+    fact execute_remote() already computed (owner_id IS NULL or trusted
+    row). Fail closed: untrusted rows NEVER receive a capability, no
+    matter the URL. The payload digest covers job_inputs + params, so
+    the capability cannot be spliced onto a different input set."""
+    if not trusted:
+        return None
     from urllib.parse import urlsplit
     from security import sign_hosted_exec_token
     ep = urlsplit(endpoint_url)
@@ -238,7 +242,7 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
     # short-lived HMAC capability that is the sole /tool-endpoints/*
     # authority. Untrusted (user) rows never receive one — they cannot
     # self-authorize onto the hosted surface.
-    _hosted_cap = _mint_hosted_capability(decl.get("url") or "", sources, params)
+    _hosted_cap = _mint_hosted_capability(decl.get("url") or "", sources, params, trusted)
     if _hosted_cap:
         auth_headers["X-Hosted-Execution"] = _hosted_cap
     if decl.get("auth_header") and decl.get("auth_token"):

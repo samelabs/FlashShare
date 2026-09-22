@@ -181,19 +181,30 @@ check("HX4c trusted dispatch capability → endpoint accepts & runs",
       _st == 200 and isinstance(_d.get("data_b64"), str) and len(_d["data_b64"]) > 0,
       f"{_st} {str(_d)[:120]}")
 
-# ── HX5: untrusted mint refusal (orchestrator helper) ──
+# ── HX5: trust dimension of the mint gate (explicit trusted input) ──
 import execution.orchestrator as _orch  # noqa: E402
 _orig_base = _orch.BASE_URL
 _orch.BASE_URL = BASE  # same process config as the app under test
 _mint_hosted_capability = _orch._mint_hosted_capability
 _srcs = [{"filename": "a.png", "content_type": "image/png", "size": 96,
           "fetch_url": f"{BASE}/api/source/{GID}?u={UID}&t=x"}]
-check("HX5a same-origin /tool-endpoints URL → capability minted",
-      _mint_hosted_capability(f"{BASE}/tool-endpoints/rounded-corners", _srcs, {}) is not None)
-check("HX5b foreign external URL → None",
-      _mint_hosted_capability("https://dev.example/api/tool", _srcs, {}) is None)
-check("HX5c off-path same-origin URL → None",
-      _mint_hosted_capability(f"{BASE}/api/other", _srcs, {}) is None)
+_HOSTED_URL = f"{BASE}/tool-endpoints/rounded-corners"
+check("HX5a trusted=False + exact same-origin hosted URL → None (fail closed)",
+      _mint_hosted_capability(_HOSTED_URL, _srcs, {}, trusted=False) is None)
+check("HX5b trusted=True + exact same-origin hosted URL → capability minted",
+      _mint_hosted_capability(_HOSTED_URL, _srcs, {}, trusted=True) is not None)
+check("HX5c trusted=True + foreign origin → None",
+      _mint_hosted_capability("https://dev.example/api/tool", _srcs, {}, trusted=True) is None)
+check("HX5d trusted=True + same-origin non-/tool-endpoints/* path → None",
+      _mint_hosted_capability(f"{BASE}/api/other", _srcs, {}, trusted=True) is None)
+
+# HX5e: execute_remote's canonical trusted fact is what reaches the mint —
+# untrusted rows mint nothing even at the canonical call boundary.
+import inspect as _inspect  # noqa: E402
+_exr_src = _inspect.getsource(_orch.execute_remote)
+check("HX5e execute_remote 传入其已计算的 canonical trusted fact",
+      'trusted = (tool.get("owner_id") is None) or bool(tool.get("trusted"))' in _exr_src
+      and "_mint_hosted_capability(decl.get(\"url\") or \"\", sources, params, trusted)" in _exr_src)
 
 # ── HX6: payload binding — cap + different job_inputs → rejected ──
 JOB2 = [{"filename": "b.png", "content_type": "image/png", "size": 96,
