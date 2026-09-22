@@ -1,11 +1,10 @@
-import json
 import time
 
 from database import db
 from governance.entitlements import resolve as _resolve_entitlement
 from repo import uploads as uploads_repo
 from repo import upload_usage as usage_repo
-from gokapi import _gokapi_connection, _gokapi_path, GOKAPI_KEY
+from gokapi import list_gokapi_files
 from storage import delete as storage_delete
 from utils import now, public_file_url
 
@@ -124,30 +123,26 @@ _GOKAPI_CACHE_TTL = 60
 _GOKAPI_STALE_TTL = 300
 
 def _get_all_gokapi_status():
-    """Fetch all file statuses, with a short stale-on-error cache."""
+    """Live file statuses for the account list overlay.
+
+    Sharing layer owns ONLY the presentation cache policy (fresh 60s /
+    stale-on-unavailable 300s); the Gokapi transport itself is the
+    canonical adapter primitive. An unavailable snapshot is never forged
+    into an authoritative empty list.
+    """
     import time
     now_ts = time.time()
     age = now_ts - _gokapi_cache.get("ts", 0)
     if age < _GOKAPI_CACHE_TTL:
         return _gokapi_cache.get("data", {})
-    if not GOKAPI_KEY:
-        return {}
     has_stale = age < _GOKAPI_STALE_TTL and _gokapi_cache.get("data")
-    try:
-        conn, _ = _gokapi_connection(timeout=2)
-        conn.request("GET", _gokapi_path("/api/files/list"), headers={"apikey": GOKAPI_KEY})
-        resp = conn.getresponse()
-        data = resp.read()
-        conn.close()
-        if resp.status != 200:
-            return _gokapi_cache.get("data", {})
-        files = json.loads(data.decode("utf-8"))
-        result = {f["Id"]: f for f in files} if isinstance(files, list) else {}
+    ok, files = list_gokapi_files(timeout=2)
+    if ok:
+        result = {f["Id"]: f for f in files}
         _gokapi_cache["data"] = result
         _gokapi_cache["ts"] = now_ts
         return result
-    except Exception:
-        return _gokapi_cache.get("data", {}) if has_stale else {}
+    return _gokapi_cache.get("data", {}) if has_stale else {}
 
 
 def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:

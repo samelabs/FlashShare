@@ -781,6 +781,31 @@ for _root46, _dirs46, _fs46 in _os2.walk(_REPO):
             check(f"C46 {_rel46} 不直接使用 concrete {_sym46}",
                   _sym46 not in _t46)
 
+# C47: Gokapi /api/files/list transport is owned by the gokapi adapter;
+# sharing owns only presentation cache policy
+_up47 = open(_os2.path.join(_REPO, "core", "sharing", "uploads.py"),
+             encoding="utf-8").read()
+check("C47 sharing/uploads 不引用 private Gokapi transport internals",
+      "_gokapi_connection" not in _up47
+      and "_gokapi_path" not in _up47
+      and "GOKAPI_KEY" not in _up47)
+_gstat47 = _re33.search(r"def _get_all_gokapi_status.*?(?=\ndef )",
+                        _up47, _re33.DOTALL)
+check("C47 _get_all_gokapi_status 消费 list_gokapi_files",
+      _gstat47 is not None and "list_gokapi_files(timeout=2)" in _gstat47.group(0)
+      and "/api/files/list" not in _gstat47.group(0))
+for _root47, _dirs47, _fs47 in _os2.walk(_REPO):
+    if ".git" in _root47.split(_os2.sep):
+        continue
+    for _f47 in _fs47:
+        if not _f47.endswith(".py") or "__pycache__" in _root47:
+            continue
+        _rel47 = _os2.path.relpath(_os2.path.join(_root47, _f47), _REPO)
+        if _rel47 != "core/gokapi.py" and not _rel47.startswith("tests/"):
+            _t47 = open(_os2.path.join(_root47, _f47), encoding="utf-8").read()
+            check(f"C47 {_rel47} 无 /api/files/list transport",
+                  '"/api/files/list"' not in _t47)
+
 _exec_src = open(_os.path.join(_REPO, "core", "execution", "__init__.py"),
                  encoding="utf-8").read()
 check("U10 execution/__init__ 无 historical writer re-exports",

@@ -98,7 +98,7 @@ def get_gokapi_file(file_id: str):
         return None
 
 
-def list_gokapi_files() -> tuple[bool, list]:
+def list_gokapi_files(timeout: int = 5) -> tuple[bool, list]:
     """Return an authoritative snapshot of live storage files.
 
     `(True, files)` means Gokapi answered successfully; a valid JSON `null`
@@ -109,7 +109,7 @@ def list_gokapi_files() -> tuple[bool, list]:
         return False, []
     conn = None
     try:
-        conn, _parsed = _gokapi_connection(timeout=5)
+        conn, _parsed = _gokapi_connection(timeout=timeout)
         conn.request("GET", _gokapi_path("/api/files/list"), headers={"apikey": GOKAPI_KEY})
         resp = conn.getresponse()
         data = resp.read()
