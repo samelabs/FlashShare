@@ -106,12 +106,19 @@ def history_paged(con, user_id: int, kinds: Sequence[str],
 # ── provider_earn 投影 (收益页) ──
 
 def earn_by_tool(con, user_id: int, limit: int = 100) -> list:
+    """Provider earnings grouped by tool. Tool identity comes ONLY from the
+    ledger→tool_calls relation (ref_type='tool_call', ref_id=tool_calls.id);
+    note is human/audit text, never a tool key. Rows whose ref does not
+    resolve to a real tool_call are unattributed — excluded from per-tool
+    rows (they still count in totals via sum_kind)."""
     return con.execute(
         """
-        SELECT l.note AS tool_key, SUM(l.delta) AS earned, COUNT(*) AS payouts
+        SELECT tc.tool_id AS tool_key, SUM(l.delta) AS earned, COUNT(*) AS payouts
         FROM ledger l
+        JOIN tool_calls tc
+          ON l.ref_type = 'tool_call' AND l.ref_id = tc.id::text
         WHERE l.user_id = %s AND l.kind = 'provider_earn'
-        GROUP BY l.note
+        GROUP BY tc.tool_id
         ORDER BY earned DESC LIMIT %s
         """,
         (user_id, limit)).fetchall()
@@ -123,8 +130,10 @@ def earn_lines_paged(con, user_id: int, limit: int, offset: int) -> tuple:
         (user_id,)).fetchone()["n"]
     rows = con.execute(
         """
-        SELECT l.delta, l.ref_type, l.ref_id, l.note, l.created_at
+        SELECT l.delta, l.ref_type, l.ref_id, l.note, l.created_at, tc.tool_id
         FROM ledger l
+        LEFT JOIN tool_calls tc
+          ON l.ref_type = 'tool_call' AND l.ref_id = tc.id::text
         WHERE l.user_id = %s AND l.kind = 'provider_earn'
         ORDER BY l.id DESC LIMIT %s OFFSET %s
         """,
@@ -137,7 +146,8 @@ def earn_sum_joined_calls(con, user_id: int, tool_key: str) -> int:
         """
         SELECT COALESCE(SUM(l.delta), 0) AS earned
         FROM ledger l
-        JOIN tool_calls tc ON l.ref_id = tc.id::text
+        JOIN tool_calls tc
+          ON l.ref_type = 'tool_call' AND l.ref_id = tc.id::text
         WHERE l.user_id = %s AND l.kind = 'provider_earn'
           AND tc.tool_id = %s
         """,

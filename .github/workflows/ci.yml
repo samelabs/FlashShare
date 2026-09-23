@@ -130,6 +130,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_x_identity_avatar.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_provider_earn_attribution.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_provider_earn_attribution.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_remote_security.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_invocation_canonical.py
@@ -352,6 +356,9 @@ jobs:
 
       - name: X identity avatar canonical
         run: python tests/canonical/test_x_identity_avatar.py
+
+      - name: Provider earn attribution canonical
+        run: python tests/canonical/test_provider_earn_attribution.py
 
       - name: Result settlement atomicity canonical
         run: python tests/canonical/test_result_settlement_atomicity.py

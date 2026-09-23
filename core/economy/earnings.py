@@ -49,8 +49,9 @@ def earnings_summary(user_id: int) -> dict:
 
 
 def per_tool_revenue(user_id: int) -> list:
-    """Revenue breakdown per published tool (provider_earn rows joined to
-    the tool that generated them — note references the tool_key)."""
+    """Revenue breakdown per published tool. Tool identity is relation-
+    derived: ledger(kind=provider_earn, ref_type='tool_call', ref_id=
+    tool_calls.id) → tc.tool_id. note is never parsed for identity."""
     with db() as con:
         rows = ledger_repo.earn_by_tool(con, user_id, limit=100)
     out = []
@@ -174,9 +175,10 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
         rows, total = ledger_repo.earn_lines_paged(con, user_id, limit, offset)
     out = []
     for r in rows:
+        tool_id = r["tool_id"]
         out.append({"delta": int(r["delta"]),
                     "call_id": r["ref_id"],           # ref = tool_calls.id (批4 #17)
-                    "tool": (r["note"] or "").replace("payout ", ""),  # note = tool_key
+                    "tool": tool_id if tool_id is not None else "?",
                     "ts": int(r["created_at"])})
     return out, int(total)
 
