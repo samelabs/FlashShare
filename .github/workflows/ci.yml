@@ -134,6 +134,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_provider_earn_attribution.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_earnings_cash_denomination.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_earnings_cash_denomination.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_remote_security.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_invocation_canonical.py
@@ -359,6 +363,9 @@ jobs:
 
       - name: Provider earn attribution canonical
         run: python tests/canonical/test_provider_earn_attribution.py
+
+      - name: Earnings cash denomination canonical
+        run: python tests/canonical/test_earnings_cash_denomination.py
 
       - name: Result settlement atomicity canonical
         run: python tests/canonical/test_result_settlement_atomicity.py

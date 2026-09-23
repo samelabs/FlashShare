@@ -1,43 +1,51 @@
 """Provider earnings & withdrawals (C2C settlement surface, phase 3b).
 
+Denomination (S3): provider/platform cash amounts are integer USD-millis
+(1000 = $1.00) — provider_earn, withdrawals.amount, and the earn pool
+are USD-millis. Consumer Spendable Credits are a separate consumer-side
+unit and never appear here as "earnings". The single conversion
+authority is economy.money (settlement boundary + USD display + USD
+decimal parsing).
+
 The ledger stays the single source of truth: provider_earn rows ARE the
 earning record. This module adds:
 
   earnings_summary(uid)  — aggregate view (total earned / withdrawn /
                            available), derived from ledger + withdrawals
-  request_withdrawal()   — provider asks to cash out available credits;
-                           lands as a withdrawal REQUEST row (status
-                           pending) — no ledger mutation until the
-                           operator approves. Payout rails (Stripe etc.)
-                           attach later; the bookkeeping loop is closed
-                           NOW: request → approve → deduct (ledger) →
-                           mark paid.
+  request_withdrawal()   — provider asks to cash out available
+                           USD-millis; lands as a withdrawal REQUEST row
+                           (status pending) — no ledger mutation until
+                           the operator approves. Payout rails (Stripe
+                           etc.) attach later; the bookkeeping loop is
+                           closed NOW: request → approve → deduct
+                           (ledger) → mark paid.
   process_withdrawal()   — operator verb (/samelabs): approve (ledger
-                           consume 'withdraw' with idem withdrawal:{id})
-                           or reject (request stays, credits untouched).
+                           'withdraw' with idem withdrawal:{id}) or
+                           reject (request stays, balance untouched).
 
 Red lines honored:
-  - face-value credits and cash NEVER mix in one row: withdrawals are
-    ledger consume rows (kind='withdraw') referencing the request id;
-    cash amounts are the operator's concern at the rail layer.
+  - consumer credits and cash NEVER mix in one row: withdrawals are
+    ledger rows (kind='withdraw') referencing the request id; the cash
+    amount unit is USD-millis everywhere in this pool.
   - idempotency everywhere: withdrawal:{id} family; double-approve is
     structurally impossible (status guard + unique idem).
   - no partial state: approve = status flip + ledger row in ONE tx.
 """
 
 from database import db
+from economy.money import CENT_MILLIS
 from repo import economy as economy_repo
 from repo import ledger as ledger_repo
 from utils import now
 
-MIN_WITHDRAWAL = 10000         # credits = $10 (CREDITS_PER_USD=1000)
-CREDITS_PER_USD = 1000         # 1 USD = 1000 credits; earnings shown in USD
+MIN_WITHDRAWAL_MILLIS = 10000    # USD-millis = $10.00 minimum withdrawal
 WITHDRAWAL_STATES = ("pending", "approved", "rejected", "paid")
 
 
 def earnings_summary(user_id: int) -> dict:
     """Available = earned (provider_earn) − withdrawn (approved+paid) −
-    pending requests. Derived live from the ledger; no cached counters."""
+    pending requests. All amounts are USD-millis. Derived live from the
+    ledger; no cached counters."""
     with db() as con:
         earned = ledger_repo.sum_kind(con, user_id, "provider_earn")
         withdrawn = economy_repo.withdrawal_sum(
@@ -75,16 +83,21 @@ def withdrawal_count(user_id: int) -> int:
 
 
 def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> dict:
-    """Provider asks to cash out. Request only — credits stay put until
-    operator approval (reject leaves the balance untouched).
+    """Provider asks to cash out. amount is USD-millis (whole-cent only —
+    the route parses the USD decimal string via economy.money; this
+    layer never sees floats). Request only — balance stays put until
+    operator approval (reject leaves it untouched).
 
     Concurrency boundary: the users row lock (SELECT FOR UPDATE)
     serializes same-provider requests, so available-calculation and the
     pending INSERT commit as one unit — two concurrent requests can
     never both see the same available and over-commit it.
     """
-    amount = int(amount)
-    if amount < MIN_WITHDRAWAL:
+    from economy.money import strict_int
+    amount = strict_int(amount)   # real int only — bool/float/str/None fail
+    if amount % CENT_MILLIS:
+        raise ValueError("sub_cent_amount")     # whole-cent only, no rounding
+    if amount < MIN_WITHDRAWAL_MILLIS:
         raise ValueError("withdrawal_min")
     ts = now()
     with db() as con:
@@ -188,7 +201,3 @@ def list_all_pending(limit: int = 50) -> list:
     with db() as con:
         rows = economy_repo.withdrawals_queue(con, limit)
     return [dict(r) for r in rows]
-
-def to_usd(credits: int) -> str:
-    """Credits → display USD string, e.g. 25000 → '$25'."""
-    return f"${credits / CREDITS_PER_USD:,.2f}".rstrip('0').rstrip('.') if credits % CREDITS_PER_USD else f"${credits // CREDITS_PER_USD:,}"

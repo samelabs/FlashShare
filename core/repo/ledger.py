@@ -73,10 +73,11 @@ def sum_kind(con, user_id: int, kind: str) -> int:
 
 
 def earn_pool_balance(con, user_id: int) -> int:
-    """Earn-pool balance = provider_earn − withdraw movements. This is the
-    ONLY basis a provider_earning writer may use for balance_after — the
-    old total_balance() basis mixed spendable kinds into an earning row's
-    after-balance (wrong semantics on the same column)."""
+    """Earn-pool balance in USD-millis = provider_earn − withdraw
+    movements. This is the ONLY basis a provider_earning writer may use
+    for balance_after — the old total_balance() basis mixed spendable
+    kinds into an earning row's after-balance (wrong semantics on the
+    same column)."""
     row = con.execute(
         "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
         "WHERE user_id = %s AND kind IN ('provider_earn', 'withdraw')",

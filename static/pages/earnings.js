@@ -23,10 +23,10 @@ async function loadEarnings() {
   const s = d.summary;
   // C1: Earnings 的资产单位就是现金 USD — 主值直接 USD, 不再以
   // credits 数字为主 + USD 小字 (消费积分属于 /account/credits)。
-  document.getElementById('eTotal').textContent = s.earned_usd || ('$' + (s.earned / 1000).toFixed(2));
-  document.getElementById('eAvail').textContent = s.available_usd || ('$' + (s.available / 1000).toFixed(2));
-  document.getElementById('ePending').textContent = s.pending_usd || ('$' + (s.pending / 1000).toFixed(2));
-  document.getElementById('eWithdrawn').textContent = s.withdrawn_usd || ('$' + (s.withdrawn / 1000).toFixed(2));
+  document.getElementById('eTotal').textContent = s.earned_usd;
+  document.getElementById('eAvail').textContent = s.available_usd;
+  document.getElementById('ePending').textContent = s.pending_usd;
+  document.getElementById('eWithdrawn').textContent = s.withdrawn_usd;
   ['eTotalUsd', 'eAvailUsd', 'ePendingUsd', 'eWithdrawnUsd'].forEach(id => {
     const n = document.getElementById(id); if (n) n.textContent = '';
   });
@@ -42,7 +42,7 @@ async function loadEarnings() {
       row.className = 'wd-row';
       row.innerHTML = '<span class="wd-tool"></span><strong class="wd-amt"></strong>';
       row.querySelector('.wd-tool').textContent = t.tool;
-      row.querySelector('.wd-amt').textContent = '+$' + (t.earned / 1000).toFixed(2);
+      row.querySelector('.wd-amt').textContent = '+' + t.earned_usd;
       bt.appendChild(row);
     }
   }
@@ -62,7 +62,7 @@ async function loadEarnings() {
       t.textContent = ln.tool + ' · ' + new Date(ln.ts * 1000).toLocaleString();
       const amt = document.createElement('strong');
       amt.className = 'wd-amt';
-      amt.textContent = '+$' + (ln.delta / 1000).toFixed(2);
+      amt.textContent = '+' + ln.amount_usd;
       row.append(t, amt);
       rl.appendChild(row);
     }
@@ -83,7 +83,7 @@ async function loadEarnings() {
     st.className = 'wd-st st-' + w.status;
     st.textContent = _msg('earn_status_' + w.status);
     const amt = document.createElement('strong');
-    amt.textContent = '-' + (w.usd || ('$' + (w.amount / 1000)));
+    amt.textContent = '-' + w.amount_usd;
     row.append(Object.assign(document.createElement('span'), { textContent: '#' + w.id }), st, amt);
     h.appendChild(row);
   }
@@ -91,7 +91,7 @@ async function loadEarnings() {
     }
 
   const hint = document.getElementById('withdrawHint');
-  hint.textContent = _msg('earn_min').replace('{n}', (d.min_withdrawal || 10000)) + ' · ' + _msg('earn_avail') + ' ' + (s.available_usd || '');
+  hint.textContent = _msg('earn_min').replace('{n}', d.min_withdrawal_usd) + ' · ' + _msg('earn_avail') + ' ' + s.available_usd;
 }
 
 document.getElementById('openWithdraw')?.addEventListener('click', () => {
@@ -103,12 +103,12 @@ _wModal?.addEventListener('click', e => { if (e.target === _wModal) _wModal.clas
 
 document.getElementById('submitWithdraw')?.addEventListener('click', async () => {
   const btn = document.getElementById('submitWithdraw');
-  const amount = parseInt(document.getElementById('wAmount').value, 10) || 0;
+  const amountUsd = document.getElementById('wAmount').value.trim();
   const note = document.getElementById('wNote').value.trim();
   btn.disabled = true;
   const r = await fetch('/api/earnings/withdraw', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount, note })
+    body: JSON.stringify({ amount_usd: amountUsd, note })
   });
   const d = await r.json();
   btn.disabled = false;

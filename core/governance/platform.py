@@ -1,10 +1,15 @@
 """platform principal — 平台账户 (经济模型闭合).
 
+单位 (S3): 平台收入金额为 USD-millis 现金 (调用方 gate 经
+economy.money.credits_to_millis 完成唯一一次 Credits→cash 转换后传入);
+cost_snapshot 在消费侧仍是 Credits。
+
 两条平台收入路径的记账主体:
   A. 用户工具抽佣: cost 的 (1-payout) 部分 → kind='platform_commission'
   B. 系统工具直销: owner_id IS NULL 的 OK 调用全额 → kind='platform_revenue'
 
-不变量 (守恒): 每笔计费调用 cost = 作者 payout + 平台收入 (A)
+不变量 (守恒): 每笔计费调用 cost (Credits) = 作者 payout + 平台收入
+            (两者均为 USD-millis, 现行 1000 Credits=$1.00 下数值相等) (A)
             / cost = 平台收入 (B)。平台账户只记账不流通 (不可消费/不可提现)。
 
 账户形态: users 表内的真实行 (username='platform', status='suspended',

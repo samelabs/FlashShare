@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""Economy core canonical — one value scale (credits), conserved settlement.
+"""Economy core canonical — conserved settlement across two units.
+
+Unit contract (S3): consumer balance / cost_snapshot are Credits;
+provider/platform earnings (provider_earn, platform_commission,
+platform_revenue, withdraw, withdrawals.amount) are USD-millis. The
+Credit → USD-milli conversion happens ONLY at the Tool settlement
+boundary (economy.money.credits_to_millis, 1000 Credits = $1.00).
 
 K1..K18 prove over the REAL gate/settlement/withdrawal/adjust paths:
   pricing fail-closed + explicit free; atomic tool+pricing creation;
   value conservation at commission 0/30/100%; first-party full revenue;
   exact refund on failure; replay never double-charges/earns/revenues;
-  provider earning stays credits; withdrawal spends earning credits and
-  is concurrency-safe + double-approval-proof; operator adjustment
-  retries are idempotent; no second (cash) economy exists in runtime;
-  the fixed 1000 credits = 1 USD boundary lives only at presentation.
+  provider earning is USD-millis cash; withdrawal spends earn-pool
+  USD-millis and is concurrency-safe + double-approval-proof; operator
+  adjustment retries are idempotent; no second amount authority exists
+  in runtime; the fixed conversion lives only in economy.money.
 """
 
 import os as _os
@@ -273,22 +279,22 @@ c9, r9 = _platform_totals()
 check("K11 replay: 不重复 platform revenue/commission",
       (c9 - c8) == 30 and (r9 - r8) == 0, f"comm +{c9-c8} rev +{r9-r8}")
 
-# ═══ K12: provider earning is credits ═══
+# ═══ K12: provider earning is USD-millis cash (single kind) ═══
 with db() as con:
     kinds = con.execute(
         "select distinct kind from ledger where user_id=%s"
         " and kind='provider_earn'", (owner_id,)).fetchall()
-check("K12 provider_earn 是 Credits movement (无第二货币单位)",
+check("K12 provider_earn 是 USD-milli movement (无第二货币单位)",
       len(kinds) == 1 and kinds[0]["kind"] == "provider_earn")
 
 # ═══ K13/K14/K15: withdrawal ═══
 from economy import earnings
 _earned_now = _owner_earn()  # 100 (K4) + 70 (K5) + 70 (K9) = 240
 s = earnings.earnings_summary(owner_id)
-check("K13 withdrawal 可提现额 = provider_earn credits",
+check("K13 withdrawal 可提现额 = provider_earn USD-millis",
       s["earned"] == _owner_earn() == _earned_now, str(s))
 # concurrency: two parallel requests against available=170, both 150
-# top up earnings above the 10000-credit minimum first
+# top up earnings above the $10.00 (10000 USD-milli) minimum first
 from repo.ledger import claim_call, insert_provider_earn_if_absent
 with db() as con:
     a, _c = claim_call(con, f"kc-wd-{_u}", caller_id, tool_30, 100, "{}", ts,
@@ -309,8 +315,11 @@ def _wd(amount):
     except ValueError as e:
         results.append(str(e))
 # two overlapping asks of 2/3 each: only one can fit — the loser must
-# see the winner's pending row (serialization boundary proof)
-_two_thirds = _earned_now * 2 // 3
+# see the winner's pending row (serialization boundary proof).
+# S3: withdrawal amounts are USD-millis and whole-cent only — snap the
+# 2/3 figure down to a cent boundary (no rounding of user input; this
+# is test-fixture shaping so both threads bid a legal amount).
+_two_thirds = _earned_now * 2 // 3 // 10 * 10
 t1 = threading.Thread(target=_wd, args=(_two_thirds,))
 t2 = threading.Thread(target=_wd, args=(_two_thirds,))
 t1.start(); t2.start(); t1.join(); t2.join()
@@ -329,7 +338,7 @@ with db() as con:
         " order by id limit 1", (owner_id,)).fetchone()["id"])
 w = earnings.process_withdrawal(wid, True, admin_user_id=1)
 s_after = earnings.earnings_summary(owner_id)
-_approved_amt = _earned_now * 2 // 3
+_approved_amt = _two_thirds   # S3: the request was snapped to whole cents
 check("K15a approve ok + available 扣减",
       w["status"] == "approved"
       and s_after["available"] == _earned_now - _approved_amt
@@ -381,15 +390,21 @@ _g = _sp.run(["grep", "-rn", "-E",
               _os.path.join(_REPO, "app"), _os.path.join(_REPO, "core"),
               _os.path.join(_REPO, "static")],
              capture_output=True, text=True)
-_hits = [l for l in _g.stdout.splitlines() if ".pyc" not in l and "test_economy" not in l]
+# S3: economy.money IS the single money authority — its own formatter
+# names (millis_to_usd_cents_str) are not a second cash economy.
+_hits = [l for l in _g.stdout.splitlines()
+         if ".pyc" not in l and "test_economy" not in l
+         and "economy/money.py" not in l and "millis_to_usd_cents_str" not in l]
 check("K17 runtime 无 usd_cent/provider_payout_minor/cash ledger 符号",
       not _hits, "; ".join(_hits[:3]))
 
-# ═══ K18: fixed 1000:1 boundary exists at presentation only ═══
-_earn_src = open(_os.path.join(_REPO, "core", "economy", "earnings.py"),
-                 encoding="utf-8").read()
-check("K18 固定换算常量存在 (CREDITS_PER_USD=1000, 展示边界)",
-      "CREDITS_PER_USD = 1000" in _earn_src)
+# ═══ K18: fixed 1000:1 conversion lives only in economy.money ═══
+# S3: the constant moved to the single money authority (economy.money).
+_money_src = open(_os.path.join(_REPO, "core", "economy", "money.py"),
+                  encoding="utf-8").read()
+check("K18 固定换算常量存在 (money.TOOL_CREDITS_PER_USD=1000, 唯一 authority)",
+      "TOOL_CREDITS_PER_USD = 1000" in _money_src
+      and "MILLIS_PER_USD = 1000" in _money_src)
 _mis = _sp.run(["grep", "-rn", "-E", r"\* *1000|1000 *\*|/ *1000\b",
                 _os.path.join(_REPO, "core", "economy"),
                 _os.path.join(_REPO, "app", "routes", "earn.py")],

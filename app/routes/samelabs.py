@@ -1009,9 +1009,12 @@ async def samelabs_withdrawals(request: Request):
         return resp
     from app.main import templates
     from economy.earnings import list_all_pending
+    from economy.money import millis_to_usd_str
     rows = list_all_pending()
     for r in rows:
         r["created_fmt"] = _fmt_ts(r["created_at"])
+        # lossless: historical sub-cent facts keep exact millis
+        r["amount_usd"] = millis_to_usd_str(r["amount"])
     ctx = _ctx(request, user, withdrawals=rows, page="withdrawals")
     return templates.TemplateResponse(request, "samelabs/withdrawals.html", ctx)
 

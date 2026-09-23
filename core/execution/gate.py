@@ -126,15 +126,20 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     public identity is born inside this transaction.
 
     Self-calls are free by policy, so cost is already zero before this point.
-    Value conservation for metered calls, all in credits:
+    Value conservation for metered calls, across the S3 unit boundary —
+    consumer debit is Credits; provider/platform legs are USD-millis
+    (converted below via economy.money, the only conversion point):
 
-      third-party tool:  user debit = provider earning + platform commission
+      third-party tool:  user debit (Credits) = provider earning +
+                         platform commission (both USD-millis at 1:1
+                         under the current 1000 Credits = $1.00 rate)
                          provider = cost - cost*rate//100  (rate = the
                                        CLAIM-TIME commission_rate_snapshot
                                        persisted on the tool_call row —
                                        never current settings)
                          platform = cost - provider
-      first-party tool:  user debit = platform revenue (full cost)
+      first-party tool:  user debit (Credits) = platform revenue
+                         (USD-millis, full cost)
 
     The third-party split writes BOTH legs whenever owner is set and the
     caller is not the owner — including rate=100 (provider 0, platform
@@ -167,6 +172,16 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
         payout = cost - (cost * rate // 100)
         commission = cost - payout
 
+    # ── denomination boundary (S3): consumer Credits → USD-millis cash ──
+    # cost_snapshot stays Credits (consumer side). Provider/platform legs
+    # are written in USD-millis via the single conversion authority
+    # (economy.money). At the current rate 1 Credit = 1 USD-milli the
+    # integers are identical, but the boundary is explicit and central.
+    from economy.money import credits_to_millis
+    payout_millis = credits_to_millis(payout)
+    commission_millis = credits_to_millis(commission)
+    revenue_millis = credits_to_millis(cost if owner_id is None else 0)
+
     with db() as con:
         upload_id, public_result = land_tool_result(
             con, user["id"], staged, BASE_URL)
@@ -175,23 +190,23 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
             public_result.get("publicId"),
             json.dumps(public_result, ensure_ascii=False), now())
         if cost > 0 and owner_id is None:
-            # first-party: full cost is platform revenue
+            # first-party: full cost is platform revenue (USD-millis)
             from governance.platform import record_platform_income
             record_platform_income(
-                con, call_id, "platform_revenue", cost,
+                con, call_id, "platform_revenue", revenue_millis,
                 f"{tool['id']} revenue", now())
         elif cost > 0:
             # third-party: two independent legs, conservation holds at
-            # every commission rate (0% / 30% / 100%)
-            if payout > 0:
+            # every commission rate (0% / 30% / 100%) — USD-millis legs
+            if payout_millis > 0:
                 base = ledger_repo.earn_pool_balance(con, owner_id)
                 insert_provider_earn_if_absent(
-                    con, owner_id, payout, base + payout, call_id,
+                    con, owner_id, payout_millis, base + payout_millis, call_id,
                     f"payout:{call_id}", f"{tool['id']} payout", now())
-            if commission > 0:
+            if commission_millis > 0:
                 from governance.platform import record_platform_income
                 record_platform_income(
-                    con, call_id, "platform_commission", commission,
+                    con, call_id, "platform_commission", commission_millis,
                     f"{tool['id']} commission", now())
 
     out = {"ok": True, "type": tool["type"], "result": public_result,
