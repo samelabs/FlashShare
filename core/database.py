@@ -120,7 +120,6 @@ _SCHEMA_SQL = (
       x_user_id      TEXT UNIQUE,
       x_username     TEXT,
       x_display_name TEXT,
-      x_avatar_url   TEXT,
       x_profile_url  TEXT,
       status         TEXT NOT NULL DEFAULT 'active',
       payout_channel TEXT,

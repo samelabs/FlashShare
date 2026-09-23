@@ -248,6 +248,11 @@ h1, h2 { letter-spacing: -0.02em; }
 button:disabled { opacity: .4; cursor: not-allowed; }
 button svg, .button-icon svg { width: 18px; height: 18px; display: block; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 .x-glyph { font-family: ui-serif, Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1; font-weight: 800; }
+/* X brand button (auth surfaces only): black plate, white ink — narrow
+   selector, global button palette untouched. */
+.auth-x-wrap .x-login { background: #000; color: #fff; }
+@media (hover:hover) and (pointer:fine) { .auth-x-wrap .x-login:hover { background: #1a1a1a; opacity: 1; } }
+.auth-x-wrap .x-login:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Userbox (legacy compat) ──────────────────────────────── */
 .logout { width: 32px; height: 32px; min-height: 32px; border-radius: 50%; background: transparent; color: var(--muted); padding: 0; border: 1px solid transparent; }

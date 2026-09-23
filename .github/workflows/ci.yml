@@ -126,6 +126,10 @@ jobs:
           expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
             python tests/canonical/test_invocation_canonical.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_x_identity_avatar.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_x_identity_avatar.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_remote_security.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_invocation_canonical.py
@@ -228,6 +232,9 @@ jobs:
           test -z "$(grep -n 'client_ref' app/routes/topup.py static/pages/credits.js || true)"
           test "$(grep -rn "SET status='ok'" core/repo/ledger.py | wc -l)" = "1"
           python3 -c "s=open('core/execution/gate.py').read(); b=s.split('def _finish')[1].split(chr(10)+'def ')[0]; assert 'commission_rate()' not in b.replace('commission_rate_snapshot',''), '_finish must not read current commission config'"
+          # X identity closure: avatar authority is users.avatar_url only;
+          # zero runtime references to the retired x_avatar_url field
+          test -z "$(grep -rn 'x_avatar_url' core/ app/ static/ --include='*.py' --include='*.js' --include='*.html')"
           python tests/canonical/test_rounded_corners.py
 
       - name: Start Gokapi HTTP-boundary service
@@ -342,6 +349,9 @@ jobs:
 
       - name: State schema invariants canonical
         run: python tests/canonical/test_state_schema_invariants.py
+
+      - name: X identity avatar canonical
+        run: python tests/canonical/test_x_identity_avatar.py
 
       - name: Result settlement atomicity canonical
         run: python tests/canonical/test_result_settlement_atomicity.py

@@ -128,12 +128,17 @@ def fetch_x_user(access_token: str) -> dict:
 
 
 def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
-    """Process X OAuth callback; suspended identities cannot login or bind."""
+    """Process X OAuth callback; suspended identities cannot login or bind.
+
+    Avatar authority = users.avatar_url (single field): signup writes the
+    X image verbatim (may be empty); login/bind refresh overwrites only
+    with a fresh non-empty image and never clears on empty.
+    """
     ts = now()
     x_id = x_user["id"]
     x_username = x_user.get("username", "")
     x_display_name = x_user.get("name", "")
-    x_avatar_url = x_user.get("profile_image_url", "")
+    avatar_url = x_user.get("profile_image_url", "")
     x_profile_url = f"https://x.com/{x_username}" if x_username else ""
 
     with db() as con:
@@ -146,7 +151,7 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
                 raise ValueError("err_x_bound_other")
             user_id = existing["id"]
             users_repo.update_x_profile(con, user_id, x_username,
-                                        x_display_name, x_avatar_url,
+                                        x_display_name, avatar_url,
                                         x_profile_url, ts)
             return user_id
 
@@ -157,7 +162,7 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             if row.get("status") == "suspended":
                 raise ValueError("err_user_suspended")
             users_repo.bind_x(con, bind_user_id, x_id, x_username,
-                              x_display_name, x_avatar_url, x_profile_url, ts)
+                              x_display_name, avatar_url, x_profile_url, ts)
             return bind_user_id
 
         username = (x_username or "")[:32]
@@ -170,8 +175,8 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             suffix += 1
 
         row = users_repo.insert_x_user(
-            con, username, x_display_name or username, x_avatar_url,
-            x_id, x_username, x_display_name, x_avatar_url, x_profile_url, ts)
+            con, username, x_display_name or username, avatar_url,
+            x_id, x_username, x_display_name, x_profile_url, ts)
         return row["id"]
 
 
