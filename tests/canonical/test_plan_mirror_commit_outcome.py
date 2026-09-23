@@ -107,7 +107,7 @@ def _fake_verify(pid, price, cur):
 _creem.verify_product_mirror = _fake_verify
 
 # ── F1: provider success + durable commit → success, NO restore ──
-r1 = client.patch(f"/samelabs/plans/{_pl['id']}",
+r1 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                   json={"price_cents": 1499},
                   cookies={COOKIE_NAME: op_ck})
 _n_patch_before = len(_patches)
@@ -122,11 +122,14 @@ check("F1 provider success + durable commit → 200 / row=intended / no restore"
 
 # ── F2: commit raises (connection drop at COMMIT) + fresh read proves
 #        DURABLE_SUCCESS (row == intended + audit) → success, no restore ──
-import app.routes.samelabs as _sml
+import core.backoffice.products as _sml
+import backoffice.products as _sml_app  # app-path identity (routes import
+# 'backoffice.*'; same file, separate sys.modules entry — patch BOTH)
 import database as _dbmod
 from database import db as _rdb
 _orig_db = _dbmod.db
 _orig_sml_db = _sml.db
+_orig_sml_app_db = _sml_app.db
 import contextlib
 import sys as _sysexc
 
@@ -165,8 +168,9 @@ def _db_commit_durable_then_raise():
 # and the samelabs module global (module-level `from database import db`)
 _dbmod.db = _db_commit_durable_then_raise
 _sml.db = _db_commit_durable_then_raise
+_sml_app.db = _db_commit_durable_then_raise
 try:
-    r2 = client.patch(f"/samelabs/plans/{_pl['id']}",
+    r2 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                       json={"price_cents": 1699},
                       cookies={COOKIE_NAME: op_ck})
 except Exception:
@@ -174,6 +178,7 @@ except Exception:
 finally:
     _dbmod.db = _orig_db
     _sml.db = _orig_sml_db
+    _sml_app.db = _orig_sml_app_db
 with db() as con:
     _row2 = con.execute("select price_cents from plans where id=%s",
                         (_pl["id"],)).fetchone()
@@ -204,8 +209,9 @@ def _db_rollback_then_raise():
         raise
 _dbmod.db = _db_rollback_then_raise
 _sml.db = _db_rollback_then_raise
+_sml_app.db = _db_rollback_then_raise
 try:
-    r3 = client.patch(f"/samelabs/plans/{_pl['id']}",
+    r3 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                       json={"price_cents": 1999},
                       cookies={COOKIE_NAME: op_ck})
 except Exception as exc:
@@ -213,6 +219,7 @@ except Exception as exc:
 finally:
     _dbmod.db = _orig_db
     _sml.db = _orig_sml_db
+    _sml_app.db = _orig_sml_app_db
 with db() as con:
     _row3 = con.execute("select price_cents from plans where id=%s",
                         (_pl["id"],)).fetchone()
@@ -230,8 +237,9 @@ _prod_state["prod_mc_new"] = {"price": 1, "currency": "USD",
 _p_before = len(_patches)
 _dbmod.db = _db_rollback_then_raise
 _sml.db = _db_rollback_then_raise
+_sml_app.db = _db_rollback_then_raise
 try:
-    r4 = client.post("/samelabs/plans", json={
+    r4 = client.post("/samelabs/commerce/products/plans", json={
         "code": f"mcnew_{_u}", "name": "MC New", "monthly_credits": 50,
         "price_cents": 777, "creem_product_id": "prod_mc_new",
         "sort_order": _mc_sort + 1, "period_days": 30,
@@ -242,6 +250,7 @@ except Exception as exc:
 finally:
     _dbmod.db = _orig_db
     _sml.db = _orig_sml_db
+    _sml_app.db = _orig_sml_app_db
 with db() as con:
     _row4 = con.execute("select 1 from plans where code=%s",
                         (f"mcnew_{_u}",)).fetchone()
@@ -280,7 +289,7 @@ _fetch_none_first_update.armed = True
 _fetch_none_first_update.none_ids.add("prod_mc_x")
 _creem._fetch_product = _fetch_none_first_update
 _p_before_g = len(_patches)
-_r_g1 = client.patch(f"/samelabs/plans/{_pl['id']}",
+_r_g1 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                      json={"price_cents": 3456},
                      cookies={COOKIE_NAME: op_ck})
 with db() as con:
@@ -303,7 +312,7 @@ _prod_state["prod_mc_g2"] = {"price": 4321, "currency": "USD",
 _fetch_none_first_update.armed = True
 _fetch_none_first_update.none_ids.add("prod_mc_g2")
 _p_before_g2 = len(_patches)
-_r_g2 = client.post("/samelabs/plans", json={
+_r_g2 = client.post("/samelabs/commerce/products/plans", json={
     "code": f"mcg2_{_u}", "name": "MC G2", "monthly_credits": 60,
     "price_cents": 555, "creem_product_id": "prod_mc_g2",
     "sort_order": _mc_sort + 5, "period_days": 30,
@@ -346,7 +355,7 @@ _partial_hook.pid = "prod_mc_x"
 _partial_hook.override = {"id": "prod_mc_x", "currency": "USD",
                           "billing_type": "recurring",
                           "billing_period": "every-month"}   # no price key
-_r_g3 = client.patch(f"/samelabs/plans/{_pl['id']}",
+_r_g3 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                      json={"price_cents": 3777},
                      cookies={COOKIE_NAME: op_ck})
 with db() as con:
@@ -368,7 +377,7 @@ _partial_hook.override = {"id": "prod_mc_g4", "currency": "USD",
                           "price": None,
                           "billing_type": "recurring",
                           "billing_period": "every-month"}
-_r_g4 = client.post("/samelabs/plans", json={
+_r_g4 = client.post("/samelabs/commerce/products/plans", json={
     "code": f"mcg4_{_u}", "name": "MC G4", "monthly_credits": 70,
     "price_cents": 888, "creem_product_id": "prod_mc_g4",
     "sort_order": _mc_sort + 6, "period_days": 30,
@@ -389,7 +398,7 @@ check("G4 create: snapshot price=None → 502 / 零 PATCH / row 未落",
 #     missing; the update proceeds normally on the real (0, USD) before
 _prod_state["prod_mc_x"]["price"] = 0   # provider carries explicit 0
 _p_before_g5 = len(_patches)
-_r_g5 = client.patch(f"/samelabs/plans/{_pl['id']}",
+_r_g5 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                      json={"price_cents": 150},
                      cookies={COOKIE_NAME: op_ck})
 with db() as con:
@@ -415,7 +424,7 @@ def _noncanon_case(tag, bad_price, is_create):
                               "billing_type": "recurring",
                               "billing_period": "every-month"}
     if is_create:
-        r = client.post("/samelabs/plans", json={
+        r = client.post("/samelabs/commerce/products/plans", json={
             "code": f"mcnc{tag}_{_u}", "name": "MC NC", "monthly_credits": 90,
             "price_cents": 1234, "creem_product_id": _partial_hook.pid,
             "sort_order": _mc_sort + 10, "period_days": 30,
@@ -428,7 +437,7 @@ def _noncanon_case(tag, bad_price, is_create):
                 and str(r.json().get("error", "")).startswith("price_mirror")
                 and len(_patches) == _p_before and row is None,
                 f"{r.status_code} patches={len(_patches)}/{_p_before} row={row}")
-    r = client.patch(f"/samelabs/plans/{_pl['id']}",
+    r = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                      json={"price_cents": 1990},
                      cookies={COOKIE_NAME: op_ck})
     with db() as con:
@@ -490,8 +499,9 @@ try:
     _p_before_h1 = len(_patches)
     _dbmod.db = _db_rollback_then_raise
     _sml.db = _db_rollback_then_raise
+    _sml_app.db = _db_rollback_then_raise
     try:
-        _r_h1 = client.patch(f"/samelabs/plans/{_pl['id']}",
+        _r_h1 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                              json={"price_cents": 150,
                                    "name": _name_before_h + "_CURRENT"},
                              cookies={COOKIE_NAME: op_ck})
@@ -500,6 +510,7 @@ try:
     finally:
         _dbmod.db = _orig_db
         _sml.db = _orig_sml_db
+        _sml_app.db = _orig_sml_app_db
 finally:
     _sml.now = _orig_now_h
 with db() as con:
@@ -521,7 +532,7 @@ check("H1d stale in-window same-price audit + mixed-field rollback → 绝不 SU
       f" (before={_name_before_h!r}) was_success={_h1_was_success}")
 
 # ── B-series: strict exact-before three-way classifier ──
-import app.routes.samelabs as _smlmod
+import core.backoffice.products as _smlmod
 from repo import operator_audit as _oa
 
 # B1: update commit unknown + DB third-state (row neither before nor
@@ -620,7 +631,7 @@ with db() as con:
 _dbmod.db = _db_commit_durable_then_raise
 _sml.db = _db_commit_durable_then_raise
 try:
-    _r_h2 = client.patch(f"/samelabs/plans/{_pl['id']}",
+    _r_h2 = client.patch(f"/samelabs/commerce/products/plans/{_pl['id']}",
                          json={"price_cents": 150,
                                "name": _name_h2 + "_H2"},
                          cookies={COOKIE_NAME: op_ck})
@@ -629,6 +640,7 @@ except Exception:
 finally:
     _dbmod.db = _orig_db
     _sml.db = _orig_sml_db
+    _sml_app.db = _orig_sml_app_db
 with db() as con:
     _row_h2b = con.execute("select name, price_cents from plans"
                            " where id=%s", (_pl["id"],)).fetchone()
@@ -655,9 +667,9 @@ with db() as con:
                 (_pl["id"],))
 
 # ── F5: compensation basis is the REAL provider GET snapshot ──
-_src = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
+_src = open(_os.path.join(_REPO, "core", "backoffice", "products.py"),
             encoding="utf-8").read()
-_create_blk = _src.split("async def samelabs_create_plan")[1].split("async def")[0]
+_create_blk = _src.split("def create_plan")[1].split("\ndef ")[0]
 check("F5 create mirror uses real provider-before GET (no 0/\"\")",
       "_fetch_product" in _create_blk
       and 'fields["creem_product_id"], 0, ""' not in _create_blk,

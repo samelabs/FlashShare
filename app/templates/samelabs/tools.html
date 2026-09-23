@@ -1,44 +1,74 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% set page_title = "工具" %}
+{% block title %}Tool Supply{% endblock %}
+{% block crumb %}Samelabs / Tool Supply{% endblock %}
 {% block body %}
-
-<div class="sl-panel">
-  <div class="sl-panel-head">
-    <h2>工具定价</h2>
-    <span class="sl-panel-sub">单价单位: 积分 / 次</span>
+<section class="sl-panel">
+  <div class="sl-toolbar">
+    <h2>All Tools (catalog + pricing)</h2>
+    <button class="sl-btn" type="button" id="btnCreateHttp">+ Operator HTTP Tool</button>
   </div>
-  <div class="sl-tablewrap">
-    <table class="sl-tbl">
-      <thead><tr><th>工具</th><th>名称</th><th>单价(积分)</th><th>推荐</th><th>排序</th><th>状态</th><th>注册</th><th>操作</th></tr></thead>
-      <tbody>
-      {% for t in tools %}
-        <tr data-tool="{{ t.tool_id|e }}">
-          <td class="sl-mono">{{ t.tool_id|e }}</td>
-          <td>{{ t.label|e }}</td>
-          <td><input type="number" min="0" max="1000000" class="sl-adj-in tool-cost" data-tool="{{ t.tool_id|e }}" value="{{ t.cost }}" style="width:90px" aria-label="单价"></td>
-          <td><input type="checkbox" class="tool-featured" data-tool="{{ t.tool_id|e }}" {{ 'checked' if t.featured }}></td>
-          <td><input type="number" class="sl-adj-in tool-sort" data-tool="{{ t.tool_id|e }}" value="{{ t.sort_order }}" style="width:70px" aria-label="排序"></td>
-          <td class="tool-enabled">
-            {% if t.enabled %}<span class="sl-badge sl-b-ok">启用</span>
-            {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
-          </td>
-          <td>
-            {% if t.registered %}<span class="sl-badge sl-b-info">已注册</span>
-            {% else %}<span class="sl-badge sl-b-muted">未注册(历史)</span>{% endif %}
-          </td>
-          <td>
-            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-save-pricing" data-tool="{{ t.tool_id|e }}">保存</button>
-            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-toggle-tool" data-tool="{{ t.tool_id|e }}" data-enabled="{{ 'true' if t.enabled else 'false' }}">{{ '停用' if t.enabled else '启用' }}</button>
-          </td>
-        </tr>
-      {% else %}
-        <tr><td colspan="6" class="sl-dim">暂无定价记录</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr>
+      <th>tool_key</th><th>Owner</th><th>Class</th><th>Execution</th>
+      <th>Visibility</th><th>Enabled</th><th>Trusted</th>
+      <th>Price (Credits/call)</th><th>Calls OK</th><th>Provider Earnings (USD)</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for t in tools %}
+      <tr>
+        <td>{{ t.tool_key }}</td>
+        <td>{{ t.owner }}</td>
+        <td>{{ t.cls }}</td>
+        <td>{{ t.execution }}</td>
+        <td>{{ t.visibility }}</td>
+        <td>{{ '✔' if t.enabled else '✕' }}</td>
+        <td>{{ '✔' if t.trusted else '✕' }}</td>
+        <td class="sl-num">
+          {% if t.cost is not none %}
+          <form class="sl-inline-form" data-pricing="{{ t.tool_key }}">
+            <input type="number" name="cost" value="{{ t.cost }}" min="0" max="1000000" step="1">
+            <label class="sl-switch"><input type="checkbox" name="enabled" {{ 'checked' if t.priced }}><span></span></label>
+            <button class="sl-btn sl-btn-sm" type="submit">Save</button>
+          </form>
+          {% else %}—{% endif %}
+        </td>
+        <td class="sl-num">{{ fmt_num(t.calls_ok) }}</td>
+        <td class="sl-num">{{ t.provider_earn_usd or '—' }}</td>
+        <td>
+          {% if t.owner_id is none and t.execution == 'http' %}
+          <button class="sl-btn sl-btn-sm sl-btn-danger" type="button"
+                  data-del="{{ t.tool_key }}">Delete</button>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="11" class="sl-empty">No tools</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
   </div>
-</div>
+</section>
 
+<dialog class="sl-modal" id="createHttpModal">
+  <form class="sl-modal-form" id="createHttpForm">
+    <h3>Create Operator HTTP Tool</h3>
+    <label>tool_id (bare id, first-party namespace)
+      <input type="text" name="tool_id" pattern="[a-z][a-z0-9_]{1,40}" required>
+    </label>
+    <label>Label <input type="text" name="label" maxlength="64"></label>
+    <label>Endpoint URL <input type="url" name="url" placeholder="https://…" required></label>
+    <label>Timeout (s) <input type="number" name="timeout_s" value="60" min="5" max="300"></label>
+    <label>Auth header (optional) <input type="text" name="auth_header"></label>
+    <label>Auth token (optional, Vault) <input type="password" name="auth_token"></label>
+    <label>Accept exts (comma-separated, optional) <input type="text" name="accept" placeholder=".png,.pdf"></label>
+    <label class="sl-check"><input type="checkbox" name="multi"> multi</label>
+    <label>Price (Credits/call) <input type="number" name="cost" value="0" min="0"></label>
+    <div class="sl-modal-actions">
+      <button class="sl-btn" type="button" id="createHttpCancel">Cancel</button>
+      <button class="sl-btn sl-btn-primary" type="button" id="createHttpSubmit">Create</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}
-
 {% block script %}<script src="/static/pages/samelabs_tools.js?v={{ pages_version }}"></script>{% endblock %}

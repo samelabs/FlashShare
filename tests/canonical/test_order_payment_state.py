@@ -601,7 +601,8 @@ with db() as con:
         "SELECT 1 FROM memberships m JOIN plans p ON p.id = m.plan_id"
         " WHERE p.id = %s LIMIT 1", (_pl["id"],)).fetchone()
 _rebind_refused = hit is not None
-_src_sml = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
+_src_sml = open(_os.path.join(_REPO, "app", "routes", "samelabs",
+                               "commerce.py"),
                 encoding="utf-8").read()
 check("PC3 product binding immutability guard (stronger: A→B/A→NULL forbidden)",
       _rebind_refused and "product_binding_immutable" in _src_sml)

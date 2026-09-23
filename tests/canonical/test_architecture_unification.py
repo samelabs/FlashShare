@@ -489,7 +489,10 @@ import glob as _glob29
 _orders_sql_files = []
 for _f29 in _glob29.glob(_os2.path.join(_REPO, "app", "**", "*.py"), recursive=True) + \
              _glob29.glob(_os2.path.join(_REPO, "core", "**", "*.py"), recursive=True):
-    if "__pycache__" in _f29 or _f29.endswith(_os2.path.join("repo", "orders.py")):
+    if "__pycache__" in _f29 or _f29.endswith(_os2.path.join("repo", "orders.py")) \
+            or _f29.endswith(_os2.path.join("repo", "operator_views.py")):
+        # operator_views = S4 designated READ projection repo (select/join/
+        # pagination only); orders WRITE authority stays repo/orders.py
         continue
     _src29 = open(_f29, encoding="utf-8", errors="ignore").read()
     if any(_pat29 in _src29 for _pat29 in
@@ -602,8 +605,10 @@ check("C34 declaration partial writer 仍为 update_tool_row 且 tool_supply 消
       "def update_tool_row" in _cat34
       and "from repo.catalog import update_tool_row" in _ts34)
 
-# C35: samelabs remote audit projection reads via repo primitives
-_sl35 = open(_os2.path.join(_REPO, "app", "routes", "samelabs.py"),
+# C35: backoffice tool audit projection reads via repo primitives
+# (S4 batch A: projection migrated from the retired route monolith into
+#  core/backoffice/tools.py)
+_sl35 = open(_os2.path.join(_REPO, "core", "backoffice", "tools.py"),
              encoding="utf-8").read()
 _proj35 = _re33.search(
     r"def _safe_remote_projection.*?(?=\ndef )", _sl35, _re33.DOTALL)
@@ -614,12 +619,15 @@ check("C35 _safe_remote_projection 消费 repo.catalog canonical read primitives
       and "by_tool_key(con, tool_key)" in _proj35.group(0)
       and "pricing_row(con, tool_key)" in _proj35.group(0))
 
-# C36: /samelabs/plans membership counts read via repo.orders primitives
+# C36: products page membership counts read via repo.orders primitives
+_sl36 = open(_os2.path.join(_REPO, "app", "routes", "samelabs",
+                            "commerce.py"),
+             encoding="utf-8").read()
 _plans36 = _re33.search(
-    r"async def samelabs_plans.*?(?=\n@router|\nasync def )", _sl35,
+    r"async def products.*?(?=\n@router|\nasync def )", _sl36,
     _re33.DOTALL)
 if _plans36 is None:  # last-function fallback
-    _plans36 = _re33.search(r"async def samelabs_plans.*", _sl35, _re33.DOTALL)
+    _plans36 = _re33.search(r"async def products.*", _sl36, _re33.DOTALL)
 check("C36 samelabs_plans 无 route-layer memberships/pending_downgrades SQL",
       _plans36 is not None
       and "FROM memberships" not in _plans36.group(0)
@@ -635,7 +643,9 @@ check("C36 samelabs_plans 单请求单一 ts (now() 一次, 传入 effective cou
 
 # C37: plan mirror commit-outcome classifier reads via repo primitives
 _cls37 = _re33.search(
-    r"def _classify_db_commit_outcome.*?(?=\ndef )", _sl35, _re33.DOTALL)
+    r"def _classify_db_commit_outcome.*?(?=\ndef )", open(
+        _os2.path.join(_REPO, "core", "backoffice", "products.py"),
+        encoding="utf-8").read(), _re33.DOTALL)
 check("C37 classifier 函数体无 con.execute",
       _cls37 is not None and "con.execute" not in _cls37.group(0))
 check("C37 classifier 消费 repo.orders.plan_by_id + repo.operator_audit read primitive",

@@ -1,0 +1,41 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block title %}Credits{% endblock %}
+{% block crumb %}Samelabs / Economy / Credits{% endblock %}
+{% block body %}
+<section class="sl-panel">
+  <h2>Consumer Credits (SPENDABLE_KINDS only — Credits)</h2>
+  <form method="get" action="/samelabs/economy/credits" class="sl-toolbar">
+    <input type="number" name="user_id" value="{{ q_user or '' }}" placeholder="user id" class="sl-input" min="1">
+    <select name="kind" class="sl-input">
+      <option value="">— kind —</option>
+      {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == q_kind }}>{{ k }}</option>{% endfor %}
+    </select>
+    <button class="sl-btn" type="submit">Filter</button>
+  </form>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr><th>ID</th><th>User</th><th>Kind</th><th>Delta</th><th>Balance after</th><th>Note</th><th>Time</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.id }}</td><td>{{ r.username or r.user_id }}</td><td>{{ r.kind }}</td>
+        <td class="sl-num {{ 'sl-pos' if r.delta > 0 else 'sl-neg' }}">{{ '%+d'|format(r.delta) }}</td>
+        <td class="sl-num">{{ fmt_num(r.balance_after) }}</td>
+        <td>{{ r.note or '—' }}</td>
+        <td>{{ fmt_ts(r.created_at) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="sl-empty">No rows</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if pages > 1 %}
+  <nav class="sl-pager">
+    {% for p in range(1, pages + 1) %}
+      <a href="/samelabs/economy/credits?user_id={{ q_user or '' }}&kind={{ q_kind }}&page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

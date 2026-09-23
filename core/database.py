@@ -552,19 +552,50 @@ _SCHEMA_SQL = (
     # activities 表已移除 — 每日登录 = economy.daily 模块常量,
     # 无表无 seed; 发放流水在 ledger (note='activity:daily_login')。
     # ── platform: withdrawals (provider payout requests) ──
+    # S4 final authority: review fields (reviewed_*) + paid fields
+    # (paid_*, payout_ref) + request-time payout_channel_snapshot.
+    # Retired names processed_at/processed_by/txn_ref are gone from the
+    # fresh schema; the consolidated production migration happens at the
+    # Final Release Gate (no startup ALTER/backfill here).
+    # amount = USD-millis (whole-cent enforced by the economy command layer).
     """
     CREATE TABLE IF NOT EXISTS withdrawals (
-      id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      amount       BIGINT NOT NULL CHECK (amount > 0),
-      status       TEXT NOT NULL DEFAULT 'pending',
-      note         TEXT,
-      created_at   BIGINT NOT NULL,
-      processed_at BIGINT,
-      processed_by BIGINT,
-      txn_ref      TEXT,
+      id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id                 BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      amount                  BIGINT NOT NULL CHECK (amount > 0),
+      status                  TEXT NOT NULL DEFAULT 'pending',
+      note                    TEXT,
+      payout_channel_snapshot TEXT NOT NULL
+                              CHECK (length(btrim(payout_channel_snapshot)) > 0),
+      created_at              BIGINT NOT NULL,
+      reviewed_at             BIGINT,
+      reviewed_by             BIGINT,
+      paid_at                 BIGINT,
+      paid_by                 BIGINT,
+      payout_ref              TEXT,
       CONSTRAINT withdrawals_status_ck
-        CHECK (status IN ('pending','approved','rejected','paid'))
+        CHECK (status IN ('pending','approved','rejected','paid')),
+      CONSTRAINT withdrawals_pending_ck CHECK (
+        status <> 'pending'
+        OR (reviewed_at IS NULL AND reviewed_by IS NULL
+            AND paid_at IS NULL AND paid_by IS NULL
+            AND payout_ref IS NULL)),
+      CONSTRAINT withdrawals_approved_ck CHECK (
+        status <> 'approved'
+        OR (reviewed_at IS NOT NULL AND reviewed_by IS NOT NULL
+            AND paid_at IS NULL AND paid_by IS NULL
+            AND payout_ref IS NULL)),
+      CONSTRAINT withdrawals_rejected_ck CHECK (
+        status <> 'rejected'
+        OR (reviewed_at IS NOT NULL AND reviewed_by IS NOT NULL
+            AND paid_at IS NULL AND paid_by IS NULL
+            AND payout_ref IS NULL)),
+      CONSTRAINT withdrawals_paid_ck CHECK (
+        status <> 'paid'
+        OR (reviewed_at IS NOT NULL AND reviewed_by IS NOT NULL
+            AND paid_at IS NOT NULL AND paid_by IS NOT NULL
+            AND payout_ref IS NOT NULL
+            AND length(btrim(payout_ref)) > 0))
     )
     """,
     """

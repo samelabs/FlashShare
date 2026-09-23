@@ -286,12 +286,16 @@ with db() as con:
                                    "s3 payout", ts)
 
 from economy.money import parse_usd_decimal as _pusd
+# S4: requests require a configured payout channel (frozen at request time)
+with db() as con:
+    con.execute("UPDATE users SET payout_channel = 'USDT-TRC20:testaddr'"
+                " WHERE id = %s", (owner,))
 w = earnings.request_withdrawal(owner, _pusd("10.25"), note="s3")
 check("6d '10.25' request stored as 10250 USD-millis",
       w["amount"] == 10250 and w["status"] == "pending", w)
 
 # ── 7. lifecycle: approve → ledger withdraw in millis; no credits semantics ──
-done = earnings.process_withdrawal(int(w["id"]), True, admin_user_id=admin)
+done = earnings.approve_withdrawal(int(w["id"]), admin_user_id=admin)
 with db() as con:
     wd = con.execute(
         "select delta, kind from ledger where user_id=%s and kind='withdraw'"
@@ -327,6 +331,11 @@ from config import COOKIE_NAME as _CK
 from security import token_hash as _th
 _base = f"http://127.0.0.1:{_TEST_PORT}"
 _ui9 = _user(_u + "http")
+# S4: requests require a payout channel; set one so this proof reaches
+# the BALANCE authority (the unit under test here)
+with db() as con:
+    con.execute("UPDATE users SET payout_channel='USDT-TRC20:nine'"
+                " WHERE id=%s", (_ui9,))
 _tok9 = _os.urandom(24).hex()
 with db() as con:
     con.execute(
@@ -367,8 +376,9 @@ check("9d malformed string → 422 invalid_usd_amount",
 with db() as con:
     con.execute(
         "insert into withdrawals (user_id, amount, status, note, created_at,"
-        " txn_ref) values (%s, 10001, 'approved', 'historical sub-cent', %s,"
-        " NULL)", (owner, ts))
+        " payout_channel_snapshot, reviewed_at, reviewed_by)"
+        " values (%s, 10001, 'approved', 'historical sub-cent', %s,"
+        " 'USDT-TRC20:hist', %s, %s)", (owner, ts, ts, admin))
 from repo.economy import withdrawals_by_user as _wby
 with db() as con:
     _hist = [w for w in _wby(con, owner, 50, 0) if w["amount"] == 10001]
@@ -376,10 +386,11 @@ check("10a historical 10001-milli row present", len(_hist) == 1, _hist)
 from economy.money import millis_to_usd_str as _lossless
 check("10b provider projection lossless $10.001",
       _lossless(10001) == "$10.001")
-_sl_src = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
+_sl_src = open(_os.path.join(_REPO, "app", "routes", "samelabs",
+                              "economy.py"),
                encoding="utf-8").read()
 check("10c operator queue uses lossless millis_to_usd_str",
-      'r["amount_usd"] = millis_to_usd_str(r["amount"])' in _sl_src)
+      'd["amount_usd"] = millis_to_usd_str(int(d["amount"]))' in _sl_src)
 _er_src = open(_os.path.join(_REPO, "app", "routes", "earn.py"),
                encoding="utf-8").read()
 check("10d provider history uses lossless millis_to_usd_str",

@@ -84,20 +84,47 @@ async function loadEarnings() {
     st.textContent = _msg('earn_status_' + w.status);
     const amt = document.createElement('strong');
     amt.textContent = '-' + w.amount_usd;
-    row.append(Object.assign(document.createElement('span'), { textContent: '#' + w.id }), st, amt);
+    // request-time frozen channel from the withdrawal row itself
+    const ch = document.createElement('span');
+    ch.className = 'wd-ch';
+    ch.textContent = (w.payout_channel_snapshot || '') +
+      ' · ' + new Date(w.created_at * 1000).toLocaleString();
+    row.append(Object.assign(document.createElement('span'), { textContent: '#' + w.id }), st, amt, ch);
     h.appendChild(row);
   }
 
     }
 
+  _curChannel = d.payout_channel || '';
   const hint = document.getElementById('withdrawHint');
   hint.textContent = _msg('earn_min').replace('{n}', d.min_withdrawal_usd) + ' · ' + _msg('earn_avail') + ' ' + s.available_usd;
 }
 
+let _curChannel = '';
 document.getElementById('openWithdraw')?.addEventListener('click', () => {
   _wModal.classList.remove('hidden');
+  refreshWithdrawModal();
   document.getElementById('wAmount').focus();
 });
+
+function refreshWithdrawModal() {
+  const hint = document.getElementById('withdrawHint');
+  const btn = document.getElementById('submitWithdraw');
+  const chan = document.getElementById('wChannel');
+  if (chan) {
+    chan.textContent = _curChannel
+      ? _curChannel
+      : _msg('earn_wd_channel_unset');
+    chan.classList.toggle('unset', !_curChannel);
+  }
+  if (!_curChannel) {
+    // a request now is guaranteed payout_channel_required — do not send it
+    btn.disabled = true;
+    hint.textContent = _msg('earn_no_channel') + ' → /account/profile';
+  } else {
+    btn.disabled = false;
+  }
+}
 document.getElementById('closeWithdrawModal')?.addEventListener('click', () => _wModal.classList.add('hidden'));
 _wModal?.addEventListener('click', e => { if (e.target === _wModal) _wModal.classList.add('hidden'); });
 
@@ -112,7 +139,17 @@ document.getElementById('submitWithdraw')?.addEventListener('click', async () =>
   });
   const d = await r.json();
   btn.disabled = false;
-  if (d.ok) { _wModal.classList.add('hidden'); loadEarnings(); return; }
+  if (d.ok) {
+    _wModal.classList.add('hidden');
+    const fb = document.getElementById('wdFeedback');
+    if (fb) {
+      fb.textContent = _msg('earn_wd_ok') + ' (#' + d.id + ')';
+      fb.classList.remove('hidden');
+      setTimeout(() => fb.classList.add('hidden'), 6000);
+    }
+    loadEarnings();
+    return;
+  }
   alert(_errm(d.error));
 });
 

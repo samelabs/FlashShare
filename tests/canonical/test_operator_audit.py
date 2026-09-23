@@ -107,7 +107,13 @@ check("A2 operator Bearer token → /samelabs 拒绝 (session-only, 302)",
       r.status_code in (301, 302, 401, 403, 404), str(r.status_code))
 import inspect as _inspect
 import app.routes.samelabs as _sam_mod
-_src = _inspect.getsource(_sam_mod)
+# S4: the monolith became a package — inspect the concatenation of its
+# route submodules (gate/context live in common.py; mutations in the rest)
+import pathlib as _pl
+_src = "\n".join(
+    _pl.Path(_sam_mod.__path__[0], f + ".py").read_text(encoding="utf-8")
+    for f in ("common", "overview", "users", "tools", "commerce",
+              "economy", "audit"))
 check("A3 无 users.status mutation route",
       "users set status" not in _src.replace("update users set status='samelabs' where id=%s", "")
       and "status='samelabs'" not in _src.replace(
@@ -237,7 +243,7 @@ with db() as con:
     _so = int(con.execute(
         "SELECT COALESCE(MAX(p.sort_order),0)+1 AS so FROM plans p"
         " WHERE p.code <> 'free'").fetchone()["so"])
-r = _post("/samelabs/plans", json={
+r = _post("/samelabs/commerce/products/plans", json={
     "code": f"oaplus_{_u}", "name": "OA Plus", "monthly_credits": 100,
     "price_cents": 999, "creem_product_id": f"prod_oa1_{_u}", "sort_order": _so,
     "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
@@ -256,7 +262,7 @@ check("C1 plan create → audit before=NULL / after=safe plan snapshot",
 # audit insert failure on create → ZERO Creem call + rollback
 _PATCH_LOG.clear()
 _aud.record = _audit_fail_on("plan.create")[1]
-r = _post("/samelabs/plans", json={
+r = _post("/samelabs/commerce/products/plans", json={
     "code": f"oax_{_u}", "name": "OA X", "monthly_credits": 100,
     "price_cents": 999, "creem_product_id": f"prod_oa2_{_u}",
     "sort_order": _so + 1, "ingress_files_24h": 500,
@@ -278,7 +284,7 @@ check("C2 audit insert failure → ZERO Creem PATCH + plan rollback + zero commi
 # local constraint failure (duplicate product binding) → zero audit + zero Creem
 _PATCH_LOG.clear()
 n_audit = len(_audit_rows())
-r = _post("/samelabs/plans", json={
+r = _post("/samelabs/commerce/products/plans", json={
     "code": f"oay_{_u}", "name": "OA Y", "monthly_credits": 100,
     "price_cents": 999, "creem_product_id": f"prod_oa1_{_u}",
     "sort_order": _so + 2, "ingress_files_24h": 500,
@@ -291,7 +297,7 @@ check("C3 constraint failure → 409 + zero audit + zero Creem",
       f"{r.status_code} audits+={len(_audit_rows()) - n_audit} patches={_PATCH_LOG}")
 
 # valid update → in-tx before/final after
-r = _patch(f"/samelabs/plans/{plan_id}", json={"price_cents": 1499},
+r = _patch(f"/samelabs/commerce/products/plans/{plan_id}", json={"price_cents": 1499},
                  cookies={COOKIE_NAME: op_sess})
 rows = _audit_rows("plan.update", str(plan_id))
 check("C4 plan update → transaction 内 before=999 / after=1499",
@@ -306,7 +312,7 @@ def _patch_fail(path, payload):
     raise RuntimeError("provider down")
 _creem._patch = _patch_fail
 n_audit = len(_audit_rows())
-r = _patch(f"/samelabs/plans/{plan_id}", json={"price_cents": 1999},
+r = _patch(f"/samelabs/commerce/products/plans/{plan_id}", json={"price_cents": 1999},
                  cookies={COOKIE_NAME: op_sess})
 _creem._patch = _pt
 with db() as con:
@@ -321,7 +327,7 @@ check("C5 Creem failure → 502 + local 仍 1499 + zero committed audit",
 # → rollback + ZERO Creem PATCH (audit must sit BEFORE the provider call)
 _PATCH_LOG.clear()
 _aud.record = _audit_fail_on("plan.update")[1]
-r = _patch(f"/samelabs/plans/{plan_id}", json={"price_cents": 1799},
+r = _patch(f"/samelabs/commerce/products/plans/{plan_id}", json={"price_cents": 1799},
                  cookies={COOKIE_NAME: op_sess})
 _aud.record = _orig_rec
 check("C6 audit-before-Creem: audit failure → rollback + ZERO provider call",
@@ -417,11 +423,12 @@ with db() as con:
         " created_at) values (%s, 20000, 20000, 'provider_earn', %s)",
         (provider, ts))
     wrow = con.execute(
-        "insert into withdrawals (user_id, amount, status, created_at)"
-        " values (%s, 5000, 'pending', %s) returning id",
+        "insert into withdrawals (user_id, amount, status, created_at,"
+        " payout_channel_snapshot)"
+        " values (%s, 5000, 'pending', %s, 'USDT-TRC20:e1') returning id",
         (provider, ts)).fetchone()
 wid = int(wrow["id"])
-r = _post(f"/samelabs/withdrawals/{wid}/process", json={"approve": True},
+r = _post(f"/samelabs/economy/withdrawals/{wid}/approve", json={},
           cookies={COOKIE_NAME: op_sess})
 rows = _audit_rows("withdrawal.approve", str(wid))
 check("E1 approve → audit / before=pending / after=approved",
@@ -431,21 +438,22 @@ check("E1 approve → audit / before=pending / after=approved",
       and rows[0]["after_json"]["amount"] == 5000,
       f"{r.status_code} {rows[:1]}")
 
-# re-process → typed error, NO duplicate audit
-r = _post(f"/samelabs/withdrawals/{wid}/process", json={"approve": True},
+# S4 replay: approve on approved = replay success, NO duplicate audit
+r = _post(f"/samelabs/economy/withdrawals/{wid}/approve", json={},
           cookies={COOKIE_NAME: op_sess})
 rows = _audit_rows("withdrawal.approve", str(wid))
-check("E2 already processed → 422 + 无重复 audit",
-      r.status_code == 422 and len(rows) == 1, f"{r.status_code} {len(rows)}")
+check("E2 approve replay → 200 + 无重复 audit",
+      r.status_code == 200 and len(rows) == 1, f"{r.status_code} {len(rows)}")
 
 # reject path + forced audit failure rollback
 with db() as con:
     w2 = con.execute(
-        "insert into withdrawals (user_id, amount, status, created_at)"
-        " values (%s, 1000, 'pending', %s) returning id",
+        "insert into withdrawals (user_id, amount, status, created_at,"
+        " payout_channel_snapshot)"
+        " values (%s, 1000, 'pending', %s, 'USDT-TRC20:e3') returning id",
         (provider, ts)).fetchone()
 wid2 = int(w2["id"])
-r = _post(f"/samelabs/withdrawals/{wid2}/process", json={"approve": False},
+r = _post(f"/samelabs/economy/withdrawals/{wid2}/reject", json={},
           cookies={COOKIE_NAME: op_sess})
 rows = _audit_rows("withdrawal.reject", str(wid2))
 check("E3 reject → audit / after=rejected",
@@ -455,14 +463,15 @@ check("E3 reject → audit / after=rejected",
 
 with db() as con:
     w3 = con.execute(
-        "insert into withdrawals (user_id, amount, status, created_at)"
-        " values (%s, 1000, 'pending', %s) returning id",
+        "insert into withdrawals (user_id, amount, status, created_at,"
+        " payout_channel_snapshot) values (%s, 1000, 'pending', %s,"
+        " 'USDT-TRC20:e4') returning id",
         (provider, ts)).fetchone()
 wid3 = int(w3["id"])
 _aud.record = _audit_fail_on("withdrawal.approve")[1]
-from economy.earnings import process_withdrawal as _pw
+from economy.earnings import approve_withdrawal as _pw
 try:
-    _pw(wid3, True, admin_user_id=op)
+    _pw(wid3, admin_user_id=op)
     forced = "no-raise"
 except Exception:
     forced = "raised"
@@ -483,11 +492,11 @@ rt = f"oart_{_u}"
 # vault unavailable in the test env → the credential route would 503;
 # exercise create WITHOUT a token (URL/auth-free path) and separately
 # prove the credential-bearing shape is rejected before persistence
-r = _post("/samelabs/remote/create", json={
+r = _post("/samelabs/tools/create", json={
     "tool_id": rt, "label": "OA Remote", "url": "https://ops.example/hook",
     "timeout_s": 30, "cost": 50,
 }, cookies={COOKIE_NAME: op_sess})
-r_tok = _post("/samelabs/remote/create", json={
+r_tok = _post("/samelabs/tools/create", json={
     "tool_id": rt + "t", "label": "OA Tok", "url": "https://ops.example/t",
     "timeout_s": 30, "auth_token": "SUPERSECRET123", "cost": 10,
 }, cookies={COOKIE_NAME: op_sess})
@@ -506,7 +515,7 @@ check("F1 remote create → tool + pricing + audit (+凭据形 503 零持久化)
 
 # forced audit failure on remote create → rollback
 _aud.record = _audit_fail_on("remote.create")[1]
-r = _post("/samelabs/remote/create", json={
+r = _post("/samelabs/tools/create", json={
     "tool_id": rt + "x", "label": "X", "url": "https://ops.example/x",
     "timeout_s": 30, "cost": 10,
 }, cookies={COOKIE_NAME: op_sess})
@@ -526,7 +535,7 @@ check("F3 audit 快照无 endpoint_json/auth_token/auth_header/Vault/URL",
       not bad, str(bad[:3]))
 
 # remote delete → one tx: tool + pricing disabled + audit
-r = _post(f"/samelabs/remote/{rt}/delete", json={},
+r = _post(f"/samelabs/tools/{rt}/delete", json={},
           cookies={COOKIE_NAME: op_sess})
 with db() as con:
     gone = con.execute(
@@ -555,7 +564,7 @@ with db() as con:
         "insert into pricing (tool_id, cost, enabled, updated_at)"
         " values (%s, 30, TRUE, %s)", (rt + "2", ts))
 _aud.record = _audit_fail_on("remote.delete")[1]
-r = _post(f"/samelabs/remote/{rt + '2'}/delete", json={},
+r = _post(f"/samelabs/tools/{rt + '2'}/delete", json={},
           cookies={COOKIE_NAME: op_sess})
 _aud.record = _orig_rec
 with db() as con:
@@ -572,7 +581,7 @@ check("F5 forced audit failure → delete rollback (tool 仍在 + pricing 仍 en
 
 # ══════════ G. append-only / read API / package coverage ══════════
 # package create/update audits
-r = _post("/samelabs/packages", json={
+r = _post("/samelabs/commerce/products/packages", json={
     "code": f"oapkg_{_u}", "name": "OA Pkg", "credits": 5000, "price": 499,
 }, cookies={COOKIE_NAME: op_sess})
 pkg_id = r.json().get("package", {}).get("id")
@@ -581,7 +590,7 @@ check("G1 package create → audit before=NULL / after=safe",
       r.status_code == 200 and len(rows) == 1
       and rows[0]["after_json"]["credits"] == 5000,
       f"{r.status_code} {rows[:1]}")
-r = _patch(f"/samelabs/packages/{pkg_id}", json={"credits": 8000},
+r = _patch(f"/samelabs/commerce/products/packages/{pkg_id}", json={"credits": 8000},
            cookies={COOKIE_NAME: op_sess})
 rows = _audit_rows("package.update", str(pkg_id))
 check("G2 package update → before=5000 / after=8000",
@@ -653,7 +662,7 @@ import threading
 
 # H1/H2: concurrent remote delete → exactly one audit; loser not_found
 rt3 = f"oart3_{_u}"
-r = _post("/samelabs/remote/create", json={
+r = _post("/samelabs/tools/create", json={
     "tool_id": rt3, "label": "CC", "url": "https://ops.example/cc",
     "timeout_s": 30, "cost": 20,
 }, cookies={COOKIE_NAME: op_sess})
@@ -664,7 +673,7 @@ barrier = threading.Barrier(2)
 
 def _del_worker(tag):
     barrier.wait(timeout=15)
-    results[tag] = _post(f"/samelabs/remote/{rt3}/delete", json={},
+    results[tag] = _post(f"/samelabs/tools/{rt3}/delete", json={},
                          cookies={COOKIE_NAME: op_sess})
 
 t1 = threading.Thread(target=_del_worker, args=("A",))
@@ -772,7 +781,7 @@ _ord_mod.package_by_id_for_update = _gated_pbfu
 
 res_pb = {}
 def _pkg_worker_b():
-    res_pb["r"] = _patch(f"/samelabs/packages/{pkg4}",
+    res_pb["r"] = _patch(f"/samelabs/commerce/products/packages/{pkg4}",
                          json={"credits": 800},
                          cookies={COOKIE_NAME: op_sess})
 
@@ -781,7 +790,7 @@ tb2 = threading.Thread(target=_pkg_worker_b)
 tb2.start()
 check("H4pre B entered and stalled before package lock",
       _pkg_entered.wait(timeout=10))
-rA2 = _patch(f"/samelabs/packages/{pkg4}", json={"credits": 500},
+rA2 = _patch(f"/samelabs/commerce/products/packages/{pkg4}", json={"credits": 500},
              cookies={COOKIE_NAME: op_sess})
 _pkg_release.set()
 tb2.join(30)
@@ -799,8 +808,11 @@ check("H4 B audit before=500 (A 已 commit), 非 stale 100 → 800",
 # H5: pricing/presentation/remote-delete share the SAME tool-row boundary
 # (proved structurally: all three call tool_row_for_update /
 # platform_row_for_update which locks platform_tools.tool_key)
-_src_sam = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
-                encoding="utf-8").read()
+_src_sam = open(_os.path.join(_REPO, "app", "routes", "samelabs",
+                               "tools.py"),
+                encoding="utf-8").read() \
+    + open(_os.path.join(_REPO, "core", "backoffice", "tools.py"),
+           encoding="utf-8").read()
 check("H5 三类 tool mutation 同走 tool-row FOR UPDATE 边界",
       _src_sam.count("tool_row_for_update(") >= 2
       and "platform_row_for_update(con, tool_key" in _src_sam)
@@ -841,15 +853,16 @@ with db() as con:
     con.execute(
         "insert into pricing (tool_id, cost, enabled, updated_at)"
         " values (%s, 10, TRUE, %s)", (rt4 + "z", ts))
-_orig_snap = _sam_mod._snap_pricing
+import backoffice.tools as _bo_tools      # app-path identity (routes use it)
+_orig_snap = _bo_tools._snap_pricing
 def _bad_snap(r):
     d = _orig_snap(r)
     return {**(d or {}), "url": "https://leak"} if d is not None else d
-_sam_mod._snap_pricing = _bad_snap
+_bo_tools._snap_pricing = _bad_snap
 r7 = _post(f"/samelabs/tools/{rt4}z/pricing",
            json={"cost": 55, "enabled": True},
            cookies={COOKIE_NAME: op_sess})
-_sam_mod._snap_pricing = _orig_snap
+_bo_tools._snap_pricing = _orig_snap
 with db() as con:
     cost_now = con.execute("select cost from pricing where tool_id=%s",
                            (rt4 + "z",)).fetchone()

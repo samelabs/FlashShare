@@ -19,9 +19,11 @@ earning record. This module adds:
                            etc.) attach later; the bookkeeping loop is
                            closed NOW: request → approve → deduct
                            (ledger) → mark paid.
-  process_withdrawal()   — operator verb (/samelabs): approve (ledger
-                           'withdraw' with idem withdrawal:{id}) or
-                           reject (request stays, balance untouched).
+  approve_withdrawal()   — operator verb: pending → approved, exactly
+                           one withdraw ledger row (idem withdrawal:{id})
+  reject_withdrawal()    — pending → rejected, zero ledger mutation
+  mark_withdrawal_paid() — approved → paid with external payout_ref,
+                           zero ledger mutation
 
 Red lines honored:
   - consumer credits and cash NEVER mix in one row: withdrawals are
@@ -85,13 +87,17 @@ def withdrawal_count(user_id: int) -> int:
 def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> dict:
     """Provider asks to cash out. amount is USD-millis (whole-cent only —
     the route parses the USD decimal string via economy.money; this
-    layer never sees floats). Request only — balance stays put until
-    operator approval (reject leaves it untouched).
+    layer never sees floats). Request only — the earn pool is untouched
+    until operator approval (reject never debits).
 
-    Concurrency boundary: the users row lock (SELECT FOR UPDATE)
-    serializes same-provider requests, so available-calculation and the
-    pending INSERT commit as one unit — two concurrent requests can
-    never both see the same available and over-commit it.
+    S4: the request freezes the CURRENT users.payout_channel into
+    withdrawals.payout_channel_snapshot inside the same transaction.
+    Empty channel → typed error payout_channel_required, no row created.
+    Later profile edits never change an existing request.
+
+    Concurrency boundary: the users row lock (SELECT FOR UPDATE) is the
+    SAME cash-pool anchor Tool settlement uses — same-provider requests,
+    earning writes and approvals all serialize here.
     """
     from economy.money import strict_int
     amount = strict_int(amount)   # real int only — bool/float/str/None fail
@@ -101,7 +107,12 @@ def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> di
         raise ValueError("withdrawal_min")
     ts = now()
     with db() as con:
-        ledger_repo.lock_user(con, user_id)   # serialization boundary
+        ledger_repo.lock_user(con, user_id)   # cash-pool serialization anchor
+        from repo import users as users_repo
+        ch = users_repo.payout_channel_of(con, user_id)
+        channel = (ch["payout_channel"] or "").strip()[:120] if ch else ""
+        if not channel:
+            raise ValueError("payout_channel_required")
         earned = ledger_repo.sum_kind(con, user_id, "provider_earn")
         withdrawn = economy_repo.withdrawal_sum(
             con, user_id, ("approved", "paid"))
@@ -109,75 +120,138 @@ def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> di
         available = int(earned) - int(withdrawn) - int(pending)
         if amount > available:
             raise ValueError("withdrawal_insufficient")
-        from repo import users as users_repo
-        ch = users_repo.payout_channel_of(con, user_id)
-        channel = (ch["payout_channel"] or "")[:120] if ch else ""
-        row = economy_repo.insert_withdrawal(con, user_id, amount,
-                                             (note or "")[:200], ts)
-    out = dict(row)
-    out["payout_channel"] = channel  # surfaced for the operator queue
-    return out
+        row = economy_repo.insert_withdrawal(
+            con, user_id, amount, (note or "")[:200], ts, channel)
+    return dict(row)
 
 
-def process_withdrawal(withdrawal_id: int, approve: bool,
-                       admin_user_id: int | None = None,
-                       txn_ref: str | None = None) -> dict:
-    """Operator verb. Approve = ledger consume (kind='withdraw',
-    idem withdrawal:{id}) + status flip, ONE transaction. Reject = flip
-    only. Re-processing a finished request is a typed no-op error."""
-    from economy.billing import consume
+def _snap_w(r) -> dict:
+    # withdrawal allowlist ONLY — never payout channel / payout_ref
+    # secrets; the request-time channel snapshot stays on the row.
+    return {"id": int(r["id"]), "user_id": int(r["user_id"]),
+            "amount": int(r["amount"]), "status": str(r["status"])}
+
+
+def approve_withdrawal(withdrawal_id: int,
+                       admin_user_id: int) -> dict:
+    """pending → approved. Exactly one withdraw ledger row (idem
+    withdrawal:{id}); review fields set; paid fields untouched.
+
+    Replay: approve on an already-approved row is a NO-OP success
+    (returns the row; zero ledger, zero audit). Any other state →
+    typed transition conflict.
+    """
     from repo import operator_audit
     ts = now()
+    with db() as con:
+        # 1. lock the withdrawal row
+        row = economy_repo.withdrawal_for_update(con, withdrawal_id)
+        if not row:
+            raise KeyError("not_found")
+        # replay: approved × approve → existing row, zero mutation
+        if row["status"] == "approved":
+            return dict(row)
+        if row["status"] != "pending":
+            raise ValueError("transition_conflict")
+        # 2. lock provider users row — the earn-pool serialization
+        #    anchor shared with settlement + requests
+        ledger_repo.lock_user(con, int(row["user_id"]))
+        before = _snap_w(row)
+        # 3-5. re-read pool facts; verify still fully funded
+        avail = (
+            ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
+            - economy_repo.withdrawal_sum_excluding(
+                con, row["user_id"], ("approved", "paid"), withdrawal_id)
+            - economy_repo.withdrawal_sum_excluding(
+                con, row["user_id"], ("pending",), withdrawal_id))
+        if int(avail) < int(row["amount"]):
+            con.rollback()
+            raise ValueError("withdrawal_insufficient")
+        # 6. exactly one withdraw ledger row (unique idem backs this)
+        earn_pool_after = ledger_repo.earn_pool_balance(
+            con, row["user_id"]) - int(row["amount"])
+        ledger_repo.insert_row(con, row["user_id"], -int(row["amount"]),
+                               earn_pool_after, "withdraw",
+                               "withdrawal", str(row["id"]),
+                               f"withdrawal:{row['id']}",
+                               f"withdrawal #{row['id']}", ts)
+        # 7. status → approved (review fields only)
+        out = economy_repo.mark_reviewed(
+            con, withdrawal_id, "approved", ts, int(admin_user_id))
+        # 9. audit inside the same transaction
+        operator_audit.record(
+            con, int(admin_user_id), "withdrawal.approve",
+            "withdrawal", str(withdrawal_id), before,
+            {**before, "status": "approved",
+             "reviewed_by": int(admin_user_id)}, ts)
+    return dict(out)
 
-    def _snap_w(r) -> dict:
-        # withdrawal allowlist ONLY — never payout channel / txn secrets
-        return {"id": int(r["id"]), "user_id": int(r["user_id"]),
-                "amount": int(r["amount"]), "status": str(r["status"])}
 
+def reject_withdrawal(withdrawal_id: int,
+                      admin_user_id: int) -> dict:
+    """pending → rejected. ZERO ledger mutation.
+
+    Replay: reject on an already-rejected row is a NO-OP success
+    (zero mutation, zero duplicate audit).
+    """
+    from repo import operator_audit
+    ts = now()
     with db() as con:
         row = economy_repo.withdrawal_for_update(con, withdrawal_id)
         if not row:
             raise KeyError("not_found")
+        if row["status"] == "rejected":
+            return dict(row)               # replay: no-op success
         if row["status"] != "pending":
-            raise ValueError("already_processed")
+            raise ValueError("transition_conflict")
         before = _snap_w(row)
-        if approve:
-            new_status = "approved"
-            # EARN-pool gate (same accounting as the request path's
-            # earnings_summary): withdrawal pays provider earnings only —
-            # top-up credits are NOT withdrawable. Available excluding this
-            # pending row = earned - (approved+paid) - other_pending.
-            avail = (
-                ledger_repo.sum_kind(con, row["user_id"], "provider_earn")
-                - economy_repo.withdrawal_sum_excluding(
-                    con, row["user_id"], ("approved", "paid"), withdrawal_id)
-                - economy_repo.withdrawal_sum_excluding(
-                    con, row["user_id"], ("pending",), withdrawal_id))
-            if int(avail) < int(row["amount"]):
-                con.rollback()
-                raise ValueError("withdrawal_insufficient")
-            # withdraw 属 EARN 池支出; balance_after 与 provider_earn writer
-            # 同一单池口径 (earn_pool_balance = provider_earn − withdraw)。
-            earn_pool_after = ledger_repo.earn_pool_balance(
-                con, row["user_id"]) - int(row["amount"])
-            ledger_repo.insert_row(con, row["user_id"], -int(row["amount"]),
-                                   earn_pool_after, "withdraw",
-                                   "withdrawal", str(row["id"]),
-                                   f"withdrawal:{row['id']}",
-                                   f"withdrawal #{row['id']}", ts)
-        else:
-            new_status = "rejected"
-        out = economy_repo.finish_withdrawal(
-            con, withdrawal_id, new_status, ts, admin_user_id,
-            (txn_ref or None) if approve else None)
-        # audit INSIDE the same domain transaction — failure rolls the
-        # withdrawal mutation (and its ledger consume) back with it.
+        out = economy_repo.mark_reviewed(
+            con, withdrawal_id, "rejected", ts, int(admin_user_id))
         operator_audit.record(
-            con, int(admin_user_id or 0),
-            "withdrawal.approve" if approve else "withdrawal.reject",
-            "withdrawal", str(withdrawal_id),
-            before, {**before, "status": new_status,
-                     "processed_by": int(admin_user_id or 0)}, ts)
+            con, int(admin_user_id), "withdrawal.reject",
+            "withdrawal", str(withdrawal_id), before,
+            {**before, "status": "rejected",
+             "reviewed_by": int(admin_user_id)}, ts)
+    return dict(out)
+
+
+def mark_withdrawal_paid(withdrawal_id: int, payout_ref: str,
+                         admin_user_id: int) -> dict:
+    """approved → paid. payout_ref = actual non-empty external settlement
+    evidence (bounded length, stored verbatim). ZERO ledger mutation —
+    the single debit happened at approval.
+
+    Replay: paid + SAME payout_ref → NO-OP success (zero mutation,
+    zero duplicate audit). paid + different payout_ref → typed
+    payout_ref_conflict (original evidence is never overwritten).
+    pending → paid is FORBIDDEN (transition_conflict).
+    """
+    from repo import operator_audit
+    # strict: only a real JSON string may carry external settlement
+    # evidence — numbers/bools/null/containers are NEVER coerced
+    if not isinstance(payout_ref, str):
+        raise ValueError("invalid_payout_ref_type")
+    ref = payout_ref.strip()
+    if not ref or len(ref) > 200:
+        raise ValueError("invalid_payout_ref")
+    ts = now()
+    with db() as con:
+        row = economy_repo.withdrawal_for_update(con, withdrawal_id)
+        if not row:
+            raise KeyError("not_found")
+        if row["status"] == "paid":
+            if (row["payout_ref"] or "") == ref:
+                return dict(row)           # replay: same evidence, no-op
+            raise ValueError("payout_ref_conflict")
+        if row["status"] != "approved":
+            raise ValueError("transition_conflict")
+        before = _snap_w(row)
+        out = economy_repo.mark_paid(
+            con, withdrawal_id, ts, int(admin_user_id), ref)
+        operator_audit.record(
+            con, int(admin_user_id), "withdrawal.paid",
+            "withdrawal", str(withdrawal_id), before,
+            {**before, "status": "paid", "paid_by": int(admin_user_id)}, ts)
     return dict(out)
 
 
@@ -194,10 +268,3 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
                     "tool": tool_id if tool_id is not None else "?",
                     "ts": int(r["created_at"])})
     return out, int(total)
-
-
-def list_all_pending(limit: int = 50) -> list:
-    """Operator queue (/samelabs/withdrawals)."""
-    with db() as con:
-        rows = economy_repo.withdrawals_queue(con, limit)
-    return [dict(r) for r in rows]

@@ -380,7 +380,8 @@ _hev("subscription.active", {"subscription": {"id": "sub_sm", "status": "active"
 check("PP-5 active status alone never grants", _bal(uidS) == _balA)
 
 # ═══ Operator guards ═══
-_src_sml = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"),
+_src_sml = open(_os.path.join(_REPO, "app", "routes", "samelabs",
+                               "commerce.py"),
                 encoding="utf-8").read()
 check("OP-1 product_binding_immutable guard 存在",
       "product_binding_immutable" in _src_sml)

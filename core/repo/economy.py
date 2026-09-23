@@ -1,8 +1,8 @@
-"""repo: economy — withdrawals 数据访问 (批2a: 经济域专用).
+"""repo: economy — withdrawals 数据访问 (经济域专用).
 
-规则: 函数=(con,...)->rows, 参数化, 无事务/无业务判断。
-(activities 函数已移除 — 每日登录 = economy.daily 模块常量,
-不经 repo/表。)
+S4: withdrawal lifecycle 数据访问 — 参数化 SQL, 无事务/无业务判断。
+列名为 final authority (payout_channel_snapshot / reviewed_* / paid_* /
+payout_ref); 旧 processed_at/processed_by/txn_ref 不再存在。
 """
 
 from typing import Optional, Sequence
@@ -10,14 +10,16 @@ from typing import Optional, Sequence
 
 # ── withdrawals ──
 
-def insert_withdrawal(con, user_id: int, amount: int, note, ts: int) -> dict:
+def insert_withdrawal(con, user_id: int, amount: int, note, ts: int,
+                      payout_channel_snapshot: str) -> dict:
     return con.execute(
         """
         INSERT INTO withdrawals
-           (user_id, amount, status, note, created_at, txn_ref)
-           VALUES (%s, %s, 'pending', %s, %s, NULL) RETURNING *
+           (user_id, amount, status, note, payout_channel_snapshot,
+            created_at)
+           VALUES (%s, %s, 'pending', %s, %s, %s) RETURNING *
         """,
-        (user_id, amount, note, ts)).fetchone()
+        (user_id, amount, note, payout_channel_snapshot, ts)).fetchone()
 
 
 def withdrawal_for_update(con, withdrawal_id: int) -> Optional[dict]:
@@ -26,15 +28,28 @@ def withdrawal_for_update(con, withdrawal_id: int) -> Optional[dict]:
         (withdrawal_id,)).fetchone()
 
 
-def finish_withdrawal(con, withdrawal_id: int, status: str, ts: int,
-                      admin_user_id, txn_ref) -> dict:
+def mark_reviewed(con, withdrawal_id: int, status: str, ts: int,
+                  admin_user_id: int) -> dict:
+    """pending → approved | rejected: review fields only, one UPDATE."""
     return con.execute(
         """
-        UPDATE withdrawals SET status = %s, processed_at = %s,
-           processed_by = %s, txn_ref = COALESCE(%s, txn_ref)
+        UPDATE withdrawals SET status = %s, reviewed_at = %s,
+           reviewed_by = %s
         WHERE id = %s RETURNING *
         """,
-        (status, ts, admin_user_id, txn_ref, withdrawal_id)).fetchone()
+        (status, ts, admin_user_id, withdrawal_id)).fetchone()
+
+
+def mark_paid(con, withdrawal_id: int, ts: int, admin_user_id: int,
+              payout_ref: str) -> dict:
+    """approved → paid: paid fields + external settlement evidence."""
+    return con.execute(
+        """
+        UPDATE withdrawals SET status = 'paid', paid_at = %s,
+           paid_by = %s, payout_ref = %s
+        WHERE id = %s RETURNING *
+        """,
+        (ts, admin_user_id, payout_ref, withdrawal_id)).fetchone()
 
 
 def withdrawals_by_user(con, user_id: int, limit: int, offset: int) -> list:
@@ -68,9 +83,11 @@ def withdrawal_sum_excluding(con, user_id: int, statuses: Sequence[str],
 
 
 def withdrawals_queue(con, limit: int = 50) -> list:
+    """Operator queue: payout destination comes from the REQUEST-TIME
+    snapshot column, never a live users.payout_channel join."""
     return con.execute(
         """
-        SELECT w.*, u.username, u.payout_channel FROM withdrawals w
+        SELECT w.*, u.username FROM withdrawals w
         JOIN users u ON u.id = w.user_id
         ORDER BY (w.status = 'pending') DESC, w.id DESC LIMIT %s
         """,

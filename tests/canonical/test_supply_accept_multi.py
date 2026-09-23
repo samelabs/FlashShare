@@ -93,11 +93,8 @@ check("A3b 存库精确 ['.pdf']", t4["accept"] == [".pdf"], str(t4["accept"]))
 # ── C: operator multi 严格 boolean (operator 端点需 admin — 直接测路由行为
 #    通过 samelabs/remote/create 需要 admin session; 用 admin 账号) ──
 # admin 登录 (id2 ainotebook / 后台账号): 从 env/惯例拿 — samelabs 有独立鉴权?
-# samelabs 路由的鉴权方式:
-import re as _re
-src = open(os.path.join(_REPO, 'app/routes/samelabs.py')).read()
-m = _re.search(r'def (require_admin|_admin|check_admin)\w*\(', src)
-print("samelabs 鉴权:", m.group(1) if m else "看路由装饰")
+# samelabs 鉴权: session gate (users.status='samelabs') — S4 起路由在
+# app/routes/samelabs/ 包内, 无需源内省
 
 # operator 测试账号 op4ctest (验收脚本自建, 尾部清理)。
 # 上批清理后账号已删 → 脚本内重建 (注册普通号 → SQL 升 status='samelabs')。
@@ -119,7 +116,7 @@ print("operator login:", "ok" if admin_cookie else "fail")
 if admin_cookie:
     # C: multi 类型矩阵
     for val, want in [(True, "ok"), (False, "ok"), ("true", "bad_multi"), ("false", "bad_multi"), (1, "bad_multi"), (0, "bad_multi")]:
-        st, r = req("POST", "/samelabs/remote/create", {
+        st, r = req("POST", "/samelabs/tools/create", {
             "tool_id": f"mtest{uuid.uuid4().hex[:6]}", "label": "MT",
             "url": "https://httpbin.org/anything", "timeout_s": 30,
             "accept": ".png,.jpg", "multi": val}, admin_cookie)
@@ -127,7 +124,7 @@ if admin_cookie:
         check(f"C multi={val!r} → {want}", got == want, f"{st} {r}")
     # D: accept=".png,.jpg" multi=true → DB canonical + multi
     tid = "dbcheck" + uuid.uuid4().hex[:5]
-    st, r = req("POST", "/samelabs/remote/create", {
+    st, r = req("POST", "/samelabs/tools/create", {
         "tool_id": tid, "label": "DB", "url": "https://httpbin.org/anything",
         "timeout_s": 30, "accept": ".png,.jpg", "multi": True}, admin_cookie)
     check("D operator create ok", r.get("ok"), str(r))

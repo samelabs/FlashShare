@@ -138,6 +138,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_earnings_cash_denomination.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_s4_control_plane.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_s4_control_plane.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_remote_security.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_invocation_canonical.py
@@ -367,6 +371,9 @@ jobs:
       - name: Earnings cash denomination canonical
         run: python tests/canonical/test_earnings_cash_denomination.py
 
+      - name: S4 control plane + withdrawal workflow canonical
+        run: python tests/canonical/test_s4_control_plane.py
+
       - name: Result settlement atomicity canonical
         run: python tests/canonical/test_result_settlement_atomicity.py
 
@@ -461,6 +468,8 @@ jobs:
             node tests/browser/test_runtime_gate.js
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             node tests/browser/test_runtime_gate.js
+          expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
+            node tests/browser/test_s4_chromium.js
       - name: Start Gokapi HTTP-boundary service
         shell: bash
         run: |
@@ -503,6 +512,10 @@ jobs:
           PLAYWRIGHT_CORE_PATH: ${{ github.workspace }}/node_modules/playwright-core
           GATE_ARTIFACTS: /tmp/fs-browser-gate-artifacts
         run: node tests/browser/test_runtime_gate.js
+      - name: S4 control plane runtime (Chromium)
+        env:
+          PLAYWRIGHT_CORE_PATH: ${{ github.workspace }}/node_modules/playwright-core
+        run: node tests/browser/test_s4_chromium.js
       - name: Upload screenshots artifact
         if: always()
         uses: actions/upload-artifact@v4

@@ -68,11 +68,19 @@ async def my_earnings(request: Request):
     wd_out = [{"id": w["id"], "status": w["status"],
                # lossless: historical sub-cent facts keep exact millis
                "amount_usd": millis_to_usd_str(w["amount"]),
+               # request-time freeze from the withdrawal row itself —
+               # never the live profile (later edits must not rewrite history)
+               "payout_channel_snapshot": w["payout_channel_snapshot"],
                "created_at": w["created_at"]}
               for w in wd_rows]
+    # current profile payout channel (what the NEXT request would freeze)
+    with db() as con:
+        from repo.users import payout_channel_of
+        cur_ch = payout_channel_of(con, user["id"])
     return {
         "ok": True,
         "summary": summary,
+        "payout_channel": (cur_ch or {}).get("payout_channel") or "",
         "tools": tools_out,
         "withdrawals": wd_out,
         "wd_total": earnings.withdrawal_count(user["id"]),

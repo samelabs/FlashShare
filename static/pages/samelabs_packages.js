@@ -58,7 +58,7 @@
     }
     if (!body.name) { slToast("err", "缺名称", ""); return; }
     if (body.credits < 1) { slToast("err", "积分须 ≥ 1", ""); return; }
-    var url = editing === null ? "/samelabs/packages" : "/samelabs/packages/" + editing;
+    var url = editing === null ? "/samelabs/commerce/products/packages" : "/samelabs/commerce/products/packages/" + editing;
     slBusy(btn, slPost(url, body, editing === null ? "POST" : "PATCH")).then(function (r) {
       if (r.ok && r.data.ok) {
         slToast("ok", editing === null ? "已创建" : "已保存", r.data.package.code + " · $" + (r.data.package.price_cents / 100).toFixed(2));

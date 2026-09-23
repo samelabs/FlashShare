@@ -748,7 +748,7 @@ check("ROUTE endpoint_json unchanged",
 u2, uid2 = _new_user("rs2")
 _cur.execute("update users set status='samelabs' where id=%s", (uid2,))
 sess2 = create_browser_session(uid2)
-r = client.post("/samelabs/remote/create", json={
+r = client.post("/samelabs/tools/create", json={
     "tool_id": "secop1", "url": "https://pub.example/y",
     "auth_header": "X-Key", "auth_token": "opsecret"},
     cookies={COOKIE_NAME: sess2})
@@ -931,13 +931,13 @@ check("OUT-5 merge kept canonical fields",
       and _merged["auth_header"] == "X-Key", _merged)
 
 # OUT-6: operator route rejects explicit legacy fields (typed 422)
-r = client.post("/samelabs/remote/create", json={
+r = client.post("/samelabs/tools/create", json={
     "tool_id": "secopout", "url": "https://pub.example/o",
     "output_filename": "x.png"}, cookies={COOKIE_NAME: sess2})
 check("OUT-6 operator create output_filename → 422 bad_output_filename",
       r.status_code == 422 and r.json().get("error") == "bad_output_filename",
       f"{r.status_code} {r.text[:80]}")
-r = client.post("/samelabs/remote/create", json={
+r = client.post("/samelabs/tools/create", json={
     "tool_id": "secopout", "url": "https://pub.example/o",
     "output_content_type": "image/png"}, cookies={COOKIE_NAME: sess2})
 check("OUT-6 operator create output_content_type → 422",
@@ -955,7 +955,7 @@ check("OUT-7 owner projection has no output_filename/output_content_type",
           for p in _proj), [sorted(p) for p in _proj][:1])
 
 # 清场
-# uid2 被升为 samelabs operator 并驱动过 /samelabs/remote/create → 留下
+# uid2 被升为 samelabs operator 并驱动过 /samelabs/tools/create → 留下
 # operator_audit 行; actor FK 不带 CASCADE, 测试清理先删 audit 引用再删
 # actor (test-only cleanup; 生产 audit writer 保持 append-only)。
 _cur.execute("delete from operator_audit where actor_user_id in (%s, %s)"

@@ -498,7 +498,9 @@ _tiers_src = open(_os.path.join(_REPO, "core", "governance", "plan_catalog.py"),
 _ent_src = open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read()
 _creem_src = open(_os.path.join(_REPO, "core", "economy", "creem.py"), encoding="utf-8").read()
 _topup_src = open(_os.path.join(_REPO, "app", "routes", "topup.py"), encoding="utf-8").read()
-_samelabs_src = open(_os.path.join(_REPO, "app", "routes", "samelabs.py"), encoding="utf-8").read()
+_samelabs_src = open(_os.path.join(_REPO, "app", "routes", "samelabs",
+                                    "commerce.py"),
+                     encoding="utf-8").read()
 _sub_src2 = open(_os.path.join(_REPO, "core", "economy", "subscription.py"), encoding="utf-8").read()
 check("PG1 Tier 唯一构造源 = plans 行 (catalog 无档位字面量)",
       "class Tier" in _tiers_src
@@ -516,10 +518,12 @@ check("PG3 checkout API 拆分 (credits vs subscription)",
       and "def create_subscription_checkout(" in _creem_src
       and "custom_price" in _cred_blk and "custom_price" not in _subx_blk,
       f"cred={_cred_blk!r} sub={_subx_blk!r}")
+_bop_src = open(_os.path.join(_REPO, "core", "backoffice", "products.py"),
+                 encoding="utf-8").read()
 check("PG4 POST /samelabs/plans 后台建档 + free 行保护 + 权益值域 fail-closed",
-      '@router.post("/samelabs/plans")' in _samelabs_src
-      and "not_editable_tier" in _samelabs_src
-      and "EXPIRY_DAYS" in _samelabs_src and "DOWNLOAD_LIMITS" in _samelabs_src)
+      '@router.post("/samelabs/commerce/products/plans")' in _samelabs_src
+      and "not_editable_tier" in _bop_src
+      and "EXPIRY_DAYS" in _bop_src and "DOWNLOAD_LIMITS" in _bop_src)
 check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       "def upgrade_subscription" in _creem_src
       and '"proration-charge-immediately", "proration-none"' in _creem_src

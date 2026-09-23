@@ -88,7 +88,7 @@
     var body = payload();
     if (editing === null && !body.code) { slToast("err", "缺 code", "新档位需要唯一 code"); return; }
     if (!body.name) { slToast("err", "缺名称", ""); return; }
-    var url = editing === null ? "/samelabs/plans" : "/samelabs/plans/" + editing;
+    var url = editing === null ? "/samelabs/commerce/products/plans" : "/samelabs/commerce/products/plans/" + editing;
     slBusy(btn, slPost(url, body, editing === null ? "POST" : "PATCH")).then(function (r) {
       if (r.ok && r.data.ok) {
         slToast("ok", editing === null ? "已创建" : "已保存", r.data.plan.code + " · $" + (r.data.plan.price_cents / 100).toFixed(2));

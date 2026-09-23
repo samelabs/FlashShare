@@ -1,0 +1,42 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block title %}Orders{% endblock %}
+{% block crumb %}Samelabs / Commerce / Orders{% endblock %}
+{% block body %}
+<section class="sl-panel">
+  <h2>Orders (read-only facts)</h2>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr>
+      <th>ID</th><th>User</th><th>Kind</th><th>Item</th><th>Provider</th>
+      <th>Provider order</th><th>Amount</th><th>Credits snapshot</th>
+      <th>Status</th><th>Granted</th><th>Created</th><th>Paid</th><th>Refunded</th>
+    </tr></thead>
+    <tbody>
+    {% for o in orders %}
+      <tr>
+        <td>{{ o.id }}</td><td>{{ o.username or o.user_id }}</td>
+        <td>{{ o.kind }}</td><td>{{ o.item_id }}</td><td>{{ o.provider }}</td>
+        <td>{{ o.provider_order_id or '—' }}</td>
+        <td class="sl-num">{{ fmt_num(o.amount_cents) }} {{ o.currency }}</td>
+        <td class="sl-num">{{ fmt_num(o.credits_snapshot) if o.credits_snapshot is not none else '—' }}</td>
+        <td><span class="sl-badge">{{ o.status }}</span></td>
+        <td>{{ '✔' if o.granted else '✕' }}</td>
+        <td>{{ fmt_ts(o.created_at) }}</td>
+        <td>{{ fmt_ts(o.paid_at) if o.paid_at else '—' }}</td>
+        <td>{{ fmt_ts(o.refunded_at) if o.refunded_at else '—' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="13" class="sl-empty">No orders</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if pages > 1 %}
+  <nav class="sl-pager">
+    {% for p in range(1, pages + 1) %}
+      <a href="/samelabs/commerce/orders?page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

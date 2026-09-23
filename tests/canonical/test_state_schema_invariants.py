@@ -109,7 +109,7 @@ def _so():
             " WHERE p.code <> 'free'").fetchone()["so"])
 
 plan_ok = None
-r = client.post("/samelabs/plans", json={
+r = client.post("/samelabs/commerce/products/plans", json={
     "code": f"ssplus_{_u}", "name": "SS Plus", "monthly_credits": 100,
     "price_cents": 999, "period_days": 45, "sort_order": _so(),
     "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
@@ -123,7 +123,7 @@ with db() as con:
                      (plan_ok,)).fetchone()["period_days"]
 check("A1b DB period_days == 45 (无 30 改写)", int(pd) == 45, str(pd))
 
-r = client.post("/samelabs/plans", json={
+r = client.post("/samelabs/commerce/products/plans", json={
     "code": f"sszero_{_u}", "name": "SS Zero", "monthly_credits": 100,
     "price_cents": 999, "period_days": 0, "sort_order": _so() + 1,
     "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
@@ -132,11 +132,11 @@ r = client.post("/samelabs/plans", json={
 check("A2 create period_days=0 → 422 (不再静默 30)",
       r.status_code == 422, str(r.status_code))
 
-r = client.patch(f"/samelabs/plans/{plan_ok}", json={"period_days": 0},
+r = client.patch(f"/samelabs/commerce/products/plans/{plan_ok}", json={"period_days": 0},
                  cookies={COOKIE_NAME: op_sess})
 check("A3 update period_days=0 → 422",
       r.status_code == 422, str(r.status_code))
-r = client.patch(f"/samelabs/plans/{plan_ok}", json={"period_days": 15},
+r = client.patch(f"/samelabs/commerce/products/plans/{plan_ok}", json={"period_days": 15},
                  cookies={COOKIE_NAME: op_sess})
 check("A4 update 合法 period_days=15 原值落库", r.status_code == 200)
 with db() as con:
@@ -179,7 +179,7 @@ _n_aud = None
 with db() as con:
     _n_aud = int(con.execute("select count(*) c from operator_audit"
                              ).fetchone()["c"])
-r = client.post("/samelabs/plans", json={
+r = client.post("/samelabs/commerce/products/plans", json={
     "code": f"ssbad_{_u}", "name": "SS Bad", "monthly_credits": 100,
     "price_cents": 999, "period_days": 0, "creem_product_id": "prod_ss1",
     "sort_order": _so() + 3, "ingress_files_24h": 500,
@@ -197,17 +197,17 @@ check("A11 invalid plan (period 0, 绑品) → 422 + 零 Creem PATCH + 零 audit
       f"{r.status_code} patches={len(_PATCH_LOG)} aud={_n_aud2-_n_aud}")
 
 # ══════════ B. Package writer 一致性 ══════════
-r = client.post("/samelabs/packages", json={
+r = client.post("/samelabs/commerce/products/packages", json={
     "code": f"sspkg_{_u}", "name": "SS Pkg", "credits": 5000, "price": 499,
 }, cookies={COOKIE_NAME: op_sess})
 pkg_id = r.json().get("package", {}).get("id")
 check("B1 package create 合法", r.status_code == 200 and pkg_id is not None,
       str(r.status_code))
-r = client.post("/samelabs/packages", json={
+r = client.post("/samelabs/commerce/products/packages", json={
     "code": f"sspkg0_{_u}", "name": "SS Zero", "credits": 0, "price": 499,
 }, cookies={COOKIE_NAME: op_sess})
 check("B2 create credits=0 → 422", r.status_code == 422, str(r.status_code))
-r = client.patch(f"/samelabs/packages/{pkg_id}", json={"credits": 0},
+r = client.patch(f"/samelabs/commerce/products/packages/{pkg_id}", json={"credits": 0},
                  cookies={COOKIE_NAME: op_sess})
 check("B3 update credits=0 → 422 (与 create 一致)", r.status_code == 422,
       str(r.status_code))
@@ -215,7 +215,7 @@ check("B4 direct SQL credits=0 → DB CHECK reject",
       _db_rejects("update packages set credits=0 where id=%s", (pkg_id,)))
 check("B5 direct SQL price_cents<0 → DB CHECK reject",
       _db_rejects("update packages set price_cents=-1 where id=%s", (pkg_id,)))
-r = client.patch(f"/samelabs/packages/{pkg_id}", json={"price_cents": 0},
+r = client.patch(f"/samelabs/commerce/products/packages/{pkg_id}", json={"price_cents": 0},
                  cookies={COOKIE_NAME: op_sess})
 check("B6 price=0 免费 package 仍合法", r.status_code == 200, str(r.status_code))
 
@@ -347,18 +347,43 @@ with db() as con:
         "insert into ledger (user_id, delta, balance_after, kind, created_at)"
         " values (%s, 20000, 20000, 'provider_earn', %s)", (wu, ts))
     w1 = con.execute(
-        "insert into withdrawals (user_id, amount, status, created_at)"
-        " values (%s, 100, 'pending', %s) returning id", (wu, ts)).fetchone()
-check("E1 pending 合法", w1 is not None)
+        "insert into withdrawals (user_id, amount, status, created_at,"
+        " payout_channel_snapshot)"
+        " values (%s, 100, 'pending', %s, 'USDT-TRC20:ssi') returning id",
+        (wu, ts)).fetchone()
+check("E1 pending 合法 (bare pending, review/paid fields NULL)", w1 is not None)
+# S4 per-status CHECKs: approved/rejected need review fields; paid needs
+# review+paid fields+non-empty payout_ref; bare inserts must REJECT.
 for st in ("approved", "rejected", "paid"):
-    with db() as con:
-        con.execute(
-            "insert into withdrawals (user_id, amount, status, created_at)"
-            " values (%s, 100, %s, %s)", (wu, st, ts))
-check("E2 approved/rejected/paid 行均合法", True)
+    check(f"E2 bare {st} (no review fields) → DB reject",
+          _db_rejects("insert into withdrawals (user_id, amount, status,"
+                      " created_at, payout_channel_snapshot)"
+                      " values (%s, 100, %s, %s, 'USDT-TRC20:ssi')",
+                      (wu, st, ts)))
+with db() as con:
+    con.execute(
+        "insert into withdrawals (user_id, amount, status, created_at,"
+        " payout_channel_snapshot, reviewed_at, reviewed_by)"
+        " values (%s, 100, 'rejected', %s, 'USDT-TRC20:ssi', %s, %s)",
+        (wu, ts, ts, wu))
+check("E2b rejected WITH review fields 合法", True)
+with db() as con:
+    con.execute(
+        "insert into withdrawals (user_id, amount, status, created_at,"
+        " payout_channel_snapshot, reviewed_at, reviewed_by, paid_at,"
+        " paid_by, payout_ref)"
+        " values (%s, 100, 'paid', %s, 'USDT-TRC20:ssi', %s, %s, %s, %s,"
+        " 'REF-E2c')", (wu, ts, ts, wu, ts, wu))
+check("E2c paid WITH review+paid fields+ref 合法", True)
 check("E3 invalid withdrawal status → DB reject",
       _db_rejects("insert into withdrawals (user_id, amount, status,"
-                  " created_at) values (%s, 100, 'bogus', %s)", (wu, ts)))
+                  " created_at, payout_channel_snapshot)"
+                  " values (%s, 100, 'bogus', %s, 'USDT-TRC20:ssi')",
+                  (wu, ts)))
+check("E4 blank payout_channel_snapshot → DB reject",
+      _db_rejects("insert into withdrawals (user_id, amount, status,"
+                  " created_at, payout_channel_snapshot)"
+                  " values (%s, 100, 'pending', %s, '  ')", (wu, ts)))
 
 # ══════════ F. orders 不变量 ════════
 ou = _mkuser(_u + "ord")

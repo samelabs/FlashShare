@@ -42,6 +42,7 @@
   <div class="modal-panel">
     <button type="button" class="modal-close" id="closeWithdrawModal" aria-label="close">×</button>
     <h3 data-i18n="earn_modal_title">{{ texts.earn_modal_title }}</h3>
+    <p class="profile-note"><span data-i18n="earn_wd_channel">{{ texts.earn_wd_channel }}</span>: <strong id="wChannel"></strong></p>
     <p class="profile-note" id="withdrawHint"></p>
     <div class="usertools-form wd-modal-form">
       <label><span data-i18n="earn_wd_amount">{{ texts.earn_wd_amount }}</span><input id="wAmount" type="text" inputmode="decimal" pattern="[0-9]+(\.[0-9]{1,2})?" placeholder="10.00" autocomplete="off"></label>
@@ -49,6 +50,7 @@
     </div>
     <div class="usertools-submit-row">
       <button type="button" class="primary" id="submitWithdraw"><span data-i18n="earn_submit">{{ texts.earn_submit }}</span></button>
+      <p class="profile-note hidden success" id="wdFeedback" role="status"></p>
     </div>
   </div>
 </div>

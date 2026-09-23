@@ -330,7 +330,7 @@ def _mkplan(code, prod, price, monthly, so=None):
                 "select coalesce(max(sort_order), 0) + 1 s from plans"
             ).fetchone()["s"])
     _creem.CREEM_API_KEY = "test-key"
-    r = client.post("/samelabs/plans", json={
+    r = client.post("/samelabs/commerce/products/plans", json={
         "code": f"{code}_{_u}", "name": code.upper(), "monthly_credits": monthly,
         "price_cents": price, "creem_product_id": prod, "sort_order": so,
         "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,

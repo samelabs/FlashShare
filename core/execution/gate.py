@@ -199,6 +199,11 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
             # third-party: two independent legs, conservation holds at
             # every commission rate (0% / 30% / 100%) — USD-millis legs
             if payout_millis > 0:
+                # S4: serialize on the provider users row — the SAME
+                # cash-pool anchor withdrawal request/approve use, so a
+                # concurrent withdrawal cannot interleave between the
+                # pool read and the earning write.
+                ledger_repo.lock_user(con, owner_id)
                 base = ledger_repo.earn_pool_balance(con, owner_id)
                 insert_provider_earn_if_absent(
                     con, owner_id, payout_millis, base + payout_millis, call_id,

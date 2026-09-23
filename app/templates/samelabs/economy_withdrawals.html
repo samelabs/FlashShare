@@ -1,0 +1,46 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block title %}Withdrawals{% endblock %}
+{% block crumb %}Samelabs / Economy / Withdrawals{% endblock %}
+{% block body %}
+<section class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>Withdrawal queue (S4 lifecycle)</h2>
+    <span class="sl-panel-sub">pending → approved (one withdraw ledger row) → paid (external payout_ref). Reject never debits. Destination = request-time snapshot.</span>
+  </div>
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead>
+        <tr><th>ID</th><th>User</th><th>Amount</th><th>Payout destination (snapshot)</th>
+        <th>Status</th><th>Reviewed</th><th>Paid</th><th>payout_ref</th><th>Requested</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="wRows">
+        {% for w in withdrawals %}
+        <tr data-wid="{{ w.id }}">
+          <td>#{{ w.id }}</td>
+          <td>{{ w.username|e }}</td>
+          <td class="mono">{{ w.amount_usd }}</td>
+          <td class="mono">{{ w.payout|e }}</td>
+          <td><span class="sl-vis v-{{ w.status }}">{{ w.status }}</span></td>
+          <td>{{ fmt_ts(w.reviewed_at) if w.reviewed_at else '—' }}</td>
+          <td>{{ fmt_ts(w.paid_at) if w.paid_at else '—' }}</td>
+          <td class="mono">{{ (w.payout_ref or '—')|e }}</td>
+          <td>{{ fmt_ts(w.created_at) }}</td>
+          <td>
+            {% if w.status == 'pending' %}
+            <button type="button" class="sl-btn sl-btn-primary btn-approve" data-wid="{{ w.id }}">Approve</button>
+            <button type="button" class="sl-btn btn-reject" data-wid="{{ w.id }}">Reject</button>
+            {% elif w.status == 'approved' %}
+            <button type="button" class="sl-btn sl-btn-primary btn-paid" data-wid="{{ w.id }}">Mark paid…</button>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not withdrawals %}
+        <tr><td colspan="10" class="sl-empty">暂无申请</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+{% block script %}<script src="/static/pages/samelabs_withdrawals.js?v={{ pages_version }}"></script>{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block title %}Provider Earnings{% endblock %}
+{% block crumb %}Samelabs / Economy / Provider Earnings{% endblock %}
+{% block body %}
+<section class="sl-panel">
+  <h2>Provider Earnings (USD-millis → USD · attribution via tool_call relation, S2)</h2>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr><th>ID</th><th>Provider</th><th>Amount (USD)</th><th>Tool</th><th>Call</th><th>Note</th><th>Time</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.id }}</td><td>{{ r.username or r.user_id }}</td>
+        <td class="sl-num">{{ r.amount_usd }}</td>
+        <td>{{ r.tool }}</td>
+        <td>{{ r.ref_id or '—' }}</td>
+        <td>{{ r.note or '—' }}</td>
+        <td>{{ fmt_ts(r.created_at) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="sl-empty">No rows</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if pages > 1 %}
+  <nav class="sl-pager">
+    {% for p in range(1, pages + 1) %}
+      <a href="/samelabs/economy/earnings?page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

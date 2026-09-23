@@ -307,6 +307,10 @@ with db() as con:
                                    int(a["id"]), f"payout:{a['id']}", "kc payout", ts)
 _earned_now = _owner_earn()
 import threading
+# S4: requests freeze payout channel — set one before the concurrency bid
+with db() as con:
+    con.execute("update users set payout_channel='USDT-TRC20:kc' where id=%s",
+                (owner_id,))
 results = []
 def _wd(amount):
     try:
@@ -336,7 +340,7 @@ with db() as con:
     wid = int(con.execute(
         "select id from withdrawals where user_id=%s and status='pending'"
         " order by id limit 1", (owner_id,)).fetchone()["id"])
-w = earnings.process_withdrawal(wid, True, admin_user_id=1)
+w = earnings.approve_withdrawal(wid, admin_user_id=1)
 s_after = earnings.earnings_summary(owner_id)
 _approved_amt = _two_thirds   # S3: the request was snapped to whole cents
 check("K15a approve ok + available 扣减",
@@ -344,11 +348,21 @@ check("K15a approve ok + available 扣减",
       and s_after["available"] == _earned_now - _approved_amt
       and s_after["withdrawn"] == _approved_amt,
       f"{s_after} earned_now={_earned_now} approved={_approved_amt}")
-try:
-    earnings.process_withdrawal(wid, True, admin_user_id=1)
-    check("K15b double approve → already_processed", False, "no raise")
-except ValueError as e:
-    check("K15b double approve → already_processed", str(e) == "already_processed")
+# S4 replay semantics: approve on approved = replay success (zero new
+# ledger, zero duplicate audit) — still exactly ONE withdraw row after
+with db() as con:
+    _pre_n = int(con.execute(
+        "select count(*) n from ledger where user_id=%s and kind='withdraw'"
+        " and ref_id=%s", (owner_id, str(wid))).fetchone()["n"])
+_rp = earnings.approve_withdrawal(wid, admin_user_id=1)
+check("K15b approve replay → success, row stays approved",
+      _rp["status"] == "approved", _rp)
+with db() as con:
+    _post_n = int(con.execute(
+        "select count(*) n from ledger where user_id=%s and kind='withdraw'"
+        " and ref_id=%s", (owner_id, str(wid))).fetchone()["n"])
+check("K15b2 approve replay → zero second ledger row",
+      _pre_n == 1 and _post_n == 1, (_pre_n, _post_n))
 with db() as con:
     wm = con.execute(
         "select count(*) n from ledger where user_id=%s and kind='withdraw'"
@@ -423,17 +437,21 @@ check("K18 换算只经统一常量 (无散落 ×/÷1000 财务计算)",
 # K19: the REAL operator JS contract (source-level, not a hand-built request)
 _js = open(_os.path.join(_REPO, "static", "pages", "samelabs_users.js"),
            encoding="utf-8").read()
-check("K19 JS POST 发送 {amount, action_id}",
-      "{ amount: v, action_id: actionId }" in _js,
+# S4: users page moved from inline-row editor to a modal — contract kept:
+# one stable action id per committed action; retry resends it; success
+# clears it; a new edit mints a new one.
+check("K19 JS POST 发送 {amount, note, action_id}",
+      "{ amount: v, note: form.note.value, action_id: actionId }" in _js,
       "POST payload shape missing action_id")
 check("K19 JS 无 undefined resetAction 残留",
-      "resetAction" not in _js and "clearActionId" in _js)
+      "resetAction" not in _js and "clearActionId" not in _js)
 check("K19 JS 同一 action 重试复用同一 id (mint 一次, 失败不清)",
-      _js.index("if (!actionId) { mintActionId(); }")
+      "if (!actionId) {" in _js
+      and _js.index("if (!actionId) {")
       < _js.index("action_id: actionId")
-      and "reset(); clearActionId();" in _js)
-check("K19 JS 新编辑铸新 id (input → clear)",
-      "input.addEventListener('input', clearActionId);" in _js)
+      and "actionId = null;" in _js)
+check("K19 JS 新编辑铸新 id (打开 modal → null)",
+      "actionId = null;" in _js and "currentUid = b.dataset.adjust" in _js)
 # behavior proof: retry of the SAME action (same id) mutates once — already
 # proven at the HTTP boundary in K16; here prove the payload the real JS
 # sends is exactly what K16 exercised

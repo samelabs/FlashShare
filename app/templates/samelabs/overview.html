@@ -1,111 +1,56 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% set page_title = "概览" %}
+{% block title %}Overview{% endblock %}
+{% block crumb %}Samelabs / Overview{% endblock %}
 {% block body %}
+<section class="sl-cards">
+  <div class="sl-card">
+    <h2>Product</h2>
+    <dl class="sl-kv">
+      <dt>Users</dt><dd>{{ fmt_num(product.users) }}</dd>
+      <dt>Successful Tool calls</dt><dd>{{ fmt_num(product.calls_ok) }}</dd>
+      <dt>Failed Tool calls</dt><dd>{{ fmt_num(product.calls_failed) }}</dd>
+      <dt>Runtime-enabled + priced Tools</dt><dd>{{ fmt_num(product.tools_live_priced) }}</dd>
+    </dl>
+  </div>
+  <div class="sl-card">
+    <h2>Consumer Credits</h2>
+    <dl class="sl-kv">
+      <dt>Spendable Credits outstanding</dt><dd>{{ fmt_num(consumer.credits_outstanding) }}</dd>
+      <dt>Tool Credits charged</dt><dd>{{ fmt_num(consumer.credits_charged) }}</dd>
+    </dl>
+  </div>
+  <div class="sl-card">
+    <h2>Provider Economy (USD)</h2>
+    <dl class="sl-kv">
+      <dt>Provider Earnings accrued</dt><dd>{{ provider_usd.earned }}</dd>
+      <dt>Pending withdrawals</dt><dd>{{ provider_usd.wd_pending }}</dd>
+      <dt>Settled withdrawals (approved+paid)</dt><dd>{{ provider_usd.wd_settled }}</dd>
+    </dl>
+  </div>
+  <div class="sl-card">
+    <h2>Platform Income (USD)</h2>
+    <dl class="sl-kv">
+      <dt>platform_commission</dt><dd>{{ platform_usd.commission }}</dd>
+      <dt>platform_revenue</dt><dd>{{ platform_usd.revenue }}</dd>
+    </dl>
+  </div>
+</section>
 
-<div class="sl-stats">
-  <div class="sl-stat">
-    <div class="sl-stat-top">
-      <span class="sl-stat-label">用户</span>
-      <span class="sl-stat-ico sl-tint-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-    </div>
-    <h3>{{ fmt_num(stats.users) }}</h3>
-    <div class="sl-stat-sub">注册总数</div>
-  </div>
-  <div class="sl-stat">
-    <div class="sl-stat-top">
-      <span class="sl-stat-label">分享记录</span>
-      <span class="sl-stat-ico sl-tint-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></span>
-    </div>
-    <h3>{{ fmt_num(stats.uploads) }}</h3>
-    <div class="sl-stat-sub">累计上传</div>
-  </div>
-  <div class="sl-stat">
-    <div class="sl-stat-top">
-      <span class="sl-stat-label">成功调用</span>
-      <span class="sl-stat-ico sl-tint-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
-    </div>
-    <h3>{{ fmt_num(stats.calls_ok) }}</h3>
-    <div class="sl-stat-sub">工具执行成功</div>
-  </div>
-  <div class="sl-stat">
-    <div class="sl-stat-top">
-      <span class="sl-stat-label">失败调用</span>
-      <span class="sl-stat-ico sl-tint-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></span>
-    </div>
-    <h3>{{ fmt_num(stats.calls_failed) }}</h3>
-    <div class="sl-stat-sub">工具执行失败</div>
-  </div>
-  <div class="sl-stat">
-    <div class="sl-stat-top">
-      <span class="sl-stat-label">累计发放</span>
-      <span class="sl-stat-ico sl-tint-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
-    </div>
-    <h3>{{ fmt_num(stats.credits_granted) }}</h3>
-    <div class="sl-stat-sub">积分发放总量</div>
-  </div>
-  <div class="sl-stat">
-    <div class="sl-stat-top">
-      <span class="sl-stat-label">累计消耗</span>
-      <span class="sl-stat-ico sl-tint-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
-    </div>
-    <h3>{{ fmt_num(stats.credits_consumed) }}</h3>
-    <div class="sl-stat-sub">积分消耗总量</div>
-  </div>
-</div>
-
-<div class="sl-grid2">
-  <div class="sl-panel">
-    <div class="sl-panel-head">
-      <h2>最近调用</h2>
-      <span class="sl-panel-sub">最新 {{ recent|length }} 条</span>
-    </div>
-    <div class="sl-tablewrap">
-      <table class="sl-tbl">
-        <thead><tr><th>时间</th><th>用户</th><th>工具</th><th>状态</th><th class="sl-num">积分</th></tr></thead>
-        <tbody>
-        {% for r in recent %}
-          <tr>
-            <td class="sl-dim">{{ fmt_ts(r.finished_at or r.started_at) }}</td>
-            <td>{{ (r.username or r.user_id)|e }}</td>
-            <td class="sl-mono">{{ r.tool_id|e }}</td>
-            <td>
-              {% if r.status == 'ok' %}<span class="sl-badge sl-b-ok">ok</span>
-              {% else %}<span class="sl-badge sl-b-err">{{ r.status|e }}</span>{% endif %}
-            </td>
-            <td class="sl-num">{{ r.cost_snapshot if r.status == 'ok' else '—' }}</td>
-          </tr>
-        {% else %}
-          <tr><td colspan="5" class="sl-dim">暂无调用</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="sl-panel">
-    <div class="sl-panel-head">
-      <h2>工具热度</h2>
-      <span class="sl-panel-sub">全部调用次数</span>
-    </div>
-    {% if top_tools %}
-    <div>
-      {% set max_n = top_tools[0].n %}
-      {% for t in top_tools %}
-        <div class="sl-heat">
-          <span class="sl-heat-name sl-mono">{{ t.tool_id|e }}</span>
-          <span class="sl-heat-track"><span class="sl-heat-bar" style="width: {{ (t.n * 100 / max_n)|round(0, 'floor') }}%"></span></span>
-          <span class="sl-heat-val">{{ fmt_num(t.n) }}</span>
-        </div>
-      {% endfor %}
-    </div>
+<section class="sl-panel">
+  <h2>Recent Tool calls</h2>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr><th>id</th><th>Tool</th><th>User</th><th>Status</th><th>Started</th></tr></thead>
+    <tbody>
+    {% for r in recent %}
+      <tr><td>{{ r.id }}</td><td>{{ r.tool_id }}</td><td>{{ r.username or '—' }}</td>
+      <td><span class="sl-badge sl-badge-{{ 'ok' if r.status == 'ok' else 'err' }}">{{ r.status }}</span></td>
+      <td>{{ fmt_ts(r.started_at) }}</td></tr>
     {% else %}
-    <div class="sl-empty">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-4.4 4.5-2.3-2.3-4.4 4.4"/></svg>
-      <h4>暂无数据</h4>
-      <p>还没有任何工具调用记录</p>
-    </div>
-    {% endif %}
+      <tr><td colspan="5" class="sl-empty">No calls yet</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
   </div>
-</div>
-
+</section>
 {% endblock %}

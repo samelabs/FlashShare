@@ -6,7 +6,7 @@ INSERT + 只读查询; 本表永不 UPDATE / DELETE, 永不成为任何价格/�
 Plan/Tool/Withdrawal/权限的 Source of Truth。
 
 快照纪律: 调用方必须传 allowlist 投影后的 safe dict (见
-routes.samelabs._audit_* 投影函数), 本 repo 不做二次过滤 — 但保留
+core/operator 命令层投影函数), 本 repo 不做二次过滤 — 但保留
 _secret_scan 断言作为最后防线: 快照值里出现明显凭据形状即拒绝写入。
 """
 import json
@@ -26,7 +26,8 @@ TARGET_SAFE_KEYS = {
     "tool": {"tool_key", "featured", "sort_order"},
     "user_credits": {"user_id", "delta", "balance_before",
                      "balance_after", "ledger_id"},
-    "withdrawal": {"id", "user_id", "amount", "status", "processed_by"},
+    "withdrawal": {"id", "user_id", "amount", "status", "reviewed_at",
+                   "reviewed_by", "paid_at", "paid_by"},
     "remote_tool": {"tool_key", "tool_id", "execution", "tool_type",
                     "visibility", "enabled", "featured", "sort_order",
                     "multi", "accept", "cost"},
