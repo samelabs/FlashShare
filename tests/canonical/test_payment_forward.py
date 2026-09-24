@@ -302,8 +302,10 @@ with db() as con:
 check("P6 snapshot 字段落库 = 10000", int(order["credits_snapshot"]) == 10000,
       str(dict(order)))
 
-# operator mutates the package AFTER checkout: 10000 → 20000
-r = client.patch(f"/samelabs/commerce/products/packages/{pkg_id}", json={"credits": 20000},
+# operator mutates the package AFTER checkout: 10000 → 20000 (price moves
+# with it to stay inside the commercial floor: credits <= price_cents*10)
+r = client.patch(f"/samelabs/commerce/products/packages/{pkg_id}",
+                 json={"credits": 20000, "price_cents": 2000},
                  cookies={COOKIE_NAME: op_sess})
 check("P7 operator 改 package → 20000 (live 行可变)", r.status_code == 200)
 

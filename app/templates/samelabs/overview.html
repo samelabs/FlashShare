@@ -10,13 +10,14 @@
       <dt>Successful Tool calls</dt><dd>{{ fmt_num(product.calls_ok) }}</dd>
       <dt>Failed Tool calls</dt><dd>{{ fmt_num(product.calls_failed) }}</dd>
       <dt>Runtime-enabled + priced Tools</dt><dd>{{ fmt_num(product.tools_live_priced) }}</dd>
+      <dt>Effective memberships</dt><dd>{{ fmt_num(consumer.memberships_effective) }}</dd>
     </dl>
   </div>
   <div class="sl-card">
     <h2>Consumer Credits</h2>
     <dl class="sl-kv">
       <dt>Spendable Credits outstanding</dt><dd>{{ fmt_num(consumer.credits_outstanding) }}</dd>
-      <dt>Tool Credits charged</dt><dd>{{ fmt_num(consumer.credits_charged) }}</dd>
+      <dt>Tool Credits charged (net of refunds)</dt><dd>{{ fmt_num(consumer.credits_charged_net) }}</dd>
     </dl>
   </div>
   <div class="sl-card">
@@ -24,7 +25,8 @@
     <dl class="sl-kv">
       <dt>Provider Earnings accrued</dt><dd>{{ provider_usd.earned }}</dd>
       <dt>Pending withdrawals</dt><dd>{{ provider_usd.wd_pending }}</dd>
-      <dt>Settled withdrawals (approved+paid)</dt><dd>{{ provider_usd.wd_settled }}</dd>
+      <dt>Approved withdrawals, not yet paid</dt><dd>{{ provider_usd.wd_approved_unpaid }}</dd>
+      <dt>Paid withdrawals</dt><dd>{{ provider_usd.wd_paid }}</dd>
     </dl>
   </div>
   <div class="sl-card">
@@ -43,8 +45,8 @@
     <thead><tr><th>id</th><th>Tool</th><th>User</th><th>Status</th><th>Started</th></tr></thead>
     <tbody>
     {% for r in recent %}
-      <tr><td>{{ r.id }}</td><td>{{ r.tool_id }}</td><td>{{ r.username or '—' }}</td>
-      <td><span class="sl-badge sl-badge-{{ 'ok' if r.status == 'ok' else 'err' }}">{{ r.status }}</span></td>
+      <tr><td>{{ r.id }}</td><td>{{ r.tool_id|e }}</td><td>{{ (r.username or '—')|e }}</td>
+      <td><span class="sl-badge sl-badge-{{ 'ok' if r.status == 'ok' else 'err' }}">{{ r.status|e }}</span></td>
       <td>{{ fmt_ts(r.started_at) }}</td></tr>
     {% else %}
       <tr><td colspan="5" class="sl-empty">No calls yet</td></tr>

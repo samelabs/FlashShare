@@ -48,7 +48,7 @@ async def memberships(request: Request, page: int = 1):
     page = max(1, page)
     with db() as con:
         rows, total = operator_views.memberships_page(
-            con, _PAGE, (page - 1) * _PAGE)
+            con, _PAGE, (page - 1) * _PAGE, now())
     return templates.TemplateResponse(
         request, "samelabs/commerce_memberships.html",
         ctx(request, user, memberships=[dict(r) for r in rows],
@@ -84,11 +84,6 @@ async def products(request: Request):
             fmt_num=fmt_num, page_id="commerce"))
 
 
-class _ConflictError(Exception):
-    def __init__(self, token):
-        self.token = token
-
-
 @router.post("/samelabs/commerce/products/plans")
 async def create_plan(request: Request):
     user, resp = gate(request)
@@ -116,14 +111,10 @@ async def create_plan(request: Request):
                                              "product_binding_immutable",
                                              "plan_checkout_pending")
                             else 422)
+    except products_cmd.ConflictError as exc:
+        return JSONResponse({"ok": False, "error": exc.token}, 409)
     except psycopg2.IntegrityError:
         return JSONResponse({"ok": False, "error": "code_taken"}, 409)
-    except Exception as exc:
-        # backoffice local ConflictError carries a .token → typed 409
-        token = getattr(exc, "token", None)
-        if token:
-            return JSONResponse({"ok": False, "error": token}, 409)
-        raise
     return {"ok": True, "plan": out["plan"]}
 
 
@@ -154,6 +145,8 @@ async def update_plan(plan_id: int, request: Request):
                                              "product_binding_immutable",
                                              "plan_checkout_pending")
                             else 422)
+    except products_cmd.ConflictError as exc:
+        return JSONResponse({"ok": False, "error": exc.token}, 409)
     except psycopg2.IntegrityError as exc:
         from backoffice.products import _integrity_error_token
         return JSONResponse(

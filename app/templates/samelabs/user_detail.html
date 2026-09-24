@@ -1,0 +1,148 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block title %}User #{{ u.id }}{% endblock %}
+{% block crumb %}Samelabs / <a href="/samelabs/users">Users</a> / #{{ u.id }}{% endblock %}
+{% block body %}
+<section class="sl-cards">
+  <div class="sl-card">
+    <h2>Profile</h2>
+    <dl class="sl-kv">
+      <dt>ID</dt><dd>{{ u.id }}</dd>
+      <dt>Username</dt><dd>{{ u.username|e }}</dd>
+      <dt>Display name</dt><dd>{{ u.display_name|e }}</dd>
+      <dt>Email</dt><dd>{{ (u.email or '—')|e }}</dd>
+      <dt>X</dt><dd>{{ ('@' ~ u.x_username)|e if u.x_username else '—' }}</dd>
+      <dt>Status</dt><dd><span class="sl-badge">{{ u.status|e }}</span></dd>
+      <dt>Created</dt><dd>{{ fmt_ts(u.created_at) }}</dd>
+      <dt>Last login</dt><dd>{{ fmt_ts(u.last_login_at) }}</dd>
+    </dl>
+  </div>
+  <div class="sl-card">
+    <h2>Consumer Credits</h2>
+    <dl class="sl-kv">
+      <dt>Spendable Credits</dt><dd>{{ fmt_num(u.spendable_credits) }}</dd>
+    </dl>
+  </div>
+  <div class="sl-card">
+    <h2>Provider Earnings (USD)</h2>
+    <dl class="sl-kv">
+      <dt>Accrued</dt><dd>{{ u.provider_earned_usd }}</dd>
+      <dt>Pending withdrawals</dt><dd>{{ u.provider_pending_usd }}</dd>
+      <dt>Available</dt><dd>{{ u.provider_available_usd }}</dd>
+      <dt>Payout channel (live)</dt><dd class="sl-mono">{{ (u.payout_channel or '—')|e }}</dd>
+    </dl>
+  </div>
+  <div class="sl-card">
+    <h2>Membership</h2>
+    <dl class="sl-kv">
+      {% if u.membership_status %}
+      <dt>Plan</dt><dd>{{ (u.plan_code or '?')|e }} — {{ (u.plan_name or '')|e }}</dd>
+      <dt>Effective status</dt><dd><span class="sl-badge {{ 'sl-b-ok' if u.membership_effective else 'sl-b-muted' }}">{{ u.membership_status|e }}</span>{% if u.membership_status != u.membership_stored_status %} <span class="sl-dim">(stored: {{ u.membership_stored_status|e }})</span>{% endif %}</dd>
+      <dt>Provider subscription</dt><dd class="sl-mono">{{ u.provider_subscription_id|e }}</dd>
+      <dt>Started</dt><dd>{{ fmt_ts(u.membership_started_at) }}</dd>
+      <dt>Renews / ends</dt><dd>{{ fmt_ts(u.membership_renews_at) if u.membership_renews_at else '—' }}</dd>
+      <dt>Cancel scheduled</dt><dd>{{ fmt_ts(u.membership_cancel_scheduled_at) if u.membership_cancel_scheduled_at else '—' }}</dd>
+      {% else %}
+      <dt>Plan</dt><dd>— (no membership row)</dd>
+      {% endif %}
+    </dl>
+  </div>
+</section>
+
+<section class="sl-panel">
+  <h2>Recent orders</h2>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr><th>ID</th><th>Kind</th><th>Item</th><th>Provider order</th><th>Amount</th><th>Credits snapshot</th><th>Status</th><th>Granted</th><th>Created</th><th>Paid</th><th>Refunded</th></tr></thead>
+    <tbody>
+    {% for o in orders %}
+      <tr>
+        <td>{{ o.id }}</td><td>{{ o.kind|e }}</td><td>{{ o.item_id|e }}</td>
+        <td>{{ (o.provider_order_id or '—')|e }}</td>
+        <td class="sl-num">{{ fmt_num(o.amount_cents) }} {{ o.currency|e }}</td>
+        <td class="sl-num">{{ fmt_num(o.credits_snapshot) if o.credits_snapshot is not none else '—' }}</td>
+        <td><span class="sl-badge">{{ o.status|e }}</span></td>
+        <td>{{ '✔' if o.granted else '✕' }}</td>
+        <td>{{ fmt_ts(o.created_at) }}</td>
+        <td>{{ fmt_ts(o.paid_at) if o.paid_at else '—' }}</td>
+        <td>{{ fmt_ts(o.refunded_at) if o.refunded_at else '—' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="11" class="sl-empty">No orders</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sl-panel">
+  <h2>Recent Tool calls</h2>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr><th>ID</th><th>Tool</th><th>Status</th><th>Cost (Credits)</th><th>Error</th><th>Started</th><th>Finished</th></tr></thead>
+    <tbody>
+    {% for c in calls %}
+      <tr>
+        <td>{{ c.id }}</td><td>{{ c.tool_id|e }}</td>
+        <td><span class="sl-badge sl-badge-{{ 'ok' if c.status == 'ok' else 'err' }}">{{ c.status|e }}</span></td>
+        <td class="sl-num">{{ fmt_num(c.cost_snapshot) }}</td>
+        <td class="sl-dim">{{ (c.error or '—')|e }}</td>
+        <td>{{ fmt_ts(c.started_at) }}</td>
+        <td>{{ fmt_ts(c.finished_at) if c.finished_at else '—' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="sl-empty">No calls</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sl-panel">
+  <h2>Recent withdrawals</h2>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr><th>ID</th><th>Amount</th><th>Destination (snapshot)</th><th>Status</th><th>payout_ref</th><th>Requested</th><th>Reviewed</th><th>Paid</th></tr></thead>
+    <tbody>
+    {% for w in withdrawals %}
+      <tr>
+        <td>#{{ w.id }}</td>
+        <td class="sl-num">{{ w.amount_usd }}</td>
+        <td class="sl-mono">{{ w.payout_channel_snapshot|e }}</td>
+        <td><span class="sl-badge">{{ w.status|e }}</span></td>
+        <td class="sl-mono">{{ (w.payout_ref or '—')|e }}</td>
+        <td>{{ fmt_ts(w.created_at) }}</td>
+        <td>{{ fmt_ts(w.reviewed_at) if w.reviewed_at else '—' }}</td>
+        <td>{{ fmt_ts(w.paid_at) if w.paid_at else '—' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="sl-empty">No withdrawals</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sl-panel">
+  <h2>Recent ledger rows (per-row facts, unit by kind — never summed across kinds)</h2>
+  <div class="sl-table-wrap">
+  <table class="sl-table">
+    <thead><tr><th>ID</th><th>Kind</th><th>Amount</th><th>Unit</th><th>Ref</th><th>Note</th><th>Time</th></tr></thead>
+    <tbody>
+    {% for r in ledger %}
+      <tr>
+        <td>{{ r.id }}</td><td>{{ r.kind|e }}</td>
+        <td class="sl-num {{ 'sl-pos' if r.delta > 0 else 'sl-neg' }}">{{ r.amount|e }}</td>
+        <td>{{ r.unit }}</td>
+        <td class="sl-mono">{{ ((r.ref_type or '') ~ (':' ~ r.ref_id if r.ref_id else ''))|e or '—' }}</td>
+        <td>{{ (r.note or '—')|e }}</td>
+        <td>{{ fmt_ts(r.created_at) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="sl-empty">No ledger rows</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="sl-dim"><a href="/samelabs/economy/credits?user_id={{ u.id }}">All Credits rows for this user →</a></p>
+</section>
+{% endblock %}

@@ -8,9 +8,10 @@
     <input type="number" name="user_id" value="{{ q_user or '' }}" placeholder="user id" class="sl-input" min="1">
     <select name="kind" class="sl-input">
       <option value="">— kind —</option>
-      {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == q_kind }}>{{ k }}</option>{% endfor %}
+      {% for k in kinds %}<option value="{{ k|e }}" {{ 'selected' if k == q_kind }}>{{ k|e }}</option>{% endfor %}
     </select>
     <button class="sl-btn" type="submit">Filter</button>
+    <span class="sl-dim">{{ fmt_num(total) }} rows</span>
   </form>
   <div class="sl-table-wrap">
   <table class="sl-table">
@@ -18,10 +19,10 @@
     <tbody>
     {% for r in rows %}
       <tr>
-        <td>{{ r.id }}</td><td>{{ r.username or r.user_id }}</td><td>{{ r.kind }}</td>
+        <td>{{ r.id }}</td><td><a href="/samelabs/users/{{ r.user_id }}">{{ (r.username or r.user_id)|e }}</a></td><td>{{ r.kind|e }}</td>
         <td class="sl-num {{ 'sl-pos' if r.delta > 0 else 'sl-neg' }}">{{ '%+d'|format(r.delta) }}</td>
         <td class="sl-num">{{ fmt_num(r.balance_after) }}</td>
-        <td>{{ r.note or '—' }}</td>
+        <td>{{ (r.note or '—')|e }}</td>
         <td>{{ fmt_ts(r.created_at) }}</td>
       </tr>
     {% else %}
@@ -33,7 +34,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/economy/credits?user_id={{ q_user or '' }}&kind={{ q_kind }}&page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/economy/credits?user_id={{ q_user or '' }}&amp;kind={{ q_kind|urlencode }}&amp;page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

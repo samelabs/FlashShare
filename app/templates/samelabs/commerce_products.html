@@ -160,6 +160,7 @@
 
 {% endblock %}
 {% block script %}
+<script>window.__SL_PLANS__ = {{ plans|tojson }}; window.__SL_PKGS__ = {{ packages|tojson }};</script>
 <script src="/static/pages/samelabs_plans.js?v={{ pages_version }}"></script>
 <script src="/static/pages/samelabs_packages.js?v={{ pages_version }}"></script>
 {% endblock %}

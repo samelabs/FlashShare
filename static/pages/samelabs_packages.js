@@ -66,6 +66,8 @@
       } else {
         var why = r.data && r.data.error;
         if (why === "code_taken") why = "code 已存在";
+        if (why === "credits_per_usd_exceeded") why = "每 USD 至多 1000 积分 (积分 ≤ 价格分 × 10)";
+        if (why === "currency_not_usd") why = "仅支持 USD 定价";
         slToast("err", "保存失败", why || "请求失败");
       }
     });

@@ -98,6 +98,31 @@ def set_tool_presentation(operator_id: int, tool_key: str, featured: bool,
     return dict(row)
 
 
+def _snap_enabled(r) -> dict:
+    if r is None:
+        return {}
+    return {"tool_key": r["tool_key"], "enabled": bool(r["enabled"])}
+
+
+def set_tool_enabled(operator_id: int, tool_key: str,
+                     enabled: bool) -> dict:
+    """Registry switch (platform_tools.enabled) for any row (Official
+    local / Operator HTTP / Provider Tool): row lock → before snapshot →
+    tool_supply single-point write → audit, ONE transaction."""
+    from governance.tool_supply import update_tool
+    from repo.catalog import tool_row_for_update, by_tool_key
+    with db() as con:
+        cur = tool_row_for_update(con, tool_key)
+        if cur is None:
+            raise KeyError("not_found")
+        before = _snap_enabled(cur)
+        update_tool(tool_key, {"enabled": bool(enabled)}, con=con)
+        after = _snap_enabled(by_tool_key(con, tool_key))
+        operator_audit.record(con, operator_id, "tool.enabled.update",
+                              "tool", str(tool_key), before, after, now())
+    return after
+
+
 def create_http_tool(operator_id: int, payload: dict) -> str:
     """Operator trusted HTTP tool create (owner_id NULL, bare-id
     namespace). Validation lives with the route; this command composes

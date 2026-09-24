@@ -1,5 +1,29 @@
-/* ── Tool Supply: pricing inline save + presentation + HTTP create/delete ── */
+/* ── Tool Supply: pricing inline save + enable switch + HTTP create/delete ──
+   tool_key may carry '/' (provider tools: owner/tool) — every URL segment
+   is built through toolUrl() (encodeURIComponent). */
 (function () {
+  function toolUrl(key, action) {
+    return '/samelabs/tools/' + encodeURIComponent(key) + '/' + action;
+  }
+
+  document.querySelectorAll('input[data-toggle-enabled]').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var key = cb.dataset.toggleEnabled;
+      var want = cb.checked;
+      cb.disabled = true;
+      slPost(toolUrl(key, 'enabled'), { enabled: want }).then(function (r) {
+        cb.disabled = false;
+        if (r.ok && r.data.ok) {
+          cb.checked = !!r.data.enabled;
+          slToast('ok', r.data.enabled ? '已启用' : '已停用', key);
+        } else {
+          cb.checked = !want;
+          slToast('err', '切换失败', key + ' · ' + ((r.data && r.data.error) || ''));
+        }
+      });
+    });
+  });
+
   document.querySelectorAll('form[data-pricing]').forEach(function (f) {
     f.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -7,7 +31,7 @@
       var cost = parseInt(f.cost.value, 10);
       if (isNaN(cost) || cost < 0) { slToast('err', '单价无效', tool); return; }
       var btn = f.querySelector('button[type=submit]');
-      slBusy(btn, slPost('/samelabs/tools/' + tool + '/pricing',
+      slBusy(btn, slPost(toolUrl(tool, 'pricing'),
                          { cost: cost, enabled: f.enabled.checked }))
         .then(function (r) {
           if (r.ok && r.data.ok) slToast('ok', '已保存', tool + ' · ' + cost + ' Credits');
@@ -25,7 +49,7 @@
         return;
       }
       clearTimeout(t); b.disabled = true;
-      slPost('/samelabs/tools/' + b.dataset.del + '/delete', {})
+      slPost(toolUrl(b.dataset.del, 'delete'), {})
         .then(function (r) {
           if (r.ok && r.data.ok) { slToast('ok', '已删除', b.dataset.del); setTimeout(function () { location.reload(); }, 600); }
           else { slToast('err', '删除失败', (r.data && r.data.error) || ''); b.disabled = false; armed = false; b.textContent = 'Delete'; }
