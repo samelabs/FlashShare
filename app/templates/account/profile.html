@@ -20,6 +20,12 @@
         <span data-i18n="email">{{ texts.email }}</span>
         <input type="email" name="email" value="{{ (u.email or '')|e }}" required maxlength="254">
       </label>
+      {% if user_has_password %}
+      <label>
+        <span data-i18n="currentPassword">{{ texts.currentPassword }}</span>
+        <input type="password" name="current_password" autocomplete="current-password" maxlength="128">
+      </label>
+      {% endif %}
       <label>
         <span data-i18n="displayName">{{ texts.displayName }}</span>
         <input type="text" name="display_name" value="{{ (u.displayName or '')|e }}" maxlength="64">

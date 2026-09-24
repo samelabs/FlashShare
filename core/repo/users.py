@@ -12,10 +12,12 @@ def by_id(con, user_id: int) -> Optional[dict]:
         "SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
 
 
-def by_username_or_email(con, login: str) -> Optional[dict]:
+def by_username_or_email(con, login: str, email: str) -> Optional[dict]:
+    """login matches username exactly; email is the normalized (lowercase)
+    form and matches case-insensitively."""
     return con.execute(
-        "SELECT id, password_hash, status FROM users WHERE username = %s OR email = %s",
-        (login, login)).fetchone()
+        "SELECT id, password_hash, status FROM users WHERE username = %s OR lower(email) = %s",
+        (login, email)).fetchone()
 
 
 def by_x_user_id(con, x_id: str) -> Optional[dict]:
@@ -29,8 +31,9 @@ def username_exists(con, username: str) -> bool:
 
 
 def email_taken_by_other(con, email: str, user_id: int) -> bool:
+    """email is the normalized (lowercase) form; case-insensitive match."""
     return con.execute(
-        "SELECT 1 FROM users WHERE email = %s AND id != %s",
+        "SELECT 1 FROM users WHERE lower(email) = %s AND id != %s",
         (email, user_id)).fetchone() is not None
 
 

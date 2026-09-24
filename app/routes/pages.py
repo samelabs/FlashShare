@@ -2,6 +2,7 @@
 
 import sys
 import json
+import logging
 import hashlib
 import datetime
 import urllib.parse
@@ -40,7 +41,10 @@ router = APIRouter()
 from app.web_ctx import _STATIC  # 静态目录单点 (web_ctx 持有)
 from app.web_ctx import (  # noqa: F401 (模板/路由沿用原名)
     ctx_base as _ctx_base_impl, _CSS_VERSION, _JS_VERSION, _I18N_VERSION, JS,
+    error_text,
 )
+
+logger = logging.getLogger("flashshare")
 
 
 def _ctx_base(request):
@@ -661,14 +665,22 @@ async def account_profile_save(request: Request):
     email = (form.get("email") or "").strip()
     bio = (form.get("bio") or "").strip()
     payout_channel = (form.get("payout_channel") or "").strip()
+    current_password = form.get("current_password") or ""
 
     try:
-        update_profile(user["id"], display_name=display_name or None, email=email or None, bio=bio or None, payout_channel=payout_channel or None)
+        update_profile(user["id"], display_name=display_name or None, email=email or None, bio=bio or None, payout_channel=payout_channel or None,
+                       current_password=current_password or None)
     except Exception as exc:
+        if isinstance(exc, ValueError):
+            code = str(exc)
+        else:
+            logger.exception("profile update failed uid=%s", user["id"])
+            code = ""
         u = public_user(user)
         ctx = _account_ctx(request, "profile", u=u,
                            user_has_password=u.get("hasPassword", False),
-                           x_bound=bool(u.get("xUsername")), error=str(exc))
+                           x_bound=bool(u.get("xUsername")),
+                           error=error_text(request, code))
         return templates.TemplateResponse(request, "account/profile.html", ctx)
 
     return RedirectResponse("/account/profile", 302)
@@ -699,16 +711,19 @@ async def account_password_save(request: Request):
     if new_password != new_password_confirm:
         return _err(server_text(lang).get("passwordMismatch", ""))
     if not new_password:
-        return _err(server_text(lang).get("err_fill_login", ""))
+        return _err(error_text(request, "err_password_empty"))
 
-    if has_password(user["id"]):
-        if not old_password:
-            return _err(server_text(lang).get("err_fill_login", ""))
-        try:
+    try:
+        if has_password(user["id"]):
+            if not old_password:
+                return _err(error_text(request, "err_current_password_required"))
             change_password(user["id"], old_password, new_password)
-        except Exception as exc:
-            return _err(str(exc))
-    else:
-        set_password(user["id"], new_password)
+        else:
+            set_password(user["id"], new_password)
+    except ValueError as exc:
+        return _err(error_text(request, str(exc)))
+    except Exception:
+        logger.exception("password update failed uid=%s", user["id"])
+        return _err(error_text(request, ""))
 
     return RedirectResponse("/account/security", 302)

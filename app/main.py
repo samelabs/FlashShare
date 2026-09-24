@@ -115,11 +115,13 @@ def get_user_from_request(request: Request):
             from repo.sessions import user_by_session_token
             with db() as con:
                 row = user_by_session_token(con, token_hash(token), now())
-            if row:
-                request.state.auth_via = "session"
-            return dict(row) if row else None
         except Exception:
             return None
+        if row:
+            request.state.auth_via = "session"
+            return dict(row)
+        # A stale/invalid cookie is no identity: /mcp still resolves its
+        # Bearer below; every other path stays anonymous.
     path = request.url.path
     if path == "/mcp":
         auth = request.headers.get("authorization", "")

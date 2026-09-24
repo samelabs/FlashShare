@@ -9,7 +9,7 @@ import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 
 import psycopg2
 
@@ -27,43 +27,62 @@ from identity.auth import (
     exchange_x_token, fetch_x_user, upsert_x_user,
     unbind_x,
     validate_username, validate_email, validate_password,
-    username_taken,
+    username_taken, normalize_email,
 )
 from i18n import server_text
 from utils import now, b64url
 from app.web_auth import require_session_auth, redirect_with_session
+from app.web_ctx import error_text
 
 router = APIRouter()
 logger = logging.getLogger("flashshare")
 
-_LOGIN_FAIL_LIMIT = 10
+# In-memory sliding-window throttles (single uvicorn worker).
+_LOGIN_FAIL_LIMIT = 10              # failures per (ip, login)
 _LOGIN_FAIL_WINDOW = 15 * 60
 _login_failures: dict[tuple, list[int]] = {}
+_LOGIN_IP_FAIL_LIMIT = 50           # failures per ip, across all logins
+_login_ip_failures: dict[tuple, list[int]] = {}
+_REGISTER_IP_LIMIT = 30             # register attempts per ip
+_REGISTER_IP_WINDOW = 60 * 60
+_register_attempts: dict[tuple, list[int]] = {}
+
+# X OAuth browser binding: the initiating browser holds the state in an
+# HttpOnly cookie; the callback must present the same value.
+_OAUTH_COOKIE = "flashshare_x_oauth"
+
+
+def _throttled(store: dict, key: tuple, limit: int, window: int) -> bool:
+    ts = now()
+    hits = [t for t in store.get(key, []) if ts - t < window]
+    store[key] = hits
+    return len(hits) >= limit
+
+
+def _record_hit(store: dict, key: tuple, window: int) -> None:
+    store.setdefault(key, []).append(now())
+    if len(store) > 10000:
+        cutoff = now() - window
+        for k in list(store):
+            store[k] = [t for t in store[k] if t >= cutoff]
+            if not store[k]:
+                del store[k]
 
 
 def _login_throttled(key: tuple) -> bool:
-    ts = now()
-    hits = [t for t in _login_failures.get(key, []) if ts - t < _LOGIN_FAIL_WINDOW]
-    _login_failures[key] = hits
-    return len(hits) >= _LOGIN_FAIL_LIMIT
+    return _throttled(_login_failures, key, _LOGIN_FAIL_LIMIT, _LOGIN_FAIL_WINDOW)
 
 
 def _record_login_failure(key: tuple) -> None:
-    _login_failures.setdefault(key, []).append(now())
-    if len(_login_failures) > 10000:
-        cutoff = now() - _LOGIN_FAIL_WINDOW
-        for k in list(_login_failures):
-            _login_failures[k] = [t for t in _login_failures[k] if t >= cutoff]
-            if not _login_failures[k]:
-                del _login_failures[k]
+    _record_hit(_login_failures, key, _LOGIN_FAIL_WINDOW)
+
+
+def _client_ip(request: Request) -> str:
+    return request.headers.get("X-Real-IP", request.client.host if request.client else "")
 
 
 def _lang(request: Request) -> str:
     return getattr(request.state, "lang", "en")
-
-
-def _t(request: Request, key: str, **kw):
-    return server_text(_lang(request)).get(key, key)
 
 
 def _grant_daily(uid: int) -> None:
@@ -117,7 +136,38 @@ async def x_login(request: Request):
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
-    return RedirectResponse("https://x.com/i/oauth2/authorize?" + urllib.parse.urlencode(params))
+    resp = RedirectResponse("https://x.com/i/oauth2/authorize?" + urllib.parse.urlencode(params))
+    resp.set_cookie(_OAUTH_COOKIE, state, max_age=OAUTH_TTL, path="/auth/x",
+                    httponly=True, secure=True, samesite="lax")
+    return resp
+
+
+def _x_error(request: Request, code: str):
+    from app.main import templates
+    from app.web_ctx import ctx_base as _ctx_base
+    ctx = _ctx_base(request)
+    ctx.update({"shell_class": "", "share_url": "", "error": error_text(request, code)})
+    resp = templates.TemplateResponse(request, "auth/login.html", ctx)
+    resp.status_code = 400
+    resp.delete_cookie(_OAUTH_COOKIE, path="/auth/x")
+    return resp
+
+
+def verify_oauth_callback(state: str, browser_state: str, row,
+                          session_user_id: int | None) -> str | None:
+    """Callback acceptance for a popped (single-use) state record.
+
+    The state must have been issued to this browser (cookie equals state)
+    and, for a bind flow, the browser's live session must belong to the
+    bind target. Returns an error code or None."""
+    if not row:
+        return "err_x_state_expired"
+    if not browser_state or not secrets.compare_digest(browser_state, state):
+        return "err_x_state_expired"
+    bind_user_id = row.get("bind_user_id")
+    if bind_user_id and session_user_id != bind_user_id:
+        return "err_x_bind_failed"
+    return None
 
 
 @router.get("/x/callback")
@@ -127,46 +177,41 @@ async def x_callback(request: Request):
     if not code or not state:
         return RedirectResponse("/", 302)
 
+    # Single use: the state record is consumed by any callback attempt.
     with db() as con:
         row = pop_oauth_state(con, state, now())
-    if not row:
-        from app.main import templates
-        from app.web_ctx import ctx_base as _ctx_base
-        ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": _t(request, "err_x_state_expired")})
-        resp = templates.TemplateResponse(request, "auth/login.html", ctx)
-        resp.status_code = 400
-        return resp
+    session_user, _ = require_session_auth(request)
+    err = verify_oauth_callback(
+        state, request.cookies.get(_OAUTH_COOKIE, ""), row,
+        session_user["id"] if session_user else None)
+    if err:
+        logger.warning("x callback rejected: %s (state_found=%s)", err, bool(row))
+        return _x_error(request, err)
 
     try:
         token = exchange_x_token(code, row["verifier"])
         x_user = fetch_x_user(token["access_token"])
-    except Exception as exc:
-        from app.main import templates
-        from app.web_ctx import ctx_base as _ctx_base
-        ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_login_incomplete")}: {exc}'})
-        resp = templates.TemplateResponse(request, "auth/login.html", ctx)
-        resp.status_code = 400
-        return resp
+    except Exception:
+        logger.exception("x callback: token exchange / user lookup failed")
+        return _x_error(request, "err_x_login_incomplete")
 
-    bind_user_id = row["bind_user_id"] if "bind_user_id" in row.keys() else None
+    bind_user_id = row.get("bind_user_id")
     try:
         user_id = upsert_x_user(x_user, bind_user_id=bind_user_id)
     except ValueError as exc:
-        from app.main import templates
-        from app.web_ctx import ctx_base as _ctx_base
-        ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": f'{_t(request, "err_x_bind_failed")}: {exc}'})
-        resp = templates.TemplateResponse(request, "auth/login.html", ctx)
-        resp.status_code = 400
-        return resp
+        logger.warning("x callback: upsert rejected: %s", exc)
+        code_ = str(exc)
+        if code_ not in ("err_user_suspended", "err_x_bound_other", "err_user_not_found"):
+            code_ = "err_x_bind_failed"
+        return _x_error(request, code_)
 
     if bind_user_id:
-        return RedirectResponse("/account/profile", 302)
-
-    _login_maintenance(user_id)
-    return redirect_with_session("/", user_id)
+        resp = RedirectResponse("/account/profile", 302)
+    else:
+        _login_maintenance(user_id)
+        resp = redirect_with_session("/", user_id)
+    resp.delete_cookie(_OAUTH_COOKIE, path="/auth/x")
+    return resp
 
 
 @router.post("/x/unbind")
@@ -174,7 +219,10 @@ async def x_unbind(request: Request):
     user, err = require_session_auth(request)
     if err:
         return err
-    unbind_x(user["id"])
+    try:
+        unbind_x(user["id"])
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 400)
     return {"ok": True}
 
 
@@ -193,8 +241,14 @@ async def login_submit(request: Request):
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_fill_login", "Please fill in all fields")})
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
-    ip = request.headers.get("X-Real-IP", request.client.host if request.client else "")
+    ip = _client_ip(request)
     throttle_key = (ip, login.lower())
+    if _throttled(_login_ip_failures, (ip,), _LOGIN_IP_FAIL_LIMIT, _LOGIN_FAIL_WINDOW):
+        ctx = _ctx_base(request)
+        ctx.update({"shell_class": "", "share_url": "", "error": error_text(request, "err_too_many_attempts")})
+        resp = templates.TemplateResponse(request, "auth/login.html", ctx)
+        resp.status_code = 429
+        return resp
     if _login_throttled(throttle_key):
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
@@ -203,6 +257,7 @@ async def login_submit(request: Request):
     user_id = await asyncio.to_thread(authenticate_local, login, password)
     if not user_id:
         _record_login_failure(throttle_key)
+        _record_hit(_login_ip_failures, (ip,), _LOGIN_FAIL_WINDOW)
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
         return templates.TemplateResponse(request, "auth/login.html", ctx)
@@ -219,14 +274,21 @@ async def register_submit(request: Request):
     texts = server_text(_lang(request))
     form = await request.form()
     username = (form.get("username") or "").strip()
-    email = (form.get("email") or "").strip()
+    email = normalize_email(form.get("email"))
     password = form.get("password") or ""
     password_confirm = form.get("password_confirm") or ""
 
-    def _err(msg):
+    def _err(msg, status=200):
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "", "error": msg})
-        return templates.TemplateResponse(request, "auth/register.html", ctx)
+        resp = templates.TemplateResponse(request, "auth/register.html", ctx)
+        resp.status_code = status
+        return resp
+
+    ip_key = (_client_ip(request),)
+    if _throttled(_register_attempts, ip_key, _REGISTER_IP_LIMIT, _REGISTER_IP_WINDOW):
+        return _err(error_text(request, "err_too_many_attempts"), 429)
+    _record_hit(_register_attempts, ip_key, _REGISTER_IP_WINDOW)
 
     err = validate_username(username)
     if err:
@@ -242,6 +304,8 @@ async def register_submit(request: Request):
 
     try:
         user_id = await asyncio.to_thread(register_user, username, email, password)
+    except ValueError as exc:
+        return _err(error_text(request, str(exc)))
     except psycopg2.IntegrityError:
         if username_taken(username):
             return _err(texts.get("err_username_taken", "err_username_taken"))
