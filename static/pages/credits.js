@@ -48,6 +48,31 @@
 
   // 会员卡片: 服务端 action 已定 (subscribe/upgrade/downgrade), 前端只按
   // 按钮类分流端点 — 档名语义不进 JS。
+  // provider-hosted subscription portal (cancel / payment method /
+  // invoices): full-page navigation, same as checkout
+  var manage = document.querySelector(".sub-manage");
+  if (manage) {
+    manage.addEventListener("click", function () {
+      var morig = manage.textContent;
+      manage.disabled = true;
+      manage.textContent = "…";
+      fetch("/api/topup/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: "{}"
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.ok && d.url) { window.location.href = d.url; return; }
+        manage.disabled = false;
+        manage.textContent = morig;
+        alert(window.t ? window.t("sub_manage_failed") : "Unavailable");
+      }).catch(function () {
+        manage.disabled = false;
+        manage.textContent = morig;
+      });
+    });
+  }
+
   var subGrid = document.querySelector(".sub-grid");
   if (subGrid) {
     subGrid.addEventListener("click", function (e) {

@@ -253,6 +253,38 @@ async def plan_downgrade(request: Request):
             "effective_at": current["renews_at"]}
 
 
+@router.post("/api/topup/portal")
+async def subscription_portal(request: Request):
+    """Self-service subscription management (cancel / payment method /
+    invoices) via the Creem customer portal of the CURRENT Membership's
+    provider subscription. Local Membership state still converges only
+    through the subscription.* webhooks."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from economy import creem
+    if not creem.creem_enabled():
+        return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
+    from repo.orders import membership_row
+    with db() as con:
+        current = membership_row(con, user["id"])
+    sub_ref = (current or {}).get("provider_subscription_id") or ""
+    if not sub_ref.startswith("sub:"):
+        return JSONResponse({"ok": False, "error": "no_subscription"}, 409)
+    import asyncio as _asyncio
+    from economy.reconcile import fetch_subscription
+    sub = await _asyncio.to_thread(fetch_subscription, sub_ref[4:])
+    cust = (sub or {}).get("customer")
+    customer_id = str((cust.get("id") if isinstance(cust, dict) else cust) or "")
+    if not customer_id:
+        return JSONResponse({"ok": False, "error": "portal_unavailable"}, 502)
+    try:
+        url = await _asyncio.to_thread(creem.customer_portal_link, customer_id)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "portal_unavailable"}, 502)
+    return {"ok": True, "url": url}
+
+
 MAX_WEBHOOK_BODY = 262144  # 256KB — Creem 事件远小于此; 挡匿名内存放大 (审计🟡9)
 
 

@@ -215,6 +215,18 @@ def upgrade_subscription(subscription_id: str, product_id: str,
     })
 
 
+def customer_portal_link(customer_id: str) -> str:
+    """POST /v1/customers/billing → hosted customer portal (manage/cancel
+    subscription, payment method, invoices). Subscription lifecycle stays
+    webhook-driven; the portal is only the provider's own management UI.
+    Raises on API failure or a non-https link."""
+    data = _post("/v1/customers/billing", {"customer_id": customer_id})
+    link = str(data.get("customer_portal_link") or "")
+    if not link.startswith("https://"):
+        raise RuntimeError("portal_link_missing")
+    return link
+
+
 def credits_product_id() -> str:
     return CREEM_CREDITS_PRODUCT_ID
 

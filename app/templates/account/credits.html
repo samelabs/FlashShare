@@ -77,6 +77,7 @@
       {% if m.cancel_scheduled_at %}<span class="sub-warn" data-i18n="sub_ends_no_renew">{{ texts.sub_ends_no_renew }}</span>{% endif %}
       {% if pending_downgrade %}<span class="sub-warn">{{ texts.sub_downgrade_scheduled.replace('{plan}', pending_downgrade.name).replace('{date}', fmt_ts(pending_downgrade.effective_at)) }}</span>{% endif %}
       {# plan/date 插值属服务端事实, 语言切换由整页刷新承载 (与 sub_until 同模式) #}
+      {% if m.status != 'expired' %}<button type="button" class="ghost sub-manage" data-i18n="sub_manage_btn">{{ texts.sub_manage_btn }}</button>{% endif %}
     </div>
     {% endif %}
     {% if plans %}

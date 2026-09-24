@@ -5,6 +5,10 @@ Tool moderation: an operator hold on a tool key delists it and no owner
 write (price edit, delete + re-create) nor pricing toggle can relist it
 until released; the owner never flips the commerce switch.
 
+Subscription portal: members reach the provider's hosted management
+portal for their CURRENT subscription (session only); no subscription →
+409; provider failure or a non-https link → 502.
+
 Withdrawal: pending → approved (earn-pool debit) → paid (payout reference
 required) | failed (the exact debit returns to the earn pool, once); the
 payout target is the one frozen at request time. Every settlement is one
@@ -32,6 +36,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+_os.environ.setdefault("CREEM_API_KEY", "test-key")
 
 FAIL = []
 def check(name, ok, detail=""):
@@ -207,6 +212,48 @@ check("M10b console presentation route reaches namespaced community keys", r.sta
 client.patch(f"/api/usertools/{tid2}", json={"cost": 9}, cookies=OWC)
 check("M10 owner price edit keeps an operator pause (B3)",
       get_pricing(key2)["enabled"] is False and get_pricing(key2)["cost"] == 9)
+
+# ══ P. subscription self-service portal ══
+from economy import creem as _creem
+from economy import reconcile as _reconcile
+sub_user = _mkuser(_u + "sb")
+SBC = {COOKIE_NAME: create_browser_session(sub_user)}
+r = client.post("/api/topup/portal", json={}, cookies=SBC)
+check("P1 no subscription → 409", r.status_code == 409 and r.json().get("error") == "no_subscription",
+      r.text[:120])
+with db() as con:
+    # a seeded, fully configured paid tier (entitlements resolve fail-closed)
+    _pl = con.execute("select id from plans where code='plus'").fetchone()["id"]
+    con.execute("insert into memberships (user_id, plan_id, provider_subscription_id, status,"
+                " started_at, renews_at, updated_at) values (%s, %s, %s, 'active', %s, %s, %s)",
+                (sub_user, _pl, f"sub:sub_{_u}", ts, ts + 86400 * 20, ts))
+_calls = []
+_reconcile.fetch_subscription = lambda sid: {"id": sid, "customer": {"id": "cust_" + _u}}
+def _fake_post(path, payload):
+    _calls.append((path, payload))
+    return {"customer_portal_link": "https://creem.io/my-portal/" + _u}
+_creem._post = _fake_post
+r = client.post("/api/topup/portal", json={}, cookies=SBC)
+check("P2 member gets the portal link for the current subscription's customer",
+      r.status_code == 200 and r.json().get("url") == "https://creem.io/my-portal/" + _u
+      and _calls == [("/v1/customers/billing", {"customer_id": "cust_" + _u})],
+      f"{r.text[:120]} {_calls}")
+_creem._post = lambda path, payload: {"customer_portal_link": "javascript:alert(1)"}
+r = client.post("/api/topup/portal", json={}, cookies=SBC)
+check("P3 non-https portal link refused → 502", r.status_code == 502, r.status_code)
+_reconcile.fetch_subscription = lambda sid: None
+r = client.post("/api/topup/portal", json={}, cookies=SBC)
+check("P4 provider subscription unreadable → 502", r.status_code == 502, r.status_code)
+from identity.apitokens import create_token
+_tok = create_token(sub_user, "pm")["token"]
+r = client.post("/api/topup/portal", json={}, headers={"Authorization": f"Bearer {_tok}"})
+check("P5 bearer token cannot open the billing portal (session only)", r.status_code == 401,
+      r.status_code)
+r = client.get("/account/credits", cookies=SBC)
+check("P6 credits page offers subscription management to a member",
+      r.status_code == 200 and "sub-manage" in r.text, r.status_code)
+with db() as con:
+    con.execute("delete from memberships where user_id=%s", (sub_user,))
 
 print(f"\n{'FAIL' if FAIL else 'PASS'}: {len(FAIL)} failure(s)")
 _sys.exit(1 if FAIL else 0)

@@ -20,6 +20,19 @@
 
 四主链（Tool / Sharing / Identity / Economy）与冻结契约见 AGENTS.md。
 
+### Economy / 运营规则（当前实现）
+
+- 提现：`pending → approved`（收益池扣账, idem `withdrawal:{id}`）`| rejected`；
+  `approved → paid`（须打款凭证）`| failed`（扣账原额退回收益池, idem
+  `withdrawal-reversal:{id}`）。收款渠道在申请时快照（`withdrawals.payout_channel`）。
+- 支付退款/争议只冲正该笔支付发放的积分（billing.revoke）；**不追回**已结算给
+  工具作者的收益（provider_earn）——收益归属以调用发生时的结算为准。
+- 工具审核下架：`tool_holds` 按 tool_key 生效；持有期间 pricing 写入一律不能
+  开启该工具（作者改价 / 删除重建 / 后台定价开关皆无效），解除后方可上架。
+  作者只能改价，`pricing.enabled` 是运营权限。
+- 后台账号状态只允许 `active ↔ suspended`；后台权限（BACKOFFICE status）
+  无任何 Web 写入路径。
+
 ## Repo layout
 
 - `app/` FastAPI 应用（routes + main + web_auth）
@@ -128,6 +141,8 @@ FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
 - 部署 = ff-only 同步 main → restart unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
 - schema migration 由新进程 startup `init_db()` 自动执行，与代码切换一体。
+  例外：对既有库的列/约束变更走 `docs/plan/*_DEPLOY_*.sql`，必须在代码切换
+  **之前**手工执行一次（脚本内含 preflight，违例即中止）。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 
 ## Production backup（scripts/）
