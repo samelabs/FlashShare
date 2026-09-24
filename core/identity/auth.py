@@ -31,6 +31,11 @@ def validate_username(username: str) -> str | None:
     return None
 
 
+def canonical_email(email: str) -> str:
+    """Email identity is case-insensitive: one canonical stored form."""
+    return (email or "").strip().lower()
+
+
 def validate_email(email: str) -> str | None:
     if not email:
         return "err_email_empty"
@@ -63,15 +68,22 @@ def register_user(username: str, email: str, password: str) -> int:
     ts = now()
     pw_hash = hash_password(password)
     with db() as con:
-        row = users_repo.insert_local(con, username, email, pw_hash,
-                                      username, ts)
+        row = users_repo.insert_local(con, username, canonical_email(email),
+                                      pw_hash, username, ts)
         return row["id"]
 
 
 def authenticate_local(login: str, password: str) -> int | None:
     """Authenticate by username/email. Suspended accounts never authenticate."""
     with db() as con:
-        row = users_repo.by_username_or_email(con, login)
+        if "@" in login:
+            # usernames never contain '@' (USERNAME_RE): email identity,
+            # case-insensitive. Legacy case-variant duplicates are
+            # ambiguous → fail closed (never an arbitrary first row).
+            rows = users_repo.by_email_ci(con, login.strip())
+            row = rows[0] if len(rows) == 1 else None
+        else:
+            row = users_repo.by_username(con, login)
     if not row or row.get("status") == "suspended" or not row["password_hash"]:
         return None
     if not verify_password(password, row["password_hash"]):
@@ -208,7 +220,7 @@ def update_profile(user_id: int, display_name: str | None = None,
         if email is not None:
             # Same contract as registration: one validator, no silent
             # truncation — validate_email owns length and shape rules.
-            email = email.strip().lower()
+            email = canonical_email(email)
             err = validate_email(email)
             if err:
                 raise ValueError(err)

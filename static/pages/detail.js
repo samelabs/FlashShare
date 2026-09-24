@@ -6,7 +6,7 @@ const landingUrl = document.getElementById("landingUrl");
 copyBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(landingUrl.value);
   const orig = copyBtn.innerHTML;
-  copyBtn.innerHTML = '__PAGE__.icons.check';
+  copyBtn.innerHTML = __PAGE__.icons.check;
   copyBtn.style.color = "var(--accent)";
   copyBtn.style.borderColor = "var(--accent)";
   setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);

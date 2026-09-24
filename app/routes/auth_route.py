@@ -3,6 +3,7 @@
 import sys
 import asyncio
 import hashlib
+import hmac
 import logging
 import secrets
 import urllib.parse
@@ -26,7 +27,7 @@ from identity.auth import (
     authenticate_local, register_user,
     exchange_x_token, fetch_x_user, upsert_x_user,
     unbind_x,
-    validate_username, validate_email, validate_password,
+    validate_username, validate_email, validate_password, canonical_email,
     username_taken,
 )
 from i18n import server_text
@@ -35,6 +36,8 @@ from app.web_auth import require_session_auth, redirect_with_session
 
 router = APIRouter()
 logger = logging.getLogger("flashshare")
+
+_OAUTH_COOKIE = "flashshare_oauth"
 
 _LOGIN_FAIL_LIMIT = 10
 _LOGIN_FAIL_WINDOW = 15 * 60
@@ -117,7 +120,14 @@ async def x_login(request: Request):
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
-    return RedirectResponse("https://x.com/i/oauth2/authorize?" + urllib.parse.urlencode(params))
+    resp = RedirectResponse("https://x.com/i/oauth2/authorize?" + urllib.parse.urlencode(params))
+    # Bind the flow to THIS browser: the callback requires the same state
+    # in an HttpOnly cookie, so a callback URL minted by someone else
+    # (login CSRF / binding a victim's X identity to the attacker's
+    # account) is refused. Lax is sent on the top-level return from x.com.
+    resp.set_cookie(_OAUTH_COOKIE, state, max_age=OAUTH_TTL, path="/auth/x",
+                    httponly=True, secure=True, samesite="lax")
+    return resp
 
 
 @router.get("/x/callback")
@@ -127,8 +137,13 @@ async def x_callback(request: Request):
     if not code or not state:
         return RedirectResponse("/", 302)
 
+    bound = request.cookies.get(_OAUTH_COOKIE, "")
     with db() as con:
         row = pop_oauth_state(con, state, now())
+    if row and not (bound and hmac.compare_digest(bound, state)):
+        # state exists but was not issued to this browser — burn it
+        logger.warning("x oauth callback: state not bound to this browser")
+        row = None
     if not row:
         from app.main import templates
         from app.web_ctx import ctx_base as _ctx_base
@@ -163,10 +178,12 @@ async def x_callback(request: Request):
         return resp
 
     if bind_user_id:
-        return RedirectResponse("/account/profile", 302)
-
-    _login_maintenance(user_id)
-    return redirect_with_session("/", user_id)
+        resp = RedirectResponse("/account/profile", 302)
+    else:
+        _login_maintenance(user_id)
+        resp = redirect_with_session("/", user_id)
+    resp.delete_cookie(_OAUTH_COOKIE, path="/auth/x")
+    return resp
 
 
 @router.post("/x/unbind")
@@ -219,7 +236,7 @@ async def register_submit(request: Request):
     texts = server_text(_lang(request))
     form = await request.form()
     username = (form.get("username") or "").strip()
-    email = (form.get("email") or "").strip()
+    email = canonical_email(form.get("email") or "")
     password = form.get("password") or ""
     password_confirm = form.get("password_confirm") or ""
 

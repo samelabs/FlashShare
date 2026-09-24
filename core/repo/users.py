@@ -12,10 +12,18 @@ def by_id(con, user_id: int) -> Optional[dict]:
         "SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
 
 
-def by_username_or_email(con, login: str) -> Optional[dict]:
+def by_username(con, username: str) -> Optional[dict]:
     return con.execute(
-        "SELECT id, password_hash, status FROM users WHERE username = %s OR email = %s",
-        (login, login)).fetchone()
+        "SELECT id, password_hash, status FROM users WHERE username = %s",
+        (username,)).fetchone()
+
+
+def by_email_ci(con, email: str) -> list:
+    """Case-insensitive email match (all rows — the caller decides on
+    ambiguity instead of an arbitrary first row)."""
+    return con.execute(
+        "SELECT id, password_hash, status FROM users WHERE lower(email) = lower(%s)",
+        (email,)).fetchall()
 
 
 def by_x_user_id(con, x_id: str) -> Optional[dict]:
@@ -30,7 +38,7 @@ def username_exists(con, username: str) -> bool:
 
 def email_taken_by_other(con, email: str, user_id: int) -> bool:
     return con.execute(
-        "SELECT 1 FROM users WHERE email = %s AND id != %s",
+        "SELECT 1 FROM users WHERE lower(email) = lower(%s) AND id != %s",
         (email, user_id)).fetchone() is not None
 
 

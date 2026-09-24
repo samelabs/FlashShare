@@ -98,6 +98,10 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     mid = msg.get("id")
     method = msg.get("method", "")
     is_notification = "id" not in msg
+    # JSON-RPC params must be an object when present; anything else is a
+    # protocol error, never an unhandled 500.
+    if msg.get("params") is not None and not isinstance(msg.get("params"), dict):
+        return None if is_notification else _rpc_err(mid, -32602, "invalid params")
 
     if method == "initialize":
         requested = (msg.get("params") or {}).get("protocolVersion", LATEST)
@@ -232,6 +236,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
 
     tool_id = str(params.get("name") or "")
     args = params.get("arguments") or {}
+    if not isinstance(args, dict):
+        return _rpc_err(mid, -32602, "invalid arguments")
     if tool_id == "catalog_search":
         from governance.catalog import search_catalog
         q = str(args.get("q") or "").strip()[:64]
@@ -353,9 +359,9 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             user["id"], ip, client_ref, _req_hash,
             [len(_b) for _, _, _b in _canon])
     except _IngressConflict:
-        return _rpc_err(mid, 32009, "idempotency_conflict")
+        return _rpc_err(mid, -32009, "idempotency_conflict")
     except _IngressInProgress:
-        return _rpc_err(mid, 32009, "err_upload_in_progress")
+        return _rpc_err(mid, -32009, "err_upload_in_progress")
     except _IngressQuotaDenied as exc:
         return _rpc(mid, {
             "content": [{"type": "text", "text": json.dumps(exc.denial)}],

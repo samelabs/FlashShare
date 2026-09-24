@@ -155,11 +155,25 @@ async def get_uploads(request: Request):
 async def client_error(request: Request):
     """Browser-side crash tap. Diagnostics only."""
     import logging
+    # Anonymous diagnostics tap: bounded body and single-line bounded
+    # fields, so it can neither flood nor forge log lines.
+    def _field(v, n):
+        return str(v or "").replace("\r", " ").replace("\n", " | ")[:n]
     try:
-        body = await request.json()
+        cl = request.headers.get("content-length", "")
+        if cl.isdigit() and int(cl) > 16384:
+            return {"ok": True}
+        raw = await request.body()
+        if len(raw) > 16384:
+            return {"ok": True}
+        import json as _j
+        body = _j.loads(raw)
+        if not isinstance(body, dict):
+            return {"ok": True}
         logging.getLogger("flashshare.client").error(
-            "CLIENT-CRASH %s %s | %s", body.get("lang"), body.get("url"), body.get("msg"))
-        stack = (body.get("stack") or "").replace("\n", " | ")[:1500]
+            "CLIENT-CRASH %s %s | %s", _field(body.get("lang"), 16),
+            _field(body.get("url"), 300), _field(body.get("msg"), 500))
+        stack = _field(body.get("stack"), 1500)
         if stack:
             logging.getLogger("flashshare.client").error("CLIENT-STACK %s", stack)
     except Exception:

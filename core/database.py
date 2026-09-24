@@ -525,6 +525,12 @@ _SCHEMA_SQL = (
     #    paid 可共用数字 (free 不参与 paid direction)。inactive paid tier
     #    仍可能是 current Membership, 同样不得复用 rank。历史冲突 → 建
     #    索引失败 → 启动 fail loud, 人工裁定。
+    # email identity is case-insensitive (identity.auth.canonical_email):
+    # one account per lower(email). Historical case-variant duplicates →
+    # index build fails → startup fails loud (deploy preflight SQL in
+    # docs/plan/IDENTITY_EMAIL_CI_DEPLOY_20260924.sql lists them first).
+    """CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uk
+       ON users (lower(email)) WHERE email IS NOT NULL""",
     """CREATE UNIQUE INDEX IF NOT EXISTS plans_paid_sort_order_uk
        ON plans (sort_order) WHERE code <> 'free'""",
     # 2) provider product → tier 唯一: by_product() 是 webhook/provider

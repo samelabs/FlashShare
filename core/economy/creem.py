@@ -257,10 +257,11 @@ def verify_signature(raw_body: bytes, signature: str) -> bool:
 def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
             product_id: str = "", currency: str = "") -> dict:
     """checkout.completed: mark order paid + grant credits (idempotent).
-    Returns {granted, credits} — granted=False means replay/no-op.
+    Returns {granted, credits} — granted=False means a reversed (terminal)
+    order: no grant, no state rewrite.
 
-    订单锁定+标记+套餐读取在同一事务内 (批1c 顺带修复: 原实现块外用 con
-    的连接逃逸); 授信仍走 billing.grant 的独立幂等事务 (order:{id} 键)。"""
+    订单锁定 + 校验 + 授信 (billing.grant, idem order:{id}) + 终态戳
+    在同一事务内, 与 payment reversal 同一订单行锁串行化。"""
     from repo import orders as _orders_repo
     ts = now()
     with db() as con:
@@ -270,11 +271,20 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
         if row is None and checkout_id:
             # webhook may arrive before checkout callback stores the id —
             # fall back to checkout-id linkage (ch:{id})
-            row = orders_repo.order_by_provider_id(con, "ch:" + checkout_id)
+            row = orders_repo.order_by_provider_id_for_update(con, "ch:" + checkout_id)
         if row is None:
             raise KeyError("order_not_found")
         if row["kind"] != "package":
             raise KeyError("wrong_order_kind")
+        if row["status"] in ("refunded", "disputed"):
+            # economically reversed order (reversal may legitimately land
+            # before a retried checkout.completed): never grant, never
+            # rewrite the terminal state; ack so the provider stops retrying
+            import logging
+            logging.getLogger("flashshare").warning(
+                "creem fulfill on terminal order=%s status=%s — no grant",
+                row["id"], row["status"])
+            return {"granted": False, "credits": 0, "reason": "order_terminal"}
         # fail-closed payment contract: shared Credits Product + amount +
         # currency 全部必须显式匹配, 缺失即拒 (zero grant)。
         if not CREEM_CREDITS_PRODUCT_ID or not product_id:
@@ -309,15 +319,17 @@ def fulfill(provider_order_id: str, checkout_id: str, amount_cents: int,
         # rewrite a checked-out order's granted quantity
         credits = int(row["credits_snapshot"] or 0)
         user_id = row["user_id"]
-    # 授信先行 (billing 幂等事务, idem order:{id}); mark_paid 是终态戳 —
-    # granted=TRUE 蕴含 ledger 行已存在, 留痕永不撒谎 (崩溃一致性)。
-    # 崩溃自愈: 授信后崩溃 → 重试时 grant 幂等重放 + mark_paid 补戳。
-    if credits > 0:
-        from economy.billing import grant
-        grant(user_id, credits, "grant_package",
-              ref_type="order", ref_id=str(order_id),
-              idem_key=f"order:{order_id}", note=amount_note)
-    with db() as con:
+        # grant (idem order:{id}) + provider identity + paid stamp commit
+        # atomically under the order row lock — the same lock the reversal
+        # takes, so a refund/dispute and this fulfillment serialize:
+        # reversed-first → terminal check above refuses; fulfilled-first →
+        # the reversal finds the grant and revokes it. granted=TRUE always
+        # implies the ledger row exists; a replay re-enters idempotently.
+        if credits > 0:
+            from economy.billing import grant
+            grant(user_id, credits, "grant_package",
+                  ref_type="order", ref_id=str(order_id),
+                  idem_key=f"order:{order_id}", note=amount_note, con=con)
         # provider order identity 收敛: checkout 时只知道 ch:{id},
         # 成功事件提供 canonical ord_{id} → 就地覆写, 后续 replay/
         # refund/dispute 直接以 ord_xxx 命中同一行 (无 mapping table)。

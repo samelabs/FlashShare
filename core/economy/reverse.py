@@ -96,22 +96,25 @@ def _reverse_package(txn: dict, _is_dispute: bool = False) -> dict:
     if not order_ref:
         raise KeyError("package_order_missing")
     with db() as con:
-        row = orders_repo.order_by_provider_id(con, order_ref)
+        # order row lock = the fulfillment serialization boundary: a
+        # concurrent checkout.completed either committed its grant before
+        # this read, or will see the terminal state written below.
+        row = orders_repo.order_by_provider_id_for_update(con, order_ref)
         if row is None or row["kind"] != "package":
             raise KeyError("package_order_not_found")
         # original fact: the actual grant ledger row (idem order:{id})
         from repo import ledger as ledger_repo
         grant_row = ledger_repo.by_idem_key(con, int(row["user_id"]),
                                             f"order:{row['id']}")
-    if grant_row is None or int(grant_row["delta"]) <= 0:
-        # order recorded but no Credits were ever granted (e.g. zero
-        # snapshot): economic reversal amount = 0 → no-op convergence;
-        # terminal state keeps the EVENT semantics (refund→refunded,
-        # dispute→disputed) exactly like the normal reversal path.
-        with db() as con:
+        if grant_row is None or int(grant_row["delta"]) <= 0:
+            # order recorded but no Credits were ever granted (e.g. zero
+            # snapshot, or reversal before fulfillment): economic reversal
+            # amount = 0 → no-op convergence; terminal state keeps the
+            # EVENT semantics (refund→refunded, dispute→disputed) and is
+            # written under the same lock, so a later fulfillment refuses.
             _t = mark_disputed if _is_dispute else mark_refunded
             _t(con, int(row["id"]), now())
-        return {"reversed": False, "credits": 0, "reason": "no_grant"}
+            return {"reversed": False, "credits": 0, "reason": "no_grant"}
     amount = int(grant_row["delta"])
     snapshot = int(row["credits_snapshot"] or 0)
     if snapshot and amount != snapshot:

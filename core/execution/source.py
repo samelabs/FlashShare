@@ -9,6 +9,7 @@ from security import verify_source_token
 from sharing.uploads import get_upload_by_public_id
 from storage import read as storage_read  # noqa: F401 (re-export for orchestrator)
 from gokapi import get_gokapi_file
+from utils import now
 
 
 def resolve_upload_sync(public_id: str, user: dict, token: str):
@@ -17,6 +18,9 @@ def resolve_upload_sync(public_id: str, user: dict, token: str):
     if upload:
         if upload["user_id"] != user["id"]:
             return None, "forbidden"
+        # same lifecycle gate as serving (/f): an expired share is gone
+        if int(upload["expire_at"] or 0) < now():
+            return None, "not_found"
         return upload, None
     # Tool flow: original in gokapi but not in DB
     if not public_id.isalnum() or len(public_id) < 8 or len(public_id) > 20:
