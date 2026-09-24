@@ -2,10 +2,7 @@
 
 本文件记录面向用户的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本以功能批次划分。
 
-## [Unreleased]
-
-
-## [1.0] - 2026-09-21
+## [1.0] - Unreleased
 
 ### Added
 - 退款/争议闭环：`refund.created` / `dispute.created` 签名验证后进入统一反向域处理器 —— 拉取 Creem Transaction 验证状态，按原始支付授予的精确数额做经济反转（余额可为负，不新建现金账本）；套餐退款按 grant 台账 + 冻结快照反转并落 refunded/disputed 终态；订阅退款按 `creem_transaction` 关联的 grant 行反转，当前付费周期被逆转时会员立即过期，历史周期反转不影响当前会员；`payment-reversal:{txn}` 幂等键统一 refund/dispute/replay/并发。部分退款 fail-closed（零变更 + 500 留人工面）。
@@ -14,16 +11,14 @@
 
 ### Changed
 - `subscription.update` 不再直接发放升级补差积分：升级补差只由唯一的 `apply_paid_period()` 依据成功支付证明（paid transaction）产生；周期性 plan 授信台账引用改为 `creem_transaction`/交易号。
-
-### Removed
-- 已部署客户端的 `?key=` 查询参数认证：正式凭据通道收敛为浏览器会话与 `Authorization: Bearer`（令牌不再进入 URL/访问日志）。MCP 直连示例同步移除。
-- 运营后台 `/samelabs` 改为仅接受浏览器会话：API 令牌（含运营账号的令牌）不再进入控制面。
-
-### Changed
 - 每日签到改为独立模块（原活动表机制移除），签到额度与开关随代码发布。
 - 充值/订阅授信顺序加固：积分先入账、状态后落库，杜绝"显示已发放但未到账"的崩溃窗口。
 - 经济系统闭合：平台账户记账（用户工具抽佣 + 系统工具直销两条收入路径），每笔计费调用全额可追溯；历史流水补齐。
 - 会员订阅对账：webhook 丢失后登录时自动向 Creem 补授当期积分（无轮询、幂等防重）。
+
+### Removed
+- 已部署客户端的 `?key=` 查询参数认证：正式凭据通道收敛为浏览器会话与 `Authorization: Bearer`（令牌不再进入 URL/访问日志）。MCP 直连示例同步移除。
+- 运营后台 `/samelabs` 改为仅接受浏览器会话：API 令牌（含运营账号的令牌）不再进入控制面。
 
 ### Fixed
 - 截图美化/压缩/ICO/隐私净化等工具的模式选择不生效：所有模式产出同一默认效果（执行层参数传递缺失）。

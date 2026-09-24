@@ -29,7 +29,7 @@
 - `tests/canonical/` 正式回归测试（可移植，见下）
 - `tests/ci/` CI 边界契约测试
 - `tests/support/` CI test service；不得复制 518 业务逻辑
-- `docs/plan/` 架构计划文档（TOOLCHAIN_UNIFICATION.md 等）
+- `docs/plan/` 尚未执行的 release migration 资产（执行后移除）
 - `scripts/` production backup / restore-proof 运维脚本 + systemd units/timers
 
 ## Prerequisites
@@ -53,24 +53,27 @@
 canonical integration tests **fail closed**：未显式提供 isolated port 与
 TEST_DB_URL 时直接退出（不发任何请求）。两种合法方式：
 
-**A. manual isolated stack**
+**A. local isolated stack（与 CI 同构，日常开发/验收用）**
 
-- isolated PostgreSQL（临时库，验收后 DROP）
-- isolated Gokapi（disposable 实例，见下）
+- isolated PostgreSQL 16 库（每个分支/批次独立库，验收后 DROP）
+- `tests/support/fake_gokapi.py`（Gokapi HTTP boundary test service）
 - isolated app 端口（≠ 8000；8000 是生产端口，测试显式拒绝）
 
 ```bash
-# PostgreSQL
-sudo -u postgres psql -c "CREATE DATABASE flashshare_test OWNER flashshare"
-# 初始化 + seed（分支代码）
-DATABASE_URL=postgresql+psycopg://…/flashshare_test \
-FLASHSHARE_SESSION_SECRET=<test-secret> \
-FLASHSHARE_GOKAPI_URL=<isolated-gokapi> FLASHSHARE_GOKAPI_KEY=<its-key> \
-PYTHONPATH=core venv/bin/python -c "from database import init_db; from tools import load_all; load_all(); from governance.catalog import seed_from_registry; init_db(); print(seed_from_registry())"
-# 隔离实例（端口 != 8000）
-DATABASE_URL=… FLASHSHARE_SESSION_SECRET=… FLASHSHARE_GOKAPI_URL=… FLASHSHARE_GOKAPI_KEY=… \
-  venv/bin/python -m uvicorn app.main:app --port 8100 --workers 1
+export PYTHONDONTWRITEBYTECODE=1
+export DATABASE_URL=postgresql+psycopg://<user>:<pw>@127.0.0.1:<pg-port>/<db>
+export TEST_DB_URL=postgresql://<user>:<pw>@127.0.0.1:<pg-port>/<db>
+export FLASHSHARE_SESSION_SECRET=<test-secret> FLASHSHARE_GOKAPI_KEY=<test-key>
+export FLASHSHARE_GOKAPI_URL=http://127.0.0.1:<gk-port>
+export FLASHSHARE_BASE_URL=http://127.0.0.1:<app-port> FLASHSHARE_TEST_PORT=<app-port>
+export FLASHSHARE_LOG_DIR=/tmp/flashshare-test-log
+venv/bin/python tests/support/fake_gokapi.py --host 127.0.0.1 --port <gk-port> --key "$FLASHSHARE_GOKAPI_KEY" &
+venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port <app-port> --workers 1 &
 ```
+
+- app startup 的 `init_db()` 负责建表与 seed：重置测试库后必须先（重）启 app，再跑测试。
+- 本地运行前清掉 `__pycache__`：部分 semantic guard 用 grep 扫源码，`.pyc` 会造成误报（CI 为干净 checkout，无此问题）。
+- 本地 DNS 若为代理 fake-ip（198.18.0.0/15），依赖公网解析的 SSRF 正向用例会被守卫拒绝；这是环境噪音，不是代码回归。
 
 **B. GitHub Actions CI v1**：真实 PostgreSQL 16 + 真实 FlashShare app +
 `tests/support/fake_gokapi.py` 提供 Gokapi HTTP boundary test service，然后运行
@@ -84,49 +87,41 @@ CI v1 测的是 518.PLUS 自己的 invariant，不是 Gokapi compatibility。fak
 真实 Gokapi compatibility smoke 可以后作为独立低频测试；不要把 web wizard 或
 生产 Gokapi 接到普通 commit CI。
 
-### Isolated Gokapi（人工正式测试前提）
+### 真实 Gokapi（仅 compatibility proof）
 
-Canonical integration tests 会真实 upload / local execute / result upload /
-MCP tools/call，因此人工运行时**必须**指向 disposable/local Gokapi，**绝不使用
-production Gokapi**。只隔离 DB 而复用生产 Gokapi 是禁止的。
+日常开发与 CI 一律使用 fake Gokapi。需要验证真实 Gokapi v2.2.4 兼容性（release gate）
+时，使用 disposable 实例：首次启动后在其 admin UI 完成初始设置并生成带 DOWNLOAD
+permission 的 API key（无固定默认 key），注入 `FLASHSHARE_GOKAPI_URL`/`FLASHSHARE_GOKAPI_KEY`。
 
-全新 Gokapi 实例初始化：容器/二进制首次启动后，在它的 admin UI 里完成初始
-设置并生成 API key（无固定默认 key — 不要假设）；将实例 URL+key 注入测试
-服务的 `FLASHSHARE_GOKAPI_URL`/`FLASHSHARE_GOKAPI_KEY`。
-
-**禁止**对 production DB 跑 test 分支的 `init_db`；禁止测试写 production
-Gokapi。
+**禁止**对 production DB 跑分支代码的 `init_db`；禁止测试读写 production Gokapi。
 
 ## Run / test commands
 
 ```bash
-python -m compileall -q app core          # 语法
-node --check static/app.js                # 每个改动 JS
 git diff --check
-# canonical tests — 环境变量无默认值，必须显式提供：
-FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
-  python tests/canonical/test_invocation_canonical.py     # Stage C 42
-FLASHSHARE_TEST_PORT=8100 TEST_DB_URL=postgresql://…/flashshare_test \
-  python tests/canonical/test_supply_accept_multi.py      # 4C-close 15
+python -m compileall -q app core                     # 语法
+git ls-files '*.js' | xargs -n1 node --check         # JS 语法
+# canonical 套件：按 .github/workflows/ci.yml 中的顺序逐个运行（环境变量见上，无默认值）
+python tests/canonical/<suite>.py
+python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ```
 
-测试账号在测试库自建（脚本内 `new_user()`），不留数据（测试库最终 DROP）。
+测试账号/数据由各套件自建，每次运行唯一命名并自行清理；测试库最终 DROP。
 
 ## Branch workflow
 
-1. `git fetch origin`；从 `origin/main` 建分支。
-2. 小步改动 + diff 自审 + 门禁（compile/node/canonical）。
-3. push non-main branch → **STOP**。
-4. Server Agent 无 GitHub API 权限（仅 SSH deploy key）：PR 创建/diff 审查/
-   GitHub CI 核验/merge 全部由 owner 在 GitHub 侧完成；本地测试结果不得
-   声明为 CI 结果。
-5. main 前进后，production deploy 由 Server Agent 按指令执行。
-4. 合入 main 前 GitHub CI required checks 应全绿；CI 不执行 production deploy。
+角色与边界见 AGENTS.md A 节。
+
+1. `git fetch origin`；从 PM 指定的基线（默认 `origin/main`）建分支。
+2. 改动 + diff 自审 + 门禁（compile / node / canonical 全量）。
+3. push 该 non-main 分支 → 报告 → **STOP**。
+4. PM 按精确 SHA 验收，开 PR，等 GitHub CI（fast-gate / canonical-integration /
+   browser-runtime）全绿后合入集成分支；合入 main 与 production deploy 需 owner 授权。
 
 ## Production deploy 概要
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
-- 部署 = ff-only 同步 main → restart unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
+- 部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 
