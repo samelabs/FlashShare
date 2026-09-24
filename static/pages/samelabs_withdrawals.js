@@ -30,6 +30,54 @@
       });
     });
   });
+  // approved → paid: payout reference is required (the settlement fact)
+  document.querySelectorAll('.btn-paid').forEach(function (b) {
+    var armed = false, t = 0;
+    b.addEventListener('click', function () {
+      var tr = b.closest('tr');
+      var refInput = tr.querySelector('.txn-input');
+      if (!armed) {
+        armed = true; b.textContent = '确认已打款';
+        if (!refInput) {
+          refInput = document.createElement('input');
+          refInput.className = 'sl-input txn-input';
+          refInput.placeholder = '打款凭证号(必填)';
+          refInput.style.cssText = 'width:130px;padding:4px 8px;font-size:13px';
+          tr.querySelector('td:nth-child(6)').appendChild(refInput);
+        }
+        refInput.focus();
+        t = setTimeout(function () { armed = false; b.textContent = '已打款'; }, 8000);
+        return;
+      }
+      var ref = refInput ? refInput.value.trim() : '';
+      if (!ref) { say('请填写打款凭证号'); refInput && refInput.focus(); return; }
+      clearTimeout(t); b.disabled = true;
+      fetch('/samelabs/withdrawals/' + b.dataset.wid + '/settle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: 'paid', txn_ref: ref })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) { say('已标记打款'); reload(); } else { say('失败: ' + d.error); b.disabled = false; armed = false; b.textContent = '已打款'; }
+      });
+    });
+  });
+  // approved → failed: the approved debit returns to the earn pool
+  document.querySelectorAll('.btn-failed').forEach(function (b) {
+    var armed = false, t = 0;
+    b.addEventListener('click', function () {
+      if (!armed) {
+        armed = true; b.textContent = '确认失败并退回?'; b.classList.add('sl-btn-danger');
+        t = setTimeout(function () { armed = false; b.textContent = '打款失败'; b.classList.remove('sl-btn-danger'); }, 3000);
+        return;
+      }
+      clearTimeout(t); b.disabled = true;
+      fetch('/samelabs/withdrawals/' + b.dataset.wid + '/settle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: 'failed' })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok) { say('已退回收益池'); reload(); } else { say('失败: ' + d.error); b.disabled = false; }
+      });
+    });
+  });
   document.querySelectorAll('.btn-reject').forEach(function (b) {
     var armed = false, t = 0;
     b.addEventListener('click', function () {

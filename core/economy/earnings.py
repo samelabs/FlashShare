@@ -99,7 +99,8 @@ def request_withdrawal(user_id: int, amount: int, note: str | None = None) -> di
         ch = users_repo.payout_channel_of(con, user_id)
         channel = (ch["payout_channel"] or "")[:120] if ch else ""
         row = economy_repo.insert_withdrawal(con, user_id, amount,
-                                             (note or "")[:200], ts)
+                                             (note or "")[:200], ts,
+                                             payout_channel=channel or None)
     out = dict(row)
     out["payout_channel"] = channel  # surfaced for the operator queue
     return out
@@ -164,6 +165,54 @@ def process_withdrawal(withdrawal_id: int, approve: bool,
             "withdrawal", str(withdrawal_id),
             before, {**before, "status": new_status,
                      "processed_by": int(admin_user_id or 0)}, ts)
+    return dict(out)
+
+
+def settle_withdrawal(withdrawal_id: int, paid: bool,
+                      admin_user_id: int, txn_ref: str | None = None) -> dict:
+    """Operator verb for an APPROVED withdrawal (the earn pool was already
+    debited at approval): paid = payout confirmed (txn_ref required);
+    failed = payout did not go through → the exact debit returns to the
+    earn pool (positive 'withdraw' movement, idem withdrawal-reversal:{id})
+    and the request becomes 'failed' (excluded from withdrawn/pending, so
+    the amount is withdrawable again). One transaction with its audit."""
+    from repo import operator_audit
+    ts = now()
+    txn_ref = (txn_ref or "").strip()[:120] or None
+    if paid and not txn_ref:
+        raise ValueError("txn_ref_required")
+
+    def _snap_w(r) -> dict:
+        return {"id": int(r["id"]), "user_id": int(r["user_id"]),
+                "amount": int(r["amount"]), "status": str(r["status"])}
+
+    with db() as con:
+        row = economy_repo.withdrawal_for_update(con, withdrawal_id)
+        if not row:
+            raise KeyError("not_found")
+        if row["status"] != "approved":
+            raise ValueError("not_approved")
+        before = _snap_w(row)
+        if paid:
+            new_status = "paid"
+        else:
+            new_status = "failed"
+            amount = int(row["amount"])
+            idem = f"withdrawal-reversal:{row['id']}"
+            if not ledger_repo.idem_key_exists(con, row["user_id"], idem):
+                after_bal = ledger_repo.earn_pool_balance(con, row["user_id"]) + amount
+                ledger_repo.insert_row(con, row["user_id"], amount, after_bal,
+                                       "withdraw", "withdrawal", str(row["id"]),
+                                       idem, f"withdrawal #{row['id']} payout failed", ts)
+        out = economy_repo.finish_withdrawal(
+            con, withdrawal_id, new_status, ts, admin_user_id,
+            txn_ref if paid else None)
+        operator_audit.record(
+            con, int(admin_user_id),
+            "withdrawal.paid" if paid else "withdrawal.fail",
+            "withdrawal", str(withdrawal_id),
+            before, {**before, "status": new_status,
+                     "processed_by": int(admin_user_id)}, ts)
     return dict(out)
 
 

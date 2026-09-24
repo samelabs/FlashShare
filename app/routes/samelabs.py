@@ -763,6 +763,32 @@ async def samelabs_process_withdrawal(wid: int, request: Request):
     return {"ok": True, "status": row["status"]}
 
 
+@router.post("/samelabs/withdrawals/{wid}/settle")
+async def samelabs_settle_withdrawal(wid: int, request: Request):
+    """approved → paid (txn_ref required) | failed (debit returns to the
+    earn pool). One transaction with its audit fact."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        outcome = raw.get("outcome")
+        txn_ref = str(raw.get("txn_ref") or "")
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    if outcome not in ("paid", "failed"):
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from economy.earnings import settle_withdrawal
+    try:
+        row = settle_withdrawal(wid, outcome == "paid", admin_user_id=user["id"],
+                                txn_ref=txn_ref)
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    return {"ok": True, "status": row["status"]}
+
+
 @router.get("/samelabs/remote")
 async def samelabs_remote(request: Request):
     """Remote tool registry: trusted endpoints (owner_id NULL)."""

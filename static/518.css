@@ -891,7 +891,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .wd-row .wd-st { font-size: var(--text-xs); padding: 2px 8px; border-radius: 99px; background: var(--soft); color: var(--muted); white-space: nowrap; }
 .wd-row .wd-st.st-approved, .wd-row .wd-st.st-paid { background: var(--green-soft); color: var(--ok, var(--green)); }
 .wd-row .wd-st.st-pending { background: var(--accent-soft); color: var(--warn); }
-.wd-row .wd-st.st-rejected { background: var(--danger-soft); color: var(--danger, var(--danger)); }
+.wd-row .wd-st.st-rejected, .wd-row .wd-st.st-failed { background: var(--danger-soft); color: var(--danger, var(--danger)); }
 .wd-row .wd-amt { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink); }
 .wd-row strong:last-child { font-variant-numeric: tabular-nums; }
 .account h3 { font-size: var(--text-base); font-weight: 600; margin: var(--s3) 0 var(--s1); color: var(--ink); }
@@ -940,7 +940,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page .wd-amt { color: var(--accent); margin-left: auto; font-variant-numeric: tabular-nums; }
 .acct-page .wd-st { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); background: var(--soft); color: var(--muted); }
 .acct-page .wd-st.st-approved, .acct-page .wd-st.st-paid { color: var(--accent); }
-.acct-page .wd-st.st-rejected { color: var(--danger); }
+.acct-page .wd-st.st-rejected, .acct-page .wd-st.st-failed { color: var(--danger); }
 
 /* ── register bonus banner (activities-driven) ── */
 

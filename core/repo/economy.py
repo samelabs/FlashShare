@@ -10,14 +10,17 @@ from typing import Optional, Sequence
 
 # ── withdrawals ──
 
-def insert_withdrawal(con, user_id: int, amount: int, note, ts: int) -> dict:
+def insert_withdrawal(con, user_id: int, amount: int, note, ts: int,
+                      payout_channel: Optional[str] = None) -> dict:
+    """payout_channel = the payout target frozen at request time — the
+    operator pays what the provider requested, not a later profile edit."""
     return con.execute(
         """
         INSERT INTO withdrawals
-           (user_id, amount, status, note, created_at, txn_ref)
-           VALUES (%s, %s, 'pending', %s, %s, NULL) RETURNING *
+           (user_id, amount, status, note, created_at, txn_ref, payout_channel)
+           VALUES (%s, %s, 'pending', %s, %s, NULL, %s) RETURNING *
         """,
-        (user_id, amount, note, ts)).fetchone()
+        (user_id, amount, note, ts, payout_channel)).fetchone()
 
 
 def withdrawal_for_update(con, withdrawal_id: int) -> Optional[dict]:
@@ -70,8 +73,10 @@ def withdrawal_sum_excluding(con, user_id: int, statuses: Sequence[str],
 def withdrawals_queue(con, limit: int = 50) -> list:
     return con.execute(
         """
-        SELECT w.*, u.username, u.payout_channel FROM withdrawals w
+        SELECT w.*, u.username, u.payout_channel AS current_channel
+        FROM withdrawals w
         JOIN users u ON u.id = w.user_id
-        ORDER BY (w.status = 'pending') DESC, w.id DESC LIMIT %s
+        ORDER BY (w.status = 'pending') DESC, (w.status = 'approved') DESC,
+                 w.id DESC LIMIT %s
         """,
         (limit,)).fetchall()

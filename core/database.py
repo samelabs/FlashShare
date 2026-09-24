@@ -497,8 +497,9 @@ _SCHEMA_SQL = (
       processed_at BIGINT,
       processed_by BIGINT,
       txn_ref      TEXT,
+      payout_channel TEXT,
       CONSTRAINT withdrawals_status_ck
-        CHECK (status IN ('pending','approved','rejected','paid'))
+        CHECK (status IN ('pending','approved','rejected','paid','failed'))
     )
     """,
     """

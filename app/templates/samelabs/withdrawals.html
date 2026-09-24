@@ -5,7 +5,7 @@
 <div class="sl-panel">
   <div class="sl-panel-head">
     <h2>提现申请</h2>
-    <span class="sl-panel-sub">审批即扣减积分账本（kind=withdraw, 幂等 withdrawal:{id}）；驳回不动账。</span>
+    <span class="sl-panel-sub">批准即从收益池扣账（kind=withdraw, 幂等 withdrawal:{id}）；驳回不动账。批准后打款：成功标记“已打款”（须填凭证）；失败标记“打款失败”，扣账原额退回收益池（幂等 withdrawal-reversal:{id}）。收款渠道为申请时快照。</span>
   </div>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
@@ -18,7 +18,7 @@
           <td>#{{ w.id }}</td>
           <td>{{ w.username|e }}</td>
           <td>{{ w.amount }}</td>
-          <td class="mono">{{ (w.payout_channel or '—')|e }}</td>
+          <td class="mono">{% if w.payout_channel %}{{ w.payout_channel|e }}{% else %}{{ (w.current_channel or '—')|e }} <span class="sl-dim">(当前资料, 旧申请无快照)</span>{% endif %}</td>
           <td><span class="sl-vis v-{{ w.status }}">{{ w.status }}</span></td>
           <td class="mono">{{ (w.txn_ref or '—')|e }}</td>
           <td>{{ w.created_fmt }}</td>
@@ -26,6 +26,9 @@
             {% if w.status == 'pending' %}
             <button type="button" class="sl-btn sl-btn-primary btn-approve" data-wid="{{ w.id }}">批准</button>
             <button type="button" class="sl-btn btn-reject" data-wid="{{ w.id }}">驳回</button>
+            {% elif w.status == 'approved' %}
+            <button type="button" class="sl-btn sl-btn-primary btn-paid" data-wid="{{ w.id }}">已打款</button>
+            <button type="button" class="sl-btn btn-failed" data-wid="{{ w.id }}">打款失败</button>
             {% else %}—{% endif %}
           </td>
         </tr>
