@@ -88,15 +88,22 @@ async def platform_income(request: Request, page: int = 1):
 
 # ── Withdrawal queue (S4 lifecycle) ──
 
+_WD_STATUSES = ("pending", "approved", "rejected", "paid")
+
+
 @router.get("/samelabs/economy/withdrawals")
-async def withdrawals(request: Request):
+async def withdrawals(request: Request, status: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
     from app.main import templates
     from repo.economy import withdrawals_queue
+    page = max(1, page)
+    # unknown filter value → unfiltered view (never passed into SQL)
+    q_status = status if status in _WD_STATUSES else ""
     with db() as con:
-        rows = withdrawals_queue(con)
+        rows, total = withdrawals_queue(con, _PAGE, (page - 1) * _PAGE,
+                                        q_status or None)
     items = []
     for r in rows:
         d = dict(r)
@@ -107,7 +114,9 @@ async def withdrawals(request: Request):
         items.append(d)
     return templates.TemplateResponse(
         request, "samelabs/economy_withdrawals.html",
-        ctx(request, user, withdrawals=items, fmt_num=fmt_num,
+        ctx(request, user, withdrawals=items, total=total, page=page,
+            pages=max(1, -(-total // _PAGE)), q_status=q_status,
+            statuses=list(_WD_STATUSES), fmt_num=fmt_num,
             page_id="economy"))
 
 

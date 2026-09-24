@@ -197,8 +197,10 @@ check("A11 invalid plan (period 0, 绑品) → 422 + 零 Creem PATCH + 零 audit
       f"{r.status_code} patches={len(_PATCH_LOG)} aud={_n_aud2-_n_aud}")
 
 # ══════════ B. Package writer 一致性 ══════════
+# credits 4990 @ 499 = exact commercial-floor boundary (credits <= price*10)
 r = client.post("/samelabs/commerce/products/packages", json={
-    "code": f"sspkg_{_u}", "name": "SS Pkg", "credits": 5000, "price": 499,
+    "code": f"sspkg_{_u}", "name": "SS Pkg", "credits": 4990,
+    "price_cents": 499,
 }, cookies={COOKIE_NAME: op_sess})
 pkg_id = r.json().get("package", {}).get("id")
 check("B1 package create 合法", r.status_code == 200 and pkg_id is not None,
@@ -215,9 +217,13 @@ check("B4 direct SQL credits=0 → DB CHECK reject",
       _db_rejects("update packages set credits=0 where id=%s", (pkg_id,)))
 check("B5 direct SQL price_cents<0 → DB CHECK reject",
       _db_rejects("update packages set price_cents=-1 where id=%s", (pkg_id,)))
+# commercial price floor: a package with Credits cannot be priced at $0
+# (credits <= price_cents*10 → credits>0 forces price>0)
 r = client.patch(f"/samelabs/commerce/products/packages/{pkg_id}", json={"price_cents": 0},
                  cookies={COOKIE_NAME: op_sess})
-check("B6 price=0 免费 package 仍合法", r.status_code == 200, str(r.status_code))
+check("B6 price=0 → 422 credits_per_usd_exceeded (floor 关闭免费 package)",
+      r.status_code == 422 and r.json().get("error") == "credits_per_usd_exceeded",
+      str(r.status_code))
 
 # ══════════ C. Pricing 不变量 ══════════
 from governance.pricing import set_pricing

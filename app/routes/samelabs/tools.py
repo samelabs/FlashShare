@@ -39,7 +39,7 @@ async def tools(request: Request):
         ctx(request, user, tools=items, fmt_num=fmt_num, page_id="tools"))
 
 
-@router.post("/samelabs/tools/{tool_id}/pricing")
+@router.post("/samelabs/tools/{tool_id:path}/pricing")
 async def set_pricing(tool_id: str, request: Request):
     """Strict validation → command (one tx: lock, before-snapshot,
     mutate, audit). Retired-tool fallback semantics preserved."""
@@ -68,8 +68,8 @@ async def set_pricing(tool_id: str, request: Request):
             "pricing": {k: row[k] for k in ("tool_id", "cost", "enabled")}}
 
 
-@router.post("/samelabs/tools/{tool_key}/presentation")
-@router.patch("/samelabs/tools/{tool_key}/presentation")
+@router.post("/samelabs/tools/{tool_key:path}/presentation")
+@router.patch("/samelabs/tools/{tool_key:path}/presentation")
 async def set_presentation(tool_key: str, request: Request):
     user, resp = gate(request)
     if resp:
@@ -91,6 +91,34 @@ async def set_presentation(tool_key: str, request: Request):
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True}
+
+
+@router.post("/samelabs/tools/{tool_key:path}/enabled")
+async def set_enabled(tool_key: str, request: Request):
+    """Registry switch (platform_tools.enabled) for ANY row — Official
+    local / Operator HTTP / Provider Tool. Strict bool → command (one tx:
+    row lock, before snapshot, tool_supply write, audit)."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        if not isinstance(raw, dict):
+            raise ValueError
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from backoffice.strict import strict_bool
+    try:
+        enabled = strict_bool(raw.get("enabled"))
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    from backoffice import tools as tools_cmd
+    try:
+        row = tools_cmd.set_tool_enabled(int(user["id"]), tool_key, enabled)
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True, "tool_key": row["tool_key"],
+            "enabled": row["enabled"]}
 
 
 @router.post("/samelabs/tools/create")
@@ -169,7 +197,7 @@ async def create_http_tool(request: Request):
     return {"ok": True, "tool_key": tool_key}
 
 
-@router.post("/samelabs/tools/{tool_key}/delete")
+@router.post("/samelabs/tools/{tool_key:path}/delete")
 async def delete_http_tool(tool_key: str, request: Request):
     """Platform-owned HTTP tool delete (tool row + pricing disable +
     audit, one tx)."""

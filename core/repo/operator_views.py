@@ -13,6 +13,27 @@ plane. Ledger rows are NEVER summed across kinds into one number.
 from typing import Sequence
 
 
+# Effective membership predicate — isomorphic to
+# economy.subscription.membership_is_effective and
+# repo.orders.membership_counts_by_plan (named SQL, no domain import):
+# status active/past_due/canceled AND renews_at NOT NULL AND > ts.
+# Takes ONE %s parameter (ts). Alias `m` = memberships.
+_M_EFFECTIVE = ("(m.status IN ('active','past_due','canceled')"
+                " AND m.renews_at IS NOT NULL AND m.renews_at > %s)")
+
+# Display status that never presents a lapsed row as current: effective
+# rows keep their stored status; live-state rows past renews_at read
+# 'expired'; live-state rows never paid (renews_at NULL) read 'not_started'.
+# Takes TWO %s parameters (ts, ts).
+_M_EFFECTIVE_STATUS = (
+    "CASE WHEN m.user_id IS NULL THEN NULL"
+    " WHEN " + _M_EFFECTIVE + " THEN m.status"
+    " WHEN m.status IN ('active','past_due','canceled')"
+    "   AND m.renews_at IS NOT NULL AND m.renews_at <= %s THEN 'expired'"
+    " WHEN m.status IN ('active','past_due','canceled') THEN 'not_started'"
+    " ELSE m.status END")
+
+
 # ── Overview ──
 
 def overview_product(con) -> dict:
@@ -40,17 +61,25 @@ def overview_product(con) -> dict:
 def overview_consumer(con, spendable_kinds: Sequence[str],
                       ts_now: int) -> dict:
     """Consumer Credits facts — SPENDABLE_KINDS only (grants/consumes),
-    never provider/platform cash kinds."""
+    never provider/platform cash kinds. Tool charges are NET of the
+    refunds that reverse them (refund rows reference the exact consume
+    row: ref_type='ledger', ref_id=consume id). Membership count =
+    effective memberships only."""
     return con.execute(
         """
         SELECT
           (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
              WHERE l.kind = ANY(%s)) AS credits_outstanding,
-          (SELECT COALESCE(-SUM(l.delta), 0) FROM ledger l
-             WHERE l.kind = 'consume') AS credits_charged,
-          (SELECT COUNT(*) FROM memberships m) AS memberships
+          ((SELECT COALESCE(-SUM(l.delta), 0) FROM ledger l
+              WHERE l.kind = 'consume')
+           - (SELECT COALESCE(SUM(r.delta), 0) FROM ledger r
+              JOIN ledger c ON r.ref_type = 'ledger'
+                AND r.ref_id = c.id::text AND c.kind = 'consume'
+              WHERE r.kind = 'refund')) AS credits_charged_net,
+          (SELECT COUNT(*) FROM memberships m
+             WHERE """ + _M_EFFECTIVE + """) AS memberships_effective
         """,
-        (list(spendable_kinds),)).fetchone()
+        (list(spendable_kinds), ts_now)).fetchone()
 
 
 def overview_provider(con) -> dict:
@@ -60,8 +89,12 @@ def overview_provider(con) -> dict:
         SELECT
           (SELECT COALESCE(SUM(amount), 0) FROM withdrawals
              WHERE status = 'pending') AS wd_pending_millis,
+          -- approved = debited from the earnings pool, NOT yet paid out;
+          -- paid = external payout recorded. Never merged into one label.
           (SELECT COALESCE(SUM(amount), 0) FROM withdrawals
-             WHERE status IN ('approved','paid')) AS wd_settled_millis,
+             WHERE status = 'approved') AS wd_approved_unpaid_millis,
+          (SELECT COALESCE(SUM(amount), 0) FROM withdrawals
+             WHERE status = 'paid') AS wd_paid_millis,
           (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
              WHERE l.kind = 'provider_earn') AS provider_earn_millis
         """).fetchone()
@@ -93,19 +126,38 @@ def recent_tool_calls(con, limit: int) -> list:
 
 # ── Users ──
 
+def _user_search(q: str | None) -> tuple[str, tuple]:
+    """Operator user search: username / display name / email substring
+    (case-insensitive, LIKE metacharacters matched literally) or exact
+    numeric id. Returns (WHERE fragment, params)."""
+    if not q:
+        return "TRUE", ()
+    esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = f"%{esc}%"
+    uid = int(q) if q.isdigit() and len(q) <= 18 else None
+    return ("(u.username ILIKE %s OR u.display_name ILIKE %s"
+            " OR u.email ILIKE %s OR u.id = %s)",
+            (like, like, like, uid))
+
+
 def users_page(con, q: str | None, limit: int, offset: int,
-               spendable_kinds: Sequence[str]) -> tuple[list, int]:
+               spendable_kinds: Sequence[str],
+               ts_now: int) -> tuple[list, int]:
     """User rows with SEPARATED asset columns. Spendable = SUM over
     SPENDABLE_KINDS only. Provider available = provider_earn −
     approved/paid withdrawals − pending reserved (canonical earnings
-    authority). Never SUM(all ledger)."""
-    like = f"%{q}%" if q else None
+    authority). Never SUM(all ledger). Plan column carries the
+    membership's effective status — a lapsed row is never current."""
+    where, wparams = _user_search(q)
     rows = con.execute(
         """
-        SELECT u.id, u.username, u.status, u.created_at, u.last_login_at,
+        SELECT u.id, u.username, u.display_name, u.email, u.status,
+          u.created_at, u.last_login_at,
           u.payout_channel IS NOT NULL AND btrim(u.payout_channel) <> ''
             AS has_payout_channel,
           p.code AS plan_code,
+          """ + _M_EFFECTIVE_STATUS + """ AS membership_status,
+          COALESCE(""" + _M_EFFECTIVE + """, FALSE) AS membership_effective,
           (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
              WHERE l.user_id = u.id AND l.kind = ANY(%s))
             AS spendable_credits,
@@ -124,15 +176,105 @@ def users_page(con, q: str | None, limit: int, offset: int,
         FROM users u
         LEFT JOIN memberships m ON m.user_id = u.id
         LEFT JOIN plans p ON p.id = m.plan_id
-        WHERE (%s IS NULL OR u.username ILIKE %s)
+        WHERE """ + where + """
         ORDER BY u.id DESC LIMIT %s OFFSET %s
         """,
-        (list(spendable_kinds), like, like, limit, offset)).fetchall()
+        (ts_now, ts_now, ts_now, list(spendable_kinds), *wparams,
+         limit, offset)).fetchall()
     total = con.execute(
-        "SELECT COUNT(*) AS n FROM users u "
-        "WHERE (%s IS NULL OR u.username ILIKE %s)",
-        (like, like)).fetchone()["n"]
+        "SELECT COUNT(*) AS n FROM users u WHERE " + where,
+        wparams).fetchone()["n"]
     return rows, int(total)
+
+
+# ── User detail (read-only) ──
+
+def user_profile(con, user_id: int, spendable_kinds: Sequence[str],
+                 ts_now: int):
+    """Profile basics + separated balances + current membership row
+    (with effective status). None when the user does not exist."""
+    return con.execute(
+        """
+        SELECT u.id, u.username, u.display_name, u.email, u.status,
+          u.x_username, u.payout_channel, u.created_at, u.last_login_at,
+          (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
+             WHERE l.user_id = u.id AND l.kind = ANY(%s))
+            AS spendable_credits,
+          (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
+             WHERE l.user_id = u.id AND l.kind = 'provider_earn')
+            AS provider_earned_millis,
+          (SELECT COALESCE(SUM(w.amount), 0) FROM withdrawals w
+             WHERE w.user_id = u.id AND w.status = 'pending')
+            AS provider_pending_millis,
+          ((SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
+              WHERE l.user_id = u.id AND l.kind = 'provider_earn')
+           - (SELECT COALESCE(SUM(w.amount), 0) FROM withdrawals w
+              WHERE w.user_id = u.id AND w.status IN ('approved','paid'))
+           - (SELECT COALESCE(SUM(w.amount), 0) FROM withdrawals w
+              WHERE w.user_id = u.id AND w.status = 'pending'))
+            AS provider_available_millis,
+          p.code AS plan_code, p.name AS plan_name,
+          m.status AS membership_stored_status,
+          """ + _M_EFFECTIVE_STATUS + """ AS membership_status,
+          COALESCE(""" + _M_EFFECTIVE + """, FALSE) AS membership_effective,
+          m.provider_subscription_id, m.started_at AS membership_started_at,
+          m.renews_at AS membership_renews_at,
+          m.cancel_scheduled_at AS membership_cancel_scheduled_at
+        FROM users u
+        LEFT JOIN memberships m ON m.user_id = u.id
+        LEFT JOIN plans p ON p.id = m.plan_id
+        WHERE u.id = %s
+        """,
+        (list(spendable_kinds), ts_now, ts_now, ts_now,
+         user_id)).fetchone()
+
+
+def user_recent_orders(con, user_id: int, limit: int) -> list:
+    return con.execute(
+        """
+        SELECT o.id, o.kind, o.item_id, o.provider, o.provider_order_id,
+               o.amount_cents, o.currency, o.credits_snapshot, o.status,
+               o.granted, o.created_at, o.paid_at, o.refunded_at
+        FROM orders o WHERE o.user_id = %s
+        ORDER BY o.id DESC LIMIT %s
+        """,
+        (user_id, limit)).fetchall()
+
+
+def user_recent_tool_calls(con, user_id: int, limit: int) -> list:
+    return con.execute(
+        """
+        SELECT tc.id, tc.tool_id, tc.status, tc.cost_snapshot, tc.error,
+               tc.started_at, tc.finished_at
+        FROM tool_calls tc WHERE tc.user_id = %s
+        ORDER BY tc.id DESC LIMIT %s
+        """,
+        (user_id, limit)).fetchall()
+
+
+def user_recent_withdrawals(con, user_id: int, limit: int) -> list:
+    return con.execute(
+        """
+        SELECT w.id, w.amount, w.status, w.payout_channel_snapshot,
+               w.payout_ref, w.created_at, w.reviewed_at, w.paid_at
+        FROM withdrawals w WHERE w.user_id = %s
+        ORDER BY w.id DESC LIMIT %s
+        """,
+        (user_id, limit)).fetchall()
+
+
+def user_recent_ledger(con, user_id: int, limit: int) -> list:
+    """Raw per-row facts (every kind). Rows are listed, never summed
+    across kinds; the caller labels each row's unit from explicit kind
+    sets."""
+    return con.execute(
+        """
+        SELECT l.id, l.kind, l.delta, l.balance_after, l.ref_type,
+               l.ref_id, l.note, l.created_at
+        FROM ledger l WHERE l.user_id = %s
+        ORDER BY l.id DESC LIMIT %s
+        """,
+        (user_id, limit)).fetchall()
 
 
 # ── Tool Supply ──
@@ -186,25 +328,28 @@ def orders_page(con, limit: int, offset: int) -> tuple[list, int]:
 
 # ── Commerce: Memberships ──
 
-def memberships_page(con, limit: int, offset: int) -> tuple[list, int]:
+def memberships_page(con, limit: int, offset: int,
+                     ts_now: int) -> tuple[list, int]:
     """Membership authority = memberships.user_id PK row. Never guessed
     from orders."""
-    return _membership_rows(con, limit, offset)
+    return _membership_rows(con, limit, offset, ts_now)
 
 
-def _membership_rows(con, limit, offset) -> tuple[list, int]:
+def _membership_rows(con, limit, offset, ts_now) -> tuple[list, int]:
     rows = con.execute(
         """
         SELECT m.user_id, u.username, m.plan_id, p.code AS plan_code,
                p.name AS plan_name, m.provider_subscription_id,
                m.status, m.started_at, m.renews_at, m.cancel_scheduled_at,
-               m.updated_at
+               m.updated_at,
+               """ + _M_EFFECTIVE_STATUS + """ AS effective_status,
+               """ + _M_EFFECTIVE + """ AS effective
         FROM memberships m
         JOIN users u ON u.id = m.user_id
         LEFT JOIN plans p ON p.id = m.plan_id
         ORDER BY m.user_id DESC LIMIT %s OFFSET %s
         """,
-        (limit, offset)).fetchall()
+        (ts_now, ts_now, ts_now, limit, offset)).fetchall()
     total = con.execute("SELECT COUNT(*) AS n FROM memberships"
                         ).fetchone()["n"]
     return rows, int(total)

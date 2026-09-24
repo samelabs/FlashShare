@@ -580,9 +580,11 @@ check("F5 forced audit failure → delete rollback (tool 仍在 + pricing 仍 en
       f"{r.status_code} still={bool(still)} pricing={dict(pr2) if pr2 else None}")
 
 # ══════════ G. append-only / read API / package coverage ══════════
-# package create/update audits
+# package create/update audits (credits/price_cents inside the
+# commercial floor: credits <= price_cents * 10)
 r = _post("/samelabs/commerce/products/packages", json={
-    "code": f"oapkg_{_u}", "name": "OA Pkg", "credits": 5000, "price": 499,
+    "code": f"oapkg_{_u}", "name": "OA Pkg", "credits": 5000,
+    "price_cents": 599,
 }, cookies={COOKIE_NAME: op_sess})
 pkg_id = r.json().get("package", {}).get("id")
 rows = _audit_rows("package.create", str(pkg_id))
@@ -590,7 +592,8 @@ check("G1 package create → audit before=NULL / after=safe",
       r.status_code == 200 and len(rows) == 1
       and rows[0]["after_json"]["credits"] == 5000,
       f"{r.status_code} {rows[:1]}")
-r = _patch(f"/samelabs/commerce/products/packages/{pkg_id}", json={"credits": 8000},
+r = _patch(f"/samelabs/commerce/products/packages/{pkg_id}",
+           json={"credits": 8000, "price_cents": 999},
            cookies={COOKIE_NAME: op_sess})
 rows = _audit_rows("package.update", str(pkg_id))
 check("G2 package update → before=5000 / after=8000",

@@ -82,13 +82,21 @@ def withdrawal_sum_excluding(con, user_id: int, statuses: Sequence[str],
     return int(row["s"])
 
 
-def withdrawals_queue(con, limit: int = 50) -> list:
-    """Operator queue: payout destination comes from the REQUEST-TIME
-    snapshot column, never a live users.payout_channel join."""
-    return con.execute(
+def withdrawals_queue(con, limit: int = 50, offset: int = 0,
+                      status: str | None = None) -> tuple[list, int]:
+    """Operator queue (paged; optional exact status filter): payout
+    destination comes from the REQUEST-TIME snapshot column, never a
+    live users.payout_channel join. Returns (rows, total)."""
+    rows = con.execute(
         """
         SELECT w.*, u.username FROM withdrawals w
         JOIN users u ON u.id = w.user_id
-        ORDER BY (w.status = 'pending') DESC, w.id DESC LIMIT %s
+        WHERE (%s::text IS NULL OR w.status = %s::text)
+        ORDER BY (w.status = 'pending') DESC, w.id DESC LIMIT %s OFFSET %s
         """,
-        (limit,)).fetchall()
+        (status, status, limit, offset)).fetchall()
+    total = con.execute(
+        "SELECT COUNT(*) AS n FROM withdrawals w"
+        " WHERE (%s::text IS NULL OR w.status = %s::text)",
+        (status, status)).fetchone()["n"]
+    return rows, int(total)

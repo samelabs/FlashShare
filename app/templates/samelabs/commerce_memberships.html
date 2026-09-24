@@ -7,22 +7,23 @@
   <div class="sl-table-wrap">
   <table class="sl-table">
     <thead><tr>
-      <th>User</th><th>Plan</th><th>Provider subscription</th><th>Status</th>
+      <th>User</th><th>Plan</th><th>Provider subscription</th><th>Stored status</th><th>Effective</th>
       <th>Started</th><th>Renews</th><th>Cancel scheduled</th>
     </tr></thead>
     <tbody>
     {% for m in memberships %}
       <tr>
-        <td>{{ m.username }} (#{{ m.user_id }})</td>
-        <td>{{ m.plan_code or '?' }} — {{ m.plan_name or '' }}</td>
-        <td>{{ m.provider_subscription_id }}</td>
-        <td><span class="sl-badge">{{ m.status }}</span></td>
+        <td><a href="/samelabs/users/{{ m.user_id }}">{{ m.username|e }}</a> (#{{ m.user_id }})</td>
+        <td>{{ (m.plan_code or '?')|e }} — {{ (m.plan_name or '')|e }}</td>
+        <td>{{ m.provider_subscription_id|e }}</td>
+        <td><span class="sl-badge">{{ m.status|e }}</span></td>
+        <td><span class="sl-badge {{ 'sl-b-ok' if m.effective else 'sl-b-muted' }}">{{ m.effective_status|e }}</span></td>
         <td>{{ fmt_ts(m.started_at) }}</td>
         <td>{{ fmt_ts(m.renews_at) if m.renews_at else '—' }}</td>
         <td>{{ fmt_ts(m.cancel_scheduled_at) if m.cancel_scheduled_at else '—' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="sl-empty">No memberships</td></tr>
+      <tr><td colspan="8" class="sl-empty">No memberships</td></tr>
     {% endfor %}
     </tbody>
   </table>

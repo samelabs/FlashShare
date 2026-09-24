@@ -25,6 +25,47 @@ from utils import now
 from governance.delivery import EXPIRY_DAYS, DOWNLOAD_LIMITS
 
 
+class ConflictError(Exception):
+    """Typed DB-constraint conflict on an operator plan write (maps to a
+    409 with the stable token: sort_order_taken / product_already_bound /
+    code_taken)."""
+
+    def __init__(self, token):
+        super().__init__(token)
+        self.token = token
+
+
+# Commercial price floor: products are priced in USD only, and a product
+# may grant at most 1000 Credits per USD. Exact integer form over cents:
+#   credits / (price_cents / 100) <= 1000  <=>  credits * 100 <= price_cents * 1000
+MAX_CREDITS_PER_USD = 1000
+
+
+def check_price_floor(credits: int, price_cents: int) -> None:
+    """Raises ValueError('credits_per_usd_exceeded') when the product
+    would grant more than MAX_CREDITS_PER_USD Credits per USD (a zero
+    price admits zero Credits only)."""
+    if int(credits) * 100 > int(price_cents) * MAX_CREDITS_PER_USD:
+        raise ValueError("credits_per_usd_exceeded")
+
+
+def check_usd(currency) -> None:
+    """Raises ValueError('currency_not_usd') unless the product row's
+    currency is USD."""
+    if str(currency or "").strip().upper() != "USD":
+        raise ValueError("currency_not_usd")
+
+
+def _check_package_sale_currency() -> None:
+    """Packages sell through the shared Creem Credits product whose fixed
+    currency comes from CREEM_CREDITS_CURRENCY. A configured non-USD
+    currency can never carry a USD-priced package → fail closed."""
+    from economy import creem as _creem
+    cur = _creem.CREEM_CREDITS_CURRENCY
+    if cur and cur != "USD":
+        raise ValueError("currency_not_usd")
+
+
 class PlanMirrorError(Exception):
     """Operator plan write aborted at the provider-mirror stage.
 
@@ -230,10 +271,7 @@ def create_plan(operator_id: int, fields: dict) -> dict:
     ConflictError(token)."""
     from repo.orders import insert_plan
 
-    class ConflictError(Exception):
-        def __init__(self, token):
-            self.token = token
-
+    check_price_floor(fields["monthly_credits"], fields["price_cents"])
     row = None
     _mirror_before = None
     try:
@@ -248,6 +286,7 @@ def create_plan(operator_id: int, fields: dict) -> dict:
                 ingress_bytes_24h=fields["ingress_bytes_24h"],
                 expiry_days=fields.get("expiry_days") or (),
                 download_limits=fields.get("download_limits") or ())
+            check_usd(row["currency"])
             # audit lands INSIDE the tx, BEFORE any Creem HTTP side
             # effect: audit failure → rollback → ZERO provider call;
             # Creem failure → rollback → zero committed audit row.
@@ -344,10 +383,6 @@ def update_plan(operator_id: int, plan_id: int, fields: dict) -> dict:
     from repo.orders import plan_by_id, plan_by_id_for_update
     from governance.plan_catalog import is_paid_tier
 
-    class ConflictError(Exception):
-        def __init__(self, token):
-            self.token = token
-
     with db() as con:
         row = plan_by_id(con, plan_id)
     if row is None:
@@ -369,6 +404,18 @@ def update_plan(operator_id: int, plan_id: int, fields: dict) -> dict:
                 _new_p = fields.get("creem_product_id") or None
                 if _cur_p is not None and _new_p != _cur_p:
                     raise ValueError("product_binding_immutable")
+            # PRICE FLOOR + USD: enforced whenever this write changes the
+            # commercial pair (credits, price); an unchanged pair (e.g. a
+            # name/listing edit resubmitting current values) is not a
+            # pricing decision
+            _eff_credits = fields.get("monthly_credits",
+                                      locked["monthly_credits"])
+            _eff_price = fields.get("price_cents", locked["price_cents"])
+            if (int(_eff_credits), int(_eff_price)) != (
+                    int(locked["monthly_credits"]),
+                    int(locked["price_cents"])):
+                check_usd(locked["currency"])
+                check_price_floor(_eff_credits, _eff_price)
             # PENDING-CHECKOUT PRICE FREEZE
             if "price_cents" in fields:
                 if _orders_repo.has_pending_plan_order(con, plan_id):
@@ -525,11 +572,14 @@ def parse_package_fields(raw: dict, *, creating: bool = False) -> dict | None:
 
 def create_package(operator_id: int, fields: dict) -> dict:
     from repo.orders import insert_package
+    _check_package_sale_currency()
+    check_price_floor(fields["credits"], fields["price_cents"])
     try:
         with db() as con:
             row = insert_package(con, fields["code"], fields["name"],
                                  fields["credits"], fields["price_cents"],
                                  now())
+            check_usd(row["currency"])
             operator_audit.record(con, operator_id, "package.create",
                                   "package", str(row["id"]), None,
                                   snap_package(row), now())
@@ -545,6 +595,14 @@ def update_package(operator_id: int, package_id: int, fields: dict) -> dict:
         if cur is None:
             raise KeyError("not_found")
         before = snap_package(cur)
+        # price floor + USD whenever the commercial pair changes
+        _eff_credits = fields.get("credits", cur["credits"])
+        _eff_price = fields.get("price_cents", cur["price_cents"])
+        if (int(_eff_credits), int(_eff_price)) != (
+                int(cur["credits"]), int(cur["price_cents"])):
+            _check_package_sale_currency()
+            check_usd(cur["currency"])
+            check_price_floor(_eff_credits, _eff_price)
         row = update_package(con, package_id, fields, now())
         if row is None:
             raise KeyError("not_found")
