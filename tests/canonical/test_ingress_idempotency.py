@@ -346,8 +346,9 @@ check("28 MCP retry zero second consume/execution (真实差分)",
 st, r3 = _mcp({"files": [{"filename": "m.png", "b64": base64.b64encode(OTHER).decode()}],
                "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
                "client_ref": ref23}, mid=3)
-check("29 MCP same ref changed inline file → 32009 conflict, zero upload",
-      (r3.get("error") or {}).get("message") == "idempotency_conflict"
+check("29 MCP same ref changed inline file → -32009 conflict, zero upload",
+      (r3.get("error") or {}).get("code") == -32009
+      and (r3.get("error") or {}).get("message") == "idempotency_conflict"
       and _gk_count() == gk_mcp1,
       str(r3)[:110])
 

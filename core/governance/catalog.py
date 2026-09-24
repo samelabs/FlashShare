@@ -342,7 +342,51 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
     return tool, None
 
 
-def mcp_name(tool_key: str) -> str:
-    """MCP tool-name projection: 'sun/super-resolve' → 'sun__super-resolve'
-    (MCP name charset forbids '/'; bare first-party ids pass through)."""
-    return tool_key.replace("/", "__")
+def mcp_names() -> dict:
+    """MCP tool-name projection over EVERY stored tool_key → name (injective).
+
+    MCP clients reject '/' in tool names, so the natural name replaces it
+    with '__' ('sun/super_resolve' → 'sun__super_resolve'; bare
+    first-party ids pass through). Usernames and tool ids may themselves
+    contain '__', so two keys can share a natural name ('ab__cd/x' and
+    'ab/cd__x'). Rows are assigned in creation order: the oldest row keeps
+    the natural name, a later colliding row gets '<natural>-<sha256 hex>'.
+    The suffix form never equals a natural name (the segment after a
+    natural name's last '__' is a tool id, which has no '-'), and a taken
+    name is never reassigned, so the map is reversible by construction.
+    Resolution goes through this map (tool_key_for_mcp_name), never by
+    string replacement."""
+    import hashlib
+    with db() as con:
+        keys = catalog_repo.all_tool_keys_by_age(con)
+    names: dict = {}
+    taken: set = set()
+    for key in keys:
+        natural = key.replace("/", "__")
+        name = natural
+        if name in taken:
+            digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+            n = 8
+            name = f"{natural}-{digest[:n]}"
+            while name in taken:
+                n += 4
+                name = f"{natural}-{digest[:n]}"
+        taken.add(name)
+        names[key] = name
+    return names
+
+
+def mcp_name(tool_key: str, names: dict | None = None) -> str:
+    """MCP tool name of one tool_key (see mcp_names)."""
+    names = mcp_names() if names is None else names
+    return names.get(tool_key, tool_key.replace("/", "__"))
+
+
+def tool_key_for_mcp_name(name: str) -> str | None:
+    """Inverse of mcp_names(): the stored tool_key an MCP name denotes, or
+    None when no row projects to it. Visibility/enabled adjudication stays
+    in resolve()."""
+    for key, projected in mcp_names().items():
+        if projected == name:
+            return key
+    return None

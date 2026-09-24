@@ -946,7 +946,7 @@ check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字�
 _mcp_up = _mcp_src.split("_receipt, _usage_ids, _replay = _claim_receipt(")[1].split("source_files = [")[0] if "_claim_receipt(" in _mcp_src else ""
 check("G12 MCP upload 区保留 boundary/quota 专门分支 + generic Exception fallback",
       "IngressQuotaDenied" in _mcp_src and "isError" in _mcp_up
-      and _mcp_up.count("except Exception as exc") >= 1, "")
+      and _mcp_up.count("except Exception") >= 1, "")
 # G13: Web transport early-reject 与 authoritative validate_batch 输出同构
 # (ok/error/limit/incoming 四键; incoming=declared transport bytes)
 _er = _apir.split("Transport safety only")[1].split("pending = []")[0] if "Transport safety only" in _apir else ""
@@ -988,7 +988,7 @@ check("G16 旧 quota key repo-wide 零 active hit (app/core/static/templates/tes
       not _hits, str(_hits[:6]))
 check("G17 MCP quota denial → isError 分支存在 + generic fallback 仍在",
       "IngressQuotaDenied as exc" in _mcp_src
-      and _mcp_up.count("except Exception as exc") >= 1)
+      and _mcp_up.count("except Exception") >= 1)
 check("G18 pipeline quota 走 IngressQuotaError (非普通 ValueError)",
       "IngressQuotaError(denial)" in _pipe_src)
 _aff_src = open(_os.path.join(_REPO, "core", "execution", "affordability.py"), encoding="utf-8").read()

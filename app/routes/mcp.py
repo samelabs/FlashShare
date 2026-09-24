@@ -1,27 +1,47 @@
-"""MCP server at /mcp — stateless streamable HTTP.
+"""MCP server at /mcp — stateless streamable HTTP (POST → JSON).
 
 The agent channel authenticates with a Bearer identity and
 canonical Catalog, source ingress pipeline, ToolInvocation and metering gate.
 Methods: initialize | notifications/initialized | ping | tools/list | tools/call.
+
+Transport rules (Streamable HTTP):
+  - Origin present and not allow-listed → 403 (DNS-rebinding guard);
+    absent Origin (non-browser client) is admitted.
+  - MCP-Protocol-Version header present and unsupported → 400; absent →
+    2025-03-26.
+  - JSON-RPC batches exist only in protocol versions before 2025-06-18.
 """
 
+import asyncio
 import base64
 import binascii
 import json
+import logging
+import urllib.parse
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from config import MAX_UPLOAD_BYTES, PRODUCT_VERSION
-from governance.catalog import list_catalog, resolve as resolve_tool, mcp_name
+from config import BASE_URL, MAX_UPLOAD_BYTES, MCP_ALLOWED_ORIGINS, PRODUCT_VERSION
+from governance.catalog import list_catalog, mcp_name, mcp_names, tool_key_for_mcp_name
 from governance.tool_params import resolve_label
 from utils import sanitize_filename
 
 router = APIRouter()
+_log = logging.getLogger("flashshare")
 
-SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+SUPPORTED_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 LATEST = SUPPORTED_VERSIONS[0]
+# Streamable HTTP: a request without MCP-Protocol-Version is 2025-03-26.
+HEADER_DEFAULT_VERSION = "2025-03-26"
+# JSON-RPC batching was removed from the protocol in 2025-06-18.
+BATCH_REMOVED_IN = "2025-06-18"
 MAX_B64_BYTES = MAX_UPLOAD_BYTES * 2
+MAX_SOURCE_URL_LEN = 2048
+URL_FETCH_TIMEOUT_S = 30
+# Server-defined JSON-RPC error (reserved range -32000..-32099): the
+# client_ref is bound to a different input, or its ingress is running.
+ERR_IDEMPOTENCY = -32009
 
 
 def _rpc(id_, result=None, error=None):
@@ -33,16 +53,55 @@ def _rpc(id_, result=None, error=None):
     return out
 
 
-def _rpc_err(id_, code, message):
-    return _rpc(id_, error={"code": code, "message": message})
+def _rpc_err(id_, code, message, data=None):
+    err = {"code": code, "message": message}
+    if data is not None:
+        err["data"] = data
+    return _rpc(id_, error=err)
 
 
-def _cors_headers():
-    return {
-        "Access-Control-Allow-Origin": "*",
+# ── Origin / CORS ──
+
+def _origin_key(value) -> str | None:
+    """Normalized scheme://host[:port] (default port omitted), or None."""
+    try:
+        parts = urllib.parse.urlsplit(str(value).strip())
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    host = parts.hostname.lower()
+    if ":" in host:
+        host = f"[{host}]"
+    default = 443 if parts.scheme == "https" else 80
+    return f"{parts.scheme}://{host}" + ("" if port in (None, default) else f":{port}")
+
+
+_ALLOWED_ORIGINS = frozenset(
+    k for k in (_origin_key(o) for o in (BASE_URL, *MCP_ALLOWED_ORIGINS)) if k)
+
+
+def _origin_denied(request: Request) -> bool:
+    origin = request.headers.get("origin")
+    if origin is None:
+        return False
+    return _origin_key(origin) not in _ALLOWED_ORIGINS
+
+
+def _cors_headers(request: Request):
+    headers = {
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type, Mcp-Session-Id",
+        "Access-Control-Allow-Headers": ("Authorization, Content-Type, "
+                                         "MCP-Protocol-Version, Mcp-Session-Id, "
+                                         "Last-Event-ID"),
+        "Access-Control-Expose-Headers": "WWW-Authenticate, Mcp-Session-Id",
+        "Vary": "Origin",
     }
+    origin = request.headers.get("origin")
+    if origin is not None and not _origin_denied(request):
+        headers["Access-Control-Allow-Origin"] = origin
+    return headers
 
 
 def _bearer_user(request: Request):
@@ -52,60 +111,112 @@ def _bearer_user(request: Request):
 
 
 @router.options("/mcp")
-async def mcp_options():
-    return Response(status_code=204, headers=_cors_headers())
+async def mcp_options(request: Request):
+    if _origin_denied(request):
+        return Response(status_code=403, headers=_cors_headers(request))
+    return Response(status_code=204, headers=_cors_headers(request))
 
 
 @router.get("/mcp")
-async def mcp_get():
-    return Response(status_code=405, headers=_cors_headers())
+async def mcp_get(request: Request):
+    return Response(status_code=405, headers=_cors_headers(request))
 
 
 @router.delete("/mcp")
-async def mcp_delete():
-    return Response(status_code=405, headers=_cors_headers())
+async def mcp_delete(request: Request):
+    return Response(status_code=405, headers=_cors_headers(request))
 
 
 @router.post("/mcp")
 async def mcp_post(request: Request):
+    cors = _cors_headers(request)
+    if _origin_denied(request):
+        return Response(status_code=403, headers=cors)
     user = _bearer_user(request)
     if not user:
         return Response(
             status_code=401,
-            headers={**_cors_headers(), "WWW-Authenticate": "Bearer"},
+            headers={**cors, "WWW-Authenticate": 'Bearer realm="518"'},
         )
+    version = request.headers.get("mcp-protocol-version")
+    version = HEADER_DEFAULT_VERSION if version is None else version.strip()
+    if version not in SUPPORTED_VERSIONS:
+        return JSONResponse(
+            _rpc_err(None, -32600, "unsupported MCP-Protocol-Version",
+                     {"supported": list(SUPPORTED_VERSIONS)}),
+            status_code=400, headers=cors)
     try:
         msg = json.loads(await request.body())
     except Exception:
         return JSONResponse(_rpc_err(None, -32700, "parse error"),
-                            headers=_cors_headers())
+                            headers=cors)
     if isinstance(msg, list):
+        if version >= BATCH_REMOVED_IN:
+            return JSONResponse(
+                _rpc_err(None, -32600,
+                         f"JSON-RPC batch not supported in protocol version {version}"),
+                status_code=400, headers=cors)
+        if not msg:
+            return JSONResponse(_rpc_err(None, -32600, "invalid request: empty batch"),
+                                status_code=400, headers=cors)
         out = []
         for m in msg:
-            r = await _dispatch(request, user, m)
+            r = await _dispatch_safe(request, user, m)
             if r is not None:
                 out.append(r)
-        return JSONResponse(out, headers=_cors_headers())
-    resp = await _dispatch(request, user, msg)
+        if not out:
+            # only notifications / responses: accepted, nothing to answer
+            return Response(status_code=202, headers=cors)
+        return JSONResponse(out, headers=cors)
+    resp = await _dispatch_safe(request, user, msg)
     if resp is None:
-        return Response(status_code=202, headers=_cors_headers())
-    return JSONResponse(resp, headers=_cors_headers())
+        return Response(status_code=202, headers=cors)
+    return JSONResponse(resp, headers=cors)
 
 
-async def _dispatch(request: Request, user: dict, msg: dict):
+async def _dispatch_safe(request: Request, user: dict, msg):
+    """Every failure answers as JSON-RPC — never an HTTP 500 body."""
+    try:
+        return await _dispatch(request, user, msg)
+    except Exception:
+        _log.exception("mcp dispatch failed")
+        mid = msg.get("id") if isinstance(msg, dict) else None
+        if isinstance(msg, dict) and "id" not in msg:
+            return None
+        return _rpc_err(mid, -32603, "internal error")
+
+
+async def _dispatch(request: Request, user: dict, msg):
     if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0":
         return _rpc_err(None, -32600, "invalid request")
+    if "method" not in msg:
+        # A JSON-RPC response from the client: this stateless server never
+        # sends requests, so there is nothing to correlate — accept, ignore.
+        if "result" in msg or "error" in msg:
+            return None
+        return _rpc_err(msg.get("id"), -32600, "invalid request")
     mid = msg.get("id")
-    method = msg.get("method", "")
+    method = msg.get("method")
     is_notification = "id" not in msg
+    if not isinstance(method, str):
+        return None if is_notification else _rpc_err(mid, -32600, "invalid request")
+    params = msg.get("params")
+    if params is None:
+        params = {}
+    elif not isinstance(params, dict):
+        if is_notification:
+            return None
+        return _rpc_err(mid, -32602, "invalid params: params must be an object")
 
     if method == "initialize":
-        requested = (msg.get("params") or {}).get("protocolVersion", LATEST)
-        version = requested if requested in SUPPORTED_VERSIONS else LATEST
+        requested = params.get("protocolVersion")
+        version = (requested if isinstance(requested, str)
+                   and requested in SUPPORTED_VERSIONS else LATEST)
         from governance.catalog import catalog_version
         return _rpc(mid, {
             "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": True}},
+            # no server→client stream exists, so no list_changed notifications
+            "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "518plus", "version": PRODUCT_VERSION},
             "instructions": (
                 "518.PLUS capability platform. tools/list is paginated "
@@ -113,7 +224,9 @@ async def _dispatch(request: Request, user: dict, msg: dict):
                 "finds tools by keyword when the catalog is large. Every "
                 "call is metered in credits; pass client_ref "
                 "on tools/call to retry safely — replays return the "
-                "original result without re-charging. Catalog version: "
+                "original result without re-charging. Source files go "
+                "inline (base64), by https URL, or by reference to an "
+                "existing upload. Catalog version: "
                 f"{catalog_version()} — re-list when it changes."
             ),
         })
@@ -124,7 +237,6 @@ async def _dispatch(request: Request, user: dict, msg: dict):
     if is_notification:
         return None
     if method == "tools/list":
-        params = msg.get("params") or {}
         page_size = 50
         specs = _tool_specs(user)
         cur = params.get("cursor")
@@ -132,14 +244,58 @@ async def _dispatch(request: Request, user: dict, msg: dict):
             start = int(cur) if cur else 0
         except (TypeError, ValueError):
             return _rpc_err(mid, -32602, "invalid cursor")
+        if start < 0:
+            return _rpc_err(mid, -32602, "invalid cursor")
         out = {"tools": specs[start:start + page_size]}
         if start + page_size < len(specs):
             out["nextCursor"] = str(start + page_size)
         return _rpc(mid, out)
     if method == "tools/call":
-        params = msg.get("params") or {}
         return await _call_tool(request, user, mid, params)
     return _rpc_err(mid, -32601, f"method not found: {method}")
+
+
+_FILE_ITEM_SCHEMA = {
+    "oneOf": [
+        {
+            "type": "object",
+            "title": "inline",
+            "description": "Inline file: base64 bytes + original filename "
+                           "(the extension decides the format).",
+            "properties": {
+                "filename": {"type": "string"},
+                "b64": {"type": "string", "description": "Standard base64 of the file bytes"},
+            },
+            "required": ["filename", "b64"],
+        },
+        {
+            "type": "object",
+            "title": "url",
+            "description": "Public https URL that 518 downloads server-side "
+                           "(public hosts only; same size cap, quota and "
+                           "client_ref idempotency as inline files). filename "
+                           "defaults to the last URL path segment.",
+            "properties": {
+                "url": {"type": "string", "format": "uri", "pattern": "^https://"},
+                "filename": {"type": "string"},
+            },
+            "required": ["url"],
+        },
+        {
+            "type": "object",
+            "title": "reference",
+            "description": "An existing 518 upload owned by you: public_id "
+                           "plus the source_token returned with it (omit the "
+                           "token for your own shared uploads). No re-upload, "
+                           "no ingress quota.",
+            "properties": {
+                "public_id": {"type": "string"},
+                "source_token": {"type": "string"},
+            },
+            "required": ["public_id"],
+        },
+    ],
+}
 
 
 def _tool_specs(user: dict) -> list:
@@ -151,23 +307,18 @@ def _tool_specs(user: dict) -> list:
     ent = project(user["id"])["entitlements"]
     expiry_enum = list(ent["expiry_days"])
     downloads_enum = list(ent["download_limits"])
+    names = mcp_names()
     specs = []
     for t in list_catalog(user["id"]):
         multi = bool(t.get("multi"))
         props = {
             "files": {
                 "type": "array",
-                "description": "Source files (base64 + original filename)",
+                "description": "Source files: each item is inline base64, an "
+                               "https URL, or a reference to an existing upload",
                 "minItems": 1,
                 "maxItems": 20 if multi else 1,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "filename": {"type": "string"},
-                        "b64": {"type": "string"},
-                    },
-                    "required": ["filename", "b64"],
-                },
+                "items": _FILE_ITEM_SCHEMA,
             },
         }
         required = ["files", "client_ref"]
@@ -207,7 +358,7 @@ def _tool_specs(user: dict) -> list:
         if int(t["cost"]) > 0:
             desc += f" (cost: {int(t['cost'])} credits)"
         specs.append({
-            "name": mcp_name(t["id"]),
+            "name": mcp_name(t["id"], names),
             "description": desc,
             "inputSchema": {
                 "type": "object",
@@ -227,12 +378,27 @@ def _tool_specs(user: dict) -> list:
     return specs
 
 
-async def _call_tool(request: Request, user: dict, mid, params: dict):
-    from execution.pipeline import upload_sources as _upload_batch
+def _tool_result_error(mid, body: dict, client_ref: str):
+    """Business denial as a tool result (isError), same shape as a
+    dispatch denial."""
+    return _rpc(mid, {
+        "content": [{"type": "text",
+                     "text": json.dumps({"error": body.get("error"),
+                                         "client_ref": client_ref})}],
+        "isError": True,
+    })
 
-    tool_id = str(params.get("name") or "")
-    args = params.get("arguments") or {}
-    if tool_id == "catalog_search":
+
+async def _call_tool(request: Request, user: dict, mid, params: dict):
+    name = params.get("name")
+    if not isinstance(name, str) or not name:
+        return _rpc_err(mid, -32602, "invalid params: name required")
+    args = params.get("arguments")
+    if args is None:
+        args = {}
+    elif not isinstance(args, dict):
+        return _rpc_err(mid, -32602, "invalid params: arguments must be an object")
+    if name == "catalog_search":
         from governance.catalog import search_catalog
         q = str(args.get("q") or "").strip()[:64]
         hits = search_catalog(q, user["id"], limit=20) if q else []
@@ -241,7 +407,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                 {"query": q, "tools": [h["id"] for h in hits]}, ensure_ascii=False)}],
             "isError": False,
         })
-    tool_key = tool_id.replace("__", "/") if "__" in tool_id else tool_id
 
     # client_ref is REQUIRED and validated BEFORE any base64 decode,
     # quota check, or Gokapi upload — a missing/invalid ref must never
@@ -277,34 +442,92 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     else:
         tool_params = {}
 
+    # Source items: ("inline", (filename, ctype, body)) | ("url", (url,
+    # filename|None)) | ("ref", (public_id, source_token)). Shape only —
+    # no network, no storage.
     try:
         files_arg = args.get("files")
         if not isinstance(files_arg, list) or not files_arg:
             raise ValueError("files[] required")
-        uploads = []
-        for f in files_arg:
-            if not isinstance(f, dict):
-                raise ValueError("files[] items must be objects")
-            uploads.append(_decode_file(f.get("b64"), f.get("filename")))
+        items = [_parse_file_item(f) for f in files_arg]
     except (ValueError, binascii.Error) as exc:
         # Malformed input outranks business affordability — protocol
         # validation stays first so a low balance can never mask it.
         return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
 
+    # Platform files/request boundary (the count part of the single batch
+    # validator; sizes are checked once the bytes are known).
+    from governance.ingress import validate_batch as _vbatch
+    _cdenial = _vbatch([0] * len(items))
+    if _cdenial:
+        return _rpc(mid, {
+            "content": [{"type": "text", "text": json.dumps(_cdenial)}],
+            "isError": True,
+        })
+
+    # Tool + delivery entitlement + stored contract + params — the SAME
+    # pre-gate validators dispatch runs, here BEFORE any fetch, quota
+    # claim or Gokapi upload.
+    tool_key = tool_key_for_mcp_name(name)
+    if tool_key is None:
+        return _rpc_err(mid, -32602, f"unknown tool: {name}")
+    from execution.dispatch import (preflight as _preflight,
+                                    source_count_error as _count_err,
+                                    source_accept_error as _accept_err)
+    tool, _declared, _pbody, _pstatus = _preflight(user, tool_key, delivery,
+                                                   tool_params)
+    if _pbody is not None:
+        if _pbody.get("error") == "tool_not_found":
+            return _rpc_err(mid, -32602, f"unknown tool: {name}")
+        return _tool_result_error(mid, _pbody, client_ref)
+    _cerr = _count_err(tool, len(items))
+    if _cerr:
+        return _tool_result_error(mid, {"error": _cerr}, client_ref)
+
     # Advisory credits affordability BEFORE source ingress: a clear
     # insufficiency answers as an application error (isError tool
     # result) without uploading anything. Authoritative consume stays
     # in the gate; this snapshot never reserves credits.
-    from governance.catalog import resolve as _resolve_tool
     from execution.affordability import check_affordability
-    _tool_row, _terr = _resolve_tool(tool_key, user["id"])
-    if _terr is None:
-        _denial = check_affordability(user["id"], _tool_row)
-        if _denial:
-            return _rpc(mid, {
-                "content": [{"type": "text", "text": json.dumps(_denial)}],
-                "isError": True,
-            })
+    _denial = check_affordability(user["id"], tool)
+    if _denial:
+        return _rpc(mid, {
+            "content": [{"type": "text", "text": json.dumps(_denial)}],
+            "isError": True,
+        })
+
+    # References: ownership (DB owner or signed source token) resolved by
+    # the execution-boundary resolver, before anything is ingested.
+    from execution.source import resolve_upload
+    from config import PUBLIC_ID_RE
+    ref_names = {}
+    for i, (kind, val) in enumerate(items):
+        if kind != "ref":
+            continue
+        _pid, _tok = val
+        if not PUBLIC_ID_RE.match(_pid):
+            return _rpc_err(mid, -32602, "invalid arguments: invalid public_id")
+        _up, _rerr = await resolve_upload(_pid, user, _tok)
+        if _rerr or not _up:
+            return _rpc_err(mid, -32602,
+                            f"invalid arguments: source reference rejected: "
+                            f"{_rerr or 'not_found'}")
+        ref_names[i] = _up.get("file_name", "")
+
+    # URL sources: fetched through the pinned SSRF-guarded transport.
+    from remote import RemoteError
+    uploads = {}
+    for i, (kind, val) in enumerate(items):
+        if kind == "inline":
+            uploads[i] = val
+        elif kind == "url":
+            _url, _fname = val
+            try:
+                _body = await asyncio.to_thread(_fetch_url_source, _url)
+            except RemoteError as exc:
+                return _rpc_err(mid, -32602,
+                                f"invalid arguments: url source rejected: {exc.code}")
+            uploads[i] = _url_upload(_url, _fname, _body)
 
     ip = request.headers.get("X-Real-IP",
                              request.client.host if request.client else "").strip()
@@ -327,103 +550,93 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
     from utils import sanitize_filename as _san
     from security import sniff_allowed as _sniff, sign_source_token
+    _ingest_idx = sorted(uploads)
     _canon = []
-    for _fn, _ct, _body in uploads:
+    for i in _ingest_idx:
+        _fn, _ct, _body = uploads[i]
         _ok_t, _final_t = _sniff(_fn, _ct, _body[:512])
         if not _ok_t:
             return _rpc_err(mid, -32602, f"upload rejected: {_final_t}")
         _canon.append(((_san(_fn), _final_t, _body)))
+    _names = {**ref_names,
+              **{i: c[0] for i, c in zip(_ingest_idx, _canon)}}
+    _aerr = _accept_err(tool, [_names[i] for i in range(len(items))])
+    if _aerr:
+        return _tool_result_error(mid, {"error": _aerr}, client_ref)
     # Authoritative platform batch boundary (single validator for
     # Web/MCP) — BEFORE the receipt claim / quota / Gokapi.
-    from governance.ingress import validate_batch as _vbatch
     _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
     if _bdenial:
         return _rpc(mid, {
             "content": [{"type": "text", "text": json.dumps(_bdenial)}],
             "isError": True,
         })
-    _req_hash = ingress_request_hash(
-        "mcp_tool_source",
-        [{"filename": _fn, "content_type": _ct, "size": len(_b),
-          "sha256": _hl.sha256(_b).hexdigest()}
-         for _fn, _ct, _b in _canon],
-        {"tool_id": tool_key})
-    try:
-        _receipt, _usage_ids, _replay = _claim_receipt(
-            user["id"], ip, client_ref, _req_hash,
-            [len(_b) for _, _, _b in _canon])
-    except _IngressConflict:
-        return _rpc_err(mid, 32009, "idempotency_conflict")
-    except _IngressInProgress:
-        return _rpc_err(mid, 32009, "err_upload_in_progress")
-    except _IngressQuotaDenied as exc:
-        return _rpc(mid, {
-            "content": [{"type": "text", "text": json.dumps(exc.denial)}],
-            "isError": True,
-        })
-    except _IngressUnresolved:
-        # unresolvable durable replay — server-side error, zero side
-        # effects; never leaks out of _call_tool
-        return _rpc_err(mid, -32000, "err_ingress_unresolved")
 
-    if _replay is not None:
-        infos = _replay if isinstance(_replay, list) else [_replay]
-    else:
-        from storage import write as _gk_up
-        from execution.pipeline import (INTERMEDIATE_TTL_DAYS as _ITTL,
-                                        INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
-        from sharing.ingress_receipt import OUTCOME_UNRESOLVED
-        import io as _io
-        _gids = []
-        # Phase 1 — Gokapi staging. A staging failure is a KNOWN
-        # rollback (objects half-uploaded, receipt still running) and
-        # takes the generic cleanup below.
+    infos = []
+    if _canon:
+        _ctx = {"tool_id": tool_key}
+        if any(kind != "inline" for kind, _ in items):
+            # URL / reference forms are part of the operation identity:
+            # same client_ref + a different source list → conflict.
+            _ctx["sources"] = [
+                {"kind": "url", "url": val[0]} if kind == "url"
+                else {"kind": "ref", "public_id": val[0]} if kind == "ref"
+                else {"kind": "inline"}
+                for kind, val in items]
+        _req_hash = ingress_request_hash(
+            "mcp_tool_source",
+            [{"filename": _fn, "content_type": _ct, "size": len(_b),
+              "sha256": _hl.sha256(_b).hexdigest()}
+             for _fn, _ct, _b in _canon],
+            _ctx)
         try:
-            infos = []
-            for _fn, _ct, _body in _canon:
-                _gk = _gk_up(_io.BytesIO(_body), _fn, _ct, _ITTL, _IDL,
-                             len(_body))
-                _fid = (_gk.get("FileInfo", {}) or {}).get("Id", "")
-                if not _fid:
-                    raise RuntimeError("gokapi_missing_id")
-                _gids.append(_fid)
-                infos.append({
-                    "name": _fn, "filename": _fn, "contentType": _ct,
-                    "size": len(_body), "downloadUrl": "",
-                    "hotlinkUrl": _gk["FileInfo"].get("UrlHotlink", ""),
-                    "publicId": _fid, "gokapiId": _fid,
-                    "sourceToken": sign_source_token(user["id"], _fid),
-                    "expireAt": _gk["FileInfo"].get("ExpireAt"),
-                    "expiryDays": _ITTL, "allowedDownloads": _IDL,
-                })
-        except Exception as exc:
-            from storage import delete as _gk_del
-            for _gid in _gids:
-                try:
-                    _gk_del(_gid)
-                except Exception:
-                    pass
+            _receipt, _usage_ids, _replay = _claim_receipt(
+                user["id"], ip, client_ref, _req_hash,
+                [len(_b) for _, _, _b in _canon])
+        except _IngressConflict:
+            return _rpc_err(mid, ERR_IDEMPOTENCY, "idempotency_conflict")
+        except _IngressInProgress:
+            return _rpc_err(mid, ERR_IDEMPOTENCY, "err_upload_in_progress")
+        except _IngressQuotaDenied as exc:
+            return _rpc(mid, {
+                "content": [{"type": "text", "text": json.dumps(exc.denial)}],
+                "isError": True,
+            })
+        except _IngressUnresolved:
+            # unresolvable durable replay — server-side error, zero side
+            # effects; never leaks out of _call_tool
+            return _rpc_err(mid, -32000, "err_ingress_unresolved")
+
+        if _replay is not None:
+            infos = _replay if isinstance(_replay, list) else [_replay]
+        else:
+            from storage import write as _gk_up
+            from execution.pipeline import (INTERMEDIATE_TTL_DAYS as _ITTL,
+                                            INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
+            import io as _io
+            _gids = []
+            # Phase 1 — Gokapi staging. A staging failure is a KNOWN
+            # rollback (objects half-uploaded, receipt still running) and
+            # takes the generic cleanup below.
             try:
-                _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
+                for _fn, _ct, _body in _canon:
+                    _gk = _gk_up(_io.BytesIO(_body), _fn, _ct, _ITTL, _IDL,
+                                 len(_body))
+                    _fid = (_gk.get("FileInfo", {}) or {}).get("Id", "")
+                    if not _fid:
+                        raise RuntimeError("gokapi_missing_id")
+                    _gids.append(_fid)
+                    infos.append({
+                        "name": _fn, "filename": _fn, "contentType": _ct,
+                        "size": len(_body), "downloadUrl": "",
+                        "hotlinkUrl": _gk["FileInfo"].get("UrlHotlink", ""),
+                        "publicId": _fid, "gokapiId": _fid,
+                        "sourceToken": sign_source_token(user["id"], _fid),
+                        "expireAt": _gk["FileInfo"].get("ExpireAt"),
+                        "expiryDays": _ITTL, "allowedDownloads": _IDL,
+                    })
             except Exception:
-                pass
-            return _rpc_err(mid, -32602, f"upload rejected: {exc}")
-
-        # Phase 2 — finalize with an EXPLICIT three-way outcome. The
-        # unresolved branch must NEVER fall into generic cleanup: zero
-        # Gokapi delete, zero quota release, zero receipt mutation.
-        from database import db as _db
-        try:
-            with _db() as con:
-                _receipt_ok(con, int(_receipt["id"]), infos)
-        except Exception:
-            _out = _resolve_outcome(int(_receipt["id"]))
-            if _out["outcome"] == OUTCOME_DURABLE_OK:
-                infos = (_out["result"] if isinstance(_out["result"], list)
-                         else [_out["result"]])
-            elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-                # the ONLY finalize-driven cleanup path: receipt still
-                # running proves the success transaction never landed.
+                _log.exception("mcp source staging failed")
                 from storage import delete as _gk_del
                 for _gid in _gids:
                     try:
@@ -434,14 +647,49 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
                 except Exception:
                     pass
-                return _rpc_err(mid, -32602, "upload rejected: err_upload_failed")
-            else:
-                # UNRESOLVED — server-side error, not invalid arguments
-                return _rpc_err(mid, -32000, "err_ingress_unresolved")
+                # server-side storage failure — not invalid arguments
+                return _rpc_err(mid, -32603, "err_upload_failed")
 
-    source_files = [{"public_id": info["publicId"],
-                     "source_token": info.get("sourceToken", "")}
-                    for info in infos]
+            # Phase 2 — finalize with an EXPLICIT three-way outcome. The
+            # unresolved branch must NEVER fall into generic cleanup: zero
+            # Gokapi delete, zero quota release, zero receipt mutation.
+            from database import db as _db
+            try:
+                with _db() as con:
+                    _receipt_ok(con, int(_receipt["id"]), infos)
+            except Exception:
+                _out = _resolve_outcome(int(_receipt["id"]))
+                if _out["outcome"] == OUTCOME_DURABLE_OK:
+                    infos = (_out["result"] if isinstance(_out["result"], list)
+                             else [_out["result"]])
+                elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
+                    # the ONLY finalize-driven cleanup path: receipt still
+                    # running proves the success transaction never landed.
+                    from storage import delete as _gk_del
+                    for _gid in _gids:
+                        try:
+                            _gk_del(_gid)
+                        except Exception:
+                            pass
+                    try:
+                        _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
+                    except Exception:
+                        pass
+                    return _rpc_err(mid, -32603, "err_upload_failed")
+                else:
+                    # UNRESOLVED — server-side error, not invalid arguments
+                    return _rpc_err(mid, -32000, "err_ingress_unresolved")
+
+    # canonical source order = request order (ingested handles + references)
+    _ingested = iter(infos)
+    source_files = []
+    for kind, val in items:
+        if kind == "ref":
+            source_files.append({"public_id": val[0], "source_token": val[1]})
+        else:
+            info = next(_ingested)
+            source_files.append({"public_id": info["publicId"],
+                                 "source_token": info.get("sourceToken", "")})
 
     raw = {
         "tool_id": tool_key,
@@ -474,9 +722,71 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     })
 
 
+def _parse_file_item(f) -> tuple:
+    """One files[] item → (kind, value). Exactly one source form per item;
+    a missing optional field takes its default, an explicit invalid value
+    is rejected."""
+    if not isinstance(f, dict):
+        raise ValueError("files[] items must be objects")
+    forms = [k for k in ("b64", "url", "public_id") if k in f]
+    if len(forms) != 1:
+        raise ValueError("files[] items need exactly one of b64 | url | public_id")
+    if forms[0] == "b64":
+        return "inline", _decode_file(f.get("b64"), f.get("filename"))
+    if forms[0] == "url":
+        url = f.get("url")
+        if (not isinstance(url, str) or not url.startswith("https://")
+                or len(url) > MAX_SOURCE_URL_LEN):
+            raise ValueError("files[].url must be an https URL")
+        fname = f.get("filename")
+        if "filename" in f and (not isinstance(fname, str) or not fname.strip()):
+            raise ValueError("files[].filename must be a non-empty string")
+        return "url", (url, fname)
+    pid = f.get("public_id")
+    token = f.get("source_token", "")
+    if not isinstance(pid, str) or not pid:
+        raise ValueError("files[].public_id must be a non-empty string")
+    if not isinstance(token, str):
+        raise ValueError("files[].source_token must be a string")
+    return "ref", (pid, token)
+
+
+def _fetch_url_source(url: str) -> bytes:
+    """GET one https source over the pinned SSRF-guarded transport
+    (every hop: https only, all resolved addresses public, connect pinned
+    to a validated address; redirects re-validated). Body cap = the
+    per-file ingress cap."""
+    from remote import RemoteError, pinned_request
+    status, data = pinned_request(url, method="GET",
+                                  timeout_s=URL_FETCH_TIMEOUT_S)
+    if status != 200:
+        raise RemoteError("http_status", str(status))
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise RemoteError("too_large", f"over {MAX_UPLOAD_BYTES} bytes")
+    if not data:
+        raise RemoteError("empty", "empty body")
+    return data
+
+
+def _url_upload(url: str, filename, body: bytes) -> tuple:
+    """(filename, ctype, body) for a fetched URL source — same shape as an
+    inline file; the name comes from the caller or the URL path."""
+    import os
+    if not filename:
+        path = urllib.parse.urlsplit(url).path
+        filename = urllib.parse.unquote(path.rsplit("/", 1)[-1])
+    fn = sanitize_filename(str(filename or "download"))
+    if not os.path.splitext(fn)[1]:
+        from remote import _sniff_ext
+        fn += _sniff_ext(body[:64]) or ""
+    return fn, _guess_ctype(fn), body
+
+
 def _decode_file(b64, filename) -> tuple:
     if not b64 or not filename:
         raise ValueError("files[] items need b64 and filename")
+    if not isinstance(b64, str) or not isinstance(filename, str):
+        raise ValueError("files[] b64 and filename must be strings")
     if len(b64) > MAX_B64_BYTES:
         raise ValueError("file exceeds size limit")
     body = base64.b64decode(b64, validate=True)

@@ -203,6 +203,12 @@ jobs:
             python tests/canonical/test_ingress_idempotency.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_ingress_idempotency.py
+          expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
+            python tests/canonical/test_mcp_protocol.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_mcp_protocol.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_mcp_protocol.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_order_payment_state_machine.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
@@ -394,6 +400,9 @@ jobs:
 
       - name: Ingress idempotency canonical
         run: python tests/canonical/test_ingress_idempotency.py
+
+      - name: MCP protocol canonical
+        run: python tests/canonical/test_mcp_protocol.py
 
       - name: Failure diagnostics
         if: failure()

@@ -44,6 +44,10 @@
 - `DATABASE_URL` — PostgreSQL DSN（`postgresql+psycopg://…`）
 - `FLASHSHARE_SESSION_SECRET` — session/token 签名密钥
 - `FLASHSHARE_GOKAPI_URL` / `FLASHSHARE_GOKAPI_KEY` — Gokapi API
+- `FLASHSHARE_MCP_ALLOWED_ORIGINS` — 可选，逗号分隔的额外浏览器 origin
+  （`scheme://host[:port]`）。`/mcp` 对带 `Origin` 头的请求只放行
+  `FLASHSHARE_BASE_URL` 的 origin 与此列表，其余 403；无 `Origin` 头的
+  非浏览器客户端不受影响。
 - 其余见 `core/config.py`（全部 `FLASHSHARE_*` 前缀）
 
 生产值在服务器 env 文件（不进仓库）；测试用 isolated DB + 任意测试 secret。

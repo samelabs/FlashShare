@@ -237,7 +237,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     (public/unlisted → everyone when key known; private → owner only)。
 
     owner=None → first-party bare-id tool (官方工具, 无作者命名空间)."""
-    from governance.catalog import resolve, catalog_item
+    from governance.catalog import resolve, catalog_item, mcp_name
     user = request.state.user
     tool_key = f"{owner}/{tool_id}" if owner else tool_id
     tool, err = resolve(tool_key, user["id"] if user else None)
@@ -263,7 +263,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "tool_name": resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id,
         "handle": _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None,
         "stats": _public_stats(tool_key),
-        "mcp_name": tool_key.replace("/", "__"),
+        "mcp_name": mcp_name(tool_key),
         "is_mcp": mcp,
         "tools_json": json.dumps([tool_public], ensure_ascii=False),
         "limits_json": ctx.get("limits_json") or json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),
