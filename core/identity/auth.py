@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+import secrets
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -31,6 +32,12 @@ def validate_username(username: str) -> str | None:
     return None
 
 
+def normalize_email(email: str | None) -> str:
+    """Email identity is case-insensitive: every write and lookup uses
+    the stripped, lowercased form."""
+    return (email or "").strip().lower()
+
+
 def validate_email(email: str) -> str | None:
     if not email:
         return "err_email_empty"
@@ -59,10 +66,17 @@ def username_taken(username: str) -> bool:
 
 
 def register_user(username: str, email: str, password: str) -> int:
-    """Create a new local account. Caller must validate inputs first."""
+    """Create a new local account. Caller must validate inputs first.
+
+    Raises ValueError("err_email_taken") when the normalized email is
+    already held (case-insensitive, covers pre-normalization rows).
+    """
     ts = now()
+    email = normalize_email(email)
     pw_hash = hash_password(password)
     with db() as con:
+        if users_repo.email_taken_by_other(con, email, 0):
+            raise ValueError("err_email_taken")
         row = users_repo.insert_local(con, username, email, pw_hash,
                                       username, ts)
         return row["id"]
@@ -71,7 +85,7 @@ def register_user(username: str, email: str, password: str) -> int:
 def authenticate_local(login: str, password: str) -> int | None:
     """Authenticate by username/email. Suspended accounts never authenticate."""
     with db() as con:
-        row = users_repo.by_username_or_email(con, login)
+        row = users_repo.by_username_or_email(con, login, normalize_email(login))
     if not row or row.get("status") == "suspended" or not row["password_hash"]:
         return None
     if not verify_password(password, row["password_hash"]):
@@ -197,7 +211,10 @@ def unbind_x(user_id: int) -> None:
 
 def update_profile(user_id: int, display_name: str | None = None,
                    bio: str | None = None, email: str | None = None,
-                   payout_channel: str | None = None) -> None:
+                   payout_channel: str | None = None,
+                   current_password: str | None = None) -> None:
+    """Changing the email of an account that has a password requires the
+    current password (X-only accounts without a password are exempt)."""
     ts = now()
     with db() as con:
         if display_name is not None:
@@ -213,12 +230,21 @@ def update_profile(user_id: int, display_name: str | None = None,
         if email is not None:
             # Same contract as registration: one validator, no silent
             # truncation — validate_email owns length and shape rules.
-            email = email.strip().lower()
+            email = normalize_email(email)
             err = validate_email(email)
             if err:
                 raise ValueError(err)
-            if users_repo.email_taken_by_other(con, email, user_id):
-                raise ValueError("err_email_used")
+            row = users_repo.by_id(con, user_id)
+            if not row:
+                raise ValueError("err_user_not_found")
+            if normalize_email(row["email"]) != email:
+                if row["password_hash"]:
+                    if not current_password:
+                        raise ValueError("err_current_password_required")
+                    if not verify_password(current_password, row["password_hash"]):
+                        raise ValueError("err_old_password_wrong")
+                if users_repo.email_taken_by_other(con, email, user_id):
+                    raise ValueError("err_email_used")
             users_repo.update_email(con, user_id, email, ts)
 
 
@@ -257,6 +283,22 @@ def set_password(user_id: int, new_password: str) -> None:
     new_hash = hash_password(new_password)
     with db() as con:
         _rotate_password_credentials(con, user_id, new_hash)
+
+
+def operator_reset_password(user_id: int) -> str:
+    """Operator-initiated reset: set a fresh random temporary password and
+    revoke every session and API token of the user (same rotation as a
+    password change). Returns the temporary password once; only its hash
+    is stored. The caller owns operator authority and audit."""
+    with db() as con:
+        row = users_repo.by_id(con, user_id)
+    if not row:
+        raise ValueError("err_user_not_found")
+    temporary = secrets.token_urlsafe(12)
+    new_hash = hash_password(temporary)
+    with db() as con:
+        _rotate_password_credentials(con, user_id, new_hash)
+    return temporary
 
 
 # ── Serialization ───────────────────────────────────────

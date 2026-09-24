@@ -66,6 +66,14 @@ def fmt_ts(ts) -> str:
         int(ts), datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
 
 
+def error_text(request: Request, code: str) -> str:
+    """Domain error code → localized user text. Codes without a text in
+    SERVER_I18N render the generic localized message; a raw err_* key or
+    exception text never reaches the page."""
+    texts = server_text(getattr(request.state, "lang", "en"))
+    return texts.get(code) or texts["err_unexpected"]
+
+
 def ctx_base(request: Request) -> dict:
     """Base context for all pages."""
     lang = request.state.lang

@@ -442,6 +442,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "Échec",
         "mytools_call_st_insufficient": "Crédits insuffisants",
         "mytools_call_st_running": "En cours",
+# B3 identity closure
+        "err_current_password_required": "Saisissez votre mot de passe actuel",
+        "err_user_suspended": "Ce compte est suspendu",
+        "err_unexpected": "Une erreur s'est produite, veuillez réessayer",
+        "err_too_many_attempts": "Trop de tentatives, veuillez réessayer plus tard",
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -872,6 +877,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "실패",
         "mytools_call_st_insufficient": "크레딧 부족",
         "mytools_call_st_running": "실행 중",
+# B3 identity closure
+        "err_current_password_required": "현재 비밀번호를 입력해 주세요",
+        "err_user_suspended": "정지된 계정입니다",
+        "err_unexpected": "문제가 발생했습니다. 다시 시도해 주세요",
+        "err_too_many_attempts": "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1301,6 +1311,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "Ошибка",
         "mytools_call_st_insufficient": "Недостаточно кредитов",
         "mytools_call_st_running": "Выполняется",
+# B3 identity closure
+        "err_current_password_required": "Введите текущий пароль",
+        "err_user_suspended": "Аккаунт заблокирован",
+        "err_unexpected": "Что-то пошло не так, попробуйте снова",
+        "err_too_many_attempts": "Слишком много попыток, попробуйте позже",
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -1730,6 +1745,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "فشل",
         "mytools_call_st_insufficient": "رصيد غير كافٍ",
         "mytools_call_st_running": "قيد التشغيل",
+# B3 identity closure
+        "err_current_password_required": "أدخل كلمة المرور الحالية",
+        "err_user_suspended": "هذا الحساب موقوف",
+        "err_unexpected": "حدث خطأ ما، حاول مرة أخرى",
+        "err_too_many_attempts": "محاولات كثيرة جداً، حاول لاحقاً",
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2160,6 +2180,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "Fehlgeschlagen",
         "mytools_call_st_insufficient": "Guthaben unzureichend",
         "mytools_call_st_running": "Läuft",
+# B3 identity closure
+        "err_current_password_required": "Bitte aktuelles Passwort eingeben",
+        "err_user_suspended": "Dieses Konto ist gesperrt",
+        "err_unexpected": "Etwas ist schiefgelaufen, bitte erneut versuchen",
+        "err_too_many_attempts": "Zu viele Versuche, bitte später erneut versuchen",
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -2589,6 +2614,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "Falhou",
         "mytools_call_st_insufficient": "Créditos insuficientes",
         "mytools_call_st_running": "Em execução",
+# B3 identity closure
+        "err_current_password_required": "Informe a senha atual",
+        "err_user_suspended": "Esta conta está suspensa",
+        "err_unexpected": "Algo deu errado, tente novamente",
+        "err_too_many_attempts": "Muitas tentativas, tente novamente mais tarde",
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -3018,6 +3048,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "失敗",
         "mytools_call_st_insufficient": "クレジット不足",
         "mytools_call_st_running": "実行中",
+# B3 identity closure
+        "err_current_password_required": "現在のパスワードを入力してください",
+        "err_user_suspended": "このアカウントは停止されています",
+        "err_unexpected": "問題が発生しました。もう一度お試しください",
+        "err_too_many_attempts": "試行回数が多すぎます。しばらくしてから再度お試しください",
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -3448,6 +3483,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "失败",
         "mytools_call_st_insufficient": "积分不足",
         "mytools_call_st_running": "进行中",
+# B3 identity closure
+        "err_current_password_required": "请输入当前密码",
+        "err_user_suspended": "该账号已被停用",
+        "err_unexpected": "操作失败，请重试",
+        "err_too_many_attempts": "尝试次数过多，请稍后再试",
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -3877,6 +3917,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "Fallido",
         "mytools_call_st_insufficient": "Créditos insuficientes",
         "mytools_call_st_running": "En curso",
+# B3 identity closure
+        "err_current_password_required": "Introduce tu contraseña actual",
+        "err_user_suspended": "Esta cuenta está suspendida",
+        "err_unexpected": "Algo salió mal, inténtalo de nuevo",
+        "err_too_many_attempts": "Demasiados intentos, inténtalo más tarde",
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -4307,6 +4352,11 @@ SERVER_I18N = {
         "mytools_call_st_failed": "Failed",
         "mytools_call_st_insufficient": "Insufficient credits",
         "mytools_call_st_running": "Running",
+# B3 identity closure
+        "err_current_password_required": "Please enter your current password",
+        "err_user_suspended": "This account is suspended",
+        "err_unexpected": "Something went wrong, please try again",
+        "err_too_many_attempts": "Too many attempts, please try again later",
 },
 }
 
