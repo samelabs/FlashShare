@@ -243,7 +243,9 @@ async def subscribe_checkout(request: Request):
 async def plan_upgrade(request: Request):
     """Plus → Pro (立即生效): 调 Creem upgrade (proration-charge-
     immediately)。本地 Membership 不伪造 — subscription.update webhook
-    → product.id → pro 收敛, 升级补差 credits 由 update 事件补授。"""
+    → product.id → pro 收敛 (仅同步 plan, 零 credits); 升级补差 credits
+    只由该 proration charge 的 subscription.paid (paid transaction 证明)
+    经 apply_paid_period 以 grant_plan_upgrade 补授。"""
     user, err = _require_auth(request)
     if err:
         return err
@@ -284,7 +286,8 @@ async def plan_upgrade(request: Request):
     try:
         # 升级域语义: proration-charge-immediately — product 立即 Pro,
         # prorated difference charged immediately, original billing date
-        # remains (本周期 credits 由 update 事件补差 100+400=500)
+        # remains (本周期 credits 由该 charge 的 subscription.paid 补差
+        # 100+400=500; subscription.update 只同步 plan, 不授 credits)
         creem.upgrade_subscription(sub_id, target["creem_product_id"],
                                    update_behavior="proration-charge-immediately")
     except Exception:

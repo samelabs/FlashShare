@@ -184,3 +184,58 @@ def reconcile_user(user_id: int) -> dict:
             log.exception("subscription reconcile failed user=%s sub=%s",
                           user_id, sub_id)
     return {"checked": checked, "granted": granted, "credits": credits_total}
+
+
+# ── access-triggered reconcile (no scheduler) ──
+# Login is not the only moment a renewal can be missing: a long-lived
+# session / MCP token never passes through login. When an authenticated
+# request arrives, the SAME idempotent reconcile_user() runs for that
+# user — in a background thread (provider HTTP never blocks the request)
+# and throttled in-process to at most one attempt per user per
+# ACCESS_RECONCILE_INTERVAL_S. The throttle map is process memory only
+# (single-worker deployment); losing it on restart just allows one
+# early attempt. reconcile_user() only runs when the local Membership
+# is still live-state (active / past_due) but its renews_at is already
+# in the past — i.e. a renewal paid event may have been lost.
+
+import threading as _threading
+
+ACCESS_RECONCILE_INTERVAL_S = 600
+_ACCESS_MAP_MAX = 50000
+_access_last: dict[int, int] = {}
+_access_lock = _threading.Lock()
+
+
+def _access_reconcile(user_id: int) -> None:
+    try:
+        with db() as con:
+            m = orders_repo.membership_row(con, user_id)
+        if m is None or m["status"] not in ("active", "past_due"):
+            return
+        if m["renews_at"] is None or int(m["renews_at"]) > now():
+            return
+        res = reconcile_user(user_id)
+        if res.get("granted"):
+            log.info("access reconcile granted: uid=%s +%d",
+                     user_id, res["credits"])
+    except Exception:
+        log.exception("access reconcile failed uid=%s", user_id)
+
+
+def reconcile_on_access(user_id: int) -> bool:
+    """Throttled, non-blocking trigger. Returns True when an attempt was
+    started (the Membership predicate is evaluated inside the thread)."""
+    ts = now()
+    uid = int(user_id)
+    with _access_lock:
+        last = _access_last.get(uid)
+        if last is not None and ts - last < ACCESS_RECONCILE_INTERVAL_S:
+            return False
+        if len(_access_last) >= _ACCESS_MAP_MAX:
+            cutoff = ts - ACCESS_RECONCILE_INTERVAL_S
+            for k in [k for k, v in _access_last.items() if v < cutoff]:
+                del _access_last[k]
+        _access_last[uid] = ts
+    _threading.Thread(target=_access_reconcile, args=(uid,),
+                      name=f"access-reconcile-{uid}", daemon=True).start()
+    return True

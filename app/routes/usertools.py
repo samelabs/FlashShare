@@ -327,10 +327,25 @@ async def tool_call_log(tool_id: str, request: Request):
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
         calls = [dict(r) for r in calls_by_tool_excluding_owner(
             con, tool_key, user["id"], limit=20)]
+    # Explicit response shape (whitelist — the failure text is NOT
+    # exposed: it can carry caller-side detail such as their balance):
+    #   at            epoch seconds (tool_calls.started_at); the client
+    #                 renders it in the viewer's local time
+    #   status        running | ok | failed | insufficient
+    #   duration_s    finished_at - started_at (both epoch seconds);
+    #                 None while running
+    #   cost_snapshot claim-time price of the call (Credits)
+    out = []
     for cl in calls:
-        f, s = cl.pop("finished_at", None), cl.pop("started_at", None)
-        cl["ms"] = (f - s) if (f is not None and s is not None) else None
-    return {"ok": True, "calls": calls}
+        f, s = cl.get("finished_at"), cl.get("started_at")
+        out.append({
+            "at": int(s) if s is not None else None,
+            "status": cl.get("status"),
+            "duration_s": (int(f) - int(s))
+            if (f is not None and s is not None) else None,
+            "cost_snapshot": cl.get("cost_snapshot"),
+        })
+    return {"ok": True, "calls": out}
 
 
 @router.patch("/api/usertools/{tool_id}")

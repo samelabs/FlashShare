@@ -437,6 +437,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "Demande envoyée — en cours d'application",
         "sub_status_expired": "Expiré",
         "sub_status_inactive": "Inactif",
+# B2 economy closure
+        "mytools_call_st_ok": "Réussi",
+        "mytools_call_st_failed": "Échec",
+        "mytools_call_st_insufficient": "Crédits insuffisants",
+        "mytools_call_st_running": "En cours",
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -862,6 +867,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "요청 전송됨 — 적용 중",
         "sub_status_expired": "만료됨",
         "sub_status_inactive": "비활성",
+# B2 economy closure
+        "mytools_call_st_ok": "성공",
+        "mytools_call_st_failed": "실패",
+        "mytools_call_st_insufficient": "크레딧 부족",
+        "mytools_call_st_running": "실행 중",
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1286,6 +1296,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "Запрос отправлен — применяется",
         "sub_status_expired": "Истекла",
         "sub_status_inactive": "Неактивна",
+# B2 economy closure
+        "mytools_call_st_ok": "Успешно",
+        "mytools_call_st_failed": "Ошибка",
+        "mytools_call_st_insufficient": "Недостаточно кредитов",
+        "mytools_call_st_running": "Выполняется",
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -1710,6 +1725,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "تم إرسال الطلب — قيد التطبيق",
         "sub_status_expired": "منتهية",
         "sub_status_inactive": "غير نشطة",
+# B2 economy closure
+        "mytools_call_st_ok": "نجح",
+        "mytools_call_st_failed": "فشل",
+        "mytools_call_st_insufficient": "رصيد غير كافٍ",
+        "mytools_call_st_running": "قيد التشغيل",
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2135,6 +2155,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "Antrag gesendet — wird angewendet",
         "sub_status_expired": "Abgelaufen",
         "sub_status_inactive": "Inaktiv",
+# B2 economy closure
+        "mytools_call_st_ok": "Erfolgreich",
+        "mytools_call_st_failed": "Fehlgeschlagen",
+        "mytools_call_st_insufficient": "Guthaben unzureichend",
+        "mytools_call_st_running": "Läuft",
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -2559,6 +2584,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "Solicitação enviada — aplicando",
         "sub_status_expired": "Expirado",
         "sub_status_inactive": "Inativo",
+# B2 economy closure
+        "mytools_call_st_ok": "Sucesso",
+        "mytools_call_st_failed": "Falhou",
+        "mytools_call_st_insufficient": "Créditos insuficientes",
+        "mytools_call_st_running": "Em execução",
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -2983,6 +3013,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "リクエスト送信済み — 適用中",
         "sub_status_expired": "期限切れ",
         "sub_status_inactive": "無効",
+# B2 economy closure
+        "mytools_call_st_ok": "成功",
+        "mytools_call_st_failed": "失敗",
+        "mytools_call_st_insufficient": "クレジット不足",
+        "mytools_call_st_running": "実行中",
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -3408,6 +3443,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "升级请求已提交 — 生效中",
         "sub_status_expired": "已过期",
         "sub_status_inactive": "已失效",
+# B2 economy closure
+        "mytools_call_st_ok": "成功",
+        "mytools_call_st_failed": "失败",
+        "mytools_call_st_insufficient": "积分不足",
+        "mytools_call_st_running": "进行中",
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -3832,6 +3872,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "Solicitud enviada — aplicando",
         "sub_status_expired": "Caducado",
         "sub_status_inactive": "Inactivo",
+# B2 economy closure
+        "mytools_call_st_ok": "Correcto",
+        "mytools_call_st_failed": "Fallido",
+        "mytools_call_st_insufficient": "Créditos insuficientes",
+        "mytools_call_st_running": "En curso",
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -4257,6 +4302,11 @@ SERVER_I18N = {
         "sub_upgrade_done": "Upgrade requested — applying",
         "sub_status_expired": "Expired",
         "sub_status_inactive": "Inactive",
+# B2 economy closure
+        "mytools_call_st_ok": "Succeeded",
+        "mytools_call_st_failed": "Failed",
+        "mytools_call_st_insufficient": "Insufficient credits",
+        "mytools_call_st_running": "Running",
 },
 }
 

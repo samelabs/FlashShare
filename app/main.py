@@ -161,6 +161,15 @@ async def auth_middleware(request: Request, call_next):
     request.state.user = get_user_from_request(request)
     request.state.lang = detect_lang(request)
     path = request.url.path
+    if request.state.user and getattr(request.state, "auth_via", "") in (
+            "session", "token"):
+        # lapsed-renewal compensation on authenticated access (web
+        # session / MCP token): throttled per user, background thread
+        try:
+            from economy.reconcile import reconcile_on_access
+            reconcile_on_access(int(request.state.user["id"]))
+        except Exception:
+            logger.exception("access reconcile trigger failed")
 
     # Account namespace is the human browser surface (session-only).
     # Capability tokens (Bearer) serve MCP and the hosted tool endpoints —

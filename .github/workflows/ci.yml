@@ -223,6 +223,10 @@ jobs:
             python tests/canonical/test_plan_mirror_commit_outcome.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_plan_mirror_commit_outcome.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_economy_membership_closure.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_economy_membership_closure.py
           # semantic guards (do not replace behavior tests):
           # orchestrator is staging-only and holds no source-deletion
           # authority; finalize_call_ok is the single tool_calls.upload_id
@@ -394,6 +398,9 @@ jobs:
 
       - name: Ingress idempotency canonical
         run: python tests/canonical/test_ingress_idempotency.py
+
+      - name: Economy / membership closure canonical
+        run: python tests/canonical/test_economy_membership_closure.py
 
       - name: Failure diagnostics
         if: failure()

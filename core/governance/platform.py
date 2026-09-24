@@ -75,17 +75,26 @@ def platform_id() -> int:
 def record_platform_income(con, call_id, kind: str, amount: int, note: str,
                            ts: int) -> None:
     """平台收入记账 (调用方事务内执行)。kind: platform_commission |
-    platform_revenue。幂等键: {kind}:{call_id} (与 provider_earn 同族)。"""
+    platform_revenue。幂等键: {kind}:{call_id} (与 provider_earn 同族)。
+
+    Serialization: the platform users row is locked (FOR UPDATE) BEFORE
+    the pool read, the idempotency check and the insert — concurrent
+    settlements queue on it, so balance_after is a consecutive running
+    total (same anchor pattern as the provider_earn writer). Lock order
+    inside the settlement transaction (gate._finish): tool_calls row →
+    provider users row → platform users row (always last). Nothing locks
+    the platform row before another users row, so no cycle can form."""
     if amount <= 0:
         return
     pid = ensure_platform_account(con)
+    ledger_repo.lock_user(con, pid)
+    idem = f"{kind}:{call_id}"
+    if ledger_repo.idem_key_exists(con, pid, idem):
+        return
     # balance_after = 平台收入池口径 (platform_commission + platform_revenue
     # — 平台账户的全部经济 kind), 与 provider_earn writer 的单池口径同规则
     base = (ledger_repo.sum_kind(con, pid, "platform_commission")
             + ledger_repo.sum_kind(con, pid, "platform_revenue"))
-    idem = f"{kind}:{call_id}"
-    if ledger_repo.idem_key_exists(con, pid, idem):
-        return
     ledger_repo.insert_row(con, pid, amount, base + amount, kind,
                            "tool_call", call_id, idem, note, ts)
 

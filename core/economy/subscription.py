@@ -130,13 +130,30 @@ def bind_checkout(obj: dict, order_id: int) -> dict:
         # identity validation: NULL / ch:<this checkout> / sub:<this sub>
         if cur and cur != f"sub:{sub_id}" and cur != f"ch:{ch_id}":
             raise KeyError("provider_identity_conflict")
-        # occupied-Membership guard: a membership bound to a
-        # DIFFERENT subscription is never silently replaced
+        # Membership slot guard — the SAME occupancy predicate the
+        # subscribe checkout gate uses (membership_is_occupied):
+        #   bound to a DIFFERENT subscription AND occupied (live or
+        #     bound-but-unpaid) → never replaced (fail closed);
+        #   bound to a different subscription but definitively non-live
+        #     (expired / lapsed past renews_at) → this completed first
+        #     checkout rebinds the slot (bind_membership rebind path).
+        # Only a not-yet-completed order may rebind: a replay of an
+        # already-paid checkout never moves the slot back to its
+        # (older) subscription.
         _occ = orders_repo.membership_row(con, int(row["user_id"]))
+        _rebind = False
         if _occ is not None and _occ["provider_subscription_id"] != f"sub:{sub_id}":
-            raise KeyError("membership_occupied")
+            if row["status"] not in ("pending", "failed") \
+                    or membership_is_occupied(_occ["status"],
+                                              _occ["renews_at"], now()):
+                raise KeyError("membership_occupied")
+            _rebind = True
         complete_plan_checkout(con, int(row["id"]), f"sub:{sub_id}", now())
         if orders_repo.membership_by_sub(con, sub_id) is None:
+            if _rebind:
+                # a scheduled downgrade belongs to the dead subscription;
+                # it must not gate the new subscription's first period
+                orders_repo.clear_pending_downgrade(con, int(row["user_id"]))
             orders_repo.bind_membership(
                 con, row["user_id"], row["item_id"], sub_id, "active",
                 started_at=row["created_at"], renews_at=None)
@@ -436,12 +453,26 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     elif current and current.get("cancel_scheduled_at"):
         cancel_ts = int(current["cancel_scheduled_at"])  # 保留既有 marker
     started = (current or {}).get("started_at") or order["created_at"]
+    # ── lifecycle monotonicity ──
+    # A paid event for a period the Membership has ALREADY applied
+    # (period_start <= last_grant_period_start: same-period replay,
+    # late/out-of-order delivery, mid-period upgrade charge) proves
+    # payment only; it is not a lifecycle event. Lifecycle state written
+    # after that period was applied (canceled / past_due / expired) and
+    # the newer period boundary are never regressed by it.
+    renews_write, ps_write = period_end, period_start
+    _last = (current or {}).get("last_grant_period_start")
+    if current is not None and _last is not None and period_start <= int(_last):
+        status = current["status"]
+        ps_write = int(_last)
+        if current.get("renews_at") is not None:
+            renews_write = int(current["renews_at"])
     with db() as con:
         orders_repo.upsert_membership_state(
             con, sub_id, status,
-            started_at=started, renews_at=period_end,
+            started_at=started, renews_at=renews_write,
             plan_id=plan["id"],
-            period_start=period_start, cancel_scheduled_at=cancel_ts)
+            period_start=ps_write, cancel_scheduled_at=cancel_ts)
     # Return the TRUE movement of THIS call: a same-transaction replay
     # (or any converged no-op) grants nothing — granted=False, credits=0
     # — even though the live Plan row says otherwise. Reconcile counts
@@ -526,7 +557,22 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
                     con, m["user_id"], plan["id"], int(m["renews_at"] or 0))
                 return {"updated": False, "deferred": "pending_downgrade",
                         "pending_target": plan["code"]}
-        # 同 plan 的 update: 状态/周期字段同步 (无 tier 变化)
+        else:
+            # 同 plan 的 update: provider product == current Membership
+            # plan. A pending downgrade whose target the provider no
+            # longer carries is void (product switched back before the
+            # boundary); leaving it would make the next paid period fail
+            # downgrade_product_not_confirmed. Idempotent: DELETE of an
+            # absent row is a no-op.
+            pend = orders_repo.pending_downgrade(con, m["user_id"])
+            if pend is not None and int(pend["target_plan_id"]) != int(plan["id"]):
+                orders_repo.clear_pending_downgrade(con, m["user_id"])
+                log.info("subscription.update sub=%s: provider product back on"
+                         " current plan %s — pending downgrade to plan_id=%s"
+                         " cleared", sub_id, plan["code"],
+                         pend["target_plan_id"])
+                return {"updated": True, "plan": plan["code"],
+                        "pending_downgrade_cleared": True}
     return {"updated": True, "plan": plan["code"]}
 
 
