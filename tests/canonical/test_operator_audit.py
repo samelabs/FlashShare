@@ -108,10 +108,22 @@ check("A2 operator Bearer token → /samelabs 拒绝 (session-only, 302)",
 import inspect as _inspect
 import app.routes.samelabs as _sam_mod
 _src = _inspect.getsource(_sam_mod)
-check("A3 无 users.status mutation route",
-      "users set status" not in _src.replace("update users set status='samelabs' where id=%s", "")
+# A3: back-office authority is not reachable from any web write. The only
+# console status writer moves active ↔ suspended and refuses every other
+# row/target (behavioral, over the real route + the SQL writer).
+from repo import users as _users_repo
+r = _post(f"/samelabs/users/{plain}/status", json={"status": "samelabs"},
+          cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _plain_st = con.execute("select status from users where id=%s", (plain,)).fetchone()["status"]
+    _op_row = _users_repo.set_account_status(con, op, "suspended", ts)
+    _op_st = con.execute("select status from users where id=%s", (op,)).fetchone()["status"]
+check("A3 no web path grants or revokes back-office authority",
+      r.status_code == 422 and _plain_st == "active"
+      and _op_row is None and _op_st == "samelabs"
       and "status='samelabs'" not in _src.replace(
-          "update users set status='samelabs' where id=%s", ""))
+          "update users set status='samelabs' where id=%s", ""),
+      f"{r.status_code} plain={_plain_st} op={_op_st}")
 
 # ══════════ helpers ══════════
 from repo import operator_audit as _aud

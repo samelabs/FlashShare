@@ -160,3 +160,24 @@ def id_by_username(con, username: str) -> Optional[dict]:
     """用户页路由: username → id (只取 id, 不泄露其它列)。"""
     return con.execute(
         "SELECT id FROM users WHERE username = %s", (username,)).fetchone()
+
+
+# Account-status transitions reachable from the operator console are
+# confined HERE, in SQL: only active ↔ suspended, and never a row whose
+# current status is anything else (back-office authority, the platform
+# account's own state, …). No web path can grant or revoke authority.
+ACCOUNT_STATUS_TRANSITIONS = ("active", "suspended")
+
+
+def set_account_status(con, user_id: int, status: str, ts: int) -> Optional[dict]:
+    """active ↔ suspended only; returns the updated row or None when the
+    target row is not in the transition domain."""
+    if status not in ACCOUNT_STATUS_TRANSITIONS:
+        raise ValueError("status_not_allowed")
+    return con.execute(
+        """
+        UPDATE users SET status = %s, updated_at = %s
+        WHERE id = %s AND status IN ('active', 'suspended')
+          AND username <> 'platform'
+        RETURNING id, username, status
+        """, (status, ts, user_id)).fetchone()

@@ -1,0 +1,33 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "会员" %}
+{% block body %}
+<div class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>会员（每用户一条当前订阅）</h2>
+    <span class="sl-panel-sub">有效性 = 状态 ∈ active/canceled/past_due 且续期时间未过；“对账”调用与登录相同的补偿通道（仅在 Creem 已证明付款且本期未授信时补发）。</span>
+  </div>
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>用户</th><th>档位</th><th>有效</th><th>原始状态</th><th>续期/到期</th><th>取消排期</th><th>待降级</th><th>Creem 订阅</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for m in members %}
+        <tr>
+          <td><a href="/samelabs/users/{{ m.user_id }}">{{ m.username|e }}</a></td>
+          <td>{{ m.plan_name|e }}</td>
+          <td><span class="sl-badge {{ 'sl-b-ok' if m.member_live else 'sl-b-muted' }}">{{ '有效' if m.member_live else '已失效' }}</span></td>
+          <td class="sl-dim">{{ m.status|e }}</td>
+          <td class="sl-dim">{{ fmt_ts(m.renews_at) if m.renews_at else '—' }}</td>
+          <td class="sl-dim">{{ fmt_ts(m.cancel_scheduled_at) if m.cancel_scheduled_at else '—' }}</td>
+          <td class="sl-dim">{% if m.downgrade_to %}{{ m.downgrade_to|e }} @ {{ fmt_ts(m.downgrade_at) }}{% else %}—{% endif %}</td>
+          <td class="sl-mono sl-dim">{{ m.provider_subscription_id|e }}</td>
+          <td><button type="button" class="sl-btn sl-btn-ghost sl-btn-sm" data-op="reconcile" data-uid="{{ m.user_id }}">对账</button></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="sl-dim">暂无会员</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block script %}<script src="/static/pages/samelabs_ops.js?v={{ pages_version }}"></script>{% endblock %}

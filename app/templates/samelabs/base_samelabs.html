@@ -42,7 +42,26 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
         提现
       </a>
-      <a href="/samelabs/withdrawals" {% if page == 'withdrawals' %}class="active"{% endif %}>提现</a>
+      <a href="/samelabs/orders" {% if page == 'orders' %}class="active" aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        订单
+      </a>
+      <a href="/samelabs/members" {% if page == 'members' %}class="active" aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        会员
+      </a>
+      <a href="/samelabs/calls" {% if page == 'calls' %}class="active" aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        调用
+      </a>
+      <a href="/samelabs/uploads" {% if page == 'uploads' %}class="active" aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        分享
+      </a>
+      <a href="/samelabs/audit" {% if page == 'audit' %}class="active" aria-current="page"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        审计
+      </a>
       <a href="/samelabs/remote" {% if page == 'remote' %}class="active" aria-current="page"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         远程工具
@@ -82,6 +101,11 @@
       <a href="/samelabs/users" {% if page == 'users' %}class="active"{% endif %}>用户</a>
       <a href="/samelabs/tools" {% if page == 'tools' %}class="active"{% endif %}>工具</a>
       <a href="/samelabs/withdrawals" {% if page == 'withdrawals' %}class="active"{% endif %}>提现</a>
+      <a href="/samelabs/orders" {% if page == 'orders' %}class="active"{% endif %}>订单</a>
+      <a href="/samelabs/members" {% if page == 'members' %}class="active"{% endif %}>会员</a>
+      <a href="/samelabs/calls" {% if page == 'calls' %}class="active"{% endif %}>调用</a>
+      <a href="/samelabs/uploads" {% if page == 'uploads' %}class="active"{% endif %}>分享</a>
+      <a href="/samelabs/audit" {% if page == 'audit' %}class="active"{% endif %}>审计</a>
       <a href="/samelabs/remote" {% if page == 'remote' %}class="active"{% endif %}>远程工具</a>
       <a href="/samelabs/plans" {% if page == 'plans' %}class="active"{% endif %}>档位</a>
       <a href="/samelabs/packages" {% if page == 'packages' %}class="active"{% endif %}>积分包</a>

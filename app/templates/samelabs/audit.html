@@ -1,0 +1,35 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "审计" %}
+{% block body %}
+<div class="sl-toolbar">
+  <form class="sl-search sl-filter" method="get" action="/samelabs/audit">
+    <select class="sl-input" name="action" onchange="this.form.submit()">
+      <option value="">全部动作</option>
+      {% for a in actions %}<option value="{{ a|e }}" {% if a == action %}selected{% endif %}>{{ a|e }}</option>{% endfor %}
+    </select>
+  </form>
+  <span class="sl-count">{{ entries|length }} 条 · 最近 100（只追加，不可修改）</span>
+</div>
+<div class="sl-panel">
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>ID</th><th>时间</th><th>操作人</th><th>动作</th><th>对象</th><th>变更前</th><th>变更后</th></tr></thead>
+      <tbody>
+      {% for e in entries %}
+        <tr>
+          <td class="sl-mono sl-dim">{{ e.id }}</td>
+          <td class="sl-dim">{{ fmt_ts(e.created_at) }}</td>
+          <td>{{ (e.actor or e.actor_user_id)|e }}</td>
+          <td class="sl-mono">{{ e.action|e }}</td>
+          <td class="sl-mono sl-dim">{{ e.target_type|e }}:{{ e.target_id|e }}</td>
+          <td class="sl-mono sl-dim sl-audit-json">{{ e.before_json|e }}</td>
+          <td class="sl-mono sl-audit-json">{{ e.after_json|e }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="sl-dim">暂无审计记录</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

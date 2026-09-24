@@ -1,0 +1,42 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "调用" %}
+{% block body %}
+<div class="sl-toolbar">
+  <form class="sl-search sl-filter" method="get" action="/samelabs/calls">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="sl-input" type="text" name="tool" value="{{ tool|e }}" placeholder="工具 ID（精确）">
+    <input class="sl-input" type="text" name="user" value="{{ uid|e }}" placeholder="用户 ID" inputmode="numeric">
+    <select class="sl-input" name="status" onchange="this.form.submit()">
+      <option value="">全部状态</option>
+      {% for s in statuses %}<option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <button class="sl-btn sl-btn-ghost sl-btn-sm" type="submit">筛选</button>
+  </form>
+  {% if tool or uid or status %}<a class="sl-btn sl-btn-ghost sl-btn-sm" href="/samelabs/calls">清除</a>{% endif %}
+  <span class="sl-count">{{ calls|length }} 条 · 最近 100</span>
+</div>
+<div class="sl-panel">
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>ID</th><th>开始</th><th>用户</th><th>工具</th><th>状态</th><th class="sl-num">积分</th><th class="sl-num">耗时</th><th>错误</th><th>结果</th></tr></thead>
+      <tbody>
+      {% for c in calls %}
+        <tr>
+          <td class="sl-mono sl-dim">{{ c.id }}</td>
+          <td class="sl-dim">{{ fmt_ts(c.started_at) }}</td>
+          <td><a href="/samelabs/users/{{ c.user_id }}">{{ (c.username or c.user_id)|e }}</a></td>
+          <td class="sl-mono">{{ c.tool_id|e }}</td>
+          <td><span class="sl-badge {{ 'sl-b-ok' if c.status == 'ok' else ('sl-b-info' if c.status == 'running' else 'sl-b-err') }}">{{ c.status|e }}</span></td>
+          <td class="sl-num">{{ c.cost_snapshot if c.status == 'ok' else '—' }}</td>
+          <td class="sl-num">{{ (c.finished_at - c.started_at)|string + 's' if c.finished_at else '—' }}</td>
+          <td class="sl-mono sl-dim">{{ (c.error or '—')|e }}</td>
+          <td>{% if c.result_public_id %}<a class="sl-mono" href="/f/{{ c.result_public_id|urlencode }}" target="_blank" rel="noopener">{{ c.result_public_id|e }}</a>{% else %}—{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" class="sl-dim">无调用</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

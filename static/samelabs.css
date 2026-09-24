@@ -199,6 +199,14 @@ body.sl-body {
 .sl-search { position: relative; flex: 1; min-width: 220px; max-width: 360px; }
 .sl-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--sl-ink-faint); pointer-events: none; }
 .sl-search .sl-input { width: 100%; padding-left: 32px; }
+/* multi-field filter row (orders / calls / audit) */
+.sl-search.sl-filter { display: flex; gap: var(--s2); max-width: none; flex-wrap: wrap; }
+.sl-search.sl-filter svg { top: 17px; }  /* centre of the first row (34px .sl-input), not of the wrapped form */
+.sl-search.sl-filter .sl-input { width: auto; flex: 1; min-width: 140px; padding-left: 10px; }
+.sl-search.sl-filter input.sl-input:first-of-type { padding-left: 32px; }
+.sl-search.sl-filter select.sl-input { flex: 0 0 auto; min-width: 120px; padding-left: 10px; }
+.sl-tbl .sl-audit-json { max-width: 320px; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
+.sl-ud-stats .sl-stat h3 { font-size: 18px; overflow-wrap: anywhere; }
 .sl-input {
   height: 34px; padding: 0 12px;
   border: 1px solid var(--line-strong); border-radius: var(--r-sm);

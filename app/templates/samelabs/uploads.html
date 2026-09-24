@@ -1,0 +1,40 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "分享" %}
+{% block body %}
+<div class="sl-toolbar">
+  <form class="sl-search" method="get" action="/samelabs/uploads">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="sl-input" type="text" name="q" value="{{ q|e }}" placeholder="分享 ID（/f/ 后的部分）或用户名">
+  </form>
+  {% if q %}<a class="sl-btn sl-btn-ghost sl-btn-sm" href="/samelabs/uploads">清除</a>{% endif %}
+  <span class="sl-count">{{ uploads|length }} 条 · 最近 100</span>
+</div>
+<div class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>分享</h2>
+    <span class="sl-panel-sub">下架 = 与用户自行删除同一语义：公开链接立即失效，存储对象随后删除；写入审计。</span>
+  </div>
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>分享 ID</th><th>用户</th><th>文件名</th><th>类型</th><th class="sl-num">大小</th><th>到期</th><th>创建</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for up in uploads %}
+        <tr>
+          <td class="sl-mono"><a href="/f/{{ up.public_id|urlencode }}" target="_blank" rel="noopener">{{ up.public_id|e }}</a></td>
+          <td><a href="/samelabs/users/{{ up.user_id }}">{{ up.username|e }}</a></td>
+          <td>{{ up.file_name|e }}</td>
+          <td class="sl-mono sl-dim">{{ up.content_type|e }}</td>
+          <td class="sl-num">{{ fmt_bytes(up.size_bytes) }}</td>
+          <td class="sl-dim">{% if up.expire_at and up.expire_at < now_ts %}已过期{% else %}{{ fmt_ts(up.expire_at) }}{% endif %}</td>
+          <td class="sl-dim">{{ fmt_ts(up.created_at) }}</td>
+          <td><button type="button" class="sl-btn sl-btn-danger sl-btn-sm" data-op="takedown" data-pid="{{ up.public_id|e }}">下架</button></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="sl-dim">无分享</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block script %}<script src="/static/pages/samelabs_ops.js?v={{ pages_version }}"></script>{% endblock %}

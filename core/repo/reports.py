@@ -87,3 +87,121 @@ def ledger_page(con, size: int, offset: int) -> tuple:
            ORDER BY l.id DESC LIMIT %s OFFSET %s""",
         (size, offset)).fetchall()
     return rows, total
+
+
+# ── operator read models (P3: orders / memberships / calls / shares /
+#    audit / user detail). Read-only projections; filters are optional
+#    exact-match values validated by the route. ──
+
+def orders_page(con, status: Optional[str], q: Optional[str], limit: int = 100) -> list:
+    """Orders newest-first. q: digits = user id or order id; otherwise
+    username or provider order/checkout id (exact)."""
+    where, args = [], []
+    if status:
+        where.append("o.status = %s"); args.append(status)
+    if q:
+        if q.isdigit():
+            where.append("(o.user_id = %s OR o.id = %s)"); args += [int(q), int(q)]
+        else:
+            where.append("(u.username = %s OR o.provider_order_id = %s"
+                         " OR o.provider_order_id = %s)")
+            args += [q, q, "ch:" + q]
+    sql = """
+        SELECT o.*, u.username,
+               COALESCE(pk.name, pl.name) AS item_name
+        FROM orders o
+        JOIN users u ON u.id = o.user_id
+        LEFT JOIN packages pk ON o.kind = 'package' AND pk.id = o.item_id
+        LEFT JOIN plans pl ON o.kind = 'plan' AND pl.id = o.item_id
+    """
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY o.id DESC LIMIT %s"
+    return con.execute(sql, (*args, limit)).fetchall()
+
+
+def memberships_page(con, limit: int = 200) -> list:
+    """All current Membership rows (one per user) with plan + pending
+    downgrade target. Validity is decided by the caller's single point."""
+    return con.execute(
+        """
+        SELECT m.*, u.username, p.code AS plan_code, p.name AS plan_name,
+               pd.effective_at AS downgrade_at, tp.name AS downgrade_to
+        FROM memberships m
+        JOIN users u ON u.id = m.user_id
+        JOIN plans p ON p.id = m.plan_id
+        LEFT JOIN pending_downgrades pd ON pd.user_id = m.user_id
+        LEFT JOIN plans tp ON tp.id = pd.target_plan_id
+        ORDER BY m.updated_at DESC NULLS LAST, m.user_id DESC
+        LIMIT %s
+        """, (limit,)).fetchall()
+
+
+def calls_page(con, status: Optional[str], tool_id: Optional[str],
+               user_id: Optional[int], limit: int = 100) -> list:
+    where, args = [], []
+    if status:
+        where.append("tc.status = %s"); args.append(status)
+    if tool_id:
+        where.append("tc.tool_id = %s"); args.append(tool_id)
+    if user_id is not None:
+        where.append("tc.user_id = %s"); args.append(user_id)
+    sql = """
+        SELECT tc.id, tc.user_id, u.username, tc.tool_id, tc.status,
+               tc.cost_snapshot, tc.error, tc.result_public_id,
+               tc.started_at, tc.finished_at
+        FROM tool_calls tc LEFT JOIN users u ON u.id = tc.user_id
+    """
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY tc.id DESC LIMIT %s"
+    return con.execute(sql, (*args, limit)).fetchall()
+
+
+def uploads_page(con, q: Optional[str], limit: int = 100) -> list:
+    """Shares newest-first. q: exact public id, else username."""
+    sql = """
+        SELECT up.id, up.public_id, up.user_id, u.username, up.file_name,
+               up.content_type, up.size_bytes, up.expire_at, up.created_at
+        FROM uploads up JOIN users u ON u.id = up.user_id
+    """
+    if q:
+        return con.execute(sql + " WHERE up.public_id = %s OR u.username = %s"
+                           " ORDER BY up.id DESC LIMIT %s", (q, q, limit)).fetchall()
+    return con.execute(sql + " ORDER BY up.id DESC LIMIT %s", (limit,)).fetchall()
+
+
+def audit_page(con, action: Optional[str], limit: int = 100) -> list:
+    sql = """
+        SELECT a.*, u.username AS actor
+        FROM operator_audit a LEFT JOIN users u ON u.id = a.actor_user_id
+    """
+    if action:
+        return con.execute(sql + " WHERE a.action = %s ORDER BY a.id DESC LIMIT %s",
+                           (action, limit)).fetchall()
+    return con.execute(sql + " ORDER BY a.id DESC LIMIT %s", (limit,)).fetchall()
+
+
+def audit_actions(con) -> list:
+    return [r["action"] for r in con.execute(
+        "SELECT DISTINCT action FROM operator_audit ORDER BY action").fetchall()]
+
+
+def user_ledger(con, user_id: int, limit: int = 50) -> list:
+    return con.execute(
+        "SELECT * FROM ledger WHERE user_id = %s ORDER BY id DESC LIMIT %s",
+        (user_id, limit)).fetchall()
+
+
+def user_token_counts(con, user_id: int) -> dict:
+    row = con.execute(
+        "SELECT COUNT(*) FILTER (WHERE status='active') AS active,"
+        " COUNT(*) AS total FROM api_tokens WHERE user_id = %s",
+        (user_id,)).fetchone()
+    return {"active": int(row["active"]), "total": int(row["total"])}
+
+
+def user_withdrawals(con, user_id: int, limit: int = 20) -> list:
+    return con.execute(
+        "SELECT * FROM withdrawals WHERE user_id = %s ORDER BY id DESC LIMIT %s",
+        (user_id, limit)).fetchall()

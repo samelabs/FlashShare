@@ -30,6 +30,10 @@ TARGET_SAFE_KEYS = {
     "remote_tool": {"tool_key", "tool_id", "execution", "tool_type",
                     "visibility", "enabled", "featured", "sort_order",
                     "multi", "accept", "cost"},
+    "user_status": {"user_id", "status"},
+    "upload": {"public_id", "user_id", "file_name", "content_type",
+               "size_bytes"},
+    "membership": {"user_id", "checked", "granted", "credits"},
 }
 
 _SECRET_MARKERS = ("password", "token", "secret", "auth_header",

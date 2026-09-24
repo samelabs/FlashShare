@@ -945,3 +945,243 @@ async def samelabs_remote_delete(tool_key: str, request: Request):
         _audit_repo.record(con, user["id"], "remote.delete",
                            "remote_tool", str(tool_key), before, None, now())
     return {"ok": True}
+
+
+# ── Operator console: orders / memberships / calls / shares / audit /
+#    user detail (read models) + account status, share takedown and
+#    membership reconcile (audited writes). ──
+
+_ORDER_STATUSES = ("pending", "paid", "failed", "refunded", "disputed")
+_CALL_STATUSES = ("running", "ok", "failed", "insufficient")
+
+
+def _q(request: Request, key: str, n: int = 64) -> str:
+    return (request.query_params.get(key) or "").strip()[:n]
+
+
+@router.get("/samelabs/orders")
+async def samelabs_orders(request: Request):
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from repo.reports import orders_page
+    status = _q(request, "status")
+    status = status if status in _ORDER_STATUSES else ""
+    q = _q(request, "q")
+    with db() as con:
+        rows = [dict(r) for r in orders_page(con, status or None, q or None)]
+    ctx = _ctx(request, user, orders=rows, status=status, q=q,
+               statuses=_ORDER_STATUSES, fmt_num=_fmt_num, page="orders")
+    return templates.TemplateResponse(request, "samelabs/orders.html", ctx)
+
+
+@router.get("/samelabs/members")
+async def samelabs_members(request: Request):
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from repo.reports import memberships_page
+    from economy.subscription import membership_is_effective
+    ts = now()
+    with db() as con:
+        rows = []
+        for r in memberships_page(con):
+            d = dict(r)
+            d["member_live"] = membership_is_effective(d["status"], d["renews_at"], ts)
+            rows.append(d)
+    ctx = _ctx(request, user, members=rows, fmt_num=_fmt_num, page="members")
+    return templates.TemplateResponse(request, "samelabs/members.html", ctx)
+
+
+@router.get("/samelabs/calls")
+async def samelabs_calls(request: Request):
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from repo.reports import calls_page
+    status = _q(request, "status")
+    status = status if status in _CALL_STATUSES else ""
+    tool = _q(request, "tool", 128)
+    uid = _q(request, "user")
+    with db() as con:
+        rows = [dict(r) for r in calls_page(
+            con, status or None, tool or None, int(uid) if uid.isdigit() else None)]
+    ctx = _ctx(request, user, calls=rows, status=status, tool=tool, uid=uid,
+               statuses=_CALL_STATUSES, fmt_num=_fmt_num, page="calls")
+    return templates.TemplateResponse(request, "samelabs/calls.html", ctx)
+
+
+@router.get("/samelabs/uploads")
+async def samelabs_uploads(request: Request):
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from repo.reports import uploads_page
+    from utils import format_bytes
+    q = _q(request, "q")
+    with db() as con:
+        rows = [dict(r) for r in uploads_page(con, q or None)]
+    ctx = _ctx(request, user, uploads=rows, q=q, now_ts=now(),
+               fmt_bytes=format_bytes, page="uploads")
+    return templates.TemplateResponse(request, "samelabs/uploads.html", ctx)
+
+
+@router.get("/samelabs/audit")
+async def samelabs_audit(request: Request):
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from repo.reports import audit_page, audit_actions
+    import json as _json
+    action = _q(request, "action")
+    with db() as con:
+        actions = audit_actions(con)
+        action = action if action in actions else ""
+        rows = []
+        for r in audit_page(con, action or None):
+            d = dict(r)
+            for k in ("before_json", "after_json"):
+                d[k] = (_json.dumps(d[k], ensure_ascii=False, sort_keys=True)
+                        if d[k] is not None else "")
+            rows.append(d)
+    ctx = _ctx(request, user, entries=rows, action=action, actions=actions,
+               page="audit")
+    return templates.TemplateResponse(request, "samelabs/audit.html", ctx)
+
+
+@router.get("/samelabs/users/{user_id}")
+async def samelabs_user_detail(user_id: int, request: Request):
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from repo import reports as _rep
+    from repo import users as users_repo
+    from economy.billing import SPENDABLE_KINDS
+    from economy.subscription import plan_of
+    from governance.platform import platform_id
+    from utils import format_bytes
+    with db() as con:
+        target = users_repo.by_id(con, user_id)
+        if target is None:
+            return RedirectResponse("/samelabs/users", status_code=302)
+        pools = _rep.users_overview(con, str(user_id), SPENDABLE_KINDS)
+        ledger = [dict(r) for r in _rep.user_ledger(con, user_id)]
+        calls = [dict(r) for r in _rep.calls_page(con, None, None, user_id, 20)]
+        orders = [dict(r) for r in _rep.orders_page(con, None, str(user_id), 20)]
+        withdrawals = [dict(r) for r in _rep.user_withdrawals(con, user_id)]
+        tokens = _rep.user_token_counts(con, user_id)
+        shares = [dict(r) for r in con.execute(
+            """SELECT id, public_id, file_name, size_bytes, expire_at, created_at
+               FROM uploads WHERE user_id = %s ORDER BY id DESC LIMIT 20""",
+            (user_id,)).fetchall()]
+    pool = dict(pools[0]) if pools else {"spendable": 0, "earn": 0}
+    t = dict(target)
+    status_editable = (t["status"] in ("active", "suspended")
+                       and t["id"] != platform_id() and t["id"] != user["id"])
+    ctx = _ctx(request, user, u={k: t.get(k) for k in (
+                   "id", "username", "display_name", "email", "status",
+                   "x_username", "payout_channel", "created_at",
+                   "last_login_at")},
+               pool=pool, membership=plan_of(user_id), ledger=ledger,
+               calls=calls, orders=orders, withdrawals=withdrawals,
+               tokens=tokens, shares=shares, now_ts=now(),
+               status_editable=status_editable, fmt_num=_fmt_num,
+               fmt_bytes=format_bytes, page="users")
+    return templates.TemplateResponse(request, "samelabs/user_detail.html", ctx)
+
+
+@router.post("/samelabs/users/{user_id}/status")
+async def samelabs_set_user_status(user_id: int, request: Request):
+    """Suspend / reinstate an account (active ↔ suspended only — the SQL
+    writer refuses every other row; back-office authority is unreachable
+    from here). Suspension takes effect on the next request: every
+    session/token lookup filters suspended accounts."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        status = raw.get("status")
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    if status not in ("active", "suspended"):
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from governance.platform import platform_id
+    if user_id in (user["id"], platform_id()):
+        return JSONResponse({"ok": False, "error": "status_not_editable"}, 422)
+    from repo import users as users_repo
+    with db() as con:
+        cur = con.execute("SELECT id, status FROM users WHERE id = %s FOR UPDATE",
+                          (user_id,)).fetchone()
+        if cur is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        if cur["status"] == status:
+            return {"ok": True, "status": status, "changed": False}
+        row = users_repo.set_account_status(con, user_id, status, now())
+        if row is None:
+            return JSONResponse({"ok": False, "error": "status_not_editable"}, 422)
+        _audit_repo.record(con, user["id"],
+                           "user.suspend" if status == "suspended" else "user.reinstate",
+                           "user_status", str(user_id),
+                           {"user_id": user_id, "status": cur["status"]},
+                           {"user_id": user_id, "status": status}, now())
+    return {"ok": True, "status": status, "changed": True}
+
+
+@router.post("/samelabs/uploads/{public_id}/takedown")
+async def samelabs_takedown_upload(public_id: str, request: Request):
+    """Operator share takedown — same semantics as the owner's delete:
+    the public mapping row goes in the audited transaction, the storage
+    object is deleted best-effort after commit (it also ages out)."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from config import PUBLIC_ID_RE
+    if not PUBLIC_ID_RE.match(public_id):
+        return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
+    from repo import uploads as uploads_repo
+    with db() as con:
+        row = con.execute("SELECT * FROM uploads WHERE public_id = %s FOR UPDATE",
+                          (public_id,)).fetchone()
+        if row is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        uploads_repo.delete_upload_row(con, row["id"], row["user_id"])
+        _audit_repo.record(con, user["id"], "upload.takedown", "upload", public_id,
+                           {"public_id": public_id, "user_id": int(row["user_id"]),
+                            "file_name": row["file_name"],
+                            "content_type": row["content_type"],
+                            "size_bytes": int(row["size_bytes"])}, None, now())
+    try:
+        from gokapi import delete_gokapi_file
+        delete_gokapi_file(row["gokapi_id"])
+    except Exception:
+        import logging
+        logging.getLogger("flashshare").warning(
+            "takedown: storage delete failed for %s (will expire naturally)",
+            row["gokapi_id"])
+    return {"ok": True}
+
+
+@router.post("/samelabs/users/{user_id}/reconcile")
+async def samelabs_reconcile_membership(user_id: int, request: Request):
+    """Run the membership compensation channel (economy.reconcile, the
+    same one login triggers) on demand; the outcome is audited."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    from economy.reconcile import reconcile_user
+    import asyncio as _asyncio
+    res = await _asyncio.to_thread(reconcile_user, user_id)
+    with db() as con:
+        _audit_repo.record(con, user["id"], "membership.reconcile", "membership",
+                           str(user_id), None,
+                           {"user_id": user_id, "checked": int(res["checked"]),
+                            "granted": int(res["granted"]),
+                            "credits": int(res["credits"])}, now())
+    return {"ok": True, **res}

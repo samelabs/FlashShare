@@ -1,0 +1,97 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "用户 · " ~ u.username %}
+{% block body %}
+<div class="sl-stats sl-ud-stats">
+  <div class="sl-stat"><div class="sl-stat-top"><span class="sl-stat-label">账号</span></div>
+    <h3>{{ u.username|e }}</h3>
+    <div class="sl-stat-sub">#{{ u.id }} · {{ (u.email or '无邮箱')|e }}{% if u.x_username %} · X @{{ u.x_username|e }}{% endif %}</div></div>
+  <div class="sl-stat"><div class="sl-stat-top"><span class="sl-stat-label">状态</span></div>
+    <h3><span class="sl-badge {{ 'sl-b-err' if u.status == 'suspended' else ('sl-b-purple' if u.status not in ('active',) else 'sl-b-info') }}">{{ u.status|e }}</span></h3>
+    <div class="sl-stat-sub">
+      {% if status_editable %}
+        {% if u.status == 'active' %}<button type="button" class="sl-btn sl-btn-danger sl-btn-sm" data-op="status" data-uid="{{ u.id }}" data-status="suspended">封禁</button>
+        {% else %}<button type="button" class="sl-btn sl-btn-primary sl-btn-sm" data-op="status" data-uid="{{ u.id }}" data-status="active">解封</button>{% endif %}
+      {% else %}不可在后台变更{% endif %}
+    </div></div>
+  <div class="sl-stat"><div class="sl-stat-top"><span class="sl-stat-label">可消费积分</span></div>
+    <h3>{{ fmt_num(pool.spendable) }}</h3><div class="sl-stat-sub">收益池 {{ fmt_num(pool.earn) }}</div></div>
+  <div class="sl-stat"><div class="sl-stat-top"><span class="sl-stat-label">会员</span></div>
+    <h3>{% if membership %}{{ membership.name|e }}{% else %}Free{% endif %}</h3>
+    <div class="sl-stat-sub">{% if membership %}{{ '有效' if membership.member else '已失效' }} · {{ membership.status|e }}{% if membership.renews_at %} · {{ fmt_ts(membership.renews_at) }}{% endif %}
+      · <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm" data-op="reconcile" data-uid="{{ u.id }}">对账</button>{% else %}无订阅{% endif %}</div></div>
+  <div class="sl-stat"><div class="sl-stat-top"><span class="sl-stat-label">API Token</span></div>
+    <h3>{{ tokens.active }}</h3><div class="sl-stat-sub">有效 / 共 {{ tokens.total }}</div></div>
+  <div class="sl-stat"><div class="sl-stat-top"><span class="sl-stat-label">收款渠道</span></div>
+    <h3 class="sl-mono">{{ (u.payout_channel or '—')|e }}</h3><div class="sl-stat-sub">注册 {{ fmt_ts(u.created_at) }} · 登录 {{ fmt_ts(u.last_login_at) }}</div></div>
+</div>
+
+<div class="sl-grid2">
+  <div class="sl-panel">
+    <div class="sl-panel-head"><h2>积分流水</h2><span class="sl-panel-sub">最近 50（两池全部 kind）</span></div>
+    <div class="sl-tablewrap"><table class="sl-tbl">
+      <thead><tr><th>时间</th><th>kind</th><th class="sl-num">变动</th><th>备注</th></tr></thead>
+      <tbody>
+      {% for e in ledger %}
+        <tr><td class="sl-dim">{{ fmt_ts(e.created_at) }}</td><td class="sl-mono">{{ e.kind|e }}</td>
+          <td class="sl-num" style="color: {{ 'var(--sl-ok)' if e.delta > 0 else 'var(--sl-err)' }}">{{ '+' if e.delta > 0 }}{{ fmt_num(e.delta) }}</td>
+          <td class="sl-dim">{{ (e.note or '')|e }}</td></tr>
+      {% else %}<tr><td colspan="4" class="sl-dim">无流水</td></tr>{% endfor %}
+      </tbody></table></div>
+  </div>
+  <div class="sl-panel">
+    <div class="sl-panel-head"><h2>最近调用</h2><a class="sl-panel-sub" href="/samelabs/calls?user={{ u.id }}">全部 →</a></div>
+    <div class="sl-tablewrap"><table class="sl-tbl">
+      <thead><tr><th>时间</th><th>工具</th><th>状态</th><th>错误</th></tr></thead>
+      <tbody>
+      {% for c in calls %}
+        <tr><td class="sl-dim">{{ fmt_ts(c.started_at) }}</td><td class="sl-mono">{{ c.tool_id|e }}</td>
+          <td><span class="sl-badge {{ 'sl-b-ok' if c.status == 'ok' else ('sl-b-info' if c.status == 'running' else 'sl-b-err') }}">{{ c.status|e }}</span></td>
+          <td class="sl-mono sl-dim">{{ (c.error or '—')|e }}</td></tr>
+      {% else %}<tr><td colspan="4" class="sl-dim">无调用</td></tr>{% endfor %}
+      </tbody></table></div>
+  </div>
+</div>
+
+<div class="sl-grid2">
+  <div class="sl-panel">
+    <div class="sl-panel-head"><h2>订单</h2><a class="sl-panel-sub" href="/samelabs/orders?q={{ u.id }}">全部 →</a></div>
+    <div class="sl-tablewrap"><table class="sl-tbl">
+      <thead><tr><th>ID</th><th>商品</th><th class="sl-num">金额</th><th>状态</th><th>创建</th></tr></thead>
+      <tbody>
+      {% for o in orders %}
+        <tr><td class="sl-mono sl-dim">{{ o.id }}</td><td>{{ (o.item_name or o.kind)|e }}</td>
+          <td class="sl-num">{{ '%.2f'|format(o.amount_cents / 100) }} {{ o.currency|e }}</td>
+          <td><span class="sl-badge {{ 'sl-b-ok' if o.status == 'paid' else ('sl-b-err' if o.status in ('refunded','disputed') else 'sl-b-muted') }}">{{ o.status|e }}</span></td>
+          <td class="sl-dim">{{ fmt_ts(o.created_at) }}</td></tr>
+      {% else %}<tr><td colspan="5" class="sl-dim">无订单</td></tr>{% endfor %}
+      </tbody></table></div>
+  </div>
+  <div class="sl-panel">
+    <div class="sl-panel-head"><h2>提现</h2></div>
+    <div class="sl-tablewrap"><table class="sl-tbl">
+      <thead><tr><th>ID</th><th class="sl-num">金额</th><th>状态</th><th>凭证</th><th>申请</th></tr></thead>
+      <tbody>
+      {% for w in withdrawals %}
+        <tr><td class="sl-mono sl-dim">#{{ w.id }}</td><td class="sl-num">{{ fmt_num(w.amount) }}</td>
+          <td><span class="sl-vis v-{{ w.status|e }}">{{ w.status|e }}</span></td>
+          <td class="sl-mono sl-dim">{{ (w.txn_ref or '—')|e }}</td><td class="sl-dim">{{ fmt_ts(w.created_at) }}</td></tr>
+      {% else %}<tr><td colspan="5" class="sl-dim">无提现</td></tr>{% endfor %}
+      </tbody></table></div>
+  </div>
+</div>
+
+<div class="sl-panel">
+  <div class="sl-panel-head"><h2>分享</h2><a class="sl-panel-sub" href="/samelabs/uploads?q={{ u.username|urlencode }}">全部 →</a></div>
+  <div class="sl-tablewrap"><table class="sl-tbl">
+    <thead><tr><th>分享 ID</th><th>文件名</th><th class="sl-num">大小</th><th>到期</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for s in shares %}
+      <tr><td class="sl-mono"><a href="/f/{{ s.public_id|urlencode }}" target="_blank" rel="noopener">{{ s.public_id|e }}</a></td>
+        <td>{{ s.file_name|e }}</td><td class="sl-num">{{ fmt_bytes(s.size_bytes) }}</td>
+        <td class="sl-dim">{% if s.expire_at and s.expire_at < now_ts %}已过期{% else %}{{ fmt_ts(s.expire_at) }}{% endif %}</td>
+        <td><button type="button" class="sl-btn sl-btn-danger sl-btn-sm" data-op="takedown" data-pid="{{ s.public_id|e }}">下架</button></td></tr>
+    {% else %}<tr><td colspan="5" class="sl-dim">无分享</td></tr>{% endfor %}
+    </tbody></table></div>
+</div>
+{% endblock %}
+{% block script %}<script src="/static/pages/samelabs_ops.js?v={{ pages_version }}"></script>{% endblock %}

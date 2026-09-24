@@ -190,6 +190,10 @@ jobs:
             python tests/canonical/test_identity_and_edges.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_identity_and_edges.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_backoffice_operations.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_backoffice_operations.py
           # semantic guards (do not replace behavior tests):
           # orchestrator is staging-only and holds no source-deletion
           # authority; finalize_call_ok is the single tool_calls.upload_id
@@ -321,6 +325,9 @@ jobs:
 
       - name: Identity and edge contracts canonical
         run: python tests/canonical/test_identity_and_edges.py
+
+      - name: Backoffice operations canonical
+        run: python tests/canonical/test_backoffice_operations.py
 
       - name: Failure diagnostics
         if: failure()

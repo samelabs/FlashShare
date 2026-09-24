@@ -27,7 +27,7 @@
                 <span class="sl-u-avatar">{{ (u.display_name or u.username)[:1]|upper }}</span>
               {% endif %}
               <div class="sl-u-names">
-                <strong>{{ u.username|e }}</strong>
+                <strong><a href="/samelabs/users/{{ u.id }}">{{ u.username|e }}</a></strong>
                 {% if u.display_name and u.display_name != u.username %}<span>{{ u.display_name|e }}</span>{% endif %}
                 {% if u.email %}<span>{{ u.email|e }}</span>{% endif %}
               </div>

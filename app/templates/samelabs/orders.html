@@ -1,0 +1,42 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "订单" %}
+{% block body %}
+<div class="sl-toolbar">
+  <form class="sl-search sl-filter" method="get" action="/samelabs/orders">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="sl-input" type="text" name="q" value="{{ q|e }}" placeholder="订单 ID / 用户 ID / 用户名 / Creem 订单或 checkout ID">
+    <select class="sl-input" name="status" onchange="this.form.submit()">
+      <option value="">全部状态</option>
+      {% for s in statuses %}<option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+  </form>
+  {% if q or status %}<a class="sl-btn sl-btn-ghost sl-btn-sm" href="/samelabs/orders">清除</a>{% endif %}
+  <span class="sl-count">{{ orders|length }} 条 · 最近 100</span>
+</div>
+<div class="sl-panel">
+  <div class="sl-tablewrap">
+    <table class="sl-tbl">
+      <thead><tr><th>ID</th><th>用户</th><th>类型</th><th>商品</th><th class="sl-num">金额</th><th class="sl-num">积分快照</th><th>状态</th><th>Creem ID</th><th>创建</th><th>支付</th><th>退款/争议</th></tr></thead>
+      <tbody>
+      {% for o in orders %}
+        <tr>
+          <td class="sl-mono sl-dim">{{ o.id }}</td>
+          <td><a href="/samelabs/users/{{ o.user_id }}">{{ o.username|e }}</a></td>
+          <td>{{ '积分包' if o.kind == 'package' else ('订阅' if o.kind == 'plan' else o.kind|e) }}</td>
+          <td>{{ (o.item_name or '—')|e }}</td>
+          <td class="sl-num">{{ '%.2f'|format(o.amount_cents / 100) }} {{ o.currency|e }}</td>
+          <td class="sl-num">{{ fmt_num(o.credits_snapshot) if o.credits_snapshot is not none else '—' }}</td>
+          <td><span class="sl-badge {{ 'sl-b-ok' if o.status == 'paid' else ('sl-b-err' if o.status in ('refunded','disputed') else 'sl-b-muted') }}">{{ o.status|e }}</span></td>
+          <td class="sl-mono sl-dim">{{ (o.provider_order_id or '—')|e }}</td>
+          <td class="sl-dim">{{ fmt_ts(o.created_at) }}</td>
+          <td class="sl-dim">{{ fmt_ts(o.paid_at) if o.paid_at else '—' }}</td>
+          <td class="sl-dim">{{ fmt_ts(o.refunded_at) if o.refunded_at else '—' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="11" class="sl-dim">无订单</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
