@@ -9,9 +9,11 @@ from fastapi.responses import JSONResponse, Response
 
 from storage import read as storage_read
 from governance.catalog import list_catalog
-from utils import sanitize_filename
+from utils import sanitize_filename, content_disposition
+from governance.formats import mime_for_ext
 from security import sniff_allowed, sign_source_token
 import io
+import os
 from identity.auth import public_user
 
 router = APIRouter()
@@ -231,8 +233,9 @@ async def v1_fetch(public_id: str, request: Request):
     data = stream.read()
     return Response(
         content=data,
-        media_type=upload["content_type"] or "application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{upload["file_name"]}"',
+        media_type=mime_for_ext(os.path.splitext(upload["file_name"] or "")[1]),
+        headers={"Content-Disposition": content_disposition(
+                     "attachment", upload["file_name"]),
                  "X-Content-Type-Options": "nosniff"},
     )
 

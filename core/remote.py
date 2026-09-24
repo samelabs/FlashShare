@@ -469,7 +469,10 @@ def _wrap_raw(decl: dict, body: bytes, filename: str | None = None) -> dict:
         if not ext:
             raise RemoteError("bad_output", "unknown output format (no filename given)")
         filename = "result" + ext
-    name = filename
+    # Endpoint-provided names are untrusted input: same sanitizer as every
+    # other ingress (path, control chars, quotes, CR/LF, length).
+    from utils import sanitize_filename
+    name = sanitize_filename(str(filename))
     ctype = decl.get("output_content_type") or "application/octet-stream"
     validated = validate_output(name, ctype, body)
     return {"filename": name, "content_type": sniff_final_type(name, ctype, body),

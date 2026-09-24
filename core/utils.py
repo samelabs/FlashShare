@@ -24,7 +24,31 @@ def sanitize_filename(name: str) -> str:
         else:
             keep.append("_")
     clean = "".join(keep).strip(" .")
-    return clean[:120] or "upload.bin"
+    if len(clean) > 120:
+        # Truncate the stem, never the extension: the extension is the
+        # format identity every downstream gate (sniff/accept) reads.
+        stem, ext = os.path.splitext(clean)
+        if not ext or len(ext) > 16:
+            stem, ext = clean, ""
+        clean = stem[:120 - len(ext)].rstrip(" .") + ext
+    return clean or "upload.bin"
+
+
+def content_disposition(kind: str, filename: str) -> str:
+    """RFC 6266/5987 header value: ASCII fallback + UTF-8 filename*.
+
+    Header values are latin-1 on the wire — a raw non-ASCII name would
+    raise at response construction. Quotes, backslashes and control
+    characters never reach the quoted fallback.
+    """
+    assert kind in ("attachment", "inline")
+    name = filename or "download"
+    ascii_name = "".join(
+        ch for ch in name
+        if 32 <= ord(ch) < 127 and ch not in '"\\'
+    ).strip() or "download"
+    quoted = urllib.parse.quote(name, safe="")
+    return f"{kind}; filename=\"{ascii_name}\"; filename*=UTF-8''{quoted}"
 
 
 def generate_public_id(con) -> str:

@@ -41,12 +41,12 @@ def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> 
         raise ValueError("err_select_file")
     checked = []
     for filename, ctype, body in files:
-        ok, reason = sniff_allowed(filename, ctype, body)
+        ok, final_type = sniff_allowed(filename, ctype, body)
         if not ok:
-            raise ValueError(reason)
+            raise ValueError(final_type)
         if not body:
             raise ValueError("err_empty_file")
-        checked.append((filename, ctype, body))
+        checked.append((filename, final_type, body))
 
     # Platform hard boundaries (20 files / single / batch) — authoritative
     # single point, before any quota reservation or Gokapi storage.

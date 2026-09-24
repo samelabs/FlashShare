@@ -19,8 +19,9 @@ from gokapi import open_gokapi_download, get_gokapi_file
 from utils import (
     public_file_url, format_bytes, format_ts,
     file_size_icon_svg, expiry_icon_svg, download_count_icon_svg, file_format_icon,
-    html_escape,
+    html_escape, content_disposition,
 )
+from governance.formats import mime_for_ext, preview_kind, preview_mime
 from i18n import LOCALE_TAGS, server_text
 from icons import icon_svg
 
@@ -72,19 +73,18 @@ async def file_route(public_id: str, request: Request):
                 dl_path = None
 
             if dl_path is not None:
-                safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
-                from urllib.parse import quote
                 from fastapi.responses import RedirectResponse
                 resp = RedirectResponse(url=dl_path, status_code=302)
-                ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "download"
-                resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
+                resp.headers["Content-Disposition"] = content_disposition(
+                    "attachment", upload["file_name"])
                 return resp
         # Fallback: stream via Python if no hotlink
         status, headers, stream = open_gokapi_download(upload["gokapi_id"])
         if status >= 400:
-            return HTMLResponse("File unavailable", status=status)
-        content_type = upload["content_type"] or "application/octet-stream"
-        safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
+            stream.close()
+            return HTMLResponse("File unavailable", status_code=status)
+        import os as _os
+        content_type = mime_for_ext(_os.path.splitext(upload["file_name"] or "")[1])
 
         def generate():
             try:
@@ -97,7 +97,8 @@ async def file_route(public_id: str, request: Request):
                 stream.close()
 
         return StreamingResponse(generate(), media_type=content_type,
-                                 headers={"Content-Disposition": f'attachment; filename="{safe_name}"',
+                                 headers={"Content-Disposition": content_disposition(
+                                              "attachment", upload["file_name"]),
                                           "X-Content-Type-Options": "nosniff"})
 
     # Detail page via Jinja2
@@ -125,9 +126,8 @@ async def file_route(public_id: str, request: Request):
         "public_id": pid,
         "file_name": upload["file_name"],
         "content_type": upload["content_type"] or "",
-        "is_image": ((upload["content_type"] or "").startswith("image/")
-                      and (upload["content_type"] or "").lower() != "image/svg+xml"),
-        "is_pdf": (upload["content_type"] or "").lower() == "application/pdf",
+        "is_image": preview_kind(upload["content_type"]) == "image",
+        "is_pdf": preview_kind(upload["content_type"]) == "pdf",
         "is_zip": ((upload["content_type"] or "") in ("application/zip", "application/x-zip-compressed"))
                    or (upload["file_name"] or "").lower().endswith(".zip"),
         "card_date": format_ts(expire_at),
@@ -219,13 +219,12 @@ async def file_inline(public_id: str, request: Request):
     upload = _live_upload(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    ct = (upload["content_type"] or "").lower()
-    is_pdf = ct == "application/pdf"
-    is_image = ct.startswith("image/") and ct != "image/svg+xml"
-    if not (is_pdf or is_image):
+    # Exact embeddable allowlist (single predicate shared with the detail
+    # page); the served MIME is the allowlisted value, never the raw row.
+    ct = preview_mime(upload["content_type"])
+    if ct is None:
         return JSONResponse({"ok": False, "error": "not_embeddable"}, 400)
 
-    from urllib.parse import quote
     # IMPLEMENTATION BLOCKED BY GOKAPI DEPLOYMENT CAPABILITY:
     # in-site preview SHOULD NOT consume allowed_downloads (decided product
     # semantics), but Gokapi v2.2.4 has no API-key non-counting read
@@ -234,11 +233,10 @@ async def file_inline(public_id: str, request: Request):
     # bypassing Gokapi's private storage is not an option.
     status, headers, stream = open_gokapi_download(upload["gokapi_id"])
     if status >= 400:
-        return HTMLResponse("File unavailable", status=status)
+        stream.close()
+        return HTMLResponse("File unavailable", status_code=status)
 
-    safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
-    ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "document"
-    disposition = f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
+    disposition = content_disposition("inline", upload["file_name"])
 
     def generate():
         try:
@@ -267,8 +265,7 @@ async def file_print(public_id: str, request: Request):
     upload = _live_upload(public_id)
     if not upload:
         return HTMLResponse("Not found", status_code=404)
-    ct = (upload["content_type"] or "").lower()
-    if ct != "application/pdf":
+    if preview_kind(upload["content_type"]) != "pdf":
         return HTMLResponse("Not a PDF", status_code=400)
 
     lang = request.state.lang

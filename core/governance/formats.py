@@ -319,3 +319,63 @@ for _key, _fam in FAMILIES.items():
         f"MIME_EXTS 展开={sorted(_mime_union)} "
         f"!= exts={sorted(_fam.exts)}"
     )
+
+
+# ── 存储 MIME 单源: ext → canonical MIME ──
+# uploads.content_type 由服务端按已过魔数嗅探的扩展名推导, 客户端/远端声明的
+# MIME 不参与落库事实 (声明值不可信: "image/svg+xml; x" 之类可绕过预览闸门)。
+# 一个 ext 对应多个 MIME 时由显式偏好表定型, 其余从 MIME_EXTS 唯一反推。
+_EXT_MIME_PREFERRED: dict[str, str] = {
+    ".ico": "image/x-icon",
+    ".dwg": "image/vnd.dwg",
+    ".wav": "audio/wav",
+    ".xml": "application/xml",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+    ".js": "text/javascript",
+}
+
+_ext_candidates: dict[str, set[str]] = {}
+for _mime, _exts in MIME_EXTS.items():
+    for _ext in _exts:
+        _ext_candidates.setdefault(_ext, set()).add(_mime)
+_EXT_MIME: dict[str, str] = {}
+for _ext, _cands in _ext_candidates.items():
+    if len(_cands) == 1:
+        _EXT_MIME[_ext] = next(iter(_cands))
+    else:
+        assert _ext in _EXT_MIME_PREFERRED, f"ambiguous MIME for {_ext}: {sorted(_cands)}"
+        assert _EXT_MIME_PREFERRED[_ext] in _cands, f"preferred MIME for {_ext} not in MIME_EXTS"
+        _EXT_MIME[_ext] = _EXT_MIME_PREFERRED[_ext]
+assert set(_EXT_MIME_PREFERRED) <= set(_EXT_MIME), "preferred MIME for unknown ext"
+assert ALLOWED_EXT <= set(_EXT_MIME), f"ALLOWED_EXT without MIME: {sorted(ALLOWED_EXT - set(_EXT_MIME))}"
+
+_FALLBACK_MIME = "application/octet-stream"
+
+
+def mime_for_ext(ext: str) -> str:
+    """Canonical stored MIME for an (already sniffed) extension."""
+    return _EXT_MIME.get((ext or "").lower(), _FALLBACK_MIME)
+
+
+# ── 站内预览闸门单源: 仅这些 MIME 可 inline 输出 ──
+_PREVIEW_KINDS: dict[str, str] = {
+    "application/pdf": "pdf",
+    "image/png": "image",
+    "image/jpeg": "image",
+    "image/gif": "image",
+    "image/webp": "image",
+    "image/bmp": "image",
+}
+
+
+def preview_mime(content_type: str | None) -> str | None:
+    """Normalized MIME if embeddable inline, else None (exact allowlist)."""
+    base = (content_type or "").split(";", 1)[0].strip().lower()
+    return base if base in _PREVIEW_KINDS else None
+
+
+def preview_kind(content_type: str | None) -> str | None:
+    """"image" | "pdf" | None — the one predicate for page + endpoint."""
+    base = preview_mime(content_type)
+    return _PREVIEW_KINDS[base] if base else None

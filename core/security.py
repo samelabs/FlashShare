@@ -60,8 +60,10 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
                ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
                ".svg", ".step", ".stp", ".iges", ".igs", ".obj"} and b"\x00" in sample:
         return False, "err_content_mismatch_text"
-    import mimetypes
-    return True, content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    # Stored MIME authority is the server (sniffed ext → canonical MIME);
+    # the declared content_type never becomes a stored fact.
+    from governance.formats import mime_for_ext
+    return True, mime_for_ext(ext)
 
 
 def hash_password(password: str) -> str:

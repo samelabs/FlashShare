@@ -43,6 +43,11 @@ def upload_to_gokapi(file_obj, filename: str, content_type: str, expiry_days: in
         header_parts.extend(f"--{boundary}\r\n".encode())
         header_parts.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
     header_parts.extend(f"--{boundary}\r\n".encode())
+    # Part headers are built by hand: CR/LF in either value would inject
+    # headers into the storage request. Callers pass sanitized names and
+    # canonical MIME; anything else fails closed here.
+    if any(c in filename or c in content_type for c in "\r\n"):
+        raise ValueError("gokapi_header_injection")
     safe_name = filename.replace('"', "_")
     header_parts.extend(f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'.encode())
     header_parts.extend(f"Content-Type: {content_type}\r\n\r\n".encode())
