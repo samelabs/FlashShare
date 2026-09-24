@@ -127,7 +127,8 @@ def retire_absent_first_party(con, live_keys: Sequence[str], ts: int) -> None:
 def owner_rows_joined(con, user_id: int) -> list:
     return con.execute(
         """
-        SELECT pt.*, u.username AS owner_name, p.cost, p.enabled AS priced
+        SELECT pt.*, u.username AS owner_name, p.cost, p.enabled AS priced,
+               EXISTS (SELECT 1 FROM tool_holds h WHERE h.tool_key = pt.tool_key) AS held
         FROM platform_tools pt
         JOIN users u ON u.id = pt.owner_id
         LEFT JOIN pricing p ON p.tool_id = pt.tool_key
@@ -305,26 +306,54 @@ def pricing_row(con, tool_id: str) -> Optional[dict]:
 
 def upsert_pricing(con, tool_id: str, cost: int, enabled: bool,
                    ts: int, admin_user_id) -> dict:
+    """Single pricing writer. A moderation hold (tool_holds) forces the
+    commerce switch off whoever writes — owner, seed or operator toggle."""
     return con.execute(
         """
         INSERT INTO pricing (tool_id, cost, enabled, updated_at, updated_by)
-        VALUES (%s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s AND NOT EXISTS
+                  (SELECT 1 FROM tool_holds h WHERE h.tool_key = %s), %s, %s)
         ON CONFLICT (tool_id) DO UPDATE SET
           cost = EXCLUDED.cost, enabled = EXCLUDED.enabled,
           updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
         RETURNING *
         """,
-        (tool_id, cost, enabled, ts, admin_user_id)).fetchone()
+        (tool_id, cost, enabled, tool_id, ts, admin_user_id)).fetchone()
+
+
+def tool_held(con, tool_key: str) -> bool:
+    return con.execute("SELECT 1 FROM tool_holds WHERE tool_key = %s",
+                       (tool_key,)).fetchone() is not None
+
+
+def insert_hold(con, tool_key: str, held_by: int, reason: Optional[str],
+                ts: int) -> bool:
+    """True when a new hold was placed (False = already held)."""
+    return con.execute(
+        """INSERT INTO tool_holds (tool_key, held_by, reason, created_at)
+           VALUES (%s, %s, %s, %s) ON CONFLICT (tool_key) DO NOTHING
+           RETURNING tool_key""", (tool_key, held_by, reason, ts)).fetchone() is not None
+
+
+def delete_hold(con, tool_key: str) -> bool:
+    return con.execute("DELETE FROM tool_holds WHERE tool_key = %s RETURNING tool_key",
+                       (tool_key,)).fetchone() is not None
+
+
+def held_keys(con) -> dict:
+    return {r["tool_key"]: dict(r) for r in con.execute(
+        "SELECT * FROM tool_holds").fetchall()}
 
 
 def seed_pricing_row(con, tool_id: str, ts: int) -> int:
     cur = con.execute(
         """
         INSERT INTO pricing (tool_id, cost, enabled, updated_at)
-        VALUES (%s, 0, TRUE, %s)
+        VALUES (%s, 0, NOT EXISTS
+                  (SELECT 1 FROM tool_holds h WHERE h.tool_key = %s), %s)
         ON CONFLICT (tool_id) DO NOTHING
         """,
-        (tool_id, ts))
+        (tool_id, tool_id, ts))
     return cur.rowcount
 
 

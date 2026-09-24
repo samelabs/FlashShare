@@ -165,6 +165,11 @@ async def samelabs_tools(request: Request):
             "featured": bool(t["featured"]) if t else False,
             "sort_order": int(t["sort_order"]) if t else 0,
         })
+    from repo.catalog import held_keys
+    with db() as con:
+        holds = held_keys(con)
+    for r in rows:
+        r["held"] = r["tool_id"] in holds
     ctx = _ctx(request, user, tools=rows, fmt_num=_fmt_num, page="tools")
     return templates.TemplateResponse(request, "samelabs/tools.html", ctx)
 
@@ -240,7 +245,9 @@ def _snap_remote(r) -> dict:
                               "cost") if k in r.keys()}
 
 
-@router.post("/samelabs/tools/{tool_id}/pricing")
+# {…:path}: community tool keys are namespaced "owner/tool" — a plain
+# segment converter never matched them (404 → redirect home).
+@router.post("/samelabs/tools/{tool_id:path}/pricing")
 async def samelabs_set_pricing(tool_id: str, request: Request):
     user, resp = _gate(request)
     if resp:
@@ -281,6 +288,69 @@ async def samelabs_set_pricing(tool_id: str, request: Request):
                            str(tool_id), _snap_pricing(before),
                            _snap_pricing(row), now())
     return {"ok": True, "pricing": {k: row[k] for k in ("tool_id", "cost", "enabled")}}
+
+
+@router.post("/samelabs/tool-holds")
+async def samelabs_hold_tool(request: Request):
+    """Moderation takedown of a tool key: hold row + commerce switch off,
+    one audited transaction. The hold is keyed by tool_key, so owner
+    edits, delete + re-create and pricing toggles cannot relist it."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        tool_key = str(raw.get("tool_key") or "").strip()
+        reason = str(raw.get("reason") or "").strip()[:200] or None
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    if not tool_key or len(tool_key) > 200:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.catalog import (tool_row_for_update, pricing_row_for_update,
+                             insert_hold)
+    from governance.pricing import set_pricing
+    with db() as con:
+        tool = tool_row_for_update(con, tool_key)
+        price = pricing_row_for_update(con, tool_key)
+        if tool is None and price is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        if not insert_hold(con, tool_key, user["id"], reason, now()):
+            return JSONResponse({"ok": False, "error": "already_held"}, 409)
+        set_pricing(tool_key, int(price["cost"]) if price else 0, False,
+                    admin_user_id=user["id"], con=con)
+        _audit_repo.record(con, user["id"], "tool.hold", "tool_hold", tool_key,
+                           {"tool_key": tool_key, "held": False},
+                           {"tool_key": tool_key, "held": True, "reason": reason},
+                           now())
+    return {"ok": True, "held": True}
+
+
+@router.post("/samelabs/tool-holds/release")
+async def samelabs_release_tool(request: Request):
+    """Lift a moderation hold; a still-registered tool is relisted
+    (commerce switch back on), a deleted one stays off."""
+    user, resp = _gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        tool_key = str(raw.get("tool_key") or "").strip()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from repo.catalog import tool_row_for_update, pricing_row, delete_hold
+    from governance.pricing import set_pricing
+    with db() as con:
+        tool = tool_row_for_update(con, tool_key)
+        if not delete_hold(con, tool_key):
+            return JSONResponse({"ok": False, "error": "not_held"}, 404)
+        price = pricing_row(con, tool_key)
+        if tool is not None:
+            set_pricing(tool_key, int(price["cost"]) if price else 0, True,
+                        admin_user_id=user["id"], con=con)
+        _audit_repo.record(con, user["id"], "tool.release", "tool_hold", tool_key,
+                           {"tool_key": tool_key, "held": True},
+                           {"tool_key": tool_key, "held": False}, now())
+    return {"ok": True, "held": False, "relisted": tool is not None}
 
 
 @router.get("/samelabs/plans")
@@ -575,7 +645,7 @@ async def samelabs_update_package(package_id: int, request: Request):
     return {"ok": True, "package": dict(row)}
 
 
-@router.patch("/samelabs/tools/{tool_key}/presentation")
+@router.patch("/samelabs/tools/{tool_key:path}/presentation")
 async def samelabs_set_tool_presentation(tool_key: str, request: Request):
     """管理后台遴选: 推荐标记 + 排序 (首页/市场呈现序的权威)。"""
     user, resp = _gate(request)

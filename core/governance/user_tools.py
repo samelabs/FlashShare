@@ -46,6 +46,7 @@ def _public_item(row: dict) -> dict:
         "trusted": bool(row["trusted"]),
         "cost": int(row.get("cost") or 0),
         "priced_enabled": bool(row.get("priced")),
+        "held": bool(row.get("held")),
         "url": decl.get("url", ""),
         "timeout_s": decl.get("timeout_s", 60),
         "has_auth": bool(decl.get("auth_token")),

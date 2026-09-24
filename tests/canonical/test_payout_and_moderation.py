@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Payout settlement & tool moderation canonical.
 
+Tool moderation: an operator hold on a tool key delists it and no owner
+write (price edit, delete + re-create) nor pricing toggle can relist it
+until released; the owner never flips the commerce switch.
+
 Withdrawal: pending → approved (earn-pool debit) → paid (payout reference
 required) | failed (the exact debit returns to the earn pool, once); the
 payout target is the one frozen at request time. Every settlement is one
@@ -136,6 +140,73 @@ check("W11 unknown outcome → 422", r.status_code == 422)
 r = client.post(f"/samelabs/withdrawals/{w1['id']}/settle", json={"outcome": "failed"},
                 cookies=PVC)
 check("W12 non-operator cannot settle", r.status_code == 403)
+
+# ══ M. tool moderation hold ══
+import socket as _socket
+import remote as _remote_mod
+_remote_mod._resolve_host = lambda host, port: [
+    (_socket.AF_INET, _socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+owner_name = _u + "ow"
+owner = _mkuser(owner_name)
+OWC = {COOKIE_NAME: create_browser_session(owner)}
+tid = "mod" + _os.urandom(3).hex()
+key = f"{owner_name}/{tid}"
+_manifest = {"tool_id": tid, "label": "Mod", "url": "https://pub.example/x",
+             "format_families": "image", "accept": [".png"], "cost": 5}
+def _publish(k):
+    # public listing normally follows a passing self-test; fixture shortcut
+    with db() as con:
+        con.execute("update platform_tools set visibility='public' where tool_key=%s", (k,))
+r = client.post("/api/usertools", json=_manifest, cookies=OWC)
+_publish(key)
+from governance.pricing import get_pricing
+from governance.catalog import list_catalog
+def _listed():
+    return any(t["id"] == key for t in list_catalog(None))
+check("M0 community tool created and listed", r.status_code == 200 and _listed(), r.text[:120])
+
+r = client.post("/samelabs/tool-holds", json={"tool_key": key, "reason": "abuse"}, cookies=OPC)
+check("M1 hold → delisted + one audit",
+      r.status_code == 200 and not _listed() and get_pricing(key)["enabled"] is False
+      and len(_audits("tool.hold", key)) == 1, r.text[:120])
+r = client.post("/samelabs/tool-holds", json={"tool_key": key}, cookies=OPC)
+check("M2 repeat hold → 409 already_held", r.status_code == 409)
+r = client.patch(f"/api/usertools/{tid}", json={"cost": 7}, cookies=OWC)
+check("M3 owner price edit applies the price but cannot relist (B3)",
+      r.status_code == 200 and get_pricing(key)["cost"] == 7 and not _listed(), r.text[:120])
+r = client.get("/api/usertools", cookies=OWC)
+_mine = [t for t in r.json().get("tools", []) if t["tool_key"] == key]
+check("M4 owner sees the hold", _mine and _mine[0]["held"] is True, _mine[:1])
+r = client.post(f"/samelabs/tools/{key}/pricing", json={"cost": 7, "enabled": True}, cookies=OPC)
+check("M5 even the pricing toggle cannot switch a held key on",
+      get_pricing(key)["enabled"] is False and not _listed(), r.status_code)
+r = client.delete(f"/api/usertools/{tid}", cookies=OWC)
+r = client.post("/api/usertools", json=_manifest, cookies=OWC)
+check("M6 delete + re-create of a held key → 409 tool_held",
+      r.status_code == 409 and r.json().get("error") == "tool_held", r.text[:120])
+r = client.get("/samelabs/tools", cookies=OPC)
+check("M7 console marks the held key", r.status_code == 200 and "审核下架" in r.text)
+r = client.post("/samelabs/tool-holds/release", json={"tool_key": key}, cookies=OPC)
+check("M8 release of a deleted tool: hold gone, stays delisted, audited",
+      r.status_code == 200 and r.json().get("relisted") is False and not _listed()
+      and len(_audits("tool.release", key)) == 1, r.text[:120])
+r = client.post("/api/usertools", json=_manifest, cookies=OWC)
+check("M9 after release the owner can publish the key again", r.status_code == 200, r.text[:120])
+
+# operator pause without hold (plain commerce switch) is also not undone by the owner
+tid2 = "mod2" + _os.urandom(3).hex(); key2 = f"{owner_name}/{tid2}"
+client.post("/api/usertools", json={**_manifest, "tool_id": tid2}, cookies=OWC)
+_publish(key2)
+r = client.post(f"/samelabs/tools/{key2}/pricing", json={"cost": 5, "enabled": False}, cookies=OPC)
+check("M10a console pricing route reaches namespaced community keys",
+      r.status_code == 200 and get_pricing(key2)["enabled"] is False, r.status_code)
+r = client.patch(f"/samelabs/tools/{key2}/presentation", json={"featured": True, "sort_order": 3},
+                 cookies=OPC)
+check("M10b console presentation route reaches namespaced community keys", r.status_code == 200,
+      r.status_code)
+client.patch(f"/api/usertools/{tid2}", json={"cost": 9}, cookies=OWC)
+check("M10 owner price edit keeps an operator pause (B3)",
+      get_pricing(key2)["enabled"] is False and get_pricing(key2)["cost"] == 9)
 
 print(f"\n{'FAIL' if FAIL else 'PASS'}: {len(FAIL)} failure(s)")
 _sys.exit(1 if FAIL else 0)

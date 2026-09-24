@@ -877,6 +877,7 @@ html[dir="rtl"] .tool-overlay-actions { justify-content: flex-start; }
 .acct-page .usertools-ico svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 .acct-page .usertools-key { font-size: var(--text-xs); color: var(--muted); font-family: var(--mono, monospace); overflow: hidden; text-overflow: ellipsis; }
 .acct-page .usertools-vis { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-full); border: 1px solid var(--line-strong); white-space: nowrap; }
+.acct-page .usertools-vis.v-held { color: var(--danger); border-color: var(--danger); }
 .acct-page .usertools-meta { font-size: var(--text-sm); color: var(--ink-soft); }
 .acct-page .usertools-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
 .acct-page .btn-secondary.danger { border-color: var(--danger); color: var(--danger); }

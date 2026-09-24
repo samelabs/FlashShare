@@ -5,7 +5,7 @@
 <div class="sl-panel">
   <div class="sl-panel-head">
     <h2>工具定价</h2>
-    <span class="sl-panel-sub">单价单位: 积分 / 次</span>
+    <span class="sl-panel-sub">单价单位: 积分 / 次。“审核下架”对工具标识生效：作者改价、删除重建、定价开关都无法重新上架，直到解除。</span>
   </div>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
@@ -19,7 +19,8 @@
           <td><input type="checkbox" class="tool-featured" data-tool="{{ t.tool_id|e }}" {{ 'checked' if t.featured }}></td>
           <td><input type="number" class="sl-adj-in tool-sort" data-tool="{{ t.tool_id|e }}" value="{{ t.sort_order }}" style="width:70px" aria-label="排序"></td>
           <td class="tool-enabled">
-            {% if t.enabled %}<span class="sl-badge sl-b-ok">启用</span>
+            {% if t.held %}<span class="sl-badge sl-b-err">审核下架</span>
+            {% elif t.enabled %}<span class="sl-badge sl-b-ok">启用</span>
             {% else %}<span class="sl-badge sl-b-muted">停用</span>{% endif %}
           </td>
           <td>
@@ -28,11 +29,13 @@
           </td>
           <td>
             <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-save-pricing" data-tool="{{ t.tool_id|e }}">保存</button>
-            <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-toggle-tool" data-tool="{{ t.tool_id|e }}" data-enabled="{{ 'true' if t.enabled else 'false' }}">{{ '停用' if t.enabled else '启用' }}</button>
+            {% if not t.held %}<button type="button" class="sl-btn sl-btn-ghost sl-btn-sm btn-toggle-tool" data-tool="{{ t.tool_id|e }}" data-enabled="{{ 'true' if t.enabled else 'false' }}">{{ '停用' if t.enabled else '启用' }}</button>{% endif %}
+            {% if t.held %}<button type="button" class="sl-btn sl-btn-ghost sl-btn-sm" data-op="release" data-tool="{{ t.tool_id|e }}">解除下架</button>
+            {% else %}<button type="button" class="sl-btn sl-btn-danger sl-btn-sm" data-op="hold" data-tool="{{ t.tool_id|e }}">审核下架</button>{% endif %}
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="6" class="sl-dim">暂无定价记录</td></tr>
+        <tr><td colspan="8" class="sl-dim">暂无定价记录</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -41,4 +44,5 @@
 
 {% endblock %}
 
-{% block script %}<script src="/static/pages/samelabs_tools.js?v={{ pages_version }}"></script>{% endblock %}
+{% block script %}<script src="/static/pages/samelabs_tools.js?v={{ pages_version }}"></script>
+<script src="/static/pages/samelabs_ops.js?v={{ pages_version }}"></script>{% endblock %}

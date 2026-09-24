@@ -296,6 +296,10 @@ async def create_user_tool(request: Request):
             lock_user_row(con, user["id"])
             if tool_key_exists(con, tool_key):
                 return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
+            from repo.catalog import tool_held
+            if tool_held(con, tool_key):
+                # operator moderation hold survives delete + re-create
+                return JSONResponse({"ok": False, "error": "tool_held"}, 409)
             if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
                 return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
             create_tool_with_pricing(declaration, fields["cost"],
@@ -521,8 +525,12 @@ async def update_user_tool(tool_id: str, request: Request):
         from governance.tool_supply import update_tool
         update_tool(tool_key, sets)
     if "cost" in fields:
-        from governance.pricing import set_pricing
-        set_pricing(tool_key, fields["cost"], True, admin_user_id=user["id"])
+        # Owner sets the price only; the commerce switch (pricing.enabled)
+        # is operator authority and is carried over unchanged, so an
+        # operator takedown is never undone by a price edit.
+        from governance.pricing import set_pricing, is_enabled
+        set_pricing(tool_key, fields["cost"], is_enabled(tool_key),
+                    admin_user_id=user["id"])
     return {"ok": True}
 
 

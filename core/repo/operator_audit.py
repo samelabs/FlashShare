@@ -34,6 +34,7 @@ TARGET_SAFE_KEYS = {
     "upload": {"public_id", "user_id", "file_name", "content_type",
                "size_bytes"},
     "membership": {"user_id", "checked", "granted", "credits"},
+    "tool_hold": {"tool_key", "held", "reason"},
 }
 
 _SECRET_MARKERS = ("password", "token", "secret", "auth_header",

@@ -426,6 +426,18 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS operator_audit_created_idx
       ON operator_audit(created_at DESC, id DESC)
     """,
+    # ── platform: tool moderation hold ──
+    # Operator takedown of a tool key. Keyed by tool_key (not the
+    # platform_tools row) so it survives owner delete + re-create. While a
+    # hold exists the pricing writer can never switch the key on.
+    """
+    CREATE TABLE IF NOT EXISTS tool_holds (
+      tool_key   TEXT PRIMARY KEY,
+      held_by    BIGINT NOT NULL REFERENCES users(id),
+      reason     TEXT,
+      created_at BIGINT NOT NULL
+    )
+    """,
     # ── platform: settings ──
     """
     CREATE TABLE IF NOT EXISTS settings (

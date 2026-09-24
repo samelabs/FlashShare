@@ -76,6 +76,12 @@ async function loadTools() {
     vis.className = 'usertools-vis v-' + t.visibility;
     vis.textContent = _msg('mytools_v_' + t.visibility);
     head.append(name, key, vis);
+    if (t.held) {
+      const held = document.createElement('span');
+      held.className = 'usertools-vis v-held';
+      held.textContent = _msg('mytools_held');
+      head.append(held);
+    }
 
     const meta = document.createElement('div');
     meta.className = 'usertools-meta';

@@ -1,4 +1,4 @@
-/* ── Operator console writes: 封禁/解封 · 分享下架 · 会员对账 ──
+/* ── Operator console writes: 封禁/解封 · 分享下架 · 工具审核下架 · 会员对账 ──
    两态确认 (与积分调整同一交互): 首次点击进入 "确认…" 态, 3 秒内再点才提交;
    结果统一 toast, 成功后刷新当前页。 */
 (function () {
@@ -14,6 +14,18 @@
       body: function () { return {}; },
       confirm: function () { return '确认下架'; },
       done: function (b) { return '已下架 ' + b.dataset.pid; }
+    },
+    hold: {
+      url: function () { return '/samelabs/tool-holds'; },
+      body: function (b) { return { tool_key: b.dataset.tool }; },
+      confirm: function () { return '确认下架'; },
+      done: function (b) { return '已下架 ' + b.dataset.tool; }
+    },
+    release: {
+      url: function () { return '/samelabs/tool-holds/release'; },
+      body: function (b) { return { tool_key: b.dataset.tool }; },
+      confirm: function () { return '确认解除'; },
+      done: function (b) { return '已解除 ' + b.dataset.tool; }
     },
     reconcile: {
       url: function (b) { return '/samelabs/users/' + b.dataset.uid + '/reconcile'; },
