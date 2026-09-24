@@ -7,35 +7,27 @@
 
 ## A. GitHub 是 source of truth
 
-- 开发前先 `git fetch origin`；功能分支必须从 `origin/main` 创建。
+- 开发前先 `git fetch origin`。功能分支默认从 `origin/main` 创建；发布收口期间从
+  PM 指定的集成分支创建（1.0 收口期间为 `fix/order-payment-production-closure`，
+  即 PR #38）。不得自选基线，不得从其他功能分支或过期分支派生。
 - 服务器上的 checkout 只是运行/部署环境，其本地状态不凌驾于 GitHub 仓库。
 - 禁止在 production checkout 上做未提交的源码修改后直接重启服务跑新代码。
-- 禁止 force push `main`；禁止未经裁定的 merge。
+- 禁止 force push `main` 与集成分支；禁止未经裁定的 merge。
 - 长期开发规则、架构约束、正式测试都只存在于仓库内；服务器本地只允许
   secrets、runtime env、部署专属配置、scratch/临时诊断和 dev log。
 
-### Server Agent × GitHub control boundary
+### 角色与 GitHub 边界
 
-Server Agent 的 GitHub 权限只有 SSH deploy key——**没有** GitHub API token、
-authenticated gh、PR API、Actions API 或 branch protection 管理权限。
-
-Server Agent MAY：
-- `git fetch`
-- 创建 branch / worktree
-- commit
-- push non-main branch
-
-Server Agent MUST NOT：
-- 直推 main（除非 owner 明确授权的例外，如已发生过的 fast-forward deploy 批次）
-- force push
-- 因缺 GitHub API 权限而绕过 PR 流程直推 main
-- 把本地测试结果声明为 GitHub CI 结果（本地绿 ≠ CI 绿；两者都要，来源分开表述）
-
-标准流程：
-1. Server Agent → branch → commit → push non-main branch → **STOP**
-2. 外部 GitHub control plane（owner）→ create PR → inspect diff → verify
-   GitHub CI → approve / merge → advance main
-3. production deploy 由 Server Agent 在 owner 指令后明确执行。
+- **Owner**：产品意图与最终裁定；授权 merge 到 main 与 production deploy。
+- **PM（主线把控）**：冻结每个批次的执行指令，按精确 SHA 验收（diff / 本地
+  canonical / GitHub CI / 必要时真浏览器），创建 PR、决定集成顺序、合入集成分支。
+- **执行 agent**（本地或服务器）：只执行 PM 下发的单个批次。
+  MAY：`git fetch`、在指定分支上 commit、push 该 non-main 分支（替换自己的
+  WIP 提交时仅可 `--force-with-lease` 该分支）。
+  MUST NOT：push main 或集成分支、force push 他人分支、开/合 PR、deploy、
+  超出批次范围修改、把本地测试结果声明为 GitHub CI 结果（本地绿 ≠ CI 绿，
+  两者来源分开表述）。完成后报告并 **STOP**。
+- **Production deploy**：由服务器侧 agent 在 owner 明确指令后执行。
 
 ## B. 四主链
 
@@ -105,7 +97,7 @@ Server Agent MUST NOT：
 
 ---
 
-## 项目事实（当前生产机制）
+## 项目事实（代码机制）
 
 - **站名** 518.PLUS（全部 SEO/meta/title/manifest），hero slogan = Flash Share。
 - **栈**：FastAPI + Jinja2 + Uvicorn（单 worker）+ Pillow + PostgreSQL + Gokapi + Nginx + Cloudflare。
@@ -117,6 +109,16 @@ Server Agent MUST NOT：
 - **MCP** 是唯一正式 northbound machine surface（streamable-http）；Web 是人类消费面；两者同构 canonical invocation。开发者 HTTP 工具端点是 southbound execution contract，不是公开 API。
 - **文件生命周期**：Gokapi 是物理文件权威；518 是 public mapping/页面可见性权威；startup + hourly housekeeping，无 cron/scheduler 子系统。
 - **站内预览语义**（已实现）：internal preview 走 `/api/files/download/{id}`（`increaseCounter:false`）authenticated non-counting 通道，不消耗 allowed_downloads；service API key 必须拥有 DOWNLOAD permission（v2.2.4 `ApiPermDownload`），startup capability probe fail-closed 验证。**禁止穿透 Gokapi 私有存储（sqlite/schema/content 目录）实现预览**。见 DEVELOPMENT.md 的 Gokapi 约束（含 disposable 真实 v2.2.4 实测证据）。
+
+## 文档治理
+
+- 代码与项目意图是事实；文档只记录代码推不出的当前事实与规则。文档与代码冲突时以代码为准并修正文档。
+- 仓库文档仅：`README.md`（产品与开发者协议）、`AGENTS.md`（开发规则与冻结契约）、
+  `DEVELOPMENT.md`（环境/测试/部署运维）、`CHANGELOG.md`（面向用户的变更）。
+  `docs/plan/` 仅存放尚未执行的 release migration 资产，执行后移除。
+- 禁止计划书、流水账、会话记录、审计报告、历史说明进入仓库（它们属于 issue/PR）。
+- 测试断言行为，不断言文档文字。
+- 改变行为的批次必须在同一提交中更新受影响的文档行，不留过时描述。
 
 ## 前端分层契约（违者必炸）
 

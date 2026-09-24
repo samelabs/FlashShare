@@ -137,10 +137,6 @@ if admin_cookie:
 else:
     check("C/D admin 通道", False, "无 admin 凭据 — 需人工提供或本地单元验证")
 
-# ── E: docs tool_type ──
-doc = open(os.path.join(_REPO, 'docs/plan/TOOLCHAIN_UNIFICATION.md')).read()
-check("E docs tool_type = view/peek/produce", "view / peek / produce" in doc and "share / produce" not in doc)
-
 # 清理 operator 测试账号 (可达 — 在退出前执行; 测试库终将 DROP, 这里只做轻量收尾)。
 # 顺序: operator_audit 行先删 — actor FK (users.id) 不带 CASCADE, 测试清理
 # 必须先解除 audit 引用才能删 actor user; 这是 test-only cleanup, 不是生产
