@@ -75,6 +75,42 @@ def _settle_failure(user: dict, tool_id: str, call_id: int, charge,
     return _record_failure(call_id, error, status=status)
 
 
+def _resolve_consume_failure(user: dict, tool_id: str, call_id: int) -> str:
+    """Deterministic claim resolution after a consume() exception that is
+    NOT InsufficientCredits (DB error, commit ACK loss, ...).
+
+    The exception alone does not prove the charge rolled back. Read the
+    durable consume fact (idem call:{call_id}) under the payer's users
+    row lock — the same serialization anchor consume() takes, so any
+    in-flight charge transaction has fully ended when the lock is
+    granted:
+      no charge row  → the charge provably never committed: finalize the
+                       call failed in that same locked transaction
+                       (zero charge, zero refund)            → "no_charge"
+      charge row     → it DID commit: the existing failure settlement
+                       (exact refund → failed)               → "refunded"
+      any read/write failure → the row stays running; startup
+                       recover_abandoned_calls() settles it  → "unresolved"
+    """
+    try:
+        with db() as con:
+            ledger_repo.lock_user(con, int(user["id"]))
+            charge = ledger_repo.by_idem_key(con, int(user["id"]),
+                                             f"call:{call_id}")
+            if charge is None:
+                row = finalize_call_failed(con, call_id, "failed",
+                                           "metering_failed", now())
+                return "no_charge" if row is not None else "unresolved"
+    except Exception:
+        logger.exception("consume outcome resolution failed call_id=%s",
+                         call_id)
+        return "unresolved"
+    if _settle_failure(user, tool_id, call_id, dict(charge),
+                       "metering_failed"):
+        return "refunded"
+    return "unresolved"
+
+
 def recover_abandoned_calls() -> dict:
     """Startup settlement for invocation facts left 'running' by a dead
     process (single-worker deployment: every surviving running row belongs
@@ -373,6 +409,15 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
             return (None,
                     {"ok": False, "error": "err_insufficient_credits",
                      "balance": exc.balance, "cost": exc.cost}, 402)
+        except Exception:
+            # Any other consume failure: the charge commit outcome is not
+            # known from the exception (it may have landed before an ACK
+            # loss). Resolve the claim from the durable consume fact —
+            # never leave it running for the next retry to hit
+            # err_call_in_progress until a restart.
+            logger.exception("consume failed call_id=%s", call_id)
+            _resolve_consume_failure(user, tool_id, call_id)
+            return None, {"ok": False, "error": "err_metering_failed"}, 500
 
     try:
         result = await orchestrate()

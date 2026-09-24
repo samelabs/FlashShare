@@ -11,6 +11,15 @@ const _toolList = document.getElementById('toolList');
 // 不再维护 upload→selftest 重复消费链。
 
 // ── call log drawer: last 20 calls on MY tool ──
+// at = epoch seconds → viewer's local time in the page language
+function _callTime(ts) {
+  if (ts == null) return '-';
+  try {
+    return new Date(ts * 1000).toLocaleString(
+      (window.__LOCALE_MAP || {})[window.__LANG] || 'en', { hour12: false });
+  } catch (e) { return '-'; }
+}
+
 function _showCalls(btn, t) {
   let drawer = btn.closest('.usertools-item').querySelector('.calls-drawer');
   if (drawer) { drawer.remove(); return; }  // toggle
@@ -26,11 +35,10 @@ function _showCalls(btn, t) {
       d.calls.forEach(c => {
         const line = document.createElement('div');
         line.className = 'calls-line';
-        const dt = new Date(c.created_at * 1000);
         line.innerHTML = '<span class="calls-time"></span><span class="calls-st ' + (c.status === 'ok' ? 'ok' : 'bad') + '"></span><span class="calls-ms"></span>';
-        line.querySelector('.calls-time').textContent = dt.toISOString().slice(0, 16).replace('T', ' ');
-        line.querySelector('.calls-st').textContent = c.status;
-        line.querySelector('.calls-ms').textContent = c.ms != null ? c.ms + 'ms' : '';
+        line.querySelector('.calls-time').textContent = _callTime(c.at);
+        line.querySelector('.calls-st').textContent = _msg('mytools_call_st_' + c.status);
+        line.querySelector('.calls-ms').textContent = c.duration_s != null ? c.duration_s + 's' : '';
         drawer.appendChild(line);
       });
     }
