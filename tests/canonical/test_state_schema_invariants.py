@@ -198,13 +198,13 @@ check("A11 invalid plan (period 0, 绑品) → 422 + 零 Creem PATCH + 零 audit
 
 # ══════════ B. Package writer 一致性 ══════════
 r = client.post("/samelabs/packages", json={
-    "code": f"sspkg_{_u}", "name": "SS Pkg", "credits": 5000, "price": 499,
+    "code": f"sspkg_{_u}", "name": "SS Pkg", "credits": 5000, "price_cents": 499,
 }, cookies={COOKIE_NAME: op_sess})
 pkg_id = r.json().get("package", {}).get("id")
 check("B1 package create 合法", r.status_code == 200 and pkg_id is not None,
       str(r.status_code))
 r = client.post("/samelabs/packages", json={
-    "code": f"sspkg0_{_u}", "name": "SS Zero", "credits": 0, "price": 499,
+    "code": f"sspkg0_{_u}", "name": "SS Zero", "credits": 0, "price_cents": 499,
 }, cookies={COOKIE_NAME: op_sess})
 check("B2 create credits=0 → 422", r.status_code == 422, str(r.status_code))
 r = client.patch(f"/samelabs/packages/{pkg_id}", json={"credits": 0},

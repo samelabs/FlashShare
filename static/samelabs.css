@@ -252,14 +252,15 @@ body.sl-body {
 
 /* ── 积分调整 (两态) ────────────────────────────────────── */
 .sl-adj { display: inline-flex; align-items: center; gap: 6px; }
-.sl-adj-in {
+.sl-adj-in, .sl-adj-note {
   width: 84px; height: 28px; padding: 0 8px;
   border: 1px solid var(--line-strong); border-radius: var(--r-sm);
   font-size: var(--text-sm); font-family: inherit;
   background: var(--sl-surface); color: var(--ink);
   transition: border-color var(--sl-ease), box-shadow var(--sl-ease);
 }
-.sl-adj-in:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.sl-adj-note { width: 120px; }
+.sl-adj-in:focus, .sl-adj-note:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .sl-adj-in.plus  { border-color: rgba(15, 159, 110, .45); }
 .sl-adj-in.minus { border-color: rgba(214, 69, 69, .45); }
 

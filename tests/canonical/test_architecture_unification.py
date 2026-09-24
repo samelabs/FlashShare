@@ -307,9 +307,9 @@ check("U9 operator bearer token → /samelabs denied (redirect)",
 r = client.post("/samelabs/tools/x/pricing",
                 headers={"Authorization": f"Bearer {_vtok}"},
                 follow_redirects=False)
-check("U9 operator bearer token → /samelabs POST denied (redirect)",
-      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
-      f"{r.status_code} {r.headers.get('location', '')}")
+check("U9 operator bearer token → /samelabs POST denied (typed 401 JSON)",
+      r.status_code == 401 and r.json().get("error") == "auth_required",
+      f"{r.status_code} {r.text[:80]}")
 r = client.get("/samelabs?key=" + _vtok, follow_redirects=False)
 check("U9 operator token via ?key= → /samelabs denied (query auth absent)",
       r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),

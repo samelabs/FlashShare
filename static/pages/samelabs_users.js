@@ -5,6 +5,7 @@
 document.querySelectorAll('.sl-adj').forEach(function (adj) {
   var uid = adj.dataset.uid;
   var input = adj.querySelector('.sl-adj-in');
+  var noteEl = adj.querySelector('.sl-adj-note');
   var btn = adj.querySelector('.adj-go');
   var balEl = document.querySelector('tr[data-uid="' + uid + '"] .u-balance');
   var userEl = adj.closest('tr').querySelector('.sl-u-names strong');
@@ -41,6 +42,7 @@ document.querySelectorAll('.sl-adj').forEach(function (adj) {
   }
   function clearActionId() { actionId = null; }
   input.addEventListener('input', clearActionId);
+  if (noteEl) noteEl.addEventListener('input', clearActionId);
 
   btn.addEventListener('click', function () {
     var v = parseInt(input.value, 10);
@@ -53,12 +55,14 @@ document.querySelectorAll('.sl-adj').forEach(function (adj) {
     if (!actionId) { mintActionId(); }
     var before = parseInt(balEl.textContent.replace(/,/g, ''), 10);
     slBusy(btn, slPost('/samelabs/users/' + uid + '/credits',
-                       { amount: v, action_id: actionId })).then(function (r) {
+                       { amount: v, action_id: actionId,
+                         note: noteEl ? noteEl.value.trim() : '' })).then(function (r) {
       if (r.ok && r.data.ok) {
         balEl.textContent = slFmt(r.data.balance_after);
         slToast('ok', '已' + (v > 0 ? '发放' : '扣除') + ' ' + Math.abs(v) + ' 积分',
                 user + ': ' + slFmt(before) + ' → ' + slFmt(r.data.balance_after));
         reset(); clearActionId();
+        if (noteEl) noteEl.value = '';
       } else {
         var why = r.data && r.data.error ? r.data.error : '请求失败';
         slToast('err', '调整失败', user + ' · ' + why);

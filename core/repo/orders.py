@@ -182,14 +182,14 @@ def all_packages(con) -> list:
 
 
 def insert_package(con, code: str, name: str, credits: int,
-                   price_cents: int, ts: int) -> dict:
+                   price_cents: int, ts: int, active: bool = True) -> dict:
     return con.execute(
         """
         INSERT INTO packages (code, name, credits, price_cents,
                               active, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, TRUE, %s, %s) RETURNING *
+        VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *
         """,
-        (code, name, credits, price_cents, ts, ts)).fetchone()
+        (code, name, credits, price_cents, active, ts, ts)).fetchone()
 
 
 # ── plans (subscription tiers) ──
@@ -465,19 +465,6 @@ def plan_credits(con, plan_id: int) -> int:
     row = con.execute(
         "SELECT monthly_credits FROM plans WHERE id=%s", (plan_id,)).fetchone()
     return int(row["monthly_credits"] or 0) if row else 0
-
-
-
-def sweep_expired_plans(con, ts: int) -> int:
-    """过期 membership → expired。状态转移 only, 授信永不在此发生。"""
-    cur = con.execute(
-        """
-        UPDATE memberships SET status='expired', updated_at=%s
-        WHERE status IN ('active','past_due') AND renews_at IS NOT NULL
-          AND renews_at < %s
-        RETURNING user_id
-        """, (ts, ts))
-    return len(cur.fetchall())
 
 
 # ── subscriptions (reconcile: user → orders rows with sub: binding) ──

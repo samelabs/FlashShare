@@ -60,11 +60,18 @@ def _gate(request: Request):
     even when the underlying account is an operator — the control plane is
     not a token surface.
     """
+    # Pages redirect to login; JSON writes (slPost callers) get a typed
+    # JSON denial instead of a login-page redirect they cannot parse.
+    page = request.method in ("GET", "HEAD")
     if getattr(request.state, "auth_via", "") != "session":
-        return None, RedirectResponse("/auth/login?next=/samelabs", status_code=302)
+        if page:
+            return None, RedirectResponse("/auth/login?next=/samelabs", status_code=302)
+        return None, JSONResponse({"ok": False, "error": "auth_required"}, 401)
     user = getattr(request.state, "user", None)
     if not is_operator(user):
-        return None, RedirectResponse("/auth/login?next=/samelabs", status_code=302)
+        if page:
+            return None, RedirectResponse("/auth/login?next=/samelabs", status_code=302)
+        return None, JSONResponse({"ok": False, "error": "forbidden"}, 403)
     return user, None
 
 
@@ -96,10 +103,13 @@ async def samelabs_overview(request: Request):
         return resp
     from app.main import templates
     from repo.reports import overview_stats, recent_calls, top_tools
+    from economy.billing import SPENDABLE_KINDS
+    from governance.platform import platform_id, platform_income_summary
     with db() as con:
-        stats = overview_stats(con)
+        stats = overview_stats(con, SPENDABLE_KINDS, platform_id())
         recent = recent_calls(con, 15)
         top_tools = top_tools(con, 10)
+    stats["platform_income"] = platform_income_summary()
     ctx = _ctx(request, user, stats=stats,
                recent=[dict(r) for r in recent],
                top_tools=[dict(r) for r in top_tools],
@@ -114,9 +124,20 @@ async def samelabs_users(request: Request, q: str = ""):
         return resp
     from app.main import templates
     from repo.reports import users_overview
+    from economy.billing import SPENDABLE_KINDS
+    from economy.subscription import membership_is_effective
+    q = (q or "").strip()
     with db() as con:
-        rows = users_overview(con, q or None)
-    ctx = _ctx(request, user, users=[dict(r) for r in rows],
+        rows = users_overview(con, q or None, SPENDABLE_KINDS)
+    ts = now()
+    users = []
+    for r in rows:
+        d = dict(r)
+        # membership validity single point (same predicate as plan_of)
+        d["member_live"] = bool(d["plan_name"]) and membership_is_effective(
+            d["member_status"], d["renews_at"], ts)
+        users.append(d)
+    ctx = _ctx(request, user, users=users,
                q=q, fmt_num=_fmt_num, page="users")
     return templates.TemplateResponse(request, "samelabs/users.html", ctx)
 
@@ -271,11 +292,16 @@ async def samelabs_plans(request: Request):
     from repo.orders import all_plans
     with db() as con:
         rows = [r for r in all_plans(con) if r["code"] != "free"]  # 管理面: 全部 paid 行
-        # 订阅计数: current memberships per plan (含 pending 排期目标) —
-        # 下架/改配前的事实依据
-        counts = {r["plan_id"]: int(r["n"]) for r in con.execute(
-            "SELECT plan_id, COUNT(*) n FROM memberships"
-            " WHERE status IN ('active','past_due','canceled') GROUP BY plan_id")}
+        # 订阅计数: 有效会员 per plan — 有效性单点 membership_is_effective
+        # (与 plan_of 同一谓词; 过期未收敛的原始 status 不计入)。
+        # pending 排期目标单列 — 下架/改配前的事实依据。
+        from economy.subscription import membership_is_effective
+        _ts = now()
+        counts: dict = {}
+        for m in con.execute(
+                "SELECT plan_id, status, renews_at FROM memberships"):
+            if membership_is_effective(m["status"], m["renews_at"], _ts):
+                counts[m["plan_id"]] = counts.get(m["plan_id"], 0) + 1
         pend = {r["target_plan_id"]: int(r["n"]) for r in con.execute(
             "SELECT target_plan_id, COUNT(*) n FROM pending_downgrades"
             " GROUP BY target_plan_id")}
@@ -592,13 +618,23 @@ async def samelabs_create_package(request: Request):
     user, resp = _gate(request)
     if resp:
         return resp
+    # Same field contract as PATCH /samelabs/packages/{id} and the UI:
+    # price_cents (int ≥ 0), credits (int > 0), active (bool, default on).
     try:
         raw = await request.json()
         code = str(raw.get("code", "")).strip().lower()[:32]
         name = str(raw.get("name", "")).strip()[:64]
-        credits = int(raw.get("credits", 0))
-        price = int(raw.get("price", 0))
-        if not code or not name or credits <= 0 or price < 0:
+        credits = raw.get("credits")
+        price_cents = raw.get("price_cents")
+        active = raw.get("active", True)
+        if not code or not _re.fullmatch(r"[a-z][a-z0-9_]*", code) or not name:
+            raise ValueError
+        if not isinstance(credits, int) or isinstance(credits, bool) or credits <= 0:
+            raise ValueError
+        if not isinstance(price_cents, int) or isinstance(price_cents, bool) \
+                or price_cents < 0:
+            raise ValueError
+        if not isinstance(active, bool):
             raise ValueError
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
@@ -606,7 +642,8 @@ async def samelabs_create_package(request: Request):
     from repo.orders import insert_package
     try:
         with db() as con:
-            row = insert_package(con, code, name, credits, price, now())
+            row = insert_package(con, code, name, credits, price_cents, now(),
+                                 active=active)
             _audit_repo.record(con, user["id"], "package.create", "package",
                                str(row["id"]), None, _snap_package(row), now())
     except psycopg2.IntegrityError:

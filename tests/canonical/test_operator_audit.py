@@ -573,7 +573,7 @@ check("F5 forced audit failure → delete rollback (tool 仍在 + pricing 仍 en
 # ══════════ G. append-only / read API / package coverage ══════════
 # package create/update audits
 r = _post("/samelabs/packages", json={
-    "code": f"oapkg_{_u}", "name": "OA Pkg", "credits": 5000, "price": 499,
+    "code": f"oapkg_{_u}", "name": "OA Pkg", "credits": 5000, "price_cents": 499,
 }, cookies={COOKIE_NAME: op_sess})
 pkg_id = r.json().get("package", {}).get("id")
 rows = _audit_rows("package.create", str(pkg_id))

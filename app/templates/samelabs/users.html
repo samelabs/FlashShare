@@ -5,7 +5,7 @@
 <div class="sl-toolbar">
   <form class="sl-search" method="get" action="/samelabs/users">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input class="sl-input" type="text" name="q" value="{{ q|e }}" placeholder="搜索用户名 / 显示名…">
+    <input class="sl-input" type="text" name="q" value="{{ q|e }}" placeholder="搜索 ID / 用户名 / 显示名 / 邮箱…">
   </form>
   {% if q %}<a class="sl-btn sl-btn-ghost sl-btn-sm" href="/samelabs/users">清除搜索</a>{% endif %}
   <span class="sl-count">{{ users|length }} 条结果{% if not q %} · 最近 100 名{% endif %}</span>
@@ -14,7 +14,7 @@
 <div class="sl-panel">
   <div class="sl-tablewrap">
     <table class="sl-tbl">
-      <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>会员</th><th class="sl-num">余额</th><th class="sl-num">成功调用</th><th>注册</th><th>最近登录</th><th>调整积分</th></tr></thead>
+      <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>会员</th><th class="sl-num">可消费积分</th><th class="sl-num">收益池</th><th class="sl-num">成功调用</th><th>注册</th><th>最近登录</th><th>调整积分</th></tr></thead>
       <tbody>
       {% for u in users %}
         <tr data-uid="{{ u.id }}">
@@ -29,6 +29,7 @@
               <div class="sl-u-names">
                 <strong>{{ u.username|e }}</strong>
                 {% if u.display_name and u.display_name != u.username %}<span>{{ u.display_name|e }}</span>{% endif %}
+                {% if u.email %}<span>{{ u.email|e }}</span>{% endif %}
               </div>
             </div>
           </td>
@@ -38,23 +39,25 @@
           </td>
           <td>
             {% if u.plan_name %}
-            <span class="sl-badge {{ 'sl-b-ok' if u.member_status == 'active' else 'sl-b-muted' }}">{{ u.plan_name|e }}</span>
+            <span class="sl-badge {{ 'sl-b-ok' if u.member_live else 'sl-b-muted' }}">{{ u.plan_name|e }}{% if not u.member_live %} · 已失效{% endif %}</span>
             {% if u.renews_at %}<span class="sl-dim" style="font-size:11px">{{ fmt_ts(u.renews_at) }}</span>{% endif %}
             {% else %}<span class="sl-dim">—</span>{% endif %}
           </td>
-          <td class="sl-num u-balance">{{ fmt_num(u.balance) }}</td>
+          <td class="sl-num u-balance">{{ fmt_num(u.spendable) }}</td>
+          <td class="sl-num">{{ fmt_num(u.earn) }}</td>
           <td class="sl-num">{{ fmt_num(u.calls_ok) }}</td>
           <td class="sl-dim">{{ fmt_ts(u.created_at) }}</td>
           <td class="sl-dim">{{ fmt_ts(u.last_login_at) }}</td>
           <td>
             <div class="sl-adj" data-uid="{{ u.id }}">
               <input type="text" class="sl-adj-in" placeholder="±N" inputmode="numeric" aria-label="调整积分">
+              <input type="text" class="sl-adj-note" placeholder="原因" maxlength="200" aria-label="调整原因">
               <button type="button" class="sl-btn sl-btn-ghost sl-btn-sm adj-go">调整</button>
             </div>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="8" class="sl-dim">无匹配用户</td></tr>
+        <tr><td colspan="10" class="sl-dim">无匹配用户</td></tr>
       {% endfor %}
       </tbody>
     </table>

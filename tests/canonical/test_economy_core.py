@@ -408,9 +408,9 @@ check("K18 换算只经统一常量 (无散落 ×/÷1000 财务计算)",
 # K19: the REAL operator JS contract (source-level, not a hand-built request)
 _js = open(_os.path.join(_REPO, "static", "pages", "samelabs_users.js"),
            encoding="utf-8").read()
-check("K19 JS POST 发送 {amount, action_id}",
-      "{ amount: v, action_id: actionId }" in _js,
-      "POST payload shape missing action_id")
+check("K19 JS POST 发送 {amount, action_id, note}",
+      "{ amount: v, action_id: actionId," in _js and "note: noteEl" in _js,
+      "POST payload shape missing action_id/note")
 check("K19 JS 无 undefined resetAction 残留",
       "resetAction" not in _js and "clearActionId" in _js)
 check("K19 JS 同一 action 重试复用同一 id (mint 一次, 失败不清)",
