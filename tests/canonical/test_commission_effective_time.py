@@ -70,22 +70,28 @@ def _get_rate():
     with db() as con:
         return commission_rate(con)
 
-from execution.pipeline import StagedResult
+from execution.results import StagedItems, StagedFileItem
 
 def _mkstaged(tag):
-    return StagedResult(gokapi_id=f"gk_{_u}_{tag}", filename="o.bin",
-                        content_type="application/octet-stream", size=10,
-                        expiry_days=7, allowed_downloads=5,
-                        expire_at=ts + 86400, url_hotlink="", ip="127.0.0.1")
+    return StagedItems(order=["file"], inline=[], files=[StagedFileItem(
+        gokapi_id=f"gk_{_u}_{tag}",
+        filename="o.bin",
+        content_type="application/octet-stream",
+        size=10,
+        expiry_days=7,
+        allowed_downloads=5,
+        expire_at=ts + 86400,
+        url_hotlink="")],
+    ip="127.0.0.1")
 
 def _mktool(tool_id, owner_id=None, cost=100):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, multi, pass_through,"
+            " execution, tool_type, label_json, icon,"
             " visibility, enabled, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', 'produce', %s, 'wand', FALSE,"
-            " FALSE, 'public', TRUE, %s, %s)",
+            " values (%s, %s, %s, 'local', 'produce', %s, 'wand',"
+            " 'public', TRUE, %s, %s)",
             (tool_id, owner_id, tool_id, _json.dumps({"en": "CT"}), ts, ts))
         con.execute(
             "insert into pricing (tool_id, cost, enabled, updated_at)"
@@ -204,7 +210,7 @@ async def _s5a():
     return _mkstaged("c5")
 res5a, _, _ = _run(u5, t5, ref5, _s5a, owner=owner)
 call5a = res5a["call_id"]
-pid5a = res5a["result"]["publicId"]
+pid5a = res5a["result"]["resultId"]
 _set_rate(80)
 bal5_pre = spendable_balance(u5)
 n_ledger_pre = None
@@ -219,9 +225,9 @@ with db() as con:
         "select count(*) c from ledger where user_id=%s", (u5,)).fetchone()["c"])
 row5 = _call_row(call5a)
 e5, c5, _ = _split_for(call5a)
-check("C5 replay: 同 call_id / 同 publicId / snapshot 仍 30 / 零新经济事实",
+check("C5 replay: 同 call_id / 同 resultId / snapshot 仍 30 / 零新经济事实",
       res5b.get("replay") is True and res5b["call_id"] == call5a
-      and res5b["result"]["publicId"] == pid5a
+      and res5b["result"]["resultId"] == pid5a
       and row5["commission_rate_snapshot"] == 30
       and n_ledger_post == n_ledger_pre
       and spendable_balance(u5) == bal5_pre,

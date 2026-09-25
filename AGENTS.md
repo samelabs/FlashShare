@@ -46,8 +46,7 @@
   accept = canonical lowercase extension tokens（缺失=全族兼容、显式 `[]`=拒绝）；
   multi = 严格 bool；label = LocalizedText。
 - **Catalog**：canonical projection 形状；official 判定 = owner 关系（bare id ↔ `/` in id）三面等价。
-- **ToolInvocation**：精确五键
-  `{tool_id, source:{files:[{public_id, source_token}]}, params, delivery:{expiry_days, allowed_downloads}, client_ref}`；
+- **ToolInvocation（IO-1）**：精确五键 `{tool_id, source:{files:[...]}（0..N，按工具声明 [files_min, files_max]）, params（text 参数上限 100,000 字符）, delivery, client_ref}`；结果 = 有序 items（text/json/file，≤20 项，text+json ≤1MB，file 沿用单文件上限），文件项同事务各自落地，结果页 /r/{id}；开发者 http 契约唯一形态：请求 `{files:[{filename,content_type,size,url}], params}`、响应 `{items:[...]}`（file 项 data_b64|url）。
   root/source/delivery 精确键集；params 显式 dict；client_ref 必填 non-empty string（≤128），作为 client-generated stable operation identity；null / missing 均拒绝。
   MCP adapter 只对"缺失"填默认，显式非法值 → -32602。
 - **Execution / Settlement**：claim running → consume（idem=`call:{call_id}`）→ execute →

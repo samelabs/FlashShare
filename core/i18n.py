@@ -499,6 +499,15 @@ SERVER_I18N = {
         "err_key_limit": "Limite de clés atteinte (10). Supprimez d'abord une clé existante.",
         "err_vault": "Le stockage des clés est indisponible — contactez le support.",
         "err_key_not_viewable": "Affichage complet indisponible pour cette clé — créez-en une nouvelle si nécessaire.",
+# IO-1 items
+        "err_file_count": "Ce traitement accepte entre {min} et {max} fichier(s)",
+# IO-1 result page
+        "r_title": "Résultat",
+        "r_items_note": "Éléments dans l'ordre :",
+# IO-1 web items
+        "resultPage": "Page de résultat",
+        "resultReady": "Terminé",
+        "resultEmpty": "Aucun élément de résultat",
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -986,6 +995,15 @@ SERVER_I18N = {
         "err_key_limit": "키 한도(10개)에 도달했습니다. 기존 키를 먼저 삭제하세요.",
         "err_vault": "키 저장소를 사용할 수 없습니다 — 지원팀에 문의해 주세요.",
         "err_key_not_viewable": "이 키는 전체 값을 확인할 수 없습니다 — 필요하면 새로 만드세요.",
+# IO-1 items
+        "err_file_count": "이 도구는 {min}~{max}개의 파일을 받습니다",
+# IO-1 result page
+        "r_title": "결과",
+        "r_items_note": "항목 순서:",
+# IO-1 web items
+        "resultPage": "결과 페이지",
+        "resultReady": "완료",
+        "resultEmpty": "결과 항목이 없습니다",
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1472,6 +1490,15 @@ SERVER_I18N = {
         "err_key_limit": "Достигнут предел ключей (10). Сначала удалите существующий.",
         "err_vault": "Хранилище ключей недоступно — обратитесь в поддержку.",
         "err_key_not_viewable": "Полный просмотр этого ключа недоступен — создайте новый при необходимости.",
+# IO-1 items
+        "err_file_count": "Этот инструмент принимает от {min} до {max} файлов",
+# IO-1 result page
+        "r_title": "Результат",
+        "r_items_note": "Элементы по порядку:",
+# IO-1 web items
+        "resultPage": "Страница результата",
+        "resultReady": "Готово",
+        "resultEmpty": "Нет элементов результата",
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -1958,6 +1985,15 @@ SERVER_I18N = {
         "err_key_limit": "تم بلوغ حد المفاتيح (10). احذف مفتاحًا موجودًا أولاً.",
         "err_vault": "تخزين المفاتيح غير متاح — تواصل مع الدعم.",
         "err_key_not_viewable": "لا يمكن عرض القيمة الكاملة لهذا المفتاح — أنشئ مفتاحًا جديدًا إذا احتجت لذلك.",
+# IO-1 items
+        "err_file_count": "تقبل هذه الأداة من {min} إلى {max} ملفًا",
+# IO-1 result page
+        "r_title": "النتيجة",
+        "r_items_note": "العناصر بالترتيب:",
+# IO-1 web items
+        "resultPage": "صفحة النتيجة",
+        "resultReady": "تم",
+        "resultEmpty": "لا توجد عناصر نتيجة",
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2445,6 +2481,15 @@ SERVER_I18N = {
         "err_key_limit": "Schlüssellimit erreicht (10). Lösche zuerst einen bestehenden Schlüssel.",
         "err_vault": "Schlüsselspeicher nicht verfügbar — kontaktiere den Support.",
         "err_key_not_viewable": "Vollansicht für diesen Schlüssel nicht verfügbar — erstelle bei Bedarf einen neuen.",
+# IO-1 items
+        "err_file_count": "Dieses Tool akzeptiert {min} bis {max} Dateien",
+# IO-1 result page
+        "r_title": "Ergebnis",
+        "r_items_note": "Elemente in Reihenfolge:",
+# IO-1 web items
+        "resultPage": "Ergebnisseite",
+        "resultReady": "Fertig",
+        "resultEmpty": "Keine Ergebniselemente",
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -2931,6 +2976,15 @@ SERVER_I18N = {
         "err_key_limit": "Limite de chaves atingido (10). Exclua uma chave existente primeiro.",
         "err_vault": "O armazenamento de chaves está indisponível — contate o suporte.",
         "err_key_not_viewable": "Visualização completa indisponível para esta chave — crie uma nova se precisar.",
+# IO-1 items
+        "err_file_count": "Esta ferramenta aceita de {min} a {max} arquivo(s)",
+# IO-1 result page
+        "r_title": "Resultado",
+        "r_items_note": "Itens em ordem:",
+# IO-1 web items
+        "resultPage": "Página de resultado",
+        "resultReady": "Pronto",
+        "resultEmpty": "Nenhum item de resultado",
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -3417,6 +3471,15 @@ SERVER_I18N = {
         "err_key_limit": "キーの上限（10 個）に達しました。既存のキーを先に削除してください。",
         "err_vault": "キーの保管が利用できません — サポートにお問い合わせください。",
         "err_key_not_viewable": "このキーの完全な値は表示できません — 必要であれば新しく作成してください。",
+# IO-1 items
+        "err_file_count": "このツールは {min}〜{max} 個のファイルを受け付けます",
+# IO-1 result page
+        "r_title": "結果",
+        "r_items_note": "項目の順序:",
+# IO-1 web items
+        "resultPage": "結果ページ",
+        "resultReady": "完了",
+        "resultEmpty": "結果項目がありません",
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -3872,8 +3935,8 @@ SERVER_I18N = {
         "contract_summary": "开发者参考——你的端点需要实现的 HTTP 契约",
         "contract_req_h": "请求（518 → 你的端点）",
         "contract_req_note": "你的服务按一次性签名 URL（短时效）拉取源文件。超时按提交时的配置（5–300 秒）。",
-        "contract_resp_h": "响应（三选一）",
-        "contract_out_note": "每次调用产出一个文件；三种形式都受单文件大小限制。",
+        "contract_resp_h": "响应（items 数组）",
+        "contract_out_note": "每次调用返回一个有序项列表（至多 20 项）：text、json 或 file。file 项用 data_b64 或 url 交付字节；text+json 合计不超过 1MB。响应不符合形态即调用失败。",
         "contract_auth_h": "鉴权（可选）",
         "contract_auth_note": "提交时配置 Header 名与令牌（如 Authorization: Bearer …），平台每次调用携带。",
         "contract_sec_h": "安全要求",
@@ -3904,6 +3967,15 @@ SERVER_I18N = {
         "err_key_limit": "密钥数量已达上限（10 个），请先删除现有密钥。",
         "err_vault": "密钥存储暂不可用，请联系支持。",
         "err_key_not_viewable": "该密钥无法查看完整值——如需查看请新建。",
+# IO-1 items
+        "err_file_count": "该工具接受 {min}–{max} 个文件",
+# IO-1 result page
+        "r_title": "处理结果",
+        "r_items_note": "结果项按顺序：",
+# IO-1 web items
+        "resultPage": "结果页",
+        "resultReady": "处理完成",
+        "resultEmpty": "没有结果项",
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -4390,6 +4462,15 @@ SERVER_I18N = {
         "err_key_limit": "Límite de claves alcanzado (10). Elimina primero una clave existente.",
         "err_vault": "El almacenamiento de claves no está disponible — contacta con soporte.",
         "err_key_not_viewable": "Vista completa no disponible para esta clave — crea una nueva si la necesitas.",
+# IO-1 items
+        "err_file_count": "Esta herramienta acepta entre {min} y {max} archivo(s)",
+# IO-1 result page
+        "r_title": "Resultado",
+        "r_items_note": "Elementos en orden:",
+# IO-1 web items
+        "resultPage": "Página de resultado",
+        "resultReady": "Listo",
+        "resultEmpty": "Sin elementos de resultado",
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -4845,8 +4926,8 @@ SERVER_I18N = {
         "contract_summary": "Developer reference — the HTTP contract your endpoint implements",
         "contract_req_h": "Request (518 → your endpoint)",
         "contract_req_note": "Your service fetches the source files from the one-time signed URLs (short-lived). The timeout follows your submission settings (5–300 s).",
-        "contract_resp_h": "Response (one of three)",
-        "contract_out_note": "One output file per call; the per-file size limit applies to every form.",
+        "contract_resp_h": "Response (items array)",
+        "contract_out_note": "One ordered item list per call (at most 20 items): text, json, or file. File items deliver bytes via data_b64 or url; text+json combined stay within 1 MB. A response that does not match the shape fails the call.",
         "contract_auth_h": "Auth (optional)",
         "contract_auth_note": "Configure a header name and token at submission (e.g. Authorization: Bearer …); 518 sends them on every call.",
         "contract_sec_h": "Security requirements",
@@ -4877,6 +4958,15 @@ SERVER_I18N = {
         "err_key_limit": "Key limit reached (10). Delete an existing key first.",
         "err_vault": "Key storage is unavailable — please contact support.",
         "err_key_not_viewable": "Full view unavailable for this key — create a new one if you need to see it.",
+# IO-1 items
+        "err_file_count": "This tool accepts {min} to {max} files",
+# IO-1 result page
+        "r_title": "Result",
+        "r_items_note": "Items in order:",
+# IO-1 web items
+        "resultPage": "Result page",
+        "resultReady": "Done",
+        "resultEmpty": "No result items",
 },
 }
 

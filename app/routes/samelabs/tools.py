@@ -141,9 +141,20 @@ async def create_http_tool(request: Request):
         auth_header = str(raw.get("auth_header", "")).strip()
         auth_token = str(raw.get("auth_token", "")).strip()
         accept_raw = str(raw.get("accept", "")).strip()
-        multi = raw.get("multi", False)
-        if not isinstance(multi, bool):
-            return JSONResponse({"ok": False, "error": "bad_multi"}, 422)
+        files_min = raw.get("files_min", 1)
+        files_max = raw.get("files_max", 1)
+        if isinstance(files_min, bool) or not isinstance(files_min, int) \
+                or files_min < 0:
+            return JSONResponse({"ok": False, "error": "bad_files_min"}, 422)
+        if isinstance(files_max, bool) or not isinstance(files_max, int) \
+                or not (1 <= files_max <= 20):
+            return JSONResponse({"ok": False, "error": "bad_files_max"}, 422)
+        if files_min > files_max:
+            return JSONResponse({"ok": False, "error": "bad_files_range"}, 422)
+        outputs = raw.get("outputs", ["file"])
+        if not isinstance(outputs, list) or not outputs \
+                or any(k not in ("text", "json", "file") for k in outputs):
+            return JSONResponse({"ok": False, "error": "bad_outputs"}, 422)
         try:
             cost = strict_int(raw.get("cost", 0))
         except ValueError as exc:
@@ -184,7 +195,10 @@ async def create_http_tool(request: Request):
             int(user["id"]),
             {"tool_id": tool_id, "label": label, "url": url,
              "timeout_s": timeout_s, "auth_header": auth_header,
-             "auth_token": auth_token, "accept": accept, "multi": multi,
+             "auth_token": auth_token, "accept": accept,
+             "files_min": files_min, "files_max": files_max,
+             "outputs": [k for k in ("text", "json", "file")
+                         if k in set(outputs)],
              "cost": cost})
     except DeclarationError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 422)

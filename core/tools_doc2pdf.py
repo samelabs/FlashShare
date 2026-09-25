@@ -114,10 +114,13 @@ def doc2pdf_handler(tool_input, params):
 
     out_buf = io.BytesIO(pdf_bytes)
     return {
-        "stream": out_buf,
-        "filename": out_name,
-        "content_type": "application/pdf",
-        "size": len(pdf_bytes),
+        "items": [{
+            "kind": "file",
+            "stream": out_buf,
+            "filename": out_name,
+            "content_type": "application/pdf",
+            "size": len(pdf_bytes),
+        }],
     }
 
 
@@ -147,5 +150,4 @@ register(
     icon="print",
     accept=set(ACCEPTED_EXTS),
     handler=doc2pdf_handler,
-    multi=False,
 )

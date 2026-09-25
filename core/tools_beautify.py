@@ -355,10 +355,13 @@ def beautify_handler(tool_input, params):
     out_name = f"beautify_{stem}.png"
 
     return {
-        "stream": io.BytesIO(raw),
-        "filename": out_name,
-        "content_type": "image/png",
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": io.BytesIO(raw),
+            "filename": out_name,
+            "content_type": "image/png",
+            "size": len(raw),
+        }],
     }
 
 

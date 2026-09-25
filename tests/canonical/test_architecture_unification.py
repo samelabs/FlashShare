@@ -106,7 +106,7 @@ ok, miss = _cols("plans", ["period_days", "period", "badge_key",
                            "expiry_days", "download_limits", "creem_product_id"])
 check("U2c plans entitlement/badge/period 列齐", ok, miss)
 ok, miss = _cols("platform_tools", ["desc_json", "sort_order", "featured",
-                                    "pass_through", "icon"])
+                                    "icon"])
 check("U2c platform_tools declaration 列齐", ok, miss)
 _cur.execute("select column_default from information_schema.columns "
              "where table_name='platform_tools' and column_name='icon'")
@@ -243,18 +243,18 @@ _cur.execute("delete from pricing where tool_id='badaccept'")
 _cur.execute("delete from platform_tools where tool_key='badaccept'")
 _cur.execute(
     "insert into platform_tools (tool_key, owner_id, tool_id, execution, tool_type,"
-    " label_json, icon, accept_json, multi, visibility, enabled, trusted,"
+    " label_json, icon, accept_json, visibility, enabled, trusted,"
     " created_at, updated_at) values (%s, NULL, %s, 'local', 'produce', '{}',"
-    " 'wand', '[\"application/pdf\"]', false, 'public', true, false, %s, %s)",
+    " 'wand', '[\"application/pdf\"]', 'public', true, false, %s, %s)",
     ("badaccept", "badaccept", ts, ts))
 for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
     _cur.execute("delete from pricing where tool_id=%s", (_bk,))
     _cur.execute("delete from platform_tools where tool_key=%s", (_bk,))
     _cur.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution, tool_type,"
-        " label_json, icon, accept_json, multi, visibility, enabled, trusted,"
+        " label_json, icon, accept_json, visibility, enabled, trusted,"
         " created_at, updated_at) values (%s, NULL, %s, 'local', 'produce', '{}',"
-        " 'wand', %s, false, 'public', true, false, %s, %s)",
+        " 'wand', %s, 'public', true, false, %s, %s)",
         (_bk, _bk, _bj, ts, ts))
 _cur.execute(
     "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",

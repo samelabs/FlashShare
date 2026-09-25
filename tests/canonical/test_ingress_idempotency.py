@@ -282,16 +282,12 @@ check("23 MCP missing client_ref → -32602 pre-upload",
 st, r = _mcp({"files": [{"filename": "m.png", "b64": base64.b64encode(PNG).decode()}],
               "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
               "client_ref": ref23})
-_mtxt = ((r.get("result") or {}).get("content") or [{}])[0].get("text", "")
-_mres = {}
-try:
-    _mres = json.loads(_mtxt)
-    if isinstance(_mres.get("result"), dict):
-        _mres = {**_mres, **_mres["result"]}  # flatten call_id + publicId
-except Exception:
-    pass
+_msc = (r.get("result") or {}).get("structuredContent") or {}
+_mres = {"call_id": _msc.get("call_id"),
+         "publicId": ((_msc.get("items") or [{}])[0].get("page_url")
+                      or "").rsplit("/", 1)[-1]}
 check("24a MCP first call ok (source+execute)",
-      bool(_mres.get("publicId")), _mtxt[:110])
+      bool(_mres.get("publicId")), str(_msc)[:110])
 mcp_call_id = _mres.get("callId") or _mres.get("call_id")
 mcp_pub = _mres.get("publicId")
 gk_mcp1 = _gk_count()
@@ -301,15 +297,11 @@ usage_mcp1 = _usage_n(uid3)
 st, r2 = _mcp({"files": [{"filename": "m.png", "b64": base64.b64encode(PNG).decode()}],
                "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
                "client_ref": ref23}, mid=2)
-_t2 = ((r2.get("result") or {}).get("content") or [{}])[0].get("text", "")
-_mres2 = {}
-try:
-    _mres2 = json.loads(_t2)
-    if isinstance(_mres2.get("result"), dict):
-        _mres2 = {**_mres2, **_mres2["result"]}
-except Exception:
-    pass
-check("24 MCP retry same source handles (replay)", bool(_mres2.get("publicId")), _t2[:110])
+_msc2 = (r2.get("result") or {}).get("structuredContent") or {}
+_mres2 = {"call_id": _msc2.get("call_id"),
+          "publicId": ((_msc2.get("items") or [{}])[0].get("page_url")
+                       or "").rsplit("/", 1)[-1]}
+check("24 MCP retry same source handles (replay)", bool(_mres2.get("publicId")), str(_msc2)[:110])
 check("25 MCP retry same call_id/publicId (tool replay)",
       _mres2.get("callId", _mres2.get("call_id")) == mcp_call_id
       and _mres2.get("publicId") == mcp_pub,
@@ -874,9 +866,9 @@ tO = f"igtool_{_u}"
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, multi, pass_through, visibility,"
+        " tool_type, label_json, icon, visibility,"
         " enabled, created_at, updated_at) values (%s, NULL, %s, 'local',"
-        " 'produce', %s, 'wand', FALSE, FALSE, 'public', TRUE, %s, %s)",
+        " 'produce', %s, 'wand', 'public', TRUE, %s, %s)",
         (tO, tO, json.dumps({"en": "IG"}), ts, ts))
     con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                 " values (%s, 0, TRUE, %s)", (tO, ts))

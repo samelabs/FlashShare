@@ -250,9 +250,10 @@ try:
     st_c, d_c = _call("share", {"files": [{"public_id": ref["public_id"],
                                            "source_token": ref["source_token"]}],
                                 "client_ref": f"share-{_u}"}, tok, 21)
-    rc = ((d_c.get("result") or {}).get("content") or [{}])[0].get("text")
-    out = (_json.loads(rc).get("result") or {}) if rc else {}
-    share_pid = out.get("publicId") or out.get("public_id")
+    sc_c = (d_c.get("result") or {}).get("structuredContent") or {}
+    out = sc_c
+    _pg = (sc_c.get("items") or [{}])[0].get("page_url", "")
+    share_pid = _pg.rsplit("/", 1)[-1] if _pg else ""
     check("P3 tools/call(share) with the reference → executed result",
           (d_c.get("result") or {}).get("isError") is False and share_pid,
           str(d_c)[:120])

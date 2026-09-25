@@ -56,7 +56,9 @@ canonical 调用。支持协议版本 `2025-11-25` / `2025-06-18` / `2025-03-26`
 `2024-11-05`（initialize 按参数协商；`MCP-Protocol-Version` 请求头缺失按
 `2025-03-26` 处理，`2025-06-18` 起不再接受 JSON-RPC 批量请求）。
 
-`tools/call` 的每个 `files[]` 项三选一：
+`tools/call` 的输入 = 0..20 个文件（按工具声明的 [min, max]，纯文本工具
+允许 0 文件，文本经 params 传入，上限 100,000 字符）+ 参数。每个 `files[]` 项
+三选一：
 
 - 内嵌：`{"filename": "a.png", "b64": "<base64>"}`；
 - URL：`{"url": "https://…/a.png"}` — 服务端经 SSRF 守卫（仅 https、仅公网
@@ -66,6 +68,14 @@ canonical 调用。支持协议版本 `2025-11-25` / `2025-06-18` / `2025-03-26`
 
 三种形态走同一 ingress / 额度 / `client_ref` 幂等路径（同 `client_ref`、
 不同输入 → 幂等冲突）。
+
+结果模型（IO-1）：一次调用的结果是有序的 0..20 个"项"——
+`{"kind":"text","text"}` / `{"kind":"json","data"}` /
+`{"kind":"file",filename,content_type,size}`（text+json 合计 ≤ 1MB，单文件
+沿用上传上限）。MCP 直接把 items 交给 agent（structuredContent.items，文件项
+带 download_url 直链，小图附 image 内容块，result_url 为人类结果页
+`/r/{id}`）；网页渲染结果页。文件项各自落 Gokapi + uploads 行，与计费分账
+同一事务。
 
 大文件不要走 base64：用元工具 `create_upload` 两段式上传，文件字节全程
 不经过模型、不出现在任何 JSON-RPC 请求体里：
@@ -287,16 +297,32 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 
 ```json
 {
-  "job_inputs": [
+  "files": [
     { "filename": "a.png", "content_type": "image/png", "size": 1024, "url": "<一次性拉取 URL>" }
   ],
   "params": { "quality": 80, "style": "fast" }
 }
 ```
 
-- `params` 只含声明内的键值（声明外键在入口剥离），已按声明校验。
-- 产物返回三选一：JSON `{"data_b64": "..."}`、JSON `{"output_url": "..."}`（平台拉取，走同一 SSRF 守卫）、或原始字节流。
-- `output_filename` / `output_content_type` 已不可声明：提交会被拒绝（`bad_output_filename` / `bad_output_content_type`），产物名与类型由端点响应或平台嗅探决定。
+- `params` 只含声明内的键值（声明外键在入口剥离），已按声明校验；纯文本输入
+  经 text 参数传入（上限 100,000 字符），0 文件调用合法。
+- 响应必须是 JSON 的 items 数组（唯一形态；IO-1）：
+
+```json
+{
+  "items": [
+    { "kind": "text", "text": "processed 2 files" },
+    { "kind": "json", "data": { "width": 800 } },
+    { "kind": "file", "filename": "out.png", "content_type": "image/png",
+      "data_b64": "..." }
+  ]
+}
+```
+
+  file 项用 `data_b64` 或 `url`（平台拉取，走同一 SSRF 守卫与大小上限）交
+  付字节；`items` ≤ 20、text+json 合计 ≤ 1MB、单文件沿用上传上限。响应不符
+  合形态 → 调用失败并全额退款。
+- `output_filename` / `output_content_type` 已不可声明：提交会被拒绝（`bad_output_filename` / `bad_output_content_type`），产物名与类型由 items 声明或平台嗅探决定。
 - 端点必须 https 且解析到公网地址（SSRF 守卫；运营方采纳的 trusted 行豁免）。
 
 ### 协议原则

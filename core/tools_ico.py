@@ -85,10 +85,13 @@ def ico_handler(tool_input, params):
     out_name = f"{base}.ico"
 
     return {
-        "stream": out,
-        "filename": out_name,
-        "content_type": "image/x-icon",
-        "size": len(out.getvalue()),
+        "items": [{
+            "kind": "file",
+            "stream": out,
+            "filename": out_name,
+            "content_type": "image/x-icon",
+            "size": len(out.getvalue()),
+        }],
     }
 
 

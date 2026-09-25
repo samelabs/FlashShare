@@ -198,10 +198,10 @@ check("C1 compress canonical 执行 ok", r.get("ok"), f"{st} {str(r)[:150]}")
 
 # C: handler capture — local handler 只见 params。用 probe 工具? 没有 → 用 DB 检查产物 delivery
 if r.get("ok"):
-    row = db_query(f"select expiry_days, allowed_downloads from uploads where public_id='{r['result']['publicId']}'")
+    row = db_query(f"select expiry_days, allowed_downloads from uploads where public_id='{r['result']['items'][0]['publicId']}'")
     # uploads 表名可能是 shares — 试两个
     if not row or row == []:
-        row = db_query(f"select expiry_days, allowed_downloads from shares where public_id='{r['result']['publicId']}'")
+        row = db_query(f"select expiry_days, allowed_downloads from shares where public_id='{r['result']['items'][0]['publicId']}'")
     check("D1 local delivery 7/200 落库", row and row[0][0] in (7, "7") and row[0][1] in (200, "200"), str(row))
 
 # 旧 flat request → 422
@@ -251,7 +251,7 @@ st, rm = req("POST", "/api/tools/execute", {
         {"public_id": up3["file"]["stagingId"], "source_token": ""}]},
     "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
     "client_ref": f"auto-{uuid.uuid4().hex[:8]}-3"}, cookie)
-check("B4 multi=false files[2] → err_too_many_files", rm.get("error") == "err_too_many_files", f"{st} {rm}")
+check("B4 files[2] to a 1..1 tool → err_file_count", rm.get("error") == "err_file_count", f"{st} {rm}")
 
 # ═══ G: Public REST v1 retired ═══
 # real token for the MCP section below (minted via the test user's session)
@@ -309,13 +309,12 @@ try:
 except Exception:
     mcres = {}
 conn.close()
+# IO-1: the result arrives as structuredContent (items + result_url)
+msc = (mcres.get("result") or {}).get("structuredContent") or {}
 mtext = ((mcres.get("result") or {}).get("content") or [{}])[0].get("text", "")
-mok = False
-try:
-    mok = json.loads(mtext).get("result", {}).get("publicId", "") != ""
-except Exception:
-    pass
-check("H5 MCP tools/call canonical 执行 ok", mok, mtext[:150])
+mok = bool(msc.get("result_url")) and isinstance(msc.get("items"), list)     and len(msc["items"]) >= 1 and msc["items"][0].get("kind") == "file"
+check("H5 MCP tools/call canonical 执行 ok (structuredContent items)",
+      mok, str(msc)[:150])
 
 # H6: missing client_ref → -32602, zero upload/zero tool_call (校验先于 decode/quota/upload)
 _gk_n = None

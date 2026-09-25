@@ -1,6 +1,6 @@
 // ── process-flow: 全局处理流 (单源) ──────────────────────────────
 // executable tool 的唯一浏览器执行链: 首页表单与 /tool/... 一控件都走
-// runToolFlow。纯 share 直传同样经此 (share = pass_through 语义), app.js
+// runToolFlow。share 也走完整执行 (IO-1: 上传 → 执行 → file items), app.js
 // 不再维护第二套 upload→execute→retry。
 //
 // Operation identity (硬 invariant):
@@ -120,7 +120,7 @@
 
   /**
    * runToolFlow(tool, files, opts) → Promise<result|null>
-   * tool: catalog item 形状 {id,label,params,multi,pass_through,cost,...}
+   * tool: catalog item 形状 {id,label,params,files_min,files_max,outputs,cost,...}
    *       传 null/undefined = 无工具直传 (share 语义)。
    * files: FileList | File[]
    * opts: {params, expiryDays, allowedDownloads,
@@ -191,7 +191,7 @@
       // Shared affordability preflight (advisory): for the tool that WILL
       // execute, ask before any source upload starts. 402 → typed error,
       // no upload. Other outcomes defer to the authoritative gate.
-      const execTool = tool && !tool.pass_through ? tool : null;
+      const execTool = tool || null;
       if (execTool && !isRetry && window.preflightToolAffordability) {
         const pf = await window.preflightToolAffordability(execTool);
         if (!pf.ok) {
@@ -207,9 +207,9 @@
         op.sources = uploaded.map(f => ({ stagingId: f.stagingId, sourceToken: f.sourceToken || "" }));
       }
 
-      // Pass-through (share 语义): 工具声明 pass_through=true 才直传,
+      // share (IO-1) 是常规执行工具: 上传后照常执行,
       // 不从 presets/params/multi 推断 (无参执行型工具会被误判)。
-      const hasExec = tool && !tool.pass_through;
+      const hasExec = !!tool;
       if (!hasExec) {
         const f = op.sources[0] ? { stagingId: op.sources[0].stagingId } : null;
         op = null; // direct share complete — next submit is new

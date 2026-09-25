@@ -2,10 +2,10 @@
 
 NOT a public machine API: these URLs are the execution=http targets of
 first-party tools living on the user chain. The platform dispatches
-{job_inputs:[{filename, content_type, size, url: signed fetch URL}],
+{files:[{filename, content_type, size, url: signed fetch URL}],
 params}; this surface pulls inputs via verify_fetch_token and returns
-{filename?, content_type?, data_b64}. Handler logic stays in the pure
-registry modules (e.g. tools_corners).
+the IO-1 items contract: {items:[{kind:text|json|file,...}]}. Handler
+logic stays in the pure registry modules (e.g. tools_corners).
 """
 
 from fastapi import APIRouter, Request
@@ -48,8 +48,8 @@ def _pull_signed_source(url: str) -> bytes | None:
 
 @router.post("/rounded-corners")
 async def hosted_rounded_corners(request: Request):
-    """Hosted rounded-corners tool (user-chain form). multi=false: first
-    input only, mirroring the tool declaration.
+    """Hosted rounded-corners tool (user-chain form). Files window 1..1:
+    first input only, mirroring the tool declaration.
 
     Authority: the short-lived HMAC hosted-execution capability minted by
     canonical trusted dispatch for this exact path + outbound payload.
@@ -64,7 +64,7 @@ async def hosted_rounded_corners(request: Request):
     cap = request.headers.get("x-hosted-execution", "")
     if not cap or not verify_hosted_exec_token(cap, "/tool-endpoints/rounded-corners", payload):
         return JSONResponse({"ok": False, "error": "auth_required"}, 401)
-    inputs = payload.get("job_inputs") or []
+    inputs = payload.get("files") or []
     if not inputs:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     item = inputs[0]
@@ -82,9 +82,15 @@ async def hosted_rounded_corners(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "tool_failed"}, 422)
     import base64 as _b64
-    raw = result["stream"].read()
-    return {
-        "filename": result["filename"],
-        "content_type": result["content_type"],
-        "data_b64": _b64.b64encode(raw).decode(),
-    }
+    items = result["items"]
+    out_items = []
+    for it in items:
+        if it["kind"] == "file":
+            raw = it["stream"].read()
+            out_items.append({"kind": "file",
+                              "filename": it["filename"],
+                              "content_type": it["content_type"],
+                              "data_b64": _b64.b64encode(raw).decode()})
+        else:
+            out_items.append(it)
+    return {"items": out_items}

@@ -122,23 +122,27 @@ from execution import worker as worker_mod
 
 def _handler_returning(n):
     def _h(tool_input, params):
-        return {"stream": io.BytesIO(b"z" * n), "content_type": "t/plain",
-                "filename": "o.bin"}
+        return {"items": [{"kind": "file",
+                           "stream": io.BytesIO(b"z" * n),
+                           "content_type": "t/plain",
+                           "filename": "o.bin"}]}
     return _h
 
 import tools as _tools
 _tools._registry.append({"id": "zz_at_cap", "handler": _handler_returning(8),
-                         "type": "produce", "multi": False, "pass_through": False})
+                         "type": "produce"})
 _tools._registry.append({"id": "zz_cap1", "handler": _handler_returning(9),
-                         "type": "produce", "multi": False, "pass_through": False})
+                         "type": "produce"})
 import config as _cfg
 _orig_cap = _cfg.MAX_UPLOAD_BYTES
 try:
     _cfg.MAX_UPLOAD_BYTES = 8
-    r = worker_mod.process_tool("zz_at_cap", b"", "i", "t", 0, {}, None)
-    check("B1 output 恰在 cap (8) 成功", r["size"] == 8, str(r["size"]))
+    r = worker_mod.process_tool("zz_at_cap", [(b"", "i", "t", 0)], {})
+    check("B1 output 恰在 cap (8) 成功",
+          r["items"][0]["kind"] == "file"
+          and len(r["items"][0]["data"]) == 8, str(r)[:80])
     try:
-        worker_mod.process_tool("zz_cap1", b"", "i", "t", 0, {}, None)
+        worker_mod.process_tool("zz_cap1", [(b"", "i", "t", 0)], {})
         check("B2 output cap+1 → ValueError fail closed", False, "no raise")
     except ValueError as e:
         check("B2 output cap+1 → ValueError fail closed",
@@ -206,7 +210,7 @@ from execution import pool as pool_mod
 async def _run_with(pool):
     from execution.orchestrator import _run_handler
     return await _run_handler(pool, lambda *a: None, "t",
-                              (b"", "f", "t", 0), None, {})
+                              [(b"", "f", "t", 0)], {})
 
 class _FakePool:
     def __init__(self, tag): self.tag = tag; self.shut = False
@@ -315,10 +319,10 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " tool_type, label_json, icon, multi, pass_through, visibility,"
+            " tool_type, label_json, icon, visibility,"
             " enabled, created_at, updated_at)"
             " values (%s, NULL, %s, 'local', 'produce', %s,"
-            " 'wand', FALSE, FALSE, 'public', TRUE, %s, %s)",
+            " 'wand', 'public', TRUE, %s, %s)",
             (f"ebtool_{_u}", f"ebtool_{_u}",
              _json.dumps({"en": "EB"}), ts, ts))
         con.execute(

@@ -151,6 +151,10 @@ jobs:
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_supply_accept_multi.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_io_contract.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_io_contract.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_architecture_unification.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_architecture_unification.py
@@ -266,9 +270,11 @@ jobs:
           test -z "$(grep -n delete_gokapi_file core/execution/orchestrator.py)"
           # operation identity: no server-generated ref, no null-ref semantics,
           # no null ref in production JS, MCP requires client_ref
+          # (IO-1: files is optional — 0-file tools are legal; the files
+          #  entry shape is validated separately)
           test -z "$(grep -n 'secrets' core/execution/gate.py)"
           test "$(grep -c 'client_ref: *null' static/app.js)" = "0"
-          grep -q 'required = \["files", "client_ref"\]' app/routes/mcp.py
+          grep -q 'required = \["client_ref"\]' app/routes/mcp.py
           # Public REST v1 retired: apiv1 module must stay absent
           test ! -e app/routes/apiv1.py
           # payment identity/precedence guards (behavior tests are the authority)
@@ -349,6 +355,9 @@ jobs:
 
       - name: Supply accept/multi canonical
         run: python tests/canonical/test_supply_accept_multi.py
+
+      - name: IO contract (inputs window / items results) canonical
+        run: python tests/canonical/test_io_contract.py
       - name: Architecture unification canonical
         run: python tests/canonical/test_architecture_unification.py
 

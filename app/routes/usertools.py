@@ -147,17 +147,31 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
             return None, "bad_accept"
         fields["accept"] = sorted(canon)
 
-    # 4C-2: multi 是标准 ToolDeclaration capability (不是 params)。
-    # create 缺失 → false; 显式值必须是真 JSON boolean; PATCH 仅出现时更新。
-    if "multi" in raw or not partial:
-        multi = raw.get("multi", False)
-        if not isinstance(multi, bool):
-            return None, "bad_multi"
-        fields["multi"] = multi
+    # IO-1 input/output contract: files count window + output kinds.
+    # create defaults to 1..1 / ["file"]; PATCH updates only on presence.
+    if "files_min" in raw or "files_max" in raw or not partial:
+        mn = raw.get("files_min", 1)
+        mx = raw.get("files_max", 1)
+        if isinstance(mn, bool) or not isinstance(mn, int) or mn < 0:
+            return None, "bad_files_min"
+        if isinstance(mx, bool) or not isinstance(mx, int) \
+                or not (1 <= mx <= 20):
+            return None, "bad_files_max"
+        if mn > mx:
+            return None, "bad_files_range"
+        fields["files_min"] = mn
+        fields["files_max"] = mx
+    if "outputs" in raw or not partial:
+        outputs = raw.get("outputs", ["file"])
+        if not isinstance(outputs, list) or not outputs \
+                or any(k not in ("text", "json", "file") for k in outputs):
+            return None, "bad_outputs"
+        fields["outputs"] = [k for k in ("text", "json", "file")
+                             if k in set(outputs)]
 
     if "output_filename" in raw:
         # 文件名是开发者 API 自定义机制, 平台不限定。
-        # 字段不再写入 (raw-bytes 兜底名由执行层按产物嗅探生成)。
+        # 字段不再写入 (文件名由端点 items 声明, 平台不限定)。
         return None, "bad_output_filename"
 
     if "output_content_type" in raw:
@@ -280,10 +294,12 @@ async def create_user_tool(request: Request):
         "label": label if isinstance(label, dict) else {"en": label},
         "desc": desc if isinstance(desc, dict) else ({"en": desc} if desc else None),
         "icon": "wand",
-        "accept": fields.get("accept"),
-        "multi": bool(fields.get("multi", False)),
+        "inputs": {"files": {
+            "min": int(fields.get("files_min", 1)),
+            "max": int(fields.get("files_max", 1)),
+            "accept": fields.get("accept")}},
+        "outputs": fields.get("outputs") or ["file"],
         "params": params_decl or None,
-        "pass_through": False,
         "visibility": fields["visibility"],
         "enabled": True,
         "binding": build_http_binding(
@@ -480,10 +496,11 @@ async def update_user_tool(tool_id: str, request: Request):
             sets["visibility"] = fields["visibility"]
         if "accept" in fields:
             sets["accept"] = fields["accept"]
-        if "multi" in fields:  # 4C-2: PATCH 仅在提交 multi 时更新
-            # _validate_submission 已保证 bool; 不再二次强转 (supply 边界
-            # validate_tool_patch 同样拒非 bool — 双层都不静默修正)。
-            sets["multi"] = fields["multi"]
+        if "files_min" in fields or "files_max" in fields:
+            sets["files_min"] = fields["files_min"]
+            sets["files_max"] = fields["files_max"]
+        if "outputs" in fields:
+            sets["outputs"] = fields["outputs"]
         if "enabled" in raw:
             # 不做 bool(raw) 强转 — 非 bool 交 supply patch validator 拒
             # (bad_enabled), 与 declaration 语义一致。

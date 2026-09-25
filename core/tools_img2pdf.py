@@ -103,10 +103,13 @@ def img2pdf_handler(tool_input, params):
     out_buf.seek(0)
 
     return {
-        "stream": out_buf,
-        "filename": "images.pdf",
-        "content_type": "application/pdf",
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": out_buf,
+            "filename": "images.pdf",
+            "content_type": "application/pdf",
+            "size": len(raw),
+        }],
     }
 
 
@@ -136,5 +139,5 @@ register(
     icon="convert",
     accept=ACCEPTED,
     handler=img2pdf_handler,
-    multi=True,
+    files_min=1, files_max=20,
 )

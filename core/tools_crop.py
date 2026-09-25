@@ -95,10 +95,13 @@ def crop_white_handler(tool_input, params):
         img.close()
         stream.seek(0)
         return {
-            "stream": stream,
-            "filename": tool_input["filename"],
-            "content_type": ct,
-            "size": tool_input.get("size", 0),
+            "items": [{
+                "kind": "file",
+                "stream": stream,
+                "filename": tool_input["filename"],
+                "content_type": ct,
+                "size": tool_input.get("size", 0),
+            }],
         }
 
     out = img.crop(bbox)
@@ -116,10 +119,13 @@ def crop_white_handler(tool_input, params):
     stem = orig_name.rsplit(".", 1)[0] if "." in orig_name else orig_name
 
     return {
-        "stream": io.BytesIO(raw),
-        "filename": f"cropped_{stem}.{out_ext}",
-        "content_type": ct,
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": io.BytesIO(raw),
+            "filename": f"cropped_{stem}.{out_ext}",
+            "content_type": ct,
+            "size": len(raw),
+        }],
     }
 
 

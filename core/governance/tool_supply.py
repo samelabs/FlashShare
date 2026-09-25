@@ -100,6 +100,44 @@ def _normalize_params(params):
 
 _BINDING_KEYS = ("url", "timeout_s", "auth_header", "auth_token")
 
+# IO-1 input/output contract vocabulary
+MAX_INPUT_FILES = 20
+OUTPUT_KINDS = ("text", "json", "file")
+
+
+def _normalize_inputs(inputs) -> dict:
+    """inputs.files = {min, max, accept}: min may be 0 (text-only tools),
+    max <= MAX_INPUT_FILES, min <= max; accept keeps the canonical
+    extension-token rules (None = any, non-empty token list)."""
+    if not isinstance(inputs, dict) or set(inputs.keys()) - {"files"}:
+        raise DeclarationError("bad_inputs")
+    files = inputs.get("files")
+    if not isinstance(files, dict) \
+            or set(files.keys()) - {"min", "max", "accept"}:
+        raise DeclarationError("bad_inputs")
+    mn, mx = files.get("min"), files.get("max")
+    if isinstance(mn, bool) or not isinstance(mn, int) or mn < 0:
+        raise DeclarationError("bad_inputs")
+    if isinstance(mx, bool) or not isinstance(mx, int) \
+            or not (1 <= mx <= MAX_INPUT_FILES):
+        raise DeclarationError("bad_inputs")
+    if mn > mx:
+        raise DeclarationError("bad_inputs")
+    return {"files": {"min": mn, "max": mx,
+                      "accept": _normalize_accept(files.get("accept"))}}
+
+
+def _normalize_outputs(outputs) -> list:
+    """Non-empty subset of the item kinds the tool may produce."""
+    if not isinstance(outputs, list) or not outputs:
+        raise DeclarationError("bad_outputs")
+    out = set()
+    for k in outputs:
+        if not isinstance(k, str) or k not in OUTPUT_KINDS:
+            raise DeclarationError("bad_outputs")
+        out.add(k)
+    return [k for k in OUTPUT_KINDS if k in out]
+
 
 def validate_tool_declaration(decl: dict) -> dict:
     """校验并归一化一个 canonical ToolDeclaration (与来源无关)。
@@ -133,11 +171,9 @@ def validate_tool_declaration(decl: dict) -> dict:
     label = _check_localized(decl.get("label"), _MAX_LABEL, required=True)
     desc = _check_localized(decl.get("desc"), _MAX_DESC, required=False)
 
-    accept = _normalize_accept(decl.get("accept"))
+    inputs = _normalize_inputs(decl.get("inputs"))
+    outputs = _normalize_outputs(decl.get("outputs"))
 
-    for key in ("multi", "pass_through"):
-        if not isinstance(decl.get(key, False), bool):
-            raise DeclarationError(f"bad_{key}")
     if not isinstance(decl.get("enabled", True), bool):
         raise DeclarationError("bad_enabled")
 
@@ -171,9 +207,8 @@ def validate_tool_declaration(decl: dict) -> dict:
         "label": label,
         "desc": desc,
         "icon": icon,
-        "accept": accept,
-        "multi": bool(decl.get("multi", False)),
-        "pass_through": bool(decl.get("pass_through", False)),
+        "inputs": inputs,
+        "outputs": outputs,
         "params": params,
         "visibility": decl["visibility"],
         "enabled": bool(decl.get("enabled", True)),
@@ -200,15 +235,12 @@ def validate_tool_patch(patch: dict) -> dict:
         if patch["icon"] not in VALID_ICONS:
             raise DeclarationError("bad_icon")
         out["icon"] = patch["icon"]
-    if "accept" in patch:
-        out["accept"] = _normalize_accept(patch["accept"])
+    if "inputs" in patch:
+        out["inputs"] = _normalize_inputs(patch["inputs"])
+    if "outputs" in patch:
+        out["outputs"] = _normalize_outputs(patch["outputs"])
     if "params" in patch:
         out["params"] = _normalize_params(patch["params"])
-    for key in ("multi", "pass_through"):
-        if key in patch:
-            if not isinstance(patch[key], bool):
-                raise DeclarationError(f"bad_{key}")
-            out[key] = patch[key]
     if "enabled" in patch:
         if not isinstance(patch["enabled"], bool):
             raise DeclarationError("bad_enabled")
@@ -277,12 +309,14 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "desc_json": (json.dumps(decl["desc"], ensure_ascii=False)
                       if decl.get("desc") else None),
         "icon": decl["icon"],
-        "accept_json": (json.dumps(decl["accept"], ensure_ascii=False)
-                        if decl.get("accept") else None),
+        "accept_json": (json.dumps(decl["inputs"]["files"]["accept"],
+                                   ensure_ascii=False)
+                        if decl["inputs"]["files"]["accept"] else None),
+        "files_min": decl["inputs"]["files"]["min"],
+        "files_max": decl["inputs"]["files"]["max"],
+        "outputs_json": json.dumps(decl["outputs"]),
         "params_json": (json.dumps(decl["params"], ensure_ascii=False)
                         if decl.get("params") else None),
-        "multi": bool(decl.get("multi", False)),
-        "pass_through": bool(decl.get("pass_through", False)),
         "visibility": decl["visibility"],
         "endpoint_json": json.dumps(binding) if decl["execution"] == "http" else None,
         "enabled": bool(decl.get("enabled", True)),
@@ -330,16 +364,18 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
                              if patch["desc"] else None)
     if "icon" in patch:
         sets["icon"] = patch["icon"]
-    if "accept" in patch:
-        sets["accept_json"] = (json.dumps(patch["accept"], ensure_ascii=False)
-                               if patch["accept"] else None)
+    if "inputs" in patch:
+        files = patch["inputs"]["files"]
+        sets["accept_json"] = (json.dumps(files["accept"],
+                                          ensure_ascii=False)
+                               if files["accept"] else None)
+        sets["files_min"] = files["min"]
+        sets["files_max"] = files["max"]
+    if "outputs" in patch:
+        sets["outputs_json"] = json.dumps(patch["outputs"])
     if "params" in patch:
         sets["params_json"] = (json.dumps(patch["params"], ensure_ascii=False)
                                if patch["params"] else None)
-    if "multi" in patch:
-        sets["multi"] = patch["multi"]
-    if "pass_through" in patch:
-        sets["pass_through"] = patch["pass_through"]
     if "visibility" in patch:
         sets["visibility"] = patch["visibility"]
     if "enabled" in patch:

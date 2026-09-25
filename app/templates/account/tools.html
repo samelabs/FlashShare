@@ -22,7 +22,7 @@
 Content-Type: application/json
 
 {
-  "job_inputs": [
+  "files": [
     { "filename": "a.png", "content_type": "image/png",
       "size": 12345, "url": "{{ BASE_URL }}/api/source/…（one-time signed URL）" }
   ],
@@ -30,9 +30,12 @@ Content-Type: application/json
 }</pre>
         <p data-i18n="contract_req_note">{{ texts.contract_req_note }}</p>
         <h4 data-i18n="contract_resp_h">{{ texts.contract_resp_h }}</h4>
-        <pre>A. raw bytes: the body IS the file (Content-Type: image/png …)
-B. JSON: { "filename": "x.png", "content_type": "image/png", "data_b64": "…" }
-C. JSON: { "filename": "x.png", "content_type": "image/png", "output_url": "https://you/x.png" }</pre>
+        <pre>{ "items": [
+    { "kind": "text", "text": "…" },
+    { "kind": "json", "data": { … } },
+    { "kind": "file", "filename": "x.png", "content_type": "image/png",
+      "data_b64": "…" }
+] }</pre>
         <p data-i18n="contract_out_note">{{ texts.contract_out_note }}</p>
         <h4 data-i18n="contract_auth_h">{{ texts.contract_auth_h }}</h4>
         <p data-i18n="contract_auth_note">{{ texts.contract_auth_note }}</p>

@@ -62,7 +62,7 @@ def _mkuser(name):
 
 from economy.billing import grant as _grant, spendable_balance
 from repo.ledger import by_idem_key
-from execution.pipeline import StagedResult, land_tool_result
+from execution.results import StagedItems, StagedFileItem
 
 def row_id_of(res):
     with db() as con:
@@ -77,16 +77,21 @@ def _mkstaged(tag="x", **kw):
              expire_at=ts + 86400, url_hotlink="", ip="127.0.0.1")
     d.pop("tool_id", None)   # 闭包误传容忍
     d.update(kw)
-    return StagedResult(**d)
+    ip = d.pop("ip", "127.0.0.1")
+    osz = d.pop("orig_size", None)
+    return StagedItems(
+        order=["file"], inline=[],
+        files=[StagedFileItem(**d)],
+        ip=ip, **({"orig_size": osz} if osz is not None else {}))
 
 def _mktool(tool_id, owner_id=None, cost=25):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, multi, pass_through,"
+            " execution, tool_type, label_json, icon,"
             " visibility, enabled, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', 'produce', %s, 'wand', FALSE,"
-            " FALSE, 'public', TRUE, %s, %s)",
+            " values (%s, %s, %s, 'local', 'produce', %s, 'wand',"
+            " 'public', TRUE, %s, %s)",
             (tool_id, owner_id, tool_id,
              _json.dumps({"en": "RS"}), ts, ts))
         con.execute(
@@ -154,11 +159,16 @@ check("B2 uploads 恰新增一行", n_uploads_after - n_uploads_before == 1,
       f"{n_uploads_before}→{n_uploads_after}")
 check("B3 tool_call.upload_id 指向该行 + status ok",
       row["status"] == "ok" and row["upload_id"] is not None)
-check("B4 result_public_id == uploads.public_id",
-      row["result_public_id"] == row["public_id"])
+# IO-1: the result owns a fresh public id (/r/{id}); file items carry
+# their own uploads public ids — first item == upload_id's row
 rj = _json.loads(row["result_json"])
-check("B5 result_json.publicId == uploads.public_id",
-      rj.get("publicId") == row["public_id"])
+check("B4 result_public_id is the /r/ id (own identity)",
+      row["result_public_id"] == rj.get("resultId")
+      and row["result_public_id"] != row["public_id"],
+      (row["result_public_id"], row["public_id"]))
+check("B5 first file item publicId == uploads.public_id",
+      rj["items"][0].get("publicId") == row["public_id"]
+      and rj["items"][0].get("kind") == "file", rj["items"][:1])
 # B6 详情在 B6b (绑定 call id 的 revenue 聚合)
 from repo import ledger as _led
 with db() as con:
@@ -195,10 +205,10 @@ _mktool(tool3, owner_id=None, cost=25)
 _grant(user3, 1000, "manual_topup", note="rs")
 bal3 = spendable_balance(user3)
 
-import execution.pipeline as _pipe
-_orig_land = _pipe.land_tool_result
+import execution.results as _pipe
+_orig_land = _pipe.land_items_result
 def _land_fail_after_upload(con, user_id, staged, base_url):
-    uid, rec = _orig_land(con, user_id, staged, base_url)
+    upload_id, result_pid, rec = _orig_land(con, user_id, staged, base_url)
     raise RuntimeError("R1: fault after uploads INSERT")
 import execution.gate as _gate_mod
 import core.execution.gate as _g2
@@ -206,11 +216,11 @@ import core.execution.gate as _g2
 # R1 走完整 gate 路径: patch pipeline 模块 (gate._finish 函数内 import 的
 # 正是 execution.pipeline 模块属性)
 def _r1_gate_run():
-    _pipe.land_tool_result = _land_fail_after_upload
+    _pipe.land_items_result = _land_fail_after_upload
     try:
         return _run_gate(user3, tool3, None, lambda: _stage_ok(tool3, tag="r1"))
     finally:
-        _pipe.land_tool_result = _orig_land
+        _pipe.land_items_result = _orig_land
 res3, err3, st3 = _r1_gate_run()
 with db() as con:
     up = con.execute(
@@ -328,7 +338,7 @@ check("F3 durable ok → 零 staged delete", not _deleted, str(_deleted))
 check("F4 durable ok → 无重复 earning (恰 1)", n_earn5 == 1, str(n_earn5))
 durable_rj = _json.loads(t5["result_json"])
 check("F5 返回的是 durable result_json (同 publicId)",
-      res5["result"]["publicId"] == durable_rj["publicId"])
+      res5["result"]["resultId"] == durable_rj["resultId"])
 _gk.delete = _orig_del
 
 # ══════════ G. outcome DB 不可读 → unresolved (case C) ══════════
@@ -348,13 +358,13 @@ _gate_mod.resolve_success_outcome = _rso_unreachable
 _gk_deleted6 = []
 _gk.delete = lambda gid: _gk_deleted6.append(gid)
 # 让 _finish 本身失败 (R1 fault) + outcome 不可读 → unresolved
-_pipe.land_tool_result = _land_fail_after_upload
+_pipe.land_items_result = _land_fail_after_upload
 try:
     res6, err6, st6 = _run_gate(user6, tool6, None, lambda: _stage_ok(tool6, tag="g"))
 except Exception:
     res6, err6, st6 = None, None, None
 finally:
-    _pipe.land_tool_result = _orig_land
+    _pipe.land_items_result = _orig_land
     _gate_mod.resolve_success_outcome = _orig_rso
 with db() as con:
     t6 = con.execute(
@@ -379,15 +389,15 @@ _gk_deleted7 = []
 _gk.delete = lambda gid: _gk_deleted7.append(gid)
 async def _stage7():
     return _staged7
-_pipe.land_tool_result = _land_fail_after_upload
+_pipe.land_items_result = _land_fail_after_upload
 try:
     res7, err7, st7 = _run_gate(user7, tool7, None, _stage7)
 except Exception:
     pass
 finally:
-    _pipe.land_tool_result = _orig_land
+    _pipe.land_items_result = _orig_land
 check("H1 known rollback → staged Gokapi cleanup 被调用",
-      _staged7.gokapi_id in _gk_deleted7, str(_gk_deleted7))
+      _staged7.files[0].gokapi_id in _gk_deleted7, str(_gk_deleted7))
 check("H2 known rollback → exact refund + terminal failed",
       spendable_balance(user7) == bal7)
 with db() as con:
@@ -457,9 +467,9 @@ with db() as con:
         "select count(*) c from ledger where kind='platform_revenue'"
         " and ref_id=(select max(id)::text from tool_calls where user_id=%s)",
         (user9,)).fetchone()["c"])
-check("J1 replay → replay=True / 同 call_id / 同 publicId",
+check("J1 replay → replay=True / 同 call_id / 同 resultId",
       resB.get("replay") is True and resB["call_id"] == resA["call_id"]
-      and resB["result"]["publicId"] == resA["result"]["publicId"],
+      and resB["result"]["resultId"] == resA["result"]["resultId"],
       f"A={resA['call_id']} B={resB['call_id']}")
 check("J2 handler/stage 只执行一次", _exec_count["n"] == 1, str(_exec_count))
 check("J3 恰一行 tool_call / 一行 uploads / 一次 consume / 一次 settlement",
@@ -581,13 +591,13 @@ _gk2 = _gk
 _gk_orig2 = _gk2.delete
 _gk2.delete = lambda gid: _src_deleted.append(gid)
 # attempt 1: settlement fault (R1) → rollback → staged deleted, source live
-_pipe.land_tool_result = _land_fail_after_upload
+_pipe.land_items_result = _land_fail_after_upload
 async def _stN():
     return _mkstaged(tag="n1")
 try:
     rN1, eN1, _ = _run_gate(userN, toolN, refN, _stN)
 finally:
-    _pipe.land_tool_result = _orig_land
+    _pipe.land_items_result = _orig_land
 with db() as con:
     tN1 = con.execute(
         "select status from tool_calls where user_id=%s and tool_id=%s"
@@ -601,7 +611,7 @@ check("N1 attempt1 failed + 零 public result",
       f"{tN1['status']} up={upN['c']}")
 # staged result 被清 (attempt 输出), source 无关 (无删除权)
 check("N1b staged cleanup 只删 attempt result",
-      _mkstaged(tag="n1").gokapi_id in _src_deleted, str(_src_deleted))
+      _mkstaged(tag="n1").files[0].gokapi_id in _src_deleted, str(_src_deleted))
 
 # attempt 2: 同 user/tool/client_ref/source — failed row 不挡 claim
 rN2, eN2, _ = _run_gate(userN, toolN, refN, _stN)
@@ -622,7 +632,7 @@ check("N2 attempt2 同 invocation 重试成功 (failed 不占 live ref)",
 check("N2b 最终恰一个 public result / consume1 已退",
       n_upN == 1 and n_refundN == 1, f"up={n_upN} refunds={n_refundN}")
 check("N2c source 未被 execution 删除 (零 source delete)",
-      all(gid == _mkstaged(tag="n1").gokapi_id for gid in _src_deleted)
+      all(gid == _mkstaged(tag="n1").files[0].gokapi_id for gid in _src_deleted)
       and len(_src_deleted) == 1, str(_src_deleted))
 _gk2.delete = _gk_orig2
 

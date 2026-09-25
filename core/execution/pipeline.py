@@ -97,11 +97,10 @@ def save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
                        url_hotlink, base_url: str, con=None) -> dict:
     """Land one durable DIRECT-SHARE / non-tool result row.
 
-    Tool results no longer land here — they stage a StagedResult and the
-    gate settles uploads+binding+economics in one transaction
-    (land_tool_result). con=None owns a transaction (single direct
-    share). A caller may supply a connection to land a multi-share
-    batch atomically.
+    Direct-share landing only. Tool results stage via execution.results
+    (items model); the gate settles them in one transaction.
+    con=None owns a transaction; a caller may supply a connection to
+    land a multi-share batch atomically.
     """
     def _save(c):
         public_id = generate_public_id(c)
@@ -134,55 +133,3 @@ def save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
 
 
 from utils import now as now_ts  # noqa: E402
-
-
-# ── tool-result staged settlement (result-settlement atomicity) ──
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class StagedResult:
-    """Gokapi staged physical result — settlement 尚未发生, 无任何 518
-    durable/public 身份 (publicId/downloadUrl/uploads.id 都在 settlement
-    transaction 内才生成)。local / remote 共用同一类型。"""
-    gokapi_id: str
-    filename: str
-    content_type: str
-    size: int
-    expiry_days: int
-    allowed_downloads: int
-    expire_at: int | None
-    url_hotlink: str
-    ip: str
-    orig_size: int | None = None
-
-
-def land_tool_result(con, user_id: int, staged: StagedResult,
-                     base_url: str) -> tuple[int, dict]:
-    """在 CALLER 的 settlement transaction 内落地 durable result:
-    INSERT uploads (RETURNING id) + 构造 canonical public record。
-    绝不自开 transaction; 失败随 caller transaction 回滚。"""
-    public_id = generate_public_id(con)
-    dl_url = public_file_url(public_id)
-    upload_id = insert_record(
-        con, user_id, staged.ip, public_id, staged.gokapi_id,
-        staged.filename, staged.content_type, staged.size,
-        staged.expiry_days, staged.allowed_downloads, staged.expire_at,
-        dl_url, staged.url_hotlink, now_ts())
-    record = {
-        "type": "share_link",
-        "name": staged.filename,
-        "downloadUrl": dl_url,
-        "printUrl": (f"{base_url}/f/{public_id}/print"
-                     if staged.content_type == "application/pdf" else None),
-        "filename": staged.filename,
-        "contentType": staged.content_type,
-        "size": staged.size,
-        "publicId": public_id,
-        "expireAt": staged.expire_at,
-        "expiryDays": staged.expiry_days,
-        "allowedDownloads": staged.allowed_downloads,
-    }
-    if staged.orig_size is not None:
-        record["origSize"] = staged.orig_size
-    return upload_id, record

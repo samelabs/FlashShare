@@ -299,10 +299,13 @@ _restore_stack()
 # ═══ PIN-P4: runtime single resolution from drive_http entry ═══
 rec = _install_stack(
     resolve_map={"rt.example": [(_socket.AF_INET, PUBLIC4)]},
-    resp_script=[_RespDouble(200, b'{"data_b64": "aGk=", "filename": "out.txt"}')])
+    resp_script=[_RespDouble(200, json.dumps({"items": [
+        {"kind": "file", "filename": "out.txt",
+         "content_type": "text/plain", "data_b64": "aGk="}]}).encode())])
 decl = {"url": "https://rt.example/api", "timeout_s": 30}
 out = remote.drive_http(decl, [], {}, {}, trusted=False)
-check("PIN-P4 drive_http untrusted succeeds", out["bytes"] == b"hi", out)
+check("PIN-P4 drive_http untrusted succeeds",
+      out["items"][0]["bytes"] == b"hi", out)
 check("PIN-P4 FIRST-HOP resolver total calls = 1 (no pre-guard double resolve)",
       len(rec.resolve_calls) == 1, rec.resolve_calls)
 _restore_stack()
@@ -801,16 +804,17 @@ except Exception as exc:
 # drive_http (resolver pinned; data_b64 PNG + filename + content_type)
 rec_o = _install_stack(
     resolve_map={"out.example": [(_socket.AF_INET, PUBLIC4)]},
-    resp_script=[_RespDouble(200, json.dumps({
-        "filename": "prod.png",
-        "content_type": "image/png",
-        "data_b64": _b64.b64encode(_png_bytes()).decode(),
-    }).encode())])
+    resp_script=[_RespDouble(200, json.dumps({"items": [
+        {"kind": "file", "filename": "prod.png",
+         "content_type": "image/png",
+         "data_b64": _b64.b64encode(_png_bytes()).decode()},
+    ]}).encode())])
 try:
     decl_o = {"url": "https://out.example/api", "timeout_s": 30}
     out = remote.drive_http(decl_o, [], {}, {}, trusted=False)
+    _it = out["items"][0]
     check("OUT-4 JSON content_type enters canonical result",
-          out["filename"] == "prod.png" and out["content_type"] == "image/png",
+          _it["filename"] == "prod.png" and _it["content_type"] == "image/png",
           out)
     check("OUT-4 legacy output_* binding keys ignored by runtime",
           "output_filename" not in decl_o and "output_content_type" not in decl_o)
@@ -841,16 +845,17 @@ def _patch_urllib_open(resp):
 # → canonical image/png (from filename + byte validation)
 _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200,
-    json.dumps({"filename": "result.png",
-                "data_b64": _b64.b64encode(_png_bytes()).decode()}).encode(),
+    json.dumps({"items": [{"kind": "file", "filename": "result.png",
+                "data_b64": _b64.b64encode(_png_bytes()).decode()}]}).encode(),
     "application/json"))
 try:
     out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
                             [], {}, {}, trusted=True)
+    _e1 = out["items"][0]
     check("ENV-1 JSON envelope MIME not inherited (filename=result.png)",
-          out["filename"] == "result.png", out)
+          _e1["filename"] == "result.png", out)
     check("ENV-1 result content_type == image/png",
-          out["content_type"] == "image/png", out["content_type"])
+          _e1["content_type"] == "image/png", _e1["content_type"])
 except Exception as exc:
     check("ENV-1 JSON envelope MIME not inherited", False, exc)
 finally:
@@ -859,14 +864,16 @@ finally:
 # ENV-2: JSON explicit content_type=image/png → image/png
 _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200,
-    json.dumps({"filename": "result.png", "content_type": "image/png",
-                "data_b64": _b64.b64encode(_png_bytes()).decode()}).encode(),
+    json.dumps({"items": [{"kind": "file", "filename": "result.png",
+                "content_type": "image/png",
+                "data_b64": _b64.b64encode(_png_bytes()).decode()}]}).encode(),
     "application/json"))
 try:
     out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
                             [], {}, {}, trusted=True)
     check("ENV-2 JSON explicit content_type honored",
-          out["content_type"] == "image/png", out["content_type"])
+          out["items"][0]["content_type"] == "image/png",
+          out["items"][0]["content_type"])
 except Exception as exc:
     check("ENV-2 JSON explicit content_type honored", False, exc)
 finally:
@@ -877,13 +884,13 @@ finally:
 _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200, _png_bytes(), "image/png"))
 try:
-    out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
-                            [], {}, {}, trusted=True)
-    check("ENV-3 raw PNG response keeps image/png",
-          out["filename"] == "result.png" and out["content_type"] == "image/png",
-          out)
-except Exception as exc:
-    check("ENV-3 raw PNG response keeps image/png", False, exc)
+    remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                      [], {}, {}, trusted=True)
+    check("ENV-3 raw-bytes body rejected (items-only contract)", False,
+          "no raise")
+except remote.RemoteError as exc:
+    check("ENV-3 raw-bytes body rejected (items-only contract)",
+          exc.code == "invalid_response", exc.code)
 finally:
     remote.urllib.request.urlopen = _saved_open
 
@@ -891,16 +898,17 @@ finally:
 # pulled product either (JSON metadata only)
 _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200,
-    json.dumps({"filename": "pulled.png",
-                "output_url": "https://pub.example/fetch.png"}).encode(),
+    json.dumps({"items": [{"kind": "file", "filename": "pulled.png",
+                "url": "https://pub.example/fetch.png"}]}).encode(),
     "application/json"))
 _pulled_saved = remote._pull_output_url
 try:
     remote._pull_output_url = lambda url, t, tr: _png_bytes()
     out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
                             [], {}, {}, trusted=True)
-    check("ENV-4 output_url product MIME from bytes, not envelope",
-          out["filename"] == "pulled.png" and out["content_type"] == "image/png",
+    _e4 = out["items"][0]
+    check("ENV-4 file url product MIME from bytes, not envelope",
+          _e4["filename"] == "pulled.png" and _e4["content_type"] == "image/png",
           out)
 except Exception as exc:
     check("ENV-4 output_url product MIME from bytes", False, exc)

@@ -488,16 +488,16 @@ try:
     # ══════════ M5. consume failure resolves the claim ══════════
     from execution import gate as _gate
     from execution.invocation import ToolInvocation, SourceFile
-    from execution.pipeline import StagedResult
+    from execution.results import StagedItems, StagedFileItem
     from repo.ledger import by_idem_key
     tool5 = f"mctool_{_u}"
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, multi, pass_through,"
-            " visibility, enabled, created_at, updated_at)"
-            " values (%s, NULL, %s, 'local', 'produce', %s, 'wand', FALSE,"
-            " FALSE, 'public', TRUE, %s, %s)",
+            " execution, tool_type, label_json, icon, visibility, enabled,"
+            " created_at, updated_at)"
+            " values (%s, NULL, %s, 'local', 'produce', %s, 'wand',"
+            " 'public', TRUE, %s, %s)",
             (tool5, tool5, _json.dumps({"en": "MC"}), ts, ts))
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 25, TRUE, %s)", (tool5, ts))
@@ -513,10 +513,14 @@ try:
     _stage_n = [0]
     async def _stage_ok():
         _stage_n[0] += 1
-        return StagedResult(gokapi_id=f"gk_{_u}_{_stage_n[0]}", filename="o.bin",
-                            content_type="application/octet-stream", size=10,
-                            expiry_days=7, allowed_downloads=5,
-                            expire_at=ts + 86400, url_hotlink="", ip="127.0.0.1")
+        return StagedItems(
+            order=["file"], inline=[],
+            files=[StagedFileItem(
+                gokapi_id=f"gk_{_u}_{_stage_n[0]}", filename="o.bin",
+                content_type="application/octet-stream", size=10,
+                expiry_days=7, allowed_downloads=5,
+                expire_at=ts + 86400, url_hotlink="")],
+            ip="127.0.0.1")
     def _run(ref):
         return asyncio.new_event_loop().run_until_complete(_gate.run(
             {"id": u5}, {"id": tool5, "tool_key": tool5, "type": "produce",
@@ -606,10 +610,10 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, multi, pass_through,"
+            " execution, tool_type, label_json, icon,"
             " visibility, enabled, endpoint_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'http', 'produce', %s, 'wand', FALSE,"
-            " FALSE, 'unlisted', TRUE, %s, %s, %s)",
+            " values (%s, %s, %s, 'http', 'produce', %s, 'wand',"
+            " 'unlisted', TRUE, %s, %s, %s)",
             (tkey6, owner, tid6, _json.dumps({"en": "T6"}),
              _json.dumps({"url": "https://example.com/x", "timeout_s": 10}),
              ts, ts))

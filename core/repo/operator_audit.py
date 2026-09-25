@@ -30,7 +30,7 @@ TARGET_SAFE_KEYS = {
                    "reviewed_by", "paid_at", "paid_by"},
     "remote_tool": {"tool_key", "tool_id", "execution", "tool_type",
                     "visibility", "enabled", "featured", "sort_order",
-                    "multi", "accept", "cost"},
+                    "files_min", "files_max", "outputs", "accept", "cost"},
 }
 
 _SECRET_MARKERS = ("password", "token", "secret", "auth_header",

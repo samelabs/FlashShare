@@ -228,7 +228,8 @@ def set_tool_presentation(con, tool_key: str, featured: bool,
 
 _TOOL_COLUMNS = ("tool_key", "owner_id", "tool_id", "execution", "tool_type",
                  "label_json", "desc_json", "icon", "accept_json",
-                 "params_json", "multi", "pass_through",
+                 "params_json", "files_min", "files_max",
+                 "outputs_json",
                  "visibility", "endpoint_json", "enabled")
 
 
@@ -261,8 +262,9 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
           icon         = EXCLUDED.icon,
           accept_json  = EXCLUDED.accept_json,
           params_json  = EXCLUDED.params_json,
-          multi        = EXCLUDED.multi,
-          pass_through = EXCLUDED.pass_through,
+          files_min = EXCLUDED.files_min,
+          files_max = EXCLUDED.files_max,
+          outputs_json = EXCLUDED.outputs_json,
           endpoint_json = EXCLUDED.endpoint_json,
           enabled      = EXCLUDED.enabled,
           updated_at   = EXCLUDED.updated_at
