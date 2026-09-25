@@ -490,34 +490,34 @@ async def account_credits(request: Request):
     rows, total = history_paged(user["id"], page=pg, size=size)
     rows = [dict(r) for r in rows]
     # 41-12 note column: machine notes (raw tool ids, plan cycle stamps,
-    # refund order refs) never render; tool-bound rows get a localized
-    # "Tool: <resolved name>" description, other machine rows show "—".
-    # Human notes (operator/manual) keep rendering verbatim.
-    from repo.catalog import by_tool_key as _by_tool_key
+    # refund order refs) never render. Tool identity comes ONLY from the
+    # ledger relation (consume → tool_call, refund → its consume row) via
+    # the batched repo query — note is audit text and is never parsed.
+    # Tool-bound rows get a localized "Tool: <resolved name>" description;
+    # rows without a resolvable relation show no tool description. Human
+    # notes (operator/manual) keep rendering verbatim.
+    from repo import ledger as _ledger_repo
     from governance.tool_params import resolve_label as _resolve_label
     _lang = getattr(request.state, "lang", "en")
-    _tool_label_cache: dict = {}
+    with db() as con:
+        _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
 
-    def _tool_label(tool_key: str) -> str | None:
-        if tool_key in _tool_label_cache:
-            return _tool_label_cache[tool_key]
-        with db() as con:
-            _row = _by_tool_key(con, tool_key)
+    def _ref_label(r: dict) -> str | None:
+        ref = _tool_refs.get(int(r["id"]))
+        if not ref:
+            return None
         try:
-            label = json.loads(_row["label_json"]) if _row and _row["label_json"] else None
+            label = json.loads(ref["label_json"]) if ref["label_json"] else None
         except ValueError:
             label = None
-        name = _resolve_label(label, _lang) if label else None
-        _tool_label_cache[tool_key] = name
-        return name
+        return _resolve_label(label, _lang) if label else ref["tool_key"]
 
     _MACHINE_NOTE_KINDS = ("grant_plan", "grant_plan_upgrade",
                            "grant_package", "revoke")
     for r in rows:
         note = r.get("note") or ""
-        if r["kind"] in ("consume", "refund") and note:
-            tool_key = note.split(":", 1)[0].strip()
-            name = _tool_label(tool_key)
+        if r["kind"] in ("consume", "refund"):
+            name = _ref_label(r)
             tpl = server_text(_lang).get("ledger_note_tool")
             r["note_display"] = (
                 (tpl or "Tool: {name}").replace("{name}", name) if name else None)
