@@ -27,9 +27,23 @@ from icons import icon_svg
 router = APIRouter()
 
 
-@router.get("/f/{public_id}")
+def _share_link_headers(public_id: str, content_type: str) -> dict:
+    """Agent-visible share metadata: the direct download as an RFC-8288
+    enclosure (Link header; the page also carries <link rel=enclosure>
+    and a plain visible <a>)."""
+    from urllib.parse import quote
+    return {
+        "Link": f'</f/{quote(public_id)}?download=1>; rel="enclosure"'
+                + (f'; type="{content_type}"' if content_type else ""),
+    }
+
+
+@router.api_route("/f/{public_id}", methods=["GET", "HEAD"])
 async def file_route(public_id: str, request: Request):
-    """Route: /f/{pid} → detail page, /f/{pid}?download=1 → file stream."""
+    """Route: /f/{pid} → detail page, /f/{pid}?download=1 → file stream.
+    HEAD answers with the same status and headers (including the
+    enclosure Link) and an empty body — it never touches a counting
+    Gokapi path."""
     from app.main import templates
 
     lang = request.state.lang
@@ -37,6 +51,7 @@ async def file_route(public_id: str, request: Request):
     locale = LOCALE_TAGS.get(lang, "en")
     direction = "rtl" if lang == "ar" else "ltr"
     texts = server_text(lang)
+    is_head = request.method == "HEAD"
 
     upload = _live_upload(public_id)
     if not upload:
@@ -78,7 +93,15 @@ async def file_route(public_id: str, request: Request):
                 resp = RedirectResponse(url=dl_path, status_code=302)
                 ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "download"
                 resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
+                for k, v in _share_link_headers(
+                        upload["public_id"],
+                        upload["content_type"] or "").items():
+                    resp.headers[k] = v
                 return resp
+        if is_head:
+            # no hotlink → GET would stream via Python; HEAD never opens
+            # a (counting) Gokapi download stream — signal GET-only
+            return Response(status_code=405, headers={"Allow": "GET"})
         # Fallback: stream via Python if no hotlink
         status, headers, stream = open_gokapi_download(upload["gokapi_id"])
         if status >= 400:
@@ -99,6 +122,10 @@ async def file_route(public_id: str, request: Request):
         return StreamingResponse(generate(), media_type=content_type,
                                  headers={"Content-Disposition": f'attachment; filename="{safe_name}"',
                                           "X-Content-Type-Options": "nosniff"})
+
+    if is_head:
+        return Response(status_code=200, headers=_share_link_headers(
+            upload["public_id"], upload["content_type"] or ""))
 
     # Detail page via Jinja2
     live = storage_info(upload["gokapi_id"]) if upload["gokapi_id"] else None
@@ -143,7 +170,11 @@ async def file_route(public_id: str, request: Request):
         "download_count_icon": icon_svg("download_count"),
     })
     ctx["file_format_icon"] = lambda: file_format_icon(upload["file_name"])
-    return templates.TemplateResponse(request, "detail.html", ctx)
+    resp = templates.TemplateResponse(request, "detail.html", ctx)
+    for k, v in _share_link_headers(upload["public_id"],
+                                    upload["content_type"] or "").items():
+        resp.headers[k] = v
+    return resp
 
 
 @router.get("/f/{public_id}/qr.svg")

@@ -654,7 +654,10 @@ select { width: auto; margin-top: 0; }
 @media (max-width: 820px) {
   .shell { width: calc(100vw - 24px); padding: var(--s2) var(--s2) 0; }
   .topbar { padding: 0 calc(12px + var(--s2)); gap: var(--s2); }
-  .top-actions { gap: var(--s2); min-width: 0; flex-wrap: nowrap; }
+  .top-actions { gap: var(--s2); min-width: 0; flex: 0 1 auto; flex-wrap: nowrap; overflow: hidden; }
+  .top-actions > * { flex: 0 1 auto; min-width: 0; }
+  .top-actions .topbar-agents { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lang-button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .brand { font-size: var(--text-sm); gap: var(--s1); min-width: 0; }
   /* 390px 窄屏: 顶栏四件套 (brand+MCP+auth+lang) 总宽溢出 → space-between
      失效, MCP 胶囊叠上 brand 文字 (gap -11px 实测)。收窄动作区并允许
@@ -1032,8 +1035,13 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 @media (max-width: 640px) {
-  .market-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* single column: two 1fr tracks overflow 390px when a card's content
+     min-width (long tool names/descriptions) exceeds the track */
+  .market-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
+
+.agent-note { text-align: center; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.agent-note a { color: var(--accent); font-weight: 600; text-decoration: none; }
 
 /* 双胶囊并排(发布+市场) */
 .hero-callouts { display: flex; justify-content: center; gap: 9px; flex-wrap: wrap; margin-top: 14px; }

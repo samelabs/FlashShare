@@ -69,9 +69,26 @@ async def offline_page(request: Request):
     ctx = _ctx_base(request)
     return templates.TemplateResponse(request, "offline.html", ctx)
 
+@router.get("/llms.txt")
+async def llms_txt():
+    """Plain-text agent guide, generated from the live code authorities
+    (protocol versions, endpoint, public catalog). Language-independent
+    English by design."""
+    from governance.llms_txt import build_llms_txt
+    return Response(content=build_llms_txt(),
+                    media_type="text/plain; charset=utf-8")
+
+
 @router.get("/robots.txt")
 async def robots():
-    body = f"User-agent: *\nDisallow: /api/\nDisallow: /auth/\nDisallow: /f/\nDisallow: /d/\nDisallow: /dh/\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n"
+    """Share links (/f/) stay FETCHABLE for agents that honor robots
+    (indexing is refused per-response via X-Robots-Tag, not here); /mcp
+    is likewise open — HTTP POST JSON-RPC, no installation required.
+    /dh/ is the Nginx→Gokapi hotlink path (still Disallow); the old /d/
+    rule referenced a retired path and was removed."""
+    body = (f"User-agent: *\nDisallow: /api/\nDisallow: /auth/\n"
+            f"Disallow: /dh/\nAllow: /\n"
+            f"Sitemap: {BASE_URL}/sitemap.xml\n")
     return Response(content=body, media_type="text/plain")
 
 @router.get("/sitemap.xml")

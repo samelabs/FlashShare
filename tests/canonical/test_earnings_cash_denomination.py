@@ -404,6 +404,24 @@ except ValueError as e:
     check("10f new withdrawal still rejects sub-cent",
           str(e) == "sub_cent_amount", str(e))
 
+# ── cleanup: every fixture this suite created (leaked platform_tools
+# rows drift the browser gate's market page) ──
+with db() as con:
+    con.execute("delete from pricing where tool_id like %s", (f"%{_u}%",))
+    con.execute("delete from platform_tools where tool_key like %s",
+                (f"%{_u}%",))
+    con.execute("delete from settings where key='commission_rate'")
+    uids = [int(r["id"]) for r in con.execute(
+        "select id from users where username like %s",
+        (_u + "%",)).fetchall()]
+    for uid in uids:
+        con.execute("delete from tool_calls where user_id=%s", (uid,))
+        con.execute("delete from ledger where user_id=%s", (uid,))
+        con.execute("delete from upload_usage where user_id=%s", (uid,))
+        con.execute("delete from ingress_requests where user_id=%s", (uid,))
+        con.execute("delete from withdrawals where user_id=%s", (uid,))
+        con.execute("delete from users where id=%s", (uid,))
+
 print()
 if FAIL:
     print(f"FAILED {len(FAIL)}: {FAIL}")

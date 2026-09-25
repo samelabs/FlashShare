@@ -1032,6 +1032,25 @@ check("G23 generic REST upload 无 tool/pricing 参数",
       "tool_id" not in _apiv1_src.split("async def v1_upload")[1].split("async def")[0]
       if "async def v1_upload" in _apiv1_src else True)
 
+# ── cleanup: fixtures this suite created, incl. the priced tool pair
+# (leaked platform_tools rows drift the browser gate's market page) ──
+try:
+    _cur.execute("delete from pricing where tool_id=%s", (_pf_key,))
+    _cur.execute("delete from platform_tools where tool_key=%s", (_pf_key,))
+    for _uname_fix in (_pf_owner_name, _pf_user_name):
+        _cur.execute("select id from users where username=%s", (_uname_fix,))
+        _row_fix = _cur.fetchone()
+        if _row_fix:
+            _uid_fix = int(_row_fix[0])
+            _cur.execute("delete from tool_calls where user_id=%s", (_uid_fix,))
+            _cur.execute("delete from ledger where user_id=%s", (_uid_fix,))
+            _cur.execute("delete from upload_usage where user_id=%s", (_uid_fix,))
+            _cur.execute("delete from ingress_requests where user_id=%s", (_uid_fix,))
+            _cur.execute("delete from users where id=%s", (_uid_fix,))
+    _con.commit()
+except Exception:
+    pass
+
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
 _sys.exit(1 if FAIL else 0)

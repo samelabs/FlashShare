@@ -9,8 +9,11 @@
   <meta property="og:locale" content="{{ locale }}">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="/static/images/favicon.ico?v=2" sizes="any">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM guide">
+  <link rel="service" type="application/json" href="/mcp" title="MCP endpoint">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png?v=2">
   <link rel="manifest" href="/site.webmanifest">
+  {% block head %}{% endblock %}
   <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
   <meta name="description" content="{% block desc %}{{ texts.subtitle }}{% endblock %}">
   {% block meta %}{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block head %}<link rel="enclosure" href="{{ dl_url }}"{% if content_type %} type="{{ content_type }}"{% endif %}>{% endblock %}
 
 {% block title %}{{ file_name|e }} — 518.PLUS{% endblock %}
 {% block desc %}{{ file_name|e }} · {{ texts.card_expires }}: {{ card_date }}{% endblock %}

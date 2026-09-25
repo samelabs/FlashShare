@@ -57,9 +57,11 @@ document.getElementById('createToken')?.addEventListener('click', async () => {
   if (!d.ok) { alert(_errm(d.error)); return; }
   document.getElementById('newTokenNameEcho').textContent = name || '';
   _newTokenValue.textContent = d.token.token;
-  _newTokenBox.hidden = false;
   document.getElementById('newTokenName').value = '';
-  loadTokens();
+  // refresh the list BEFORE revealing the token box, so a visible box
+  // always implies the refreshed list (first-token race)
+  await loadTokens();
+  _newTokenBox.hidden = false;
 });
 
 const _copyBtn = document.getElementById('copyNewToken');

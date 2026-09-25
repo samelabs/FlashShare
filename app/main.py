@@ -197,6 +197,13 @@ async def auth_middleware(request: Request, call_next):
     else:
         response = await call_next(request)
 
+    # Agent indexing boundary (B7): /f/ share surfaces stay fetchable
+    # (robots.txt no longer blocks them) but never indexable; /mcp is a
+    # POST-only machine surface — both carry the noindex header on every
+    # response.
+    if path.startswith("/f/") or path == "/mcp" or path.startswith("/mcp/"):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+
     # change_password/set_password revoke every old session/token atomically.
     # A successful browser password POST gets exactly one fresh current session.
     if (request.method == "POST" and path == "/account/password"
@@ -253,7 +260,14 @@ async def not_found_handler(request: Request, exc: Exception):
     path = request.url.path
     if path.startswith("/api/"):
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
-    return RedirectResponse("/", status_code=302)
+    # real 404 for humans and agents: a rendered page carrying the way
+    # out (home / tools / MCP setup / the LLM plain-text guide)
+    from i18n import server_text
+    from app.web_ctx import ctx_base
+    ctx = ctx_base(request)
+    ctx["shell_class"] = ""
+    return templates.TemplateResponse(request, "not_found.html", ctx,
+                                      status_code=404)
 
 
 _housekeeping_task = None
