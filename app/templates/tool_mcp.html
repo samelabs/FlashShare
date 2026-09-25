@@ -16,12 +16,21 @@
   </div>
 
   <div class="panel">
+    <div class="t">Claude Code</div>
+    <div class="d">
+      <span data-i18n="agents_token_note">{{ texts.agents_token_note|e }}</span>
+      <a href="/agents"><span data-i18n="agents_qs">{{ texts.agents_qs }}</span> →</a>
+    </div>
+    <pre class="code-block" id="mcpAdd">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;token&gt;"</pre>
+    <button type="button" class="btn-secondary" id="copyMcpAdd" data-copy-target="mcpAdd"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
+  </div>
+
+  <div class="panel">
     <div class="t">MCP tools/call</div>
     <div class="d">
       <span data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</span>
-      <a href="/agents">MCP Quick start →</a>
     </div>
-    <pre class="code-block">{
+    <pre class="code-block" id="mcpCall">{
   "method": "tools/call",
   "params": {
     "name": "{{ mcp_name|e }}",
@@ -33,8 +42,12 @@
     }
   }
 }</pre>
-    <button type="button" class="btn-secondary" id="copyMcp"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
+    <button type="button" class="btn-secondary" id="copyMcp" data-copy-target="mcpCall"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
   </div>
 
 </section>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/agents.js?v={{ pages_version }}"></script>
 {% endblock %}

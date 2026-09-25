@@ -93,8 +93,8 @@ const PAGES = [
   { path: "/", name: "home", anonOk: true, need: ["#uploadForm", "#dropZone", "#submitBtn", ".tool-tab"] },
   { path: "/tools", name: "tools", anonOk: true, need: [] },
   { path: "/tool/compress", name: "tool-compress", anonOk: true, need: ["#toolFile", "#toolRunForm"] },
-  { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp"] },
-  { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#mcpConf"] },
+  { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
+  { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#mcpConf", "#cfgClaudeCode", "#cfgVscode", "#cfgClaudeDesktop"], copy: ["#copyMcp", "#copyConf"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
   { path: "/auth/register", name: "auth-register", anonOk: true, need: ["#regUsername"] },
   { path: "/account/credits", name: "account-credits", need: [] },
@@ -159,6 +159,13 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
   check(`${ctx} ${spec.name}: HTTP ${spec.anonOk || sessionCookie ? "200" : "auth"}`, resp && (resp.status() === 200 || resp.status() === 302), resp && resp.status());
   for (const sel of spec.need) {
     check(`${ctx} ${spec.name}: has ${sel}`, await page.$(sel) !== null);
+  }
+  // copy buttons are wired (page JS handler gives the copied state)
+  for (const sel of spec.copy || []) {
+    const btn = await page.$(sel);
+    if (btn) await btn.click();
+    const copied = btn ? await page.$eval(sel, (b) => b.classList.contains("copied")) : false;
+    check(`${ctx} ${spec.name}: ${sel} copy handler`, copied);
   }
   // pageerror must be zero (console.error filtered for expected network noise)
   const errs = consoleErrors.filter((e) => !/net::|Failed to load resource|ERR_/i.test(e));

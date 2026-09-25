@@ -30,6 +30,12 @@ BASE_URL = os.environ.get("FLASHSHARE_BASE_URL", "http://localhost:53843").rstri
 SOCIAL_IMAGE_PATH = "/static/images/og-image.png?v=2"
 SOCIAL_IMAGE_URL = f"{BASE_URL}{SOCIAL_IMAGE_PATH}"
 
+# Extra browser origins admitted on /mcp besides the BASE_URL origin
+# (comma-separated, e.g. "https://app.example.com,http://localhost:6274").
+MCP_ALLOWED_ORIGINS = tuple(
+    o.strip() for o in os.environ.get("FLASHSHARE_MCP_ALLOWED_ORIGINS", "").split(",")
+    if o.strip())
+
 X_CLIENT_ID = os.environ.get("FLASHSHARE_X_CLIENT_ID", "")
 X_CLIENT_SECRET = os.environ.get("FLASHSHARE_X_CLIENT_SECRET", "")
 

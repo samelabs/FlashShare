@@ -139,7 +139,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "Config client",
     "agents_hdr_name": "Nom du header",
     "agents_hdr_value": "Valeur du header",
-    "agents_your_token": "VOTRE_JETON",
     "acct_nav": "Compte",
     "acct_profile": "Profil",
     "acct_security": "Sécurité",
@@ -447,6 +446,9 @@ SERVER_I18N = {
         "err_user_suspended": "Ce compte est suspendu",
         "err_unexpected": "Une erreur s'est produite, veuillez réessayer",
         "err_too_many_attempts": "Trop de tentatives, veuillez réessayer plus tard",
+# B4 mcp closure
+        "agents_token_prefix": "(commence par fsk_)",
+        "agents_token_note": "Remplacez <token> dans les extraits ci-dessous par votre jeton.",
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -573,7 +575,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "클라이언트 설정",
     "agents_hdr_name": "헤더 이름",
     "agents_hdr_value": "헤더 값",
-    "agents_your_token": "내 토큰",
     "acct_nav": "계정",
     "acct_profile": "프로필",
     "acct_security": "보안",
@@ -882,6 +883,9 @@ SERVER_I18N = {
         "err_user_suspended": "정지된 계정입니다",
         "err_unexpected": "문제가 발생했습니다. 다시 시도해 주세요",
         "err_too_many_attempts": "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
+# B4 mcp closure
+        "agents_token_prefix": "(fsk_로 시작)",
+        "agents_token_note": "아래 설정의 <token>을 내 토큰으로 바꾸세요.",
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1008,7 +1012,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "Конфиг клиента",
     "agents_hdr_name": "Имя заголовка",
     "agents_hdr_value": "Значение заголовка",
-    "agents_your_token": "ВАШ_ТОКЕН",
     "acct_nav": "Аккаунт",
     "acct_profile": "Профиль",
     "acct_security": "Безопасность",
@@ -1316,6 +1319,9 @@ SERVER_I18N = {
         "err_user_suspended": "Аккаунт заблокирован",
         "err_unexpected": "Что-то пошло не так, попробуйте снова",
         "err_too_many_attempts": "Слишком много попыток, попробуйте позже",
+# B4 mcp closure
+        "agents_token_prefix": "(начинается с fsk_)",
+        "agents_token_note": "Замените <token> в примерах ниже на свой токен.",
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -1442,7 +1448,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "إعداد العميل",
     "agents_hdr_name": "اسم الترويسة",
     "agents_hdr_value": "قيمة الترويسة",
-    "agents_your_token": "رمزك",
     "acct_nav": "الحساب",
     "acct_profile": "الملف الشخصي",
     "acct_security": "الأمان",
@@ -1750,6 +1755,9 @@ SERVER_I18N = {
         "err_user_suspended": "هذا الحساب موقوف",
         "err_unexpected": "حدث خطأ ما، حاول مرة أخرى",
         "err_too_many_attempts": "محاولات كثيرة جداً، حاول لاحقاً",
+# B4 mcp closure
+        "agents_token_prefix": "(يبدأ بـ fsk_)",
+        "agents_token_note": "استبدل <token> في المقتطفات أدناه برمزك.",
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -1876,7 +1884,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "Client-Konfig",
     "agents_hdr_name": "Header-Name",
     "agents_hdr_value": "Header-Wert",
-    "agents_your_token": "DEIN_TOKEN",
     "acct_nav": "Konto",
     "acct_profile": "Profil",
     "acct_security": "Sicherheit",
@@ -2185,6 +2192,9 @@ SERVER_I18N = {
         "err_user_suspended": "Dieses Konto ist gesperrt",
         "err_unexpected": "Etwas ist schiefgelaufen, bitte erneut versuchen",
         "err_too_many_attempts": "Zu viele Versuche, bitte später erneut versuchen",
+# B4 mcp closure
+        "agents_token_prefix": "(beginnt mit fsk_)",
+        "agents_token_note": "Ersetze <token> in den Snippets unten durch dein Token.",
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -2311,7 +2321,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "Config do cliente",
     "agents_hdr_name": "Nome do header",
     "agents_hdr_value": "Valor do header",
-    "agents_your_token": "SEU_TOKEN",
     "acct_nav": "Conta",
     "acct_profile": "Perfil",
     "acct_security": "Segurança",
@@ -2619,6 +2628,9 @@ SERVER_I18N = {
         "err_user_suspended": "Esta conta está suspensa",
         "err_unexpected": "Algo deu errado, tente novamente",
         "err_too_many_attempts": "Muitas tentativas, tente novamente mais tarde",
+# B4 mcp closure
+        "agents_token_prefix": "(começa com fsk_)",
+        "agents_token_note": "Substitua <token> nos trechos abaixo pelo seu token.",
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -2745,7 +2757,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "クライアント設定",
     "agents_hdr_name": "ヘッダー名",
     "agents_hdr_value": "ヘッダー値",
-    "agents_your_token": "あなたのトークン",
     "acct_nav": "アカウント",
     "acct_profile": "プロフィール",
     "acct_security": "セキュリティ",
@@ -3053,6 +3064,9 @@ SERVER_I18N = {
         "err_user_suspended": "このアカウントは停止されています",
         "err_unexpected": "問題が発生しました。もう一度お試しください",
         "err_too_many_attempts": "試行回数が多すぎます。しばらくしてから再度お試しください",
+# B4 mcp closure
+        "agents_token_prefix": "（fsk_ で始まる）",
+        "agents_token_note": "以下の設定の <token> をあなたのトークンに置き換えてください。",
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -3179,7 +3193,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "客户端配置",
     "agents_hdr_name": "Header 名称",
     "agents_hdr_value": "Header 值",
-    "agents_your_token": "你的令牌",
     "acct_nav": "账户",
     "acct_profile": "资料",
     "acct_security": "安全",
@@ -3488,6 +3501,9 @@ SERVER_I18N = {
         "err_user_suspended": "该账号已被停用",
         "err_unexpected": "操作失败，请重试",
         "err_too_many_attempts": "尝试次数过多，请稍后再试",
+# B4 mcp closure
+        "agents_token_prefix": "（fsk_ 开头）",
+        "agents_token_note": "将下方配置中的 <token> 替换为你的令牌。",
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -3614,7 +3630,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "Config del cliente",
     "agents_hdr_name": "Nombre del header",
     "agents_hdr_value": "Valor del header",
-    "agents_your_token": "TU_TOKEN",
     "acct_nav": "Cuenta",
     "acct_profile": "Perfil",
     "acct_security": "Seguridad",
@@ -3922,6 +3937,9 @@ SERVER_I18N = {
         "err_user_suspended": "Esta cuenta está suspendida",
         "err_unexpected": "Algo salió mal, inténtalo de nuevo",
         "err_too_many_attempts": "Demasiados intentos, inténtalo más tarde",
+# B4 mcp closure
+        "agents_token_prefix": "(empieza por fsk_)",
+        "agents_token_note": "Sustituye <token> en los fragmentos de abajo por tu token.",
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -4048,7 +4066,6 @@ SERVER_I18N = {
     "agents_mcp_conf": "Client config",
     "agents_hdr_name": "Header name",
     "agents_hdr_value": "Header value",
-    "agents_your_token": "YOUR_TOKEN",
     "acct_nav": "Account",
     "acct_profile": "Profile",
     "acct_security": "Security",
@@ -4357,6 +4374,9 @@ SERVER_I18N = {
         "err_user_suspended": "This account is suspended",
         "err_unexpected": "Something went wrong, please try again",
         "err_too_many_attempts": "Too many attempts, please try again later",
+# B4 mcp closure
+        "agents_token_prefix": "(starts with fsk_)",
+        "agents_token_note": "Replace <token> in the snippets below with your token.",
 },
 }
 

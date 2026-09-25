@@ -43,30 +43,33 @@ def client_ip(request) -> str:
                                request.client.host if request.client else "").strip()
 
 
-async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, pool=None):
-    """返回 (payload_dict | None, error_body | None, status | None)。"""
-    # Stage C: 单点 parser — root 非 dict / 旧 shape / 未知字段 / 非法
-    # delivery 全部在此受控 422, 不 500。
-    try:
-        inv = parse_tool_invocation(raw)
-    except InvocationError:
-        return None, {"ok": False, "error": "invalid_request"}, 422
+def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
+    """Pre-gate validation of one canonical invocation's non-source parts:
+    delivery entitlement → tool resolve → stored contract → params decl.
 
+    Single authority for dispatch_execute AND the MCP adapter (which runs
+    it BEFORE any source ingress, so a request this rejects never uploads
+    or claims quota). Pure: no claim, no charge, no network.
+
+    Returns (tool, declared_params | None, None, None) on success, where
+    declared_params is the enforce_params_decl result (None = the tool
+    declares no params, params pass through); or (None, None, error_body,
+    status) on denial."""
     # delivery entitlement authorization — 在 protocol validity 之后、
     # tool resolve/params/gate 之前。entitlement denial 是 403 语义,
     # 与 protocol invalid (422) 分开, 不合并回 validate_delivery。
     from governance.entitlements import check_delivery
-    denial = check_delivery(user["id"], inv.delivery)
+    denial = check_delivery(user["id"], delivery)
     if denial:
         body = {"ok": False}
         body.update(denial)
-        return None, body, 403
+        return None, None, body, 403
 
-    tool, terr = resolve_tool(inv.tool_id, user["id"])
+    tool, terr = resolve_tool(tool_id, user["id"])
     if terr:
         if terr == "disabled":
-            return None, {"ok": False, "error": "tool_disabled"}, 403
-        return None, {"ok": False, "error": "tool_not_found"}, 404
+            return None, None, {"ok": False, "error": "tool_disabled"}, 403
+        return None, None, {"ok": False, "error": "tool_not_found"}, 404
     tool["id"] = tool["tool_key"]
     tool["type"] = tool["tool_type"]
 
@@ -83,7 +86,7 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         try:
             parse_stored_accept(tool["accept_json"])
         except (KeyError, TypeError, ValueError):
-            return None, {"ok": False, "error": "tool_unavailable"}, 503
+            return None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
     # Stored execution class: exactly the canonical supply vocabulary
     # (local | http). Anything else — including the retired 'mcp' notion —
@@ -92,9 +95,7 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     # local fallback. Mirrors the startup catalog invariant.
     from governance.tool_supply import _EXECUTIONS
     if tool.get("execution") not in _EXECUTIONS:
-        return None, {"ok": False, "error": "tool_unavailable"}, 503
-
-    params = inv.params
+        return None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
     # canonical params 是唯一参数事实源 — default 由 enforce_params_decl
     # 注入。delivery 属 invocation 边界字段, 永不出现在 params。
@@ -109,9 +110,62 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:
-            declared = enforce_params_decl(decl, params)
+            return tool, enforce_params_decl(decl, params), None, None
         except ParamsValueError as exc:
-            return None, {"ok": False, "error": str(exc)}, 422
+            return None, None, {"ok": False, "error": str(exc)}, 422
+    return tool, None, None, None
+
+
+def source_count_error(tool: dict, n: int) -> str | None:
+    """multi=false tools take exactly one source file."""
+    if not bool(tool.get("multi")) and n > 1:
+        return "err_too_many_files"
+    return None
+
+
+def source_accept_error(tool: dict, filenames: list) -> str | None:
+    """格式边界闸门 (声明即契约, 执行即强制) — single check for the
+    execution boundary and the MCP pre-ingress preflight.
+
+    声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
+    accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
+    4C-2: canonical AcceptToken — declared tokens (canonical ext)
+    → extensions_for_accept 精确扩展名集合, 上传 ext 必须 ∈ 该集合。
+    preflight() already validated accept_json: here it can only be SQL
+    NULL=any or a valid canonical token list (single stored parser)."""
+    declared = tool.get("accept")
+    if declared is None and tool.get("accept_json") is not None:
+        from governance.formats import parse_stored_accept as _psa
+        declared = _psa(tool["accept_json"]) or []
+        declared = sorted(declared)
+    if declared:
+        from governance.formats import extensions_for_accept as _efa
+        allowed_exts = _efa(declared)
+        if allowed_exts:
+            import os as _os
+            for fn in filenames:
+                ext = _os.path.splitext(str(fn or "").lower())[1]
+                if ext not in allowed_exts:
+                    return "err_format_mismatch"
+    return None
+
+
+async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, pool=None):
+    """返回 (payload_dict | None, error_body | None, status | None)。"""
+    # Stage C: 单点 parser — root 非 dict / 旧 shape / 未知字段 / 非法
+    # delivery 全部在此受控 422, 不 500。
+    try:
+        inv = parse_tool_invocation(raw)
+    except InvocationError:
+        return None, {"ok": False, "error": "invalid_request"}, 422
+
+    tool, declared, err_body, err_status = preflight(
+        user, inv.tool_id, inv.delivery, inv.params)
+    if err_body is not None:
+        return None, err_body, err_status
+
+    params = inv.params
+    if declared is not None:
         params.clear()
         params.update(declared)
 
@@ -121,9 +175,9 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         # ── source resolve: 只认 source.files[] ──
         # multi=false: len(files) 必须 == 1; multi=true: parser 已保证 1..20。
         uploads = []
-        multi = bool(tool.get("multi"))
-        if not multi and len(inv.files) > 1:
-            raise ExecutionError("err_too_many_files")
+        count_err = source_count_error(tool, len(inv.files))
+        if count_err:
+            raise ExecutionError(count_err)
         for f in inv.files:
             if not PUBLIC_ID_RE.match(f.public_id):
                 raise ExecutionError("invalid_id")
@@ -132,28 +186,11 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
                 raise ExecutionError(rerr or "not_found")
             uploads.append(upload)
 
-        # ── 格式边界闸门 (声明即契约, 执行即强制) ──
-        # 声明来源: local 工具 resolve() 附 handler.accept; 用户工具在
-        # accept_json (行 dict 无 accept 键)。None=全部, 不设闸。
-        # 单点收口: web/token/MCP 三面共用本函数, 无旁路。
-        # 4C-2: canonical AcceptToken — declared tokens (canonical ext)
-        # → extensions_for_accept 精确扩展名集合, 上传 ext 必须 ∈ 该集合。
-        # validated above (pre-gate): here it can only be SQL NULL=any
-        # or a valid canonical token list (single stored parser).
-        declared = tool.get("accept")
-        if declared is None and tool.get("accept_json") is not None:
-            from governance.formats import parse_stored_accept as _psa
-            declared = _psa(tool["accept_json"]) or []
-            declared = sorted(declared)
-        if declared:
-            from governance.formats import extensions_for_accept as _efa
-            allowed_exts = _efa(declared)
-            if allowed_exts:
-                import os as _os
-                for u in uploads:
-                    ext = _os.path.splitext(str(u.get("file_name", "")).lower())[1]
-                    if ext not in allowed_exts:
-                        raise ExecutionError("err_format_mismatch")
+        # 格式边界闸门 — 单点收口: web/token/MCP 三面共用, 无旁路。
+        accept_err = source_accept_error(
+            tool, [u.get("file_name", "") for u in uploads])
+        if accept_err:
+            raise ExecutionError(accept_err)
 
         from .orchestrator import execute_local, execute_remote
         from tools import ToolError as _TE

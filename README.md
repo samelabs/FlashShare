@@ -49,9 +49,23 @@ FLASHSHARE_BASE_URL=https://your-domain
 
 ### MCP（智能体 / 程序接入的唯一正式通道）
 
-端点 `https://your-domain/mcp`（Streamable HTTP），Bearer Token 认证。
-在任意 MCP 客户端添加服务端 URL + Token 即可调用全部工具：`tools/list`
-分页发现、`catalog_search` 关键字检索、`tools/call` canonical 调用。
+端点 `https://your-domain/mcp`（Streamable HTTP，无状态 POST→JSON），
+Bearer Token 认证。在任意 MCP 客户端添加服务端 URL + Token 即可调用全部
+工具：`tools/list` 分页发现、`catalog_search` 关键字检索、`tools/call`
+canonical 调用。支持协议版本 `2025-11-25` / `2025-06-18` / `2025-03-26` /
+`2024-11-05`（initialize 按参数协商；`MCP-Protocol-Version` 请求头缺失按
+`2025-03-26` 处理，`2025-06-18` 起不再接受 JSON-RPC 批量请求）。
+
+`tools/call` 的每个 `files[]` 项三选一：
+
+- 内嵌：`{"filename": "a.png", "b64": "<base64>"}`；
+- URL：`{"url": "https://…/a.png"}` — 服务端经 SSRF 守卫（仅 https、仅公网
+  IP、重定向逐跳复检）拉取，大小上限与内嵌一致；
+- 引用：`{"public_id": "…", "source_token": "…"}` — 复用调用者自己的已上传
+  文件，不再占用上传额度。
+
+三种形态走同一 ingress / 额度 / `client_ref` 幂等路径（同 `client_ref`、
+不同输入 → 幂等冲突）。
 
 ## 用户工具声明协议
 
