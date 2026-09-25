@@ -53,10 +53,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 function toolLoading() { return '<div class="tool-loading">' + window.t("loading") + '</div>'; }
-const _errMap = window.__I18N__ ? (window.__I18N__[window.__LANG] || {}) : {};
 function toolError(msg) {
-  if (msg && _errMap[msg]) msg = _errMap[msg];
-  msg = msg || _errMap.tool_failed || "error";
+  // unified error boundary (common.js _errm): known code → localized
+  // message, anything else (incl. exception text) → generic failure
+  msg = _errm(msg);
   msg = String(msg).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   return '<p class="tool-error">' + msg + '</p>';
 }
@@ -69,7 +69,8 @@ if (deleteBtn) deleteBtn.addEventListener("click", () => openDelete(pid));
 const zipPreviewBtn = document.getElementById("zipPreviewBtn");
 if (zipPreviewBtn) {
   const s = document.createElement("script");
-  s.src = "/static/zip-preview.js";
+  // versioned like every other static script (same template stamp)
+  s.src = "/static/zip-preview.js?v=" + encodeURIComponent(__PAGE__.pagesVersion || "");
   s.onload = () => window.zipPreview && window.zipPreview.wireRemotePreview(zipPreviewBtn, window.__ZIP_PID__);
   document.head.appendChild(s);
 }

@@ -5,7 +5,7 @@
 
 {% block meta %}
 <meta name="application-name" content="{{ texts.seo_title }}">
-<meta name="keywords" content="file sharing, temporary links, QR code, file upload, image compression, screenshot beautify, 临时文件分享">
+<meta name="keywords" content="{{ texts.seo_keywords }}">
 <meta name="robots" content="index, follow">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="{{ texts.seo_title }}">
@@ -40,14 +40,9 @@
     <h1 class="hero-title" data-i18n="hero_title">{{ texts.hero_title }}</h1>
     <p class="hero-sub" data-i18n="hero_sub">{{ texts.hero_sub }}</p>
     <div class="hero-callouts">
-    <a class="open-callout" href="/account/tools">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/><path d="M9.5 17.5h5"/></svg>
-      <span data-i18n="open_callout">{{ texts.open_callout }}</span>
-      <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-    </a>
-    <a class="open-callout open-callout-ghost" href="/tools">
+    <a class="open-callout" href="/tools">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/><path d="M9 21v-5h6v5"/></svg>
-      <span data-i18n="market_title">{{ texts.market_title }}</span>
+      <span data-i18n="home_use_cta">{{ texts.home_use_cta }}</span>
       <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
     </a>
     <a class="open-callout open-callout-ghost" href="/agents">

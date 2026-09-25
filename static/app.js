@@ -43,7 +43,7 @@ window.preflightToolAffordability = async function (tool) {
     console.error("[518] DOM missing:", missing.join(", "), "— stale JS? hard-refresh (Cmd/Ctrl+Shift+R)");
     const b = document.createElement("div");
     b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#f4212e;color:#fff;padding:10px 16px;font:600 14px system-ui;text-align:center";
-    b.textContent = "页面资源版本不一致 — 请强制刷新 (Ctrl/Cmd+Shift+R)";
+    b.textContent = window.t ? window.t("stale_banner") : "Page resources are out of date — please hard-refresh (Ctrl/Cmd+Shift+R)";
     document.body && document.body.appendChild(b);
     throw new Error("[518] abort: DOM missing " + missing.join(", "));
   }

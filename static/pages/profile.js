@@ -13,6 +13,6 @@ document.getElementById('unbindX')?.addEventListener('click', async () => {
   if (r.ok) location.reload();
   else {
     const d = await r.json().catch(() => ({}));
-    alert(window._errm ? window._errm(d.error || 'failed') : (d.error || 'error'));
+    alert(_errm(d.error));
   }
 });

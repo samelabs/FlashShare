@@ -5,7 +5,7 @@ const _form = document.getElementById('registerForm');
 function checkPw() {
   if (_pwc.value && _pw.value !== _pwc.value) {
     _hint.hidden = false;
-    _pwc.setCustomValidity('x');
+    _pwc.setCustomValidity(window._msg ? _msg('err_password_mismatch') : 'x');
   } else {
     _hint.hidden = true;
     _pwc.setCustomValidity('');

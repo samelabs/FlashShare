@@ -99,7 +99,7 @@
 
 ## 项目事实（代码机制）
 
-- **站名** 518.PLUS（全部 SEO/meta/title/manifest），hero slogan = Flash Share。
+- **站名** 518.PLUS（全部 SEO/meta/title/manifest），首页 hero = 品类/价值陈述（人 + AI Agent 的工具平台，网页主行动 + MCP 次行动，见 issue #43）。
 - **栈**：FastAPI + Jinja2 + Uvicorn（单 worker）+ Pillow + PostgreSQL + Gokapi + Nginx + Cloudflare。
 - **数据库**：PostgreSQL 是唯一应用数据库（`DATABASE_URL` 环境变量，psycopg）。
 - **服务**：systemd unit `flashshare-api`；`KillMode=control-group`、`TimeoutStopSec=15`。

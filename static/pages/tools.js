@@ -88,14 +88,14 @@ async function loadTools() {
     const meta = document.createElement('div');
     meta.className = 'usertools-meta';
     meta.textContent = (t.calls ? t.calls.ok : 0) + ' ' + _msg('mytools_calls')
-      + ' · ' + (t.enabled ? _msg('mytools_enable') : _msg('mytools_disable'));
+      + ' · ' + (t.enabled ? _msg('mytools_enabled') : _msg('mytools_disabled'));
 
     const actions = document.createElement('div');
     actions.className = 'tool-panel-actions';
 
     const visBtn = document.createElement('button');
     visBtn.type = 'button'; visBtn.className = 'btn-secondary';
-    visBtn.textContent = t.visibility === 'public' ? _msg('mytools_v_unlisted') : _msg('mytools_publish');
+    visBtn.textContent = t.visibility === 'public' ? _msg('mytools_unpublish_btn') : _msg('mytools_publish_btn');
     visBtn.addEventListener('click', async () => {
       visBtn.disabled = true;
       const next = t.visibility === 'public' ? 'unlisted' : 'public';
@@ -106,13 +106,12 @@ async function loadTools() {
       const d2 = await r2.json();
       visBtn.disabled = false;
       if (d2.ok) loadTools();
-      else if (d2.error === 'self_test_required') alert(_msg('mytools_selftest'));
       else alert(_errm(d2.error));
     });
     const stBtn = document.createElement('button');
     stBtn.type = 'button'; stBtn.className = 'btn-secondary';
-    stBtn.textContent = _msg('mytools_run_selftest');
-    // 4A-fix4: 导航到真实工具页自测 — 不再走 upload→selftest 执行链
+    stBtn.textContent = _msg('mytools_test_btn');
+    // opens the real tool page as a user sees it (manual test)
     stBtn.addEventListener('click', () => {
       location.href = '/tool/' + t.tool_key;
     });
@@ -146,5 +145,20 @@ async function loadTools() {
   const none = document.getElementById('toolNone');
   if (none) none.classList.toggle('hidden', !!(d.tools && d.tools.length));
 }
+
+// ── publish success feedback: ?created=<tool_id> after creation ──
+(function () {
+  const created = new URLSearchParams(window.location.search).get('created');
+  if (!created) return;
+  const note = document.createElement('p');
+  note.className = 'profile-note success';
+  note.setAttribute('role', 'status');
+  note.textContent = _msg('mytools_created_ok').replace('{id}', created);
+  const list = document.getElementById('toolList');
+  (list && list.parentNode || document.body).insertBefore(note, list);
+  const u = new URL(window.location.href);
+  u.searchParams.delete('created');
+  history.replaceState(null, '', u.pathname + (u.search ? '?' + u.search : ''));
+})();
 
 loadTools();

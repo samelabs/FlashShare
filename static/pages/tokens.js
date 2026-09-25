@@ -38,7 +38,7 @@ async function loadTokens() {
         if (!ok) return;
         const rr = await fetch(`/api/tokens/${t.id}/revoke`, { method: 'POST' });
         if (rr.ok) loadTokens();
-        else { const dd = await rr.json(); alert(dd.error || 'error'); }
+        else { const dd = await rr.json(); alert(_errm(dd.error)); }
       });
       row.appendChild(btn);
     }
@@ -54,7 +54,7 @@ document.getElementById('createToken')?.addEventListener('click', async () => {
     body: JSON.stringify({ name })
   });
   const d = await r.json();
-  if (!d.ok) { alert(d.error || 'error'); return; }
+  if (!d.ok) { alert(_errm(d.error)); return; }
   document.getElementById('newTokenNameEcho').textContent = name || '';
   _newTokenValue.textContent = d.token.token;
   _newTokenBox.hidden = false;
