@@ -59,13 +59,7 @@
 </section>
 {% endblock %}
 
-{% block script %}<script>
-const _pw = document.getElementById('newPw');
-const _pwc = document.getElementById('newPwConfirm');
-const _hint = document.getElementById('pwMismatch');
-function checkPw() {
-  if (_pwc.value && _pw.value !== _pwc.value) { _hint.hidden = false; _pwc.setCustomValidity('x'); }
-  else { _hint.hidden = true; _pwc.setCustomValidity(''); }
-}
-if (_pw && _pwc) { _pw.addEventListener('input', checkPw); _pwc.addEventListener('input', checkPw); }
-</script>{% endblock %}
+{% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/pages/security.js?v={{ pages_version }}"></script>
+{% endblock %}

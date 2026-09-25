@@ -1134,5 +1134,4 @@ a.toolpage-handle:hover { color: var(--accent); }
 .market-none { text-align: center; color: var(--muted); font-size: 14px; padding: 22px 0; }
 
 /* ── 收益USD换算 + 提现浮层单列 ── */
-.earn-usd { display: block; font-style: normal; font-size: var(--text-xs); color: var(--muted); margin-top: -4px; }
 .wd-modal-form { grid-template-columns: 1fr !important; }

@@ -24,15 +24,11 @@
       }
       btn.disabled = false;
       btn.textContent = orig;
-      var why = (res.data && res.data.error) || "error";
-      // 包未就绪与计划未就绪分键: 充值包错误不得显示会员文案
-      if (why === "package_not_ready") {
-        alert(window.t ? window.t("topup_soon") : "Not available yet");
-      } else if (why === "plan_not_ready") {
-        alert(window.t ? window.t("sub_soon") : "Not available yet");
-      } else {
-        alert(why);
-      }
+      // unified error boundary (common.js _errm): every checkout error
+      // code maps to a localized message; unknown codes get the generic
+      // failure text — a raw code never reaches the user
+      var why = (res.data && res.data.error) || "";
+      alert(window._errm(why));
     }).catch(function () {
       btn.disabled = false;
       btn.textContent = orig;
@@ -79,10 +75,7 @@
           }
           up.disabled = false;
           up.textContent = uorig;
-          var uwhy = d && d.error;
-          alert(uwhy === "plan_not_ready"
-            ? (window.t ? window.t("sub_soon") : "Not available yet")
-            : (uwhy || "error"));
+          alert(window._errm(d && d.error));
         }).catch(function () {
           up.disabled = false;
           up.textContent = uorig;
@@ -107,7 +100,7 @@
           }
           down.disabled = false;
           down.textContent = orig;
-          alert((d && d.error) || "error");
+          alert(window._errm(d && d.error));
         }).catch(function () {
           down.disabled = false;
           down.textContent = orig;

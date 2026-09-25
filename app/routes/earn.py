@@ -10,6 +10,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "core"))
 
+import json
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -56,12 +58,35 @@ async def my_earnings(request: Request):
     s_raw = earnings.earnings_summary(user["id"])
     summary = {k + "_usd": millis_to_usd_str(s_raw[k])
                for k in ("earned", "available", "pending", "withdrawn")}
+    # display names: the stored LocalizedText label of each tool row
+    # (presentation only; money facts above stay untouched)
+    from repo.catalog import by_tool_key
+    _labels = {}
+    with db() as con:
+        for t in earnings.per_tool_revenue(user["id"]):
+            _row = by_tool_key(con, t["tool_key"]) if t["tool_key"] else None
+            try:
+                _labels[t["tool_key"]] = json.loads(
+                    _row["label_json"]) if _row and _row["label_json"] else None
+            except ValueError:
+                _labels[t["tool_key"]] = None
     tools_out = [{"tool": t["tool"], "tool_key": t["tool_key"],
+                  "label": _labels.get(t["tool_key"]),
                   "earned_usd": millis_to_usd_str(t["earned"]),
                   "payouts": t["payouts"]}
                  for t in earnings.per_tool_revenue(user["id"])]  # ≤100 tools
     rev_rows, rev_total = earnings.revenue_lines(user["id"], limit=50, offset=(rev_pg - 1) * 50)
-    lines_out = [{"tool": ln["tool"], "call_id": ln["call_id"],
+    _rl_keys = sorted({ln["tool"] for ln in rev_rows})
+    with db() as con:
+        for _tk in _rl_keys:
+            _row = by_tool_key(con, _tk)
+            try:
+                _labels[_tk] = json.loads(
+                    _row["label_json"]) if _row and _row["label_json"] else None
+            except ValueError:
+                _labels[_tk] = None
+    lines_out = [{"tool": ln["tool"], "label": _labels.get(ln["tool"]),
+                  "call_id": ln["call_id"],
                   "amount_usd": millis_to_usd_str(ln["delta"]), "ts": ln["ts"]}
                  for ln in rev_rows]
     wd_rows = earnings.list_withdrawals(user["id"], limit=20, offset=(wd_pg - 1) * 20)

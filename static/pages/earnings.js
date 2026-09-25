@@ -27,9 +27,6 @@ async function loadEarnings() {
   document.getElementById('eAvail').textContent = s.available_usd;
   document.getElementById('ePending').textContent = s.pending_usd;
   document.getElementById('eWithdrawn').textContent = s.withdrawn_usd;
-  ['eTotalUsd', 'eAvailUsd', 'ePendingUsd', 'eWithdrawnUsd'].forEach(id => {
-    const n = document.getElementById(id); if (n) n.textContent = '';
-  });
 
   // per-tool revenue breakdown
   const bt = document.getElementById('byToolList');
@@ -41,7 +38,8 @@ async function loadEarnings() {
       const row = document.createElement('div');
       row.className = 'wd-row';
       row.innerHTML = '<span class="wd-tool"></span><strong class="wd-amt"></strong>';
-      row.querySelector('.wd-tool').textContent = t.tool;
+      row.querySelector('.wd-tool').textContent =
+        (window.resolveLabel && t.label && window.resolveLabel(t.label)) || t.tool;
       row.querySelector('.wd-amt').textContent = '+' + t.earned_usd;
       bt.appendChild(row);
     }
@@ -59,7 +57,8 @@ async function loadEarnings() {
       const row = document.createElement('div');
       row.className = 'wd-row';
       const t = document.createElement('span');
-      t.textContent = ln.tool + ' · ' + new Date(ln.ts * 1000).toLocaleString();
+      t.textContent = ((window.resolveLabel && ln.label && window.resolveLabel(ln.label)) || ln.tool)
+        + ' · ' + new Date(ln.ts * 1000).toLocaleString();
       const amt = document.createElement('strong');
       amt.className = 'wd-amt';
       amt.textContent = '+' + ln.amount_usd;
@@ -120,7 +119,11 @@ function refreshWithdrawModal() {
   if (!_curChannel) {
     // a request now is guaranteed payout_channel_required — do not send it
     btn.disabled = true;
-    hint.textContent = _msg('earn_no_channel') + ' → /account/profile';
+    hint.textContent = '';
+    const a = document.createElement('a');
+    a.href = '/account/profile';
+    a.textContent = _msg('earn_no_channel') + ' →';
+    hint.appendChild(a);
   } else {
     btn.disabled = false;
   }

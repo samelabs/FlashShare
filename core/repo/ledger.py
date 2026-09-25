@@ -104,6 +104,40 @@ def history_paged(con, user_id: int, kinds: Sequence[str],
     return [dict(r) for r in rows], total
 
 
+def history_tool_refs(con, ledger_ids: list) -> dict:
+    """Batched tool identity for credits-history rows — RELATION ONLY.
+
+    consume: ref_type='tool_call', ref_id → tool_calls.id → tool_id.
+    refund:  ref_type='ledger', ref_id → the consume row → same chain.
+    note is human/audit text and is never parsed here (same rule as
+    earn_by_tool). One query covers the whole page; returns
+    {ledger_id: {"tool_key": str, "label_json": str|None}} for rows whose
+    relation resolves to a stored tool row; rows without a resolvable
+    relation are absent from the map."""
+    if not ledger_ids:
+        return {}
+    rows = con.execute(
+        """
+        SELECT l.id AS ledger_id, pt.tool_key, pt.label_json
+        FROM ledger l
+        LEFT JOIN tool_calls tc
+          ON l.kind = 'consume' AND l.ref_type = 'tool_call'
+         AND l.ref_id = tc.id::text
+        LEFT JOIN ledger src
+          ON l.kind = 'refund' AND l.ref_type = 'ledger'
+         AND src.kind = 'consume' AND l.ref_id = src.id::text
+        LEFT JOIN tool_calls tc2
+          ON src.ref_type = 'tool_call' AND tc2.id::text = src.ref_id
+        LEFT JOIN platform_tools pt
+          ON pt.tool_key = COALESCE(tc.tool_id, tc2.tool_id)
+        WHERE l.id = ANY(%s)
+        """,
+        (list(ledger_ids),)).fetchall()
+    return {int(r["ledger_id"]): {"tool_key": r["tool_key"],
+                                  "label_json": r["label_json"]}
+            for r in rows if r["tool_key"]}
+
+
 # ── provider_earn 投影 (收益页) ──
 
 def earn_by_tool(con, user_id: int, limit: int = 100) -> list:

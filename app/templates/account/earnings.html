@@ -16,10 +16,10 @@
       </div>
     </div>
     <div class="earn-grid" id="earnGrid">
-      <div class="earn-cell"><strong id="eTotal">–</strong><em class="earn-usd" id="eTotalUsd"></em><span data-i18n="earn_total">{{ texts.earn_total }}</span></div>
-      <div class="earn-cell"><strong id="eAvail">–</strong><em class="earn-usd" id="eAvailUsd"></em><span data-i18n="earn_avail">{{ texts.earn_avail }}</span></div>
-      <div class="earn-cell"><strong id="ePending">–</strong><em class="earn-usd" id="ePendingUsd"></em><span data-i18n="earn_pending">{{ texts.earn_pending }}</span></div>
-      <div class="earn-cell"><strong id="eWithdrawn">–</strong><em class="earn-usd" id="eWithdrawnUsd"></em><span data-i18n="earn_withdrawn">{{ texts.earn_withdrawn }}</span></div>
+      <div class="earn-cell"><strong id="eTotal">–</strong><span data-i18n="earn_total">{{ texts.earn_total }}</span></div>
+      <div class="earn-cell"><strong id="eAvail">–</strong><span data-i18n="earn_avail">{{ texts.earn_avail }}</span></div>
+      <div class="earn-cell"><strong id="ePending">–</strong><span data-i18n="earn_pending">{{ texts.earn_pending }}</span></div>
+      <div class="earn-cell"><strong id="eWithdrawn">–</strong><span data-i18n="earn_withdrawn">{{ texts.earn_withdrawn }}</span></div>
     </div>
 
     <h3 data-i18n="earn_by_tool">{{ texts.earn_by_tool }}</h3>
@@ -50,10 +50,10 @@
     </div>
     <div class="usertools-submit-row">
       <button type="button" class="primary" id="submitWithdraw"><span data-i18n="earn_submit">{{ texts.earn_submit }}</span></button>
-      <p class="profile-note hidden success" id="wdFeedback" role="status"></p>
     </div>
   </div>
 </div>
+<p class="profile-note hidden success" id="wdFeedback" role="status" aria-live="polite"></p>
 {% endblock %}
 
 {% block script %}

@@ -36,7 +36,7 @@
       </label>
       <label>
         <span data-i18n="payout_channel">{{ texts.payout_channel }}</span>
-        <input type="text" name="payout_channel" value="{{ (u.payoutChannel or '')|e }}" maxlength="120" placeholder="USDT TRC20 / 银行卡 …">
+        <input type="text" name="payout_channel" value="{{ (u.payoutChannel or '')|e }}" maxlength="120" data-i18n-placeholder="payout_ph" placeholder="{{ texts.payout_ph }}">
       </label>
       <button type="submit" class="primary"><span data-i18n="save">{{ texts.save }}</span></button>
     </form>
@@ -62,5 +62,6 @@
 {% endblock %}
 
 {% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
 <script src="/static/pages/profile.js?v={{ pages_version }}"></script>
 {% endblock %}

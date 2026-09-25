@@ -65,7 +65,8 @@ sandbox.t = (k) => ({ failed: "Upload failed", retry: "Retry", confirm: "Confirm
   uploading: "Uploading", processing: "Processing...", downloadFile: "Download",
   ready: "Link ready", shareText: "Shared via 518.PLUS", shareImg: "Share image",
   copy: "Copy", shareX: "Share on X", zip_preview_btn: "Preview ZIP",
-  print_btn: "Print", share: "Share" }[k] || k);
+  print_btn: "Print", share: "Share",
+  err_unexpected: "Something went wrong. Please try again." }[k] || k);
 sandbox.window.t = sandbox.t;
 sandbox.__USER__ = { id: 1 };
 sandbox.__TOOLS__ = [];
@@ -109,9 +110,11 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     assert.strictEqual(clicked, 1, "Retry callback fires");
   }
 
-  // 3. machine code never surfaces: _errm authority falls back to "failed" text
-  assert.strictEqual(sandbox.window._errm("tool_failed"), "Upload failed",
-    "unknown tool_failed → user-facing failed text, never raw code");
+  // 3. machine code never surfaces: the unified boundary maps unknown codes
+  //    to the canonical localized generic failure (#42)
+  assert.strictEqual(sandbox.window._errm("tool_failed"),
+    "Something went wrong. Please try again.",
+    "unknown tool_failed → canonical generic failure text, never raw code");
 
   // 4. static source bans: no raw window.t("...") inside HTML strings in
   //    detail.js (VIS-003), no native confirm( in profile/tokens/footer
@@ -291,5 +294,60 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     assert.ok(/<button[^>]+aria-label="Download/.test(html), "standalone: download BUTTON rendered");
   }
 
-  console.log("PASS: UI error/retry contract (9 groups)");
+  // 9. unified error boundary (B5/#42): known → specific localized message,
+  //    unknown err_* / exception text → canonical generic; a raw err_* key,
+  //    'error' or exception detail never surfaces.
+  {
+    const b = vm.createContext({
+      console, setTimeout: (fn) => fn(), clearTimeout: () => {},
+      location: { href: "https://ci.test/", reload: () => {} },
+      URL, URLSearchParams,
+    });
+    b.window = b;
+    b.document = { getElementById: () => null, querySelector: () => null,
+      querySelectorAll: () => [], createElement: () => null,
+      addEventListener: () => {}, documentElement: null, head: null, body: null, cookie: "" };
+    const GENERIC = "Something went wrong. Please try again.";
+    b.t = (k) => ({
+      err_rate_limited: "Too many requests, slow down",
+      err_checkout_failed: "Payment could not be started",
+      mytools_err_self_test_required: "One successful call required",
+      err_unexpected: GENERIC,
+    }[k] || k);
+    b.window.t = b.t;
+    vm.runInContext(fs.readFileSync(path.join(REPO, "static", "pages", "common.js"), "utf8"), b);
+    const _e = b.window._errm;
+    assert.strictEqual(_e("err_rate_limited"), "Too many requests, slow down",
+      "known code → specific localized message");
+    assert.strictEqual(_e("checkout_failed"), "Payment could not be started",
+      "bare checkout code resolves through the err_ family");
+    assert.strictEqual(_e("self_test_required"), "One successful call required",
+      "mytools_* codes resolve through the mytools_err_ family");
+    assert.strictEqual(_e("err_totally_unknown_xyz"), GENERIC,
+      "unknown err_* → canonical generic");
+    assert.ok(!_e("err_totally_unknown_xyz").includes("err_"),
+      "raw err_* key never surfaces");
+    assert.strictEqual(_e("boom: psycopg2 detail SECRET"), GENERIC,
+      "exception text → generic, detail dropped");
+    assert.strictEqual(_e(undefined), GENERIC, "missing code → generic");
+    assert.strictEqual(_e(""), GENERIC, "empty code → generic (never literal 'error')");
+  }
+
+  // 10. source bans for the boundary rollout (B5): no second error
+  //     dictionary and no raw alert(error) fallbacks in the page scripts
+  {
+    const detail = fs.readFileSync(path.join(REPO, "static", "pages", "detail.js"), "utf8");
+    assert.ok(!detail.includes("_errMap"), "detail.js: second error dictionary removed");
+    assert.ok(detail.includes("_errm(msg)"), "detail.js routes through the unified boundary");
+    for (const f of ["credits.js", "tokens.js", "profile.js", "earnings.js",
+                     "publish.js", "tools.js"]) {
+      const src = fs.readFileSync(path.join(REPO, "static", "pages", f), "utf8");
+      assert.ok(!/\|\|\s*['"]error['"]/.test(src), f + ": no raw 'error' fallback");
+      assert.ok(!/alert\((?:d|dd|r\.data)?\.?error\)/.test(src), f + ": no alert(raw error)");
+    }
+    const credits = fs.readFileSync(path.join(REPO, "static", "pages", "credits.js"), "utf8");
+    assert.ok(credits.includes("_errm(why)"), "credits.js checkout errors go through _errm");
+  }
+
+  console.log("PASS: UI error/retry contract (11 groups)");
 })().catch((e) => { console.error(e); process.exit(1); });

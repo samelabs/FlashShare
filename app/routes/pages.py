@@ -488,6 +488,45 @@ async def account_credits(request: Request):
         pg = 1
     size = 20
     rows, total = history_paged(user["id"], page=pg, size=size)
+    rows = [dict(r) for r in rows]
+    # 41-12 note column: machine notes (raw tool ids, plan cycle stamps,
+    # refund order refs) never render. Tool identity comes ONLY from the
+    # ledger relation (consume → tool_call, refund → its consume row) via
+    # the batched repo query — note is audit text and is never parsed.
+    # Tool-bound rows get a localized "Tool: <resolved name>" description;
+    # rows without a resolvable relation show no tool description. Human
+    # notes (operator/manual) keep rendering verbatim.
+    from repo import ledger as _ledger_repo
+    from governance.tool_params import resolve_label as _resolve_label
+    _lang = getattr(request.state, "lang", "en")
+    with db() as con:
+        _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
+
+    def _ref_label(r: dict) -> str | None:
+        ref = _tool_refs.get(int(r["id"]))
+        if not ref:
+            return None
+        try:
+            label = json.loads(ref["label_json"]) if ref["label_json"] else None
+        except ValueError:
+            label = None
+        return _resolve_label(label, _lang) if label else ref["tool_key"]
+
+    _MACHINE_NOTE_KINDS = ("grant_plan", "grant_plan_upgrade",
+                           "grant_package", "revoke")
+    for r in rows:
+        note = r.get("note") or ""
+        if r["kind"] in ("consume", "refund"):
+            name = _ref_label(r)
+            tpl = server_text(_lang).get("ledger_note_tool")
+            r["note_display"] = (
+                (tpl or "Tool: {name}").replace("{name}", name) if name else None)
+        elif r["kind"] in _MACHINE_NOTE_KINDS:
+            r["note_display"] = None
+        elif note and not note.startswith(("activity:", "grant_", "payout:")):
+            r["note_display"] = note
+        else:
+            r["note_display"] = None
     # packages (one-off top-up packs) — active rows only, data-driven
     from repo.orders import active_packages
     with db() as con:

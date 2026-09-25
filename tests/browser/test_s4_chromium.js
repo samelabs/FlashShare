@@ -216,9 +216,9 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
   await np.click("#openWithdraw");
   await np.waitForTimeout(200);
   const ncDisabled = await np.getAttribute("#submitWithdraw", "disabled");
-  const ncHint = await np.textContent("#withdrawHint").catch(() => "");
+  const ncHref = await np.getAttribute("#withdrawHint a", "href").catch(() => "");
   check("U6 no-channel → submit disabled", ncDisabled !== null);
-  check("U6b no-channel → Profile guidance", (ncHint || "").includes("/account/profile"), ncHint);
+  check("U6b no-channel → Profile guidance link", ncHref === "/account/profile", ncHref);
 
   await browser.close();
   console.log();
