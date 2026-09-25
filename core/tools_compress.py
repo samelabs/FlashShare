@@ -55,10 +55,13 @@ def compress_handler(tool_input, params):
     if orig_size and orig_size <= target:
         tool_input["stream"].seek(0)
         return {
-            "stream": tool_input["stream"],
-            "filename": tool_input["filename"],
-            "content_type": tool_input["content_type"],
-            "size": orig_size,
+            "items": [{
+                "kind": "file",
+                "stream": tool_input["stream"],
+                "filename": tool_input["filename"],
+                "content_type": tool_input["content_type"],
+                "size": orig_size,
+            }],
         }
 
     # ---- CP6.4: Decode + orient ----
@@ -126,10 +129,13 @@ def compress_handler(tool_input, params):
     out_name = f"compressed_{stem}.jpg"
 
     return {
-        "stream": out_buf,
-        "filename": out_name,
-        "content_type": "image/jpeg",
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": out_buf,
+            "filename": out_name,
+            "content_type": "image/jpeg",
+            "size": len(raw),
+        }],
     }
 
 

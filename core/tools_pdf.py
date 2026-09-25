@@ -1,7 +1,7 @@
 """PDF merge tool — combine multiple PDF files into one.
 
 Uses pypdf (pure Python, no C deps). Handler receives multiple sources
-via the "sources" key (multi=True registration).
+(files window 1..20, one per input file).
 
 Architecture:
     Multi-file input → pypdf PdfMerger → single PDF output.
@@ -73,10 +73,13 @@ def pdf_merge_handler(tool_input, params):
     out_buf.seek(0)
 
     return {
-        "stream": out_buf,
-        "filename": "merged.pdf",
-        "content_type": "application/pdf",
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": out_buf,
+            "filename": "merged.pdf",
+            "content_type": "application/pdf",
+            "size": len(raw),
+        }],
     }
 
 
@@ -106,5 +109,5 @@ register(
     icon="merge",
     accept={".pdf"},
     handler=pdf_merge_handler,
-    multi=True,
+    files_min=1, files_max=20,
 )

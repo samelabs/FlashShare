@@ -62,12 +62,26 @@ def build_llms_txt() -> str:
       "one logical operation — reuse the same value to retry safely "
       "(replays return the original result, no double charge).")
     a("")
-    a("## File inputs (tools/call files[] items — exactly one form each)")
+    a("## Inputs (tools/call)")
+    a("files[] items — 0..20 files per the tool's declared window "
+      "(text-only tools take no files); each item is exactly one form:")
     a('1. Inline: {"filename":"a.png","b64":"<base64>"}')
     a('2. https URL: {"url":"https://example.com/a.png"} — 518 fetches it '
       'server-side (public hosts only)')
     a('3. Reference: {"public_id":"...","source_token":"..."} to an '
       'existing upload of yours')
+    a("Plain-text input goes through the tool's params (text parameters "
+      "accept up to 100,000 characters).")
+    a("")
+    a("## Results (items)")
+    a("Every call returns an ORDERED list of items (at most 20):")
+    a('  {"kind":"text","text":"..."}')
+    a('  {"kind":"json","data":{...}}')
+    a('  {"kind":"file","filename":"...","content_type":"...","size":N}')
+    a("In tools/call the items arrive directly: structuredContent.items "
+      "carries them with a download_url per file; small images also "
+      "appear as image content blocks. result_url is a human-viewable "
+      "page (/r/{id}).")
     a("")
     a("## Large files: two-stage upload (bytes never pass through the model)")
     a("For files too large to inline as base64, call the free meta tool "

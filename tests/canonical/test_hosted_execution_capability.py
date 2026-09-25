@@ -119,7 +119,7 @@ _b, _ct = _mp({"client_ref": "hx-" + _uuid.uuid4().hex[:8], "tool": "privacy"},
               [("a.png", "image/png", _buf.getvalue())])
 _st, _d = _req("POST", "/api/uploads", None, {"Cookie": _ck}, raw_body=_b, ctype=_ct)
 _f0 = (_d.get("files") or [{}])[0] if _d.get("files") else (_d.get("file") or {})
-GID = _f0.get("publicId")
+GID = _f0.get("stagingId") or _f0.get("publicId")
 SRC_URL = f"{BASE}/api/source/{GID}?u=&t="  # real gid; token minted below
 
 
@@ -134,14 +134,14 @@ JOB = [{"filename": "a.png", "content_type": "image/png", "size": 96, "url": _fe
 
 # ── HX1: ordinary Bearer alone → 401 ──
 _st, _d = _req("POST", "/tool-endpoints/rounded-corners",
-               {"job_inputs": JOB, "params": {}},
+               {"files": JOB, "params": {}},
                {"Authorization": f"Bearer {TOK}"})
 check("HX1 ordinary Bearer alone → 401 auth_required", _st == 401 and _d.get("error") == "auth_required",
       f"{_st} {_d}")
 
 # ── HX2: Bearer + valid signed source URL still denied ──
 _st, _d = _req("POST", "/tool-endpoints/rounded-corners",
-               {"job_inputs": JOB, "params": {"radius": "medium", "background": "transparent"}},
+               {"files": JOB, "params": {"radius": "medium", "background": "transparent"}},
                {"Authorization": f"Bearer {TOK}"})
 check("HX2 Bearer + valid signed source URL → 401", _st == 401 and _d.get("error") == "auth_required",
       f"{_st} {_d}")
@@ -153,7 +153,7 @@ with __import__("database").db() as con:
     _uid_row = con.execute("select id from users where username=%s", (_u,)).fetchone()
 UID = int(_uid_row["id"])
 _tok_probe = sign_fetch_token(UID, GID)
-_body2 = {"job_inputs": [{"filename": "a.png", "content_type": "image/png",
+_body2 = {"files": [{"filename": "a.png", "content_type": "image/png",
                           "size": 96, "url": f"{BASE}/api/source/{GID}?u={UID}&t={_tok_probe}"}],
           "params": {}}
 _st, _d = _req("POST", "/tool-endpoints/rounded-corners", _body2,
@@ -167,7 +167,7 @@ from security import (sign_hosted_exec_token, verify_hosted_exec_token,  # noqa:
                       hosted_payload_digest)
 # canonical outbound payload: exactly what dispatch would send for this call
 _PARAMS = {"radius": "medium", "background": "transparent"}
-_PAYLOAD = {"job_inputs": JOB, "params": _PARAMS}
+_PAYLOAD = {"files": JOB, "params": _PARAMS}
 _cap = sign_hosted_exec_token("/tool-endpoints/rounded-corners", _PAYLOAD)
 check("HX4a mint/verify roundtrip", verify_hosted_exec_token(_cap, "/tool-endpoints/rounded-corners",
                                                              _PAYLOAD))
@@ -177,8 +177,10 @@ check("HX4b wrong path rejected",
 # HX4c: full canonical path — trusted same-origin dispatch payload accepted live
 _st, _d = _req("POST", "/tool-endpoints/rounded-corners", _PAYLOAD,
                {"X-Hosted-Execution": _cap})
-check("HX4c trusted dispatch capability → endpoint accepts & runs",
-      _st == 200 and isinstance(_d.get("data_b64"), str) and len(_d["data_b64"]) > 0,
+_hx4 = ((_d.get("items") or [{}])[0]) if _st == 200 else {}
+check("HX4c trusted dispatch capability → endpoint accepts & runs (items)",
+      _st == 200 and _hx4.get("kind") == "file"
+      and isinstance(_hx4.get("data_b64"), str) and len(_hx4["data_b64"]) > 0,
       f"{_st} {str(_d)[:120]}")
 
 # ── HX5: trust dimension of the mint gate (explicit trusted input) ──
@@ -264,15 +266,19 @@ class _FakeResp:
 
 def _fake_urlopen(req, timeout=None):
     _rec["called"] = dict(req.headers)
-    return _FakeResp(b'{"data_b64": "aGk=", "filename": "out.txt"}')
+    return _FakeResp(_json.dumps({"items": [
+        {"kind": "file", "filename": "out.txt",
+         "content_type": "text/plain", "data_b64": "aGk="}]}).encode())
 
 
 _orig_urlopen = remote.urllib.request.urlopen
 remote.urllib.request.urlopen = _fake_urlopen
 try:
     out = remote.drive_http({"url": "https://dev.example/api/tool"}, [], {}, {}, trusted=True)
+    _hx8 = (out.get("items") or [{}])[0]
     check("HX8 external remote HTTP execution unchanged",
-          out["bytes"] == b"hi" and "X-Hosted-Execution" not in (_rec["called"] or {}),
+          _hx8.get("bytes") == b"hi"
+          and "X-Hosted-Execution" not in (_rec["called"] or {}),
           f"{out} {_rec['called']}")
 finally:
     remote.urllib.request.urlopen = _orig_urlopen

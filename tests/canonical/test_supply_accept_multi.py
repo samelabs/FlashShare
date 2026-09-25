@@ -114,26 +114,28 @@ conn.close()
 print("operator login:", "ok" if admin_cookie else "fail")
 
 if admin_cookie:
-    # C: multi 类型矩阵
-    for val, want in [(True, "ok"), (False, "ok"), ("true", "bad_multi"), ("false", "bad_multi"), (1, "bad_multi"), (0, "bad_multi")]:
+    # C: files_max 类型矩阵 (IO-1)
+    for val, want in [(5, "ok"), (20, "ok"), ("true", "bad_files_max"),
+                      (True, "bad_files_max"), (0, "bad_files_max"),
+                      (-1, "bad_files_max")]:
         st, r = req("POST", "/samelabs/tools/create", {
             "tool_id": f"mtest{uuid.uuid4().hex[:6]}", "label": "MT",
             "url": "https://httpbin.org/anything", "timeout_s": 30,
-            "accept": ".png,.jpg", "multi": val}, admin_cookie)
+            "accept": ".png,.jpg", "files_max": val}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
-        check(f"C multi={val!r} → {want}", got == want, f"{st} {r}")
-    # D: accept=".png,.jpg" multi=true → DB canonical + multi
+        check(f"C files_max={val!r} → {want}", got == want, f"{st} {r}")
+    # D: accept=".png,.jpg" files_max=20 → DB canonical + bounds
     tid = "dbcheck" + uuid.uuid4().hex[:5]
     st, r = req("POST", "/samelabs/tools/create", {
         "tool_id": tid, "label": "DB", "url": "https://httpbin.org/anything",
-        "timeout_s": 30, "accept": ".png,.jpg", "multi": True}, admin_cookie)
+        "timeout_s": 30, "accept": ".png,.jpg", "files_max": 20}, admin_cookie)
     check("D operator create ok", r.get("ok"), str(r))
     import psycopg2 as _pg2, json as _js
     _c2 = _pg2.connect(TEST_DB); _c2.autocommit = True
-    _cur2 = _c2.cursor(); _cur2.execute(f"select accept_json, multi from platform_tools where tool_key='{tid}'")
+    _cur2 = _c2.cursor(); _cur2.execute(f"select accept_json, files_max from platform_tools where tool_key='{tid}'")
     row = _cur2.fetchone(); _c2.close()
-    check("D DB canonical ['.jpg','.png'] + multi=true",
-          _js.loads(row[0]) == [".jpg", ".png"] and row[1] is True, str(row))
+    check("D DB canonical ['.jpg','.png'] + files_max=20",
+          _js.loads(row[0]) == [".jpg", ".png"] and row[1] == 20, str(row))
 else:
     check("C/D admin 通道", False, "无 admin 凭据 — 需人工提供或本地单元验证")
 

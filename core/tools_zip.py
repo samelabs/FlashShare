@@ -1,7 +1,7 @@
 """ZIP pack tool — combine multiple files into one ZIP archive.
 
 Uses zipfile (pure stdlib, no external deps). Handler receives multiple
-sources via the "sources" key (multi=True registration).
+sources (files window 1..20, one per input file).
 
 Architecture:
     Multi-file input → zipfile ZipFile(DEFLATED) → single ZIP output.
@@ -73,10 +73,13 @@ def zip_pack_handler(tool_input, params):
     out_buf.seek(0)
 
     return {
-        "stream": out_buf,
-        "filename": "files.zip",
-        "content_type": "application/zip",
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": out_buf,
+            "filename": "files.zip",
+            "content_type": "application/zip",
+            "size": len(raw),
+        }],
     }
 
 
@@ -106,5 +109,5 @@ register(
     icon="archive",
     accept=None,
     handler=zip_pack_handler,
-    multi=True,
+    files_min=1, files_max=20,
 )

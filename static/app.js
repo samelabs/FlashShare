@@ -1,12 +1,12 @@
 const form = document.getElementById("uploadForm");
 
 // ── Shared web affordability preflight (advisory, read-only) ──
-// tool == null / pass_through → no preflight. Executable tool → ask
+// tool == null → no preflight. Executable tool → ask
 // /api/tools/preflight BEFORE any upload XHR starts. An explicit
 // 402 err_insufficient_credits stops the flow (no FormData upload);
 // network/5xx stays advisory — the authoritative gate still decides.
 window.preflightToolAffordability = async function (tool) {
-  if (!tool || tool.pass_through) return { ok: true };
+  if (!tool) return { ok: true };
   try {
     const r = await fetch("/api/tools/preflight", {
       method: "POST",
@@ -146,10 +146,10 @@ function fmtDate(ts) {
 // A8 配套: 交互行为一律经此判定, 禁止工具名比较。
 function isPassThrough(tool) {
   if (!tool) return true;
-  // 直传判定 = 工具声明 (platform_tools.pass_through, 仅直传语义工具为 true),
-  // 不再从 presets/params/multi 推断 — 无参执行型工具 (crop_white/doc2pdf)
-  // 和无参 http 工具必须走 execute, 推断会把它们误判成直传。
-  return !!tool.pass_through;
+  // share (IO-1) is a regular executable tool: upload → execute → file
+  // items. The direct-upload path below exists only for "no tool
+  // selected" on the home surface.
+  return tool.id === "share";
 }
 
 // 标签解析单点 (tool modes v3): str 原样 / dict[lang]→dict.en→首值。勿在他处重写此链。
@@ -360,7 +360,7 @@ if (!window.__TOOLPAGE__) form.addEventListener("submit", async (event) => {
   const files = Array.from(file.files);
   const activeId = activeTool ? activeTool.id : null;
   try {
-    if (activeTool && activeTool.id !== "share" && !activeTool.pass_through) {
+    if (activeTool) {
       const result = await window.runToolFlow(activeTool, files, {
         params: Object.assign({}, activeToolParams || {}),
         expiryDays: (form.elements.namedItem("expiryDays") || {}).value ? parseInt(form.elements.namedItem("expiryDays").value) : 1,
@@ -962,8 +962,56 @@ function showQrModal(qrUrl) {
   qrModal.classList.remove("hidden");
 }
 
+function showItemsResult(result) {
+  // Minimal IO-1 web rendering (designed page is IO-2): ordered items
+  // inside the standard result card — text/json shown, image files
+  // previewed, every file linked for direct download.
+  const el = document.getElementById("result");
+  if (!el) return;
+  const rid = result.resultId || "";
+  const rows = (result.items || []).map(function (it, i) {
+    if (it.kind === "text") {
+      return '<div class="r-item"><pre class="r-text">' +
+        escapeHtml(it.text || "") + "</pre></div>";
+    }
+    if (it.kind === "json") {
+      return '<div class="r-item"><pre class="r-json">' +
+        escapeHtml(JSON.stringify(it.data, null, 2)) + "</pre></div>";
+    }
+    const pid = it.publicId;
+    const isImg = (it.contentType || "").startsWith("image/") &&
+      (it.contentType || "").toLowerCase() !== "image/svg+xml";
+    const prev = isImg
+      ? '<div class="result-preview"><img src="/f/' + encodeURIComponent(pid) +
+        '/inline" alt="' + escapeHtml(it.filename || "") + '" loading="lazy"></div>'
+      : "";
+    return '<div class="r-item r-file">' + prev +
+      '<a class="action-btn primary" href="/f/' + encodeURIComponent(pid) +
+      '?download=1" download>' + svgIcon("download") +
+      '<span>' + escapeHtml(it.filename || "file") + " · " +
+      fmtSize(it.size || 0) + "</span></a></div>";
+  }).join("");
+  const page = rid
+    ? '<a class="action-btn" href="/r/' + encodeURIComponent(rid) + '">' +
+      svgIcon("eye") + "<span>" + t("resultPage") + "</span></a>"
+    : "";
+  el.innerHTML =
+    '<div class="result-card">' +
+    '<div class="result-head"><h3>' + t("resultReady") + "</h3>" + page + "</div>" +
+    (rows || '<p class="result-note">' + t("resultEmpty") + "</p>") +
+    "</div>";
+  el.classList.add("has-result");
+}
+
 function showShareResult(file) {
   lastErrorKey = null;
+  // IO-1 items result: render the ordered list (text shown, images
+  // previewed, files linked); fall through to the single-file card only
+  // for legacy direct-share records without items.
+  if (file && Array.isArray(file.items)) {
+    showItemsResult(file);
+    return;
+  }
   const url = file.downloadUrl || file.url;
   const dlUrl = url + (url.includes("?") ? "&" : "?") + "download=1";
   const share = "https://x.com/intent/tweet?" + new URLSearchParams({ text: t("shareText"), url });

@@ -531,9 +531,10 @@ _SCHEMA_SQL = (
       featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
       icon           TEXT NOT NULL DEFAULT 'wand',
       accept_json    TEXT,                   -- JSON array or NULL = any
-      multi          BOOLEAN NOT NULL DEFAULT FALSE,
-      pass_through   BOOLEAN NOT NULL DEFAULT FALSE,
-                                           -- TRUE = 直传工具: 上传即结果, 无执行步 (share)
+      files_min      INT NOT NULL DEFAULT 1, -- input files lower bound (0 = text-only tools)
+      files_max      INT NOT NULL DEFAULT 1, -- input files upper bound (<= 20)
+      outputs_json   TEXT NOT NULL DEFAULT '["file"]',
+                                           -- item kinds the tool may produce (text/json/file)
       visibility     TEXT NOT NULL DEFAULT 'public',
                                            -- public | unlisted | private
       endpoint_json  TEXT,                   -- http execution binding (url/timeout/auth)

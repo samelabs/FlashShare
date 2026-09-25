@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.r_title }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="file-page result-page">
+  <h1>{{ texts.r_title }}</h1>
+  <p class="file-note">{{ texts.r_items_note }}</p>
+  <ol class="r-items">
+    {% for it in items %}
+    <li class="r-item r-{{ it.kind }}">
+      {% if it.kind == 'text' %}
+        <pre class="r-text">{{ it.text|e }}</pre>
+      {% elif it.kind == 'json' %}
+        <pre class="r-json">{{ it.rendered|e }}</pre>
+      {% else %}
+        <div class="r-file">
+          {% if it.is_image %}
+          <div class="result-preview"><img src="/f/{{ it.publicId }}/inline" alt="{{ it.filename|e }}" loading="lazy" decoding="async"></div>
+          {% endif %}
+          <a class="primary download-button" href="/f/{{ it.publicId }}?download=1">{{ texts.download_file }} · {{ it.filename|e }} ({{ it.size_text }})</a>
+        </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}

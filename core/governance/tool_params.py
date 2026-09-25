@@ -8,6 +8,9 @@ import re
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _TYPES = ("enum", "text", "number", "boolean")
+
+# IO-1: text parameters accept long prose input (constant upper bound)
+TEXT_PARAM_MAX_CHARS = 100_000
 MAX_PARAMS = 8
 MAX_OPTIONS = 32
 MAX_LABEL = 64
@@ -308,5 +311,8 @@ def enforce_params_decl(decl: list, values: dict) -> dict:
         elif t == "boolean":
             out[key] = bool(v) if not isinstance(v, str) else v.lower() in ("1", "true", "yes", "on")
         else:  # text
-            out[key] = str(v)
+            tv = str(v)
+            if len(tv) > TEXT_PARAM_MAX_CHARS:
+                raise ParamsValueError("param_too_long")
+            out[key] = tv
     return out

@@ -1,8 +1,10 @@
 """Worker process entry point for tool execution.
 
-Runs in a subprocess via ProcessPoolExecutor.
-Receives serialized tool_id + source_bytes + params, returns result_bytes.
-Pillow memory (85MB) stays in this process — OOM here doesn't kill the main server.
+Runs in a subprocess via ProcessPoolExecutor. Receives serialized sources
++ params; the handler returns an items list (IO-1 result model); this
+module reads every file-item stream into bounded bytes and validates the
+full item set before anything is staged. Pillow memory (85MB) stays in
+this process — OOM here doesn't kill the main server.
 """
 
 import io
@@ -14,23 +16,46 @@ sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.par
 from tools import get_tool
 
 
-def process_tool(tool_id: str, source_bytes: bytes, filename: str,
-                 content_type: str, size: int, params: dict,
-                 multi_sources: list = None) -> dict:
+def _read_bounded(stream, cap: int) -> bytes:
+    """Read at most cap+1 bytes; anything over the cap fails typed.
+    The stream is closed whether the read succeeds or not."""
+    try:
+        chunks = []
+        total = 0
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > cap:
+                raise ValueError("err_output_too_large")
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        close = getattr(stream, "close", None)
+        if close is not None:
+            try:
+                close()
+            except Exception:
+                pass
+
+
+def process_tool(tool_id: str, sources: list, params: dict) -> dict:
     """Execute a tool handler in this subprocess.
 
     Args:
         tool_id: registered tool identifier
-        source_bytes: raw file bytes (single-file mode)
-        filename: original filename
-        content_type: MIME type
-        size: byte count
-        params: tool parameters (preset, etc.)
-        multi_sources: list of (bytes, filename, content_type, size) tuples
-                       for multi-file tools (multi=True). Overrides single-file args.
+        sources: list of (bytes, filename, content_type, size) input
+                 tuples — may be EMPTY for text-only tools
+        params: canonical tool parameters
 
     Returns:
-        {"output_bytes": bytes, "content_type": str, "filename": str, "size": int}
+        {"items": [...]} where file items carry raw "data" bytes; the
+        combined item set satisfies MAX_RESULT_ITEMS / inline budget /
+        per-file cap (validated here, before staging).
+
+    Raises:
+        ValueError with typed err_* codes on contract violations.
     """
     # Ensure tools are registered in this process (important for pool respawn)
     from tools import load_all
@@ -42,56 +67,64 @@ def process_tool(tool_id: str, source_bytes: bytes, filename: str,
 
     handler = tool["handler"]
 
-    if multi_sources and tool.get("multi"):
-        # Multi-file mode: build sources array
-        sources = []
-        for src_bytes, src_name, src_ct, src_size in multi_sources:
-            sources.append({
-                "stream": io.BytesIO(src_bytes),
-                "filename": src_name,
-                "content_type": src_ct,
-                "size": src_size,
-            })
-        tool_input = {"sources": sources}
-    else:
-        # Single-file mode (default, unchanged)
+    if len(sources) == 1 and tool.get("files_max", 1) == 1:
+        src_bytes, filename, ctype, size = sources[0]
         tool_input = {
-            "stream": io.BytesIO(source_bytes),
+            "stream": io.BytesIO(src_bytes),
             "filename": filename,
-            "content_type": content_type,
+            "content_type": ctype,
             "size": size,
         }
+    else:
+        tool_input = {"sources": [
+            {"stream": io.BytesIO(sb), "filename": fn,
+             "content_type": ct, "size": sz}
+            for sb, fn, ct, sz in sources
+        ]}
 
-    tool_output = handler(tool_input, params)
+    raw_output = handler(tool_input, params)
+    if not isinstance(raw_output, dict) \
+            or not isinstance(raw_output.get("items"), list):
+        raise ValueError("err_items_shape")
 
-    # Bounded output read: at most MAX_UPLOAD_BYTES + 1 — anything over
-    # the platform file cap fails immediately, never buffered whole first.
-    # The handler stream is closed whether the read succeeds or not.
     from config import MAX_UPLOAD_BYTES
-    stream = tool_output["stream"]
+    from execution.results import (validate_items_declaration,
+                                   validate_inline_item, ItemsError,
+                                   MAX_RESULT_ITEMS, MAX_INLINE_RESULT_BYTES)
     try:
-        chunks = []
-        total = 0
-        while True:
-            chunk = stream.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_UPLOAD_BYTES:
-                raise ValueError("err_output_too_large")
-            chunks.append(chunk)
-        output_bytes = b"".join(chunks)
-    finally:
-        close = getattr(stream, "close", None)
-        if close is not None:
-            try:
-                close()
-            except Exception:
-                pass
+        normalized = validate_items_declaration(raw_output["items"])
+    except ItemsError as exc:
+        raise ValueError(str(exc)) from exc
 
-    return {
-        "output_bytes": output_bytes,
-        "content_type": tool_output["content_type"],
-        "filename": tool_output["filename"],
-        "size": len(output_bytes),
-    }
+    inline_total = 0
+    out_items = []
+    for norm, raw in zip(normalized, raw_output["items"]):
+        if norm["kind"] == "file":
+            stream = raw.get("stream")
+            data = raw.get("data")
+            if data is None and stream is None:
+                raise ValueError("err_items_shape")
+            if data is None:
+                data = _read_bounded(stream, MAX_UPLOAD_BYTES)
+            if not isinstance(data, bytes) or not data:
+                raise ValueError("err_items_shape")
+            if len(data) > MAX_UPLOAD_BYTES:
+                raise ValueError("err_output_too_large")
+            out_items.append({"kind": "file",
+                              "filename": norm["filename"],
+                              "content_type": norm["content_type"],
+                              "data": data})
+        else:
+            item = validate_inline_item(
+                norm, MAX_INLINE_RESULT_BYTES - inline_total)
+            if item["kind"] == "text":
+                inline_total += len(item["text"].encode("utf-8"))
+            else:
+                import json as _json
+                inline_total += len(_json.dumps(
+                    item["data"], ensure_ascii=False).encode("utf-8"))
+            out_items.append(item)
+
+    if len(out_items) > MAX_RESULT_ITEMS:
+        raise ValueError("err_items_too_many")
+    return {"items": out_items}

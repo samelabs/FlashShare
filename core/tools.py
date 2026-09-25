@@ -42,8 +42,8 @@ _registry = []
 
 
 def register(tool_id, tool_type, label, icon, handler,
-             accept=None, multi=False, desc=None,
-             pass_through=False, params=None):
+             accept=None, desc=None, files_min=1, files_max=1,
+             outputs=("file",), params=None):
     """Register a tool.
 
     Args:
@@ -60,11 +60,12 @@ def register(tool_id, tool_type, label, icon, handler,
                 whitelisted formats. The register() authoring adapter
                 normalizes to a sorted canonical list before the
                 ToolDeclaration validator (which is list-only).
-        multi: bool. If True, this tool accepts multiple input files
-               (e.g. PDF merge). Handler receives "sources" array.
-               If False, handler receives a single "stream" (default).
-        pass_through: bool. If True, selecting this tool uploads directly
-               with no execute step (identity handler, e.g. share).
+        files_min / files_max: input file count bounds ([min, max];
+               min may be 0 for text-only tools). max > 1 → the handler
+               receives a "sources" array; exactly 1 → a single
+               "stream"; 0 → "sources" is an empty list.
+        outputs: item kinds this tool may produce ("text"/"json"/"file").
+               Handlers return {"items": [...]} (IO-1 result model).
         params: canonical parameter declaration (tool modes spec v3) — same
                shape as user tools' params_json. Validated with the SAME
                validator as user tools (governance.tool_params). This is the
@@ -88,10 +89,10 @@ def register(tool_id, tool_type, label, icon, handler,
         "label": label,
         "desc": desc,
         "icon": icon,
-        "accept": sorted(accept) if accept else None,
-        "multi": multi,
+        "inputs": {"files": {"min": files_min, "max": files_max,
+                             "accept": sorted(accept) if accept else None}},
+        "outputs": list(outputs),
         "params": params,
-        "pass_through": pass_through,
         "visibility": "public",
         "enabled": True,
     }
@@ -106,9 +107,11 @@ def register(tool_id, tool_type, label, icon, handler,
         "desc": decl["desc"],
         "icon": icon,
         "handler": handler,
-        "accept": set(decl["accept"]) if decl["accept"] else None,
-        "multi": multi,
-        "pass_through": bool(pass_through),
+        "accept": set(decl["inputs"]["files"]["accept"])
+        if decl["inputs"]["files"]["accept"] else None,
+        "files_min": decl["inputs"]["files"]["min"],
+        "files_max": decl["inputs"]["files"]["max"],
+        "outputs": decl["outputs"],
         "params": decl["params"],
     })
 

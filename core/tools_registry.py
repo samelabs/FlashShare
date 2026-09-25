@@ -136,13 +136,19 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 # normally with no processing — identical to the pre-tool behavior.
 
 def share_handler(tool_input, params):
-    """Identity handler — passes the file through unchanged."""
-    return {
-        "stream": tool_input["stream"],
-        "filename": tool_input["filename"],
-        "content_type": tool_input["content_type"],
-        "size": tool_input["size"],
-    }
+    """Identity handler — every input file comes back as one file item,
+    unchanged. Regular execute flow (no special-casing anywhere)."""
+    def _item(src):
+        return {
+            "kind": "file",
+            "stream": src["stream"],
+            "filename": src["filename"],
+            "content_type": src["content_type"],
+            "size": src["size"],
+        }
+    if "sources" in tool_input:
+        return {"items": [_item(s) for s in tool_input["sources"]]}
+    return {"items": [_item(tool_input)]}
 
 
 register(
@@ -169,7 +175,8 @@ register(
     icon="upload",
     accept=None,  # accepts all formats
     handler=share_handler,
-    pass_through=True,  # identity handler: upload IS the result, no execute step
+    files_min=1, files_max=20,
+    outputs=("file",),
 )
 
 register(

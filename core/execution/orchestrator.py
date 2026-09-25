@@ -26,7 +26,7 @@ from storage import read as storage_read, write as storage_write
 from tools import ToolError
 
 from . import ExecutionError
-from .pipeline import StagedResult
+from .results import StagedItems, StagedFileItem
 from gokapi import InternalDownloadUnavailable
 
 logger = logging.getLogger("flashshare")
@@ -70,23 +70,16 @@ def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
 # 不再从 params 取 lifecycle / silent fallback / 猜默认值。
 
 
-async def _run_handler(pool, process_tool, tool_id, single, multi_sources, params):
-    """worker 调用; BrokenProcessPool (worker 进程死亡) → 池重建 +
-    本 invocation 走 gate 失败收敛 (exact refund, terminal failed,
-    不自动重跑)。"""
+async def _run_handler(pool, process_tool, tool_id, sources, params):
+    """worker 调用 (sources list, possibly empty); BrokenProcessPool
+    (worker 进程死亡) → 池重建 + 本 invocation 走 gate 失败收敛
+    (exact refund, terminal failed, 不自动重跑)。"""
     from concurrent.futures.process import BrokenProcessPool
     from . import pool as pool_mod
     loop = asyncio.get_event_loop()
     try:
-        if multi_sources is not None:
-            fut = loop.run_in_executor(
-                pool, process_tool, tool_id, b"", "", "", 0, params,
-                multi_sources)
-        else:
-            stream, filename, ctype, size = single
-            fut = loop.run_in_executor(
-                pool, process_tool, tool_id, stream, filename, ctype,
-                size, params)
+        fut = loop.run_in_executor(
+            pool, process_tool, tool_id, sources, params)
         return await fut
     except BrokenProcessPool as exc:
         # worker 进程死亡 (submit 或 await 阶段): CAS 重建池 (同一 broken
@@ -99,14 +92,9 @@ async def _run_handler(pool, process_tool, tool_id, single, multi_sources, param
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,
                         delivery):
-    """local 单/多文件编排。uploads 非空已解析。
-
-    delivery (Stage C): canonical invocation delivery — 在 invocation
-    boundary 已严格合法 (expiry_days/allowed_downloads), 直接读取。
-    handler 只收到 params, 永远看不到 delivery。
-    """
-    multi = bool(tool.get("multi")) and len(uploads) > 1 or (
-        bool(tool.get("multi")) and len(uploads) >= 1)
+    """local execution: read 0..N sources (bounded), run the handler in
+    the worker (items protocol), stage every file item to Gokapi, and
+    return StagedItems — settlement belongs to gate._finish."""
     expiry_days = delivery["expiry_days"]
     allowed_downloads = delivery["allowed_downloads"]
 
@@ -114,20 +102,14 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     total = 0
     for upload in uploads:
         ud = dict(upload) if not isinstance(upload, dict) else upload
-        # 早期拒绝: DB 记录超限 → 不打 storage; 实际读取仍 bounded
-        # (storage 真实返回体不信任 DB size_bytes)
         budget = min(MAX_UPLOAD_BYTES, MAX_MULTI_BYTES - total)
         if budget < 0:
             raise ToolError("err_file_too_large")
         try:
             status, headers, stream = storage_read(ud["gokapi_id"])
         except InternalDownloadUnavailable as exc:
-            # source read rides the authenticated non-counting channel;
-            # if that channel is unavailable the invocation fails typed —
-            # never a silent counted fallback.
             raise ExecutionError("tool_failed") from exc
         except ValueError:
-            # storage 侧 bounded read 已拒 (实际体 > 平台单文件上限)
             raise ToolError("err_file_too_large")
         try:
             data = _read_source_bounded(stream, int(ud["size_bytes"] or 0),
@@ -138,39 +120,39 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         sources.append((data, ud["file_name"], ud["content_type"],
                         len(data)))
 
-    if tool.get("multi") and len(sources) >= 1:
-        result = await _run_handler(pool, process_tool, tool["id"],
-                                    None, sources, params)
-    else:
-        stream, filename, ctype, size = sources[0]
-        result = await _run_handler(pool, process_tool, tool["id"],
-                                    (stream, filename, ctype, size), None, params)
+    out = await _run_handler(pool, process_tool, tool["id"],
+                             sources, params)
+    if not isinstance(out, dict) or not isinstance(out.get("items"), list):
+        raise ToolError("tool_failed")
 
-    output_bytes = result["output_bytes"]
-    output_size = len(output_bytes)
-    gokapi_result = storage_write(
-        io.BytesIO(output_bytes), result["filename"], result["content_type"],
-        expiry_days, allowed_downloads, output_size)
-    info = gokapi_result.get("FileInfo", {})
+    order, inline, files = [], [], []
+    for it in out["items"]:
+        order.append(it["kind"])
+        if it["kind"] == "file":
+            body = it["data"]
+            gokapi_result = storage_write(
+                io.BytesIO(body), it["filename"], it["content_type"],
+                expiry_days, allowed_downloads, len(body))
+            info = gokapi_result.get("FileInfo", {})
+            gid = info.get("Id", "")
+            if not gid:
+                raise ToolError("tool_failed")
+            files.append(StagedFileItem(
+                gokapi_id=gid,
+                filename=it["filename"],
+                content_type=it["content_type"],
+                size=len(body),
+                expiry_days=expiry_days,
+                allowed_downloads=allowed_downloads,
+                expire_at=info.get("ExpireAt"),
+                url_hotlink=info.get("UrlHotlink", "")))
+        else:
+            inline.append(it)
 
-    # staging-only: Gokapi 物理结果已落, 但 518 durable/public 身份
-    # (uploads row / publicId / downloadUrl) 由 gate 的 settlement
-    # transaction 生成 — 本函数绝不写 uploads。
-    staged = StagedResult(
-        gokapi_id=info.get("Id", ""),
-        filename=result["filename"],
-        content_type=result["content_type"],
-        size=output_size,
-        expiry_days=expiry_days,
-        allowed_downloads=allowed_downloads,
-        expire_at=info.get("ExpireAt"),
-        url_hotlink=info.get("UrlHotlink", ""),
+    return StagedItems(
+        order=order, inline=inline, files=files,
         ip=request_ctx.get("ip", ""),
         orig_size=len(sources[0][0]) if len(sources) == 1 else None)
-
-    # source 不做 eager-delete (execution 只读 source; 生命周期归
-    # intermediate TTL / durable uploads 自身)
-    return staged
 
 
 def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
@@ -207,7 +189,7 @@ def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
     if not path.startswith("/tool-endpoints/"):
         return None
     payload = {
-        "job_inputs": [
+        "files": [
             {"filename": s["filename"], "content_type": s["content_type"],
              "size": s["size"], "url": s["fetch_url"]}
             for s in sources
@@ -218,11 +200,18 @@ def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
 
 
 async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
-    """remote (http) 编排: 拉 URL 签名 → drive_http → 零信任落地。
+    """remote (http) execution — the ONE southbound contract (IO-1):
 
-    delivery (Stage C): canonical invocation delivery, boundary 已严格
-    合法。drive_http 只收到 params — delivery/client_ref 等平台字段
-    不泄漏给 remote endpoint。
+      request  {"files": [{"filename", "content_type", "size", "url"}],
+                "params": {...}}
+      response {"items": [{"kind":"text","text"} | {"kind":"json","data"}
+                | {"kind":"file","filename","content_type",
+                   "data_b64" | "url"}]}
+
+    File items are fetched (url) or decoded (data_b64) through the same
+    SSRF-guarded pinned transport + per-file cap; a response that does
+    not match the shape fails the call (refund path unchanged).
+    delivery is a platform fact — the endpoint never sees it.
     """
     import remote as _remote
     from security import sign_fetch_token
@@ -243,16 +232,11 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
             "filename": ud["file_name"],
             "content_type": ud["content_type"],
             "size": ud["size_bytes"],
-            "fetch_url": (f"{BASE_URL}/api/source/{ud['gokapi_id']}"
-                          f"?u={user['id']}&t={token}"),
+            "url": (f"{BASE_URL}/api/source/{ud['gokapi_id']}"
+                    f"?u={user['id']}&t={token}"),
         })
 
     auth_headers = {}
-    # Hosted-execution capability: for TRUSTED endpoints whose URL origin
-    # equals the platform's own BASE_URL under /tool-endpoints/*, mint the
-    # short-lived HMAC capability that is the sole /tool-endpoints/*
-    # authority. Untrusted (user) rows never receive one — they cannot
-    # self-authorize onto the hosted surface.
     _hosted_cap = _mint_hosted_capability(decl.get("url") or "", sources, params, trusted)
     if _hosted_cap:
         auth_headers["X-Hosted-Execution"] = _hosted_cap
@@ -261,9 +245,6 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         try:
             auth_headers[decl["auth_header"]] = unseal(decl["auth_token"])
         except (VaultUnavailable, VaultDecryptError) as exc:
-            # Never send anything to the endpoint and never log the
-            # secret: typed reason + tool identity only. Outward this is
-            # a normal remote execution failure (refund path unchanged).
             logger.warning("remote tool %s credential unavailable: %s",
                            tool["id"], type(exc).__name__)
             raise ExecutionError("err_endpoint_failed") from exc
@@ -278,30 +259,39 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
                 "timeout": "err_endpoint_timeout"}.get(exc.code, "err_endpoint_failed")
         raise ExecutionError(code) from exc
 
-    output_bytes = out["bytes"]
-    output_size = len(output_bytes)
+    # items protocol: every file item is already staged by drive_http's
+    # adapter (gokapi_id present); inline items carried raw.
     expiry_days = delivery["expiry_days"]
     allowed_downloads = delivery["allowed_downloads"]
-    gokapi_result = storage_write(
-        io.BytesIO(output_bytes), out["filename"], out["content_type"],
-        expiry_days, allowed_downloads, output_size)
-    info = gokapi_result.get("FileInfo", {})
+    order, inline, files = [], [], []
+    for it in out["items"]:
+        order.append(it["kind"])
+        if it["kind"] == "file":
+            body = it["bytes"]
+            gokapi_result = storage_write(
+                io.BytesIO(body), it["filename"], it["content_type"],
+                expiry_days, allowed_downloads, len(body))
+            info = gokapi_result.get("FileInfo", {})
+            gid = info.get("Id", "")
+            if not gid:
+                raise ExecutionError("err_endpoint_failed")
+            files.append(StagedFileItem(
+                gokapi_id=gid,
+                filename=it["filename"],
+                content_type=it["content_type"],
+                size=len(body),
+                expiry_days=expiry_days,
+                allowed_downloads=allowed_downloads,
+                expire_at=info.get("ExpireAt"),
+                url_hotlink=info.get("UrlHotlink", "")))
+        else:
+            inline.append({"kind": it["kind"],
+                           **({"text": it["text"]} if it["kind"] == "text"
+                              else {"data": it["data"]})})
 
-    # staging-only (与 local 同一 StagedResult 类型): durable/public
-    # landing 只发生在 gate settlement transaction。
-    staged = StagedResult(
-        gokapi_id=info.get("Id", ""),
-        filename=out["filename"],
-        content_type=out["content_type"],
-        size=output_size,
-        expiry_days=expiry_days,
-        allowed_downloads=allowed_downloads,
-        expire_at=info.get("ExpireAt"),
-        url_hotlink=info.get("UrlHotlink", ""),
+    return StagedItems(
+        order=order, inline=inline, files=files,
         ip=request_ctx.get("ip", ""))
-
-    # source 不做 eager-delete (与 local 同机制)
-    return staged
 
 
 import json  # noqa: E402

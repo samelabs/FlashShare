@@ -117,9 +117,12 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
 
 
 def source_count_error(tool: dict, n: int) -> str | None:
-    """multi=false tools take exactly one source file."""
-    if not bool(tool.get("multi")) and n > 1:
-        return "err_too_many_files"
+    """File-count window from the declaration: [files_min, files_max].
+    0 is legal for text-only tools."""
+    mn = int(tool.get("files_min", 1) or 0)
+    mx = int(tool.get("files_max", 1) or 1)
+    if not (mn <= n <= mx):
+        return "err_file_count"
     return None
 
 

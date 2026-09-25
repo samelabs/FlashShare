@@ -63,10 +63,12 @@ def seed_from_registry() -> dict:
             "label": t["label"],
             "desc": t.get("desc"),
             "icon": t["icon"],
-            "accept": sorted(t["accept"]) if t.get("accept") else None,
-            "multi": bool(t.get("multi", False)),
+            "inputs": {"files": {
+                "min": int(t.get("files_min", 1)),
+                "max": int(t.get("files_max", 1)),
+                "accept": sorted(t["accept"]) if t.get("accept") else None}},
+            "outputs": list(t.get("outputs") or ("file",)),
             "params": t.get("params"),
-            "pass_through": bool(t.get("pass_through", False)),
             "visibility": "public",
             "enabled": True,
         }
@@ -142,8 +144,10 @@ def row_to_item(row: dict, price: dict) -> dict:
         # 4C-2: 公开 accept 一律投影成 canonical extension tokens
         # (stored parser 单点解释, 非法行 startup fail)。
         "accept": _canonical_accept(row["accept_json"]),
-        "multi": bool(row["multi"]),
-        "pass_through": bool(row.get("pass_through") or False),
+        "files_min": int(row.get("files_min") if row.get("files_min") is not None else 1),
+        "files_max": int(row.get("files_max") if row.get("files_max") is not None else 1),
+        "outputs": (json.loads(row["outputs_json"])
+                    if row.get("outputs_json") else ["file"]),
         "cost": int(price.get("cost") or 0),
     }
     # params 声明 (tool modes v3): 三面同构 — web 浮层/MCP inputSchema/详情同源

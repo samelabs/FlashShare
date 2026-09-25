@@ -695,6 +695,44 @@ async def account_tools_publish(request: Request):
     return templates.TemplateResponse(request, "account/publish.html", ctx)
 
 
+@router.get("/r/{result_id}", response_class=HTMLResponse)
+async def result_page(result_id: str, request: Request):
+    """Minimal server-rendered result page (IO-1; the designed page is
+    IO-2). Renders items in order: text shown, images previewed, files
+    linked for direct download, JSON formatted."""
+    from app.main import templates
+    from repo.ledger import call_by_result_public_id
+    from utils import format_bytes
+    with db() as con:
+        row = call_by_result_public_id(con, result_id)
+    if row is None:
+        ctx = _ctx_base(request)
+        ctx["shell_class"] = "file-shell"
+        return templates.TemplateResponse(request, "missing.html", ctx,
+                                          status_code=404)
+    import json as _json
+    try:
+        record = _json.loads(row["result_json"])
+    except Exception:
+        record = {"items": []}
+    items = []
+    for it in (record.get("items") or []):
+        d = dict(it)
+        if d.get("kind") == "json":
+            d["rendered"] = _json.dumps(d.get("data"), indent=2,
+                                        ensure_ascii=False)
+        elif d.get("kind") == "file":
+            ct = d.get("contentType") or ""
+            d["is_image"] = (ct.startswith("image/")
+                             and ct.lower() != "image/svg+xml")
+            d["size_text"] = format_bytes(int(d.get("size") or 0))
+        items.append(d)
+    ctx = _ctx_base(request)
+    ctx["shell_class"] = "file-shell"
+    ctx["items"] = items
+    return templates.TemplateResponse(request, "result.html", ctx)
+
+
 @router.get("/account/keys", response_class=HTMLResponse)
 async def account_keys(request: Request):
     from app.main import templates

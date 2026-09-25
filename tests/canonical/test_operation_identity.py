@@ -126,21 +126,24 @@ def _mktool(tool_id, owner_id=None, cost=100):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, multi, pass_through,"
+            " execution, tool_type, label_json, icon,"
             " visibility, enabled, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', 'produce', %s, 'wand', FALSE,"
-            " FALSE, 'public', TRUE, %s, %s)",
+            " values (%s, %s, %s, 'local', 'produce', %s, 'wand',"
+            " 'public', TRUE, %s, %s)",
             (tool_id, owner_id, tool_id, _json.dumps({"en": "OI"}), ts, ts))
         con.execute(
             "insert into pricing (tool_id, cost, enabled, updated_at)"
             " values (%s, %s, TRUE, %s)", (tool_id, cost, ts))
 
-from execution.pipeline import StagedResult
+from execution.results import StagedItems, StagedFileItem
 def _mkstaged(tag):
-    return StagedResult(gokapi_id=f"gk_{_u}_{tag}", filename="o.bin",
-                        content_type="application/octet-stream", size=10,
-                        expiry_days=7, allowed_downloads=5,
-                        expire_at=ts + 86400, url_hotlink="", ip="127.0.0.1")
+    return StagedItems(order=["file"], inline=[],
+                       files=[StagedFileItem(
+                           gokapi_id=f"gk_{_u}_{tag}", filename="o.bin",
+                           content_type="application/octet-stream",
+                           size=10, expiry_days=7, allowed_downloads=5,
+                           expire_at=ts + 86400, url_hotlink="")],
+                       ip="127.0.0.1")
 
 from execution import gate
 from governance.commission import commission_rate
@@ -189,8 +192,8 @@ resR2, errR2, _ = _run(uR, toolR, invR1, _st_ok)   # same ref + same payload
 check("O12 success + same ref/hash → replay",
       resR2.get("ok") and resR2.get("replay") is True, str(resR2)[:100])
 check("O13 replay same call_id", resR2["call_id"] == resR1["call_id"])
-check("O14 replay same publicId",
-      resR2["result"]["publicId"] == resR1["result"]["publicId"])
+check("O14 replay same resultId",
+      resR2["result"]["resultId"] == resR1["result"]["resultId"])
 check("O15 replay zero new consume",
       spendable_balance(uR) == balR_mid and _ledger_n(uR, "consume") == ledger_mid)
 check("O16 replay zero execution (1 call row)",

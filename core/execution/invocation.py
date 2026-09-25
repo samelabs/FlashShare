@@ -51,7 +51,7 @@ class ToolInvocation:
 
     def __init__(self, tool_id, files, params, delivery, client_ref):
         self.tool_id = tool_id
-        self.files = files          # list[SourceFile], 1..20
+        self.files = files          # list[SourceFile], 0..20 (0 = text-only tool)
         self.params = params        # dict (只含 tool params)
         self.delivery = delivery    # canonical {"expiry_days","allowed_downloads"}
         self.client_ref = client_ref  # str (required, non-empty, <=128)
@@ -92,7 +92,7 @@ def parse_tool_invocation(raw) -> ToolInvocation:
     if not isinstance(source, dict) or set(source.keys()) - {"files"}:
         raise _bad()
     files = source.get("files")
-    if not isinstance(files, list) or not (1 <= len(files) <= _MAX_FILES):
+    if not isinstance(files, list) or not (0 <= len(files) <= _MAX_FILES):
         raise _bad()
     parsed_files = []
     for item in files:

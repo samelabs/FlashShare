@@ -219,19 +219,23 @@ async def _dispatch(request: Request, user: dict, msg):
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "518plus", "version": PRODUCT_VERSION},
             "instructions": (
-                "518.PLUS capability platform. tools/list is paginated "
-                "(pass cursor for the next page); meta tool 'catalog_search' "
-                "finds tools by keyword when the catalog is large. Every "
-                "call is metered in credits; pass client_ref "
-                "on tools/call to retry safely — replays return the "
-                "original result without re-charging. Source files go "
-                "inline (base64), by https URL, or by reference to an "
-                "existing upload. For large local files use the meta tool "
-                "'create_upload' first: it returns a one-time PUT URL — "
-                "upload the raw bytes there (they never pass through the "
-                "model) and pass the returned {public_id, source_token} as "
-                "the files[] reference form. Catalog version: "
-                f"{catalog_version()} — re-list when it changes."
+                "518.PLUS is a tools platform for people and AI agents. "
+                "Discover tools with tools/list (paginated — pass the "
+                "returned cursor) or catalog_search. Pass files inline "
+                "(base64), by https URL, or by reference; for large "
+                "local files call create_upload first and PUT the raw "
+                "bytes to the one-time URL it returns, then use the "
+                "returned {public_id, source_token} as the files[] "
+                "reference form. Text-only tools take no files — just "
+                "params. Every tools/call needs a client_ref: reuse the "
+                "same value to retry safely (replays return the original "
+                "result without re-charging). Results come back directly: "
+                "structuredContent.items holds ordered text/json/file "
+                "items with download_url for each file; result_url is a "
+                "human-viewable page. Calls are metered in credits "
+                "(1000 credits = 1 USD); failed calls are refunded "
+                "automatically. Catalog version: "
+                f"{catalog_version()}."
             ),
         })
     if method == "notifications/initialized":
@@ -310,6 +314,7 @@ _FILE_ITEM_SCHEMA = {
 # file without its bytes ever passing through the model.
 _CREATE_UPLOAD_SPEC = {
     "name": "create_upload",
+    "title": "Create Upload",
     "description":
         "Stage one local file for a later tools/call without sending its "
         "bytes through the model. Returns a one-time HTTPS PUT URL "
@@ -337,6 +342,78 @@ _CREATE_UPLOAD_SPEC = {
         },
         "required": ["filename", "size", "client_ref"],
     },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "upload_url": {"type": "string"},
+            "expires_at": {"type": "integer"},
+            "max_bytes": {"type": "integer"},
+            "usage": {"type": "string"},
+        },
+        "required": ["upload_url", "expires_at", "max_bytes"],
+    },
+}
+
+
+def _spec_summary(t: dict) -> dict:
+    """name/title/description summary (tools/list + catalog_search share
+    the exact same shape). English only — MCP is a machine surface."""
+    names = mcp_names()
+    label = t["label"]
+    title = label.get("en") or t["id"]
+    mn = int(t.get("files_min", 1) or 0)
+    mx = int(t.get("files_max", 1) or 1)
+    accept = t.get("accept")
+    files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
+    if accept:
+        files_txt += f", formats: {', '.join(accept)}"
+    outs = ", ".join(t.get("outputs") or ["file"])
+    desc = (resolve_label(t.get("desc"), "en") or title).rstrip(".")
+    price = (f" Price: {int(t['cost'])} credits per call."
+             if int(t["cost"]) > 0 else " Free.")
+    return {
+        "name": mcp_name(t["id"], names),
+        "title": title,
+        "description": f"{desc}. Inputs: {files_txt}. Outputs: {outs}."
+                       f"{price}",
+    }
+
+
+# outputSchema shared by every tool (matches structuredContent exactly)
+_RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "call_id": {"type": "integer"},
+        "replay": {"type": "boolean"},
+        "result_url": {"type": "string",
+                       "description": "Human-viewable result page (/r/{id})"},
+        "expires_at": {"type": ["integer", "null"],
+                       "description": "When the file links expire (epoch s)"},
+        "items": {
+            "type": "array", "maxItems": 20,
+            "description": "Ordered result items",
+            "items": {"oneOf": [
+                {"type": "object",
+                 "properties": {"kind": {"const": "text"},
+                                "text": {"type": "string"}},
+                 "required": ["kind", "text"]},
+                {"type": "object",
+                 "properties": {"kind": {"const": "json"},
+                                "data": {}},
+                 "required": ["kind", "data"]},
+                {"type": "object",
+                 "properties": {"kind": {"const": "file"},
+                                "filename": {"type": "string"},
+                                "content_type": {"type": "string"},
+                                "size": {"type": "integer"},
+                                "download_url": {"type": "string"},
+                                "page_url": {"type": "string"}},
+                 "required": ["kind", "filename", "content_type", "size",
+                              "download_url", "page_url"]},
+            ]},
+        },
+    },
+    "required": ["call_id", "replay", "result_url", "items"],
 }
 
 
@@ -349,21 +426,21 @@ def _tool_specs(user: dict) -> list:
     ent = project(user["id"])["entitlements"]
     expiry_enum = list(ent["expiry_days"])
     downloads_enum = list(ent["download_limits"])
-    names = mcp_names()
     specs = [_CREATE_UPLOAD_SPEC]
     for t in list_catalog(user["id"]):
-        multi = bool(t.get("multi"))
+        summary = _spec_summary(t)
         props = {
             "files": {
                 "type": "array",
-                "description": "Source files: each item is inline base64, an "
-                               "https URL, or a reference to an existing upload",
-                "minItems": 1,
-                "maxItems": 20 if multi else 1,
+                "description": "Input files (optional for text-only tools): "
+                               "each item is inline base64, an https URL, or "
+                               "a reference to an existing upload",
+                "minItems": int(t.get("files_min", 1) or 0),
+                "maxItems": int(t.get("files_max", 1) or 1),
                 "items": _FILE_ITEM_SCHEMA,
             },
         }
-        required = ["files", "client_ref"]
+        required = ["client_ref"]
         decl = t.get("params") or []
         if decl:
             from governance.tool_params import to_input_schema_properties
@@ -374,6 +451,7 @@ def _tool_specs(user: dict) -> list:
                 "properties": sub_props,
                 **({"required": sub_required} if sub_required else {}),
             }
+            required += sub_required
         else:
             props["params"] = {"type": "object", "description": "Tool-specific parameters"}
         props["delivery"] = {
@@ -390,43 +468,64 @@ def _tool_specs(user: dict) -> list:
                            "generate once per logical operation and reuse the "
                            "same value to retry it safely",
         }
-        label = t["label"]
-        desc = f"{label.get('en') or t['id']}"
-        if label.get("zh"):
-            desc += f" / {label['zh']}"
-        tool_desc = resolve_label(t.get("desc"), "en") if t.get("desc") else ""
-        if tool_desc:
-            desc += f" — {tool_desc}"
-        if int(t["cost"]) > 0:
-            desc += f" (cost: {int(t['cost'])} credits)"
         specs.append({
-            "name": mcp_name(t["id"], names),
-            "description": desc,
+            "name": summary["name"],
+            "title": summary["title"],
+            "description": summary["description"],
             "inputSchema": {
                 "type": "object",
                 "properties": props,
                 "required": required,
             },
+            "outputSchema": _RESULT_SCHEMA,
         })
     specs.append({
         "name": "catalog_search",
-        "description": "Find tools by keyword (matches id and labels, all languages). Returns matching tool names.",
+        "title": "Catalog Search",
+        "description": "Find tools by keyword (id and labels, all "
+                       "languages). Returns the same name/title/"
+                       "description summary tools/list uses.",
         "inputSchema": {
             "type": "object",
             "properties": {"q": {"type": "string"}},
             "required": ["q"],
         },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "tools": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"},
+                                   "title": {"type": "string"},
+                                   "description": {"type": "string"}},
+                    "required": ["name", "title", "description"]}},
+            },
+            "required": ["query", "tools"],
+        },
     })
     return specs
 
 
-def _tool_result_error(mid, body: dict, client_ref: str):
-    """Business denial as a tool result (isError), same shape as a
-    dispatch denial."""
+def _tool_result_error(mid, body: dict, client_ref: str, tool: dict | None = None):
+    """Business denial as a tool result (isError): one plain-English
+    sentence + the code + an actionable hint for the codes an agent can
+    act on (format / count window / credits); anything else keeps the
+    structured JSON shape (data the caller may need)."""
+    code = body.get("error")
+    if code in ("err_format_mismatch", "err_file_count",
+                "err_insufficient_credits"):
+        return _rpc(mid, {
+            "content": [{"type": "text",
+                         "text": _mcp_error_text(code, tool or {}, {})}],
+            "isError": True,
+        })
     return _rpc(mid, {
         "content": [{"type": "text",
-                     "text": json.dumps({"error": body.get("error"),
-                                         "client_ref": client_ref})}],
+                     "text": json.dumps({"error": code,
+                                         "client_ref": client_ref,
+                                         **{k: v for k, v in body.items()
+                                            if k != "error"}})}],
         "isError": True,
     })
 
@@ -441,12 +540,16 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602, "invalid params: arguments must be an object")
     if name == "catalog_search":
-        from governance.catalog import search_catalog
+        from governance.catalog import search_catalog, list_catalog
         q = str(args.get("q") or "").strip()[:64]
         hits = search_catalog(q, user["id"], limit=20) if q else []
+        by_key = {t["id"]: t for t in list_catalog(user["id"])}
+        summaries = [_spec_summary(by_key[h["id"]])
+                     for h in hits if h["id"] in by_key]
         return _rpc(mid, {
             "content": [{"type": "text", "text": json.dumps(
-                {"query": q, "tools": [h["id"] for h in hits]}, ensure_ascii=False)}],
+                {"query": q, "tools": summaries}, ensure_ascii=False)}],
+            "structuredContent": {"query": q, "tools": summaries},
             "isError": False,
         })
 
@@ -492,8 +595,10 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # no network, no storage.
     try:
         files_arg = args.get("files")
-        if not isinstance(files_arg, list) or not files_arg:
-            raise ValueError("files[] required")
+        if files_arg is None:
+            files_arg = []          # text-only tools: 0 files is legal
+        if not isinstance(files_arg, list):
+            raise ValueError("files[] must be an array")
         items = [_parse_file_item(f) for f in files_arg]
     except (ValueError, binascii.Error) as exc:
         # Malformed input outranks business affordability — protocol
@@ -524,10 +629,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if _pbody is not None:
         if _pbody.get("error") == "tool_not_found":
             return _rpc_err(mid, -32602, f"unknown tool: {name}")
-        return _tool_result_error(mid, _pbody, client_ref)
+        return _tool_result_error(mid, _pbody, client_ref, tool)
     _cerr = _count_err(tool, len(items))
     if _cerr:
-        return _tool_result_error(mid, {"error": _cerr}, client_ref)
+        return _tool_result_error(mid, {"error": _cerr},
+                                   client_ref, tool)
 
     # Advisory credits affordability BEFORE source ingress: a clear
     # insufficiency answers as an application error (isError tool
@@ -601,13 +707,22 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         _fn, _ct, _body = uploads[i]
         _ok_t, _final_t = _sniff(_fn, _ct, _body[:512])
         if not _ok_t:
+            if _final_t.startswith("err_content_mismatch") \
+                    or _final_t == "err_file_type_blocked":
+                msg = _mcp_error_text("err_format_mismatch", tool, {})
+                if tool.get("accept"):
+                    msg = msg.replace(
+                        " (code: err_format_mismatch).",
+                        " (code: err_format_mismatch).")
+                return _rpc_err(mid, -32602, msg)
             return _rpc_err(mid, -32602, f"upload rejected: {_final_t}")
         _canon.append(((_san(_fn), _final_t, _body)))
     _names = {**ref_names,
               **{i: c[0] for i, c in zip(_ingest_idx, _canon)}}
     _aerr = _accept_err(tool, [_names[i] for i in range(len(items))])
     if _aerr:
-        return _tool_result_error(mid, {"error": _aerr}, client_ref)
+        return _tool_result_error(mid, {"error": _aerr},
+                                   client_ref, tool)
     # Authoritative platform batch boundary (single validator for
     # Web/MCP) — BEFORE the receipt claim / quota / Gokapi.
     _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
@@ -751,20 +866,114 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if not payload.get("ok"):
         return _rpc(mid, {
             "content": [{"type": "text",
-                         "text": json.dumps({"error": payload.get("error"),
-                                             "client_ref": raw["client_ref"]})}],
+                         "text": _mcp_error_text(payload.get("error"),
+                                                  tool, delivery)}],
             "isError": True,
         })
-    out = {
-        "client_ref": raw["client_ref"],
+    result = payload.get("result") or {}
+    return _rpc(mid, _mcp_success(result, payload))
+
+
+def _mcp_error_text(code, tool: dict, delivery: dict) -> str:
+    """One plain-English sentence + the code + an actionable hint."""
+    code = str(code or "tool_failed")
+    base = {
+        "err_format_mismatch": "The file format is not supported by this tool.",
+        "err_file_count": "The number of files is outside this tool's window.",
+        "err_insufficient_credits": "Not enough credits for this call.",
+        "tool_disabled": "This tool is currently disabled.",
+        "err_rate_limited": "Too many requests; retry shortly.",
+        "err_call_in_progress": "This operation is already running; retry the same client_ref for its result.",
+        "idempotency_conflict": "This client_ref was used for different input; use a new client_ref.",
+        "err_file_too_large": "A file exceeds the size limit.",
+        "err_endpoint_failed": "The tool's service failed.",
+        "err_endpoint_timeout": "The tool's service timed out.",
+        "err_endpoint_blocked": "The tool's service endpoint is not allowed.",
+        "tool_failed": "The tool failed to produce a result.",
+    }.get(code)
+    msg = base or "The call failed."
+    hint = ""
+    if code == "err_format_mismatch":
+        accept = tool.get("accept") if isinstance(tool, dict) else None
+        if accept:
+            hint = f" Accepted formats: {', '.join(accept)}."
+    elif code == "err_file_count":
+        mn = int((tool or {}).get("files_min", 1) or 0)
+        mx = int((tool or {}).get("files_max", 1) or 1)
+        hint = f" This tool accepts {mn} to {mx} files."
+    elif code == "err_insufficient_credits":
+        hint = " Top up credits and retry with the same client_ref."
+    return f"{msg} (code: {code}).{hint}"
+
+
+def _mcp_success(result: dict, payload: dict) -> dict:
+    """Build the MCP tools/call success envelope: content (the agent's
+    direct result) + structuredContent (the machine shape, matching
+    every tool's outputSchema)."""
+    from config import BASE_URL
+    items_in = result.get("items") or []
+    content = []
+    sc_items = []
+    # expires_at: max file expiry (epoch s); None when no file items
+    expires_at = None
+    for it in items_in:
+        if it.get("kind") == "text":
+            content.append({"type": "text", "text": it["text"]})
+            sc_items.append({"kind": "text", "text": it["text"]})
+        elif it.get("kind") == "json":
+            content.append({"type": "text",
+                            "text": json.dumps(it["data"],
+                                               ensure_ascii=False)})
+            sc_items.append({"kind": "json", "data": it["data"]})
+        elif it.get("kind") == "file":
+            pid = it["publicId"]
+            dl = f"{BASE_URL}/f/{pid}?download=1"
+            page = f"{BASE_URL}/f/{pid}"
+            ct = it.get("contentType") or "application/octet-stream"
+            size = int(it.get("size") or 0)
+            sc_items.append({"kind": "file",
+                             "filename": it.get("filename"),
+                             "content_type": ct, "size": size,
+                             "download_url": dl, "page_url": page})
+            if ct.startswith("image/") \
+                    and ct.lower() != "image/svg+xml" and size <= 1_048_576:
+                import base64 as _b64
+                from gokapi import InternalDownloadUnavailable
+                from storage import read as _storage_read
+                try:
+                    status, _h, stream = _storage_read(
+                        it.get("gokapiId") or pid)
+                    body = stream.read(1_048_577)
+                    stream.close()
+                    if status == 200 and len(body) <= 1_048_576:
+                        content.append({
+                            "type": "image",
+                            "data": _b64.b64encode(body).decode(),
+                            "mimeType": ct})
+                        content.append({
+                            "type": "resource_link", "uri": dl,
+                            "name": it.get("filename") or pid})
+                        continue
+                except (InternalDownloadUnavailable, Exception):
+                    pass
+            content.append({"type": "resource_link", "uri": dl,
+                            "name": it.get("filename") or pid,
+                            "mimeType": ct, "size": size})
+            exp = it.get("expireAt")
+            if exp and (expires_at is None or int(exp) > expires_at):
+                expires_at = int(exp)
+    if not content:
+        content.append({"type": "text", "text": "(no output items)"})
+    result_url = result.get("resultUrl") or ""
+    structured = {
         "call_id": payload.get("call_id"),
         "replay": bool(payload.get("replay")),
-        "result": payload.get("result"),
+        "result_url": result_url,
+        "expires_at": expires_at,
+        "items": sc_items,
     }
-    return _rpc(mid, {
-        "content": [{"type": "text", "text": json.dumps(out, ensure_ascii=False)}],
-        "isError": False,
-    })
+    return {"content": content, "structuredContent": structured,
+            "isError": False}
 
 
 def _parse_file_item(f) -> tuple:

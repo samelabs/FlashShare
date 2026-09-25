@@ -12,7 +12,7 @@
  *   1.  register (real form)                    8.  create real fsk_ API key
  *   2.  login (real form)                       9.  MCP initialize/tools/list
  *   3.  home real render                       10.  MCP tools/call compress
- *   4.  upload file                            11.  MCP real result/publicId
+ *   4.  upload file                            11.  MCP structuredContent items
  *   5.  select + execute compress              12.  retryable failure + Retry
  *   6.  success result real render                 (same logical operation,
  *   7.  download action visible/usable             no re-upload, no double
@@ -413,8 +413,13 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
   let mcpResult = {};
   try { mcpResult = JSON.parse((((mcall.json || {}).result || {}).content || [{}])[0].text || "{}"); } catch (e) { /* */ }
   check("mcp tools/call: ok", ((mcall.json || {}).result || {}).isError !== true, mcall.text && mcall.text.slice(0, 200));
-  check("mcp tools/call: real result publicId", !!(mcpResult.result && mcpResult.result.publicId), JSON.stringify(mcpResult).slice(0, 200));
-  check("mcp tools/call: share link downloadUrl", !!(mcpResult.result && /\/f\//.test(mcpResult.result.downloadUrl || "")));
+  // IO-1 items contract: file identity lives on structuredContent.items
+  const sc = ((mcall.json || {}).result || {}).structuredContent || {};
+  const item0 = (sc.items || [])[0] || {};
+  check("mcp tools/call: real result items (file, /f/ page_url, /r/ result_url)",
+    item0.kind === "file" && /\/f\//.test(item0.page_url || "") && /\/r\//.test(sc.result_url || ""),
+    JSON.stringify(sc).slice(0, 200));
+  check("mcp tools/call: share link downloadUrl", /\/f\//.test(item0.download_url || "") && /\?download=1$/.test(item0.download_url || ""));
 
   await browser.close();
 

@@ -123,7 +123,7 @@ check("1j lossless display: 10001 → '$10.001'",
 # ── fixtures: consumer + provider + tools + real settlement via gate.run ──
 import json as _json2
 import asyncio as _asyncio
-from execution.pipeline import StagedResult
+from execution.results import StagedItems, StagedFileItem
 from execution.invocation import ToolInvocation, SourceFile
 
 def _user(name):
@@ -146,9 +146,9 @@ def _mktool(tk, own, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " tool_type, label_json, icon, multi, pass_through, visibility, enabled,"
+            " tool_type, label_json, icon, visibility, enabled,"
             " params_json, endpoint_json, created_at, updated_at) values"
-            " (%s, %s, %s, 'http', 'produce', %s, 'wand', false, false, 'public',"
+            " (%s, %s, %s, 'http', 'produce', %s, 'wand', 'public',"
             " true, '[]', %s, %s, %s)",
             (tk, own, tk.split("/")[-1], _json2.dumps({"en": "S3"}),
              _json2.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
@@ -161,10 +161,16 @@ _mktool(T1P, None, 500)
 from repo.ledger import claim_call, insert_provider_earn_if_absent, earn_pool_balance
 
 def _mkstaged(tag):
-    return StagedResult(gokapi_id=f"gk_{_u}_{tag}", filename="o.bin",
-                        content_type="application/octet-stream", size=10,
-                        expiry_days=7, allowed_downloads=5,
-                        expire_at=ts + 86400, url_hotlink="", ip="127.0.0.1")
+    return StagedItems(order=["file"], inline=[], files=[StagedFileItem(
+        gokapi_id=f"gk_{_u}_{tag}",
+        filename="o.bin",
+        content_type="application/octet-stream",
+        size=10,
+        expiry_days=7,
+        allowed_downloads=5,
+        expire_at=ts + 86400,
+        url_hotlink="")],
+    ip="127.0.0.1")
 
 def _inv(tool_id, ref):
     return ToolInvocation(tool_id=tool_id, files=[SourceFile("p", "t")],

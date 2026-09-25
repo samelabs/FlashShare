@@ -225,6 +225,14 @@ def running_calls(con) -> list:
         " WHERE status = 'running' ORDER BY id").fetchall()
 
 
+def call_by_result_public_id(con, result_public_id: str) -> Optional[dict]:
+    """Result page lookup: the /r/{id} authority — status must be ok."""
+    return con.execute(
+        "SELECT id, user_id, tool_id, status, result_json, finished_at"
+        " FROM tool_calls WHERE result_public_id = %s AND status = 'ok'",
+        (result_public_id,)).fetchone()
+
+
 def call_outcome_for_update(con, call_id: int):
     """行锁读单条 call fact (status, result_json) — success-commit
     outcome reconciliation 的 durable read。纯 persistence query —

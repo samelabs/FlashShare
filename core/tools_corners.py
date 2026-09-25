@@ -129,10 +129,13 @@ def rounded_corners_handler(tool_input: dict, params: dict) -> dict:
               ("GIF"): "image/gif", ("BMP"): "image/bmp", ("TIFF"): "image/tiff"}[fmt]
 
     return {
-        "stream": io.BytesIO(raw),
-        "filename": f"rounded_{stem}.{out_ext}",
-        "content_type": out_ct,
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": io.BytesIO(raw),
+            "filename": f"rounded_{stem}.{out_ext}",
+            "content_type": out_ct,
+            "size": len(raw),
+        }],
     }
 
 

@@ -35,13 +35,17 @@ def _safe_remote_projection(con, tool_key: str) -> dict | None:
         return None
     d = {k: row[k] for k in ("tool_key", "tool_id", "execution", "tool_type",
                              "visibility", "enabled", "featured",
-                             "sort_order", "multi")}
+                             "sort_order", "files_min", "files_max")}
     accept_json = row["accept_json"]
     if accept_json:
         try:
             d["accept"] = json.loads(accept_json)
         except Exception:
             d["accept"] = None
+    try:
+        d["outputs"] = json.loads(row["outputs_json"])
+    except Exception:
+        d["outputs"] = ["file"]
     pr = _catalog_repo.pricing_row(con, tool_key)
     # pricing missing → cost None (LEFT JOIN semantics; never guess free)
     d["cost"] = pr["cost"] if pr is not None else None
@@ -54,7 +58,8 @@ def _snap_remote(r) -> dict:
         return {}
     return {k: r[k] for k in ("tool_key", "tool_id", "execution",
                               "tool_type", "visibility", "enabled",
-                              "featured", "sort_order", "multi", "accept",
+                              "featured", "sort_order", "files_min", "files_max",
+                              "outputs", "accept",
                               "cost") if k in r.keys()}
 
 
@@ -149,10 +154,12 @@ def create_http_tool(operator_id: int, payload: dict) -> str:
         "label": {"en": payload["label"], "zh": payload["label"]},
         "desc": None,
         "icon": "wand",
-        "accept": accept,
-        "multi": payload.get("multi", False),
+        "inputs": {"files": {
+            "min": int(payload.get("files_min", 1)),
+            "max": int(payload.get("files_max", 1)),
+            "accept": accept}},
+        "outputs": payload.get("outputs") or ["file"],
         "params": None,
-        "pass_through": False,
         "visibility": "public",
         "enabled": True,
         "binding": build_http_binding({

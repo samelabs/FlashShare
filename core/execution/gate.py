@@ -15,6 +15,7 @@ from repo import ledger as ledger_repo
 from repo.ledger import (claim_call, finalize_call_failed, finalize_call_ok,
                          insert_provider_earn_if_absent)
 from utils import now
+from .results import StagedItems
 
 logger = logging.getLogger("flashshare")
 
@@ -154,76 +155,41 @@ def recover_abandoned_calls() -> dict:
 
 
 def _finish(user: dict, tool: dict, call_id: int, cost: int,
-            staged, commission_rate_snapshot: int) -> dict:
-    """The ONE success settlement transaction: durable result landing
-    (uploads INSERT) + tool_call ok (upload_id/result binding) +
-    provider/platform split — all-or-nothing. `staged` is a
-    pipeline.StagedResult (physical Gokapi object only); every 518
-    public identity is born inside this transaction.
+            staged: StagedItems, commission_rate_snapshot: int) -> dict:
+    """The ONE success settlement transaction: EVERY file item's durable
+    landing (uploads rows) + the tool_call ok (result binding) +
+    provider/platform split — all-or-nothing. `staged` is the execution
+    output (items model); text/json items live inside result_json.
 
-    Self-calls are free by policy, so cost is already zero before this point.
-    Value conservation for metered calls, across the S3 unit boundary —
-    consumer debit is Credits; provider/platform legs are USD-millis
-    (converted below via economy.money, the only conversion point):
-
-      third-party tool:  user debit (Credits) = provider earning +
-                         platform commission (both USD-millis at 1:1
-                         under the current 1000 Credits = $1.00 rate)
-                         provider = cost - cost*rate//100  (rate = the
-                                       CLAIM-TIME commission_rate_snapshot
-                                       persisted on the tool_call row —
-                                       never current settings)
-                         platform = cost - provider
-      first-party tool:  user debit (Credits) = platform revenue
-                         (USD-millis, full cost)
-
-    The third-party split writes BOTH legs whenever owner is set and the
-    caller is not the owner — including rate=100 (provider 0, platform
-    full cost) and rate=0 (provider full cost, platform 0). Zero legs
-    are skipped only when the leg amount is exactly 0.
+    Self-calls are free by policy, so cost is already zero before this
+    point. Value conservation for metered calls across the S3 unit
+    boundary (consumer Credits vs provider/platform USD-millis, the only
+    conversion point = economy.money):
+      third-party: provider = cost - cost*rate//100 (claim-time
+                   commission_rate_snapshot), platform = cost - provider
+      first-party:  platform revenue = full cost
     """
-    from execution.pipeline import land_tool_result
     from config import BASE_URL
-
-    # Validate the durable attempt fact BEFORE any settlement side effect
-    # (uploads landing, tool_call ok, earning/revenue). Every runtime
-    # attempt carries a claim-time snapshot (DB invariant: running →
-    # NOT NULL); the validation therefore applies to EVERY call —
-    # first-party/free/self-owned may not consume the rate, but they can
-    # never proceed on an invalid attempt snapshot. NULL/out-of-range is
-    # a writer bug, not a default-to-0% situation — fail loud and let
-    # the strict outcome reconcile settle the economic failure.
-    if (not isinstance(commission_rate_snapshot, int)
-            or not 0 <= commission_rate_snapshot <= 100):
-        raise RuntimeError("invalid_commission_snapshot")
+    from execution.results import land_items_result
 
     owner_id = tool.get("owner_id")
     payout = 0
     commission = 0
     if cost > 0 and owner_id is not None and owner_id != user["id"]:
-        # claim-time snapshot ONLY — current settings are never read at
-        # settlement; a config change mid-execution cannot re-split an
-        # in-flight attempt.
         rate = commission_rate_snapshot
         payout = cost - (cost * rate // 100)
         commission = cost - payout
 
-    # ── denomination boundary (S3): consumer Credits → USD-millis cash ──
-    # cost_snapshot stays Credits (consumer side). Provider/platform legs
-    # are written in USD-millis via the single conversion authority
-    # (economy.money). At the current rate 1 Credit = 1 USD-milli the
-    # integers are identical, but the boundary is explicit and central.
     from economy.money import credits_to_millis
     payout_millis = credits_to_millis(payout)
     commission_millis = credits_to_millis(commission)
     revenue_millis = credits_to_millis(cost if owner_id is None else 0)
 
     with db() as con:
-        upload_id, public_result = land_tool_result(
+        upload_id, result_public_id, public_result = land_items_result(
             con, user["id"], staged, BASE_URL)
         finalize_call_ok(
-            con, call_id, upload_id,
-            public_result.get("publicId"),
+            con, call_id, upload_id, result_public_id,
             json.dumps(public_result, ensure_ascii=False), now())
         if cost > 0 and owner_id is None:
             # first-party: full cost is platform revenue (USD-millis)
@@ -322,7 +288,7 @@ def resolve_success_outcome(call_id: int) -> dict:
                          call_id)
         return {"outcome": OUTCOME_UNRESOLVED}
     if not isinstance(durable_result, dict) \
-            or not durable_result.get("publicId"):
+            or not isinstance(durable_result.get("items"), list):
         logger.error("durable ok but result_json shape unexpected"
                      " call_id=%s — unresolved", call_id)
         return {"outcome": OUTCOME_UNRESOLVED}
@@ -461,11 +427,12 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
             # object belongs to THIS attempt), then the existing failure
             # settlement (exact refund → terminal failed).
             from storage import delete as storage_delete
-            try:
-                storage_delete(result.gokapi_id)
-            except Exception:
-                logger.warning("staged result cleanup failed call_id=%s"
-                               " gokapi=%s", call_id, result.gokapi_id)
+            for f in result.files:
+                try:
+                    storage_delete(f.gokapi_id)
+                except Exception:
+                    logger.warning("staged result cleanup failed call_id=%s"
+                                   " gokapi=%s", call_id, f.gokapi_id)
             if _settle_failure(user, tool_id, call_id, charge,
                                "metering_failed"):
                 return None, {"ok": False, "error": "err_metering_failed"}, 500

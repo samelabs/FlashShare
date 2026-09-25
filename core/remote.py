@@ -39,6 +39,7 @@ import urllib.parse
 import urllib.request
 
 from config import MAX_UPLOAD_BYTES
+from execution.results import (MAX_RESULT_ITEMS, MAX_INLINE_RESULT_BYTES)  # noqa: E402
 
 DEFAULT_TIMEOUT_S = 60
 MAX_TIMEOUT_S = 300
@@ -421,20 +422,29 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
 
 def drive_http(endpoint_decl: dict, sources: list, params: dict,
                auth_headers: dict, trusted: bool) -> dict:
-    """sources: [{filename, content_type, size, fetch_url}] (pull model).
-    Returns {filename, content_type, bytes} — validated, ready to land.
+    """The ONE southbound developer contract (IO-1).
+
+    Request  {"files": [{"filename", "content_type", "size", "url"}],
+              "params": {...}}   (pull model; signed one-time fetch URLs)
+    Response {"items": [{"kind":"text","text": str}
+                        | {"kind":"json","data": <json>}
+                        | {"kind":"file", "filename": str,
+                           "content_type": str, "data_b64" | "url"}]}
+
+    Every file item is fetched/decoded, byte-validated and normalized to
+    a landing result ({filename, content_type, bytes, size}); a response
+    that does not match the items shape raises RemoteError
+    ("invalid_response") — the call fails and the caller refunds.
 
     Trusted rows: guard_endpoint (operator policy) then the classic
-    urllib driver. Untrusted rows: NO pre-guard here — the pinned
-    transport itself is the runtime security authority (single DNS
-    resolution per hop); the route already ran guard_endpoint as an
-    early submission-time check."""
+    urllib driver. Untrusted rows: the pinned transport itself is the
+    runtime security authority (single DNS resolution per hop)."""
     timeout_s = min(int(endpoint_decl.get("timeout_s") or DEFAULT_TIMEOUT_S),
                     MAX_TIMEOUT_S)
     url = (guard_endpoint(endpoint_decl["url"], trusted) if trusted
            else endpoint_decl["url"])
     payload = {
-        "job_inputs": [
+        "files": [
             {"filename": s["filename"], "content_type": s["content_type"],
              "size": s["size"], "url": s["fetch_url"]}
             for s in sources
@@ -446,25 +456,65 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
         raise RemoteError("http_status", f"{status}")
     try:
         out = json.loads(body)
-    except Exception:
-        # raw-bytes mode: body IS the file
-        return _wrap_raw(body, content_type=resp_ctype)
-    # json mode: {filename?, content_type?, data_b64 | output_url}
-    # resp_ctype here is the JSON ENVELOPE's Content-Type — product MIME
-    # comes only from the JSON product metadata (out.content_type) or, in
-    # its absence, from the canonical filename + byte validation. The
-    # envelope MIME must never be inherited by the wrapped product.
-    if "output_url" in out:
-        data = _pull_output_url(out["output_url"], timeout_s, trusted)
-        return _wrap_raw(data, out.get("filename"), out.get("content_type"))
-    if "data_b64" in out:
-        import base64
-        try:
-            data = base64.b64decode(out["data_b64"], validate=True)
-        except Exception as exc:
-            raise RemoteError("bad_output", "b64 decode failed") from exc
-        return _wrap_raw(data, out.get("filename"), out.get("content_type"))
-    raise RemoteError("invalid_response", "no data_b64/output_url/raw body")
+    except Exception as exc:
+        raise RemoteError("invalid_response",
+                          "response must be JSON with an items array") from exc
+    if not isinstance(out, dict) or not isinstance(out.get("items"), list):
+        raise RemoteError("invalid_response", "missing items array")
+    items = out["items"]
+    if len(items) > MAX_RESULT_ITEMS:
+        raise RemoteError("invalid_response", "too many items")
+
+    import base64
+    results = []
+    inline_total = 0
+    for it in items:
+        if not isinstance(it, dict):
+            raise RemoteError("invalid_response", "item must be an object")
+        kind = it.get("kind")
+        if kind == "text":
+            text = it.get("text")
+            if not isinstance(text, str):
+                raise RemoteError("invalid_response", "text item needs text")
+            inline_total += len(text.encode("utf-8"))
+            if inline_total > MAX_INLINE_RESULT_BYTES:
+                raise RemoteError("invalid_response", "inline payload too large")
+            results.append({"kind": "text", "text": text})
+        elif kind == "json":
+            data = it.get("data")
+            try:
+                blob = json.dumps(data, ensure_ascii=False)
+            except (TypeError, ValueError) as exc:
+                raise RemoteError("invalid_response",
+                                  "json item data not serializable") from exc
+            inline_total += len(blob.encode("utf-8"))
+            if inline_total > MAX_INLINE_RESULT_BYTES:
+                raise RemoteError("invalid_response", "inline payload too large")
+            results.append({"kind": "json", "data": data})
+        elif kind == "file":
+            if "url" in it:
+                data = _pull_output_url(it["url"], timeout_s, trusted)
+                wrapped = _wrap_raw(data, it.get("filename"),
+                                    it.get("content_type"))
+            elif "data_b64" in it:
+                try:
+                    data = base64.b64decode(it["data_b64"], validate=True)
+                except Exception as exc:
+                    raise RemoteError("bad_output",
+                                      "b64 decode failed") from exc
+                wrapped = _wrap_raw(data, it.get("filename"),
+                                    it.get("content_type"))
+            else:
+                raise RemoteError("invalid_response",
+                                  "file item needs data_b64 or url")
+            results.append({"kind": "file",
+                            "filename": wrapped["filename"],
+                            "content_type": wrapped["content_type"],
+                            "size": len(wrapped["bytes"]),
+                            "bytes": wrapped["bytes"]})
+        else:
+            raise RemoteError("invalid_response", "unknown item kind")
+    return {"items": results}
 
 
 def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:

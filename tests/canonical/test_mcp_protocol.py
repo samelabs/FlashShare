@@ -165,6 +165,11 @@ def _call(name, arguments, mid=1, token=TOKEN):
                  "params": {"name": name, "arguments": arguments}}, token)
 
 
+def _err_sentence(d):
+    res = d.get("result") or {}
+    return ((res.get("content") or [{}])[0].get("text", ""))
+
+
 def _tool_text(d):
     try:
         return json.loads(((d.get("result") or {}).get("content") or [{}])[0].get("text") or "{}")
@@ -300,9 +305,11 @@ check("P2 invalid declared param → isError param_invalid",
 st, _h, d = _zero_side_effects("P3", lambda: _call(
     "compress", {"files": [{"filename": "a.pdf", "b64": _b64(PDF)}],
                  "client_ref": f"p3-{_u}"}))
-check("P3 format outside accept → isError err_format_mismatch",
+_p3 = _err_sentence(d)
+check("P3 format outside accept → isError + English sentence",
       (d.get("result") or {}).get("isError") is True
-      and _tool_text(d).get("error") == "err_format_mismatch", str(d)[:120])
+      and "not supported" in _p3
+      and "err_format_mismatch" in _p3, _p3[:110])
 st, _h, d = _zero_side_effects("P4", lambda: _call(
     "compress", {"files": [{"filename": "a.png", "b64": _b64(PNG)}],
                  "delivery": {"expiry_days": 30, "allowed_downloads": 50},
@@ -314,9 +321,10 @@ st, _h, d = _zero_side_effects("P5", lambda: _call(
     "compress", {"files": [{"filename": "a.png", "b64": _b64(PNG)},
                            {"filename": "b.png", "b64": _b64(PNG)}],
                  "client_ref": f"p5-{_u}"}))
-check("P5 two files to single-file tool → isError err_too_many_files",
+_p5 = _err_sentence(d)
+check("P5 two files to single-file tool → isError + window sentence",
       (d.get("result") or {}).get("isError") is True
-      and _tool_text(d).get("error") == "err_too_many_files", str(d)[:120])
+      and "err_file_count" in _p5 and "1 to 1" in _p5, _p5[:110])
 
 # ══════════ 7. reversible tool names ('__' in usernames / tool ids) ══════════
 _ownA = _mkuser(f"{_u}o")            # owner 'mpXXXXXXo'
@@ -329,9 +337,9 @@ def _mk_tool(key, owner, pkey):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " tool_type, label_json, icon, accept_json, multi, pass_through,"
+            " tool_type, label_json, icon, accept_json,"
             " visibility, enabled, params_json, endpoint_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'http', 'produce', %s, 'wand', %s, false, false,"
+            " values (%s, %s, %s, 'http', 'produce', %s, 'wand', %s, "
             " 'public', true, %s, %s, %s, %s)",
             (key, owner, key.split("/")[-1], json.dumps({"en": key}),
              json.dumps([".pdf"]), json.dumps(decl),
@@ -370,10 +378,16 @@ check("T6 tools/list carries both tools under distinct names",
 # format gate (zero side effects), a misrouted one fails param_required.
 st, _h, d = _call(nameA, {"files": [{"filename": "a.png", "b64": _b64(PNG)}],
                           "params": {"alpha": "v"}, "client_ref": f"t7-{_u}"})
-check("T7 name A routes to key A", _tool_text(d).get("error") == "err_format_mismatch", str(d)[:120])
+_t7 = _err_sentence(d)
+check("T7 name A routes to key A (format gate reached)",
+      (d.get("result") or {}).get("isError") is True
+      and "err_format_mismatch" in _t7, _t7[:110])
 st, _h, d = _call(nameB, {"files": [{"filename": "a.png", "b64": _b64(PNG)}],
                           "params": {"beta": "v"}, "client_ref": f"t8-{_u}"})
-check("T8 name B routes to key B", _tool_text(d).get("error") == "err_format_mismatch", str(d)[:120])
+_t8 = _err_sentence(d)
+check("T8 name B routes to key B (format gate reached)",
+      (d.get("result") or {}).get("isError") is True
+      and "err_format_mismatch" in _t8, _t8[:110])
 _spec = next((t for t in _listed if t["name"] == "compress"), {})
 _items = (((_spec.get("inputSchema") or {}).get("properties") or {}).get("files") or {}).get("items") or {}
 _forms = sorted(tuple(sorted(x.get("required") or [])) for x in _items.get("oneOf") or [])
@@ -489,10 +503,11 @@ i0 = _ingress_n(uid)
 st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": src1["sourceToken"]}],
                                "client_ref": refR})
-_rt = _tool_text(d)
+_rt = (d.get("result") or {}).get("structuredContent") or {}
 check("R1 reference form → executed result",
       (d.get("result") or {}).get("isError") is False
-      and bool((_rt.get("result") or {}).get("publicId")), str(d)[:140])
+      and bool(_rt.get("items"))
+      and _rt["items"][0].get("kind") == "file", str(d)[:140])
 check("R2 reference form claims no ingress receipt", _ingress_n(uid) == i0)
 c0 = _calls_n(uid)
 st, _h, d = _call("compress", {"files": [{"public_id": src2["stagingId"],
@@ -513,15 +528,17 @@ st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": src1["sourceToken"]}],
                                "client_ref": refR}, mid=2)
 check("R6 same ref + same reference → replay (same call)",
-      _tool_text(d).get("replay") is True and _calls_n(uid) == c0, str(d)[:120])
+      ((d.get("result") or {}).get("structuredContent") or {}).get("replay")
+      is True and _calls_n(uid) == c0, str(d)[:120])
 src3 = _web_upload(ck, f"web-{_u}-3")
 st, _h, d = _call("compress", {"files": [{"public_id": src3["stagingId"],
                                           "source_token": src3["sourceToken"]}],
                                "client_ref": refR}, mid=3)
-check("R7 same ref + different reference → idempotency_conflict, zero new call",
+_r7 = _err_sentence(d)
+check("R7 same ref + different reference → conflict sentence, zero new call",
       (d.get("result") or {}).get("isError") is True
-      and _tool_text(d).get("error") == "idempotency_conflict" and _calls_n(uid) == c0,
-      str(d)[:120])
+      and "idempotency_conflict" in _r7 and _calls_n(uid) == c0,
+      _r7[:120])
 
 # ══════════ 11. setup pages ══════════
 st, _h, html_en = _req("GET", "/agents?lang=en")
