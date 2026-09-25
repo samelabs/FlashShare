@@ -207,8 +207,8 @@ bal3 = spendable_balance(user3)
 
 import execution.results as _pipe
 _orig_land = _pipe.land_items_result
-def _land_fail_after_upload(con, user_id, staged, base_url):
-    upload_id, result_pid, rec = _orig_land(con, user_id, staged, base_url)
+def _land_fail_after_upload(con, user_id, staged, base_url, delivery):
+    upload_id, result_pid, rec = _orig_land(con, user_id, staged, base_url, delivery)
     raise RuntimeError("R1: fault after uploads INSERT")
 import execution.gate as _gate_mod
 import core.execution.gate as _g2

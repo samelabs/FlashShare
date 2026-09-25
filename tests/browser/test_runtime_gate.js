@@ -90,9 +90,9 @@ const VIEWPORTS = {
 // visual contract per page: overflow/overlap/CTA checks are generic; the
 // per-page required selectors anchor "this page actually rendered".
 const PAGES = [
-  { path: "/", name: "home", anonOk: true, need: ["#uploadForm", "#dropZone", "#submitBtn", ".tool-tab"] },
+  { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-tab"] },
   { path: "/tools", name: "tools", anonOk: true, need: [] },
-  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: ["#toolFile", "#toolRunForm"] },
+  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", "#toolRunForm"] },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#mcpConf", "#cfgClaudeCode", "#cfgVscode", "#cfgClaudeDesktop"], copy: ["#copyMcp", "#copyConf"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
@@ -246,10 +246,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
       // 4-7. upload + execute compress via real UI (home surface)
       await page.click(".tool-tab[data-tool-id=compress]");
-      // compress has params → overlay opens; confirm it
-      const overlayConfirm = await page.$("#overlayConfirm");
-      if (overlayConfirm) await overlayConfirm.click();
+      // IO-2: params render inline in the shared input component — no overlay
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
+      check("home: input component rendered (run + file picker)",
+        (await page.$(".ti-run")) !== null && (await page.$(".ti-file-input")) !== null);
 
       // track network legs for retry assertions
       const legs = { uploads: [], executes: [] };
@@ -258,8 +258,8 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         if (r.url().includes("/api/tools/execute") && r.method() === "POST") legs.executes.push(r);
       });
 
-      await setInputFiles(page, "#file", [{ name: "gate-photo.png", mimeType: "image/png", buffer: IMG }]);
-      await page.click("#submitBtn");
+      await setInputFiles(page, ".ti-file-input", [{ name: "gate-photo.png", mimeType: "image/png", buffer: IMG }]);
+      await page.click(".ti-run");
       // poll for result card (success or error)
       try {
         await page.waitForSelector(".result-card", { timeout: 60000 });
@@ -267,9 +267,9 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         const dbg = await page.evaluate(() => ({
           submits: window.__submits || 0,
           snapshot: (window.__submitSnapshots || [])[0] || null,
-          fileCount: (document.getElementById("file") || { files: [] }).files.length,
+          fileCount: (document.querySelector(".ti-file-input") || { files: [] }).files.length,
           busy: !!(window.toolOperationBusy && window.toolOperationBusy()),
-          btnDisabled: (document.getElementById("submitBtn") || {}).disabled,
+          btnDisabled: (document.querySelector(".ti-run") || {}).disabled,
           datasetTool: document.body.dataset.tool,
           resultHTML: ((document.getElementById("result") || {}).innerHTML || "").slice(0, 200),
           net: netTrace.slice(-12),
@@ -296,8 +296,8 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // Arm fake-gokapi internal-read failure: the execute source read fails
       // typed (tool_failed) AFTER upload — retryable per contract, same ref.
       await setGokapiFail("500");
-      await setInputFiles(page, "#file", [{ name: "gate-retry.png", mimeType: "image/png", buffer: IMG }]);
-      await page.click("#submitBtn");
+      await setInputFiles(page, ".ti-file-input", [{ name: "gate-retry.png", mimeType: "image/png", buffer: IMG }]);
+      await page.click(".ti-run");
       try {
         await page.waitForSelector("#toolRetry", { timeout: 60000 });
       } catch (e) {

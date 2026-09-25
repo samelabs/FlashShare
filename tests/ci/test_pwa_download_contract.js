@@ -81,8 +81,8 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
     const appjs = fs.readFileSync(path.join(REPO, "static", "app.js"), "utf8");
     assert.ok(!/function\s+isStandalonePWA\s*\(/.test(appjs),
       "app.js must not declare a top-level isStandalonePWA (recursion shadow)");
-    assert.ok(/const\s+pwa\s*=\s*window\.isStandalonePWA\(\)/.test(appjs),
-      "app.js success path consumes window.isStandalonePWA() directly");
+    assert.ok(/window\.isStandalonePWA\(\)/.test(appjs),
+      "app.js success path consumes the engine isStandalonePWA() (guarded)");
     assert.ok(!/isStandalonePWA\s*:\s*\(\)\s*=>/.test(appjs),
       "app.js carries no second detection (no inline alias)");
   }

@@ -187,7 +187,9 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
   assert.ok(!appjs.includes("lastToolSource"), "app.js: lastToolSource removed");
   assert.ok(!appjs.includes("lastUploadResult"), "app.js: lastUploadResult removed");
   assert.ok(!/function\s+retryTool|retryTool\s*=/.test(appjs), "app.js: retryTool removed");
-  assert.ok(appjs.includes("runToolFlow"), "app.js delegates to the process-flow authority");
+  const toolInput = fs.readFileSync(path.join(REPO, "static", "pages", "tool-input.js"), "utf8");
+  assert.ok(toolInput.includes("runToolFlow"), "tool-input.js delegates to the process-flow authority");
+  assert.ok(!appjs.includes("new XMLHttpRequest"), "app.js owns no upload pipeline (IO-2: input component + process-flow only)");
 
   // 6. PWA detection authority (RC-VIS-001): base-engine.js owns the ONLY
   //    isStandalonePWA; app.js must not declare a same-name top-level
@@ -197,8 +199,11 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     "app.js: no top-level function isStandalonePWA (engine authority shadow ban)");
   assert.ok(!/(?:^|\n)\s*(?:const|let|var)\s+isStandalonePWA\s*=/.test(appjs),
     "app.js: no isStandalonePWA alias/second detection");
-  assert.ok(/const\s+pwa\s*=\s*window\.isStandalonePWA\(\)/.test(appjs),
-    "app.js: showShareResult consumes the canonical window.isStandalonePWA()");
+  const commonSrc = fs.readFileSync(path.join(REPO, "static", "pages", "common.js"), "utf8");
+  assert.ok(/wirePwaDownloadLinks[\s\S]*window\.isStandalonePWA\(\)/.test(commonSrc),
+    "common.js: wirePwaDownloadLinks consumes the canonical window.isStandalonePWA()");
+  assert.ok(appjs.includes("wirePwaDownloadLinks"),
+    "app.js: result wiring routes downloads through the shared PWA authority");
 
   // 7. behavioral: the success path itself must not recurse. Simulate the
   //    exact failure mode: engine loaded, then app.js — call showShareResult
@@ -244,9 +249,12 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     try {
       vm.runInContext(appSrc, shared, { filename: "app.js" });
       shared.showShareResult({
-        downloadUrl: "https://ci.test/f/abc", url: "https://ci.test/f/abc",
-        publicId: "abc", filename: "out.png", name: "out.png", size: 1234,
-        contentType: "image/png",
+        resultId: "r1",
+        items: [
+          { kind: "text", text: "done" },
+          { kind: "file", filename: "out.png", contentType: "image/png",
+            size: 1234, publicId: "abc" },
+        ],
       });
     } catch (e) { shareErr = e; }
     assert.ok(!shareErr, "showShareResult must not throw with engine loaded (recursion regression): " + (shareErr && shareErr.message));
@@ -286,12 +294,17 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     vm.runInContext(appSrc, s2, { filename: "app.js" });
     assert.strictEqual(typeof s2.pwaDownload, "function", "engine pwaDownload present");
     assert.strictEqual(s2.isStandalonePWA(), true, "engine says standalone");
-    // app.js showShareResult in standalone renders a BUTTON (not <a download>)
-    s2.showShareResult({ downloadUrl: "https://ci.test/f/z", url: "https://ci.test/f/z",
-      publicId: "z", filename: "a.zip", name: "a.zip", size: 10, contentType: "application/zip" });
+    // app.js items result in standalone: the shared rebind strips every
+    // download anchor (no in-window navigation possible)
+    s2.showShareResult({
+      resultId: "r2",
+      items: [
+        { kind: "file", filename: "a.zip", contentType: "application/zip",
+          size: 10, publicId: "z" },
+      ],
+    });
     const html = resultShared(s2).innerHTML;
-    assert.ok(!/<a[^>]+download\b/.test(html), "standalone: no <a download> anchor");
-    assert.ok(/<button[^>]+aria-label="Download/.test(html), "standalone: download BUTTON rendered");
+    assert.ok(!/<a[^>]+download\b/.test(html), "standalone: no <a download> anchor left standing");
   }
 
   // 9. unified error boundary (B5/#42): known → specific localized message,

@@ -163,7 +163,7 @@ function run(capture, refMinted) {
   // pass-through (share) flow also carries the upload client_ref
   let capture4 = {};
   const s4 = run(capture4);
-  await s4.runToolFlow({ id: "share", label: "S", pass_through: true }, [file], {});
+  await s4.runToolFlow({ id: "share", label: "S", params: [], files_min: 1, files_max: 20, outputs: ["file"] }, [file], {});
   assert.ok(capture4.upload, "pass-through upload happened");
   assert.ok(capture4.upload.form.get("client_ref"), "pass-through upload carries client_ref");
 
@@ -206,7 +206,7 @@ function run(capture, refMinted) {
     return sandbox;
   }
 
-  const TOOL = { id: "compress", label: "C", params: [], multi: false, pass_through: false };
+  const TOOL = { id: "compress", label: "C", params: [], files_min: 1, files_max: 1, outputs: ["file"] };
   const file = { name: "a.png", size: 8 };
 
   // R1: upload response-loss retry re-uploads the SAME files with the

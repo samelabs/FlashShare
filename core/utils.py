@@ -40,6 +40,12 @@ def public_file_url(public_id: str) -> str:
     return f"{BASE_URL}/f/{urllib.parse.quote(public_id)}"
 
 
+def public_result_url(result_id: str) -> str:
+    """Result page link (/r/{id}) — the single builder for stored
+    result records, the /r page share surface and its QR."""
+    return f"{BASE_URL}/r/{urllib.parse.quote(result_id)}"
+
+
 def html_escape(value: str) -> str:
     return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
 

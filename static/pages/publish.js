@@ -368,6 +368,16 @@ async function submit() {
     showErrors({ accept: "bad_format_family" });
     return;
   }
+  const fmin = parseInt(document.getElementById("fFilesMin").value, 10);
+  const fmax = parseInt(document.getElementById("fFilesMax").value, 10);
+  if (!(fmin >= 0 && fmax >= 1 && fmin <= fmax && fmax <= 20)) {
+    showErrors({ files_max: "bad_files_range" });
+    return;
+  }
+  if (!document.querySelectorAll(".pub-outputs-checks input:checked").length) {
+    showErrors({ outputs: "bad_outputs" });
+    return;
+  }
   const body = {
     tool_id: document.getElementById("fToolId").value.trim(),
     label,
@@ -376,7 +386,12 @@ async function submit() {
     timeout_s: parseInt(document.getElementById("fTimeout").value, 10) || 60,
     format_families: collectFamilies(),
     accept: collectAccept(),
-    multi: document.getElementById("fMulti").checked,
+    files_min: parseInt(document.getElementById("fFilesMin").value, 10),
+    files_max: parseInt(document.getElementById("fFilesMax").value, 10),
+    outputs: ["text", "json", "file"].filter((k) => {
+      const el = document.getElementById("fOut" + k.charAt(0).toUpperCase() + k.slice(1));
+      return el && el.checked;
+    }),
     auth_header: document.getElementById("fAuthHeader").value.trim() || undefined,
     auth_token: document.getElementById("fAuthToken").value.trim() || undefined,
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
@@ -403,7 +418,9 @@ async function submit() {
     bad_url: "url", https_required: "url", url_taken: "url",
     bad_tool_id: "tool_id", tool_id_taken: "tool_id",
     bad_label: "label", bad_desc: "desc",
-    bad_accept: "accept", bad_format_family: "accept", bad_multi: "multi",
+    bad_accept: "accept", bad_format_family: "accept",
+    bad_files_min: "files_min", bad_files_max: "files_max",
+    bad_files_range: "files_max", bad_outputs: "outputs",
     bad_cost: "cost", too_many_tools: "tool_id",
   };
   if (map[d.error]) { showErrors({ [map[d.error]]: d.error }); return; }
@@ -429,7 +446,12 @@ function refill(t) {
   const accExts = extsFromAccept(t.accept);
   const fams = famKeyFromAccept(t.accept);
   renderFamGrid(fams[0] || null, accExts, false);
-  document.getElementById("fMulti").checked = !!t.multi;
+  document.getElementById("fFilesMin").value = t.files_min != null ? t.files_min : 1;
+  document.getElementById("fFilesMax").value = t.files_max != null ? t.files_max : 1;
+  ["text", "json", "file"].forEach((k) => {
+    const el = document.getElementById("fOut" + k.charAt(0).toUpperCase() + k.slice(1));
+    if (el) el.checked = (t.outputs || ["file"]).indexOf(k) !== -1;
+  });
   // 多语言回填
   const rows = {};
   const eat = (d, key) => {

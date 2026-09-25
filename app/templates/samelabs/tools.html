@@ -64,7 +64,15 @@
     <label>Auth header (optional) <input type="text" name="auth_header"></label>
     <label>Auth token (optional, Vault) <input type="password" name="auth_token"></label>
     <label>Accept exts (comma-separated, optional) <input type="text" name="accept" placeholder=".png,.pdf"></label>
-    <label class="sl-check"><input type="checkbox" name="multi"> multi</label>
+    <label>Files min (0 = text-only)
+      <input type="number" name="files_min" value="1" min="0" max="20">
+    </label>
+    <label>Files max (1-20)
+      <input type="number" name="files_max" value="1" min="1" max="20">
+    </label>
+    <label class="sl-check"><input type="checkbox" name="out_text"> text out</label>
+    <label class="sl-check"><input type="checkbox" name="out_json"> json out</label>
+    <label class="sl-check"><input type="checkbox" name="out_file" checked> file out</label>
     <label>Price (Credits/call) <input type="number" name="cost" value="0" min="0"></label>
     <div class="sl-modal-actions">
       <button class="sl-btn" type="button" id="createHttpCancel">Cancel</button>

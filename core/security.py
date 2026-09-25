@@ -94,7 +94,7 @@ def _hosted_exec_sig(path: str, payload_digest: str, expires_at: int) -> str:
 
 
 def hosted_payload_digest(payload: dict) -> str:
-    """Stable digest over the canonical outbound payload (job_inputs +
+    """Stable digest over the canonical outbound payload (files +
     params). Deterministic key order so both sides compute the same
     digest without depending on transport serialization order."""
     return hashlib.sha256(

@@ -231,7 +231,7 @@ st, r3 = req("POST", "/api/tools/execute", {
     "client_ref": f"fresh-{uuid.uuid4().hex[:8]}"}, cookie)
 check("E2 新 client_ref → fresh (非 replay)", r3.get("ok") and not r3.get("replay"), str(r3)[:120])
 
-# ═══ multi 工具: zip_pack 双文件 (one schema) ═══
+# ═══ 多文件窗口工具: zip_pack 双文件 (one schema) ═══
 up2 = upload(cookie, name=b"b.png")
 up3 = upload(cookie, name=b"c.png")
 st, rz = req("POST", "/api/tools/execute", {
