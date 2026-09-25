@@ -228,22 +228,26 @@ _SCHEMA_SQL = (
       ON ingress_requests(user_id, request_ref)
       WHERE status IN ('running','ok')
     """,
-    # ── platform: api_tokens (MCP/agent credential; parallel to sessions) ──
+    # ── platform: api_keys (MCP/agent credential; parallel to sessions) ──
+    # key_hash authenticates; key_sealed is the encrypted copy that lets
+    # the owner view the full key again (secrets_vault, TOOL_VAULT_KEY).
+    # Historical rows migrated without a sealed copy have key_sealed
+    # NULL — the page then shows the prefix only (a data state, not a
+    # compatibility branch).
     """
-    CREATE TABLE IF NOT EXISTS api_tokens (
+    CREATE TABLE IF NOT EXISTS api_keys (
       id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name         TEXT NOT NULL,
-      token_hash   TEXT NOT NULL UNIQUE,
+      key_hash     TEXT NOT NULL UNIQUE,
+      key_sealed   TEXT,
       prefix       TEXT NOT NULL,
-      status       TEXT NOT NULL DEFAULT 'active',
       last_used_at BIGINT,
-      expires_at   BIGINT,
       created_at   BIGINT NOT NULL
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens(user_id)
+    CREATE INDEX IF NOT EXISTS api_keys_user_idx ON api_keys(user_id)
     """,
     # ── platform: ledger (append-only; balance == sum(delta), auditable) ──
     """

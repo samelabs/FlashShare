@@ -695,14 +695,14 @@ async def account_tools_publish(request: Request):
     return templates.TemplateResponse(request, "account/publish.html", ctx)
 
 
-@router.get("/account/tokens", response_class=HTMLResponse)
-async def account_tokens(request: Request):
+@router.get("/account/keys", response_class=HTMLResponse)
+async def account_keys(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    ctx = _account_ctx(request, "tokens")
-    return templates.TemplateResponse(request, "account/tokens.html", ctx)
+    ctx = _account_ctx(request, "keys")
+    return templates.TemplateResponse(request, "account/keys.html", ctx)
 
 
 # /auth/profile does not exist (single-page account model).

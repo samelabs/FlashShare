@@ -256,10 +256,10 @@ check("B4 multi=false files[2] → err_too_many_files", rm.get("error") == "err_
 # ═══ G: Public REST v1 retired ═══
 # real token for the MCP section below (minted via the test user's session)
 _conn_g = http.client.HTTPConnection(*_HOST, timeout=30)
-_conn_g.request("POST", "/api/tokens", json.dumps({"name": "scc"}),
+_conn_g.request("POST", "/api/keys", json.dumps({"name": "scc"}),
                 {"Cookie": cookie, "Content-Type": "application/json"})
 _tk_g = json.loads(_conn_g.getresponse().read()); _conn_g.close()
-bearer = (_tk_g.get("token") or {}).get("token") or ""
+bearer = (_tk_g.get("key") or {}).get("key") or ""
 conn = http.client.HTTPConnection(*_HOST, timeout=30)
 conn.request("POST", "/api/v1/execute", json.dumps({}),
              {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})

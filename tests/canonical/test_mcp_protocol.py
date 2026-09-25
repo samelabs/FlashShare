@@ -140,15 +140,15 @@ def _calls_n(uid):
                                " where user_id=%s", (uid,)).fetchone()["c"])
 
 
-from identity.apitokens import create_token
+from identity.apikeys import create_key
 from economy.billing import grant as _grant
 
 uid, ck = _register(_u + "a")
 uid2, ck2 = _register(_u + "b")
 _grant(uid, 100000, "manual_topup", idem_key=f"mp:{_u}:a", note="mp")
 _grant(uid2, 100000, "manual_topup", idem_key=f"mp:{_u}:b", note="mp")
-TOKEN = create_token(uid, "mp")["token"]
-TOKEN2 = create_token(uid2, "mp2")["token"]
+TOKEN = create_key(uid, "mp")["key"]
+TOKEN2 = create_key(uid2, "mp2")["key"]
 
 
 def _mcp(body, token=TOKEN, extra=None):

@@ -496,7 +496,7 @@ with db() as con:
 for uid in (tu, wu, ou, ou2, op):
     with db() as con:
         con.execute("delete from sessions where user_id=%s", (uid,))
-        con.execute("delete from api_tokens where user_id=%s", (uid,))
+        con.execute("delete from api_keys where user_id=%s", (uid,))
         con.execute("delete from users where id=%s", (uid,))
 print("cleanup: state-schema fixtures removed")
 

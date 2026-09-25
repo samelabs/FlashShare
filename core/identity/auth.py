@@ -249,11 +249,11 @@ def update_profile(user_id: int, display_name: str | None = None,
 
 
 def _rotate_password_credentials(con, user_id: int, new_hash: str) -> None:
-    """Password mutation atomically invalidates every pre-existing credential."""
+    """Password change invalidates every pre-existing browser session.
+    API keys are independent program credentials and survive it."""
     ts = now()
     users_repo.update_password_hash(con, user_id, new_hash, ts)
     sessions_repo.delete_user_sessions(con, user_id)
-    sessions_repo.revoke_all_tokens(con, user_id)
 
 
 def change_password(user_id: int, old_password: str, new_password: str) -> None:
@@ -286,10 +286,11 @@ def set_password(user_id: int, new_password: str) -> None:
 
 
 def operator_reset_password(user_id: int) -> str:
-    """Operator-initiated reset: set a fresh random temporary password and
-    revoke every session and API token of the user (same rotation as a
-    password change). Returns the temporary password once; only its hash
-    is stored. The caller owns operator authority and audit."""
+    """Operator-initiated reset: set a fresh random temporary password,
+    delete every browser session AND every API key of the user (a reset
+    assumes the credentials may be compromised). Returns the temporary
+    password once; only its hash is stored. The caller owns operator
+    authority and audit."""
     with db() as con:
         row = users_repo.by_id(con, user_id)
     if not row:
@@ -298,6 +299,8 @@ def operator_reset_password(user_id: int) -> str:
     new_hash = hash_password(temporary)
     with db() as con:
         _rotate_password_credentials(con, user_id, new_hash)
+        from repo import keys as keys_repo
+        keys_repo.delete_all_keys(con, user_id)
     return temporary
 
 

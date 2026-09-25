@@ -263,8 +263,8 @@ _cur.execute("select coalesce(sum(delta),0) from ledger where user_id=%s", (_uid
 _l0 = _cur.fetchone()[0]
 _cur.execute("select count(*) from tool_calls where user_id=%s", (_uid,))
 _tc0 = _cur.fetchone()[0]
-from identity.apitokens import create_token as _mk_tok
-_vtok = _mk_tok(_uid, "au-test")["token"]  # Bearer path (MCP)
+from identity.apikeys import create_key as _mk_key
+_vtok = _mk_key(_uid, "au-test")["key"]  # Bearer path (MCP)
 def _mcp_call(mid, tool, args):
     return client.post("/mcp", json={"jsonrpc": "2.0", "id": mid,
                                      "method": "tools/call",
@@ -1036,7 +1036,7 @@ check("U11 guard 文案 = retired-field 语义 (非 filename-required/ext/MIME �
 _cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}/%",))
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))
-_cur.execute("delete from api_tokens where user_id=%s", (_uid,))
+_cur.execute("delete from api_keys where user_id=%s", (_uid,))
 _cur.execute("delete from sessions where user_id=%s", (_uid,))
 _cur.execute("delete from users where id=%s", (_uid,))
 _con.close()

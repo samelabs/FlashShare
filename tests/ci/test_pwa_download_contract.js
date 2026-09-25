@@ -152,7 +152,7 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
     const engine = fs.readFileSync(path.join(REPO, "static", "pages", "base-engine.js"), "utf8");
     assert.strictEqual((engine.match(/window\.confirmAction\s*=/g) || []).length, 1,
       "base-engine.js defines exactly one canonical confirmAction");
-    for (const f of ["tokens.js", "profile.js"]) {
+    for (const f of ["keys.js", "profile.js"]) {
       const s = fs.readFileSync(path.join(REPO, "static", "pages", f), "utf8");
       assert.ok(/window\.confirmAction\s*\(/.test(s), f + " consumes the site-wide authority");
     }

@@ -29,21 +29,21 @@ def build_llms_txt() -> str:
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
     a(f"- Protocol versions: {versions} (latest: {latest})")
-    a("- Auth: Bearer token, prefix fsk_ — create one in the web UI at "
-      "/account/tokens (Account → MCP Tokens)")
+    a("- Auth: Bearer API key, prefix fsk_ — create one in the web UI "
+      "at /account/keys (Account → API keys); view it there any time")
     a("- Agent guide (this file): /llms.txt")
     a("")
     a("## No-install usage (curl)")
     a("MCP is plain HTTP POST JSON-RPC — no installation needed:")
     a("")
     a(f'curl -s {mcp_url} \\')
-    a('  -H "Authorization: Bearer fsk_YOUR_TOKEN" \\')
+    a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
     a('  -H "Content-Type: application/json" \\')
     a('  -d \'{"jsonrpc":"2.0","id":1,"method":"initialize",'
       '"params":{"protocolVersion":"' + latest + '"}}\'')
     a("")
     a(f'curl -s {mcp_url} \\')
-    a('  -H "Authorization: Bearer fsk_YOUR_TOKEN" \\')
+    a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
     a('  -H "Content-Type: application/json" \\')
     a('  -d \'{"jsonrpc":"2.0","id":2,"method":"tools/list"}\'')
     a("")
@@ -51,7 +51,7 @@ def build_llms_txt() -> str:
       "catalog_search finds tools by keyword")
     a("")
     a(f'curl -s {mcp_url} \\')
-    a('  -H "Authorization: Bearer fsk_YOUR_TOKEN" \\')
+    a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
     a('  -H "Content-Type: application/json" \\')
     a('  -d \'{"jsonrpc":"2.0","id":3,"method":"tools/call",'
       '"params":{"name":"share",')
@@ -75,7 +75,7 @@ def build_llms_txt() -> str:
       "URL, then reference the result:")
     a("")
     a(f'curl -s {mcp_url} \\')
-    a('  -H "Authorization: Bearer fsk_YOUR_TOKEN" \\')
+    a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
     a('  -H "Content-Type: application/json" \\')
     a('  -d \'{"jsonrpc":"2.0","id":1,"method":"tools/call",'
       '"params":{"name":"create_upload",')

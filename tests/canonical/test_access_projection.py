@@ -203,10 +203,10 @@ def _register_http(username):
 
 def _token(ck):
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
-    conn.request("POST", "/api/tokens", json.dumps({"name": "ap-me"}),
+    conn.request("POST", "/api/keys", json.dumps({"name": "ap-me"}),
                  {"Cookie": ck, "Content-Type": "application/json"})
     t = json.loads(conn.getresponse().read()); conn.close()
-    return (t.get("token") or {}).get("token") or ""
+    return (t.get("key") or {}).get("key") or ""
 
 _sfx = str(int(time.time()))[-6:]
 _mf = "apmefree" + _sfx

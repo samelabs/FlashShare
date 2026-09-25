@@ -180,9 +180,9 @@ try:
     with db() as con:
         uid = int(con.execute("select id from users where username=%s",
                               (_u + "a",)).fetchone()["id"])
-    st, _h, d_t, _sc = _req("POST", "/api/tokens", {"name": "aw"},
+    st, _h, d_t, _sc = _req("POST", "/api/keys", {"name": "aw"},
                             {"Content-Type": "application/json", "Cookie": ck})
-    tok = d_t["token"]["token"]
+    tok = d_t["key"]["key"]
     st, _h, d, _sc = _req("POST", "/mcp",
                           {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                           {"Content-Type": "application/json",

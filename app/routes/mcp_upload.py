@@ -43,8 +43,8 @@ async def mcp_upload_put(ticket: str, request: Request):
     auth = request.headers.get("authorization", "")
     bearer_uid = None
     if auth.lower().startswith("bearer "):
-        from identity.apitokens import authenticate_token
-        other = authenticate_token(auth[7:].strip())
+        from identity.apikeys import authenticate_key
+        other = authenticate_key(auth[7:].strip())
         if other is not None:
             bearer_uid = int(other["id"])
     if bearer_uid is not None:
