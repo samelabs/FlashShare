@@ -115,11 +115,16 @@ def validate_items_declaration(items) -> list[dict]:
 
 
 def land_items_result(con, user_id: int, staged: StagedItems,
-                      base_url: str) -> tuple[int | None, str, dict]:
+                      base_url: str, delivery: dict) -> tuple[int | None, str, dict]:
     """Land the durable result inside the CALLER's settlement
     transaction: every file item → one uploads row (own public_id,
     invocation delivery policy); mint the result public_id; build the
     canonical public result record (stored as tool_calls.result_json).
+
+    The record's expireAt is delivery-owned for EVERY result shape:
+    file results inherit the (latest) file expiry, text/json-only
+    results expire at ts + delivery expiry_days — the /r page and the
+    MCP structuredContent expires_at both read this single authority.
 
     Returns (first_file_upload_id | None, result_public_id, record)."""
     from repo.uploads import insert_record
@@ -157,9 +162,20 @@ def land_items_result(con, user_id: int, staged: StagedItems,
         else:
             final.append(next(inline_iter))
     result_public_id = generate_public_id(con)
+    # Delivery-owned result expiry: file results inherit the latest file
+    # expiry; text/json-only results expire with the delivery window.
+    expire_at = None
+    for it in final:
+        if it.get("kind") == "file" and it.get("expireAt"):
+            exp = int(it["expireAt"])
+            if expire_at is None or exp > expire_at:
+                expire_at = exp
+    if expire_at is None:
+        expire_at = ts + int(delivery["expiry_days"]) * 86400
     record = {
         "resultId": result_public_id,
         "resultUrl": f"{base_url}/r/{result_public_id}",
+        "expireAt": expire_at,
         "items": final,
     }
     if staged.orig_size is not None:

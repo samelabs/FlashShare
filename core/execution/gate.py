@@ -155,11 +155,14 @@ def recover_abandoned_calls() -> dict:
 
 
 def _finish(user: dict, tool: dict, call_id: int, cost: int,
-            staged: StagedItems, commission_rate_snapshot: int) -> dict:
+            staged: StagedItems, commission_rate_snapshot: int,
+            delivery: dict) -> dict:
     """The ONE success settlement transaction: EVERY file item's durable
     landing (uploads rows) + the tool_call ok (result binding) +
     provider/platform split — all-or-nothing. `staged` is the execution
     output (items model); text/json items live inside result_json.
+    `delivery` is the invocation's delivery policy — the result record's
+    expiry authority for every result shape.
 
     Self-calls are free by policy, so cost is already zero before this
     point. Value conservation for metered calls across the S3 unit
@@ -187,7 +190,7 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
 
     with db() as con:
         upload_id, result_public_id, public_result = land_items_result(
-            con, user["id"], staged, BASE_URL)
+            con, user["id"], staged, BASE_URL, delivery)
         finalize_call_ok(
             con, call_id, upload_id, result_public_id,
             json.dumps(public_result, ensure_ascii=False), now())
@@ -402,7 +405,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
 
     try:
         return _finish(user, tool, call_id, cost, result,
-                       rate_snapshot), None, None
+                       rate_snapshot, invocation.delivery), None, None
     except Exception:
         # The settlement transaction MAY have committed despite the
         # exception (lost ACK) — never guess. Reconcile the durable fact

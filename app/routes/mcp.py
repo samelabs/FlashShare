@@ -914,8 +914,12 @@ def _mcp_success(result: dict, payload: dict) -> dict:
     items_in = result.get("items") or []
     content = []
     sc_items = []
-    # expires_at: max file expiry (epoch s); None when no file items
-    expires_at = None
+    # Result expiry is the record's delivery-owned expireAt — every
+    # result shape carries one (text/json-only results expire with the
+    # delivery window; file results inherit the latest file expiry).
+    expires_at = result.get("expireAt")
+    if expires_at is not None:
+        expires_at = int(expires_at)
     for it in items_in:
         if it.get("kind") == "text":
             content.append({"type": "text", "text": it["text"]})
@@ -959,9 +963,6 @@ def _mcp_success(result: dict, payload: dict) -> dict:
             content.append({"type": "resource_link", "uri": dl,
                             "name": it.get("filename") or pid,
                             "mimeType": ct, "size": size})
-            exp = it.get("expireAt")
-            if exp and (expires_at is None or int(exp) > expires_at):
-                expires_at = int(exp)
     if not content:
         content.append({"type": "text", "text": "(no output items)"})
     result_url = result.get("resultUrl") or ""
