@@ -488,6 +488,12 @@ SERVER_I18N = {
         "stale_banner": "Les ressources de la page sont obsolètes — forcez le rechargement (Ctrl/Cmd+Shift+R)",
         "auth_or": "ou",
         "offline_reload": "Recharger",
+# B7 agent web
+        "not_found_title": "Page introuvable",
+        "not_found_desc": "La page que vous cherchez n'existe pas ou a été déplacée.",
+        "not_found_home": "Accueil",
+        "not_found_tools": "Outils",
+        "not_found_mcp": "Configuration MCP",
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -964,6 +970,12 @@ SERVER_I18N = {
         "stale_banner": "페이지 리소스가 오래되었습니다 — 강력 새로고침해 주세요 (Ctrl/Cmd+Shift+R)",
         "auth_or": "또는",
         "offline_reload": "다시 불러오기",
+# B7 agent web
+        "not_found_title": "페이지를 찾을 수 없음",
+        "not_found_desc": "찾고 있는 페이지가 없거나 이동되었습니다.",
+        "not_found_home": "홈",
+        "not_found_tools": "도구",
+        "not_found_mcp": "MCP 설정",
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1439,6 +1451,12 @@ SERVER_I18N = {
         "stale_banner": "Ресурсы страницы устарели — сделайте жёсткое обновление (Ctrl/Cmd+Shift+R)",
         "auth_or": "или",
         "offline_reload": "Обновить",
+# B7 agent web
+        "not_found_title": "Страница не найдена",
+        "not_found_desc": "Запрашиваемая страница не существует или была перемещена.",
+        "not_found_home": "Главная",
+        "not_found_tools": "Инструменты",
+        "not_found_mcp": "Настройка MCP",
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -1914,6 +1932,12 @@ SERVER_I18N = {
         "stale_banner": "موارد الصفحة قديمة — يرجى إعادة تحديث قسري (Ctrl/Cmd+Shift+R)",
         "auth_or": "أو",
         "offline_reload": "إعادة تحميل",
+# B7 agent web
+        "not_found_title": "الصفحة غير موجودة",
+        "not_found_desc": "الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
+        "not_found_home": "الرئيسية",
+        "not_found_tools": "الأدوات",
+        "not_found_mcp": "إعداد MCP",
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2390,6 +2414,12 @@ SERVER_I18N = {
         "stale_banner": "Seitenressourcen sind veraltet — bitte hart neu laden (Ctrl/Cmd+Shift+R)",
         "auth_or": "oder",
         "offline_reload": "Neu laden",
+# B7 agent web
+        "not_found_title": "Seite nicht gefunden",
+        "not_found_desc": "Die gesuchte Seite existiert nicht oder wurde verschoben.",
+        "not_found_home": "Startseite",
+        "not_found_tools": "Tools",
+        "not_found_mcp": "MCP-Einrichtung",
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -2865,6 +2895,12 @@ SERVER_I18N = {
         "stale_banner": "Os recursos da página estão desatualizados — recarregue forçadamente (Ctrl/Cmd+Shift+R)",
         "auth_or": "ou",
         "offline_reload": "Recarregar",
+# B7 agent web
+        "not_found_title": "Página não encontrada",
+        "not_found_desc": "A página que você procura não existe ou foi movida.",
+        "not_found_home": "Início",
+        "not_found_tools": "Ferramentas",
+        "not_found_mcp": "Configuração do MCP",
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -3340,6 +3376,12 @@ SERVER_I18N = {
         "stale_banner": "ページのリソースが古くなっています — 強制リロードしてください (Ctrl/Cmd+Shift+R)",
         "auth_or": "または",
         "offline_reload": "再読み込み",
+# B7 agent web
+        "not_found_title": "ページが見つかりません",
+        "not_found_desc": "お探しのページは存在しないか、移動しました。",
+        "not_found_home": "ホーム",
+        "not_found_tools": "ツール",
+        "not_found_mcp": "MCP 設定",
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -3816,6 +3858,12 @@ SERVER_I18N = {
         "stale_banner": "页面资源版本不一致 — 请强制刷新 (Ctrl/Cmd+Shift+R)",
         "auth_or": "或",
         "offline_reload": "重新加载",
+# B7 agent web
+        "not_found_title": "页面不存在",
+        "not_found_desc": "你要访问的页面不存在或已移动。",
+        "not_found_home": "首页",
+        "not_found_tools": "工具",
+        "not_found_mcp": "MCP 接入",
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -4291,6 +4339,12 @@ SERVER_I18N = {
         "stale_banner": "Los recursos de la página están desactualizados — recarga forzada (Ctrl/Cmd+Shift+R)",
         "auth_or": "o",
         "offline_reload": "Recargar",
+# B7 agent web
+        "not_found_title": "Página no encontrada",
+        "not_found_desc": "La página que buscas no existe o se ha movido.",
+        "not_found_home": "Inicio",
+        "not_found_tools": "Herramientas",
+        "not_found_mcp": "Configuración MCP",
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -4767,6 +4821,12 @@ SERVER_I18N = {
         "stale_banner": "Page resources are out of date — please hard-refresh (Ctrl/Cmd+Shift+R)",
         "auth_or": "or",
         "offline_reload": "Reload",
+# B7 agent web
+        "not_found_title": "Page not found",
+        "not_found_desc": "The page you are looking for does not exist or has moved.",
+        "not_found_home": "Home",
+        "not_found_tools": "Tools",
+        "not_found_mcp": "MCP setup",
 },
 }
 

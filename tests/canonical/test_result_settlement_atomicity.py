@@ -671,8 +671,12 @@ with db() as con:
 with db() as con:
     con.execute("delete from ledger where user_id in (%s)" % ",".join(str(u) for u in _uids))
     con.execute("delete from pricing where tool_id like %s", (f"rstool%_{_u}%",))
+    # the M/N-section tools use their own prefixes — cover them too
+    con.execute("delete from pricing where tool_id like %s", (f"rst%_{_u}%",))
     con.execute("delete from platform_tools where tool_key like %s",
                 (f"rstool%_{_u}%",))
+    con.execute("delete from platform_tools where tool_key like %s",
+                (f"rst%_{_u}%",))
 for uid in _uids:
     with db() as con:
         con.execute("delete from sessions where user_id=%s", (uid,))

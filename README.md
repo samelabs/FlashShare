@@ -84,6 +84,21 @@ canonical 调用。支持协议版本 `2025-11-25` / `2025-06-18` / `2025-03-26`
 `create_upload` 幂等：同 `client_ref` 同参数返回同一未用凭据；同
 `client_ref` 不同参数 → `-32009`。
 
+面向 LLM agent 的纯文本指南在 **`/llms.txt`**（服务端从代码生成：协议
+版本、端点、curl 示例、三种文件形态与两段式上传、计费与实时公开工具
+目录，与 `tools/list` 同源）。每页 `<head>` 带
+`<link rel="alternate" type="text/plain" href="/llms.txt">` 与
+`<link rel="service" href="/mcp">`；首页与 `/agents` 服务端渲染可见的
+端点说明（不依赖 JS）。
+
+分享链接对 agent 的语义：`/f/{id}` 是人类页面（响应带
+`X-Robots-Tag: noindex, nofollow` 与 `Link: <…?download=1>; rel="enclosure"`
+头，页面含普通 `<a>` 直链与 `<link rel=enclosure>`）；`/f/{id}?download=1`
+是直接下载（302）。两者均支持 HEAD——HEAD 返回与 GET 一致的状态码与
+头、空 body、不消耗下载次数。未知页面返回真实 404 页（含首页/工具/
+MCP//llms.txt 出口）；`robots.txt` 不再屏蔽 `/f/`（索引由响应头拒绝），
+`/api/`、`/auth/`、`/dh/` 维持 Disallow。
+
 ```bash
 # 1) create_upload（略去 Bearer 头与 initialize）
 curl -s https://your-domain/mcp -H "Authorization: Bearer fsk_…" \

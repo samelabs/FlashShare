@@ -962,6 +962,32 @@ check("I5 retired pricing-only target → 正常 update + audit (77→88)",
       and rows6[0]["after_json"]["cost"] == 88,
       f"{r.status_code} {rows6[:1]}")
 
+# ═══ cleanup: every fixture this suite created is removed (leaked
+# platform_tools rows drift the browser gate's market page)
+with db() as con:
+    con.execute("delete from pricing where tool_id like %s", (f"%{_u}%",))
+    con.execute("delete from platform_tools where tool_key like %s",
+                (f"%{_u}%",))
+    uids = [int(r["id"]) for r in con.execute(
+        "select id from users where username like %s", (_u + "%",)).fetchall()]
+    if uids:
+        # operator_audit rows reference actor/target users by FK — delete
+        # them before the users (target_id is text: match both shapes)
+        con.execute(
+            "delete from operator_audit where actor_user_id = ANY(%s)"
+            " or target_id = ANY(%s)",
+            (uids, [str(u) for u in uids]))
+    con.execute("delete from operator_audit where target_id like %s",
+                (f"%{_u}%",))
+    if uids:
+        con.execute("delete from tool_calls where user_id = ANY(%s)", (uids,))
+        con.execute("delete from ledger where user_id = ANY(%s)", (uids,))
+        con.execute("delete from upload_usage where user_id = ANY(%s)", (uids,))
+        con.execute("delete from ingress_requests where user_id = ANY(%s)", (uids,))
+        con.execute("delete from uploads where user_id = ANY(%s)", (uids,))
+        con.execute("delete from users where id = ANY(%s)", (uids,))
+
+
 print()
 print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")
 _sys.exit(1 if FAIL else 0)
