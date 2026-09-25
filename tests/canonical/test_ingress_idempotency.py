@@ -169,8 +169,8 @@ body, ct = _multipart([("a.png", PNG, "image/png")],
 gk0 = _gk_count()
 st, r = _req("POST", "/api/uploads", body, {"Content-Type": ct, "Cookie": ck1})
 check("2 first tool-source ingress → ok",
-      st == 200 and r.get("ok") and r.get("file", {}).get("publicId"), f"{st} {str(r)[:90]}")
-pid2 = r.get("file", {}).get("publicId")
+      st == 200 and r.get("ok") and r.get("file", {}).get("stagingId"), f"{st} {str(r)[:90]}")
+pid2 = r.get("file", {}).get("stagingId")
 check("2b one usage + one Gokapi growth + one receipt",
       _usage_n(uid1) == 1 and _gk_count() == gk0 + 1 and _ingress_n(uid1, ref2) == 1,
       f"usage={_usage_n(uid1)} gk={_gk_count()}-{gk0}")
@@ -179,8 +179,8 @@ check("2b one usage + one Gokapi growth + one receipt",
 body2, ct = _multipart([("a.png", PNG, "image/png")],
                        {"tool": "compress", "client_ref": ref2})
 st, r2 = _req("POST", "/api/uploads", body2, {"Content-Type": ct, "Cookie": ck1})
-check("3 same ref/bytes replay → same publicId",
-      st == 200 and r2.get("file", {}).get("publicId") == pid2, f"{st} {str(r2)[:90]}")
+check("3 same ref/bytes replay → same stagingId",
+      st == 200 and r2.get("file", {}).get("stagingId") == pid2, f"{st} {str(r2)[:90]}")
 check("4 replay zero new usage", _usage_n(uid1) == 1)
 check("5 replay zero new Gokapi", _gk_count() == gk0 + 1)
 

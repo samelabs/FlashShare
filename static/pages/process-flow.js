@@ -106,7 +106,7 @@
     // tool_failed replays this leg — zero second upload.
     const body = {
       tool_id: op.tool.id,
-      source: { files: op.sources.map(f => ({ public_id: f.publicId, source_token: f.sourceToken || "" })) },
+      source: { files: op.sources.map(f => ({ public_id: f.stagingId, source_token: f.sourceToken || "" })) },
       params: op.params,
       delivery: op.delivery,
       client_ref: op.ref,
@@ -204,14 +204,14 @@
       if (!isRetry || !op.sources) {
         const up = await uploadLeg();
         const uploaded = up.files || [up.file];
-        op.sources = uploaded.map(f => ({ publicId: f.publicId, sourceToken: f.sourceToken || "" }));
+        op.sources = uploaded.map(f => ({ stagingId: f.stagingId, sourceToken: f.sourceToken || "" }));
       }
 
       // Pass-through (share 语义): 工具声明 pass_through=true 才直传,
       // 不从 presets/params/multi 推断 (无参执行型工具会被误判)。
       const hasExec = tool && !tool.pass_through;
       if (!hasExec) {
-        const f = op.sources[0] ? { publicId: op.sources[0].publicId } : null;
+        const f = op.sources[0] ? { stagingId: op.sources[0].stagingId } : null;
         op = null; // direct share complete — next submit is new
         // Pass-through surfaces render their own result (caller handles it);
         // kept out of this module for the homepage (app.js) / tool page.

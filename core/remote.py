@@ -204,7 +204,8 @@ def _validated_addresses(url: str) -> tuple:
 
 
 def _pinned_request(url: str, method: str, body: bytes | None,
-                    headers: dict, timeout_s: int) -> tuple:
+                    headers: dict, timeout_s: int,
+                    max_bytes: int | None = None) -> tuple:
     """Single hop over the pinned transport. Returns (status, body,
     new_url_if_redirect). Never follows redirects itself.
 
@@ -244,7 +245,21 @@ def _pinned_request(url: str, method: str, body: bytes | None,
             try:
                 conn.request(method, path, body=body, headers=hop_headers)
                 resp = conn.getresponse()
-                data = resp.read(MAX_OUTPUT_BYTES + 1)
+                if max_bytes is not None:
+                    # early abort: a Content-Length already over the cap
+                    # is rejected BEFORE the body is downloaded
+                    cl = resp.getheader("Content-Length")
+                    if cl is not None:
+                        try:
+                            if int(cl) > max_bytes:
+                                raise RemoteError(
+                                    "too_large",
+                                    f"content-length {cl} over {max_bytes}")
+                        except ValueError:
+                            pass  # malformed CL — the read cap still guards
+                    data = resp.read(max_bytes + 1)
+                else:
+                    data = resp.read(MAX_OUTPUT_BYTES + 1)
                 return resp.status, data, resp.getheader("Location")
             finally:
                 conn.close()
@@ -292,13 +307,19 @@ def _origin_of(url: str) -> tuple | None:
 
 def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
                    headers: dict | None = None, timeout_s: int = 60,
-                   has_credential: bool = False) -> tuple:
+                   has_credential: bool = False,
+                   max_bytes: int | None = None) -> tuple:
     """Untrusted-safe request with manual redirect handling.
 
     Every hop re-validates: https-only, all resolved IPs public, connect
     pinned to a validated sockaddr. Redirects cap at MAX_REDIRECTS; the
     POST→GET downgrade on 301/302/303 drops the body AND the entity
     headers (Content-Type/Content-Length never leak the old POST size).
+
+    max_bytes: optional response-body cap — when set, a Content-Length
+    header already above the cap aborts the transfer BEFORE the body is
+    downloaded, and the read itself never exceeds the cap by more than
+    one byte ( callers detect the overflow by len(data) > max_bytes).
 
     Credential boundary: with has_credential=True a cross-origin redirect
     (scheme/host/effective-port) is REJECTED — auth material must never
@@ -312,7 +333,8 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
     seen = {url}
     for _hop in range(MAX_REDIRECTS + 1):
         status, data, new_url = _pinned_request(
-            cur_url, cur_method, cur_body, cur_headers, timeout_s)
+            cur_url, cur_method, cur_body, cur_headers, timeout_s,
+            max_bytes=max_bytes)
         if status not in _REDIRECT_STATUSES:
             return status, data
         if not new_url:

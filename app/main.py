@@ -231,13 +231,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Routes ──
 
-from app.routes import pages, api, auth_route, proxy, hosted_tools, samelabs, mcp, usertools  # noqa: E402
+from app.routes import pages, api, auth_route, proxy, hosted_tools, samelabs, mcp, mcp_upload, usertools  # noqa: E402
 
 app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
 app.include_router(auth_route.router, prefix="/auth")
 app.include_router(samelabs.router)
 app.include_router(mcp.router)
+app.include_router(mcp_upload.router)
 app.include_router(hosted_tools.router, prefix="/tool-endpoints")
 from app.routes import topup  # noqa: E402
 app.include_router(topup.router)

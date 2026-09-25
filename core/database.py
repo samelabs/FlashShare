@@ -657,6 +657,27 @@ _SCHEMA_SQL = (
       PRIMARY KEY (user_id)
     )
     """,
+    # ── MCP two-stage upload: one-time PUT credentials (B4b) ──
+    # The ticket IS the credential: bound to user + declared size + a
+    # short expiry, consumed exactly once (used_at flips in the same
+    # atomic UPDATE that authorizes the PUT). Replays hit used_at.
+    """
+    CREATE TABLE IF NOT EXISTS mcp_upload_tickets (
+      id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      ticket        TEXT NOT NULL UNIQUE,
+      user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      filename      TEXT NOT NULL,
+      content_type  TEXT,
+      declared_size BIGINT NOT NULL CHECK (declared_size > 0),
+      client_ref    TEXT NOT NULL,
+      request_hash  TEXT NOT NULL,
+      expires_at    BIGINT NOT NULL,
+      used_at       BIGINT,
+      created_at    BIGINT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS mcp_upload_tickets_user_ref_idx"
+    " ON mcp_upload_tickets (user_id, client_ref, id DESC)",
     )
 
 
