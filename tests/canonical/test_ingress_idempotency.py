@@ -227,10 +227,10 @@ check("19 direct-share replay one ingress usage", _usage_n(uid2) == 1)
 # ══════════ 20-22. Public REST v1 retired ══════════
 ck3 = _register(_u + "v1")
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
-conn.request("POST", "/api/tokens", json.dumps({"name": "ig"}).encode(),
+conn.request("POST", "/api/keys", json.dumps({"name": "ig"}).encode(),
              {"Cookie": ck3, "Content-Type": "application/json"})
 _tk = json.loads(conn.getresponse().read()); conn.close()
-bearer = (_tk.get("token") or {}).get("token") or ""
+bearer = (_tk.get("key") or {}).get("key") or ""
 BH = {"Content-Type": "image/png", "x-filename": "v.png",
       "Authorization": f"Bearer {bearer}", "Idempotency-Key": f"v1k-{_u}-1"}
 with db() as con:
@@ -243,10 +243,10 @@ check("20b zero usage", _usage_n(uid3) == 0)
 
 # ══════════ 23-29. MCP ══════════
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
-conn.request("POST", "/api/tokens", json.dumps({"name": "igmcp"}).encode(),
+conn.request("POST", "/api/keys", json.dumps({"name": "igmcp"}).encode(),
              {"Cookie": ck3, "Content-Type": "application/json"})
 _tk2 = json.loads(conn.getresponse().read()); conn.close()
-bearer2 = (_tk2.get("token") or {}).get("token") or bearer
+bearer2 = (_tk2.get("key") or {}).get("key") or bearer
 
 def _mcp(arguments, name="compress", mid=1):
     b = {"jsonrpc": "2.0", "id": mid, "method": "tools/call",
@@ -514,9 +514,9 @@ b_, ct_ = _form({"login": _u + "f3m", "password": "Test12345"})
 conn3.request("POST", "/auth/login", b_, {"Content-Type": ct_})
 r_ = conn3.getresponse(); r_.read()
 ckF3 = (r_.getheader("Set-Cookie") or "").split(";")[0]
-conn3.request("POST", "/api/tokens", json.dumps({"name": "f3"}).encode(),
+conn3.request("POST", "/api/keys", json.dumps({"name": "f3"}).encode(),
               {"Cookie": ckF3, "Content-Type": "application/json"})
-_bearerF3 = (json.loads(conn3.getresponse().read()).get("token") or {}).get("token")
+_bearerF3 = (json.loads(conn3.getresponse().read()).get("key") or {}).get("key")
 conn3.close()
 from economy.billing import grant as _g3
 _g3(uidF3, 100000, "manual_topup", note="f3")
@@ -637,9 +637,9 @@ check("F7 Web malformed replay → 500 err_ingress_unresolved + 零副作用",
 
 # F8/F9 tokens (surf): web cookie mint + machine bearer
 connS = _hc.HTTPConnection(*_HOST, timeout=30)
-connS.request("POST", "/api/tokens", json.dumps({"name": "surf"}).encode(),
+connS.request("POST", "/api/keys", json.dumps({"name": "surf"}).encode(),
               {"Cookie": _ckS2, "Content-Type": "application/json"})
-_bS = (json.loads(connS.getresponse().read()).get("token") or {}).get("token")
+_bS = (json.loads(connS.getresponse().read()).get("key") or {}).get("key")
 connS.close()
 
 # F8: scalar stored payload (同 receipt 形态, web surface)

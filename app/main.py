@@ -126,8 +126,8 @@ def get_user_from_request(request: Request):
     if path == "/mcp":
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
-            from identity.apitokens import authenticate_token
-            user = authenticate_token(auth[7:].strip())
+            from identity.apikeys import authenticate_key
+            user = authenticate_key(auth[7:].strip())
             if user:
                 request.state.auth_via = "token"
             return user

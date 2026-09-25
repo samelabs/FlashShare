@@ -509,17 +509,20 @@ async def get_me(request: Request):
 
 # ── API token management: account-control surface, session only ──
 
-@router.get("/tokens")
-async def list_tokens_route(request: Request):
+@router.get("/keys")
+async def list_keys_route(request: Request):
+    """The owner's keys (prefixes + viewability). Session-only: the
+    module's _require_auth is require_session_auth, so Bearer access
+    can never list or read keys."""
     user, err = _require_auth(request)
     if err:
         return err
-    from identity.apitokens import list_tokens
-    return {"ok": True, "tokens": list_tokens(user["id"])}
+    from identity.apikeys import list_keys
+    return {"ok": True, "keys": list_keys(user["id"])}
 
 
-@router.post("/tokens")
-async def create_token_route(request: Request):
+@router.post("/keys")
+async def create_key_route(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
@@ -528,17 +531,44 @@ async def create_token_route(request: Request):
         name = str(raw.get("name") or "").strip()[:64]
     except Exception:
         name = ""
-    from identity.apitokens import create_token
-    tok = create_token(user["id"], name or "token")
-    return {"ok": True, "token": tok}
+    from identity.apikeys import create_key
+    try:
+        key = create_key(user["id"], name or "key")
+    except ValueError as exc:
+        token = str(exc)
+        status = 409 if token == "err_key_limit" else 503
+        return JSONResponse({"ok": False, "error": token}, status)
+    # the sealed copy is server-side storage — never part of a response
+    key.pop("key_sealed", None)
+    return {"ok": True, "key": key}
 
 
-@router.post("/tokens/{token_id}/revoke")
-async def revoke_token_route(token_id: int, request: Request):
+@router.get("/keys/{key_id}/reveal")
+async def reveal_key_route(key_id: int, request: Request):
+    """The full key plaintext — owner's browser session only (Bearer
+    requests never reach this handler)."""
     user, err = _require_auth(request)
     if err:
         return err
-    from identity.apitokens import revoke_token
-    if not revoke_token(user["id"], token_id):
+    from identity.apikeys import reveal_key
+    from secrets_vault import VaultDecryptError
+    try:
+        plaintext = reveal_key(user["id"], key_id)
+    except VaultDecryptError:
+        return JSONResponse({"ok": False, "error": "err_vault"}, 503)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 503)
+    if plaintext is None:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True, "key": plaintext}
+
+
+@router.delete("/keys/{key_id}")
+async def delete_key_route(key_id: int, request: Request):
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from identity.apikeys import delete_key
+    if not delete_key(user["id"], key_id):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True}

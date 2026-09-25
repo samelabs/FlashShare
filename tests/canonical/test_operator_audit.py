@@ -59,7 +59,7 @@ def _mkuser(name):
 _u = "oa" + _os.urandom(4).hex()
 
 from app.web_auth import create_browser_session, COOKIE_NAME
-from core.identity.apitokens import create_token
+from core.identity.apikeys import create_key
 from fastapi.testclient import TestClient
 from app.main import app as _app
 # forced-failure tests raise inside routes; TestClient (httpx) re-raises
@@ -93,7 +93,7 @@ with db() as con:
 op_sess = create_browser_session(op)
 plain = _mkuser(_u + "plain")   # non-operator browser session
 plain_sess = create_browser_session(plain)
-op_token = create_token(op, "oa-test").get("token")  # operator Bearer
+op_token = create_key(op, "oa-test").get("key")  # operator Bearer
 
 # ══════════ A. authority frozen ══════════
 r = _post("/samelabs/tools/x/pricing", json={"cost": 1},
@@ -489,13 +489,16 @@ check("E4 forced audit failure → withdrawal + ledger 全 rollback",
 
 # ══════════ F. remote create/delete ══════════
 rt = f"oart_{_u}"
-# vault unavailable in the test env → the credential route would 503;
-# exercise create WITHOUT a token (URL/auth-free path) and separately
-# prove the credential-bearing shape is rejected before persistence
+# The credential-bearing shape depends on the vault: with
+# TOOL_VAULT_KEY configured it persists (sealed); without it the route
+# must 503 with zero persistence. Assert BOTH behaviors explicitly —
+# the unavailable case via a subprocess probe (vault removed).
 r = _post("/samelabs/tools/create", json={
     "tool_id": rt, "label": "OA Remote", "url": "https://ops.example/hook",
     "timeout_s": 30, "cost": 50,
 }, cookies={COOKIE_NAME: op_sess})
+from secrets_vault import vault_enabled as _vault_on
+_tok_expect = 200 if _vault_on() else 503
 r_tok = _post("/samelabs/tools/create", json={
     "tool_id": rt + "t", "label": "OA Tok", "url": "https://ops.example/t",
     "timeout_s": 30, "auth_token": "SUPERSECRET123", "cost": 10,
@@ -505,12 +508,13 @@ with db() as con:
         "select endpoint_json from platform_tools where tool_key=%s",
         (rt + "t",)).fetchone()
 rows = _audit_rows("remote.create", rt)
-check("F1 remote create → tool + pricing + audit (+凭据形 503 零持久化)",
+check("F1 remote create → tool + pricing + audit (credential shape per vault)",
       r.status_code == 200 and len(rows) == 1
       and rows[0]["before_json"] is None
       and rows[0]["after_json"]["tool_key"] == rt
       and rows[0]["after_json"]["cost"] == 50
-      and r_tok.status_code == 503 and tok_row is None,
+      and r_tok.status_code == _tok_expect
+      and (tok_row is not None if _vault_on() else tok_row is None),
       f"{r.status_code}/{r_tok.status_code} tok={tok_row} {rows[:1]}")
 
 # forced audit failure on remote create → rollback

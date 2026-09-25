@@ -50,7 +50,7 @@ FLASHSHARE_BASE_URL=https://your-domain
 ### MCP（智能体 / 程序接入的唯一正式通道）
 
 端点 `https://your-domain/mcp`（Streamable HTTP，无状态 POST→JSON），
-Bearer Token 认证。在任意 MCP 客户端添加服务端 URL + Token 即可调用全部
+Bearer API key 认证（在网页 /account/keys 创建，随时可查看）。在任意 MCP 客户端添加服务端 URL + API key 即可调用全部
 工具：`tools/list` 分页发现、`catalog_search` 关键字检索、`tools/call`
 canonical 调用。支持协议版本 `2025-11-25` / `2025-06-18` / `2025-03-26` /
 `2024-11-05`（initialize 按参数协商；`MCP-Protocol-Version` 请求头缺失按

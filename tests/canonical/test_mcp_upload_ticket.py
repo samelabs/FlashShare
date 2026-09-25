@@ -171,14 +171,14 @@ try:
         b, ct = _form({"login": uname, "password": "Test12345"})
         st_l, _h, _d, sc = _req("POST", "/auth/login", b, {"Content-Type": ct})
         cookie = sc.split(";")[0]
-        st_t, _h, d_t, _sc = _req("POST", "/api/tokens",
+        st_t, _h, d_t, _sc = _req("POST", "/api/keys",
                                   {"name": "mu"},
                                   {"Content-Type": "application/json",
                                    "Cookie": cookie})
         if name_i == 0:
-            ck, uid, tok = cookie, None, d_t["token"]["token"]
+            ck, uid, tok = cookie, None, d_t["key"]["key"]
         else:
-            ck2, tok2 = cookie, d_t["token"]["token"]
+            ck2, tok2 = cookie, d_t["key"]["key"]
     with db() as con:
         uid = int(con.execute("select id from users where username=%s",
                               (_u + "a",)).fetchone()["id"])

@@ -108,8 +108,8 @@ _b, _ct = _mp({"login": _u, "password": "Test12345"})
 _c.request("POST", "/auth/login", _b, {"Content-Type": _ct})
 _ck = (_c.getresponse().getheader("Set-Cookie") or "").split(";")[0]
 _c.close()
-_st, _d = _req("POST", "/api/tokens", {"name": "hx"}, {"Cookie": _ck})
-TOK = (_d.get("token") or {}).get("token")
+_st, _d = _req("POST", "/api/keys", {"name": "hx"}, {"Cookie": _ck})
+TOK = (_d.get("key") or {}).get("key")
 check("setup ordinary API token minted", bool(TOK))
 
 # ── a real signed source URL (valid fetch token, not yet redeemed) ──

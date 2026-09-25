@@ -171,7 +171,7 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     assert.strictEqual(dEls.toolModal.classList.contains("hidden"), true,
       "Escape closes the visible toolModal (RC-VIS-003)");
   }
-  for (const f of ["profile.js", "tokens.js", "footer.js"]) {
+  for (const f of ["profile.js", "keys.js", "footer.js"]) {
     const src = fs.readFileSync(path.join(REPO, "static", "pages", f), "utf8");
     // strip comments, then ban a REAL native confirm( call (window.confirmAction
     // and the word "confirm" in identifiers/text must not match)
@@ -339,7 +339,7 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     const detail = fs.readFileSync(path.join(REPO, "static", "pages", "detail.js"), "utf8");
     assert.ok(!detail.includes("_errMap"), "detail.js: second error dictionary removed");
     assert.ok(detail.includes("_errm(msg)"), "detail.js routes through the unified boundary");
-    for (const f of ["credits.js", "tokens.js", "profile.js", "earnings.js",
+    for (const f of ["credits.js", "keys.js", "profile.js", "earnings.js",
                      "publish.js", "tools.js"]) {
       const src = fs.readFileSync(path.join(REPO, "static", "pages", f), "utf8");
       assert.ok(!/\|\|\s*['"]error['"]/.test(src), f + ": no raw 'error' fallback");

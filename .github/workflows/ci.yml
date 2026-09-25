@@ -226,6 +226,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_agent_web.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_api_keys.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_api_keys.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_order_payment_state_machine.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_order_payment_state_machine.py
@@ -445,6 +449,9 @@ jobs:
 
       - name: Agent web surface canonical
         run: python tests/canonical/test_agent_web.py
+
+      - name: API keys canonical
+        run: python tests/canonical/test_api_keys.py
 
       - name: Failure diagnostics
         if: failure()

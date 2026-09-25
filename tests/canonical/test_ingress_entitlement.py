@@ -545,10 +545,10 @@ check("B-M3 被拒 batch 零 usage 残留 (storage 前)", _cur.fetchone()[0] == 
 _eu, _euid = _register("mcpe2e" + str(int(time.time()))[-6:])
 _eck = _login(_eu)
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
-conn.request("POST", "/api/tokens", json.dumps({"name": "canonical-e2e"}),
+conn.request("POST", "/api/keys", json.dumps({"name": "canonical-e2e"}),
              {"Cookie": _eck, "Content-Type": "application/json"})
 _tk = json.loads(conn.getresponse().read()); conn.close()
-_bearer = (_tk.get("token") or {}).get("token") or ""
+_bearer = (_tk.get("key") or {}).get("key") or ""
 check("ME-P0 fixture: 真实 API token 创建成功", bool(_bearer),
       f"cookie={'yes' if _eck else 'NO'} resp={str(_tk)[:80]}")
 
@@ -818,10 +818,10 @@ check("PF-W3 endpoint 零副作用 (无 call/ledger/usage)", _b2 == (0, 0, 0), s
 
 # MCP real E2E: bearer + priced + balance 0
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
-conn.request("POST", "/api/tokens", json.dumps({"name": "pf-mcp"}),
+conn.request("POST", "/api/keys", json.dumps({"name": "pf-mcp"}),
              {"Cookie": _pfw_ck, "Content-Type": "application/json"})
 _pfm_tk = json.loads(conn.getresponse().read()); conn.close()
-_pfm_bearer = (_pfm_tk.get("token") or {}).get("token") or ""
+_pfm_bearer = (_pfm_tk.get("key") or {}).get("key") or ""
 _mcp_files = [{"b64": base64.b64encode(_png1).decode(), "filename": "pf.png"}]
 _mcp_body = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
              "params": {"name": _pf_key.replace("/", "__"),

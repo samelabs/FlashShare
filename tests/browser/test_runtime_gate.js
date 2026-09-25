@@ -9,7 +9,7 @@
  *   FLASHSHARE_TEST_PORT (isolated port != 8000) and TEST_DB_URL required.
  *
  * Coverage (single run):
- *   1.  register (real form)                    8.  create real fsk_ token
+ *   1.  register (real form)                    8.  create real fsk_ API key
  *   2.  login (real form)                       9.  MCP initialize/tools/list
  *   3.  home real render                       10.  MCP tools/call compress
  *   4.  upload file                            11.  MCP real result/publicId
@@ -100,7 +100,7 @@ const PAGES = [
   { path: "/account/credits", name: "account-credits", need: [] },
   { path: "/account/tools", name: "account-tools", need: ["#openPublish"] },
   { path: "/account/tools/publish", name: "account-publish", need: ["#pubForm"] },
-  { path: "/account/tokens", name: "account-tokens", need: ["#createToken", "#newTokenName"] },
+  { path: "/account/keys", name: "account-keys", need: ["#createKey", "#newKeyName"] },
 ];
 
 function attachErrorCollectors(context) {
@@ -185,7 +185,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
   const username = "gate" + Math.random().toString(36).slice(2, 8);
   const password = "Test12345";
-  let token = "";
+  let apiKey = "";
   let retryRef = "";
 
   for (const [ctxName, vp] of Object.entries(VIEWPORTS)) {
@@ -349,20 +349,21 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("retry: no re-upload", legs.uploads.length === uploadsBefore, `${uploadsBefore} -> ${legs.uploads.length}`);
       await visualAudit("desktop", page, "tool-retry-success", true);
 
-      // 8. create real fsk_ token via UI
-      await page.goto(`${BASE}/account/tokens`, { waitUntil: "networkidle" });
-      await page.fill("#newTokenName", "browser-gate");
-      await page.click("#createToken");
-      await page.waitForSelector("#newTokenValue", { state: "visible", timeout: 15000 });
-      token = await page.evaluate(() => document.getElementById("newTokenValue").textContent.trim());
-      check("tokens: real fsk_ token created", /^fsk_/.test(token), token.slice(0, 10));
-      check("tokens: token appears in list", (await page.$$(".token-item")).length >= 1);
-      await visualAudit("desktop", page, "account-tokens-created", true);
+      // 8. create a real fsk_ API key via UI (viewable-anytime flow:
+      //    creation reveals the first row's full key inline)
+      await page.goto(`${BASE}/account/keys`, { waitUntil: "networkidle" });
+      await page.fill("#newKeyName", "browser-gate");
+      await page.click("#createKey");
+      await page.waitForSelector(".key-item .key-value", { state: "visible", timeout: 15000 });
+      apiKey = await page.evaluate(() => document.querySelector(".key-item .key-value").textContent.trim());
+      check("keys: real fsk_ API key created + auto-revealed", /^fsk_/.test(apiKey), apiKey.slice(0, 10));
+      check("keys: key appears in list", (await page.$$(".key-item")).length >= 1);
+      await visualAudit("desktop", page, "account-keys-created", true);
     }
 
     // ── per-viewport page contract sweep ──
     const sweepCtx = await browser.newContext({ viewport: vp });
-    if (token || ctxName !== "desktop") {
+    if (apiKey || ctxName !== "desktop") {
       // mobile: log in via API to sweep authenticated pages with same user
       if (ctxName !== "desktop") {
         const login = await post("/auth/login", null, {}); // form post not JSON; do cookie-less login below
@@ -392,11 +393,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     await context.close();
   }
 
-  // ── 9-11. MCP: initialize → tools/list → tools/call (real token) ──
-  check("mcp: token available", /^fsk_/.test(token));
-  const init = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, { Authorization: `Bearer ${token}` });
+  // ── 9-11. MCP: initialize → tools/list → tools/call (real API key) ──
+  check("mcp: API key available", /^fsk_/.test(apiKey));
+  const init = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, { Authorization: `Bearer ${apiKey}` });
   check("mcp initialize: ok", init.json && init.json.result && init.json.result.serverInfo && init.json.result.serverInfo.name === "518plus", init.text);
-  const tl = await post("/mcp", { jsonrpc: "2.0", id: 2, method: "tools/list" }, { Authorization: `Bearer ${token}` });
+  const tl = await post("/mcp", { jsonrpc: "2.0", id: 2, method: "tools/list" }, { Authorization: `Bearer ${apiKey}` });
   const tools = ((tl.json || {}).result || {}).tools || [];
   check("mcp tools/list: ok + compress present", tools.some((t) => t.name === "compress"), `count=${tools.length}`);
   const mcall = await post("/mcp", {
@@ -408,7 +409,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         client_ref: "mcp-gate-" + Math.random().toString(36).slice(2, 10),
       },
     },
-  }, { Authorization: `Bearer ${token}` });
+  }, { Authorization: `Bearer ${apiKey}` });
   let mcpResult = {};
   try { mcpResult = JSON.parse((((mcall.json || {}).result || {}).content || [{}])[0].text || "{}"); } catch (e) { /* */ }
   check("mcp tools/call: ok", ((mcall.json || {}).result || {}).isError !== true, mcall.text && mcall.text.slice(0, 200));

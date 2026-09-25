@@ -56,7 +56,7 @@ from database import db
 from i18n import server_text
 from security import hash_password
 from identity import auth as idauth
-from identity.apitokens import create_token
+from identity.apikeys import create_key
 from app.web_auth import create_browser_session, COOKIE_NAME
 from app.routes import auth_route
 from fastapi.testclient import TestClient
@@ -396,7 +396,7 @@ try:
 
     # ═══════════ G. /mcp stale cookie + Bearer ═══════════
     g = _mkuser(_u + "g", f"{_u}g@t.co", "pw-g-123456")
-    tok = create_token(g, "idc")["token"]
+    tok = create_key(g, "idc")["key"]
     rpc = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
     r = _req("POST", "/mcp", cookies={COOKIE_NAME: "stale-" + _u},
              headers={"Authorization": f"Bearer {tok}"}, json=rpc)
@@ -412,17 +412,17 @@ try:
     # ═══════════ H. operator_reset_password ═══════════
     h = _mkuser(_u + "h", f"{_u}h@t.co", "pw-h-123456")
     create_browser_session(h)
-    create_token(h, "idc-h")
+    create_key(h, "idc-h")
     temp = idauth.operator_reset_password(h)
     with db() as con:
         n_sess = con.execute("select count(*) c from sessions where user_id=%s", (h,)).fetchone()["c"]
-        n_tok = con.execute("select count(*) c from api_tokens where user_id=%s and status='active'",
+        n_tok = con.execute("select count(*) c from api_keys where user_id=%s",
                             (h,)).fetchone()["c"]
     check("H1 returns a temporary password that authenticates; old one does not",
           isinstance(temp, str) and len(temp) >= 12
           and idauth.authenticate_local(_u + "h", temp) == h
           and idauth.authenticate_local(_u + "h", "pw-h-123456") is None)
-    check("H2 all sessions and active tokens revoked", n_sess == 0 and n_tok == 0,
+    check("H2 all sessions and API keys deleted", n_sess == 0 and n_tok == 0,
           (n_sess, n_tok))
     try:
         idauth.operator_reset_password(-1)

@@ -44,6 +44,7 @@
 - `DATABASE_URL` — PostgreSQL DSN（`postgresql+psycopg://…`）
 - `FLASHSHARE_SESSION_SECRET` — session/token 签名密钥
 - `FLASHSHARE_GOKAPI_URL` / `FLASHSHARE_GOKAPI_KEY` — Gokapi API
+- `TOOL_VAULT_KEY` — secrets_vault 加密密钥（Fernet）：工具鉴权凭据与API key 加密副本共用；未配置时创建 API key 直接失败（不降级为只显示一次）
 - `FLASHSHARE_MCP_ALLOWED_ORIGINS` — 可选，逗号分隔的额外浏览器 origin
   （`scheme://host[:port]`）。`/mcp` 对带 `Origin` 头的请求只放行
   `FLASHSHARE_BASE_URL` 的 origin 与此列表，其余 403；无 `Origin` 头的
