@@ -120,9 +120,8 @@
 
   /**
    * runToolFlow(tool, files, opts) → Promise<result|null>
-   * tool: catalog item 形状 {id,label,params,files_min,files_max,outputs,cost,...}
-   *       传 null/undefined = 无工具直传 (share 语义)。
-   * files: FileList | File[]
+   * tool: catalog item 形状 {id,label,params,files_min,files_max,outputs,cost,…}
+   * files: FileList | File[] (空数组 = 0-file 工具的纯文字/参数调用)
    * opts: {params, expiryDays, allowedDownloads,
    *        onProgress(pct, bps), onError(message, ref)}
    */
@@ -133,7 +132,12 @@
     // drag-drop — is refused here (not just CSS pointer-events).
     if (blockConcurrentRun()) return null;
     const fileList = Array.from(files || []);
-    if (!fileList.length) return null;
+    if (!tool) return null;
+    const filesMin = Math.max(0, tool.files_min || 0);
+    const filesMax = Math.min(20, tool.files_max || 1);
+    // 0-file tools (files_min === 0) run without any file; every other
+    // tool needs at least one input file.
+    if (!fileList.length && filesMin > 0) return null;
     if (!window.__USER__) { location.href = "/auth/login"; return null; }
     if (typeof window.newOperationRef !== "function") {
       throw new Error(errText("failed"));
@@ -160,10 +164,9 @@
       invalidateOperation();
     }
 
-    const isMulti = !!(tool && tool.multi);
-    // 4C-2: multi=false 显式多文件不静默截断/忽略 — typed 错误, 由 UI 呈现
-    // (dispatch 对 files[] 越界同样 typed err_too_many_files)。
-    if (!isMulti && fileList.length > 1) {
+    // Files window (declaration authority): over-max is a typed error —
+    // never silently truncated (dispatch rejects the same window).
+    if (fileList.length > filesMax) {
       invalidateOperation();
       throw new Error(errText("err_too_many_files"));
     }
@@ -200,22 +203,21 @@
         }
       }
 
-      // Step 1: upload — skipped ONLY when retrying with retained handles.
-      if (!isRetry || !op.sources) {
+      // Step 1: upload — skipped for 0-file calls and for retries with
+      // retained handles.
+      if (fileList.length && (!isRetry || !op.sources)) {
         const up = await uploadLeg();
         const uploaded = up.files || [up.file];
         op.sources = uploaded.map(f => ({ stagingId: f.stagingId, sourceToken: f.sourceToken || "" }));
+      } else if (!fileList.length) {
+        op.sources = [];
       }
 
-      // share (IO-1) 是常规执行工具: 上传后照常执行,
-      // 不从 presets/params/multi 推断 (无参执行型工具会被误判)。
+      // share (IO-1) 是常规执行工具: 上传后照常执行。
       const hasExec = !!tool;
       if (!hasExec) {
-        const f = op.sources[0] ? { stagingId: op.sources[0].stagingId } : null;
-        op = null; // direct share complete — next submit is new
-        // Pass-through surfaces render their own result (caller handles it);
-        // kept out of this module for the homepage (app.js) / tool page.
-        return { passthrough: true, files: fileList };
+        op = null;
+        return null;
       }
 
       // Step 2: execute tool — canonical ToolInvocation (Stage C):

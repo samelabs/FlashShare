@@ -298,7 +298,8 @@ try:
             _gate._finish({"id": uid},
                           {"id": "share", "tool_key": "share",
                            "type": "produce", "owner_id": None},
-                          int(_anchor["id"]), 25, _staged, 0)
+                          int(_anchor["id"]), 25, _staged, 0,
+                          {"expiry_days": 1, "allowed_downloads": 5})
             finished = "no-raise"
         except Exception:
             finished = "raised"
@@ -315,6 +316,68 @@ try:
           _after == _before and _call_row is not None
           and _call_row["status"] != "ok",
           (_before, _after, finished, _call_row and dict(_call_row)))
+
+    # ═══ E. result expiry (delivery-owned, every shape) ═══
+    from execution.results import land_items_result, StagedItems
+    import time as _time
+    _e_ts = int(_time.time())
+    with db() as con:
+        _text_rec = land_items_result(
+            con, uid, StagedItems(order=["text", "json"],
+                                  inline=[{"kind": "text", "text": "hi"},
+                                          {"kind": "json", "data": {"a": 1}}],
+                                  files=[]), "http://x",
+            {"expiry_days": 3, "allowed_downloads": 5})
+    _exp_expect = _e_ts + 3 * 86400
+    check("E1 text/json-only result expires with the delivery window",
+          isinstance(_text_rec[2].get("expireAt"), int)
+          and abs(_text_rec[2]["expireAt"] - _exp_expect) <= 2,
+          _text_rec[2].get("expireAt"))
+    # file result inherits the latest file expiry (staged expire_at)
+    _f_exp = _e_ts + 5 * 86400
+    with db() as con:
+        _file_rec = land_items_result(
+            con, uid,
+            StagedItems(order=["file"],
+                        files=[__import__("execution.results", fromlist=["StagedFileItem"]).StagedFileItem(
+                            gokapi_id=f"gk_{_u}_e", filename="e.png",
+                            content_type="image/png", size=10,
+                            expiry_days=5, allowed_downloads=5,
+                            expire_at=_f_exp, url_hotlink="")],
+                        ip="127.0.0.1"), "http://x",
+            {"expiry_days": 1, "allowed_downloads": 5})
+    check("E2 file result expiry = latest file expiry",
+          _file_rec[2].get("expireAt") == _f_exp, _file_rec[2].get("expireAt"))
+    # /r/{id} enforces expiry at render: a past-expiry record → 404
+    _dead_id = "dead" + _u[:8]
+    with db() as con:
+        con.execute(
+            "insert into tool_calls (user_id, tool_id, status, client_ref,"
+            " invocation_hash, started_at, commission_rate_snapshot,"
+            " result_public_id, result_json, finished_at)"
+            " values (%s, 'share', 'ok', %s, %s, %s, 0, %s, %s, %s)",
+            (uid, f"dead-{_u}", "d" * 64, ts, _dead_id,
+             __import__("json").dumps({"resultId": _dead_id,
+                                       "expireAt": ts - 3600,
+                                       "items": [{"kind": "text", "text": "x"}]}),
+             ts))
+    st, _h_d, _b_d, _sc_d = _req("GET", f"/r/{_dead_id}")
+    check("E3 expired /r → 404 (no existence oracle)", st == 404, st)
+    st, _h_q, _b_q, _sc_q = _req("GET", f"/r/{_dead_id}/qr.svg")
+    check("E3b expired /r QR → 404", st == 404, st)
+    # live result page renders header facts + ordered items + per-file rows
+    st, _h_r, page_r, _sc_r = _req(
+        "GET", f"/r/{sc['result_url'].rsplit('/', 1)[1]}")
+    check("E4 /r page: tool name + expiry + downloads facts + items",
+          st == 200 and "Lossless Share" in page_r
+          and page_r.count('class="r-item') >= 3
+          and "?download=1" in page_r, st)
+    # MCP expires_at mirrors the record authority
+    st, d = _call("compress", {"files": [{"filename": "e2.png", "b64": A64}],
+                               "client_ref": f"e2-{_u}"}, TOK, 44)
+    _sc_exp = ((d.get("result") or {}).get("structuredContent") or {}).get("expires_at")
+    check("E5 MCP expires_at = record expireAt (int)",
+          isinstance(_sc_exp, int) and _sc_exp > ts, _sc_exp)
 
     # ═══ M. MCP surface ═══
     st, d = _mcp({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, TOK)

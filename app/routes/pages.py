@@ -253,6 +253,27 @@ async def user_page(request: Request, handle: str):
     return templates.TemplateResponse(request, "user_page.html", ctx)
 
 
+def _delivery_projection(ctx: dict) -> str:
+    """Delivery options for the shared input component (tool pages).
+    Same entitlement source as the home surface — ctx_base's single
+    access projection; anonymous falls back to the Free capability
+    (resolve_from_membership(None)), never hand-written Free values."""
+    if ctx.get("access"):
+        ent = ctx["access"]["entitlements"]
+    else:
+        from governance.entitlements import resolve_from_membership
+        _raw = resolve_from_membership(None)
+        ent = {"expiry_days": list(_raw["expiry_days"]),
+               "download_limits": list(_raw["download_limits"])}
+    days = list(ent["expiry_days"])
+    dls = list(ent["download_limits"])
+    return json.dumps({
+        "days": days, "downloads": dls,
+        "defaultDays": 1 if 1 in days else days[0],
+        "defaultDownloads": 50 if 50 in dls else dls[0],
+    })
+
+
 def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool):
     """Shared builder for tool page + MCP page. resolve() 是唯一权限判断
     (public/unlisted → everyone when key known; private → owner only)。
@@ -280,6 +301,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     ctx.update({
         "shell_class": "",
         "tool": tool_public,
+        "delivery_json": _delivery_projection(ctx),
         # LocalizedText 协议单链解析; tool_id 兜底属调用方 (协议注释见 app/main.py lt filter)
         "tool_name": resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id,
         "handle": _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None,
@@ -697,12 +719,14 @@ async def account_tools_publish(request: Request):
 
 @router.get("/r/{result_id}", response_class=HTMLResponse)
 async def result_page(result_id: str, request: Request):
-    """Minimal server-rendered result page (IO-1; the designed page is
-    IO-2). Renders items in order: text shown, images previewed, files
-    linked for direct download, JSON formatted."""
+    """Result page (IO-2): the /r/{id} authority. Delivery-owned expiry
+    (record expireAt — every result shape carries one) gates access;
+    expired or unknown ids get the 404 page. Server-rendered readable
+    without JS: ordered items (text/json shown, files linked), header
+    facts (tool, generated time, expiry, remaining downloads)."""
     from app.main import templates
     from repo.ledger import call_by_result_public_id
-    from utils import format_bytes
+    from utils import format_bytes, format_ts, now
     with db() as con:
         row = call_by_result_public_id(con, result_id)
     if row is None:
@@ -715,22 +739,113 @@ async def result_page(result_id: str, request: Request):
         record = _json.loads(row["result_json"])
     except Exception:
         record = {"items": []}
+    expire_at = record.get("expireAt")
+    if not expire_at or int(expire_at) <= now():
+        # Expired result: same 404 surface as an unknown id (no
+        # existence oracle for dead results).
+        ctx = _ctx_base(request)
+        ctx["shell_class"] = "file-shell"
+        return templates.TemplateResponse(request, "missing.html", ctx,
+                                          status_code=404)
+    # Per-file live download counters (storage authority) for the header
+    # fact + file rows.
+    from repo.uploads import by_public_id
+    from storage import info as storage_info
+    file_pids = [it.get("publicId") for it in (record.get("items") or [])
+                 if it.get("kind") == "file" and it.get("publicId")]
+    uploads_by_pid = {}
+    if file_pids:
+        with db() as con:
+            for pid in file_pids:
+                u = by_public_id(con, pid)
+                if u is not None:
+                    uploads_by_pid[pid] = u
     items = []
+    min_remaining = None
+    file_count = 0
     for it in (record.get("items") or []):
         d = dict(it)
         if d.get("kind") == "json":
             d["rendered"] = _json.dumps(d.get("data"), indent=2,
                                         ensure_ascii=False)
         elif d.get("kind") == "file":
+            file_count += 1
             ct = d.get("contentType") or ""
             d["is_image"] = (ct.startswith("image/")
                              and ct.lower() != "image/svg+xml")
+            d["is_pdf"] = ct.lower() == "application/pdf"
             d["size_text"] = format_bytes(int(d.get("size") or 0))
+            u = uploads_by_pid.get(d.get("publicId"))
+            if u is not None:
+                live = storage_info(u["gokapi_id"]) if u["gokapi_id"] else None
+                total = int(u["allowed_downloads"] or 0)
+                count = (live or {}).get("DownloadCount")
+                remaining = (live or {}).get("DownloadsRemaining")
+                used = count if isinstance(count, int) else (
+                    total - remaining if isinstance(remaining, int) else 0)
+                d["downloads"] = f"{max(0, used)}/{total}"
+                left = remaining if isinstance(remaining, int) else (
+                    total - used if isinstance(used, int) else None)
+                if left is not None and (min_remaining is None
+                                         or left < min_remaining):
+                    min_remaining = left
+            else:
+                d["downloads"] = None
         items.append(d)
+    # Tool display name: the call's tool row label (resolver chain).
     ctx = _ctx_base(request)
+    tool_name = row["tool_id"]
+    with db() as con:
+        trow = con.execute(
+            "SELECT label_json FROM platform_tools WHERE tool_key = %s",
+            (row["tool_id"],)).fetchone()
+    if trow is not None:
+        from governance.tool_params import resolve_label
+        tool_name = resolve_label(_json.loads(trow["label_json"]),
+                                  ctx["lang"]) or tool_name
+    from utils import public_result_url
     ctx["shell_class"] = "file-shell"
-    ctx["items"] = items
+    ctx.update({
+        "result_id": result_id,
+        "tool_name": tool_name,
+        "generated_text": format_ts(row["finished_at"]),
+        "expire_text": format_ts(int(expire_at)),
+        "remaining_text": (f"{min_remaining}"
+                           if min_remaining is not None else None),
+        "items": items,
+        "file_count": file_count,
+        "result_url": public_result_url(result_id),
+        "file_size_icon": icon_svg("file_size"),
+        "expiry_icon": icon_svg("expiry"),
+        "download_count_icon": icon_svg("download_count"),
+    })
     return templates.TemplateResponse(request, "result.html", ctx)
+
+
+@router.get("/r/{result_id}/qr.svg")
+async def result_qr(result_id: str):
+    """QR for the result page link (same SVG authority as /f/{id}/qr.svg;
+    a QR exists only for live results — expired/unknown → 404)."""
+    from repo.ledger import call_by_result_public_id
+    from utils import qr_svg, now
+    with db() as con:
+        row = call_by_result_public_id(con, result_id)
+    if row is None:
+        return Response(status_code=404)
+    try:
+        import json as _json
+        record = _json.loads(row["result_json"])
+        expire_at = record.get("expireAt")
+    except Exception:
+        expire_at = None
+    if not expire_at or int(expire_at) <= now():
+        return Response(status_code=404)
+    from utils import public_result_url
+    return Response(content=qr_svg(public_result_url(result_id)),
+                    media_type="image/svg+xml; charset=utf-8")
+
+
+
 
 
 @router.get("/account/keys", response_class=HTMLResponse)

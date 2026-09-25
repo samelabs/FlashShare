@@ -318,15 +318,16 @@ def _home_options(ck=None):
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     conn.request("GET", "/", headers={"Cookie": ck} if ck else {})
     r = conn.getresponse(); body = r.read().decode(); conn.close()
-    def opts(sel_id):
-        m = _re.search(rf'<select[^>]*id="{sel_id}"[^>]*>(.*?)</select>', body, _re.S)
-        if not m: return None, None
-        vals = _re.findall(r'<option value="(\d+)"', m.group(1))
-        sel = _re.findall(r'<option value="(\d+)" selected', m.group(1))
-        return [int(v) for v in vals], (int(sel[0]) if sel else None)
+    # IO-2: delivery options render client-side in the shared input
+    # component; their single SSR-injected source is window.__DELIVERY__.
+    m = _re.search(r'window\.__DELIVERY__\s*=\s*(\{.*?\});', body, _re.S)
+    if not m:
+        return r.status, (None, None), (None, None), None
+    dv = json.loads(m.group(1))
     lim = _re.search(r'window\.__LIMITS__\s*=\s*(\{.*?\});', body, _re.S)
     limits = json.loads(lim.group(1)) if lim else None
-    return r.status, opts("expiryDays"), opts("allowedDownloads"), limits
+    return (r.status, (list(dv["days"]), dv["defaultDays"]),
+            (list(dv["downloads"]), dv["defaultDownloads"]), limits)
 
 FREE_EXP = list(FREE["expiry_days"]); FREE_DL = list(FREE["download_limits"])
 PLUS_EXP = list(_PLANS["plus"]["expiry_days"]); PLUS_DL = list(_PLANS["plus"]["download_limits"])
@@ -358,14 +359,16 @@ check("HD-E1 expired 精确回落 Free options", exp == FREE_EXP and dl == FREE_
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("GET", "/", headers={"Cookie": _mf_ck})
 r = conn.getresponse(); body = r.read().decode(); conn.close()
-check("HD-S1 两个 select 均 form=\"uploadForm\" (FormData 携带)",
-      'id="expiryDays" form="uploadForm"' in body
-      and 'id="allowedDownloads" form="uploadForm"' in body)
-_appjs = open(_os.path.join(_REPO, "static", "app.js"), encoding="utf-8").read()
-check("HD-S2 首次+retry execute 均经 form.elements (零 querySelector)",
-      _appjs.count('form.elements.namedItem("expiryDays")') == 2
-      and _appjs.count('form.elements.namedItem("allowedDownloads")') == 2
-      and 'form.querySelector("[name=' not in _appjs)
+# IO-2: delivery selects render inside the shared input component; their
+# single SSR-injected source is window.__DELIVERY__ (checked above), and
+# the component reads its own selects at run time.
+check("HD-S1 home SSR 注入 __DELIVERY__ (组件 select 单一数据源)",
+      'window.__DELIVERY__' in body)
+_ti_src = open(_os.path.join(_REPO, "static", "pages", "tool-input.js"),
+               encoding="utf-8").read()
+check("HD-S2 组件运行时读取自身 delivery select (.ti-expiry/.ti-downloads)",
+      'container.querySelector(".ti-expiry")' in _ti_src
+      and 'container.querySelector(".ti-downloads")' in _ti_src)
 
 # ═══ 7g. MCP tools/list delivery enum 投影 (真实 Bearer) ═══
 def _mcp_list(bearer):
@@ -530,14 +533,16 @@ check("AP-H3 home block 无 plus policy / 无 DAILY_* 直用 / 无硬编码 7/20
       '"plus"' not in _home_blk and "DAILY_UPLOADS" not in _home_blk
       and "DAILY_BYTES" not in _home_blk
       and "maxDays\": 7" not in _home_blk and "maxDownloads\": 200" not in _home_blk)
+# IO-2: home 不再 SSR delivery selects (组件客户端渲染); 模板注入
+# __DELIVERY__ 循环 (数据驱动, 无固定枚举), 组件读取同一来源。
 _tmpl = open(_os.path.join(_REPO, "app", "templates", "home.html"), encoding="utf-8").read()
-_sel_blk = _tmpl[_tmpl.index('<select name="expiryDays"'):_tmpl.index('<form id="uploadForm"')]
-check("AP-H4 template options 用循环 (无固定 oneDay/threeDays/sevenDays 枚举)",
-      "for d in delivery_expiry_days" in _sel_blk
-      and "for n in delivery_download_limits" in _sel_blk
-      and "oneDay" not in _sel_blk and "sevenDays" not in _sel_blk)
+_deliv_blk = _tmpl[_tmpl.index("window.__DELIVERY__"):_tmpl.index("</script>", _tmpl.index("window.__DELIVERY__"))]
+check("AP-H4 __DELIVERY__ 注入用循环 (无固定 oneDay/threeDays/sevenDays 枚举)",
+      "delivery_expiry_days" in _deliv_blk
+      and "delivery_download_limits" in _deliv_blk
+      and "oneDay" not in _deliv_blk and "sevenDays" not in _deliv_blk)
 check("AP-H5 模板无 plus 分支 (PLUS 30/1000 来自数据非判断)",
-      "plus" not in _sel_blk.lower())
+      "plus" not in _deliv_blk.lower())
 _mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"), encoding="utf-8").read()
 _specs_blk = _mcp_src.split("def _tool_specs")[1].split("\ndef ")[0]
 _specs_code = "\n".join(l for l in _specs_blk.split("\n") if not l.strip().startswith("#"))

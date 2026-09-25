@@ -52,37 +52,7 @@
     </div>
     <p class="agent-note">MCP endpoint: <a href="{{ BASE_URL }}/mcp">{{ BASE_URL }}/mcp</a> · agent guide: <a href="/llms.txt">/llms.txt</a></p>
   </div>
-  <div class="upload-card">
-    <label class="drop" id="dropZone">
-      <input id="file" name="file" type="file" required accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.ico,.heic,.heif,.tiff,.tif,.avif,.svg,.pdf,.txt,.csv,.md,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.zip,.rar,.7z,.gz,.tar,.bz2,.xz,.tgz,.json,.xml,.yaml,.yml,.py,.js,.mjs,.ts,.html,.htm,.css,.go,.rs,.java,.c,.cpp,.h,.rb,.php,.sh,.sql">
-      <span class="drop-glyph" aria-hidden="true">{{ icon_svg("upload") }}</span>
-      <span class="drop-title" id="fileLabel" data-i18n="dropTitle">{{ texts.dropTitle }}</span>
-      <span class="drop-formats" data-i18n="dropFormats">{{ texts.dropFormats }}</span>
-    </label>
-    <div class="upload-divider"></div>
-    <div class="controls">
-      <label class="field"><span data-i18n="expiry">{{ texts.expiry }}</span>
-        <b><span id="expiryLabel">{{ delivery_default_expiry }} {{ texts.day_unit }}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
-        <select name="expiryDays" id="expiryDays" form="uploadForm">
-          {% for d in delivery_expiry_days %}
-          <option value="{{ d }}" {% if d == delivery_default_expiry %}selected{% endif %}>{{ d }} {{ texts.day_unit if d == 1 else texts.days_unit }}</option>
-          {% endfor %}
-        </select></b>
-      </label>
-      <label class="field"><span data-i18n="downloads">{{ texts.downloads }}</span>
-        <b><span id="downloadsLabel">{{ delivery_default_downloads }}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
-        <select name="allowedDownloads" id="allowedDownloads" form="uploadForm">
-          {% for n in delivery_download_limits %}
-          <option value="{{ n }}" {% if n == delivery_default_downloads %}selected{% endif %}>{{ n }} {{ texts.times_unit }}</option>
-          {% endfor %}
-        </select></b>
-      </label>
-    </div>
-    <div class="cta-row">
-      <button id="submitBtn" class="primary" type="submit" form="uploadForm"><span data-i18n="create">{{ texts['create'] }}</span></button>
-    </div>
-    <form id="uploadForm" class="visually-hidden" enctype="multipart/form-data"></form>
-  </div>
+  <div id="toolInput" class="ti-mount"></div>
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
@@ -102,13 +72,13 @@
 
 {% block modals %}
 {{ super() }}
-{% include "partials/upload_modals.html" %}
 {% endblock %}
 
 {% block script_head %}
 <script>
 window.__LIMITS__ = {{ limits_json|safe }};
 window.__TOOLS__ = JSON.parse({{ tools_json|tojson }});
+window.__DELIVERY__ = {"days": {{ delivery_expiry_days|tojson }}, "downloads": {{ delivery_download_limits|tojson }}, "defaultDays": {{ delivery_default_expiry|tojson }}, "defaultDownloads": {{ delivery_default_downloads|tojson }}};
 </script>
 {% endblock %}
 
@@ -116,5 +86,7 @@ window.__TOOLS__ = JSON.parse({{ tools_json|tojson }});
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
 <script src="/static/pages/process-flow.js?v={{ pages_version }}"></script>
 <script src="/static/app.js?v={{ app_js_version }}"></script>
+<script src="/static/pages/tool-input.js?v={{ pages_version }}"></script>
+<script src="/static/pages/home.js?v={{ pages_version }}"></script>
 <script src="/static/pages/sw-register.js?v={{ pages_version }}"></script>
 {% endblock %}

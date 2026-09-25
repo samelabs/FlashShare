@@ -34,24 +34,15 @@
       <span class="v fmt-chips">{% for a in tool.accept %}<span class="fmt-chip">{{ a.lstrip('.').split('/')[-1] | upper }}</span>{% endfor %}</span>
     </div>
     {% endif %}
-    {% if tool.multi %}
-    <div class="toolpage-fact"><span class="k" data-i18n="tool_multi_files">{{ texts.tool_multi_files }}</span><span class="v" data-i18n="tool_multi_yes">{{ texts.tool_multi_yes }}</span></div>
-    {% endif %}
+    <div class="toolpage-fact">
+      <span class="k" data-i18n="tool_files_window">{{ texts.tool_files_window }}</span>
+      <span class="v">{{ tool.files_min }}–{{ tool.files_max }}</span>
+    </div>
   </div>
 
-  <form id="toolRunForm" class="toolpage-run">
-    <div id="toolParams" class="toolpage-params"></div>
-    <div class="toolpage-submit-row">
-      <input type="file" id="toolFile" class="visually-hidden"
-             {% if tool.accept %}accept="{{ tool.accept | join(',') }}"{% endif %}
-             {% if tool.multi %}multiple{% endif %}>
-      <label class="toolpage-file-btn" for="toolFile" id="toolFileLabel" tabindex="0">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
-        <span data-i18n="tool_run_pick">{{ texts.tool_run_pick }}</span>
-      </label>
-      <span class="toolpage-file-name" id="toolFileName" aria-live="polite"></span>
-    </div>
-  </form>
+  <div id="toolRunForm" class="toolpage-run">
+    <div id="toolInput" class="ti-mount"></div>
+  </div>
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
@@ -68,20 +59,21 @@
 {% endblock %}
 
 {% block modals %}
-{% include "partials/upload_modals.html" %}
 {% endblock %}
 
 {% block script_head %}
 <script>
 window.__LIMITS__ = {{ limits_json|safe }};
 window.__TOOLS__ = JSON.parse({{ tools_json|tojson }});
+window.__DELIVERY__ = {{ delivery_json|safe }};
 window.__PAGE__ = "tool";
 </script>
 {% endblock %}
 
 {% block script %}
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
-<script src="/static/app.js?v={{ app_js_version }}"></script>
 <script src="/static/pages/process-flow.js?v={{ pages_version }}"></script>
+<script src="/static/app.js?v={{ app_js_version }}"></script>
+<script src="/static/pages/tool-input.js?v={{ pages_version }}"></script>
 <script src="/static/pages/tool_page.js?v={{ pages_version }}"></script>
 {% endblock %}

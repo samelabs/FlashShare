@@ -18,3 +18,23 @@ window._errm = code => {
   // unknown machine code — canonical localized generic failure, never raw
   return window.t("err_unexpected");
 };
+// Standalone-PWA download rebinding (single source): inside an installed
+// PWA an <a download> navigates the window and traps the user, so every
+// result/file surface routes its download links through the engine
+// authority (window.pwaDownload — URL share / secondary-context handoff,
+// never a body fetch, never a window navigation). Outside standalone this
+// is a no-op: the plain SSR anchors keep working without JS.
+window.wirePwaDownloadLinks = function (scope) {
+  if (!scope || !scope.querySelectorAll) return;
+  if (!(typeof window.isStandalonePWA === "function" && window.isStandalonePWA())) return;
+  scope.querySelectorAll('a[href*="download=1"]').forEach((a) => {
+    const url = a.getAttribute("href") || "";
+    const name = (a.textContent || "download").split("·")[0].trim() || "download";
+    a.removeAttribute("href");
+    a.removeAttribute("download");
+    a.setAttribute("role", "button");
+    a.addEventListener("click", () => {
+      window.pwaDownload && window.pwaDownload(url, name);
+    });
+  });
+};
