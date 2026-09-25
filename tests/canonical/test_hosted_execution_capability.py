@@ -228,11 +228,11 @@ check("HX5e execute_remote 传入其已计算的 canonical trusted fact",
       'trusted = (tool.get("owner_id") is None) or bool(tool.get("trusted"))' in _exr_src
       and "_mint_hosted_capability(decl.get(\"url\") or \"\", sources, params, trusted)" in _exr_src)
 
-# ── HX6: payload binding — cap + different job_inputs → rejected ──
-JOB2 = [{"filename": "b.png", "content_type": "image/png", "size": 96,
-         "url": f"{BASE}/api/source/{GID}?u={UID}&t=other"}]
+# ── HX6: payload binding — cap + a different files set → rejected ──
+FILES2 = [{"filename": "b.png", "content_type": "image/png", "size": 96,
+           "url": f"{BASE}/api/source/{GID}?u={UID}&t=other"}]
 _st, _d = _req("POST", "/tool-endpoints/rounded-corners",
-               {"job_inputs": JOB2, "params": {}}, {"X-Hosted-Execution": _cap})
+               {"files": FILES2, "params": {}}, {"X-Hosted-Execution": _cap})
 check("HX6 capability 不能拼接另一组 source URLs", _st == 401, f"{_st}")
 
 # ── HX7: /mcp Bearer behavior unchanged ──

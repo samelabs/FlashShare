@@ -80,7 +80,12 @@
       auth_header: form.auth_header.value.trim(),
       auth_token: form.auth_token.value,
       accept: form.accept.value.trim(),
-      multi: form.multi.checked,
+      files_min: parseInt(form.files_min.value, 10) || 0,
+      files_max: parseInt(form.files_max.value, 10) || 1,
+      outputs: ["text", "json", "file"].filter(function (k) {
+        var el = form["out_" + k];
+        return el && el.checked;
+      }),
       cost: parseInt(form.cost.value, 10) || 0
     };
     var btn = this;

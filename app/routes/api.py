@@ -252,7 +252,11 @@ async def create_upload(request: Request):
     expiry_days, allowed_downloads = coerce_share_delivery(
         form.get("expiryDays", "1"), form.get("allowedDownloads", "50"))
     has_tool = form.get("tool", "").strip()
-    is_tool_source = bool(has_tool and has_tool != "share")
+    # IO-1: share is a REGULAR executable tool (files 1..20 → one file item
+    # per input). Every selected tool — share included — uploads as a
+    # staged tool source; the direct-share landing below serves only the
+    # no-tool form post.
+    is_tool_source = bool(has_tool)
 
     # Durable direct share: delivery entitlement check BEFORE any quota
     # reservation or Gokapi storage. Tool-source uploads skip this — their

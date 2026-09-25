@@ -163,7 +163,7 @@ def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
     Trust is an explicit caller input — the canonical execution trust
     fact execute_remote() already computed (owner_id IS NULL or trusted
     row). Fail closed: untrusted rows NEVER receive a capability, no
-    matter the URL. The payload digest covers job_inputs + params, so
+    matter the URL. The payload digest covers files + params, so
     the capability cannot be spliced onto a different input set."""
     if not trusted:
         return None

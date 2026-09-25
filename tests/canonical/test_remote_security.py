@@ -408,7 +408,7 @@ rec = _install_stack(
                  "in.internal": [(_socket.AF_INET, "127.0.0.1")]},
     resp_script=[_RespDouble(302, b"", {"location": "https://in.internal/x"})])
 try:
-    remote._pull_output_url("https://out.example/x", 5, trusted=False)
+    remote._pull_item_file_url("https://out.example/x", 5, trusted=False)
     check("REDIR output_url→private blocked", False, "no raise")
 except RemoteError as e:
     check("REDIR output_url→private blocked", True, e)
@@ -901,9 +901,9 @@ _saved_open = _patch_urllib_open(_UrllibRespDouble(
     json.dumps({"items": [{"kind": "file", "filename": "pulled.png",
                 "url": "https://pub.example/fetch.png"}]}).encode(),
     "application/json"))
-_pulled_saved = remote._pull_output_url
+_pulled_saved = remote._pull_item_file_url
 try:
-    remote._pull_output_url = lambda url, t, tr: _png_bytes()
+    remote._pull_item_file_url = lambda url, t, tr: _png_bytes()
     out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
                             [], {}, {}, trusted=True)
     _e4 = out["items"][0]
@@ -913,7 +913,7 @@ try:
 except Exception as exc:
     check("ENV-4 output_url product MIME from bytes", False, exc)
 finally:
-    remote._pull_output_url = _pulled_saved
+    remote._pull_item_file_url = _pulled_saved
     remote.urllib.request.urlopen = _saved_open
 
 # OUT-5: binding composition is a closed vocabulary — legacy/unknown keys

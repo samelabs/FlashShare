@@ -493,7 +493,7 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
             results.append({"kind": "json", "data": data})
         elif kind == "file":
             if "url" in it:
-                data = _pull_output_url(it["url"], timeout_s, trusted)
+                data = _pull_item_file_url(it["url"], timeout_s, trusted)
                 wrapped = _wrap_raw(data, it.get("filename"),
                                     it.get("content_type"))
             elif "data_b64" in it:
@@ -517,7 +517,7 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
     return {"items": results}
 
 
-def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:
+def _pull_item_file_url(item_url: str, timeout_s: int, trusted: bool) -> bytes:
     """Platform fetches the produced file (delivery verb 3, URL variant).
 
     The URL is ENDPOINT-CONTROLLED — it goes through the SAME SSRF guard
@@ -525,16 +525,16 @@ def _pull_output_url(output_url: str, timeout_s: int, trusted: bool) -> bytes:
     the fetch itself rides the pinned transport (redirects re-validated
     per hop) — a malicious endpoint must not turn the platform into an
     internal fetcher. Trusted (operator) rows keep the vouched exemption."""
-    if not str(output_url).startswith("https://"):
-        raise RemoteError("bad_output", "output_url must be https")
+    if not str(item_url).startswith("https://"):
+        raise RemoteError("bad_output", "item url must be https")
     if trusted:
-        req = urllib.request.Request(output_url)
+        req = urllib.request.Request(item_url)
         try:
             with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                 return resp.read(MAX_OUTPUT_BYTES + 1)
         except Exception as exc:
             raise RemoteError("bad_output", f"output fetch failed: {exc}") from exc
-    status, data = pinned_request(str(output_url), method="GET",
+    status, data = pinned_request(str(item_url), method="GET",
                                   timeout_s=timeout_s)
     if status != 200:
         raise RemoteError("bad_output", f"output fetch status {status}")

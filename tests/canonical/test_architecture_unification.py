@@ -539,21 +539,22 @@ except DeclarationError:
 check("C30 arbitrary unknown binding key → DeclarationError (fail closed)",
       _closed_f and _closed_e)
 
-# C31: app.js extLabel stays canonical-only — no MIME compatibility fallback
+# C31: tool-input.js accept chips stay canonical-only — no MIME
+# compatibility fallback (IO-2: the input area renderer owns the display)
 import re as _re31
-_appjs31 = open(_os2.path.join(_REPO, "static", "app.js"),
-                encoding="utf-8").read()
-_m31 = _re31.search(r"function extLabel\(tok\)\s*\{(.*?)\n\}", _appjs31,
-                 _re31.DOTALL)
-_extlabel_body31 = _m31.group(1) if _m31 else ""
-check("C31 activeTool.accept 仍经 extLabel 展示",
-      "activeTool.accept.map(extLabel)" in _appjs31)
-check("C31 extLabel 判定用 startsWith(\".\") canonical 前缀",
-      'startsWith(".")' in _extlabel_body31)
-check("C31 extLabel 函数体无 MIME split(\"/\")",
-      'split("/")' not in _extlabel_body31)
-check("C31 extLabel 函数体无 MIME indexOf(\"/\")",
-      'indexOf("/")' not in _extlabel_body31)
+_ti31 = open(_os2.path.join(_REPO, "static", "pages", "tool-input.js"),
+             encoding="utf-8").read()
+_m31 = _re31.search(r"function acceptTokens\(\)\s*\{(.*?)\n    \}", _ti31,
+                    _re31.DOTALL)
+_accept_body31 = _m31.group(1) if _m31 else ""
+check("C31 accept 投影经 token 化展示 (fmt-chip)",
+      "fmt-chip" in _ti31 and ".toUpperCase()" in _ti31)
+check("C31 accept 判定用 strip 前导点的 canonical token",
+      'replace(/^\\./, "")' in _accept_body31)
+check("C31 accept 展示无 MIME split(\"/\")",
+      'split("/")' not in _ti31)
+check("C31 accept 展示无 MIME indexOf(\"/\")",
+      'indexOf("/")' not in _ti31)
 
 # C32: single product version authority (root VERSION)
 _ver32 = open(_os2.path.join(_REPO, "VERSION"), encoding="utf-8").read()
@@ -1006,12 +1007,15 @@ _ui_files = (
     + _glob.glob(_os.path.join(_REPO, "static", "**", "*.js"),
                  recursive=True))
 _residue = []
+import re as _re11
 for _fp in _ui_files:
     if _fp.replace("\\", "/").endswith("static/i18n.js"):
         continue  # generated artifact, guarded below via source dict
     _txt = open(_fp, encoding="utf-8").read()
     for _needle in ('mytools_f_out', 'mytools_err_output_filename_required'):
-        if _needle in _txt:
+        # whole-key match: the retired bare key is banned; the IO-2
+        # outputs selector key (mytools_f_outputs) is a live, different key
+        if _re11.search(_needle + r'(?![_a-z0-9])', _txt):
             _residue.append((_fp, _needle))
     # DOM field targeting of the retired payload fields in publish UI
     if _fp.endswith("publish.js"):
@@ -1025,8 +1029,8 @@ check("U11 UI/模板/JS 无 output declaration 死键 (mytools_f_out/"
 _i18n_src = open(_os.path.join(_REPO, "core", "i18n.py"),
                  encoding="utf-8").read()
 check("U11 canonical i18n 源无死键 (10 语言全删)",
-      "mytools_f_out" not in _i18n_src
-      and "mytools_err_output_filename_required" not in _i18n_src)
+      '"mytools_f_out":' not in _i18n_src
+      and '"mytools_err_output_filename_required"' not in _i18n_src)
 check("U11 guard 文案 = retired-field 语义 (非 filename-required/ext/MIME 语义)",
       "Output declaration field retired" in _i18n_src
       and "Output filename is required" not in _i18n_src

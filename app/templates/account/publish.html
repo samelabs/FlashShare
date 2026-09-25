@@ -47,11 +47,26 @@
           <span class="fam-hint" id="famHint"></span>
           <em class="pub-err" data-err="accept"></em>
         </div>
-        <label class="pub-multi-wrap">
-          <input type="checkbox" id="fMulti">
-          <span data-i18n="tool_multi_yes">{{ texts.tool_multi_yes }}</span>
-          <em class="pub-err" data-err="multi"></em>
+        <label class="pub-files-limit">
+          <span data-i18n="mytools_f_files_min">{{ texts.mytools_f_files_min }}</span>
+          <input id="fFilesMin" type="number" min="0" max="20" value="1">
+          <em class="pub-err" data-err="files_min"></em>
         </label>
+        <label class="pub-files-limit">
+          <span data-i18n="mytools_f_files_max">{{ texts.mytools_f_files_max }}</span>
+          <input id="fFilesMax" type="number" min="1" max="20" value="1">
+          <em class="pub-err" data-err="files_max"></em>
+        </label>
+        <div class="pub-wide pub-outputs">
+          <span class="pub-outputs-label" data-i18n="mytools_f_outputs">{{ texts.mytools_f_outputs }}</span>
+          <span class="pub-outputs-checks">
+            <label class="fam-chip"><input type="checkbox" id="fOutText" value="text"><span data-i18n="mytools_out_text">{{ texts.mytools_out_text }}</span></label>
+            <label class="fam-chip"><input type="checkbox" id="fOutJson" value="json"><span data-i18n="mytools_out_json">{{ texts.mytools_out_json }}</span></label>
+            <label class="fam-chip"><input type="checkbox" id="fOutFile" value="file" checked><span data-i18n="mytools_out_file">{{ texts.mytools_out_file }}</span></label>
+          </span>
+          <em class="pub-err" data-err="outputs"></em>
+          <em class="pub-hint" data-i18n="pub_outputs_hint">{{ texts.pub_outputs_hint }}</em>
+        </div>
       </div>
     </div>
 

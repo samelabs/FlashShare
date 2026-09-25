@@ -123,10 +123,15 @@ def retire_absent_first_party(con, live_keys: Sequence[str], ts: int) -> None:
     # 空名单 = registry 加载失败 (import 错误/单测环境), 绝不能全灭线上工具
     if not live_keys:
         return
+    # Retirement scope = CODE-SEEDED first-party rows only (execution
+    # 'local'). Operator-created trusted HTTP tools share the bare-id
+    # first-party namespace (owner_id IS NULL) but are live supply, not
+    # registry mirrors — a restart must never disable them.
     con.execute(
         """
         UPDATE platform_tools SET enabled = FALSE, updated_at = %s
-        WHERE owner_id IS NULL AND enabled AND tool_key != ALL(%s)
+        WHERE owner_id IS NULL AND execution = 'local' AND enabled
+          AND tool_key != ALL(%s)
         """,
         (ts, list(live_keys)))
 

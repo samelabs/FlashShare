@@ -398,7 +398,10 @@ def _share(ck, ed, dl):
     png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     body = b""
-    for k, v in {"tool": "share", "expiryDays": str(ed), "allowedDownloads": str(dl),
+    # IO-2: direct share = the NO-TOOL form post. A selected tool (share
+    # included) uploads as a staged source; its delivery entitlement is
+    # enforced at execute preflight (H2/H3 below prove that surface).
+    for k, v in {"expiryDays": str(ed), "allowedDownloads": str(dl),
                  "client_ref": f"sh-{uuid.uuid4().hex[:10]}"}.items():
         body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
     body += b'--B\r\nContent-Disposition: form-data; name="file"; filename="d.png\r\nContent-Type: image/png\r\n\r\n' + png + b"\r\n--B--\r\n"
@@ -767,7 +770,7 @@ check("PF-A6 preflight 对 disabled 不 402 (defer: ok)",
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("POST", "/api/uploads", _pf_multipart("share"), {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _pfd_ck})
 _up_d = json.loads(conn.getresponse().read()); conn.close()
-_files_d = [{"public_id": _up_d["file"]["publicId"], "source_token": _up_d["file"].get("sourceToken", "")}]
+_files_d = [{"public_id": _up_d["file"]["stagingId"], "source_token": _up_d["file"].get("sourceToken", "")}]
 _inv_d = {"tool_id": _pf_key, "source": {"files": _files_d}, "params": {},
           "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": f"ig-{uuid.uuid4().hex[:8]}"}
 conn = _hc.HTTPConnection(*_HOST, timeout=60)
@@ -904,7 +907,7 @@ _pfr_ck = _login(_pfr_name)
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("POST", "/api/uploads", _pf_multipart("share"), {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _pfr_ck})
 _up = json.loads(conn.getresponse().read()); conn.close()
-_files = [{"public_id": _up["file"]["publicId"], "source_token": _up["file"].get("sourceToken", "")}]
+_files = [{"public_id": _up["file"]["stagingId"], "source_token": _up["file"].get("sourceToken", "")}]
 _inv = {"tool_id": _pf_key, "source": {"files": _files}, "params": {},
         "delivery": {"expiry_days": 1, "allowed_downloads": 50}, "client_ref": f"ig-{uuid.uuid4().hex[:8]}"}
 conn = _hc.HTTPConnection(*_HOST, timeout=60)

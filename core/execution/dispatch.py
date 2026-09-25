@@ -7,7 +7,7 @@ dispatch 只认识这一种 schema:
         ↓
     resolve tool
         ↓
-    enforce source count vs tool.multi
+    enforce source count vs the declared files window
         ↓
     resolve source.files
         ↓
