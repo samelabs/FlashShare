@@ -23,6 +23,8 @@ class Store:
         self._files: dict[str, dict] = {}
         # test-only: fail the internal download endpoint with this status
         self.fail_internal: str | None = None
+        # test-only: fail the upload (files/add) endpoint with this status
+        self.fail_upload: str | None = None
 
     def add(self, name: str, content_type: str, data: bytes,
             expiry_days: int, allowed_downloads: int, base_url: str) -> dict:
@@ -284,6 +286,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorized():
                 self._json(401, {"Result": "ERROR", "ErrorMessage": "unauthorized"})
                 return
+            if STORE.fail_upload:
+                # test-only write-failure injection (set via /ci/fail-upload)
+                self._json(int(STORE.fail_upload),
+                           {"Result": "ERROR", "ErrorMessage": "injected"})
+                return
             try:
                 size = int(self.headers.get("Content-Length", "0"))
                 body = self.rfile.read(size)
@@ -301,6 +308,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"Result": "ERROR", "ErrorMessage": str(exc)})
                 return
             self._json(200, {"Result": "OK", "FileInfo": meta})
+            return
+
+        if path == "/ci/fail-upload":
+            if not self._authorized():
+                self._json(401, {"ErrorMessage": "unauthorized"})
+                return
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                body = json.loads(self.rfile.read(size) or b"{}")
+            except Exception:
+                body = {}
+            mode = body.get("mode")
+            STORE.fail_upload = mode if mode in ("400", "401", "403",
+                                                 "404", "500", "503") else None
+            self._json(200, {"Result": "OK", "fail_upload": STORE.fail_upload})
             return
 
         if path == "/ci/fail-internal":

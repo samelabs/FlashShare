@@ -187,7 +187,7 @@ check("B2 dispatch 无 single/multi request-shape branch",
 cookie, uname = new_user()
 up = upload(cookie)
 check("C0 upload ok", up.get("ok"), str(up)[:120])
-pid, tok = up["file"]["publicId"], up["file"].get("sourceToken", "")
+pid, tok = up["file"]["stagingId"], up["file"].get("sourceToken", "")
 
 # compress (multi=false) canonical
 st, r = req("POST", "/api/tools/execute", {
@@ -219,14 +219,14 @@ st, r2 = req("POST", "/api/tools/execute", {
 check("E1 同 client_ref + 同 payload (同 source) → replay", r2.get("replay") is True and r2.get("ok"), str(r2)[:120])
 up_e = upload(cookie)
 st, r2b = req("POST", "/api/tools/execute", {
-    "tool_id": "compress", "source": {"files": [{"public_id": up_e["file"]["publicId"], "source_token": up_e["file"].get("sourceToken", "")}]},
+    "tool_id": "compress", "source": {"files": [{"public_id": up_e["file"]["stagingId"], "source_token": up_e["file"].get("sourceToken", "")}]},
     "params": {}, "delivery": {"expiry_days": 7, "allowed_downloads": 200},
     "client_ref": "sc-test-1"}, cookie)
 check("E1b 同 ref + 新 source → 409 idempotency_conflict (ref 绑定 operation)",
       st == 409 and r2b.get("error") == "idempotency_conflict", f"{st} {str(r2b)[:110]}")
 up_f = upload(cookie)
 st, r3 = req("POST", "/api/tools/execute", {
-    "tool_id": "compress", "source": {"files": [{"public_id": up_f["file"]["publicId"], "source_token": up_f["file"].get("sourceToken", "")}]},
+    "tool_id": "compress", "source": {"files": [{"public_id": up_f["file"]["stagingId"], "source_token": up_f["file"].get("sourceToken", "")}]},
     "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
     "client_ref": f"fresh-{uuid.uuid4().hex[:8]}"}, cookie)
 check("E2 新 client_ref → fresh (非 replay)", r3.get("ok") and not r3.get("replay"), str(r3)[:120])
@@ -237,8 +237,8 @@ up3 = upload(cookie, name=b"c.png")
 st, rz = req("POST", "/api/tools/execute", {
     "tool_id": "zip_pack",
     "source": {"files": [
-        {"public_id": up2["file"]["publicId"], "source_token": up2["file"].get("sourceToken", "")},
-        {"public_id": up3["file"]["publicId"], "source_token": up3["file"].get("sourceToken", "")}]},
+        {"public_id": up2["file"]["stagingId"], "source_token": up2["file"].get("sourceToken", "")},
+        {"public_id": up3["file"]["stagingId"], "source_token": up3["file"].get("sourceToken", "")}]},
     "params": {}, "delivery": {"expiry_days": 3, "allowed_downloads": 10},
     "client_ref": f"auto-{uuid.uuid4().hex[:8]}-2"}, cookie)
 check("B3 zip_pack files[2] 同一 schema ok", rz.get("ok"), f"{st} {str(rz)[:150]}")
@@ -247,8 +247,8 @@ check("B3 zip_pack files[2] 同一 schema ok", rz.get("ok"), f"{st} {str(rz)[:15
 st, rm = req("POST", "/api/tools/execute", {
     "tool_id": "compress",
     "source": {"files": [
-        {"public_id": up2["file"]["publicId"], "source_token": ""},
-        {"public_id": up3["file"]["publicId"], "source_token": ""}]},
+        {"public_id": up2["file"]["stagingId"], "source_token": ""},
+        {"public_id": up3["file"]["stagingId"], "source_token": ""}]},
     "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
     "client_ref": f"auto-{uuid.uuid4().hex[:8]}-3"}, cookie)
 check("B4 multi=false files[2] → err_too_many_files", rm.get("error") == "err_too_many_files", f"{st} {rm}")
@@ -283,7 +283,8 @@ def files_schema(t):
     return (t or {}).get("inputSchema", {}).get("properties", {}).get("files", {})
 check("H1 compress files[] maxItems=1", files_schema(comp).get("maxItems") == 1 and files_schema(comp).get("minItems") == 1, str(files_schema(comp)))
 check("H2 zip_pack files[] maxItems=20", files_schema(zp).get("maxItems") == 20, str(files_schema(zp)))
-all_have_files = all("files" in (t.get("inputSchema", {}).get("properties") or {}) for t in tools if t["name"] != "catalog_search")
+_META = ("catalog_search", "create_upload")
+all_have_files = all("files" in (t.get("inputSchema", {}).get("properties") or {}) for t in tools if t["name"] not in _META)
 no_b64 = all("file_b64" not in (t.get("inputSchema", {}).get("properties") or {}) for t in tools)
 check("H3 所有工具只有 files[] 模型", all_have_files and no_b64, f"{len(tools)} tools")
 check("H4 delivery schema 存在", "delivery" in (comp or {}).get("inputSchema", {}).get("properties", {}))

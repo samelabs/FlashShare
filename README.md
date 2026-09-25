@@ -67,6 +67,46 @@ canonical 调用。支持协议版本 `2025-11-25` / `2025-06-18` / `2025-03-26`
 三种形态走同一 ingress / 额度 / `client_ref` 幂等路径（同 `client_ref`、
 不同输入 → 幂等冲突）。
 
+大文件不要走 base64：用元工具 `create_upload` 两段式上传，文件字节全程
+不经过模型、不出现在任何 JSON-RPC 请求体里：
+
+1. `tools/call(name="create_upload", arguments={filename, size,
+   content_type?, client_ref})` — 免费元工具（不产生 tool_call 计费）。
+   签发前完成校验（单文件上限、24h 上传额度预检），返回一次性
+   `upload_url`（10 分钟有效、单次使用、绑定 user 与声明大小）。
+2. `PUT upload_url`，请求体就是原始文件字节（无需 Authorization，
+   URL 即凭据；超出声明大小立即 413 中止）。成功走与内嵌 base64 完全
+   相同的 ingress 路径（额度占用 / Gokapi 存储 / 上传记录），返回
+   `{public_id, source_token}`。
+3. 把 `{public_id, source_token}` 作为 `tools/call` 的 files[] 引用形态
+   调用任意工具。
+
+`create_upload` 幂等：同 `client_ref` 同参数返回同一未用凭据；同
+`client_ref` 不同参数 → `-32009`。
+
+```bash
+# 1) create_upload（略去 Bearer 头与 initialize）
+curl -s https://your-domain/mcp -H "Authorization: Bearer fsk_…" \
+  -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,
+    "method":"tools/call","params":{"name":"create_upload",
+    "arguments":{"filename":"big.png","size":5242880,
+                 "client_ref":"stage-big-png"}}}'
+# → result.content[0].text = {"upload_url":"https://…/mcp/upload/<ticket>",
+#                             "expires_at":…,"max_bytes":…}
+
+# 2) 上传原始字节（URL 即一次性凭据，无需 Authorization）
+curl -s -X PUT --data-binary @big.png \
+  "https://your-domain/mcp/upload/<ticket>"
+# → {"public_id":"…","source_token":"…"}
+
+# 3) 以引用形态调用工具
+curl -s https://your-domain/mcp -H "Authorization: Bearer fsk_…" \
+  -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,
+    "method":"tools/call","params":{"name":"share",
+    "arguments":{"files":[{"public_id":"…","source_token":"…"}],
+                 "client_ref":"share-big-png"}}}'
+```
+
 ## 用户工具声明协议
 
 用户发布的工具通过一份 JSON manifest 声明。本节描述当前已落地的声明契约：结构、多语言文本、Web 编辑与 API 写入语义、参数校验与错误码。

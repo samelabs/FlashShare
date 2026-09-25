@@ -411,7 +411,7 @@ async def _fake_dispatch(request, user, raw, *a, **k):
 
 _served = {}
 def _fake_pinned(url, method="GET", body=None, headers=None, timeout_s=60,
-                 has_credential=False):
+                 has_credential=False, max_bytes=None):
     return 200, _served[url]
 
 _orig_pinned, _orig_dx = _remote.pinned_request, _dispatch_mod.dispatch_execute
@@ -482,11 +482,11 @@ def _web_upload(cookie, ref):
     return (d or {}).get("file") or {}
 src1 = _web_upload(ck, f"web-{_u}-1")
 src2 = _web_upload(ck2, f"web-{_u}-2")
-check("R0 fixtures: web uploads carry publicId + sourceToken",
-      src1.get("publicId") and src1.get("sourceToken") and src2.get("publicId"), str(src1)[:100])
+check("R0 fixtures: web tool uploads carry stagingId + sourceToken",
+      src1.get("stagingId") and src1.get("sourceToken") and src2.get("stagingId"), str(src1)[:100])
 refR = f"ref-{_u}"
 i0 = _ingress_n(uid)
-st, _h, d = _call("compress", {"files": [{"public_id": src1["publicId"],
+st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": src1["sourceToken"]}],
                                "client_ref": refR})
 _rt = _tool_text(d)
@@ -495,27 +495,27 @@ check("R1 reference form → executed result",
       and bool((_rt.get("result") or {}).get("publicId")), str(d)[:140])
 check("R2 reference form claims no ingress receipt", _ingress_n(uid) == i0)
 c0 = _calls_n(uid)
-st, _h, d = _call("compress", {"files": [{"public_id": src2["publicId"],
+st, _h, d = _call("compress", {"files": [{"public_id": src2["stagingId"],
                                           "source_token": src2["sourceToken"]}],
                                "client_ref": f"refx-{_u}"})
 check("R3 foreign upload (other user's token) → -32602, zero tool_call",
       (d.get("error") or {}).get("code") == -32602 and _calls_n(uid) == c0, str(d)[:120])
-st, _h, d = _call("compress", {"files": [{"public_id": src1["publicId"],
+st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": "0" * 64}],
                                "client_ref": f"refy-{_u}"})
 check("R4 invalid source_token → -32602, zero tool_call",
       (d.get("error") or {}).get("code") == -32602 and _calls_n(uid) == c0, str(d)[:120])
-st, _h, d = _call("compress", {"files": [{"public_id": src1["publicId"],
+st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": 7}],
                                "client_ref": f"refz-{_u}"})
 check("R5 non-string source_token → -32602", (d.get("error") or {}).get("code") == -32602)
-st, _h, d = _call("compress", {"files": [{"public_id": src1["publicId"],
+st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": src1["sourceToken"]}],
                                "client_ref": refR}, mid=2)
 check("R6 same ref + same reference → replay (same call)",
       _tool_text(d).get("replay") is True and _calls_n(uid) == c0, str(d)[:120])
 src3 = _web_upload(ck, f"web-{_u}-3")
-st, _h, d = _call("compress", {"files": [{"public_id": src3["publicId"],
+st, _h, d = _call("compress", {"files": [{"public_id": src3["stagingId"],
                                           "source_token": src3["sourceToken"]}],
                                "client_ref": refR}, mid=3)
 check("R7 same ref + different reference → idempotency_conflict, zero new call",

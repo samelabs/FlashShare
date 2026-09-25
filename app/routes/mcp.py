@@ -226,7 +226,11 @@ async def _dispatch(request: Request, user: dict, msg):
                 "on tools/call to retry safely — replays return the "
                 "original result without re-charging. Source files go "
                 "inline (base64), by https URL, or by reference to an "
-                "existing upload. Catalog version: "
+                "existing upload. For large local files use the meta tool "
+                "'create_upload' first: it returns a one-time PUT URL — "
+                "upload the raw bytes there (they never pass through the "
+                "model) and pass the returned {public_id, source_token} as "
+                "the files[] reference form. Catalog version: "
                 f"{catalog_version()} — re-list when it changes."
             ),
         })
@@ -287,7 +291,11 @@ _FILE_ITEM_SCHEMA = {
             "description": "An existing 518 upload owned by you: public_id "
                            "plus the source_token returned with it (omit the "
                            "token for your own shared uploads). No re-upload, "
-                           "no ingress quota.",
+                           "no ingress quota. For files too large to inline "
+                           "as base64, call the meta tool 'create_upload' "
+                           "and PUT the raw bytes to the returned upload_url "
+                           "— its response gives you exactly this "
+                           "{public_id, source_token} pair.",
             "properties": {
                 "public_id": {"type": "string"},
                 "source_token": {"type": "string"},
@@ -295,6 +303,40 @@ _FILE_ITEM_SCHEMA = {
             "required": ["public_id"],
         },
     ],
+}
+
+
+# Meta tool (official, free, no tool_call billing): stage a large local
+# file without its bytes ever passing through the model.
+_CREATE_UPLOAD_SPEC = {
+    "name": "create_upload",
+    "description":
+        "Stage one local file for a later tools/call without sending its "
+        "bytes through the model. Returns a one-time HTTPS PUT URL "
+        "(upload_url, 10-minute expiry), the byte cap (max_bytes) and the "
+        "exact declared size bound. After a successful PUT you receive "
+        "{public_id, source_token} — pass them as the files[] reference "
+        "form of any tool. Free; consumes your daily upload quota only "
+        "when the PUT succeeds.",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "filename": {"type": "string",
+                         "description": "Original filename (extension "
+                                        "decodes the format)"},
+            "size": {"type": "integer",
+                     "description": "Exact file size in bytes; the PUT is "
+                                    "rejected the moment it exceeds it"},
+            "content_type": {"type": "string",
+                             "description": "Optional MIME hint"},
+            "client_ref": {"type": "string",
+                           "description": "Stable idempotency identity of "
+                                          "this staging intent (same ref + "
+                                          "same parameters returns the same "
+                                          "unused ticket)"},
+        },
+        "required": ["filename", "size", "client_ref"],
+    },
 }
 
 
@@ -308,7 +350,7 @@ def _tool_specs(user: dict) -> list:
     expiry_enum = list(ent["expiry_days"])
     downloads_enum = list(ent["download_limits"])
     names = mcp_names()
-    specs = []
+    specs = [_CREATE_UPLOAD_SPEC]
     for t in list_catalog(user["id"]):
         multi = bool(t.get("multi"))
         props = {
@@ -407,6 +449,9 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                 {"query": q, "tools": [h["id"] for h in hits]}, ensure_ascii=False)}],
             "isError": False,
         })
+
+    if name == "create_upload":
+        return _create_upload(user, mid, args, request)
 
     # client_ref is REQUIRED and validated BEFORE any base64 decode,
     # quota check, or Gokapi upload — a missing/invalid ref must never
@@ -751,6 +796,66 @@ def _parse_file_item(f) -> tuple:
     return "ref", (pid, token)
 
 
+def _create_upload(user: dict, mid, args: dict, request: Request):
+    """Meta tool: issue one one-time PUT credential (B4b two-stage
+    upload). Official + free — no tool_calls row, no consume; the daily
+    ingress quota is only touched by the PUT itself. Every validation
+    (size bound, quota headroom) runs BEFORE a ticket is issued."""
+    from utils import sanitize_filename
+    filename = args.get("filename")
+    if not isinstance(filename, str) or not filename.strip():
+        return _rpc_err(mid, -32602, "invalid params: filename required")
+    filename = sanitize_filename(filename.strip())
+    if not filename:
+        return _rpc_err(mid, -32602, "invalid params: filename invalid")
+    size = args.get("size")
+    if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+        return _rpc_err(mid, -32602, "invalid params: size must be a "
+                                     "positive integer byte count")
+    if size > MAX_UPLOAD_BYTES:
+        return _rpc_err(mid, -32602, "invalid params: size exceeds the "
+                                     f"per-file limit ({MAX_UPLOAD_BYTES})")
+    content_type = args.get("content_type")
+    if content_type is not None and (not isinstance(content_type, str)
+                                     or not content_type.strip()):
+        return _rpc_err(mid, -32602, "invalid params: content_type must "
+                                     "be a non-empty string")
+    content_type = (content_type or "").strip() or None
+    cr = args.get("client_ref")
+    if not isinstance(cr, str) or not cr.strip() or len(cr) > 128:
+        return _rpc_err(mid, -32602, "invalid client_ref")
+    client_ref = cr.strip()
+
+    # read-only quota headroom check BEFORE issuing (single decision
+    # point; the PUT still runs the authoritative claim)
+    from sharing.uploads import check_quota
+    ok, denial = check_quota(user["id"], "", size, 1)
+    if not ok:
+        return _rpc_err(mid, -32602, "upload quota exceeded", denial)
+
+    from repo import upload_tickets as tickets
+    from utils import now
+    try:
+        row = tickets.issue(user["id"], filename, content_type, size,
+                            client_ref, now())
+    except ValueError as exc:
+        return _rpc_err(mid, ERR_IDEMPOTENCY, str(exc))
+    return _rpc(mid, {
+        "content": [{"type": "text", "text": json.dumps({
+            "upload_url": f"{BASE_URL}/mcp/upload/{row['ticket']}",
+            "expires_at": int(row["expires_at"]),
+            "max_bytes": MAX_UPLOAD_BYTES,
+            "usage": "PUT the raw file bytes to upload_url with NO "
+                     "Authorization header (the URL is the one-time "
+                     "credential; exact declared size, 10-minute expiry, "
+                     "single use). The JSON response gives {public_id, "
+                     "source_token} — use them as the files[] reference "
+                     "form in tools/call.",
+        }, ensure_ascii=False)}],
+        "isError": False,
+    })
+
+
 def _fetch_url_source(url: str) -> bytes:
     """GET one https source over the pinned SSRF-guarded transport
     (every hop: https only, all resolved addresses public, connect pinned
@@ -758,7 +863,8 @@ def _fetch_url_source(url: str) -> bytes:
     per-file ingress cap."""
     from remote import RemoteError, pinned_request
     status, data = pinned_request(url, method="GET",
-                                  timeout_s=URL_FETCH_TIMEOUT_S)
+                                  timeout_s=URL_FETCH_TIMEOUT_S,
+                                  max_bytes=MAX_UPLOAD_BYTES)
     if status != 200:
         raise RemoteError("http_status", str(status))
     if len(data) > MAX_UPLOAD_BYTES:

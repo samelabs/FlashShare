@@ -368,7 +368,10 @@ async def create_upload(request: Request):
                 "size": size,
                 "downloadUrl": "",
                 "hotlinkUrl": info.get("UrlHotlink", ""),
-                "publicId": gid,
+                # staging identity of a tool-source intermediate: this is
+                # NOT the share publicId (direct shares carry that key);
+                # pass it back as files[].public_id with the sourceToken
+                "stagingId": gid,
                 "gokapiId": gid,
                 "sourceToken": sign_source_token(user["id"], gid),
                 "expireAt": info.get("ExpireAt"),
