@@ -96,6 +96,7 @@ jobs:
       FLASHSHARE_SESSION_SECRET: ci-session-secret-not-production
       FLASHSHARE_GOKAPI_URL: http://127.0.0.1:53898
       FLASHSHARE_GOKAPI_KEY: ci-gokapi-key
+      TOOL_VAULT_KEY: bmHRR7eJv3wjTX590_wESE9SqO7DtyJTU2hObyZF7s0=  # test-only Fernet key; API key storage requires it
       FLASHSHARE_BASE_URL: http://127.0.0.1:8100
       FLASHSHARE_LOG_DIR: /tmp/flashshare-ci-log
       FLASHSHARE_TEST_PORT: "8100"
@@ -489,6 +490,7 @@ jobs:
       FLASHSHARE_SESSION_SECRET: ci-session-secret-not-production
       FLASHSHARE_GOKAPI_URL: http://127.0.0.1:53898
       FLASHSHARE_GOKAPI_KEY: ci-gokapi-key
+      TOOL_VAULT_KEY: bmHRR7eJv3wjTX590_wESE9SqO7DtyJTU2hObyZF7s0=  # test-only Fernet key; API key storage requires it
       FLASHSHARE_BASE_URL: http://127.0.0.1:8100
       FLASHSHARE_LOG_DIR: /tmp/flashshare-ci-log
       FLASHSHARE_TEST_PORT: "8100"
