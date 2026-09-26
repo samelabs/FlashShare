@@ -99,6 +99,11 @@ jobs:
       TOOL_VAULT_KEY: bmHRR7eJv3wjTX590_wESE9SqO7DtyJTU2hObyZF7s0=  # test-only Fernet key; API key storage requires it
       FLASHSHARE_BASE_URL: http://127.0.0.1:8100
       FLASHSHARE_LOG_DIR: /tmp/flashshare-ci-log
+      # canonical suites all register/login from 127.0.0.1 — raise the
+      # per-ip auth gates for the isolated CI stack (production defaults
+      # remain 30/hour register, 50/15min login; no ip is ever exempt)
+      FLASHSHARE_REGISTER_LIMIT_PER_HOUR: "10000"
+      FLASHSHARE_LOGIN_LIMIT_PER_15MIN: "10000"
       FLASHSHARE_TEST_PORT: "8100"
     steps:
       - uses: actions/checkout@v4
@@ -513,6 +518,11 @@ jobs:
       TOOL_VAULT_KEY: bmHRR7eJv3wjTX590_wESE9SqO7DtyJTU2hObyZF7s0=  # test-only Fernet key; API key storage requires it
       FLASHSHARE_BASE_URL: http://127.0.0.1:8100
       FLASHSHARE_LOG_DIR: /tmp/flashshare-ci-log
+      # canonical suites all register/login from 127.0.0.1 — raise the
+      # per-ip auth gates for the isolated CI stack (production defaults
+      # remain 30/hour register, 50/15min login; no ip is ever exempt)
+      FLASHSHARE_REGISTER_LIMIT_PER_HOUR: "10000"
+      FLASHSHARE_LOGIN_LIMIT_PER_15MIN: "10000"
       FLASHSHARE_TEST_PORT: "8100"
     steps:
       - uses: actions/checkout@v4

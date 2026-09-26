@@ -43,6 +43,8 @@
 
 - `DATABASE_URL` — PostgreSQL DSN（`postgresql+psycopg://…`）
 - `FLASHSHARE_SESSION_SECRET` — session/token 签名密钥
+- `FLASHSHARE_REGISTER_LIMIT_PER_HOUR` — 注册每 IP 每小时上限（默认 30；CI 等隔离栈调高）
+- `FLASHSHARE_LOGIN_LIMIT_PER_15MIN` — 登录失败每 IP 每 15 分钟上限（默认 50；CI 等隔离栈调高）
 - `FLASHSHARE_GOKAPI_URL` / `FLASHSHARE_GOKAPI_KEY` — Gokapi API
 - `TOOL_VAULT_KEY` — secrets_vault 加密密钥（Fernet）：工具鉴权凭据与API key 加密副本共用；未配置时创建 API key 直接失败（不降级为只显示一次）
 - `FLASHSHARE_MCP_ALLOWED_ORIGINS` — 可选，逗号分隔的额外浏览器 origin

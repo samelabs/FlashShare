@@ -38,12 +38,29 @@ router = APIRouter()
 logger = logging.getLogger("flashshare")
 
 # In-memory sliding-window throttles (single uvicorn worker).
+# Limits are configurable so isolated test stacks can raise them (the CI
+# suites all register from 127.0.0.1 and exceed the production defaults);
+# there is NO per-ip exemption — production traffic arrives via Nginx
+# from 127.0.0.1 too, so 127.0.0.1 must not bypass these gates.
+import os as _os
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = _os.environ.get(name, "").strip()
+    try:
+        val = int(raw) if raw else default
+    except ValueError:
+        val = default
+    return val if val > 0 else default
+
+
 _LOGIN_FAIL_LIMIT = 10              # failures per (ip, login)
 _LOGIN_FAIL_WINDOW = 15 * 60
 _login_failures: dict[tuple, list[int]] = {}
-_LOGIN_IP_FAIL_LIMIT = 50           # failures per ip, across all logins
+_LOGIN_IP_FAIL_LIMIT = _env_int("FLASHSHARE_LOGIN_LIMIT_PER_15MIN", 50)
+_LOGIN_IP_FAIL_WINDOW = 15 * 60
 _login_ip_failures: dict[tuple, list[int]] = {}
-_REGISTER_IP_LIMIT = 30             # register attempts per ip
+_REGISTER_IP_LIMIT = _env_int("FLASHSHARE_REGISTER_LIMIT_PER_HOUR", 30)
 _REGISTER_IP_WINDOW = 60 * 60
 _register_attempts: dict[tuple, list[int]] = {}
 
