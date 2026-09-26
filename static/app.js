@@ -87,7 +87,7 @@ function showResult(html, isError=false) {
 }
 function showError(errorKey) {
   lastErrorKey = errorKey;
-  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(t(errorKey))}</div></div>`, true);
+  showResult(`<div class="card card-pad result-card"><div class="error-note">${escapeHtml(t(errorKey))}</div></div>`, true);
 }
 
 // Language switch: dynamic strings follow (JS-rendered input area
@@ -101,7 +101,7 @@ window.__afterI18n = function() {
 };
 
 function showToolProcessing(toolName) {
-  showResult(`<div class="tool-processing"><div class="upload-spinner"></div><span>${escapeHtml(toolName)} · ${t("processing")}</span></div>`);
+  showResult(`<div class="card card-pad result-card"><div class="empty" style="padding:var(--s5)"><div class="upload-spinner"></div><span>${escapeHtml(toolName)} · ${t("processing")}</span></div></div>`);
 }
 
 // Task-2 error contract: explicit retry callback decides whether a Retry
@@ -110,10 +110,10 @@ function showToolProcessing(toolName) {
 // error codes are never rendered raw.
 function showToolError(message, originalFile, retryCallback) {
   const origUrl = originalFile && (originalFile.downloadUrl || originalFile.url) ? (originalFile.downloadUrl || originalFile.url) : "";
-  const origLink = origUrl ? `<a class="overlay-btn primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
+  const origLink = origUrl ? `<a class="btn btn-primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
   const retryBtn = typeof retryCallback === "function"
-    ? `<button class="overlay-btn" id="toolRetry" type="button">${t("retry")}</button>` : "";
-  showResult(`<div class="result-card"><div class="result-error">${escapeHtml(message)}</div><div class="result-buttons">${retryBtn}${origLink}</div></div>`, true);
+    ? `<button class="btn btn-secondary" id="toolRetry" type="button">${t("retry")}</button>` : "";
+  showResult(`<div class="card card-pad result-card"><div class="error-note">${escapeHtml(message)}</div><div class="row row-wrap" style="margin-block-start:var(--s3)">${retryBtn}${origLink}</div></div>`, true);
   const btn = document.getElementById("toolRetry");
   if (btn && typeof retryCallback === "function") {
     btn.addEventListener("click", retryCallback);
@@ -145,39 +145,60 @@ function renderResultItems(items, opts) {
   // Standalone PWA: downloads are buttons routed through the engine
   // authority (no <a download> navigation inside an installed PWA).
   const pwa = !!opts.pwa;
-  const rows = (items || []).map(function (it, i) {
-    const copyBtn = (kind) =>
-      `<button class="r-mini-btn" type="button" data-copy="${kind}" aria-label="${t("copy")}">${svgIcon("copy")}</button>`;
+  const copyBtn = (kind) =>
+    '<button class="btn btn-icon btn-sm rs-copy" type="button" data-copy="' + kind +
+    '" aria-label="' + t("copy") + '" title="' + t("copy") + '">' + svgIcon("copy") + "</button>";
+  const dlControl = (pid, filename) => {
+    const dlUrl = "/f/" + encodeURIComponent(pid) + "?download=1";
+    return pwa
+      ? '<button class="btn btn-secondary btn-sm rs-dl" type="button" data-dl-url="' + escapeHtml(dlUrl) +
+        '" data-dl-name="' + escapeHtml(filename || "download") + '" aria-label="' + t("downloadFile") + '" title="' + t("downloadFile") + '">' +
+        svgIcon("download") + '<span>' + t("downloadFile") + "</span></button>"
+      : '<a class="btn btn-secondary btn-sm rs-dl" href="' + escapeHtml(dlUrl) + '" download aria-label="' + t("downloadFile") + '">' +
+        svgIcon("download") + '<span>' + t("downloadFile") + "</span></a>";
+  };
+  const fileRow = (it, withCounter) => {
+    const ct = it.contentType || "";
+    const isImg = ct.startsWith("image/") && ct.toLowerCase() !== "image/svg+xml";
+    const glyph = isImg
+      ? '<img class="file-thumb" src="/f/' + encodeURIComponent(it.publicId) + '/inline" alt="" loading="lazy">'
+      : '<span class="file-thumb file-thumb-glyph" aria-hidden="true">' + svgIcon("doc") + "</span>";
+    const left = it.remaining != null
+      ? " · " + t("r_downloads_left") + " " + it.remaining
+      : (it.downloads ? " · " + it.downloads : "");
+    return '<div class="file-row">'
+      + glyph
+      + '<span class="file-name">' + escapeHtml(it.filename || "file") + "</span>"
+      + '<span class="file-meta">' + fmtSize(it.size || 0) + escapeHtml(left) + "</span>"
+      + dlControl(it.publicId, it.filename)
+      + "</div>";
+  };
+  const rows = (items || []).map(function (it) {
     if (it.kind === "text") {
-      return '<div class="r-item r-text"><div class="r-item-head"><span class="r-item-kind">' + escapeHtml(t("r_text_out")) + "</span>" +
-        copyBtn("text") + "</div>" +
-        '<pre class="r-text">' + escapeHtml(it.text || "") + "</pre></div>";
+      return '<div class="rs-item rs-text">'
+        + '<div class="rs-item-head"><span class="rs-item-kind">' + escapeHtml(t("r_text_out")) + "</span>" + copyBtn("text") + "</div>"
+        + '<div class="rs-body"><pre class="rs-text">' + escapeHtml(it.text || "") + "</pre></div></div>";
     }
     if (it.kind === "json") {
       const rendered = JSON.stringify(it.data, null, 2);
-      return '<div class="r-item r-json"><details class="r-json-wrap" open><summary>' + escapeHtml(t("r_json_out")) + "</summary>" +
-        '<pre class="r-json">' + escapeHtml(rendered) + "</pre></details>" +
-        copyBtn("json") + "</div>";
+      return '<div class="rs-item rs-json">'
+        + '<details class="rs-json-details" open>'
+        + "<summary>" + escapeHtml(t("r_json_out")) + "</summary>"
+        + '<div class="rs-body"><pre class="rs-json">' + escapeHtml(rendered) + "</pre></div>"
+        + "</details>"
+        + '<div class="rs-item-head rs-json-head">' + copyBtn("json") + "</div></div>";
     }
     // file item — same preview rule as the server inline/detail embed:
     // raster/inlineable images preview; image/svg+xml never embeds.
-    const pid = it.publicId;
     const ct = it.contentType || "";
     const isImg = ct.startsWith("image/") && ct.toLowerCase() !== "image/svg+xml";
-    const prev = isImg
-      ? '<div class="result-preview"><img src="/f/' + encodeURIComponent(pid) +
-        '/inline" alt="' + escapeHtml(it.filename || "") + '" loading="lazy" decoding="async"></div>'
-      : "";
-    const dlUrl = "/f/" + encodeURIComponent(pid) + "?download=1";
-    const dl = pwa
-      ? '<button class="action-btn primary" type="button" data-dl-url="' + escapeHtml(dlUrl) +
-        '" data-dl-name="' + escapeHtml(it.filename || "download") + '" aria-label="' + t("downloadFile") + '">' +
-        svgIcon("download") + "<span>" + t("downloadFile") + "</span></button>"
-      : '<a class="action-btn primary" href="' + escapeHtml(dlUrl) + '" download>' + svgIcon("download") +
-        "<span>" + t("downloadFile") + "</span></a>";
-    return '<div class="r-item r-file">' + prev +
-      '<div class="r-file-row"><span class="r-file-name">' + escapeHtml(it.filename || "file") + "</span>" +
-      '<span class="r-file-meta">' + fmtSize(it.size || 0) + "</span>" + dl + "</div></div>";
+    if (isImg) {
+      return '<div class="rs-item rs-image">'
+        + '<span class="rs-image"><img src="/f/' + encodeURIComponent(it.publicId)
+        + '/inline" alt="' + escapeHtml(it.filename || "") + '" loading="lazy" decoding="async"></span>'
+        + '<div class="rs-item-body">' + fileRow(it, true) + "</div></div>";
+    }
+    return '<div class="rs-item rs-file">' + fileRow(it, true) + "</div>";
   }).join("");
   return rows;
 }
@@ -186,16 +207,21 @@ function wireResultItemActions() {
   if (!result) return;
   result.querySelectorAll("[data-copy]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const pre = btn.closest(".r-item")
-        ? (btn.closest(".r-item").querySelector(".r-text, .r-json")) : null;
+      const item = btn.closest(".rs-item");
+      const pre = item ? item.querySelector(".rs-text, .rs-json") : null;
       if (!pre) return;
       try {
         await navigator.clipboard.writeText(pre.textContent);
         const orig = btn.innerHTML;
         btn.innerHTML = svgIcon("check");
-        btn.style.color = "var(--accent)";
+        btn.style.color = "var(--success)";
         setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 1400);
       } catch (e) { /* clipboard blocked — text stays selectable */ }
+    });
+  });
+  result.querySelectorAll("[data-dl-url]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      window.pwaDownload && window.pwaDownload(btn.dataset.dlUrl, btn.dataset.dlName);
     });
   });
   // Standalone PWA: download anchors route through the engine authority
@@ -205,7 +231,8 @@ function wireResultItemActions() {
 
 function showItemsResult(res) {
   // items result record ({resultId, items, expireAt, …}) → the shared
-  // result card; the /r page link exposes the durable shareable view.
+  // result card (same rs-* components as the /r page); the /r page link
+  // exposes the durable shareable view.
   const el = result || document.getElementById("result");
   if (!el) return;
   const pwa = !!(typeof window.isStandalonePWA === "function"
@@ -214,25 +241,25 @@ function showItemsResult(res) {
     (res.resultUrl ? String(res.resultUrl).split("/").pop() : "");
   const files = (res.items || []).filter(it => it.kind === "file");
   const dlAll = files.length > 1
-    ? '<button class="action-btn" id="resDownloadAll" type="button">' + svgIcon("download") +
+    ? '<button class="btn btn-secondary btn-sm" id="resDownloadAll" type="button">' + svgIcon("download") +
       "<span>" + t("r_download_all") + " (" + files.length + ")</span></button>"
     : "";
   const page = resultId
-    ? '<a class="action-btn" href="/r/' + encodeURIComponent(resultId) + '">' +
+    ? '<a class="btn btn-ghost btn-sm" href="/r/' + encodeURIComponent(resultId) + '">' +
       svgIcon("eye") + "<span>" + t("resultPage") + "</span></a>"
     : "";
   const rows = renderResultItems(res.items, { pwa: pwa });
   el.innerHTML =
-    '<div class="result-card">' +
-    '<div class="result-head"><h3>' + t("resultReady") + "</h3>" + page + "</div>" +
-    (rows || '<p class="result-note">' + t("resultEmpty") + "</p>") +
-    '<div class="file-actions r-actions">' + dlAll + "</div>" +
-    "</div>";
+    '<div class="card card-pad rs-card result-card">'
+    + '<div class="rs-card-head"><h3>' + t("resultReady") + '</h3><span class="row">' + dlAll + page + "</span></div>"
+    + '<div class="rs-card-body">'
+    + (rows || '<p class="empty">' + t("resultEmpty") + "</p>")
+    + "</div></div>";
   el.classList.add("has-result");
   wireResultItemActions();
   const allBtn = el.querySelector("#resDownloadAll");
   if (allBtn) allBtn.addEventListener("click", () => {
-    el.querySelectorAll('.r-file-row a[href$="?download=1"]').forEach((a, i) => {
+    el.querySelectorAll(".rs-dl").forEach((a, i) => {
       setTimeout(() => a.click(), i * 400);
     });
   });

@@ -113,6 +113,13 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 
 测试账号/数据由各套件自建，每次运行唯一命名并自行清理；测试库最终 DROP。
 
+## 设计系统（frontend）
+
+- `static/css/tokens.css` — 设计令牌唯一来源（颜色/字阶/间距/圆角/阴影/断点），语义命名留有 dark-mode 覆盖位。
+- `static/css/components.css` — 共享组件唯一样式（btn/card/input/select/check/switch/file-row/rs-* 结果项/tag/hint/empty/tbl/page-head/crumbs/modal/toast/ti-* 输入组件）。新组件加在这里。
+- `static/518.css` / `static/samelabs.css` — 仅页面布局，选择器必须带页面作用域。
+- 加载顺序 tokens → 518.css(页面) → components.css（组件最终生效，页面不得覆盖组件视觉）；组件改动只发生在 components.css；CSS 版本戳由 web_ctx 对三个文件联合摘要。
+
 ## Branch workflow
 
 角色与边界见 AGENTS.md A 节。

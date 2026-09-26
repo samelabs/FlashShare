@@ -11,8 +11,49 @@
   if (!tools.length) return;
 
   let activeTool = null;
-  const ctrl = window.ToolInput.mount(mountEl, {});
-  window.__toolInputRefresh = () => ctrl.rerender();
+  let ctrl = null;
+  // 选工具 → 输入: the input component mounts on first pick; before
+  // that the run panel shows the empty state.
+  function mountInput(tool) {
+    if (!ctrl) {
+      ctrl = window.ToolInput.mount(mountEl, { tool: tool });
+      window.__toolInputRefresh = () => ctrl && ctrl.rerender();
+    } else {
+      ctrl.setTool(tool);
+    }
+  }
+  function showPickerEmpty() {
+    mountEl.innerHTML = '<p class="empty" style="padding:var(--s5)">'
+      + window.iconSvg("wand")
+      + "<span>" + window.t("pick_tool_first") + "</span></p>";
+  }
+
+  const pickerEl = document.getElementById("toolPicker");
+  const runPanel = document.getElementById("runPanel");
+  const isPhone = () => window.matchMedia("(max-width: 599px)").matches;
+
+  // Phone: after a pick the list collapses to a compact "selected + change"
+  // row so the input area is immediately in view; Change re-expands.
+  function collapsePicker() {
+    if (!pickerEl || !activeTool) return;
+    let bar = pickerEl.querySelector(".picker-compact");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "picker-compact";
+      pickerEl.insertBefore(bar, pickerEl.firstChild);
+      bar.addEventListener("click", () => {
+        pickerEl.classList.remove("collapsed");
+        bar.classList.add("hidden");
+        pickerEl.querySelector(".tool-search input") && pickerEl.querySelector(".tool-search input").focus();
+      });
+    }
+    bar.innerHTML = window.iconSvg(activeTool.icon || "wand")
+      + '<span class="picker-compact-name">' + (window.resolveLabel(activeTool.label) || activeTool.id) + "</span>"
+      + '<button type="button" class="btn btn-ghost btn-sm">' + window.t("change_tool") + "</button>";
+    bar.classList.remove("hidden");
+    pickerEl.classList.add("collapsed");
+    runPanel && runPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function selectTool(tool, opts) {
     opts = opts || {};
@@ -21,17 +62,22 @@
       try { localStorage.setItem("flashshare_tool", tool.id); } catch (e) {}
     }
     document.body.dataset.tool = tool.id;
-    ctrl.setTool(tool);
-    // Tab active state + description line follow the selection
-    document.querySelectorAll(".tool-tab").forEach(b => {
-      b.classList.toggle("active", b.dataset.toolId === tool.id);
-    });
-    const descEl = document.getElementById("toolDesc");
-    if (descEl) {
-      const desc = window.resolveLabel(tool.desc);
-      if (desc) { descEl.textContent = desc; descEl.classList.remove("hidden"); }
-      else descEl.classList.add("hidden");
+    mountInput(tool);
+    if (isPhone()) collapsePicker();
+    else if (runPanel && !opts.restore) {
+      runPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+    // a new tool invalidates the previous run's result view
+    const res = document.getElementById("result");
+    if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }
+    // Pick-card active state + the step-2 heading follow the selection
+    document.querySelectorAll(".tool-pick").forEach(b => {
+      const on = b.dataset.toolId === tool.id;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    const head = document.getElementById("runPanelTool");
+    if (head) head.textContent = window.resolveLabel(tool.label) || tool.id;
     window.invalidateToolOperation && window.invalidateToolOperation();
   }
   window.__homeSelectTool = selectTool;
@@ -39,7 +85,7 @@
   function bindTabs() {
     const homeTools = document.getElementById("homeTools");
     if (!homeTools) return;
-    homeTools.querySelectorAll(".tool-tab").forEach(tab => {
+    homeTools.querySelectorAll(".tool-pick").forEach(tab => {
       tab.addEventListener("click", () => {
         const tool = tools.find(t => t.id === tab.dataset.toolId);
         if (tool) selectTool(tool);
@@ -57,6 +103,7 @@
     const pop = document.getElementById("toolSearchPop");
     if (!input || !pop) return;
     const t = (k) => window.t(k);
+  const t0 = (k) => window.t(k);
     const esc = window.escapeHtml || String;
 
     const closePop = () => { pop.classList.add("hidden"); _searchIdx = -1; };
@@ -124,19 +171,33 @@
   const _after = window.__afterI18n;
   window.__afterI18n = function () {
     if (typeof _after === "function") _after();
-    document.querySelectorAll("#homeTools .tool-tab").forEach(tab => {
-      const tool = tools.find(t => t.id === tab.dataset.toolId);
+    document.querySelectorAll("#homeTools .tool-pick").forEach(card => {
+      const tool = tools.find(t => t.id === card.dataset.toolId);
       if (!tool) return;
-      const nameEl = tab.querySelector(".tool-tab-name");
+      const nameEl = card.querySelector(".tool-pick-name");
       if (nameEl) nameEl.textContent = window.resolveLabel(tool.label) || tool.id;
+      const descEl = card.querySelector(".tool-pick-desc");
+      if (descEl) descEl.textContent = window.resolveLabel(tool.desc) || "";
     });
+    const head = document.getElementById("runPanelTool");
+    if (head && activeTool) {
+      const named = document.querySelector(".tool-pick.active .tool-pick-name");
+      head.textContent = (named && named.textContent)
+        || window.resolveLabel(activeTool.label) || activeTool.id;
+    }
   };
 
   bindTabs();
   initToolSearch();
 
-  // Restore last selection (default = share)
-  const saved = localStorage.getItem("flashshare_tool") || "share";
-  const savedTool = tools.find(t => t.id === saved) || tools.find(t => t.id === "share") || tools[0];
-  selectTool(savedTool, { restore: true });
+  // 选工具 → 输入: no default selection. The input area appears only
+  // after a pick; an explicitly saved choice (localStorage) is restored.
+  const saved = localStorage.getItem("flashshare_tool") || "";
+  const savedTool = tools.find(t => t.id === saved);
+  if (savedTool) {
+    selectTool(savedTool, { restore: true });
+  } else {
+    document.getElementById("runPanelTool").textContent = window.t("give_input");
+    showPickerEmpty();
+  }
 })();

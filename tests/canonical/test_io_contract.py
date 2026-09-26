@@ -254,7 +254,7 @@ try:
           len(blob))
     st, _h, page, _sc = _req("GET", f"/r/{sc['result_url'].rsplit('/', 1)[1]}")
     check("R4 /r page renders ordered items",
-          st == 200 and page.count('class="r-item') >= 3
+          st == 200 and page.count('class="rs-item') >= 3
           and "r0.png" in page, st)
     _rp = _call("share", {"files": files3, "client_ref": f"r3-{_u}"},
                 TOK, 21)[1]
@@ -370,7 +370,7 @@ try:
         "GET", f"/r/{sc['result_url'].rsplit('/', 1)[1]}")
     check("E4 /r page: tool name + expiry + downloads facts + items",
           st == 200 and "Lossless Share" in page_r
-          and page_r.count('class="r-item') >= 3
+          and page_r.count('class="rs-item') >= 3
           and "?download=1" in page_r, st)
     # MCP expires_at mirrors the record authority
     st, d = _call("compress", {"files": [{"filename": "e2.png", "b64": A64}],

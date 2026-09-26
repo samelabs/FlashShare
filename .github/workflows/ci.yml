@@ -285,6 +285,10 @@ jobs:
           test -z "$(grep -n 'client_ref' app/routes/topup.py static/pages/credits.js || true)"
           test "$(grep -rn "SET status='ok'" core/repo/ledger.py | wc -l)" = "1"
           python3 -c "s=open('core/execution/gate.py').read(); b=s.split('def _finish')[1].split(chr(10)+'def ')[0]; assert 'commission_rate()' not in b.replace('commission_rate_snapshot',''), '_finish must not read current commission config'"
+          # Jinja dict safety: texts.<dict-method-name> attribute access
+          # resolves to the METHOD (empty render) — keys must use ['key'].
+          # texts.get(...) CALLS are legitimate and allowed.
+          test -z "$(grep -rP "texts\.(copy|items|keys|values|get|update|pop|clear|fromkeys|setdefault|popitem)(?![\w(])" app/templates || true)"
           # X identity closure: avatar authority is users.avatar_url only;
           # zero runtime references to the retired x_avatar_url field
           test -z "$(grep -rn 'x_avatar_url' core/ app/ static/ --include='*.py' --include='*.js' --include='*.html')"

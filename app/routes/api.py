@@ -221,12 +221,13 @@ def _finalize_or_reconcile(ingress_id, gokapi_ids, user_id, usage_ids,
 
 @router.post("/uploads")
 async def create_upload(request: Request):
-    """Upload one or more source files.
+    """Upload one or more source files for a selected tool.
 
-    Daily quota measures ingress only. A selected tool keeps its uploaded source
-    as a short-lived intermediate so the existing retry path can reuse it;
-    direct share files become durable uploads rows. Multi-share DB landing is
-    all-or-nothing.
+    Every upload stages a tool source (tool field required — sharing is the
+    share tool). Custody is the INTERMEDIATE_* platform policy; result
+    delivery entitlement is enforced at the canonical execute preflight.
+    Idempotent on client_ref + content: a response-loss retry replays the
+    exact stored staging response.
     """
     user, err = _require_auth(request)
     if err:
@@ -246,31 +247,14 @@ async def create_upload(request: Request):
     client_ref = client_ref.strip()
 
     ip = _client_ip(request)
-    from governance.delivery import (coerce_share_delivery,
-                                     INTERMEDIATE_TTL_DAYS,
+    from governance.delivery import (INTERMEDIATE_TTL_DAYS,
                                      INTERMEDIATE_DOWNLOAD_LIMIT)
-    expiry_days, allowed_downloads = coerce_share_delivery(
-        form.get("expiryDays", "1"), form.get("allowedDownloads", "50"))
+    # IO-3a: the upload surface ONLY stages tool sources. Sharing is the
+    # share tool (files 1..20 → one file item per input); result delivery
+    # entitlement is enforced at the canonical execute preflight, not here.
     has_tool = form.get("tool", "").strip()
-    # IO-1: share is a REGULAR executable tool (files 1..20 → one file item
-    # per input). Every selected tool — share included — uploads as a
-    # staged tool source; the direct-share landing below serves only the
-    # no-tool form post.
-    is_tool_source = bool(has_tool)
-
-    # Durable direct share: delivery entitlement check BEFORE any quota
-    # reservation or Gokapi storage. Tool-source uploads skip this — their
-    # custody is INTERMEDIATE_* platform policy and the canonical execute
-    # path owns result-delivery entitlement.
-    if not is_tool_source:
-        from governance.entitlements import check_delivery
-        denial = check_delivery(user["id"], {
-            "expiry_days": expiry_days,
-            "allowed_downloads": allowed_downloads})
-        if denial:
-            body = {"ok": False}
-            body.update(denial)
-            return JSONResponse(body, 403)
+    if not has_tool:
+        return JSONResponse({"ok": False, "error": "err_tool_required"}, 422)
 
     pending = []
     # Transport safety only: a declared Content-Length far beyond the batch
@@ -313,10 +297,8 @@ async def create_upload(request: Request):
 
     # Canonical ingress content hash (after sanitize/sniff/validation).
     import hashlib as _hl
-    kind = "web_tool_source" if is_tool_source else "web_direct_share"
-    context = ({"tool_id": has_tool} if is_tool_source
-               else {"expiry_days": expiry_days,
-                     "allowed_downloads": allowed_downloads})
+    kind = "web_tool_source"
+    context = {"tool_id": has_tool}
     req_hash = ingress_request_hash(
         kind,
         [{"filename": fn, "content_type": ct, "size": size,
@@ -350,9 +332,8 @@ async def create_upload(request: Request):
                 if len(replay_result) > 1 else {"ok": True, "file": replay_result[0]}
         return replay_result
 
-    source_expiry = INTERMEDIATE_TTL_DAYS if is_tool_source else expiry_days
-    source_downloads = (INTERMEDIATE_DOWNLOAD_LIMIT
-                        if is_tool_source else allowed_downloads)
+    source_expiry = INTERMEDIATE_TTL_DAYS
+    source_downloads = INTERMEDIATE_DOWNLOAD_LIMIT
 
     files_result = []
     uploaded_gokapi_ids = []
@@ -389,64 +370,18 @@ async def create_upload(request: Request):
                          len(uploaded_gokapi_ids))
         return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
 
-    if is_tool_source:
-        stored = ({"ok": True, "file": files_result[0]}
-                  if len(files_result) == 1
-                  else {"ok": True, "files": files_result})
-        try:
-            _finalize_or_reconcile(int(receipt["id"]), uploaded_gokapi_ids,
-                                   user["id"], usage_ids, files_result)
-        except IngressUnresolved:
-            return JSONResponse(
-                {"ok": False, "error": "err_ingress_unresolved"}, 500)
-        except Exception:
-            return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
-        return stored
-
-    # Direct-share landing: all public rows commit together. If DB landing
-    # fails, storage and ingress reservation are rolled back as one request.
-    from execution.pipeline import save_upload_record
+    stored = ({"ok": True, "file": files_result[0]}
+              if len(files_result) == 1
+              else {"ok": True, "files": files_result})
     try:
-        records = []
-        with db() as con:
-            for fr in files_result:
-                records.append(save_upload_record(
-                    user["id"], ip, fr["gokapiId"],
-                    fr["filename"], fr["contentType"], fr["size"],
-                    expiry_days, allowed_downloads,
-                    fr["expireAt"], fr["hotlinkUrl"], BASE_URL,
-                    con=con,
-                ))
-            # receipt ok + exact canonical response in the SAME
-            # transaction as the uploads landing — a response loss
-            # replays the identical publicIds with zero new rows. The
-            # canonical sharing finalize raises inside the transaction
-            # when the guarded transition is refused, rolling the
-            # uploads INSERT back with it.
-            ingress_finalize_ok(con, int(receipt["id"]), records)
+        _finalize_or_reconcile(int(receipt["id"]), uploaded_gokapi_ids,
+                               user["id"], usage_ids, files_result)
+    except IngressUnresolved:
+        return JSONResponse(
+            {"ok": False, "error": "err_ingress_unresolved"}, 500)
     except Exception:
-        # STRICT tri-state: the landing transaction may have committed
-        # before the ack was lost — reconcile the durable outcome.
-        # DURABLE_OK → replay the stored rows (zero delete/release);
-        # PROVEN_ROLLBACK (receipt still running) → the only cleanup
-        # path; UNRESOLVED → touch nothing, fail loud.
-        logger.exception("multi-share DB landing failed — reconciling")
-        out = resolve_outcome(int(receipt["id"]))
-        if out["outcome"] == OUTCOME_DURABLE_OK:
-            dur = out["result"]
-            dur_records = dur if isinstance(dur, list) else [dur]
-            if len(dur_records) == 1:
-                return {"ok": True, "file": dur_records[0]}
-            return {"ok": True, "files": dur_records}
-        if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-            _staged_cleanup(uploaded_gokapi_ids, user["id"],
-                            int(receipt["id"]), usage_ids)
-            return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
-        return JSONResponse({"ok": False, "error": "err_ingress_unresolved"}, 500)
-
-    if len(records) == 1:
-        return {"ok": True, "file": records[0]}
-    return {"ok": True, "files": records}
+        return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
+    return stored
 
 
 @router.delete("/uploads/{public_id}")

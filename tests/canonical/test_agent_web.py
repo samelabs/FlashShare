@@ -215,9 +215,13 @@ try:
           "/mcp" in body and "/llms.txt" in body and "fsk_" in body, None)
 
     # ═══ S. share-page agent affordances ═══
+    # IO-3a: sharing runs through the share tool — stage the source,
+    # then execute; the settled file item carries the public share id.
     b = "----aw"
     up_body = (f'--{b}\r\nContent-Disposition: form-data; name="client_ref"'
                f'\r\n\r\naw-{_u}\r\n'
+               f'--{b}\r\nContent-Disposition: form-data; name="tool"'
+               f'\r\n\r\nshare\r\n'
                f'--{b}\r\nContent-Disposition: form-data; name="file";'
                f' filename="s.png"\r\nContent-Type: image/png\r\n\r\n'
                ).encode() + PNG + f"\r\n--{b}--\r\n".encode()
@@ -225,8 +229,21 @@ try:
                              {"Content-Type":
                               f"multipart/form-data; boundary={b}",
                               "Cookie": ck})
-    share_pid = ((d_up or {}).get("file") or {}).get("publicId")
-    check("S0 share fixture uploaded", st == 200 and bool(share_pid), (st, d_up))
+    _staged = (d_up or {}).get("file") or {}
+    gid = _staged.get("stagingId")
+    _stok = _staged.get("sourceToken") or ""
+    st_x, _h2, d_x, _sc2 = _req("POST", "/api/tools/execute",
+        {"tool_id": "share",
+         "source": {"files": [{"public_id": gid, "source_token": _stok}]},
+         "params": {},
+         "delivery": {"expiry_days": 1, "allowed_downloads": 50},
+         "client_ref": f"awx-{_u}"},
+        {"Content-Type": "application/json", "Cookie": ck})
+    items = ((d_x or {}).get("result") or {}).get("items") or []
+    share_pid = next((it.get("publicId") for it in items
+                      if it.get("kind") == "file"), None)
+    check("S0 share fixture (upload+execute) settled",
+          st == 200 and st_x == 200 and bool(share_pid), (st, st_x, str(d_x)[:80]))
 
     st, h, body, _sc = _req("GET", f"/f/{share_pid}")
     link = h.get("link", "")

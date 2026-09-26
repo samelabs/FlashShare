@@ -17,12 +17,18 @@ _CORE = Path(__file__).resolve().parent.parent / "core"
 _BASE = Path(__file__).resolve().parent.parent
 # Load static assets once
 _STATIC = _BASE / "static"
+# CSS set: tokens + components (shared design system) + 518.css (page
+# layout). _CSS keeps pointing at the page file for legacy size checks;
+# the version stamp covers the whole set (any file change bumps it).
 with open(_STATIC / "518.css", encoding="utf-8") as f:
     _CSS = f.read()
-# Version stamp = content hash + mtime: content-converging edits (diverge then
-# reconverge) can collide on a pure content hash and serve stale edge caches.
+# Version stamp = hard prefix + content digest of the whole CSS set
+# (tokens + components + page file): any file change bumps the URL.
 import os as _os
-_CSS_VERSION = "v53"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (earn-usd 移除/市场副标题)
+_CSS_VERSION = "v54"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (earn-usd 移除/市场副标题)
+for _cssf in ("css/tokens.css", "css/components.css"):
+    with open(_STATIC / _cssf, encoding="utf-8") as f:
+        _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
 with open(_STATIC / "app.js", encoding="utf-8") as f:
     JS = f.read()
 # app.js gets its OWN stamp: it changes independently of 518.css. Sharing

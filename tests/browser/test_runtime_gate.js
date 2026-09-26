@@ -90,7 +90,7 @@ const VIEWPORTS = {
 // visual contract per page: overflow/overlap/CTA checks are generic; the
 // per-page required selectors anchor "this page actually rendered".
 const PAGES = [
-  { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-tab"] },
+  { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-pick"] },
   { path: "/tools", name: "tools", anonOk: true, need: [] },
   { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", "#toolRunForm"] },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
@@ -242,10 +242,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
       // 3. home real render
       const homeAudit = await visualAudit("desktop", page, "home-logged-in", true);
-      check("home: tool grid rendered", (await page.$$(".tool-tab")).length >= 1, homeAudit.bodyText.slice(0, 120));
+      check("home: tool grid rendered", (await page.$$(".tool-pick")).length >= 1, homeAudit.bodyText.slice(0, 120));
 
       // 4-7. upload + execute compress via real UI (home surface)
-      await page.click(".tool-tab[data-tool-id=compress]");
+      await page.click(".tool-pick[data-tool-id=compress]");
       // IO-2: params render inline in the shared input component — no overlay
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
       check("home: input component rendered (run + file picker)",
@@ -280,12 +280,12 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // wait for terminal state: either preview/actions (success) or error
       let okResult = false;
       try {
-        await page.waitForSelector(".result-card .action-btn.primary, .result-card .result-preview", { timeout: 45000 });
+        await page.waitForSelector(".result-card .rs-dl, .result-card .rs-image img", { timeout: 45000 });
         okResult = true;
       } catch (e) { okResult = false; }
       check("web execute compress: success result rendered", okResult);
       if (okResult) {
-        const dl = await page.$(".result-card .action-btn.primary");
+        const dl = await page.$(".result-card .rs-dl");
         check("web execute compress: download action visible", dl !== null);
         const dlInfo = dl ? await dl.evaluate((el) => ({ href: el.getAttribute("href"), box: el.getBoundingClientRect() })) : null;
         check("web execute compress: download href is a share link", !!dlInfo && /\/f\//.test(dlInfo.href || ""), dlInfo && dlInfo.href);
@@ -312,7 +312,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         throw e;
       }
       const errText = await page.evaluate(() => {
-        const el = document.querySelector(".result-card .result-error");
+        const el = document.querySelector(".result-card .error-note");
         return el ? el.textContent.trim() : "";
       });
       check("retry: error state shown", errText.length > 0, errText);
@@ -338,7 +338,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await page.click("#toolRetry");
       let recovered = false;
       try {
-        await page.waitForSelector(".result-card .action-btn.primary, .result-card .result-preview", { timeout: 60000 });
+        await page.waitForSelector(".result-card .rs-dl, .result-card .rs-image img", { timeout: 60000 });
         recovered = true;
       } catch (e) { recovered = false; }
       check("retry: success state recovered", recovered === true);

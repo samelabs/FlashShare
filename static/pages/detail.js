@@ -14,7 +14,7 @@ copyBtn.addEventListener("click", async () => {
 
 const _pwa = window.isStandalonePWA ? window.isStandalonePWA()
   : (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
-const dlBtn = document.querySelector('a.action-btn.primary[download]');
+const dlBtn = document.querySelector('a.btn-primary[download]');
 if (dlBtn && _pwa) {
   dlBtn.removeAttribute('href');
   dlBtn.addEventListener('click', () => {
@@ -80,7 +80,7 @@ function openRename(pid) {
   const oldName = h1.textContent.trim();
   const dotIdx = oldName.lastIndexOf(".");
   const stem = dotIdx > 0 ? oldName.substring(0, dotIdx) : oldName;
-  openToolModal('<div class="tool-panel"><h3>' + window.t("rename") + '</h3><input type="text" id="renameInput" value="' + stem.replace(/"/g, '&quot;') + '" maxlength="200"><div class="tool-panel-actions"><button class="action-btn primary" id="renameConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
+  openToolModal('<div class="tool-panel"><h3>' + window.t("rename") + '</h3><input type="text" id="renameInput" value="' + stem.replace(/"/g, '&quot;') + '" maxlength="200"><div class="tool-panel-actions"><button class="btn btn-primary btn-sm" id="renameConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
   const input = document.getElementById("renameInput");
   input.focus(); input.select();
   document.getElementById("renameConfirm").addEventListener("click", async () => {
@@ -97,7 +97,7 @@ function openRename(pid) {
 }
 
 function openDelete(pid) {
-  openToolModal('<div class="tool-panel"><h3>' + window.t("delete") + '</h3><p class="tool-confirm-text">' + window.t("confirmDelete") + '</p><div class="tool-panel-actions"><button class="action-btn" id="delCancel">' + (window.iconSvg ? window.iconSvg("x") : "✕") + '</button><button class="action-btn primary" id="delConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
+  openToolModal('<div class="tool-panel"><h3>' + window.t("delete") + '</h3><p class="tool-confirm-text">' + window.t("confirmDelete") + '</p><div class="tool-panel-actions"><button class="btn btn-secondary btn-sm" id="delCancel">' + (window.iconSvg ? window.iconSvg("x") : "✕") + '</button><button class="btn btn-primary btn-sm" id="delConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
   document.getElementById("delCancel").addEventListener("click", closeToolModal);
   document.getElementById("delConfirm").addEventListener("click", async () => {
     openToolModal(toolLoading());

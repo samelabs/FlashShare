@@ -398,10 +398,9 @@ def _share(ck, ed, dl):
     png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     body = b""
-    # IO-2: direct share = the NO-TOOL form post. A selected tool (share
-    # included) uploads as a staged source; its delivery entitlement is
-    # enforced at execute preflight (H2/H3 below prove that surface).
-    for k, v in {"expiryDays": str(ed), "allowedDownloads": str(dl),
+    # IO-3a: uploads REQUIRE a tool (sharing = the share tool); delivery
+    # entitlement is enforced at execute preflight (H2/H3 prove it).
+    for k, v in {"tool": "share",
                  "client_ref": f"sh-{uuid.uuid4().hex[:10]}"}.items():
         body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
     body += b'--B\r\nContent-Disposition: form-data; name="file"; filename="d.png\r\nContent-Type: image/png\r\n\r\n' + png + b"\r\n--B--\r\n"
@@ -445,18 +444,40 @@ check("H3 Free execute 1000 → 403 err_download_limit_not_entitled",
 st, d = _execute(_ckp, _inv(30, 1000))
 check("H4 PLUS execute 30/1000 → 非 403/422 (entitlement 放行)",
       st not in (403, 422), f"{st} {d.get('error')}")
-st, d = _share(_ckf, 30, 200)
-check("H5 Free direct share 30 → 403 (storage 前拒)",
-      st == 403 and d.get("error") == "err_expiry_not_entitled", f"{st}")
-st, d = _share(_ckf, 7, 1000)
-check("H6 Free direct share 1000 → 403 (storage 前拒)",
-      st == 403 and d.get("error") == "err_download_limit_not_entitled", f"{st}")
+# H5-H7: the no-tool direct-share surface is RETIRED (IO-3a). Delivery
+# entitlement for a share call lives at execute preflight — H2/H3 prove
+# the typed denials; here the retired form itself is fail-closed.
+def _no_tool(ck):
+    import base64 as _b64
+    png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    body = b""
+    for k, v in {"client_ref": f"nt-{uuid.uuid4().hex[:10]}"}.items():
+        body += f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    body += b'--B\r\nContent-Disposition: form-data; name="file"; filename="n.png\r\nContent-Type: image/png\r\n\r\n' + png + b"\r\n--B--\r\n"
+    conn.request("POST", "/api/uploads", body,
+                 {"Content-Type": "multipart/form-data; boundary=B", "Cookie": ck})
+    r = conn.getresponse(); d = json.loads(r.read()); conn.close()
+    return r.status, d
 _cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
-_all_usage = _cur.fetchone()[0]
-st, d = _share(_ckf, 30, 200)  # 再拒一次
+_all_usage = _cur.fetchone()[0]  # H 块基线 (此前 PF 轮已staging)
+st, d = _no_tool(_ckf)
+check("H5 no-tool upload → 422 err_tool_required",
+      st == 422 and d.get("error") == "err_tool_required", f"{st} {d.get('error')}")
+st, d = _no_tool(_ckf)  # 再拒一次
 _cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
-check("H7 被拒 direct share 不产生 upload_usage",
+check("H6 被拒 no-tool 上传不产生 upload_usage",
       _cur.fetchone()[0] == _all_usage, f"{_all_usage}")
+# share 工具化后的越权 delivery 由 execute 面 403 (H2/H3) — 这里补真上传+越权执行
+st, d = _share(_ckf, 30, 200)   # staging ok (delivery 不在 upload 面检查)
+_pid = (d.get("file") or {}).get("stagingId")
+st2, d2 = _execute(_ckf, {"tool_id": "share",
+                          "source": {"files": [{"public_id": _pid, "source_token": ""}]},
+                          "params": {}, "delivery": {"expiry_days": 30, "allowed_downloads": 200},
+                          "client_ref": f"ig-{uuid.uuid4().hex[:8]}"})
+check("H7 share 越权 delivery → execute 403 err_expiry_not_entitled",
+      st == 200 and _pid and st2 == 403
+      and d2.get("error") == "err_expiry_not_entitled", f"up={st} exec={st2} {str(d2)[:80]}")
 
 # ═══ 5d. Platform ingress hard boundaries (20/50/100) ═══
 from governance.ingress import validate_batch, MAX_FILES_PER_REQUEST
@@ -511,6 +532,8 @@ _png1 = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV
 for i in range(21):
     body += f'--B\r\nContent-Disposition: form-data; name="file"; filename="f{i}.png"\r\nContent-Type: image/png\r\n\r\n'.encode() + _png1 + b"\r\n"
 body += b"--B--\r\n"
+_cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
+_all_usage = _cur.fetchone()[0]  # baseline AFTER H/PF staging blocks
 conn.request("POST", "/api/uploads", body,
              {"Content-Type": "multipart/form-data; boundary=B", "Cookie": _ckf})
 r = conn.getresponse(); d = json.loads(r.read()); conn.close()
@@ -929,8 +952,9 @@ _disp = open(_os.path.join(_REPO, "core", "execution", "dispatch.py"), encoding=
 _apir = open(_os.path.join(_REPO, "app", "routes", "api.py"), encoding="utf-8").read()
 check("G5 dispatch 无 plus 业务判断, 经 check_delivery",
       "plus" not in _disp and "check_delivery" in _disp)
-check("G6 api.py 无 plus 业务判断, direct share 经 check_delivery",
-      "plus" not in _apir and "check_delivery" in _apir)
+check("G6 api.py 无 plus 业务判断; 上传面只 staging (无 delivery entitlement)",
+      "plus" not in _apir and "check_delivery" not in _apir
+      and "err_tool_required" in _apir)
 check("G7 validate_delivery 仍是唯一 protocol 单点 (无第二枚举)",
       _disp.count("EXPIRY_DAYS") == 0 and "EXPIRY_DAYS" not in _apir)
 _inv_src = open(_os.path.join(_REPO, "core", "execution", "invocation.py"), encoding="utf-8").read()

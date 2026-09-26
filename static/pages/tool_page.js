@@ -17,3 +17,19 @@
 
   window.__TOOLPAGE__ = true;
 })();
+// MCP name copy (page-head copyfield)
+(function () {
+  const btn = document.getElementById("toolMcpCopy");
+  const field = document.getElementById("toolMcpName");
+  if (btn && field) {
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(field.value);
+        const span = btn.querySelector("span");
+        const orig = span.textContent;
+        span.textContent = window.t("copied");
+        setTimeout(() => { span.textContent = orig; }, 1400);
+      } catch (e) { /* clipboard blocked — value stays selectable */ }
+    });
+  }
+})();

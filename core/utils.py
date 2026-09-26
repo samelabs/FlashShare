@@ -50,6 +50,29 @@ def html_escape(value: str) -> str:
     return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
 
 
+def file_glyph(content_type: str, filename: str) -> str:
+    """File-row glyph icon name by type family (one mapping; the result
+    page and the file page share it)."""
+    ct = (content_type or "").lower()
+    name = (filename or "").lower()
+    if ct.startswith("image/"):
+        return "image"
+    if ct == "application/pdf" or name.endswith(".pdf"):
+        return "pdf"
+    if ct in ("application/zip", "application/x-zip-compressed") \
+            or name.endswith(".zip"):
+        return "archive"
+    if "sheet" in ct or "excel" in ct or "csv" in ct:
+        return "sheet"
+    if "presentation" in ct or "powerpoint" in ct:
+        return "slides"
+    if "word" in ct or "document" in ct:
+        return "doc"
+    if "text" in ct:
+        return "text"
+    return "doc"
+
+
 def format_bytes(size: int) -> str:
     units = ["B", "KB", "MB", "GB"]
     value = float(size or 0)

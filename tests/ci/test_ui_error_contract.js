@@ -94,7 +94,7 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
   {
     resultEl.innerHTML = "";
     sandbox.showToolError("Upload failed", null);
-    assert.ok(resultEl.innerHTML.includes("result-error"), "error card rendered");
+    assert.ok(resultEl.innerHTML.includes("error-note"), "error card rendered");
     assert.ok(!resultEl.innerHTML.includes("toolRetry"), "NO Retry button without callback (dead-button ban)");
   }
 

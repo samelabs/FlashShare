@@ -35,24 +35,3 @@ def validate_delivery(delivery: dict) -> dict:
     if type(dl) is not int or dl not in DOWNLOAD_LIMITS:
         raise ValueError("bad_delivery")
     return {"expiry_days": ed, "allowed_downloads": dl}
-
-
-def coerce_share_delivery(expiry_raw, downloads_raw) -> tuple:
-    """share/multipart 表单薄壳: string → int, 非法/缺失回落平台默认。
-
-    值域来自同一常量; 只服务普通无工具分享的表单形态, 不进入
-    ToolInvocation (那边走 validate_delivery 严格版)。
-    """
-    try:
-        ed = int(expiry_raw)
-    except (TypeError, ValueError):
-        ed = DEFAULT_EXPIRY_DAYS
-    if ed not in EXPIRY_DAYS:
-        ed = DEFAULT_EXPIRY_DAYS
-    try:
-        dl = int(downloads_raw)
-    except (TypeError, ValueError):
-        dl = DEFAULT_ALLOWED_DOWNLOADS
-    if dl not in DOWNLOAD_LIMITS:
-        dl = DEFAULT_ALLOWED_DOWNLOADS
-    return ed, dl

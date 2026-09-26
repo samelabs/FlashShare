@@ -17,6 +17,7 @@ sys.path.insert(0, str(_BASE))
 from sharing.uploads import get_live_upload_by_public_id as _live_upload
 from gokapi import open_gokapi_download
 from storage import info as storage_info
+from utils import file_glyph
 from utils import (
     public_file_url, format_bytes, format_ts, file_format_icon,
     html_escape,
@@ -135,10 +136,13 @@ async def file_route(public_id: str, request: Request):
     count = (live or {}).get("DownloadCount")
     if isinstance(count, int):
         downloads = f"{count}/{total}"
+        _dl_left = max(0, total - count)
     elif isinstance(remaining, int):
         downloads = f"{max(0, total - remaining)}/{total}"
+        _dl_left = max(0, remaining)
     else:
         downloads = f"0/{total}"
+        _dl_left = total
 
     pid = urllib.parse.quote(upload["public_id"])
     url = public_file_url(upload["public_id"])
@@ -161,6 +165,9 @@ async def file_route(public_id: str, request: Request):
         "size_text": format_bytes(upload["size_bytes"]),
         "expire_text": format_ts(expire_at),
         "downloads": downloads,
+        "downloads_left": _dl_left,
+        "file_glyph": file_glyph(upload["content_type"] or "",
+                                 upload["file_name"] or ""),
         "is_owner": bool(user and "user_id" in upload.keys() and user["id"] == upload["user_id"]),
         "escaped_url": html_escape(url),
         "dl_url": f"/f/{pid}?download=1",

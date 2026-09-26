@@ -60,7 +60,7 @@ function runRenderItems(item, contentType) {
   const html = runRenderItems(
     { kind: "file", publicId: "p1", filename: "a.png", size: 8 },
     "image/png");
-  assert.ok(html.includes('class="result-preview"'),
+  assert.ok(html.includes('rs-image'),
     "image/png generates a result preview");
   assert.ok(html.includes("/f/p1/inline"),
     "image/png preview uses the /inline URL");
@@ -74,7 +74,7 @@ function runRenderItems(item, contentType) {
   const html = runRenderItems(
     { kind: "file", publicId: "p2", filename: "a.svg", size: 8 },
     "image/svg+xml");
-  assert.ok(!html.includes('class="result-preview"'),
+  assert.ok(!html.includes('/f/p2/inline'),
     "image/svg+xml generates NO inline preview");
   assert.ok(!html.includes("/f/p2/inline"),
     "image/svg+xml never references /inline");
