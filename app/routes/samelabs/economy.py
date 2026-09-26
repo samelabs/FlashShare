@@ -159,6 +159,57 @@ async def withdrawals(request: Request, status: str = "", page: int = 1):
             page_id="economy"))
 
 
+# ── Payment review queue (B2b-1 partial refunds) ──
+
+@router.get("/samelabs/economy/reviews")
+async def payment_reviews(request: Request, status: str = "", page: int = 1):
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    from repo import payment_reviews as reviews_repo
+    page = max(1, page)
+    q_status = status if status in ("open", "resolved") else ""
+    with db() as con:
+        rows, total = reviews_repo.reviews_page(
+            con, _PAGE, (page - 1) * _PAGE, q_status or None)
+    return templates.TemplateResponse(
+        request, "samelabs/economy_reviews.html",
+        ctx(request, user, reviews=[dict(r) for r in rows], total=total,
+            page=page, pages=max(1, -(-total // _PAGE)),
+            q_status=q_status, statuses=["open", "resolved"],
+            fmt_num=fmt_num, page_id="economy"))
+
+
+@router.post("/samelabs/economy/reviews/{rid}/resolve")
+async def resolve_payment_review(rid: int, request: Request):
+    """Operator marks one review RESOLVED. Status flip only — this queue
+    NEVER moves balances (economic rules for partial refunds stay
+    zero-mutation); the decision evidence lives in operator_audit."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from fastapi.responses import JSONResponse
+    from repo import operator_audit, payment_reviews as reviews_repo
+    from utils import now
+    ts = now()
+    with db() as con:
+        row = reviews_repo.review_for_update(con, rid)
+        if row is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        if row["status"] == "resolved":
+            return {"ok": True, "status": "resolved"}   # replay: no-op
+        before = dict(row)
+        out = reviews_repo.mark_review_resolved(con, rid, ts, int(user["id"]))
+        operator_audit.record(
+            con, int(user["id"]), "payment_review.resolve",
+            "payment_review", str(rid),
+            {"status": before["status"], "txn_id": before["txn_id"],
+             "event_id": before["event_id"]},
+            {"status": "resolved", "resolved_by": int(user["id"])}, ts)
+    return {"ok": True, "status": out["status"]}
+
+
 @router.post("/samelabs/economy/withdrawals/{wid}/approve")
 async def approve_withdrawal(wid: int, request: Request):
     """pending → approved (exactly one withdraw ledger row)."""

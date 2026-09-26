@@ -31,9 +31,10 @@ def reverse_payment(event_type: str, event: dict) -> dict:
     """refund.created / dispute.created → exact reversal.
 
     Raises KeyError (→ 500 retriable) on: missing proof fields, provider
-    fetch failure, unknown transaction, unresolvable partial refund, or
-    un-locatable original economic fact. Returns a small dict on success
-    or an idempotent no-op.
+    fetch failure, unknown transaction, or un-locatable original economic
+    fact. A PARTIAL refund is queued for operator review and acknowledged
+    (200) — zero mutation. Returns a small dict on success or an
+    idempotent no-op.
     """
     from economy import reconcile as _reconcile
 
@@ -64,14 +65,27 @@ def reverse_payment(event_type: str, event: dict) -> dict:
     status = str(txn.get("status") or "")
     if event_type == "refund.created":
         if status == "partially_refunded":
-            # Product rule undefined for partial refunds: ZERO Credits
-            # mutation, ZERO Membership mutation, log + 500 so Creem's
-            # retry/failed-event surface keeps the human entry point.
+            # Owner rule (B2b-1): a partial refund is a HUMAN decision —
+            # ZERO Credits mutation, ZERO Membership mutation. The event
+            # lands in the operator review queue (idempotent per event id)
+            # and the webhook acknowledges with 200: replaying it can
+            # never converge anything, so retry pressure is pure noise.
+            from repo import payment_reviews as _reviews
+            with db() as con:
+                queued = _reviews.insert_review(
+                    con, event_type, event_id, txn_id,
+                    {"provider_status": status,
+                     "provider_type": str(txn.get("type") or "")},
+                    now())
             log.warning(
-                "reverse refund.created: txn=%s PARTIAL refund unresolved — "
-                "zero mutation, operator review required (event=%s)",
-                txn_id, event_id)
-            raise KeyError("partial_refund_unresolved")
+                "reverse refund.created: txn=%s PARTIAL refund — %s, "
+                "operator review required (event=%s)",
+                txn_id,
+                "queued" if queued else "already queued (replay)",
+                event_id)
+            return {"reversed": False, "credits": 0,
+                    "kind": "review", "reason": "partial_refund",
+                    "queued": bool(queued)}
         if status != "refunded":
             raise KeyError("refund_status_not_refunded")
     else:  # dispute.created
