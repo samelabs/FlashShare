@@ -172,8 +172,8 @@ window.confirmAction = function (opts) {
         '<h3 id="confirmModalTitle" class="confirm-title"></h3>' +
         '<p id="confirmModalText" class="confirm-text"></p>' +
         '<div class="tool-panel-actions">' +
-        '<button class="action-btn" id="confirmModalCancel" type="button"></button>' +
-        '<button class="action-btn primary" id="confirmModalOk" type="button"></button>' +
+        '<button class="btn btn-secondary" id="confirmModalCancel" type="button"></button>' +
+        '<button class="btn btn-primary" id="confirmModalOk" type="button"></button>' +
         "</div></div>";
       document.body.appendChild(layer);
     }

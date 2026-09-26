@@ -17,7 +17,9 @@
   <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
   <meta name="description" content="{% block desc %}{{ texts.subtitle }}{% endblock %}">
   {% block meta %}{% endblock %}
+  <link rel="stylesheet" href="/static/css/tokens.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/518.css?v={{ css_version }}">
+  <link rel="stylesheet" href="/static/css/components.css?v={{ css_version }}">
 </head>
 <body>
   {% include "partials/header.html" %}

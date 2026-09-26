@@ -527,7 +527,14 @@ SERVER_I18N = {
         "mytools_out_text": "Texte",
         "mytools_out_json": "JSON",
         "mytools_out_file": "Fichier",
-        "pub_outputs_hint": "Choisissez au moins un type de sortie"
+        "pub_outputs_hint": "Choisissez au moins un type de sortie",
+# IO-3a design
+        "pick_tool": "Choisir un outil",
+        "give_input": "Donner l'entrée",
+        "pick_files_label": "fichiers",
+        "credits_short": "cr",
+        "err_tool_required": "Choisissez un outil avant d'envoyer (le partage se fait via l'outil de partage)",
+        "pick_tool_first": "Choisissez un outil ci-dessus pour commencer"
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -1043,7 +1050,14 @@ SERVER_I18N = {
         "mytools_out_text": "텍스트",
         "mytools_out_json": "JSON",
         "mytools_out_file": "파일",
-        "pub_outputs_hint": "출력 유형을 하나 이상 선택하세요"
+        "pub_outputs_hint": "출력 유형을 하나 이상 선택하세요",
+# IO-3a design
+        "pick_tool": "도구 선택",
+        "give_input": "입력 제공",
+        "pick_files_label": "개 파일",
+        "credits_short": "크레딧",
+        "err_tool_required": "업로드 전에 도구를 선택하세요(공유는 공유 도구 사용)",
+        "pick_tool_first": "위에서 도구를 선택해 시작하세요"
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1558,7 +1572,14 @@ SERVER_I18N = {
         "mytools_out_text": "Текст",
         "mytools_out_json": "JSON",
         "mytools_out_file": "Файл",
-        "pub_outputs_hint": "Выберите хотя бы один тип результата"
+        "pub_outputs_hint": "Выберите хотя бы один тип результата",
+# IO-3a design
+        "pick_tool": "Выберите инструмент",
+        "give_input": "Дайте входные данные",
+        "pick_files_label": "файл(ов)",
+        "credits_short": "кр",
+        "err_tool_required": "Выберите инструмент перед загрузкой (для обмена — инструмент обмена)",
+        "pick_tool_first": "Выберите инструмент выше, чтобы начать"
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -2073,7 +2094,14 @@ SERVER_I18N = {
         "mytools_out_text": "نص",
         "mytools_out_json": "JSON",
         "mytools_out_file": "ملف",
-        "pub_outputs_hint": "اختر نوع مخرجات واحدًا على الأقل"
+        "pub_outputs_hint": "اختر نوع مخرجات واحدًا على الأقل",
+# IO-3a design
+        "pick_tool": "اختر أداة",
+        "give_input": "أدخل المدخلات",
+        "pick_files_label": "ملفات",
+        "credits_short": "رصيد",
+        "err_tool_required": "اختر أداة قبل الرفع (المشاركة تستخدم أداة المشاركة)",
+        "pick_tool_first": "اختر أداة في الأعلى للبدء"
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2589,7 +2617,14 @@ SERVER_I18N = {
         "mytools_out_text": "Text",
         "mytools_out_json": "JSON",
         "mytools_out_file": "Datei",
-        "pub_outputs_hint": "Wähle mindestens einen Ausgabetyp"
+        "pub_outputs_hint": "Wähle mindestens einen Ausgabetyp",
+# IO-3a design
+        "pick_tool": "Tool wählen",
+        "give_input": "Eingabe geben",
+        "pick_files_label": "Dateien",
+        "credits_short": "Cr",
+        "err_tool_required": "Wähle vor dem Upload ein Tool (Teilen nutzt das Teilen-Tool)",
+        "pick_tool_first": "Wähle oben ein Tool aus, um zu starten"
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -3104,7 +3139,14 @@ SERVER_I18N = {
         "mytools_out_text": "Texto",
         "mytools_out_json": "JSON",
         "mytools_out_file": "Arquivo",
-        "pub_outputs_hint": "Escolha pelo menos um tipo de saída"
+        "pub_outputs_hint": "Escolha pelo menos um tipo de saída",
+# IO-3a design
+        "pick_tool": "Escolha uma ferramenta",
+        "give_input": "Fornecer entrada",
+        "pick_files_label": "arquivos",
+        "credits_short": "cr",
+        "err_tool_required": "Escolha uma ferramenta antes de enviar (compartilhar usa a ferramenta de compartilhamento)",
+        "pick_tool_first": "Escolha uma ferramenta acima para começar"
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -3619,7 +3661,14 @@ SERVER_I18N = {
         "mytools_out_text": "テキスト",
         "mytools_out_json": "JSON",
         "mytools_out_file": "ファイル",
-        "pub_outputs_hint": "出力の種類を1つ以上選択してください"
+        "pub_outputs_hint": "出力の種類を1つ以上選択してください",
+# IO-3a design
+        "pick_tool": "ツールを選ぶ",
+        "give_input": "入力を渡す",
+        "pick_files_label": "ファイル",
+        "credits_short": "クレジット",
+        "err_tool_required": "アップロード前にツールを選択してください（共有は共有ツールを使います）",
+        "pick_tool_first": "上のツールを選んで開始"
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -4135,7 +4184,14 @@ SERVER_I18N = {
         "mytools_out_text": "文本",
         "mytools_out_json": "JSON",
         "mytools_out_file": "文件",
-        "pub_outputs_hint": "至少选择一种产出类型"
+        "pub_outputs_hint": "至少选择一种产出类型",
+# IO-3a design
+        "pick_tool": "选择工具",
+        "give_input": "提供输入",
+        "pick_files_label": "个文件",
+        "credits_short": "积分",
+        "err_tool_required": "请先选择工具再上传（分享请使用分享工具）",
+        "pick_tool_first": "先在上方选择一个工具"
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -4650,7 +4706,14 @@ SERVER_I18N = {
         "mytools_out_text": "Texto",
         "mytools_out_json": "JSON",
         "mytools_out_file": "Archivo",
-        "pub_outputs_hint": "Elige al menos un tipo de salida"
+        "pub_outputs_hint": "Elige al menos un tipo de salida",
+# IO-3a design
+        "pick_tool": "Elige una herramienta",
+        "give_input": "Dar la entrada",
+        "pick_files_label": "archivos",
+        "credits_short": "cr",
+        "err_tool_required": "Elige una herramienta antes de subir (compartir usa la herramienta de compartir)",
+        "pick_tool_first": "Elige una herramienta arriba para empezar"
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -5166,7 +5229,14 @@ SERVER_I18N = {
         "mytools_out_text": "Text",
         "mytools_out_json": "JSON",
         "mytools_out_file": "File",
-        "pub_outputs_hint": "Choose at least one output type"
+        "pub_outputs_hint": "Choose at least one output type",
+# IO-3a design
+        "pick_tool": "Choose a tool",
+        "give_input": "Provide input",
+        "pick_files_label": "files",
+        "credits_short": "cr",
+        "err_tool_required": "Choose a tool before uploading (sharing uses the share tool)",
+        "pick_tool_first": "Pick a tool above to start"
 },
 }
 
