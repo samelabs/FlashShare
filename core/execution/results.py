@@ -29,6 +29,11 @@ class ItemsError(ValueError):
     """str(exc) is the typed error code (err_items_*)."""
 
 
+class OutputsError(ValueError):
+    """str(exc) is the typed error code (tool_unavailable for a corrupt
+    stored declaration, err_output_mismatch for a runtime violation)."""
+
+
 @dataclass(frozen=True)
 class StagedFileItem:
     """One file item physically staged in Gokapi; durable identity is
@@ -112,6 +117,38 @@ def validate_items_declaration(items) -> list[dict]:
                                             ensure_ascii=False).encode("utf-8"))
         out.append(norm)
     return out
+
+
+def declared_outputs(tool: dict) -> tuple[str, ...]:
+    """Parse a tool's stored outputs declaration (platform_tools.
+    outputs_json) into a deduped kinds tuple — fail-closed: a missing
+    value falls back to the canonical default ("file",), anything that is
+    not a non-empty JSON list within ITEM_KINDS is a stored-contract
+    corruption (OutputsError('tool_unavailable')), never a silent
+    any-type passthrough."""
+    import json as _json
+    raw_val = tool.get("outputs_json")
+    try:
+        raw = _json.loads(raw_val) if raw_val is not None else ["file"]
+    except (TypeError, ValueError) as exc:
+        raise OutputsError("tool_unavailable") from exc
+    if (not isinstance(raw, list) or not raw
+            or any((not isinstance(k, str)) or k not in ITEM_KINDS
+                   for k in raw)):
+        raise OutputsError("tool_unavailable")
+    return tuple(dict.fromkeys(raw))
+
+
+def enforce_output_kinds(items: list, declared: tuple[str, ...]) -> None:
+    """B2b-1 runtime outputs enforcement — THE one check both execution
+    paths (local worker / remote http) run BEFORE anything is staged:
+    every result item's kind must be inside the tool's declared outputs.
+    A violation fails the call with a typed error (the gate's standard
+    failure settlement owns refund + finalize); no result item lands,
+    so no staged-file cleanup can even be needed."""
+    for it in items:
+        if not isinstance(it, dict) or it.get("kind") not in declared:
+            raise OutputsError("err_output_mismatch")
 
 
 def land_items_result(con, user_id: int, staged: StagedItems,
