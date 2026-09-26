@@ -509,8 +509,8 @@ select { width: auto; margin-top: 0; }
     border-top: 1px solid var(--line); padding-block-start: var(--s2);
   }
   .mobile-nav-auth a { flex: 1; justify-content: center; }
-  .mobile-nav-login { border: 1px solid var(--line-strong); }
-  .mobile-nav-register { background: var(--ink); color: var(--button-ink); }
+  .mobile-nav-auth .mobile-nav-login { border: 1px solid var(--line-strong); }
+  .mobile-nav-auth .mobile-nav-register { background: var(--ink); color: var(--button-ink); }
 }
 
 /* ── ZIP preview modal ────────────────────────────────────── */
