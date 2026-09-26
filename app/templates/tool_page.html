@@ -4,39 +4,32 @@
 
 {% block content %}
 <section class="workspace toolpage" id="toolPage">
-  <div class="hero-mini">
-    <h1 class="hero-title">{{ tool_name|e }}</h1>
-    <p class="hero-sub toolpage-by">
-      {% if handle %}
-      <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <a class="toolpage-handle" href="/u/{{ handle }}">@{{ handle }}</a>
-      {% else %}
-      <span class="mkt-tags"><span class="mkt-tag">{{ texts.market_official }}</span></span>
-      {% endif %}
-    </p>
+  <div class="page-head">
+    <h1>{{ tool_name|e }}</h1>
   </div>
 
   {% if tool.desc %}
-  <p class="toolpage-desc" id="toolDesc">{{ tool.desc | lt(lang) }}</p>
+  <p class="page-head-sub">{{ tool.desc | lt(lang) }}</p>
   {% endif %}
 
-  <div class="panel toolpage-facts">
-    <div class="toolpage-fact">
-      <span class="k" data-i18n="tool_call_cta_cost">{{ texts.tool_call_cta_cost }}</span>
-      <span class="v">{% if tool.cost %}<span class="tool-cost">{{ tool.cost }}</span> {{ texts.credits_per_call }}{% else %}{{ texts.free }}{% endif %}</span>
+  <div class="page-head toolpage-head">
+    <div class="page-head-meta">
+      {% if handle %}
+      <span class="meta-item"><span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span>
+        <a class="toolpage-handle" href="/u/{{ handle }}">@{{ handle }}</a></span>
+      {% else %}
+      <span class="meta-item">{{ icon_svg("shield") }}<span class="tag tag-brand">{{ texts.market_official }}</span></span>
+      {% endif %}
+      <span class="meta-item">{{ icon_svg("hash") }}<span>{% if tool.cost %}<b class="tool-cost">{{ tool.cost }}</b> {{ texts.credits_per_call }}{% else %}<span class="tag tag-success">{{ texts.free }}</span>{% endif %}</span></span>
+      <span class="meta-item">{{ icon_svg("file_size") }}<span data-i18n="tool_files_window">{{ texts.tool_files_window }}: {{ tool.files_min }}–{{ tool.files_max }}</span></span>
+      {% if tool.accept %}
+      <span class="meta-item">{{ icon_svg("doc") }}<span class="chip-row">{% for a in tool.accept %}<span class="chip">{{ a.lstrip('.') | upper }}</span>{% endfor %}</span></span>
+      {% endif %}
+      <span class="meta-item">{{ icon_svg("convert") }}<span class="chip-row">{% for o in tool.outputs %}<span class="chip">{{ o }}</span>{% endfor %}</span></span>
     </div>
-    <div class="toolpage-fact">
-      <span class="k" data-i18n="tool_calls_total">{{ texts.tool_calls_total }}</span>
-      <span class="v">{{ stats.calls }}</span>
-    </div>
-    {% if tool.accept %}
-    <div class="toolpage-fact">
-      <span class="k" data-i18n="tool_accept">{{ texts.tool_accept }}</span>
-      <span class="v fmt-chips">{% for a in tool.accept %}<span class="fmt-chip">{{ a.lstrip('.').split('/')[-1] | upper }}</span>{% endfor %}</span>
-    </div>
-    {% endif %}
-    <div class="toolpage-fact">
-      <span class="k" data-i18n="tool_files_window">{{ texts.tool_files_window }}</span>
-      <span class="v">{{ tool.files_min }}–{{ tool.files_max }}</span>
+    <div class="copyfield toolpage-mcp">
+      <input class="input" id="toolMcpName" readonly value="{{ mcp_name }}">
+      <button class="btn btn-secondary" id="toolMcpCopy" type="button">{{ icon_svg("copy") }}<span>{{ texts.copy }}</span></button>
     </div>
   </div>
 
@@ -46,14 +39,11 @@
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
-  <div class="panel toolpage-mcp-panel">
-    <div class="t" data-i18n="tool_use_mcp">{{ texts.tool_use_mcp }}</div>
-    <div class="d">
-      <span data-i18n="tool_ai_hint">{{ texts.tool_ai_hint }}</span>
-      <span class="mono">{{ mcp_name }}</span> —
-      <a class="toolpage-mcp-link" href="/tool/{{ tool.id }}/mcp" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a>
-    </div>
-  </div>
+  <p class="hint toolpage-mcp-panel">
+    {{ icon_svg("info") }}
+    <span><span data-i18n="tool_ai_hint">{{ texts.tool_ai_hint }}</span>
+      <a href="/tool/{{ tool.id }}/mcp" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a></span>
+  </p>
 </section>
 
 {% endblock %}

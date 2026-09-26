@@ -52,21 +52,33 @@
     </div>
     <p class="agent-note">MCP endpoint: <a href="{{ BASE_URL }}/mcp">{{ BASE_URL }}/mcp</a> · agent guide: <a href="/llms.txt">/llms.txt</a></p>
   </div>
-  <div id="toolInput" class="ti-mount"></div>
-
-  <div id="result" class="result hidden" aria-live="polite"></div>
-
-  <div class="tool-search" role="search">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
-    <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
-    <div class="tool-search-pop hidden" id="toolSearchPop" role="listbox"></div>
+  <div class="picker" id="toolPicker">
+    <div class="picker-head">
+      <span class="picker-step" aria-hidden="true">1</span>
+      <span class="picker-title" data-i18n="pick_tool">{{ texts.pick_tool }}</span>
+      <div class="tool-search" role="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
+        <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
+        <div class="tool-search-pop hidden" id="toolSearchPop" role="listbox"></div>
+      </div>
+    </div>
+    <div class="picker-grid{% if not tools %} hidden{% endif %}" id="homeTools">
+      {% for t in tools %}{{ tool_tab(t, lang, texts) }}{% endfor %}
+    </div>
+    <p class="empty{% if tools %} hidden{% endif %}" id="pickerEmpty">
+      {{ icon_svg("search") }}<span data-i18n="tool_search_none">{{ texts.tool_search_none }}</span>
+    </p>
   </div>
 
-  <div class="section-h"><span class="t" data-i18n="tools_section">{{ texts.tools_section }}</span><span class="n" id="toolsCount">{{ tools|length }}</span></div>
-  <div class="home-tools{% if not tools %} hidden{% endif %}" id="homeTools">
-    {% for t in tools %}{{ tool_tab(t, lang) }}{% endfor %}
+  <div class="run-panel" id="runPanel">
+    <div class="run-panel-head">
+      <span class="picker-step" aria-hidden="true">2</span>
+      <span class="picker-title" id="runPanelTool" data-i18n="give_input">{{ texts.give_input }}</span>
+    </div>
+    <div id="toolInput" class="ti-mount"></div>
+
+    <div id="result" class="result hidden" aria-live="polite"></div>
   </div>
-  <p class="tool-desc hidden" id="toolDesc"></p>
 </section>
   {% endblock %}
 

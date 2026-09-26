@@ -12,12 +12,10 @@
   function flash(btn, icon) {
     const orig = btn.innerHTML;
     btn.innerHTML = window.iconSvg(icon);
-    btn.style.color = "var(--accent)";
-    btn.style.borderColor = "var(--accent)";
+    btn.style.color = "var(--success)";
     setTimeout(() => {
       btn.innerHTML = orig;
       btn.style.color = "";
-      btn.style.borderColor = "";
     }, 1400);
   }
 
@@ -30,12 +28,9 @@
 
   // Per-item copy: text items copy their text, JSON items copy the
   // pretty-printed JSON exactly as rendered.
-  document.querySelectorAll("[data-copy-text]").forEach((btn) => {
-    const pre = btn.closest(".r-item").querySelector(".r-text");
-    btn.addEventListener("click", () => copyText(pre ? pre.textContent : "", btn));
-  });
-  document.querySelectorAll("[data-copy-json]").forEach((btn) => {
-    const pre = btn.closest(".r-item").querySelector(".r-json");
+  document.querySelectorAll("[data-copy-text], [data-copy-json]").forEach((btn) => {
+    const item = btn.closest(".rs-item");
+    const pre = item ? item.querySelector(".rs-text, .rs-json") : null;
     btn.addEventListener("click", () => copyText(pre ? pre.textContent : "", btn));
   });
 
@@ -68,7 +63,7 @@
   if (allBtn) {
     allBtn.addEventListener("click", () => {
       const links = Array.from(document.querySelectorAll(
-        '.r-file-row a[href$="?download=1"]'));
+        '.rs-item .rs-dl[href$="?download=1"]'));
       links.forEach((a, i) => {
         setTimeout(() => a.click(), i * 400);
       });

@@ -28,10 +28,25 @@ variants. icon/fallback/label/desc/author/origin/cost/calls/href 全部
 </a>
 {%- endmacro %}
 
-{% macro tool_tab(t, lang) -%}
-<div class="tool-tab" data-tool-id="{{ t.id }}" role="button" tabindex="0">
-  {{ tool_icon(t.icon, "tool-tab-icon") }}
-  <span class="tool-tab-name">{{ t.label | lt(lang) or t.id }}</span>
-  {% if t.cost > 0 %}<span class="tool-cost">{{ t.cost }}</span>{% endif %}
+{% macro tool_tab(t, lang, texts=None) -%}
+<div class="tool-pick" data-tool-id="{{ t.id }}" role="button" tabindex="0"
+     aria-pressed="false">
+  {{ tool_icon(t.icon, "tool-pick-icon") }}
+  <span class="tool-pick-body">
+    <span class="tool-pick-name">{{ t.label | lt(lang) or t.id }}</span>
+    {% if t.desc %}<span class="tool-pick-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
+    <span class="tool-pick-meta">
+      {% if t.files_min == 0 %}
+      <span class="tag">{{ texts['mytools_out_text'] if texts else 'Text' }}</span>
+      {% elif t.files_max and t.files_max > 1 %}
+      <span class="tag">{{ t.files_min }}–{{ t.files_max }} {{ texts['pick_files_label'] if texts else 'files' }}</span>
+      {% endif %}
+      {% if t.outputs and (t.outputs | length) > 1 %}
+      <span class="tag">{{ t.outputs | join(' + ') }}</span>
+      {% endif %}
+    </span>
+  </span>
+  {% if t.cost > 0 %}<span class="tag tag-brand">{{ t.cost }} {{ texts['credits_short'] if texts else 'cr' }}</span>
+  {% else %}<span class="tag tag-success">{{ texts['free'] if texts else 'Free' }}</span>{% endif %}
 </div>
 {%- endmacro %}

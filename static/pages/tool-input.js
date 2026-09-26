@@ -114,7 +114,7 @@
           const val = saved[prm.key] !== undefined ? saved[prm.key] : prm.default;
           const pid = "ti_" + prm.key;
           if (prm.type === "enum") {
-            html += '<div class="ti-param"><div class="ti-param-label">' + esc(label) + "</div>"
+            html += '<div class="ti-param field"><div class="field-label">' + esc(label) + "</div>"
               + '<div class="ti-presets">';
             (prm.options || []).forEach((o) => {
               const sel = val === o.value ? " active" : "";
@@ -123,22 +123,22 @@
             });
             html += "</div></div>";
           } else if (prm.type === "boolean") {
-            html += '<div class="ti-param ti-param-row"><label class="ti-param-label" for="' + pid + '">'
-              + esc(label) + '</label><input type="checkbox" id="' + pid + '" class="tp-bool" data-param="' + esc(prm.key) + '"'
-              + (val === true || val === "true" ? " checked" : "") + "></div>";
+            html += '<div class="ti-param ti-param-row"><label class="check" for="' + pid + '">'
+              + '<input type="checkbox" id="' + pid + '" class="tp-bool" data-param="' + esc(prm.key) + '"'
+              + (val === true || val === "true" ? " checked" : "") + "><span>" + esc(label) + "</span></label></div>";
           } else if (prm.type === "number") {
             const mn = prm.min !== undefined ? ' min="' + esc(prm.min) + '"' : "";
             const mx = prm.max !== undefined ? ' max="' + esc(prm.max) + '"' : "";
-            html += '<div class="ti-param ti-param-row"><label class="ti-param-label" for="' + pid + '">'
-              + esc(label) + '</label><input type="number" id="' + pid + '" class="tp-number" data-param="' + esc(prm.key)
+            html += '<div class="ti-param ti-param-row field"><label class="field-label" for="' + pid + '">'
+              + esc(label) + '</label><input type="number" id="' + pid + '" class="input tp-number" data-param="' + esc(prm.key)
               + '"' + mn + mx + ' value="' + (val !== undefined && val !== null ? esc(String(val)) : "") + '"></div>';
           } else {
             // text 参数 = 多行文字输入 (任务的多模态输入之一)
             const ph = prm.placeholder ? esc(resolveLabel(prm.placeholder)) : "";
             const req = prm.required && prm.default == null ? " ti-required" : "";
-            html += '<div class="ti-param' + req + '"><label class="ti-param-label" for="' + pid + '">'
-              + esc(label) + (prm.required && prm.default == null ? ' <i class="ti-req-mark" aria-hidden="true">*</i>' : "")
-              + '</label><textarea id="' + pid + '" class="tp-text" data-param="' + esc(prm.key)
+            html += '<div class="ti-param field' + req + '"><label class="field-label" for="' + pid + '">'
+              + esc(label) + (prm.required && prm.default == null ? ' <i class="field-req" aria-hidden="true">*</i>' : "")
+              + '</label><textarea id="' + pid + '" class="textarea tp-text" data-param="' + esc(prm.key)
               + '" rows="3" placeholder="' + ph + '">'
               + (val !== undefined && val !== null ? esc(String(val)) : "") + "</textarea></div>";
           }
@@ -148,20 +148,20 @@
 
       // 文件区: 数量窗口 + 接受格式提示; min=0 的工具为紧凑可选行
       const acceptHint = accept
-        ? accept.map((a) => '<span class="fmt-chip">' + esc(a.toUpperCase()) + "</span>").join("")
+        ? '<span class="chip-row">' + accept.map((a) => '<span class="chip">' + esc(a.toUpperCase()) + "</span>").join("") + "</span>"
         : esc(t("ti_any_format"));
       if (optional) {
         html += '<div class="ti-attach ti-attach-compact">'
-          + '<button type="button" class="ti-add ti-add-quiet">' + window.iconSvg("upload")
+          + '<button type="button" class="btn btn-secondary btn-sm ti-add ti-add-quiet">' + window.iconSvg("upload")
           + "<span>" + t("ti_add_optional") + "</span></button>"
           + '<span class="ti-window-note">' + esc(t("ti_files_none_needed")) + "</span>"
-          + '<div class="ti-rows"></div></div>';
+          + '<div class="ti-rows ti-rows-quiet"></div></div>';
       } else {
         html += '<div class="ti-attach">'
           + '<div class="ti-attach-head"><span class="ti-window">' + esc(windowText()) + "</span>"
           + '<span class="ti-accept">' + acceptHint + "</span></div>"
           + '<div class="ti-drop">'
-          + '<button type="button" class="ti-add primary">' + window.iconSvg("upload") + "<span>" + t("ti_add_files") + "</span></button>"
+          + '<button type="button" class="btn btn-secondary ti-add">' + window.iconSvg("upload") + "<span>" + t("ti_add_files") + "</span></button>"
           + '<span class="ti-drop-hint">' + esc(t("ti_drop_hint")) + "</span></div>"
           + '<div class="ti-rows"></div></div>';
       }
@@ -177,15 +177,15 @@
         + n + " " + t("times_unit") + "</option>").join("");
       html += '<details class="ti-delivery"><summary>' + esc(t("ti_delivery")) + "</summary>"
         + '<div class="ti-delivery-row">'
-        + '<label class="ti-field"><span>' + esc(t("expiry")) + '</span><select class="ti-expiry" data-delivery="expiry_days">' + optsExp + "</select></label>"
-        + '<label class="ti-field"><span>' + esc(t("downloads")) + '</span><select class="ti-downloads" data-delivery="allowed_downloads">' + optsDl + "</select></label>"
+        + '<label class="field ti-field"><span class="field-label">' + esc(t("expiry")) + '</span><select class="select ti-expiry" data-delivery="expiry_days">' + optsExp + "</select></label>"
+        + '<label class="field ti-field"><span class="field-label">' + esc(t("downloads")) + '</span><select class="select ti-downloads" data-delivery="allowed_downloads">' + optsDl + "</select></label>"
         + "</div></details>";
 
       // 运行行
       html += '<div class="ti-run-row">'
-        + '<p class="ti-error" hidden></p>'
-        + '<span class="ti-progress" aria-live="polite"></span>'
-        + '<button type="button" class="ti-run primary">' + window.iconSvg("wand") + "<span>" + t("ti_run") + "</span></button>"
+        + '<p class="error-note ti-error" hidden></p>'
+        + '<span class="ti-progress tertiary" aria-live="polite"></span>'
+        + '<button type="button" class="btn btn-primary btn-lg ti-run">' + window.iconSvg("wand") + "<span>" + t("ti_run") + "</span></button>"
         + "</div></div>";
 
       container.innerHTML = html;
@@ -288,14 +288,14 @@
         if (isImg) {
           const u = URL.createObjectURL(f);
           thumbUrls.push(u);
-          thumb = '<img class="ti-thumb" src="' + u + '" alt="" loading="lazy">';
+          thumb = '<img class="file-thumb" src="' + u + '" alt="" loading="lazy">';
         } else {
-          thumb = '<span class="ti-thumb ti-thumb-glyph" aria-hidden="true">' + window.iconSvg("doc") + "</span>";
+          thumb = '<span class="file-thumb file-thumb-glyph" aria-hidden="true">' + window.iconSvg("doc") + "</span>";
         }
-        return '<div class="ti-row" data-idx="' + i + '">' + thumb
-          + '<span class="ti-row-name">' + esc(f.name) + "</span>"
-          + '<span class="ti-row-meta">' + esc(fmtSize(f.size)) + "</span>"
-          + '<button type="button" class="ti-row-remove" data-rm="' + i + '" aria-label="' + esc(t("ti_remove")) + '">'
+        return '<div class="file-row ti-row" data-idx="' + i + '">' + thumb
+          + '<span class="file-name">' + esc(f.name) + "</span>"
+          + '<span class="file-meta">' + esc(fmtSize(f.size)) + "</span>"
+          + '<button type="button" class="file-remove ti-row-remove" data-rm="' + i + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
           + window.iconSvg("close") + "</button></div>";
       }).join("");
       rows.querySelectorAll("[data-rm]").forEach((b) => {

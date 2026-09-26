@@ -5,69 +5,73 @@
 
 {% block content %}
 <section class="file-page r-page">
-  <div class="file-card r-card">
-    <div class="file-card-head">
-      {{ icon_svg("wand") }}
-      <div class="file-card-info">
+  <div class="card r-card">
+    <div class="card-pad">
+      <div class="page-head r-head">
         <h1 id="rToolName">{{ tool_name|e }}</h1>
-        <dl class="file-facts">
-          <div>{{ file_size_icon }}<dd>{{ texts.r_generated }}: {{ generated_text }}</dd></div>
-          <div>{{ expiry_icon }}<dd>{{ texts.r_expires }}: {{ expire_text }}</dd></div>
-          {% if remaining_text is not none %}
-          <div>{{ download_count_icon }}<dd>{{ texts.r_downloads_left }}: {{ remaining_text }}</dd></div>
+        <div class="page-head-meta">
+          <span class="meta-item">{{ file_size_icon }}<span>{{ texts.r_generated }}: {{ generated_text }}</span></span>
+          <span class="meta-item">{{ expiry_icon }}<span>{{ texts.r_expires }}: {{ expire_text }}</span></span>
+        </div>
+        <div class="row row-wrap r-actions">
+          {% if file_count > 1 %}
+          <button class="btn btn-secondary" id="rDownloadAll" type="button">
+            {{ icon_svg("download") }}<span>{{ texts.r_download_all }} ({{ file_count }})</span>
+          </button>
           {% endif %}
-        </dl>
+          <button class="btn btn-secondary" id="rCopyLink" type="button">
+            {{ icon_svg("link") }}<span>{{ texts.copy }}</span>
+          </button>
+          <button class="btn btn-icon" id="rQrBtn" type="button" aria-label="QR" title="QR">
+            {{ icon_svg("qr") }}
+          </button>
+          <button class="btn btn-icon" id="rPrintBtn" type="button" aria-label="{{ texts.print_btn }}" title="{{ texts.print_btn }}">
+            {{ icon_svg("print") }}
+          </button>
+        </div>
       </div>
-    </div>
 
-    <div class="file-actions r-actions">
-      {% if file_count > 1 %}
-      <button class="action-btn primary" id="rDownloadAll" type="button">
-        {{ icon_svg("download") }}<span>{{ texts.r_download_all }} ({{ file_count }})</span>
-      </button>
-      {% endif %}
-      <button class="action-btn" id="rCopyLink" type="button" aria-label="{{ texts.copy }}">
-        {{ icon_svg("link") }}<span>{{ texts.copy }}</span>
-      </button>
-      <button class="action-btn" id="rQrBtn" type="button" aria-label="QR">
-        {{ icon_svg("qr") }}<span>QR</span>
-      </button>
-      <button class="action-btn" id="rPrintBtn" type="button" aria-label="{{ texts.print_btn }}">
-        {{ icon_svg("print") }}<span>{{ texts.print_btn }}</span>
-      </button>
-    </div>
-
-    <ol class="r-items">
-      {% for it in items %}
-      <li class="r-item r-{{ it.kind }}">
-        {% if it.kind == 'text' %}
-        <div class="r-item-head">
-          <span class="r-item-kind">{{ texts.r_text_out }}</span>
-          <button class="r-mini-btn" type="button" data-copy-text aria-label="{{ texts.copy }}">{{ icon_svg("copy") }}</button>
-        </div>
-        <pre class="r-text">{{ it.text|e }}</pre>
-        {% elif it.kind == 'json' %}
-        <details class="r-json-wrap" open>
-          <summary>{{ texts.r_json_out }}</summary>
-          <pre class="r-json">{{ it.rendered|e }}</pre>
-        </details>
-        <button class="r-mini-btn r-json-copy" type="button" data-copy-json aria-label="{{ texts.copy }}">{{ icon_svg("copy") }}<span>{{ texts.copy }}</span></button>
-        {% else %}
-        {% if it.is_image %}
-        <div class="result-preview"><img src="/f/{{ it.publicId }}/inline" alt="{{ it.filename|e }}" loading="lazy" decoding="async"></div>
-        {% endif %}
-        <div class="r-file-row">
-          <span class="r-file-name">{{ it.filename|e }}</span>
-          <span class="r-file-meta">{{ it.size_text }}{% if it.downloads %} · {{ it.downloads }}{% endif %}</span>
-          {% if it.is_pdf %}
-          <a class="action-btn" href="/f/{{ it.publicId }}" target="_blank" rel="noopener">{{ icon_svg("eye") }}<span>{{ texts.r_preview }}</span></a>
+      <ol class="rs-list">
+        {% for it in items %}
+        <li class="rs-item rs-{{ it.kind }}">
+          {% if it.kind == 'text' %}
+          <div class="rs-item-head">
+            <span class="rs-item-kind">{{ texts.r_text_out }}</span>
+            <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-text aria-label="{{ texts.copy }}" title="{{ texts.copy }}">{{ icon_svg("copy") }}</button>
+          </div>
+          <div class="rs-body"><pre class="rs-text">{{ it.text|e }}</pre></div>
+          {% elif it.kind == 'json' %}
+          <details class="rs-json-details" open>
+            <summary>{{ texts.r_json_out }}</summary>
+            <div class="rs-body"><pre class="rs-json">{{ it.rendered|e }}</pre></div>
+          </details>
+          <div class="rs-item-head rs-json-head">
+            <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-json aria-label="{{ texts.copy }}" title="{{ texts.copy }}">{{ icon_svg("copy") }}</button>
+          </div>
+          {% else %}
+          {% if it.is_image %}
+          <span class="rs-image"><img src="/f/{{ it.publicId }}/inline" alt="{{ it.filename|e }}" loading="lazy" decoding="async"></span>
+          <div class="rs-item-body">
           {% endif %}
-          <a class="action-btn primary" href="/f/{{ it.publicId }}?download=1" download>{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
-        </div>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ol>
+          <div class="file-row">
+            {% if it.is_image %}
+            <img class="file-thumb" src="/f/{{ it.publicId }}/inline" alt="" loading="lazy">
+            {% else %}
+            <span class="file-thumb file-thumb-glyph" aria-hidden="true">{{ icon_svg(it.glyph or "doc") }}</span>
+            {% endif %}
+            <span class="file-name">{{ it.filename|e }}</span>
+            <span class="file-meta">{{ it.size_text }}{% if it.remaining is not none %} · {{ texts.r_downloads_left }} {{ it.remaining }}{% endif %}</span>
+            {% if it.is_pdf %}
+            <a class="btn btn-ghost btn-sm" href="/f/{{ it.publicId }}" target="_blank" rel="noopener">{{ icon_svg("eye") }}<span>{{ texts.r_preview }}</span></a>
+            {% endif %}
+            <a class="btn btn-secondary btn-sm rs-dl" href="/f/{{ it.publicId }}?download=1" download>{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+          </div>
+          {% if it.is_image %}</div>{% endif %}
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
   </div>
 </section>
 {% endblock %}

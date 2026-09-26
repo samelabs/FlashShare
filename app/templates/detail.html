@@ -25,45 +25,48 @@
 
 {% block content %}
 <section class="file-page">
-  <div class="file-card">
-    <div class="file-card-head">
-      {{ file_format_icon() }}
-      <div class="file-card-info">
+  <div class="card file-card">
+    <div class="card-pad">
+      <div class="page-head">
         <h1 id="fileName">{{ file_name|e }}</h1>
-        <dl class="file-facts">
-          <div>{{ file_size_icon }}<dd>{{ size_text }}</dd></div>
-          <div>{{ expiry_icon }}<dd>{{ expire_text }}</dd></div>
-          <div>{{ download_count_icon }}<dd>{{ downloads }}</dd></div>
-        </dl>
+        <div class="page-head-meta">
+          <span class="meta-item">{{ file_size_icon }}<span>{{ size_text }}</span></span>
+          <span class="meta-item">{{ expiry_icon }}<span>{{ texts.card_expires }}: {{ expire_text }}</span></span>
+          <span class="meta-item">{{ download_count_icon }}<span>{{ texts.r_downloads_left }} {{ downloads_left }}</span></span>
+        </div>
       </div>
-    </div>
-    {% if is_image %}
-    <div class="file-preview">
-      <img src="{{ inline_url }}" alt="{{ file_name|e }}" loading="lazy" decoding="async">
-    </div>
-    {% endif %}
-    <div class="workspace-tools" id="workspaceTools" data-pid="{{ public_id }}">
-      {% if is_owner %}
-      <div class="tools-bar" id="ownerTools">
-        <button class="tool-btn" id="renameBtn">{{ icon_svg("edit") }}<span>{{ texts.rename }}</span></button>
-        <button class="tool-btn danger" id="deleteBtn">{{ icon_svg("trash") }}<span>{{ texts.delete }}</span></button>
+      {% if is_image %}
+      <div class="rs-item rs-image file-preview">
+        <span class="rs-image"><img src="{{ inline_url }}" alt="{{ file_name|e }}" loading="lazy" decoding="async"></span>
       </div>
       {% endif %}
+      <div class="file-row file-hero-row">
+        <span class="file-thumb file-thumb-glyph" aria-hidden="true">{{ icon_svg(file_glyph) }}</span>
+        <span class="file-name">{{ file_name|e }}</span>
+        <span class="file-meta">{{ size_text }}{% if content_type %} · {{ content_type }}{% endif %}</span>
+      </div>
+      <div class="workspace-tools" id="workspaceTools" data-pid="{{ public_id }}">
+        {% if is_owner %}
+        <div class="row" id="ownerTools">
+          <button class="btn btn-ghost btn-sm" id="renameBtn">{{ icon_svg("edit") }}<span>{{ texts.rename }}</span></button>
+          <button class="btn btn-danger-soft btn-sm" id="deleteBtn">{{ icon_svg("trash") }}<span>{{ texts.delete }}</span></button>
+        </div>
+        {% endif %}
+      </div>
     </div>
   </div>
-  <div class="file-actions">
-    <a class="action-btn primary" href="{{ dl_url }}" download aria-label="Download">{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+  <div class="row row-wrap r-actions file-actions">
+    <a class="btn btn-primary" href="{{ dl_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+    <button class="btn btn-secondary" id="copyBtn" type="button">{{ icon_svg("link") }}<span>{{ texts.copy }}</span></button>
+    <button class="btn btn-icon" id="qrBtn" type="button" aria-label="QR" title="QR">{{ icon_svg("qr") }}</button>
+    <button class="btn btn-icon" id="shareImgBtn" type="button" aria-label="{{ texts.shareImg }}" title="{{ texts.shareImg }}">{{ icon_svg("share") }}</button>
+    <a class="btn btn-icon" href="{{ share_url }}" target="_blank" rel="noreferrer" aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
     {% if is_pdf %}
-    <a class="action-btn" href="/f/{{ public_id }}/print" target="_blank" rel="noopener" aria-label="{{ texts.print_btn }}">{{ icon_svg("print") }}<span data-i18n="print_btn">{{ texts.print_btn }}</span></a>
+    <a class="btn btn-secondary" href="/f/{{ public_id }}/print" target="_blank" rel="noopener" aria-label="{{ texts.print_btn }}">{{ icon_svg("print") }}<span data-i18n="print_btn">{{ texts.print_btn }}</span></a>
     {% endif %}
     {% if is_zip %}
-    <button class="action-btn" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
+    <button class="btn btn-secondary" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
     {% endif %}
-    <button class="action-btn" id="shareImgBtn" type="button" aria-label="Share">{{ icon_svg("share") }}</button>
-    <span class="action-sep"></span>
-    <button class="action-btn" id="copyBtn" type="button" aria-label="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
-    <button class="action-btn" id="qrBtn" type="button" aria-label="QR">{{ icon_svg("qr") }}</button>
-    <a class="action-btn" href="{{ share_url }}" target="_blank" rel="noreferrer" aria-label="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
     <input id="landingUrl" value="{{ escaped_url }}" readonly type="hidden">
   </div>
 </section>

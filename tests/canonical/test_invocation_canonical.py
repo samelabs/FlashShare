@@ -417,10 +417,10 @@ check("G7 card href = /tool/{id}",
       'href="/tool/{{ t.id }}"' in part)
 # G8 home 保持执行 surface (tool-tab div, 非导航 a):
 home_src = _rd("app", "templates", "home.html")
-check("G8 home tool-tab 为执行 surface (partial div role=button, home 无导航 a)",
-      '<div class="tool-tab"' in part and 'role="button"' in part
+check("G8 home tool-pick 为执行 surface (partial div role=button, home 无导航 a)",
+      '<div class="tool-pick"' in part and 'role="button"' in part
       and "tool_tab(" in home_src
-      and '<a class="tool-tab"' not in home_src)
+      and '<a class="tool-pick"' not in home_src)
 check("PG19 production 零 deprecated icon fallback 字面 (wand 兜底仅 icons.py)",
       sum(_rd("app", "templates", t).count('or "wand"')
           for t in ("home.html", "tools_market.html", "user_page.html")) == 0)

@@ -17,6 +17,7 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES
+from utils import file_glyph
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
@@ -761,7 +762,6 @@ async def result_page(result_id: str, request: Request):
                 if u is not None:
                     uploads_by_pid[pid] = u
     items = []
-    min_remaining = None
     file_count = 0
     for it in (record.get("items") or []):
         d = dict(it)
@@ -775,22 +775,19 @@ async def result_page(result_id: str, request: Request):
                              and ct.lower() != "image/svg+xml")
             d["is_pdf"] = ct.lower() == "application/pdf"
             d["size_text"] = format_bytes(int(d.get("size") or 0))
+            d["glyph"] = file_glyph(ct, d.get("filename") or "")
+            # Remaining downloads live in ONE place: the file row.
+            d["remaining"] = None
             u = uploads_by_pid.get(d.get("publicId"))
             if u is not None:
                 live = storage_info(u["gokapi_id"]) if u["gokapi_id"] else None
                 total = int(u["allowed_downloads"] or 0)
                 count = (live or {}).get("DownloadCount")
                 remaining = (live or {}).get("DownloadsRemaining")
-                used = count if isinstance(count, int) else (
-                    total - remaining if isinstance(remaining, int) else 0)
-                d["downloads"] = f"{max(0, used)}/{total}"
-                left = remaining if isinstance(remaining, int) else (
-                    total - used if isinstance(used, int) else None)
-                if left is not None and (min_remaining is None
-                                         or left < min_remaining):
-                    min_remaining = left
-            else:
-                d["downloads"] = None
+                if isinstance(remaining, int):
+                    d["remaining"] = max(0, remaining)
+                elif isinstance(count, int):
+                    d["remaining"] = max(0, total - count)
         items.append(d)
     # Tool display name: the call's tool row label (resolver chain).
     ctx = _ctx_base(request)
@@ -810,8 +807,6 @@ async def result_page(result_id: str, request: Request):
         "tool_name": tool_name,
         "generated_text": format_ts(row["finished_at"]),
         "expire_text": format_ts(int(expire_at)),
-        "remaining_text": (f"{min_remaining}"
-                           if min_remaining is not None else None),
         "items": items,
         "file_count": file_count,
         "result_url": public_result_url(result_id),
