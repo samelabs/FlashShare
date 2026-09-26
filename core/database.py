@@ -203,6 +203,10 @@ _SCHEMA_SQL = (
     CREATE TABLE IF NOT EXISTS ingress_requests (
       id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      scope            TEXT NOT NULL DEFAULT '',
+                         -- client_ref uniqueness partition: the selected
+                         -- tool_key (web upload / MCP inline call) or ''
+                         -- for the tool-agnostic ticket PUT
       request_ref      TEXT NOT NULL,
       request_hash     TEXT NOT NULL,
       status           TEXT NOT NULL,
@@ -225,7 +229,7 @@ _SCHEMA_SQL = (
     """,
     """
     CREATE UNIQUE INDEX IF NOT EXISTS ingress_requests_ref_live_idx
-      ON ingress_requests(user_id, request_ref)
+      ON ingress_requests(user_id, scope, request_ref)
       WHERE status IN ('running','ok')
     """,
     # ── platform: api_keys (MCP/agent credential; parallel to sessions) ──
@@ -280,7 +284,6 @@ _SCHEMA_SQL = (
       tool_id          TEXT NOT NULL,
       status           TEXT NOT NULL,
       cost_snapshot    BIGINT NOT NULL DEFAULT 0,
-      upload_id        BIGINT REFERENCES uploads(id) ON DELETE SET NULL,
       result_public_id TEXT,
       error            TEXT,
       params_json      TEXT,
@@ -307,8 +310,7 @@ _SCHEMA_SQL = (
         CHECK (status = 'running' OR finished_at IS NOT NULL),
       CONSTRAINT tool_calls_non_ok_no_result_ck
         CHECK (status = 'ok'
-               OR (upload_id IS NULL AND result_public_id IS NULL
-                   AND result_json IS NULL))
+               OR (result_public_id IS NULL AND result_json IS NULL))
     )
     """,
     # Invocation identity is user + tool + client_ref. A running row owns the
@@ -675,7 +677,7 @@ _SCHEMA_SQL = (
     """
     CREATE TABLE IF NOT EXISTS mcp_upload_tickets (
       id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      ticket        TEXT NOT NULL UNIQUE,
+      ticket_hash   TEXT NOT NULL UNIQUE,   -- sha256(plaintext); value never stored
       user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       filename      TEXT NOT NULL,
       content_type  TEXT,

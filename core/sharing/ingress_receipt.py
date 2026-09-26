@@ -46,9 +46,15 @@ class IngressUnresolved(Exception):
 
 
 def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
-                        request_hash: str, sizes: list[int]):
+                        request_hash: str, sizes: list[int],
+                        scope: str = ""):
     """ONE transaction: user lock → receipt binding check → quota read
     → quota decision → upload_usage INSERT → receipt INSERT(running).
+
+    `scope` partitions the client_ref uniqueness: the web upload surface
+    passes the selected tool_key, the MCP inline path the called tool,
+    the tool-agnostic ticket PUT a fixed marker — one user's ref is
+    unique PER scope, not globally.
 
     Returns (receipt_row, usage_ids, replay_result_or_None).
     Raises IngressConflict / IngressInProgress / IngressQuotaDenied.
@@ -82,7 +88,7 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
         # read binding, decide quota, insert usage, insert receipt — all
         # in THIS transaction via repo primitives.
         usage_repo.lock_user(con, user_id)
-        hist = _repo.earliest_by_ref(con, user_id, request_ref)
+        hist = _repo.earliest_by_ref(con, user_id, request_ref, scope)
         if hist is not None and hist["request_hash"] != request_hash:
             raise IngressConflict(dict(hist))
         if hist is not None and hist["status"] == "ok":
@@ -97,7 +103,7 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
             # earliest is failed/insufficient — a LATER ok receipt may
             # still own the live slot (failed-then-succeeded history):
             # replay it instead of re-claiming under the same ref.
-            live = _repo.live_by_ref(con, user_id, request_ref)
+            live = _repo.live_by_ref(con, user_id, request_ref, scope)
             if live is not None:
                 if live["status"] == "ok":
                     return None, [], _decode_durable_result(live["result_json"])
@@ -107,13 +113,13 @@ def claim_ingress_quota(user_id: int, ip: str, request_ref: str,
         if denial:
             raise IngressQuotaDenied(denial)
         usage_ids = usage_repo.insert_many(con, user_id, ip, clean, ts)
-        receipt = _repo.insert_running(con, user_id, request_ref,
+        receipt = _repo.insert_running(con, user_id, request_ref, scope,
                                        request_hash, list(usage_ids), ts)
         if receipt is None:
             # lost a live-unique race inside the same locked transaction —
             # impossible for a different hash (binding above), only a same
             # hash concurrent claim; treat as in-progress.
-            prior = _repo.live_by_ref(con, user_id, request_ref)
+            prior = _repo.live_by_ref(con, user_id, request_ref, scope)
             raise IngressInProgress(dict(prior) if prior else {})
         return dict(receipt), list(usage_ids), None
 

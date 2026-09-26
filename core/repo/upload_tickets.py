@@ -1,10 +1,13 @@
 """repo: mcp_upload_tickets — one-time PUT credentials for the MCP
 two-stage upload (B4b).
 
-The ticket is the credential: bound to user_id + declared_size + a short
-expiry, consumed exactly once. All state transitions are single atomic
-statements — no read-then-write windows.
+The ticket VALUE is the credential but is never stored: only its SHA-256
+hash persists (ticket_hash). The plaintext exists exactly once — in the
+create_upload response — and a same-client_ref retry INVALIDATES the old
+credential and mints a fresh one (the old plaintext can never be
+re-served from storage). Lookup paths hash the presented value.
 """
+import hashlib
 import secrets
 
 from database import db
@@ -12,19 +15,24 @@ from database import db
 TICKET_TTL_S = 10 * 60
 
 
+def _thash(ticket: str) -> str:
+    return hashlib.sha256(ticket.encode("utf-8")).hexdigest()
+
+
 def issue(user_id: int, filename: str, content_type: str | None,
           size: int, client_ref: str, now_ts: int) -> dict:
-    """Create (or idempotently return) one usable ticket.
+    """Create one usable ticket (hash-persisted).
 
-    Same (user, client_ref) + same parameters → the EXISTING unused,
-    unexpired ticket is returned (same credential). Same client_ref with
+    Same (user, client_ref) + same parameters → the prior unused
+    credential is INVALIDATED and a FRESH one minted (the old plaintext
+    is unrecoverable from storage by design). Same client_ref with
     different parameters raises ValueError('idempotency_conflict') — the
     caller maps it to the JSON-RPC reserved code. Used/expired tickets
     do not block: a fresh credential is issued for the same intent.
 
     Serialized on the SAME user-row anchor the tool-call claim and the
-    ingress receipt claim use: the lookup + insert pair has no
-    read-then-write window, so concurrent create_upload calls for one
+    ingress receipt claim use: the lookup + invalidate + insert pair has
+    no read-then-write window, so concurrent create_upload calls for one
     client_ref cannot mint two simultaneously-live tickets (backed by
     the partial unique index on live tickets)."""
     with db() as con:
@@ -40,32 +48,32 @@ def issue(user_id: int, filename: str, content_type: str | None,
                      and int(row["declared_size"]) == int(size))
             if not _same:
                 raise ValueError("idempotency_conflict")
-            if row["used_at"] is None and int(row["expires_at"]) > now_ts:
-                return dict(row)
             if row["used_at"] is None:
-                # expired-unused: clear it so the partial unique index
-                # (one unused row per user+ref) admits the fresh ticket;
-                # housekeeping would have purged it anyway
+                # live or expired-unused prior credential: invalidate so
+                # the partial unique index (one unused row per user+ref)
+                # admits the fresh ticket — the old plaintext is dead
                 con.execute(
                     "DELETE FROM mcp_upload_tickets WHERE id = %s",
                     (row["id"],))
         ticket = secrets.token_urlsafe(32)
         row = con.execute(
             """INSERT INTO mcp_upload_tickets
-               (ticket, user_id, filename, content_type, declared_size,
+               (ticket_hash, user_id, filename, content_type, declared_size,
                 client_ref, expires_at, created_at)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
-            (ticket, user_id, filename, content_type, int(size),
+            (_thash(ticket), user_id, filename, content_type, int(size),
              client_ref, now_ts + TICKET_TTL_S, now_ts)).fetchone()
-        return dict(row)
+        out = dict(row)
+        out["ticket"] = ticket  # plaintext exactly once, to the response
+        return out
 
 
 def owner_of(ticket: str) -> int | None:
     """Read-only ticket → user_id (no state change; identity precheck)."""
     with db() as con:
         row = con.execute(
-            "SELECT user_id FROM mcp_upload_tickets WHERE ticket = %s",
-            (ticket,)).fetchone()
+            "SELECT user_id FROM mcp_upload_tickets WHERE ticket_hash = %s",
+            (_thash(ticket),)).fetchone()
     return int(row["user_id"]) if row else None
 
 
@@ -78,14 +86,14 @@ def claim(ticket: str, now_ts: int) -> dict | str:
     with db() as con:
         row = con.execute(
             "UPDATE mcp_upload_tickets SET used_at = %s"
-            " WHERE ticket = %s AND used_at IS NULL AND expires_at > %s"
-            " RETURNING *", (now_ts, ticket, now_ts)).fetchone()
+            " WHERE ticket_hash = %s AND used_at IS NULL AND expires_at > %s"
+            " RETURNING *", (now_ts, _thash(ticket), now_ts)).fetchone()
         if row is not None:
             return dict(row)
     with db() as con:
         row = con.execute(
             "SELECT used_at, expires_at FROM mcp_upload_tickets"
-            " WHERE ticket = %s", (ticket,)).fetchone()
+            " WHERE ticket_hash = %s", (_thash(ticket),)).fetchone()
     if row is None:
         return "not_found"
     if row["used_at"] is not None:
