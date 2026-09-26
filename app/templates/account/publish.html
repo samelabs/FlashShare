@@ -5,6 +5,7 @@
 
 {% block content %}
 <section class="acct-page pub-page" id="pubPage">
+  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1 id="pubTitle">{{ texts.pub_title }}</h1>
   {% include "account/_nav.html" %}
 
@@ -32,7 +33,7 @@
       <details class="usertools-adv pub-wide" id="langMore">
         <summary data-i18n="mytools_add_lang">{{ texts.mytools_add_lang }}</summary>
         <div id="langRows"></div>
-        <button type="button" class="btn-secondary" id="addLangRow">+ {{ texts.mytools_add_lang_row }}</button>
+        <button type="button" class="btn btn-secondary" id="addLangRow">+ {{ texts.mytools_add_lang_row }}</button>
       </details>
     </div>
 
@@ -60,9 +61,9 @@
         <div class="pub-wide pub-outputs">
           <span class="pub-outputs-label" data-i18n="mytools_f_outputs">{{ texts.mytools_f_outputs }}</span>
           <span class="pub-outputs-checks">
-            <label class="fam-chip"><input type="checkbox" id="fOutText" value="text"><span data-i18n="mytools_out_text">{{ texts.mytools_out_text }}</span></label>
-            <label class="fam-chip"><input type="checkbox" id="fOutJson" value="json"><span data-i18n="mytools_out_json">{{ texts.mytools_out_json }}</span></label>
-            <label class="fam-chip"><input type="checkbox" id="fOutFile" value="file" checked><span data-i18n="mytools_out_file">{{ texts.mytools_out_file }}</span></label>
+            <label class="fam-chip"><input class="input" type="checkbox" id="fOutText" value="text"><span data-i18n="mytools_out_text">{{ texts.mytools_out_text }}</span></label>
+            <label class="fam-chip"><input class="input" type="checkbox" id="fOutJson" value="json"><span data-i18n="mytools_out_json">{{ texts.mytools_out_json }}</span></label>
+            <label class="fam-chip"><input class="input" type="checkbox" id="fOutFile" value="file" checked><span data-i18n="mytools_out_file">{{ texts.mytools_out_file }}</span></label>
           </span>
           <em class="pub-err" data-err="outputs"></em>
           <em class="pub-hint" data-i18n="pub_outputs_hint">{{ texts.pub_outputs_hint }}</em>
@@ -74,7 +75,7 @@
     <div class="acct-card pub-card">
       <div class="acct-card-head">
         <h2 data-i18n="pub_sec_params">{{ texts.pub_sec_params }}</h2>
-        <button type="button" class="btn-secondary" id="addParam">+ {{ texts.pub_add_param }}</button>
+        <button type="button" class="btn btn-secondary" id="addParam">+ {{ texts.pub_add_param }}</button>
       </div>
       <p class="profile-note" data-i18n="pub_params_hint">{{ texts.pub_params_hint }}</p>
       <div id="paramRows"></div>
@@ -95,8 +96,8 @@
     </div>
 
     <div class="pub-submit-row">
-      <button type="button" class="btn-secondary" id="pubCancel">{{ texts.cancel }}</button>
-      <button type="button" class="primary" id="pubSubmit"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
+      <button type="button" class="btn btn-secondary" id="pubCancel">{{ texts.cancel }}</button>
+      <button type="button" class="btn btn-primary" id="pubSubmit"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
     </div>
   </form>
 </section>

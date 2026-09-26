@@ -5,10 +5,11 @@
 {% block content %}
 {% from "partials/tool_identity.html" import tool_card with context %}
 <section class="acct-page market-page">
-  <div class="hero-mini">
-    <h1 class="hero-title" data-i18n="market_title">{{ texts.market_title }}</h1>
-    <p class="hero-sub" data-i18n="market_sub">{{ texts.market_sub }}</p>
-    <p class="market-dev-note" data-i18n="market_dev_note">{{ texts.market_dev_note }}</p>
+  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span>Tools</span></nav>
+  <div class="page-head">
+    <h1 data-i18n="market_title">{{ texts.market_title }}</h1>
+    <p class="page-head-sub" data-i18n="market_sub">{{ texts.market_sub }}</p>
+    <p class="hint market-dev-note" data-i18n="market_dev_note">{{ texts.market_dev_note }}</p>
     <div class="hero-callouts">
       <a class="open-callout" href="/account/tools/publish">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M12 12v4"/></svg>
@@ -27,12 +28,10 @@
     <span class="n">{{ market_total }}</span>
   </div>
 
-  <div class="market-toolbar">
-    <form class="market-search" method="get" action="/tools" role="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input type="search" name="q" value="{{ market_q }}" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}" aria-label="{{ texts.tool_search_ph }}">
-    </form>
-  </div>
+  <form class="tool-search" method="get" action="/tools" role="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
+    <input type="search" name="q" value="{{ market_q }}" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}" aria-label="{{ texts.tool_search_ph }}">
+  </form>
 
   {% if market_total == 0 and market_q %}
   <div class="market-none" id="marketNone">
@@ -40,22 +39,25 @@
   </div>
   {% elif tools_all %}
   <div class="market-grid" id="marketGrid">
-    {% for t in tools_all %}{{ tool_card(t, lang, texts, show_author=True) }}{% endfor %}
+    {% for t in tools_all %}{{ tool_card(t, lang, texts) }}{% endfor %}
   </div>
   {% else %}
-  <div class="panel market-empty">
-    <div class="t" data-i18n="market_empty_title">{{ texts.market_empty_title }}</div>
-    <div class="d" data-i18n="market_empty_sub">{{ texts.market_empty_sub }}</div>
-    <a class="open-callout" href="/account/tools/publish">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M12 12v4"/></svg>
-      <span data-i18n="publish_guide">{{ texts.publish_guide }}</span>
-      <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-    </a>
-    <a class="open-callout open-callout-ghost" href="/account/tools">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
-      <span data-i18n="acct_tools">{{ texts.acct_tools }}</span>
-      <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-    </a>
+  <div class="empty market-empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <div class="empty-title" data-i18n="market_empty_title">{{ texts.market_empty_title }}</div>
+    <div class="empty-sub" data-i18n="market_empty_sub">{{ texts.market_empty_sub }}</div>
+    <div class="empty-actions">
+      <a class="open-callout" href="/account/tools/publish">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M12 12v4"/></svg>
+        <span data-i18n="publish_guide">{{ texts.publish_guide }}</span>
+        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+      </a>
+      <a class="open-callout open-callout-ghost" href="/account/tools">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
+        <span data-i18n="acct_tools">{{ texts.acct_tools }}</span>
+        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+      </a>
+    </div>
   </div>
   {% endif %}
 

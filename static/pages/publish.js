@@ -190,7 +190,7 @@ function paramBodyHtml(type, p) {
       `<button type="button" class="pr-opt-del">✕</button></div>`).join("");
     return `<div class="pr-opts">${opts}</div>
       <div class="pr-enum-foot">
-        <button type="button" class="btn-secondary pr-opt-add">+ ${_msg("pub_add_param_option")}</button>
+        <button type="button" class="btn btn-secondary pr-opt-add">+ ${_msg("pub_add_param_option")}</button>
         <label class="pr-default-wrap"><span>${_msg("pub_param_default")}</span>
         <select class="pr-default">${(p.options || [{ value: "" }]).map(o => `<option value="${o.value}"${p.default === o.value ? " selected" : ""}>${o.value}</option>`).join("")}</select></label>
       </div>`;

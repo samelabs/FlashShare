@@ -49,7 +49,7 @@ function _showCalls(btn, t) {
 function _delBtn(toolId, toolKey) {
   // two-state confirm (site pattern, no window.confirm)
   const b = document.createElement('button');
-  b.type = 'button'; b.className = 'btn-secondary';
+  b.type = 'button'; b.className = 'btn btn-secondary';
   let armed = false, timer = 0;
   b.textContent = _msg('delete');
   b.addEventListener('click', async () => {
@@ -94,7 +94,7 @@ async function loadTools() {
     actions.className = 'tool-panel-actions';
 
     const visBtn = document.createElement('button');
-    visBtn.type = 'button'; visBtn.className = 'btn-secondary';
+    visBtn.type = 'button'; visBtn.className = 'btn btn-secondary';
     visBtn.textContent = t.visibility === 'public' ? _msg('mytools_unpublish_btn') : _msg('mytools_publish_btn');
     visBtn.addEventListener('click', async () => {
       visBtn.disabled = true;
@@ -109,23 +109,23 @@ async function loadTools() {
       else alert(_errm(d2.error));
     });
     const stBtn = document.createElement('button');
-    stBtn.type = 'button'; stBtn.className = 'btn-secondary';
+    stBtn.type = 'button'; stBtn.className = 'btn btn-secondary';
     stBtn.textContent = _msg('mytools_test_btn');
     // opens the real tool page as a user sees it (manual test)
     stBtn.addEventListener('click', () => {
       location.href = '/tool/' + t.tool_key;
     });
     const logBtn = document.createElement('button');
-    logBtn.type = 'button'; logBtn.className = 'btn-secondary';
+    logBtn.type = 'button'; logBtn.className = 'btn btn-secondary';
     logBtn.textContent = _msg('mytools_calls_btn');
     logBtn.addEventListener('click', () => _showCalls(logBtn, t));
     const edBtn = document.createElement('button');
-    edBtn.type = 'button'; edBtn.className = 'btn-secondary';
+    edBtn.type = 'button'; edBtn.className = 'btn btn-secondary';
     edBtn.textContent = _msg('mytools_edit');
     edBtn.addEventListener('click', () => { location.href = '/account/tools/publish?id=' + encodeURIComponent(t.tool_id); });
     const enBtn = document.createElement('button');
     enBtn.type = 'button';
-    enBtn.className = 'btn-secondary' + (t.enabled ? ' danger' : '');
+    enBtn.className = 'btn btn-secondary' + (t.enabled ? ' danger' : '');
     enBtn.textContent = t.enabled ? _msg('mytools_disable') : _msg('mytools_enable');
     enBtn.addEventListener('click', async () => {
       enBtn.disabled = true;

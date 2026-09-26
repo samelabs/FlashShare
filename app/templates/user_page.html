@@ -5,11 +5,12 @@
 {% block content %}
 {% from "partials/tool_identity.html" import tool_card with context %}
 <section class="acct-page user-page" id="userPage">
-  <div class="userpage-hero panel">
+  <nav class="crumbs"><a href="/tools">Tools</a><span class="crumb-sep">/</span><span>@{{ handle }}</span></nav>
+  <div class="userpage-hero">
     <span class="userpage-avatar" aria-hidden="true">{{ owner_handle[:1] | upper }}</span>
-    <div class="userpage-id">
-      <h1 class="hero-title userpage-handle">@{{ owner_handle }}</h1>
-      <p class="userpage-tagline" data-i18n="owner_page_desc">{{ texts.owner_page_desc }}</p>
+    <div class="page-head userpage-id">
+      <h1 class="userpage-handle">@{{ owner_handle }}</h1>
+      <p class="page-head-sub" data-i18n="owner_page_desc">{{ texts.owner_page_desc }}</p>
     </div>
     <div class="userpage-nums">
       <div class="userpage-num"><strong>{{ owner_tools | length }}</strong><span data-i18n="owner_tools_n">{{ texts.owner_tools_n }}</span></div>
@@ -23,24 +24,26 @@
     <span class="n">{{ owner_tools | length }}</span>
   </div>
   <div class="market-grid userpage-grid">
-    {% for t in owner_tools %}{{ tool_card(t, lang, texts, show_author=False) }}{% endfor %}
+    {% for t in owner_tools %}{{ tool_card(t, lang, texts) }}{% endfor %}
   </div>
   {% else %}
-  <div class="panel userpage-empty">
-    <svg class="userpage-empty-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
-    <div class="t" data-i18n="owner_visit_title">{{ texts.owner_visit_title }}</div>
-    <div class="d" data-i18n="{{ 'owner_own_hint' if is_self else 'owner_visit_hint' }}">{{ texts.owner_own_hint if is_self else texts.owner_visit_hint }}</div>
-    {% if is_self %}
-    <a class="open-callout" href="/account/tools">
-      <span data-i18n="owner_own_cta">{{ texts.owner_own_cta }}</span>
-      <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-    </a>
-    {% else %}
-    <a class="open-callout open-callout-ghost" href="/tools">
-      <span data-i18n="owner_visit_cta">{{ texts.owner_visit_cta }}</span>
-      <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-    </a>
-    {% endif %}
+  <div class="empty userpage-empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
+    <div class="empty-title" data-i18n="owner_visit_title">{{ texts.owner_visit_title }}</div>
+    <div class="empty-sub" data-i18n="{{ 'owner_own_hint' if is_self else 'owner_visit_hint' }}">{{ texts.owner_own_hint if is_self else texts.owner_visit_hint }}</div>
+    <div class="empty-actions">
+      {% if is_self %}
+      <a class="open-callout" href="/account/tools">
+        <span data-i18n="owner_own_cta">{{ texts.owner_own_cta }}</span>
+        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+      </a>
+      {% else %}
+      <a class="open-callout open-callout-ghost" href="/tools">
+        <span data-i18n="owner_visit_cta">{{ texts.owner_visit_cta }}</span>
+        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+      </a>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 </section>

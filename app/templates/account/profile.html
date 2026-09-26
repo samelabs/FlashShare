@@ -5,40 +5,42 @@
 
 {% block content %}
 <section class="acct-page">
+  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1>{{ texts.acct_profile }}</h1>
   {% include "account/_nav.html" %}
-  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+  {% if error %}<p class="error-note">{{ error }}</p>{% endif %}
 
   <div class="acct-card">
     <h2 data-i18n="basicInfo">{{ texts.basicInfo }}</h2>
     <form method="post" action="/account/profile" class="auth-form">
-      <label>
-        <span data-i18n="username">{{ texts.username }}</span>
-        <input type="text" value="{{ u.username }}" disabled>
+      <label class="field">
+        <span class="field-label" data-i18n="username">{{ texts.username }}</span>
+        <input class="input" type="text" value="{{ u.username }}" disabled>
       </label>
-      <label>
-        <span data-i18n="email">{{ texts.email }}</span>
-        <input type="email" name="email" value="{{ (u.email or '') }}" required maxlength="254">
+      <label class="field">
+        <span class="field-label" data-i18n="email">{{ texts.email }}</span>
+        <input class="input" type="email" name="email" value="{{ (u.email or '') }}" required maxlength="254">
       </label>
       {% if user_has_password %}
-      <label>
-        <span data-i18n="currentPassword">{{ texts.currentPassword }}</span>
-        <input type="password" name="current_password" autocomplete="current-password" maxlength="128">
+      <label class="field">
+        <span class="field-label" data-i18n="currentPassword">{{ texts.currentPassword }}</span>
+        <input class="input" type="password" name="current_password" autocomplete="current-password" maxlength="128">
+        <span class="field-note" data-i18n="currentPasswordHint">{{ texts.currentPasswordHint }}</span>
       </label>
       {% endif %}
-      <label>
-        <span data-i18n="displayName">{{ texts.displayName }}</span>
-        <input type="text" name="display_name" value="{{ (u.displayName or '') }}" maxlength="64">
+      <label class="field">
+        <span class="field-label" data-i18n="displayName">{{ texts.displayName }}</span>
+        <input class="input" type="text" name="display_name" value="{{ (u.displayName or '') }}" maxlength="64">
       </label>
-      <label>
-        <span data-i18n="bio">{{ texts.bio }}</span>
-        <textarea name="bio" rows="3" maxlength="500">{{ (u.bio or '') }}</textarea>
+      <label class="field">
+        <span class="field-label" data-i18n="bio">{{ texts.bio }}</span>
+        <textarea class="textarea" name="bio" rows="3" maxlength="500">{{ (u.bio or '') }}</textarea>
       </label>
-      <label>
-        <span data-i18n="payout_channel">{{ texts.payout_channel }}</span>
-        <input type="text" name="payout_channel" value="{{ (u.payoutChannel or '') }}" maxlength="120" data-i18n-placeholder="payout_ph" placeholder="{{ texts.payout_ph }}">
+      <label class="field">
+        <span class="field-label" data-i18n="payout_channel">{{ texts.payout_channel }}</span>
+        <input class="input" type="text" name="payout_channel" value="{{ (u.payoutChannel or '') }}" maxlength="120" data-i18n-placeholder="payout_ph" placeholder="{{ texts.payout_ph }}">
       </label>
-      <button type="submit" class="primary"><span data-i18n="save">{{ texts.save }}</span></button>
+      <button type="submit" class="btn btn-primary"><span data-i18n="save">{{ texts.save }}</span></button>
     </form>
   </div>
 
@@ -46,16 +48,16 @@
     <h2>X</h2>
     {% if x_bound %}
     <p class="profile-bound"><span data-i18n="xBound">{{ texts.xBound }}</span> <a href="{{ u.xProfileUrl or '' }}" target="_blank" rel="noreferrer">@{{ u.xUsername or '' }}</a></p>
-    <button type="button" class="btn-secondary" id="unbindX"><span data-i18n="xUnbind">{{ texts.xUnbind }}</span></button>
+    <button type="button" class="btn btn-secondary" id="unbindX"><span data-i18n="xUnbind">{{ texts.xUnbind }}</span></button>
     {% else %}
     <p class="profile-unbound" data-i18n="xUnbound">{{ texts.xUnbound }}</p>
-    <a class="btn-secondary" href="/auth/x/login?bind=1" data-i18n="xBinding">{{ texts.xBinding }}</a>
+    <a class="btn btn-secondary" href="/auth/x/login?bind=1" data-i18n="xBinding">{{ texts.xBinding }}</a>
     {% endif %}
   </div>
 
   <div class="acct-card">
     <form method="post" action="/auth/logout">
-      <button type="submit" class="btn-danger"><span data-i18n="logout">{{ texts.logout }}</span></button>
+      <button type="submit" class="btn btn-danger"><span data-i18n="logout">{{ texts.logout }}</span></button>
     </form>
   </div>
 </section>

@@ -13,6 +13,7 @@ async function _copyText(btn, text) {
 document.querySelectorAll("button[data-copy-target]").forEach((btn) => {
   btn.addEventListener("click", () => {
     const src = document.getElementById(btn.dataset.copyTarget);
-    if (src) _copyText(btn, src.textContent);
+    // input targets carry the text as a value property, not text content
+    if (src) _copyText(btn, src.value !== undefined ? src.value : src.textContent);
   });
 });

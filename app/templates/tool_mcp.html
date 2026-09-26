@@ -4,9 +4,10 @@
 
 {% block content %}
 <section class="acct-page toolpage">
-  <div class="hero-mini">
-    <h1 class="hero-title">{{ tool_name }}</h1>
-    <p class="hero-sub toolpage-by">
+  <nav class="crumbs"><a href="/tool/{{ tool.id }}">{{ tool_name }}</a><span class="crumb-sep">/</span><span>MCP</span></nav>
+  <div class="page-head">
+    <h1>{{ tool_name }} · MCP</h1>
+    <p class="page-head-sub">
       {% if handle %}
       <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <span class="toolpage-handle">@{{ handle }}</span>
       {% else %}
@@ -22,7 +23,7 @@
       <a href="/agents"><span data-i18n="agents_qs">{{ texts.agents_qs }}</span> →</a>
     </div>
     <pre class="code-block" id="mcpAdd">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;fsk_…&gt;"</pre>
-    <button type="button" class="btn-secondary" id="copyMcpAdd" data-copy-target="mcpAdd"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
+    <button type="button" class="btn btn-secondary" id="copyMcpAdd" data-copy-target="mcpAdd"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
   </div>
 
   <div class="panel">
@@ -42,7 +43,7 @@
     }
   }
 }</pre>
-    <button type="button" class="btn-secondary" id="copyMcp" data-copy-target="mcpCall"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
+    <button type="button" class="btn btn-secondary" id="copyMcp" data-copy-target="mcpCall"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
   </div>
 
 </section>

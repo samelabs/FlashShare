@@ -5,28 +5,29 @@
 
 {% block content %}
 <section class="acct-page">
+  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1>{{ texts.acct_security }}</h1>
   {% include "account/_nav.html" %}
-  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+  {% if error %}<p class="error-note">{{ error }}</p>{% endif %}
 
   {% if user_has_password %}
   <div class="acct-card">
     <h2 data-i18n="changePassword">{{ texts.changePassword }}</h2>
     <form method="post" action="/account/password" class="auth-form">
-      <label>
-        <span data-i18n="currentPassword">{{ texts.currentPassword }}</span>
-        <input type="password" name="old_password" required autocomplete="current-password" maxlength="128">
+      <label class="field">
+        <span class="field-label" data-i18n="currentPassword">{{ texts.currentPassword }}</span>
+        <input class="input" type="password" name="old_password" required autocomplete="current-password" maxlength="128">
       </label>
-      <label>
-        <span data-i18n="newPassword">{{ texts.newPassword }}</span>
-        <input type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
+      <label class="field">
+        <span class="field-label" data-i18n="newPassword">{{ texts.newPassword }}</span>
+        <input class="input" type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
       </label>
-      <label>
-        <span data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
-        <input type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+      <label class="field">
+        <span class="field-label" data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
+        <input class="input" type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
       </label>
       <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
-      <button type="submit" class="primary"><span data-i18n="updatePassword">{{ texts.updatePassword }}</span></button>
+      <button type="submit" class="btn btn-primary"><span data-i18n="updatePassword">{{ texts.updatePassword }}</span></button>
     </form>
   </div>
   {% else %}
@@ -34,16 +35,16 @@
     <h2 data-i18n="setPassword">{{ texts.setPassword }}</h2>
     <p class="profile-unbound" data-i18n="noPasswordHint">{{ texts.noPasswordHint }}</p>
     <form method="post" action="/account/password" class="auth-form">
-      <label>
-        <span data-i18n="newPassword">{{ texts.newPassword }}</span>
-        <input type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
+      <label class="field">
+        <span class="field-label" data-i18n="newPassword">{{ texts.newPassword }}</span>
+        <input class="input" type="password" name="new_password" id="newPw" required autocomplete="new-password" minlength="8" maxlength="128">
       </label>
-      <label>
-        <span data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
-        <input type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+      <label class="field">
+        <span class="field-label" data-i18n="confirmPassword">{{ texts.confirmPassword }}</span>
+        <input class="input" type="password" name="new_password_confirm" id="newPwConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
       </label>
       <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
-      <button type="submit" class="primary"><span data-i18n="setPassword">{{ texts.setPassword }}</span></button>
+      <button type="submit" class="btn btn-primary"><span data-i18n="setPassword">{{ texts.setPassword }}</span></button>
     </form>
   </div>
   {% endif %}

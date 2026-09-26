@@ -253,6 +253,7 @@ SERVER_I18N = {
         "changePassword": "Modifier le mot de passe",
         "setPassword": "Définir un mot de passe",
         "currentPassword": "Mot de passe actuel",
+        "currentPasswordHint": "Nécessaire pour modifier l’e-mail",
         "newPassword": "Nouveau mot de passe (8+)",
         "confirmPassword": "Confirmer le mot de passe",
         "passwordMismatch": "Les mots de passe ne correspondent pas",
@@ -453,6 +454,7 @@ SERVER_I18N = {
         "market_dev_note": "Les développeurs tiers peuvent publier des outils et gagner selon l'usage.",
         "menu_account": "Compte",
         "nav_tools": "Outils",
+        "nav_menu": "Menu",
         "home_use_cta": "Utiliser un outil",
         "seo_keywords": "plateforme d'outils, agents IA, MCP, outils de fichiers, compression d'images, conversion de format, partage de fichiers temporaire",
         "mytools_created_ok": "Outil {id} créé — il est privé. Testez-le, puis publiez-le quand il est prêt.",
@@ -538,7 +540,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} fichiers",
         "out_kind_text": "Texte",
         "out_kind_json": "Données",
-        "out_kind_file": "Fichier"
+        "out_kind_file": "Fichier",
+        "copy_link": "Copier le lien"
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -780,6 +783,7 @@ SERVER_I18N = {
         "changePassword": "비밀번호 변경",
         "setPassword": "비밀번호 설정",
         "currentPassword": "현재 비밀번호",
+        "currentPasswordHint": "이메일 변경 시 필요",
         "newPassword": "새 비밀번호 (8자+)",
         "confirmPassword": "비밀번호 확인",
         "passwordMismatch": "비밀번호가 일치하지 않습니다",
@@ -980,6 +984,7 @@ SERVER_I18N = {
         "market_dev_note": "서드파티 개발자는 도구를 출시하고 사용량에 따라 수익을 얻을 수 있습니다.",
         "menu_account": "계정",
         "nav_tools": "도구",
+        "nav_menu": "메뉴",
         "home_use_cta": "도구 사용하기",
         "seo_keywords": "도구 플랫폼, AI 에이전트, MCP, 파일 도구, 이미지 압축, 형식 변환, 임시 파일 공유",
         "mytools_created_ok": "도구 {id}가 생성되었습니다 — 비공개 상태입니다. 테스트한 뒤 준비되면 공개하세요.",
@@ -1065,7 +1070,8 @@ SERVER_I18N = {
         "files_window_short": "{min}~{max}개 파일",
         "out_kind_text": "텍스트",
         "out_kind_json": "데이터",
-        "out_kind_file": "파일"
+        "out_kind_file": "파일",
+        "copy_link": "링크 복사"
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1306,6 +1312,7 @@ SERVER_I18N = {
         "changePassword": "Сменить пароль",
         "setPassword": "Задать пароль",
         "currentPassword": "Текущий пароль",
+        "currentPasswordHint": "Нужен для смены почты",
         "newPassword": "Новый пароль (8+)",
         "confirmPassword": "Повторите пароль",
         "passwordMismatch": "Пароли не совпадают",
@@ -1506,6 +1513,7 @@ SERVER_I18N = {
         "market_dev_note": "Сторонние разработчики могут публиковать инструменты и зарабатывать на использовании.",
         "menu_account": "Аккаунт",
         "nav_tools": "Инструменты",
+        "nav_menu": "Меню",
         "home_use_cta": "Использовать инструмент",
         "seo_keywords": "платформа инструментов, ИИ-агенты, MCP, файловые инструменты, сжатие изображений, конвертация форматов, временное хранение файлов",
         "mytools_created_ok": "Инструмент {id} создан — он приватный. Протестируйте и опубликуйте, когда будет готов.",
@@ -1591,7 +1599,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} файлов",
         "out_kind_text": "Текст",
         "out_kind_json": "Данные",
-        "out_kind_file": "Файл"
+        "out_kind_file": "Файл",
+        "copy_link": "Копировать ссылку"
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -1832,6 +1841,7 @@ SERVER_I18N = {
         "changePassword": "تغيير كلمة المرور",
         "setPassword": "تعيين كلمة المرور",
         "currentPassword": "كلمة المرور الحالية",
+        "currentPasswordHint": "مطلوب لتغيير البريد الإلكتروني",
         "newPassword": "كلمة مرور جديدة (8+)",
         "confirmPassword": "تأكيد كلمة المرور",
         "passwordMismatch": "كلمات المرور غير متطابقة",
@@ -2032,6 +2042,7 @@ SERVER_I18N = {
         "market_dev_note": "يمكن للمطورين الخارجيين نشر الأدوات والكسب من الاستخدام.",
         "menu_account": "الحساب",
         "nav_tools": "الأدوات",
+        "nav_menu": "القائمة",
         "home_use_cta": "استخدم أداة",
         "seo_keywords": "منصة أدوات, وكلاء ذكاء اصطناعي, MCP, أدوات الملفات, ضغط الصور, تحويل الصيغ, مشاركة ملفات مؤقتة",
         "mytools_created_ok": "تم إنشاء الأداة {id} — وهي خاصة. اختبرها ثم انشرها عندما تكون جاهزة.",
@@ -2117,7 +2128,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} ملفات",
         "out_kind_text": "نص",
         "out_kind_json": "بيانات",
-        "out_kind_file": "ملف"
+        "out_kind_file": "ملف",
+        "copy_link": "نسخ الرابط"
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2359,6 +2371,7 @@ SERVER_I18N = {
         "changePassword": "Passwort ändern",
         "setPassword": "Passwort festlegen",
         "currentPassword": "Aktuelles Passwort",
+        "currentPasswordHint": "Zum Ändern der E-Mail-Adresse erforderlich",
         "newPassword": "Neues Passwort (8+)",
         "confirmPassword": "Passwort bestätigen",
         "passwordMismatch": "Passwörter stimmen nicht überein",
@@ -2559,6 +2572,7 @@ SERVER_I18N = {
         "market_dev_note": "Externe Entwickler können Tools veröffentlichen und je Nutzung verdienen.",
         "menu_account": "Konto",
         "nav_tools": "Tools",
+        "nav_menu": "Menü",
         "home_use_cta": "Ein Tool nutzen",
         "seo_keywords": "Tool-Plattform, KI-Agenten, MCP, Datei-Tools, Bildkomprimierung, Formatkonvertierung, temporäre Dateifreigabe",
         "mytools_created_ok": "Tool {id} erstellt — es ist privat. Testen Sie es und veröffentlichen Sie es, wenn es bereit ist.",
@@ -2644,7 +2658,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} Dateien",
         "out_kind_text": "Text",
         "out_kind_json": "Daten",
-        "out_kind_file": "Datei"
+        "out_kind_file": "Datei",
+        "copy_link": "Link kopieren"
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -2885,6 +2900,7 @@ SERVER_I18N = {
         "changePassword": "Alterar senha",
         "setPassword": "Definir senha",
         "currentPassword": "Senha atual",
+        "currentPasswordHint": "Necessário para alterar o e-mail",
         "newPassword": "Nova senha (8+)",
         "confirmPassword": "Confirmar senha",
         "passwordMismatch": "As senhas não coincidem",
@@ -3085,6 +3101,7 @@ SERVER_I18N = {
         "market_dev_note": "Desenvolvedores terceiros podem publicar ferramentas e ganhar por uso.",
         "menu_account": "Conta",
         "nav_tools": "Ferramentas",
+        "nav_menu": "Menu",
         "home_use_cta": "Usar uma ferramenta",
         "seo_keywords": "plataforma de ferramentas, agentes de IA, MCP, ferramentas de arquivos, compressão de imagem, conversão de formato, compartilhamento temporário de arquivos",
         "mytools_created_ok": "Ferramenta {id} criada — ela é privada. Teste-a e publique quando estiver pronta.",
@@ -3170,7 +3187,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} arquivos",
         "out_kind_text": "Texto",
         "out_kind_json": "Dados",
-        "out_kind_file": "Arquivo"
+        "out_kind_file": "Arquivo",
+        "copy_link": "Copiar link"
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -3411,6 +3429,7 @@ SERVER_I18N = {
         "changePassword": "パスワード変更",
         "setPassword": "パスワード設定",
         "currentPassword": "現在のパスワード",
+        "currentPasswordHint": "メールアドレス変更時に必要",
         "newPassword": "新しいパスワード（8文字以上）",
         "confirmPassword": "パスワード確認",
         "passwordMismatch": "パスワードが一致しません",
@@ -3611,6 +3630,7 @@ SERVER_I18N = {
         "market_dev_note": "サードパーティ開発者はツールを公開し、利用に応じて収益を得られます。",
         "menu_account": "アカウント",
         "nav_tools": "ツール",
+        "nav_menu": "メニュー",
         "home_use_cta": "ツールを使う",
         "seo_keywords": "ツールプラットフォーム, AIエージェント, MCP, ファイルツール, 画像圧縮, 形式変換, 一時ファイル共有",
         "mytools_created_ok": "ツール {id} を作成しました — 非公開です。テストしてから準備ができたら公開してください。",
@@ -3696,7 +3716,8 @@ SERVER_I18N = {
         "files_window_short": "{min}～{max} ファイル",
         "out_kind_text": "テキスト",
         "out_kind_json": "データ",
-        "out_kind_file": "ファイル"
+        "out_kind_file": "ファイル",
+        "copy_link": "リンクをコピー"
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -3938,6 +3959,7 @@ SERVER_I18N = {
         "changePassword": "修改密码",
         "setPassword": "设置密码",
         "currentPassword": "当前密码",
+        "currentPasswordHint": "修改邮箱时需要",
         "newPassword": "新密码（≥8位）",
         "confirmPassword": "确认新密码",
         "passwordMismatch": "两次输入的密码不一致",
@@ -4138,6 +4160,7 @@ SERVER_I18N = {
         "market_dev_note": "第三方开发者可以发布工具并从调用中获得收益。",
         "menu_account": "账户",
         "nav_tools": "工具",
+        "nav_menu": "菜单",
         "home_use_cta": "直接使用工具",
         "seo_keywords": "工具平台, AI Agent, MCP, 文件工具, 图片压缩, 格式转换, 临时文件分享",
         "mytools_created_ok": "工具 {id} 已创建——默认私有，先试用再转为公开。",
@@ -4223,7 +4246,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} 个文件",
         "out_kind_text": "文本",
         "out_kind_json": "数据",
-        "out_kind_file": "文件"
+        "out_kind_file": "文件",
+        "copy_link": "复制链接"
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -4464,6 +4488,7 @@ SERVER_I18N = {
         "changePassword": "Cambiar contraseña",
         "setPassword": "Establecer contraseña",
         "currentPassword": "Contraseña actual",
+        "currentPasswordHint": "Se necesita para cambiar el correo",
         "newPassword": "Nueva contraseña (8+)",
         "confirmPassword": "Confirmar contraseña",
         "passwordMismatch": "Las contraseñas no coinciden",
@@ -4664,6 +4689,7 @@ SERVER_I18N = {
         "market_dev_note": "Los desarrolladores externos pueden publicar herramientas y ganar por uso.",
         "menu_account": "Cuenta",
         "nav_tools": "Herramientas",
+        "nav_menu": "Menú",
         "home_use_cta": "Usar una herramienta",
         "seo_keywords": "plataforma de herramientas, agentes de IA, MCP, herramientas de archivos, compresión de imágenes, conversión de formato, compartir archivos temporalmente",
         "mytools_created_ok": "Herramienta {id} creada — es privada. Pruébala y publícala cuando esté lista.",
@@ -4749,7 +4775,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} archivos",
         "out_kind_text": "Texto",
         "out_kind_json": "Datos",
-        "out_kind_file": "Archivo"
+        "out_kind_file": "Archivo",
+        "copy_link": "Copiar enlace"
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -4991,6 +5018,7 @@ SERVER_I18N = {
         "changePassword": "Change Password",
         "setPassword": "Set Password",
         "currentPassword": "Current password",
+        "currentPasswordHint": "Needed when changing your email",
         "newPassword": "New password (8+)",
         "confirmPassword": "Confirm new password",
         "passwordMismatch": "Passwords do not match",
@@ -5191,6 +5219,7 @@ SERVER_I18N = {
         "market_dev_note": "Third-party developers can publish tools and earn from usage.",
         "menu_account": "Account",
         "nav_tools": "Tools",
+        "nav_menu": "Menu",
         "home_use_cta": "Use a Tool",
         "seo_keywords": "tools platform, AI agents, MCP, file tools, image compression, format conversion, temporary file sharing",
         "mytools_created_ok": "Tool {id} created — it is private. Test it, then publish it when ready.",
@@ -5276,7 +5305,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} files",
         "out_kind_text": "Text",
         "out_kind_json": "Data",
-        "out_kind_file": "File"
+        "out_kind_file": "File",
+        "copy_link": "Copy link"
 },
 }
 

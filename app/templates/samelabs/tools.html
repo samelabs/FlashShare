@@ -39,7 +39,7 @@
         <td class="sl-num">{{ (t.provider_earn_usd or '—') }}</td>
         <td>
           {% if t.owner_id is none and t.execution == 'http' %}
-          <button class="sl-btn sl-btn-sm sl-btn-danger" type="button"
+          <button class="btn sl-btn sl-btn-sm sl-btn-danger" type="button"
                   data-del="{{ t.tool_key }}">Delete</button>
           {% endif %}
         </td>
@@ -76,7 +76,7 @@
     <label>Price (Credits/call) <input type="number" name="cost" value="0" min="0"></label>
     <div class="sl-modal-actions">
       <button class="sl-btn" type="button" id="createHttpCancel">Cancel</button>
-      <button class="sl-btn sl-btn-primary" type="button" id="createHttpSubmit">Create</button>
+      <button class="btn sl-btn sl-btn-primary" type="button" id="createHttpSubmit">Create</button>
     </div>
   </form>
 </dialog>

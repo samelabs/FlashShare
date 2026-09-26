@@ -7,6 +7,10 @@
   <div class="top-actions">
     <a class="topbar-agents" href="/tools" data-i18n="nav_tools" title="{{ texts.nav_tools }}">{{ texts.nav_tools }}</a>
     <a class="topbar-agents" href="/agents" data-i18n="agents_title" title="{{ texts.agents_title }}">{{ texts.agents_title }}</a>
+    <button class="nav-icon nav-menu-btn" id="mobileNavBtn" type="button"
+            aria-label="{{ texts.nav_menu }}" title="{{ texts.nav_menu }}" aria-haspopup="menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path></svg>
+    </button>
     {% if user %}
     <button class="nav-icon" id="historyBtn" type="button" aria-label="{{ texts.menu_recent }}" title="{{ texts.menu_recent }}">{{ history_icon_svg }}</button>
     <div class="user-menu">
@@ -71,4 +75,17 @@
       <div class="lang-menu hidden" id="langMenu" role="listbox" aria-label="Language"></div>
     </div>
   </div>
+
+  {# 窄屏菜单抽屉 (<768px): 导航 + 未登录认证入口; 遮罩点击关闭 (common.js) #}
+  <div class="mobile-nav-backdrop hidden" id="mobileNavBackdrop"></div>
+  <nav class="mobile-nav-sheet hidden" id="mobileNavSheet" aria-label="{{ texts.nav_menu }}">
+    <a href="/tools" role="menuitem">{{ icon_svg("wand") }}<span data-i18n="nav_tools">{{ texts.nav_tools }}</span></a>
+    <a href="/agents" role="menuitem">{{ icon_svg("share") }}<span data-i18n="agents_title">{{ texts.agents_title }}</span></a>
+    {% if not user %}
+    <div class="mobile-nav-auth" role="group" aria-label="{{ texts['acct_nav'] }}">
+      <a class="mobile-nav-login" href="/auth/login" role="menuitem" data-i18n="signIn">{{ texts.signIn }}</a>
+      <a class="mobile-nav-register" href="/auth/register" role="menuitem" data-i18n="signUp">{{ texts.signUp }}</a>
+    </div>
+    {% endif %}
+  </nav>
 </header>

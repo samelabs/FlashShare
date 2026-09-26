@@ -34,7 +34,7 @@
 {% endblock %}
 
 {% block content %}
-{% from "partials/tool_identity.html" import tool_tab with context %}
+{% from "partials/tool_identity.html" import tool_pick with context %}
 <section class="workspace">
   <div class="hero-mini">
     <h1 class="hero-title" data-i18n="hero_title">{{ texts.hero_title }}</h1>
@@ -56,14 +56,14 @@
     <div class="picker-head">
       <span class="picker-step" aria-hidden="true">1</span>
       <span class="picker-title" data-i18n="pick_tool">{{ texts.pick_tool }}</span>
-      <div class="tool-search" role="search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
-        <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
-        <div class="tool-search-pop hidden" id="toolSearchPop" role="listbox"></div>
-      </div>
+    </div>
+    <div class="tool-search" role="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
+      <input id="toolSearch" type="search" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}">
+      <div class="tool-search-pop hidden" id="toolSearchPop" role="listbox"></div>
     </div>
     <div class="picker-grid{% if not tools %} hidden{% endif %}" id="homeTools">
-      {% for t in tools %}{{ tool_tab(t, lang, texts) }}{% endfor %}
+      {% for t in tools %}{{ tool_pick(t, lang, texts) }}{% endfor %}
     </div>
     <p class="empty{% if tools %} hidden{% endif %}" id="pickerEmpty">
       {{ icon_svg("search") }}<span data-i18n="tool_search_none">{{ texts.tool_search_none }}</span>

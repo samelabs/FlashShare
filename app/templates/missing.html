@@ -2,10 +2,12 @@
 {% block title %}{{ texts.missing_title }}{% endblock %}
 {% block desc %}{{ texts.missing_desc }}{% endblock %}
 {% block content %}
-<section class="file-page">
-  <div class="file-mark" aria-hidden="true">!</div>
-  <h1>{{ texts.missing_title }}</h1>
-  <p class="file-note">{{ texts.missing_desc }}</p>
-  <a class="primary download-button" href="/">{{ texts.create_new }}</a>
+<section class="file-page status-page">
+  <div class="empty">
+    <span class="status-glyph" aria-hidden="true">!</span>
+    <h1>{{ texts.missing_title }}</h1>
+    <p>{{ texts.missing_desc }}</p>
+    <a class="btn btn-primary" href="/">{{ texts.create_new }}</a>
+  </div>
 </section>
 {% endblock %}

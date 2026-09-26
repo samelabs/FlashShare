@@ -34,6 +34,23 @@
 
   // Phone: after a pick the list collapses to a compact "selected + change"
   // row so the input area is immediately in view; Change re-expands.
+  function expandPicker(bar) {
+    pickerEl.classList.remove("collapsed");
+    bar.classList.add("hidden");
+    setRunHead();
+    pickerEl.querySelector(".tool-search input") && pickerEl.querySelector(".tool-search input").focus();
+  }
+
+  // One place names the selected tool: collapsed → the compact bar; the
+  // step-2 heading carries the generic input label until expanded.
+  function setRunHead() {
+    const head = document.getElementById("runPanelTool");
+    if (!head || !activeTool) return;
+    head.textContent = pickerEl.classList.contains("collapsed")
+      ? window.t("give_input")
+      : (window.resolveLabel(activeTool.label) || activeTool.id);
+  }
+
   function collapsePicker() {
     if (!pickerEl || !activeTool) return;
     let bar = pickerEl.querySelector(".picker-compact");
@@ -41,17 +58,14 @@
       bar = document.createElement("div");
       bar.className = "picker-compact";
       pickerEl.insertBefore(bar, pickerEl.firstChild);
-      bar.addEventListener("click", () => {
-        pickerEl.classList.remove("collapsed");
-        bar.classList.add("hidden");
-        pickerEl.querySelector(".tool-search input") && pickerEl.querySelector(".tool-search input").focus();
-      });
+      bar.addEventListener("click", () => expandPicker(bar));
     }
     bar.innerHTML = window.iconSvg(activeTool.icon || "wand")
       + '<span class="picker-compact-name">' + (window.resolveLabel(activeTool.label) || activeTool.id) + "</span>"
       + '<button type="button" class="btn btn-ghost btn-sm">' + window.t("change_tool") + "</button>";
     bar.classList.remove("hidden");
     pickerEl.classList.add("collapsed");
+    setRunHead();
     runPanel && runPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -71,13 +85,12 @@
     const res = document.getElementById("result");
     if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }
     // Pick-card active state + the step-2 heading follow the selection
-    document.querySelectorAll(".tool-pick").forEach(b => {
+    document.querySelectorAll(".tool-card").forEach(b => {
       const on = b.dataset.toolId === tool.id;
       b.classList.toggle("active", on);
       b.setAttribute("aria-pressed", on ? "true" : "false");
     });
-    const head = document.getElementById("runPanelTool");
-    if (head) head.textContent = window.resolveLabel(tool.label) || tool.id;
+    setRunHead();
     window.invalidateToolOperation && window.invalidateToolOperation();
   }
   window.__homeSelectTool = selectTool;
@@ -85,7 +98,7 @@
   function bindTabs() {
     const homeTools = document.getElementById("homeTools");
     if (!homeTools) return;
-    homeTools.querySelectorAll(".tool-pick").forEach(tab => {
+    homeTools.querySelectorAll(".tool-card").forEach(tab => {
       tab.addEventListener("click", () => {
         const tool = tools.find(t => t.id === tab.dataset.toolId);
         if (tool) selectTool(tool);
@@ -171,20 +184,15 @@
   const _after = window.__afterI18n;
   window.__afterI18n = function () {
     if (typeof _after === "function") _after();
-    document.querySelectorAll("#homeTools .tool-pick").forEach(card => {
+    document.querySelectorAll("#homeTools .tool-card").forEach(card => {
       const tool = tools.find(t => t.id === card.dataset.toolId);
       if (!tool) return;
-      const nameEl = card.querySelector(".tool-pick-name");
+      const nameEl = card.querySelector(".tool-card-name");
       if (nameEl) nameEl.textContent = window.resolveLabel(tool.label) || tool.id;
-      const descEl = card.querySelector(".tool-pick-desc");
+      const descEl = card.querySelector(".tool-card-desc");
       if (descEl) descEl.textContent = window.resolveLabel(tool.desc) || "";
     });
-    const head = document.getElementById("runPanelTool");
-    if (head && activeTool) {
-      const named = document.querySelector(".tool-pick.active .tool-pick-name");
-      head.textContent = (named && named.textContent)
-        || window.resolveLabel(activeTool.label) || activeTool.id;
-    }
+    setRunHead();
   };
 
   bindTabs();
