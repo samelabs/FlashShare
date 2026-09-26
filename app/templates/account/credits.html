@@ -96,7 +96,7 @@
         {% elif pl.action == 'upgrade' %}
         <button type="button" class="btn btn-primary sub-upgrade" data-plan="{{ pl.code }}">{{ texts.sub_upgrade_btn|replace('{plan}', pl.name) }}</button>
         {% elif pl.action == 'downgrade' %}
-        <button type="button" class="ghost sub-downgrade" data-plan="{{ pl.code }}">{{ texts.sub_downgrade_btn|replace('{plan}', pl.name) }}</button>
+        <button type="button" class="btn btn-ghost sub-downgrade" data-plan="{{ pl.code }}">{{ texts.sub_downgrade_btn|replace('{plan}', pl.name) }}</button>
         {% elif pl.action == 'pending' %}
         <span class="topup-status" data-i18n="sub_downgrade_done">{{ texts.sub_downgrade_done }}</span>
         {% else %}

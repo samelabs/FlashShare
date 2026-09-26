@@ -96,7 +96,7 @@ def _req(method, path, cookies=None, **kw):
 
 
 def _form_error(html):
-    m = _re.search(r'<p class="form-error">(.*?)</p>', html, _re.S)
+    m = _re.search(r'<p class="error-note">(.*?)</p>', html, _re.S)
     return m.group(1).strip() if m else None
 
 

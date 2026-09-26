@@ -206,6 +206,10 @@ pre.rs-text, pre.rs-json {
   font-size: var(--fs-base);
 }
 .empty svg { width: 36px; height: 36px; stroke: var(--gray-400); stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.empty .empty-title { font-size: var(--fs-md); font-weight: 700; color: var(--ink); }
+.empty .empty-sub { font-size: var(--fs-sm); max-width: 44ch; }
+.empty .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
+.empty .empty-actions > * { margin: 0; }
 .error-note {
   padding: var(--s3); border-radius: var(--r-sm);
   background: var(--danger-soft); color: var(--danger-strong);
