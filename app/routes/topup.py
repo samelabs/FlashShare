@@ -1,4 +1,6 @@
 """Top-up endpoints: Creem checkout + webhook."""
+
+import asyncio
 import json
 
 from fastapi import APIRouter
@@ -69,7 +71,7 @@ async def topup_checkout(request: Request):
     if prov.startswith("ch:"):
         # provider entity exists — retrieve instead of re-create
         try:
-            co = creem.retrieve_checkout(prov[3:])
+            co = await asyncio.to_thread(creem.retrieve_checkout, prov[3:])
         except Exception:
             return JSONResponse(
                 {"ok": False, "error": "checkout_unresolved"}, 502)
@@ -91,7 +93,8 @@ async def topup_checkout(request: Request):
             _prov_currency = str((co.get("order") or {}).get("currency")
                                  or co.get("currency") or "")
             try:
-                res = creem.fulfill_by_request_id(
+                res = await asyncio.to_thread(
+                    creem.fulfill_by_request_id,
                     int(order["id"]), str(_prov_order), prov[3:],
                     _prov_amount, product_id=_prov_product,
                     currency=_prov_currency)
@@ -114,8 +117,9 @@ async def topup_checkout(request: Request):
     # makes the provider side idempotent (response-loss recovery: the
     # retry returns the SAME checkout entity, never a duplicate).
     try:
-        out = creem.create_credits_checkout(order["id"],
-                                            int(order["amount_cents"]), user)
+        out = await asyncio.to_thread(
+            creem.create_credits_checkout, order["id"],
+            int(order["amount_cents"]), user)
     except Exception:
         # Unknown provider outcome (timeout / conn reset / 5xx / ACK
         # loss) is NOT a failure proof: the order stays pending and the
@@ -200,7 +204,7 @@ async def subscribe_checkout(request: Request):
             # provider id 尚未落地 → in-progress, 不建第二单
             return JSONResponse({"ok": False, "error": "subscription_in_progress"}, 409)
         try:
-            co = creem.retrieve_checkout(prov_id[3:])
+            co = await asyncio.to_thread(creem.retrieve_checkout, prov_id[3:])
         except Exception:
             return JSONResponse({"ok": False, "error": "subscription_in_progress"}, 409)
         st = str(co.get("status") or "")
@@ -229,7 +233,8 @@ async def subscribe_checkout(request: Request):
             order = insert_order(con, user["id"], "plan", plan["id"], "creem",
                                  plan["price_cents"], plan["currency"], _ts)
     try:
-        out = creem.create_subscription_checkout(order["id"], dict(plan), user)
+        out = await asyncio.to_thread(
+            creem.create_subscription_checkout, order["id"], dict(plan), user)
     except Exception:
         # Unknown provider outcome is not a failure proof — order stays
         # pending; the next subscribe call retries the SAME Order.
@@ -288,8 +293,9 @@ async def plan_upgrade(request: Request):
         # prorated difference charged immediately, original billing date
         # remains (本周期 credits 由该 charge 的 subscription.paid 补差
         # 100+400=500; subscription.update 只同步 plan, 不授 credits)
-        creem.upgrade_subscription(sub_id, target["creem_product_id"],
-                                   update_behavior="proration-charge-immediately")
+        await asyncio.to_thread(
+            creem.upgrade_subscription, sub_id, target["creem_product_id"],
+            update_behavior="proration-charge-immediately")
     except Exception:
         return JSONResponse({"ok": False, "error": "upgrade_failed"}, 502)
     return {"ok": True, "upgrade": "initiated",
@@ -341,8 +347,9 @@ async def plan_downgrade(request: Request):
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]
     try:
-        creem.upgrade_subscription(sub_id, target["creem_product_id"],
-                                   update_behavior="proration-none")
+        await asyncio.to_thread(
+            creem.upgrade_subscription, sub_id, target["creem_product_id"],
+            update_behavior="proration-none")
     except Exception:
         return JSONResponse({"ok": False, "error": "downgrade_failed"}, 502)
     schedule_downgrade(user["id"], target["id"])
@@ -391,7 +398,8 @@ async def creem_webhook(request: Request):
         # the route only verifies signature + parses, never adjudicates
         from economy import reverse as _reverse
         try:
-            res = _reverse.reverse_payment(event_type, event)
+            res = await asyncio.to_thread(
+                _reverse.reverse_payment, event_type, event)
         except KeyError as exc:
             # missing proof / provider fetch failure / unknown txn /
             # partial refund unresolved / status mismatch → 500 so
@@ -457,7 +465,8 @@ async def creem_webhook(request: Request):
                 {"ok": False, "error": "checkout_metadata_mismatch"}, 500)
     order = (obj.get("order") or {})
     try:
-        res = creem.fulfill_by_request_id(
+        res = await asyncio.to_thread(
+            creem.fulfill_by_request_id,
             _oid, order.get("id") or "", obj.get("id") or "",
             int(order.get("amount") or 0),
             product_id=str(order.get("product") or ""),

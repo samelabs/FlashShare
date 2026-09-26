@@ -12,6 +12,7 @@ files[] reference form. Idempotency is client_ref + file identity
 (NOT the ticket): a failed/expired ticket can be re-issued and the
 PUT retried; an already-successful upload replays the same handles.
 """
+import asyncio
 import io
 import logging
 
@@ -111,10 +112,10 @@ async def mcp_upload_put(ticket: str, request: Request):
         "mcp_upload_ticket",
         [{"filename": filename, "content_type": final_type,
           "size": len(body), "sha256": hashlib.sha256(body).hexdigest()}],
-        {})
+        {})  # staging is tool-agnostic: scope stays '' (ref unique per user)
     try:
         receipt, usage_ids, replay = claim_ingress_quota(
-            user_id, ip, row["client_ref"], req_hash, [len(body)])
+            user_id, ip, row["client_ref"], req_hash, [len(body)], scope="")
     except IngressQuotaDenied as exc:
         return JSONResponse({"ok": False, **exc.denial}, 429)
     except IngressConflict:
@@ -129,7 +130,8 @@ async def mcp_upload_put(ticket: str, request: Request):
             replay[0] if isinstance(replay, list) and replay else None)
         if isinstance(info, dict) and info.get("stagingId"):
             return {"public_id": info["stagingId"],
-                    "source_token": info.get("sourceToken", "")}
+                    "source_token": info.get("sourceToken", ""),
+                    "expires_at": info.get("expireAt")}
 
     from governance.delivery import (INTERMEDIATE_TTL_DAYS,
                                      INTERMEDIATE_DOWNLOAD_LIMIT)
@@ -137,9 +139,10 @@ async def mcp_upload_put(ticket: str, request: Request):
     from security import sign_source_token
     gid = ""
     try:
-        gokapi = storage_write(io.BytesIO(body), filename, final_type,
-                               INTERMEDIATE_TTL_DAYS,
-                               INTERMEDIATE_DOWNLOAD_LIMIT, len(body))
+        gokapi = await asyncio.to_thread(
+            storage_write, io.BytesIO(body), filename, final_type,
+            INTERMEDIATE_TTL_DAYS,
+            INTERMEDIATE_DOWNLOAD_LIMIT, len(body))
         info = gokapi.get("FileInfo", {})
         gid = info.get("Id", "")
         if not gid:
@@ -147,8 +150,7 @@ async def mcp_upload_put(ticket: str, request: Request):
         file_info = {
             "name": filename, "filename": filename,
             "contentType": final_type, "size": len(body),
-            "hotlinkUrl": info.get("UrlHotlink", ""),
-            "stagingId": gid, "gokapiId": gid,
+            "stagingId": gid,
             "sourceToken": sign_source_token(user_id, gid),
             "expireAt": info.get("ExpireAt"),
             "expiryDays": INTERMEDIATE_TTL_DAYS,
@@ -158,7 +160,7 @@ async def mcp_upload_put(ticket: str, request: Request):
         logger.exception("mcp ticket staging failed ticket_id=%s", row["id"])
         if gid:
             try:
-                storage_delete(gid)
+                await asyncio.to_thread(storage_delete, gid)
             except Exception:
                 pass
         try:

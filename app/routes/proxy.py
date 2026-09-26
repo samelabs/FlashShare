@@ -15,7 +15,6 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from sharing.uploads import get_live_upload_by_public_id as _live_upload
-from gokapi import open_gokapi_download
 from storage import info as storage_info
 from utils import file_glyph
 from utils import (
@@ -64,9 +63,10 @@ async def file_route(public_id: str, request: Request):
     download = request.query_params.get("download")
 
     if download is not None:
-        # Redirect to gokapi direct download — file transfer never touches Python.
-        # url_hotlink format varies by gokapi version: /h/{id} or /downloadFile?id={id}
-        hotlink = upload["url_hotlink"] if "url_hotlink" in upload.keys() else ""
+        # Redirect to the gokapi hotlink — the ONE download path; file
+        # transfer never touches Python. url_hotlink format varies by
+        # gokapi version: /h/{id} or /downloadFile?id={id}
+        hotlink = upload["url_hotlink"]
         if hotlink:
             from urllib.parse import urlparse
             parsed = urlparse(hotlink)
@@ -99,52 +99,26 @@ async def file_route(public_id: str, request: Request):
                         upload["content_type"] or "").items():
                     resp.headers[k] = v
                 return resp
-        if is_head:
-            # no hotlink → GET would stream via Python; HEAD never opens
-            # a (counting) Gokapi download stream — signal GET-only
-            return Response(status_code=405, headers={"Allow": "GET"})
-        # Fallback: stream via Python if no hotlink (thread-pool read:
-        # a hung Gokapi must not pin the event loop)
-        status, headers, stream = await asyncio.to_thread(
-            open_gokapi_download, upload["gokapi_id"])
-        if status >= 400:
-            return HTMLResponse("File unavailable", status=status)
-        content_type = upload["content_type"] or "application/octet-stream"
-        safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
-
-        def generate():
-            try:
-                while True:
-                    chunk = stream.read(1024 * 256)
-                    if not chunk:
-                        break
-                    yield chunk
-            finally:
-                stream.close()
-
-        return StreamingResponse(generate(), media_type=content_type,
-                                 headers={"Content-Disposition": f'attachment; filename="{safe_name}"',
-                                          "X-Content-Type-Options": "nosniff"})
+        # No hotlink: the one download path is unavailable — typed 503,
+        # never a Python streaming substitute
+        return JSONResponse({"ok": False, "error": "download_unavailable"},
+                            status_code=503)
 
     if is_head:
         return Response(status_code=200, headers=_share_link_headers(
             upload["public_id"], upload["content_type"] or ""))
 
     # Detail page via Jinja2
-    live = storage_info(upload["gokapi_id"]) if upload["gokapi_id"] else None
+    live = await asyncio.to_thread(storage_info, upload["gokapi_id"]) \
+        if upload["gokapi_id"] else None
     expire_at = (live or {}).get("ExpireAt") or upload["expire_at"]
     total = upload["allowed_downloads"]
-    remaining = (live or {}).get("DownloadsRemaining")
-    count = (live or {}).get("DownloadCount")
-    if isinstance(count, int):
-        downloads = f"{count}/{total}"
-        _dl_left = max(0, total - count)
-    elif isinstance(remaining, int):
-        downloads = f"{max(0, total - remaining)}/{total}"
-        _dl_left = max(0, remaining)
-    else:
-        downloads = f"0/{total}"
+    # single calculator: remaining first, used = total - remaining
+    from utils import remaining_downloads
+    _dl_left = remaining_downloads(total, live)
+    if _dl_left is None:
         _dl_left = total
+    downloads = f"{max(0, total - _dl_left)}/{total}"
 
     pid = urllib.parse.quote(upload["public_id"])
     url = public_file_url(upload["public_id"])
@@ -209,7 +183,8 @@ async def file_zip_list(public_id: str, request: Request):
 
     total = int(upload["size_bytes"] or 0)
     if total <= 0:
-        live = storage_info(upload["gokapi_id"]) if upload["gokapi_id"] else None
+        live = await asyncio.to_thread(storage_info, upload["gokapi_id"]) \
+        if upload["gokapi_id"] else None
         total = int((live or {}).get("SizeBytes") or 0)
 
     import urllib.parse

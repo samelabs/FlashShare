@@ -206,8 +206,10 @@ async def x_callback(request: Request):
         return _x_error(request, err)
 
     try:
-        token = exchange_x_token(code, row["verifier"])
-        x_user = fetch_x_user(token["access_token"])
+        token = await asyncio.to_thread(exchange_x_token, code,
+                                        row["verifier"])
+        x_user = await asyncio.to_thread(fetch_x_user,
+                                         token["access_token"])
     except Exception:
         logger.exception("x callback: token exchange / user lookup failed")
         return _x_error(request, "err_x_login_incomplete")
@@ -225,7 +227,7 @@ async def x_callback(request: Request):
     if bind_user_id:
         resp = RedirectResponse("/account/profile", 302)
     else:
-        _login_maintenance(user_id)
+        await asyncio.to_thread(_login_maintenance, user_id)
         resp = redirect_with_session("/", user_id)
     resp.delete_cookie(_OAUTH_COOKIE, path="/auth/x")
     return resp
@@ -280,7 +282,7 @@ async def login_submit(request: Request):
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     _login_failures.pop(throttle_key, None)
-    _login_maintenance(user_id)
+    await asyncio.to_thread(_login_maintenance, user_id)
     return redirect_with_session("/", user_id)
 
 
@@ -331,7 +333,7 @@ async def register_submit(request: Request):
         logger.exception("register failed for username=%s", username)
         return _err(texts.get("err_invalid_request", "err_invalid_request"))
 
-    _login_maintenance(user_id)
+    await asyncio.to_thread(_login_maintenance, user_id)
     return redirect_with_session("/", user_id)
 
 
