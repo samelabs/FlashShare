@@ -327,11 +327,26 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     # read and the claim INSERT share ONE transaction: the resolved rate is
     # frozen on the row at claim time; later settings changes only affect
     # FUTURE claims, never this attempt's settlement.
+    #
+    # B2b-1 commission fail-closed: a missing/illegal rate refuses the call
+    # BEFORE the claim (zero charge, zero attempt) for third-party metered
+    # tools — a payout split must never be settled on a guessed rate. System
+    # tools (platform direct sales) and free/self-owned calls never read the
+    # rate for settlement and run normally; their snapshot column is still
+    # NOT NULL for running rows, so 0 (no commission) is frozen.
     from execution.invocation import invocation_fingerprint
     invocation_hash = invocation_fingerprint(invocation)
 
+    third_party_metered = (cost > 0
+                           and tool.get("owner_id") is not None
+                           and tool["owner_id"] != user["id"])
     with db() as con:
         rate_snapshot = commission_rate(con=con)
+        if rate_snapshot is None:
+            if third_party_metered:
+                return None, \
+                    {"ok": False, "error": "err_commission_unconfigured"}, 503
+            rate_snapshot = 0
         anchor, claimed = claim_call(
             con, client_ref, user["id"], tool["id"], cost,
             json.dumps(params, ensure_ascii=False), started,

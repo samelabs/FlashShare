@@ -70,10 +70,12 @@ async def platform_income(request: Request, page: int = 1):
     if resp:
         return resp
     from app.main import templates
+    from governance.commission import commission_rate
     page = max(1, page)
     with db() as con:
         rows, total = operator_views.platform_income_page(
             con, _PAGE, (page - 1) * _PAGE)
+        rate = commission_rate(con)
     items = []
     for r in rows:
         d = dict(r)
@@ -83,12 +85,49 @@ async def platform_income(request: Request, page: int = 1):
         request, "samelabs/economy_platform.html",
         ctx(request, user, rows=items, total=total, page=page,
             pages=max(1, -(-total // _PAGE)), fmt_num=fmt_num,
-            page_id="economy"))
+            commission_rate=rate, page_id="economy"))
+
+
+@router.post("/samelabs/economy/commission")
+async def set_commission(request: Request):
+    """Operator write: platform commission 0..100 integer (B2b-1).
+    Audited old → new inside the settings transaction; anything but a
+    whole 0..100 int is refused with the current value untouched."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from fastapi.responses import JSONResponse
+    from repo import operator_audit
+    from governance.commission import commission_rate, set_commission_rate
+    from utils import now
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    rate = raw.get("rate") if isinstance(raw, dict) else None
+    if not isinstance(rate, int) or isinstance(rate, bool) \
+            or not 0 <= rate <= 100:
+        return JSONResponse(
+            {"ok": False, "error": "invalid_commission_rate"}, 422)
+    ts = now()
+    try:
+        with db() as con:
+            before = commission_rate(con)
+            set_commission_rate(con, rate, ts, int(user["id"]))
+            operator_audit.record(
+                con, int(user["id"]), "commission.update",
+                "setting", "commission_rate",
+                {"rate": before}, {"rate": rate}, ts)
+    except ValueError:
+        return JSONResponse(
+            {"ok": False, "error": "invalid_commission_rate"}, 422)
+    return {"ok": True, "rate": rate}
 
 
 # ── Withdrawal queue (S4 lifecycle) ──
 
-_WD_STATUSES = ("pending", "approved", "rejected", "paid")
+_WD_STATUSES = ("pending", "approved", "rejected", "paid",
+                "payout_failed")
 
 
 @router.get("/samelabs/economy/withdrawals")

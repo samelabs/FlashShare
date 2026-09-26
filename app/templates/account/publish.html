@@ -28,7 +28,8 @@
           <em class="pub-err" data-err="desc"></em></label>
         <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span>
           <input id="fCost" type="number" min="0" max="100000" value="0">
-          <em class="pub-err" data-err="cost"></em></label>
+          <em class="pub-err" data-err="cost"></em>
+          {% if commission_rate is not none %}<em class="pub-hint"><span data-i18n="commission_rate_note">{{ texts.commission_rate_note }}</span> {{ commission_rate }}%</em>{% endif %}</label>
       </div>
       <details class="usertools-adv pub-wide" id="langMore">
         <summary data-i18n="mytools_add_lang">{{ texts.mytools_add_lang }}</summary>

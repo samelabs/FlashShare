@@ -671,7 +671,10 @@ async def account_earnings(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    ctx = _account_ctx(request, "earnings")
+    from governance.commission import commission_rate
+    with db() as con:
+        rate = commission_rate(con)
+    ctx = _account_ctx(request, "earnings", commission_rate=rate)
     return templates.TemplateResponse(request, "account/earnings.html", ctx)
 
 
@@ -712,9 +715,13 @@ async def account_tools_publish(request: Request):
             return HTMLResponse("", status_code=404)
     # 4C-2a: format manifest 服务端单点派生 (governance.formats),
     # publish 页唯一格式事实源 — 前端不再维护词表镜像。
+    from governance.commission import commission_rate
+    with db() as con:
+        rate = commission_rate(con)
     ctx = _account_ctx(request, "tools", tool=tool,
                        tool_json=json.dumps(tool, ensure_ascii=False) if tool else "null",
-                       format_manifest_json=json.dumps(format_manifest(), ensure_ascii=False))
+                       format_manifest_json=json.dumps(format_manifest(), ensure_ascii=False),
+                       commission_rate=rate)
     return templates.TemplateResponse(request, "account/publish.html", ctx)
 
 

@@ -27,10 +27,13 @@ TARGET_SAFE_KEYS = {
     "user_credits": {"user_id", "delta", "balance_before",
                      "balance_after", "ledger_id"},
     "withdrawal": {"id", "user_id", "amount", "status", "reviewed_at",
-                   "reviewed_by", "paid_at", "paid_by"},
+                   "reviewed_by", "paid_at", "paid_by", "reason",
+                   "resolved_by"},
     "remote_tool": {"tool_key", "tool_id", "execution", "tool_type",
                     "visibility", "enabled", "featured", "sort_order",
                     "files_min", "files_max", "outputs", "accept", "cost"},
+    "setting": {"rate"},
+    "payment_review": {"status", "txn_id", "event_id", "resolved_by"},
 }
 
 _SECRET_MARKERS = ("password", "token", "secret", "auth_header",
