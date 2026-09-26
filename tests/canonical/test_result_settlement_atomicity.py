@@ -106,7 +106,9 @@ check("A1 StagedResult 无 publicId/downloadUrl/uploads id 字段",
 _orch_src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
                  encoding="utf-8").read()
 check("A2 orchestrator 不再调用 save_upload_record",
-      "save_upload_record" not in _orch_src)
+      "save_upload_record" not in _orch_src
+      and "save_upload_record" not in open(_os.path.join(
+          _REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read())
 
 # ══════════ B. atomic success transaction (first-party) ══════════
 from execution import gate
@@ -507,15 +509,8 @@ check("K3b ok + NULL invocation_hash → reject (replay authority 需 hash)",
                   " finished_at) values (%s,%s,%s,'ok',0,%s,%s)",
                   (f"kr3b_{_u}", user9, tool9, ts, ts)))
 
-# ══════════ L. direct share save_upload_record 不变 ══════════
-from execution.pipeline import save_upload_record
-rec_direct = save_upload_record(user9, "127.0.0.1", f"gk_direct_{_u}",
-                                "share.txt", "text/plain", 5, 7, 10,
-                                ts + 86400, "", BASE_URL)
-check("L1 direct share save_upload_record (publicId/page_url/download_url)",
-      rec_direct.get("publicId") and rec_direct.get("page_url")
-      and rec_direct.get("download_url", "").endswith("?download=1"),
-      str(rec_direct)[:80])
+# ═══ L-block retired: save_upload_record deleted (no production caller
+# since the direct-share branch removal; FX-1b dead-code item) ═══
 
 # ══════════ M. strict tri-state outcome regression ══════════
 from execution.gate import (OUTCOME_DURABLE_SUCCESS, OUTCOME_PROVEN_ROLLBACK,

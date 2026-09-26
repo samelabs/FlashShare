@@ -151,11 +151,22 @@ async function visualAudit(ctx, page, name, screenshot = true) {
   return audit;
 }
 
+// Navigate and wait for an EXPLICIT readiness signal (element visible).
+// networkidle is retired here: it demands 500ms of zero connections and
+// the pages legitimately trail async fetches (page data + SW register +
+// manifest/icons), which on a slow CI runner can miss every idle window
+// for 30s straight.
+async function gotoReady(page, path, readySel, timeout = 20000) {
+  const resp = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout });
+  if (readySel) await page.waitForSelector(readySel, { timeout });
+  return resp;
+}
+
 async function checkPageContract(ctx, page, spec, sessionCookie) {
   const consoleErrors = [];
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
   page.on("pageerror", (e) => consoleErrors.push("pageerror: " + e.message));
-  const resp = await page.goto(`${BASE}${spec.path}`, { waitUntil: "networkidle", timeout: 20000 });
+  const resp = await gotoReady(page, spec.path, spec.need[0] || "body");
   check(`${ctx} ${spec.name}: HTTP ${spec.anonOk || sessionCookie ? "200" : "auth"}`, resp && (resp.status() === 200 || resp.status() === 302), resp && resp.status());
   for (const sel of spec.need) {
     check(`${ctx} ${spec.name}: has ${sel}`, await page.$(sel) !== null);
@@ -212,7 +223,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // REGISTER (console stream is captured for the whole context flow)
       const flowConsole = [];
       page.on("console", (m) => { if (m.type() === "error") flowConsole.push(m.text()); });
-      await page.goto(`${BASE}/auth/register`, { waitUntil: "networkidle" });
+      await gotoReady(page, "/auth/register", "#regUsername");
       await page.fill("#regUsername", username);
       await page.fill("#regEmail", `${username}@t.co`);
       await page.fill("#regPassword", password);
@@ -224,7 +235,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await visualAudit("desktop", page, "after-register-home");
 
       // LOGOUT + LOGIN (logout lives in the profile dropdown — open it first)
-      await page.goto(`${BASE}/account/profile`, { waitUntil: "networkidle" });
+      await gotoReady(page, "/account/profile", "#userMenuBtn");
       const menuBtn = await page.$("#userMenuBtn");
       const logout = await page.$(".logout-link");
       if (menuBtn && logout) {
@@ -233,7 +244,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), logout.click()]);
         check("web logout: back to anon", (await page.$(".topbar-login")) !== null);
       }
-      await page.goto(`${BASE}/auth/login`, { waitUntil: "networkidle" });
+      await gotoReady(page, "/auth/login", "input[name=login]");
       await page.fill("input[name=login]", username);
       await page.fill("input[name=password]", password);
       await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), page.click("button[type=submit]")]);
@@ -351,7 +362,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
       // 8. create a real fsk_ API key via UI (viewable-anytime flow:
       //    creation reveals the first row's full key inline)
-      await page.goto(`${BASE}/account/keys`, { waitUntil: "networkidle" });
+      await gotoReady(page, "/account/keys", "#newKeyName");
       await page.fill("#newKeyName", "browser-gate");
       await page.click("#createKey");
       await page.waitForSelector(".key-item .key-value", { state: "visible", timeout: 15000 });
@@ -377,7 +388,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     } else {
       // mobile: programmatic form login to get a session cookie
       const lp = await sweepCtx.newPage();
-      await lp.goto(`${BASE}/auth/login`, { waitUntil: "networkidle" });
+      await gotoReady(lp, "/auth/login", "input[name=login]");
       await lp.fill("input[name=login]", username);
       await lp.fill("input[name=password]", password);
       await Promise.all([lp.waitForNavigation({ timeout: 15000 }), lp.click("button[type=submit]")]);

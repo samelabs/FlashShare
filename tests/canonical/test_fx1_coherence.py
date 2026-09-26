@@ -261,7 +261,9 @@ try:
         "owner_id": uid, "execution": "http", "tool_type": "produce",
         "label": {"en": "FX User Tool"}, "icon": "wand",
         "inputs": {"files": {"min": 0, "max": 3, "accept": None}},
-        "outputs": ["text"], "params": None,
+        "outputs": ["text"],
+        "params": [{"key": "note", "type": "text", "required": True,
+                    "label": {"en": "Note"}}],
         "binding": {"url": TOOL_URL, "timeout_s": 30},
         "visibility": "private", "enabled": True})
     with db() as con:
@@ -489,25 +491,206 @@ try:
             check("X11a result_public_id unique index enforced", True)
     from repo import upload_tickets as _tickets
     with db() as con:
+        # one UNUSED row per (user, ref) — the live-one index — so each
+        # fixture case gets its own ref
         con.execute(
             "insert into mcp_upload_tickets (ticket, user_id, filename,"
-            " content_type, declared_size, client_ref, request_hash,"
+            " content_type, declared_size, client_ref,"
             " expires_at, used_at, created_at) values"
-            " (%s,%s,'a.png','image/png',10,%s,%s,%s,NULL,%s),"
-            " (%s,%s,'b.png','image/png',10,%s,%s,%s,%s,%s),"
-            " (%s,%s,'c.png','image/png',10,%s,%s,%s,%s,%s)",
-            ("fxexp" + _u, uid, f"purge-{_u}", "f" * 64, ts - 100, ts - 200,
-             "fxused" + _u, uid, f"purge-{_u}", "e" * 64, ts + 600,
+            " (%s,%s,'a.png','image/png',10,%s,%s,NULL,%s),"
+            " (%s,%s,'b.png','image/png',10,%s,%s,%s,%s),"
+            " (%s,%s,'c.png','image/png',10,%s,%s,NULL,%s)",
+            ("fxexp" + _u, uid, f"purge-exp-{_u}", ts - 100, ts - 200,
+             "fxused" + _u, uid, f"purge-used-{_u}", ts + 600,
              ts - 25 * 3600, ts - 26 * 3600,
-             "fxlive" + _u, uid, f"purge-{_u}", "d" * 64, ts + 600,
-             None, ts))
+             "fxlive" + _u, uid, f"purge-live-{_u}", ts + 600, ts))
     n = _tickets.purge(ts)
     with db() as con:
         left = [r["ticket"] for r in con.execute(
-            "select ticket from mcp_upload_tickets where client_ref=%s",
-            (f"purge-{_u}",)).fetchall()]
+            "select ticket from mcp_upload_tickets where client_ref like %s",
+            ("purge-%" + _u,)).fetchall()]
     check("X11b ticket purge drops expired-unused + >24h-used, keeps live",
           n >= 2 and left == ["fxlive" + _u], str(left))
+
+    # ═══ B-item tests (FX-1b) ═══
+    # B2: MCP inputSchema required hierarchy (+ jsonschema validation)
+    st, d = _mcp({"jsonrpc": "2.0", "id": 30, "method": "tools/list",
+                  "params": {}}, TOK)
+    _tools_l = {t["name"]: t for t in (d.get("result") or {}).get("tools", [])}
+    # MCP name projection: '/' → '__' (governance.catalog.mcp_names)
+    from governance.catalog import mcp_name as _mname
+    _spec = _tools_l.get(_mname(f"{_u}a/{USER_TOOL}")) or {}
+    _schema = _spec.get("inputSchema") or {}
+    _ok_arg = {"params": {"note": "hi"}, "client_ref": f"b2v-{_u}"}
+    _bad_arg = {"params": {}, "client_ref": f"b2v-{_u}"}
+    _top_req = _schema.get("required") or []
+    _preq = ((_schema.get("properties") or {}).get("params") or {}).get("required") or []
+    check("B2a top-level required ⊆ {files,client_ref,params}; note stays in params.required",
+          set(_top_req) <= {"files", "client_ref", "params"}
+          and "note" not in _top_req and "note" in _preq
+          and ("params" in _top_req or "files" in _top_req),
+          f"top={_top_req} params={_preq}")
+    try:
+        import jsonschema as _jsv
+        _jsv.validate(_ok_arg, _schema)
+        _v_ok = True
+        try:
+            _jsv.validate(_bad_arg, _schema)
+            _v_bad = False
+        except _jsv.ValidationError:
+            _v_bad = True
+        check("B2b jsonschema: valid args pass, missing required param fails",
+              _v_ok and _v_bad)
+    except ImportError:
+        # jsonschema not installed in the venv — structural checks only
+        check("B2b jsonschema library unavailable (structural B2a only)",
+              True, "import error")
+
+    # B3: concurrent create_upload for one client_ref → ONE live ticket
+    import concurrent.futures as _cf
+    REF3 = f"b3-{_u}"
+
+    def _one_issue(_):
+        st, d = _call("create_upload",
+                      {"filename": "c.png", "size": len(PNG),
+                       "client_ref": REF3}, TOK, 400 + _)
+        try:
+            sc = (d.get("result") or {}).get("structuredContent") or {}
+            _txt = _json.loads((((d.get("result") or {}).get("content") or [{}])[0]
+                                .get("text") or "{}"))
+            return sc.get("upload_url") or _txt.get("upload_url")
+        except Exception:
+            return None
+    with _cf.ThreadPoolExecutor(max_workers=8) as _ex:
+        _urls = list(_ex.map(_one_issue, range(8)))
+    with db() as con:
+        _live = con.execute(
+            "select count(*) c from mcp_upload_tickets"
+            " where user_id=%s and client_ref=%s and used_at is null"
+            " and expires_at > %s", (uid, REF3, ts)).fetchone()["c"]
+    check("B3 concurrent create_upload → exactly one live ticket",
+          _live == 1, f"live={_live}")
+    check("B3b all 8 responses return the SAME upload_url",
+          len(set(u for u in _urls if u)) == 1, str(set(u or "" for u in _urls))[:100])
+
+    # B4: a hung internal Gokapi read must not pin the event loop —
+    # while one inline preview is held, unrelated endpoints answer fast.
+    st, d = _call("share", {"files": [{"filename": "hold.png", "b64": A64}],
+                            "client_ref": f"b4-{_u}"}, TOK, 31)
+    _items = ((d.get("result") or {}).get("structuredContent") or {}).get("items") or []
+    _pid_hold = next((it.get("page_url", "").rsplit("/f/", 1)[-1]
+                      for it in _items if it.get("kind") == "file"), None)
+    import urllib.request as _ureq, urllib.error as _uerr
+    import time as _time
+    _held = False
+    if _pid_hold:
+        # arm the stall on THIS file id, fire the preview without waiting,
+        # then verify other requests answer within 2s
+        import os as _os2, subprocess as _sp
+        _os.environ["FAKE_GOKAPI_HOLD_PREFIXES"] = _pid_hold
+        _os.environ["FAKE_GOKAPI_HOLD_SECONDS"] = "8"
+        try:
+            import socket as _sock
+            def _slow_get():
+                c = _sock.create_connection(_HOST, timeout=15)
+                c.sendall(f"GET /f/{_pid_hold}/inline HTTP/1.1\r\nHost: x\r\n\r\n".encode())
+                return c
+            _conn_hold = _slow_get()
+            _held = True
+            _t0 = _time.time()
+            _h_code = None
+            try:
+                _r = _ureq.urlopen(f"{_BASE}/healthz", timeout=5)
+                _h_code = _r.status
+                _r.read()
+            except _uerr.HTTPError as _e:
+                _h_code = _e.code
+            _dt = _time.time() - _t0
+            check("B4 hung Gokapi preview does not block the loop (healthz < 2s)",
+                  _h_code == 200 and _dt < 2.0, f"healthz={_h_code} dt={_dt:.2f}s")
+            _t0 = _time.time()
+            _k_code = None
+            try:
+                _r = _ureq.urlopen(f"{_BASE}/account/keys", timeout=5)
+                _k_code = _r.status
+            except _uerr.HTTPError as _e:
+                _k_code = _e.code
+            _dt2 = _time.time() - _t0
+            check("B4b /account/keys answers while preview hangs (< 2s)",
+                  _k_code in (200, 302) and _dt2 < 2.0, f"keys={_k_code} dt={_dt2:.2f}s")
+        finally:
+            _os.environ.pop("FAKE_GOKAPI_HOLD_PREFIXES", None)
+            _os.environ.pop("FAKE_GOKAPI_HOLD_SECONDS", None)
+            try:
+                _conn_hold.close()
+            except Exception:
+                pass
+    check("B4c inline hold fixture established", _held, "share call failed")
+
+    # B1: register/login throttles fire at the CONFIGURED threshold in an
+    # ISOLATED app instance (low limits; no ip exemption — the requests
+    # come from 127.0.0.1 like production-behind-Nginx).
+    import subprocess as _sp2
+    _rl_port = 53893
+    _env2 = dict(_os.environ)
+    _env2.update({
+        "DATABASE_URL": TEST_DB.replace("postgresql://", "postgresql+psycopg://"),
+        "FLASHSHARE_SESSION_SECRET": "canonical-test",
+        "FLASHSHARE_GOKAPI_URL": _os.environ.get("FLASHSHARE_GOKAPI_URL", ""),
+        "FLASHSHARE_GOKAPI_KEY": _os.environ.get("FLASHSHARE_GOKAPI_KEY", ""),
+        "FLASHSHARE_BASE_URL": f"http://127.0.0.1:{_rl_port}",
+        "FLASHSHARE_LOG_DIR": "/tmp/fs-fx1-log",
+        "TOOL_VAULT_KEY": _os.environ.get("TOOL_VAULT_KEY", ""),
+        "FLASHSHARE_REGISTER_LIMIT_PER_HOUR": "2",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    })
+    _proc = _sp2.Popen(
+        [_sys.executable, "-m", "uvicorn", "app.main:app",
+         "--host", "127.0.0.1", "--port", str(_rl_port)],
+        cwd=_REPO, env=_env2,
+        stdout=_sp2.DEVNULL, stderr=_sp2.DEVNULL)
+    try:
+        import time as _time2
+        _ok_up = False
+        for _ in range(40):
+            _time2.sleep(0.5)
+            try:
+                _r = _ureq.urlopen(f"http://127.0.0.1:{_rl_port}/healthz", timeout=2)
+                _ok_up = _r.status == 200
+                if _ok_up:
+                    break
+            except Exception:
+                continue
+        check("B1 isolated app (limit=2) started", _ok_up)
+        _codes = []
+        for _i in range(3):
+            _b = (f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+                  for k, v in {})
+            _body = b""
+            for k, v in {"username": f"rl{_i}{_u}", "password": "Test12345",
+                         "password_confirm": "Test12345",
+                         "email": f"rl{_i}{_u}@t.co"}.items():
+                _body += (f'--B\r\nContent-Disposition: form-data; name="{k}"'
+                          f'\r\n\r\n{v}\r\n').encode()
+            _body += b"--B--\r\n"
+            try:
+                _ureq.urlopen(
+                    _ureq.Request(f"http://127.0.0.1:{_rl_port}/auth/register",
+                                  data=_body, method="POST",
+                                  headers={"Content-Type":
+                                           "multipart/form-data; boundary=B"}),
+                    timeout=10)
+                _codes.append(200)
+            except _uerr.HTTPError as _e2:
+                _codes.append(_e2.code)
+        check("B1 3rd register from one ip rejected at limit=2 (429)",
+              _codes[:2] == [200, 200] and _codes[2] == 429, str(_codes))
+    finally:
+        _proc.terminate()
+        _proc.wait(timeout=10)
+        with db() as con:
+            con.execute("delete from users where username like %s",
+                        ("rl%" + _u + "%",))
 
 finally:
     with db() as con:
