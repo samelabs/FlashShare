@@ -10,7 +10,7 @@
   <form method="get" action="/samelabs/economy/withdrawals" class="sl-toolbar">
     <select name="status" class="sl-input">
       <option value="">— all statuses —</option>
-      {% for s in statuses %}<option value="{{ s|e }}" {{ 'selected' if s == q_status }}>{{ s|e }}</option>{% endfor %}
+      {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == q_status }}>{{ s }}</option>{% endfor %}
     </select>
     <button class="sl-btn" type="submit">Filter</button>
     <span class="sl-dim">{{ fmt_num(total) }} rows</span>
@@ -25,13 +25,13 @@
         {% for w in withdrawals %}
         <tr data-wid="{{ w.id }}">
           <td>#{{ w.id }}</td>
-          <td><a href="/samelabs/users/{{ w.user_id }}">{{ w.username|e }}</a></td>
+          <td><a href="/samelabs/users/{{ w.user_id }}">{{ w.username }}</a></td>
           <td class="mono">{{ w.amount_usd }}</td>
-          <td class="mono">{{ w.payout|e }}</td>
-          <td><span class="sl-vis v-{{ w.status|e }}">{{ w.status|e }}</span></td>
+          <td class="mono">{{ w.payout }}</td>
+          <td><span class="sl-vis v-{{ w.status }}">{{ w.status }}</span></td>
           <td>{{ fmt_ts(w.reviewed_at) if w.reviewed_at else '—' }}</td>
           <td>{{ fmt_ts(w.paid_at) if w.paid_at else '—' }}</td>
-          <td class="mono">{{ (w.payout_ref or '—')|e }}</td>
+          <td class="mono">{{ (w.payout_ref or '—') }}</td>
           <td>{{ fmt_ts(w.created_at) }}</td>
           <td>
             {% if w.status == 'pending' %}

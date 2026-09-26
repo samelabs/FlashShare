@@ -14,12 +14,12 @@
     <tbody>
     {% for o in orders %}
       <tr>
-        <td>{{ o.id }}</td><td><a href="/samelabs/users/{{ o.user_id }}">{{ (o.username or o.user_id)|e }}</a></td>
-        <td>{{ o.kind|e }}</td><td>{{ o.item_id|e }}</td><td>{{ o.provider|e }}</td>
-        <td>{{ (o.provider_order_id or '—')|e }}</td>
-        <td class="sl-num">{{ fmt_num(o.amount_cents) }} {{ o.currency|e }}</td>
+        <td>{{ o.id }}</td><td><a href="/samelabs/users/{{ o.user_id }}">{{ (o.username or o.user_id) }}</a></td>
+        <td>{{ o.kind }}</td><td>{{ o.item_id }}</td><td>{{ o.provider }}</td>
+        <td>{{ (o.provider_order_id or '—') }}</td>
+        <td class="sl-num">{{ fmt_num(o.amount_cents) }} {{ o.currency }}</td>
         <td class="sl-num">{{ fmt_num(o.credits_snapshot) if o.credits_snapshot is not none else '—' }}</td>
-        <td><span class="sl-badge">{{ o.status|e }}</span></td>
+        <td><span class="sl-badge">{{ o.status }}</span></td>
         <td>{{ '✔' if o.granted else '✕' }}</td>
         <td>{{ fmt_ts(o.created_at) }}</td>
         <td>{{ fmt_ts(o.paid_at) if o.paid_at else '—' }}</td>

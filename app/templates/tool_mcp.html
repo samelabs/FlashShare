@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ tool_name|e }} MCP - {{ APP_NAME }}{% endblock %}
-{% block desc %}{{ tool_name|e }} via MCP{% if handle %} · @{{ handle }}{% endif %}{% endblock %}
+{% block title %}{{ tool_name }} MCP - {{ APP_NAME }}{% endblock %}
+{% block desc %}{{ tool_name }} via MCP{% if handle %} · @{{ handle }}{% endif %}{% endblock %}
 
 {% block content %}
 <section class="acct-page toolpage">
   <div class="hero-mini">
-    <h1 class="hero-title">{{ tool_name|e }}</h1>
+    <h1 class="hero-title">{{ tool_name }}</h1>
     <p class="hero-sub toolpage-by">
       {% if handle %}
       <span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span> <span class="toolpage-handle">@{{ handle }}</span>
@@ -18,10 +18,10 @@
   <div class="panel">
     <div class="t">Claude Code</div>
     <div class="d">
-      <span data-i18n="agents_token_note">{{ texts.agents_token_note|e }}</span>
+      <span data-i18n="agents_key_note">{{ texts.agents_key_note }}</span>
       <a href="/agents"><span data-i18n="agents_qs">{{ texts.agents_qs }}</span> →</a>
     </div>
-    <pre class="code-block" id="mcpAdd">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;token&gt;"</pre>
+    <pre class="code-block" id="mcpAdd">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;fsk_…&gt;"</pre>
     <button type="button" class="btn-secondary" id="copyMcpAdd" data-copy-target="mcpAdd"><span data-i18n="copy">{{ texts['copy'] }}</span></button>
   </div>
 
@@ -33,7 +33,7 @@
     <pre class="code-block" id="mcpCall">{
   "method": "tools/call",
   "params": {
-    "name": "{{ mcp_name|e }}",
+    "name": "{{ mcp_name }}",
     "arguments": {
       "files": [{ "filename": "example.pdf", "b64": "..." }],
       "params": {},

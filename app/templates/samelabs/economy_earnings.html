@@ -10,11 +10,11 @@
     <tbody>
     {% for r in rows %}
       <tr>
-        <td>{{ r.id }}</td><td><a href="/samelabs/users/{{ r.user_id }}">{{ (r.username or r.user_id)|e }}</a></td>
+        <td>{{ r.id }}</td><td><a href="/samelabs/users/{{ r.user_id }}">{{ (r.username or r.user_id) }}</a></td>
         <td class="sl-num">{{ r.amount_usd }}</td>
-        <td class="sl-mono">{{ r.tool|e }}</td>
-        <td>{{ (r.ref_id or '—')|e }}</td>
-        <td>{{ (r.note or '—')|e }}</td>
+        <td class="sl-mono">{{ r.tool }}</td>
+        <td>{{ (r.ref_id or '—') }}</td>
+        <td>{{ (r.note or '—') }}</td>
         <td>{{ fmt_ts(r.created_at) }}</td>
       </tr>
     {% else %}

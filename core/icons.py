@@ -1,3 +1,5 @@
+from markupsafe import Markup
+
 """Unified icon registry for FlashShare.
 
 All SVG icon paths live here. Every part of the codebase (views.py,
@@ -74,19 +76,24 @@ _ICONS = {
 
 
 def icon_svg(name, cls=""):
-    """Return a complete <svg> element for the given icon name."""
+    """Return a complete <svg> element for the given icon name.
+
+    Returns Markup: the element is platform-owned SVG markup destined
+    for HTML interpolation — the single place raw SVG crosses the
+    autoescape boundary."""
     path = _ICONS.get(name)
     if not path:
-        return ""
+        return Markup("")
     class_attr = ' class="%s"' % cls if cls else ""
-    return (
+    return Markup(
         '<svg viewBox="0 0 24 24" aria-hidden="true"%s>%s</svg>' % (class_attr, path)
     )
 
 
 def icon_path(name):
-    """Return just the inner SVG path(s) for JS usage."""
-    return _ICONS.get(name, "")
+    """Return just the inner SVG path(s) for JS usage (Markup: raw SVG
+    path data interpolated inside template-authored <svg> elements)."""
+    return Markup(_ICONS.get(name, ""))
 
 
 # Tool identity icon 的 canonical fallback key — 全站唯一 fallback 定义
@@ -98,9 +105,5 @@ def tool_icon_svg(name):
 
     tool icon key → canonical SVG; unknown/missing key → canonical
     fallback (TOOL_ICON_FALLBACK)。模板/视图一律消费本函数, 禁止
-    surface 自建 fallback SVG。"""
+    surface 自建 fallback SVG。Returns Markup (platform-owned SVG)."""
     return icon_svg(name if name in _ICONS else TOOL_ICON_FALLBACK)
-
-
-def all_icon_names():
-    return set(_ICONS.keys())

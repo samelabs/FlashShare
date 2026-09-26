@@ -7,7 +7,7 @@
 <section class="acct-page">
   <h1>{{ texts.acct_profile }}</h1>
   {% include "account/_nav.html" %}
-  {% if error %}<p class="form-error">{{ error|e }}</p>{% endif %}
+  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
 
   <div class="acct-card">
     <h2 data-i18n="basicInfo">{{ texts.basicInfo }}</h2>
@@ -18,7 +18,7 @@
       </label>
       <label>
         <span data-i18n="email">{{ texts.email }}</span>
-        <input type="email" name="email" value="{{ (u.email or '')|e }}" required maxlength="254">
+        <input type="email" name="email" value="{{ (u.email or '') }}" required maxlength="254">
       </label>
       {% if user_has_password %}
       <label>
@@ -28,15 +28,15 @@
       {% endif %}
       <label>
         <span data-i18n="displayName">{{ texts.displayName }}</span>
-        <input type="text" name="display_name" value="{{ (u.displayName or '')|e }}" maxlength="64">
+        <input type="text" name="display_name" value="{{ (u.displayName or '') }}" maxlength="64">
       </label>
       <label>
         <span data-i18n="bio">{{ texts.bio }}</span>
-        <textarea name="bio" rows="3" maxlength="500">{{ (u.bio or '')|e }}</textarea>
+        <textarea name="bio" rows="3" maxlength="500">{{ (u.bio or '') }}</textarea>
       </label>
       <label>
         <span data-i18n="payout_channel">{{ texts.payout_channel }}</span>
-        <input type="text" name="payout_channel" value="{{ (u.payoutChannel or '')|e }}" maxlength="120" data-i18n-placeholder="payout_ph" placeholder="{{ texts.payout_ph }}">
+        <input type="text" name="payout_channel" value="{{ (u.payoutChannel or '') }}" maxlength="120" data-i18n-placeholder="payout_ph" placeholder="{{ texts.payout_ph }}">
       </label>
       <button type="submit" class="primary"><span data-i18n="save">{{ texts.save }}</span></button>
     </form>

@@ -11,11 +11,11 @@
     {% for a in rows %}
       <tr>
         <td>{{ a.id }}</td>
-        <td>{{ (a.actor or a.actor_user_id)|e }}</td>
-        <td>{{ a.action|e }}</td>
-        <td>{{ a.target_type|e }} #{{ a.target_id|e }}</td>
-        <td><code class="sl-mono sl-dim">{{ (a.before_json or '—')|e }}</code></td>
-        <td><code class="sl-mono">{{ (a.after_json or '—')|e }}</code></td>
+        <td>{{ (a.actor or a.actor_user_id) }}</td>
+        <td>{{ a.action }}</td>
+        <td>{{ a.target_type }} #{{ a.target_id }}</td>
+        <td><code class="sl-mono sl-dim">{{ (a.before_json or '—') }}</code></td>
+        <td><code class="sl-mono">{{ (a.after_json or '—') }}</code></td>
         <td>{{ fmt_ts(a.created_at) }}</td>
       </tr>
     {% else %}

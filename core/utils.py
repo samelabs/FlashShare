@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import os
 import secrets
@@ -50,6 +52,29 @@ def html_escape(value: str) -> str:
     return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
 
 
+def file_urls(public_id: str) -> tuple[str, str]:
+    """THE single file-address builder: returns (page_url, download_url)
+    for one /f/{id} resource. Every surface (result record, /r page, MCP
+    structuredContent, web card) derives both from here."""
+    page = f"{BASE_URL}/f/{urllib.parse.quote(public_id)}"
+    return page, f"{page}?download=1"
+
+
+def remaining_downloads(total: int, live: dict | None) -> int | None:
+    """THE single remaining-download calculator over a live storage-info
+    dict: prefers the provider's DownloadsRemaining, falls back to
+    total - DownloadCount, None when neither is known."""
+    if not isinstance(live, dict):
+        return None
+    rem = live.get("DownloadsRemaining")
+    if isinstance(rem, int):
+        return max(0, rem)
+    cnt = live.get("DownloadCount")
+    if isinstance(cnt, int):
+        return max(0, int(total) - cnt)
+    return None
+
+
 def file_glyph(content_type: str, filename: str) -> str:
     """File-row glyph icon name by type family (one mapping; the result
     page and the file page share it)."""
@@ -89,11 +114,6 @@ def format_ts(ts) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.gmtime(int(ts)))
 
 
-def file_ext_label(name: str) -> str:
-    ext = os.path.splitext(name or "")[1].strip(".").upper()
-    return ext[:4] or "FILE"
-
-
 # ── Format category icons ──
 # SVG paths sourced from icons.py (single source of truth)
 # Format: category → (css_class, label, svg_paths)
@@ -128,15 +148,18 @@ EXT_TO_CATEGORY = {
 
 
 def file_format_icon(name: str) -> str:
+    """Platform-owned SVG+label markup (Markup on return): crosses the
+    autoescape boundary as the single file-mark producer."""
+    from markupsafe import Markup
     ext = os.path.splitext(name or "")[1].lower()
     cat_key = EXT_TO_CATEGORY.get(ext, "")
     if cat_key and cat_key in FORMAT_ICONS:
         css_class, label, svg_paths = FORMAT_ICONS[cat_key]
-        return ('<div class="file-mark ' + css_class + '" aria-hidden="true">'
-                '<svg viewBox="0 0 24 24">' + svg_paths + '</svg>'
-                '<span>' + label + '</span></div>')
+        return Markup('<div class="file-mark ' + css_class + '" aria-hidden="true">'
+                      '<svg viewBox="0 0 24 24">' + svg_paths + '</svg>'
+                      '<span>' + label + '</span></div>')
     ext_upper = ext.strip(".").upper()[:4] or "FILE"
-    return ('<div class="file-mark fmt-default" aria-hidden="true">'
+    return Markup('<div class="file-mark fmt-default" aria-hidden="true">'
             '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>'
             '<span>' + ext_upper + '</span></div>')
 
@@ -270,13 +293,6 @@ def _qr_gf_mul(x: int, y: int) -> int:
             x ^= 0x11D
         y >>= 1
     return result
-
-
-def _qr_gf_pow(power: int) -> int:
-    value = 1
-    for _ in range(power):
-        value = _qr_gf_mul(value, 2)
-    return value
 
 
 def _qr_rs_remainder(data: list, degree: int) -> list:

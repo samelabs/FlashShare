@@ -17,18 +17,18 @@
     <tbody>
     {% for t in tools %}
       <tr>
-        <td class="sl-mono">{{ t.tool_key|e }}</td>
-        <td>{{ t.owner|e }}</td>
-        <td>{{ t.cls|e }}</td>
-        <td>{{ t.execution|e }}</td>
-        <td>{{ t.visibility|e }}</td>
+        <td class="sl-mono">{{ t.tool_key }}</td>
+        <td>{{ t.owner }}</td>
+        <td>{{ t.cls }}</td>
+        <td>{{ t.execution }}</td>
+        <td>{{ t.visibility }}</td>
         <td><label class="sl-switch"><input type="checkbox"
-              data-toggle-enabled="{{ t.tool_key|e }}"
+              data-toggle-enabled="{{ t.tool_key }}"
               {{ 'checked' if t.enabled }}><span></span></label></td>
         <td>{{ '✔' if t.trusted else '✕' }}</td>
         <td class="sl-num">
           {% if t.cost is not none %}
-          <form class="sl-inline-form" data-pricing="{{ t.tool_key|e }}">
+          <form class="sl-inline-form" data-pricing="{{ t.tool_key }}">
             <input type="number" name="cost" value="{{ t.cost }}" min="0" max="1000000" step="1">
             <label class="sl-switch"><input type="checkbox" name="enabled" {{ 'checked' if t.priced }}><span></span></label>
             <button class="sl-btn sl-btn-sm" type="submit">Save</button>
@@ -36,11 +36,11 @@
           {% else %}—{% endif %}
         </td>
         <td class="sl-num">{{ fmt_num(t.calls_ok) }}</td>
-        <td class="sl-num">{{ (t.provider_earn_usd or '—')|e }}</td>
+        <td class="sl-num">{{ (t.provider_earn_usd or '—') }}</td>
         <td>
           {% if t.owner_id is none and t.execution == 'http' %}
           <button class="sl-btn sl-btn-sm sl-btn-danger" type="button"
-                  data-del="{{ t.tool_key|e }}">Delete</button>
+                  data-del="{{ t.tool_key }}">Delete</button>
           {% endif %}
         </td>
       </tr>

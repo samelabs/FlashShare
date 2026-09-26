@@ -86,14 +86,18 @@ _TEMPLATES_DIR = _BASE_DIR / "app" / "templates"
 _TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-# Raw platform-owned SVG/HTML still relies on autoescape=False. User-controlled
-# text/data has explicit canonical boundaries: |lt, |e and |tojson.
-templates.env.autoescape = False
+# Autoescape ON: every interpolated value escapes by default. The only
+# raw-HTML producers are platform-owned — icons.py returns Markup, and
+# the four |safe sites are platform-generated JSON (limits/delivery) and
+# the repo-resident policy documents (doc_body). No user-controlled
+# value reaches the page unescaped.
+templates.env.autoescape = True
 
 from governance.tool_params import resolve_label as _resolve_label
 
 def _lt(value, lang: str):
-    return html_escape(_resolve_label(value, lang))
+    # plain resolution: env autoescape performs the escaping
+    return _resolve_label(value, lang)
 
 templates.env.filters["lt"] = _lt
 templates.env.globals["lt"] = _lt
@@ -152,7 +156,14 @@ def detect_lang(request: Request) -> str:
 import asyncio
 
 _concurrency = asyncio.Semaphore(8)
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/tool-endpoints/", "/mcp",
+# Heavy surface gate. /tool-endpoints/ is deliberately NOT listed: hosted
+# endpoints are the in-process fan-out targets of already-admitted heavy
+# dispatches (each pulls its sources via /api/source and returns to the
+# caller). Admitting them to the SAME semaphore self-deadlocks at
+# saturation — every slot is held by an outer call whose inner hosted
+# call can then never acquire one. The outer call already bounds this
+# work; the hosted leg is part of that same unit.
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp",
                 "/auth/login", "/auth/register")
 # Mutating account identity/credentials is a browser-session surface. Capability
 # tokens may run the machine surfaces (MCP / hosted tool endpoints), but cannot
