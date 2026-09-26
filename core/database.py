@@ -681,7 +681,6 @@ _SCHEMA_SQL = (
       content_type  TEXT,
       declared_size BIGINT NOT NULL CHECK (declared_size > 0),
       client_ref    TEXT NOT NULL,
-      request_hash  TEXT NOT NULL,
       expires_at    BIGINT NOT NULL,
       used_at       BIGINT,
       created_at    BIGINT NOT NULL
@@ -689,6 +688,14 @@ _SCHEMA_SQL = (
     """,
     "CREATE INDEX IF NOT EXISTS mcp_upload_tickets_user_ref_idx"
     " ON mcp_upload_tickets (user_id, client_ref, id DESC)",
+    # one LIVE (unused, unexpired-at-issue) ticket per (user, client_ref):
+    # used_at IS NULL marks unused; the issue() user-row lock makes the
+    # lookup+insert pair race-free, this index is the durable backstop
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS mcp_upload_tickets_live_one_idx
+      ON mcp_upload_tickets (user_id, client_ref)
+      WHERE used_at IS NULL
+    """,
     )
 
 

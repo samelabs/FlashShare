@@ -451,7 +451,11 @@ def _tool_specs(user: dict) -> list:
                 "properties": sub_props,
                 **({"required": sub_required} if sub_required else {}),
             }
-            required += sub_required
+            # required parameter NAMES live at params.required — the
+            # top level requires params itself when any is mandatory,
+            # never the individual names.
+            if sub_required:
+                required.append("params")
         else:
             props["params"] = {"type": "object", "description": "Tool-specific parameters"}
         props["delivery"] = {
