@@ -52,6 +52,18 @@ def mark_paid(con, withdrawal_id: int, ts: int, admin_user_id: int,
         (ts, admin_user_id, payout_ref, withdrawal_id)).fetchone()
 
 
+def mark_payout_failed(con, withdrawal_id: int) -> dict:
+    """approved → payout_failed (B2b-1): status flip ONLY — review fields
+    stay (they were set at approval), paid fields stay NULL. The earn-pool
+    return is a ledger row written by the caller in the SAME transaction."""
+    return con.execute(
+        """
+        UPDATE withdrawals SET status = 'payout_failed'
+        WHERE id = %s RETURNING *
+        """,
+        (withdrawal_id,)).fetchone()
+
+
 def withdrawals_by_user(con, user_id: int, limit: int, offset: int) -> list:
     return con.execute(
         "SELECT * FROM withdrawals WHERE user_id = %s "

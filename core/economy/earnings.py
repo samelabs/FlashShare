@@ -41,7 +41,8 @@ from repo import ledger as ledger_repo
 from utils import now
 
 MIN_WITHDRAWAL_MILLIS = 10000    # USD-millis = $10.00 minimum withdrawal
-WITHDRAWAL_STATES = ("pending", "approved", "rejected", "paid")
+WITHDRAWAL_STATES = ("pending", "approved", "rejected", "paid",
+                     "payout_failed")
 
 
 def earnings_summary(user_id: int) -> dict:
@@ -252,6 +253,62 @@ def mark_withdrawal_paid(withdrawal_id: int, payout_ref: str,
             con, int(admin_user_id), "withdrawal.paid",
             "withdrawal", str(withdrawal_id), before,
             {**before, "status": "paid", "paid_by": int(admin_user_id)}, ts)
+    return dict(out)
+
+
+def mark_withdrawal_payout_failed(withdrawal_id: int, reason: str,
+                                  admin_user_id: int) -> dict:
+    """approved → payout_failed (B2b-1): the external payout could not be
+    completed. ONE transaction: status flip + earn-pool return (a positive
+    provider_earn ledger row, idem `payout-failed:{id}`) + audit. The earn
+    pool math never changes shape — earnings_summary already excludes
+    non-(approved|paid) withdrawals from `withdrawn`, so the returned
+    amount becomes available again purely through the ledger row.
+
+    Replay: payout_failed + replay → NO-OP success (zero new ledger, zero
+    duplicate audit; the idem key backs the same guarantee under any
+    interleaving). pending/rejected/paid/payout_failed-source states are
+    refused (transition_conflict / not_found).
+    reason is REQUIRED operator evidence (bounded, stored in the audit).
+    """
+    from repo import operator_audit
+    if not isinstance(reason, str):
+        raise ValueError("invalid_payout_reason_type")
+    why = reason.strip()
+    if not why or len(why) > 200:
+        raise ValueError("invalid_payout_reason")
+    ts = now()
+    with db() as con:
+        row = economy_repo.withdrawal_for_update(con, withdrawal_id)
+        if not row:
+            raise KeyError("not_found")
+        # replay: already payout_failed → no-op success, zero mutation
+        if row["status"] == "payout_failed":
+            return dict(row)
+        if row["status"] != "approved":
+            raise ValueError("transition_conflict")
+        before = _snap_w(row)
+        # cash-pool serialization anchor — same lock the approval took
+        ledger_repo.lock_user(con, int(row["user_id"]))
+        idem = f"payout-failed:{withdrawal_id}"
+        pool_after = ledger_repo.earn_pool_balance(
+            con, row["user_id"]) + int(row["amount"])
+        # the return leg reverses the withdrawal's own negative movement
+        # (same 'withdraw' kind, positive delta): the pool arithmetic
+        # (provider_earn − withdraw) restores exactly, and the lifetime
+        # 'earned' aggregate keeps counting the ORIGINAL earning once —
+        # a provider_earn-kind return row would double-count it in
+        # earnings_summary.
+        ledger_repo.insert_row(
+            con, int(row["user_id"]), int(row["amount"]), pool_after,
+            "withdraw", "withdrawal", str(withdrawal_id), idem,
+            f"withdrawal #{withdrawal_id} payout failed", ts)
+        out = economy_repo.mark_payout_failed(con, withdrawal_id)
+        operator_audit.record(
+            con, int(admin_user_id), "withdrawal.payout_failed",
+            "withdrawal", str(withdrawal_id), before,
+            {**before, "status": "payout_failed", "reason": why,
+             "resolved_by": int(admin_user_id)}, ts)
     return dict(out)
 
 

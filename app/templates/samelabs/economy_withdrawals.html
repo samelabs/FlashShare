@@ -39,6 +39,7 @@
             <button type="button" class="sl-btn btn-reject" data-wid="{{ w.id }}">Reject</button>
             {% elif w.status == 'approved' %}
             <button type="button" class="btn sl-btn sl-btn-primary btn-paid" data-wid="{{ w.id }}">Mark paid…</button>
+            <button type="button" class="sl-btn btn-payout-failed" data-wid="{{ w.id }}">Payout failed…</button>
             {% else %}—{% endif %}
           </td>
         </tr>

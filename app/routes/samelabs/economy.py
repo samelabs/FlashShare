@@ -191,6 +191,32 @@ async def reject_withdrawal(wid: int, request: Request):
     return {"ok": True, "status": row["status"]}
 
 
+@router.post("/samelabs/economy/withdrawals/{wid}/payout-failed")
+async def payout_failed(wid: int, request: Request):
+    """approved → payout_failed (B2b-1): earn-pool return in the same
+    transaction; reason required (audit evidence)."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    try:
+        raw = await request.json()
+        reason = raw.get("reason", "")
+        if not isinstance(reason, str):
+            return JSONResponse(
+                {"ok": False, "error": "invalid_payout_reason_type"}, 422)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from backoffice import withdrawals as wd_cmd
+    try:
+        row = wd_cmd.mark_withdrawal_payout_failed(
+            wid, reason, admin_user_id=int(user["id"]))
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    return {"ok": True, "status": row["status"]}
+
+
 @router.post("/samelabs/economy/withdrawals/{wid}/paid")
 async def mark_paid(wid: int, request: Request):
     """approved → paid with external payout_ref (zero ledger mutation)."""
