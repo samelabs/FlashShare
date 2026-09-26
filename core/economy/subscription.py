@@ -473,6 +473,14 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
             started_at=started, renews_at=renews_write,
             plan_id=plan["id"],
             period_start=ps_write, cancel_scheduled_at=cancel_ts)
+        # B2b-1: durable base-payment record for THIS period — the FIRST
+        # subscription.paid to arrive for (sub, period) is its base cycle
+        # payment, whatever the credits arithmetic does later (a paid plan
+        # with zero monthly credits mints no grant rows, so the ledger
+        # cannot answer "who funded the base cycle"). Later same-period
+        # charges (upgrades) and replays never overwrite (ON CONFLICT).
+        orders_repo.record_period_base_payment(
+            con, sub_id, period_start, int(order["user_id"]), txn_ref, ts)
     # Return the TRUE movement of THIS call: a same-transaction replay
     # (or any converged no-op) grants nothing — granted=False, credits=0
     # — even though the live Plan row says otherwise. Reconcile counts

@@ -191,20 +191,29 @@ def _reverse_subscription(txn: dict) -> dict:
                                                               txn_id)
     total = sum(int(r["delta"]) for r in rows) if rows else 0
     # Which payment is this? Decided by WHO FUNDED THE PERIOD'S BASE
-    # CYCLE — never by whether THIS transaction's own grant landed (its
-    # webhook may have been lost):
-    #   the period's base grant (idem plan:{uid}:{ps}) exists and was
-    #   paid by a DIFFERENT transaction → this txn is an upgrade/proration
-    #   charge: reverse only what it minted (possibly zero when its
-    #   callback was lost) and NEVER end the base-paid period;
-    #   the base grant carries THIS txn's ref (or the period has no base
-    #   funding from anyone else) → the base cycle payment itself:
-    #   a reversal of the CURRENT paid period ends its validity.
+    # CYCLE — read from the durable transaction record written when the
+    # period was first applied (B2b-1), NEVER from ledger grant rows (a
+    # paid plan with zero monthly credits mints no base grant, which made
+    # every later same-period refund look like a base payment):
+    #   recorded base txn != this txn → upgrade/proration charge: reverse
+    #     only what it minted (possibly zero when its callback was lost)
+    #     and NEVER end the base-paid period;
+    #   recorded base txn == this txn → the base cycle payment itself:
+    #     a reversal of the CURRENT paid period ends its validity (zero-
+    #     credit periods included — the economic fact is the payment, not
+    #     the credits movement).
+    # No record at all → the period was never applied through
+    # apply_paid_period: an unprovable state, fail loud with ZERO
+    # mutation (500 keeps Creem's retry surface + operator attention).
     with db() as con:
-        base = ledger_repo.by_idem_key(
-            con, user_id, f"plan:{user_id}:{period_start}")
-    base_ref = (base or {}).get("ref_id") if base else None
-    is_base_payment = base_ref is None or str(base_ref) == txn_id
+        base_rec = orders_repo.period_base_payment(con, sub_id, period_start)
+    if base_rec is None:
+        log.warning(
+            "reverse: no base-payment record for sub:%s period %s — "
+            "cannot classify txn %s, zero mutation", sub_id, period_start,
+            txn_id)
+        raise KeyError("subscription_base_payment_unproven")
+    is_base_payment = str(base_rec["base_txn_id"]) == txn_id
     if not is_base_payment:
         # upgrade charge (identified by the period's base-payment fact,
         # not this txn's grants): revoke only what it minted — with a

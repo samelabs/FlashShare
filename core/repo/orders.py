@@ -482,6 +482,36 @@ def period_plan_credits(con, user_id: int, period_start: int) -> int:
     return grants + int(rev["total"] or 0)  # revoke delta < 0
 
 
+def record_period_base_payment(con, sub_id: str, period_start: int,
+                               user_id: int, base_txn_id: str,
+                               created_at: int) -> bool:
+    """B2b-1: durable per-period base-payment fact (transaction record,
+    NOT a ledger-grant inference). First writer for (sub_id, period_start)
+    wins; later same-period charges (upgrades) and replays never overwrite.
+    Returns True when this call created the record."""
+    row = con.execute(
+        """
+        INSERT INTO subscription_period_payments
+          (sub_id, period_start, user_id, base_txn_id, created_at)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (sub_id, period_start) DO NOTHING
+        RETURNING sub_id
+        """,
+        (sub_id, int(period_start), int(user_id), base_txn_id,
+         int(created_at))).fetchone()
+    return row is not None
+
+
+def period_base_payment(con, sub_id: str,
+                        period_start: int) -> Optional[dict]:
+    """The recorded base-cycle payment transaction for one period, or
+    None when the period was never applied through apply_paid_period."""
+    return con.execute(
+        "SELECT * FROM subscription_period_payments"
+        " WHERE sub_id = %s AND period_start = %s",
+        (sub_id, int(period_start))).fetchone()
+
+
 def period_has_payment_reversal(con, user_id: int, period_start: int) -> bool:
     """该 billing period 的 plan-derived grants 中, 是否存在其支付交易已被
     经济反转的 (grant ref -> creem_transaction, 对应 revoke 行存在)。
