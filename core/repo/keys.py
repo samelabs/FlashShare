@@ -46,8 +46,7 @@ def delete_all_keys(con, user_id: int) -> int:
 def list_keys(con, user_id: int) -> list:
     return con.execute(
         """
-        SELECT id, name, prefix, last_used_at, created_at,
-               (key_sealed IS NOT NULL AND key_sealed <> '') AS viewable
+        SELECT id, name, prefix, last_used_at, created_at
         FROM api_keys WHERE user_id = %s ORDER BY id DESC
         """,
         (user_id,)).fetchall()

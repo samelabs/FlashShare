@@ -180,11 +180,6 @@ def revoke(user_id: int, amount: int, *, ref_type: str | None = None,
     return dict(row)
 
 
-def lazy_signup_grant(con, user_id: int, amount: int) -> dict | None:
-    """REMOVED 2026-08-27: signup bonus decoupled from registration/billing."""
-    return None
-
-
 def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, int]:
     """(rows_newest_first, total_count) for the account credits page.
 

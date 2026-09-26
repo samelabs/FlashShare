@@ -240,7 +240,7 @@ try:
          "client_ref": f"awx-{_u}"},
         {"Content-Type": "application/json", "Cookie": ck})
     items = ((d_x or {}).get("result") or {}).get("items") or []
-    share_pid = next((it.get("publicId") for it in items
+    share_pid = next((it.get("public_id") for it in items
                       if it.get("kind") == "file"), None)
     check("S0 share fixture (upload+execute) settled",
           st == 200 and st_x == 200 and bool(share_pid), (st, st_x, str(d_x)[:80]))

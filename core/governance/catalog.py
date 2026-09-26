@@ -144,10 +144,9 @@ def row_to_item(row: dict, price: dict) -> dict:
         # 4C-2: 公开 accept 一律投影成 canonical extension tokens
         # (stored parser 单点解释, 非法行 startup fail)。
         "accept": _canonical_accept(row["accept_json"]),
-        "files_min": int(row.get("files_min") if row.get("files_min") is not None else 1),
-        "files_max": int(row.get("files_max") if row.get("files_max") is not None else 1),
-        "outputs": (json.loads(row["outputs_json"])
-                    if row.get("outputs_json") else ["file"]),
+        "files_min": int(row["files_min"]),
+        "files_max": int(row["files_max"]),
+        "outputs": json.loads(row["outputs_json"]),
         "cost": int(price.get("cost") or 0),
     }
     # params 声明 (tool modes v3): 三面同构 — web 浮层/MCP inputSchema/详情同源
@@ -246,16 +245,13 @@ def owner_public_tools(owner_id: int) -> list:
     return out
 
 
-def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> list:
+def list_catalog(viewer_id: int | None = None) -> list:
     """Pricing-overlaid catalog (row_to_item projection): disabled tools
     hidden, cost included.
 
     viewer_id: when given, the result additionally includes the viewer's
     own private/unlisted tools (owner surface). Public listing (web home
     for anonymous) passes None → public rows only.
-    include_remote: False strips execution=http rows — the web home
-    grid is local-only until the remote-tool UX ships; MCP keeps them
-    (programmatic surface is the remote-first consumer).
     """
     from governance.pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}
@@ -265,8 +261,6 @@ def list_catalog(viewer_id: int | None = None, include_remote: bool = True) -> l
 
     result = []
     for row in rows:
-        if not include_remote and row["execution"] != "local":
-            continue
         p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
         if not p["enabled"]:
             continue

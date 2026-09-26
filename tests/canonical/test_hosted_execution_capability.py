@@ -119,7 +119,7 @@ _b, _ct = _mp({"client_ref": "hx-" + _uuid.uuid4().hex[:8], "tool": "privacy"},
               [("a.png", "image/png", _buf.getvalue())])
 _st, _d = _req("POST", "/api/uploads", None, {"Cookie": _ck}, raw_body=_b, ctype=_ct)
 _f0 = (_d.get("files") or [{}])[0] if _d.get("files") else (_d.get("file") or {})
-GID = _f0.get("stagingId") or _f0.get("publicId")
+GID = _f0.get("stagingId") or _f0.get("public_id")
 SRC_URL = f"{BASE}/api/source/{GID}?u=&t="  # real gid; token minted below
 
 

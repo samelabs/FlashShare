@@ -34,11 +34,3 @@ def gate_ref_throttled(user_id: int) -> bool:
             return True
         q.append(ts)
         return False
-
-
-def _sweep_dead():
-    """可选维护: 清空长期无命中的 user 桶 (内存回收)。无人调用也不出错。"""
-    cutoff = time.time() - 24 * 3600
-    with _lock:
-        for uid in [u for u, q in _hits.items() if not q or q[-1] < cutoff]:
-            _hits.pop(uid, None)

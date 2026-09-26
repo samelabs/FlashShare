@@ -223,10 +223,11 @@ def update_profile(user_id: int, display_name: str | None = None,
                 raise ValueError("err_display_name_empty")
             users_repo.update_display_name(con, user_id, display_name, ts)
         if bio is not None:
-            users_repo.update_bio(con, user_id, bio.strip()[:500] or None, ts)
+            # "" clears the field (empty = cleared, not skipped)
+            users_repo.update_bio(con, user_id, bio.strip()[:500], ts)
         if payout_channel is not None:
             users_repo.update_payout_channel(
-                con, user_id, payout_channel.strip()[:120] or None, ts)
+                con, user_id, payout_channel.strip()[:120], ts)
         if email is not None:
             # Same contract as registration: one validator, no silent
             # truncation — validate_email owns length and shape rules.
@@ -283,25 +284,6 @@ def set_password(user_id: int, new_password: str) -> None:
     new_hash = hash_password(new_password)
     with db() as con:
         _rotate_password_credentials(con, user_id, new_hash)
-
-
-def operator_reset_password(user_id: int) -> str:
-    """Operator-initiated reset: set a fresh random temporary password,
-    delete every browser session AND every API key of the user (a reset
-    assumes the credentials may be compromised). Returns the temporary
-    password once; only its hash is stored. The caller owns operator
-    authority and audit."""
-    with db() as con:
-        row = users_repo.by_id(con, user_id)
-    if not row:
-        raise ValueError("err_user_not_found")
-    temporary = secrets.token_urlsafe(12)
-    new_hash = hash_password(temporary)
-    with db() as con:
-        _rotate_password_credentials(con, user_id, new_hash)
-        from repo import keys as keys_repo
-        keys_repo.delete_all_keys(con, user_id)
-    return temporary
 
 
 # ── Serialization ───────────────────────────────────────

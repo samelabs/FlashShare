@@ -17,24 +17,14 @@ _CORE = Path(__file__).resolve().parent.parent / "core"
 _BASE = Path(__file__).resolve().parent.parent
 # Load static assets once
 _STATIC = _BASE / "static"
-# CSS set: tokens + components (shared design system) + 518.css (page
-# layout). _CSS keeps pointing at the page file for legacy size checks;
-# the version stamp covers the whole set (any file change bumps it).
-with open(_STATIC / "518.css", encoding="utf-8") as f:
-    _CSS = f.read()
-# Version stamp = hard prefix + content digest of the whole CSS set
-# (tokens + components + page file): any file change bumps the URL.
+# CSS version stamp = hard prefix + content digest of the FULL CSS set
+# (tokens + components + the 518.css page file): any file change bumps
+# every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v54"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (earn-usd 移除/市场副标题)
-for _cssf in ("css/tokens.css", "css/components.css"):
+_CSS_VERSION = "v55"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
-with open(_STATIC / "app.js", encoding="utf-8") as f:
-    JS = f.read()
-# app.js gets its OWN stamp: it changes independently of 518.css. Sharing
-# css_version meant an app.js-only edit kept the old stamp → edge served the
-# stale (buggy) app.js forever under the same URL.
-_JS_VERSION = hashlib.md5((JS + str(int(_os.path.getmtime(_STATIC / "app.js")))).encode()).hexdigest()[:8]
 # Separate cache-bust version for i18n.js — it changes independently of 518.css
 with open(_STATIC / "i18n.js", encoding="utf-8") as f:
     _I18N_JS = f.read()
@@ -110,7 +100,6 @@ def ctx_base(request: Request) -> dict:
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
         "css_version": _CSS_VERSION,
-        "js_version": _JS_VERSION,
         "pages_version": PAGES_VERSION,
         "app_js_version": APP_JS_VERSION,
         "i18n_version": _I18N_VERSION,

@@ -395,13 +395,18 @@ check("T9 inputSchema files.items oneOf inline | url | reference",
       _forms == [("b64", "filename"), ("public_id",), ("url",)], str(_forms))
 
 # ══════════ 8. URL source (real HTTP → real SSRF guard) ══════════
-for label, url in (("loopback", "https://127.0.0.1/a.png"),
-                   ("private", "https://10.0.0.1/a.png"),
-                   ("plain http", "http://example.com/a.png")):
+# request-shape rejection (non-https URL) → -32602; SSRF rejections
+# during the guarded fetch → isError (tool-input semantics, FX-2)
+for label, url, form in (("loopback", "https://127.0.0.1/a.png", "isError"),
+                         ("private", "https://10.0.0.1/a.png", "isError"),
+                         ("plain http", "http://example.com/a.png", "-32602")):
     st, _h, d = _zero_side_effects(f"U1 {label}", lambda url=url: _call(
         "compress", {"files": [{"url": url}], "client_ref": f"u1-{_u}-{label}"}))
-    check(f"U1 {label} URL → -32602", (d.get("error") or {}).get("code") == -32602,
-          str(d)[:120])
+    if form == "-32602":
+        ok_u1 = (d.get("error") or {}).get("code") == -32602
+    else:
+        ok_u1 = (d.get("result") or {}).get("isError") is True
+    check(f"U1 {label} URL → {form}", ok_u1, str(d)[:120])
 st, _h, d = _call("compress", {"files": [{"url": "https://x.example/a.png",
                                           "b64": _b64(PNG), "filename": "a.png"}],
                                "client_ref": f"u2-{_u}"})
@@ -468,17 +473,21 @@ try:
     _served[big] = b"\x89PNG\r\n\x1a\n" + b"\0" * MAX_UPLOAD_BYTES
     i1 = _ingress_n(uid)
     r = _ip({"files": [{"url": big}], "client_ref": f"big-{_u}"}, mid=5)
-    check("U7 oversize URL body → -32602, zero ingress/Gokapi",
-          (r.get("error") or {}).get("code") == -32602 and "too_large" in r["error"]["message"]
+    _u7 = (r.get("result") or {})
+    _u7t = ((_u7.get("content") or [{}])[0].get("text") or "")
+    check("U7 oversize URL body → isError, zero ingress/Gokapi",
+          _u7.get("isError") is True and "too_large" in _u7t
           and _ingress_n(uid) == i1 and _gk_count() == g1, str(r)[:120])
     del _served[big]
     def _blocked(url, **k):
         raise _remote.RemoteError("redirect_blocked", "redirect to non-https rejected")
     _remote.pinned_request = _blocked
     r = _ip({"files": [{"url": urlA}], "client_ref": f"rb-{_u}"}, mid=6)
-    check("U8 transport-level rejection → -32602 with typed code",
-          (r.get("error") or {}).get("code") == -32602
-          and "redirect_blocked" in r["error"]["message"] and _ingress_n(uid) == i1,
+    _u8 = (r.get("result") or {})
+    _u8t = ((_u8.get("content") or [{}])[0].get("text") or "")
+    check("U8 transport-level rejection → isError with typed code",
+          _u8.get("isError") is True and "redirect_blocked" in _u8t
+          and _ingress_n(uid) == i1,
           str(r)[:120])
 finally:
     _remote.pinned_request = _orig_pinned
@@ -513,13 +522,13 @@ c0 = _calls_n(uid)
 st, _h, d = _call("compress", {"files": [{"public_id": src2["stagingId"],
                                           "source_token": src2["sourceToken"]}],
                                "client_ref": f"refx-{_u}"})
-check("R3 foreign upload (other user's token) → -32602, zero tool_call",
-      (d.get("error") or {}).get("code") == -32602 and _calls_n(uid) == c0, str(d)[:120])
+check("R3 foreign upload (other user's token) → isError, zero tool_call",
+      (d.get("result") or {}).get("isError") is True and _calls_n(uid) == c0, str(d)[:120])
 st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": "0" * 64}],
                                "client_ref": f"refy-{_u}"})
-check("R4 invalid source_token → -32602, zero tool_call",
-      (d.get("error") or {}).get("code") == -32602 and _calls_n(uid) == c0, str(d)[:120])
+check("R4 invalid source_token → isError, zero tool_call",
+      (d.get("result") or {}).get("isError") is True and _calls_n(uid) == c0, str(d)[:120])
 st, _h, d = _call("compress", {"files": [{"public_id": src1["stagingId"],
                                           "source_token": 7}],
                                "client_ref": f"refz-{_u}"})
@@ -547,7 +556,7 @@ st3, _h, html_tm = _req("GET", "/tool/compress/mcp?lang=en")
 _mcp_url = f"{_BASE}/mcp"
 check("S1 Claude Code snippet (http transport + Bearer header, site base URL)",
       st == 200 and f'claude mcp add --transport http 518 {_mcp_url} '
-      '--header "Authorization: Bearer &lt;token&gt;"' in html_en)
+      '--header "Authorization: Bearer &lt;fsk_…&gt;"' in html_en)
 check("S2 Cursor / VS Code JSON: type http + url + headers",
       html_en.count('"type": "http"') == 2 and '"servers": {' in html_en
       and html_en.count(f'"url": "{_mcp_url}"') == 2)

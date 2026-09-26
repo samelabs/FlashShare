@@ -69,9 +69,9 @@ def delete_key(user_id: int, key_id: int) -> bool:
 
 
 def list_keys(user_id: int) -> list:
-    """All keys for the keys page. Prefixes only — no secrets, and
-    `viewable` tells the page whether a full view exists for this row
-    (historical rows migrated without an encrypted copy have none)."""
+    """All keys for the keys page. Prefixes only — no secrets; every key
+    carries an encrypted copy, so the full value is revealable any
+    time from the owner's browser session."""
     with db() as con:
         rows = keys_repo.list_keys(con, user_id)
     return [dict(r) for r in rows]
@@ -80,17 +80,13 @@ def list_keys(user_id: int) -> list:
 def reveal_key(user_id: int, key_id: int) -> str | None:
     """The full key plaintext for the owner's own browser session.
     None when the key does not exist; ValueError('err_vault') when the
-    stored copy cannot be decrypted; ValueError('err_key_not_viewable')
-    for a historical row with no encrypted copy."""
+    stored copy cannot be decrypted."""
     from secrets_vault import unseal
     with db() as con:
         row = keys_repo.key_for_owner(con, user_id, key_id)
     if row is None:
         return None
-    sealed = row["key_sealed"]
-    if not sealed:
-        raise ValueError("err_key_not_viewable")
-    return unseal(sealed)
+    return unseal(row["key_sealed"])
 
 
 def authenticate_key(plaintext: str) -> dict | None:

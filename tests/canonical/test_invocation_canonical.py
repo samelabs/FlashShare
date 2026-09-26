@@ -198,10 +198,10 @@ check("C1 compress canonical 执行 ok", r.get("ok"), f"{st} {str(r)[:150]}")
 
 # C: handler capture — local handler 只见 params。用 probe 工具? 没有 → 用 DB 检查产物 delivery
 if r.get("ok"):
-    row = db_query(f"select expiry_days, allowed_downloads from uploads where public_id='{r['result']['items'][0]['publicId']}'")
+    row = db_query(f"select expiry_days, allowed_downloads from uploads where public_id='{r['result']['items'][0]['public_id']}'")
     # uploads 表名可能是 shares — 试两个
     if not row or row == []:
-        row = db_query(f"select expiry_days, allowed_downloads from shares where public_id='{r['result']['items'][0]['publicId']}'")
+        row = db_query(f"select expiry_days, allowed_downloads from shares where public_id='{r['result']['items'][0]['public_id']}'")
     check("D1 local delivery 7/200 落库", row and row[0][0] in (7, "7") and row[0][1] in (200, "200"), str(row))
 
 # 旧 flat request → 422

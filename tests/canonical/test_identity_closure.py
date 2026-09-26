@@ -409,27 +409,8 @@ try:
     check("G3 stale cookie + Bearer on /account → login redirect (Bearer never a web user)",
           r.status_code == 302 and r.headers.get("location") == "/auth/login", r.status_code)
 
-    # ═══════════ H. operator_reset_password ═══════════
-    h = _mkuser(_u + "h", f"{_u}h@t.co", "pw-h-123456")
-    create_browser_session(h)
-    create_key(h, "idc-h")
-    temp = idauth.operator_reset_password(h)
-    with db() as con:
-        n_sess = con.execute("select count(*) c from sessions where user_id=%s", (h,)).fetchone()["c"]
-        n_tok = con.execute("select count(*) c from api_keys where user_id=%s",
-                            (h,)).fetchone()["c"]
-    check("H1 returns a temporary password that authenticates; old one does not",
-          isinstance(temp, str) and len(temp) >= 12
-          and idauth.authenticate_local(_u + "h", temp) == h
-          and idauth.authenticate_local(_u + "h", "pw-h-123456") is None)
-    check("H2 all sessions and API keys deleted", n_sess == 0 and n_tok == 0,
-          (n_sess, n_tok))
-    try:
-        idauth.operator_reset_password(-1)
-        h3 = None
-    except ValueError as exc:
-        h3 = str(exc)
-    check("H3 unknown user → err_user_not_found", h3 == "err_user_not_found", h3)
+    # H-block retired: operator_reset_password had no production caller
+    # (FX-2 dead-code sweep)
 
 finally:
     # ═══════════ cleanup (only this run's fixtures) ═══════════

@@ -3,7 +3,7 @@
 
 No durable/public tool result without a committed settlement: the
 orchestrator only STAGES the physical Gokapi object; uploads row +
-tool_calls.upload_id + result binding + earning/revenue land in ONE
+result binding + earning/revenue land in ONE
 gate transaction. Fault injection proves rollbacks, staged cleanup,
 exact refund, commit-ACK-loss reconciliation (durable ok → success, no
 refund), unreadable-outcome (stays running, no refund), startup
@@ -100,15 +100,15 @@ def _mktool(tool_id, owner_id=None, cost=25):
 
 # ══════════ A. staging-only contract ══════════
 st = _mkstaged(tag="contract")
-check("A1 StagedResult 无 publicId/downloadUrl/uploads id 字段",
-      not hasattr(st, "public_id") and not hasattr(st, "downloadUrl")
-      and not hasattr(st, "upload_id"))
+check("A1 StagedItems 不携带下载地址/公开 id 字段",
+      not hasattr(st, "download_url") and not hasattr(st, "public_id")
+)
 _orch_src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
                  encoding="utf-8").read()
-check("A2 orchestrator 不再调用 save_upload_record",
+check("A2 orchestrator 不再调用 save_upload_record (pipeline 模块已删)",
       "save_upload_record" not in _orch_src
-      and "save_upload_record" not in open(_os.path.join(
-          _REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read())
+      and not _os.path.exists(_os.path.join(
+          _REPO, "core", "execution", "pipeline.py")))
 
 # ══════════ B. atomic success transaction (first-party) ══════════
 from execution import gate
@@ -149,27 +149,30 @@ res, err, st1 = _run_gate(user1, tool1, None, lambda: _stage_ok(tool1))
 check("B1 成功 settlement → success response", res and res.get("ok"))
 with db() as con:
     row = con.execute(
-        "select t.id, t.status, t.upload_id, t.result_public_id,"
-        " t.result_json, u.public_id from tool_calls t"
-        " left join uploads u on u.id = t.upload_id"
+        "select t.id, t.status, t.result_public_id,"
+        " t.result_json from tool_calls t"
         " where t.user_id=%s and t.tool_id=%s order by t.id desc limit 1",
         (user1, tool1)).fetchone()
+    _rj0 = _json.loads(row["result_json"]) if row["result_json"] else {}
+    row = dict(row)
+    row["public_id"] = next((i.get("public_id") for i in _rj0.get("items", [])
+                             if i.get("kind") == "file"), None)
     n_uploads_after = int(con.execute(
         "select count(*) c from uploads where user_id=%s",
         (user1,)).fetchone()["c"])
 check("B2 uploads 恰新增一行", n_uploads_after - n_uploads_before == 1,
       f"{n_uploads_before}→{n_uploads_after}")
-check("B3 tool_call.upload_id 指向该行 + status ok",
-      row["status"] == "ok" and row["upload_id"] is not None)
+check("B3 tool_call ok + result binding (upload_id 列已退役)",
+      row["status"] == "ok" and row["result_public_id"] is not None)
 # IO-1: the result owns a fresh public id (/r/{id}); file items carry
-# their own uploads public ids — first item == upload_id's row
+# their own uploads public ids
 rj = _json.loads(row["result_json"])
 check("B4 result_public_id is the /r/ id (own identity)",
-      row["result_public_id"] == rj.get("resultId")
+      row["result_public_id"] == rj.get("result_id")
       and row["result_public_id"] != row["public_id"],
       (row["result_public_id"], row["public_id"]))
 check("B5 first file item publicId == uploads.public_id",
-      rj["items"][0].get("publicId") == row["public_id"]
+      rj["items"][0].get("public_id") == row["public_id"]
       and rj["items"][0].get("kind") == "file", rj["items"][:1])
 # B6 详情在 B6b (绑定 call id 的 revenue 聚合)
 from repo import ledger as _led
@@ -210,7 +213,7 @@ bal3 = spendable_balance(user3)
 import execution.results as _pipe
 _orig_land = _pipe.land_items_result
 def _land_fail_after_upload(con, user_id, staged, base_url, delivery):
-    upload_id, result_pid, rec = _orig_land(con, user_id, staged, base_url, delivery)
+    _upload_id, result_pid, rec = _orig_land(con, user_id, staged, base_url, delivery)
     raise RuntimeError("R1: fault after uploads INSERT")
 import execution.gate as _gate_mod
 import core.execution.gate as _g2
@@ -228,7 +231,7 @@ with db() as con:
     up = con.execute(
         "select count(*) c from uploads where user_id=%s", (user3,)).fetchone()["c"]
     t3 = con.execute(
-        "select status, result_public_id, upload_id from tool_calls"
+        "select status, result_public_id from tool_calls"
         " where user_id=%s and tool_id=%s order by id desc limit 1",
         (user3, tool3)).fetchone()
     refund3 = con.execute(
@@ -236,7 +239,7 @@ with db() as con:
         " order by l.id desc limit 1", (user3,)).fetchone()
 check("D1 R1: uploads row=0 / call failed / 无 result binding",
       int(up) == 0 and t3["status"] == "failed"
-      and t3["result_public_id"] is None and t3["upload_id"] is None,
+      and t3["result_public_id"] is None and t3["result_public_id"] is None,
       f"up={up} status={t3['status']}")
 check("D2 R1: exact refund (+25) → 余额恢复",
       refund3 is not None and int(refund3["delta"]) == 25
@@ -252,8 +255,8 @@ bal4 = spendable_balance(user4)
 
 import repo.ledger as _rled
 _orig_fok = _rled.finalize_call_ok
-def _fok_then_fail(con, call_id, upload_id, rpid, rjson, fin_at):
-    row = _orig_fok(con, call_id, upload_id, rpid, rjson, fin_at)
+def _fok_then_fail(con, call_id, rpid, rjson, fin_at):
+    row = _orig_fok(con, call_id, rpid, rjson, fin_at)
     raise RuntimeError("R2: fault after finalize, before revenue")
 # gate 顶部 module 级 from repo.ledger import finalize_call_ok →
 # patch execution.gate 模块属性 (测试顶部 from execution import gate 的
@@ -269,10 +272,11 @@ with db() as con:
     up4 = con.execute(
         "select count(*) c from uploads where user_id=%s", (user4,)).fetchone()["c"]
     t4 = con.execute(
-        "select status, upload_id from tool_calls where user_id=%s and"
-        " tool_id=%s order by id desc limit 1", (user4, tool4)).fetchone()
+        "select status, result_public_id from tool_calls where user_id=%s"
+        " and tool_id=%s order by id desc limit 1",
+        (user4, tool4)).fetchone()
 check("E1 R2: 整事务回滚 (uploads=0 / call 非 ok / 无 binding)",
-      int(up4) == 0 and t4["status"] == "failed" and t4["upload_id"] is None,
+      int(up4) == 0 and t4["status"] == "failed" and t4["result_public_id"] is None,
       f"up={up4} status={t4['status']}")
 check("E2 R2: exact refund → 余额恢复",
       spendable_balance(user4) == bal4, str(spendable_balance(user4)))
@@ -320,7 +324,7 @@ except Exception:
 _gate_mod._finish = _orig_finish
 with db() as con:
     t5 = con.execute(
-        "select status, result_json, upload_id from tool_calls"
+        "select status, result_json from tool_calls"
         " where user_id=%s and tool_id=%s order by id desc limit 1",
         (user5, tool5)).fetchone()
     n_refund5 = int(con.execute(
@@ -340,7 +344,7 @@ check("F3 durable ok → 零 staged delete", not _deleted, str(_deleted))
 check("F4 durable ok → 无重复 earning (恰 1)", n_earn5 == 1, str(n_earn5))
 durable_rj = _json.loads(t5["result_json"])
 check("F5 返回的是 durable result_json (同 publicId)",
-      res5["result"]["resultId"] == durable_rj["resultId"])
+      res5["result"]["result_id"] == durable_rj["result_id"])
 _gk.delete = _orig_del
 
 # ══════════ G. outcome DB 不可读 → unresolved (case C) ══════════
@@ -432,15 +436,15 @@ bal8_pre = spendable_balance(user8)
 out8 = gate.recover_abandoned_calls()
 with db() as con:
     t8 = con.execute(
-        "select status, upload_id, result_public_id from tool_calls"
+        "select status, result_public_id from tool_calls"
         " where id=%s", (call8,)).fetchone()
 check("I1 startup recovery: running+charge → exact refund+failed",
-      t8["status"] == "failed" and t8["upload_id"] is None
+      t8["status"] == "failed" and t8["result_public_id"] is None
       and t8["result_public_id"] is None
       and spendable_balance(user8) == bal8_pre + 25,
       f"status={t8['status']} bal={spendable_balance(user8)}/{bal8_pre+25}")
 check("I2 recovery case 无 result mapping (atomicity 保证)",
-      t8["upload_id"] is None and t8["result_public_id"] is None)
+      t8["result_public_id"] is None and t8["result_public_id"] is None)
 
 # ══════════ J. same client_ref response-loss replay ══════════
 user9 = _mkuser(_u + "u9")
@@ -471,7 +475,7 @@ with db() as con:
         (user9,)).fetchone()["c"])
 check("J1 replay → replay=True / 同 call_id / 同 resultId",
       resB.get("replay") is True and resB["call_id"] == resA["call_id"]
-      and resB["result"]["resultId"] == resA["result"]["resultId"],
+      and resB["result"]["result_id"] == resA["result"]["result_id"],
       f"A={resA['call_id']} B={resB['call_id']}")
 check("J2 handler/stage 只执行一次", _exec_count["n"] == 1, str(_exec_count))
 check("J3 恰一行 tool_call / 一行 uploads / 一次 consume / 一次 settlement",
@@ -491,11 +495,10 @@ check("K1 non-ok + result_public_id → DB reject",
                   " status, cost_snapshot, started_at, finished_at,"
                   " result_public_id) values (%s,%s,%s,'failed',0,%s,%s,'x')",
                   (f"kr1_{_u}", user9, tool9, ts, ts)))
-check("K2 non-ok + upload_id → DB reject",
+check("K2 non-ok + result_public_id → DB reject",
       _db_rejects("insert into tool_calls (client_ref, user_id, tool_id,"
                   " status, cost_snapshot, started_at, finished_at,"
-                  " upload_id) values (%s,%s,%s,'failed',0,%s,%s,"
-                  " (select min(id) from uploads))",
+                  " result_public_id) values (%s,%s,%s,'failed',0,%s,%s,'x')",
                   (f"kr2_{_u}", user9, tool9, ts, ts)))
 check("K3 ok + upload_id NULL 合法 (非文件成功不设限; hash 必带)",
       not _db_rejects("insert into tool_calls (client_ref, user_id,"
@@ -613,7 +616,7 @@ check("N1b staged cleanup 只删 attempt result",
 rN2, eN2, _ = _run_gate(userN, toolN, refN, _stN)
 with db() as con:
     tN2 = con.execute(
-        "select status, upload_id from tool_calls where user_id=%s"
+        "select status from tool_calls where user_id=%s"
         " and tool_id=%s and client_ref=%s order by id desc limit 1",
         (userN, toolN, refN)).fetchone()
     n_upN = int(con.execute(

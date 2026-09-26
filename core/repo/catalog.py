@@ -206,19 +206,6 @@ def tool_row_for_update(con, tool_key: str) -> Optional[dict]:
         (tool_key,)).fetchone()
 
 
-def id_of_platform_row(con, tool_key: str, owner_id_is_null: bool) -> Optional[dict]:
-    if owner_id_is_null:
-        return con.execute(
-            "SELECT id FROM platform_tools WHERE tool_key = %s AND owner_id IS NULL",
-            (tool_key,)).fetchone()
-    return con.execute(
-        "SELECT id FROM platform_tools WHERE tool_key = %s", (tool_key,)).fetchone()
-
-
-
-
-
-
 def set_tool_presentation(con, tool_key: str, featured: bool,
                           sort_order: int, ts: int) -> Optional[dict]:
     return con.execute(
@@ -300,15 +287,6 @@ def update_tool_row(con, tool_key: str, sets: dict) -> None:
 
 def delete_tool_row(con, row_id: int) -> None:
     con.execute("DELETE FROM platform_tools WHERE id = %s", (row_id,))
-
-
-def all_remote_joined(con) -> list:
-    return con.execute(
-        """
-        SELECT pt.*, u.username AS owner_name FROM platform_tools pt
-        LEFT JOIN users u ON u.id = pt.owner_id
-        WHERE pt.execution = 'http' ORDER BY pt.id
-        """).fetchall()
 
 
 # ── pricing ──

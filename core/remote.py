@@ -562,7 +562,10 @@ def _wrap_raw(body: bytes, filename: str | None = None,
         if not ext:
             raise RemoteError("bad_output", "unknown output format (no filename given)")
         filename = "result" + ext
-    name = filename
+    # remote (endpoint-declared) filenames ride the SAME canonical
+    # cleansing as every other surface — one sanitize_filename authority
+    from utils import sanitize_filename as _sfn
+    name = _sfn(filename)
     given_ctype = (content_type or "").strip().lower()
     if given_ctype in ("", "application/octet-stream", "application/json"):
         # placeholder — do NOT let it mask the real MIME. application/json

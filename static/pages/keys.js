@@ -34,46 +34,36 @@ async function loadKeys() {
     const actions = document.createElement('span');
     actions.className = 'key-actions';
 
-    if (k.viewable) {
-      const showBtn = document.createElement('button');
-      showBtn.type = 'button';
-      showBtn.className = 'btn-secondary btn-key-show';
-      const showSpan = document.createElement('span');
-      showSpan.setAttribute('data-i18n', 'keyShow');
-      showSpan.textContent = window.t('keyShow');
-      showBtn.appendChild(showSpan);
-      showBtn.addEventListener('click', async () => {
-        if (!value.hidden) { value.hidden = true; return; }
-        const rr = await fetch(`/api/keys/${k.id}/reveal`);
-        if (!rr.ok) { const dd = await rr.json(); alert(_errm(dd.error)); return; }
-        const dd = await rr.json();
-        value.textContent = dd.key;
-        value.hidden = false;
-        const copyBtn = actions.querySelector('.btn-key-copy');
-        if (copyBtn) copyBtn.classList.remove('hidden');
-      });
-      actions.appendChild(showBtn);
+    const showBtn = document.createElement('button');
+    showBtn.type = 'button';
+    showBtn.className = 'btn-secondary btn-key-show';
+    const showSpan = document.createElement('span');
+    showSpan.setAttribute('data-i18n', 'keyShow');
+    showSpan.textContent = window.t('keyShow');
+    showBtn.appendChild(showSpan);
+    showBtn.addEventListener('click', async () => {
+      if (!value.hidden) { value.hidden = true; return; }
+      const rr = await fetch(`/api/keys/${k.id}/reveal`);
+      if (!rr.ok) { const dd = await rr.json(); alert(_errm(dd.error)); return; }
+      const dd = await rr.json();
+      value.textContent = dd.key;
+      value.hidden = false;
+      const copyBtn = actions.querySelector('.btn-key-copy');
+      if (copyBtn) copyBtn.classList.remove('hidden');
+    });
+    actions.appendChild(showBtn);
 
-      const copyBtn = document.createElement('button');
-      copyBtn.type = 'button';
-      copyBtn.className = 'btn-secondary btn-key-copy hidden';
-      const copySpan = document.createElement('span');
-      copySpan.setAttribute('data-i18n', 'copy');
-      copySpan.textContent = window.t('copy');
-      copyBtn.appendChild(copySpan);
-      copyBtn.addEventListener('click', () => {
-        _copyRaw(copyBtn, value.textContent);
-      });
-      actions.appendChild(copyBtn);
-    } else {
-      // historical row without a stored copy — prefix only, create a new
-      // key to see the full value (data state, not an error)
-      const note = document.createElement('span');
-      note.className = 'key-legacy';
-      note.setAttribute('data-i18n', 'keyLegacyHint');
-      note.textContent = window.t('keyLegacyHint');
-      actions.appendChild(note);
-    }
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn-secondary btn-key-copy hidden';
+    const copySpan = document.createElement('span');
+    copySpan.setAttribute('data-i18n', 'copy');
+    copySpan.textContent = window.t('copy');
+    copyBtn.appendChild(copySpan);
+    copyBtn.addEventListener('click', () => {
+      _copyRaw(copyBtn, value.textContent);
+    });
+    actions.appendChild(copyBtn);
 
     const delBtn = document.createElement('button');
     delBtn.type = 'button';

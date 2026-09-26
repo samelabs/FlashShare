@@ -318,20 +318,6 @@ def insert_package(con, code: str, name: str, credits: int,
 
 # ── plans (subscription tiers) ──
 
-def canonical_plans(con) -> list:
-    """sellable membership catalog: plan_catalog.sellable_catalog 的行集
-    (plans 行是唯一产品层事实源; 参数化, 不在 repo 复制业务 tier)。
-    DB 中历史其它 plan rows 保留但不进 sellable/current Membership。"""
-    from governance import plan_catalog
-    codes = tuple(t.code for t in plan_catalog.sellable_catalog())
-    if not codes:
-        return []
-    placeholders = ",".join(["%s"] * len(codes))
-    return con.execute(
-        f"SELECT * FROM plans WHERE active AND code IN ({placeholders})"
-        " ORDER BY sort_order, price_cents", tuple(codes)).fetchall()
-
-
 def plan_by_id_active(con, plan_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM plans WHERE id = %s AND active", (plan_id,)).fetchone()

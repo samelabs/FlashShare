@@ -56,10 +56,6 @@ def reset_pool(expected_pool, reason: str = "unspecified") -> ProcessPoolExecuto
     return replacement
 
 
-def pool_reset_count() -> int:
-    return _reset_count
-
-
 def default_process_tool():
     """worker 入口 (域内 worker 模块)。"""
     from .worker import process_tool

@@ -281,12 +281,12 @@ st, r = _mcp({"files": [{"filename": "m.png", "b64": base64.b64encode(PNG).decod
               "client_ref": ref23})
 _msc = (r.get("result") or {}).get("structuredContent") or {}
 _mres = {"call_id": _msc.get("call_id"),
-         "publicId": ((_msc.get("items") or [{}])[0].get("page_url")
+         "public_id": ((_msc.get("items") or [{}])[0].get("page_url")
                       or "").rsplit("/", 1)[-1]}
 check("24a MCP first call ok (source+execute)",
-      bool(_mres.get("publicId")), str(_msc)[:110])
+      bool(_mres.get("public_id")), str(_msc)[:110])
 mcp_call_id = _mres.get("callId") or _mres.get("call_id")
-mcp_pub = _mres.get("publicId")
+mcp_pub = _mres.get("public_id")
 gk_mcp1 = _gk_count()
 usage_mcp1 = _usage_n(uid3)
 
@@ -296,12 +296,12 @@ st, r2 = _mcp({"files": [{"filename": "m.png", "b64": base64.b64encode(PNG).deco
                "client_ref": ref23}, mid=2)
 _msc2 = (r2.get("result") or {}).get("structuredContent") or {}
 _mres2 = {"call_id": _msc2.get("call_id"),
-          "publicId": ((_msc2.get("items") or [{}])[0].get("page_url")
+          "public_id": ((_msc2.get("items") or [{}])[0].get("page_url")
                        or "").rsplit("/", 1)[-1]}
-check("24 MCP retry same source handles (replay)", bool(_mres2.get("publicId")), str(_msc2)[:110])
+check("24 MCP retry same source handles (replay)", bool(_mres2.get("public_id")), str(_msc2)[:110])
 check("25 MCP retry same call_id/publicId (tool replay)",
       _mres2.get("callId", _mres2.get("call_id")) == mcp_call_id
-      and _mres2.get("publicId") == mcp_pub,
+      and _mres2.get("public_id") == mcp_pub,
       f"{_mres2.get('callId')}/{mcp_call_id} {_mres2.get('publicId')}/{mcp_pub}")
 check("26 MCP retry zero Gokapi growth", _gk_count() == gk_mcp1)
 check("27 MCP retry zero upload_usage growth", _usage_n(uid3) == usage_mcp1)
@@ -359,12 +359,12 @@ refT = f"ack-{_u}-t"
 rctT, uidsT, _ = claim_ingress_quota(uidT, "127.0.0.1", refT, hT, [len(PNG)])
 usage_T0 = _usage_n(uidT)
 with db() as con:
-    finalize_ok(con, int(rctT["id"]), [{"publicId": "ACKT1", "gokapiId": "ACKT1"}])
+    finalize_ok(con, int(rctT["id"]), [{"stagingId": "ACKT1"}])
 # 模拟: finalize commit 后 route 层抛异常, reconciliation 介入
 outT = resolve_outcome(int(rctT["id"]))
 check("ACK-tool DURABLE_OK → stored result",
       outT["outcome"] == OUTCOME_DURABLE_OK
-      and outT["result"][0]["publicId"] == "ACKT1", str(outT)[:100])
+      and outT["result"][0]["stagingId"] == "ACKT1", str(outT)[:100])
 check("ACK-tool durable-ok 零 quota release", _usage_n(uidT) == usage_T0 == 1)
 # DURABLE_OK 下 replay 而非新 attempt:
 _, _, repT = claim_ingress_quota(uidT, "127.0.0.1", refT, hT, [len(PNG)])
@@ -379,7 +379,7 @@ hD2 = ingress_request_hash("web_direct_share",
 refD2 = f"ack-{_u}-d"
 rctD2, uidsD2, _ = claim_ingress_quota(uidD2, "127.0.0.1", refD2, hD2, [len(PNG)])
 from repo.ingress_requests import finalize_ok as _rpo_final
-_direct_rec = [{"publicId": "ACKD1", "gokapiId": "ACKD1", "filename": "d.png"}]
+_direct_rec = [{"stagingId": "ACKD1", "filename": "d.png"}]
 from repo.uploads import insert_record as _up_ins
 with db() as con:
     _up_ins(con, uidD2, "127.0.0.1", "ACKD1", "ACKD1", "d.png",
@@ -389,7 +389,7 @@ with db() as con:
 outD2 = resolve_outcome(int(rctD2["id"]))
 check("ACK-direct DURABLE_OK → stored rows replay",
       outD2["outcome"] == OUTCOME_DURABLE_OK
-      and outD2["result"][0]["publicId"] == "ACKD1", str(outD2)[:100])
+      and outD2["result"][0]["stagingId"] == "ACKD1", str(outD2)[:100])
 check("ACK-direct durable-ok 零 release / uploads 保留",
       _usage_n(uidD2) == 1)
 
@@ -450,7 +450,7 @@ settle_failure(int(rctF1["id"]), uidsF1, uidF1)
 _f1_raised = False
 try:
     with db() as con:
-        finalize_ok(con, int(rctF1["id"]), [{"publicId": "NOPE"}])
+        finalize_ok(con, int(rctF1["id"]), [{"stagingId": "NOPE"}])
 except RuntimeError as _e:
     _f1_raised = "ingress_request_not_running" in str(_e)
 check("F1 failed receipt → finalize_ok raises ingress_request_not_running",
@@ -604,9 +604,10 @@ hS2 = ingress_request_hash("web_tool_source",
                              "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
                            {"tool_id": "compress"})
 refW = f"surf-{_u}-w"
-rctW2, uidsW2, _ = claim_ingress_quota(uidW, "127.0.0.1", refW, hS2, [len(PNG)])
+rctW2, uidsW2, _ = claim_ingress_quota(uidW, "127.0.0.1", refW, hS2,
+                                           [len(PNG)], scope="compress")
 with db() as con:
-    finalize_ok(con, int(rctW2["id"]), [{"publicId": "SURFW2"}])
+    finalize_ok(con, int(rctW2["id"]), [{"stagingId": "SURFW2"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='{bad'"
                 " where id=%s", (rctW2["id"],))
@@ -662,9 +663,10 @@ hMCP = ingress_request_hash("mcp_tool_source",
                                "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
                              {"tool_id": "compress"})
 refM = f"surf-{_u}-m"
-rctM, uidsM, _ = claim_ingress_quota(uidW, "127.0.0.1", refM, hMCP, [len(PNG)])
+rctM, uidsM, _ = claim_ingress_quota(uidW, "127.0.0.1", refM, hMCP,
+                                      [len(PNG)], scope="compress")
 with db() as con:
-    finalize_ok(con, int(rctM["id"]), [{"publicId": "SURFM"}])
+    finalize_ok(con, int(rctM["id"]), [{"stagingId": "SURFM"}])
 with db() as con:
     con.execute("update ingress_requests set result_json='[1,2]'"
                 " where id=%s", (rctM["id"],))  # list 合法 — 改 scalar 破坏:
@@ -797,14 +799,14 @@ except IngressConflict:
 
 # 13: commit-ACK durable ok → replay no cleanup
 with db() as con:
-    finalize_ok(con, int(rct2["id"]), [{"publicId": "X1"}])
+    finalize_ok(con, int(rct2["id"]), [{"stagingId": "X1"}])
 out = resolve_outcome(int(rct2["id"]))
 check("13 outcome durable_ok + stored result",
-      out["outcome"] == OUTCOME_DURABLE_OK and out["result"][0]["publicId"] == "X1")
+      out["outcome"] == OUTCOME_DURABLE_OK and out["result"][0]["stagingId"] == "X1")
 # earliest=failed + later=ok: claim must REPLAY the live ok receipt
 rct3, uids3, replay3 = claim_ingress_quota(uidS, "127.0.0.1", refS, hA, [len(PNG)])
 check("13b ok receipt same hash claim → replay payload (failed-then-ok history)",
-      rct3 is None and replay3 == [{"publicId": "X1"}],
+      rct3 is None and replay3 == [{"stagingId": "X1"}],
       f"rct={rct3} replay={replay3}")
 
 # 14: outcome DB unavailable → unresolved (构造 malformed ok)

@@ -193,7 +193,7 @@ check("O12 success + same ref/hash → replay",
       resR2.get("ok") and resR2.get("replay") is True, str(resR2)[:100])
 check("O13 replay same call_id", resR2["call_id"] == resR1["call_id"])
 check("O14 replay same resultId",
-      resR2["result"]["resultId"] == resR1["result"]["resultId"])
+      resR2["result"]["result_id"] == resR1["result"]["result_id"])
 check("O15 replay zero new consume",
       spendable_balance(uR) == balR_mid and _ledger_n(uR, "consume") == ledger_mid)
 check("O16 replay zero execution (1 call row)",

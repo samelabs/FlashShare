@@ -210,7 +210,7 @@ async def _s5a():
     return _mkstaged("c5")
 res5a, _, _ = _run(u5, t5, ref5, _s5a, owner=owner)
 call5a = res5a["call_id"]
-pid5a = res5a["result"]["resultId"]
+pid5a = res5a["result"]["result_id"]
 _set_rate(80)
 bal5_pre = spendable_balance(u5)
 n_ledger_pre = None
@@ -227,7 +227,7 @@ row5 = _call_row(call5a)
 e5, c5, _ = _split_for(call5a)
 check("C5 replay: 同 call_id / 同 resultId / snapshot 仍 30 / 零新经济事实",
       res5b.get("replay") is True and res5b["call_id"] == call5a
-      and res5b["result"]["resultId"] == pid5a
+      and res5b["result"]["result_id"] == pid5a
       and row5["commission_rate_snapshot"] == 30
       and n_ledger_post == n_ledger_pre
       and spendable_balance(u5) == bal5_pre,
@@ -404,7 +404,7 @@ except Exception as _e13:
 gate._finish = _orig_finish13
 with db() as con:
     row13 = dict(con.execute(
-        "select status, upload_id, result_public_id from tool_calls"
+        "select status, result_public_id from tool_calls"
         " where user_id=%s and tool_id=%s order by id desc limit 1",
         (u13, t13)).fetchone())
     n_ref13 = int(con.execute(
@@ -417,7 +417,7 @@ with db() as con:
 e13, c13_, r13 = _split_for(cid13)
 check("C13 NULL snapshot → fail loud: terminal failed + refund exact + 零 split + 零 uploads",
       row13["status"] == "failed"
-      and row13["upload_id"] is None and row13["result_public_id"] is None
+      and row13["result_public_id"] is None and row13["result_public_id"] is None
       and n_ref13 == 1 and spendable_balance(u13) == bal13_pre
       and e13 == 0 and c13_ == 0,
       f"status={row13['status']} refund={n_ref13} e={e13} c={c13_}")
@@ -444,7 +444,7 @@ except Exception as _e15:
 gate._finish = _orig_finish15
 with db() as con:
     row15 = dict(con.execute(
-        "select status, upload_id, result_public_id from tool_calls"
+        "select status, result_public_id from tool_calls"
         " where user_id=%s and tool_id=%s order by id desc limit 1",
         (u15, t15)).fetchone())
     cid15 = int(con.execute(
@@ -459,7 +459,7 @@ with db() as con:
 e15, c15b, r15 = _split_for(cid15)
 check("C15 first-party NULL snapshot → failed + exact refund + uploads=0 + revenue/earn/commission 全 0",
       row15["status"] == "failed"
-      and row15["upload_id"] is None and row15["result_public_id"] is None
+      and row15["result_public_id"] is None and row15["result_public_id"] is None
       and n_up15 == 0 and n_ref15 == 1
       and spendable_balance(u15) == bal15_pre
       and r15 == 0 and e15 == 0 and c15b == 0,

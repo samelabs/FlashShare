@@ -618,15 +618,12 @@ check("G3 presentation → exact audit (before/after 只含 tool_key/featured/so
       and rows[0]["after_json"]["featured"] is True,
       f"{r.status_code} {rows[:1]}")
 
-# repo read API: newest-first + count + pagination
+# repo read API: count (list_recent retired with the FX-2 dead-fn sweep;
+# the audit log surface reads through recent_pair_rows projections)
 with db() as con:
-    recent = _aud.list_recent(con, 3, 0)
     total = _aud.count(con)
-with_ids = [r_["id"] for r_ in recent]
-check("G4 list_recent newest-first + count 一致",
-      len(recent) == 3 and with_ids == sorted(with_ids, reverse=True)
-      and total >= 8,
-      f"{with_ids} total={total}")
+check("G4 audit count 一致 (≥8 rows recorded)",
+      total >= 8, f"total={total}")
 
 # append-only: no UPDATE/DELETE writer in production code
 import subprocess as _sp

@@ -135,7 +135,8 @@ plan_catalog.catalog(refresh=True)
 _pc4_tier = plan_catalog.by_code("pc_biz")
 _pc4_ent = resolve_from_membership({"member": True, "code": "pc_biz"})
 with db() as con:
-    _pc4_sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
+    from governance.plan_catalog import sellable_catalog as _sell
+    _pc4_sellable = [r.code for r in _sell()]
 check("PC4 新档行 (配齐 benefits+product+price) 零代码进 sellable",
       _pc4_tier is not None and _pc4_tier.sellable and "pc_biz" in _pc4_sellable,
       f"tier={_pc4_tier is not None} sellable={_pc4_sellable}")

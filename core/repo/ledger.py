@@ -327,20 +327,20 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
     return (dict(prior) if prior else {}), False
 
 
-def finalize_call_ok(con, call_id: int, upload_id: int | None,
+def finalize_call_ok(con, call_id: int,
                      result_public_id,
                      result_json: str, finished_at: int) -> dict:
-    """Success finalize — 唯一 tool_calls.upload_id writer: durable result
-    binding 与 status/result 字段同一次 UPDATE 写入。"""
+    """Success finalize — durable result binding 与 status/result 字段
+    同一次 UPDATE 写入（tool_calls.upload_id 已退役：无读取方）。"""
     row = con.execute(
         """
         UPDATE tool_calls
-        SET status='ok', upload_id=%s, result_public_id=%s, result_json=%s,
+        SET status='ok', result_public_id=%s, result_json=%s,
             error=NULL, finished_at=%s
         WHERE id=%s AND status='running'
         RETURNING *
         """,
-        (upload_id, result_public_id, result_json, finished_at,
+        (result_public_id, result_json, finished_at,
          call_id)).fetchone()
     if not row:
         raise RuntimeError("tool_call_not_running")
@@ -358,25 +358,6 @@ def finalize_call_failed(con, call_id: int, status: str,
         """,
         (status, str(error)[:500], finished_at, call_id)).fetchone()
     return dict(row) if row else None
-
-
-def call_by_tool_client_ref(con, user_id: int, tool_id: str,
-                            client_ref: str) -> Optional[dict]:
-    """Successful replay anchor scoped to one user + one tool."""
-    row = con.execute(
-        """
-        SELECT * FROM tool_calls
-        WHERE user_id=%s AND tool_id=%s AND client_ref=%s AND status='ok'
-        ORDER BY id DESC LIMIT 1
-        """,
-        (user_id, tool_id, client_ref)).fetchone()
-    return dict(row) if row else None
-
-
-def call_count_by_ref(con, user_id: int, client_ref: str) -> int:
-    return con.execute(
-        "SELECT COUNT(*) AS n FROM tool_calls WHERE user_id = %s AND client_ref = %s",
-        (user_id, client_ref)).fetchone()["n"]
 
 
 def call_stats_by_tool(con, tool_key: str) -> dict:

@@ -49,15 +49,6 @@ def get_pricing(tool_id: str) -> dict:
     return dict(row)
 
 
-def get_cost(tool_id: str) -> int:
-    """Cost in credits for one execution. 0 = free."""
-    return int(get_pricing(tool_id)["cost"])
-
-
-def is_enabled(tool_id: str) -> bool:
-    return bool(get_pricing(tool_id)["enabled"])
-
-
 def set_pricing(tool_id: str, cost: int, enabled: bool,
                 admin_user_id: int | None = None, con=None) -> dict:
     """/samelabs updates a tool's price/switch (single writer).

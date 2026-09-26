@@ -26,12 +26,6 @@ class EntitlementConfigurationError(RuntimeError):
     """
 
 
-def entitlement_profile_exists(plan_code: str) -> bool:
-    """公开单点: 某 plan code 的行存在且权益已配。"""
-    t = plan_catalog.by_code(plan_code)
-    return t is not None and t.benefits_configured
-
-
 def _require_profile(plan_code: str) -> dict:
     t = plan_catalog.by_code(plan_code)
     if t is None or not t.benefits_configured:

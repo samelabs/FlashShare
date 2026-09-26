@@ -1,6 +1,6 @@
 """app.routes.samelabs — new back-office route package (batch A).
 
-Replaces the retired monolithic app/routes/samelabs.py. app.main keeps
+app.main keeps
 the SAME registration:
     from app.routes import samelabs
     app.include_router(samelabs.router)

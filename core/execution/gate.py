@@ -189,10 +189,10 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     revenue_millis = credits_to_millis(cost if owner_id is None else 0)
 
     with db() as con:
-        upload_id, result_public_id, public_result = land_items_result(
+        _upload_id, result_public_id, public_result = land_items_result(
             con, user["id"], staged, BASE_URL, delivery)
         finalize_call_ok(
-            con, call_id, upload_id, result_public_id,
+            con, call_id, result_public_id,
             json.dumps(public_result, ensure_ascii=False), now())
         if cost > 0 and owner_id is None:
             # first-party: full cost is platform revenue (USD-millis)
@@ -219,7 +219,7 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
                     con, call_id, "platform_commission", commission_millis,
                     f"{tool['id']} commission", now())
 
-    out = {"ok": True, "type": tool["type"], "result": public_result,
+    out = {"ok": True, "result": public_result,
            "call_id": call_id}
     if cost > 0:
         try:
@@ -353,7 +353,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
                 logger.exception("stored replay payload invalid call_id=%s",
                                  anchor.get("id"))
                 return None, {"ok": False, "error": "err_metering_failed"}, 500
-            return ({"ok": True, "type": tool["type"],
+            return ({"ok": True,
                      "result": replay_result, "replay": True,
                      "call_id": anchor["id"]}, None, None)
         # A concurrent request already owns this logical invocation. Do not run
@@ -415,9 +415,8 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         if outcome["outcome"] == OUTCOME_DURABLE_SUCCESS:
             # settlement IS durable: report the stored success, no refund,
             # no staged delete, no duplicate earning (already committed).
-            out = {"ok": True, "type": tool["type"],
-                   "result": outcome["result"], "call_id": call_id,
-                   "replay": True}
+            out = {"ok": True, "result": outcome["result"],
+                   "call_id": call_id, "replay": True}
             if cost > 0:
                 try:
                     out["balance"] = spendable_balance(user["id"])

@@ -153,8 +153,8 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
     # IO-1 input/output contract: files count window + output kinds.
     # create defaults to 1..1 / ["file"]; PATCH updates only on presence.
     if "files_min" in raw or "files_max" in raw or not partial:
-        _cur_min = int(row["files_min"]) if row and row.get("files_min") is not None else 1
-        _cur_max = int(row["files_max"]) if row and row.get("files_max") is not None else 1
+        _cur_min = int(row["files_min"]) if row else 1
+        _cur_max = int(row["files_max"]) if row else 1
         mn = raw.get("files_min", _cur_min if partial else 1)
         mx = raw.get("files_max", _cur_max if partial else 1)
         if isinstance(mn, bool) or not isinstance(mn, int) or mn < 0:
@@ -510,10 +510,8 @@ async def update_user_tool(tool_id: str, request: Request):
             except Exception:
                 _stored_acc = None
             sets["inputs"] = {"files": {
-                "min": fields.get("files_min",
-                                  int(row["files_min"]) if row.get("files_min") is not None else 1),
-                "max": fields.get("files_max",
-                                  int(row["files_max"]) if row.get("files_max") is not None else 1),
+                "min": fields.get("files_min", int(row["files_min"])),
+                "max": fields.get("files_max", int(row["files_max"])),
                 "accept": fields.get("accept", _stored_acc),
             }}
         if "outputs" in fields:

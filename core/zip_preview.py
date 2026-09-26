@@ -89,12 +89,6 @@ def find_eocd(tail: bytes, tail_start: int) -> tuple:
     return cd_size, cd_in_tail, idx
 
 
-def list_zip_from_bytes(data: bytes) -> list:
-    """Parse a complete in-memory zip archive (tests, local files)."""
-    cd_size, cd_in_tail, _ = find_eocd(data, 0)
-    return parse_zip_central_directory(data, cd_size, cd_in_tail)
-
-
 def list_zip_remote(fetch_range, total_size: int) -> list:
     """List a remote zip via Range fetches.
 
