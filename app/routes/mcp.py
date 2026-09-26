@@ -355,10 +355,12 @@ _CREATE_UPLOAD_SPEC = {
 }
 
 
-def _spec_summary(t: dict) -> dict:
+def _spec_summary(t: dict, names: dict | None = None) -> dict:
     """name/title/description summary (tools/list + catalog_search share
-    the exact same shape). English only — MCP is a machine surface."""
-    names = mcp_names()
+    the exact same shape). English only — MCP is a machine surface.
+    `names` = a precomputed mcp_names() map — computing it per tool made
+    tools/list O(tools²) DB+CPU; every caller passes one shared map."""
+    names = names if names is not None else mcp_names()
     label = t["label"]
     title = label.get("en") or t["id"]
     mn = int(t.get("files_min", 1) or 0)
@@ -427,8 +429,9 @@ def _tool_specs(user: dict) -> list:
     expiry_enum = list(ent["expiry_days"])
     downloads_enum = list(ent["download_limits"])
     specs = [_CREATE_UPLOAD_SPEC]
+    _names = mcp_names()
     for t in list_catalog(user["id"]):
-        summary = _spec_summary(t)
+        summary = _spec_summary(t, _names)
         props = {
             "files": {
                 "type": "array",
@@ -441,6 +444,8 @@ def _tool_specs(user: dict) -> list:
             },
         }
         required = ["client_ref"]
+        if int(t.get("files_min", 1) or 0) >= 1:
+            required.append("files")
         decl = t.get("params") or []
         if decl:
             from governance.tool_params import to_input_schema_properties
@@ -548,7 +553,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         q = str(args.get("q") or "").strip()[:64]
         hits = search_catalog(q, user["id"], limit=20) if q else []
         by_key = {t["id"]: t for t in list_catalog(user["id"])}
-        summaries = [_spec_summary(by_key[h["id"]])
+        _names = mcp_names()
+        summaries = [_spec_summary(by_key[h["id"]], _names)
                      for h in hits if h["id"] in by_key]
         return _rpc(mid, {
             "content": [{"type": "text", "text": json.dumps(
@@ -661,12 +667,12 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             continue
         _pid, _tok = val
         if not PUBLIC_ID_RE.match(_pid):
-            return _rpc_err(mid, -32602, "invalid arguments: invalid public_id")
+            return _tool_result_error(mid, {"error": "invalid_id"},
+                                      client_ref, tool)
         _up, _rerr = await resolve_upload(_pid, user, _tok)
         if _rerr or not _up:
-            return _rpc_err(mid, -32602,
-                            f"invalid arguments: source reference rejected: "
-                            f"{_rerr or 'not_found'}")
+            return _tool_result_error(
+                mid, {"error": _rerr or "not_found"}, client_ref, tool)
         ref_names[i] = _up.get("file_name", "")
 
     # URL sources: fetched through the pinned SSRF-guarded transport.
@@ -680,8 +686,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             try:
                 _body = await asyncio.to_thread(_fetch_url_source, _url)
             except RemoteError as exc:
-                return _rpc_err(mid, -32602,
-                                f"invalid arguments: url source rejected: {exc.code}")
+                return _tool_result_error(mid, {"error": exc.code},
+                                          client_ref, tool)
             uploads[i] = _url_upload(_url, _fname, _body)
 
     ip = request.headers.get("X-Real-IP",
@@ -757,7 +763,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         try:
             _receipt, _usage_ids, _replay = _claim_receipt(
                 user["id"], ip, client_ref, _req_hash,
-                [len(_b) for _, _, _b in _canon])
+                [len(_b) for _, _, _b in _canon], scope=tool_key)
         except _IngressConflict:
             return _rpc_err(mid, ERR_IDEMPOTENCY, "idempotency_conflict")
         except _IngressInProgress:
@@ -785,8 +791,9 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             # takes the generic cleanup below.
             try:
                 for _fn, _ct, _body in _canon:
-                    _gk = _gk_up(_io.BytesIO(_body), _fn, _ct, _ITTL, _IDL,
-                                 len(_body))
+                    _gk = await asyncio.to_thread(
+                        _gk_up, _io.BytesIO(_body), _fn, _ct, _ITTL, _IDL,
+                        len(_body))
                     _fid = (_gk.get("FileInfo", {}) or {}).get("Id", "")
                     if not _fid:
                         raise RuntimeError("gokapi_missing_id")
@@ -794,8 +801,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     infos.append({
                         "name": _fn, "filename": _fn, "contentType": _ct,
                         "size": len(_body),
-                        "hotlinkUrl": _gk["FileInfo"].get("UrlHotlink", ""),
-                        "stagingId": _fid, "gokapiId": _fid,
+                        "stagingId": _fid,
                         "sourceToken": sign_source_token(user["id"], _fid),
                         "expireAt": _gk["FileInfo"].get("ExpireAt"),
                         "expiryDays": _ITTL, "allowedDownloads": _IDL,
@@ -876,7 +882,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             "isError": True,
         })
     result = payload.get("result") or {}
-    return _rpc(mid, _mcp_success(result, payload))
+    return _rpc(mid, await _mcp_success(result, payload))
 
 
 def _mcp_error_text(code, tool: dict, delivery: dict) -> str:
@@ -911,7 +917,7 @@ def _mcp_error_text(code, tool: dict, delivery: dict) -> str:
     return f"{msg} (code: {code}).{hint}"
 
 
-def _mcp_success(result: dict, payload: dict) -> dict:
+async def _mcp_success(result: dict, payload: dict) -> dict:
     """Build the MCP tools/call success envelope: content (the agent's
     direct result) + structuredContent (the machine shape, matching
     every tool's outputSchema)."""
@@ -919,10 +925,10 @@ def _mcp_success(result: dict, payload: dict) -> dict:
     items_in = result.get("items") or []
     content = []
     sc_items = []
-    # Result expiry is the record's delivery-owned expireAt — every
+    # Result expiry is the record's delivery-owned expires_at — every
     # result shape carries one (text/json-only results expire with the
     # delivery window; file results inherit the latest file expiry).
-    expires_at = result.get("expireAt")
+    expires_at = result.get("expires_at")
     if expires_at is not None:
         expires_at = int(expires_at)
     for it in items_in:
@@ -935,23 +941,29 @@ def _mcp_success(result: dict, payload: dict) -> dict:
                                                ensure_ascii=False)})
             sc_items.append({"kind": "json", "data": it["data"]})
         elif it.get("kind") == "file":
-            pid = it["publicId"]
-            dl = f"{BASE_URL}/f/{pid}?download=1"
-            page = f"{BASE_URL}/f/{pid}"
-            ct = it.get("contentType") or "application/octet-stream"
+            # the record is the single snake_case source; addresses come
+            # from the one builder
+            pid = it["public_id"]
+            dl = it["download_url"]
+            ct = it.get("content_type") or "application/octet-stream"
             size = int(it.get("size") or 0)
             sc_items.append({"kind": "file",
                              "filename": it.get("filename"),
                              "content_type": ct, "size": size,
-                             "download_url": dl, "page_url": page})
+                             "download_url": dl, "page_url": it["page_url"]})
             if ct.startswith("image/") \
                     and ct.lower() != "image/svg+xml" and size <= 1_048_576:
                 import base64 as _b64
                 from gokapi import InternalDownloadUnavailable
                 from storage import read as _storage_read
+                from repo.uploads import by_public_id as _up_by_pid
+                from database import db as _db
                 try:
-                    status, _h, stream = _storage_read(
-                        it.get("gokapiId") or pid)
+                    with _db() as _c:
+                        _u = _up_by_pid(_c, pid)
+                        _gid = _u["gokapi_id"] if _u else pid
+                    status, _h, stream = await asyncio.to_thread(
+                        _storage_read, _gid)
                     body = stream.read(1_048_577)
                     stream.close()
                     if status == 200 and len(body) <= 1_048_576:
@@ -970,7 +982,7 @@ def _mcp_success(result: dict, payload: dict) -> dict:
                             "mimeType": ct, "size": size})
     if not content:
         content.append({"type": "text", "text": "(no output items)"})
-    result_url = result.get("resultUrl") or ""
+    result_url = result.get("result_url") or ""
     structured = {
         "call_id": payload.get("call_id"),
         "replay": bool(payload.get("replay")),
@@ -1046,7 +1058,12 @@ def _create_upload(user: dict, mid, args: dict, request: Request):
     from sharing.uploads import check_quota
     ok, denial = check_quota(user["id"], "", size, 1)
     if not ok:
-        return _rpc_err(mid, -32602, "upload quota exceeded", denial)
+        return _rpc(mid, {
+            "content": [{"type": "text",
+                         "text": json.dumps({"ok": False, **denial},
+                                            ensure_ascii=False)}],
+            "isError": True,
+        })
 
     from repo import upload_tickets as tickets
     from utils import now

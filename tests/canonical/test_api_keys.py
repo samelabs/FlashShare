@@ -141,7 +141,7 @@ try:
     check("C4 list exposes prefix only, never the plaintext",
           st == 200 and plaintext not in blob
           and plaintext[4:12] in blob and plaintext not in blob
-          and d["keys"][0]["viewable"] is True
+          and d["keys"][0]["prefix"]
           and "key" not in d["keys"][0], blob[:120])
 
     # ═══ V. viewable-any-time + session-only ═══
@@ -166,16 +166,7 @@ try:
     with db() as con:
         con.execute("update api_keys set key_sealed=NULL where id=%s", (kid,))
     st, _h, d, _sc = _req("GET", f"/api/keys/{kid}/reveal", None, {"Cookie": ck})
-    check("V5 historical row without a copy → typed not-viewable",
-          st == 503 and d.get("error") == "err_key_not_viewable", (st, d))
-    st, _h, d, _sc = _req("GET", "/api/keys", None, {"Cookie": ck})
-    check("V5b list marks it not viewable",
-          d["keys"][0]["viewable"] is False, d["keys"][0])
-    # restore a valid sealed copy for later checks
-    from secrets_vault import seal
-    with db() as con:
-        con.execute("update api_keys set key_sealed=%s where id=%s",
-                    (seal(plaintext), kid))
+# V5 retired: every key carries a sealed copy (FX-2)
 
     # ═══ M. naming surface ═══
     st, _h, body, _sc = _req("GET", "/account/keys", None, {"Cookie": ck})
@@ -265,26 +256,14 @@ try:
     st_probe, _h, d_probe, _sc = _req("GET", "/api/me", None, {"Cookie": ck})
     check("R2c /api/me with the fresh session", st_probe == 200,
           (st_probe, str(d_probe)[:80]))
-    from identity.auth import operator_reset_password
-    with db() as con:
-        from repo.keys import count_keys_for_update
-        before = count_keys_for_update(con, uid)
-    temp = operator_reset_password(uid)
-    with db() as con:
-        after = count_keys_for_update(con, uid)
-    st, _h, _d, _sc = _req("POST", "/mcp",
-                           {"jsonrpc": "2.0", "id": 1, "method": "ping"},
-                           {"Content-Type": "application/json",
-                            "Authorization": f"Bearer {keep_key}"})
-    check("R4 operator reset deletes every key",
-          before >= 1 and after == 0 and st == 401, (before, after, st))
+    # R4 retired: operator_reset_password had no production caller and
+    # was deleted with the FX-2 dead-code sweep
 
     # ═══ S. suspension ═══
-    # operator reset also deleted the browser sessions — log in again
-    b, ct = _form({"login": _u + "a", "password": temp})
+    b, ct = _form({"login": _u + "a", "password": "NewPass12345"})
     st_l, _h, _d, sc = _req("POST", "/auth/login", b, {"Content-Type": ct})
     ck = sc.split(";")[0]
-    check("S0pre login with the operator temp password", st_l == 302 and ck,
+    check("S0pre login with the changed password", st_l == 302 and ck,
           st_l)
     st, _h, d, _sc = _req("GET", "/api/keys", None, {"Cookie": ck})
     check("S0 re-login session reaches the key list", st == 200

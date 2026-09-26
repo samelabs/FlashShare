@@ -18,12 +18,6 @@ def user_usage(con, user_id: int, since_ts: int) -> dict:
         (user_id, since_ts)).fetchone()
 
 
-def ip_usage_count(con, ip: str, since_ts: int) -> int:
-    return int(con.execute(
-        "SELECT COUNT(*) AS c FROM upload_usage WHERE ip=%s AND created_at>%s",
-        (ip, since_ts)).fetchone()["c"])
-
-
 def insert_many(con, user_id: int, ip: str, sizes: list[int],
                 created_at: int) -> list[int]:
     ids = []

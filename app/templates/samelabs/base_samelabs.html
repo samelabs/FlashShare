@@ -77,10 +77,10 @@
 
     <div class="sl-sidefoot">
       <div class="sl-op">
-        <div class="sl-op-avatar">{{ op.username[:1]|upper|e }}</div>
+        <div class="sl-op-avatar">{{ op.username[:1]|upper }}</div>
         <div class="sl-op-meta">
-          <strong>{{ op.username|e }}</strong>
-          <span>{{ op.status|e }}</span>
+          <strong>{{ op.username }}</strong>
+          <span>{{ op.status }}</span>
         </div>
       </div>
       <form method="post" action="/logout">
@@ -107,7 +107,7 @@
 
     <header class="sl-topbar">
       <div>
-        <h1>{{ page_title|default(page_id, true)|e }}</h1>
+        <h1>{{ page_title|default(page_id, true) }}</h1>
         <div class="sl-crumb">{% block crumb %}Samelabs{% endblock %}</div>
       </div>
     </header>

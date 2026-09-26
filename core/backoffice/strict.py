@@ -21,14 +21,3 @@ def strict_bool(value):
     if not isinstance(value, bool):
         raise ValueError("invalid_boolean")
     return value
-
-
-def strict_str(value, *, max_len=None):
-    if not isinstance(value, str):
-        raise ValueError("invalid_string")
-    v = value.strip()
-    if not v:
-        raise ValueError("invalid_string")
-    if max_len is not None and len(v) > max_len:
-        raise ValueError("invalid_string")
-    return v

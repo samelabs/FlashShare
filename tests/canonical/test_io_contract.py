@@ -330,9 +330,9 @@ try:
             {"expiry_days": 3, "allowed_downloads": 5})
     _exp_expect = _e_ts + 3 * 86400
     check("E1 text/json-only result expires with the delivery window",
-          isinstance(_text_rec[2].get("expireAt"), int)
-          and abs(_text_rec[2]["expireAt"] - _exp_expect) <= 2,
-          _text_rec[2].get("expireAt"))
+          isinstance(_text_rec[2].get("expires_at"), int)
+          and abs(_text_rec[2]["expires_at"] - _exp_expect) <= 2,
+          _text_rec[2].get("expires_at"))
     # file result inherits the latest file expiry (staged expire_at)
     _f_exp = _e_ts + 5 * 86400
     with db() as con:
@@ -347,7 +347,7 @@ try:
                         ip="127.0.0.1"), "http://x",
             {"expiry_days": 1, "allowed_downloads": 5})
     check("E2 file result expiry = latest file expiry",
-          _file_rec[2].get("expireAt") == _f_exp, _file_rec[2].get("expireAt"))
+          _file_rec[2].get("expires_at") == _f_exp, _file_rec[2].get("expires_at"))
     # /r/{id} enforces expiry at render: a past-expiry record → 404
     _dead_id = "dead" + _u[:8]
     with db() as con:
@@ -357,8 +357,8 @@ try:
             " result_public_id, result_json, finished_at)"
             " values (%s, 'share', 'ok', %s, %s, %s, 0, %s, %s, %s)",
             (uid, f"dead-{_u}", "d" * 64, ts, _dead_id,
-             __import__("json").dumps({"resultId": _dead_id,
-                                       "expireAt": ts - 3600,
+             __import__("json").dumps({"result_id": _dead_id,
+                                       "expires_at": ts - 3600,
                                        "items": [{"kind": "text", "text": "x"}]}),
              ts))
     st, _h_d, _b_d, _sc_d = _req("GET", f"/r/{_dead_id}")

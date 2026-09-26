@@ -193,14 +193,17 @@ def _gate(user, tool_row, ref):
     return _run(gate_run(user, tool_row, _Inv(tool_row["tool_key"], ref), _ok))
 
 def _platform_totals():
-    from governance.platform import platform_id
+    from database import db as _pdb
+    with _pdb() as _pc:
+        _plat_id = _pc.execute(
+            "select id from users where username='platform'").fetchone()["id"]
     with db() as con:
         row = con.execute(
             "select"
             " coalesce(sum(delta) filter (where kind='platform_commission'),0) comm,"
             " coalesce(sum(delta) filter (where kind='platform_revenue'),0) rev"
             " from ledger where user_id=%s",
-            (platform_id(),)).fetchone()
+            (_plat_id,)).fetchone()
     return int(row["comm"]), int(row["rev"])
 
 def _owner_earn():

@@ -176,15 +176,34 @@ def _reverse_subscription(txn: dict) -> dict:
         rows = ledger_repo.subscription_grants_by_transaction(con, user_id,
                                                               txn_id)
     total = sum(int(r["delta"]) for r in rows) if rows else 0
-    # Which payment is this? Decided by the EXACT original grant fact the
-    # transaction produced, never by period dates alone (a mid-period
-    # upgrade charge shares its period_start with the base payment):
-    #   only grant_plan_upgrade rows → the upgrade/proration charge: its
-    #     top-up credits are reversed, the base-paid period stays valid;
-    #   a grant_plan (base cycle) row, or no grant row at all → the
-    #     period payment itself: current-period paid validity ends.
-    upgrade_only = bool(rows) and all(
-        r["kind"] == "grant_plan_upgrade" for r in rows)
+    # Which payment is this? Decided by WHO FUNDED THE PERIOD'S BASE
+    # CYCLE — never by whether THIS transaction's own grant landed (its
+    # webhook may have been lost):
+    #   the period's base grant (idem plan:{uid}:{ps}) exists and was
+    #   paid by a DIFFERENT transaction → this txn is an upgrade/proration
+    #   charge: reverse only what it minted (possibly zero when its
+    #   callback was lost) and NEVER end the base-paid period;
+    #   the base grant carries THIS txn's ref (or the period has no base
+    #   funding from anyone else) → the base cycle payment itself:
+    #   a reversal of the CURRENT paid period ends its validity.
+    with db() as con:
+        base = ledger_repo.by_idem_key(
+            con, user_id, f"plan:{user_id}:{period_start}")
+    base_ref = (base or {}).get("ref_id") if base else None
+    is_base_payment = base_ref is None or str(base_ref) == txn_id
+    if not is_base_payment:
+        # upgrade charge (identified by the period's base-payment fact,
+        # not this txn's grants): revoke only what it minted — with a
+        # LOST upgrade callback that is zero (nothing was ever granted
+        # for this transaction) and no revoke happens at all.
+        if total > 0:
+            from economy.billing import revoke as _revoke_upgrade
+            _revoke_upgrade(user_id, total,
+                            ref_type="creem_transaction", ref_id=txn_id,
+                            idem_key=f"payment-reversal:{txn_id}",
+                            note=f"subscription upgrade reversal sub:{sub_id} -{total}")
+        return {"reversed": total > 0, "credits": -total if total > 0 else 0,
+                "kind": "upgrade"}
     if total <= 0:
         # This transaction never minted Credits (a legal zero-credit
         # Plan, or already reversed and replayed). ZERO revoke happens —
@@ -203,8 +222,7 @@ def _reverse_subscription(txn: dict) -> dict:
            ref_type="creem_transaction", ref_id=txn_id,
            idem_key=f"payment-reversal:{txn_id}",
            note=f"subscription reversal sub:{sub_id} -{total}")
-    if not upgrade_only:
-        _expire_if_current_period(user_id, sub_id, period_start, txn)
+    _expire_if_current_period(user_id, sub_id, period_start, txn)
     first_time = prior is None
     return {"reversed": first_time, "credits": -total if first_time else 0,
             "kind": "subscription"}

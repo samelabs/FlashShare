@@ -2,8 +2,7 @@
 
 HTTP route → strict request validation → command here → ONE DB
 transaction (business mutation + operator_audit together or not at
-all). Route layers never mutate directly. Mechanisms migrated from the
-retired app/routes/samelabs.py monolith with behavior preserved:
+all). Route layers never mutate directly. Modules:
 
   credits.py     operator credits adjustment (stable action id,
                  billing grant/consume, ledger idem, same-tx audit)

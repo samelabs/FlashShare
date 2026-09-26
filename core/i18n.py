@@ -420,8 +420,8 @@ SERVER_I18N = {
         "err_unexpected": "Une erreur s'est produite, veuillez réessayer",
         "err_too_many_attempts": "Trop de tentatives, veuillez réessayer plus tard",
 # B4 mcp closure
-        "agents_token_prefix": "(commence par fsk_)",
-        "agents_token_note": "Remplacez <key> dans les extraits ci-dessous par votre clé API.",
+        "agents_key_prefix": "(commence par fsk_)",
+        "agents_key_note": "Remplacez <key> dans les extraits ci-dessous par votre clé API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Ce délai de livraison n'est pas disponible avec votre offre actuelle",
         "err_download_limit_not_entitled": "Cette limite de téléchargements n'est pas disponible avec votre offre actuelle",
@@ -487,10 +487,8 @@ SERVER_I18N = {
         "keyDelete": "Supprimer",
         "confirmKeyDelete": "Supprimer cette clé ? Les programmes qui l'utilisent perdront immédiatement l'accès.",
         "keyShow": "Afficher",
-        "keyLegacyHint": "Affichage complet indisponible pour cette clé — créez-en une nouvelle si nécessaire.",
         "err_key_limit": "Limite de clés atteinte (10). Supprimez d'abord une clé existante.",
         "err_vault": "Le stockage des clés est indisponible — contactez le support.",
-        "err_key_not_viewable": "Affichage complet indisponible pour cette clé — créez-en une nouvelle si nécessaire.",
 # IO-1 items
         "err_file_count": "Ce traitement accepte entre {min} et {max} fichier(s)",
 # IO-1 web items
@@ -949,8 +947,8 @@ SERVER_I18N = {
         "err_unexpected": "문제가 발생했습니다. 다시 시도해 주세요",
         "err_too_many_attempts": "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
 # B4 mcp closure
-        "agents_token_prefix": "(fsk_로 시작)",
-        "agents_token_note": "아래 설정의 <key>를 내 API 키로 바꾸세요.",
+        "agents_key_prefix": "(fsk_로 시작)",
+        "agents_key_note": "아래 설정의 <key>를 내 API 키로 바꾸세요.",
 # B5 frontend closure
         "err_expiry_not_entitled": "현재 멤버십에서는 이 만료 기간을 사용할 수 없습니다",
         "err_download_limit_not_entitled": "현재 멤버십에서는 이 다운로드 횟수를 사용할 수 없습니다",
@@ -1016,10 +1014,8 @@ SERVER_I18N = {
         "keyDelete": "삭제",
         "confirmKeyDelete": "이 키를 삭제할까요? 사용 중인 프로그램이 즉시 접근을 잃습니다.",
         "keyShow": "보기",
-        "keyLegacyHint": "이 키는 전체 값을 확인할 수 없습니다 — 필요하면 새로 만드세요.",
         "err_key_limit": "키 한도(10개)에 도달했습니다. 기존 키를 먼저 삭제하세요.",
         "err_vault": "키 저장소를 사용할 수 없습니다 — 지원팀에 문의해 주세요.",
-        "err_key_not_viewable": "이 키는 전체 값을 확인할 수 없습니다 — 필요하면 새로 만드세요.",
 # IO-1 items
         "err_file_count": "이 도구는 {min}~{max}개의 파일을 받습니다",
 # IO-1 web items
@@ -1477,8 +1473,8 @@ SERVER_I18N = {
         "err_unexpected": "Что-то пошло не так, попробуйте снова",
         "err_too_many_attempts": "Слишком много попыток, попробуйте позже",
 # B4 mcp closure
-        "agents_token_prefix": "(начинается с fsk_)",
-        "agents_token_note": "Замените <key> в примерах ниже на свой ключ API.",
+        "agents_key_prefix": "(начинается с fsk_)",
+        "agents_key_note": "Замените <key> в примерах ниже на свой ключ API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Этот срок доставки недоступен на текущем тарифе",
         "err_download_limit_not_entitled": "Этот лимит загрузок недоступен на текущем тарифе",
@@ -1544,10 +1540,8 @@ SERVER_I18N = {
         "keyDelete": "Удалить",
         "confirmKeyDelete": "Удалить этот ключ? Использующие его программы сразу потеряют доступ.",
         "keyShow": "Показать",
-        "keyLegacyHint": "Полный просмотр этого ключа недоступен — создайте новый при необходимости.",
         "err_key_limit": "Достигнут предел ключей (10). Сначала удалите существующий.",
         "err_vault": "Хранилище ключей недоступно — обратитесь в поддержку.",
-        "err_key_not_viewable": "Полный просмотр этого ключа недоступен — создайте новый при необходимости.",
 # IO-1 items
         "err_file_count": "Этот инструмент принимает от {min} до {max} файлов",
 # IO-1 web items
@@ -2005,8 +1999,8 @@ SERVER_I18N = {
         "err_unexpected": "حدث خطأ ما، حاول مرة أخرى",
         "err_too_many_attempts": "محاولات كثيرة جداً، حاول لاحقاً",
 # B4 mcp closure
-        "agents_token_prefix": "(يبدأ بـ fsk_)",
-        "agents_token_note": "استبدل <key> في المقتطفات أدناه بمفتاح API الخاص بك.",
+        "agents_key_prefix": "(يبدأ بـ fsk_)",
+        "agents_key_note": "استبدل <key> في المقتطفات أدناه بمفتاح API الخاص بك.",
 # B5 frontend closure
         "err_expiry_not_entitled": "مدة التسليم هذه غير متاحة في خطتك الحالية",
         "err_download_limit_not_entitled": "حد التنزيلات هذا غير متاح في خطتك الحالية",
@@ -2072,10 +2066,8 @@ SERVER_I18N = {
         "keyDelete": "حذف",
         "confirmKeyDelete": "حذف هذا المفتاح؟ ستفقد البرامج التي تستخدمه الوصول فورًا.",
         "keyShow": "عرض",
-        "keyLegacyHint": "لا يمكن عرض القيمة الكاملة لهذا المفتاح — أنشئ مفتاحًا جديدًا إذا احتجت لذلك.",
         "err_key_limit": "تم بلوغ حد المفاتيح (10). احذف مفتاحًا موجودًا أولاً.",
         "err_vault": "تخزين المفاتيح غير متاح — تواصل مع الدعم.",
-        "err_key_not_viewable": "لا يمكن عرض القيمة الكاملة لهذا المفتاح — أنشئ مفتاحًا جديدًا إذا احتجت لذلك.",
 # IO-1 items
         "err_file_count": "تقبل هذه الأداة من {min} إلى {max} ملفًا",
 # IO-1 web items
@@ -2534,8 +2526,8 @@ SERVER_I18N = {
         "err_unexpected": "Etwas ist schiefgelaufen, bitte erneut versuchen",
         "err_too_many_attempts": "Zu viele Versuche, bitte später erneut versuchen",
 # B4 mcp closure
-        "agents_token_prefix": "(beginnt mit fsk_)",
-        "agents_token_note": "Ersetze <key> in den Snippets unten durch deinen API-Schlüssel.",
+        "agents_key_prefix": "(beginnt mit fsk_)",
+        "agents_key_note": "Ersetze <key> in den Snippets unten durch deinen API-Schlüssel.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Diese Liefergültigkeit ist in Ihrem aktuellen Tarif nicht verfügbar",
         "err_download_limit_not_entitled": "Dieses Download-Limit ist in Ihrem aktuellen Tarif nicht verfügbar",
@@ -2601,10 +2593,8 @@ SERVER_I18N = {
         "keyDelete": "Löschen",
         "confirmKeyDelete": "Diesen Schlüssel löschen? Programme, die ihn verwenden, verlieren sofort den Zugriff.",
         "keyShow": "Anzeigen",
-        "keyLegacyHint": "Vollansicht für diesen Schlüssel nicht verfügbar — erstelle bei Bedarf einen neuen.",
         "err_key_limit": "Schlüssellimit erreicht (10). Lösche zuerst einen bestehenden Schlüssel.",
         "err_vault": "Schlüsselspeicher nicht verfügbar — kontaktiere den Support.",
-        "err_key_not_viewable": "Vollansicht für diesen Schlüssel nicht verfügbar — erstelle bei Bedarf einen neuen.",
 # IO-1 items
         "err_file_count": "Dieses Tool akzeptiert {min} bis {max} Dateien",
 # IO-1 web items
@@ -3062,8 +3052,8 @@ SERVER_I18N = {
         "err_unexpected": "Algo deu errado, tente novamente",
         "err_too_many_attempts": "Muitas tentativas, tente novamente mais tarde",
 # B4 mcp closure
-        "agents_token_prefix": "(começa com fsk_)",
-        "agents_token_note": "Substitua <key> nos trechos abaixo pela sua chave de API.",
+        "agents_key_prefix": "(começa com fsk_)",
+        "agents_key_note": "Substitua <key> nos trechos abaixo pela sua chave de API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Este prazo de entrega não está disponível no seu plano atual",
         "err_download_limit_not_entitled": "Este limite de downloads não está disponível no seu plano atual",
@@ -3129,10 +3119,8 @@ SERVER_I18N = {
         "keyDelete": "Excluir",
         "confirmKeyDelete": "Excluir esta chave? Os programas que a usam perderão o acesso imediatamente.",
         "keyShow": "Mostrar",
-        "keyLegacyHint": "Visualização completa indisponível para esta chave — crie uma nova se precisar.",
         "err_key_limit": "Limite de chaves atingido (10). Exclua uma chave existente primeiro.",
         "err_vault": "O armazenamento de chaves está indisponível — contate o suporte.",
-        "err_key_not_viewable": "Visualização completa indisponível para esta chave — crie uma nova se precisar.",
 # IO-1 items
         "err_file_count": "Esta ferramenta aceita de {min} a {max} arquivo(s)",
 # IO-1 web items
@@ -3590,8 +3578,8 @@ SERVER_I18N = {
         "err_unexpected": "問題が発生しました。もう一度お試しください",
         "err_too_many_attempts": "試行回数が多すぎます。しばらくしてから再度お試しください",
 # B4 mcp closure
-        "agents_token_prefix": "（fsk_ で始まる）",
-        "agents_token_note": "以下の設定の <key> をあなたの API キーに置き換えてください。",
+        "agents_key_prefix": "（fsk_ で始まる）",
+        "agents_key_note": "以下の設定の <key> をあなたの API キーに置き換えてください。",
 # B5 frontend closure
         "err_expiry_not_entitled": "この配送有効期限は現在のプランでは利用できません",
         "err_download_limit_not_entitled": "このダウンロード回数は現在のプランでは利用できません",
@@ -3657,10 +3645,8 @@ SERVER_I18N = {
         "keyDelete": "削除",
         "confirmKeyDelete": "このキーを削除しますか？使用中のプログラムはすぐにアクセスできなくなります。",
         "keyShow": "表示",
-        "keyLegacyHint": "このキーの完全な値は表示できません — 必要であれば新しく作成してください。",
         "err_key_limit": "キーの上限（10 個）に達しました。既存のキーを先に削除してください。",
         "err_vault": "キーの保管が利用できません — サポートにお問い合わせください。",
-        "err_key_not_viewable": "このキーの完全な値は表示できません — 必要であれば新しく作成してください。",
 # IO-1 items
         "err_file_count": "このツールは {min}〜{max} 個のファイルを受け付けます",
 # IO-1 web items
@@ -4119,8 +4105,8 @@ SERVER_I18N = {
         "err_unexpected": "操作失败，请重试",
         "err_too_many_attempts": "尝试次数过多，请稍后再试",
 # B4 mcp closure
-        "agents_token_prefix": "（fsk_ 开头）",
-        "agents_token_note": "将下方配置中的 <key> 替换为你的 API 密钥。",
+        "agents_key_prefix": "（fsk_ 开头）",
+        "agents_key_note": "将下方配置中的 <key> 替换为你的 API 密钥。",
 # B5 frontend closure
         "err_expiry_not_entitled": "当前会员不支持该有效期档位",
         "err_download_limit_not_entitled": "当前会员不支持该下载次数档位",
@@ -4186,10 +4172,8 @@ SERVER_I18N = {
         "keyDelete": "删除",
         "confirmKeyDelete": "删除该密钥？使用它的程序将立即失去访问权限。",
         "keyShow": "显示",
-        "keyLegacyHint": "该密钥无法查看完整值——如需查看请新建。",
         "err_key_limit": "密钥数量已达上限（10 个），请先删除现有密钥。",
         "err_vault": "密钥存储暂不可用，请联系支持。",
-        "err_key_not_viewable": "该密钥无法查看完整值——如需查看请新建。",
 # IO-1 items
         "err_file_count": "该工具接受 {min}–{max} 个文件",
 # IO-1 web items
@@ -4647,8 +4631,8 @@ SERVER_I18N = {
         "err_unexpected": "Algo salió mal, inténtalo de nuevo",
         "err_too_many_attempts": "Demasiados intentos, inténtalo más tarde",
 # B4 mcp closure
-        "agents_token_prefix": "(empieza por fsk_)",
-        "agents_token_note": "Reemplaza <key> en los fragmentos de abajo por tu clave API.",
+        "agents_key_prefix": "(empieza por fsk_)",
+        "agents_key_note": "Reemplaza <key> en los fragmentos de abajo por tu clave API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Esta validez de entrega no está disponible en tu plan actual",
         "err_download_limit_not_entitled": "Este límite de descargas no está disponible en tu plan actual",
@@ -4714,10 +4698,8 @@ SERVER_I18N = {
         "keyDelete": "Eliminar",
         "confirmKeyDelete": "¿Eliminar esta clave? Los programas que la usan perderán el acceso de inmediato.",
         "keyShow": "Mostrar",
-        "keyLegacyHint": "Vista completa no disponible para esta clave — crea una nueva si la necesitas.",
         "err_key_limit": "Límite de claves alcanzado (10). Elimina primero una clave existente.",
         "err_vault": "El almacenamiento de claves no está disponible — contacta con soporte.",
-        "err_key_not_viewable": "Vista completa no disponible para esta clave — crea una nueva si la necesitas.",
 # IO-1 items
         "err_file_count": "Esta herramienta acepta entre {min} y {max} archivo(s)",
 # IO-1 web items
@@ -5176,8 +5158,8 @@ SERVER_I18N = {
         "err_unexpected": "Something went wrong, please try again",
         "err_too_many_attempts": "Too many attempts, please try again later",
 # B4 mcp closure
-        "agents_token_prefix": "(starts with fsk_)",
-        "agents_token_note": "Replace <key> in the snippets below with your API key.",
+        "agents_key_prefix": "(starts with fsk_)",
+        "agents_key_note": "Replace <key> in the snippets below with your API key.",
 # B5 frontend closure
         "err_expiry_not_entitled": "This delivery expiry is not available on your current plan",
         "err_download_limit_not_entitled": "This download limit is not available on your current plan",
@@ -5243,10 +5225,8 @@ SERVER_I18N = {
         "keyDelete": "Delete",
         "confirmKeyDelete": "Delete this key? Programs using it will immediately lose access.",
         "keyShow": "Show",
-        "keyLegacyHint": "Full view unavailable for this key — create a new one if you need to see it.",
         "err_key_limit": "Key limit reached (10). Delete an existing key first.",
         "err_vault": "Key storage is unavailable — please contact support.",
-        "err_key_not_viewable": "Full view unavailable for this key — create a new one if you need to see it.",
 # IO-1 items
         "err_file_count": "This tool accepts {min} to {max} files",
 # IO-1 web items

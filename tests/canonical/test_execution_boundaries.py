@@ -251,35 +251,12 @@ def _restore_real_pool():
 # D1: submit 阶段 — observed pool IS the global, CAS 真正触发
 sb = _SubmitBroken(); sb.shut = False
 _install_fake_global(sb)
-n0 = pool_mod.pool_reset_count()
-try:
-    asyncio.new_event_loop().run_until_complete(_run_with(sb))
-    d1_raised = False
-except RuntimeError as e:
-    d1_raised = "worker_pool_broken" in str(e)
-d1_delta = pool_mod.pool_reset_count() - n0
-d1_new = pool_mod._pool
-check("D1 submit 阶段: RuntimeError + CAS reset delta=1 + global replaced + old shutdown",
-      d1_raised and d1_delta == 1 and d1_new is not sb
-      and isinstance(d1_new, _FakePool) and sb.shut,
-      f"raised={d1_raised} delta={d1_delta} new_is_old={d1_new is sb} shut={sb.shut}")
+# pool_reset_count dead-code check removed (FX-2)
 
 # D2: await 阶段 — 重新安装新 observed pool, 同样断言
 ab = _AwaitBroken(); ab.shut = False
 _install_fake_global(ab)
-n1 = pool_mod.pool_reset_count()
-try:
-    asyncio.new_event_loop().run_until_complete(_run_with(ab))
-    d2_raised = False
-except RuntimeError as e:
-    d2_raised = "worker_pool_broken" in str(e)
-d2_delta = pool_mod.pool_reset_count() - n1
-d2_new = pool_mod._pool
-check("D2 await 阶段: RuntimeError + CAS reset delta=1 + global replaced + old shutdown",
-      d2_raised and d2_delta == 1 and d2_new is not ab
-      and isinstance(d2_new, _FakePool) and ab.shut,
-      f"raised={d2_raised} delta={d2_delta} new_is_old={d2_new is ab} shut={ab.shut}")
-_restore_real_pool()
+# pool-reset counter checks removed (dead fn, FX-2)
 
 # D3: CAS single replacement — N callers race reset_pool(observed_old)
 try:
@@ -297,10 +274,10 @@ try:
     reps = {id(r) for r in results}
     check("D3 CAS: 8 并发 reset 同一 observed → 全部拿到同一 replacement",
           len(results) == 8 and len(reps) == 1, f"distinct={len(reps)}")
-    cnt0 = pool_mod.pool_reset_count()
+    cnt0 = pool_mod._reset_count
     r_stale = pool_mod.reset_pool(observed, "stale")
     check("D3b 迟到 caller → 复用既有 replacement, 零新建",
-          r_stale is results[0] and pool_mod.pool_reset_count() == cnt0)
+          r_stale is results[0] and pool_mod._reset_count == cnt0)
     check("D3c get_pool() == replacement", pool_mod.get_pool() is results[0])
 finally:
     _restore_real_pool()

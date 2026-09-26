@@ -10,7 +10,7 @@
   <div class="agents-quickstart">
     <h2>{{ texts.agents_qs }}</h2>
     <ol class="agents-steps">
-      <li>{{ texts.agents_qs1 }} <a href="/account/keys">{{ texts.acct_keys }}</a> <span data-i18n="agents_token_prefix">{{ texts.agents_token_prefix }}</span></li>
+      <li>{{ texts.agents_qs1 }} <a href="/account/keys">{{ texts.acct_keys }}</a> <span data-i18n="agents_key_prefix">{{ texts.agents_key_prefix }}</span></li>
       <li>{{ texts.agents_qs2 }}</li>
       <li>{{ texts.agents_qs3 }}</li>
     </ol>
@@ -19,7 +19,7 @@
   <h2>{{ texts.agents_mcp_h }}</h2>
   <div class="agents-copy">
     <code id="mcpUrl">{{ BASE_URL }}/mcp</code>
-    <p class="profile-note">MCP endpoint: <a href="{{ BASE_URL }}/mcp">{{ BASE_URL }}/mcp</a> (Bearer fsk_ token) · plain-text agent guide: <a href="/llms.txt">/llms.txt</a></p>
+    <p class="profile-note">MCP endpoint: <a href="{{ BASE_URL }}/mcp">{{ BASE_URL }}/mcp</a> (Bearer fsk_ API key) · plain-text agent guide: <a href="/llms.txt">/llms.txt</a></p>
     <button type="button" class="btn-secondary" id="copyMcp" data-copy-target="mcpUrl" data-i18n="copy">{{ texts['copy'] }}</button>
   </div>
   <div class="agents-mcp-config">
@@ -27,12 +27,12 @@
     <dl class="agents-fields">
       <dt>URL</dt><dd><code>{{ BASE_URL }}/mcp</code></dd>
       <dt data-i18n="agents_hdr_name">{{ texts.agents_hdr_name }}</dt><dd><code>Authorization</code></dd>
-      <dt data-i18n="agents_hdr_value">{{ texts.agents_hdr_value }}</dt><dd><code>Bearer &lt;token&gt;</code></dd>
+      <dt data-i18n="agents_hdr_value">{{ texts.agents_hdr_value }}</dt><dd><code>Bearer &lt;fsk_…&gt;</code></dd>
     </dl>
-    <p class="agents-intro" data-i18n="agents_token_note">{{ texts.agents_token_note|e }}</p>
+    <p class="agents-intro" data-i18n="agents_key_note">{{ texts.agents_key_note }}</p>
 
     <h3>Claude Code</h3>
-<pre class="agents-pre"><code id="cfgClaudeCode">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+<pre class="agents-pre"><code id="cfgClaudeCode">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;fsk_…&gt;"</code></pre>
     <button type="button" class="btn-secondary" data-copy-target="cfgClaudeCode" data-i18n="copy">{{ texts['copy'] }}</button>
 
     <h3>Cursor · <code>~/.cursor/mcp.json</code></h3>
@@ -41,7 +41,7 @@
     "518": {
       "type": "http",
       "url": "{{ BASE_URL }}/mcp",
-      "headers": { "Authorization": "Bearer &lt;token&gt;" }
+      "headers": { "Authorization": "Bearer &lt;fsk_…&gt;" }
     }
   }
 }</code></pre>
@@ -53,7 +53,7 @@
     "518": {
       "type": "http",
       "url": "{{ BASE_URL }}/mcp",
-      "headers": { "Authorization": "Bearer &lt;token&gt;" }
+      "headers": { "Authorization": "Bearer &lt;fsk_…&gt;" }
     }
   }
 }</code></pre>

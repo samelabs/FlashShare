@@ -3,7 +3,7 @@
 Credits = SPENDABLE_KINDS only (Credits). Provider Earnings =
 provider_earn (USD-millis, S2 relation attribution). Platform Income =
 platform_commission + platform_revenue (USD). Withdrawals = S4
-lifecycle queue. The generic mixed "积分流水" page is retired."""
+lifecycle queue."""
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse

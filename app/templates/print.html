@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>{{ t.print_btn }} · {{ file_name|e }}</title>
+<title>{{ t.print_btn }} · {{ file_name }}</title>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -66,12 +66,12 @@
 </head>
 <body>
 <header>
-  <span class="name">{{ file_name|e }}</span>
+  <span class="name">{{ file_name }}</span>
   <a class="btn" href="{{ download_url }}">{{ t.download_file if t.download_file else "Download" }}</a>
   <button class="btn primary" type="button" id="printBtn" disabled>{{ t.print_btn }}</button>
 </header>
 <main>
-  <iframe id="pdfFrame" src="{{ inline_url }}" title="{{ file_name|e }}"></iframe>
+  <iframe id="pdfFrame" src="{{ inline_url }}" title="{{ file_name }}"></iframe>
   <div id="pages" aria-hidden="true"></div>
   <div class="status" id="status"><div class="spin"></div><span id="statusText">{{ t.print_loading }}</span></div>
 </main>

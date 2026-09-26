@@ -83,6 +83,18 @@ def build_llms_txt() -> str:
       "appear as image content blocks. result_url is a human-viewable "
       "page (/r/{id}).")
     a("")
+    a("## Delivery (result retention)")
+    a("Every tools/call accepts an optional `delivery` object that "
+      "governs how long the result (and its file items) stays "
+      "available and how many times files may be downloaded:")
+    a('  {"delivery": {"expiry_days": 1, "allowed_downloads": 50}}')
+    a("- expiry_days: how long the result lives (default 1; larger "
+      "values may require a paid plan).")
+    a("- allowed_downloads: total downloads allowed across the file "
+      "items (default 50).")
+    a("structuredContent.expires_at is the epoch second at which the "
+      "result expires; after it, result_url and every file link 404.")
+    a("")
     a("## Large files: two-stage upload (bytes never pass through the model)")
     a("For files too large to inline as base64, call the free meta tool "
       "create_upload first, PUT the raw bytes to the returned one-time "
@@ -108,8 +120,9 @@ def build_llms_txt() -> str:
     a("## Share links")
     a(f"- /f/{{id}} is the human page; /f/{{id}}?download=1 is the direct "
       "download (302 redirect to the file).")
-    a("- Download counts and expiry follow the share settings made at "
-      "upload time; anonymous download needs no token.")
+    a("- Download counts and expiry follow the `delivery` object of the "
+      "tools/call that produced the file; anonymous download needs no "
+      "token.")
     a("")
     a("## Billing")
     a("- Tool calls are metered in credits: 1000 credits = 1 USD. "

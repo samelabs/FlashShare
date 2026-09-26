@@ -10,22 +10,6 @@ import json as _json
 _HEX64 = set("0123456789abcdef")
 
 
-def _valid_ref(ref) -> bool:
-    return (isinstance(ref, str) and bool(ref.strip())
-            and len(ref.strip()) <= 128)
-
-
-def _valid_hash(h) -> bool:
-    return (isinstance(h, str) and len(h) == 64
-            and all(c in _HEX64 for c in h))
-
-
-def _claim_primitives_note():
-    """claim composition (user lock → binding → usage insert → receipt
-    insert, one transaction) lives in sharing.ingress_receipt
-    .claim_ingress_quota — the repo keeps only row primitives."""
-
-
 def by_id(con, ingress_id: int) -> dict | None:
     row = con.execute(
         "SELECT * FROM ingress_requests WHERE id=%s", (ingress_id,)).fetchone()
@@ -40,50 +24,55 @@ def by_id_for_update(con, ingress_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-def earliest_by_ref(con, user_id: int, request_ref: str) -> dict | None:
-    """Earliest historical receipt for the (user_id, request_ref) binding."""
+def earliest_by_ref(con, user_id: int, request_ref: str,
+                    scope: str = "") -> dict | None:
+    """Earliest historical receipt for the (user_id, scope, request_ref)
+    binding — the client_ref uniqueness scope is (user, tool, ref)."""
     row = con.execute(
         """
         SELECT id, request_hash, status, result_json
         FROM ingress_requests
-        WHERE user_id=%s AND request_ref=%s
+        WHERE user_id=%s AND scope=%s AND request_ref=%s
         ORDER BY id ASC LIMIT 1
         """,
-        (user_id, request_ref)).fetchone()
+        (user_id, scope, request_ref)).fetchone()
     return dict(row) if row else None
 
 
-def live_by_ref(con, user_id: int, request_ref: str) -> dict | None:
-    """Latest receipt still holding the live slot (running|ok)."""
+def live_by_ref(con, user_id: int, request_ref: str,
+                scope: str = "") -> dict | None:
+    """Latest receipt still holding the live slot (running|ok) within
+    the (user, scope) partition."""
     row = con.execute(
         """
         SELECT * FROM ingress_requests
-        WHERE user_id=%s AND request_ref=%s
+        WHERE user_id=%s AND scope=%s AND request_ref=%s
           AND status IN ('running','ok')
         ORDER BY id DESC LIMIT 1
         """,
-        (user_id, request_ref)).fetchone()
+        (user_id, scope, request_ref)).fetchone()
     return dict(row) if row else None
 
 
-def insert_running(con, user_id: int, request_ref: str, request_hash: str,
-                   usage_ids: list[int], started_at: int) -> dict | None:
-    """INSERT running receipt under the partial live unique index.
+def insert_running(con, user_id: int, request_ref: str, scope: str,
+                   request_hash: str, usage_ids: list[int],
+                   started_at: int) -> dict | None:
+    """INSERT running receipt under the partial live unique index on
+    (user_id, scope, request_ref).
 
-    ON CONFLICT (user_id, request_ref) WHERE status IN ('running','ok')
-    DO NOTHING — a lost live-unique race returns None (row mapping only;
-    race semantics belong to sharing.ingress_receipt)."""
+    ON CONFLICT ... DO NOTHING — a lost live-unique race returns None
+    (row mapping only; race semantics belong to sharing.ingress_receipt)."""
     row = con.execute(
         """
-        INSERT INTO ingress_requests (user_id, request_ref, request_hash,
-           status, usage_ids, started_at)
-        VALUES (%s, %s, %s, 'running', %s, %s)
-        ON CONFLICT (user_id, request_ref)
+        INSERT INTO ingress_requests (user_id, scope, request_ref,
+           request_hash, status, usage_ids, started_at)
+        VALUES (%s, %s, %s, %s, 'running', %s, %s)
+        ON CONFLICT (user_id, scope, request_ref)
           WHERE status IN ('running','ok')
         DO NOTHING
         RETURNING *
         """,
-        (user_id, request_ref, request_hash, usage_ids,
+        (user_id, scope, request_ref, request_hash, usage_ids,
          started_at)).fetchone()
     return dict(row) if row else None
 

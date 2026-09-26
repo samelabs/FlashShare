@@ -4,7 +4,7 @@
 {% block body %}
 <section class="sl-panel">
   <form method="get" action="/samelabs/users" class="sl-toolbar">
-    <input type="search" name="q" value="{{ q|e }}" placeholder="Search username / display name / email / id…" class="sl-input">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search username / display name / email / id…" class="sl-input">
     <button class="sl-btn" type="submit">Search</button>
     <span class="sl-dim">{{ fmt_num(total) }} users</span>
   </form>
@@ -19,9 +19,9 @@
     {% for u in users %}
       <tr>
         <td>{{ u.id }}</td>
-        <td><a href="/samelabs/users/{{ u.id }}">{{ u.username|e }}</a></td>
-        <td><span class="sl-badge">{{ u.status|e }}</span></td>
-        <td>{% if u.plan_code %}{% if u.membership_effective %}{{ u.plan_code|e }}{% else %}<span class="sl-dim">({{ u.plan_code|e }} {{ u.membership_status|e }})</span>{% endif %}{% else %}—{% endif %}</td>
+        <td><a href="/samelabs/users/{{ u.id }}">{{ u.username }}</a></td>
+        <td><span class="sl-badge">{{ u.status }}</span></td>
+        <td>{% if u.plan_code %}{% if u.membership_effective %}{{ u.plan_code }}{% else %}<span class="sl-dim">({{ u.plan_code }} {{ u.membership_status }})</span>{% endif %}{% else %}—{% endif %}</td>
         <td class="sl-num">{{ fmt_num(u.spendable_credits) }}</td>
         <td class="sl-num">{{ u.provider_available_usd }}</td>
         <td class="sl-num">{{ fmt_num(u.calls_ok) }}</td>
@@ -29,7 +29,7 @@
         <td>{{ fmt_ts(u.created_at) }}</td>
         <td>{{ fmt_ts(u.last_login_at) }}</td>
         <td><button class="sl-btn sl-btn-sm" type="button"
-              data-adjust="{{ u.id }}" data-username="{{ u.username|e }}">Credits ±</button></td>
+              data-adjust="{{ u.id }}" data-username="{{ u.username }}">Credits ±</button></td>
       </tr>
     {% else %}
       <tr><td colspan="11" class="sl-empty">No users</td></tr>

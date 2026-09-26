@@ -276,10 +276,6 @@ def validate_family_key(key) -> tuple[str | None, str | None]:
     return key, None
 
 
-def family_exts(key: str) -> frozenset[str]:
-    return FAMILIES[key].exts
-
-
 def format_manifest() -> dict:
     """客户端 format manifest (4C-2a): 发布页唯一格式事实源。
 
@@ -298,13 +294,6 @@ def format_manifest() -> dict:
 def sniff_ext_to_families(ext: str) -> set[str]:
     """扩展名 → 族集合 (执行闸门: 上传 sniff 后的 ext 反查)。未知 ext → 空集。"""
     return {k for k, f in FAMILIES.items() if ext in f.exts}
-
-
-def mime_in_families(mime: str | None, ext: str, fam_keys: set[str]) -> bool:
-    """执行闸门判定: sniff 产物 (final_type 或 ext) 是否落入声明族。
-
-    族词表以 ext 为准 (MIME 服务端不可信, ext 已过魔数嗅探)。"""
-    return bool(sniff_ext_to_families(ext) & fam_keys)
 
 
 # 4C-1a 决定性 invariant: family 声明的 MIME 集合按 MIME_EXTS 展开, 必须

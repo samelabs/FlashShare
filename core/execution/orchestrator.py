@@ -106,7 +106,8 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         if budget < 0:
             raise ToolError("err_file_too_large")
         try:
-            status, headers, stream = storage_read(ud["gokapi_id"])
+            status, headers, stream = await asyncio.to_thread(
+                storage_read, ud["gokapi_id"])
         except InternalDownloadUnavailable as exc:
             raise ExecutionError("tool_failed") from exc
         except ValueError:
@@ -132,7 +133,8 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
             order.append(it["kind"])
             if it["kind"] == "file":
                 body = it["data"]
-                gokapi_result = storage_write(
+                gokapi_result = await asyncio.to_thread(
+                    storage_write,
                     io.BytesIO(body), it["filename"], it["content_type"],
                     expiry_days, allowed_downloads, len(body))
                 info = gokapi_result.get("FileInfo", {})
@@ -157,7 +159,7 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         # existing failure settlement (typed refund) take over.
         for gid in staged_ids:
             try:
-                storage_delete(gid)
+                await asyncio.to_thread(storage_delete, gid)
             except Exception:
                 logger.exception("staged cleanup failed gid=%s", gid)
         raise
@@ -283,7 +285,8 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
             order.append(it["kind"])
             if it["kind"] == "file":
                 body = it["bytes"]
-                gokapi_result = storage_write(
+                gokapi_result = await asyncio.to_thread(
+                    storage_write,
                     io.BytesIO(body), it["filename"], it["content_type"],
                     expiry_days, allowed_downloads, len(body))
                 info = gokapi_result.get("FileInfo", {})
@@ -308,7 +311,7 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         # same all-or-nothing staging rule as the local path
         for gid in staged_ids:
             try:
-                storage_delete(gid)
+                await asyncio.to_thread(storage_delete, gid)
             except Exception:
                 logger.exception("staged cleanup failed gid=%s", gid)
         raise

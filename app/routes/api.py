@@ -117,12 +117,13 @@ async def fetch_source(request: Request, gokapi_id: str):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if not verify_fetch_token(token, int(user_id_raw), gokapi_id):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    info = storage_info(gokapi_id)
+    info = await asyncio.to_thread(storage_info, gokapi_id)
     if not info:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     from gokapi import InternalDownloadUnavailable
     try:
-        status, headers, stream = storage_read(gokapi_id)
+        status, headers, stream = await asyncio.to_thread(
+            storage_read, gokapi_id)
     except InternalDownloadUnavailable:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if status >= 400:
@@ -170,14 +171,14 @@ async def client_error(request: Request):
     return {"ok": True}
 
 
-def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
+async def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
     """Known-rollback settlement: best-effort delete staged objects, then
     EXACT quota release + receipt failed in one transaction. If the DB
     settlement itself fails, the receipt stays running — startup
     recovery owns it; quota is never speculatively released."""
     for gid in gokapi_ids:
         try:
-            storage_delete(gid)
+            await asyncio.to_thread(storage_delete, gid)
         except Exception:
             logger.warning("rollback: gokapi cleanup failed for %s", gid)
     try:
@@ -187,8 +188,8 @@ def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
                          "(receipt stays running for recovery)", ingress_id)
 
 
-def _finalize_or_reconcile(ingress_id, gokapi_ids, user_id, usage_ids,
-                           canonical_result):
+async def _finalize_or_reconcile(ingress_id, gokapi_ids, user_id, usage_ids,
+                                 canonical_result):
     """Success finalize with STRICT commit-outcome reconciliation.
 
     Try the running→ok finalize. If the finalize transaction's commit
@@ -212,7 +213,8 @@ def _finalize_or_reconcile(ingress_id, gokapi_ids, user_id, usage_ids,
         if out["outcome"] == OUTCOME_DURABLE_OK:
             return out["result"]
         if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-            _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids)
+            await _staged_cleanup(gokapi_ids, user_id, ingress_id,
+                                   usage_ids)
             raise RuntimeError("err_upload_failed")
         # UNRESOLVED — no cleanup, no release, no rewrite
         raise IngressUnresolved("err_ingress_unresolved")
@@ -308,7 +310,8 @@ async def create_upload(request: Request):
     try:
         receipt, usage_ids, replay_result = claim_ingress_quota(
             user["id"], ip, client_ref, req_hash,
-            [size for _, size, _, _ in pending])
+            [size for _, size, _, _ in pending],
+            scope=has_tool)
     except IngressQuotaDenied as exc:
         # Authoritative denial — the web layer never recomputes
         # used/remaining, it only relays the full contract.
@@ -339,8 +342,9 @@ async def create_upload(request: Request):
     uploaded_gokapi_ids = []
     try:
         for content, size, filename, final_type in pending:
-            gokapi = storage_write(io.BytesIO(content), filename, final_type,
-                                   source_expiry, source_downloads, size)
+            gokapi = await asyncio.to_thread(
+                storage_write, io.BytesIO(content), filename, final_type,
+                source_expiry, source_downloads, size)
             info = gokapi.get("FileInfo", {})
             gid = info.get("Id", "")
             if not gid:
@@ -351,20 +355,18 @@ async def create_upload(request: Request):
                 "filename": filename,
                 "contentType": final_type,
                 "size": size,
-                "hotlinkUrl": info.get("UrlHotlink", ""),
-                # staging identity of a tool-source intermediate: this is
-                # NOT the share publicId (direct shares carry that key);
-                # pass it back as files[].public_id with the sourceToken
+                # staging identity of a tool-source intermediate (the
+                # Gokapi id IS the staging handle here); storage ids
+                # beyond this handle never leave
                 "stagingId": gid,
-                "gokapiId": gid,
                 "sourceToken": sign_source_token(user["id"], gid),
                 "expireAt": info.get("ExpireAt"),
                 "expiryDays": source_expiry,
                 "allowedDownloads": source_downloads,
             })
     except Exception:
-        _staged_cleanup(uploaded_gokapi_ids, user["id"],
-                        int(receipt["id"]), usage_ids)
+        await _staged_cleanup(uploaded_gokapi_ids, user["id"],
+                              int(receipt["id"]), usage_ids)
         logger.exception("multi-upload failed, %d files rolled back",
                          len(uploaded_gokapi_ids))
         return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
@@ -373,8 +375,8 @@ async def create_upload(request: Request):
               if len(files_result) == 1
               else {"ok": True, "files": files_result})
     try:
-        _finalize_or_reconcile(int(receipt["id"]), uploaded_gokapi_ids,
-                               user["id"], usage_ids, files_result)
+        await _finalize_or_reconcile(int(receipt["id"]), uploaded_gokapi_ids,
+                                      user["id"], usage_ids, files_result)
     except IngressUnresolved:
         return JSONResponse(
             {"ok": False, "error": "err_ingress_unresolved"}, 500)

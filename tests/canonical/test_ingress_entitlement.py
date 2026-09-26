@@ -266,14 +266,14 @@ check("S3 upload 行删除不退款 24h usage (usage 仍 5)", left == 5, str(lef
 
 # generated output 不新增 ingress usage: canonical 契约 = reserve 只挂在 source
 # 接受路径 (api/pipeline 调用点), output 落盘不产生新 upload_usage。静态守卫:
-_pipe = open(_os.path.join(_REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read()
+_pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
 _api = open(_os.path.join(_REPO, "app", "routes", "api.py"), encoding="utf-8").read()
 # FX-1: the dead upload_sources pipeline (the sole reserve_ingress
 # caller) is deleted — quota accounting rides ingress receipts only.
 check("S4 quota 入口收敛: receipts 唯一 (全仓零直接 reserve)",
-      _pipe.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
+      _pipe_src.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
       and _api.count("claim_ingress_quota(") >= 1,
-      f"pipe={_pipe.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
+      f"pipe={_pipe_src.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
 # 引用既有 Stage C E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
 
@@ -959,7 +959,7 @@ _inv_src = open(_os.path.join(_REPO, "core", "execution", "invocation.py"), enco
 check("G8 invocation 不再字面定义 _MAX_FILES = 20 (引 shared 常量)",
       "_MAX_FILES = 20" not in _inv_src
       and "MAX_FILES_PER_REQUEST" in _inv_src)
-_pipe_src = open(_os.path.join(_REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read()
+_pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
 # FX-1: upload_sources pipeline deleted; the shared batch validator is
 # consumed by the live surfaces (web api + MCP) — G10/G11 cover those.
 check("G9 pipeline 死代码已删 (无 ingress 遗留)",

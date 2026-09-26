@@ -128,7 +128,7 @@ try:
          "client_ref": f"inl7x-{_u}"},
         {"Content-Type": "application/json", "Cookie": ck})
     items = ((dx or {}).get("result") or {}).get("items") or []
-    pid = next((it.get("publicId") for it in items if it.get("kind") == "file"), None)
+    pid = next((it.get("public_id") for it in items if it.get("kind") == "file"), None)
     check("F2 zip upload via web (share tool)", st == 200 and st_x == 200 and bool(pid),
           (st, st_x, str(dx)[:90]))
 

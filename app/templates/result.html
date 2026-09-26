@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ texts.r_page_title }} · {{ tool_name|e }} - {{ APP_NAME }}{% endblock %}
+{% block title %}{{ texts.r_page_title }} · {{ tool_name }} - {{ APP_NAME }}{% endblock %}
 {% block desc %}{% endblock %}
 {% block meta %}<meta name="robots" content="noindex">{% endblock %}
 
@@ -8,7 +8,7 @@
   <div class="card r-card">
     <div class="card-pad">
       <div class="page-head r-head">
-        <h1 id="rToolName">{{ tool_name|e }}</h1>
+        <h1 id="rToolName">{{ tool_name }}</h1>
         <div class="page-head-meta">
           <span class="meta-item">{{ file_size_icon }}<span>{{ texts.r_generated }}: {{ generated_text }}</span></span>
           <span class="meta-item">{{ expiry_icon }}<span>{{ texts.r_expires }}: {{ expire_text }}</span></span>
@@ -39,32 +39,32 @@
             <span class="rs-item-kind">{{ texts.r_text_out }}</span>
             <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-text aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
           </div>
-          <div class="rs-body"><pre class="rs-text">{{ it.text|e }}</pre></div>
+          <div class="rs-body"><pre class="rs-text">{{ it.text }}</pre></div>
           {% elif it.kind == 'json' %}
           <details class="rs-json-details" open>
             <summary>{{ texts.r_json_out }}</summary>
-            <div class="rs-body"><pre class="rs-json">{{ it.rendered|e }}</pre></div>
+            <div class="rs-body"><pre class="rs-json">{{ it.rendered }}</pre></div>
           </details>
           <div class="rs-item-head rs-json-head">
             <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-json aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
           </div>
           {% else %}
           {% if it.is_image %}
-          <span class="rs-image"><img src="/f/{{ it.publicId }}/inline" alt="{{ it.filename|e }}" loading="lazy" decoding="async"></span>
+          <span class="rs-image"><img src="/f/{{ it.public_id }}/inline" alt="{{ it.filename }}" loading="lazy" decoding="async"></span>
           <div class="rs-item-body">
           {% endif %}
           <div class="file-row">
             {% if it.is_image %}
-            <img class="file-thumb" src="/f/{{ it.publicId }}/inline" alt="" loading="lazy">
+            <img class="file-thumb" src="/f/{{ it.public_id }}/inline" alt="" loading="lazy">
             {% else %}
             <span class="file-thumb file-thumb-glyph" aria-hidden="true">{{ icon_svg(it.glyph or "doc") }}</span>
             {% endif %}
-            <span class="file-name">{{ it.filename|e }}</span>
+            <span class="file-name">{{ it.filename }}</span>
             <span class="file-meta">{{ it.size_text }}{% if it.remaining is not none %} · {{ texts.r_downloads_left }} {{ it.remaining }}{% endif %}</span>
             {% if it.is_pdf %}
-            <a class="btn btn-ghost btn-sm" href="/f/{{ it.publicId }}" target="_blank" rel="noopener">{{ icon_svg("eye") }}<span>{{ texts.r_preview }}</span></a>
+            <a class="btn btn-ghost btn-sm" href="{{ it.page_url }}" target="_blank" rel="noopener">{{ icon_svg("eye") }}<span>{{ texts.r_preview }}</span></a>
             {% endif %}
-            <a class="btn btn-secondary btn-sm rs-dl" href="/f/{{ it.publicId }}?download=1" download>{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+            <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" download>{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
           </div>
           {% if it.is_image %}</div>{% endif %}
           {% endif %}

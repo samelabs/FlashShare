@@ -53,18 +53,6 @@ def by_owner(con, user_id: int, now_ts: int, limit: int, offset: int) -> list:
         (user_id, now_ts, limit, offset)).fetchall()
 
 
-def quota_usage(con, user_id: int, since_ts: int) -> dict:
-    return con.execute(
-        "SELECT COUNT(*) c, COALESCE(SUM(size_bytes), 0) b FROM uploads WHERE user_id = %s AND created_at > %s",
-        (user_id, since_ts)).fetchone()
-
-
-def ip_usage_count(con, ip: str, since_ts: int) -> int:
-    return con.execute(
-        "SELECT COUNT(*) c FROM uploads WHERE ip = %s AND created_at > %s",
-        (ip, since_ts)).fetchone()["c"]
-
-
 def owned_row(con, upload_id: int, user_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT id, gokapi_id FROM uploads WHERE id = %s AND user_id = %s",

@@ -128,7 +128,8 @@ def land_items_result(con, user_id: int, staged: StagedItems,
 
     Returns (first_file_upload_id | None, result_public_id, record)."""
     from repo.uploads import insert_record
-    from utils import generate_public_id, public_file_url, now as _now
+    from utils import (generate_public_id, file_urls,
+                       now as _now)
 
     ts = _now()
     upload_id = None
@@ -139,26 +140,25 @@ def land_items_result(con, user_id: int, staged: StagedItems,
         if kind == "file":
             f = next(file_iter)
             public_id = generate_public_id(con)
-            dl_url = public_file_url(public_id)
+            page_url, download_url = file_urls(public_id)
             uid = insert_record(
                 con, user_id, staged.ip, public_id, f.gokapi_id,
                 f.filename, f.content_type, f.size,
                 f.expiry_days, f.allowed_downloads, f.expire_at,
-                dl_url, f.url_hotlink, ts)
+                page_url, f.url_hotlink, ts)
             if upload_id is None:
                 upload_id = int(uid)
+            # snake_case item; storage ids (gokapi) NEVER leave — the
+            # record is client-visible (result_json, execute response)
             final.append({
                 "kind": "file",
                 "filename": f.filename,
-                "contentType": f.content_type,
+                "content_type": f.content_type,
                 "size": f.size,
-                "publicId": public_id,
-                "gokapiId": f.gokapi_id,
-                "page_url": dl_url,
-                "download_url": f"{dl_url}?download=1",
-                "expireAt": f.expire_at,
-                "expiryDays": f.expiry_days,
-                "allowedDownloads": f.allowed_downloads,
+                "public_id": public_id,
+                "page_url": page_url,
+                "download_url": download_url,
+                "expires_at": f.expire_at,
             })
         else:
             final.append(next(inline_iter))
@@ -167,18 +167,19 @@ def land_items_result(con, user_id: int, staged: StagedItems,
     # expiry; text/json-only results expire with the delivery window.
     expire_at = None
     for it in final:
-        if it.get("kind") == "file" and it.get("expireAt"):
-            exp = int(it["expireAt"])
+        if it.get("kind") == "file" and it.get("expires_at"):
+            exp = int(it["expires_at"])
             if expire_at is None or exp > expire_at:
                 expire_at = exp
     if expire_at is None:
         expire_at = ts + int(delivery["expiry_days"]) * 86400
+    from utils import public_result_url
     record = {
-        "resultId": result_public_id,
-        "resultUrl": f"{base_url}/r/{result_public_id}",
-        "expireAt": expire_at,
+        "result_id": result_public_id,
+        "result_url": public_result_url(result_public_id),
+        "expires_at": expire_at,
         "items": final,
     }
     if staged.orig_size is not None:
-        record["origSize"] = staged.orig_size
+        record["orig_size"] = staged.orig_size
     return upload_id, result_public_id, record

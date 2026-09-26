@@ -40,7 +40,20 @@ from repo import orders as orders_repo
 from economy import subscription as _sub
 from economy import reconcile as _rec
 from economy.billing import spendable_balance
-from governance.entitlements import (resolve, resolve_from_membership, entitlement_profile_exists, EntitlementConfigurationError)
+from governance.entitlements import (resolve, resolve_from_membership, EntitlementConfigurationError)
+
+def _prof_exists(code: str) -> bool:
+    """entitlement_profile_exists retired (dead fn): a profile exists iff
+    the tier table carries a configured row for the code (unknown codes
+    resolve to the free profile, never raising)."""
+    from governance.entitlements import resolve_from_membership
+    try:
+        return resolve_from_membership({"member": True, "code": code}).get(
+            "plan_code") == code
+    except Exception:
+        return False
+
+
 
 
 def _row_views():
@@ -209,8 +222,8 @@ check("G4 第二 tier (pro) → 自己的 entitlement (2000 files/20GiB, 绝不 
       r["plan_code"] == "pro" and r["ingress_files_24h"] == PRO_FILES
       and r["ingress_bytes_24h"] == PRO_BYTES, str(r["plan_code"]))
 check("G4b entitlement_profile_exists 单点",
-      entitlement_profile_exists("plus") and entitlement_profile_exists("pro")
-      and not entitlement_profile_exists("nope"))
+      _prof_exists("plus") and _prof_exists("pro")
+      and not _prof_exists("nope"))
 
 # ═══ 链5: subscription.update 换 tier (同一 sub) ═══
 res = _sub.handle_event("subscription.update", _sub_snap("active", _iso(PS), _iso(PE), product={"id": "price_pro"}, sub_id="mgsubT"))
@@ -286,7 +299,7 @@ uU, uidU = _new_user("mgU")
 plan_x = _seed_plan("mg_unknown_tier", 100, "price_x")
 _cur.execute("select count(*) from orders where user_id=%s and kind='plan'", (uidU,))
 check("G10pre unknown-profile plan 收费前拒绝 (gate 单点 + gate 后零 order)",
-      not entitlement_profile_exists("mg_unknown_tier")
+      not _prof_exists("mg_unknown_tier")
       and _cur.fetchone()[0] == 0)
 # 防御测试: 若 DB/外部异常导致未知 active Membership 已存在 (绕过 gate),
 # read 面 fail loud、authorization fail-safe — 异常防线, 非销售流程:

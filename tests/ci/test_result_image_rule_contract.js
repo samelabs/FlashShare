@@ -52,13 +52,14 @@ function runRenderItems(item, contentType) {
   };
   vm.createContext(sandbox);
   const fn = vm.runInContext(`(${FN_SRC})`, sandbox, { filename: "renderResultItems" });
-  return fn([{ ...item, contentType }], {});
+  return fn([{ ...item, content_type: contentType }], {});
 }
 
 // ── png → preview generated ──
 {
   const html = runRenderItems(
-    { kind: "file", publicId: "p1", filename: "a.png", size: 8 },
+    { kind: "file", public_id: "p1", filename: "a.png", size: 8,
+      download_url: "/f/p1?download=1", page_url: "/f/p1" },
     "image/png");
   assert.ok(html.includes('rs-image'),
     "image/png generates a result preview");
@@ -72,7 +73,8 @@ function runRenderItems(item, contentType) {
 // ── svg → NO preview, no svg-specific second mechanism ──
 {
   const html = runRenderItems(
-    { kind: "file", publicId: "p2", filename: "a.svg", size: 8 },
+    { kind: "file", public_id: "p2", filename: "a.svg", size: 8,
+      download_url: "/f/p2?download=1", page_url: "/f/p2" },
     "image/svg+xml");
   assert.ok(!html.includes('/f/p2/inline'),
     "image/svg+xml generates NO inline preview");

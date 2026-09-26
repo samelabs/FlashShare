@@ -1,4 +1,4 @@
-"""Operator tool commands (behavior migrated from the retired
+"""Operator tool commands (the
 /samelabs routes): pricing, presentation, operator HTTP tool
 create/delete. All mutations go through the existing single points —
 governance.pricing / governance.tool_supply / repo.catalog — inside ONE
@@ -67,7 +67,7 @@ def set_tool_pricing(operator_id: int, tool_id: str, cost: int,
                      enabled: bool) -> dict:
     """One transaction: serialize on the platform_tools row, read the
     before snapshot AFTER the lock, mutate, audit. Retired tools fall
-    back to a pricing-row lock (existing retired semantics)."""
+    back to a pricing-row lock."""
     from governance.pricing import set_pricing
     from repo.catalog import (tool_row_for_update, pricing_row,
                               pricing_row_for_update)

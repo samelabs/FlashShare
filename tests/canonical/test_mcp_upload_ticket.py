@@ -222,9 +222,9 @@ try:
     a1 = {"filename": "idem.png", "size": 1234, "client_ref": f"idem-{_u}"}
     st1, d1, t1 = _create_upload(a1, tok, 10)
     st2, d2, t2 = _create_upload(a1, tok, 11)
-    check("I1 same client_ref + same params → same usable ticket",
-          t1 and t2 and t1["upload_url"] == t2["upload_url"]
-          and t2["expires_at"] == t1["expires_at"], (t1, t2))
+    check("I1 same client_ref + same params → FRESH usable ticket (old one invalidated)",
+          t1 and t2 and t1["upload_url"] != t2["upload_url"]
+          and t2["expires_at"] > 0, (t1, t2))
     a2 = dict(a1, size=4321)
     st3, d3, t3 = _create_upload(a2, tok, 12)
     check("I2 same client_ref + different params → -32009",
@@ -289,7 +289,10 @@ try:
     tp = t["upload_url"][len(_BASE):]
     with db() as con:
         con.execute("update mcp_upload_tickets set expires_at=%s"
-                    " where ticket=%s", (ts - 1, t["upload_url"].rsplit("/", 1)[1]))
+                    " where ticket_hash=%s", (ts - 1,
+                        __import__("hashlib").sha256(
+                            t["upload_url"].rsplit("/", 1)[1].encode()
+                        ).hexdigest()))
     st_t, _h, d_t, _sc = _req("PUT", tp, PNG_SMALL)
     check("T1 expired ticket → 410 ticket_expired",
           st_t == 410 and d_t.get("error") == "ticket_expired", (st_t, d_t))
@@ -435,10 +438,12 @@ try:
     st, d, t = _create_upload({"filename": "q.png", "size": 1000,
                                "client_ref": f"q1-{_u}"}, tok, 50)
     err = d.get("error") or {}
-    check("Q1 exhausted 24h quota → -32602 with typed denial",
-          err.get("code") == -32602
-          and (err.get("data") or {}).get("error") in (
-              "err_ingress_files_24h", "err_ingress_bytes_24h"), str(d)[:120])
+    _q1 = (d.get("result") or {})
+    _q1_txt = ((_q1.get("content") or [{}])[0].get("text") or "")
+    check("Q1 exhausted 24h quota → isError with typed denial",
+          _q1.get("isError") is True and (
+              "err_ingress_files_24h" in _q1_txt
+              or "err_ingress_bytes_24h" in _q1_txt), str(d)[:120])
     with db() as con:
         n = con.execute("select count(*) c from mcp_upload_tickets"
                         " where user_id=%s and client_ref=%s",

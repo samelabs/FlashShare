@@ -90,18 +90,6 @@ def record(con, actor_user_id: int, action: str, target_type: str,
          int(ts))).fetchone()
 
 
-def list_recent(con, limit: int = 50, offset: int = 0) -> list:
-    """newest-first 只读分页 (canonical tests / future surface)."""
-    return con.execute(
-        """
-        SELECT id, actor_user_id, action, target_type, target_id,
-               before_json, after_json, created_at
-        FROM operator_audit
-        ORDER BY created_at DESC, id DESC
-        LIMIT %s OFFSET %s
-        """, (int(limit), int(offset))).fetchall()
-
-
 def recent_pair_rows(con, action: str, target_type: str, target_id: str,
                      actor_user_id: int, created_at_gte: int,
                      limit: int = 20) -> list:

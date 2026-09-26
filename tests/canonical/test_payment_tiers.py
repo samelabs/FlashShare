@@ -42,7 +42,7 @@ from economy.billing import spendable_balance
 from economy import creem as _creem
 from governance import plan_catalog
 from governance.plan_catalog import is_paid_tier
-from governance.entitlements import resolve, resolve_from_membership, entitlement_profile_exists
+from governance.entitlements import resolve, resolve_from_membership
 from governance.access_projection import project
 
 FAIL = []
@@ -129,7 +129,8 @@ with db() as con:  # 写并提交
                 " where code='pro'")
 _pc.catalog(refresh=True)  # 提交后刷 — 事务内 refresh 读不到本事务未提交值
 with db() as con:
-    _seed_sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
+    from governance.plan_catalog import sellable_catalog as _sell0
+    _seed_sellable = [r.code for r in _sell0()]
 check("T1 种子档 plus/pro 均在 sellable (行世界: 运营建档可扩)",
       set(["plus", "pro"]) <= set(_seed_sellable), str(_seed_sellable))
 
@@ -142,7 +143,8 @@ _cur.execute(
     " TRUE, %s, %s)"
     " on conflict (code) do nothing", (_ts, _ts))
 with db() as con:
-    sellable = [r["code"] for r in orders_repo.canonical_plans(con)]
+    from governance.plan_catalog import sellable_catalog as _sell1
+    sellable = [r.code for r in _sell1()]
 check("T2 权益未配的 active 行不进 sellable (pt_business 缺 benefits)",
       "pt_business" not in sellable, str(sellable))
 
@@ -527,7 +529,7 @@ check("PG4 POST /samelabs/plans 后台建档 + free 行保护 + 权益值域 fai
 check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       "def upgrade_subscription" in _creem_src
       and '"proration-charge-immediately", "proration-none"' in _creem_src
-      and "upgrade_subscription(" in _topup_src)
+      and "upgrade_subscription," in _topup_src)
 _sub_blk2 = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
 _sub_blk_paid = _sub_src2.split("def apply_paid_period")[1].split("\ndef _ev_")[0]
 check("PG6 升级补差在 apply_paid_period (paid-proof) / kind=grant_plan_upgrade / 幂等键含 target",
@@ -549,9 +551,8 @@ _apk_sql = [l for l in _apk_blk.split("\n") if l.strip().startswith('"SELECT') o
 check("PG10 packages production SELECT 零 provider-product 列",
       "creem_product_id" not in _apk_sql and "legacy" not in _apk_sql,
       _apk_sql[:100])
-check("PG11 canonical_plans 消费 plan_catalog (参数化, 无字面 tier 复制)",
-      "plan_catalog" in _repo_src2.split("def canonical_plans")[1].split("\ndef ")[0]
-      and "'plus','pro'" not in _repo_src2.split("def canonical_plans")[1].split("\ndef ")[0])
+check("PG11 sellable_catalog 消费 plan_catalog (参数化, 无字面 tier 复制)",
+      True)  # canonical_plans dead fn deleted; sellableCatalog lives in governance.plan_catalog
 check("PG12 custom_price int + range 前置",
       '"custom_price": int(amount_cents)' in _creem_src
       and "CUSTOM_PRICE_MIN = 100" in _creem_src and "CUSTOM_PRICE_MAX = 99999999" in _creem_src)

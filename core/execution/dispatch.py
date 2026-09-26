@@ -103,7 +103,10 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
     try:
         decl = _json.loads(tool.get("params_json") or "[]")
     except (TypeError, ValueError):
-        decl = []
+        # stored-contract corruption: a broken declaration must NEVER be
+        # silently treated as "no declaration" (free passthrough) — the
+        # call is refused before any claim/charge/network
+        return None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
     # params 声明是可选能力: 无声明的工具 params 自由直传。

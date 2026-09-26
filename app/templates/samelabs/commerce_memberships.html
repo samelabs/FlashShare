@@ -13,11 +13,11 @@
     <tbody>
     {% for m in memberships %}
       <tr>
-        <td><a href="/samelabs/users/{{ m.user_id }}">{{ m.username|e }}</a> (#{{ m.user_id }})</td>
-        <td>{{ (m.plan_code or '?')|e }} — {{ (m.plan_name or '')|e }}</td>
-        <td>{{ m.provider_subscription_id|e }}</td>
-        <td><span class="sl-badge">{{ m.status|e }}</span></td>
-        <td><span class="sl-badge {{ 'sl-b-ok' if m.effective else 'sl-b-muted' }}">{{ m.effective_status|e }}</span></td>
+        <td><a href="/samelabs/users/{{ m.user_id }}">{{ m.username }}</a> (#{{ m.user_id }})</td>
+        <td>{{ (m.plan_code or '?') }} — {{ (m.plan_name or '') }}</td>
+        <td>{{ m.provider_subscription_id }}</td>
+        <td><span class="sl-badge">{{ m.status }}</span></td>
+        <td><span class="sl-badge {{ 'sl-b-ok' if m.effective else 'sl-b-muted' }}">{{ m.effective_status }}</span></td>
         <td>{{ fmt_ts(m.started_at) }}</td>
         <td>{{ fmt_ts(m.renews_at) if m.renews_at else '—' }}</td>
         <td>{{ fmt_ts(m.cancel_scheduled_at) if m.cancel_scheduled_at else '—' }}</td>

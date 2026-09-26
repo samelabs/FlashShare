@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block head %}<link rel="enclosure" href="{{ dl_url }}"{% if content_type %} type="{{ content_type }}"{% endif %}>{% endblock %}
 
-{% block title %}{{ file_name|e }} — 518.PLUS{% endblock %}
-{% block desc %}{{ file_name|e }} · {{ texts.card_expires }}: {{ card_date }}{% endblock %}
+{% block title %}{{ file_name }} — 518.PLUS{% endblock %}
+{% block desc %}{{ file_name }} · {{ texts.card_expires }}: {{ card_date }}{% endblock %}
 
 {% block meta %}
 <link rel="canonical" href="{{ escaped_url }}">
 <meta name="robots" content="noindex, follow">
 <meta property="og:type" content="website">
-<meta property="og:title" content="{{ file_name|e }} · {{ size_text }}">
+<meta property="og:title" content="{{ file_name }} · {{ size_text }}">
 <meta property="og:description" content="{{ texts.card_expires }}: {{ card_date }} · {{ texts.card_downloads }}: {{ downloads }}">
 <meta property="og:url" content="{{ escaped_url }}">
 <meta property="og:image" content="{{ SOCIAL_IMAGE_URL }}">
@@ -16,11 +16,11 @@
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="{{ file_name|e }}">
-<meta name="twitter:title" content="{{ file_name|e }} · {{ size_text }}">
+<meta property="og:image:alt" content="{{ file_name }}">
+<meta name="twitter:title" content="{{ file_name }} · {{ size_text }}">
 <meta name="twitter:description" content="{{ texts.card_expires }}: {{ card_date }} · {{ texts.card_downloads }}: {{ downloads }}">
 <meta name="twitter:image" content="{{ SOCIAL_IMAGE_URL }}">
-<meta name="twitter:image:alt" content="{{ file_name|e }}">
+<meta name="twitter:image:alt" content="{{ file_name }}">
 {% endblock %}
 
 {% block content %}
@@ -28,7 +28,7 @@
   <div class="card file-card">
     <div class="card-pad">
       <div class="page-head">
-        <h1 id="fileName">{{ file_name|e }}</h1>
+        <h1 id="fileName">{{ file_name }}</h1>
         <div class="page-head-meta">
           <span class="meta-item">{{ file_size_icon }}<span>{{ size_text }}</span></span>
           <span class="meta-item">{{ expiry_icon }}<span>{{ texts.card_expires }}: {{ expire_text }}</span></span>
@@ -37,12 +37,12 @@
       </div>
       {% if is_image %}
       <div class="rs-item rs-image file-preview">
-        <span class="rs-image"><img src="{{ inline_url }}" alt="{{ file_name|e }}" loading="lazy" decoding="async"></span>
+        <span class="rs-image"><img src="{{ inline_url }}" alt="{{ file_name }}" loading="lazy" decoding="async"></span>
       </div>
       {% endif %}
       <div class="file-row file-hero-row">
         <span class="file-thumb file-thumb-glyph" aria-hidden="true">{{ icon_svg(file_glyph) }}</span>
-        <span class="file-name">{{ file_name|e }}</span>
+        <span class="file-name">{{ file_name }}</span>
         <span class="file-meta">{{ size_text }}{% if content_type %} · {{ content_type }}{% endif %}</span>
       </div>
       <div class="workspace-tools" id="workspaceTools" data-pid="{{ public_id }}">

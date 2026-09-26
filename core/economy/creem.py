@@ -296,10 +296,6 @@ def upgrade_subscription(subscription_id: str, product_id: str,
     })
 
 
-def credits_product_id() -> str:
-    return CREEM_CREDITS_PRODUCT_ID
-
-
 def credits_ready() -> bool:
     """Credits 售卖 readiness: API key + shared Product + 固定 currency。"""
     return bool(CREEM_API_KEY and CREEM_CREDITS_PRODUCT_ID and CREEM_CREDITS_CURRENCY)

@@ -5,6 +5,7 @@ import json
 import logging
 import hashlib
 import datetime
+import asyncio
 import urllib.parse
 from pathlib import Path
 
@@ -41,7 +42,7 @@ router = APIRouter()
 
 from app.web_ctx import _STATIC  # 静态目录单点 (web_ctx 持有)
 from app.web_ctx import (  # noqa: F401 (模板/路由沿用原名)
-    ctx_base as _ctx_base_impl, _CSS_VERSION, _JS_VERSION, _I18N_VERSION, JS,
+    ctx_base as _ctx_base_impl, _CSS_VERSION, _I18N_VERSION,
     error_text,
 )
 
@@ -437,7 +438,6 @@ async def home(request: Request):
         "delivery_default_downloads": def_dl,
         "limits_json": json.dumps(limits),
         "tools_json": json.dumps(tools, ensure_ascii=False),
-        "JS": JS,
         "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
         "og_desc": texts.get("subtitle", texts.get("seo_desc", "")),
         "file_size_icon": icon_svg("file_size"),
@@ -727,7 +727,7 @@ async def result_page(result_id: str, request: Request):
     facts (tool, generated time, expiry, remaining downloads)."""
     from app.main import templates
     from repo.ledger import call_by_result_public_id
-    from utils import format_bytes, format_ts, now
+    from utils import format_bytes, format_ts, now, remaining_downloads
     with db() as con:
         row = call_by_result_public_id(con, result_id)
     if row is None:
@@ -740,7 +740,7 @@ async def result_page(result_id: str, request: Request):
         record = _json.loads(row["result_json"])
     except Exception:
         record = {"items": []}
-    expire_at = record.get("expireAt")
+    expire_at = record.get("expires_at")
     if not expire_at or int(expire_at) <= now():
         # Expired result: same 404 surface as an unknown id (no
         # existence oracle for dead results).
@@ -752,8 +752,8 @@ async def result_page(result_id: str, request: Request):
     # fact + file rows.
     from repo.uploads import by_public_id
     from storage import info as storage_info
-    file_pids = [it.get("publicId") for it in (record.get("items") or [])
-                 if it.get("kind") == "file" and it.get("publicId")]
+    file_pids = [it.get("public_id") for it in (record.get("items") or [])
+                 if it.get("kind") == "file" and it.get("public_id")]
     uploads_by_pid = {}
     if file_pids:
         with db() as con:
@@ -770,24 +770,21 @@ async def result_page(result_id: str, request: Request):
                                         ensure_ascii=False)
         elif d.get("kind") == "file":
             file_count += 1
-            ct = d.get("contentType") or ""
+            ct = d.get("content_type") or ""
             d["is_image"] = (ct.startswith("image/")
                              and ct.lower() != "image/svg+xml")
             d["is_pdf"] = ct.lower() == "application/pdf"
             d["size_text"] = format_bytes(int(d.get("size") or 0))
             d["glyph"] = file_glyph(ct, d.get("filename") or "")
-            # Remaining downloads live in ONE place: the file row.
+            # Remaining downloads live in ONE place: the file row,
+            # computed by the single calculator.
             d["remaining"] = None
-            u = uploads_by_pid.get(d.get("publicId"))
+            u = uploads_by_pid.get(d.get("public_id"))
             if u is not None:
-                live = storage_info(u["gokapi_id"]) if u["gokapi_id"] else None
-                total = int(u["allowed_downloads"] or 0)
-                count = (live or {}).get("DownloadCount")
-                remaining = (live or {}).get("DownloadsRemaining")
-                if isinstance(remaining, int):
-                    d["remaining"] = max(0, remaining)
-                elif isinstance(count, int):
-                    d["remaining"] = max(0, total - count)
+                live = await asyncio.to_thread(storage_info, u["gokapi_id"]) \
+                    if u["gokapi_id"] else None
+                d["remaining"] = remaining_downloads(
+                    int(u["allowed_downloads"] or 0), live)
         items.append(d)
     # Tool display name: the call's tool row label (resolver chain).
     ctx = _ctx_base(request)
@@ -830,7 +827,7 @@ async def result_qr(result_id: str):
     try:
         import json as _json
         record = _json.loads(row["result_json"])
-        expire_at = record.get("expireAt")
+        expire_at = record.get("expires_at")
     except Exception:
         expire_at = None
     if not expire_at or int(expire_at) <= now():
@@ -872,7 +869,11 @@ async def account_profile_save(request: Request):
     current_password = form.get("current_password") or ""
 
     try:
-        update_profile(user["id"], display_name=display_name or None, email=email or None, bio=bio or None, payout_channel=payout_channel or None,
+        # bio / payout_channel: the field is ALWAYS submitted on this
+        # form — "" is an explicit clear, not "leave unchanged"
+        update_profile(user["id"], display_name=display_name or None,
+                       email=email or None, bio=bio,
+                       payout_channel=payout_channel,
                        current_password=current_password or None)
     except Exception as exc:
         if isinstance(exc, ValueError):

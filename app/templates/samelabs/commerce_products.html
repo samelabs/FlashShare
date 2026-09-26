@@ -14,8 +14,8 @@
     {% for p in plans %}
     <button type="button" class="tier-card" data-plan="{{ p.id }}">
       <div class="tier-card-main">
-        <span class="tier-card-name">{{ p.name|e }}</span>
-        <span class="tier-card-code sl-mono sl-dim">{{ p.code|e }}</span>
+        <span class="tier-card-name">{{ p.name }}</span>
+        <span class="tier-card-code sl-mono sl-dim">{{ p.code }}</span>
       </div>
       <div class="tier-card-facts">
         <span class="tier-fact{% if not p.price_cents or not p.creem_product_id %} miss{% endif %}">
@@ -104,8 +104,8 @@
     {% for p in packages %}
     <button type="button" class="tier-card" data-pkg="{{ p.id }}">
       <div class="tier-card-main">
-        <span class="tier-card-name">{{ p.name|e }}</span>
-        <span class="tier-card-code sl-mono sl-dim">{{ p.code|e }}</span>
+        <span class="tier-card-name">{{ p.name }}</span>
+        <span class="tier-card-code sl-mono sl-dim">{{ p.code }}</span>
       </div>
       <div class="tier-card-facts">
         <span class="tier-fact">{{ '+' ~ p.credits ~ ' 积分' }}</span>

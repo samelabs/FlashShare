@@ -138,7 +138,7 @@
 ## ⛔ 反越界红线（每条有真实事故背书）
 
 1. CSS 选择器必须带页面作用域前缀，禁裸 `h1{}`；CSS 只动目标块+前后探针，删后扫 selector 残骸。
-2. Jinja2 autoescape 配置下 HTML/SVG 输出用 `|safe` 的位置是安全边界（模板转义已修复，勿回退）。
+2. Jinja2 autoescape 恒为 ON：模板插值默认转义。平台自有 HTML/SVG 只经 Markup 标注的生产者（icons.py / utils.file_format_icon）进入；`|safe` 仅限平台生成 JSON（limits/delivery）与仓库内政策文档（doc_body）四处，用户可控值永不裸出。
 3. Jinja dict 下标用 `texts['copy']`（`texts.copy` 命中方法）。
 4. 删除代码块警惕隐性保护随块被删；删完必跑回归。
 5. 生产代码禁边写边猜：改前完整读现有逻辑 → 定案 → 一次写对。

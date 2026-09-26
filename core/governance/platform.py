@@ -64,14 +64,6 @@ def _ensure(con) -> int:
     return _platform_id
 
 
-def platform_id() -> int:
-    """启动后获取平台账户 id (未初始化则惰性创建)。"""
-    global _platform_id
-    if _platform_id is None:
-        return ensure_platform_account()
-    return _platform_id
-
-
 def record_platform_income(con, call_id, kind: str, amount: int, note: str,
                            ts: int) -> None:
     """平台收入记账 (调用方事务内执行)。kind: platform_commission |
@@ -97,14 +89,3 @@ def record_platform_income(con, call_id, kind: str, amount: int, note: str,
             + ledger_repo.sum_kind(con, pid, "platform_revenue"))
     ledger_repo.insert_row(con, pid, amount, base + amount, kind,
                            "tool_call", call_id, idem, note, ts)
-
-
-def platform_income_summary() -> dict:
-    """平台收入汇总 (运营报表): 抽佣 / 直销 / 合计。"""
-    pid = ensure_platform_account()
-    with db() as con:
-        commission = ledger_repo.sum_kind(con, pid, "platform_commission")
-        revenue = ledger_repo.sum_kind(con, pid, "platform_revenue")
-    out = {"commission": commission, "revenue": revenue,
-           "total": commission + revenue}
-    return out
