@@ -39,21 +39,25 @@ window.wirePwaDownloadLinks = function (scope) {
   });
 };
 
-// Mobile top-bar navigation sheet: visible only at phone widths (CSS),
-// toggled by the menu button; closes on outside click / Escape / nav.
+// Mobile top-bar navigation sheet: visible only at narrow widths (CSS),
+// toggled by the menu button; closes on backdrop / outside click / Escape /
+// nav. The backdrop is the touch-friendly outside.
 window.wireMobileNav = function () {
   const btn = document.getElementById("mobileNavBtn");
   const sheet = document.getElementById("mobileNavSheet");
+  const backdrop = document.getElementById("mobileNavBackdrop");
   if (!btn || !sheet || btn.dataset.wired) return;
   btn.dataset.wired = "1";
   const setOpen = (open) => {
     sheet.classList.toggle("hidden", !open);
+    if (backdrop) backdrop.classList.toggle("hidden", !open);
     btn.setAttribute("aria-expanded", open ? "true" : "false");
   };
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     setOpen(sheet.classList.contains("hidden"));
   });
+  if (backdrop) backdrop.addEventListener("click", () => setOpen(false));
   document.addEventListener("click", (e) => {
     if (!sheet.contains(e.target) && e.target !== btn) setOpen(false);
   });

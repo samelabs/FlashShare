@@ -24,7 +24,7 @@
     <span class="n">{{ owner_tools | length }}</span>
   </div>
   <div class="market-grid userpage-grid">
-    {% for t in owner_tools %}{{ tool_card(t, lang, texts, show_author=False) }}{% endfor %}
+    {% for t in owner_tools %}{{ tool_card(t, lang, texts) }}{% endfor %}
   </div>
   {% else %}
   <div class="empty userpage-empty">

@@ -394,14 +394,21 @@ part = _rd("app", "templates", "partials", "tool_identity.html")
 check("G3 partial 消费 icon_tool_svg 单一 renderer",
       "icon_tool_svg" in part and "icon_svg(" not in part)
 home_src3 = _rd("app", "templates", "home.html")
-check("G3b home 工具 tab 经 partial (无 icon_path 工具渲染)",
-      "tool_tab(" in home_src3
+check("G3b home 工具卡经 partial (无 icon_path 工具渲染)",
+      "tool_pick(" in home_src3
       and '{{ icon_path(t.icon' not in home_src3)
-# G4/G5: author 槽位在 partial 单点, market 开 / user page 关:
-check("G4 community author 槽位存在 (market 开)",
-      "tcard-author" in part and "show_author" in part)
-check("G5 user page show_author=False (页头已定义作者, 无冗余)",
-      'show_author=False' in _rd("app", "templates", "user_page.html"))
+# G4 卡面单源: 唯一 interior macro 渲染 图标/名称/描述/官方标/输入/输出/价格,
+# 两个包装宏 (link/pick) 都消费它; author/calls 槽位不进卡 (页头/详情页职责):
+check("G4 tool_card_inner 为唯一卡面, link/pick 双包装同源",
+      "tool_card_inner(" in part
+      and part.count("{{ tool_card_inner(t, lang, texts) }}") == 2
+      and "tcard-author" not in part and "t.stats" not in part
+      and "tool-card-origin" in part and "show_author" not in part)
+# G5 market/user page 同一导航卡调用 (无 per-page 参数分叉):
+for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):
+    src5 = _rd(*tmpl.split("/"))
+    check(f"G5 {tmpl.split('/')[-1]} 消费同一 tool_card 宏",
+          "tool_card(t, lang, texts)" in src5)
 # G6 origin 语义单源:
 cat_src = _rd("core", "governance", "catalog.py")
 check("G6 Official/Community origin 单源 (is_official_id)",
@@ -415,12 +422,12 @@ for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html",
 # G7 card href 仍是 Tool Page:
 check("G7 card href = /tool/{id}",
       'href="/tool/{{ t.id }}"' in part)
-# G8 home 保持执行 surface (tool-tab div, 非导航 a):
+# G8 home 保持执行 surface (pick div, 非导航 a):
 home_src = _rd("app", "templates", "home.html")
-check("G8 home tool-pick 为执行 surface (partial div role=button, home 无导航 a)",
-      '<div class="tool-pick"' in part and 'role="button"' in part
-      and "tool_tab(" in home_src
-      and '<a class="tool-pick"' not in home_src)
+check("G8 home tool-card 为执行 surface (partial div role=button, home 无导航 a)",
+      '<div class="tool-card"' in part and 'role="button"' in part
+      and "tool_pick(" in home_src
+      and '<a class="tool-card"' not in home_src)
 check("PG19 production 零 deprecated icon fallback 字面 (wand 兜底仅 icons.py)",
       sum(_rd("app", "templates", t).count('or "wand"')
           for t in ("home.html", "tools_market.html", "user_page.html")) == 0)

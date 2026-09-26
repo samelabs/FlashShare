@@ -87,6 +87,9 @@
   --s6: 32px;
   --s8: 48px;
   --s10: 64px;
+  /* form rhythm: one gap between fields AND between the last field and
+     the submit row — every form (auth/account/publish/keys/withdraw) */
+  --form-gap: var(--s4);
 
   /* ── Radius ── */
   --r-xs: 6px;

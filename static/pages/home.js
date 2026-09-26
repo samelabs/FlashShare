@@ -85,7 +85,7 @@
     const res = document.getElementById("result");
     if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }
     // Pick-card active state + the step-2 heading follow the selection
-    document.querySelectorAll(".tool-pick").forEach(b => {
+    document.querySelectorAll(".tool-card").forEach(b => {
       const on = b.dataset.toolId === tool.id;
       b.classList.toggle("active", on);
       b.setAttribute("aria-pressed", on ? "true" : "false");
@@ -98,7 +98,7 @@
   function bindTabs() {
     const homeTools = document.getElementById("homeTools");
     if (!homeTools) return;
-    homeTools.querySelectorAll(".tool-pick").forEach(tab => {
+    homeTools.querySelectorAll(".tool-card").forEach(tab => {
       tab.addEventListener("click", () => {
         const tool = tools.find(t => t.id === tab.dataset.toolId);
         if (tool) selectTool(tool);
@@ -184,12 +184,12 @@
   const _after = window.__afterI18n;
   window.__afterI18n = function () {
     if (typeof _after === "function") _after();
-    document.querySelectorAll("#homeTools .tool-pick").forEach(card => {
+    document.querySelectorAll("#homeTools .tool-card").forEach(card => {
       const tool = tools.find(t => t.id === card.dataset.toolId);
       if (!tool) return;
-      const nameEl = card.querySelector(".tool-pick-name");
+      const nameEl = card.querySelector(".tool-card-name");
       if (nameEl) nameEl.textContent = window.resolveLabel(tool.label) || tool.id;
-      const descEl = card.querySelector(".tool-pick-desc");
+      const descEl = card.querySelector(".tool-card-desc");
       if (descEl) descEl.textContent = window.resolveLabel(tool.desc) || "";
     });
     setRunHead();

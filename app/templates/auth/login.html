@@ -9,7 +9,7 @@
   {% if error %}<p class="error-note">{{ error }}</p>{% endif %}
   <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
   <div class="auth-divider"><span data-i18n="auth_or">{{ texts.auth_or }}</span></div>
-  <form method="post" action="/auth/login" class="auth-form stack stack-3">
+  <form method="post" action="/auth/login" class="auth-form">
     <label class="field">
       <span class="field-label" data-i18n="loginLabel">{{ texts.loginLabel }}</span>
       <input class="input" type="text" name="login" required autocomplete="username" maxlength="254">

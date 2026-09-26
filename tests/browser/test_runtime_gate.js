@@ -90,7 +90,7 @@ const VIEWPORTS = {
 // visual contract per page: overflow/overlap/CTA checks are generic; the
 // per-page required selectors anchor "this page actually rendered".
 const PAGES = [
-  { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-pick"] },
+  { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-card"] },
   { path: "/tools", name: "tools", anonOk: true, need: [] },
   { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", "#toolRunForm"] },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
@@ -253,10 +253,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
       // 3. home real render
       const homeAudit = await visualAudit("desktop", page, "home-logged-in", true);
-      check("home: tool grid rendered", (await page.$$(".tool-pick")).length >= 1, homeAudit.bodyText.slice(0, 120));
+      check("home: tool grid rendered", (await page.$$(".tool-card")).length >= 1, homeAudit.bodyText.slice(0, 120));
 
       // 4-7. upload + execute compress via real UI (home surface)
-      await page.click(".tool-pick[data-tool-id=compress]");
+      await page.click(".tool-card[data-tool-id=compress]");
       // IO-2: params render inline in the shared input component — no overlay
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
       check("home: input component rendered (run + file picker)",
