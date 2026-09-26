@@ -322,6 +322,12 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS tool_calls_user_time_idx
       ON tool_calls(user_id, started_at DESC)
     """,
+    # /r/{id} lookup authority — one live result row per public id
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS tool_calls_result_public_id_idx
+      ON tool_calls(result_public_id)
+      WHERE result_public_id IS NOT NULL
+    """,
     """
     CREATE INDEX IF NOT EXISTS tool_calls_tool_time_idx
       ON tool_calls(tool_id, started_at DESC)
@@ -675,7 +681,6 @@ _SCHEMA_SQL = (
       content_type  TEXT,
       declared_size BIGINT NOT NULL CHECK (declared_size > 0),
       client_ref    TEXT NOT NULL,
-      request_hash  TEXT NOT NULL,
       expires_at    BIGINT NOT NULL,
       used_at       BIGINT,
       created_at    BIGINT NOT NULL
@@ -683,6 +688,14 @@ _SCHEMA_SQL = (
     """,
     "CREATE INDEX IF NOT EXISTS mcp_upload_tickets_user_ref_idx"
     " ON mcp_upload_tickets (user_id, client_ref, id DESC)",
+    # one LIVE (unused, unexpired-at-issue) ticket per (user, client_ref):
+    # used_at IS NULL marks unused; the issue() user-row lock makes the
+    # lookup+insert pair race-free, this index is the durable backstop
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS mcp_upload_tickets_live_one_idx
+      ON mcp_upload_tickets (user_id, client_ref)
+      WHERE used_at IS NULL
+    """,
     )
 
 

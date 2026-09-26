@@ -9,10 +9,12 @@ from database import db
 from gokapi import list_gokapi_files
 from repo import uploads as uploads_repo
 from repo import upload_usage as usage_repo
+from repo import upload_tickets as tickets_repo
 from utils import now
 
 
 USAGE_RETENTION_SECONDS = 24 * 3600
+TICKET_USED_RETENTION_SECONDS = 24 * 3600
 
 
 def housekeeping_once() -> dict:
@@ -25,6 +27,9 @@ def housekeeping_once() -> dict:
     with db() as con:
         expired = uploads_repo.purge_expired(con, ts)
         usage = usage_repo.purge_before(con, ts - USAGE_RETENTION_SECONDS)
+    # one-time PUT credentials: expired-unused immediately, used after
+    # the 24h audit window (same cadence as upload_usage retention)
+    tickets = tickets_repo.purge(ts)
 
     storage_ok, files = list_gokapi_files()
     reconciled = 0
@@ -46,6 +51,7 @@ def housekeeping_once() -> dict:
     return {
         "expired": expired,
         "usage_purged": usage,
+        "tickets_purged": tickets,
         "storage_checked": storage_ok,
         "storage_reconciled": reconciled,
     }

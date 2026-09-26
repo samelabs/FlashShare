@@ -451,7 +451,11 @@ def _tool_specs(user: dict) -> list:
                 "properties": sub_props,
                 **({"required": sub_required} if sub_required else {}),
             }
-            required += sub_required
+            # required parameter NAMES live at params.required — the
+            # top level requires params itself when any is mandatory,
+            # never the individual names.
+            if sub_required:
+                required.append("params")
         else:
             props["params"] = {"type": "object", "description": "Tool-specific parameters"}
         props["delivery"] = {
@@ -707,15 +711,16 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         _fn, _ct, _body = uploads[i]
         _ok_t, _final_t = _sniff(_fn, _ct, _body[:512])
         if not _ok_t:
-            if _final_t.startswith("err_content_mismatch") \
-                    or _final_t == "err_file_type_blocked":
-                msg = _mcp_error_text("err_format_mismatch", tool, {})
-                if tool.get("accept"):
-                    msg = msg.replace(
-                        " (code: err_format_mismatch).",
-                        " (code: err_format_mismatch).")
-                return _rpc_err(mid, -32602, msg)
-            return _rpc_err(mid, -32602, f"upload rejected: {_final_t}")
+            # Pre-execution input errors are isError tool results — the
+            # SAME expression as the accept gate below (IO-1 rule: a
+            # well-formed request carrying a bad file is domain-level
+            # and agent-fixable; -32602 stays for malformed request
+            # shape only).
+            code = ("err_format_mismatch"
+                    if _final_t.startswith("err_content_mismatch")
+                    or _final_t == "err_file_type_blocked" else _final_t)
+            return _tool_result_error(mid, {"error": code},
+                                      client_ref, tool)
         _canon.append(((_san(_fn), _final_t, _body)))
     _names = {**ref_names,
               **{i: c[0] for i, c in zip(_ingest_idx, _canon)}}
@@ -771,7 +776,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             infos = _replay if isinstance(_replay, list) else [_replay]
         else:
             from storage import write as _gk_up
-            from execution.pipeline import (INTERMEDIATE_TTL_DAYS as _ITTL,
+            from governance.delivery import (INTERMEDIATE_TTL_DAYS as _ITTL,
                                             INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
             import io as _io
             _gids = []
@@ -788,9 +793,9 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     _gids.append(_fid)
                     infos.append({
                         "name": _fn, "filename": _fn, "contentType": _ct,
-                        "size": len(_body), "downloadUrl": "",
+                        "size": len(_body),
                         "hotlinkUrl": _gk["FileInfo"].get("UrlHotlink", ""),
-                        "publicId": _fid, "gokapiId": _fid,
+                        "stagingId": _fid, "gokapiId": _fid,
                         "sourceToken": sign_source_token(user["id"], _fid),
                         "expireAt": _gk["FileInfo"].get("ExpireAt"),
                         "expiryDays": _ITTL, "allowedDownloads": _IDL,
@@ -848,7 +853,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             source_files.append({"public_id": val[0], "source_token": val[1]})
         else:
             info = next(_ingested)
-            source_files.append({"public_id": info["publicId"],
+            source_files.append({"public_id": info["stagingId"],
                                  "source_token": info.get("sourceToken", "")})
 
     raw = {
@@ -1050,18 +1055,21 @@ def _create_upload(user: dict, mid, args: dict, request: Request):
                             client_ref, now())
     except ValueError as exc:
         return _rpc_err(mid, ERR_IDEMPOTENCY, str(exc))
+    _payload = {
+        "upload_url": f"{BASE_URL}/mcp/upload/{row['ticket']}",
+        "expires_at": int(row["expires_at"]),
+        "max_bytes": MAX_UPLOAD_BYTES,
+        "usage": "PUT the raw file bytes to upload_url with NO "
+                 "Authorization header (the URL is the one-time "
+                 "credential; exact declared size, 10-minute expiry, "
+                 "single use). The JSON response gives {public_id, "
+                 "source_token} — use them as the files[] reference "
+                 "form in tools/call.",
+    }
     return _rpc(mid, {
-        "content": [{"type": "text", "text": json.dumps({
-            "upload_url": f"{BASE_URL}/mcp/upload/{row['ticket']}",
-            "expires_at": int(row["expires_at"]),
-            "max_bytes": MAX_UPLOAD_BYTES,
-            "usage": "PUT the raw file bytes to upload_url with NO "
-                     "Authorization header (the URL is the one-time "
-                     "credential; exact declared size, 10-minute expiry, "
-                     "single use). The JSON response gives {public_id, "
-                     "source_token} — use them as the files[] reference "
-                     "form in tools/call.",
-        }, ensure_ascii=False)}],
+        "content": [{"type": "text",
+                     "text": json.dumps(_payload, ensure_ascii=False)}],
+        "structuredContent": _payload,
         "isError": False,
     })
 

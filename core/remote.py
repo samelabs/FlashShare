@@ -446,7 +446,7 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
     payload = {
         "files": [
             {"filename": s["filename"], "content_type": s["content_type"],
-             "size": s["size"], "url": s["fetch_url"]}
+             "size": s["size"], "url": s["url"]}
             for s in sources
         ],
         "params": params,

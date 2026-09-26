@@ -92,6 +92,16 @@ STORE = Store()
 API_KEY = ""
 
 
+def _env(name: str, default: str) -> str:
+    import os
+    return os.environ.get(name, default).strip()
+
+
+def file_id_lookup(path: str) -> str:
+    fid = path[len("/api/files/download/"):]
+    return fid.split("?", 1)[0]
+
+
 def _multipart(body: bytes, content_type: str) -> tuple[dict[str, str], tuple[str, str, bytes]]:
     match = re.search(r'boundary=(?:"([^"]+)"|([^;]+))', content_type or "")
     if not match:
@@ -234,6 +244,12 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/files/download/"):
+            # Injectable stall for latency tests (env file or explicit
+            # flag): HOLD_PREFIXES semicolon-sep file-id prefixes that
+            # sleep HOLD_SECONDS before answering on this channel.
+            _hold = _env("FAKE_GOKAPI_HOLD_PREFIXES", "")
+            if _hold and any(file_id_lookup(path).startswith(p) for p in _hold.split(";") if p):
+                time.sleep(float(_env("FAKE_GOKAPI_HOLD_SECONDS", "10")))
             # Official authenticated non-counting read:
             #   apikey required; increaseCounter=false honored (the
             #   counter only moves on /downloadFile).

@@ -62,8 +62,10 @@
   const allBtn = document.getElementById("rDownloadAll");
   if (allBtn) {
     allBtn.addEventListener("click", () => {
-      const links = Array.from(document.querySelectorAll(
-        '.rs-item .rs-dl[href$="?download=1"]'));
+      // Both download shapes: plain anchors AND the PWA-rebound
+      // buttons (wirePwaDownloadLinks strips their href — an
+      // anchor-only selector would find nothing in standalone mode).
+      const links = Array.from(document.querySelectorAll('.rs-item .rs-dl'));
       links.forEach((a, i) => {
         setTimeout(() => a.click(), i * 400);
       });

@@ -103,8 +103,10 @@ async def file_route(public_id: str, request: Request):
             # no hotlink → GET would stream via Python; HEAD never opens
             # a (counting) Gokapi download stream — signal GET-only
             return Response(status_code=405, headers={"Allow": "GET"})
-        # Fallback: stream via Python if no hotlink
-        status, headers, stream = open_gokapi_download(upload["gokapi_id"])
+        # Fallback: stream via Python if no hotlink (thread-pool read:
+        # a hung Gokapi must not pin the event loop)
+        status, headers, stream = await asyncio.to_thread(
+            open_gokapi_download, upload["gokapi_id"])
         if status >= 400:
             return HTMLResponse("File unavailable", status=status)
         content_type = upload["content_type"] or "application/octet-stream"
@@ -278,8 +280,12 @@ async def file_inline(public_id: str, request: Request):
     # internal primitive ONLY — if that channel is unavailable the preview
     # fails typed (503 preview_unavailable); it NEVER falls back to the
     # counted public download path.
+    # The internal read (connect + headers) runs in a worker thread: a
+    # hung Gokapi must pin one thread-pool slot, never the event loop —
+    # other requests keep being served while this preview waits.
     try:
-        status, headers, stream = open_gokapi_internal_download(upload["gokapi_id"])
+        status, headers, stream = await asyncio.to_thread(
+            open_gokapi_internal_download, upload["gokapi_id"])
     except InternalDownloadUnavailable:
         return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
     if status >= 400:
@@ -291,6 +297,8 @@ async def file_inline(public_id: str, request: Request):
     disposition = f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
 
     def generate():
+        # Body chunks read on the loop's default executor — a stalled
+        # Gokapi body slows only this response's generator, not the loop.
         try:
             while True:
                 chunk = stream.read(1024 * 256)

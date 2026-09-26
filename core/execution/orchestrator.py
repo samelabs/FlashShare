@@ -22,7 +22,7 @@ import logging
 
 from config import BASE_URL, MAX_UPLOAD_BYTES
 from database import db  # noqa: F401 (pipeline 内使用)
-from storage import read as storage_read, write as storage_write
+from storage import read as storage_read, write as storage_write, delete as storage_delete
 from tools import ToolError
 
 from . import ExecutionError
@@ -126,28 +126,41 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         raise ToolError("tool_failed")
 
     order, inline, files = [], [], []
-    for it in out["items"]:
-        order.append(it["kind"])
-        if it["kind"] == "file":
-            body = it["data"]
-            gokapi_result = storage_write(
-                io.BytesIO(body), it["filename"], it["content_type"],
-                expiry_days, allowed_downloads, len(body))
-            info = gokapi_result.get("FileInfo", {})
-            gid = info.get("Id", "")
-            if not gid:
-                raise ToolError("tool_failed")
-            files.append(StagedFileItem(
-                gokapi_id=gid,
-                filename=it["filename"],
-                content_type=it["content_type"],
-                size=len(body),
-                expiry_days=expiry_days,
-                allowed_downloads=allowed_downloads,
-                expire_at=info.get("ExpireAt"),
-                url_hotlink=info.get("UrlHotlink", "")))
-        else:
-            inline.append(it)
+    staged_ids: list[str] = []
+    try:
+        for it in out["items"]:
+            order.append(it["kind"])
+            if it["kind"] == "file":
+                body = it["data"]
+                gokapi_result = storage_write(
+                    io.BytesIO(body), it["filename"], it["content_type"],
+                    expiry_days, allowed_downloads, len(body))
+                info = gokapi_result.get("FileInfo", {})
+                gid = info.get("Id", "")
+                if not gid:
+                    raise ToolError("tool_failed")
+                staged_ids.append(gid)
+                files.append(StagedFileItem(
+                    gokapi_id=gid,
+                    filename=it["filename"],
+                    content_type=it["content_type"],
+                    size=len(body),
+                    expiry_days=expiry_days,
+                    allowed_downloads=allowed_downloads,
+                    expire_at=info.get("ExpireAt"),
+                    url_hotlink=info.get("UrlHotlink", "")))
+            else:
+                inline.append(it)
+    except BaseException:
+        # A later item failing must not strand the objects staged for the
+        # earlier ones — clean every staged-this-call object, then let the
+        # existing failure settlement (typed refund) take over.
+        for gid in staged_ids:
+            try:
+                storage_delete(gid)
+            except Exception:
+                logger.exception("staged cleanup failed gid=%s", gid)
+        raise
 
     return StagedItems(
         order=order, inline=inline, files=files,
@@ -191,7 +204,7 @@ def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
     payload = {
         "files": [
             {"filename": s["filename"], "content_type": s["content_type"],
-             "size": s["size"], "url": s["fetch_url"]}
+             "size": s["size"], "url": s["url"]}
             for s in sources
         ],
         "params": params,
@@ -264,30 +277,41 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
     expiry_days = delivery["expiry_days"]
     allowed_downloads = delivery["allowed_downloads"]
     order, inline, files = [], [], []
-    for it in out["items"]:
-        order.append(it["kind"])
-        if it["kind"] == "file":
-            body = it["bytes"]
-            gokapi_result = storage_write(
-                io.BytesIO(body), it["filename"], it["content_type"],
-                expiry_days, allowed_downloads, len(body))
-            info = gokapi_result.get("FileInfo", {})
-            gid = info.get("Id", "")
-            if not gid:
-                raise ExecutionError("err_endpoint_failed")
-            files.append(StagedFileItem(
-                gokapi_id=gid,
-                filename=it["filename"],
-                content_type=it["content_type"],
-                size=len(body),
-                expiry_days=expiry_days,
-                allowed_downloads=allowed_downloads,
-                expire_at=info.get("ExpireAt"),
-                url_hotlink=info.get("UrlHotlink", "")))
-        else:
-            inline.append({"kind": it["kind"],
-                           **({"text": it["text"]} if it["kind"] == "text"
-                              else {"data": it["data"]})})
+    staged_ids: list[str] = []
+    try:
+        for it in out["items"]:
+            order.append(it["kind"])
+            if it["kind"] == "file":
+                body = it["bytes"]
+                gokapi_result = storage_write(
+                    io.BytesIO(body), it["filename"], it["content_type"],
+                    expiry_days, allowed_downloads, len(body))
+                info = gokapi_result.get("FileInfo", {})
+                gid = info.get("Id", "")
+                if not gid:
+                    raise ExecutionError("err_endpoint_failed")
+                staged_ids.append(gid)
+                files.append(StagedFileItem(
+                    gokapi_id=gid,
+                    filename=it["filename"],
+                    content_type=it["content_type"],
+                    size=len(body),
+                    expiry_days=expiry_days,
+                    allowed_downloads=allowed_downloads,
+                    expire_at=info.get("ExpireAt"),
+                    url_hotlink=info.get("UrlHotlink", "")))
+            else:
+                inline.append({"kind": it["kind"],
+                               **({"text": it["text"]} if it["kind"] == "text"
+                                  else {"data": it["data"]})})
+    except BaseException:
+        # same all-or-nothing staging rule as the local path
+        for gid in staged_ids:
+            try:
+                storage_delete(gid)
+            except Exception:
+                logger.exception("staged cleanup failed gid=%s", gid)
+        raise
 
     return StagedItems(
         order=order, inline=inline, files=files,

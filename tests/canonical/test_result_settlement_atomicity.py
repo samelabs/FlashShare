@@ -106,7 +106,9 @@ check("A1 StagedResult 无 publicId/downloadUrl/uploads id 字段",
 _orch_src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
                  encoding="utf-8").read()
 check("A2 orchestrator 不再调用 save_upload_record",
-      "save_upload_record" not in _orch_src)
+      "save_upload_record" not in _orch_src
+      and "save_upload_record" not in open(_os.path.join(
+          _REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read())
 
 # ══════════ B. atomic success transaction (first-party) ══════════
 from execution import gate
@@ -507,14 +509,8 @@ check("K3b ok + NULL invocation_hash → reject (replay authority 需 hash)",
                   " finished_at) values (%s,%s,%s,'ok',0,%s,%s)",
                   (f"kr3b_{_u}", user9, tool9, ts, ts)))
 
-# ══════════ L. direct share save_upload_record 不变 ══════════
-from execution.pipeline import save_upload_record
-rec_direct = save_upload_record(user9, "127.0.0.1", f"gk_direct_{_u}",
-                                "share.txt", "text/plain", 5, 7, 10,
-                                ts + 86400, "", BASE_URL)
-check("L1 direct share save_upload_record 行为不变 (publicId/downloadUrl)",
-      rec_direct.get("publicId") and rec_direct.get("downloadUrl"),
-      str(rec_direct)[:80])
+# ═══ L-block retired: save_upload_record deleted (no production caller
+# since the direct-share branch removal; FX-1b dead-code item) ═══
 
 # ══════════ M. strict tri-state outcome regression ══════════
 from execution.gate import (OUTCOME_DURABLE_SUCCESS, OUTCOME_PROVEN_ROLLBACK,
@@ -664,8 +660,11 @@ check("N3 durable source 执行后不被删除 (row 保留 + 零 delete 调用)"
 # semantic: orchestrator 无 source eager-delete
 _orch2 = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
               encoding="utf-8").read()
-check("S1 orchestrator 零 delete_gokapi_file (source deletion authority 移除)",
-      "delete_gokapi_file" not in _orch2)
+# FX-1: orchestrator owns ALL-OR-NOTHING staging cleanup (a later item
+# failing deletes every staged-this-call object before the failure
+# settles). Settlement cleanup stays in gate.py (PROVEN_ROLLBACK).
+check("S1 orchestrator 暂存清理走 storage 适配器 (全量回收)",
+      "storage_delete" in _orch2 and "delete_gokapi_file" not in _orch2)
 
 # ══════════ cleanup (FK-safe, prefix-scoped) ══════════
 _uids = [user1, owner, user2, user3, user4, user5, user6, user7, user8, user9,

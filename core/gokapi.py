@@ -168,6 +168,13 @@ class InternalDownloadUnavailable(RuntimeError):
     """
 
 
+# Internal read timeout: an unresponsive Gokapi must fail typed within
+# a bounded window instead of pinning a worker thread for 5 minutes.
+# 30s covers slow large-object first bytes on a LAN link with ample
+# margin; the constant is shared by every internal-download caller.
+INTERNAL_DOWNLOAD_TIMEOUT_S = 30
+
+
 def open_gokapi_internal_download(file_id: str, range_header: str | None = None):
     """THE internal read primitive: non-counting authenticated stream.
 
@@ -186,7 +193,7 @@ def open_gokapi_internal_download(file_id: str, range_header: str | None = None)
         raise InternalDownloadUnavailable("missing_file_id")
     if not GOKAPI_KEY:
         raise InternalDownloadUnavailable("api_key_not_configured")
-    conn, _parsed = _gokapi_connection(timeout=300)
+    conn, _parsed = _gokapi_connection(timeout=INTERNAL_DOWNLOAD_TIMEOUT_S)
     headers = {"apikey": GOKAPI_KEY, "increaseCounter": "false"}
     if range_header:
         headers["Range"] = range_header

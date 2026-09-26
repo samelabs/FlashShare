@@ -109,7 +109,7 @@ function showToolProcessing(toolName) {
 // user-facing (process-flow maps unknown codes to t("failed")); machine
 // error codes are never rendered raw.
 function showToolError(message, originalFile, retryCallback) {
-  const origUrl = originalFile && (originalFile.downloadUrl || originalFile.url) ? (originalFile.downloadUrl || originalFile.url) : "";
+  const origUrl = originalFile && (originalFile.page_url || originalFile.url) ? (originalFile.page_url || originalFile.url) : "";
   const origLink = origUrl ? `<a class="btn btn-primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
   const retryBtn = typeof retryCallback === "function"
     ? `<button class="btn btn-secondary" id="toolRetry" type="button">${t("retry")}</button>` : "";

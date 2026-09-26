@@ -8,7 +8,9 @@ claim in repo.upload_tickets.
 Success runs the SAME ingress path as an inline-base64 source on
 tools/call: ingress receipt (quota usage) → Gokapi staging → receipt
 finalize; the response carries {public_id, source_token} for the
-files[] reference form.
+files[] reference form. Idempotency is client_ref + file identity
+(NOT the ticket): a failed/expired ticket can be re-issued and the
+PUT retried; an already-successful upload replays the same handles.
 """
 import io
 import logging
@@ -100,11 +102,16 @@ async def mcp_upload_put(ticket: str, request: Request):
         IngressConflict, IngressInProgress, IngressQuotaDenied,
         IngressUnresolved)
     import hashlib
+    # Idempotency identity = client_ref + the FILE (name/type/size/digest)
+    # — deliberately NOT the ticket id: a re-issued ticket after a failed
+    # or expired one must hash identically so the ingress binding treats
+    # it as the same logical upload (re-claim after failure, replay after
+    # success) instead of a conflicting one.
     req_hash = ingress_request_hash(
         "mcp_upload_ticket",
         [{"filename": filename, "content_type": final_type,
           "size": len(body), "sha256": hashlib.sha256(body).hexdigest()}],
-        {"ticket_id": int(row["id"])})
+        {})
     try:
         receipt, usage_ids, replay = claim_ingress_quota(
             user_id, ip, row["client_ref"], req_hash, [len(body)])
@@ -120,8 +127,8 @@ async def mcp_upload_put(ticket: str, request: Request):
     if replay is not None:
         info = replay if isinstance(replay, dict) else (
             replay[0] if isinstance(replay, list) and replay else None)
-        if isinstance(info, dict) and info.get("publicId"):
-            return {"public_id": info["publicId"],
+        if isinstance(info, dict) and info.get("stagingId"):
+            return {"public_id": info["stagingId"],
                     "source_token": info.get("sourceToken", "")}
 
     from governance.delivery import (INTERMEDIATE_TTL_DAYS,
@@ -140,8 +147,8 @@ async def mcp_upload_put(ticket: str, request: Request):
         file_info = {
             "name": filename, "filename": filename,
             "contentType": final_type, "size": len(body),
-            "downloadUrl": "", "hotlinkUrl": info.get("UrlHotlink", ""),
-            "publicId": gid, "gokapiId": gid,
+            "hotlinkUrl": info.get("UrlHotlink", ""),
+            "stagingId": gid, "gokapiId": gid,
             "sourceToken": sign_source_token(user_id, gid),
             "expireAt": info.get("ExpireAt"),
             "expiryDays": INTERMEDIATE_TTL_DAYS,
@@ -164,10 +171,15 @@ async def mcp_upload_put(ticket: str, request: Request):
         with db() as con:
             receipt_ok(con, int(receipt["id"]), [file_info])
     except Exception:
-        # finalize-loss convergence: replay of the same client_ref (a NEW
-        # ticket for the same intent) resolves to the stored or rolled-
-        # back receipt via the existing outcome machinery.
+        # Finalize loss settles the receipt FAILED (the staged object is
+        # already durable but unreferenced): a retry with the same
+        # client_ref — via a NEW ticket, which now hashes identically —
+        # re-claims cleanly instead of conflicting.
         logger.exception("mcp ticket finalize failed ticket_id=%s", row["id"])
+        try:
+            receipt_fail(int(receipt["id"]), usage_ids, user_id)
+        except Exception:
+            pass
         return _err(500, "err_upload_failed")
 
     return {"public_id": gid, "source_token": file_info["sourceToken"],

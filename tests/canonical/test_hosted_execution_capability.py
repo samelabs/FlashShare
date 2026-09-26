@@ -189,7 +189,7 @@ _orig_base = _orch.BASE_URL
 _orch.BASE_URL = BASE  # same process config as the app under test
 _mint_hosted_capability = _orch._mint_hosted_capability
 _srcs = [{"filename": "a.png", "content_type": "image/png", "size": 96,
-          "fetch_url": f"{BASE}/api/source/{GID}?u={UID}&t=x"}]
+          "url": f"{BASE}/api/source/{GID}?u={UID}&t=x"}]
 _HOSTED_URL = f"{BASE}/tool-endpoints/rounded-corners"
 check("HX5a trusted=False + exact same-origin hosted URL → None (fail closed)",
       _mint_hosted_capability(_HOSTED_URL, _srcs, {}, trusted=False) is None)

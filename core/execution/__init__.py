@@ -3,7 +3,6 @@
 从 app/routes/api.py 收编的执行面核心:
   gate.py          计量闸门: replay/attempt → charge → 编排回调 → fact+分账/退费
   source.py        输入解析: public_id → upload (DB 记录或签名 token 的 gokapi 中间件)
-  _upload_sources  Web/MCP 共享上传管线 (upload_pipeline)
   remote 编排      _execute_remote_and_share (remote.py 驱动器保持独立)
 
 🔴 修复落位:

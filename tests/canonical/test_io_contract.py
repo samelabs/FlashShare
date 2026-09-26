@@ -430,7 +430,7 @@ try:
     import remote as _remote
     decl_ep = {"url": f"{BASE_URL}/nonexistent", "timeout_s": 10}
     sources = [{"filename": "a.png", "content_type": "image/png",
-                "size": len(PNG), "fetch_url": "https://x.test/a.png"}]
+                "size": len(PNG), "url": "https://x.test/a.png"}]
     # invalid shapes via a local listener would need TLS; drive the
     # response-parsing path directly with a stubbed _http_call
     orig_call = _remote._http_call
@@ -486,7 +486,7 @@ try:
         _remote._http_call = orig_call
     check("X6 request payload key is files (not job_inputs)",
           all("files" == k or k in ("filename", "content_type", "size",
-                                    "fetch_url")
+                                    "url")
               for src in sources for k in src), sources)
     src_txt = open(_os.path.join(_REPO, "core", "remote.py"),
                    encoding="utf-8").read()

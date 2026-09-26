@@ -268,8 +268,10 @@ check("S3 upload 行删除不退款 24h usage (usage 仍 5)", left == 5, str(lef
 # 接受路径 (api/pipeline 调用点), output 落盘不产生新 upload_usage。静态守卫:
 _pipe = open(_os.path.join(_REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read()
 _api = open(_os.path.join(_REPO, "app", "routes", "api.py"), encoding="utf-8").read()
-check("S4 quota 入口收敛: pipeline reserve 1 处; web api 走 receipt claim (零直接 reserve)",
-      _pipe.count("reserve_ingress(") == 1 and _api.count("reserve_ingress(") == 0
+# FX-1: the dead upload_sources pipeline (the sole reserve_ingress
+# caller) is deleted — quota accounting rides ingress receipts only.
+check("S4 quota 入口收敛: receipts 唯一 (全仓零直接 reserve)",
+      _pipe.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
       and _api.count("claim_ingress_quota(") >= 1,
       f"pipe={_pipe.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
 # 引用既有 Stage C E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
@@ -547,22 +549,18 @@ check("B-W2 拒绝后 upload_usage 零新增", _cur.fetchone()[0] == _all_usage)
 check("B-R1 apiv1 模块不存在 (v1 uploads 退役)",
       not _os.path.exists(_os.path.join(_REPO, "app", "routes", "apiv1.py")))
 
-# MCP: 需要 bearer token — 注册用户 + token? MCP 走 /mcp (bearer). 简化: 直接调 pipeline 层 (MCP 同一函数):
-from execution.pipeline import upload_sources as _us, IngressBoundaryError as _IBE
-_u = {"id": _hf_id2, "username": _hf_name}
-try:
-    _us(_u, [("a.png", "image/png", _png1)] * 21, "127.0.0.1")
-    check("B-M1 pipeline 21 files → IngressBoundaryError (storage 前)", False, "no raise")
-except _IBE as e:
-    check("B-M1 pipeline 21 files → IngressBoundaryError (storage 前, MCP 同路径)",
-          e.denial == {"error": "err_too_many_files", "limit": 20, "incoming": 21}, str(e.denial))
-_big = b"\x89PNG\r\n\x1a\n" + b"0" * (_CFG_MAX_UP + 1 - 8)   # png 魔数 + 填充
-try:
-    _us(_u, [("a.png", "image/png", _big)], "127.0.0.1")
-    check("B-M2 pipeline oversized single → 拒", False, "no raise")
-except _IBE as e:
-    check("B-M2 pipeline oversized single → 拒 (storage 前)",
-          e.denial["error"] == "err_file_too_large", str(e.denial))
+# upload_sources pipeline was deleted with the v1 surface (FX-1 dead
+# code). The boundary AUTHORITY every surface consumes before storage is
+# governance.ingress.validate_batch — B-M drives it directly (same
+# denial dicts the web/MCP staging paths relay).
+from governance.ingress import validate_batch as _vb
+_d = _vb([1] * 21)
+check("B-M1 boundary 21 files → err_too_many_files (storage 前)",
+      _d == {"error": "err_too_many_files", "limit": 20, "incoming": 21}, str(_d))
+_big = _CFG_MAX_UP + 1
+_d = _vb([_big])
+check("B-M2 boundary oversized single → 拒 (storage 前)",
+      _d["error"] == "err_file_too_large", str(_d))
 _cur.execute("select count(*) from upload_usage uu join users u on u.id=uu.user_id where u.username=%s", (_hf_name,))
 check("B-M3 被拒 batch 零 usage 残留 (storage 前)", _cur.fetchone()[0] == _all_usage)
 # MCP HTTP 层 isError 语义由 5f 段真实 /mcp E2E 覆盖 (bearer + tools/call)。
@@ -962,8 +960,10 @@ check("G8 invocation 不再字面定义 _MAX_FILES = 20 (引 shared 常量)",
       "_MAX_FILES = 20" not in _inv_src
       and "MAX_FILES_PER_REQUEST" in _inv_src)
 _pipe_src = open(_os.path.join(_REPO, "core", "execution", "pipeline.py"), encoding="utf-8").read()
-check("G9 pipeline 调用 shared ingress validator",
-      "validate_batch" in _pipe_src)
+# FX-1: upload_sources pipeline deleted; the shared batch validator is
+# consumed by the live surfaces (web api + MCP) — G10/G11 cover those.
+check("G9 pipeline 死代码已删 (无 ingress 遗留)",
+      "validate_batch" not in _pipe_src and "upload_sources" not in _pipe_src)
 _mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"), encoding="utf-8").read()
 check("G10 MCP 不自建 batch byte sum 规则 (业务限制→isError)",
       "MAX_BATCH_BYTES" not in _mcp_src and "validate_batch" in _mcp_src)
@@ -1016,8 +1016,9 @@ check("G16 旧 quota key repo-wide 零 active hit (app/core/static/templates/tes
 check("G17 MCP quota denial → isError 分支存在 + generic fallback 仍在",
       "IngressQuotaDenied as exc" in _mcp_src
       and _mcp_up.count("except Exception") >= 1)
-check("G18 pipeline quota 走 IngressQuotaError (非普通 ValueError)",
-      "IngressQuotaError(denial)" in _pipe_src)
+check("G18 upload_sources 死管线已删 (quota 单路 = claim_ingress_quota)",
+      "upload_sources" not in _pipe_src
+      and "IngressQuotaDenied" in open(_os.path.join(_REPO, "app", "routes", "mcp_upload.py"), encoding="utf-8").read())
 _aff_src = open(_os.path.join(_REPO, "core", "execution", "affordability.py"), encoding="utf-8").read()
 _gate_src = open(_os.path.join(_REPO, "core", "execution", "gate.py"), encoding="utf-8").read()
 _appjs_src = open(_os.path.join(_REPO, "static", "app.js"), encoding="utf-8").read()

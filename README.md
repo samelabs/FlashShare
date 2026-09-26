@@ -171,6 +171,9 @@ curl -s https://your-domain/mcp -H "Authorization: Bearer fsk_…" \
 | `tool_id` / `tool_key` | 唯一身份，`^[a-z][a-z0-9_]{1,40}$` |
 | `execution` | 当前用户工具固定为 `http` |
 | `format_families` | 七族准入词表单选（image/document/archive/cad3d/media/data/code），accept 由族派生 |
+| `files_min` | 输入文件数下限，int ≥ 0（0 = 纯文本/参数工具，可不带文件调用）；缺省 1 |
+| `files_max` | 输入文件数上限，int 1..20；须 ≥ files_min；缺省 1 |
+| `outputs` | 产出类型非空子集 `["text","json","file"]`（声明工具可能返回哪些结果项）；缺省 `["file"]` |
 | `param.key` | `^[a-z][a-z0-9_]{0,31}$`，同工具内唯一 |
 | `param.type` | `enum` / `text` / `number` / `boolean` |
 | `param.required` | bool |

@@ -351,7 +351,6 @@ async def create_upload(request: Request):
                 "filename": filename,
                 "contentType": final_type,
                 "size": size,
-                "downloadUrl": "",
                 "hotlinkUrl": info.get("UrlHotlink", ""),
                 # staging identity of a tool-source intermediate: this is
                 # NOT the share publicId (direct shares carry that key);
