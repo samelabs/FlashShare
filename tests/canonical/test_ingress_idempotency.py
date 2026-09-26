@@ -203,26 +203,23 @@ ck2 = _register(_u + "w2")
 with db() as con:
     uid2 = con.execute("select id from users where username=%s",
                        (_u + "w2",)).fetchone()["id"]
+# IO-3a: the no-tool direct-share branch is RETIRED — every upload stages
+# a tool source (sharing = the share tool). No-tool posts are rejected
+# before any quota reservation or storage side effect.
 ref17 = f"ds-{_u}-1"
+_gk17 = _gk_count()
 body, ct = _multipart([("s.png", PNG, "image/png")],
-                      {"expiryDays": "3", "allowedDownloads": "10",
-                       "client_ref": ref17})
+                      {"client_ref": ref17})
 st, r17 = _req("POST", "/api/uploads", body, {"Content-Type": ct, "Cookie": ck2})
-check("17a direct share ok", st == 200 and r17.get("ok") and r17.get("file", {}).get("publicId"),
-      f"{st} {str(r17)[:90]}")
-pid17 = r17["file"]["publicId"]
+check("17 no-tool upload → 422 err_tool_required (share 走 share 工具)",
+      st == 422 and r17.get("error") == "err_tool_required", f"{st} {str(r17)[:90]}")
+check("18 rejection zero usage / zero receipts / zero Gokapi",
+      _usage_n(uid2) == 0 and _ingress_n(uid2) == 0 and _gk_count() == _gk17,
+      f"usage={_usage_n(uid2)} gk={_gk_count()}-{_gk17}")
 with db() as con:
     ups17 = int(con.execute(
         "select count(*) c from uploads where user_id=%s", (uid2,)).fetchone()["c"])
-st, r17b = _req("POST", "/api/uploads", body, {"Content-Type": ct, "Cookie": ck2})
-check("17 direct-share replay → same publicId",
-      st == 200 and r17b.get("file", {}).get("publicId") == pid17, f"{st} {str(r17b)[:90]}")
-with db() as con:
-    ups17b = int(con.execute(
-        "select count(*) c from uploads where user_id=%s", (uid2,)).fetchone()["c"])
-check("18 direct-share replay one uploads row", ups17b == ups17 == 1,
-      f"{ups17}->{ups17b}")
-check("19 direct-share replay one ingress usage", _usage_n(uid2) == 1)
+check("19 rejection zero uploads rows", ups17 == 0)
 
 # ══════════ 20-22. Public REST v1 retired ══════════
 ck3 = _register(_u + "v1")

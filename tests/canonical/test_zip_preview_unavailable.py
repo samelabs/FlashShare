@@ -110,16 +110,27 @@ try:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("a.txt", "hello")
-    # share path (no tool field) — the upload lands a live share record
-    # whose publicId the /f/{id} surface serves
+    # IO-3a: sharing runs through the share tool — stage the source,
+    # then execute; the settled file item carries the public share id.
     body = (f'--B\r\nContent-Disposition: form-data; name="client_ref"\r\n\r\ninl7-{_u}\r\n'
+            f'--B\r\nContent-Disposition: form-data; name="tool"\r\n\r\nshare\r\n'
             f'--B\r\nContent-Disposition: form-data; name="file"; filename="p.zip"\r\n'
             f'Content-Type: application/zip\r\n\r\n').encode() + buf.getvalue() + b"\r\n--B--\r\n"
     st, _h, d, _sc = _req("POST", "/api/uploads", body,
                           {"Content-Type": "multipart/form-data; boundary=B",
                            "Cookie": ck})
-    pid = ((d or {}).get("file") or {}).get("publicId")
-    check("F2 zip upload via web", st == 200 and bool(pid), (st, str(d)[:90]))
+    staged = (d or {}).get("file") or {}
+    st_x, _h2, dx, _sc2 = _req("POST", "/api/tools/execute",
+        {"tool_id": "share",
+         "source": {"files": [{"public_id": staged.get("stagingId"),
+                               "source_token": staged.get("sourceToken") or ""}]},
+         "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 50},
+         "client_ref": f"inl7x-{_u}"},
+        {"Content-Type": "application/json", "Cookie": ck})
+    items = ((dx or {}).get("result") or {}).get("items") or []
+    pid = next((it.get("publicId") for it in items if it.get("kind") == "file"), None)
+    check("F2 zip upload via web (share tool)", st == 200 and st_x == 200 and bool(pid),
+          (st, st_x, str(dx)[:90]))
 
     if pid:
         st, _h, d, _sc = _req("GET", f"/f/{pid}/zip-list", {"Cookie": ck})
