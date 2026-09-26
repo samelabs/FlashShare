@@ -49,9 +49,12 @@ ACCEPT_MIME_RE = re.compile(r"^[\w.+-]+/[\w.+-]+$")
 
 
 def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False,
-                         edit_locale: str = "") -> tuple:
+                         edit_locale: str = "", row: dict | None = None) -> tuple:
     """Shared validation for create (full) and patch (partial).
-    Returns (fields, error_code). fields keys only for provided values."""
+    Returns (fields, error_code). fields keys only for provided values.
+    On PATCH the files window validates against the STORED bound when
+    only one side is provided (a half-update must never reset the other
+    side to the create default)."""
     fields = {}
 
     if "tool_id" in raw and not partial:
@@ -150,8 +153,10 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
     # IO-1 input/output contract: files count window + output kinds.
     # create defaults to 1..1 / ["file"]; PATCH updates only on presence.
     if "files_min" in raw or "files_max" in raw or not partial:
-        mn = raw.get("files_min", 1)
-        mx = raw.get("files_max", 1)
+        _cur_min = int(row["files_min"]) if row and row.get("files_min") is not None else 1
+        _cur_max = int(row["files_max"]) if row and row.get("files_max") is not None else 1
+        mn = raw.get("files_min", _cur_min if partial else 1)
+        mx = raw.get("files_max", _cur_max if partial else 1)
         if isinstance(mn, bool) or not isinstance(mn, int) or mn < 0:
             return None, "bad_files_min"
         if isinstance(mx, bool) or not isinstance(mx, int) \
@@ -411,7 +416,7 @@ async def update_user_tool(tool_id: str, request: Request):
 
         fields, ferr = _validate_submission(raw, partial=True,
                                         trusted_ok=bool(row["trusted"]),
-                                        edit_locale=edit_locale)
+                                        edit_locale=edit_locale, row=row)
         if ferr:
             return JSONResponse({"ok": False, "error": ferr}, 422)
 
@@ -494,11 +499,23 @@ async def update_user_tool(tool_id: str, request: Request):
                     else {"en": fields["label"]})
         if "visibility" in fields:
             sets["visibility"] = fields["visibility"]
-        if "accept" in fields:
-            sets["accept"] = fields["accept"]
-        if "files_min" in fields or "files_max" in fields:
-            sets["files_min"] = fields["files_min"]
-            sets["files_max"] = fields["files_max"]
+        # Window/accept ride the canonical inputs patch — the supply
+        # patch vocabulary has no flat files_min/files_max/accept keys
+        # (flat keys were silently dropped). Unprovided sides keep the
+        # STORED bound/accept so a half PATCH never resets the other.
+        if "files_min" in fields or "files_max" in fields or "accept" in fields:
+            try:
+                _stored_acc = json.loads(row["accept_json"]) \
+                    if row.get("accept_json") else None
+            except Exception:
+                _stored_acc = None
+            sets["inputs"] = {"files": {
+                "min": fields.get("files_min",
+                                  int(row["files_min"]) if row.get("files_min") is not None else 1),
+                "max": fields.get("files_max",
+                                  int(row["files_max"]) if row.get("files_max") is not None else 1),
+                "accept": fields.get("accept", _stored_acc),
+            }}
         if "outputs" in fields:
             sets["outputs"] = fields["outputs"]
         if "enabled" in raw:

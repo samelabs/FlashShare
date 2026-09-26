@@ -50,8 +50,10 @@ def _public_item(row: dict) -> dict:
         "timeout_s": decl.get("timeout_s", 60),
         "has_auth": bool(decl.get("auth_token")),
         "accept": json.loads(row["accept_json"]) if row.get("accept_json") else None,
-        "files_min": int(row.get("files_min") or 1),
-        "files_max": int(row.get("files_max") or 1),
+        # stored window verbatim — files_min 0 (text-only tools) is legal;
+        # only a SQL NULL (legacy row) falls back to the schema default
+        "files_min": int(row["files_min"]) if row.get("files_min") is not None else 1,
+        "files_max": int(row["files_max"]) if row.get("files_max") is not None else 1,
         "outputs": json.loads(row["outputs_json"]) if row.get("outputs_json") else ["file"],
         "params": json.loads(row["params_json"]) if row.get("params_json") else [],
         "calls": _call_stats(row["tool_key"], row.get("owner_id")),
