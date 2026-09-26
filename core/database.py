@@ -322,6 +322,12 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS tool_calls_user_time_idx
       ON tool_calls(user_id, started_at DESC)
     """,
+    # /r/{id} lookup authority — one live result row per public id
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS tool_calls_result_public_id_idx
+      ON tool_calls(result_public_id)
+      WHERE result_public_id IS NOT NULL
+    """,
     """
     CREATE INDEX IF NOT EXISTS tool_calls_tool_time_idx
       ON tool_calls(tool_id, started_at DESC)

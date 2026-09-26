@@ -11,7 +11,7 @@
   ├── core/execution/        invocation(五键 parser) / dispatch(四面单入口) / gate(计量+settlement) / orchestrator
   ├── core/governance/       tool_supply(供给单点) / catalog / pricing / formats(格式族单源) / platform / delivery
   ├── core/economy/          billing(双池) / earnings / reconcile / subscription / creem
-  ├── core/identity/         auth / sessions / apitokens
+  ├── core/identity/         auth / sessions / apikeys
   ├── core/sharing/          uploads / housekeeping
   ├── core/repo/             SQL 数据访问层
   ├── core/gokapi.py         Gokapi 集成 (HTTP API only)

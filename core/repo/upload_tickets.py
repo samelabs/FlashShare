@@ -90,3 +90,18 @@ def claim(ticket: str, now_ts: int) -> dict | str:
     if int(row["expires_at"]) <= now_ts:
         return "expired"
     return "used"  # lost the race — the winner consumed it
+
+
+def purge(ts: int) -> int:
+    """Housekeeping purge: (a) expired AND never used, (b) used more
+    than 24h ago (the audit/replay window has closed). Returns the
+    number of rows deleted."""
+    with db() as con:
+        cur = con.execute(
+            """
+            DELETE FROM mcp_upload_tickets
+            WHERE (used_at IS NULL AND expires_at < %s)
+               OR (used_at IS NOT NULL AND used_at < %s)
+            """,
+            (ts, ts - 24 * 3600))
+        return cur.rowcount

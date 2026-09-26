@@ -155,6 +155,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_io_contract.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_fx1_coherence.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_fx1_coherence.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_architecture_unification.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_architecture_unification.py
@@ -362,6 +366,9 @@ jobs:
 
       - name: IO contract (inputs window / items results) canonical
         run: python tests/canonical/test_io_contract.py
+
+      - name: FX-1 coherence canonical
+        run: python tests/canonical/test_fx1_coherence.py
       - name: Architecture unification canonical
         run: python tests/canonical/test_architecture_unification.py
 
