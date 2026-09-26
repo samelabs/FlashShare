@@ -195,5 +195,20 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
     console.log("✓ confirmAction authority: engine-only definition, tokens/profile consume, behavior intact");
   }
 
-  console.log("PASS: PWA download authority contract (7 groups)");
+  // ── FX-1: download-all drives BOTH download shapes ──
+// In standalone PWA the file rows are <button data-dl-url> (href stripped
+// by wirePwaDownloadLinks); an anchor-only selector in the download-all
+// path silently no-ops. Both surfaces must select the unified .rs-dl.
+{
+  const read = (p) => fs.readFileSync(path.join(REPO, p), "utf8");
+  const appjs = read("static/app.js");
+  const resultjs = read("static/pages/result.js");
+  assert.ok(appjs.includes("querySelectorAll(\".rs-dl\")"),
+    "app.js download-all clicks every .rs-dl (anchors AND PWA buttons)");
+  assert.ok(resultjs.includes("querySelectorAll('.rs-item .rs-dl')"),
+    "result.js download-all selects .rs-dl (shape-agnostic)");
+  assert.ok(!/'\.rs-item \.rs-dl\[href/ .test(resultjs),
+    "result.js download-all is not anchor-only");
+}
+console.log("PASS: PWA download authority contract (8 groups)");
 })().catch((e) => { console.error(e); process.exit(1); });

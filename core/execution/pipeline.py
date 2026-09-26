@@ -1,95 +1,16 @@
 """execution/pipeline — shared source custody + durable result landing.
 
-Source upload is one ingress event: validate all inputs, reserve quota once,
-then upload. A failed batch rolls storage and quota reservations back. Tool
-results use save_upload_record and never consume ingress quota.
+Durable result landing. Source ingress lives on the upload surfaces
+(api.py staging, mcp.py inline staging, the MCP ticket PUT); the retired shared
+batch-upload pipeline went away with the v1 surface.
 """
 
 import io
 
 from database import db
-from storage import write as storage_write, delete as storage_delete
+from storage import write as storage_write
 from repo.uploads import insert_record
-from security import sign_source_token, sniff_allowed
-from sharing.uploads import reserve_ingress, release_ingress
-from governance.delivery import INTERMEDIATE_TTL_DAYS, INTERMEDIATE_DOWNLOAD_LIMIT
 from utils import generate_public_id, public_file_url
-
-
-class IngressBoundaryError(ValueError):
-    """Platform source-ingress hard boundary denial; args[0] = denial dict."""
-    def __init__(self, denial: dict):
-        super().__init__(denial["error"])
-        self.denial = denial
-
-
-class IngressQuotaError(ValueError):
-    """Rolling-24h ingress quota denial; args[0] = structured denial dict."""
-    def __init__(self, denial: dict):
-        super().__init__(denial["error"])
-        self.denial = denial
-
-
-def upload_sources(user: dict, files: list[tuple[str, str, bytes]], ip: str) -> list[dict]:
-    """Upload one logical source batch for v1/MCP.
-
-    files: [(filename, content_type, bytes), ...]. All are validated before a
-    single ingress reservation. Partial storage failure leaves neither source
-    objects nor quota facts behind.
-    """
-    if not files:
-        raise ValueError("err_select_file")
-    checked = []
-    for filename, ctype, body in files:
-        ok, reason = sniff_allowed(filename, ctype, body)
-        if not ok:
-            raise ValueError(reason)
-        if not body:
-            raise ValueError("err_empty_file")
-        checked.append((filename, ctype, body))
-
-    # Platform hard boundaries (20 files / single / batch) — authoritative
-    # single point, before any quota reservation or Gokapi storage.
-    from governance.ingress import validate_batch
-    denial = validate_batch([len(body) for _, _, body in checked])
-    if denial:
-        raise IngressBoundaryError(denial)
-
-    ok, denial, usage_ids = reserve_ingress(
-        user["id"], ip, [len(body) for _, _, body in checked])
-    if not ok:
-        raise IngressQuotaError(denial)
-
-    uploaded_ids = []
-    out = []
-    try:
-        for filename, ctype, body in checked:
-            gokapi = storage_write(
-                io.BytesIO(body), filename, ctype,
-                INTERMEDIATE_TTL_DAYS, INTERMEDIATE_DOWNLOAD_LIMIT, len(body))
-            info = gokapi.get("FileInfo", {})
-            fid = info.get("Id", "")
-            if not fid:
-                raise RuntimeError("gokapi_missing_id")
-            uploaded_ids.append(fid)
-            out.append({
-                "publicId": fid,
-                "gokapiId": fid,
-                "filename": filename,
-                "contentType": ctype,
-                "size": len(body),
-                "sourceToken": sign_source_token(user["id"], fid),
-            })
-        return out
-    except Exception:
-        for fid in uploaded_ids:
-            try:
-                storage_delete(fid)
-            except Exception:
-                pass
-        release_ingress(user["id"], usage_ids)
-        raise
-
 
 
 def save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
@@ -119,7 +40,8 @@ def save_upload_record(user_id, ip, gokapi_id, filename, content_type, size,
     return {
         "type": "share_link",
         "name": filename,
-        "downloadUrl": dl_url,
+        "page_url": dl_url,
+        "download_url": f"{dl_url}?download=1",
         "printUrl": (f"{base_url}/f/{public_id}/print"
                      if content_type == "application/pdf" else None),
         "filename": filename,

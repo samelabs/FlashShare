@@ -512,8 +512,9 @@ from execution.pipeline import save_upload_record
 rec_direct = save_upload_record(user9, "127.0.0.1", f"gk_direct_{_u}",
                                 "share.txt", "text/plain", 5, 7, 10,
                                 ts + 86400, "", BASE_URL)
-check("L1 direct share save_upload_record 行为不变 (publicId/downloadUrl)",
-      rec_direct.get("publicId") and rec_direct.get("downloadUrl"),
+check("L1 direct share save_upload_record (publicId/page_url/download_url)",
+      rec_direct.get("publicId") and rec_direct.get("page_url")
+      and rec_direct.get("download_url", "").endswith("?download=1"),
       str(rec_direct)[:80])
 
 # ══════════ M. strict tri-state outcome regression ══════════
@@ -664,8 +665,11 @@ check("N3 durable source 执行后不被删除 (row 保留 + 零 delete 调用)"
 # semantic: orchestrator 无 source eager-delete
 _orch2 = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
               encoding="utf-8").read()
-check("S1 orchestrator 零 delete_gokapi_file (source deletion authority 移除)",
-      "delete_gokapi_file" not in _orch2)
+# FX-1: orchestrator owns ALL-OR-NOTHING staging cleanup (a later item
+# failing deletes every staged-this-call object before the failure
+# settles). Settlement cleanup stays in gate.py (PROVEN_ROLLBACK).
+check("S1 orchestrator 暂存清理走 storage 适配器 (全量回收)",
+      "storage_delete" in _orch2 and "delete_gokapi_file" not in _orch2)
 
 # ══════════ cleanup (FK-safe, prefix-scoped) ══════════
 _uids = [user1, owner, user2, user3, user4, user5, user6, user7, user8, user9,
