@@ -253,10 +253,25 @@ _TXNS[f"txn_{_u}p1"] = {
     "type": "payment", "order": f"ord3_{_u}",
 }
 sc, body = _fire("refund.created", f"txn_{_u}p1")
-check("C1 partial refund → 500 partial_refund_unresolved + zero mutation",
-      sc == 500 and body.get("error") == "partial_refund_unresolved"
+check("C1 partial refund → 200 review queue + zero mutation (B2b-1)",
+      sc == 200 and body.get("kind") == "review"
+      and body.get("reason") == "partial_refund"
       and spendable_balance(buyer3) == b3_0,
       f"{sc} {body} bal={spendable_balance(buyer3)}")
+with db() as con:
+    rv_row = con.execute(
+        "select status, event_id from payment_reviews where txn_id=%s"
+        " order by id desc limit 1", (f"txn_{_u}p1",)).fetchone()
+check("C1b partial refund queued open for operator review",
+      rv_row is not None and rv_row["status"] == "open"
+      and rv_row["event_id"] == f"evt_txn_{_u}p1", str(dict(rv_row or {})))
+sc, body = _fire("refund.created", f"txn_{_u}p1")
+with db() as con:
+    n_rv = con.execute(
+        "select count(*) c from payment_reviews where txn_id=%s",
+        (f"txn_{_u}p1",)).fetchone()["c"]
+check("C1c partial-refund replay → still 200, still ONE review row",
+      sc == 200 and n_rv == 1, f"{sc} n={n_rv}")
 with db() as con:
     orow = con.execute("select status from orders where id=%s",
                        (order3_id,)).fetchone()
