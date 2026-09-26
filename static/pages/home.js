@@ -28,6 +28,33 @@
       + "<span>" + window.t("pick_tool_first") + "</span></p>";
   }
 
+  const pickerEl = document.getElementById("toolPicker");
+  const runPanel = document.getElementById("runPanel");
+  const isPhone = () => window.matchMedia("(max-width: 599px)").matches;
+
+  // Phone: after a pick the list collapses to a compact "selected + change"
+  // row so the input area is immediately in view; Change re-expands.
+  function collapsePicker() {
+    if (!pickerEl || !activeTool) return;
+    let bar = pickerEl.querySelector(".picker-compact");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "picker-compact";
+      pickerEl.insertBefore(bar, pickerEl.firstChild);
+      bar.addEventListener("click", () => {
+        pickerEl.classList.remove("collapsed");
+        bar.classList.add("hidden");
+        pickerEl.querySelector(".tool-search input") && pickerEl.querySelector(".tool-search input").focus();
+      });
+    }
+    bar.innerHTML = window.iconSvg(activeTool.icon || "wand")
+      + '<span class="picker-compact-name">' + (window.resolveLabel(activeTool.label) || activeTool.id) + "</span>"
+      + '<button type="button" class="btn btn-ghost btn-sm">' + window.t("change_tool") + "</button>";
+    bar.classList.remove("hidden");
+    pickerEl.classList.add("collapsed");
+    runPanel && runPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function selectTool(tool, opts) {
     opts = opts || {};
     activeTool = tool;
@@ -36,6 +63,10 @@
     }
     document.body.dataset.tool = tool.id;
     mountInput(tool);
+    if (isPhone()) collapsePicker();
+    else if (runPanel && !opts.restore) {
+      runPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     // a new tool invalidates the previous run's result view
     const res = document.getElementById("result");
     if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }

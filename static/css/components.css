@@ -159,12 +159,17 @@
   text-transform: uppercase; color: var(--ink-tertiary);
 }
 .rs-body { padding: 0 var(--s3) var(--s3); }
-.rs-text, .rs-json {
+/* pre-wrap etc. target the PRE ONLY — the .rs-item.rs-text wrapper also
+   carries the kind class; applying pre-wrap there would render template
+   indentation whitespace as blank lines. */
+pre.rs-text, pre.rs-json {
   font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-loose);
   white-space: pre-wrap; word-break: break-word; width: auto;
   background: var(--surface-sunken); border-radius: var(--r-sm);
   padding: var(--s3); max-height: 380px; overflow: auto;
 }
+/* wrapper (li/div.rs-item.rs-text) resets list-item whitespace */
+.rs-item.rs-text, .rs-item.rs-json { white-space: normal; font-family: var(--font-sans); }
 .rs-json-details summary {
   list-style: none; cursor: pointer; padding: var(--s2) var(--s3);
   font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.05em;
@@ -335,3 +340,10 @@
 }
 /* Mixed-direction meta strings (Arabic labels + Latin digits) */
 .file-meta { unicode-bidi: plaintext; }
+
+/* Phone: result actions collapse to icon buttons (labels via
+   aria-label + title on every button) */
+@media (max-width: 599px) {
+  .r-actions .btn span { display: none; }
+  .r-actions .btn { width: 44px; padding: 0; }
+}

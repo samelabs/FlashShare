@@ -534,7 +534,13 @@ SERVER_I18N = {
         "pick_files_label": "fichiers",
         "credits_short": "cr",
         "err_tool_required": "Choisissez un outil avant d'envoyer (le partage se fait via l'outil de partage)",
-        "pick_tool_first": "Choisissez un outil ci-dessus pour commencer"
+        "pick_tool_first": "Choisissez un outil ci-dessus pour commencer",
+        "change_tool": "Changer d'outil",
+        "n_files_one": "1 fichier",
+        "files_window_short": "{min}–{max} fichiers",
+        "out_kind_text": "Texte",
+        "out_kind_json": "Données",
+        "out_kind_file": "Fichier"
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -1057,7 +1063,13 @@ SERVER_I18N = {
         "pick_files_label": "개 파일",
         "credits_short": "크레딧",
         "err_tool_required": "업로드 전에 도구를 선택하세요(공유는 공유 도구 사용)",
-        "pick_tool_first": "위에서 도구를 선택해 시작하세요"
+        "pick_tool_first": "위에서 도구를 선택해 시작하세요",
+        "change_tool": "도구 변경",
+        "n_files_one": "파일 1개",
+        "files_window_short": "{min}~{max}개 파일",
+        "out_kind_text": "텍스트",
+        "out_kind_json": "데이터",
+        "out_kind_file": "파일"
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1579,7 +1591,13 @@ SERVER_I18N = {
         "pick_files_label": "файл(ов)",
         "credits_short": "кр",
         "err_tool_required": "Выберите инструмент перед загрузкой (для обмена — инструмент обмена)",
-        "pick_tool_first": "Выберите инструмент выше, чтобы начать"
+        "pick_tool_first": "Выберите инструмент выше, чтобы начать",
+        "change_tool": "Сменить инструмент",
+        "n_files_one": "1 файл",
+        "files_window_short": "{min}–{max} файлов",
+        "out_kind_text": "Текст",
+        "out_kind_json": "Данные",
+        "out_kind_file": "Файл"
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -2101,7 +2119,13 @@ SERVER_I18N = {
         "pick_files_label": "ملفات",
         "credits_short": "رصيد",
         "err_tool_required": "اختر أداة قبل الرفع (المشاركة تستخدم أداة المشاركة)",
-        "pick_tool_first": "اختر أداة في الأعلى للبدء"
+        "pick_tool_first": "اختر أداة في الأعلى للبدء",
+        "change_tool": "تغيير الأداة",
+        "n_files_one": "ملف واحد",
+        "files_window_short": "{min}–{max} ملفات",
+        "out_kind_text": "نص",
+        "out_kind_json": "بيانات",
+        "out_kind_file": "ملف"
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2624,7 +2648,13 @@ SERVER_I18N = {
         "pick_files_label": "Dateien",
         "credits_short": "Cr",
         "err_tool_required": "Wähle vor dem Upload ein Tool (Teilen nutzt das Teilen-Tool)",
-        "pick_tool_first": "Wähle oben ein Tool aus, um zu starten"
+        "pick_tool_first": "Wähle oben ein Tool aus, um zu starten",
+        "change_tool": "Tool wechseln",
+        "n_files_one": "1 Datei",
+        "files_window_short": "{min}–{max} Dateien",
+        "out_kind_text": "Text",
+        "out_kind_json": "Daten",
+        "out_kind_file": "Datei"
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -3146,7 +3176,13 @@ SERVER_I18N = {
         "pick_files_label": "arquivos",
         "credits_short": "cr",
         "err_tool_required": "Escolha uma ferramenta antes de enviar (compartilhar usa a ferramenta de compartilhamento)",
-        "pick_tool_first": "Escolha uma ferramenta acima para começar"
+        "pick_tool_first": "Escolha uma ferramenta acima para começar",
+        "change_tool": "Trocar ferramenta",
+        "n_files_one": "1 arquivo",
+        "files_window_short": "{min}–{max} arquivos",
+        "out_kind_text": "Texto",
+        "out_kind_json": "Dados",
+        "out_kind_file": "Arquivo"
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -3668,7 +3704,13 @@ SERVER_I18N = {
         "pick_files_label": "ファイル",
         "credits_short": "クレジット",
         "err_tool_required": "アップロード前にツールを選択してください（共有は共有ツールを使います）",
-        "pick_tool_first": "上のツールを選んで開始"
+        "pick_tool_first": "上のツールを選んで開始",
+        "change_tool": "ツールを変更",
+        "n_files_one": "1 ファイル",
+        "files_window_short": "{min}～{max} ファイル",
+        "out_kind_text": "テキスト",
+        "out_kind_json": "データ",
+        "out_kind_file": "ファイル"
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -4191,7 +4233,13 @@ SERVER_I18N = {
         "pick_files_label": "个文件",
         "credits_short": "积分",
         "err_tool_required": "请先选择工具再上传（分享请使用分享工具）",
-        "pick_tool_first": "先在上方选择一个工具"
+        "pick_tool_first": "先在上方选择一个工具",
+        "change_tool": "更换工具",
+        "n_files_one": "1 个文件",
+        "files_window_short": "{min}–{max} 个文件",
+        "out_kind_text": "文本",
+        "out_kind_json": "数据",
+        "out_kind_file": "文件"
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -4713,7 +4761,13 @@ SERVER_I18N = {
         "pick_files_label": "archivos",
         "credits_short": "cr",
         "err_tool_required": "Elige una herramienta antes de subir (compartir usa la herramienta de compartir)",
-        "pick_tool_first": "Elige una herramienta arriba para empezar"
+        "pick_tool_first": "Elige una herramienta arriba para empezar",
+        "change_tool": "Cambiar herramienta",
+        "n_files_one": "1 archivo",
+        "files_window_short": "{min}–{max} archivos",
+        "out_kind_text": "Texto",
+        "out_kind_json": "Datos",
+        "out_kind_file": "Archivo"
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -5236,7 +5290,13 @@ SERVER_I18N = {
         "pick_files_label": "files",
         "credits_short": "cr",
         "err_tool_required": "Choose a tool before uploading (sharing uses the share tool)",
-        "pick_tool_first": "Pick a tool above to start"
+        "pick_tool_first": "Pick a tool above to start",
+        "change_tool": "Change tool",
+        "n_files_one": "1 file",
+        "files_window_short": "{min}–{max} files",
+        "out_kind_text": "Text",
+        "out_kind_json": "Data",
+        "out_kind_file": "File"
 },
 }
 

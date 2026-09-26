@@ -1041,3 +1041,20 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Download-all / action labels never wrap inside their button */
 .r-actions .btn, .file-actions .btn { white-space: nowrap; }
+
+/* ═══ IO-3a rework: picker collapse (phone) + wider cards ═══ */
+.picker-compact {
+  display: flex; align-items: center; gap: var(--s3);
+  border: var(--border-w-strong) solid var(--brand); border-radius: var(--r);
+  background: var(--brand-soft); padding: var(--s2) var(--s3);
+}
+.picker-compact svg { width: 18px; height: 18px; stroke: var(--brand-deep); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.picker-compact-name { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker.collapsed .picker-grid,
+.picker.collapsed .picker-head .tool-search,
+.picker.collapsed .picker-head .picker-title { display: none; }
+/* Desktop cards: wider columns keep one-line descriptions readable;
+   two-line clamp only kicks in for genuinely long text. */
+@media (min-width: 600px) {
+  .picker-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+}

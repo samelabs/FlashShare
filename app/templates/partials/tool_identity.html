@@ -37,13 +37,15 @@ variants. icon/fallback/label/desc/author/origin/cost/calls/href 全部
     {% if t.desc %}<span class="tool-pick-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
     <span class="tool-pick-meta">
       {% if t.files_min == 0 %}
-      <span class="tag">{{ texts['mytools_out_text'] if texts else 'Text' }}</span>
-      {% elif t.files_max and t.files_max > 1 %}
-      <span class="tag">{{ t.files_min }}–{{ t.files_max }} {{ texts['pick_files_label'] if texts else 'files' }}</span>
+      <span class="tag">{{ texts['out_kind_text'] if texts else 'Text' }}</span>
+      {% elif t.files_min == t.files_max %}
+      <span class="tag">{{ texts['n_files_one'] if texts else '1 file' }}</span>
+      {% else %}
+      <span class="tag">{{ texts['files_window_short'].format(min=t.files_min, max=t.files_max) if texts else '%s–%s files' % (t.files_min, t.files_max) }}</span>
       {% endif %}
-      {% if t.outputs and (t.outputs | length) > 1 %}
-      <span class="tag">{{ t.outputs | join(' + ') }}</span>
-      {% endif %}
+      {% for o in (t.outputs or ['file']) %}
+      <span class="tag tag-neutral">{{ texts['out_kind_' ~ o] if texts and texts.get('out_kind_' ~ o) else o }}</span>
+      {% endfor %}
     </span>
   </span>
   {% if t.cost > 0 %}<span class="tag tag-brand">{{ t.cost }} {{ texts['credits_short'] if texts else 'cr' }}</span>

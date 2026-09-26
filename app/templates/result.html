@@ -20,13 +20,13 @@
           </button>
           {% endif %}
           <button class="btn btn-secondary" id="rCopyLink" type="button">
-            {{ icon_svg("link") }}<span>{{ texts.copy }}</span>
+            {{ icon_svg("link") }}<span>{{ texts['copy'] }}</span>
           </button>
-          <button class="btn btn-icon" id="rQrBtn" type="button" aria-label="QR" title="QR">
-            {{ icon_svg("qr") }}
+          <button class="btn btn-secondary" id="rQrBtn" type="button">
+            {{ icon_svg("qr") }}<span>QR</span>
           </button>
-          <button class="btn btn-icon" id="rPrintBtn" type="button" aria-label="{{ texts.print_btn }}" title="{{ texts.print_btn }}">
-            {{ icon_svg("print") }}
+          <button class="btn btn-secondary" id="rPrintBtn" type="button">
+            {{ icon_svg("print") }}<span>{{ texts.print_btn }}</span>
           </button>
         </div>
       </div>
@@ -37,7 +37,7 @@
           {% if it.kind == 'text' %}
           <div class="rs-item-head">
             <span class="rs-item-kind">{{ texts.r_text_out }}</span>
-            <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-text aria-label="{{ texts.copy }}" title="{{ texts.copy }}">{{ icon_svg("copy") }}</button>
+            <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-text aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
           </div>
           <div class="rs-body"><pre class="rs-text">{{ it.text|e }}</pre></div>
           {% elif it.kind == 'json' %}
@@ -46,7 +46,7 @@
             <div class="rs-body"><pre class="rs-json">{{ it.rendered|e }}</pre></div>
           </details>
           <div class="rs-item-head rs-json-head">
-            <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-json aria-label="{{ texts.copy }}" title="{{ texts.copy }}">{{ icon_svg("copy") }}</button>
+            <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-json aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
           </div>
           {% else %}
           {% if it.is_image %}
