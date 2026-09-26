@@ -15,8 +15,8 @@
     var armed = false, t = 0;
     b.addEventListener('click', function () {
       if (!armed) {
-        armed = true; b.classList.add('sl-btn-danger'); b.textContent = '确认批准';
-        t = setTimeout(function () { armed = false; b.classList.remove('sl-btn-danger'); b.textContent = 'Approve'; }, 5000);
+        armed = true; b.classList.add('btn sl-btn-danger'); b.textContent = '确认批准';
+        t = setTimeout(function () { armed = false; b.classList.remove('btn sl-btn-danger'); b.textContent = 'Approve'; }, 5000);
         return;
       }
       clearTimeout(t); b.disabled = true;
@@ -32,8 +32,8 @@
     var armed = false, t = 0;
     b.addEventListener('click', function () {
       if (!armed) {
-        armed = true; b.textContent = '确认驳回?'; b.classList.add('sl-btn-danger');
-        t = setTimeout(function () { armed = false; b.textContent = 'Reject'; b.classList.remove('sl-btn-danger'); }, 3000);
+        armed = true; b.textContent = 'btn 确认驳回?'; b.classList.add('sl-btn-danger');
+        t = setTimeout(function () { armed = false; b.textContent = 'btn Reject'; b.classList.remove('sl-btn-danger'); }, 3000);
         return;
       }
       clearTimeout(t); b.disabled = true;

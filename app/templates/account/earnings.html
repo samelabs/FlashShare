@@ -5,6 +5,7 @@
 
 {% block content %}
 <section class="acct-page">
+  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1>{{ texts.menu_earnings }}</h1>
   {% include "account/_nav.html" %}
 
@@ -12,7 +13,7 @@
     <div class="acct-card-head">
       <h2 data-i18n="earn_title">{{ texts.earn_title }}</h2>
       <div class="earn-actions">
-        <button type="button" class="primary" id="openWithdraw"><span data-i18n="earn_btn">{{ texts.earn_btn }}</span></button>
+        <button type="button" class="btn btn-primary" id="openWithdraw"><span data-i18n="earn_btn">{{ texts.earn_btn }}</span></button>
       </div>
     </div>
     <div class="earn-grid" id="earnGrid">
@@ -49,7 +50,7 @@
       <label><span data-i18n="earn_wd_note">{{ texts.earn_wd_note }}</span><input id="wNote" maxlength="200"></label>
     </div>
     <div class="usertools-submit-row">
-      <button type="button" class="primary" id="submitWithdraw"><span data-i18n="earn_submit">{{ texts.earn_submit }}</span></button>
+      <button type="button" class="btn btn-primary" id="submitWithdraw"><span data-i18n="earn_submit">{{ texts.earn_submit }}</span></button>
     </div>
   </div>
 </div>

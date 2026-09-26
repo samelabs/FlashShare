@@ -11,7 +11,7 @@
 /* Variant classes are STANDALONE (usable without the .btn base) — the
    base block applies to every variant so page-level legacy callers and
    composite "btn btn-primary" render identically. */
-.btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger, .btn-danger-soft {
+.btn {
   display: inline-flex; align-items: center; justify-content: center;
   gap: var(--s2); height: 40px; padding: 0 var(--s4);
   border: var(--border-w) solid transparent; border-radius: var(--r-sm);
@@ -21,18 +21,14 @@
     color var(--ease), transform var(--ease-in), opacity var(--ease);
   background: none; color: var(--ink);
 }
-.btn:active, .btn-primary:active, .btn-secondary:active,
-.btn-ghost:active, .btn-danger:active, .btn-danger-soft:active { transform: scale(0.97); }
-.btn:disabled, .btn-primary:disabled, .btn-secondary:disabled,
-.btn-ghost:disabled, .btn-danger:disabled, .btn-danger-soft:disabled,
-.btn[aria-disabled="true"] { opacity: 0.55; cursor: default; pointer-events: none; }
-.btn svg, .btn-primary svg, .btn-secondary svg, .btn-ghost svg,
-.btn-danger svg, .btn-danger-soft svg {
+.btn:active { transform: scale(0.97); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.55; cursor: default; pointer-events: none; }
+.btn svg {
   width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75;
   fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
 }
 
-.btn-primary, a.btn-primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.btn.btn-primary, a.btn-primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 @media (hover:hover) and (pointer:fine) { .btn-primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); } }
 
 .btn-secondary { background: var(--surface-card); border-color: var(--line-strong); color: var(--ink); }
@@ -53,8 +49,7 @@
 .btn-icon { width: 40px; padding-inline: 0; }
 .btn-icon.btn-sm { width: 32px; }
 
-.btn.is-loading, .btn-primary.is-loading, .btn-secondary.is-loading,
-.btn-ghost.is-loading, .btn-danger.is-loading, .btn-danger-soft.is-loading {
+.btn.is-loading {
   position: relative; color: transparent !important; pointer-events: none;
 }
 .btn.is-loading::after {
@@ -64,7 +59,7 @@
   border-radius: 50%; color: var(--brand);
   animation: btn-spin 0.7s linear infinite;
 }
-.btn-secondary.is-loading::after { border-color: rgba(15,20,25,0.15); border-top-color: var(--ink); }
+.btn.btn-secondary.is-loading::after { border-color: rgba(15,20,25,0.15); border-top-color: var(--ink); }
 @keyframes btn-spin { to { transform: rotate(360deg); } }
 
 /* ── Cards ─────────────────────────────────────────────────── */

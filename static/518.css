@@ -534,9 +534,27 @@ select { width: auto; margin-top: 0; }
   .top-actions > * { flex: 0 1 auto; min-width: 0; }
   .lang-button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .brand { font-size: var(--text-sm); gap: var(--s1); min-width: 0; }
-  /* 390px 窄屏: 顶栏保留 brand + 登录/注册 + 语言。导航链接整词放不下,
-     收进首页 hero 与页脚 (不再截断成 T…/M…/Registe…)。 */
+  /* 390px 窄屏: 顶栏保留 brand + 菜单按钮 + 登录/注册 + 语言。整词导航
+     链接放进菜单按钮的导航抽屉 (各入口可达, 站名不压缩)。 */
   .top-actions .topbar-agents { display: none; }
+  .nav-menu-btn { display: inline-flex; }
+  .mobile-nav-sheet {
+    position: fixed; top: 52px; inset-inline: var(--s2); z-index: var(--z-dropdown);
+    background: var(--surface-card); border: 1px solid var(--line);
+    border-radius: var(--r); box-shadow: var(--shadow-3); padding: var(--s1);
+    display: flex; flex-direction: column;
+  }
+  .mobile-nav-sheet a {
+    display: flex; align-items: center; gap: var(--s2);
+    padding: var(--s2) var(--s3); border-radius: var(--r-sm);
+    color: var(--ink); text-decoration: none; font-weight: 650; font-size: var(--fs-md);
+  }
+  .mobile-nav-sheet a svg { width: 18px; height: 18px; stroke: currentColor; }
+  @media (hover:hover) and (pointer:fine) {
+    .mobile-nav-sheet a:hover { background: var(--gray-100); }
+  }
+  .nav-menu-btn { display: none; }
+  @media (max-width: 599px) { .nav-menu-btn { display: inline-flex; } }
   .topbar-login, .topbar-register { padding: 6px 12px; }
   .lang-button { min-width: 0; padding: 0 30px 0 var(--s2); font-size: var(--text-xs); }
   .lang-button::after { right: 12px; }
@@ -1050,11 +1068,23 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 }
 .picker-compact svg { width: 18px; height: 18px; stroke: var(--brand-deep); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .picker-compact-name { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* collapsed: the compact bar IS step 1 — the whole head (step badge
+   + title + search) is replaced, not partially hidden */
 .picker.collapsed .picker-grid,
-.picker.collapsed .picker-head .tool-search,
-.picker.collapsed .picker-head .picker-title { display: none; }
+.picker.collapsed .picker-head { display: none; }
 /* Desktop cards: wider columns keep one-line descriptions readable;
    two-line clamp only kicks in for genuinely long text. */
 @media (min-width: 600px) {
   .picker-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 }
+
+/* ═══ IO-3b: status pages (missing/offline/404) + mobile nav sheet ═══ */
+.status-page .empty { padding: var(--s8) var(--s4); }
+.status-glyph {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; border-radius: var(--r-lg);
+  background: var(--gray-100); color: var(--ink-tertiary);
+  font-size: var(--fs-xl); font-weight: 800; letter-spacing: .04em;
+}
+.status-page h1 { font-size: var(--fs-xl); }
+.status-page p { color: var(--ink-secondary); max-width: 44ch; }

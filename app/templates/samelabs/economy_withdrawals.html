@@ -35,10 +35,10 @@
           <td>{{ fmt_ts(w.created_at) }}</td>
           <td>
             {% if w.status == 'pending' %}
-            <button type="button" class="sl-btn sl-btn-primary btn-approve" data-wid="{{ w.id }}">Approve</button>
+            <button type="button" class="btn sl-btn sl-btn-primary btn-approve" data-wid="{{ w.id }}">Approve</button>
             <button type="button" class="sl-btn btn-reject" data-wid="{{ w.id }}">Reject</button>
             {% elif w.status == 'approved' %}
-            <button type="button" class="sl-btn sl-btn-primary btn-paid" data-wid="{{ w.id }}">Mark paid…</button>
+            <button type="button" class="btn sl-btn sl-btn-primary btn-paid" data-wid="{{ w.id }}">Mark paid…</button>
             {% else %}—{% endif %}
           </td>
         </tr>

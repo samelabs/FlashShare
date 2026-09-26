@@ -14,7 +14,7 @@ copyBtn.addEventListener("click", async () => {
 
 const _pwa = window.isStandalonePWA ? window.isStandalonePWA()
   : (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
-const dlBtn = document.querySelector('a.btn-primary[download]');
+const dlBtn = document.querySelector('a.btn.btn-primary[download]');
 if (dlBtn && _pwa) {
   dlBtn.removeAttribute('href');
   dlBtn.addEventListener('click', () => {

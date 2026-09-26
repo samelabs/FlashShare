@@ -38,3 +38,28 @@ window.wirePwaDownloadLinks = function (scope) {
     });
   });
 };
+
+// Mobile top-bar navigation sheet: visible only at phone widths (CSS),
+// toggled by the menu button; closes on outside click / Escape / nav.
+window.wireMobileNav = function () {
+  const btn = document.getElementById("mobileNavBtn");
+  const sheet = document.getElementById("mobileNavSheet");
+  if (!btn || !sheet || btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  const setOpen = (open) => {
+    sheet.classList.toggle("hidden", !open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(sheet.classList.contains("hidden"));
+  });
+  document.addEventListener("click", (e) => {
+    if (!sheet.contains(e.target) && e.target !== btn) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+  });
+  sheet.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => setOpen(false)));
+};
+document.addEventListener("DOMContentLoaded", () => window.wireMobileNav());

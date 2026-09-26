@@ -8,7 +8,8 @@
   <div class="userpage-hero panel">
     <span class="userpage-avatar" aria-hidden="true">{{ owner_handle[:1] | upper }}</span>
     <div class="userpage-id">
-      <h1 class="hero-title userpage-handle">@{{ owner_handle }}</h1>
+      <nav class="crumbs"><a href="/tools">Tools</a><span class="crumb-sep">/</span><span>@{{ handle }}</span></nav>
+    <h1 class="hero-title userpage-handle">@{{ owner_handle }}</h1>
       <p class="userpage-tagline" data-i18n="owner_page_desc">{{ texts.owner_page_desc }}</p>
     </div>
     <div class="userpage-nums">

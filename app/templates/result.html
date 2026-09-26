@@ -20,7 +20,7 @@
           </button>
           {% endif %}
           <button class="btn btn-secondary" id="rCopyLink" type="button">
-            {{ icon_svg("link") }}<span>{{ texts['copy'] }}</span>
+            {{ icon_svg("link") }}<span>{{ texts['copy_link'] }}</span>
           </button>
           <button class="btn btn-secondary" id="rQrBtn" type="button">
             {{ icon_svg("qr") }}<span>QR</span>
@@ -41,13 +41,13 @@
           </div>
           <div class="rs-body"><pre class="rs-text">{{ it.text }}</pre></div>
           {% elif it.kind == 'json' %}
-          <details class="rs-json-details" open>
-            <summary>{{ texts.r_json_out }}</summary>
-            <div class="rs-body"><pre class="rs-json">{{ it.rendered }}</pre></div>
-          </details>
-          <div class="rs-item-head rs-json-head">
+          <div class="rs-item-head">
+            <span class="rs-item-kind">{{ texts.r_json_out }}</span>
             <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-json aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button>
           </div>
+          <details class="rs-json-details" open>
+            <div class="rs-body"><pre class="rs-json">{{ it.rendered }}</pre></div>
+          </details>
           {% else %}
           {% if it.is_image %}
           <span class="rs-image"><img src="/f/{{ it.public_id }}/inline" alt="{{ it.filename }}" loading="lazy" decoding="async"></span>

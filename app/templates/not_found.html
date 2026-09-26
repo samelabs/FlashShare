@@ -2,15 +2,17 @@
 {% block title %}{{ texts.not_found_title }}{% endblock %}
 {% block desc %}{{ texts.not_found_desc }}{% endblock %}
 {% block content %}
-<section class="file-page">
-  <div class="file-mark" aria-hidden="true">404</div>
-  <h1>{{ texts.not_found_title }}</h1>
-  <p class="file-note">{{ texts.not_found_desc }}</p>
-  <div class="file-note" style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center">
-    <a href="/">{{ texts.not_found_home }}</a>
-    <a href="/tools">{{ texts.not_found_tools }}</a>
-    <a href="/agents">{{ texts.not_found_mcp }}</a>
-    <a href="/llms.txt">/llms.txt</a>
+<section class="file-page status-page">
+  <div class="empty">
+    <span class="status-glyph" aria-hidden="true">404</span>
+    <h1>{{ texts.not_found_title }}</h1>
+    <p>{{ texts.not_found_desc }}</p>
+    <div class="row row-wrap" style="justify-content:center">
+      <a class="btn btn-secondary btn-sm" href="/">{{ texts.not_found_home }}</a>
+      <a class="btn btn-secondary btn-sm" href="/tools">{{ texts.not_found_tools }}</a>
+      <a class="btn btn-secondary btn-sm" href="/agents">{{ texts.not_found_mcp }}</a>
+      <a class="btn btn-ghost btn-sm" href="/llms.txt">/llms.txt</a>
+    </div>
   </div>
 </section>
 {% endblock %}

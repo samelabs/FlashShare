@@ -538,7 +538,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} fichiers",
         "out_kind_text": "Texte",
         "out_kind_json": "Données",
-        "out_kind_file": "Fichier"
+        "out_kind_file": "Fichier",
+        "copy_link": "Copier le lien"
 },
     "ko": {
         "bad_params_json": "매개변수 선언이 잘못되었습니다(JSON 구조 오류)",
@@ -1065,7 +1066,8 @@ SERVER_I18N = {
         "files_window_short": "{min}~{max}개 파일",
         "out_kind_text": "텍스트",
         "out_kind_json": "데이터",
-        "out_kind_file": "파일"
+        "out_kind_file": "파일",
+        "copy_link": "링크 복사"
 },
     "ru": {
         "bad_params_json": "Недопустимое объявление параметров (неверная структура JSON)",
@@ -1591,7 +1593,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} файлов",
         "out_kind_text": "Текст",
         "out_kind_json": "Данные",
-        "out_kind_file": "Файл"
+        "out_kind_file": "Файл",
+        "copy_link": "Копировать ссылку"
 },
     "ar": {
         "bad_params_json": "إعلان المعاملات غير صالح (بنية JSON خاطئة)",
@@ -2117,7 +2120,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} ملفات",
         "out_kind_text": "نص",
         "out_kind_json": "بيانات",
-        "out_kind_file": "ملف"
+        "out_kind_file": "ملف",
+        "copy_link": "نسخ الرابط"
 },
     "de": {
         "bad_params_json": "Ungültige Parameterdeklaration (fehlerhafte JSON-Struktur)",
@@ -2644,7 +2648,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} Dateien",
         "out_kind_text": "Text",
         "out_kind_json": "Daten",
-        "out_kind_file": "Datei"
+        "out_kind_file": "Datei",
+        "copy_link": "Link kopieren"
 },
     "pt": {
         "bad_params_json": "Declaração de parâmetros inválida (estrutura JSON incorreta)",
@@ -3170,7 +3175,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} arquivos",
         "out_kind_text": "Texto",
         "out_kind_json": "Dados",
-        "out_kind_file": "Arquivo"
+        "out_kind_file": "Arquivo",
+        "copy_link": "Copiar link"
 },
     "ja": {
         "bad_params_json": "パラメータ宣言が無効です（JSON 構造エラー）",
@@ -3696,7 +3702,8 @@ SERVER_I18N = {
         "files_window_short": "{min}～{max} ファイル",
         "out_kind_text": "テキスト",
         "out_kind_json": "データ",
-        "out_kind_file": "ファイル"
+        "out_kind_file": "ファイル",
+        "copy_link": "リンクをコピー"
 },
     "zh": {
         "bad_params_json": "参数声明无效（JSON 结构错误）",
@@ -4223,7 +4230,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} 个文件",
         "out_kind_text": "文本",
         "out_kind_json": "数据",
-        "out_kind_file": "文件"
+        "out_kind_file": "文件",
+        "copy_link": "复制链接"
 },
     "es": {
         "bad_params_json": "Declaración de parámetros no válida (estructura JSON incorrecta)",
@@ -4749,7 +4757,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} archivos",
         "out_kind_text": "Texto",
         "out_kind_json": "Datos",
-        "out_kind_file": "Archivo"
+        "out_kind_file": "Archivo",
+        "copy_link": "Copiar enlace"
 },
     "en": {
         "bad_params_json": "Invalid parameter declaration (malformed JSON structure)",
@@ -5276,7 +5285,8 @@ SERVER_I18N = {
         "files_window_short": "{min}–{max} files",
         "out_kind_text": "Text",
         "out_kind_json": "Data",
-        "out_kind_file": "File"
+        "out_kind_file": "File",
+        "copy_link": "Copy link"
 },
 }
 

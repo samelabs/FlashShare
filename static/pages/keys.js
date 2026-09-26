@@ -36,7 +36,7 @@ async function loadKeys() {
 
     const showBtn = document.createElement('button');
     showBtn.type = 'button';
-    showBtn.className = 'btn-secondary btn-key-show';
+    showBtn.className = 'btn btn-secondary btn-key-show';
     const showSpan = document.createElement('span');
     showSpan.setAttribute('data-i18n', 'keyShow');
     showSpan.textContent = window.t('keyShow');
@@ -55,7 +55,7 @@ async function loadKeys() {
 
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
-    copyBtn.className = 'btn-secondary btn-key-copy hidden';
+    copyBtn.className = 'btn btn-secondary btn-key-copy hidden';
     const copySpan = document.createElement('span');
     copySpan.setAttribute('data-i18n', 'copy');
     copySpan.textContent = window.t('copy');
@@ -67,7 +67,7 @@ async function loadKeys() {
 
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
-    delBtn.className = 'btn-secondary btn-key-delete';
+    delBtn.className = 'btn btn-secondary btn-key-delete';
     const delSpan = document.createElement('span');
     delSpan.setAttribute('data-i18n', 'keyDelete');
     delSpan.textContent = window.t('keyDelete');

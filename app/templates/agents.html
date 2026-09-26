@@ -5,7 +5,7 @@
 {% block content %}
 <section class="panel doc agents-page">
   <h1>{{ texts.agents_title }}</h1>
-  <p class="agents-intro">{{ texts.agents_mcp_intro }}</p>
+  <p class="hint agents-intro">{{ texts.agents_mcp_intro }}</p>
 
   <div class="agents-quickstart">
     <h2>{{ texts.agents_qs }}</h2>
@@ -19,8 +19,8 @@
   <h2>{{ texts.agents_mcp_h }}</h2>
   <div class="agents-copy">
     <code id="mcpUrl">{{ BASE_URL }}/mcp</code>
-    <p class="profile-note">MCP endpoint: <a href="{{ BASE_URL }}/mcp">{{ BASE_URL }}/mcp</a> (Bearer fsk_ API key) · plain-text agent guide: <a href="/llms.txt">/llms.txt</a></p>
-    <button type="button" class="btn-secondary" id="copyMcp" data-copy-target="mcpUrl" data-i18n="copy">{{ texts['copy'] }}</button>
+    <p class="hint">MCP endpoint: <a href="{{ BASE_URL }}/mcp">{{ BASE_URL }}/mcp</a> (Bearer fsk_ API key) · plain-text agent guide: <a href="/llms.txt">/llms.txt</a></p>
+    <button type="button" class="btn btn-secondary" id="copyMcp" data-copy-target="mcpUrl" data-i18n="copy">{{ texts['copy'] }}</button>
   </div>
   <div class="agents-mcp-config">
     <h3>{{ texts.agents_mcp_conf }}</h3>
@@ -29,11 +29,11 @@
       <dt data-i18n="agents_hdr_name">{{ texts.agents_hdr_name }}</dt><dd><code>Authorization</code></dd>
       <dt data-i18n="agents_hdr_value">{{ texts.agents_hdr_value }}</dt><dd><code>Bearer &lt;fsk_…&gt;</code></dd>
     </dl>
-    <p class="agents-intro" data-i18n="agents_key_note">{{ texts.agents_key_note }}</p>
+    <p class="hint agents-intro" data-i18n="agents_key_note">{{ texts.agents_key_note }}</p>
 
     <h3>Claude Code</h3>
 <pre class="agents-pre"><code id="cfgClaudeCode">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;fsk_…&gt;"</code></pre>
-    <button type="button" class="btn-secondary" data-copy-target="cfgClaudeCode" data-i18n="copy">{{ texts['copy'] }}</button>
+    <button type="button" class="btn btn-secondary" data-copy-target="cfgClaudeCode" data-i18n="copy">{{ texts['copy'] }}</button>
 
     <h3>Cursor · <code>~/.cursor/mcp.json</code></h3>
 <pre class="agents-pre"><code id="mcpConf">{
@@ -45,7 +45,7 @@
     }
   }
 }</code></pre>
-    <button type="button" class="btn-secondary" id="copyConf" data-copy-target="mcpConf" data-i18n="copy">{{ texts['copy'] }}</button>
+    <button type="button" class="btn btn-secondary" id="copyConf" data-copy-target="mcpConf" data-i18n="copy">{{ texts['copy'] }}</button>
 
     <h3>VS Code · <code>.vscode/mcp.json</code></h3>
 <pre class="agents-pre"><code id="cfgVscode">{
@@ -57,7 +57,7 @@
     }
   }
 }</code></pre>
-    <button type="button" class="btn-secondary" data-copy-target="cfgVscode" data-i18n="copy">{{ texts['copy'] }}</button>
+    <button type="button" class="btn btn-secondary" data-copy-target="cfgVscode" data-i18n="copy">{{ texts['copy'] }}</button>
 
     <h3>Claude Desktop · <code>claude_desktop_config.json</code></h3>
 <pre class="agents-pre"><code id="cfgClaudeDesktop">{
@@ -70,7 +70,7 @@
     }
   }
 }</code></pre>
-    <button type="button" class="btn-secondary" data-copy-target="cfgClaudeDesktop" data-i18n="copy">{{ texts['copy'] }}</button>
+    <button type="button" class="btn btn-secondary" data-copy-target="cfgClaudeDesktop" data-i18n="copy">{{ texts['copy'] }}</button>
   </div>
 
   <div class="agents-market-link">

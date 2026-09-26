@@ -5,6 +5,7 @@
 
 {% block content %}
 <section class="acct-page">
+  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1>{{ texts.acct_keys }}</h1>
   {% include "account/_nav.html" %}
 
@@ -12,8 +13,8 @@
     <h2 data-i18n="apiKeys">{{ texts.apiKeys }}</h2>
     <p class="profile-note" data-i18n="apiKeysDesc">{{ texts.apiKeysDesc }}</p>
     <div class="key-create-row">
-      <input type="text" id="newKeyName" maxlength="64" placeholder="{{ texts.keyNamePlaceholder }}">
-      <button type="button" class="primary" id="createKey"><span data-i18n="createKey">{{ texts.createKey }}</span></button>
+      <input class="input" type="text" id="newKeyName" maxlength="64" placeholder="{{ texts.keyNamePlaceholder }}">
+      <button type="button" class="btn btn-primary" id="createKey"><span data-i18n="createKey">{{ texts.createKey }}</span></button>
     </div>
     <div id="keyList" class="key-list"></div>
   </div>

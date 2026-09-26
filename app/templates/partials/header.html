@@ -7,6 +7,14 @@
   <div class="top-actions">
     <a class="topbar-agents" href="/tools" data-i18n="nav_tools" title="{{ texts.nav_tools }}">{{ texts.nav_tools }}</a>
     <a class="topbar-agents" href="/agents" data-i18n="agents_title" title="{{ texts.agents_title }}">{{ texts.agents_title }}</a>
+    <button class="nav-icon nav-menu-btn" id="mobileNavBtn" type="button"
+            aria-label="{{ texts.nav_tools }}" aria-haspopup="menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path></svg>
+    </button>
+    <nav class="mobile-nav-sheet hidden" id="mobileNavSheet" aria-label="{{ texts.nav_tools }}">
+      <a href="/tools" role="menuitem">{{ icon_svg("wand") }}<span data-i18n="nav_tools">{{ texts.nav_tools }}</span></a>
+      <a href="/agents" role="menuitem">{{ icon_svg("share") }}<span data-i18n="agents_title">{{ texts.agents_title }}</span></a>
+    </nav>
     {% if user %}
     <button class="nav-icon" id="historyBtn" type="button" aria-label="{{ texts.menu_recent }}" title="{{ texts.menu_recent }}">{{ history_icon_svg }}</button>
     <div class="user-menu">
