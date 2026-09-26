@@ -508,6 +508,13 @@ _SCHEMA_SQL = (
       updated_by BIGINT
     )
     """,
+    # commission rate bootstrap (B2b-1 fail-closed): the metering gate
+    # refuses third-party metered calls when the rate is missing — the
+    # platform ALWAYS ships a legal initial value (operator-editable via
+    # the audited backoffice write; ON CONFLICT keeps configured values).
+    """INSERT INTO settings (key, value, updated_at)
+       VALUES ('commission_rate', '30', EXTRACT(EPOCH FROM now())::BIGINT)
+       ON CONFLICT (key) DO NOTHING""",
     # ── platform: platform_tools (tool registry — data-state rows) ──
     # The runtime source of truth for the tool catalog. First-party tools are
     # seeded here at startup from register() declarations (code = creation
@@ -587,7 +594,8 @@ _SCHEMA_SQL = (
       paid_by                 BIGINT,
       payout_ref              TEXT,
       CONSTRAINT withdrawals_status_ck
-        CHECK (status IN ('pending','approved','rejected','paid')),
+        CHECK (status IN ('pending','approved','rejected','paid',
+                          'payout_failed')),
       CONSTRAINT withdrawals_pending_ck CHECK (
         status <> 'pending'
         OR (reviewed_at IS NULL AND reviewed_by IS NULL
@@ -603,6 +611,11 @@ _SCHEMA_SQL = (
         OR (reviewed_at IS NOT NULL AND reviewed_by IS NOT NULL
             AND paid_at IS NULL AND paid_by IS NULL
             AND payout_ref IS NULL)),
+      CONSTRAINT withdrawals_payout_failed_ck CHECK (
+        status <> 'payout_failed'
+        OR (reviewed_at IS NOT NULL AND reviewed_by IS NOT NULL
+            AND paid_at IS NULL AND paid_by IS NULL
+            AND payout_ref IS NULL)),
       CONSTRAINT withdrawals_paid_ck CHECK (
         status <> 'paid'
         OR (reviewed_at IS NOT NULL AND reviewed_by IS NOT NULL
@@ -613,6 +626,39 @@ _SCHEMA_SQL = (
     """,
     """
     CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)
+    """,
+    # ── platform: payment_reviews (B2b-1 partial-refund review queue) ──
+    # No existing table models an INBOUND webhook adjudication fact: orders
+    # rows are purchase intents (kind/status CHECKs a partial refund event
+    # cannot satisfy), pending_downgrades is a per-user single-row intent.
+    # One row per provider EVENT (unique provider+event_id → replay inserts
+    # converge); resolution is an operator status flip — the queue never
+    # moves money.
+    """
+    CREATE TABLE IF NOT EXISTS payment_reviews (
+      id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      provider     TEXT NOT NULL DEFAULT 'creem',
+      event_type   TEXT NOT NULL,
+      event_id     TEXT NOT NULL,
+      txn_id       TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'open'
+                   CHECK (status IN ('open','resolved')),
+      detail_json  JSONB,
+      created_at   BIGINT NOT NULL,
+      resolved_at  BIGINT,
+      resolved_by  BIGINT,
+      CONSTRAINT payment_reviews_resolved_ck CHECK (
+        status <> 'resolved'
+        OR (resolved_at IS NOT NULL AND resolved_by IS NOT NULL))
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS payment_reviews_event_idx
+      ON payment_reviews (provider, event_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS payment_reviews_open_idx
+      ON payment_reviews (created_at DESC, id DESC) WHERE status = 'open'
     """,
     # ── subscription (plans/memberships) ──
     # tier rows (幂等 INSERT-ONLY: seed 只保证行存在, 数值归运营/迁移,
@@ -651,6 +697,23 @@ _SCHEMA_SQL = (
       effective_at   BIGINT NOT NULL,
       created_at     BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM now())::BIGINT,
       PRIMARY KEY (user_id)
+    )
+    """,
+    # ── B2b-1: per-period BASE payment record (transaction-record basis) ──
+    # Which provider transaction funds a period's base cycle is an
+    # economic fact that must NOT depend on ledger grant rows (a paid
+    # plan with zero monthly credits mints none). apply_paid_period
+    # inserts ON CONFLICT DO NOTHING for EVERY subscription.paid: the
+    # FIRST paid transaction to arrive for (sub, period) IS the base
+    # payment; later same-period charges (upgrades) never overwrite it.
+    """
+    CREATE TABLE IF NOT EXISTS subscription_period_payments (
+      sub_id        TEXT NOT NULL,
+      period_start  BIGINT NOT NULL,
+      user_id       BIGINT NOT NULL,
+      base_txn_id   TEXT NOT NULL,
+      created_at    BIGINT NOT NULL,
+      PRIMARY KEY (sub_id, period_start)
     )
     """,
     # ── membership 单行权威 (governance closure): 一个 user 最多一个
