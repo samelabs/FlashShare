@@ -134,7 +134,12 @@ async def mcp_post(request: Request):
         return Response(status_code=403, headers=cors)
     user = _bearer_user(request)
     if not user:
-        return Response(
+        from config import BASE_URL as _base
+        return JSONResponse(
+            {"error": "unauthorized",
+             "message": (
+                 "Missing or invalid API key. Create one at "
+                 f"{_base}/account/keys; guide: {_base}/llms.txt")},
             status_code=401,
             headers={**cors, "WWW-Authenticate": 'Bearer realm="518"'},
         )
@@ -219,27 +224,33 @@ async def _dispatch(request: Request, user: dict, msg):
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "518plus", "version": PRODUCT_VERSION},
             "instructions": (
-                "518.PLUS is a tools platform for people and AI agents. "
-                "Discover tools with tools/list (paginated — pass the "
-                "returned cursor) or catalog_search. Pass files inline "
-                "(base64), by https URL, or by reference; for large "
-                "local files call create_upload first and PUT the raw "
-                "bytes to the one-time URL it returns, then use the "
-                "returned {public_id, source_token} as the files[] "
-                "reference form. Text-only tools take no files — just "
-                "params. Every tools/call needs a client_ref: reuse the "
-                "same value to retry safely (replays return the original "
-                "result without re-charging). Results come back directly: "
+                "518.PLUS makes it easy to share files and AI "
+                "capabilities. To give a person a link to a file: call "
+                "share; hand them result_url (one page for all files) "
+                "— page_url is per file, download_url is a direct "
+                "download. Discover tools with tools/list (paginated — "
+                "pass the returned cursor) or catalog_search. Pass "
+                "files inline (base64), by https URL, or by reference; "
+                "for large local files call create_upload first and "
+                "PUT the raw bytes to the one-time URL it returns, "
+                "then use the returned {public_id, source_token} as "
+                "the files[] reference form (staged files are "
+                "intermediates: PUT within 10 minutes, kept at most "
+                "1 day, not listed by list_uploads). Text-only tools "
+                "take no files — just params. Every tools/call needs "
+                "a client_ref: reuse the same value to retry safely "
+                "(replays return the original result without "
+                "re-charging). Results come back directly: "
                 "structuredContent.items holds ordered text/json/file "
                 "items with download_url for each file (content also "
                 "carries a text block with the JSON serialization of "
                 "structuredContent); result_url is a human-viewable "
-                "page. Manage your staged files with the free meta tools "
-                "list_uploads (still-live files, paginated) and "
-                "delete_upload (remove one by public_id — same effect as "
-                "deleting on the web). Calls are metered in credits "
-                "(1000 credits = 1 USD); failed calls are refunded "
-                "automatically. Catalog version: "
+                "page. Manage your live shared files with the free "
+                "meta tools list_uploads (paginated) and "
+                "delete_upload (remove one by public_id — same effect "
+                "as deleting on the web). Calls are metered in "
+                "credits (1000 credits = 1 USD); failed calls are "
+                "refunded automatically. Catalog version: "
                 f"{catalog_version()}."
             ),
         })
@@ -324,10 +335,15 @@ _CREATE_UPLOAD_SPEC = {
         "Stage one local file for a later tools/call without sending its "
         "bytes through the model. Returns a one-time HTTPS PUT URL "
         "(upload_url, 10-minute expiry), the byte cap (max_bytes) and the "
-        "exact declared size bound. After a successful PUT you receive "
-        "{public_id, source_token} — pass them as the files[] reference "
-        "form of any tool. Free; consumes your daily upload quota only "
-        "when the PUT succeeds.",
+        "exact declared size bound. The filename extension must already "
+        "be a format 518 accepts — the same check the PUT runs. After a "
+        "successful PUT you receive {public_id, source_token} — pass them "
+        "as the files[] reference form of any tool. Staged files are "
+        "intermediates, not shares: use the PUT within 10 minutes, the "
+        "stored copy lives at most 1 day, and it never appears in "
+        "list_uploads and cannot be delete_upload'ed — only its "
+        "public_id/source_token reference matters. Free; consumes your "
+        "daily upload quota only when the PUT succeeds.",
     "inputSchema": {
         "type": "object",
         "properties": {
@@ -365,13 +381,15 @@ _LIST_UPLOADS_SPEC = {
     "name": "list_uploads",
     "title": "List Uploads",
     "description":
-        "List YOUR still-live files on 518 (uploads you staged via "
-        "create_upload or that tools produced for you), newest first. "
-        "Each entry carries public_id, filename, size, content_type, "
-        "expires_at (epoch seconds), downloads_remaining, page_url "
-        "(human page) and download_url (direct download). Use "
-        "delete_upload with public_id to remove one. Free; paginated "
-        "(20 per page, pass offset).",
+        "List YOUR still-live shared files on 518 — files you shared or "
+        "that tool calls produced for you (create_upload staging is NOT "
+        "listed: staged intermediates live at most 1 day and are "
+        "referenced only by public_id). Newest first; each entry carries "
+        "public_id, filename, size, content_type, expires_at (epoch "
+        "seconds), downloads_remaining, page_url (human page) and "
+        "download_url (direct download). Use delete_upload with "
+        "public_id to remove one. Free; paginated (20 per page, pass "
+        "offset).",
     "inputSchema": {
         "type": "object",
         "properties": {
@@ -600,43 +618,12 @@ def _tool_specs(user: dict) -> list:
 
 
 def _tool_result_error(mid, body: dict, client_ref: str, tool: dict | None = None):
-    """Business denial as a tool result (isError): one plain-English
-    sentence + the code + an actionable hint for the codes an agent can
-    act on (format / count window / credits); anything else keeps the
-    structured JSON shape (data the caller may need)."""
-    code = body.get("error")
-    if code in ("err_format_mismatch", "err_file_count",
-                "err_insufficient_credits"):
-        return _rpc(mid, {
-            "content": [{"type": "text",
-                         "text": _mcp_error_text(code, tool or {}, {})}],
-            "isError": True,
-        })
-    if code in ("err_expiry_not_entitled", "err_download_limit_not_entitled"):
-        field = body.get("field") or "delivery"
-        allowed = body.get("allowed") or []
-        return _rpc(mid, {
-            "content": [{"type": "text", "text": json.dumps({
-                "error": code,
-                "field": field,
-                "requested": body.get("requested"),
-                "allowed": allowed,
-                "message": (
-                    f"delivery.{field} value {body.get('requested')!r} is "
-                    f"not available on your current plan (allowed: "
-                    f"{allowed}). A higher plan is required for that "
-                    "value."),
-            }, ensure_ascii=False)}],
-            "isError": True,
-        })
-    return _rpc(mid, {
-        "content": [{"type": "text",
-                     "text": json.dumps({"error": code,
-                                         "client_ref": client_ref,
-                                         **{k: v for k, v in body.items()
-                                            if k != "error"}})}],
-        "isError": True,
-    })
+    """Business denial as a tool result (isError): the unified
+    single-JSON-block envelope — error code + one English sentence
+    (from the single human-text map) + client_ref + every structured
+    field the denial carried (delivery entitlement answers keep
+    field/requested/allowed so the agent can self-correct)."""
+    return _iserror(mid, body, client_ref, tool)
 
 
 async def _call_tool(request: Request, user: dict, mid, params: dict):
@@ -857,10 +844,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # Web/MCP) — BEFORE the receipt claim / quota / Gokapi.
     _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
     if _bdenial:
-        return _rpc(mid, {
-            "content": [{"type": "text", "text": json.dumps(_bdenial)}],
-            "isError": True,
-        })
+        return _iserror(mid, _bdenial, client_ref, tool)
 
     infos = []
     if _canon:
@@ -888,10 +872,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         except _IngressInProgress:
             return _rpc_err(mid, ERR_IDEMPOTENCY, "err_upload_in_progress")
         except _IngressQuotaDenied as exc:
-            return _rpc(mid, {
-                "content": [{"type": "text", "text": json.dumps(exc.denial)}],
-                "isError": True,
-            })
+            return _iserror(mid, exc.denial, client_ref)
         except _IngressUnresolved:
             # unresolvable durable replay — server-side error, zero side
             # effects; never leaks out of _call_tool
@@ -994,21 +975,22 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if error_body is not None:
         payload = error_body
     if not payload.get("ok"):
-        return _rpc(mid, {
-            "content": [{"type": "text",
-                         "text": _mcp_error_text(payload.get("error"),
-                                                  tool, delivery)}],
-            "isError": True,
-        })
+        return _iserror(mid, payload, client_ref, tool)
     result = payload.get("result") or {}
-    return _rpc(mid, await _mcp_success(result, payload))
+    _input_digests = frozenset(
+        _hl.sha256(_b).hexdigest() for _, _, _b in _canon)
+    return _rpc(mid, await _mcp_success(result, payload, _input_digests))
 
 
-def _mcp_error_text(code, tool: dict, delivery: dict) -> str:
-    """One plain-English sentence + the code + an actionable hint."""
+def _error_message(code, tool: dict | None = None) -> str:
+    """THE single human-text map: one plain-English sentence + an
+    actionable hint for the codes an agent can act on. Unknown codes
+    fall back to the generic sentence."""
     code = str(code or "tool_failed")
     base = {
         "err_format_mismatch": "The file format is not supported by this tool.",
+        "err_format_not_supported": "The file format is not accepted by 518.",
+        "err_file_type_blocked": "This file type is blocked on 518.",
         "err_file_count": "The number of files is outside this tool's window.",
         "err_insufficient_credits": "Not enough credits for this call.",
         "tool_disabled": "This tool is currently disabled.",
@@ -1019,7 +1001,11 @@ def _mcp_error_text(code, tool: dict, delivery: dict) -> str:
         "err_endpoint_failed": "The tool's service failed.",
         "err_endpoint_timeout": "The tool's service timed out.",
         "err_endpoint_blocked": "The tool's service endpoint is not allowed.",
+        "err_expiry_not_entitled": "The requested delivery.expiry_days is not available on your current plan.",
+        "err_download_limit_not_entitled": "The requested delivery.allowed_downloads is not available on your current plan.",
         "tool_failed": "The tool failed to produce a result.",
+        "not_found": "No such file of yours.",
+        "invalid_id": "That public id is malformed.",
     }.get(code)
     msg = base or "The call failed."
     hint = ""
@@ -1033,7 +1019,27 @@ def _mcp_error_text(code, tool: dict, delivery: dict) -> str:
         hint = f" This tool accepts {mn} to {mx} files."
     elif code == "err_insufficient_credits":
         hint = " Top up credits and retry with the same client_ref."
-    return f"{msg} (code: {code}).{hint}"
+    return f"{msg}{hint}"
+
+
+def _iserror(mid, payload: dict, client_ref: str | None = None,
+             tool: dict | None = None) -> dict:
+    """The ONE isError tools/call envelope: a single text block whose
+    text is JSON — {"error": code, "message": one English sentence
+    (from _error_message, the single human-text map), "client_ref": ...,
+    ...every structured field the denial already carried}. Existing
+    fields are never dropped."""
+    code = payload.get("error") or "tool_failed"
+    body = {"error": code, "message": _error_message(code, tool)}
+    if client_ref is not None:
+        body["client_ref"] = client_ref
+    body.update({k: v for k, v in payload.items()
+                 if k not in ("error", "message", "client_ref", "ok")})
+    return _rpc(mid, {
+        "content": [{"type": "text",
+                     "text": json.dumps(body, ensure_ascii=False)}],
+        "isError": True,
+    })
 
 
 def _meta_result(mid, payload: dict, isError: bool = False) -> dict:
@@ -1052,11 +1058,20 @@ def _meta_result(mid, payload: dict, isError: bool = False) -> dict:
     })
 
 
-async def _mcp_success(result: dict, payload: dict) -> dict:
+async def _mcp_success(result: dict, payload: dict,
+                       input_digests: frozenset | None = None) -> dict:
     """Build the MCP tools/call success envelope: content (the agent's
     direct result) + structuredContent (the machine shape, matching
-    every tool's outputSchema)."""
+    every tool's outputSchema).
+
+    input_digests = sha256 set of THIS call's input file bodies. An
+    image result byte-identical to an input (a pass-through tool echoing
+    what the agent just sent) gets no image block — only the
+    resource_link — so the agent's own bytes never bounce back into its
+    context. General rule, no per-tool branching."""
     from config import BASE_URL
+    import hashlib as _hl
+    input_digests = input_digests or frozenset()
     items_in = result.get("items") or []
     content = []
     sc_items = []
@@ -1101,7 +1116,8 @@ async def _mcp_success(result: dict, payload: dict) -> dict:
                         _storage_read, _gid)
                     body = stream.read(1_048_577)
                     stream.close()
-                    if status == 200 and len(body) <= 1_048_576:
+                    if status == 200 and len(body) <= 1_048_576 \
+                            and _hl.sha256(body).hexdigest() not in input_digests:
                         content.append({
                             "type": "image",
                             "data": _b64.b64encode(body).decode(),
@@ -1193,17 +1209,25 @@ def _create_upload(user: dict, mid, args: dict, request: Request):
         return _rpc_err(mid, -32602, "invalid client_ref")
     client_ref = cr.strip()
 
+    # format pre-check with the SAME single-point word lists the PUT
+    # runs (sniff_allowed's extension part: BLOCKED_EXT / ALLOWED_EXT —
+    # no second vocabulary): a bad extension must not consume a ticket
+    # and only surface after the agent has shipped the bytes.
+    import os as _os
+    from config import ALLOWED_EXT as _ALLOWED, BLOCKED_EXT as _BLOCKED
+    _ext = _os.path.splitext(filename.lower())[1]
+    if _ext in _BLOCKED:
+        return _iserror(mid, {"error": "err_file_type_blocked"}, client_ref)
+    if _ext not in _ALLOWED:
+        return _iserror(mid, {"error": "err_format_not_supported"},
+                        client_ref)
+
     # read-only quota headroom check BEFORE issuing (single decision
     # point; the PUT still runs the authoritative claim)
     from sharing.uploads import check_quota
     ok, denial = check_quota(user["id"], "", size, 1)
     if not ok:
-        return _rpc(mid, {
-            "content": [{"type": "text",
-                         "text": json.dumps({"ok": False, **denial},
-                                            ensure_ascii=False)}],
-            "isError": True,
-        })
+        return _iserror(mid, denial, client_ref)
 
     from repo import upload_tickets as tickets
     from utils import now
@@ -1262,15 +1286,15 @@ def _delete_upload(user: dict, mid, args: dict) -> dict:
                                  delete_upload as _web_delete)
     public_id = str(args.get("public_id") or "")
     if not PUBLIC_ID_RE.match(public_id):
-        return _meta_result(mid, {
+        return _iserror(mid, {
             "deleted": False, "public_id": public_id,
-            "error": "invalid_id"}, isError=True)
+            "error": "invalid_id"})
     upload = get_upload_by_public_id(public_id)
     if not upload or upload["user_id"] != user["id"]:
         # unknown OR someone else's: one shape, no existence oracle
-        return _meta_result(mid, {
+        return _iserror(mid, {
             "deleted": False, "public_id": public_id,
-            "error": "not_found"}, isError=True)
+            "error": "not_found"})
     _web_delete(upload["id"], user["id"])
     return _meta_result(mid, {"deleted": True, "public_id": public_id})
 

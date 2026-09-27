@@ -11,8 +11,8 @@ reference. File bytes never appear in any JSON-RPC body.
   T*  ticket lifecycle: expiry → 410; replay → 409; forged → 404;
       another user's Bearer on someone else's ticket → 403
   U*  PUT guards: over-declared-size → 413 with zero side effects;
-      unsupported format → 415; staging failure → 500 with quota and
-      storage reclaimed
+      blocked extension refused at create_upload (isError, no ticket);
+      staging failure → 500 with quota and storage reclaimed
   I*  idempotency: same client_ref + same params → same usable ticket;
       same client_ref + different params → -32009
   Q*  quota: exhausted 24h budget → typed -32602 at create (no ticket)
@@ -327,12 +327,17 @@ try:
     check("U1 body over declared size → 413, zero storage",
           st_u == 413 and d_u.get("error") == "err_file_too_large"
           and _gk_n() == _gk0, (st_u, d_u))
+    # blocked extension now refused at create_upload (same single-point
+    # word lists the PUT runs — a bad extension must not consume a
+    # ticket); the PUT-leg sniff guard stays covered by inline calls.
     st, d, t = _create_upload({"filename": "u2.exe", "size": 100,
                                "client_ref": f"u2-{_u}"}, tok, 41)
-    st_u, _h, d_u, _sc = _req("PUT", t["upload_url"][len(_BASE):], b"MZ\x90\x00" * 25)
-    check("U2 unsupported format → 415 typed sniff error",
-          st_u == 415 and d_u.get("error", "").startswith("err_"),
-          (st_u, d_u))
+    _u2 = (d.get("result") or {})
+    _u2_txt = ((_u2.get("content") or [{}])[0].get("text") or "")
+    check("U2 blocked extension refused at create_upload, no ticket",
+          _u2.get("isError") is True
+          and '"err_file_type_blocked"' in _u2_txt
+          and "upload_url" not in _u2_txt, _u2_txt[:100])
     # staging failure → quota and storage reclaimed (gokapi on-demand fail)
     _gk("POST", "/ci/fail-upload", {"mode": "500"})
     try:

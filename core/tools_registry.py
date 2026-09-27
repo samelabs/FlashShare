@@ -157,7 +157,7 @@ register(
     label={
         "en": "Lossless Share", "zh": "无损分享", "ja": "ロスレス共有",
         "ko": "무손실 공유", "es": "Compartir sin pérdida", "ar": "مشاركة بدون فقدان",
-        "de": "Verlustfreies Teilen", "ru": "Скачивание без потерь",
+        "de": "Verlustfreies Teilen", "ru": "Поделиться без потерь",
         "pt": "Compartilhar sem perda", "fr": "Partage sans perte",
     },
     desc={
@@ -170,7 +170,10 @@ register(
             "ja": 'ファイルをロスレスで共有。',
             "zh": '无损分享文件，生成链接。',
             "es": 'Comparte archivos sin perdida.',
-            "en": 'Share files losslessly with a link.',
+            "en": 'Share files losslessly and hand people a link: give '
+                  'humans result_url (one page for all files); default '
+                  'delivery 1 day / 50 downloads, adjustable via the '
+                  'delivery object.',
         },
     icon="upload",
     accept=None,  # accepts all formats
