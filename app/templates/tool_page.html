@@ -4,52 +4,50 @@
 
 {% block content %}
 <section class="workspace toolpage" id="toolPage">
-  <nav class="crumbs"><a href="/tools">{{ texts.market_title }}</a><span class="crumb-sep">/</span><span>{{ tool_name }}</span></nav>
-  <div class="page-head">
-    <h1>{{ tool_name }}</h1>
-  </div>
-
-  {% if tool.desc %}
-  <p class="page-head-sub">{{ tool.desc | lt(lang) }}</p>
-  {% endif %}
-
-  {% if owner_gate_notice %}
-  <p class="hint" data-i18n="tool_gate_hint">{{ texts.tool_gate_hint }}</p>
-  {% endif %}
-
-  <div class="page-head toolpage-head">
-    <div class="page-head-meta">
-      {% if handle %}
-      <span class="meta-item"><span data-i18n="tool_by_author">{{ texts.tool_by_author }}</span>
-        <a class="toolpage-handle" href="/u/{{ handle }}">@{{ handle }}</a></span>
-      {% else %}
-      <span class="meta-item">{{ icon_svg("shield") }}<span class="tag tag-brand">{{ texts.market_official }}</span></span>
-      {% endif %}
-      <span class="meta-item">{{ icon_svg("hash") }}<span>{% if tool.cost %}<b class="tool-cost">{{ tool.cost }}</b> {{ texts.credits_per_call }}{% else %}<span class="tag tag-success">{{ texts.free }}</span>{% endif %}</span></span>
-      <span class="meta-item">{{ icon_svg("file_size") }}<span>{% if tool.files_min == 0 %}
-        <span class="tag">{{ texts['out_kind_text'] }}</span>{% elif tool.files_min == tool.files_max %}
-        {{ texts['n_files_one'] }}{% else %}
-        {{ texts['files_window_short'].format(min=tool.files_min, max=tool.files_max) }}{% endif %}</span></span>
-      <span class="meta-item">{{ icon_svg("convert") }}<span class="chip-row">{% for o in tool.outputs %}<span class="chip">{{ texts['out_kind_' ~ o] }}</span>{% endfor %}</span></span>
+  <div class="tp-main">
+  <div class="tp-h">
+    <span class="ic" aria-hidden="true">{{ tool.icon_svg }}</span>
+    <div>
+      <h1>{{ tool_name }}</h1>
+      {% if tool.desc %}<p class="tp-desc">{{ tool.desc | lt(lang) }}</p>{% endif %}
+      <div class="meta">
+        {% if handle %}
+        <a class="auth" href="/u/{{ handle }}"><i aria-hidden="true"></i>@{{ handle }}</a>
+        {% else %}
+        <span class="auth"><i class="official" aria-hidden="true"></i><span class="tag tag-brand">518.PLUS</span></span>
+        {% endif %}
+        {% if tool.cost %}
+        <span class="tag tag-brand">{{ tool.cost }} {{ texts.credits_short }}</span>
+        {% else %}
+        <span class="tag tag-success">{{ texts.free }}</span>
+        {% endif %}
+        {% if tool.files_min == 0 and tool.files_max == 0 %}
+        <span class="tag">{{ texts['out_kind_text'] }}</span>
+        {% elif tool.files_min == tool.files_max and tool.files_min == 1 %}
+        <span class="tag">{{ texts.n_files_one }}</span>
+        {% else %}
+        <span class="tag">{{ texts.files_window_short.format(min=tool.files_min, max=tool.files_max) }}</span>
+        {% endif %}
+        <span class="tag">{{ texts.tool_runs.format(n=stats.calls) }}</span>
+      </div>
     </div>
   </div>
 
-  <div id="toolRunForm" class="toolpage-run">
-    <div id="toolInput" class="ti-mount"></div>
-  </div>
+  {% if owner_gate_notice %}
+  <p class="hint tp-gate-hint">{{ icon_svg("info") }}<span data-i18n="tool_gate_hint">{{ texts.tool_gate_hint }}</span></p>
+  {% endif %}
+
+  <div id="toolInput" class="ti-mount"></div>
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
-  <div class="toolpage-mcp-panel">
-    <p class="hint">
-      {{ icon_svg("info") }}
-      <span><span data-i18n="tool_ai_hint">{{ texts.tool_ai_hint }}</span>
-        <a href="/tool/{{ tool.id }}/mcp" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a></span>
-    </p>
-    <div class="copyfield toolpage-mcp">
-      <input class="input" id="toolMcpName" readonly value="{{ mcp_name }}">
-      <button class="btn btn-secondary" id="toolMcpCopy" type="button">{{ icon_svg("copy") }}<span>{{ texts['copy'] }}</span></button>
-    </div>
+  <div class="mcpline">
+    {{ icon_svg("wand") }}
+    <span data-i18n="mcp_line_label">{{ texts.mcp_line_label }}</span>
+    <code id="toolMcpName">{{ mcp_name }}</code>
+    <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span>{{ texts['copy'] }}</span></button>
+    <a href="/agents" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a>
+  </div>
   </div>
 </section>
 

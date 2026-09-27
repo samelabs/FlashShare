@@ -704,8 +704,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .mkt-tag.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 
 /* ── 工具主页（独占式） ── */
-.toolpage .panel .code-block { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 10px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.toolpage .panel .d a { color: var(--brand); font-weight: 600; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 @media (max-width: 640px) {
@@ -729,8 +727,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .market-page .hero-callouts { justify-content: flex-start; margin-top: 0; }
 
 /* 工具主页精修 */
-.toolpage .panel .d { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.toolpage .panel .d .mono { font-size: 13px; }
 
 /* ── 用户页 (开发者公开面, 0905 机制; 0930 结构化) ── */
 .userpage-hero { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -799,10 +795,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .r-page .r-actions { margin-block-start: var(--s4); }
 
 /* ═══ IO-3a: 工具页页头 ═══ */
-.toolpage-head { margin-block-start: var(--s4); }
-.toolpage-mcp-panel { margin-block-start: var(--s5); display: flex; flex-direction: column; gap: var(--s3); align-items: flex-start; }
-.toolpage-mcp-panel .toolpage-mcp { max-width: 420px; }
-.toolpage-handle { font-weight: 700; }
 
 /* ═══ IO-3a: 文件页 (/f) — 与结果页同语言 ═══ */
 .file-page { text-align: start; }
@@ -842,3 +834,30 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 }
 .status-page h1 { font-size: var(--fs-xl); }
 .status-page p { color: var(--ink-2); max-width: 44ch; }
+
+/* ═══ 工具页 (v2): tp-h 头部 / tp-main 主栏 780 / mcpline ═══ */
+.toolpage { padding-top: 40px; padding-bottom: 64px; }
+.tp-main { max-width: var(--container-read); margin: 0 auto; }
+.tp-h { display: flex; gap: 18px; align-items: center; }
+.tp-h .ic { width: 60px; height: 60px; border-radius: 18px; background: var(--card); border: var(--border-w) solid var(--line); box-shadow: var(--sh-2); display: grid; place-items: center; flex: none; }
+.tp-h .ic svg { width: 28px; height: 28px; stroke: var(--ink); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.tp-h h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; }
+.tp-h .tp-desc { color: var(--ink-2); margin-block-start: 2px; }
+.tp-h .meta { display: flex; gap: 6px; margin-block-start: 10px; flex-wrap: wrap; align-items: center; }
+.tp-h .auth { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-inline-end: 6px; }
+.tp-h .auth i { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, rgba(255, 107, 91, 1), rgba(255, 59, 79, 1)); display: inline-block; }
+.tp-h .auth i.official { background: linear-gradient(135deg, rgba(255, 179, 107, 1), rgba(255, 90, 77, 1)); }
+.toolpage .ti-mount { margin-block-start: 28px; }
+.toolpage #result { margin-block-start: 20px; }
+.tp-gate-hint { margin-block-start: 14px; }
+.mcpline { margin-block-start: 20px; display: flex; align-items: center; gap: 10px; padding: 14px 18px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
+.mcpline > svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.mcpline code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 3px 8px; border-radius: 6px; color: var(--ink); }
+.mcpline a { margin-inline-start: auto; font-weight: 600; }
+@media (max-width: 767px) {
+  .toolpage { padding-top: 24px; padding-bottom: 48px; }
+  .tp-h { align-items: flex-start; }
+  .tp-h .ic { width: 48px; height: 48px; border-radius: 14px; }
+  .tp-h h1 { font-size: 24px; }
+  .mcpline a { margin-inline-start: 0; }
+}
