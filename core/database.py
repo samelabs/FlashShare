@@ -128,6 +128,10 @@ _SCHEMA_SQL = (
       updated_at     BIGINT NOT NULL DEFAULT 0
     )
     """,
+    # one email per identity regardless of case (B2b-2); NULL emails
+    # (X-only accounts, platform row) never collide under a partial index
+    """CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uk
+       ON users (lower(email)) WHERE email IS NOT NULL""",
     # ── sessions ──
     """
     CREATE TABLE IF NOT EXISTS sessions (
@@ -257,7 +261,7 @@ _SCHEMA_SQL = (
     """
     CREATE TABLE IF NOT EXISTS ledger (
       id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       delta         BIGINT NOT NULL,
       balance_after BIGINT NOT NULL,
       kind          TEXT NOT NULL,
@@ -280,7 +284,7 @@ _SCHEMA_SQL = (
     CREATE TABLE IF NOT EXISTS tool_calls (
       id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       client_ref       TEXT NOT NULL,
-      user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       tool_id          TEXT NOT NULL,
       status           TEXT NOT NULL,
       cost_snapshot    BIGINT NOT NULL DEFAULT 0,
@@ -397,7 +401,7 @@ _SCHEMA_SQL = (
     """
     CREATE TABLE IF NOT EXISTS orders (
       id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      user_id           BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id           BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       kind              TEXT NOT NULL,
       item_id           BIGINT NOT NULL,
       provider          TEXT NOT NULL,
@@ -486,7 +490,7 @@ _SCHEMA_SQL = (
     """
     CREATE TABLE IF NOT EXISTS operator_audit (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      actor_user_id  BIGINT NOT NULL REFERENCES users(id),
+      actor_user_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       action         TEXT NOT NULL,
       target_type    TEXT NOT NULL,
       target_id      TEXT NOT NULL,
@@ -529,7 +533,7 @@ _SCHEMA_SQL = (
     CREATE TABLE IF NOT EXISTS platform_tools (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       tool_key       TEXT NOT NULL,          -- 'beautify' | 'owner/tool'
-      owner_id       BIGINT REFERENCES users(id) ON DELETE CASCADE,
+      owner_id       BIGINT REFERENCES users(id) ON DELETE RESTRICT,
                                            -- NULL = first-party seed
       tool_id        TEXT NOT NULL,          -- bare id within namespace
       execution      TEXT NOT NULL DEFAULT 'local',
@@ -581,7 +585,7 @@ _SCHEMA_SQL = (
     """
     CREATE TABLE IF NOT EXISTS withdrawals (
       id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      user_id                 BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id                 BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       amount                  BIGINT NOT NULL CHECK (amount > 0),
       status                  TEXT NOT NULL DEFAULT 'pending',
       note                    TEXT,
@@ -641,6 +645,8 @@ _SCHEMA_SQL = (
       event_type   TEXT NOT NULL,
       event_id     TEXT NOT NULL,
       txn_id       TEXT NOT NULL,
+      -- financial adjudication fact (b2b2): user deletion is restricted
+      user_id      BIGINT REFERENCES users(id) ON DELETE RESTRICT,
       status       TEXT NOT NULL DEFAULT 'open'
                    CHECK (status IN ('open','resolved')),
       detail_json  JSONB,
@@ -710,7 +716,7 @@ _SCHEMA_SQL = (
     CREATE TABLE IF NOT EXISTS subscription_period_payments (
       sub_id        TEXT NOT NULL,
       period_start  BIGINT NOT NULL,
-      user_id       BIGINT NOT NULL,
+      user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       base_txn_id   TEXT NOT NULL,
       created_at    BIGINT NOT NULL,
       PRIMARY KEY (sub_id, period_start)
@@ -720,7 +726,7 @@ _SCHEMA_SQL = (
     # current Membership; provider subscription 是唯一绑定。
     """
     CREATE TABLE IF NOT EXISTS memberships (
-      user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       plan_id    BIGINT NOT NULL REFERENCES plans(id),
       provider_subscription_id TEXT UNIQUE NOT NULL,
       status     TEXT NOT NULL DEFAULT 'active'
