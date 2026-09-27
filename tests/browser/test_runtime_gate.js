@@ -26,12 +26,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 let chromium;
-try {
-  ({ chromium } = require(process.env.PLAYWRIGHT_CORE_PATH || "playwright-core"));
-} catch (e) {
-  // dev fallback: global npm install outside this repo
-  ({ chromium } = require("/home/ubuntu/.local/lib/node_modules/playwright-core"));
-}
+({ chromium } = require(process.env.PLAYWRIGHT_CORE_PATH || "playwright-core"));
 
 // ── fail-closed gate ──────────────────────────────────────────────
 const PORT = parseInt(process.env.FLASHSHARE_TEST_PORT || "", 10);
