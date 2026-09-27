@@ -123,6 +123,16 @@ def update_password_hash(con, user_id: int, pw_hash: str, ts: int) -> None:
         (pw_hash, ts, user_id))
 
 
+def set_status(con, user_id: int, status: str, ts: int) -> dict:
+    """Account status write (operator suspension surface). The identity
+    chain reads status live: 'suspended' blocks login, sessions, API
+    keys and (via catalog.resolve) tool visibility."""
+    return con.execute(
+        "UPDATE users SET status = %s, updated_at = %s WHERE id = %s"
+        " RETURNING *",
+        (status, ts, user_id)).fetchone()
+
+
 def touch_login(con, user_id: int, ts: int) -> None:
     con.execute(
         "UPDATE users SET last_login_at = %s, updated_at = %s WHERE id = %s",
