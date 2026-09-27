@@ -283,13 +283,15 @@ def files_schema(t):
     return (t or {}).get("inputSchema", {}).get("properties", {}).get("files", {})
 check("H1 compress files[] maxItems=1", files_schema(comp).get("maxItems") == 1 and files_schema(comp).get("minItems") == 1, str(files_schema(comp)))
 check("H2 zip_pack files[] maxItems=20", files_schema(zp).get("maxItems") == 20, str(files_schema(zp)))
-_META = ("catalog_search", "create_upload")
+_META = ("catalog_search", "create_upload", "list_uploads",
+         "delete_upload")
 all_have_files = all("files" in (t.get("inputSchema", {}).get("properties") or {}) for t in tools if t["name"] not in _META)
 no_b64 = all("file_b64" not in (t.get("inputSchema", {}).get("properties") or {}) for t in tools)
 check("H3 所有工具只有 files[] 模型", all_have_files and no_b64, f"{len(tools)} tools")
 check("H4 delivery schema 存在", "delivery" in (comp or {}).get("inputSchema", {}).get("properties", {}))
 _req_all = all("client_ref" in (t.get("inputSchema", {}).get("required") or [])
-               for t in tools if t["name"] != "catalog_search")
+               for t in tools
+               if t["name"] not in _META)
 _req_cs = ("client_ref" in (([t for t in tools if t["name"] == "catalog_search"]
             or [{}])[0].get("inputSchema", {}).get("required") or []))
 check("H4b executable tools required 含 client_ref (catalog_search 不含)",

@@ -3,8 +3,7 @@
 
   T*  template escaping: /tools?q="><script> and a content_type-carrying
       upload render ESCAPED text (autoescape ON; no |safe for user data).
-  S*  semaphore: 9 concurrent hosted /tool-endpoints/ calls all complete
-      (hosted fan-out no longer occupies the outer heavy gate).
+  S*  semaphore: 9 concurrent tools/call invocations all complete.
   U*  upgrade refund with a LOST upgrade callback: only the upgrade
       credits revoke; the base-paid membership survives.
   K*  ticket hash storage: same-ref retry invalidates the old credential
@@ -159,7 +158,7 @@ try:
     # source upload with hostile content_type in the /source fetch is not
     # user-reachable (signed URLs); the file NAME path covers the page.
 
-    # ═══ S: 9 concurrent hosted calls all complete ═══
+    # ═══ S: 9 concurrent calls all complete ═══
     import concurrent.futures as _cf
     def _one_hosted(i):
         st, d = _call("compress", {"files": [{"filename": f"s{i}.png",
@@ -169,7 +168,7 @@ try:
         return res.get("isError") is False
     with _cf.ThreadPoolExecutor(max_workers=9) as _ex:
         oks = list(_ex.map(_one_hosted, range(9)))
-    check("S1 9 concurrent calls (each fans out to hosted legs) all complete",
+    check("S1 9 concurrent calls all complete",
           all(oks), str(oks))
 
     # ═══ U: upgrade refund with a LOST upgrade callback ═══

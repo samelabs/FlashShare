@@ -457,8 +457,9 @@ check("U28 app/routes/apiv1.py 不存在",
 _main28 = open(_os2.path.join(_REPO, "app", "main.py"), encoding="utf-8").read()
 check("U28 main.py 不 import/注册 apiv1",
       "apiv1" not in _main28)
-check("U28 main.py 注册 hosted_tools (/tool-endpoints)",
-      "hosted_tools" in _main28 and '"/tool-endpoints"' in _main28)
+check("U28 hosted /tool-endpoints surface deleted (C1)",
+      "hosted_tools" not in _main28
+      and '"/tool-endpoints"' not in _main28)
 check("U28 apiv1 router prefix 无 /api/v1 注册",
       '"/api/v1"' not in _main28)
 _mcp28 = open(_os2.path.join(_REPO, "app", "routes", "mcp.py"),
@@ -469,7 +470,7 @@ _web_auth28 = open(_os2.path.join(_REPO, "app", "web_auth.py"),
                    encoding="utf-8").read()
 check("U28 require_session_or_bearer_auth 已删 (browser 面 session-only)",
       "require_session_or_bearer_auth" not in _web_auth28)
-check("U28 Bearer 解析仅限 /mcp (hosted 面走 HMAC capability)",
+check("U28 Bearer 解析仅限 /mcp",
       'path == "/mcp"' in _main28
       and 'path.startswith("/tool-endpoints/")' not in _main28)
 # production templates/JS 无 Public REST active expression
@@ -483,12 +484,22 @@ check("U28 i18n 无 Public REST 文案键 (agents_ep_*/agents_api_*/tool_mcp_htt
       all(k not in _i18n28 for k in
           ("agents_ep_me", "agents_api_h", "agents_api_desc2",
            "tool_mcp_http_hint")))
-_hosted28 = open(_os2.path.join(_REPO, "app", "routes", "hosted_tools.py"),
-                 encoding="utf-8").read()
-check("U28 hosted_tools authority = dispatch-minted HMAC capability (非 Bearer)",
-      "verify_hosted_exec_token" in _hosted28
-      and "verify_fetch_token" in _hosted28
-      and 'via != "token"' not in _hosted28)
+check("U28 hosted execution path fully removed (files + capability)",
+      not _os2.path.exists(_os2.path.join(_REPO, "app", "routes",
+                                          "hosted_tools.py"))
+      and not _os2.path.exists(_os2.path.join(_REPO, "core",
+                                              "tools_corners.py"))
+      and not _os2.path.exists(_os2.path.join(
+          _REPO, "tests", "canonical", "test_rounded_corners.py"))
+      and not _os2.path.exists(_os2.path.join(
+          _REPO, "tests", "canonical",
+          "test_hosted_execution_capability.py"))
+      and "sign_hosted_exec_token" not in open(
+          _os2.path.join(_REPO, "core", "security.py"),
+          encoding="utf-8").read()
+      and "X-Hosted-Execution" not in open(
+          _os2.path.join(_REPO, "core", "execution", "orchestrator.py"),
+          encoding="utf-8").read())
 
 # C29: orders table SQL lives only in repo/orders.py
 import glob as _glob29

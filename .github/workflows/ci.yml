@@ -282,6 +282,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_b2b2_identity.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_c1_closure.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_c1_closure.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_identity_closure.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_identity_closure.py
@@ -315,7 +319,6 @@ jobs:
           # X identity closure: avatar authority is users.avatar_url only;
           # zero runtime references to the retired x_avatar_url field
           test -z "$(grep -rn 'x_avatar_url' core/ app/ static/ --include='*.py' --include='*.js' --include='*.html')"
-          python tests/canonical/test_rounded_corners.py
 
       - name: Start Gokapi HTTP-boundary service
         shell: bash
@@ -456,6 +459,8 @@ jobs:
 
       - name: B2b-2 identity closure canonical
         run: python tests/canonical/test_b2b2_identity.py
+      - name: C1 mechanism closure canonical
+        run: python tests/canonical/test_c1_closure.py
       - name: Commission effective-time canonical
         run: python tests/canonical/test_commission_effective_time.py
 

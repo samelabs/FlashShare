@@ -223,7 +223,7 @@ restrict_tables = ["ledger", "tool_calls", "orders", "withdrawals",
 _victim = _mkuser(_u + "vic")
 _mktool(f"{_victim['username']}/v_{_u}", _victim["id"])
 from economy.billing import grant as grant_ledger
-grant_ledger(_victim["id"], 10, "grant_daily", note="fk")
+grant_ledger(_victim["id"], 10, "grant", note="fk")
 for tbl in restrict_tables:
     try:
         with db() as con:
