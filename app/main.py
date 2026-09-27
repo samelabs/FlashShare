@@ -109,9 +109,8 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 def get_user_from_request(request: Request):
     """Browser session identity for the web surface; Bearer tokens are
     resolved only for the /mcp machine surface that authenticates with
-    them. The hosted /tool-endpoints/* surface authorizes with the
-    dispatch-minted HMAC hosted-execution capability, not any Bearer.
-    A Bearer header never turns its holder into a logged-in web user."""
+    them. A Bearer header never turns its holder into a logged-in
+    web user."""
     from database import db
     token = request.cookies.get(COOKIE_NAME)
     if token:
@@ -156,19 +155,13 @@ def detect_lang(request: Request) -> str:
 import asyncio
 
 _concurrency = asyncio.Semaphore(8)
-# Heavy surface gate. /tool-endpoints/ is deliberately NOT listed: hosted
-# endpoints are the in-process fan-out targets of already-admitted heavy
-# dispatches (each pulls its sources via /api/source and returns to the
-# caller). Admitting them to the SAME semaphore self-deadlocks at
-# saturation — every slot is held by an outer call whose inner hosted
-# call can then never acquire one. The outer call already bounds this
-# work; the hosted leg is part of that same unit.
+# Heavy surface gate.
 _HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp",
                 "/auth/login", "/auth/register")
 # Mutating account identity/credentials is a browser-session surface. Capability
-# tokens may run the machine surfaces (MCP / hosted tool endpoints), but cannot
-# use themselves to mint/alter account credentials. Token CRUD and X bind/unbind
-# also enforce session at their routes.
+# tokens may run the machine surface (MCP), but cannot use themselves to
+# mint/alter account credentials. Token CRUD and X bind/unbind also enforce
+# session at their routes.
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     request.state.user = get_user_from_request(request)
@@ -185,7 +178,7 @@ async def auth_middleware(request: Request, call_next):
             logger.exception("access reconcile trigger failed")
 
     # Account namespace is the human browser surface (session-only).
-    # Capability tokens (Bearer) serve MCP and the hosted tool endpoints —
+    # Capability tokens (Bearer) serve MCP only —
     # they never render or mutate the account pages. Anonymous browsers get
     # the login redirect instead.
     if path == "/account" or path.startswith("/account/"):
@@ -250,7 +243,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Routes ──
 
-from app.routes import pages, api, auth_route, proxy, hosted_tools, samelabs, mcp, mcp_upload, usertools  # noqa: E402
+from app.routes import pages, api, auth_route, proxy, samelabs, mcp, mcp_upload, usertools  # noqa: E402
 
 app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
@@ -258,7 +251,6 @@ app.include_router(auth_route.router, prefix="/auth")
 app.include_router(samelabs.router)
 app.include_router(mcp.router)
 app.include_router(mcp_upload.router)
-app.include_router(hosted_tools.router, prefix="/tool-endpoints")
 from app.routes import topup  # noqa: E402
 app.include_router(topup.router)
 app.include_router(usertools.router)

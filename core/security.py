@@ -79,52 +79,6 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-# ── Hosted-execution capabilities (/tool-endpoints/* authority) ──
-# The hosted southbound surface is callable ONLY with this short-lived
-# HMAC capability, minted by the canonical remote dispatch for trusted
-# same-origin hosted endpoints. It binds the exact endpoint path and a
-# digest over the outbound job payload, so a capability cannot be
-# replayed against another endpoint or spliced onto a different set of
-# signed source URLs. Ordinary API Bearer tokens are NOT authority for
-# /tool-endpoints/*.
-
-def _hosted_exec_sig(path: str, payload_digest: str, expires_at: int) -> str:
-    msg = f"hostedexec:{path}:{payload_digest}:{expires_at}".encode()
-    return hmac.new(SESSION_SECRET.encode(), msg, hashlib.sha256).hexdigest()[:40]
-
-
-def hosted_payload_digest(payload: dict) -> str:
-    """Stable digest over the canonical outbound payload (files +
-    params). Deterministic key order so both sides compute the same
-    digest without depending on transport serialization order."""
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-
-
-def sign_hosted_exec_token(path: str, payload: dict,
-                           expires_in: int = 120) -> str:
-    expires_at = now_ts() + int(expires_in)
-    digest = hosted_payload_digest(payload)
-    return f"{expires_at}.{_hosted_exec_sig(path, digest, expires_at)}"
-
-
-def verify_hosted_exec_token(token: str, path: str, payload: dict) -> bool:
-    """True iff the capability was minted for this exact path + payload
-    and is unexpired. No redemption state: the short TTL plus payload
-    binding make replay against the dispatch that requested it harmless
-    (the source capability inside is independently one-time)."""
-    try:
-        expires_at_str, sig = token.split(".", 1)
-        expires_at = int(expires_at_str)
-    except (ValueError, AttributeError):
-        return False
-    if expires_at < now_ts():
-        return False
-    digest = hosted_payload_digest(payload)
-    return hmac.compare_digest(sig, _hosted_exec_sig(path, digest, expires_at))
-
-
 # ── One-time signed source-fetch tokens (remote tool execution) ──
 
 import time as _time
