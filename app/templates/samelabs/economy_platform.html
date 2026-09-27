@@ -14,6 +14,16 @@
   </div>
 </section>
 <section class="sl-panel">
+  <div class="sl-panel-head"><h2>每日登录额度</h2><span class="sl-panel-sub">每日登录赠送的积分。只接受 0–1000 的整数；0 或未配置 = 活动关闭（登录不发、积分页不显示领取组件）。每次修改写审计。</span></div>
+  <div class="sl-toolbar">
+    <input class="sl-input" id="dailyAmountInput" type="number" min="0" max="1000" step="1"
+           value="{{ daily_amount }}" style="width:110px">
+    <span class="sl-dim">积分/天</span>
+    <button type="button" class="btn sl-btn sl-btn-primary" id="dailyAmountSave">保存</button>
+    <span class="sl-dim" id="dailyAmountMsg"></span>
+  </div>
+</section>
+<section class="sl-panel">
   <div class="sl-panel-head"><h2>平台收入</h2><span class="sl-panel-sub">工具抽佣 + 系统工具直销（美元），与消费积分分开记账</span></div>
   <div class="sl-tablewrap">
   <table class="sl-tbl">
