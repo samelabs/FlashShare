@@ -199,9 +199,9 @@ def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> lis
     q = (q or "").strip().lower()
     if not q:
         return []
-    like = f"%{q}%"
+    like3 = (f"%{q}%", f"%{q}%", f"%{q}%")
     with db() as con:
-        rows = catalog_repo.search(con, VIS_PUBLIC, viewer_id, like, limit)
+        rows = catalog_repo.search(con, VIS_PUBLIC, viewer_id, like3, limit)
     out = []
     for row in rows:
         p = _price_of(row["tool_key"])
@@ -325,18 +325,29 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
     """
     with db() as con:
         row = catalog_repo.by_tool_key(con, tool_key)
-        # suspended provider: the tool does not exist on ANY surface —
-        # listing, tool page, MCP, and direct invocation all refuse
-        # here (before any claim/charge); 404 semantics leak nothing.
-        if row is not None and row["owner_id"] is not None:
+        # THE public-visibility predicate at the routing point (every
+        # surface resolves through here): developer enabled ∧ NOT
+        # operator delisted ∧ owner not suspended. Operator-delisted and
+        # developer-disabled tools read as not_found on public surfaces
+        # (no existence oracle); the owner's own view is the exception.
+        if row is not None:
             from repo import users as users_repo
-            owner = users_repo.by_id(con, row["owner_id"])
-            if owner is None or owner["status"] == "suspended":
-                return None, "not_found"
+            if not row["enabled"] or row["delisted"]:
+                if viewer_id is None or row["owner_id"] != viewer_id:
+                    return None, "not_found"
+            elif row["owner_id"] is not None:
+                owner = users_repo.by_id(con, row["owner_id"])
+                if owner is None or owner["status"] == "suspended":
+                    return None, "not_found"
     if not row:
         return None, "not_found"
-    if not row["enabled"]:
-        return None, "disabled"
+    if not row["enabled"] or row["delisted"]:
+        # owner-only view of a disabled/delisted tool stays resolvable
+        # so the owner can test/re-edit it
+        if viewer_id is not None and row["owner_id"] == viewer_id:
+            pass
+        else:
+            return None, "not_found"
     if row["visibility"] == VIS_PRIVATE:
         if viewer_id is None or row["owner_id"] != viewer_id:
             return None, "forbidden"

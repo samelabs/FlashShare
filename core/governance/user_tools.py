@@ -43,6 +43,7 @@ def _public_item(row: dict) -> dict:
         "desc": desc_full,
         "visibility": row["visibility"],
         "enabled": row["enabled"],
+        "delisted": bool(row["delisted"]),
         "trusted": bool(row["trusted"]),
         "cost": int(row.get("cost") or 0),
         "priced_enabled": bool(row.get("priced")),

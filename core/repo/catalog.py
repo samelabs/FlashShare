@@ -1,4 +1,4 @@
-"""repo: catalog — platform_tools/pricing 数据访问 (批2a: 治理域专用).
+"""repo: catalog — platform_tools/pricing 数据访问 (the billing lock-order fix: 治理域专用).
 
 规则: 函数=(con,...)->rows, 参数化, 无事务/无业务判断。
 """
@@ -9,19 +9,24 @@ from typing import Optional, Sequence
 # ── platform_tools ──
 
 def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
-    """公开市场查询基座 (selection/search/pricing visibility):
-    enabled+public, INNER JOIN pricing (缺行=未完成商业创建, 不上面;
-    pricing.enabled=false 排除); 搜索范围仅 tool_key+label_json。
+    """公开市场查询基座 (selection/search/pricing visibility): the ONE
+    public-visibility predicate (enabled ∧ ¬delisted ∧ owner-alive) +
+    public visibility, INNER JOIN pricing (缺行=未完成商业创建, 不上面;
+    pricing.enabled=false 排除); 搜索范围 tool_key+label+desc(各语言)。
     返回 (FROM+WHERE 片段, 参数)。"""
-    where = "pt.enabled AND pt.visibility = %s"
+    where = ("pt.enabled AND NOT pt.delisted"
+             " AND (pt.owner_id IS NULL OR u.status <> 'suspended')"
+             " AND pt.visibility = %s")
     args: list = [visibility_public]
     if q:
         where += (" AND (LOWER(pt.tool_key) LIKE %s"
-                  " OR LOWER(pt.label_json)::jsonb::text LIKE %s)")
+                  " OR LOWER(pt.label_json)::jsonb::text LIKE %s"
+                  " OR LOWER(pt.desc_json)::jsonb::text LIKE %s)")
         like = f"%{q.lower()}%"
-        args += [like, like]
+        args += [like, like, like]
     base = (
         "FROM platform_tools pt "
+        "JOIN users u ON u.id = pt.owner_id "
         "JOIN pricing pr ON pr.tool_id = pt.tool_key "
         f"WHERE {where} AND pr.enabled")
     return base, args
@@ -40,10 +45,6 @@ def market_rows(con, visibility_public: str, q: Optional[str],
     JOIN users: community 作者 handle 是卡片 identity contract 字段
     (official 行 owner 为空 → owner_handle NULL, 不伪造 author)。"""
     base, args = _market_base(visibility_public, q)
-    base = base.replace(
-        "FROM platform_tools pt ",
-        "FROM platform_tools pt "
-        "LEFT JOIN users u ON u.id = pt.owner_id ")
     return con.execute(
         f"SELECT pt.*, pr.cost AS price_cost, "
         f"u.username AS owner_handle {base} "
@@ -66,6 +67,10 @@ def all_tool_keys_by_age(con, include_suspended_owners: bool = False) -> list:
     """Every stored tool_key (all states), oldest row first — the input of
     the MCP tool-name projection (earlier rows keep their natural name).
     Suspended owners drop out unless the operator surface asks for all."""
+    # NOTE: this feeds the MCP name map — naming, not visibility. A
+    # delisted/suspended tool KEEPS its name slot so the map stays
+    # stable (names are never reassigned); tools/list and resolve()
+    # enforce visibility via the public predicate.
     join = "" if include_suspended_owners else (
         " LEFT JOIN users o ON o.id = platform_tools.owner_id"
         " WHERE (owner_id IS NULL OR o.status <> 'suspended')")
@@ -75,55 +80,64 @@ def all_tool_keys_by_age(con, include_suspended_owners: bool = False) -> list:
     return [r["tool_key"] for r in con.execute(q).fetchall()]
 
 
-# Suspended providers leave the catalog everywhere (B2b-2): one SQL
-# predicate joined into every public projection — first-party rows
-# (owner_id IS NULL) never join a suspended owner.
-_OWNER_ALIVE = (" LEFT JOIN users o ON o.id = platform_tools.owner_id "
-                "WHERE (owner_id IS NULL OR o.status <> 'suspended') AND ")
+# ── THE public-visibility predicate (one source, every surface) ──
+# A tool is publicly visible iff: developer enabled ∧ NOT operator
+# delisted ∧ owner not suspended (first-party rows have no owner).
+# resolve(), home/market lists, search, author page and MCP all build
+# their SQL on this fragment — no surface may re-derive the rule.
+_PUBLIC_VISIBLE = (" LEFT JOIN users o ON o.id = platform_tools.owner_id "
+                   "WHERE platform_tools.enabled"
+                   " AND NOT platform_tools.delisted"
+                   " AND (platform_tools.owner_id IS NULL"
+                   " OR o.status <> 'suspended') AND ")
+
 
 
 def visible_to(con, visibility_public: str, viewer_id: Optional[int]) -> list:
-    """呈现顺序 = 管理后台遴选: featured 优先, 再 sort_order, 再 id (注册序兜底)。"""
-    if viewer_id is None:
-        return con.execute(
-            "SELECT platform_tools.* FROM platform_tools"
-            + _OWNER_ALIVE +
-            "enabled AND visibility = %s "
-            "ORDER BY featured DESC, sort_order, id",
-            (visibility_public,)).fetchall()
+    """呈现顺序 = 管理后台遴选: featured 优先, 再 sort_order, 再 id (注册序兜底)。
+    owner_handle 随行选出 (社区卡作者槽; 官方行 NULL 不伪造)。"""
+    vis_col = ("platform_tools.visibility = %s" if viewer_id is None
+               else "(platform_tools.visibility = %s"
+                    " OR platform_tools.owner_id = %s)")
+    args = ([visibility_public] if viewer_id is None
+            else [visibility_public, viewer_id])
     return con.execute(
-        "SELECT platform_tools.* FROM platform_tools"
-        + _OWNER_ALIVE +
-        "enabled AND (visibility = %s OR owner_id = %s) "
-        "ORDER BY featured DESC, sort_order, id",
-        (visibility_public, viewer_id)).fetchall()
+        "SELECT platform_tools.*, o.username AS owner_handle"
+        " FROM platform_tools"
+        " LEFT JOIN users o ON o.id = platform_tools.owner_id"
+        " WHERE platform_tools.enabled AND NOT platform_tools.delisted"
+        " AND (platform_tools.owner_id IS NULL OR o.status <> 'suspended')"
+        " AND " + vis_col +
+        " ORDER BY platform_tools.featured DESC, platform_tools.sort_order,"
+        " platform_tools.id",
+        args).fetchall()
 
 
 def search(con, visibility_public: str, viewer_id: Optional[int],
-           like: str, limit: int) -> list:
-    if viewer_id is None:
-        return con.execute(
-            """
-            SELECT platform_tools.* FROM platform_tools
-            LEFT JOIN users o ON o.id = platform_tools.owner_id
-            WHERE (owner_id IS NULL OR o.status <> 'suspended')
-              AND enabled AND visibility = %s
-              AND (LOWER(tool_key) LIKE %s
-                   OR LOWER(label_json)::jsonb::text LIKE %s)
-            ORDER BY (owner_id IS NULL) DESC, id LIMIT %s
-            """,
-            (visibility_public, like, like, limit)).fetchall()
+           like3, limit: int) -> list:
+    """Search shares ONE ordering with every list surface
+    (featured → sort_order → id) and matches key + label + desc (all
+    languages). `like3` = (key_like, label_like, desc_like)."""
+    like_k, like_l, like_d = like3
+    vis_col = "visibility = %s" if viewer_id is None \
+        else "(visibility = %s OR owner_id = %s)"
+    args = ([visibility_public] if viewer_id is None
+            else [visibility_public, viewer_id])
     return con.execute(
         """
-        SELECT platform_tools.* FROM platform_tools
+        SELECT platform_tools.*, o.username AS owner_handle
+        FROM platform_tools
         LEFT JOIN users o ON o.id = platform_tools.owner_id
-        WHERE (owner_id IS NULL OR o.status <> 'suspended')
-          AND enabled AND (visibility = %s OR owner_id = %s)
-          AND (LOWER(tool_key) LIKE %s
-               OR LOWER(label_json)::jsonb::text LIKE %s)
-        ORDER BY (owner_id IS NULL) DESC, id LIMIT %s
+        WHERE platform_tools.enabled AND NOT platform_tools.delisted
+          AND (platform_tools.owner_id IS NULL OR o.status <> 'suspended')
+          AND """ + vis_col + """
+          AND (LOWER(platform_tools.tool_key) LIKE %s
+               OR LOWER(platform_tools.label_json)::jsonb::text LIKE %s
+               OR LOWER(platform_tools.desc_json)::jsonb::text LIKE %s)
+        ORDER BY platform_tools.featured DESC,
+                 platform_tools.sort_order, platform_tools.id LIMIT %s
         """,
-        (visibility_public, viewer_id, like, like, limit)).fetchall()
+        args + [like_k, like_l, like_d, limit]).fetchall()
 
 
 def version_digest(con) -> dict:
@@ -182,13 +196,14 @@ def count_by_owner(con, user_id: int) -> int:
 
 def public_rows_by_owner(con, owner_id: int, visibility_public: str,
                          owner_suspended: bool = False) -> list:
-    """用户页 (开发者公开面): 该作者的公开+启用工具行, 呈现序同全站。
-    停用作者 → 空列表 (作者页整体不可见, 调用方 404)。"""
+    """用户页 (开发者公开面): 该作者的公开工具行, 同一可见性谓词与
+    呈现序。停用作者 → 空列表 (作者页整体不可见, 调用方 404)。"""
     if owner_suspended:
         return []
     return con.execute(
         "SELECT * FROM platform_tools "
-        "WHERE owner_id = %s AND enabled AND visibility = %s "
+        "WHERE owner_id = %s AND enabled AND NOT delisted"
+        " AND visibility = %s "
         "ORDER BY featured DESC, sort_order, id",
         (owner_id, visibility_public)).fetchall()
 

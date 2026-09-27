@@ -288,6 +288,7 @@ def tools_page(con) -> list:
     return con.execute(
         """
         SELECT pt.tool_key, pt.execution, pt.visibility, pt.enabled,
+               pt.delisted,
                pt.featured, pt.sort_order, pt.owner_id,
                u.username AS owner_name,
                -- runtime-effective trust exactly as resolve computes it
