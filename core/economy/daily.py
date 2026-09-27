@@ -41,6 +41,25 @@ def daily_amount(con) -> int:
     return amount if 0 <= amount <= 1000 else 0
 
 
+def set_daily_amount(con, amount: int, ts: int, updated_by: int | None) -> dict:
+    """Operator write: 0..1000 integer only (与 set_commission_rate 同一
+    写法)。The caller owns validation ordering (this is the single
+    settings write for the amount) and the operator_audit record."""
+    if not isinstance(amount, int) or isinstance(amount, bool) \
+            or not 0 <= amount <= 1000:
+        raise ValueError("invalid_daily_amount")
+    return con.execute(
+        """
+        INSERT INTO settings (key, value, updated_at, updated_by)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (key) DO UPDATE
+          SET value = excluded.value, updated_at = excluded.updated_at,
+              updated_by = excluded.updated_by
+        RETURNING *
+        """,
+        (AMOUNT_KEY, str(amount), ts, updated_by)).fetchone()
+
+
 def daily_idem(user_id: int) -> str:
     """每日幂等键 — 原键族逐字节保留 (ledger lineage)。"""
     day = time.strftime("%Y%m%d", time.gmtime())

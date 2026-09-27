@@ -10,6 +10,9 @@
       idem=daily:{uid}:{yyyymmdd} row of the configured amount; repeat
       logins and the explicit claim button never double-grant.
   C*  The grant is spendable through the real consume path.
+  D*  Operator surface: audited POST /samelabs/economy/daily-amount
+      (before/after recorded), validation 422 leaves settings
+      untouched, non-operator refused.
 """
 import os as _os
 import sys as _sys
@@ -176,6 +179,69 @@ try:
     check("C3 further charge refused", False, "no InsufficientCredits")
 except InsufficientCredits:
     check("C3 further charge refused", True)
+
+# ═══ D: operator surface ═════════════════════════════════════════════
+import json as _json
+_set_amount(None)
+op_uid, op_ck = _register(_u + "op")
+users.append(op_uid)
+with db() as con:
+    con.execute("update users set status='samelabs' where id=%s", (op_uid,))
+    con.execute("delete from operator_audit where action='daily_amount.update'"
+                " and actor_user_id=%s", (op_uid,))
+
+st, _h, body = _req("POST", "/samelabs/economy/daily-amount", {"amount": 5},
+                    {"Cookie": op_ck})
+check("D1 operator set 5 ok", st == 200 and _json.loads(body).get("amount") == 5,
+      f"{st} {body[:80]}")
+with db() as con:
+    row = con.execute(
+        "select value from settings where key='daily_login_amount'").fetchone()
+    aud = con.execute(
+        "select action, target_type, target_id, before_json, after_json"
+        " from operator_audit where actor_user_id=%s"
+        " and action='daily_amount.update' order by id desc limit 1",
+        (op_uid,)).fetchone()
+check("D2 settings value updated", row is not None and row["value"] == "5", row)
+_bj = dict(aud) if aud else {}
+check("D3 one audit fact with before/after",
+      aud is not None and _bj.get("action") == "daily_amount.update"
+      and _bj.get("target_type") == "setting"
+      and _bj.get("target_id") == "daily_login_amount"
+      and _bj["before_json"] == {"amount": 0}
+      and _bj["after_json"] == {"amount": 5}, _bj)
+
+uid_d, _ck = _register(_u + "d")
+users.append(uid_d)
+rows = _grant_rows(uid_d)
+check("D4 operator-set amount grants on login",
+      len(rows) == 1 and rows[0]["delta"] == 5, rows)
+
+# D5: invalid amounts → 422, settings untouched
+bad_all = True
+for bad in (-1, 1001, 5.5, "5", None, True):
+    st, _h, body = _req("POST", "/samelabs/economy/daily-amount",
+                        {"amount": bad}, {"Cookie": op_ck})
+    if st != 422:
+        bad_all = False
+        check(f"D5 amount={bad!r} → 422", False, f"{st} {body[:60]}")
+with db() as con:
+    row = con.execute(
+        "select value from settings where key='daily_login_amount'").fetchone()
+check("D5 invalid amounts all 422, settings untouched",
+      bad_all and row is not None and row["value"] == "5", row)
+
+# D6: non-operator refused
+st, _h, _b = _req("POST", "/samelabs/economy/daily-amount", {"amount": 7},
+                  {"Cookie": ck_b})
+check("D6 non-operator POST refused", st in (401, 302, 303), st)
+
+# D7: platform page shows the form with the current value
+st, _h, body = _req("GET", "/samelabs/economy/platform", None,
+                    {"Cookie": op_ck, "Accept": "text/html"})
+check("D7 platform page renders daily-amount form",
+      st == 200 and 'id="dailyAmountInput"' in body
+      and 'value="5"' in body, st)
 
 # ═══ cleanup ═════════════════════════════════════════════════════════
 _set_amount(None)

@@ -71,11 +71,13 @@ async def platform_income(request: Request, page: int = 1):
         return resp
     from app.main import templates
     from governance.commission import commission_rate
+    from economy.daily import daily_amount
     page = max(1, page)
     with db() as con:
         rows, total = operator_views.platform_income_page(
             con, _PAGE, (page - 1) * _PAGE)
         rate = commission_rate(con)
+        amount = daily_amount(con)
     items = []
     for r in rows:
         d = dict(r)
@@ -85,7 +87,8 @@ async def platform_income(request: Request, page: int = 1):
         request, "samelabs/economy_platform.html",
         ctx(request, user, rows=items, total=total, page=page,
             pages=max(1, -(-total // _PAGE)), fmt_num=fmt_num,
-            commission_rate=rate, page_id="economy_platform"))
+            commission_rate=rate, daily_amount=amount,
+            page_id="economy_platform"))
 
 
 @router.post("/samelabs/economy/commission")
@@ -122,6 +125,44 @@ async def set_commission(request: Request):
         return JSONResponse(
             {"ok": False, "error": "invalid_commission_rate"}, 422)
     return {"ok": True, "rate": rate}
+
+
+@router.post("/samelabs/economy/daily-amount")
+async def set_daily_amount(request: Request):
+    """Operator write: daily login credit amount 0..1000 integer.
+    Audited old → new inside the settings transaction; anything but a
+    whole 0..1000 int is refused with the current value untouched.
+    0 disables the activity (no grant, widget hidden)."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from fastapi.responses import JSONResponse
+    from repo import operator_audit
+    from economy.daily import (daily_amount as current_amount,
+                               set_daily_amount as write_amount)
+    from utils import now
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    amount = raw.get("amount") if isinstance(raw, dict) else None
+    if not isinstance(amount, int) or isinstance(amount, bool) \
+            or not 0 <= amount <= 1000:
+        return JSONResponse(
+            {"ok": False, "error": "invalid_daily_amount"}, 422)
+    ts = now()
+    try:
+        with db() as con:
+            before = current_amount(con)
+            write_amount(con, amount, ts, int(user["id"]))
+            operator_audit.record(
+                con, int(user["id"]), "daily_amount.update",
+                "setting", "daily_login_amount",
+                {"amount": before}, {"amount": amount}, ts)
+    except ValueError:
+        return JSONResponse(
+            {"ok": False, "error": "invalid_daily_amount"}, 422)
+    return {"ok": True, "amount": amount}
 
 
 # ── Withdrawal queue (withdrawal lifecycle) ──
