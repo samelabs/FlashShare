@@ -157,7 +157,7 @@ def bind_checkout(obj: dict, order_id: int) -> dict:
             orders_repo.bind_membership(
                 con, row["user_id"], row["item_id"], sub_id, "active",
                 started_at=row["created_at"], renews_at=None)
-    return _ev_sync(sub_id, obj)
+    return {"bound": True, "subscription_id": sub_id}
 
 
 def handle_event(event_type: str, obj: dict) -> dict:
@@ -167,7 +167,11 @@ def handle_event(event_type: str, obj: dict) -> dict:
     sub_id = str(sub.get("id") or "")
     handler = {
         "subscription.paid": _ev_paid,
-        "subscription.active": _ev_sync,
+        # subscription.active carries no state the local machine does not
+        # already own: status/renews_at/plan come from subscription.paid and
+        # the dedicated lifecycle events. The former no-op "sync" handler
+        # was deleted — the event is acknowledged as ignored (logged).
+        "subscription.active": _ev_ignored,
         "subscription.scheduled_cancel": _ev_scheduled_cancel,
         "subscription.canceled": _ev_canceled,
         "subscription.past_due": _ev_past_due,
@@ -244,15 +248,6 @@ def extract_product_id(sub: dict) -> str:
 def _ev_ignored(sub_id: str, obj: dict) -> dict:
     log.info("subscription event ignored: sub=%s", sub_id)
     return {"ignored": True}
-
-
-def _ev_sync(sub_id: str, obj: dict) -> dict:
-    """subscription.active: sync only, never grants (Creem guidance)."""
-    with db() as con:
-        order, plan = _resolve_subscription(con, sub_id)
-    if order is None:
-        raise KeyError("order_not_found")
-    return {"synced": True}
 
 
 def _bind_and_load(sub_id: str, obj: dict) -> tuple[dict, dict, dict | None]:
