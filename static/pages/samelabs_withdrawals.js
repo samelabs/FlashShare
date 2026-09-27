@@ -45,6 +45,40 @@
     });
   });
 
+  document.querySelectorAll('.btn-payout-failed').forEach(function (b) {
+    var armed = false, t = 0, reasonInput = null;
+    b.addEventListener('click', function () {
+      var tr = b.closest('tr');
+      if (!armed) {
+        armed = true; b.textContent = '填原因并确认';
+        b.classList.add('sl-btn-danger');
+        reasonInput = document.createElement('input');
+        reasonInput.className = 'sl-input payout-reason-input';
+        reasonInput.placeholder = '失败原因 (必填)';
+        reasonInput.style.cssText = 'width:140px;padding:4px 8px;font-size:13px';
+        tr.querySelector('td:nth-child(10)').appendChild(reasonInput);
+        reasonInput.focus();
+        t = setTimeout(function () {
+          armed = false; b.textContent = 'Payout failed…';
+          b.classList.remove('sl-btn-danger');
+          if (reasonInput) reasonInput.remove();
+        }, 20000);
+        return;
+      }
+      var reason = reasonInput ? reasonInput.value.trim() : '';
+      if (!reason) { say('失败原因必填', false); reasonInput.focus(); return; }
+      clearTimeout(t); b.disabled = true;
+      slPost('/samelabs/economy/withdrawals/' + b.dataset.wid + '/payout-failed', { reason: reason })
+        .then(function (r) {
+          if (r.data.ok) { say('已标记打款失败，金额已退回收益池', true); reload(); }
+          else {
+            say('失败: ' + r.data.error, false);
+            b.disabled = false; armed = false; b.textContent = 'Payout failed…';
+          }
+        });
+    });
+  });
+
   document.querySelectorAll('.btn-paid').forEach(function (b) {
     var armed = false, t = 0, refInput = null;
     b.addEventListener('click', function () {

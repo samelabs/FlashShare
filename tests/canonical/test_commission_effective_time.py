@@ -348,7 +348,7 @@ check("C11 historical terminal (failed) + NULL snapshot 合法",
           " values (%s,%s,%s,'failed',0,%s,%s)",
           (f"r6_{_u}", u9, t9, ts, ts)))
 
-# ══════════ C12: fallback 冻结 resolved 值 ══════════
+# ══════════ C12 (B2b-1): fail-closed — 缺失/非法 → 扣费前拒绝 ══════════
 with db() as con:
     con.execute("delete from settings where key='commission_rate'")
 ufb = _mkuser(_u + "fb")
@@ -357,28 +357,52 @@ _mktool(tfb, owner_id=owner, cost=100)
 _grant(ufb, 10000, "manual_topup", note="ct")
 from governance.commission import commission_rate
 with db() as con:
-    check("C12a missing settings → resolved 30", commission_rate(con) == 30)
+    check("C12a missing settings → None (无回落)", commission_rate(con) is None)
+bfb_pre = spendable_balance(ufb)
 async def _sfb():
     return _mkstaged("fb")
-resfb, _, _ = _run(ufb, tfb, None, _sfb, owner=owner)
-rowfb = _call_row(resfb["call_id"])
-check("C12b missing → snapshot 冻结 30",
-      rowfb["commission_rate_snapshot"] == 30,
-      str(rowfb["commission_rate_snapshot"]))
+resfb, errfb, codefb = _run(ufb, tfb, None, _sfb, owner=owner)
+check("C12b missing rate → 第三方计费调用被拒 (503 typed), 零扣费",
+      resfb is None and errfb == {"ok": False,
+                                  "error": "err_commission_unconfigured"}
+      and codefb == 503 and spendable_balance(ufb) == bfb_pre,
+      f"{resfb} {errfb} {codefb}")
+with db() as con:
+    nfb = con.execute(
+        "select count(*) c from tool_calls where user_id=%s and tool_id=%s",
+        (ufb, tfb)).fetchone()["c"]
+check("C12b2 无 claim 行 (拒绝发生在 claim 之前)", nfb == 0, str(nfb))
 with db() as con:
     con.execute("insert into settings (key, value, updated_at) values"
                 " ('commission_rate', 'garbage', %s)", (ts,))
-ufg = _mkuser(_u + "fg")
-tfg = f"ctfg_{_u}"
-_mktool(tfg, owner_id=owner, cost=100)
-_grant(ufg, 10000, "manual_topup", note="ct")
-async def _sfg():
-    return _mkstaged("fg")
-resfg, _, _ = _run(ufg, tfg, None, _sfg, owner=owner)
-rowfg = _call_row(resfg["call_id"])
-check("C12c invalid value → fallback 30 冻结",
-      rowfg["commission_rate_snapshot"] == 30,
-      str(rowfg["commission_rate_snapshot"]))
+with db() as con:
+    check("C12c garbage value → None", commission_rate(con) is None)
+resfg, errfg, codefg = _run(ufb, tfb, None, _sfb, owner=owner)
+check("C12c2 invalid rate → 同样 fail-closed, 零扣费",
+      resfg is None and errfg == {"ok": False,
+                                  "error": "err_commission_unconfigured"}
+      and codefg == 503 and spendable_balance(ufb) == bfb_pre,
+      f"{resfg} {errfg} {codefg}")
+with db() as con:
+    con.execute("update settings set value='150' where key='commission_rate'")
+with db() as con:
+    check("C12d out-of-range 150 → None", commission_rate(con) is None)
+# 系统工具 (owner NULL): 佣金无关, 缺失照常执行, snapshot 冻结 0
+with db() as con:
+    con.execute("delete from settings where key='commission_rate'")
+ufs = _mkuser(_u + "fs")
+tfs = f"ctfs_{_u}"
+_mktool(tfs, owner_id=None, cost=100)
+_grant(ufs, 10000, "manual_topup", note="ct")
+ress, errs, codes = _run(ufs, tfs, None, _sfb, owner=None)
+rowsys = _call_row(ress["call_id"]) if ress else None
+e_s, c_s, r_s = _split_for(ress["call_id"]) if ress else (0, 0, 0)
+check("C12e system tool missing rate → 照常执行, 平台全额收入, snapshot 0",
+      ress is not None and errs is None and rowsys is not None
+      and rowsys["commission_rate_snapshot"] == 0
+      and e_s == 0 and c_s == 0 and r_s == 100,
+      f"{errs} {rowsys and rowsys['commission_rate_snapshot']} {e_s},{c_s},{r_s}")
+_set_rate(30)
 
 # ══════════ C13: _finish NULL snapshot → fail loud ══════════
 u13 = _mkuser(_u + "c13")
@@ -498,7 +522,7 @@ check("S1 _finish 函数体零 live commission config 读取",
 
 # ══════════ cleanup ══════════
 _set_rate(30)
-_uids = [owner, u1, u2, u3, u5, u6, us, u9, ufb, ufg, u13, u15]
+_uids = [owner, u1, u2, u3, u5, u6, us, u9, ufb, ufs, u13, u15]
 with db() as con:
     fp_ids = [r["id"] for r in con.execute(
         "select id from users where username like %s", (f"{_u}fp%",)).fetchall()]

@@ -26,7 +26,8 @@ from storage import read as storage_read, write as storage_write, delete as stor
 from tools import ToolError
 
 from . import ExecutionError
-from .results import StagedItems, StagedFileItem
+from .results import (StagedItems, StagedFileItem, OutputsError,
+                      declared_outputs, enforce_output_kinds)
 from gokapi import InternalDownloadUnavailable
 
 logger = logging.getLogger("flashshare")
@@ -36,6 +37,19 @@ MAX_MULTI_BYTES = 100 * 1024 * 1024
 
 class _SourceTooLarge(Exception):
     """storage 实际返回体超出平台单文件上限 (fail before worker)。"""
+
+
+def _enforce_outputs(tool: dict, items: list) -> None:
+    """B2b-1 outputs 运行时强制 — local/remote 两条执行路径共用的唯一
+    校验点 (results.enforce_output_kinds), 在任何文件 staged 之前运行:
+    每个结果项的 kind 都必须在该工具声明的 outputs 内, 违反 = 带类型化
+    错误失败的调用 (gate 标准退款链结算), 零结果项落地。声明本身损坏
+    也是拒绝执行 (tool_unavailable), 绝不静默放行。"""
+    try:
+        declared = declared_outputs(tool)
+        enforce_output_kinds(items, declared)
+    except OutputsError as exc:
+        raise ExecutionError(str(exc)) from exc
 
 
 def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
@@ -125,6 +139,7 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
                              sources, params)
     if not isinstance(out, dict) or not isinstance(out.get("items"), list):
         raise ToolError("tool_failed")
+    _enforce_outputs(tool, out["items"])
 
     order, inline, files = [], [], []
     staged_ids: list[str] = []
@@ -273,6 +288,8 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         code = {"ssrf_blocked": "err_endpoint_blocked",
                 "timeout": "err_endpoint_timeout"}.get(exc.code, "err_endpoint_failed")
         raise ExecutionError(code) from exc
+
+    _enforce_outputs(tool, out["items"])
 
     # items protocol: every file item is already staged by drive_http's
     # adapter (gokapi_id present); inline items carried raw.

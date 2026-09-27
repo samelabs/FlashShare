@@ -22,6 +22,9 @@
       <div class="earn-cell"><strong id="ePending">–</strong><span data-i18n="earn_pending">{{ texts.earn_pending }}</span></div>
       <div class="earn-cell"><strong id="eWithdrawn">–</strong><span data-i18n="earn_withdrawn">{{ texts.earn_withdrawn }}</span></div>
     </div>
+    {% if commission_rate is not none %}
+    <p class="profile-note"><span data-i18n="commission_rate_note">{{ texts.commission_rate_note }}</span> {{ commission_rate }}%</p>
+    {% endif %}
 
     <h3 data-i18n="earn_by_tool">{{ texts.earn_by_tool }}</h3>
     <div id="byToolList" class="bytool-list"></div>

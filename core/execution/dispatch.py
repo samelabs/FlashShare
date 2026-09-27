@@ -97,6 +97,16 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
     if tool.get("execution") not in _EXECUTIONS:
         return None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
+    # Stored outputs declaration (B2b-1): the runtime enforcement point
+    # (orchestrator) parses the same stored JSON — a corrupt declaration
+    # is refused HERE before any claim/charge/network, mirroring the
+    # accept/execution stored-contract checks above.
+    from .results import declared_outputs, OutputsError
+    try:
+        declared_outputs(tool)
+    except OutputsError:
+        return None, None, {"ok": False, "error": "tool_unavailable"}, 503
+
     # canonical params 是唯一参数事实源 — default 由 enforce_params_decl
     # 注入。delivery 属 invocation 边界字段, 永不出现在 params。
     import json as _json
