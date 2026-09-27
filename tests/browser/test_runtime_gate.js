@@ -87,7 +87,7 @@ const VIEWPORTS = {
 const PAGES = [
   { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-card"] },
   { path: "/tools", name: "tools", anonOk: true, need: [] },
-  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", "#toolRunForm"] },
+  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"] },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#mcpConf", "#cfgClaudeCode", "#cfgVscode", "#cfgClaudeDesktop"], copy: ["#copyMcp", "#copyConf"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },

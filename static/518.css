@@ -861,3 +861,9 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .tp-h h1 { font-size: 24px; }
   .mcpline a { margin-inline-start: 0; }
 }
+
+/* tool_mcp.html panels (page rebuilt next batch — keeps its layout) */
+.toolpage .panel .code-block { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 10px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.toolpage .panel .d a { color: var(--brand); font-weight: 600; }
+.toolpage .panel .d { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.toolpage .panel .d .mono { font-size: 13px; }

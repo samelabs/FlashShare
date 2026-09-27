@@ -564,9 +564,9 @@ _ti31 = open(_os2.path.join(_REPO, "static", "pages", "tool-input.js"),
 _m31 = _re31.search(r"function acceptTokens\(\)\s*\{(.*?)\n    \}", _ti31,
                     _re31.DOTALL)
 _accept_body31 = _m31.group(1) if _m31 else ""
-check("C31 accept 投影经 token 化展示 (chip)",
-      "chip-row" in _ti31 and ".toUpperCase()" in _ti31
-      and "fmt-chip" not in _ti31)
+check("C31 accept 判定用 canonical token (无 MIME 展示回退)",
+      _accept_body31 != "" and "fmt-chip" not in _ti31
+      and "chip-row" not in _ti31)
 check("C31 accept 判定用 strip 前导点的 canonical token",
       'replace(/^\\./, "")' in _accept_body31)
 check("C31 accept 展示无 MIME split(\"/\")",
