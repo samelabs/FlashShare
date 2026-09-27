@@ -277,15 +277,58 @@ def user_recent_ledger(con, user_id: int, limit: int) -> list:
         (user_id, limit)).fetchall()
 
 
+def user_uploads(con, user_id: int, limit: int) -> list:
+    """The user's durable share/result files (every row, including
+    already-expired ones not yet purged — the operator view shows the
+    mapping table, not the consumer live gate). gokapi_id is for the
+    caller's live-overlay lookup only and must not reach a template."""
+    return con.execute(
+        """
+        SELECT up.id, up.public_id, up.gokapi_id, up.file_name,
+               up.content_type, up.size_bytes, up.allowed_downloads,
+               up.expire_at, up.created_at
+        FROM uploads up WHERE up.user_id = %s
+        ORDER BY up.id DESC LIMIT %s
+        """,
+        (user_id, limit)).fetchall()
+
+
 # ── Tool Supply ──
 
-def tools_page(con) -> list:
+def _like(q: str) -> str:
+    """Operator substring search term: LIKE metacharacters matched
+    literally (same escaping as _user_search)."""
+    esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{esc}%"
+
+
+def tools_page(con, q: str | None = None, f_class: str | None = None,
+               delisted: bool = False, featured: bool = False,
+               limit: int = 50, offset: int = 0) -> tuple[list, int]:
     """One row per platform_tools entry + pricing overlay + call/earn
     aggregates. Classification is derived (owner_id NULL+local →
     Official local; owner_id NULL+http → Operator HTTP; owner_id set →
     Provider Tool) — operator-only view; the user product surface never
-    exposes execution class."""
-    return con.execute(
+    exposes execution class. q searches tool_key / label (any language,
+    via the stored label_json text) / owner username; f_class ∈
+    {official, community}; delisted/featured keep only flagged rows."""
+    where = ["TRUE"]
+    params: list = []
+    if q:
+        like = _like(q)
+        where.append("(pt.tool_key ILIKE %s OR pt.label_json ILIKE %s"
+                     " OR u.username ILIKE %s)")
+        params += [like, like, like]
+    if f_class == "official":
+        where.append("pt.owner_id IS NULL")
+    elif f_class == "community":
+        where.append("pt.owner_id IS NOT NULL")
+    if delisted:
+        where.append("pt.delisted")
+    if featured:
+        where.append("pt.featured")
+    wsql = " AND ".join(where)
+    rows = con.execute(
         """
         SELECT pt.tool_key, pt.execution, pt.visibility, pt.enabled,
                pt.delisted,
@@ -306,8 +349,95 @@ def tools_page(con) -> list:
         FROM platform_tools pt
         LEFT JOIN users u ON u.id = pt.owner_id
         LEFT JOIN pricing p ON p.tool_id = pt.tool_key
+        WHERE """ + wsql + """
         ORDER BY (u.username IS NULL), u.username, pt.sort_order, pt.tool_key
-        """).fetchall()
+        LIMIT %s OFFSET %s
+        """,
+        (*params, limit, offset)).fetchall()
+    total = con.execute(
+        """
+        SELECT COUNT(*) AS n FROM platform_tools pt
+        LEFT JOIN users u ON u.id = pt.owner_id
+        WHERE """ + wsql,
+        tuple(params)).fetchone()["n"]
+    return rows, int(total)
+
+
+# ── Tool detail (read-only) ──
+
+def tool_row(con, tool_key: str):
+    """Full platform row + owner username + pricing overlay for the
+    operator detail page. Raw columns only — secret-bearing projection
+    (endpoint auth) is the caller's job, never the template's."""
+    return con.execute(
+        """
+        SELECT pt.*, u.username AS owner_name
+        FROM platform_tools pt
+        LEFT JOIN users u ON u.id = pt.owner_id
+        WHERE pt.tool_key = %s
+        """,
+        (tool_key,)).fetchone()
+
+
+def tool_calls_window(con, tool_key: str, since_ts: int) -> dict:
+    """Call outcome counters inside the window: every finished-or-live
+    attempt, ok, failed. insufficient is billed-never and listed
+    separately (never 'failed')."""
+    return con.execute(
+        """
+        SELECT COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE tc.status = 'ok') AS ok,
+               COUNT(*) FILTER (WHERE tc.status = 'failed') AS failed,
+               COUNT(*) FILTER (WHERE tc.status = 'insufficient')
+                 AS insufficient,
+               COUNT(*) FILTER (WHERE tc.status = 'running') AS running
+        FROM tool_calls tc
+        WHERE tc.tool_id = %s AND tc.started_at >= %s
+        """,
+        (tool_key, since_ts)).fetchone()
+
+
+def tool_earn_window(con, tool_key: str, since_ts: int) -> int:
+    """Provider earn (USD-millis) attributed to this tool inside the
+    window (S2 relation attribution: ledger ref → tool_call)."""
+    row = con.execute(
+        """
+        SELECT COALESCE(SUM(l.delta), 0) AS s FROM ledger l
+        JOIN tool_calls tc ON l.ref_type = 'tool_call'
+          AND l.ref_id = tc.id::text
+        WHERE l.kind = 'provider_earn' AND tc.tool_id = %s
+          AND l.created_at >= %s
+        """,
+        (tool_key, since_ts)).fetchone()
+    return int(row["s"])
+
+
+def tool_recent_calls(con, tool_key: str, limit: int) -> list:
+    return con.execute(
+        """
+        SELECT tc.id, tc.user_id, u.username, tc.status, tc.cost_snapshot,
+               tc.error, tc.result_public_id, tc.started_at, tc.finished_at
+        FROM tool_calls tc LEFT JOIN users u ON u.id = tc.user_id
+        WHERE tc.tool_id = %s
+        ORDER BY tc.id DESC LIMIT %s
+        """,
+        (tool_key, limit)).fetchall()
+
+
+def tool_audit_history(con, tool_key: str, limit: int) -> list:
+    """Every audit fact whose target names this tool (tool /
+    remote_tool presentations + pricing rows)."""
+    return con.execute(
+        """
+        SELECT a.id, a.actor_user_id, au.username AS actor, a.action,
+               a.target_type, a.before_json, a.after_json, a.created_at
+        FROM operator_audit a
+        LEFT JOIN users au ON au.id = a.actor_user_id
+        WHERE a.target_id = %s
+          AND a.target_type IN ('tool', 'pricing', 'remote_tool')
+        ORDER BY a.id DESC LIMIT %s
+        """,
+        (tool_key, limit)).fetchall()
 
 
 # ── Commerce: Orders ──
@@ -434,6 +564,217 @@ def platform_income_page(con, limit: int, offset: int) -> tuple[list, int]:
         "WHERE kind IN ('platform_commission','platform_revenue')"
     ).fetchone()["n"]
     return rows, int(total)
+
+
+# ── Content governance (uploads + /r results) ──
+
+def _user_filter(user_q: str | None) -> tuple[str, list]:
+    """Operator user filter: exact numeric id OR exact username.
+    Returns (WHERE fragment over alias `u`, params)."""
+    if not user_q:
+        return "TRUE", []
+    uid = int(user_q) if user_q.isdigit() and len(user_q) <= 18 else None
+    return "(u.id = %s OR u.username = %s)", [uid, user_q]
+
+
+def content_uploads(con, q_share: str | None, user_q: str | None,
+                    tool_key: str | None,
+                    limit: int, offset: int) -> tuple[list, int]:
+    """Shared/uploaded files (uploads rows) with owner join. q_share
+    matches public_id substring; tool_key keeps only files this tool
+    PRODUCED (a call's stored result record lists every file item's
+    public_id — that record is the only durable tool↔file link since
+    tool_calls.upload_id retired)."""
+    where = ["TRUE"]
+    params: list = []
+    if q_share:
+        where.append("up.public_id ILIKE %s")
+        params.append(_like(q_share))
+    uw, up = _user_filter(user_q)
+    where.append(uw)
+    params += up
+    if tool_key:
+        where.append(
+            "up.public_id IN ("
+            " SELECT (item->>'public_id')"
+            " FROM tool_calls tc"
+            " CROSS JOIN LATERAL jsonb_array_elements("
+            "   CASE WHEN tc.result_json IS NOT NULL"
+            "        AND tc.result_json LIKE '{%%'"
+            "   THEN COALESCE(tc.result_json::jsonb->'items',"
+            "                 '[]'::jsonb)"
+            "   ELSE '[]'::jsonb END) AS item"
+            " WHERE tc.tool_id = %s AND item->>'kind' = 'file')")
+        params.append(tool_key)
+    wsql = " AND ".join(where)
+    rows = con.execute(
+        """
+        SELECT up.id, up.public_id, up.file_name, up.content_type,
+               up.size_bytes, up.user_id, u.username AS owner_name,
+               up.allowed_downloads, up.expire_at, up.created_at
+        FROM uploads up LEFT JOIN users u ON u.id = up.user_id
+        WHERE """ + wsql + """
+        ORDER BY up.id DESC LIMIT %s OFFSET %s
+        """,
+        (*params, limit, offset)).fetchall()
+    total = con.execute(
+        """
+        SELECT COUNT(*) AS n FROM uploads up
+        LEFT JOIN users u ON u.id = up.user_id
+        WHERE """ + wsql,
+        tuple(params)).fetchone()["n"]
+    return rows, int(total)
+
+
+def content_results(con, q_result: str | None, user_q: str | None,
+                    tool_key: str | None,
+                    limit: int, offset: int) -> tuple[list, int]:
+    """Tool results (tool_calls rows owning a /r public id). q_result
+    matches result_public_id substring."""
+    where = ["tc.result_public_id IS NOT NULL"]
+    params: list = []
+    if q_result:
+        where.append("tc.result_public_id ILIKE %s")
+        params.append(_like(q_result))
+    uw, up = _user_filter(user_q)
+    where.append(uw)
+    params += up
+    if tool_key:
+        where.append("tc.tool_id = %s")
+        params.append(tool_key)
+    wsql = " AND ".join(where)
+    rows = con.execute(
+        """
+        SELECT tc.id, tc.result_public_id, tc.tool_id, tc.user_id,
+               u.username AS owner_name, tc.status, tc.cost_snapshot,
+               tc.started_at, tc.finished_at
+        FROM tool_calls tc LEFT JOIN users u ON u.id = tc.user_id
+        WHERE """ + wsql + """
+        ORDER BY tc.id DESC LIMIT %s OFFSET %s
+        """,
+        (*params, limit, offset)).fetchall()
+    total = con.execute(
+        """
+        SELECT COUNT(*) AS n FROM tool_calls tc
+        LEFT JOIN users u ON u.id = tc.user_id
+        WHERE """ + wsql,
+        tuple(params)).fetchone()["n"]
+    return rows, int(total)
+
+
+# ── Call log ──
+
+def calls_page(con, tool_q: str | None, user_q: str | None,
+               status: str | None, error_q: str | None,
+               ts_from: int | None, ts_to: int | None,
+               limit: int, offset: int) -> tuple[list, int]:
+    """Every tool call with its settlement facts joined from the ledger
+    (consume charge / refund of that charge / provider_earn /
+    platform_commission / platform_revenue — all keyed ref_type
+    'tool_call' + call id, refund keyed to the charge ledger id)."""
+    where = ["TRUE"]
+    params: list = []
+    if tool_q:
+        where.append("tc.tool_id ILIKE %s")
+        params.append(_like(tool_q))
+    uw, up = _user_filter(user_q)
+    where.append(uw)
+    params += up
+    if status:
+        where.append("tc.status = %s")
+        params.append(status)
+    if error_q:
+        where.append("tc.error ILIKE %s")
+        params.append(_like(error_q))
+    if ts_from is not None:
+        where.append("tc.started_at >= %s")
+        params.append(ts_from)
+    if ts_to is not None:
+        where.append("tc.started_at < %s")
+        params.append(ts_to)
+    wsql = " AND ".join(where)
+    rows = con.execute(
+        """
+        SELECT tc.id, tc.tool_id, tc.user_id, u.username, tc.status,
+               tc.error, tc.cost_snapshot, tc.started_at, tc.finished_at,
+               tc.result_public_id,
+               ch.delta AS charge_delta,
+               rf.delta AS refund_delta,
+               pe.delta AS payout_millis,
+               pc.delta AS commission_millis,
+               pr.delta AS revenue_millis
+        FROM tool_calls tc
+        LEFT JOIN users u ON u.id = tc.user_id
+        LEFT JOIN ledger ch ON ch.kind = 'consume'
+             AND ch.ref_type = 'tool_call' AND ch.ref_id = tc.id::text
+        LEFT JOIN ledger rf ON rf.kind = 'refund'
+             AND rf.ref_type = 'ledger' AND rf.ref_id = ch.id::text
+        LEFT JOIN ledger pe ON pe.kind = 'provider_earn'
+             AND pe.ref_type = 'tool_call' AND pe.ref_id = tc.id::text
+        LEFT JOIN ledger pc ON pc.kind = 'platform_commission'
+             AND pc.ref_type = 'tool_call' AND pc.ref_id = tc.id::text
+        LEFT JOIN ledger pr ON pr.kind = 'platform_revenue'
+             AND pr.ref_type = 'tool_call' AND pr.ref_id = tc.id::text
+        WHERE """ + wsql + """
+        ORDER BY tc.id DESC LIMIT %s OFFSET %s
+        """,
+        (*params, limit, offset)).fetchall()
+    total = con.execute(
+        """
+        SELECT COUNT(*) AS n FROM tool_calls tc
+        LEFT JOIN users u ON u.id = tc.user_id
+        WHERE """ + wsql,
+        tuple(params)).fetchone()["n"]
+    return rows, int(total)
+
+
+# ── Overview: daily aggregation (live, no stats table) ──
+
+def overview_daily(con, days: int, ts_to: int) -> list:
+    """Per-UTC-day rows (newest first) for the overview window ending at
+    ts_to: registrations, call attempts/failed, net credits charged
+    (consume − refunds of consumes, same net contract as
+    overview_consumer), platform income and provider earn (USD-millis).
+    Aggregated live from users/tool_calls/ledger — never a stats table.
+    Asset kinds are never merged: credits and the two USD-millis income
+    columns stay separate fields."""
+    import datetime as _dt
+    end = _dt.datetime.fromtimestamp(ts_to, _dt.timezone.utc).date()
+    start = end - _dt.timedelta(days=days - 1)
+
+    def _day(ts_col: str) -> str:
+        return f"((to_timestamp({ts_col}) AT TIME ZONE 'UTC')::date)"
+
+    day_rows = con.execute(
+        f"""
+        SELECT d::date AS day,
+          (SELECT COUNT(*) FROM users u
+             WHERE {_day('u.created_at')} = d) AS registrations,
+          (SELECT COUNT(*) FROM tool_calls tc
+             WHERE {_day('tc.started_at')} = d) AS calls,
+          (SELECT COUNT(*) FROM tool_calls tc
+             WHERE {_day('tc.started_at')} = d AND tc.status = 'failed')
+            AS calls_failed,
+          ((SELECT -COALESCE(SUM(l.delta), 0) FROM ledger l
+              WHERE l.kind = 'consume' AND {_day('l.created_at')} = d)
+           - (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
+              WHERE l.kind = 'refund' AND {_day('l.created_at')} = d))
+            AS credits_net,
+          ((SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
+              WHERE l.kind = 'platform_commission'
+                AND {_day('l.created_at')} = d)
+           + (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
+              WHERE l.kind = 'platform_revenue'
+                AND {_day('l.created_at')} = d))
+            AS platform_millis,
+          (SELECT COALESCE(SUM(l.delta), 0) FROM ledger l
+             WHERE l.kind = 'provider_earn'
+               AND {_day('l.created_at')} = d) AS provider_millis
+        FROM generate_series(%s::date, %s::date, '1 day') d
+        ORDER BY d DESC
+        """,
+        (start, end)).fetchall()
+    return [dict(r) for r in day_rows]
 
 
 # ── Audit ──

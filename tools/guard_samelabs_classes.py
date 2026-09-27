@@ -26,6 +26,7 @@ VALUE_TOKENS = {
     "active",      # sl-pager/sl-sidenav a.active — defined in samelabs.css
     "miss",        # commerce_products.html — tier-fact miss modifier
     "hidden",      # tier-field-create.hidden / .hidden — defined
+    "running",     # calls.html — r.status == 'running' (status value)
 }
 
 STYLESHEETS = ("static/css/tokens.css", "static/css/components.css",

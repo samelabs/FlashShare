@@ -1,0 +1,155 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% block title %}工具 {{ t.tool_key }}{% endblock %}
+{% block crumb %}运营后台 / <a href="/samelabs/tools">工具供给</a> / {{ t.tool_key }}{% endblock %}
+{% block body %}
+<div class="sl-cards">
+  <div class="card card-pad">
+    <h2>名称与说明</h2>
+    <div class="facts">
+      {% for lang, text in t.labels.items() %}
+      <div class="fact"><span class="sl-dim">名称（{{ lang }}）</span><b>{{ text }}</b></div>
+      {% endfor %}
+      {% for lang, text in t.descs.items() %}
+      <div class="fact"><span class="sl-dim">说明（{{ lang }}）</span><b>{{ text }}</b></div>
+      {% else %}
+      <div class="fact"><span class="sl-dim">说明</span><b>—</b></div>
+      {% endfor %}
+      <div class="fact"><span class="sl-dim">类别</span><b>{{ t.cls }}</b></div>
+      <div class="fact"><span class="sl-dim">可见性</span><b>{{ t.visibility }}</b></div>
+    </div>
+  </div>
+  <div class="card card-pad">
+    <h2>作者与端点</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">作者</span><b>{% if t.owner_id %}<a href="/samelabs/users/{{ t.owner_id }}">{{ t.owner }}</a>{% else %}平台（官方命名空间）{% endif %}</b></div>
+      <div class="fact"><span class="sl-dim">执行方式</span><b>{{ t.execution }}</b></div>
+      {% if t.execution == 'http' %}
+      <div class="fact"><span class="sl-dim">端点 URL</span><b class="sl-mono">{{ t.endpoint_url or '—' }}</b></div>
+      <div class="fact"><span class="sl-dim">超时（秒）</span><b>{{ t.endpoint_timeout or '—' }}</b></div>
+      <div class="fact"><span class="sl-dim">端点鉴权</span><b>{{ '已配置（凭据加密存储，不显示）' if t.endpoint_has_auth else '无' }}</b></div>
+      {% endif %}
+      <div class="fact"><span class="sl-dim">受信</span><b>{{ '✔' if t.trusted else '✕' }}</b></div>
+      <div class="fact"><span class="sl-dim">创建时间</span><b>{{ fmt_ts(t.created_at) }}</b></div>
+    </div>
+  </div>
+  <div class="card card-pad">
+    <h2>输入与格式</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">输入窗口</span><b>{{ t.files_min }} – {{ t.files_max }} 个文件</b></div>
+      <div class="fact"><span class="sl-dim">格式族（accept）</span><b>{{ (t.accept|join(', ')) if t.accept else '全部兼容' }}</b></div>
+      <div class="fact"><span class="sl-dim">输出类型</span><b>{{ t.outputs|join(' / ') }}</b></div>
+    </div>
+  </div>
+  <div class="card card-pad">
+    <h2>最近 30 天</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">调用数</span><b>{{ fmt_num(stats.total) }}</b></div>
+      <div class="fact"><span class="sl-dim">成功 / 失败</span><b>{{ fmt_num(stats.ok) }} / {{ fmt_num(stats.failed) }}</b></div>
+      <div class="fact"><span class="sl-dim">失败率</span><b>{{ stats.fail_rate }}</b></div>
+      <div class="fact"><span class="sl-dim">积分不足</span><b>{{ fmt_num(stats.insufficient) }}</b></div>
+      <div class="fact"><span class="sl-dim">进行中</span><b>{{ fmt_num(stats.running) }}</b></div>
+      <div class="fact"><span class="sl-dim">开发者收益</span><b>{{ earn_usd or '—' }}</b></div>
+    </div>
+  </div>
+</div>
+
+<section class="sl-panel">
+  <div class="sl-panel-head"><h2>参数声明</h2><span class="sl-panel-sub">与用户发布契约同源（params_json）</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>键</th><th>类型</th><th>标签</th><th>必填</th><th>选项 / 约束</th></tr></thead>
+    <tbody>
+    {% for p in t.params %}
+      <tr>
+        <td class="sl-mono">{{ p.key }}</td>
+        <td>{{ p.type }}</td>
+        <td>{{ p.label }}</td>
+        <td>{{ '✔' if p.required else '✕' }}</td>
+        <td class="sl-dim">
+          {% if p.type == 'enum' %}{{ (p.options or [])|map(attribute='value')|join(', ') }}
+          {% elif p.type == 'number' %}{{ (p.min ~ ' ~ ' ~ p.max) if p.min is defined else '—' }}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="sl-empty">无参数声明</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sl-panel">
+  <div class="sl-panel-head"><h2>运营操作</h2><span class="sl-panel-sub">全部操作实时校验运营权限并写审计</span></div>
+  <div class="sl-toolbar" id="toolActions" data-key="{{ t.tool_key }}">
+    <span class="sl-dim">运营上架</span>
+    <label class="switch"><input type="checkbox" id="toggleDelisted"
+          {{ '' if t.delisted else 'checked' }}><span class="switch-track"></span></label>
+    <form class="sl-inline-form" id="presentationForm">
+      <span class="sl-dim">推荐</span>
+      <label class="switch"><input type="checkbox" name="featured" {{ 'checked' if t.featured }}><span class="switch-track"></span></label>
+      <span class="sl-dim">排序值</span>
+      <input class="sl-input" type="number" name="sort_order" value="{{ t.sort_order }}" min="0" step="1">
+      <button class="sl-btn sl-btn-sm" type="submit">保存推荐</button>
+    </form>
+    <form class="sl-inline-form" id="pricingForm">
+      <span class="sl-dim">定价（积分/次）</span>
+      <input class="sl-input" type="number" name="cost" value="{{ pricing.cost if pricing else 0 }}" min="0" max="1000000" step="1">
+      <label class="switch"><input type="checkbox" name="enabled" {{ 'checked' if pricing and pricing.enabled }}><span class="switch-track"></span></label>
+      <button class="sl-btn sl-btn-sm" type="submit">保存定价</button>
+    </form>
+    {% if is_platform_http %}
+    <button class="btn sl-btn-danger" type="button" id="delTool">删除工具</button>
+    {% endif %}
+  </div>
+</section>
+
+<section class="sl-panel">
+  <div class="sl-panel-head"><h2>最近调用</h2><span class="sl-panel-sub">最近 20 条</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>用户</th><th>状态</th><th>费用（积分）</th><th>错误</th><th>结果页</th><th>开始</th><th>结束</th></tr></thead>
+    <tbody>
+    {% for c in recent %}
+      <tr>
+        <td>{{ c.id }}</td>
+        <td><a href="/samelabs/users/{{ c.user_id }}">{{ c.username or c.user_id }}</a></td>
+        <td><span class="tag {{ 'tag-success' if c.status == 'ok' else 'tag-danger' }}">{{ c.status }}</span></td>
+        <td class="sl-num">{{ fmt_num(c.cost) }}</td>
+        <td class="sl-dim">{{ c.error or '—' }}</td>
+        <td>{% if c.result_public_id %}<a class="sl-mono" href="/r/{{ c.result_public_id }}">/r/{{ c.result_public_id }}</a>{% else %}—{% endif %}</td>
+        <td>{{ fmt_ts(c.started_at) }}</td>
+        <td>{{ fmt_ts(c.finished_at) if c.finished_at else '—' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="sl-empty">暂无调用</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sl-panel">
+  <div class="sl-panel-head"><h2>审计历史</h2><span class="sl-panel-sub">该工具的全部运营修改事实</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>操作人</th><th>动作</th><th>修改前</th><th>修改后</th><th>时间</th></tr></thead>
+    <tbody>
+    {% for a in audit_rows %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.actor or a.actor_user_id }}</td>
+        <td>{{ a.action }}</td>
+        <td><code class="sl-mono sl-dim">{{ a.before_json or '—' }}</code></td>
+        <td><code class="sl-mono">{{ a.after_json or '—' }}</code></td>
+        <td>{{ fmt_ts(a.created_at) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="sl-empty">暂无审计记录</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}
+{% block script %}<script src="/static/pages/samelabs_tool_detail.js?v={{ pages_version }}"></script>{% endblock %}

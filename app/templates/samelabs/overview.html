@@ -40,6 +40,35 @@
 </div>
 
 <section class="sl-panel">
+  <div class="sl-panel-head">
+    <h2>按日数据</h2>
+    <span class="sl-panel-sub">最近 {{ days }} 天 · 实时聚合（users / tool_calls / ledger），UTC 日界</span>
+    {% if days == 30 %}<a class="sl-btn sl-btn-sm" href="/samelabs?range=14">最近 14 天</a>
+    {% else %}<a class="sl-btn sl-btn-sm" href="/samelabs?range=30">最近 30 天</a>{% endif %}
+  </div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>日期</th><th>注册数</th><th>调用数</th><th>失败率</th><th>积分消耗（净）</th><th>平台收入</th><th>开发者收益</th></tr></thead>
+    <tbody>
+    {% for d in daily %}
+      <tr>
+        <td>{{ d.day }}</td>
+        <td class="sl-num">{{ fmt_num(d.registrations) }}</td>
+        <td class="sl-num">{{ fmt_num(d.calls) }}</td>
+        <td class="sl-num">{{ d.fail_rate }}</td>
+        <td class="sl-num">{{ fmt_num(d.credits_net) }}</td>
+        <td class="sl-num">{{ d.platform_usd }}</td>
+        <td class="sl-num">{{ d.provider_usd }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="sl-empty">暂无数据</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sl-panel">
   <div class="sl-panel-head"><h2>最近工具调用</h2></div>
   <div class="sl-tablewrap">
   <table class="sl-tbl">

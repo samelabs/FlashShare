@@ -81,3 +81,24 @@ def set_user_suspended(operator_id: int, user_id: int,
             "user", str(user_id), before,
             {"status": target_status}, ts)
     return dict(out)
+
+
+def delete_api_key(operator_id: int, user_id: int, key_id: int) -> None:
+    """Operator API-key takedown: physically delete one of a user's
+    Bearer keys. Uses the identity store's own delete primitive
+    (repo.keys.delete_key — the exact single point behind
+    identity.apikeys.delete_key) inside ONE transaction with the audit
+    fact, so a lost audit can never follow a completed delete. The
+    snapshot carries prefix/name only — key_hash and the sealed copy
+    never enter the audit."""
+    from repo import keys as keys_repo
+    ts = now()
+    with db() as con:
+        row = keys_repo.key_for_owner(con, user_id, key_id)
+        if row is None:
+            raise KeyError("not_found")
+        before = {"id": int(row["id"]), "user_id": int(row["user_id"]),
+                  "name": row["name"], "prefix": row["prefix"]}
+        keys_repo.delete_key(con, user_id, key_id)
+        operator_audit.record(con, operator_id, "api_key.delete",
+                              "api_key", str(int(key_id)), before, None, ts)

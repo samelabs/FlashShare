@@ -1,9 +1,14 @@
 """/samelabs/tools — Tool Supply (merged Tools + Remote registry).
 
 One table: every platform_tools row (Official local / Operator HTTP /
-Provider Tool) + pricing overlay + call/earn aggregates. Mutations go
-through core.operator.tools (single points preserved: governance.pricing
-/ repo.catalog / governance.tool_supply)."""
+Provider Tool) + pricing overlay + call/earn aggregates, with operator
+search / class / delisted / featured filters and pagination. The detail
+page /samelabs/tools/{key} shows the full declaration + 30-day stats +
+recent calls + audit history and drives the SAME mutation endpoints
+(single points preserved: governance.pricing / repo.catalog /
+governance.tool_supply)."""
+
+import json
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -11,20 +16,31 @@ from fastapi.responses import JSONResponse
 from database import db
 from economy.money import millis_to_usd_str
 from repo import operator_views
+from utils import now
 
 from app.routes.samelabs.common import gate, ctx, fmt_num, tool_class
 
 router = APIRouter()
 
+_PAGE = 50
+
 
 @router.get("/samelabs/tools")
-async def tools(request: Request):
+async def tools(request: Request, q: str = "", cls: str = "",
+                delisted: str = "", featured: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
     from app.main import templates
+    page = max(1, page)
+    q = q.strip()[:100]
+    if cls not in ("", "official", "community"):
+        cls = ""
     with db() as con:
-        rows = operator_views.tools_page(con)
+        rows, total = operator_views.tools_page(
+            con, q or None, cls or None,
+            delisted == "1", featured == "1",
+            _PAGE, (page - 1) * _PAGE)
     items = []
     for r in rows:
         d = dict(r)
@@ -36,7 +52,90 @@ async def tools(request: Request):
         items.append(d)
     return templates.TemplateResponse(
         request, "samelabs/tools.html",
-        ctx(request, user, tools=items, fmt_num=fmt_num, page_id="tools"))
+        ctx(request, user, tools=items, fmt_num=fmt_num, total=total,
+            q=q, f_class=cls,
+            f_delisted=(delisted == "1"), f_featured=(featured == "1"),
+            page=page, pages=max(1, -(-total // _PAGE)),
+            page_id="tools"))
+
+
+def _parse_json(raw, default):
+    try:
+        return json.loads(raw) if raw else default
+    except (TypeError, ValueError):
+        return default
+
+
+@router.get("/samelabs/tools/{tool_key:path}")
+async def tool_detail(tool_key: str, request: Request):
+    """Read-only operator view of one tool: declaration (labels/desc per
+    language, endpoint without secrets, input window, formats, outputs,
+    params, pricing) + 30-day usage/earnings + recent calls + this
+    tool's audit history. Mutations reuse the list-page endpoints."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from app.main import templates
+    tool_key = tool_key.strip("/")
+    if not tool_key:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    ts = now()
+    with db() as con:
+        row = operator_views.tool_row(con, tool_key)
+        if row is None:
+            return JSONResponse({"ok": False, "error": "not_found"}, 404)
+        t = dict(row)
+        t["cls"] = tool_class(t)
+        t["owner"] = t["owner_name"] or "平台"
+        labels = _parse_json(t["label_json"], {})
+        t["labels"] = labels if isinstance(labels, dict) else {}
+        descs = _parse_json(t["desc_json"], {})
+        if isinstance(descs, dict):
+            t["descs"] = descs
+        elif descs:
+            t["descs"] = {"—": str(descs)}
+        else:
+            t["descs"] = {}
+        accept = _parse_json(t["accept_json"], None)
+        t["accept"] = accept if isinstance(accept, list) else None
+        outputs = _parse_json(t["outputs_json"], ["file"])
+        t["outputs"] = outputs if isinstance(outputs, list) else []
+        params = _parse_json(t["params_json"], [])
+        t["params"] = [p for p in params if isinstance(p, dict)] \
+            if isinstance(params, list) else []
+        endpoint = _parse_json(t["endpoint_json"], {}) if t["execution"] == "http" else {}
+        from repo.catalog import pricing_row
+        pricing = pricing_row(con, tool_key)
+        stats = dict(operator_views.tool_calls_window(
+            con, tool_key, ts - 30 * 86400))
+        earn_millis = operator_views.tool_earn_window(
+            con, tool_key, ts - 30 * 86400)
+        recent = [dict(r) for r in
+                  operator_views.tool_recent_calls(con, tool_key, 20)]
+        audit_rows = [dict(r) for r in
+                      operator_views.tool_audit_history(con, tool_key, 20)]
+    # endpoint projection: URL + timeout only; auth presence as a fact,
+    # auth header NAME / token VALUE never render (operator or not)
+    t["endpoint_url"] = endpoint.get("url", "") if t["execution"] == "http" else ""
+    t["endpoint_timeout"] = endpoint.get("timeout_s", "") if t["execution"] == "http" else ""
+    t["endpoint_has_auth"] = bool(endpoint.get("auth_header")
+                                  or endpoint.get("auth_token"))
+    total_calls = int(stats["total"] or 0)
+    stats["fail_rate"] = (f"{int(stats['failed']) * 100 // total_calls}%"
+                          if total_calls else "—")
+    for r in recent:
+        r["cost"] = int(r["cost_snapshot"])
+    return templates.TemplateResponse(
+        request, "samelabs/tool_detail.html",
+        ctx(request, user, t=t, pricing=(dict(pricing) if pricing else None),
+            stats=stats,
+            earn_usd=(millis_to_usd_str(earn_millis)
+                      if t["owner_id"] is not None else ""),
+            recent=recent, audit_rows=audit_rows,
+            is_platform_http=(t["owner_id"] is None
+                              and t["execution"] == "http"),
+            fmt_num=fmt_num, page_title=f"工具 {tool_key}",
+            page_id="tools"))
 
 
 @router.post("/samelabs/tools/{tool_id:path}/pricing")

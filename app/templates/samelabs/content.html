@@ -1,0 +1,79 @@
+{% extends "samelabs/base_samelabs.html" %}
+{% set page_title = "内容管理" %}
+{% block title %}内容管理{% endblock %}
+{% block crumb %}运营后台 / 内容管理{% endblock %}
+{% block body %}
+<section class="sl-panel">
+  <div class="sl-panel-head"><h2>查找内容</h2><span class="sl-panel-sub">按分享 id / 结果 id / 用户（ID 或用户名）/ 工具键；「下架」即删除该文件（含物理存储），写审计</span></div>
+  <form method="get" action="/samelabs/content" class="sl-toolbar">
+    <input type="search" name="share" value="{{ q_share }}" placeholder="分享 id（/f/…）" class="sl-input">
+    <input type="search" name="result" value="{{ q_result }}" placeholder="结果 id（/r/…）" class="sl-input">
+    <input type="search" name="user" value="{{ q_user }}" placeholder="用户 ID 或用户名" class="sl-input">
+    <input type="search" name="tool" value="{{ q_tool }}" placeholder="工具键" class="sl-input">
+    <button class="sl-btn" type="submit">查找</button>
+    <span class="sl-dim">文件 {{ fmt_num(up_total) }} · 结果 {{ fmt_num(res_total) }}</span>
+  </form>
+</section>
+
+<section class="sl-panel">
+  <div class="sl-panel-head"><h2>文件（uploads）</h2><span class="sl-panel-sub">用户分享与工具产出的物理文件映射</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>文件名</th><th>类型</th><th>大小</th><th>所有者</th><th>创建时间</th><th>过期时间</th><th>剩余下载</th><th>前台链接</th><th></th></tr></thead>
+    <tbody>
+    {% for f in files %}
+      <tr>
+        <td>{{ f.id }}</td>
+        <td>{{ f.file_name }}</td>
+        <td class="sl-dim">{{ f.content_type }}</td>
+        <td class="sl-num">{{ f.size_h }}</td>
+        <td><a href="/samelabs/users/{{ f.user_id }}">{{ f.owner_name or f.user_id }}</a></td>
+        <td>{{ fmt_ts(f.created_at) }}</td>
+        <td>{{ fmt_ts(f.expire_at) }}</td>
+        <td class="sl-num">{{ f.remaining if f.remaining is not none else '—' }}</td>
+        <td><a class="sl-mono" href="/f/{{ f.public_id }}">/f/{{ f.public_id }}</a></td>
+        <td><button class="sl-btn sl-btn-sm" type="button"
+              data-del-upload="{{ f.id }}" data-name="{{ f.file_name }}">下架</button></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="sl-empty">未找到文件</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="sl-panel">
+  <div class="sl-panel-head"><h2>结果（/r）</h2><span class="sl-panel-sub">工具调用的公开结果页</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>调用 ID</th><th>结果 id</th><th>工具</th><th>所有者</th><th>状态</th><th>费用（积分）</th><th>开始</th><th>结束</th><th>前台链接</th></tr></thead>
+    <tbody>
+    {% for r in results %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td class="sl-mono">{{ r.result_public_id }}</td>
+        <td class="sl-mono"><a href="/samelabs/tools/{{ r.tool_id|urlencode }}">{{ r.tool_id }}</a></td>
+        <td><a href="/samelabs/users/{{ r.user_id }}">{{ r.owner_name or r.user_id }}</a></td>
+        <td><span class="tag {{ 'tag-success' if r.status == 'ok' else 'tag-danger' }}">{{ r.status }}</span></td>
+        <td class="sl-num">{{ fmt_num(r.cost_snapshot) }}</td>
+        <td>{{ fmt_ts(r.started_at) }}</td>
+        <td>{{ fmt_ts(r.finished_at) if r.finished_at else '—' }}</td>
+        <td><a class="sl-mono" href="/r/{{ r.result_public_id }}">/r/{{ r.result_public_id }}</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="sl-empty">未找到结果</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if pages > 1 %}
+  <nav class="sl-pager">
+    {% for p in range(1, pages + 1) %}
+      <a href="/samelabs/content?share={{ q_share|urlencode }}&amp;result={{ q_result|urlencode }}&amp;user={{ q_user|urlencode }}&amp;tool={{ q_tool|urlencode }}&amp;page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}
+{% block script %}<script src="/static/pages/samelabs_content.js?v={{ pages_version }}"></script>{% endblock %}

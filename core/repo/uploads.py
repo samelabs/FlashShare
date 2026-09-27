@@ -40,6 +40,19 @@ def by_public_id(con, public_id: str) -> Optional[dict]:
         (public_id,)).fetchone()
 
 
+def by_id(con, upload_id: int) -> Optional[dict]:
+    """Operator/internal by-id read (audit snapshot + takedown
+    targeting); owner scoping is decided by the caller."""
+    return con.execute(
+        """
+        SELECT id, user_id, public_id, gokapi_id, file_name,
+               content_type, size_bytes, allowed_downloads, expire_at,
+               created_at
+        FROM uploads WHERE id = %s
+        """,
+        (upload_id,)).fetchone()
+
+
 def by_owner(con, user_id: int, now_ts: int, limit: int, offset: int) -> list:
     return con.execute(
         """
