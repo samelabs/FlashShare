@@ -70,8 +70,9 @@ with _w.catch_warnings():
     from starlette.testclient import TestClient
 
 _cur.execute("delete from packages where code='tc_pkg'")
-purge_users(_cur, [r["id"] for r in _cur.execute(
-    "select id from users where username like 'tc%'").fetchall()])
+_cur.execute(
+    "select id from users where username like 'tc%'")
+purge_users(_cur, [r[0] for r in _cur.fetchall()])
 def _new_user(prefix):
     u = prefix + uuid.uuid4().hex[:6]
     _cur.execute(
@@ -187,8 +188,9 @@ for old in ("/subscribe", "/plan-upgrade", "/plan-downgrade"):
 _cur.execute("update plans set creem_product_id=%s, price_cents=%s where code='plus'",
              (_plus_orig_pid, _plus_orig_price))
 _cur.execute("delete from packages where code='tc_pkg'")
-purge_users(_cur, [r["id"] for r in _cur.execute(
-    "select id from users where username like 'tc%'").fetchall()])
+_cur.execute(
+    "select id from users where username like 'tc%'")
+purge_users(_cur, [r[0] for r in _cur.fetchall()])
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))

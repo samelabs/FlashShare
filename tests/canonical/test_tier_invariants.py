@@ -82,9 +82,10 @@ def _cleanup_own_rows():
     _cur.execute(
         "delete from orders where user_id in"
         " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
-    purge_users(_cur, [r["id"] for r in _cur.execute(
+    _cur.execute(
         "select id from users where username like 'invuser'"
-        " or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$'").fetchall()])
+        " or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$'")
+    purge_users(_cur, [r[0] for r in _cur.fetchall()])
     _cur.execute(
         "delete from plans where code in"
         " ('inv8tier', 'inv6tier', 'inv4tier', 'inv5tier', 'inv11t')")
@@ -280,8 +281,9 @@ except ValueError:
 _cur.execute("delete from memberships where user_id=%s", (uid,))
 _cur.execute("delete from pending_downgrades where user_id=%s", (uid,))
 _cur.execute("delete from plans where code='inv11t'")
-purge_users(_cur, [r["id"] for r in _cur.execute(
-    "select id from users where username='invuser'").fetchall()])
+_cur.execute(
+    "select id from users where username='invuser'")
+purge_users(_cur, [r[0] for r in _cur.fetchall()])
 plan_catalog.catalog(refresh=True)
 
 # ═══ INV10/INV11 route-level: 真实 ASGI 路由 + provider 调用计数 ═══

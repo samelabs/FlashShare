@@ -92,8 +92,9 @@ _cur.execute("delete from memberships where user_id in (select id from users whe
 _cur.execute("delete from orders where user_id in (select id from users where username like 'mg%')")
 _cur.execute("delete from ledger where user_id in (select id from users where username like 'mg%')")
 _cur.execute("delete from plans where code like 'mg_%'")
-purge_users(_cur, [r["id"] for r in _cur.execute(
-    "select id from users where username like 'mg%'").fetchall()])
+_cur.execute(
+    "select id from users where username like 'mg%'")
+purge_users(_cur, [r[0] for r in _cur.fetchall()])
 
 def _new_user(prefix):
     import uuid
@@ -753,8 +754,9 @@ for _sid, _st, _rn, _want in _MC_ROWS:
           _mie(_st, _rn, _NOW) == _want)
 _cur.execute("delete from memberships where provider_subscription_id like 'mcmat%%'")
 _cur.execute("delete from plans where code='mcmat'")
-purge_users(_cur, [r["id"] for r in _cur.execute(
-    "select id from users where username like 'mcmat_u%%'").fetchall()])
+_cur.execute(
+    "select id from users where username like 'mcmat_u%%'")
+purge_users(_cur, [r[0] for r in _cur.fetchall()])
 
 print()
 print("FAIL: " + (", ".join(FAIL) if FAIL else "无 — 全绿"))
