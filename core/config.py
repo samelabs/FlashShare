@@ -26,7 +26,16 @@ PRODUCT_VERSION = _read_product_version()
 SEO_TITLE = "518.PLUS"
 SEO_DESC = "Upload, share, done. Fast temporary file links with QR codes."
 
-BASE_URL = os.environ.get("FLASHSHARE_BASE_URL", "http://localhost:53843").rstrip("/")
+def _required_env(name: str) -> str:
+    """Mandatory deployment value: no silent default — a missing
+    variable aborts startup naming exactly what is absent."""
+    val = (os.environ.get(name) or "").strip()
+    if not val:
+        raise RuntimeError(f"{name} environment variable must be set")
+    return val
+
+
+BASE_URL = _required_env("FLASHSHARE_BASE_URL").rstrip("/")
 SOCIAL_IMAGE_PATH = "/static/images/og-image.png?v=2"
 SOCIAL_IMAGE_URL = f"{BASE_URL}{SOCIAL_IMAGE_PATH}"
 
@@ -39,8 +48,8 @@ MCP_ALLOWED_ORIGINS = tuple(
 X_CLIENT_ID = os.environ.get("FLASHSHARE_X_CLIENT_ID", "")
 X_CLIENT_SECRET = os.environ.get("FLASHSHARE_X_CLIENT_SECRET", "")
 
-GOKAPI_URL = os.environ.get("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53842").rstrip("/")
-GOKAPI_KEY = os.environ.get("FLASHSHARE_GOKAPI_KEY", "")
+GOKAPI_URL = _required_env("FLASHSHARE_GOKAPI_URL").rstrip("/")
+GOKAPI_KEY = _required_env("FLASHSHARE_GOKAPI_KEY")
 
 SESSION_SECRET = os.environ.get("FLASHSHARE_SESSION_SECRET", "")
 

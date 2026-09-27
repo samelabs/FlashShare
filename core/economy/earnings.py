@@ -258,7 +258,7 @@ def mark_withdrawal_paid(withdrawal_id: int, payout_ref: str,
 
 def mark_withdrawal_payout_failed(withdrawal_id: int, reason: str,
                                   admin_user_id: int) -> dict:
-    """approved → payout_failed (B2b-1): the external payout could not be
+    """approved → payout_failed : the external payout could not be
     completed. ONE transaction: status flip + earn-pool return (a positive
     provider_earn ledger row, idem `payout-failed:{id}`) + audit. The earn
     pool math never changes shape — earnings_summary already excludes
@@ -321,7 +321,7 @@ def revenue_lines(user_id: int, limit: int = 50, offset: int = 0) -> tuple:
     for r in rows:
         tool_id = r["tool_id"]
         out.append({"delta": int(r["delta"]),
-                    "call_id": r["ref_id"],           # ref = tool_calls.id (批4 #17)
+                    "call_id": r["ref_id"],           # ref = tool_calls.id (ledger ref contract)
                     "tool": tool_id if tool_id is not None else "?",
                     "ts": int(r["created_at"])})
     return out, int(total)

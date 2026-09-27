@@ -65,7 +65,7 @@ def reverse_payment(event_type: str, event: dict) -> dict:
     status = str(txn.get("status") or "")
     if event_type == "refund.created":
         if status == "partially_refunded":
-            # Owner rule (B2b-1): a partial refund is a HUMAN decision —
+            # Owner rule : a partial refund is a HUMAN decision —
             # ZERO Credits mutation, ZERO Membership mutation. The event
             # lands in the operator review queue (idempotent per event id)
             # and the webhook acknowledges with 200: replaying it can
@@ -192,7 +192,7 @@ def _reverse_subscription(txn: dict) -> dict:
     total = sum(int(r["delta"]) for r in rows) if rows else 0
     # Which payment is this? Decided by WHO FUNDED THE PERIOD'S BASE
     # CYCLE — read from the durable transaction record written when the
-    # period was first applied (B2b-1), NEVER from ledger grant rows (a
+    # period was first applied , NEVER from ledger grant rows (a
     # paid plan with zero monthly credits mints no base grant, which made
     # every later same-period refund look like a base payment):
     #   recorded base txn != this txn → upgrade/proration charge: reverse

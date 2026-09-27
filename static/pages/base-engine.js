@@ -20,7 +20,7 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
     window.__LOCALE_MAP={en:"en",zh:"zh-CN",ja:"ja-JP",ko:"ko-KR",es:"es-ES",ar:"ar",de:"de-DE",ru:"ru-RU",pt:"pt-BR",fr:"fr-FR"};
     window.__LANG_LABELS={"en":"English","zh":"简体中文","ja":"日本語","ko":"한국어","es":"Español","ar":"العربية","de":"Deutsch","ru":"Русский","pt":"Português","fr":"Français"};
         window.__afterI18n=null;
-    window.t=function(k,v){var I=window.__I18N__||{};var T=I[window.__LANG]||I.en||{};var s=T[k]||k;if(v){for(var p in v)s=s.split("{"+p+"}").join(v[p])}return s};
+    window.t=function(k,v){var I=window.__I18N__||{};var T=I[window.__LANG]||I.en||{};var E=I.en||{};var s=T[k]||E[k]||k;if(v){for(var p in v)s=s.split("{"+p+"}").join(v[p])}return s};
     window.applyI18n=function(){
       var L=window.__LANG||"en";
       document.documentElement.lang=window.__LOCALE_MAP[L]||"en";

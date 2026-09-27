@@ -41,11 +41,17 @@
 
 ## Environment variables（只列名字，不列值）
 
+必填（缺失时启动直接报错并指名变量；无默认值）：
+
 - `DATABASE_URL` — PostgreSQL DSN（`postgresql+psycopg://…`）
 - `FLASHSHARE_SESSION_SECRET` — session/token 签名密钥
+- `FLASHSHARE_BASE_URL` — 对外基地址（og 链接/MCP endpoint/分享链接）
+- `FLASHSHARE_GOKAPI_URL` / `FLASHSHARE_GOKAPI_KEY` — Gokapi API
+
+可选：
+
 - `FLASHSHARE_REGISTER_LIMIT_PER_HOUR` — 注册每 IP 每小时上限（默认 30；CI 等隔离栈调高）
 - `FLASHSHARE_LOGIN_LIMIT_PER_15MIN` — 登录失败每 IP 每 15 分钟上限（默认 50；CI 等隔离栈调高）
-- `FLASHSHARE_GOKAPI_URL` / `FLASHSHARE_GOKAPI_KEY` — Gokapi API
 - `TOOL_VAULT_KEY` — secrets_vault 加密密钥（Fernet）：工具鉴权凭据与API key 加密副本共用；未配置时创建 API key 直接失败（不降级为只显示一次）
 - `FLASHSHARE_MCP_ALLOWED_ORIGINS` — 可选，逗号分隔的额外浏览器 origin
   （`scheme://host[:port]`）。`/mcp` 对带 `Origin` 头的请求只放行

@@ -1,4 +1,4 @@
-"""Operator user commands (B2b-2): password reset, provider suspension.
+"""Operator user commands : password reset, provider suspension.
 
 Both verbs are audited and protect the platform row and backoffice
 accounts. Password reset NEVER records the credential itself; suspension

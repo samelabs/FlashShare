@@ -83,7 +83,7 @@ def grant(user_id: int, amount: int, kind: str, *,
             con, user_id, amount, bal + amount,
             kind, ref_type, ref_id, idem_key, note, ts))
     with db() as con:
-        # 幂等检查在行锁之后(批2a 修复): 并发同 idem_key 的后到者在
+        # 幂等检查在行锁之后(idempotency-under-lock fix): 并发同 idem_key 的后到者在
         # _balance_for_update 的 users 行锁上排队, 先到者提交后才读到
         # prior → 干净重放; 不再有"检查过→插入撞唯一索引"的 500 窗口。
         bal = _balance_for_update(con, user_id)
@@ -120,7 +120,7 @@ def consume(user_id: int, cost: int, kind: str, *,
             con, user_id, -cost, bal - cost,
             kind, ref_type, ref_id, idem_key, note, ts))
     with db() as con:
-        bal = _balance_for_update(con, user_id)  # 行锁先行(幂等检查锁内, 批2a)
+        bal = _balance_for_update(con, user_id)  # 行锁先行(幂等检查锁内, the billing lock-order fix)
         if idem_key:
             prior = ledger_repo.by_idem_key(con, user_id, idem_key)
             if prior:
@@ -143,7 +143,7 @@ def refund(user_id: int, amount: int, *,
         raise ValueError("refund amount must be positive")
     ts = now()
     with db() as con:
-        bal = _balance_for_update(con, user_id)  # 行锁先行(幂等检查锁内, 批2a)
+        bal = _balance_for_update(con, user_id)  # 行锁先行(幂等检查锁内, the billing lock-order fix)
         if idem_key:
             prior = ledger_repo.by_idem_key(con, user_id, idem_key)
             if prior:

@@ -1,4 +1,4 @@
-"""Test-only user purge helper (B2b-2).
+"""Test-only user purge helper .
 
 Production has NO delete-user surface, and the financial/audit fact
 tables now RESTRICT user deletion. Canonical suites that clean up their

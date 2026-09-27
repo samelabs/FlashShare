@@ -1,4 +1,4 @@
-"""execution 域 — 工具执行闸门与编排 (批2e).
+"""execution 域 — 工具执行闸门与编排 (the execution-domain split).
 
 从 app/routes/api.py 收编的执行面核心:
   gate.py          计量闸门: replay/attempt → charge → 编排回调 → fact+分账/退费

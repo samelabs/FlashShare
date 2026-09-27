@@ -328,7 +328,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     # frozen on the row at claim time; later settings changes only affect
     # FUTURE claims, never this attempt's settlement.
     #
-    # B2b-1 commission fail-closed: a missing/illegal rate refuses the call
+    # commission fail-closed: a missing/illegal rate refuses the call
     # BEFORE the claim (zero charge, zero attempt) for third-party metered
     # tools — a payout split must never be settled on a guessed rate. System
     # tools (platform direct sales) and free/self-owned calls never read the

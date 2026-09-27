@@ -1,4 +1,4 @@
-"""governance/delivery — 平台产物交付策略单源 (Stage C).
+"""governance/delivery — 平台产物交付策略单源 (the canonical-invocation unification).
 
 合法值/默认值只有这一份。调用方一律传 canonical 整数值; 校验用
 本模块的严格 validator (无字符串强转、无非法回落)。

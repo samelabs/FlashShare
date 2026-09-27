@@ -165,7 +165,7 @@ check("B2 uploads 恰新增一行", n_uploads_after - n_uploads_before == 1,
       f"{n_uploads_before}→{n_uploads_after}")
 check("B3 tool_call ok + result binding (upload_id 列已退役)",
       row["status"] == "ok" and row["result_public_id"] is not None)
-# IO-1: the result owns a fresh public id (/r/{id}); file items carry
+# the result owns a fresh public id (/r/{id}); file items carry
 # their own uploads public ids
 rj = _json.loads(row["result_json"])
 check("B4 result_public_id is the /r/ id (own identity)",
@@ -514,7 +514,7 @@ check("K3b ok + NULL invocation_hash → reject (replay authority 需 hash)",
                   (f"kr3b_{_u}", user9, tool9, ts, ts)))
 
 # ═══ L-block retired: save_upload_record deleted (no production caller
-# since the direct-share branch removal; FX-1b dead-code item) ═══
+# since the direct-share branch removal; the coherence passb dead-code item) ═══
 
 # ══════════ M. strict tri-state outcome regression ══════════
 from execution.gate import (OUTCOME_DURABLE_SUCCESS, OUTCOME_PROVEN_ROLLBACK,
@@ -664,7 +664,7 @@ check("N3 durable source 执行后不被删除 (row 保留 + 零 delete 调用)"
 # semantic: orchestrator 无 source eager-delete
 _orch2 = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
               encoding="utf-8").read()
-# FX-1: orchestrator owns ALL-OR-NOTHING staging cleanup (a later item
+# the coherence pass: orchestrator owns ALL-OR-NOTHING staging cleanup (a later item
 # failing deletes every staged-this-call object before the failure
 # settles). Settlement cleanup stays in gate.py (PROVEN_ROLLBACK).
 check("S1 orchestrator 暂存清理走 storage 适配器 (全量回收)",

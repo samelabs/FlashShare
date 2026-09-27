@@ -1,1 +1,1 @@
-# governance domain (批2d): catalog + pricing + tool lifecycle
+# governance domain: catalog + pricing + tool lifecycle

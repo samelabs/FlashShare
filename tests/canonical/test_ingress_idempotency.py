@@ -204,7 +204,7 @@ ck2 = _register(_u + "w2")
 with db() as con:
     uid2 = con.execute("select id from users where username=%s",
                        (_u + "w2",)).fetchone()["id"]
-# IO-3a: the no-tool direct-share branch is RETIRED — every upload stages
+# the no-tool direct-share branch is RETIRED — every upload stages
 # a tool source (sharing = the share tool). No-tool posts are rejected
 # before any quota reservation or storage side effect.
 ref17 = f"ds-{_u}-1"

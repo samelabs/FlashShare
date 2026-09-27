@@ -253,7 +253,7 @@ _TXNS[f"txn_{_u}p1"] = {
     "type": "payment", "order": f"ord3_{_u}",
 }
 sc, body = _fire("refund.created", f"txn_{_u}p1")
-check("C1 partial refund → 200 review queue + zero mutation (B2b-1)",
+check("C1 partial refund → 200 review queue + zero mutation ",
       sc == 200 and body.get("kind") == "review"
       and body.get("reason") == "partial_refund"
       and spendable_balance(buyer3) == b3_0,

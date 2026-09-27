@@ -195,7 +195,7 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
     console.log("✓ confirmAction authority: engine-only definition, tokens/profile consume, behavior intact");
   }
 
-  // ── FX-1: download-all drives BOTH download shapes ──
+  // ── the coherence pass: download-all drives BOTH download shapes ──
 // In standalone PWA the file rows are <button data-dl-url> (href stripped
 // by wirePwaDownloadLinks); an anchor-only selector in the download-all
 // path silently no-ops. Both surfaces must select the unified .rs-dl.

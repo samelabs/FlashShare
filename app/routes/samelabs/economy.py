@@ -90,7 +90,7 @@ async def platform_income(request: Request, page: int = 1):
 
 @router.post("/samelabs/economy/commission")
 async def set_commission(request: Request):
-    """Operator write: platform commission 0..100 integer (B2b-1).
+    """Operator write: platform commission 0..100 integer .
     Audited old → new inside the settings transaction; anything but a
     whole 0..100 int is refused with the current value untouched."""
     user, resp = gate(request)
@@ -124,7 +124,7 @@ async def set_commission(request: Request):
     return {"ok": True, "rate": rate}
 
 
-# ── Withdrawal queue (S4 lifecycle) ──
+# ── Withdrawal queue (withdrawal lifecycle) ──
 
 _WD_STATUSES = ("pending", "approved", "rejected", "paid",
                 "payout_failed")
@@ -159,7 +159,7 @@ async def withdrawals(request: Request, status: str = "", page: int = 1):
             page_id="economy_withdrawals"))
 
 
-# ── Payment review queue (B2b-1 partial refunds) ──
+# ── Payment review queue (partial refunds) ──
 
 @router.get("/samelabs/economy/reviews")
 async def payment_reviews(request: Request, status: str = "", page: int = 1):
@@ -244,7 +244,7 @@ async def reject_withdrawal(wid: int, request: Request):
 
 @router.post("/samelabs/economy/withdrawals/{wid}/payout-failed")
 async def payout_failed(wid: int, request: Request):
-    """approved → payout_failed (B2b-1): earn-pool return in the same
+    """approved → payout_failed : earn-pool return in the same
     transaction; reason required (audit evidence)."""
     user, resp = gate(request)
     if resp:

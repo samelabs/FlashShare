@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B2b-1 economy closure canonical — commission fail-closed, payout_failed,
+"""Economy closure canonical — commission fail-closed, payout_failed,
 partial-refund review queue, upgrade-refund boundary, outputs enforcement.
 
 Real gate.run / orchestrator / earnings / reverse / webhook route; Creem

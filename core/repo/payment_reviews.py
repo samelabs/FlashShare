@@ -1,4 +1,4 @@
-"""repo/payment_reviews — B2b-1 partial-refund operator review queue.
+"""repo/payment_reviews — partial-refund operator review queue.
 
 One row per provider webhook EVENT that needs a human decision (today:
 refund.created against a partially_refunded transaction). The queue is

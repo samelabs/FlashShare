@@ -111,7 +111,7 @@ try:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("a.txt", "hello")
-    # IO-3a: sharing runs through the share tool — stage the source,
+    # sharing runs through the share tool — stage the source,
     # then execute; the settled file item carries the public share id.
     body = (f'--B\r\nContent-Disposition: form-data; name="client_ref"\r\n\r\ninl7-{_u}\r\n'
             f'--B\r\nContent-Disposition: form-data; name="tool"\r\n\r\nshare\r\n'

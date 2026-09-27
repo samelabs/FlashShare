@@ -11,7 +11,7 @@ import json, time
 
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
 
-# ── FAIL-CLOSED GATE (同 Stage C 规则) ─────────────────────────────────
+# ── FAIL-CLOSED GATE (同 the canonical-invocation unification 规则) ─────────────────────────────────
 _TEST_PORT = _os.environ.get("FLASHSHARE_TEST_PORT")
 if not _TEST_PORT:
     _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT is required (isolated service port, never the production port).\n")
@@ -318,7 +318,7 @@ def _home_options(ck=None):
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     conn.request("GET", "/", headers={"Cookie": ck} if ck else {})
     r = conn.getresponse(); body = r.read().decode(); conn.close()
-    # IO-2: delivery options render client-side in the shared input
+    # delivery options render client-side in the shared input
     # component; their single SSR-injected source is window.__DELIVERY__.
     m = _re.search(r'window\.__DELIVERY__\s*=\s*(\{.*?\});', body, _re.S)
     if not m:
@@ -359,7 +359,7 @@ check("HD-E1 expired 精确回落 Free options", exp == FREE_EXP and dl == FREE_
 conn = _hc.HTTPConnection(*_HOST, timeout=30)
 conn.request("GET", "/", headers={"Cookie": _mf_ck})
 r = conn.getresponse(); body = r.read().decode(); conn.close()
-# IO-2: delivery selects render inside the shared input component; their
+# delivery selects render inside the shared input component; their
 # single SSR-injected source is window.__DELIVERY__ (checked above), and
 # the component reads its own selects at run time.
 check("HD-S1 home SSR 注入 __DELIVERY__ (组件 select 单一数据源)",
@@ -533,7 +533,7 @@ check("AP-H3 home block 无 plus policy / 无 DAILY_* 直用 / 无硬编码 7/20
       '"plus"' not in _home_blk and "DAILY_UPLOADS" not in _home_blk
       and "DAILY_BYTES" not in _home_blk
       and "maxDays\": 7" not in _home_blk and "maxDownloads\": 200" not in _home_blk)
-# IO-2: home 不再 SSR delivery selects (组件客户端渲染); 模板注入
+# home 不再 SSR delivery selects (组件客户端渲染); 模板注入
 # __DELIVERY__ 循环 (数据驱动, 无固定枚举), 组件读取同一来源。
 _tmpl = open(_os.path.join(_REPO, "app", "templates", "home.html"), encoding="utf-8").read()
 _deliv_blk = _tmpl[_tmpl.index("window.__DELIVERY__"):_tmpl.index("</script>", _tmpl.index("window.__DELIVERY__"))]

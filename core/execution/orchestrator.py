@@ -1,4 +1,4 @@
-"""execution/orchestrator — 三路执行编排 (批2e, 从 api.py 收编).
+"""execution/orchestrator — 三路执行编排 (the execution-domain split, 从 api.py 收编).
 
 local 单文件 / local 多文件 / remote。共享执行 spine:
 读源 → handler(subprocess) → stage physical result (Gokapi)。
@@ -40,7 +40,7 @@ class _SourceTooLarge(Exception):
 
 
 def _enforce_outputs(tool: dict, items: list) -> None:
-    """B2b-1 outputs 运行时强制 — local/remote 两条执行路径共用的唯一
+    """Outputs runtime enforcement — local/remote 两条执行路径共用的唯一
     校验点 (results.enforce_output_kinds), 在任何文件 staged 之前运行:
     每个结果项的 kind 都必须在该工具声明的 outputs 内, 违反 = 带类型化
     错误失败的调用 (gate 标准退款链结算), 零结果项落地。声明本身损坏
@@ -79,7 +79,7 @@ def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
                 pass
 
 
-# Stage C: delivery 合法性在 invocation boundary (governance.delivery
+# the canonical-invocation unification: delivery 合法性在 invocation boundary (governance.delivery
 # validate_delivery) 已严格保证; orchestrator 直读 canonical delivery,
 # 不再从 params 取 lifecycle / silent fallback / 猜默认值。
 

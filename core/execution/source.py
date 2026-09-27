@@ -1,4 +1,4 @@
-"""execution/source — 输入解析 (批2e, 从 api.py 收编).
+"""execution/source — 输入解析 (the execution-domain split, 从 api.py 收编).
 
 _resolve_upload: public_id → upload dict。
   DB 记录: 属主校验 (user_id 匹配)。

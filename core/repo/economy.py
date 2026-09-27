@@ -53,7 +53,7 @@ def mark_paid(con, withdrawal_id: int, ts: int, admin_user_id: int,
 
 
 def mark_payout_failed(con, withdrawal_id: int) -> dict:
-    """approved → payout_failed (B2b-1): status flip ONLY — review fields
+    """approved → payout_failed : status flip ONLY — review fields
     stay (they were set at approval), paid fields stay NULL. The earn-pool
     return is a ledger row written by the caller in the SAME transaction."""
     return con.execute(
