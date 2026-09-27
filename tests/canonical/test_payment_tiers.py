@@ -32,6 +32,7 @@ if not TEST_DB:
 sys.path.insert(0, _REPO)
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 import psycopg2
@@ -62,7 +63,8 @@ _cur.execute("delete from memberships where user_id in (select id from users whe
 _cur.execute("delete from orders where user_id in (select id from users where username like 'pt%')")
 _cur.execute("delete from ledger where user_id in (select id from users where username like 'pt%')")
 _cur.execute("delete from plans where code like 'pt_%'")
-_cur.execute("delete from users where username like 'pt%'")
+purge_users(_cur, [r["id"] for r in _cur.execute(
+    "select id from users where username like 'pt%'").fetchall()])
 
 def _new_user(prefix):
     import uuid

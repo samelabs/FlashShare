@@ -45,6 +45,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -700,15 +701,16 @@ try:
         _proc.terminate()
         _proc.wait(timeout=10)
         with db() as con:
-            con.execute("delete from users where username like %s",
-                        ("rl%" + _u + "%",))
+            purge_users(con, [r["id"] for r in con.execute(
+                "select id from users where username like %s",
+                ("rl%" + _u + "%",)).fetchall()])
 
 finally:
     with db() as con:
         con.execute("delete from operator_audit where actor_user_id = ANY(%s)",
                     (created_uids,))
         for t in created_uids:
-            con.execute("delete from users where id=%s", (t,))
+            purge_users(con, [t])
         con.execute("delete from platform_tools where tool_key like %s",
                     (f"%{_u}%",))
         con.execute("delete from mcp_upload_tickets where client_ref like %s",

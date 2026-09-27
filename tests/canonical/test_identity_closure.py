@@ -35,6 +35,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -425,7 +426,7 @@ finally:
         for uid in ids:
             con.execute("delete from tool_calls where user_id=%s", (uid,))
             con.execute("delete from ledger where user_id=%s", (uid,))
-            con.execute("delete from users where id=%s", (uid,))
+            purge_users(con, [uid])
         left = con.execute(
             "select count(*) c from users where username like %s or x_user_id like %s",
             (_u + "%", "xid-" + _u + "%")).fetchone()["c"]

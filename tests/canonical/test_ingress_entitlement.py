@@ -34,7 +34,8 @@ if not TEST_DB:
 
 sys.path.insert(0, _REPO)
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
-_os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")  # config 导入守卫; 本测试不签发 session
+_os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402  # config 导入守卫; 本测试不签发 session
 sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 import psycopg2
@@ -1074,7 +1075,7 @@ try:
             _cur.execute("delete from ledger where user_id=%s", (_uid_fix,))
             _cur.execute("delete from upload_usage where user_id=%s", (_uid_fix,))
             _cur.execute("delete from ingress_requests where user_id=%s", (_uid_fix,))
-            _cur.execute("delete from users where id=%s", (_uid_fix,))
+            purge_users(_cur, [_uid_fix])
     _con.commit()
 except Exception:
     pass

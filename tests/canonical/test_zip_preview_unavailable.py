@@ -37,6 +37,7 @@ sys.path.insert(0, _REPO)
 sys.path.insert(0, os.path.join(_REPO, "core"))
 os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -154,9 +155,7 @@ finally:
     _gk_fail(None)
     if uid is not None:
         with db() as con:
-            con.execute("delete from tool_calls where user_id=%s", (uid,))
-            con.execute("delete from ledger where user_id=%s", (uid,))
-            con.execute("delete from users where id=%s", (uid,))
+            purge_users(con, [uid])
     print("cleanup done")
 
 print()

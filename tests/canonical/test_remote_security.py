@@ -43,6 +43,7 @@ if not TEST_DB:
 sys.path.insert(0, _REPO)
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 FAIL = []
@@ -972,7 +973,9 @@ _cur.execute("delete from operator_audit where actor_user_id in (%s, %s)"
 _cur.execute("delete from pricing where tool_id like 'rs%/sec%' or tool_id = 'secop1'")
 _cur.execute("delete from platform_tools where tool_key like 'rs%' or tool_key = 'secop1'")
 _cur.execute("delete from sessions where user_id in (%s, %s) or user_id in (select id from users where username like 'ra%%')", (_auid, uid2))
-_cur.execute("delete from users where id in (%s, %s) or username like 'ra%%'", (_auid, uid2))
+purge_users(_cur, [r["id"] for r in _cur.execute(
+    "select id from users where id in (%s, %s) or username like 'ra%%'",
+    (_auid, uid2)).fetchall()])
 _con.close()
 
 print()

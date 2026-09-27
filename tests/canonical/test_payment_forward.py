@@ -32,6 +32,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -1080,7 +1081,7 @@ with db() as con:
                       mmA, mmB, mmC, mmD) if u],))
     for uid in (buyer, op, member, member2, member3, member4,
                 mmA, mmB, mmC, mmD):
-        con.execute("delete from users where id=%s", (uid,))
+        purge_users(con, [uid])
     con.execute("delete from plans where id in (%s, %s)", (plan_id, plan2_id))
     con.execute("delete from plans where id in (%s, %s)", (planA, planB))
     con.execute("delete from packages where id=%s", (pkg_id,))

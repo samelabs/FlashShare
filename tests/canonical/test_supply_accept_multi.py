@@ -4,6 +4,8 @@ import json, uuid, http.client, sys
 import os
 import os as _os, sys as _sys
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
+_sys.path.insert(0, _REPO)
+from tests.support.cleanup import purge_users  # noqa: E402
 
 # ── FAIL-CLOSED GATE ─────────────────────────────────────────────────────
 # Canonical integration tests run ONLY against an explicitly provided
@@ -151,7 +153,8 @@ _op_row = _cur3.fetchone()
 if _op_row:
     _cur3.execute("delete from operator_audit where actor_user_id = %s",
                   (_op_row[0],))
-_cur3.execute("delete from users where username='op4ctest'")
+purge_users(_cur3, [r["id"] for r in _cur3.execute(
+    "select id from users where username='op4ctest'").fetchall()])
 _cur3.execute("delete from pricing where tool_id like 'mtest%' or tool_id like 'dbcheck%'")
 _cur3.execute("delete from platform_tools where tool_key like 'mtest%' or tool_key like 'dbcheck%'")
 _c3.close(); print("清理: cleaned")

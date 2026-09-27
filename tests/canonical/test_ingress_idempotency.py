@@ -30,6 +30,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 _os.environ.setdefault("FLASHSHARE_GOKAPI_URL", "http://127.0.0.1:53901")
 _os.environ.setdefault("FLASHSHARE_GOKAPI_KEY", "test-gk-key")
 
@@ -925,7 +926,7 @@ with db() as con:
     con.execute("delete from platform_tools where tool_key=%s", (tO,))
 for uid in _uids_all:
     with db() as con:
-        con.execute("delete from users where id=%s", (uid,))
+        purge_users(con, [uid])
 print("cleanup: ingress fixtures removed")
 
 print()
