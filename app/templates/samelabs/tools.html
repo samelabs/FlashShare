@@ -73,6 +73,9 @@
     <label class="sl-check"><input type="checkbox" name="out_text"> text out</label>
     <label class="sl-check"><input type="checkbox" name="out_json"> json out</label>
     <label class="sl-check"><input type="checkbox" name="out_file" checked> file out</label>
+    <label>Params declaration (optional, JSON array — same contract as the user publish surface)
+      <textarea name="params" rows="4" placeholder='[{"key":"mode","type":"enum","label":"Mode","options":["fast","best"],"required":true}]' style="font-family:monospace;font-size:12px"></textarea>
+    </label>
     <label>Price (Credits/call) <input type="number" name="cost" value="0" min="0"></label>
     <div class="sl-modal-actions">
       <button class="sl-btn" type="button" id="createHttpCancel">Cancel</button>
