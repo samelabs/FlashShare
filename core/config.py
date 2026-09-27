@@ -77,12 +77,14 @@ ALLOWED_EXT = {
     ".pdf", ".txt", ".csv", ".md", ".rtf",
     ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
     ".odt", ".ods", ".odp",
+    ".log", ".diff", ".patch",
     # Archives
     ".zip", ".rar", ".7z", ".gz", ".tar", ".bz2", ".xz", ".tgz",
     # Data
-    ".json", ".xml", ".yaml", ".yml",
+    ".json", ".xml", ".yaml", ".yml", ".toml", ".ini",
     # Code (收缩到高价值文本子集 — 平台是处理+分享, 非 IDE)
     ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
+    ".sh", ".tsx", ".jsx", ".go", ".rs", ".java", ".ipynb",
     # CAD / 3D (设计·工程场景)
     ".dwg", ".dxf", ".step", ".stp", ".iges", ".igs",
     ".stl", ".obj", ".fbx", ".glb", ".gltf", ".3ds", ".skp", ".blend",

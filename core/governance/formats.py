@@ -49,6 +49,8 @@ MIME_EXTS: dict[str, set[str]] = {
     "application/vnd.oasis.opendocument.text": {".odt"},
     "application/vnd.oasis.opendocument.spreadsheet": {".ods"},
     "application/vnd.oasis.opendocument.presentation": {".odp"},
+    "text/x-log": {".log"},
+    "text/x-diff": {".diff", ".patch"},
     # archive
     "application/zip": {".zip"},
     "application/vnd.rar": {".rar"},
@@ -88,14 +90,21 @@ MIME_EXTS: dict[str, set[str]] = {
     "text/xml": {".xml"},
     "application/yaml": {".yaml", ".yml"},
     "text/yaml": {".yaml", ".yml"},
+    "application/toml": {".toml"},
+    "text/ini": {".ini"},
     # code
     "text/x-python": {".py"},
-    "text/javascript": {".js"},
+    "text/javascript": {".js", ".jsx"},
     "application/javascript": {".js"},
-    "text/typescript": {".ts"},
+    "text/typescript": {".ts", ".tsx"},
     "text/html": {".html", ".htm"},
     "text/css": {".css"},
     "application/x-sql": {".sql"},
+    "text/x-shellscript": {".sh"},
+    "text/x-go": {".go"},
+    "text/rust": {".rs"},
+    "text/x-java-source": {".java"},
+    "application/x-ipynb+json": {".ipynb"},
 }
 
 # 4C-1a: 不再有 FAMILY_EXTRA_EXTS — MIME_EXTS 完整表达当前 family 可发布/
@@ -140,7 +149,8 @@ _FAMILY_DEFS: dict[str, tuple[set[str], str]] = {
          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
          "application/vnd.oasis.opendocument.text",
          "application/vnd.oasis.opendocument.spreadsheet",
-         "application/vnd.oasis.opendocument.presentation"},
+         "application/vnd.oasis.opendocument.presentation",
+         "text/x-log", "text/x-diff"},
         "Documents",
     ),
     "archive": (
@@ -164,12 +174,15 @@ _FAMILY_DEFS: dict[str, tuple[set[str], str]] = {
     ),
     "data": (
         {"application/json", "application/xml", "text/xml",
-         "application/yaml", "text/yaml"},
+         "application/yaml", "text/yaml",
+         "application/toml", "text/ini"},
         "Data",
     ),
     "code": (
         {"text/x-python", "text/javascript", "application/javascript",
-         "text/typescript", "text/html", "text/css", "application/x-sql"},
+         "text/typescript", "text/html", "text/css", "application/x-sql",
+         "text/x-shellscript", "text/x-go", "text/rust",
+         "text/x-java-source", "application/x-ipynb+json"},
         "Code",
     ),
 }

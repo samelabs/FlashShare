@@ -59,7 +59,9 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
         return False, "err_content_mismatch_archive"
     if ext in {".txt", ".csv", ".md", ".json", ".xml", ".yaml", ".yml",
                ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
-               ".svg", ".step", ".stp", ".iges", ".igs", ".obj"} and b"\x00" in sample:
+               ".svg", ".step", ".stp", ".iges", ".igs", ".obj",
+               ".log", ".diff", ".patch", ".toml", ".ini",
+               ".sh", ".tsx", ".jsx", ".go", ".rs", ".java", ".ipynb"} and b"\x00" in sample:
         return False, "err_content_mismatch_text"
     import mimetypes
     return True, content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
