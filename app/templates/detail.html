@@ -35,6 +35,20 @@
           <span class="meta-item">{{ download_count_icon }}<span>{{ texts.r_downloads_left }} {{ downloads_left }}</span></span>
         </div>
       </div>
+      <div class="row row-wrap r-actions file-actions">
+        <a class="btn btn-primary" href="{{ dl_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
+        <button class="btn btn-secondary" id="copyBtn" type="button">{{ icon_svg("link") }}<span>{{ texts['copy_link'] }}</span></button>
+        <button class="btn btn-secondary" id="qrBtn" type="button" aria-label="QR" title="QR">{{ icon_svg("qr") }}<span>QR</span></button>
+        <button class="btn btn-secondary" id="shareImgBtn" type="button" aria-label="{{ texts.share_via_system }}" title="{{ texts.share_via_system }}">{{ icon_svg("share") }}<span>{{ texts.share_via_system }}</span></button>
+        <a class="btn btn-icon" href="{{ share_url }}" target="_blank" rel="noreferrer" aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
+        {% if is_pdf %}
+        <a class="btn btn-secondary" href="/f/{{ public_id }}/print" target="_blank" rel="noopener" aria-label="{{ texts.print_btn }}">{{ icon_svg("print") }}<span data-i18n="print_btn">{{ texts.print_btn }}</span></a>
+        {% endif %}
+        {% if is_zip %}
+        <button class="btn btn-secondary" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
+        {% endif %}
+        <input id="landingUrl" value="{{ escaped_url }}" readonly type="hidden">
+      </div>
       {% if is_image %}
       <div class="rs-item rs-image file-preview">
         <span class="rs-image"><img src="{{ inline_url }}" alt="{{ file_name }}" loading="lazy" decoding="async"></span>
@@ -45,29 +59,15 @@
         <span class="file-name">{{ file_name }}</span>
         <span class="file-meta">{{ size_text }}{% if content_type %} · {{ content_type }}{% endif %}</span>
       </div>
+      {% if is_owner %}
       <div class="workspace-tools" id="workspaceTools" data-pid="{{ public_id }}">
-        {% if is_owner %}
         <div class="row" id="ownerTools">
           <button class="btn btn-ghost btn-sm" id="renameBtn">{{ icon_svg("edit") }}<span>{{ texts.rename }}</span></button>
           <button class="btn btn-danger-soft btn-sm" id="deleteBtn">{{ icon_svg("trash") }}<span>{{ texts.delete }}</span></button>
         </div>
-        {% endif %}
       </div>
+      {% endif %}
     </div>
-  </div>
-  <div class="row row-wrap r-actions file-actions">
-    <a class="btn btn-primary" href="{{ dl_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span>{{ texts.download_file }}</span></a>
-    <button class="btn btn-secondary" id="copyBtn" type="button">{{ icon_svg("link") }}<span>{{ texts['copy_link'] }}</span></button>
-    <button class="btn btn-icon" id="qrBtn" type="button" aria-label="QR" title="QR">{{ icon_svg("qr") }}</button>
-    <button class="btn btn-icon" id="shareImgBtn" type="button" aria-label="{{ texts.shareImg }}" title="{{ texts.shareImg }}">{{ icon_svg("share") }}</button>
-    <a class="btn btn-icon" href="{{ share_url }}" target="_blank" rel="noreferrer" aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
-    {% if is_pdf %}
-    <a class="btn btn-secondary" href="/f/{{ public_id }}/print" target="_blank" rel="noopener" aria-label="{{ texts.print_btn }}">{{ icon_svg("print") }}<span data-i18n="print_btn">{{ texts.print_btn }}</span></a>
-    {% endif %}
-    {% if is_zip %}
-    <button class="btn btn-secondary" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
-    {% endif %}
-    <input id="landingUrl" value="{{ escaped_url }}" readonly type="hidden">
   </div>
 </section>
 {% endblock %}

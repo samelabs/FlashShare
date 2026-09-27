@@ -52,9 +52,17 @@
     });
   }
 
-  // Print
-  const printBtn = document.getElementById("rPrintBtn");
-  if (printBtn) printBtn.addEventListener("click", () => window.print());
+  // System share (site-wide Web Share authority; user cancel is not an
+  // error — red line 9). The result PAGE is the shared artifact; file
+  // items keep their own per-item downloads.
+  const shareBtn = document.getElementById("rShareBtn");
+  if (shareBtn) {
+    shareBtn.addEventListener("click", async () => {
+      if (!navigator.share) return;
+      try { await navigator.share({ title: document.title, url: window.location.href }); }
+      catch (e) { if (e && e.name === "AbortError") return; }
+    });
+  }
 
   // Download all: sequential per-file downloads. Each file already has
   // its own download=1 link (browser-native download, own expiry and
