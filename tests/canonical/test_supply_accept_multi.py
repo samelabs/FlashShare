@@ -153,8 +153,7 @@ _op_row = _cur3.fetchone()
 if _op_row:
     _cur3.execute("delete from operator_audit where actor_user_id = %s",
                   (_op_row[0],))
-purge_users(_cur3, [r["id"] for r in _cur3.execute(
-    "select id from users where username='op4ctest'").fetchall()])
+purge_users(_cur3, [_op_row[0]] if _op_row else [])
 _cur3.execute("delete from pricing where tool_id like 'mtest%' or tool_id like 'dbcheck%'")
 _cur3.execute("delete from platform_tools where tool_key like 'mtest%' or tool_key like 'dbcheck%'")
 _c3.close(); print("清理: cleaned")
