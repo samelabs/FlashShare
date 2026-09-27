@@ -62,6 +62,18 @@ TEST_DB_URL 时直接退出（不发任何请求）。两种合法方式：
 
 **A. local isolated stack（与 CI 同构，日常开发/验收用）**
 
+唯一本地入口是 `tools/ci_local.sh`：自建全新库 + fake Gokapi(:53898) + app(:8100)，
+按给定顺序跑套件、输出一张退出码表、结束后自动停服务并 DROP 库。不要另写驱动脚本。
+
+```bash
+PG_ADMIN_URL=postgresql://<user>@127.0.0.1:5432/postgres \
+  tools/ci_local.sh tests/canonical/<affected>.py ...     # 受影响套件
+tools/ci_local.sh --browser                               # 不带参数 = ci.yml 全部 + 两道浏览器门禁
+```
+
+浏览器门禁需 `PLAYWRIGHT_CORE_PATH`（playwright-core 1.55.0）；本机无 Playwright Chromium 时设
+`CHROMIUM_PATH` 指向系统 Chrome。下面是它内部使用的环境（手工排障时参考）：
+
 - isolated PostgreSQL 16 库（每个分支/批次独立库，验收后 DROP）
 - `tests/support/fake_gokapi.py`（Gokapi HTTP boundary test service）
 - isolated app 端口（≠ 8000；8000 是生产端口，测试显式拒绝）
@@ -127,7 +139,9 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 角色与边界见 AGENTS.md A 节。
 
 1. `git fetch origin`；从 PM 指定的基线（默认 `origin/main`）建分支。
-2. 改动 + diff 自审 + 门禁（compile / node / canonical 全量）。
+2. 改动 + diff 自审 + 门禁：compile / node --check / `tools/ci_local.sh` 跑受影响套件
+   （UI 改动加 `--browser`）。全量验证由 GitHub CI 负责，执行 agent 不跑本地全量，
+   不用 sleep 轮询后台任务——套件前台运行，直接读退出码表。
 3. push 该 non-main 分支 → 报告 → **STOP**。
 4. PM 按精确 SHA 验收，开 PR，等 GitHub CI（fast-gate / canonical-integration /
    browser-runtime）全绿后合入 `main`；production deploy 需 owner 授权。
