@@ -521,8 +521,6 @@ async def account_credits(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from economy.billing import spendable_balance as get_balance, history_paged
-    from economy.daily import DAILY_AMOUNT, granted_today
-    daily_amount = DAILY_AMOUNT
     pg = 1
     try:
         pg = max(1, int(request.query_params.get("page", "1") or 1))
@@ -633,37 +631,12 @@ async def account_credits(request: Request):
         })
     ctx = _account_ctx(request, "credits", _base=_base,
                        balance=get_balance(user["id"]),
-                       granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
-                       daily_amount=daily_amount,
                        packages=pkgs, topup_ready=topup_ready,
                        credits_ready=credits_ready,
                        plans=plans, pending_downgrade=pending,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)
-
-
-@router.post("/account/credits/claim")
-async def account_credits_claim(request: Request):
-    """Explicit daily-bonus claim button.
-
-    Closes the gap where a long-lived session crossing UTC midnight
-    never re-triggers the login-time grant: the user just clicks claim.
-    Idempotency is the same daily:{uid}:{yyyymmdd} key — clicking twice
-    in one day simply re-renders with 'already granted'.
-    """
-    user = request.state.user
-    if not user:
-        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from economy.daily import grant_daily, DAILY_AMOUNT
-    import logging as _logging
-    if DAILY_AMOUNT <= 0:
-        return RedirectResponse("/account/credits", 303)
-    try:
-        grant_daily(user["id"])
-    except Exception:
-        _logging.getLogger("flashshare").exception("daily claim failed")
-    return RedirectResponse("/account/credits", 303)
 
 
 @router.get("/account/earnings", response_class=HTMLResponse)

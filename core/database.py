@@ -573,8 +573,7 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS platform_tools_owner_idx
       ON platform_tools(owner_id)
     """,
-    # activities 表已移除 — 每日登录 = economy.daily 模块常量,
-    # 无表无 seed; 发放流水在 ledger (note='activity:daily_login')。
+    # activities 表已移除（每日登录积分亦已删除, C1), 无表无 seed。
     # ── platform: withdrawals (provider payout requests) ──
     # S4 final authority: review fields (reviewed_*) + paid fields
     # (paid_*, payout_ref) + request-time payout_channel_snapshot.
