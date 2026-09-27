@@ -8,6 +8,10 @@ import urllib.error
 
 from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET
 from database import db
+import psycopg2.errors as _pgerr
+
+_UniqueViolation = _pgerr.UniqueViolation
+
 from repo import users as users_repo
 from repo import sessions as sessions_repo
 from security import hash_password, verify_password
@@ -77,8 +81,13 @@ def register_user(username: str, email: str, password: str) -> int:
     with db() as con:
         if users_repo.email_taken_by_other(con, email, 0):
             raise ValueError("err_email_taken")
-        row = users_repo.insert_local(con, username, email, pw_hash,
-                                      username, ts)
+        try:
+            row = users_repo.insert_local(con, username, email, pw_hash,
+                                          username, ts)
+        except _UniqueViolation:
+            # lost the race against the lower(email) unique index:
+            # converges to the same typed contract, never a 500
+            raise ValueError("err_email_taken")
         return row["id"]
 
 
@@ -175,8 +184,18 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
                 raise ValueError("err_user_not_found")
             if row.get("status") == "suspended":
                 raise ValueError("err_user_suspended")
-            users_repo.bind_x(con, bind_user_id, x_id, x_username,
-                              x_display_name, avatar_url, x_profile_url, ts)
+            try:
+                users_repo.bind_x(con, bind_user_id, x_id, x_username,
+                                  x_display_name, avatar_url,
+                                  x_profile_url, ts)
+            except _UniqueViolation:
+                # two users raced to bind the same X identity: the loser
+                # hits the x_user_id UNIQUE constraint — same typed
+                # contract as the sequential check, never a 500.
+                winner = users_repo.by_x_user_id(con, x_id)
+                if winner is not None and winner["id"] != bind_user_id:
+                    raise ValueError("err_x_bound_other")
+                raise
             return bind_user_id
 
         username = (x_username or "")[:32]
@@ -188,10 +207,19 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             username = f"{base_name}_{suffix}"[:32]
             suffix += 1
 
-        row = users_repo.insert_x_user(
-            con, username, x_display_name or username, avatar_url,
-            x_id, x_username, x_display_name, x_profile_url, ts)
-        return row["id"]
+        try:
+            row = users_repo.insert_x_user(
+                con, username, x_display_name or username, avatar_url,
+                x_id, x_username, x_display_name, x_profile_url, ts)
+            return row["id"]
+        except _UniqueViolation:
+            # two concurrent first logins of the SAME X identity: the
+            # second INSERT loses the x_user_id UNIQUE race — converge
+            # to the existing account instead of failing the login.
+            existing = users_repo.by_x_user_id(con, x_id)
+            if existing is not None:
+                return existing["id"]
+            raise
 
 
 def unbind_x(user_id: int) -> None:
@@ -246,7 +274,10 @@ def update_profile(user_id: int, display_name: str | None = None,
                         raise ValueError("err_old_password_wrong")
                 if users_repo.email_taken_by_other(con, email, user_id):
                     raise ValueError("err_email_used")
-            users_repo.update_email(con, user_id, email, ts)
+            try:
+                users_repo.update_email(con, user_id, email, ts)
+            except _UniqueViolation:
+                raise ValueError("err_email_used")
 
 
 def _rotate_password_credentials(con, user_id: int, new_hash: str) -> None:
