@@ -77,4 +77,41 @@
       });
     });
   }
+
+  /* API key deletion — two-step confirm, same visual pattern */
+  var keysPanel = document.getElementById('apiKeysPanel');
+  if (keysPanel) {
+    keysPanel.querySelectorAll('[data-del-key]').forEach(function (b) {
+      var armed = false, t = 0;
+      b.addEventListener('click', function () {
+        if (!armed) {
+          armed = true; b.dataset.orig = b.textContent;
+          b.textContent = '确认删除？';
+          b.classList.add('sl-btn-danger');
+          t = setTimeout(function () {
+            if (armed) {
+              armed = false; b.textContent = b.dataset.orig;
+              b.classList.remove('sl-btn-danger');
+            }
+          }, 4000);
+          return;
+        }
+        clearTimeout(t); b.disabled = true;
+        slBusy(b, slPost('/samelabs/users/' + keysPanel.dataset.uid +
+                         '/keys/' + b.dataset.delKey + '/delete', {}))
+          .then(function (r) {
+            if (r.ok && r.data.ok) {
+              slToast('ok', '已删除 API key', b.dataset.name + '（立即生效，已写审计）');
+              var tr = b.closest('tr');
+              if (tr) tr.remove();
+            } else {
+              slToast('err', '删除失败', (r.data && r.data.error) || '');
+              b.disabled = false; armed = false;
+              b.textContent = b.dataset.orig || '删除';
+              b.classList.remove('sl-btn-danger');
+            }
+          });
+      });
+    });
+  }
 })();

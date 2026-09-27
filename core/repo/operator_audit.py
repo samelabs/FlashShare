@@ -35,6 +35,11 @@ TARGET_SAFE_KEYS = {
     "setting": {"rate"},
     "payment_review": {"status", "txn_id", "event_id", "resolved_by"},
     "user": {"status", "pw_present", "pw_reset", "logins_revoked"},
+    # content takedown fact: mapping identity + owner only; gokapi_id is a
+    # storage binding (never audited — same discipline as the account API)
+    "upload": {"id", "user_id", "public_id", "file_name", "content_type",
+               "size_bytes"},
+    "api_key": {"id", "user_id", "name", "prefix"},
 }
 
 _SECRET_MARKERS = ("password", "token", "secret", "auth_header",

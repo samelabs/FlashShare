@@ -817,7 +817,7 @@ check("PM-C2 failed = status='failed' only (running/insufficient excluded)",
 # trust projection: NULL owner ⇒ trusted regardless of flag; provider row ⇒ flag
 with db() as con:
     _rows = {r_["tool_key"]: r_["trusted"]
-             for r_ in _ovm.tools_page(con)}
+             for r_ in _ovm.tools_page(con)[0]}
 _PU = f"{uname('prov')}/untrusted"   # provider keys: owner/tool
 _PT = f"{uname('prov')}/trusted"
 check("PM-C3 first-party (owner NULL) effective trusted",
@@ -837,7 +837,7 @@ with db() as con:
         (_PT, _json.dumps({"en": "P2"}), provider, now(), now()))
 with db() as con:
     _rows = {r_["tool_key"]: r_["trusted"]
-             for r_ in _ovm.tools_page(con)}
+             for r_ in _ovm.tools_page(con)[0]}
 check("PM-C3b provider trusted=false → false",
       _rows.get(_PU) is False, str(_rows.get(_PU)))
 check("PM-C3c provider trusted=true → true",

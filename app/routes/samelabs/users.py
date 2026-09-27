@@ -78,6 +78,19 @@ async def user_detail(user_id: int, request: Request):
                                                       _RECENT)]
         ledger = [dict(r) for r in
                   operator_views.user_recent_ledger(con, user_id, _RECENT)]
+        files = [dict(r) for r in
+                 operator_views.user_uploads(con, user_id, _RECENT)]
+    from identity.apikeys import list_keys
+    keys = [dict(r) for r in list_keys(user_id)]
+    from sharing.uploads import live_status_map
+    from utils import format_bytes, remaining_downloads
+    live = live_status_map()
+    for f in files:
+        gid = f.pop("gokapi_id", None)
+        f["size_h"] = format_bytes(int(f["size_bytes"]))
+        f["remaining"] = remaining_downloads(
+            int(f["allowed_downloads"]),
+            live.get(gid) if gid else None)
     prof = dict(prof)
     for k in ("provider_earned", "provider_pending", "provider_available"):
         prof[k + "_usd"] = millis_to_usd_str(int(prof[k + "_millis"]))
@@ -100,7 +113,8 @@ async def user_detail(user_id: int, request: Request):
     return templates.TemplateResponse(
         request, "samelabs/user_detail.html",
         ctx(request, user, u=prof, orders=orders, calls=calls,
-            withdrawals=wds, ledger=ledger, fmt_num=fmt_num,
+            withdrawals=wds, ledger=ledger, files=files, keys=keys,
+            fmt_num=fmt_num,
             page_title=f"用户 #{user_id}", page_id="users"))
 
 
@@ -193,3 +207,20 @@ async def adjust_credits(user_id: int, request: Request):
         return JSONResponse({"ok": False, "error": token}, 422)
     return {"ok": True, "balance_after": out["balance_after"],
             "replayed": out["replayed"]}
+
+
+@router.post("/samelabs/users/{user_id}/keys/{key_id}/delete")
+async def delete_api_key(user_id: int, key_id: int, request: Request):
+    """Operator deletion of ONE of the user's API keys (identity store
+    delete primitive + one audit fact, same transaction). The full key
+    value is never stored here, never displayed, never audited — the
+    operator surface shows prefix only."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from backoffice import users as users_cmd
+    try:
+        users_cmd.delete_api_key(int(user["id"]), user_id, key_id)
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True, "key_id": key_id}

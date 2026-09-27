@@ -145,6 +145,12 @@ def _get_all_gokapi_status():
     return _gokapi_cache.get("data", {}) if has_stale else {}
 
 
+def live_status_map() -> dict:
+    """Read-only live Gokapi snapshot for operator surfaces (the same
+    cache/policy single point list_uploads reads — no second fetcher)."""
+    return _get_all_gokapi_status()
+
+
 def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
     with db() as con:
         rows = uploads_repo.by_owner(con, user_id, int(time.time()), limit, offset)

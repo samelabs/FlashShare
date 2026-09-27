@@ -8,6 +8,18 @@
     <h2>全部工具（目录 + 定价）</h2>
     <button class="sl-btn" type="button" id="btnCreateHttp">＋ 新建运营 HTTP 工具</button>
   </div>
+  <form method="get" action="/samelabs/tools" class="sl-toolbar">
+    <input type="search" name="q" value="{{ q }}" placeholder="搜索工具键 / 名称 / 作者…" class="sl-input">
+    <select name="cls" class="sl-input">
+      <option value="">— 全部类别 —</option>
+      <option value="official" {{ 'selected' if f_class == 'official' }}>官方</option>
+      <option value="community" {{ 'selected' if f_class == 'community' }}>社区</option>
+    </select>
+    <label class="check"><input type="checkbox" name="delisted" value="1" {{ 'checked' if f_delisted }}> 已下架</label>
+    <label class="check"><input type="checkbox" name="featured" value="1" {{ 'checked' if f_featured }}> 推荐</label>
+    <button class="sl-btn" type="submit">筛选</button>
+    <span class="sl-dim">{{ fmt_num(total) }} 个工具</span>
+  </form>
   <div class="sl-tablewrap">
   <table class="sl-tbl">
     <thead><tr>
@@ -18,7 +30,7 @@
     <tbody>
     {% for t in tools %}
       <tr>
-        <td class="sl-mono">{{ t.tool_key }}</td>
+        <td class="sl-mono"><a href="/samelabs/tools/{{ t.tool_key|urlencode }}">{{ t.tool_key }}</a></td>
         <td>{{ t.owner }}</td>
         <td>{{ t.cls }}</td>
         <td>{{ t.execution }}</td>
@@ -52,6 +64,13 @@
     </tbody>
   </table>
   </div>
+  {% if pages > 1 %}
+  <nav class="sl-pager">
+    {% for p in range(1, pages + 1) %}
+      <a href="/samelabs/tools?q={{ q|urlencode }}&amp;cls={{ f_class }}&amp;delisted={{ '1' if f_delisted else '' }}&amp;featured={{ '1' if f_featured else '' }}&amp;page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
 </section>
 
 <dialog class="sl-modal" id="createHttpModal">

@@ -123,6 +123,32 @@
 </section>
 
 <section class="sl-panel">
+  <div class="sl-panel-head"><h2>该用户的文件</h2><span class="sl-panel-sub">最近 {{ files|length }} 条（含已过期未清理）；下架操作在内容管理页</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>文件名</th><th>类型</th><th>大小</th><th>创建时间</th><th>过期时间</th><th>剩余下载</th><th>前台链接</th></tr></thead>
+    <tbody>
+    {% for f in files %}
+      <tr>
+        <td>{{ f.id }}</td>
+        <td>{{ f.file_name }}</td>
+        <td class="sl-dim">{{ f.content_type }}</td>
+        <td class="sl-num">{{ f.size_h }}</td>
+        <td>{{ fmt_ts(f.created_at) }}</td>
+        <td>{{ fmt_ts(f.expire_at) }}</td>
+        <td class="sl-num">{{ f.remaining if f.remaining is not none else '—' }}</td>
+        <td><a class="sl-mono" href="/f/{{ f.public_id }}">/f/{{ f.public_id }}</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="sl-empty">暂无文件</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="sl-dim"><a href="/samelabs/content?user={{ u.id }}">在内容管理中查看并处理该用户的全部文件 →</a></p>
+</section>
+
+<section class="sl-panel">
   <div class="sl-panel-head"><h2>最近账目</h2><span class="sl-panel-sub">每行独立记账，积分与美元分列，不跨类相加</span></div>
   <div class="sl-tablewrap">
   <table class="sl-tbl">
@@ -144,6 +170,30 @@
   </table>
   </div>
   <p class="sl-dim"><a href="/samelabs/economy/credits?user_id={{ u.id }}">该用户的全部积分流水 →</a></p>
+</section>
+
+<section class="sl-panel" id="apiKeysPanel" data-uid="{{ u.id }}">
+  <div class="sl-panel-head"><h2>API key</h2><span class="sl-panel-sub">仅显示前缀，完整 key 不存储于后台、不显示；删除立即生效并写审计</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>名称</th><th>前缀</th><th>创建时间</th><th>最近使用</th><th></th></tr></thead>
+    <tbody>
+    {% for k in keys %}
+      <tr>
+        <td>{{ k.id }}</td>
+        <td>{{ k.name }}</td>
+        <td class="sl-mono">{{ k.prefix }}…</td>
+        <td>{{ fmt_ts(k.created_at) }}</td>
+        <td>{{ fmt_ts(k.last_used_at) }}</td>
+        <td><button class="sl-btn sl-btn-sm" type="button"
+              data-del-key="{{ k.id }}" data-name="{{ k.name }}">删除</button></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="sl-empty">暂无 API key</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </section>
 
 <section class="sl-panel">

@@ -290,6 +290,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_c2a_governance.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_c2b_backoffice.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_c2b_backoffice.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_identity_closure.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_identity_closure.py
@@ -467,6 +471,8 @@ jobs:
         run: python tests/canonical/test_c1_closure.py
       - name: C2a governance closure canonical
         run: python tests/canonical/test_c2a_governance.py
+      - name: C2b back-office completion canonical
+        run: python tests/canonical/test_c2b_backoffice.py
       - name: Commission effective-time canonical
         run: python tests/canonical/test_commission_effective_time.py
 
