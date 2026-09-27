@@ -41,7 +41,7 @@ def get_balance(user_id: int) -> int:
 # eat into provider earnings. grant_plan_upgrade is the Plus→Pro mid-cycle
 # top-up difference — spendable exactly like the base grant_plan, or an
 # upgraded member would see +400 yet be unable to spend it.
-SPENDABLE_KINDS = ("grant_signup", "signup_bonus", "daily",
+SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
                    "bonus", "topup", "consume", "refund", "adjust", "grant",
                    "revoke", "manual_topup", "grant_plan", "grant_package",
                    "grant_plan_upgrade")

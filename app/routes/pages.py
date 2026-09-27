@@ -538,9 +538,11 @@ async def account_credits(request: Request):
     # notes (operator/manual) keep rendering verbatim.
     from repo import ledger as _ledger_repo
     from governance.tool_params import resolve_label as _resolve_label
+    from economy.daily import daily_amount as _daily_amount, granted_today
     _lang = getattr(request.state, "lang", "en")
     with db() as con:
         _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
+        daily_amount = _daily_amount(con)
 
     def _ref_label(r: dict) -> str | None:
         ref = _tool_refs.get(int(r["id"]))
@@ -631,12 +633,39 @@ async def account_credits(request: Request):
         })
     ctx = _account_ctx(request, "credits", _base=_base,
                        balance=get_balance(user["id"]),
+                       granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
+                       daily_amount=daily_amount,
                        packages=pkgs, topup_ready=topup_ready,
                        credits_ready=credits_ready,
                        plans=plans, pending_downgrade=pending,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)
+
+
+@router.post("/account/credits/claim")
+async def account_credits_claim(request: Request):
+    """Explicit daily-bonus claim button.
+
+    Closes the gap where a long-lived session crossing UTC midnight
+    never re-triggers the login-time grant: the user just clicks claim.
+    Idempotency is the same daily:{uid}:{yyyymmdd} key — clicking twice
+    in one day simply re-renders with 'already granted'.
+    """
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from economy.daily import grant_daily, daily_amount
+    import logging as _logging
+    with db() as con:
+        amount = daily_amount(con)
+    if amount <= 0:
+        return RedirectResponse("/account/credits", 303)
+    try:
+        grant_daily(user["id"])
+    except Exception:
+        _logging.getLogger("flashshare").exception("daily claim failed")
+    return RedirectResponse("/account/credits", 303)
 
 
 @router.get("/account/earnings", response_class=HTMLResponse)

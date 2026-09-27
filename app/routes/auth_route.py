@@ -102,8 +102,17 @@ def _lang(request: Request) -> str:
     return getattr(request.state, "lang", "en")
 
 
+def _grant_daily(uid: int) -> None:
+    try:
+        from economy.daily import grant_daily
+        grant_daily(uid)
+    except Exception:
+        logger.exception("daily grant failed uid=%s", uid)
+
+
 def _login_maintenance(uid: int) -> None:
     """Best-effort login maintenance after identity has been accepted."""
+    _grant_daily(uid)
     try:
         from economy.reconcile import reconcile_user
         res = reconcile_user(uid)

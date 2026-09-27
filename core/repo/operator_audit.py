@@ -32,7 +32,7 @@ TARGET_SAFE_KEYS = {
     "remote_tool": {"tool_key", "tool_id", "execution", "tool_type",
                     "visibility", "enabled", "featured", "sort_order",
                     "files_min", "files_max", "outputs", "accept", "cost"},
-    "setting": {"rate"},
+    "setting": {"rate", "amount"},
     "payment_review": {"status", "txn_id", "event_id", "resolved_by"},
     "user": {"status", "pw_present", "pw_reset", "logins_revoked"},
     # content takedown fact: mapping identity + owner only; gokapi_id is a

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """C1 closure canonical — MCP envelope, delivery errors, storage meta
-tools, hosted-path removal, daily-credit removal, UI consistency.
+tools, hosted-path removal, daily-credit restore, UI consistency.
 
   A*  every structuredContent tools/call response (execution tool,
       create_upload, catalog_search, list_uploads) carries a content
@@ -13,8 +13,9 @@ tools, hosted-path removal, daily-credit removal, UI consistency.
       together).
   D*  hosted execution path is gone: /tool-endpoints/* 404, modules
       absent, no capability mint/verify anywhere.
-  E*  daily check-in credit removed: route gone, module gone, kind out
-      of SPENDABLE_KINDS, i18n keys gone, no dangling references.
+  E*  daily check-in credit restored (owner decision after the C1
+      removal): route present, module present, kind spendable, widget
+      i18n keys present, amount sourced from settings (0/unset = off).
   F*  UI consistency: tool page crumbs + unified file-count source +
       localized outputs + one MCP entry; /r and /f share the action-bar
       component inside the card; agents page has no TOKEN placeholders
@@ -309,27 +310,35 @@ check("D3 capability mint/verify gone",
       and "X-Hosted-Execution" not in _orc
       and "sign_fetch_token" in _sec, "")  # fetch tokens REMAIN (remote)
 
-# ══════════ E. daily check-in credit removed ══════════
+# ══════════ E. daily check-in credit (owner-restored, amount from settings) ══════════
+# c59ab16 removed the retired mechanism; a later owner decision restored it
+# as the first cold-start activity. Closure now pins the restored shape:
+# route present, module present, kind spendable, widget i18n keys present,
+# amount sourced from settings.daily_login_amount (0/unset = off).
 st, _b = _req("POST", "/account/credits/claim", {},
               {"Cookie": CK, "Accept": "text/html"})
-check("E1 claim route gone (authed → 404/405)", st in (404, 405), str(st))
-check("E2 economy.daily module gone",
-      not _os.path.exists(_os.path.join(_REPO, "core", "economy",
-                                        "daily.py")))
+check("E1 claim route restored (not 404/405)", st not in (404, 405), str(st))
+check("E2 economy.daily module restored",
+      _os.path.exists(_os.path.join(_REPO, "core", "economy",
+                                    "daily.py")))
 from economy.billing import SPENDABLE_KINDS
 _i18n_src = open(_os.path.join(_REPO, "core", "i18n.py"),
                  encoding="utf-8").read()
-check("E3 grant_daily out of SPENDABLE_KINDS + i18n keys gone",
-      "grant_daily" not in SPENDABLE_KINDS
-      and '"daily_claim"' not in _i18n_src
-      and '"ledger_grant_daily"' not in _i18n_src)
+check("E3 grant_daily in SPENDABLE_KINDS + widget i18n keys present",
+      "grant_daily" in SPENDABLE_KINDS
+      and '"daily_claim"' in _i18n_src
+      and '"ledger_grant_daily"' in _i18n_src)
 _auth_src = open(_os.path.join(_REPO, "app", "routes", "auth_route.py"),
                  encoding="utf-8").read()
-check("E4 no daily grant on login", "_grant_daily" not in _auth_src
-      and "grant_daily" not in _auth_src)
+check("E4 login-time daily grant hook present", "_grant_daily" in _auth_src)
+_daily_src = open(_os.path.join(_REPO, "core", "economy", "daily.py"),
+                  encoding="utf-8").read()
+check("E5 amount sourced from settings key (no module constant)",
+      "daily_login_amount" in _daily_src
+      and "DAILY_AMOUNT =" not in _daily_src)
 _deliv_doc = open(_os.path.join(_REPO, "core", "governance", "delivery.py"),
                   encoding="utf-8").read()
-check("E5 delivery docstring: coerce_share_delivery mention removed",
+check("E6 delivery docstring: coerce_share_delivery mention removed",
       "coerce_share_delivery" not in _deliv_doc)
 
 # ══════════ F. UI consistency ══════════
