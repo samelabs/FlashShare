@@ -973,7 +973,7 @@ check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字�
       and "validate_batch" in _apir)
 _mcp_up = _mcp_src.split("_receipt, _usage_ids, _replay = _claim_receipt(")[1].split("source_files = [")[0] if "_claim_receipt(" in _mcp_src else ""
 check("G12 MCP upload 区保留 boundary/quota 专门分支 + generic Exception fallback",
-      "IngressQuotaDenied" in _mcp_src and "isError" in _mcp_up
+      "IngressQuotaDenied" in _mcp_src and "_iserror(" in _mcp_up
       and _mcp_up.count("except Exception") >= 1, "")
 # G13: Web transport early-reject 与 authoritative validate_batch 输出同构
 # (ok/error/limit/incoming 四键; incoming=declared transport bytes)
