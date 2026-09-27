@@ -312,6 +312,12 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "stats": _public_stats(tool_key),
         "mcp_name": mcp_name(tool_key),
         "is_mcp": mcp,
+        # publish gate guidance: the author viewing their own not-yet-public
+        # tool sees the run-once hint (server-rendered, one sentence)
+        "owner_gate_notice": bool(
+            user and tool.get("owner_id")
+            and int(tool["owner_id"]) == int(user["id"])
+            and tool.get("visibility") != "public"),
         "tools_json": json.dumps([tool_public], ensure_ascii=False),
         "limits_json": ctx.get("limits_json") or json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),
     })

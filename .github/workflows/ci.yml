@@ -301,6 +301,10 @@ jobs:
             python tests/canonical/test_identity_closure.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_identity_closure.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_publish_gate.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_publish_gate.py
           # semantic guards (do not replace behavior tests):
           # orchestrator is staging-only and holds no source-deletion
           # authority; finalize_call_ok is the single tool_calls.upload_id
@@ -477,6 +481,8 @@ jobs:
         run: python tests/canonical/test_c2a_governance.py
       - name: C2b back-office completion canonical
         run: python tests/canonical/test_c2b_backoffice.py
+      - name: Publish gate canonical
+        run: python tests/canonical/test_publish_gate.py
       - name: Daily login credit canonical
         run: python tests/canonical/test_daily_login.py
       - name: Commission effective-time canonical

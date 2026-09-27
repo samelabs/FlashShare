@@ -408,3 +408,16 @@ def ok_calls_by_owner(con, owner_id: int, tool_keys: list) -> int:
         WHERE status = 'ok' AND tool_id = ANY(%s) AND user_id != %s
         """,
         (tool_keys, owner_id)).fetchone()["n"]
+
+
+def owner_successful_call_exists(con, tool_key: str, owner_id: int) -> bool:
+    """发布门判定: 该工具是否存在"所有者本人发起且成功"的一次调用。
+    Reads within the CALLER's transaction (the PATCH visibility write
+    and this read share one DB transaction)."""
+    return con.execute(
+        """
+        SELECT 1 FROM tool_calls
+        WHERE tool_id = %s AND user_id = %s AND status = 'ok'
+        LIMIT 1
+        """,
+        (tool_key, owner_id)).fetchone() is not None

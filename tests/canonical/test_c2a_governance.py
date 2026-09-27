@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Governance & discovery closure canonical.
 
-  A*  publish IS listing: a new community tool lands visibility=public
-      immediately (no self-test gate); the owner can still choose
-      unlisted/private at submission or later.
+  A*  publish gate: a new community tool lands visibility=unlisted
+      (never listed before the owner has run it successfully once);
+      PATCH public before that → 422 needs_successful_run, after the
+      owner's ok call → public + visible on home/market.
   B*  operator delist vs developer enabled are independent switches:
       delist hides the tool from home/market/search/author page/MCP
       list+search and makes resolve() refuse; the developer's enable
@@ -117,27 +118,41 @@ def _publish(ck, tool_id, label, extra=None):
 dev_ck_user = _u + "dev"
 uid, CK = _register(dev_ck_user)
 
-# ═══ A. publish IS listing ═══
+# ═══ A. publish gate: unlisted until the owner runs it once ═══
 tk = f"{dev_ck_user}/aaa"
 st, _h, d = _publish(CK, "aaa", "Alpha Tool")
 check("A1 create accepted", st == 200 and d.get("ok"), f"{st} {d}")
 with db() as con:
     row = con.execute("select visibility, enabled, delisted from"
                       " platform_tools where tool_key=%s", (tk,)).fetchone()
-check("A2 lands public + enabled + not delisted",
-      dict(row) == {"visibility": "public", "enabled": True,
+check("A2 lands unlisted + enabled + not delisted",
+      dict(row) == {"visibility": "unlisted", "enabled": True,
                     "delisted": False}, str(row and dict(row)))
 st, _h, home = _req("GET", "/")
 st, _h, market = _req("GET", "/tools")
-check("A3 visible on home + market immediately",
-      tk in (home or "") and tk in (market or ""))
-# self-test gate gone: switching unlisted→public needs no prior call
-st, _h, d = _req("PATCH", "/api/usertools/aaa", {"visibility": "unlisted"},
-                 {"Content-Type": "application/json", "Cookie": CK})
+check("A3 not on home/market before the owner's successful run",
+      tk not in (home or "") and tk not in (market or ""))
+# publish gate: unlisted→public requires ONE successful owner call
 st, _h, d = _req("PATCH", "/api/usertools/aaa", {"visibility": "public"},
                  {"Content-Type": "application/json", "Cookie": CK})
-check("A4 visibility round-trips without self-test", st == 200 and d.get("ok"),
+check("A4 public without a successful run → 422 needs_successful_run",
+      st == 422 and d.get("error") == "needs_successful_run",
       f"{st} {d}")
+with db() as con:
+    con.execute(
+        "insert into tool_calls (client_ref, user_id, tool_id, status,"
+        " cost_snapshot, started_at, finished_at, commission_rate_snapshot,"
+        " invocation_hash) values (%s, %s, %s, 'ok', 0, %s, %s, 0, %s)",
+        (f"c2a-run-{_u}", uid, tk, int(time.time()), int(time.time()),
+         "a" * 64))
+st, _h, d = _req("PATCH", "/api/usertools/aaa", {"visibility": "public"},
+                 {"Content-Type": "application/json", "Cookie": CK})
+check("A4b public after the owner's successful run", st == 200 and d.get("ok"),
+      f"{st} {d}")
+st, _h, home = _req("GET", "/")
+st, _h, market = _req("GET", "/tools")
+check("A3b visible on home + market once public",
+      tk in (home or "") and tk in (market or ""))
 # explicit private still honored
 st, _h, d = _publish(CK, "bbb", "Beta", {"visibility": "private"})
 with db() as con:
@@ -197,6 +212,17 @@ check("B7 developer enable/disable audited (actor=owner)",
 # ═══ C. suspended provider leaves the market ═══
 tk3 = f"{dev_ck_user}/ccc"
 _publish(CK, "ccc", "Gamma ZZZ")
+# publish gate: C/D need this tool PUBLIC — unlock with one successful
+# owner call (the A-section pattern), same as any real author would
+with db() as con:
+    con.execute(
+        "insert into tool_calls (client_ref, user_id, tool_id, status,"
+        " cost_snapshot, started_at, finished_at, commission_rate_snapshot,"
+        " invocation_hash) values (%s, %s, %s, 'ok', 0, %s, %s, 0, %s)",
+        (f"c2a-run3-{_u}", uid, tk3, int(time.time()), int(time.time()),
+         "b" * 64))
+_req("PATCH", "/api/usertools/ccc", {"visibility": "public"},
+     {"Content-Type": "application/json", "Cookie": CK})
 with db() as con:
     con.execute("update users set status='suspended' where id=%s", (uid,))
 st, _h, home = _req("GET", "/")
@@ -223,6 +249,15 @@ check("D2 label still matches", tk3 in hits2, str(hits2)[:100])
 st, _h, d = _req("PATCH", "/api/usertools/aaa", {"enabled": True},
                  {"Content-Type": "application/json", "Cookie": CK})
 _publish(CK, "ddd", "Delta Tool")
+with db() as con:
+    con.execute(
+        "insert into tool_calls (client_ref, user_id, tool_id, status,"
+        " cost_snapshot, started_at, finished_at, commission_rate_snapshot,"
+        " invocation_hash) values (%s, %s, %s, 'ok', 0, %s, %s, 0, %s)",
+        (f"c2a-run4-{_u}", uid, f"{dev_ck_user}/ddd",
+         int(time.time()), int(time.time()), "c" * 64))
+_req("PATCH", "/api/usertools/ddd", {"visibility": "public"},
+     {"Content-Type": "application/json", "Cookie": CK})
 with db() as con:
     con.execute("update platform_tools set featured=true, sort_order=99"
                 " where tool_key=%s", (tk,))

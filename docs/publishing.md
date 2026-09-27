@@ -163,6 +163,15 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 | `param_invalid` | 执行期 | enum 值不在 options 内（422） |
 | `param_out_of_range` | 执行期 | number 越界（422） |
 
+## 发布状态流转（publish gate）
+
+平台不审核工具，但公开市场里的工具至少被作者本人成功运行过一次：
+
+- 新建（POST /api/usertools）默认 `visibility=unlisted`：工具页可访问、可调用，但不进 `/tools` 市场与 MCP tools/list。创建请求显式携带 `visibility: "public"` → 422 `needs_successful_run`（新工具不可能已有成功调用）。
+- 改为 `public`（PATCH `visibility: "public"`）要求该工具存在至少一条"所有者本人发起、状态为 `ok`"的 `tool_calls` 记录；不满足 → 422 `needs_successful_run`。判定与可见性写入同一事务。
+- 他人的成功调用、本人失败的调用都不解锁；仅"本人 + 成功"计入。
+- 已经是 `public` 的工具不受影响；`public → unlisted/private`（取消公开）不受限制。
+
 ## 执行契约
 
 用户工具当前执行类型为 `http`：平台在调用时向开发者端点发起 `POST`，请求体：

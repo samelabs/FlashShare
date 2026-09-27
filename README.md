@@ -23,7 +23,7 @@ English · [简体中文](README.zh-CN.md)
 |---|---|
 | **Agents & bots** | One MCP endpoint for every tool. Results come back directly, or as share links with an expiry and a download limit. |
 | **People** | The same tools on the web and on mobile, with a result page to view and share. |
-| **Tool developers** | Publish an HTTPS endpoint as a tool. It is listed immediately and earns on every paid call. |
+| **Tool developers** | Publish an HTTPS endpoint as a tool. New tools start unlisted; run yours successfully once and it can go public. No review. Earnings on every paid call. |
 
 ## Connect your agent
 
@@ -74,6 +74,8 @@ It returns an ordered list of results — text, JSON or files:
 ```
 
 Set a price in credits (1,000 credits = US$1). Failed calls are refunded to the user automatically. Your share of each paid call goes to your earnings balance, which you can withdraw. The full declaration and execution contract is in [docs/publishing.md](docs/publishing.md).
+
+New tools are published unlisted (not in the public market). After you run your own tool successfully once, you can make it public from My tools — the platform does not review tools. Un-publishing is unrestricted.
 
 ## Self-hosting
 
