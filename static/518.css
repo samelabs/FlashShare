@@ -763,10 +763,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .market-none { text-align: center; color: var(--ink-2); font-size: 14px; padding: 22px 0; }
 
 /* ═══ IO-2: 任务输入区 (共用组件 .ti-*) ═══ */
-@media (hover:hover) and (pointer:fine) { .ti-preset:hover { border-color: var(--brand); color: var(--brand); } }
-@media (hover:hover) and (pointer:fine) { .ti-add.primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); } }
-@media (hover:hover) and (pointer:fine) { .ti-row-remove:hover { color: var(--brand); background: var(--brand-soft); } }
-@media (hover:hover) and (pointer:fine) { .ti-run:hover { background: var(--brand-strong); } }
+@media (hover:hover) and (pointer:fine) { .composer .send.ti-run:hover { background: var(--brand-strong); } }
 
 /* ═══ IO-2: 结果呈现 (页内结果卡 + /r 结果页同构 .r-*) ═══ */
 

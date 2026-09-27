@@ -1,11 +1,13 @@
-// ── tool-input: 任务输入区共用组件 (首页 / 工具页同一组件) ──────
-// 按所选工具的声明呈现: 参数控件 (text 参数 = 文字输入区)、文件添加
-// (选择/拖放/粘贴, 数量窗口 [min,max], 接受格式)、交付选项 (次级折叠)。
-// 校验走与后端同一报错边界 (window.t + 服务端错误码):
+// ── tool-input: the composer (首页 / 工具页同一组件, v2 视觉) ────
+// 按所选工具的声明呈现: 主 text 参数 = 输入框正文, 其余参数进参数区
+// (enum→分段按钮 / number→数字输入 / boolean→开关 / text→文本域);
+// 文件位 (files_max>0): 拖放 / 回形针选择 / 粘贴, files_min=0 标"可选"。
+// 校验走与后端同一报错边界 (统一内联提示, 不用 alert):
 //   文件数越窗 → err_file_count {min}{max}; 格式 → err_format_mismatch;
 //   必填参数 → param_required。
-// 执行走全局单源 window.runToolFlow (process-flow.js); 本组件只管
-// 输入呈现、即时校验与忙碌态, 不复制执行链。
+// Ctrl/Cmd+Enter 提交。执行走全局单源 window.runToolFlow
+// (process-flow.js): files / params / delivery / client_ref 的字段、
+// 校验与请求形状完全不变 — 本组件只管输入呈现与即时校验。
 (function () {
   "use strict";
 
@@ -44,8 +46,9 @@
     return m ? m[1] : "";
   };
   const resolveLabel = (l) => window.resolveLabel(l);
+  const icon = (name) => window.iconSvg ? window.iconSvg(name) : "";
 
-  // 参数持久化单点 (localStorage 权威, 与旧浮层同键同语义)。
+  // 参数持久化单点 (localStorage 权威, 与旧实现同键同语义)。
   function savedParams(toolId) {
     try {
       const all = JSON.parse(localStorage.getItem("flashshare_tool_params") || "{}");
@@ -64,7 +67,6 @@
   /**
    * mount(container, opts) → controller
    * opts: {tool, onChange()} — tool = catalog 投影
-   * ({id,label,params,accept,files_min,files_max,outputs,cost,…})
    * controller: {setTool(tool), files(), el}
    */
   function mount(container, opts) {
@@ -80,10 +82,12 @@
         ? tool.accept.map((a) => String(a).replace(/^\./, "").toLowerCase())
         : null;
     }
-    function windowText() {
-      const mn = filesMin(), mx = filesMax();
-      if (mn === 0 && mx === 1) return t("ti_files_optional");
-      return t("ti_files_window", { min: mn, max: mx });
+    function hasFilesSlot() { return tool ? filesMax() > 0 : true; }
+    // 主 text 参数 = 第一个 text 型参数 (输入框正文); 其余进参数区
+    function mainTextParam() {
+      const p = tool && Array.isArray(tool.params) ? tool.params : [];
+      for (const prm of p) if (prm.type === "text") return prm;
+      return null;
     }
 
     function showError(msg) {
@@ -99,98 +103,115 @@
 
     // ── 渲染 ──
     function render() {
-      const p = tool ? (Array.isArray(tool.params) ? tool.params : []) : [];
+      const all = tool ? (Array.isArray(tool.params) ? tool.params : []) : [];
+      const main = mainTextParam();
+      const rest = main ? all.filter((p) => p !== main) : all.slice();
       const accept = acceptTokens();
-      const optional = filesMin() === 0;
+      const saved = savedParams(tool ? tool.id : "");
+      const cost = tool ? Math.max(0, parseInt(tool.cost || 0, 10) || 0) : 0;
 
-      let html = '<div class="ti-card' + (optional ? " ti-optional" : "") + '" data-tool="' + esc(tool ? tool.id : "") + '">';
+      let html = '<div class="composer ti-card" data-tool="' + esc(tool ? tool.id : "") + '">'
+        + '<p class="error-note ti-error" hidden></p>';
 
-      // 参数区 (声明驱动): text 参数 = 文字输入 (textarea), 其余同原控件族
-      if (p.length) {
-        html += '<div class="ti-params">';
-        const saved = savedParams(tool.id);
-        p.forEach((prm) => {
+      // 文件位 (files_max>0): 已选 chip 行; files_min=0 → "可选"注记行
+      if (hasFilesSlot()) {
+        html += '<div class="c-files"></div>'
+          + '<div class="c-files-opt"' + (files.length ? ' hidden' : '') + '>'
+          + (filesMin() === 0 ? esc(t("ti_files_optional")) + " · " : "")
+          + esc(t("ti_drop_hint")) + "</div>";
+      }
+
+      // 正文: 主 text 参数 (或纯文件工具的拖放提示文案)
+      if (main) {
+        const ph = main.placeholder ? esc(resolveLabel(main.placeholder))
+          : esc(t("ti_composer_ph"));
+        const val = saved[main.key] !== undefined ? saved[main.key] : (main.default || "");
+        html += '<textarea class="c-text tp-text" data-param="' + esc(main.key)
+          + '" rows="3" placeholder="' + ph + '">'
+          + esc(val === undefined || val === null ? "" : String(val)) + "</textarea>";
+      } else {
+        html += '<div class="c-text-hint">' + esc(t("ti_composer_files_ph")) + "</div>";
+      }
+
+      // 参数区: 其余参数 (enum→seg / number / boolean / text)
+      if (rest.length) {
+        html += '<div class="params"><div class="divider"></div>';
+        rest.forEach((prm) => {
           const label = resolveLabel(prm.label) || prm.key;
           const val = saved[prm.key] !== undefined ? saved[prm.key] : prm.default;
-          const pid = "ti_" + prm.key;
           if (prm.type === "enum") {
-            html += '<div class="ti-param field"><div class="field-label">' + esc(label) + "</div>"
-              + '<div class="ti-presets">';
+            html += '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
+              + '<span class="seg tp-seg" data-param="' + esc(prm.key) + '">';
             (prm.options || []).forEach((o) => {
-              const sel = val === o.value ? " active" : "";
-              html += '<button type="button" class="ti-preset tp-option' + sel + '" data-param="' + esc(prm.key)
-                + '" data-value="' + esc(o.value) + '">' + esc(resolveLabel(o.label) || o.value) + "</button>";
+              html += '<button type="button" class="tp-option' + (val === o.value ? " on" : "")
+                + '" data-value="' + esc(o.value) + '">'
+                + esc(resolveLabel(o.label) || o.value) + "</button>";
             });
-            html += "</div></div>";
+            html += "</span></div>";
           } else if (prm.type === "boolean") {
-            html += '<div class="ti-param ti-param-row"><label class="check" for="' + pid + '">'
-              + '<input type="checkbox" id="' + pid + '" class="tp-bool" data-param="' + esc(prm.key) + '"'
-              + (val === true || val === "true" ? " checked" : "") + "><span>" + esc(label) + "</span></label></div>";
+            html += '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
+              + '<label class="switch"><input type="checkbox" class="tp-bool" data-param="' + esc(prm.key) + '"'
+              + (val === true || val === "true" ? " checked" : "")
+              + '><span class="switch-track"></span></label></div>';
           } else if (prm.type === "number") {
             const mn = prm.min !== undefined ? ' min="' + esc(prm.min) + '"' : "";
             const mx = prm.max !== undefined ? ' max="' + esc(prm.max) + '"' : "";
-            html += '<div class="ti-param ti-param-row field"><label class="field-label" for="' + pid + '">'
-              + esc(label) + '</label><input type="number" id="' + pid + '" class="input tp-number" data-param="' + esc(prm.key)
-              + '"' + mn + mx + ' value="' + (val !== undefined && val !== null ? esc(String(val)) : "") + '"></div>';
+            html += '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
+              + '<input type="number" class="input tp-number" data-param="' + esc(prm.key)
+              + '"' + mn + mx + ' value="'
+              + (val !== undefined && val !== null ? esc(String(val)) : "") + '"></div>';
           } else {
-            // text 参数 = 多行文字输入 (任务的多模态输入之一)
             const ph = prm.placeholder ? esc(resolveLabel(prm.placeholder)) : "";
-            const req = prm.required && prm.default == null ? " ti-required" : "";
-            html += '<div class="ti-param field' + req + '"><label class="field-label" for="' + pid + '">'
-              + esc(label) + (prm.required && prm.default == null ? ' <i class="field-req" aria-hidden="true">*</i>' : "")
-              + '</label><textarea id="' + pid + '" class="textarea tp-text" data-param="' + esc(prm.key)
-              + '" rows="3" placeholder="' + ph + '">'
+            html += '<div class="prow" style="align-items:flex-start"><span class="prow-label" style="padding-top:8px">'
+              + esc(label) + "</span>"
+              + '<textarea class="textarea tp-text" data-param="' + esc(prm.key)
+              + '" rows="2" style="flex:1;min-width:220px" placeholder="' + ph + '">'
               + (val !== undefined && val !== null ? esc(String(val)) : "") + "</textarea></div>";
           }
         });
         html += "</div>";
       }
 
-      // 文件区: 数量窗口 + 接受格式提示; min=0 的工具为紧凑可选行
-      const acceptHint = accept
-        ? '<span class="chip-row">' + accept.map((a) => '<span class="chip">' + esc(a.toUpperCase()) + "</span>").join("") + "</span>"
-        : esc(t("ti_any_format"));
-      if (optional) {
-        html += '<div class="ti-attach ti-attach-compact">'
-          + '<button type="button" class="btn btn-secondary btn-sm ti-add ti-add-quiet">' + window.iconSvg("upload")
-          + "<span>" + t("ti_add_optional") + "</span></button>"
-          + '<span class="ti-window-note">' + esc(t("ti_files_none_needed")) + "</span>"
-          + '<div class="ti-rows ti-rows-quiet"></div></div>';
-      } else {
-        html += '<div class="ti-attach">'
-          + '<div class="ti-attach-head"><span class="ti-window">' + esc(windowText()) + "</span>"
-          + '<span class="ti-accept">' + acceptHint + "</span></div>"
-          + '<div class="ti-drop">'
-          + '<button type="button" class="btn btn-secondary ti-add">' + window.iconSvg("upload") + "<span>" + t("ti_add_files") + "</span></button>"
-          + '<span class="ti-drop-hint">' + esc(t("ti_drop_hint")) + "</span></div>"
-          + '<div class="ti-rows"></div></div>';
-      }
+      // 底栏: 回形针 + delivery 胶囊 + 发送 (免费=动作词, 收费=动作词 · N 积分)
+      const del = window.__DELIVERY__ || { days: [1], downloads: [50], defaultDays: 1, defaultDownloads: 50 };
+      const dLabel = "<b>" + del.defaultDays + " " + t(del.defaultDays === 1 ? "day_unit" : "days_unit")
+        + "</b> · " + del.defaultDownloads + " " + t("times_unit");
+      const runLabel = cost > 0
+        ? esc(t("ti_run")) + " · " + cost + " " + esc(t("credits_short"))
+        : esc(t("ti_run"));
+      html += '<div class="c-bar">'
+        + (hasFilesSlot()
+          ? '<button type="button" class="ib ti-add" aria-label="' + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">' + icon("clip") + "</button>"
+          : "")
+        + '<button type="button" class="opt ti-del" aria-haspopup="true" aria-expanded="false">'
+        + icon("expiry") + '<span class="ti-del-label">' + dLabel + "</span></button>"
+        + '<div class="c-del-pop hidden">'
+        + '<label class="field"><span class="field-label">' + esc(t("expiry")) + '</span>'
+        + '<select class="select ti-expiry" data-delivery="expiry_days">'
+        + del.days.map((d) => '<option value="' + d + '"' + (d === del.defaultDays ? " selected" : "") + ">"
+          + d + " " + t(d === 1 ? "day_unit" : "days_unit") + "</option>").join("")
+        + "</select></label>"
+        + '<label class="field"><span class="field-label">' + esc(t("downloads")) + '</span>'
+        + '<select class="select ti-downloads" data-delivery="allowed_downloads">'
+        + del.downloads.map((n) => '<option value="' + n + '"' + (n === del.defaultDownloads ? " selected" : "") + ">"
+          + n + " " + t("times_unit") + "</option>").join("")
+        + "</select></label>"
+        + "</div>"
+        + '<span class="ti-progress" aria-live="polite"></span>'
+        + '<span class="sp"></span>'
+        + '<button type="button" class="send wide ti-run">' + runLabel + " " + icon("send") + "</button>"
+        + "</div>";
+
+      // 隐藏文件输入 (测试与无 JS 场景的稳定钩子)
       html += '<input type="file" class="visually-hidden ti-file-input"'
         + (accept ? ' accept="' + esc(accept.map((a) => "." + a).join(",")) + '"' : "")
         + (filesMax() > 1 ? " multiple" : "") + ">";
 
-      // 交付选项 (次级折叠)
-      const del = window.__DELIVERY__ || { days: [1], downloads: [50], defaultDays: 1, defaultDownloads: 50 };
-      const optsExp = del.days.map((d) => '<option value="' + d + '"' + (d === del.defaultDays ? " selected" : "") + ">"
-        + d + " " + t(d === 1 ? "day_unit" : "days_unit") + "</option>").join("");
-      const optsDl = del.downloads.map((n) => '<option value="' + n + '"' + (n === del.defaultDownloads ? " selected" : "") + ">"
-        + n + " " + t("times_unit") + "</option>").join("");
-      html += '<details class="ti-delivery"><summary>' + esc(t("ti_delivery")) + "</summary>"
-        + '<div class="ti-delivery-row">'
-        + '<label class="field ti-field"><span class="field-label">' + esc(t("expiry")) + '</span><select class="select ti-expiry" data-delivery="expiry_days">' + optsExp + "</select></label>"
-        + '<label class="field ti-field"><span class="field-label">' + esc(t("downloads")) + '</span><select class="select ti-downloads" data-delivery="allowed_downloads">' + optsDl + "</select></label>"
-        + "</div></details>";
-
-      // 运行行
-      html += '<div class="ti-run-row">'
-        + '<p class="error-note ti-error" hidden></p>'
-        + '<span class="ti-progress tertiary" aria-live="polite"></span>'
-        + '<button type="button" class="btn btn-primary btn-lg ti-run">' + window.iconSvg("wand") + "<span>" + t("ti_run") + "</span></button>"
-        + "</div></div>";
-
+      html += "</div>";
       container.innerHTML = html;
       bindParams();
       bindFiles();
+      bindDelivery();
       bindRun();
       renderRows();
     }
@@ -199,9 +220,9 @@
     function bindParams() {
       container.querySelectorAll(".tp-option").forEach((btn) => {
         btn.addEventListener("click", () => {
-          container.querySelectorAll('.tp-option[data-param="' + btn.dataset.param + '"]')
-            .forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
+          const seg = btn.closest(".seg");
+          if (seg) seg.querySelectorAll(".tp-option").forEach((b) => b.classList.remove("on"));
+          btn.classList.add("on");
           collectAndPersist();
           clearError();
           window.invalidateToolOperation && window.invalidateToolOperation();
@@ -227,7 +248,8 @@
       const p = tool && Array.isArray(tool.params) ? tool.params : [];
       p.forEach((prm) => {
         if (prm.type === "enum") {
-          const on = container.querySelector('.tp-option[data-param="' + prm.key + '"].active');
+          const seg = container.querySelector('.seg[data-param="' + prm.key + '"]');
+          const on = seg && seg.querySelector(".tp-option.on");
           if (on) out[prm.key] = on.dataset.value;
         } else if (prm.type === "boolean") {
           const el = container.querySelector('.tp-bool[data-param="' + prm.key + '"]');
@@ -277,26 +299,31 @@
     }
 
     function renderRows() {
-      const rows = container.querySelector(".ti-rows");
+      const rows = container.querySelector(".c-files");
       if (!rows) return;
       thumbUrls.forEach((u) => URL.revokeObjectURL(u));
       thumbUrls.length = 0;
+      const optLine = container.querySelector(".c-files-opt");
+      if (optLine) optLine.hidden = files.length > 0;
       if (!files.length) { rows.innerHTML = ""; return; }
       rows.innerHTML = files.map((f, i) => {
         const isImg = /^image\//.test(f.type || "") && (f.type || "").toLowerCase() !== "image/svg+xml";
-        let thumb = "";
+        let thumb;
         if (isImg) {
           const u = URL.createObjectURL(f);
           thumbUrls.push(u);
-          thumb = '<img class="file-thumb" src="' + u + '" alt="" loading="lazy">';
+          thumb = '<img class="th" src="' + u + '" alt="" loading="lazy">';
         } else {
-          thumb = '<span class="file-thumb file-thumb-glyph" aria-hidden="true">' + window.iconSvg("doc") + "</span>";
+          const kind = EXT_TO_TYPE[extOf(f.name)] || "doc";
+          thumb = '<span class="th d" aria-hidden="true">' + icon(kind === "text" ? "text" : kind) + "</span>";
         }
-        return '<div class="file-row ti-row" data-idx="' + i + '">' + thumb
-          + '<span class="file-name">' + esc(f.name) + "</span>"
-          + '<span class="file-meta">' + esc(fmtSize(f.size)) + "</span>"
-          + '<button type="button" class="file-remove ti-row-remove" data-rm="' + i + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
-          + window.iconSvg("close") + "</button></div>";
+        return '<span class="chipf">' + thumb
+          + "<span><b>" + esc(f.name) + "</b><small>"
+          + (filesMin() === 0 ? esc(t("ti_files_optional")) + " · " : "")
+          + esc(fmtSize(f.size)) + "</small></span>"
+          + '<button type="button" class="x ti-row-remove" data-rm="' + i
+          + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
+          + icon("close") + "</button></span>";
       }).join("");
       rows.querySelectorAll("[data-rm]").forEach((b) => {
         b.addEventListener("click", () => removeFile(+b.dataset.rm));
@@ -312,11 +339,11 @@
         input.value = "";
       });
       // 拖放: 整个输入卡即落点
-      const card = container.querySelector(".ti-card");
+      const card = container.querySelector(".composer");
       if (card) {
         ["dragenter", "dragover"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();
-          card.classList.add("dragover");
+          card.classList.add("dragover", "focus");
         }));
         ["dragleave", "drop"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();
@@ -325,6 +352,8 @@
         card.addEventListener("drop", (e) => {
           if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
         });
+        card.addEventListener("focusin", () => card.classList.add("focus"));
+        card.addEventListener("focusout", () => card.classList.remove("focus"));
       }
       // 粘贴: 剪贴板里的文件 (截图等) 直接进附件
       document.addEventListener("paste", (e) => {
@@ -338,73 +367,106 @@
       });
     }
 
+    // ── delivery 胶囊与浮层 ──
+    function bindDelivery() {
+      const btn = container.querySelector(".ti-del");
+      const pop = container.querySelector(".c-del-pop");
+      if (!btn || !pop) return;
+      const close = () => { pop.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); };
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = pop.classList.contains("hidden");
+        if (open) { pop.classList.remove("hidden"); btn.setAttribute("aria-expanded", "true"); }
+        else close();
+      });
+      pop.addEventListener("click", (e) => e.stopPropagation());
+      document.addEventListener("click", close);
+      const upd = () => {
+        const d = parseInt((container.querySelector(".ti-expiry") || {}).value, 10) || 1;
+        const n = parseInt((container.querySelector(".ti-downloads") || {}).value, 10) || 50;
+        const label = container.querySelector(".ti-del-label");
+        if (label) label.innerHTML = "<b>" + d + " " + t(d === 1 ? "day_unit" : "days_unit")
+          + "</b> · " + n + " " + t("times_unit");
+      };
+      container.querySelector(".ti-expiry") && container.querySelector(".ti-expiry").addEventListener("change", upd);
+      container.querySelector(".ti-downloads") && container.querySelector(".ti-downloads").addEventListener("change", upd);
+    }
+
     // ── 运行 ──
     function validateBeforeRun() {
       const p = tool && Array.isArray(tool.params) ? tool.params : [];
       for (const prm of p) {
         if (prm.type !== "text" && prm.type !== "number" && prm.type !== "enum") continue;
         if (!prm.required || prm.default != null) continue;
-        const el = container.querySelector('.tp-' + (prm.type === "number" ? "number" : "text") + '[data-param="' + prm.key + '"]')
-          || container.querySelector('.tp-option[data-param="' + prm.key + '"]');
-        const val = el ? el.value : "";
+        const el = container.querySelector('.tp-' + (prm.type === "number" ? "number" : "text") + '[data-param="' + prm.key + '"]');
         if (prm.type === "enum") {
-          const on = container.querySelector('.tp-option[data-param="' + prm.key + '"].active');
+          const seg = container.querySelector('.seg[data-param="' + prm.key + '"]');
+          const on = seg && seg.querySelector(".tp-option.on");
           if (!on) return t("param_required");
-        } else if (!val || !String(val).trim()) {
+        } else if (!el || !el.value || !String(el.value).trim()) {
           return t("param_required");
         }
       }
-      if (files.length < filesMin() || files.length > filesMax()) {
+      if (hasFilesSlot() && (files.length < filesMin() || files.length > filesMax())) {
         return t("err_file_count", { min: filesMin(), max: filesMax() });
       }
       return null;
     }
 
+    async function doRun() {
+      clearError();
+      if (!window.__USER__) { window.location.href = "/auth/login"; return; }
+      if (!tool) return;
+      if (window.toolOperationBusy && window.toolOperationBusy()) return;
+      const err = validateBeforeRun();
+      if (err) { showError(err); return; }
+      const params = collectParams();
+      const expSel = container.querySelector(".ti-expiry");
+      const dlSel = container.querySelector(".ti-downloads");
+      // 体积对比信号 (仅呈现层): 本次输入文件大小, app.js 结果区消费
+      window.__lastInputSizes = files.slice().map((f) => f.size);
+      const btn = container.querySelector(".ti-run");
+      if (btn) { btn.disabled = true; }
+      try {
+        await window.runToolFlow(tool, files.slice(), {
+          params: params,
+          expiryDays: expSel ? parseInt(expSel.value, 10) : 1,
+          allowedDownloads: dlSel ? parseInt(dlSel.value, 10) : 50,
+          onProgress: (pct) => {
+            const runLine = container.querySelector(".ti-progress");
+            if (runLine) runLine.textContent = t("uploading") + " · " + pct + "%";
+          },
+          onError: (msg) => {
+            window.showToolError && window.showToolError(msg, null, () => {
+              const p = window.retryLastToolOperation && window.retryLastToolOperation();
+              if (p && typeof p.catch === "function") p.catch(() => {});
+            });
+          },
+        });
+      } catch (e) {
+        const cb = window.canRetryToolOperation && window.canRetryToolOperation()
+          ? () => {
+              const p = window.retryLastToolOperation && window.retryLastToolOperation();
+              if (p && typeof p.catch === "function") p.catch(() => {});
+            }
+          : null;
+        if (window.showToolError) window.showToolError(e.message, null, cb);
+        else showError(e.message);
+      } finally {
+        if (btn) btn.disabled = false;
+        const runLine = container.querySelector(".ti-progress");
+        if (runLine) runLine.textContent = "";
+      }
+    }
+
     function bindRun() {
       const btn = container.querySelector(".ti-run");
-      if (!btn) return;
-      btn.addEventListener("click", async () => {
-        clearError();
-        if (!window.__USER__) { window.location.href = "/auth/login"; return; }
-        if (!tool) return;
-        if (window.toolOperationBusy && window.toolOperationBusy()) return;
-        const err = validateBeforeRun();
-        if (err) { showError(err); return; }
-        const params = collectParams();
-        const expSel = container.querySelector(".ti-expiry");
-        const dlSel = container.querySelector(".ti-downloads");
-        btn.disabled = true;
-        btn.classList.add("busy");
-        try {
-          await window.runToolFlow(tool, files.slice(), {
-            params: params,
-            expiryDays: expSel ? parseInt(expSel.value, 10) : 1,
-            allowedDownloads: dlSel ? parseInt(dlSel.value, 10) : 50,
-            onProgress: (pct) => {
-              const runLine = container.querySelector(".ti-progress");
-              if (runLine) runLine.textContent = t("uploading") + " · " + pct + "%";
-            },
-            onError: (msg) => {
-              window.showToolError && window.showToolError(msg, null, () => {
-                const p = window.retryLastToolOperation && window.retryLastToolOperation();
-                if (p && typeof p.catch === "function") p.catch(() => {});
-              });
-            },
-          });
-        } catch (e) {
-          const cb = window.canRetryToolOperation && window.canRetryToolOperation()
-            ? () => {
-                const p = window.retryLastToolOperation && window.retryLastToolOperation();
-                if (p && typeof p.catch === "function") p.catch(() => {});
-              }
-            : null;
-          if (window.showToolError) window.showToolError(e.message, null, cb);
-          else showError(e.message);
-        } finally {
-          btn.disabled = false;
-          btn.classList.remove("busy");
-          const runLine = container.querySelector(".ti-progress");
-          if (runLine) runLine.textContent = "";
+      if (btn) btn.addEventListener("click", doRun);
+      // Ctrl/Cmd+Enter 全局提交 (composer 内任意输入焦点)
+      container.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          doRun();
         }
       });
     }

@@ -330,42 +330,107 @@ pre.rs-text, pre.rs-json {
   background: var(--brand-soft); color: var(--brand-deep); border-radius: var(--r-xs);
 }
 
-/* ── Tool input (shared component: home + tool page) ─────────
-   Structure lives in pages/tool-input.js; classes ti-*. */
-.ti-card { display: flex; flex-direction: column; gap: var(--s4); }
-.ti-card.dragover { outline: 2px dashed var(--brand); outline-offset: 4px; border-radius: var(--r); }
-.ti-params { display: flex; flex-direction: column; gap: var(--s4); }
-.ti-param-row { flex-direction: row; align-items: center; justify-content: space-between; }
-.ti-presets { display: flex; flex-wrap: wrap; gap: var(--s2); }
-.ti-preset {
-  display: inline-flex; align-items: center; padding: var(--s2) var(--s3);
-  border: var(--border-w) solid var(--line-2); border-radius: var(--r-full);
-  background: var(--card); font-size: var(--fs-base); font-weight: 600;
-  cursor: pointer; color: var(--ink-2); transition: all var(--ease-in);
+/* ── Tool input — the composer (shared component: home + tool page).
+   Structure lives in pages/tool-input.js; DOM per the v2 prototype:
+   .composer > .c-err + .c-files > .chipf + .c-text + .params >
+   .prow (label + .seg/.input/.switch) + .c-bar (.ib clip + .opt
+   delivery pill + .sp + .send). Legacy hooks kept for tests/JS:
+   .ti-file-input (hidden file input), .ti-run (submit), .ti-error,
+   .ti-progress. ──────────────────────────────────────────────── */
+.composer {
+  background: var(--card); border: var(--border-w) solid var(--line-2);
+  border-radius: var(--r-xl); box-shadow: var(--sh-3);
+  text-align: start; overflow: visible; position: relative;
+  transition: border-color var(--ease), box-shadow var(--ease);
 }
-@media (hover:hover) and (pointer:fine) { .ti-preset:hover { border-color: var(--brand); color: var(--brand); } }
-.ti-preset.active { color: var(--brand); border-color: var(--brand); background: var(--brand-soft); }
-.ti-attach { display: flex; flex-direction: column; gap: var(--s2); }
-.ti-attach-head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
-.ti-window { font-size: var(--fs-sm); font-weight: 700; color: var(--ink-2); }
-.ti-accept { font-size: var(--fs-sm); color: var(--ink-2); }
-.ti-drop { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
-  border: var(--border-w) dashed var(--line-2); border-radius: var(--r);
-  padding: var(--s3); }
-.ti-drop-hint { font-size: var(--fs-sm); color: var(--ink-3); }
-.ti-attach-compact { flex-direction: row; align-items: center; gap: var(--s3); flex-wrap: wrap;
-  border: 0; padding: 0; }
-.ti-attach-compact .ti-drop { border: 0; padding: 0; }
-.ti-window-note { font-size: var(--fs-sm); color: var(--ink-3); }
-.ti-rows { display: flex; flex-direction: column; gap: var(--s2); }
-.ti-delivery { border: var(--border-w) solid var(--line); border-radius: var(--r);
-  padding: var(--s2) var(--s3); background: var(--sunk); }
-.ti-delivery summary { font-size: var(--fs-sm); font-weight: 650; color: var(--ink-2); cursor: pointer; }
-.ti-delivery-row { display: flex; gap: var(--s4); padding-block-start: var(--s3); flex-wrap: wrap; }
-.ti-field { min-width: 160px; flex: 0 1 auto; }
-.ti-run-row { display: flex; align-items: center; gap: var(--s3); justify-content: flex-end; flex-wrap: wrap; }
-.ti-error { flex: 1; min-width: 200px; }
-.ti-progress { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.composer.focus { border-color: rgba(255, 77, 77, 0.5); box-shadow: 0 0 0 4px rgba(255, 77, 77, 0.10), var(--sh-3); }
+.composer.dragover { border-color: var(--brand); border-style: dashed; }
+.composer .c-err { margin: var(--s3) var(--s4) 0; }
+.c-files { display: flex; gap: var(--s2); flex-wrap: wrap; padding: 14px 16px 0; }
+.c-files:empty { display: none; }
+.c-files-opt { display: none; padding: 14px 16px 0; font-size: var(--fs-xs); color: var(--ink-3); }
+.chipf {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px;
+  border: var(--border-w) solid var(--line); border-radius: 12px;
+  background: var(--sunk); font-size: 13px; max-width: 260px;
+}
+.chipf .th { width: 36px; height: 36px; border-radius: 8px; flex: none; object-fit: cover; background: var(--brand-100); }
+.chipf .th.d { background: var(--card); border: var(--border-w) solid var(--line); display: grid; place-items: center; }
+.chipf .th.d svg { width: 17px; height: 17px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.chipf b { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.chipf small { color: var(--ink-3); font-size: var(--fs-xs); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.chipf .x {
+  color: var(--ink-3); margin-left: 2px; background: none; border: 0;
+  cursor: pointer; display: grid; place-items: center; padding: var(--s1);
+  border-radius: var(--r-xs);
+}
+.chipf .x svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
+@media (hover:hover) and (pointer:fine) { .chipf .x:hover { color: var(--danger); background: var(--danger-50); } }
+
+.c-text {
+  display: block; width: 100%; padding: 16px 20px 8px; min-height: 92px;
+  font: inherit; font-size: 16px; line-height: var(--lh-base); color: var(--ink);
+  background: none; border: 0; outline: none; resize: vertical;
+}
+.c-text::placeholder { color: var(--ink-3); }
+.c-text-hint { padding: 16px 20px 8px; min-height: 60px; font-size: 16px; color: var(--ink-3); }
+
+.params { display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 6px; }
+.params:empty { display: none; }
+.params .divider { height: 1px; background: var(--line); margin: 4px 0 0; }
+.prow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.prow > label, .prow > .prow-label { font-size: 13px; color: var(--ink-3); min-width: 56px; }
+.prow .input { width: 180px; }
+.seg { display: inline-flex; padding: 3px; background: var(--sunk); border-radius: var(--r-full); gap: 2px; flex-wrap: wrap; }
+.seg button {
+  height: 30px; padding: 0 13px; border-radius: var(--r-full); border: 0;
+  background: none; display: inline-flex; align-items: center;
+  font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-2); cursor: pointer;
+}
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
+
+.c-bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px 12px; flex-wrap: wrap; position: relative; }
+.c-bar .sp { flex: 1; }
+.ib {
+  width: 36px; height: 36px; border-radius: var(--r-full); border: 0;
+  display: grid; place-items: center; color: var(--ink-2); background: none; cursor: pointer;
+}
+.ib svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+@media (hover:hover) and (pointer:fine) { .ib:hover { background: rgba(11, 13, 16, 0.05); } }
+.opt {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
+  border-radius: var(--r-full); background: var(--sunk); border: 0;
+  font: inherit; font-size: 13px; color: var(--ink-2); font-weight: 500; cursor: pointer;
+}
+.opt b { color: var(--ink); font-weight: 600; }
+.opt svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.send {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--brand);
+  color: var(--brand-ink); border: 0; display: grid; place-items: center;
+  cursor: pointer; box-shadow: 0 6px 16px -6px rgba(255, 77, 77, 0.7);
+}
+.send svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.send.wide { width: auto; padding: 0 18px; border-radius: var(--r-full); gap: 6px; display: inline-flex; align-items: center; font: inherit; font-weight: 650; font-size: var(--fs-base); }
+.send.wide svg { width: 16px; height: 16px; }
+.send:disabled { opacity: 0.55; cursor: default; pointer-events: none; }
+.ti-progress { font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* delivery pill popover (existing values, existing entitlement logic) */
+.c-del-pop {
+  position: absolute; inset-block-end: calc(100% + 8px); inset-inline-end: 0;
+  z-index: var(--z-dropdown); background: var(--card);
+  border: var(--border-w) solid var(--line-2); border-radius: var(--r);
+  box-shadow: var(--sh-3); padding: var(--s4); display: flex; gap: var(--s4);
+  min-width: 260px;
+}
+.c-del-pop .field { min-width: 110px; }
+
+@media (max-width: 767px) {
+  .composer { border-radius: 22px; }
+  .c-text { min-height: 72px; font-size: var(--fs-md); }
+  .c-bar { gap: 4px; }
+  .send.wide { padding: 0 14px; }
+}
 
 /* Phone: file rows wrap — name keeps its line, meta + actions flow */
 @media (max-width: 599px) {
