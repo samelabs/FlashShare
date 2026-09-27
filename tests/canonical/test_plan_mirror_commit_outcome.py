@@ -31,6 +31,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -685,7 +686,7 @@ _creem.mirror_product_price = _orig_mirror
 with db() as con:
     con.execute("delete from operator_audit where actor_user_id=%s", (_op_id,))
     con.execute("delete from plans where id=%s", (_pl["id"],))
-    con.execute("delete from users where id=%s", (_op_id,))
+    purge_users(con, [_op_id])
 print("cleanup: mirror-commit fixtures removed")
 
 print()

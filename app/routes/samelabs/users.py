@@ -94,11 +94,69 @@ async def user_detail(user_id: int, request: Request):
         else:
             r["unit"] = "?"
             r["amount"] = "%+d" % int(r["delta"])
+    from app.routes.samelabs.common import BACKOFFICE_STATUSES
+    prof["protected"] = (prof["username"] == "platform"
+                         or prof["status"] in BACKOFFICE_STATUSES)
     return templates.TemplateResponse(
         request, "samelabs/user_detail.html",
         ctx(request, user, u=prof, orders=orders, calls=calls,
             withdrawals=wds, ledger=ledger, fmt_num=fmt_num,
             page_title=f"User #{user_id}", page_id="users"))
+
+
+@router.post("/samelabs/users/{user_id}/reset-password")
+async def reset_password(user_id: int, request: Request):
+    """Operator password reset (B2b-2): one-time temporary password
+    shown to the operator ONCE; every browser session is revoked, API
+    keys survive. Platform row and backoffice accounts are protected.
+    The credential itself never reaches storage or the audit."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from fastapi.responses import JSONResponse
+    from backoffice import users as users_cmd
+    try:
+        uid, temp = users_cmd.reset_user_password(
+            int(user["id"]), user_id)
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    return {"ok": True, "user_id": uid, "temp_password": temp}
+
+
+@router.post("/samelabs/users/{user_id}/suspend")
+async def suspend_user(user_id: int, request: Request):
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from fastapi.responses import JSONResponse
+    from backoffice import users as users_cmd
+    try:
+        row = users_cmd.set_user_suspended(
+            int(user["id"]), user_id, suspended=True)
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    return {"ok": True, "status": row["status"]}
+
+
+@router.post("/samelabs/users/{user_id}/unsuspend")
+async def unsuspend_user(user_id: int, request: Request):
+    user, resp = gate(request)
+    if resp:
+        return resp
+    from fastapi.responses import JSONResponse
+    from backoffice import users as users_cmd
+    try:
+        row = users_cmd.set_user_suspended(
+            int(user["id"]), user_id, suspended=False)
+    except KeyError:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, 422)
+    return {"ok": True, "status": row["status"]}
 
 
 @router.post("/samelabs/users/{user_id}/credits")

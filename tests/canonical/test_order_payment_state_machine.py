@@ -29,6 +29,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -927,7 +928,7 @@ with db() as con:
     con.execute("delete from plans where code like %s", (f"smplan_{_u}%",))
 for _uid2 in _uids_all:
     with db() as con:
-        con.execute("delete from users where id=%s", (_uid2,))
+        purge_users(con, [_uid2])
 print("cleanup: state-machine fixtures removed")
 
 print()

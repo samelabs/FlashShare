@@ -4,7 +4,7 @@
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head">
-    <h2>Withdrawal queue (S4 lifecycle)</h2>
+    <h2>Withdrawal queue</h2>
     <span class="sl-panel-sub">pending → approved (one withdraw ledger row) → paid (external payout_ref). Reject never debits. Destination = request-time snapshot.</span>
   </div>
   <form method="get" action="/samelabs/economy/withdrawals" class="sl-toolbar">
@@ -28,7 +28,7 @@
           <td><a href="/samelabs/users/{{ w.user_id }}">{{ w.username }}</a></td>
           <td class="mono">{{ w.amount_usd }}</td>
           <td class="mono">{{ w.payout }}</td>
-          <td><span class="sl-vis v-{{ w.status }}">{{ w.status }}</span></td>
+          <td><span class="tag {{ {'pending':'tag-warning','approved':'tag-success','rejected':'tag-danger','paid':'tag-success','payout_failed':'tag-danger'}.get(w.status, 'tag-neutral') }}">{{ w.status }}</span></td>
           <td>{{ fmt_ts(w.reviewed_at) if w.reviewed_at else '—' }}</td>
           <td>{{ fmt_ts(w.paid_at) if w.paid_at else '—' }}</td>
           <td class="mono">{{ (w.payout_ref or '—') }}</td>

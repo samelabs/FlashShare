@@ -37,7 +37,7 @@ async def credits(request: Request, user_id: int | None = None,
         ctx(request, user, rows=[dict(r) for r in rows], total=total,
             page=page, pages=max(1, -(-total // _PAGE)),
             q_user=user_id, q_kind=kind, kinds=list(SPENDABLE_KINDS),
-            fmt_num=fmt_num, page_id="economy"))
+            fmt_num=fmt_num, page_id="economy_credits"))
 
 
 @router.get("/samelabs/economy/earnings")
@@ -61,7 +61,7 @@ async def provider_earnings(request: Request, page: int = 1):
         request, "samelabs/economy_earnings.html",
         ctx(request, user, rows=items, total=total, page=page,
             pages=max(1, -(-total // _PAGE)), fmt_num=fmt_num,
-            page_id="economy"))
+            page_id="economy_earnings"))
 
 
 @router.get("/samelabs/economy/platform")
@@ -85,7 +85,7 @@ async def platform_income(request: Request, page: int = 1):
         request, "samelabs/economy_platform.html",
         ctx(request, user, rows=items, total=total, page=page,
             pages=max(1, -(-total // _PAGE)), fmt_num=fmt_num,
-            commission_rate=rate, page_id="economy"))
+            commission_rate=rate, page_id="economy_platform"))
 
 
 @router.post("/samelabs/economy/commission")
@@ -156,7 +156,7 @@ async def withdrawals(request: Request, status: str = "", page: int = 1):
         ctx(request, user, withdrawals=items, total=total, page=page,
             pages=max(1, -(-total // _PAGE)), q_status=q_status,
             statuses=list(_WD_STATUSES), fmt_num=fmt_num,
-            page_id="economy"))
+            page_id="economy_withdrawals"))
 
 
 # ── Payment review queue (B2b-1 partial refunds) ──
@@ -178,7 +178,7 @@ async def payment_reviews(request: Request, status: str = "", page: int = 1):
         ctx(request, user, reviews=[dict(r) for r in rows], total=total,
             page=page, pages=max(1, -(-total // _PAGE)),
             q_status=q_status, statuses=["open", "resolved"],
-            fmt_num=fmt_num, page_id="economy"))
+            fmt_num=fmt_num, page_id="economy_reviews"))
 
 
 @router.post("/samelabs/economy/reviews/{rid}/resolve")

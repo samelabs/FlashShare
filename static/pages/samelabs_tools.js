@@ -72,6 +72,17 @@
   });
 
   document.getElementById('createHttpSubmit').addEventListener('click', function () {
+    var paramsDecl = null;
+    var paramsRaw = (form.params.value || '').trim();
+    if (paramsRaw) {
+      try {
+        paramsDecl = JSON.parse(paramsRaw);
+        if (!Array.isArray(paramsDecl)) throw new Error('not array');
+      } catch (e) {
+        slToast('err', '参数声明格式错误', '必须是 JSON 数组');
+        return;
+      }
+    }
     var payload = {
       tool_id: form.tool_id.value.trim(),
       label: form.label.value.trim(),
@@ -86,6 +97,7 @@
         var el = form["out_" + k];
         return el && el.checked;
       }),
+      params: paramsDecl,
       cost: parseInt(form.cost.value, 10) || 0
     };
     var btn = this;

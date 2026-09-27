@@ -145,4 +145,21 @@
   </div>
   <p class="sl-dim"><a href="/samelabs/economy/credits?user_id={{ u.id }}">All Credits rows for this user →</a></p>
 </section>
+
+<section class="sl-panel">
+  <h2>Account actions</h2>
+  <p class="sl-dim">Reset generates a one-time temporary password (shown once here; all browser sessions are revoked, API keys survive). Suspend blocks login, API keys and every tool surface for this account; completed earnings are untouched.</p>
+  <div class="sl-toolbar" style="gap:10px;align-items:center;flex-wrap:wrap" id="accountActions" data-uid="{{ u.id }}">
+    {% if u.status == 'suspended' %}
+    <button type="button" class="sl-btn sl-btn-primary btn-unsuspend">恢复访问</button>
+    {% else %}
+    <button type="button" class="sl-btn btn-reset-pw" {{ 'disabled title="平台与运营账户不可重置"' if u.protected else '' }}>重置密码</button>
+    <button type="button" class="sl-btn btn-suspend" {{ 'disabled title="平台与运营账户不可操作"' if u.protected else '' }}>停用账户</button>
+    {% endif %}
+    <span class="sl-dim" id="actionMsg"></span>
+    <code id="tempPassword" class="sl-mono" style="display:none"></code>
+  </div>
+</section>
 {% endblock %}
+
+{% block script %}<script src="/static/pages/samelabs_user_detail.js?v={{ pages_version }}"></script>{% endblock %}

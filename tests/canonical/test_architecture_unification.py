@@ -26,6 +26,7 @@ sys.path.insert(0, _os.path.join(_REPO, "core"))
 sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -307,31 +308,36 @@ check("U3c tool_calls unchanged", _tc1 == _tc0, (_tc0, _tc1))
 # Operator authority stays users.status; the CHANNEL is what closes:
 # /samelabs accepts browser sessions only, ?key= query auth is gone.
 _cur.execute("update users set status='samelabs' where id=%s", (_uid,))
-r = client.get("/samelabs", cookies={COOKIE_NAME: sess}, follow_redirects=False)
+r = client.get("/samelabs", cookies={COOKIE_NAME: sess},
+               headers={"Accept": "text/html"}, follow_redirects=False)
 check("U9 operator session → /samelabs allowed",
       r.status_code == 200, f"{r.status_code} {r.text[:80]}")
+# B2b-2: denial shape follows the caller — non-browser clients (no
+# text/html in Accept) get a 401 JSON body, browsers keep the redirect.
 r = client.get("/samelabs", headers={"Authorization": f"Bearer {_vtok}"},
                follow_redirects=False)
-check("U9 operator bearer token → /samelabs denied (redirect)",
-      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
-      f"{r.status_code} {r.headers.get('location', '')}")
+check("U9 operator bearer token → /samelabs denied (401 JSON)",
+      r.status_code == 401 and r.json().get("error") == "operator_auth_required",
+      f"{r.status_code} {r.text[:80]}")
 r = client.post("/samelabs/tools/x/pricing",
                 headers={"Authorization": f"Bearer {_vtok}"},
                 follow_redirects=False)
-check("U9 operator bearer token → /samelabs POST denied (redirect)",
-      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
-      f"{r.status_code} {r.headers.get('location', '')}")
+check("U9 operator bearer token → /samelabs POST denied (401 JSON)",
+      r.status_code == 401 and r.json().get("error") == "operator_auth_required",
+      f"{r.status_code} {r.text[:80]}")
 r = client.get("/samelabs?key=" + _vtok, follow_redirects=False)
-check("U9 operator token via ?key= → /samelabs denied (query auth absent)",
-      r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
-      f"{r.status_code} {r.headers.get('location', '')}")
+check("U9 operator token via ?key= → /samelabs denied (401, query auth absent)",
+      r.status_code == 401 and r.json().get("error") == "operator_auth_required",
+      f"{r.status_code} {r.text[:80]}")
 _cur.execute("update users set status='active' where id=%s", (_uid,))
-r = client.get("/samelabs", cookies={COOKIE_NAME: sess}, follow_redirects=False)
+r = client.get("/samelabs", cookies={COOKIE_NAME: sess},
+               headers={"Accept": "text/html"}, follow_redirects=False)
 check("U9 normal browser session → /samelabs denied (redirect)",
       r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
       f"{r.status_code} {r.headers.get('location', '')}")
-r = client.get("/samelabs", follow_redirects=False)
-check("U9 anonymous → /samelabs denied (redirect)",
+r = client.get("/samelabs", headers={"Accept": "text/html"},
+               follow_redirects=False)
+check("U9 anonymous browser → /samelabs denied (redirect)",
       r.status_code == 302 and "/auth/login" in r.headers.get("location", ""),
       f"{r.status_code} {r.headers.get('location', '')}")
 # query-token channel is structurally absent from the auth resolver
@@ -1043,7 +1049,7 @@ _cur.execute("delete from platform_tools where tool_key like %s or tool_key like
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))
 _cur.execute("delete from api_keys where user_id=%s", (_uid,))
 _cur.execute("delete from sessions where user_id=%s", (_uid,))
-_cur.execute("delete from users where id=%s", (_uid,))
+purge_users(_cur, [_uid])
 _con.close()
 
 print()

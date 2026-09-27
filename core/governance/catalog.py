@@ -234,8 +234,13 @@ def owner_public_tools(owner_id: int) -> list:
     (label/desc/params/cost 同 row_to_item 契约), 呈现序同全站。"""
     from governance.pricing import list_pricing
     prices = {r["tool_id"]: r for r in list_pricing()}
+    from repo import users as users_repo
     with db() as con:
-        rows = catalog_repo.public_rows_by_owner(con, owner_id, VIS_PUBLIC)
+        owner_row = users_repo.by_id(con, owner_id)
+        rows = catalog_repo.public_rows_by_owner(
+            con, owner_id, VIS_PUBLIC,
+            owner_suspended=bool(owner_row
+                                 and owner_row["status"] == "suspended"))
     out = []
     for row in rows:
         p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
@@ -320,6 +325,14 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
     """
     with db() as con:
         row = catalog_repo.by_tool_key(con, tool_key)
+        # suspended provider: the tool does not exist on ANY surface —
+        # listing, tool page, MCP, and direct invocation all refuse
+        # here (before any claim/charge); 404 semantics leak nothing.
+        if row is not None and row["owner_id"] is not None:
+            from repo import users as users_repo
+            owner = users_repo.by_id(con, row["owner_id"])
+            if owner is None or owner["status"] == "suspended":
+                return None, "not_found"
     if not row:
         return None, "not_found"
     if not row["enabled"]:

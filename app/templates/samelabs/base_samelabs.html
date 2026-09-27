@@ -7,8 +7,10 @@
   <meta name="referrer" content="same-origin">
   <title>{% block title %}Samelabs{% endblock %} · 518.PLUS</title>
   <link rel="icon" href="/static/images/favicon.ico?v=2" sizes="any">
+  <link rel="stylesheet" href="/static/css/tokens.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/518.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/samelabs.css?v={{ sl_css_version }}">
+  <link rel="stylesheet" href="/static/css/components.css?v={{ css_version }}">
   {% block head %}{% endblock %}
 </head>
 <body class="sl-body">
@@ -52,23 +54,23 @@
         Products
       </a>
       <div class="sl-sidenav-label">Economy</div>
-      <a href="/samelabs/economy/credits" {% if page_id == 'economy' %}class="active" aria-current="page"{% endif %}>
+      <a href="/samelabs/economy/credits" {% if page_id == 'economy_credits' %}class="active" aria-current="page"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         Credits
       </a>
-      <a href="/samelabs/economy/earnings" {% if page_id == 'economy' %}class="active"{% endif %}>
+      <a href="/samelabs/economy/earnings" {% if page_id == 'economy_earnings' %}class="active"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         Provider Earnings
       </a>
-      <a href="/samelabs/economy/withdrawals" {% if page_id == 'economy' %}class="active"{% endif %}>
+      <a href="/samelabs/economy/withdrawals" {% if page_id == 'economy_withdrawals' %}class="active"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
         Withdrawals
       </a>
-      <a href="/samelabs/economy/platform" {% if page_id == 'economy' %}class="active"{% endif %}>
+      <a href="/samelabs/economy/platform" {% if page_id == 'economy_platform' %}class="active"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         Platform Income
       </a>
-      <a href="/samelabs/economy/reviews" {% if page_id == 'economy' %}class="active"{% endif %}>
+      <a href="/samelabs/economy/reviews" {% if page_id == 'economy_reviews' %}class="active"{% endif %}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
         Payment reviews
       </a>
@@ -102,11 +104,11 @@
       <a href="/samelabs/commerce/orders" {% if page_id == 'commerce' %}class="active"{% endif %}>Orders</a>
       <a href="/samelabs/commerce/memberships" {% if page_id == 'commerce' %}class="active"{% endif %}>Memberships</a>
       <a href="/samelabs/commerce/products" {% if page_id == 'commerce' %}class="active"{% endif %}>Products</a>
-      <a href="/samelabs/economy/credits" {% if page_id == 'economy' %}class="active"{% endif %}>Credits</a>
-      <a href="/samelabs/economy/earnings" {% if page_id == 'economy' %}class="active"{% endif %}>Earnings</a>
-      <a href="/samelabs/economy/withdrawals" {% if page_id == 'economy' %}class="active"{% endif %}>Withdrawals</a>
-      <a href="/samelabs/economy/platform" {% if page_id == 'economy' %}class="active"{% endif %}>Income</a>
-      <a href="/samelabs/economy/reviews" {% if page_id == 'economy' %}class="active"{% endif %}>Reviews</a>
+      <a href="/samelabs/economy/credits" {% if page_id == 'economy_credits' %}class="active"{% endif %}>Credits</a>
+      <a href="/samelabs/economy/earnings" {% if page_id == 'economy_earnings' %}class="active"{% endif %}>Earnings</a>
+      <a href="/samelabs/economy/withdrawals" {% if page_id == 'economy_withdrawals' %}class="active"{% endif %}>Withdrawals</a>
+      <a href="/samelabs/economy/platform" {% if page_id == 'economy_platform' %}class="active"{% endif %}>Income</a>
+      <a href="/samelabs/economy/reviews" {% if page_id == 'economy_reviews' %}class="active"{% endif %}>Reviews</a>
       <a href="/samelabs/audit" {% if page_id == 'audit' %}class="active"{% endif %}>Audit</a>
     </nav>
 

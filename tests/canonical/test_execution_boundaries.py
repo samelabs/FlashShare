@@ -32,6 +32,7 @@ _sys.path.insert(0, _os.path.join(_REPO, "core"))
 _sys.path.insert(0, _os.path.join(_REPO, "app"))
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 
 FAIL = []
 COUNT = 0
@@ -374,7 +375,7 @@ finally:
             con.execute("delete from platform_tools where tool_key=%s", (_eb_tool,))
     if _eb_user_id is not None:
         with db() as con:
-            con.execute("delete from users where id=%s", (_eb_user_id,))
+            purge_users(con, [_eb_user_id])
     print("cleanup: boundaries fixtures removed")
 
 # ══════════ F. semantic ══════════
@@ -515,7 +516,8 @@ check("G-fresh schema platform_tools.execution CHECK (local,http) 存在",
 # cleanup seeded rows
 with db() as con:
     con.execute("delete from platform_tools where tool_key like 'eb58/%%'")
-    con.execute("delete from users where username like 'eb58_%%'")
+    purge_users(con, [r["id"] for r in con.execute(
+        "select id from users where username like 'eb58_%%'").fetchall()])
 
 print()
 print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")

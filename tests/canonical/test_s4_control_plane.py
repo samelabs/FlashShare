@@ -57,6 +57,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.dirname(
 sys.path.insert(0, _REPO)
 sys.path.insert(0, os.path.join(_REPO, "core"))
 sys.path.insert(0, os.path.join(_REPO, "app"))
+from tests.support.cleanup import purge_users  # noqa: E402
 os.chdir(_REPO)
 
 FAIL = []
@@ -141,9 +142,7 @@ def _cleanup_own_rows():
                     " OR tool_key = ANY(%s)", (_TOOL_RE, keys))
         con.execute("DELETE FROM pending_downgrades WHERE user_id = ANY(%s)",
                     (uids,))
-        # users cascade: sessions, ledger, tool_calls (incl. running),
-        # withdrawals, orders, memberships, api tokens
-        con.execute("DELETE FROM users WHERE id = ANY(%s)", (uids,))
+        purge_users(con, uids)
         con.execute("DELETE FROM pending_downgrades WHERE target_plan_id IN"
                     " (SELECT id FROM plans WHERE code ~ %s)", (_PLAN_RE,))
         con.execute("DELETE FROM plans WHERE code ~ %s", (_PLAN_RE,))

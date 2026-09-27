@@ -29,7 +29,7 @@
           <td class="mono">{{ r.event_id }}</td>
           <td class="mono">{{ r.txn_id }}</td>
           <td class="mono">{{ r.detail_json }}</td>
-          <td><span class="sl-vis {{ 'v-pending' if r.status == 'open' else '' }}">{{ r.status }}</span></td>
+          <td><span class="tag {{ 'tag-warning' if r.status == 'open' else 'tag-success' }}">{{ r.status }}</span></td>
           <td>{{ fmt_ts(r.created_at) }}</td>
           <td>{{ fmt_ts(r.resolved_at) if r.resolved_at else '—' }}</td>
           <td>

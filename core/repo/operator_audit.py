@@ -34,6 +34,7 @@ TARGET_SAFE_KEYS = {
                     "files_min", "files_max", "outputs", "accept", "cost"},
     "setting": {"rate"},
     "payment_review": {"status", "txn_id", "event_id", "resolved_by"},
+    "user": {"status", "pw_present", "pw_reset", "logins_revoked"},
 }
 
 _SECRET_MARKERS = ("password", "token", "secret", "auth_header",

@@ -159,7 +159,10 @@ def create_http_tool(operator_id: int, payload: dict) -> str:
             "max": int(payload.get("files_max", 1)),
             "accept": accept}},
         "outputs": payload.get("outputs") or ["file"],
-        "params": None,
+        # operator params declaration rides THE single supply point —
+        # validate_params_decl inside tool_supply._normalize_params is
+        # the one validator; this layer adds none of its own.
+        "params": payload.get("params"),
         "visibility": "public",
         "enabled": True,
         "binding": build_http_binding({

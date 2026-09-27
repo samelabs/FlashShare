@@ -36,6 +36,7 @@ if not TEST_DB:
 sys.path.insert(0, _REPO)
 _os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
 _os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
+from tests.support.cleanup import purge_users  # noqa: E402
 sys.path.insert(0, _os.path.join(_REPO, "core"))
 
 import time
@@ -82,8 +83,9 @@ def _cleanup_own_rows():
         "delete from orders where user_id in"
         " (select id from users where username like 'invuser' or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$')")
     _cur.execute(
-        "delete from users where username like 'invuser'"
+        "select id from users where username like 'invuser'"
         " or username ~ '^(ti|tj|dk|dl)[0-9a-f]{7}$'")
+    purge_users(_cur, [r[0] for r in _cur.fetchall()])
     _cur.execute(
         "delete from plans where code in"
         " ('inv8tier', 'inv6tier', 'inv4tier', 'inv5tier', 'inv11t')")
@@ -279,7 +281,9 @@ except ValueError:
 _cur.execute("delete from memberships where user_id=%s", (uid,))
 _cur.execute("delete from pending_downgrades where user_id=%s", (uid,))
 _cur.execute("delete from plans where code='inv11t'")
-_cur.execute("delete from users where username='invuser'")
+_cur.execute(
+    "select id from users where username='invuser'")
+purge_users(_cur, [r[0] for r in _cur.fetchall()])
 plan_catalog.catalog(refresh=True)
 
 # ═══ INV10/INV11 route-level: 真实 ASGI 路由 + provider 调用计数 ═══
@@ -395,7 +399,7 @@ _cur.execute("update plans set creem_product_id=NULL, price_cents=0,"
 _cur.execute("delete from memberships where user_id in (%s, %s)", (_c1_uid, _c2_uid))
 _cur.execute("delete from pending_downgrades where user_id in (%s, %s)", (_c1_uid, _c2_uid))
 _cur.execute("delete from sessions where user_id in (%s, %s)", (_c1_uid, _c2_uid))
-_cur.execute("delete from users where id in (%s, %s)", (_c1_uid, _c2_uid))
+purge_users(_cur, [_c1_uid, _c2_uid])
 _vci()
 _creem.upgrade_subscription = _orig_upgrade
 _creem.creem_enabled = _orig_enabled

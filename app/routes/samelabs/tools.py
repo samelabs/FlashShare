@@ -159,6 +159,9 @@ async def create_http_tool(request: Request):
             cost = strict_int(raw.get("cost", 0))
         except ValueError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, 422)
+        params_decl = raw.get("params")
+        if params_decl is not None and not isinstance(params_decl, list):
+            return JSONResponse({"ok": False, "error": "bad_params"}, 422)
         if "output_filename" in raw:
             return JSONResponse({"ok": False,
                                  "error": "bad_output_filename"}, 422)
@@ -199,6 +202,7 @@ async def create_http_tool(request: Request):
              "files_min": files_min, "files_max": files_max,
              "outputs": [k for k in ("text", "json", "file")
                          if k in set(outputs)],
+             "params": params_decl,
              "cost": cost})
     except DeclarationError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 422)
