@@ -454,11 +454,12 @@ def _spec_summary(t: dict, names: dict | None = None) -> dict:
     desc = (resolve_label(t.get("desc"), "en") or title).rstrip(".")
     price = (f" Price: {int(t['cost'])} credits per call."
              if int(t["cost"]) > 0 else " Free.")
+    author = (f" by @{t['owner_handle']}" if t.get("owner_handle") else "")
     return {
         "name": mcp_name(t["id"], names),
         "title": title,
-        "description": f"{desc}. Inputs: {files_txt}. Outputs: {outs}."
-                       f"{price}",
+        "description": f"{desc}.{author} Inputs: {files_txt}."
+                       f" Outputs: {outs}.{price}",
     }
 
 

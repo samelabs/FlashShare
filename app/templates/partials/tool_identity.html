@@ -22,7 +22,8 @@ interior. icon/fallback/label/desc/origin/cost 全部经此表达 — surface
   <span class="tool-card-name">{{ t.label | lt(lang) or t.id }}</span>
   {% if t.desc %}<span class="tool-card-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
   <span class="tool-card-meta">
-    {% if t.origin == 'official' %}<span class="tool-card-origin">{{ texts.market_official }}</span>{% endif %}
+    {% if t.origin == 'official' %}<span class="tool-card-origin">{{ texts.market_official }}</span>
+    {% elif t.owner_handle %}<a class="tool-card-author" href="/u/{{ t.owner_handle }}">@{{ t.owner_handle }}</a>{% endif %}
     {% if t.files_min == 0 %}
     <span class="tag">{{ texts['out_kind_text'] }}</span>
     {% elif t.files_min == t.files_max %}

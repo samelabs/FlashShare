@@ -159,7 +159,9 @@ def build_llms_txt() -> str:
         desc = resolve_label(label, "en") or t["id"]
         cost = int(t.get("cost") or 0)
         price = "free" if cost == 0 else f"{cost} credits/call"
-        a(f"- {name}: {desc} [{price}]")
+        author = (f" by @{t['owner_handle']}" if t.get("owner_handle")
+                  else "")
+        a(f"- {name}: {desc}{author} [{price}]")
     a("")
     a(f"(server: 518plus/{PRODUCT_VERSION}; this file is generated — "
       "do not edit by hand)")
