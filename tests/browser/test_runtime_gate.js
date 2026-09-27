@@ -252,7 +252,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
       // 4-7. upload + execute compress via real UI (home surface)
       await page.click(".tool-card[data-tool-id=compress]");
-      // IO-2: params render inline in the shared input component — no overlay
+      // params render inline in the shared input component — no overlay
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
       check("home: input component rendered (run + file picker)",
         (await page.$(".ti-run")) !== null && (await page.$(".ti-file-input")) !== null);

@@ -312,7 +312,7 @@ r = client.get("/samelabs", cookies={COOKIE_NAME: sess},
                headers={"Accept": "text/html"}, follow_redirects=False)
 check("U9 operator session → /samelabs allowed",
       r.status_code == 200, f"{r.status_code} {r.text[:80]}")
-# B2b-2: denial shape follows the caller — non-browser clients (no
+# denial shape follows the caller — non-browser clients (no
 # text/html in Accept) get a 401 JSON body, browsers keep the redirect.
 r = client.get("/samelabs", headers={"Authorization": f"Bearer {_vtok}"},
                follow_redirects=False)
@@ -557,7 +557,7 @@ check("C30 arbitrary unknown binding key → DeclarationError (fail closed)",
       _closed_f and _closed_e)
 
 # C31: tool-input.js accept chips stay canonical-only — no MIME
-# compatibility fallback (IO-2: the input area renderer owns the display)
+# compatibility fallback (the input area renderer owns the display)
 import re as _re31
 _ti31 = open(_os2.path.join(_REPO, "static", "pages", "tool-input.js"),
              encoding="utf-8").read()

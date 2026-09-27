@@ -909,37 +909,39 @@ check("K1e tools JS builds every tool URL via encodeURIComponent",
       and "'/samelabs/tools/' + tool" not in _js_tools
       and "'/samelabs/tools/' + b.dataset" not in _js_tools, None)
 
-# ═══ E1: registry enabled toggle (system / operator / provider rows) ═══
+# ═══ E1: operator delist switch (system / operator / provider rows) ═══
 for _k, _cls in ((_T_LOCAL, "system"), (_T_HTTP, "operator"),
                  (_T_PROV, "provider")):
-    r = _post_json(f"/samelabs/tools/{_enc(_k)}/enabled", {"enabled": False})
+    r = _post_json(f"/samelabs/tools/{_enc(_k)}/delist",
+                   {"delisted": True})
     with db() as con:
-        _en = con.execute("SELECT enabled FROM platform_tools"
-                          " WHERE tool_key=%s", (_k,)).fetchone()["enabled"]
+        _en = con.execute("SELECT delisted FROM platform_tools"
+                          " WHERE tool_key=%s", (_k,)).fetchone()["delisted"]
         _au = con.execute(
             "SELECT before_json, after_json, actor_user_id FROM"
-            " operator_audit WHERE action='tool.enabled.update'"
+            " operator_audit WHERE action='tool.delisted.update'"
             " AND target_type='tool' AND target_id=%s ORDER BY id DESC"
             " LIMIT 1", (_k,)).fetchone()
-    check(f"E1a {_cls} row disable → enabled=false + audit before/after",
-          r.status_code == 200 and _en is False and _au is not None
-          and _jv(_au["before_json"]) == {"tool_key": _k, "enabled": True}
-          and _jv(_au["after_json"]) == {"tool_key": _k, "enabled": False}
+    check(f"E1a {_cls} row delist → delisted=true + audit before/after",
+          r.status_code == 200 and _en is True and _au is not None
+          and _jv(_au["before_json"]) == {"tool_key": _k, "delisted": False}
+          and _jv(_au["after_json"]) == {"tool_key": _k, "delisted": True}
           and int(_au["actor_user_id"]) == op,
           (r.status_code, _en, _au and dict(_au)))
-r = _post_json(f"/samelabs/tools/{_enc(_T_PROV)}/enabled", {"enabled": True})
+r = _post_json(f"/samelabs/tools/{_enc(_T_PROV)}/delist",
+               {"delisted": False})
 with db() as con:
-    _en = con.execute("SELECT enabled FROM platform_tools WHERE tool_key=%s",
-                      (_T_PROV,)).fetchone()["enabled"]
-check("E1b re-enable → enabled=true", r.status_code == 200 and _en is True,
+    _en = con.execute("SELECT delisted FROM platform_tools WHERE tool_key=%s",
+                      (_T_PROV,)).fetchone()["delisted"]
+check("E1b restore → delisted=false", r.status_code == 200 and _en is False,
       (r.status_code, _en))
 for _bad in ("false", 0, None):
-    r = _post_json(f"/samelabs/tools/{_enc(_T_PROV)}/enabled",
-                   {"enabled": _bad})
-    check(f"E1c enabled={_bad!r} rejected 422", r.status_code == 422,
+    r = _post_json(f"/samelabs/tools/{_enc(_T_PROV)}/delist",
+                   {"delisted": _bad})
+    check(f"E1c delisted={_bad!r} rejected 422", r.status_code == 422,
           r.status_code)
-r = _post_json(f"/samelabs/tools/{_enc('nobody_' + _RUN)}/enabled",
-               {"enabled": False})
+r = _post_json(f"/samelabs/tools/{_enc('nobody_' + _RUN)}/delist",
+                {"delisted": True})
 check("E1d unknown key → 404", r.status_code == 404, r.status_code)
 # one transaction: forced audit failure rolls the switch back
 _orig_record = _oa.record
@@ -952,24 +954,24 @@ def _boom(*a, **k):
 _oa.record = _boom
 try:
     try:
-        r = _post_json(f"/samelabs/tools/{_enc(_T_PROV)}/enabled",
-                       {"enabled": False})
+        r = _post_json(f"/samelabs/tools/{_enc(_T_PROV)}/delist",
+                       {"delisted": True})
         _st = r.status_code
     except Exception:
         _st = 500
 finally:
     _oa.record = _orig_record
 with db() as con:
-    _en = con.execute("SELECT enabled FROM platform_tools WHERE tool_key=%s",
-                      (_T_PROV,)).fetchone()["enabled"]
+    _en = con.execute("SELECT delisted FROM platform_tools WHERE tool_key=%s",
+                      (_T_PROV,)).fetchone()["delisted"]
 check("E1e audit failure → switch rolled back (same transaction)",
-      _st == 500 and _en is True, (_st, _en))
+      _st == 500 and _en is False, (_st, _en))
 r = _get("/samelabs/tools")
 check("E1f Tool Supply renders a registry switch per row (incl. provider"
       " key, escaped)",
       r.status_code == 200
-      and f'data-toggle-enabled="{_T_PROV}"' in r.text
-      and 'data-toggle-enabled="' in r.text, r.status_code)
+      and f'data-toggle-delisted="{_T_PROV}"' in r.text
+      and 'data-toggle-delisted="' in r.text, r.status_code)
 
 # ═══ PL1: PATCH plan DB conflicts → typed 409 ═══
 with db() as con:
