@@ -794,9 +794,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .workspace .result { margin-block-start: var(--s4); }
 
 /* ═══ IO-3a: 结果卡 (页内) 与 /r 结果页 ═══ */
-.rs-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; margin-block-end: var(--s4); }
-.rs-card-head h3 { font-size: var(--fs-lg); font-weight: 750; }
-.rs-card-body { display: flex; flex-direction: column; }
 .rs-json-head { justify-content: flex-end; padding-block-start: 0; padding-block-end: var(--s2); }
 .r-page .r-head { margin-block-end: var(--s5); }
 .r-page .r-actions { margin-block-start: var(--s4); }
