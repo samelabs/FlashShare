@@ -7,24 +7,23 @@
 
 ## A. GitHub 是 source of truth
 
-- 开发前先 `git fetch origin`。功能分支默认从 `origin/main` 创建；发布收口期间从
-  PM 指定的集成分支创建（1.0 收口期间为 `fix/order-payment-production-closure`，
-  即 PR #38）。不得自选基线，不得从其他功能分支或过期分支派生。
+- 开发前先 `git fetch origin`。`main` 是唯一长期分支与开发主线；批次分支一律从
+  `origin/main` 创建，经 PR 合回 `main`。不得自选基线，不得从其他批次分支或过期分支派生。
 - 服务器上的 checkout 只是运行/部署环境，其本地状态不凌驾于 GitHub 仓库。
 - 禁止在 production checkout 上做未提交的源码修改后直接重启服务跑新代码。
-- 禁止 force push `main` 与集成分支；禁止未经裁定的 merge。
+- 禁止 force push `main`；禁止未经裁定的 merge。
 - 长期开发规则、架构约束、正式测试都只存在于仓库内；服务器本地只允许
   secrets、runtime env、部署专属配置、scratch/临时诊断和 dev log。
 
 ### 角色与 GitHub 边界
 
-- **Owner**：产品意图与最终裁定；授权 merge 到 main 与 production deploy。
+- **Owner**：产品意图与最终裁定；授权 production deploy。
 - **PM（主线把控）**：冻结每个批次的执行指令，按精确 SHA 验收（diff / 本地
-  canonical / GitHub CI / 必要时真浏览器），创建 PR、决定集成顺序、合入集成分支。
+  canonical / GitHub CI / 必要时真浏览器），创建 PR、决定合入顺序，验收通过且 CI 全绿后合入 `main`。
 - **执行 agent**（本地或服务器）：只执行 PM 下发的单个批次。
   MAY：`git fetch`、在指定分支上 commit、push 该 non-main 分支（替换自己的
   WIP 提交时仅可 `--force-with-lease` 该分支）。
-  MUST NOT：push main 或集成分支、force push 他人分支、开/合 PR、deploy、
+  MUST NOT：push main、force push 他人分支、开/合 PR、deploy、
   超出批次范围修改、把本地测试结果声明为 GitHub CI 结果（本地绿 ≠ CI 绿，
   两者来源分开表述）。完成后报告并 **STOP**。
 - **Production deploy**：由服务器侧 agent 在 owner 明确指令后执行。
@@ -35,7 +34,7 @@
   直接提交到该批次分支，不另开分支。
 - 合入即删除远程分支（仓库已开启合并后自动删除）；不再推进的分支打
   `archive/<原分支名>` 标签后删除，不保留悬空分支。
-- 本地同一时间只保留：主 checkout（跟踪集成分支）+ 当前批次的一个 worktree、
+- 本地同一时间只保留：主 checkout（跟踪 `main`）+ 当前批次的一个 worktree、
   一个 isolated test DB、一个截图目录（`.claude/shots/<批次号>/`，只在本地查看，
   不上传任何外部服务）；批次合入后全部清理。
 - 提交邮箱一律使用 GitHub noreply 地址，不得使用个人邮箱。

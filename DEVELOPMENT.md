@@ -130,7 +130,7 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 2. 改动 + diff 自审 + 门禁（compile / node / canonical 全量）。
 3. push 该 non-main 分支 → 报告 → **STOP**。
 4. PM 按精确 SHA 验收，开 PR，等 GitHub CI（fast-gate / canonical-integration /
-   browser-runtime）全绿后合入集成分支；合入 main 与 production deploy 需 owner 授权。
+   browser-runtime）全绿后合入 `main`；production deploy 需 owner 授权。
 
 ## Production deploy 概要
 
