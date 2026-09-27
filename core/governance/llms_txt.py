@@ -80,18 +80,24 @@ def build_llms_txt() -> str:
     a('  {"kind":"file","filename":"...","content_type":"...","size":N}')
     a("In tools/call the items arrive directly: structuredContent.items "
       "carries them with a download_url per file; small images also "
-      "appear as image content blocks. result_url is a human-viewable "
-      "page (/r/{id}).")
+      "appear as image content blocks. Every structuredContent response "
+      "additionally carries a content text block holding the JSON "
+      "serialization of that structuredContent (backward-compat form). "
+      "result_url is a human-viewable page (/r/{id}).")
     a("")
     a("## Delivery (result retention)")
+    from governance.delivery import EXPIRY_DAYS, DOWNLOAD_LIMITS
     a("Every tools/call accepts an optional `delivery` object that "
       "governs how long the result (and its file items) stays "
       "available and how many times files may be downloaded:")
     a('  {"delivery": {"expiry_days": 1, "allowed_downloads": 50}}')
-    a("- expiry_days: how long the result lives (default 1; larger "
-      "values may require a paid plan).")
-    a("- allowed_downloads: total downloads allowed across the file "
-      "items (default 50).")
+    a(f"- expiry_days: how long the result lives (default 1). Legal "
+      f"values: {list(EXPIRY_DAYS)}.")
+    a(f"- allowed_downloads: total downloads allowed across the file "
+      f"items (default 50). Legal values: {list(DOWNLOAD_LIMITS)}.")
+    a("- Values outside your plan's allowance need a higher plan; an "
+      "invalid value is returned as an isError result listing the "
+      "legal values.")
     a("structuredContent.expires_at is the epoch second at which the "
       "result expires; after it, result_url and every file link 404.")
     a("")
@@ -116,6 +122,22 @@ def build_llms_txt() -> str:
     a("")
     a('Then tools/call any tool with files[]: '
       '[{"public_id":"...","source_token":"..."}].')
+    a("")
+    a("## Your staged files: list and delete (free meta tools)")
+    a("- list_uploads: your still-live files (newest first, 20 per "
+      'page, params {"offset":N}) — each entry: public_id, '
+      "filename, size, content_type, expires_at, downloads_remaining, "
+      "page_url, download_url.")
+    a("- delete_upload: delete ONE of your own files by public_id — "
+      "identical to deleting on the web (the /f/{public_id} page 404s "
+      "immediately; stored bytes and mapping go together).")
+    a("Example:")
+    a("")
+    a(f'curl -s {mcp_url} \\')
+    a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
+    a('  -H "Content-Type: application/json" \\')
+    a('  -d \'{"jsonrpc":"2.0","id":4,"method":"tools/call",'
+      '"params":{"name":"list_uploads","arguments":{}}}\'')
     a("")
     a("## Share links")
     a(f"- /f/{{id}} is the human page; /f/{{id}}?download=1 is the direct "
