@@ -62,24 +62,39 @@ def tool_key_exists(con, tool_key: str) -> bool:
         (tool_key,)).fetchone() is not None
 
 
-def all_tool_keys_by_age(con) -> list:
+def all_tool_keys_by_age(con, include_suspended_owners: bool = False) -> list:
     """Every stored tool_key (all states), oldest row first — the input of
-    the MCP tool-name projection (earlier rows keep their natural name)."""
-    return [r["tool_key"] for r in con.execute(
-        "SELECT tool_key FROM platform_tools ORDER BY id").fetchall()]
+    the MCP tool-name projection (earlier rows keep their natural name).
+    Suspended owners drop out unless the operator surface asks for all."""
+    join = "" if include_suspended_owners else (
+        " LEFT JOIN users o ON o.id = platform_tools.owner_id"
+        " WHERE (owner_id IS NULL OR o.status <> 'suspended')")
+    # qualified: the join brings users.id into scope
+    q = ("SELECT tool_key FROM platform_tools" + join
+         + " ORDER BY platform_tools.id")
+    return [r["tool_key"] for r in con.execute(q).fetchall()]
+
+
+# Suspended providers leave the catalog everywhere (B2b-2): one SQL
+# predicate joined into every public projection — first-party rows
+# (owner_id IS NULL) never join a suspended owner.
+_OWNER_ALIVE = (" LEFT JOIN users o ON o.id = platform_tools.owner_id "
+                "WHERE (owner_id IS NULL OR o.status <> 'suspended') AND ")
 
 
 def visible_to(con, visibility_public: str, viewer_id: Optional[int]) -> list:
     """呈现顺序 = 管理后台遴选: featured 优先, 再 sort_order, 再 id (注册序兜底)。"""
     if viewer_id is None:
         return con.execute(
-            "SELECT * FROM platform_tools "
-            "WHERE enabled AND visibility = %s "
+            "SELECT platform_tools.* FROM platform_tools"
+            + _OWNER_ALIVE +
+            "enabled AND visibility = %s "
             "ORDER BY featured DESC, sort_order, id",
             (visibility_public,)).fetchall()
     return con.execute(
-        "SELECT * FROM platform_tools "
-        "WHERE enabled AND (visibility = %s OR owner_id = %s) "
+        "SELECT platform_tools.* FROM platform_tools"
+        + _OWNER_ALIVE +
+        "enabled AND (visibility = %s OR owner_id = %s) "
         "ORDER BY featured DESC, sort_order, id",
         (visibility_public, viewer_id)).fetchall()
 
@@ -89,8 +104,10 @@ def search(con, visibility_public: str, viewer_id: Optional[int],
     if viewer_id is None:
         return con.execute(
             """
-            SELECT * FROM platform_tools
-            WHERE enabled AND visibility = %s
+            SELECT platform_tools.* FROM platform_tools
+            LEFT JOIN users o ON o.id = platform_tools.owner_id
+            WHERE (owner_id IS NULL OR o.status <> 'suspended')
+              AND enabled AND visibility = %s
               AND (LOWER(tool_key) LIKE %s
                    OR LOWER(label_json)::jsonb::text LIKE %s)
             ORDER BY (owner_id IS NULL) DESC, id LIMIT %s
@@ -98,8 +115,10 @@ def search(con, visibility_public: str, viewer_id: Optional[int],
             (visibility_public, like, like, limit)).fetchall()
     return con.execute(
         """
-        SELECT * FROM platform_tools
-        WHERE enabled AND (visibility = %s OR owner_id = %s)
+        SELECT platform_tools.* FROM platform_tools
+        LEFT JOIN users o ON o.id = platform_tools.owner_id
+        WHERE (owner_id IS NULL OR o.status <> 'suspended')
+          AND enabled AND (visibility = %s OR owner_id = %s)
           AND (LOWER(tool_key) LIKE %s
                OR LOWER(label_json)::jsonb::text LIKE %s)
         ORDER BY (owner_id IS NULL) DESC, id LIMIT %s
@@ -161,8 +180,12 @@ def count_by_owner(con, user_id: int) -> int:
         (user_id,)).fetchone()["n"]
 
 
-def public_rows_by_owner(con, owner_id: int, visibility_public: str) -> list:
-    """用户页 (开发者公开面): 该作者的公开+启用工具行, 呈现序同全站。"""
+def public_rows_by_owner(con, owner_id: int, visibility_public: str,
+                         owner_suspended: bool = False) -> list:
+    """用户页 (开发者公开面): 该作者的公开+启用工具行, 呈现序同全站。
+    停用作者 → 空列表 (作者页整体不可见, 调用方 404)。"""
+    if owner_suspended:
+        return []
     return con.execute(
         "SELECT * FROM platform_tools "
         "WHERE owner_id = %s AND enabled AND visibility = %s "

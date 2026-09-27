@@ -227,14 +227,16 @@ async def user_page(request: Request, handle: str):
     """用户页 (开发者公开面): 作者身份 + 公开工具罗列。并列于工具页
     (App Store 开发者页参照), 只透公开字段白名单, 404 不泄露存在性。"""
     from app.main import templates
-    from repo.users import id_by_username
     from governance.catalog import owner_public_tools
     from database import db
     from repo.ledger import ok_calls_by_owner
 
     with db() as con:
-        urow = id_by_username(con, handle)
-    if urow is None:
+        urow = con.execute(
+            "SELECT id, status FROM users WHERE username = %s",
+            (handle,)).fetchone()
+    if urow is None or urow["status"] == "suspended":
+        # suspended provider: the author page does not exist (B2b-2)
         return templates.TemplateResponse(request, "missing.html",
                                           _ctx_base(request), status_code=404)
     owner_id = urow["id"]
