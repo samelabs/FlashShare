@@ -236,7 +236,7 @@ async def user_page(request: Request, handle: str):
             "SELECT id, status FROM users WHERE username = %s",
             (handle,)).fetchone()
     if urow is None or urow["status"] == "suspended":
-        # suspended provider: the author page does not exist (B2b-2)
+        # suspended provider: the author page does not exist
         return templates.TemplateResponse(request, "missing.html",
                                           _ctx_base(request), status_code=404)
     owner_id = urow["id"]

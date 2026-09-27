@@ -128,7 +128,7 @@ _SCHEMA_SQL = (
       updated_at     BIGINT NOT NULL DEFAULT 0
     )
     """,
-    # one email per identity regardless of case (B2b-2); NULL emails
+    # one email per identity regardless of case ; NULL emails
     # (X-only accounts, platform row) never collide under a partial index
     """CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uk
        ON users (lower(email)) WHERE email IS NOT NULL""",
@@ -512,7 +512,7 @@ _SCHEMA_SQL = (
       updated_by BIGINT
     )
     """,
-    # commission rate bootstrap (B2b-1 fail-closed): the metering gate
+    # commission rate bootstrap (fail-closed): the metering gate
     # refuses third-party metered calls when the rate is missing — the
     # platform ALWAYS ships a legal initial value (operator-editable via
     # the audited backoffice write; ON CONFLICT keeps configured values).
@@ -534,6 +534,9 @@ _SCHEMA_SQL = (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       tool_key       TEXT NOT NULL,          -- 'beautify' | 'owner/tool'
       owner_id       BIGINT REFERENCES users(id) ON DELETE RESTRICT,
+      -- operator takedown (governance): developer enabled and operator
+      -- delisted are INDEPENDENT switches; public visibility reads both.
+      delisted      BOOLEAN NOT NULL DEFAULT FALSE,
                                            -- NULL = first-party seed
       tool_id        TEXT NOT NULL,          -- bare id within namespace
       execution      TEXT NOT NULL DEFAULT 'local',
@@ -630,7 +633,7 @@ _SCHEMA_SQL = (
     """
     CREATE INDEX IF NOT EXISTS withdrawals_user_idx ON withdrawals(user_id)
     """,
-    # ── platform: payment_reviews (B2b-1 partial-refund review queue) ──
+    # ── platform: payment_reviews (partial-refund review queue) ──
     # No existing table models an INBOUND webhook adjudication fact: orders
     # rows are purchase intents (kind/status CHECKs a partial refund event
     # cannot satisfy), pending_downgrades is a per-user single-row intent.
@@ -704,7 +707,7 @@ _SCHEMA_SQL = (
       PRIMARY KEY (user_id)
     )
     """,
-    # ── B2b-1: per-period BASE payment record (transaction-record basis) ──
+    # ── per-period BASE payment record (transaction-record basis) ──
     # Which provider transaction funds a period's base cycle is an
     # economic fact that must NOT depend on ledger grant rows (a paid
     # plan with zero monthly credits mints none). apply_paid_period

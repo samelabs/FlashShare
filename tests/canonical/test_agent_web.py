@@ -216,7 +216,7 @@ try:
           "/mcp" in body and "/llms.txt" in body and "fsk_" in body, None)
 
     # ═══ S. share-page agent affordances ═══
-    # IO-3a: sharing runs through the share tool — stage the source,
+    # sharing runs through the share tool — stage the source,
     # then execute; the settled file item carries the public share id.
     b = "----aw"
     up_body = (f'--{b}\r\nContent-Disposition: form-data; name="client_ref"'

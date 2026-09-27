@@ -1,6 +1,6 @@
 // ── process-flow: 全局处理流 (单源) ──────────────────────────────
 // executable tool 的唯一浏览器执行链: 首页表单与 /tool/... 一控件都走
-// runToolFlow。share 也走完整执行 (IO-1: 上传 → 执行 → file items), app.js
+// runToolFlow。share 也走完整执行 (上传 → 执行 → file items), app.js
 // 不再维护第二套 upload→execute→retry。
 //
 // Operation identity (硬 invariant):
@@ -220,7 +220,7 @@
         return null;
       }
 
-      // Step 2: execute tool — canonical ToolInvocation (Stage C):
+      // Step 2: execute tool — canonical ToolInvocation (the canonical-invocation unification):
       // source.files[] 唯一 shape (single/multi 只是长度不同);
       // params 只含 tool params; delivery 独立; client_ref = the operation
       // identity minted for THIS run (identical to the upload leg's ref).

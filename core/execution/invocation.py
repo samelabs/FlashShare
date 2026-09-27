@@ -1,4 +1,4 @@
-"""execution/invocation — canonical ToolInvocation domain (Stage C).
+"""execution/invocation — canonical ToolInvocation domain (the canonical-invocation unification).
 
 唯一 invocation schema:
 

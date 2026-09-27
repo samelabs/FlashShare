@@ -106,7 +106,7 @@ async def user_detail(user_id: int, request: Request):
 
 @router.post("/samelabs/users/{user_id}/reset-password")
 async def reset_password(user_id: int, request: Request):
-    """Operator password reset (B2b-2): one-time temporary password
+    """Operator password reset : one-time temporary password
     shown to the operator ONCE; every browser session is revoked, API
     keys survive. Platform row and backoffice accounts are protected.
     The credential itself never reaches storage or the audit."""

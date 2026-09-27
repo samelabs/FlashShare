@@ -251,7 +251,7 @@ async def create_upload(request: Request):
     ip = _client_ip(request)
     from governance.delivery import (INTERMEDIATE_TTL_DAYS,
                                      INTERMEDIATE_DOWNLOAD_LIMIT)
-    # IO-3a: the upload surface ONLY stages tool sources. Sharing is the
+    # the upload surface ONLY stages tool sources. Sharing is the
     # share tool (files 1..20 → one file item per input); result delivery
     # entitlement is enforced at the canonical execute preflight, not here.
     has_tool = form.get("tool", "").strip()

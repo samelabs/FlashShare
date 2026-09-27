@@ -6,18 +6,18 @@
     return '/samelabs/tools/' + encodeURIComponent(key) + '/' + action;
   }
 
-  document.querySelectorAll('input[data-toggle-enabled]').forEach(function (cb) {
+  document.querySelectorAll('input[data-toggle-delisted]').forEach(function (cb) {
     cb.addEventListener('change', function () {
-      var key = cb.dataset.toggleEnabled;
-      var want = cb.checked;
+      var key = cb.dataset.toggleDelisted;
+      var wantListed = cb.checked;           // checked = 上架中
       cb.disabled = true;
-      slPost(toolUrl(key, 'enabled'), { enabled: want }).then(function (r) {
+      slPost(toolUrl(key, 'delist'), { delisted: !wantListed }).then(function (r) {
         cb.disabled = false;
         if (r.ok && r.data.ok) {
-          cb.checked = !!r.data.enabled;
-          slToast('ok', r.data.enabled ? '已启用' : '已停用', key);
+          cb.checked = !r.data.delisted;
+          slToast('ok', r.data.delisted ? '已下架' : '已恢复上架', key);
         } else {
-          cb.checked = !want;
+          cb.checked = !wantListed;
           slToast('err', '切换失败', key + ' · ' + ((r.data && r.data.error) || ''));
         }
       });

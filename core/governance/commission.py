@@ -1,6 +1,6 @@
-"""governance/commission — 平台佣金率 (批2e 从路由/gate 上收为治理参数).
+"""governance/commission — 平台佣金率 (the execution-domain split 从路由/gate 上收为治理参数).
 
-B2b-1 fail-closed: the rate is REAL config, not a guess. Missing,
+Fail-closed: the rate is REAL config, not a guess. Missing,
 non-integer, or out-of-range → None — the caller (metering gate) must
 refuse the call BEFORE charging. No fallback, no clamping: a wrong
 commission silently changes the developer/platform split, so an

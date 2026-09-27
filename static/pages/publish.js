@@ -124,7 +124,7 @@ function collectLangDict() {
     const name = row.querySelector(".lang-name").value.trim();
     const desc = row.querySelector(".lang-desc").value.trim();
     if (lang === cur) return;
-    // 批 2c 删除送达: 行存在即"提及"—— 空值显式删除该 locale (tombstone ""),
+    // the billing fixc 删除送达: 行存在即"提及"—— 空值显式删除该 locale (tombstone ""),
     // 未提及 = 行不存在。服务端 patch_locale 空值=删键, 与本协议闭环。
     if (lang) {
       out[lang] = name;                      // 空 name = 删除该 label locale
@@ -145,14 +145,14 @@ const PARAM_TYPES = [
   ["number", "pub_pt_number"], ["boolean", "pub_pt_boolean"],
 ];
 const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
-// LocalizedText 编辑回填 (批 2): 只经 canonical resolveLabel 读 dict —
+// LocalizedText 编辑回填 (the billing fix): 只经 canonical resolveLabel 读 dict —
 // 禁止 Object.values()[0] / 把 dict 当 string。服务端 merge 负责 patch 语义。
 const _ltBack = v => window.resolveLabel ? window.resolveLabel(v) : (typeof v === "string" ? v : "");
-// 显式删除的附加语言 (批 2c): 用户移除 lang-row 或清空输入 → 记 locale,
+// 显式删除的附加语言 (the billing fixc): 用户移除 lang-row 或清空输入 → 记 locale,
 // 提交时以空串 tombstone 送达服务端 (与"从未提及"可区分)。
 const _deletedLangs = new Set();
 let _initLabel = "", _initDesc = "";
-// 语言行删除单点 (批 2d): refill 回填行 / addLangRow 新增行共用 —
+// 语言行删除单点 (the billing fixd): refill 回填行 / addLangRow 新增行共用 —
 // 记 locale 进 _deletedLangs (tombstone) 后移除行
 function bindLangRowDelete(row) {
   row.querySelector(".lang-del").addEventListener("click",
@@ -350,7 +350,7 @@ async function submit() {
       if (k.endsWith("__desc")) descDict[k.slice(0, -6)] = v;
       else labelDict[k] = v;
     }
-    // cur locale 三态 (批 2d):
+    // cur locale 三态 (the billing fixd):
     //   值 == 回填初值 → 未修改, 不并入 (旧 dict 该 locale 原样保留)
     //   值 != 初值非空 → {cur: 新值}
     //   值 != 初值空串 → {cur: ""} tombstone (显式删除该 locale)
@@ -397,7 +397,7 @@ async function submit() {
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
     params: params.length ? params : undefined,
   };
-  if (!_editId) body.visibility = "private";   // 新工具恒私有起步; 编辑态不动可见性 (防公开工具被编辑静默降级)
+  // 发布即上架: 新工具默认公开; 编辑态不动可见性 (防公开工具被编辑静默降级)
   const editing = !!_editId;
   // 编辑态 tool_id immutable: 去掉 body.tool_id, 走 URL 路径定位
   if (editing) delete body.tool_id;
@@ -433,7 +433,7 @@ function refill(t) {
   _deletedLangs.clear();
   document.getElementById("fUrl").value = t.url || "";
   document.getElementById("fLabel").value = _ltBack(t.label);
-  // 批 2c: 记录主框回填初值 (= resolver fallback) — 提交时值未变 → cur locale
+  // the billing fixc: 记录主框回填初值 (= resolver fallback) — 提交时值未变 → cur locale
   // 视为未修改, 不并入提交 dict (服务端 guard 的前端对应)
   _initLabel = document.getElementById("fLabel").value;
   _initDesc = document.getElementById("fDesc").value = _ltBack(t.desc);

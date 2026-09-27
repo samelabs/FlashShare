@@ -1,4 +1,4 @@
-"""execution/dispatch — 统一执行请求入口 (Stage C: canonical ToolInvocation).
+"""execution/dispatch — 统一执行请求入口 (the canonical-invocation unification: canonical ToolInvocation).
 
 Web(api.py) / MCP 两面构造完全相同的 canonical ToolInvocation,
 dispatch 只认识这一种 schema:
@@ -97,7 +97,7 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
     if tool.get("execution") not in _EXECUTIONS:
         return None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
-    # Stored outputs declaration (B2b-1): the runtime enforcement point
+    # Stored outputs declaration : the runtime enforcement point
     # (orchestrator) parses the same stored JSON — a corrupt declaration
     # is refused HERE before any claim/charge/network, mirroring the
     # accept/execution stored-contract checks above.
@@ -168,7 +168,7 @@ def source_accept_error(tool: dict, filenames: list) -> str | None:
 
 async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, pool=None):
     """返回 (payload_dict | None, error_body | None, status | None)。"""
-    # Stage C: 单点 parser — root 非 dict / 旧 shape / 未知字段 / 非法
+    # the canonical-invocation unification: 单点 parser — root 非 dict / 旧 shape / 未知字段 / 非法
     # delivery 全部在此受控 422, 不 500。
     try:
         inv = parse_tool_invocation(raw)

@@ -67,7 +67,7 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         # 双形态 (tool modes v3 语言模型): str=任意语言原文 | dict=多语言集合
         if isinstance(label, str):
             label = label.strip()
-            # Web locale patch 下空串 = 显式删除当前 locale (批 2), 放行;
+            # Web locale patch 下空串 = 显式删除当前 locale (the billing fix), 放行;
             # 其余路径 (POST / 无头 API PATCH) 工具名必填维持 bad_label
             if not label and not (partial and edit_locale):
                 return None, "bad_label"
@@ -80,7 +80,7 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
                 if lang not in _SUPPORTED_LANGS or not isinstance(v, str):
                     return None, "bad_label"
                 v = v.strip()
-                # Web locale patch: 成员空串 = 显式删除该 locale (批 2c),
+                # Web locale patch: 成员空串 = 显式删除该 locale (the billing fixc),
                 # 放行空串由 handler patch_locale 删键; 其余路径维持非空约束
                 if not v and not (partial and edit_locale):
                     return None, "bad_label"
@@ -184,7 +184,7 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         return None, "bad_output_content_type"
 
     if "visibility" in raw or not partial:
-        vis = str(raw.get("visibility") or "private").strip()
+        vis = str(raw.get("visibility") or "public").strip()
         if vis not in ("private", "unlisted", "public"):
             return None, "bad_visibility"
         fields["visibility"] = vis
@@ -226,10 +226,11 @@ async def list_user_tools(request: Request):
 
 @router.post("/api/usertools")
 async def create_user_tool(request: Request):
-    """Submit a tool manifest. New tools land as visibility=private by
-    default — the owner flips to unlisted/public after self-testing.
-    SSRF pre-check runs here so misconfiguration fails at submission,
-    not at first customer call."""
+    """Submit a tool manifest. Publish IS listing: new tools land
+    visibility=public immediately (open platform — no review, no
+    blocking gate). The owner can switch to unlisted/private any time
+    via PATCH. SSRF pre-check runs here so misconfiguration fails at
+    submission, not at first customer call."""
     user, err = _require_auth(request)
     if err:
         return err
@@ -266,8 +267,9 @@ async def create_user_tool(request: Request):
         code = "https_required" if exc.code == "ssrf_blocked" else "bad_url"
         return JSONResponse({"ok": False, "error": code}, 422)
 
-    # New tools ALWAYS land private (self-test before exposure)
-    fields["visibility"] = "private"
+    # Open platform: submit = listed. visibility rides the submitted
+    # value (validator default public); no self-test gate.
+    fields.setdefault("visibility", "public")
 
     # params 声明 (tool modes spec v3): 可选, 提交时全量校验, 存库即合法
     # 简介 (tool modes v3: 名称/简介/模式/使用): 可选, str|dict 双形态, ≤200/项
@@ -374,7 +376,7 @@ async def update_user_tool(tool_id: str, request: Request):
     """Partial update: label/url/timeout/auth/accept/output identity/
     visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check.
 
-    LocalizedText 写入语义 (批 2 协议, 二选一无灰色地带):
+    LocalizedText 写入语义 (the billing fix 协议, 二选一无灰色地带):
       携 X-518-Edit-Locale (Web 表单):
         str 与 dict 均为 locale patch — 只写提及的 locale, 未提及语言不动;
         空值 = 显式删除该 locale; 提交值 == resolver fallback → 未修改不写。
@@ -395,7 +397,7 @@ async def update_user_tool(tool_id: str, request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
 
-    # LocalizedText 编辑保护 (批 2): Web 表单显式携带当前编辑 locale 才启用
+    # LocalizedText 编辑保护 (the billing fix): Web 表单显式携带当前编辑 locale 才启用
     # patch 语义 (str 只更新该 locale, 保留其余语言)。无此头的 API PATCH
     # 保持既有替换语义 — Web 语义不扩散到 API manifest。
     edit_locale = (request.headers.get("X-518-Edit-Locale") or "").strip()
@@ -426,14 +428,6 @@ async def update_user_tool(tool_id: str, request: Request):
         except Exception:
             pass
 
-        # visibility cannot jump private→public directly (self-test gate:
-        # at least one successful self-call recorded first)
-        new_vis = fields.get("visibility")
-        if new_vis == "public" and row["visibility"] != "public":
-            stats = _call_stats(tool_key, row["owner_id"])
-            if stats["ok"] < 1:
-                return JSONResponse({"ok": False, "error": "self_test_required"}, 422)
-
         # Credential boundary: a NEW non-empty secret cannot be persisted
         # when the vault has no working key — refuse before any write
         # (endpoint_json/pricing untouched).
@@ -443,7 +437,7 @@ async def update_user_tool(tool_id: str, request: Request):
                 return JSONResponse(
                     {"ok": False, "error": "credential_vault_unavailable"}, 503)
 
-        # endpoint change → SSRF re-check (批4 #14: 对 MERGED 后的最终 decl 复检,
+        # endpoint change → SSRF re-check ( 对 MERGED 后的最终 decl 复检,
         # 与运行时驱动看到的完全一致, 而非裸入参)
         from governance.tool_supply import build_http_binding
         merged_decl = build_http_binding(
@@ -460,7 +454,7 @@ async def update_user_tool(tool_id: str, request: Request):
         sets = {}
         if "label" in fields:
             if edit_locale:
-                # Web locale patch 语义 (批 2 协议, 唯一):
+                # Web locale patch 语义 (the billing fix 协议, 唯一):
                 #   携 X-518-Edit-Locale 的 PATCH 上, str 与 dict 都是 locale patch —
                 #   str 只写该 locale; dict 逐 locale 覆写; 未提及的语言一律不动。
                 #   空值 = 显式删除该 locale。
@@ -472,7 +466,7 @@ async def update_user_tool(tool_id: str, request: Request):
                 new_label = fields["label"]
                 if isinstance(new_label, dict):
                     # fallback no-change 判定永远基于 old_snapshot (原始旧 dict),
-                    # 与 merged 累积状态无关 — locale 间互不顺序依赖 (批 2c)
+                    # 与 merged 累积状态无关 — locale 间互不顺序依赖 (the billing fixc)
                     merged = dict(old_label) if isinstance(old_label, dict) else {}
                     for lg, txt in new_label.items():
                         if lg not in _SUPPORTED_LANGS:
@@ -517,9 +511,24 @@ async def update_user_tool(tool_id: str, request: Request):
         if "outputs" in fields:
             sets["outputs"] = fields["outputs"]
         if "enabled" in raw:
+            # operator takedown wins: while delisted the developer's
+            # enabled switch is refused (the operator field is the
+            # authority; the developer cannot lift a takedown)
+            if row["delisted"]:
+                return JSONResponse(
+                    {"ok": False, "error": "err_tool_delisted"}, 403)
             # 不做 bool(raw) 强转 — 非 bool 交 supply patch validator 拒
             # (bad_enabled), 与 declaration 语义一致。
             sets["enabled"] = raw.get("enabled")
+            # developer self-disable/enable writes the SAME audit trail
+            # the operator takedown does (actor = the owner)
+            from repo import operator_audit
+            operator_audit.record(
+                con, int(user["id"]), "tool.enabled.update", "tool",
+                tool_key,
+                {"tool_key": tool_key, "enabled": bool(row["enabled"])},
+                {"tool_key": tool_key, "enabled": bool(raw.get("enabled"))},
+                now())
         if "desc" in raw:
             d = raw.get("desc")
             if edit_locale:

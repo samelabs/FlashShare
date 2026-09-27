@@ -472,7 +472,7 @@ async def creem_webhook(request: Request):
             product_id=str(order.get("product") or ""),
             currency=str(order.get("currency") or ""))
     except KeyError as exc:
-        # 🔴5 修复(批2a): order_not_found 可能是 checkout→provider_order_id
+        # 🔴5 修复(the billing lock-order fix): order_not_found 可能是 checkout→provider_order_id
         # 写入窗口内的乱序到达。返回 500 让 Creem 重试(webhook 重试政策),
         # 重试时 provider_order_id 已落库即可对上。原实现 200-ack 会把
         # 乱序事件变成永久丢失(用户付款不到账)。

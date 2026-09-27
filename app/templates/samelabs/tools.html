@@ -12,7 +12,7 @@
   <table class="sl-tbl">
     <thead><tr>
       <th>工具键</th><th>所有者</th><th>类别</th><th>执行方式</th>
-      <th>可见性</th><th>启用</th><th>受信</th>
+      <th>可见性</th><th>开发者启用</th><th>运营上架</th><th>受信</th>
       <th>价格（积分/次）</th><th>成功调用</th><th>开发者收益（美元）</th><th></th>
     </tr></thead>
     <tbody>
@@ -23,9 +23,10 @@
         <td>{{ t.cls }}</td>
         <td>{{ t.execution }}</td>
         <td>{{ t.visibility }}</td>
+        <td><span class="tag {{ 'tag-danger' if t.delisted else 'tag-success' }}">{{ '已下架' if t.delisted else '上架中' }}</span></td>
         <td><label class="switch"><input type="checkbox"
-              data-toggle-enabled="{{ t.tool_key }}"
-              {{ 'checked' if t.enabled }}><span class="switch-track"></span></label></td>
+              data-toggle-delisted="{{ t.tool_key }}"
+              {{ '' if t.delisted else 'checked' }}><span class="switch-track"></span></label></td>
         <td>{{ '✔' if t.trusted else '✕' }}</td>
         <td class="sl-num">
           {% if t.cost is not none %}
@@ -46,7 +47,7 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="11" class="sl-empty">暂无工具</td></tr>
+      <tr><td colspan="12" class="sl-empty">暂无工具</td></tr>
     {% endfor %}
     </tbody>
   </table>

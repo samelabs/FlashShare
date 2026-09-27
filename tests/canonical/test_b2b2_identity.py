@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B2b-2 identity & operator-surface closure canonical.
+"""Identity & operator-surface closure canonical.
 
   password reset: one-time temp password, sessions revoked, API keys
       survive, audit without the credential, platform/backoffice rows

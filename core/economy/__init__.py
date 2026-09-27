@@ -1,1 +1,1 @@
-# economy domain (批2a): billing + earnings + orders/creem + daily
+# economy domain (the billing lock-order fix): billing + earnings + orders/creem + daily

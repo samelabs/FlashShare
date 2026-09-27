@@ -1,4 +1,4 @@
-/* ── Samelabs user detail actions (B2b-2) ────────────────────
+/* ── Samelabs user detail actions  ────────────────────
    reset-password  POST /samelabs/users/{id}/reset-password
                     → one-time temp password, displayed ONCE
    suspend         POST /samelabs/users/{id}/suspend

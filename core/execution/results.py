@@ -140,7 +140,7 @@ def declared_outputs(tool: dict) -> tuple[str, ...]:
 
 
 def enforce_output_kinds(items: list, declared: tuple[str, ...]) -> None:
-    """B2b-1 runtime outputs enforcement — THE one check both execution
+    """Runtime outputs enforcement — THE one check both execution
     paths (local worker / remote http) run BEFORE anything is staged:
     every result item's kind must be inside the tool's declared outputs.
     A violation fails the call with a typed error (the gate's standard

@@ -88,7 +88,8 @@ async function loadTools() {
     const meta = document.createElement('div');
     meta.className = 'usertools-meta';
     meta.textContent = (t.calls ? t.calls.ok : 0) + ' ' + _msg('mytools_calls')
-      + ' · ' + (t.enabled ? _msg('mytools_enabled') : _msg('mytools_disabled'));
+      + ' · ' + (t.enabled ? _msg('mytools_enabled') : _msg('mytools_disabled'))
+      + (t.delisted ? ' · ' + _msg('mytools_delisted') : '');
 
     const actions = document.createElement('div');
     actions.className = 'tool-panel-actions';
@@ -127,6 +128,12 @@ async function loadTools() {
     enBtn.type = 'button';
     enBtn.className = 'btn btn-secondary' + (t.enabled ? ' danger' : '');
     enBtn.textContent = t.enabled ? _msg('mytools_disable') : _msg('mytools_enable');
+    if (t.delisted) {
+      // operator takedown: the developer cannot lift it — no self-serve
+      // enable while delisted
+      enBtn.disabled = true;
+      enBtn.title = _msg('mytools_delisted');
+    }
     enBtn.addEventListener('click', async () => {
       enBtn.disabled = true;
       const r3 = await fetch('/api/usertools/' + t.tool_id, {

@@ -1,4 +1,4 @@
-/* ── Samelabs commission setting (B2b-1) ─────────────────────
+/* ── Samelabs commission setting  ─────────────────────
    POST /samelabs/economy/commission  {rate: 0..100 int}
    Two-step confirm on the money-adjacent write; toast feedback. */
 (function () {

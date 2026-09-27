@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage C ToolInvocation Unification 验收 A-K"""
+"""the canonical-invocation unification ToolInvocation Unification 验收 A-K"""
 import json, uuid, http.client, sys, os, base64, threading, re
 import os as _os, sys as _sys
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
@@ -311,7 +311,7 @@ try:
 except Exception:
     mcres = {}
 conn.close()
-# IO-1: the result arrives as structuredContent (items + result_url)
+# the result arrives as structuredContent (items + result_url)
 msc = (mcres.get("result") or {}).get("structuredContent") or {}
 mtext = ((mcres.get("result") or {}).get("content") or [{}])[0].get("text", "")
 mok = bool(msc.get("result_url")) and isinstance(msc.get("items"), list)     and len(msc["items"]) >= 1 and msc["items"][0].get("kind") == "file"

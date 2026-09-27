@@ -14,7 +14,7 @@ import time, threading, re, uuid
 
 _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
 
-# ── FAIL-CLOSED GATE (与 Stage C 同规则) ─────────────────────────────────
+# ── FAIL-CLOSED GATE (与 the canonical-invocation unification 同规则) ─────────────────────────────────
 _TEST_PORT = _os.environ.get("FLASHSHARE_TEST_PORT")
 if not _TEST_PORT:
     _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT is required (isolated service port, never the production port).\n")
@@ -269,13 +269,13 @@ check("S3 upload 行删除不退款 24h usage (usage 仍 5)", left == 5, str(lef
 # 接受路径 (api/pipeline 调用点), output 落盘不产生新 upload_usage。静态守卫:
 _pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
 _api = open(_os.path.join(_REPO, "app", "routes", "api.py"), encoding="utf-8").read()
-# FX-1: the dead upload_sources pipeline (the sole reserve_ingress
+# the coherence pass: the dead upload_sources pipeline (the sole reserve_ingress
 # caller) is deleted — quota accounting rides ingress receipts only.
 check("S4 quota 入口收敛: receipts 唯一 (全仓零直接 reserve)",
       _pipe_src.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
       and _api.count("claim_ingress_quota(") >= 1,
       f"pipe={_pipe_src.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
-# 引用既有 Stage C E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
+# 引用既有 the canonical-invocation unification E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
 
 # ═══ 5b. Delivery entitlement 两层契约 ═══
@@ -401,7 +401,7 @@ def _share(ck, ed, dl):
     png = _b64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
     body = b""
-    # IO-3a: uploads REQUIRE a tool (sharing = the share tool); delivery
+    # uploads REQUIRE a tool (sharing = the share tool); delivery
     # entitlement is enforced at execute preflight (H2/H3 prove it).
     for k, v in {"tool": "share",
                  "client_ref": f"sh-{uuid.uuid4().hex[:10]}"}.items():
@@ -447,7 +447,7 @@ check("H3 Free execute 1000 → 403 err_download_limit_not_entitled",
 st, d = _execute(_ckp, _inv(30, 1000))
 check("H4 PLUS execute 30/1000 → 非 403/422 (entitlement 放行)",
       st not in (403, 422), f"{st} {d.get('error')}")
-# H5-H7: the no-tool direct-share surface is RETIRED (IO-3a). Delivery
+# H5-H7: the no-tool direct-share surface is RETIRED. Delivery
 # entitlement for a share call lives at execute preflight — H2/H3 prove
 # the typed denials; here the retired form itself is fail-closed.
 def _no_tool(ck):
@@ -550,7 +550,7 @@ check("B-W2 拒绝后 upload_usage 零新增", _cur.fetchone()[0] == _all_usage)
 check("B-R1 apiv1 模块不存在 (v1 uploads 退役)",
       not _os.path.exists(_os.path.join(_REPO, "app", "routes", "apiv1.py")))
 
-# upload_sources pipeline was deleted with the v1 surface (FX-1 dead
+# upload_sources pipeline was deleted with the v1 surface (the coherence pass dead
 # code). The boundary AUTHORITY every surface consumes before storage is
 # governance.ingress.validate_batch — B-M drives it directly (same
 # denial dicts the web/MCP staging paths relay).
@@ -961,7 +961,7 @@ check("G8 invocation 不再字面定义 _MAX_FILES = 20 (引 shared 常量)",
       "_MAX_FILES = 20" not in _inv_src
       and "MAX_FILES_PER_REQUEST" in _inv_src)
 _pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
-# FX-1: upload_sources pipeline deleted; the shared batch validator is
+# the coherence pass: upload_sources pipeline deleted; the shared batch validator is
 # consumed by the live surfaces (web api + MCP) — G10/G11 cover those.
 check("G9 pipeline 死代码已删 (无 ingress 遗留)",
       "validate_batch" not in _pipe_src and "upload_sources" not in _pipe_src)

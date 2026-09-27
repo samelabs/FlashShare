@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FX-2 audit closure — behavior tests over real paths.
+"""the payment audit closure — behavior tests over real paths.
 
   T*  template escaping: /tools?q="><script> and a content_type-carrying
       upload render ESCAPED text (autoescape ON; no |safe for user data).
@@ -323,4 +323,4 @@ print()
 if FAIL:
     print(f"FAILED {len(FAIL)}: {FAIL}")
     _sys.exit(1)
-print(f"OK — FX-2 audit ({COUNT} checks)")
+print(f"OK — the payment audit ({COUNT} checks)")

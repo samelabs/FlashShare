@@ -109,6 +109,37 @@ def _snap_enabled(r) -> dict:
     return {"tool_key": r["tool_key"], "enabled": bool(r["enabled"])}
 
 
+def _snap_delisted(r) -> dict:
+    if r is None:
+        return {}
+    return {"tool_key": r["tool_key"], "delisted": bool(r["delisted"])}
+
+
+def set_tool_delisted(operator_id: int, tool_key: str,
+                      delisted: bool) -> dict:
+    """Operator takedown switch (platform_tools.delisted) — the operator-
+    ONLY field. Independent of the developer's enabled: a delisted tool
+    is invisible/uncallable on every public surface no matter what the
+    developer does to enabled; the developer cannot lift a delist.
+    ONE transaction: row lock → snapshot → write → audit."""
+    from repo.catalog import tool_row_for_update, by_tool_key
+    from database import db
+    with db() as con:
+        cur = tool_row_for_update(con, tool_key)
+        if cur is None:
+            raise KeyError("not_found")
+        before = _snap_delisted(cur)
+        con.execute(
+            "UPDATE platform_tools SET delisted = %s, updated_at = %s"
+            " WHERE tool_key = %s",
+            (bool(delisted), now(), tool_key))
+        after = _snap_delisted(by_tool_key(con, tool_key))
+        operator_audit.record(con, operator_id,
+                              "tool.delisted.update", "tool", str(tool_key),
+                              before, after, now())
+    return after
+
+
 def set_tool_enabled(operator_id: int, tool_key: str,
                      enabled: bool) -> dict:
     """Registry switch (platform_tools.enabled) for any row (Official

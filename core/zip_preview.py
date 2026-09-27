@@ -82,7 +82,7 @@ def find_eocd(tail: bytes, tail_start: int) -> tuple:
     if cd_size == 0xFFFFFFFF or cd_offset == 0xFFFFFFFF or total_entries == 0xFFFF:
         raise ValueError("zip64_unsupported")
     if cd_size == 0 or total_entries == 0:
-        raise ValueError("empty_archive")  # 批4 #19: 合法空档, 调用方(proxy)转空列表
+        raise ValueError("empty_archive")  #  合法空档, 调用方(proxy)转空列表
     cd_in_tail = cd_offset - tail_start
     if cd_in_tail < 0:
         raise ValueError("cd_before_tail")

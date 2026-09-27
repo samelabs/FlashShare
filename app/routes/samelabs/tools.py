@@ -93,11 +93,13 @@ async def set_presentation(tool_key: str, request: Request):
     return {"ok": True}
 
 
-@router.post("/samelabs/tools/{tool_key:path}/enabled")
-async def set_enabled(tool_key: str, request: Request):
-    """Registry switch (platform_tools.enabled) for ANY row — Official
-    local / Operator HTTP / Provider Tool. Strict bool → command (one tx:
-    row lock, before snapshot, tool_supply write, audit)."""
+@router.post("/samelabs/tools/{tool_key:path}/delist")
+async def set_delisted(tool_key: str, request: Request):
+    """Operator takedown switch (platform_tools.delisted): the ONLY
+    operator visibility control. Delisting hides the tool from every
+    public surface (lists, search, market, author page, MCP, direct
+    calls) regardless of the developer's own enabled flag; the
+    developer cannot lift it. Strict bool → one audited transaction."""
     user, resp = gate(request)
     if resp:
         return resp
@@ -109,16 +111,17 @@ async def set_enabled(tool_key: str, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from backoffice.strict import strict_bool
     try:
-        enabled = strict_bool(raw.get("enabled"))
+        delisted = strict_bool(raw.get("delisted"))
     except ValueError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 422)
     from backoffice import tools as tools_cmd
     try:
-        row = tools_cmd.set_tool_enabled(int(user["id"]), tool_key, enabled)
+        row = tools_cmd.set_tool_delisted(int(user["id"]), tool_key,
+                                          delisted)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "tool_key": row["tool_key"],
-            "enabled": row["enabled"]}
+            "delisted": row["delisted"]}
 
 
 @router.post("/samelabs/tools/create")

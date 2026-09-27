@@ -23,7 +23,7 @@ TARGET_SAFE_KEYS = {
              "ingress_bytes_24h", "expiry_days", "download_limits"},
     "package": {"id", "code", "name", "credits", "price_cents",
                 "currency", "sort_order", "active"},
-    "tool": {"tool_key", "featured", "sort_order", "enabled"},
+    "tool": {"tool_key", "featured", "sort_order", "enabled", "delisted"},
     "user_credits": {"user_id", "delta", "balance_before",
                      "balance_after", "ledger_id"},
     "withdrawal": {"id", "user_id", "amount", "status", "reviewed_at",

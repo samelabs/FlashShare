@@ -349,7 +349,7 @@ check("C11 historical terminal (failed) + NULL snapshot 合法",
           " values (%s,%s,%s,'failed',0,%s,%s)",
           (f"r6_{_u}", u9, t9, ts, ts)))
 
-# ══════════ C12 (B2b-1): fail-closed — 缺失/非法 → 扣费前拒绝 ══════════
+# ══════════ C12 : fail-closed — 缺失/非法 → 扣费前拒绝 ══════════
 with db() as con:
     con.execute("delete from settings where key='commission_rate'")
 ufb = _mkuser(_u + "fb")

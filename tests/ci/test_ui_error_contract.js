@@ -189,7 +189,7 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
   assert.ok(!/function\s+retryTool|retryTool\s*=/.test(appjs), "app.js: retryTool removed");
   const toolInput = fs.readFileSync(path.join(REPO, "static", "pages", "tool-input.js"), "utf8");
   assert.ok(toolInput.includes("runToolFlow"), "tool-input.js delegates to the process-flow authority");
-  assert.ok(!appjs.includes("new XMLHttpRequest"), "app.js owns no upload pipeline (IO-2: input component + process-flow only)");
+  assert.ok(!appjs.includes("new XMLHttpRequest"), "app.js owns no upload pipeline (input component + process-flow only)");
 
   // 6. PWA detection authority (RC-VIS-001): base-engine.js owns the ONLY
   //    isStandalonePWA; app.js must not declare a same-name top-level
@@ -324,7 +324,7 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     b.t = (k) => ({
       err_rate_limited: "Too many requests, slow down",
       err_checkout_failed: "Payment could not be started",
-      mytools_err_self_test_required: "One successful call required",
+      mytools_err_invalid_id: "Invalid source file",
       err_unexpected: GENERIC,
     }[k] || k);
     b.window.t = b.t;
@@ -334,7 +334,7 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
       "known code → specific localized message");
     assert.strictEqual(_e("checkout_failed"), "Payment could not be started",
       "bare checkout code resolves through the err_ family");
-    assert.strictEqual(_e("self_test_required"), "One successful call required",
+    assert.strictEqual(_e("invalid_id"), "Invalid source file",
       "mytools_* codes resolve through the mytools_err_ family");
     assert.strictEqual(_e("err_totally_unknown_xyz"), GENERIC,
       "unknown err_* → canonical generic");

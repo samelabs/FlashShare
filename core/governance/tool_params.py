@@ -9,7 +9,7 @@ import re
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _TYPES = ("enum", "text", "number", "boolean")
 
-# IO-1: text parameters accept long prose input (constant upper bound)
+# text parameters accept long prose input (constant upper bound)
 TEXT_PARAM_MAX_CHARS = 100_000
 MAX_PARAMS = 8
 MAX_OPTIONS = 32
@@ -178,7 +178,7 @@ def to_input_schema_properties(decl: list, lang: str = "en") -> tuple[dict, list
 
 
 def patch_locale(value, lang: str, new_text: str):
-    """LocalizedText 编辑保护 (patch semantics, 批 2).
+    """LocalizedText 编辑保护 (patch semantics, the billing fix).
 
     Web 表单只编辑一个 locale; 既有翻译必须原样保留:
       旧值 str      → {lang: new_text}        (不保留旧 str — 单串无其它语言可保)
@@ -210,7 +210,7 @@ def _leaf_merge(old_value, new_text, lang: str):
 
 
 def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
-    """params 结构全量替换 + LocalizedText 叶子 locale merge (批 2).
+    """params 结构全量替换 + LocalizedText 叶子 locale merge (the billing fix).
 
     结构 (参数/选项的增删改) 以 new_decl 为准 — 删除 parameter/option
     表示结构删除, 其旧翻译随结构一起删除。
@@ -256,7 +256,7 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
 
 
 def patch_locale_guard(old_snapshot, merged, lang: str, new_text: str):
-    """patch_locale + fallback 物化防护 (批 2c: 顺序无关)。
+    """patch_locale + fallback 物化防护 (the billing fixc: 顺序无关)。
 
     no-change 判定永远基于 old_snapshot (merge 前的原始旧 dict) 在该
     locale 的 resolver 结果, 与 merged 的累积状态无关 — 前一个 locale

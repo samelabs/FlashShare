@@ -485,7 +485,7 @@ def period_plan_credits(con, user_id: int, period_start: int) -> int:
 def record_period_base_payment(con, sub_id: str, period_start: int,
                                user_id: int, base_txn_id: str,
                                created_at: int) -> bool:
-    """B2b-1: durable per-period base-payment fact (transaction record,
+    """durable per-period base-payment fact (transaction record,
     NOT a ledger-grant inference). First writer for (sub_id, period_start)
     wins; later same-period charges (upgrades) and replays never overwrite.
     Returns True when this call created the record."""

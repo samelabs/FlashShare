@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FX-1 coherence fixes — behavior tests over the real call paths.
+"""the coherence pass coherence fixes — behavior tests over the real call paths.
 
   X1*   P0-1: http tool with files succeeds via BOTH surfaces (MCP
         tools/call and web /api/uploads + /api/tools/execute); source
@@ -516,7 +516,7 @@ try:
     check("X11b ticket purge drops expired-unused + >24h-used, keeps live",
           n >= 2 and left == [__import__("hashlib").sha256(("fxlive" + _u).encode()).hexdigest()], str(left))
 
-    # ═══ B-item tests (FX-1b) ═══
+    # ═══ B-item tests (the coherence passb) ═══
     # B2: MCP inputSchema required hierarchy (+ jsonschema validation)
     st, d = _mcp({"jsonrpc": "2.0", "id": 30, "method": "tools/list",
                   "params": {}}, TOK)
@@ -724,4 +724,4 @@ print()
 if FAIL:
     print(f"FAILED {len(FAIL)}: {FAIL}")
     _sys.exit(1)
-print(f"OK — FX-1 coherence ({COUNT} checks)")
+print(f"OK — the coherence pass coherence ({COUNT} checks)")

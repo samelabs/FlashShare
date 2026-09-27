@@ -468,7 +468,7 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
             started_at=started, renews_at=renews_write,
             plan_id=plan["id"],
             period_start=ps_write, cancel_scheduled_at=cancel_ts)
-        # B2b-1: durable base-payment record for THIS period — the FIRST
+        # durable base-payment record for THIS period — the FIRST
         # subscription.paid to arrive for (sub, period) is its base cycle
         # payment, whatever the credits arithmetic does later (a paid plan
         # with zero monthly credits mints no grant rows, so the ledger
