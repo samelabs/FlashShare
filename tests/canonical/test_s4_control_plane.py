@@ -491,7 +491,7 @@ client = TestClient(_app)
 sess = create_browser_session(op)
 r = client.get("/samelabs", cookies={COOKIE_NAME: sess})
 check("CP1a session operator enters Overview",
-      r.status_code == 200 and b"Overview" in r.content, r.status_code)
+      r.status_code == 200 and "总览" in r.text, r.status_code)
 r = client.get("/samelabs", follow_redirects=False)
 check("CP1b anonymous redirected", r.status_code in (302, 307, 401),
       r.status_code)
@@ -516,8 +516,8 @@ with db() as con:
 r = client.get("/samelabs", cookies={COOKIE_NAME: sess})
 body = r.text
 check("CP2a Overview renders 4 asset cards",
-      all(k in body for k in ("Product", "Consumer Credits",
-                              "Provider Economy", "Platform Income")),
+      all(k in body for k in ("产品", "消费积分",
+                              "开发者收益", "平台收入")),
       None)
 check("CP2b no mixed SUM(ledger) symbol on Overview",
       "SUM(delta)" not in body, None)
@@ -536,7 +536,7 @@ seed_earn(provider, 1000)   # provider has earnings, caller has credits
 r = client.get("/samelabs/users", cookies={COOKIE_NAME: sess})
 body = r.text
 check("CP3a Users page renders separated columns",
-      "Spendable Credits" in body and "Provider available" in body, None)
+      "可花积分" in body and "可提现" in body, None)
 with db() as con:
     urows, _tot = operator_views.users_page(con, _RUN, 50, 0,
                                             SPENDABLE_KINDS, now())
@@ -677,12 +677,12 @@ else:
 
 # ═══ economy pages render ═══
 for path, needle in (
-        ("/samelabs/economy/credits", "SPENDABLE"),
-        ("/samelabs/economy/earnings", "Provider Earnings"),
-        ("/samelabs/economy/platform", "Platform Income"),
-        ("/samelabs/economy/withdrawals", "Withdrawal queue"),
+        ("/samelabs/economy/credits", "积分流水"),
+        ("/samelabs/economy/earnings", "开发者收益"),
+        ("/samelabs/economy/platform", "平台收入"),
+        ("/samelabs/economy/withdrawals", "提现队列"),
         ("/samelabs/commerce/products", None),
-        ("/samelabs/commerce/memberships", "Memberships")):
+        ("/samelabs/commerce/memberships", "会员")):
     r = client.get(path, cookies={COOKIE_NAME: sess})
     ok = r.status_code == 200 and (needle is None or needle in r.text)
     check(f"CP9 {path} renders", ok, r.status_code)
@@ -1190,7 +1190,7 @@ with db() as con:
 r = _get(f"/samelabs/users/{_ex}")
 check("US1c detail: lapsed membership shows effective status 'expired'",
       r.status_code == 200 and ">expired<" in r.text
-      and "(stored: active)" in r.text, r.status_code)
+      and "（记录态：active）" in r.text, r.status_code)
 with db() as con:
     _cp = operator_views.user_profile(con, caller, SPENDABLE_KINDS, now())
     _pp = operator_views.user_profile(con, provider, SPENDABLE_KINDS, now())
@@ -1240,7 +1240,7 @@ check("RT1c users projection: lapsed → not effective, status expired",
 r = _get(f"/samelabs/users?q={_q(uname('exp'))}")
 check("RT1d Users 'Plan' column never shows a lapsed plan as current",
       f"<td>{_PLAN_CODE}</td>" not in r.text
-      and f"({_PLAN_CODE} expired)" in r.text, None)
+      and f"（{_PLAN_CODE} expired）" in r.text, None)
 r = _get(f"/samelabs/users?q={_q(uname('caller'))}")
 check("RT1e Users 'Plan' column shows an effective plan",
       f"<td>{_PLAN_CODE}</td>" in r.text, None)
@@ -1269,11 +1269,10 @@ r = _get("/samelabs")
 check("RT1h Overview labels: net-of-refunds, approved-unpaid vs paid,"
       " effective memberships",
       r.status_code == 200
-      and "Tool Credits charged (net of refunds)" in r.text
-      and "Approved withdrawals, not yet paid" in r.text
-      and "Paid withdrawals" in r.text
-      and "Settled withdrawals" not in r.text
-      and "Effective memberships" in r.text
+      and "净消耗（扣除退款）" in r.text
+      and "已批准未打款" in r.text
+      and "已打款" in r.text
+      and "有效会员" in r.text
       and millis_to_usd_str(int(_pv["wd_paid_millis"])) in r.text, None)
 
 # ═══ WQ1: withdrawal queue paging + status filter ═══
