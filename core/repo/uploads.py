@@ -43,7 +43,8 @@ def by_public_id(con, public_id: str) -> Optional[dict]:
 def by_owner(con, user_id: int, now_ts: int, limit: int, offset: int) -> list:
     return con.execute(
         """
-        SELECT id, public_id, gokapi_id, file_name, size_bytes, expiry_days, allowed_downloads, expire_at,
+        SELECT id, public_id, gokapi_id, file_name, content_type, size_bytes,
+               expiry_days, allowed_downloads, expire_at,
                url_download, url_hotlink, created_at
         FROM uploads
         WHERE user_id = %s AND expire_at > %s

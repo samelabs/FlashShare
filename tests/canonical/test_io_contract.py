@@ -16,8 +16,7 @@
   X*  developer endpoint invalid shape → call failed + exact refund;
       valid items shape (text + json + file via data_b64) round-trips
 
-The hosted /tool-endpoints/io-test endpoint (first-party trusted http
-tool registered by this suite) implements "text in → text+json+file
+A first-party trusted http fixture implements "text in → text+json+file
 out" with a mode switch for the invalid-shape case.
 
 Fail-closed env guard; per-run unique names; self-cleanup.
@@ -139,14 +138,10 @@ try:
                    f"io:{_u}", None, ts)
     check("F1 user + key + credits", uid and TOK, uid)
 
-    # hosted endpoint must ride the app's router: register via samelabs?
-    # Simplest robust path: register the endpoint on the running app is
-    # not possible from here — instead seed a TRUSTED first-party http
-    # tool pointing at a local in-suite HTTPS fixture? No: use the
-    # existing hosted surface contract via a tiny in-process handler is
-    # not reachable either. The suite therefore targets the LOCAL tool
-    # surface for text-out (registry-backed) and validates the
-    # developer http items contract through direct drive_http calls.
+    # The suite targets the LOCAL tool surface for text-out
+    # (registry-backed) and validates the developer http items contract
+    # through direct drive_http calls (the hosted /tool-endpoints
+    # surface was deleted in C1 — first-party tools run local only).
     # ── text-out local tool: register via seed adapter is code-side
     # only, so drive the contract through share/compress plus direct
     # module-level item validation. ──
@@ -493,12 +488,6 @@ try:
                    encoding="utf-8").read()
     check("X6b job_inputs gone from the wire contract",
           '"job_inputs"' not in src_txt, "grep job_inputs")
-    src_h = open(_os.path.join(_REPO, "app", "routes",
-                               "hosted_tools.py"),
-                 encoding="utf-8").read()
-    check("X6c hosted surface reads files + returns items",
-          'payload.get("files")' in src_h
-          and '"items": out_items' in src_h, "hosted contract")
 finally:
     with db() as con:
         if uid is not None:

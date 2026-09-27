@@ -1,9 +1,7 @@
 """governance/delivery — 平台产物交付策略单源 (Stage C).
 
-合法值/默认值只有这一份。ToolInvocation 使用严格 canonical validator
-(无字符串强转、无非法回落); 普通无工具分享的 multipart 表单可经
-coerce_share_delivery 薄壳做 string → int (值域仍来自本模块常量,
-禁止复制第二份枚举)。
+合法值/默认值只有这一份。调用方一律传 canonical 整数值; 校验用
+本模块的严格 validator (无字符串强转、无非法回落)。
 """
 
 EXPIRY_DAYS = (1, 3, 7, 30)

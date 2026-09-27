@@ -561,12 +561,13 @@ check("S1 Claude Code snippet (http transport + Bearer header, site base URL)",
 check("S2 Cursor / VS Code JSON: type http + url + headers",
       html_en.count('"type": "http"') == 2 and '"servers": {' in html_en
       and html_en.count(f'"url": "{_mcp_url}"') == 2)
-check("S3 Claude Desktop via mcp-remote with ${TOKEN}",
+check("S3 Claude Desktop via mcp-remote with API key placeholder (C1)",
       f'"mcp-remote", "{_mcp_url}"' in html_en
-      and '"Authorization: Bearer ${TOKEN}"' in html_en)
-check("S4 localized prose, untranslated token placeholder",
+      and "Bearer &lt;fsk_…&gt;" in html_en
+      and "${TOKEN}" not in html_en)
+check("S4 localized prose, API key placeholder",
       st2 == 200 and "（fsk_ で始まる）" in html_ja and "（fsk_ 开头）" not in html_ja
-      and "&lt;token&gt;" in html_ja and "<token>" not in html_ja)
+      and "&lt;fsk_…&gt;" in html_ja and "&lt;token&gt;" not in html_ja)
 check("S5 tool MCP page: Claude Code snippet + copy targets + page script",
       st3 == 200 and 'id="mcpAdd"' in html_tm and 'data-copy-target="mcpCall"' in html_tm
       and "/static/pages/agents.js" in html_tm and "MCP Quick start" not in html_tm)

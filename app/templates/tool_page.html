@@ -4,6 +4,7 @@
 
 {% block content %}
 <section class="workspace toolpage" id="toolPage">
+  <nav class="crumbs"><a href="/tools">{{ texts.market_title }}</a><span class="crumb-sep">/</span><span>{{ tool_name }}</span></nav>
   <div class="page-head">
     <h1>{{ tool_name }}</h1>
   </div>
@@ -21,15 +22,11 @@
       <span class="meta-item">{{ icon_svg("shield") }}<span class="tag tag-brand">{{ texts.market_official }}</span></span>
       {% endif %}
       <span class="meta-item">{{ icon_svg("hash") }}<span>{% if tool.cost %}<b class="tool-cost">{{ tool.cost }}</b> {{ texts.credits_per_call }}{% else %}<span class="tag tag-success">{{ texts.free }}</span>{% endif %}</span></span>
-      <span class="meta-item">{{ icon_svg("file_size") }}<span data-i18n="tool_files_window">{{ texts.tool_files_window }}: {{ tool.files_min }}–{{ tool.files_max }}</span></span>
-      {% if tool.accept %}
-      <span class="meta-item">{{ icon_svg("doc") }}<span class="chip-row">{% for a in tool.accept %}<span class="chip">{{ a.lstrip('.') | upper }}</span>{% endfor %}</span></span>
-      {% endif %}
-      <span class="meta-item">{{ icon_svg("convert") }}<span class="chip-row">{% for o in tool.outputs %}<span class="chip">{{ o }}</span>{% endfor %}</span></span>
-    </div>
-    <div class="copyfield toolpage-mcp">
-      <input class="input" id="toolMcpName" readonly value="{{ mcp_name }}">
-      <button class="btn btn-secondary" id="toolMcpCopy" type="button">{{ icon_svg("copy") }}<span>{{ texts['copy'] }}</span></button>
+      <span class="meta-item">{{ icon_svg("file_size") }}<span>{% if tool.files_min == 0 %}
+        <span class="tag">{{ texts['out_kind_text'] }}</span>{% elif tool.files_min == tool.files_max %}
+        {{ texts['n_files_one'] }}{% else %}
+        {{ texts['files_window_short'].format(min=tool.files_min, max=tool.files_max) }}{% endif %}</span></span>
+      <span class="meta-item">{{ icon_svg("convert") }}<span class="chip-row">{% for o in tool.outputs %}<span class="chip">{{ texts['out_kind_' ~ o] }}</span>{% endfor %}</span></span>
     </div>
   </div>
 
@@ -39,11 +36,17 @@
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
-  <p class="hint toolpage-mcp-panel">
-    {{ icon_svg("info") }}
-    <span><span data-i18n="tool_ai_hint">{{ texts.tool_ai_hint }}</span>
-      <a href="/tool/{{ tool.id }}/mcp" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a></span>
-  </p>
+  <div class="toolpage-mcp-panel">
+    <p class="hint">
+      {{ icon_svg("info") }}
+      <span><span data-i18n="tool_ai_hint">{{ texts.tool_ai_hint }}</span>
+        <a href="/tool/{{ tool.id }}/mcp" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a></span>
+    </p>
+    <div class="copyfield toolpage-mcp">
+      <input class="input" id="toolMcpName" readonly value="{{ mcp_name }}">
+      <button class="btn btn-secondary" id="toolMcpCopy" type="button">{{ icon_svg("copy") }}<span>{{ texts['copy'] }}</span></button>
+    </div>
+  </div>
 </section>
 
 {% endblock %}

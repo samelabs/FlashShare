@@ -185,50 +185,6 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         orig_size=len(sources[0][0]) if len(sources) == 1 else None)
 
 
-def _mint_hosted_capability(endpoint_url: str, sources: list, params: dict,
-                            trusted: bool) -> str | None:
-    """Mint the /tool-endpoints/* execution capability for trusted
-    same-origin hosted endpoints; None for everything else.
-
-    Trust is an explicit caller input — the canonical execution trust
-    fact execute_remote() already computed (owner_id IS NULL or trusted
-    row). Fail closed: untrusted rows NEVER receive a capability, no
-    matter the URL. The payload digest covers files + params, so
-    the capability cannot be spliced onto a different input set."""
-    if not trusted:
-        return None
-    from urllib.parse import urlsplit
-    from security import sign_hosted_exec_token
-
-    def _effective_port(parts) -> int | None:
-        """Origin-effective port: explicit port wins; otherwise the
-        scheme default (https 443 / http 80). Any other scheme yields
-        None and is never same-origin for the hosted mint."""
-        if parts.port:
-            return parts.port
-        return {"https": 443, "http": 80}.get(parts.scheme)
-
-    ep = urlsplit(endpoint_url)
-    base = urlsplit(BASE_URL)
-    if (ep.scheme != base.scheme
-            or (ep.hostname or "").lower() != (base.hostname or "").lower()
-            or _effective_port(ep) is None
-            or _effective_port(ep) != _effective_port(base)):
-        return None
-    path = ep.path or "/"
-    if not path.startswith("/tool-endpoints/"):
-        return None
-    payload = {
-        "files": [
-            {"filename": s["filename"], "content_type": s["content_type"],
-             "size": s["size"], "url": s["url"]}
-            for s in sources
-        ],
-        "params": params,
-    }
-    return sign_hosted_exec_token(path, payload)
-
-
 async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
     """remote (http) execution — the ONE southbound contract (IO-1):
 
@@ -267,9 +223,6 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
         })
 
     auth_headers = {}
-    _hosted_cap = _mint_hosted_capability(decl.get("url") or "", sources, params, trusted)
-    if _hosted_cap:
-        auth_headers["X-Hosted-Execution"] = _hosted_cap
     if decl.get("auth_header") and decl.get("auth_token"):
         from secrets_vault import unseal, VaultUnavailable, VaultDecryptError
         try:

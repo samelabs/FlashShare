@@ -990,9 +990,13 @@ _apiv1_src = ""  # Public REST v1 retired (module absent)
 def _code_lines(src):
     return "\n".join(l for l in src.split("\n")
                      if not l.strip().startswith("#") and "recomputation" not in l)
+# downloads_remaining is the single-point utils.remaining_downloads()
+# projection of a stored file, not quota arithmetic — excluded by name
+def _quota_remaining(src):
+    return "remaining" in _code_lines(src).replace(
+        "downloads_remaining", "").replace("remaining_downloads", "")
 check("G15 消费面不自行算 remaining (透传 denial, 排除注释)",
-      "remaining" not in _code_lines(_apir)
-      and "remaining" not in _code_lines(_mcp_src))
+      not _quota_remaining(_apir) and not _quota_remaining(_mcp_src))
 # repo-wide active guard: 动态拼旧 key 防自匹配; 只扫文本源码, 排除缓存/生成物目录树中非源码部分
 _old_count_key = "err_quota_" + "count"
 _old_size_key = "err_quota_" + "size"

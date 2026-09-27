@@ -13,20 +13,25 @@
           <span class="meta-item">{{ file_size_icon }}<span>{{ texts.r_generated }}: {{ generated_text }}</span></span>
           <span class="meta-item">{{ expiry_icon }}<span>{{ texts.r_expires }}: {{ expire_text }}</span></span>
         </div>
+        {% set first_file = items | selectattr('kind', 'equalto', 'file') | list | first %}
         <div class="row row-wrap r-actions">
           {% if file_count > 1 %}
-          <button class="btn btn-secondary" id="rDownloadAll" type="button">
+          <button class="btn btn-primary" id="rDownloadAll" type="button">
             {{ icon_svg("download") }}<span>{{ texts.r_download_all }} ({{ file_count }})</span>
           </button>
+          {% elif first_file %}
+          <a class="btn btn-primary" href="{{ first_file.download_url }}" download>
+            {{ icon_svg("download") }}<span>{{ texts.download_file }}</span>
+          </a>
           {% endif %}
           <button class="btn btn-secondary" id="rCopyLink" type="button">
             {{ icon_svg("link") }}<span>{{ texts['copy_link'] }}</span>
           </button>
-          <button class="btn btn-secondary" id="rQrBtn" type="button">
+          <button class="btn btn-secondary" id="rQrBtn" type="button" aria-label="QR">
             {{ icon_svg("qr") }}<span>QR</span>
           </button>
-          <button class="btn btn-secondary" id="rPrintBtn" type="button">
-            {{ icon_svg("print") }}<span>{{ texts.print_btn }}</span>
+          <button class="btn btn-secondary" id="rShareBtn" type="button" aria-label="{{ texts.share_via_system }}" title="{{ texts.share_via_system }}">
+            {{ icon_svg("share") }}<span>{{ texts.share_via_system }}</span>
           </button>
         </div>
       </div>

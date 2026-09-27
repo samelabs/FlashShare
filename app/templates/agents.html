@@ -24,11 +24,10 @@
     <input class="input" id="mcpUrl" readonly value="{{ BASE_URL }}/mcp">
     <button type="button" class="btn btn-secondary" id="copyMcp" data-copy-target="mcpUrl" data-i18n="copy">{{ texts['copy'] }}</button>
   </div>
-  <p class="hint">MCP endpoint: <a href="{{ BASE_URL }}/mcp">{{ BASE_URL }}/mcp</a> (Bearer fsk_ API key) · plain-text agent guide: <a href="/llms.txt">/llms.txt</a></p>
+  <p class="hint">Auth: <code>Authorization: Bearer &lt;fsk_…&gt;</code> · plain-text agent guide: <a href="/llms.txt">/llms.txt</a></p>
   <div class="agents-mcp-config">
     <h3>{{ texts.agents_mcp_conf }}</h3>
     <dl>
-      <dt>URL</dt><dd><code>{{ BASE_URL }}/mcp</code></dd>
       <dt data-i18n="agents_hdr_name">{{ texts.agents_hdr_name }}</dt><dd><code>Authorization</code></dd>
       <dt data-i18n="agents_hdr_value">{{ texts.agents_hdr_value }}</dt><dd><code>Bearer &lt;fsk_…&gt;</code></dd>
     </dl>
@@ -68,8 +67,7 @@
     "518": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "{{ BASE_URL }}/mcp",
-               "--header", "Authorization: Bearer ${TOKEN}"],
-      "env": { "TOKEN": "&lt;token&gt;" }
+               "--header", "Authorization: Bearer &lt;fsk_…&gt;"]
     }
   }
 }</code></pre>

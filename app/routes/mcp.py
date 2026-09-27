@@ -231,8 +231,13 @@ async def _dispatch(request: Request, user: dict, msg):
                 "same value to retry safely (replays return the original "
                 "result without re-charging). Results come back directly: "
                 "structuredContent.items holds ordered text/json/file "
-                "items with download_url for each file; result_url is a "
-                "human-viewable page. Calls are metered in credits "
+                "items with download_url for each file (content also "
+                "carries a text block with the JSON serialization of "
+                "structuredContent); result_url is a human-viewable "
+                "page. Manage your staged files with the free meta tools "
+                "list_uploads (still-live files, paginated) and "
+                "delete_upload (remove one by public_id — same effect as "
+                "deleting on the web). Calls are metered in credits "
                 "(1000 credits = 1 USD); failed calls are refunded "
                 "automatically. Catalog version: "
                 f"{catalog_version()}."
@@ -355,6 +360,82 @@ _CREATE_UPLOAD_SPEC = {
 }
 
 
+# Meta tool: list the caller's still-live staged/uploads files (free).
+_LIST_UPLOADS_SPEC = {
+    "name": "list_uploads",
+    "title": "List Uploads",
+    "description":
+        "List YOUR still-live files on 518 (uploads you staged via "
+        "create_upload or that tools produced for you), newest first. "
+        "Each entry carries public_id, filename, size, content_type, "
+        "expires_at (epoch seconds), downloads_remaining, page_url "
+        "(human page) and download_url (direct download). Use "
+        "delete_upload with public_id to remove one. Free; paginated "
+        "(20 per page, pass offset).",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "offset": {"type": "integer",
+                       "description": "Pagination offset (default 0, "
+                                      "page size 20)"},
+        },
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "uploads": {"type": "array", "items": {
+                "type": "object",
+                "properties": {
+                    "public_id": {"type": "string"},
+                    "filename": {"type": "string"},
+                    "size": {"type": "integer"},
+                    "content_type": {"type": "string"},
+                    "expires_at": {"type": "integer"},
+                    "downloads_remaining": {"type": ["integer", "null"]},
+                    "page_url": {"type": "string"},
+                    "download_url": {"type": "string"},
+                },
+                "required": ["public_id", "filename", "size",
+                             "content_type", "expires_at",
+                             "page_url", "download_url"],
+            }},
+            "has_more": {"type": "boolean"},
+        },
+        "required": ["uploads", "has_more"],
+    },
+}
+
+# Meta tool: delete one of the caller's own files by public_id (free).
+_DELETE_UPLOAD_SPEC = {
+    "name": "delete_upload",
+    "title": "Delete Upload",
+    "description":
+        "Delete ONE of your own files by public_id. Same effect as "
+        "deleting on the web: the stored file and its page mapping are "
+        "removed together — the /f/{public_id} page 404s immediately. "
+        "Only your own files; references to the file from earlier "
+        "results stop resolving. Free.",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "public_id": {"type": "string",
+                          "description": "The file's public id "
+                                         "(from list_uploads or a "
+                                         "tools/call result item)"},
+        },
+        "required": ["public_id"],
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "deleted": {"type": "boolean"},
+            "public_id": {"type": "string"},
+        },
+        "required": ["deleted", "public_id"],
+    },
+}
+
+
 def _spec_summary(t: dict, names: dict | None = None) -> dict:
     """name/title/description summary (tools/list + catalog_search share
     the exact same shape). English only — MCP is a machine surface.
@@ -428,7 +509,8 @@ def _tool_specs(user: dict) -> list:
     ent = project(user["id"])["entitlements"]
     expiry_enum = list(ent["expiry_days"])
     downloads_enum = list(ent["download_limits"])
-    specs = [_CREATE_UPLOAD_SPEC]
+    specs = [_CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
+             _DELETE_UPLOAD_SPEC]
     _names = mcp_names()
     for t in list_catalog(user["id"]):
         summary = _spec_summary(t, _names)
@@ -529,6 +611,23 @@ def _tool_result_error(mid, body: dict, client_ref: str, tool: dict | None = Non
                          "text": _mcp_error_text(code, tool or {}, {})}],
             "isError": True,
         })
+    if code in ("err_expiry_not_entitled", "err_download_limit_not_entitled"):
+        field = body.get("field") or "delivery"
+        allowed = body.get("allowed") or []
+        return _rpc(mid, {
+            "content": [{"type": "text", "text": json.dumps({
+                "error": code,
+                "field": field,
+                "requested": body.get("requested"),
+                "allowed": allowed,
+                "message": (
+                    f"delivery.{field} value {body.get('requested')!r} is "
+                    f"not available on your current plan (allowed: "
+                    f"{allowed}). A higher plan is required for that "
+                    "value."),
+            }, ensure_ascii=False)}],
+            "isError": True,
+        })
     return _rpc(mid, {
         "content": [{"type": "text",
                      "text": json.dumps({"error": code,
@@ -556,15 +655,14 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         _names = mcp_names()
         summaries = [_spec_summary(by_key[h["id"]], _names)
                      for h in hits if h["id"] in by_key]
-        return _rpc(mid, {
-            "content": [{"type": "text", "text": json.dumps(
-                {"query": q, "tools": summaries}, ensure_ascii=False)}],
-            "structuredContent": {"query": q, "tools": summaries},
-            "isError": False,
-        })
+        return _meta_result(mid, {"query": q, "tools": summaries})
 
     if name == "create_upload":
         return _create_upload(user, mid, args, request)
+    if name == "list_uploads":
+        return _list_uploads(user, mid, args)
+    if name == "delete_upload":
+        return _delete_upload(user, mid, args)
 
     # client_ref is REQUIRED and validated BEFORE any base64 decode,
     # quota check, or Gokapi upload — a missing/invalid ref must never
@@ -575,20 +673,40 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     client_ref = cr.strip()
 
     from governance.delivery import (validate_delivery, DEFAULT_EXPIRY_DAYS,
-                                     DEFAULT_ALLOWED_DOWNLOADS)
+                                     DEFAULT_ALLOWED_DOWNLOADS,
+                                     EXPIRY_DAYS, DOWNLOAD_LIMITS)
     if "delivery" in args:
         d = args.get("delivery")
-        if not isinstance(d, dict):
-            return _rpc_err(mid, -32602, "invalid delivery")
-        if set(d.keys()) - {"expiry_days", "allowed_downloads"}:
-            return _rpc_err(mid, -32602, "invalid delivery")
-        try:
-            delivery = validate_delivery({
-                "expiry_days": d.get("expiry_days", DEFAULT_EXPIRY_DAYS),
-                "allowed_downloads": d.get("allowed_downloads",
-                                           DEFAULT_ALLOWED_DOWNLOADS)})
-        except ValueError:
-            return _rpc_err(mid, -32602, "invalid delivery")
+        _bad = (not isinstance(d, dict)
+                or bool(set(d.keys()) - {"expiry_days",
+                                         "allowed_downloads"}))
+        delivery = None
+        if not _bad:
+            try:
+                delivery = validate_delivery({
+                    "expiry_days": d.get("expiry_days", DEFAULT_EXPIRY_DAYS),
+                    "allowed_downloads": d.get("allowed_downloads",
+                                               DEFAULT_ALLOWED_DOWNLOADS)})
+            except ValueError:
+                _bad = True
+        if _bad:
+            # Input contract violation → isError tool result (never a
+            # JSON-RPC protocol error); legal values come from the one
+            # delivery authority, never re-copied.
+            return _meta_result(mid, {
+                "ok": False, "error": "invalid_delivery",
+                "legal_values": {
+                    "expiry_days": list(EXPIRY_DAYS),
+                    "allowed_downloads": list(DOWNLOAD_LIMITS)},
+                "message": (
+                    "delivery must be an object with optional integer "
+                    f"fields expiry_days (one of {list(EXPIRY_DAYS)}) "
+                    "and allowed_downloads (one of "
+                    f"{list(DOWNLOAD_LIMITS)})."),
+            }, isError=True)
+        # entitlement denial (valid values, above the plan tier) keeps
+        # the existing structured denial → isError path below via
+        # _preflight; nothing to do here.
     else:
         delivery = {"expiry_days": DEFAULT_EXPIRY_DAYS,
                     "allowed_downloads": DEFAULT_ALLOWED_DOWNLOADS}
@@ -917,6 +1035,22 @@ def _mcp_error_text(code, tool: dict, delivery: dict) -> str:
     return f"{msg} (code: {code}).{hint}"
 
 
+def _meta_result(mid, payload: dict, isError: bool = False) -> dict:
+    """The ONE envelope builder for meta tools (and any response that
+    carries structuredContent without running the execution chain):
+    content always carries a text block with the JSON serialization of
+    structuredContent — the MCP-spec backward-compat form every
+    tools/call response now shares (create_upload, catalog_search,
+    list_uploads, delete_upload and _mcp_success all route through
+    this shape)."""
+    return _rpc(mid, {
+        "content": [{"type": "text",
+                     "text": json.dumps(payload, ensure_ascii=False)}],
+        "structuredContent": payload,
+        "isError": isError,
+    })
+
+
 async def _mcp_success(result: dict, payload: dict) -> dict:
     """Build the MCP tools/call success envelope: content (the agent's
     direct result) + structuredContent (the machine shape, matching
@@ -990,6 +1124,11 @@ async def _mcp_success(result: dict, payload: dict) -> dict:
         "expires_at": expires_at,
         "items": sc_items,
     }
+    # MCP-spec backward-compat: a text block carrying the JSON
+    # serialization of structuredContent rides along with the item
+    # blocks (image previews / resource_links stay untouched).
+    content.append({"type": "text",
+                    "text": json.dumps(structured, ensure_ascii=False)})
     return {"content": content, "structuredContent": structured,
             "isError": False}
 
@@ -1083,12 +1222,56 @@ def _create_upload(user: dict, mid, args: dict, request: Request):
                  "source_token} — use them as the files[] reference "
                  "form in tools/call.",
     }
-    return _rpc(mid, {
-        "content": [{"type": "text",
-                     "text": json.dumps(_payload, ensure_ascii=False)}],
-        "structuredContent": _payload,
-        "isError": False,
-    })
+    return _meta_result(mid, _payload)
+
+
+def _list_uploads(user: dict, mid, args: dict) -> dict:
+    """list_uploads meta tool: the SAME single point the web GET
+    /api/uploads uses (sharing.list_uploads) — projection, live
+    download counters and Gokapi mapping stay one implementation."""
+    from config import BASE_URL
+    from sharing.uploads import list_uploads as _web_list
+    offset = args.get("offset", 0)
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        offset = 0
+    rows = _web_list(user["id"], offset=offset, limit=20)
+    uploads = [{
+        "public_id": r["public_id"],
+        "filename": r["file_name"],
+        "size": int(r.get("size_bytes") or 0),
+        "content_type": r.get("content_type") or "application/octet-stream",
+        "expires_at": int(r["expire_at"]) if r.get("expire_at") else None,
+        "downloads_remaining": (int(r["downloads_remaining"])
+                                if r.get("downloads_remaining") is not None
+                                else None),
+        "page_url": f"{BASE_URL}/f/{r['public_id']}",
+        "download_url": f"{BASE_URL}/f/{r['public_id']}?download=1",
+    } for r in rows]
+    return _meta_result(mid, {"uploads": uploads,
+                              "has_more": len(rows) == 20})
+
+
+def _delete_upload(user: dict, mid, args: dict) -> dict:
+    """delete_upload meta tool: resolves public_id → ownership the same
+    way the web DELETE /api/uploads/{public_id} route does, then rides
+    the SAME sharing.delete_upload single point (Gokapi physical file +
+    518 mapping in one call — /f/{public_id} 404s immediately after)."""
+    from config import PUBLIC_ID_RE
+    from sharing.uploads import (get_upload_by_public_id,
+                                 delete_upload as _web_delete)
+    public_id = str(args.get("public_id") or "")
+    if not PUBLIC_ID_RE.match(public_id):
+        return _meta_result(mid, {
+            "deleted": False, "public_id": public_id,
+            "error": "invalid_id"}, isError=True)
+    upload = get_upload_by_public_id(public_id)
+    if not upload or upload["user_id"] != user["id"]:
+        # unknown OR someone else's: one shape, no existence oracle
+        return _meta_result(mid, {
+            "deleted": False, "public_id": public_id,
+            "error": "not_found"}, isError=True)
+    _web_delete(upload["id"], user["id"])
+    return _meta_result(mid, {"deleted": True, "public_id": public_id})
 
 
 def _fetch_url_source(url: str) -> bytes:

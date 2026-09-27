@@ -560,14 +560,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .acct-balance { min-width: 0; }
 .acct-bal-label { font-size: 12.5px; font-weight: 650; color: var(--muted); letter-spacing: .03em; }
 .acct-bal-num { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.acct-daily { flex-shrink: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 11px 16px; color: var(--ink); cursor: default; }
-.acct-daily.done { color: var(--green); border-color: transparent; background: var(--green-soft); }
-.acct-daily:not(.done) { border-color: var(--accent); color: var(--accent); }
-.acct-daily:not(.done) .acct-daily-claim button { background: var(--accent); color: var(--button-ink); border: 0; border-radius: 9px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
-.acct-daily svg { width: 18px; height: 18px; flex-shrink: 0; }
-.acct-daily strong { display: block; font-size: 13.5px; }
-.acct-daily-sub { font-size: 12px; color: var(--muted); }
-.acct-daily-claim { margin: 0; }
 
 /* ── 内容卡(proto .panel): 白卡+细边, 统一 16/18px 内距 ── */
 .acct-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg, 16px); padding: 16px 18px; margin: 0; }
@@ -598,7 +590,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
   .acct-page { padding: 14px 14px 28px; }
   .acct-hero { padding: 16px; }
   .acct-bal-num { font-size: 28px; }
-  .acct-daily { padding: 9px 12px; }
   .acct-tab { padding: 9px 10px; font-size: 12.5px; }
   .acct-table { font-size: 12.5px; }
   .acct-table thead th, .acct-table tbody td { padding: 8px 9px; }
@@ -609,7 +600,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 /* 明细表防碎版式: 时间/数字格禁折行, 类型徽章禁折行 */
 .acct-table td.mono, .acct-table td.ta-r { white-space: nowrap; }
 .ledger-kind { display: inline-block; font-size: var(--text-xs); padding: 2px 8px; border-radius: 99px; background: var(--line); color: var(--ink); white-space: nowrap; }
-.ledger-kind.ledger-grant_signup, .ledger-kind.ledger-grant_daily, .ledger-kind.ledger-grant_plan, .ledger-kind.ledger-grant_package, .ledger-kind.ledger-grant_referral { background: var(--green-12); color: var(--green); }
 .ledger-kind.ledger-consume { background: rgba(220,38,38,.10); color: var(--danger); }
 .ledger-kind.ledger-refund { background: var(--info-soft); color: var(--info); }
 .ledger-kind.ledger-adjust { background: rgba(107,114,128,.15); color: var(--body); }
@@ -624,7 +614,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
   .topbar { gap: var(--s2); }
 
   .acct-hero { flex-direction: column; }
-  .acct-balance, .acct-daily { flex-basis: auto; }
 }
 
 /* ── /agents page ── */
@@ -642,7 +631,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 
 /* ── Inline button variant: no margin inside flex rows (tokens page etc.) ── */
 
-.acct-daily-claim { margin-left: auto; }
 
 /* ── QR modal image ── */
 .qr-code { display: block; width: 200px; height: 200px; margin: 0 auto; padding: var(--s2); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); }
@@ -658,9 +646,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 @keyframes qr-spin { to { transform: rotate(360deg); } }
 
 /* ── Layout hooks that carry meaning, not just JS anchors ── */
-.acct-daily-info { min-width: 0; }
-.acct-daily-info strong { display: block; }
-.acct-daily-info .acct-daily-sub { display: block; }
 .credit-note-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── /account/tools v2: modal submit + icon grid + card list ── */
@@ -875,8 +860,8 @@ a.mkt-tag:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ═══ IO-3a: 工具页页头 ═══ */
 .toolpage-head { margin-block-start: var(--s4); }
-.toolpage-mcp { max-width: 420px; }
-.toolpage-mcp-panel { margin-block-start: var(--s5); }
+.toolpage-mcp-panel { margin-block-start: var(--s5); display: flex; flex-direction: column; gap: var(--s3); align-items: flex-start; }
+.toolpage-mcp-panel .toolpage-mcp { max-width: 420px; }
 .toolpage-handle { font-weight: 700; }
 
 /* ═══ IO-3a: 文件页 (/f) — 与结果页同语言 ═══ */
