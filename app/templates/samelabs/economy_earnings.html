@@ -1,12 +1,13 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Provider Earnings{% endblock %}
-{% block crumb %}Samelabs / Economy / Provider Earnings{% endblock %}
+{% set page_title = "开发者收益" %}
+{% block title %}开发者收益{% endblock %}
+{% block crumb %}运营后台 / 经济 / 开发者收益{% endblock %}
 {% block body %}
 <section class="sl-panel">
-  <h2>Provider Earnings (USD-millis → USD · attribution via tool_call relation, S2)</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>Provider</th><th>Amount (USD)</th><th>Tool</th><th>Call</th><th>Note</th><th>Time</th></tr></thead>
+  <div class="sl-panel-head"><h2>开发者收益</h2><span class="sl-panel-sub">工具调用产生的分成收入（美元）</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>开发者</th><th>金额（美元）</th><th>工具</th><th>调用</th><th>备注</th><th>时间</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
@@ -18,7 +19,7 @@
         <td>{{ fmt_ts(r.created_at) }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="sl-empty">No rows</td></tr>
+      <tr><td colspan="7" class="sl-empty">暂无记录</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -26,7 +27,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/economy/earnings?page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/economy/earnings?page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

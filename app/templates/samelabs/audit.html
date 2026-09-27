@@ -1,12 +1,13 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Audit{% endblock %}
-{% block crumb %}Samelabs / Audit{% endblock %}
+{% set page_title = "审计" %}
+{% block title %}审计{% endblock %}
+{% block crumb %}运营后台 / 审计{% endblock %}
 {% block body %}
 <section class="sl-panel">
-  <h2>Operator audit (append-only)</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>Actor</th><th>Action</th><th>Target</th><th>Before (safe)</th><th>After (safe)</th><th>Time</th></tr></thead>
+  <div class="sl-panel-head"><h2>操作审计</h2><span class="sl-panel-sub">只增不改，记录每一次运营修改</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>操作人</th><th>动作</th><th>对象</th><th>修改前</th><th>修改后</th><th>时间</th></tr></thead>
     <tbody>
     {% for a in rows %}
       <tr>
@@ -19,7 +20,7 @@
         <td>{{ fmt_ts(a.created_at) }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="sl-empty">No audit facts</td></tr>
+      <tr><td colspan="7" class="sl-empty">暂无记录</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -27,7 +28,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/audit?page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/audit?page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

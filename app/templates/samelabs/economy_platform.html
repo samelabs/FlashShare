@@ -1,23 +1,23 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Platform Income{% endblock %}
-{% block crumb %}Samelabs / Economy / Platform Income{% endblock %}
+{% set page_title = "平台收入" %}
+{% block title %}平台收入{% endblock %}
+{% block crumb %}运营后台 / 经济 / 平台收入{% endblock %}
 {% block body %}
 <section class="sl-panel">
-  <h2>平台佣金</h2>
-  <p class="sl-panel-sub">第三方工具结算分成比例。只接受 0–100 的整数；缺失或非法时相关调用会在扣费前被拒绝。每次修改写审计（旧值 → 新值）。</p>
-  <div class="sl-toolbar" style="align-items:center;gap:10px">
+  <div class="sl-panel-head"><h2>平台佣金</h2><span class="sl-panel-sub">第三方工具结算分成比例。只接受 0–100 的整数；配置缺失或非法时相关调用会在扣费前被拒绝。每次修改写审计。</span></div>
+  <div class="sl-toolbar">
     <input class="sl-input" id="commissionInput" type="number" min="0" max="100" step="1"
            value="{{ commission_rate if commission_rate is not none }}" style="width:110px">
     <span class="sl-dim">%</span>
-    <button type="button" class="sl-btn sl-btn-primary" id="commissionSave">保存</button>
+    <button type="button" class="btn sl-btn sl-btn-primary" id="commissionSave">保存</button>
     <span class="sl-dim" id="commissionMsg"></span>
   </div>
 </section>
 <section class="sl-panel">
-  <h2>Platform Income (USD — platform_commission + platform_revenue, never merged with Credits)</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>Kind</th><th>User</th><th>Amount (USD)</th><th>Note</th><th>Time</th></tr></thead>
+  <div class="sl-panel-head"><h2>平台收入</h2><span class="sl-panel-sub">工具抽佣 + 系统工具直销（美元），与消费积分分开记账</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>类型</th><th>用户</th><th>金额（美元）</th><th>备注</th><th>时间</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
@@ -27,7 +27,7 @@
         <td>{{ fmt_ts(r.created_at) }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="6" class="sl-empty">No rows</td></tr>
+      <tr><td colspan="6" class="sl-empty">暂无记录</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -35,7 +35,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/economy/platform?page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/economy/platform?page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

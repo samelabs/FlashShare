@@ -1,21 +1,22 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Credits{% endblock %}
-{% block crumb %}Samelabs / Economy / Credits{% endblock %}
+{% set page_title = "积分流水" %}
+{% block title %}积分流水{% endblock %}
+{% block crumb %}运营后台 / 经济 / 积分流水{% endblock %}
 {% block body %}
 <section class="sl-panel">
-  <h2>Consumer Credits (SPENDABLE_KINDS only — Credits)</h2>
+  <div class="sl-panel-head"><h2>积分流水</h2><span class="sl-panel-sub">消费积分的每一笔变动</span></div>
   <form method="get" action="/samelabs/economy/credits" class="sl-toolbar">
-    <input type="number" name="user_id" value="{{ q_user or '' }}" placeholder="user id" class="sl-input" min="1">
+    <input type="number" name="user_id" value="{{ q_user or '' }}" placeholder="用户 ID" class="sl-input" min="1">
     <select name="kind" class="sl-input">
-      <option value="">— kind —</option>
+      <option value="">— 全部类型 —</option>
       {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == q_kind }}>{{ k }}</option>{% endfor %}
     </select>
-    <button class="sl-btn" type="submit">Filter</button>
-    <span class="sl-dim">{{ fmt_num(total) }} rows</span>
+    <button class="sl-btn" type="submit">筛选</button>
+    <span class="sl-dim">{{ fmt_num(total) }} 条</span>
   </form>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>User</th><th>Kind</th><th>Delta</th><th>Balance after</th><th>Note</th><th>Time</th></tr></thead>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>用户</th><th>类型</th><th>变动</th><th>变动后余额</th><th>备注</th><th>时间</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
@@ -26,7 +27,7 @@
         <td>{{ fmt_ts(r.created_at) }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="sl-empty">No rows</td></tr>
+      <tr><td colspan="7" class="sl-empty">暂无记录</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -34,7 +35,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/economy/credits?user_id={{ q_user or '' }}&amp;kind={{ q_kind|urlencode }}&amp;page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/economy/credits?user_id={{ q_user or '' }}&amp;kind={{ q_kind|urlencode }}&amp;page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

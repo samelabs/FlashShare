@@ -41,7 +41,7 @@
       });
   }
 
-  var resetBtn = wrap.querySelector('.btn-reset-pw');
+  var resetBtn = wrap.querySelector('.js-reset-pw');
   if (resetBtn) {
     resetBtn.dataset.act = 'reset-password';
     resetBtn.addEventListener('click', function () {
@@ -50,14 +50,14 @@
           var code = document.getElementById('tempPassword');
           code.style.display = 'inline-block';
           code.textContent = r.data.temp_password;
-          say('一次性临时密码（仅本次显示，已复制选择）——请立即交给用户；全部会话已失效，API key 不受影响', false);
+          say('一次性临时密码（仅本次显示）——请立即交给用户；全部登录会话已失效，API key 不受影响', false);
         } else {
           say('失败: ' + r.data.error, true);
         }
       });
     });
   }
-  var suspBtn = wrap.querySelector('.btn-suspend');
+  var suspBtn = wrap.querySelector('.js-suspend');
   if (suspBtn && !suspBtn.disabled) {
     suspBtn.dataset.act = 'suspend';
     suspBtn.addEventListener('click', function () {
@@ -67,7 +67,7 @@
       });
     });
   }
-  var unsuspBtn = wrap.querySelector('.btn-unsuspend');
+  var unsuspBtn = wrap.querySelector('.js-unsuspend');
   if (unsuspBtn) {
     unsuspBtn.dataset.act = 'unsuspend';
     unsuspBtn.addEventListener('click', function () {

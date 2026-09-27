@@ -1,58 +1,58 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}User #{{ u.id }}{% endblock %}
-{% block crumb %}Samelabs / <a href="/samelabs/users">Users</a> / #{{ u.id }}{% endblock %}
+{% block title %}用户 #{{ u.id }}{% endblock %}
+{% block crumb %}运营后台 / <a href="/samelabs/users">用户</a> / #{{ u.id }}{% endblock %}
 {% block body %}
-<section class="sl-cards">
-  <div class="sl-card">
-    <h2>Profile</h2>
-    <dl class="sl-kv">
-      <dt>ID</dt><dd>{{ u.id }}</dd>
-      <dt>Username</dt><dd>{{ u.username }}</dd>
-      <dt>Display name</dt><dd>{{ u.display_name }}</dd>
-      <dt>Email</dt><dd>{{ (u.email or '—') }}</dd>
-      <dt>X</dt><dd>{{ ('@' ~ u.x_username) if u.x_username else '—' }}</dd>
-      <dt>Status</dt><dd><span class="sl-badge">{{ u.status }}</span></dd>
-      <dt>Created</dt><dd>{{ fmt_ts(u.created_at) }}</dd>
-      <dt>Last login</dt><dd>{{ fmt_ts(u.last_login_at) }}</dd>
-    </dl>
+<div class="sl-cards">
+  <div class="card card-pad">
+    <h2>资料</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">ID</span><b>{{ u.id }}</b></div>
+      <div class="fact"><span class="sl-dim">用户名</span><b>{{ u.username }}</b></div>
+      <div class="fact"><span class="sl-dim">显示名称</span><b>{{ u.display_name }}</b></div>
+      <div class="fact"><span class="sl-dim">邮箱</span><b>{{ (u.email or '—') }}</b></div>
+      <div class="fact"><span class="sl-dim">X</span><b>{{ ('@' ~ u.x_username) if u.x_username else '—' }}</b></div>
+      <div class="fact"><span class="sl-dim">状态</span><b><span class="tag {{ 'tag-danger' if u.status == 'suspended' else 'tag-success' }}">{{ u.status }}</span></b></div>
+      <div class="fact"><span class="sl-dim">注册时间</span><b>{{ fmt_ts(u.created_at) }}</b></div>
+      <div class="fact"><span class="sl-dim">最近登录</span><b>{{ fmt_ts(u.last_login_at) }}</b></div>
+    </div>
   </div>
-  <div class="sl-card">
-    <h2>Consumer Credits</h2>
-    <dl class="sl-kv">
-      <dt>Spendable Credits</dt><dd>{{ fmt_num(u.spendable_credits) }}</dd>
-    </dl>
+  <div class="card card-pad">
+    <h2>消费积分</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">可花积分</span><b>{{ fmt_num(u.spendable_credits) }}</b></div>
+    </div>
   </div>
-  <div class="sl-card">
-    <h2>Provider Earnings (USD)</h2>
-    <dl class="sl-kv">
-      <dt>Accrued</dt><dd>{{ u.provider_earned_usd }}</dd>
-      <dt>Pending withdrawals</dt><dd>{{ u.provider_pending_usd }}</dd>
-      <dt>Available</dt><dd>{{ u.provider_available_usd }}</dd>
-      <dt>Payout channel (live)</dt><dd class="sl-mono">{{ (u.payout_channel or '—') }}</dd>
-    </dl>
+  <div class="card card-pad">
+    <h2>开发者收益（美元）</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">累计应得</span><b>{{ u.provider_earned_usd }}</b></div>
+      <div class="fact"><span class="sl-dim">提现审核中</span><b>{{ u.provider_pending_usd }}</b></div>
+      <div class="fact"><span class="sl-dim">可提现</span><b>{{ u.provider_available_usd }}</b></div>
+      <div class="fact"><span class="sl-dim">收款渠道</span><b class="sl-mono">{{ (u.payout_channel or '—') }}</b></div>
+    </div>
   </div>
-  <div class="sl-card">
-    <h2>Membership</h2>
-    <dl class="sl-kv">
+  <div class="card card-pad">
+    <h2>会员</h2>
+    <div class="facts">
       {% if u.membership_status %}
-      <dt>Plan</dt><dd>{{ (u.plan_code or '?') }} — {{ (u.plan_name or '') }}</dd>
-      <dt>Effective status</dt><dd><span class="sl-badge {{ 'sl-b-ok' if u.membership_effective else 'sl-b-muted' }}">{{ u.membership_status }}</span>{% if u.membership_status != u.membership_stored_status %} <span class="sl-dim">(stored: {{ u.membership_stored_status }})</span>{% endif %}</dd>
-      <dt>Provider subscription</dt><dd class="sl-mono">{{ u.provider_subscription_id }}</dd>
-      <dt>Started</dt><dd>{{ fmt_ts(u.membership_started_at) }}</dd>
-      <dt>Renews / ends</dt><dd>{{ fmt_ts(u.membership_renews_at) if u.membership_renews_at else '—' }}</dd>
-      <dt>Cancel scheduled</dt><dd>{{ fmt_ts(u.membership_cancel_scheduled_at) if u.membership_cancel_scheduled_at else '—' }}</dd>
+      <div class="fact"><span class="sl-dim">档位</span><b>{{ (u.plan_code or '?') }} — {{ (u.plan_name or '') }}</b></div>
+      <div class="fact"><span class="sl-dim">生效状态</span><b><span class="tag {{ 'tag-success' if u.membership_effective else 'tag-neutral' }}">{{ u.membership_status }}</span>{% if u.membership_status != u.membership_stored_status %} <span class="sl-dim">（记录态：{{ u.membership_stored_status }}）</span>{% endif %}</b></div>
+      <div class="fact"><span class="sl-dim">订阅号</span><b class="sl-mono">{{ u.provider_subscription_id }}</b></div>
+      <div class="fact"><span class="sl-dim">开始</span><b>{{ fmt_ts(u.membership_started_at) }}</b></div>
+      <div class="fact"><span class="sl-dim">续期 / 结束</span><b>{{ fmt_ts(u.membership_renews_at) if u.membership_renews_at else '—' }}</b></div>
+      <div class="fact"><span class="sl-dim">排期取消</span><b>{{ fmt_ts(u.membership_cancel_scheduled_at) if u.membership_cancel_scheduled_at else '—' }}</b></div>
       {% else %}
-      <dt>Plan</dt><dd>— (no membership row)</dd>
+      <div class="fact"><span class="sl-dim">档位</span><b>—（无会员记录）</b></div>
       {% endif %}
-    </dl>
+    </div>
   </div>
-</section>
+</div>
 
 <section class="sl-panel">
-  <h2>Recent orders</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>Kind</th><th>Item</th><th>Provider order</th><th>Amount</th><th>Credits snapshot</th><th>Status</th><th>Granted</th><th>Created</th><th>Paid</th><th>Refunded</th></tr></thead>
+  <div class="sl-panel-head"><h2>最近订单</h2></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>类型</th><th>商品</th><th>渠道订单号</th><th>金额</th><th>积分快照</th><th>状态</th><th>已发放</th><th>创建</th><th>支付</th><th>退款</th></tr></thead>
     <tbody>
     {% for o in orders %}
       <tr>
@@ -60,14 +60,14 @@
         <td>{{ (o.provider_order_id or '—') }}</td>
         <td class="sl-num">{{ fmt_num(o.amount_cents) }} {{ o.currency }}</td>
         <td class="sl-num">{{ fmt_num(o.credits_snapshot) if o.credits_snapshot is not none else '—' }}</td>
-        <td><span class="sl-badge">{{ o.status }}</span></td>
+        <td><span class="tag tag-neutral">{{ o.status }}</span></td>
         <td>{{ '✔' if o.granted else '✕' }}</td>
         <td>{{ fmt_ts(o.created_at) }}</td>
         <td>{{ fmt_ts(o.paid_at) if o.paid_at else '—' }}</td>
         <td>{{ fmt_ts(o.refunded_at) if o.refunded_at else '—' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="11" class="sl-empty">No orders</td></tr>
+      <tr><td colspan="11" class="sl-empty">暂无订单</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -75,22 +75,22 @@
 </section>
 
 <section class="sl-panel">
-  <h2>Recent Tool calls</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>Tool</th><th>Status</th><th>Cost (Credits)</th><th>Error</th><th>Started</th><th>Finished</th></tr></thead>
+  <div class="sl-panel-head"><h2>最近工具调用</h2></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>工具</th><th>状态</th><th>费用（积分）</th><th>错误</th><th>开始</th><th>结束</th></tr></thead>
     <tbody>
     {% for c in calls %}
       <tr>
-        <td>{{ c.id }}</td><td>{{ c.tool_id }}</td>
-        <td><span class="sl-badge sl-badge-{{ 'ok' if c.status == 'ok' else 'err' }}">{{ c.status }}</span></td>
+        <td>{{ c.id }}</td><td class="sl-mono">{{ c.tool_id }}</td>
+        <td><span class="tag {{ 'tag-success' if c.status == 'ok' else 'tag-danger' }}">{{ c.status }}</span></td>
         <td class="sl-num">{{ fmt_num(c.cost_snapshot) }}</td>
         <td class="sl-dim">{{ (c.error or '—') }}</td>
         <td>{{ fmt_ts(c.started_at) }}</td>
         <td>{{ fmt_ts(c.finished_at) if c.finished_at else '—' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="sl-empty">No calls</td></tr>
+      <tr><td colspan="7" class="sl-empty">暂无调用</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -98,24 +98,24 @@
 </section>
 
 <section class="sl-panel">
-  <h2>Recent withdrawals</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>Amount</th><th>Destination (snapshot)</th><th>Status</th><th>payout_ref</th><th>Requested</th><th>Reviewed</th><th>Paid</th></tr></thead>
+  <div class="sl-panel-head"><h2>最近提现</h2></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>金额</th><th>收款渠道（快照）</th><th>状态</th><th>打款凭证</th><th>申请时间</th><th>审核时间</th><th>打款时间</th></tr></thead>
     <tbody>
     {% for w in withdrawals %}
       <tr>
         <td>#{{ w.id }}</td>
         <td class="sl-num">{{ w.amount_usd }}</td>
         <td class="sl-mono">{{ w.payout_channel_snapshot }}</td>
-        <td><span class="sl-badge">{{ w.status }}</span></td>
+        <td><span class="tag {{ {'pending':'tag-warning','approved':'tag-success','rejected':'tag-danger','paid':'tag-success','payout_failed':'tag-danger'}.get(w.status, 'tag-neutral') }}">{{ w.status }}</span></td>
         <td class="sl-mono">{{ (w.payout_ref or '—') }}</td>
         <td>{{ fmt_ts(w.created_at) }}</td>
         <td>{{ fmt_ts(w.reviewed_at) if w.reviewed_at else '—' }}</td>
         <td>{{ fmt_ts(w.paid_at) if w.paid_at else '—' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="8" class="sl-empty">No withdrawals</td></tr>
+      <tr><td colspan="8" class="sl-empty">暂无提现</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -123,10 +123,10 @@
 </section>
 
 <section class="sl-panel">
-  <h2>Recent ledger rows (per-row facts, unit by kind — never summed across kinds)</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>ID</th><th>Kind</th><th>Amount</th><th>Unit</th><th>Ref</th><th>Note</th><th>Time</th></tr></thead>
+  <div class="sl-panel-head"><h2>最近账目</h2><span class="sl-panel-sub">每行独立记账，积分与美元分列，不跨类相加</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>类型</th><th>金额</th><th>单位</th><th>关联</th><th>备注</th><th>时间</th></tr></thead>
     <tbody>
     {% for r in ledger %}
       <tr>
@@ -138,23 +138,23 @@
         <td>{{ fmt_ts(r.created_at) }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="sl-empty">No ledger rows</td></tr>
+      <tr><td colspan="7" class="sl-empty">暂无账目</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="sl-dim"><a href="/samelabs/economy/credits?user_id={{ u.id }}">All Credits rows for this user →</a></p>
+  <p class="sl-dim"><a href="/samelabs/economy/credits?user_id={{ u.id }}">该用户的全部积分流水 →</a></p>
 </section>
 
 <section class="sl-panel">
-  <h2>Account actions</h2>
-  <p class="sl-dim">Reset generates a one-time temporary password (shown once here; all browser sessions are revoked, API keys survive). Suspend blocks login, API keys and every tool surface for this account; completed earnings are untouched.</p>
-  <div class="sl-toolbar" style="gap:10px;align-items:center;flex-wrap:wrap" id="accountActions" data-uid="{{ u.id }}">
+  <div class="sl-panel-head"><h2>账户操作</h2></div>
+  <p class="sl-panel-sub">重置密码会生成一次性临时密码（仅显示一次），并使该用户全部登录会话失效；API key 不受影响。停用后该用户无法登录、API key 失效、工具全面下架；已结算收益不受影响。</p>
+  <div class="sl-toolbar" id="accountActions" data-uid="{{ u.id }}">
     {% if u.status == 'suspended' %}
-    <button type="button" class="sl-btn sl-btn-primary btn-unsuspend">恢复访问</button>
+    <button type="button" class="btn btn-primary js-unsuspend">恢复访问</button>
     {% else %}
-    <button type="button" class="sl-btn btn-reset-pw" {{ 'disabled title="平台与运营账户不可重置"' if u.protected else '' }}>重置密码</button>
-    <button type="button" class="sl-btn btn-suspend" {{ 'disabled title="平台与运营账户不可操作"' if u.protected else '' }}>停用账户</button>
+    <button type="button" class="btn btn-secondary js-reset-pw" {{ 'disabled title="平台与运营账户不可重置"' if u.protected else '' }}>重置密码</button>
+    <button type="button" class="btn btn-danger js-suspend" {{ 'disabled title="平台与运营账户不可操作"' if u.protected else '' }}>停用账户</button>
     {% endif %}
     <span class="sl-dim" id="actionMsg"></span>
     <code id="tempPassword" class="sl-mono" style="display:none"></code>
