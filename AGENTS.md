@@ -125,7 +125,8 @@
 
 - 代码与项目意图是事实；文档只记录代码推不出的当前事实与规则。文档与代码冲突时以代码为准并修正文档。
 - 仓库文档仅：`README.md`（产品与开发者协议）、`AGENTS.md`（开发规则与冻结契约）、
-  `DEVELOPMENT.md`（环境/测试/部署运维）、`CHANGELOG.md`（面向用户的变更）。
+  `DEVELOPMENT.md`（环境/测试/部署运维）、`CHANGELOG.md`（面向用户的变更）；
+  另有 `LICENSE`（AGPL-3.0）与 `SECURITY.md`（漏洞报告渠道）。
   `docs/plan/` 仅存放尚未执行的 release migration 资产，执行后移除。
 - 禁止计划书、流水账、会话记录、审计报告、历史说明进入仓库（它们属于 issue/PR）。
 - 测试断言行为，不断言文档文字。

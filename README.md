@@ -342,4 +342,4 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 
 ## License
 
-私有项目，保留所有权利。
+[GNU Affero General Public License v3.0](LICENSE)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
