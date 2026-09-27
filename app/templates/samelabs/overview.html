@@ -1,55 +1,56 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Overview{% endblock %}
-{% block crumb %}Samelabs / Overview{% endblock %}
+{% set page_title = "总览" %}
+{% block title %}总览{% endblock %}
+{% block crumb %}运营后台 / 总览{% endblock %}
 {% block body %}
-<section class="sl-cards">
-  <div class="sl-card">
-    <h2>Product</h2>
-    <dl class="sl-kv">
-      <dt>Users</dt><dd>{{ fmt_num(product.users) }}</dd>
-      <dt>Successful Tool calls</dt><dd>{{ fmt_num(product.calls_ok) }}</dd>
-      <dt>Failed Tool calls</dt><dd>{{ fmt_num(product.calls_failed) }}</dd>
-      <dt>Runtime-enabled + priced Tools</dt><dd>{{ fmt_num(product.tools_live_priced) }}</dd>
-      <dt>Effective memberships</dt><dd>{{ fmt_num(consumer.memberships_effective) }}</dd>
-    </dl>
+<div class="sl-cards">
+  <div class="card card-pad">
+    <h2>产品</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">用户数</span><b>{{ fmt_num(product.users) }}</b></div>
+      <div class="fact"><span class="sl-dim">成功调用</span><b>{{ fmt_num(product.calls_ok) }}</b></div>
+      <div class="fact"><span class="sl-dim">失败调用</span><b>{{ fmt_num(product.calls_failed) }}</b></div>
+      <div class="fact"><span class="sl-dim">在售工具</span><b>{{ fmt_num(product.tools_live_priced) }}</b></div>
+      <div class="fact"><span class="sl-dim">有效会员</span><b>{{ fmt_num(consumer.memberships_effective) }}</b></div>
+    </div>
   </div>
-  <div class="sl-card">
-    <h2>Consumer Credits</h2>
-    <dl class="sl-kv">
-      <dt>Spendable Credits outstanding</dt><dd>{{ fmt_num(consumer.credits_outstanding) }}</dd>
-      <dt>Tool Credits charged (net of refunds)</dt><dd>{{ fmt_num(consumer.credits_charged_net) }}</dd>
-    </dl>
+  <div class="card card-pad">
+    <h2>消费积分</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">流通积分</span><b>{{ fmt_num(consumer.credits_outstanding) }}</b></div>
+      <div class="fact"><span class="sl-dim">净消耗（扣除退款）</span><b>{{ fmt_num(consumer.credits_charged_net) }}</b></div>
+    </div>
   </div>
-  <div class="sl-card">
-    <h2>Provider Economy (USD)</h2>
-    <dl class="sl-kv">
-      <dt>Provider Earnings accrued</dt><dd>{{ provider_usd.earned }}</dd>
-      <dt>Pending withdrawals</dt><dd>{{ provider_usd.wd_pending }}</dd>
-      <dt>Approved withdrawals, not yet paid</dt><dd>{{ provider_usd.wd_approved_unpaid }}</dd>
-      <dt>Paid withdrawals</dt><dd>{{ provider_usd.wd_paid }}</dd>
-    </dl>
+  <div class="card card-pad">
+    <h2>开发者收益（美元）</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">累计应得</span><b>{{ provider_usd.earned }}</b></div>
+      <div class="fact"><span class="sl-dim">待审核提现</span><b>{{ provider_usd.wd_pending }}</b></div>
+      <div class="fact"><span class="sl-dim">已批准未打款</span><b>{{ provider_usd.wd_approved_unpaid }}</b></div>
+      <div class="fact"><span class="sl-dim">已打款</span><b>{{ provider_usd.wd_paid }}</b></div>
+    </div>
   </div>
-  <div class="sl-card">
-    <h2>Platform Income (USD)</h2>
-    <dl class="sl-kv">
-      <dt>platform_commission</dt><dd>{{ platform_usd.commission }}</dd>
-      <dt>platform_revenue</dt><dd>{{ platform_usd.revenue }}</dd>
-    </dl>
+  <div class="card card-pad">
+    <h2>平台收入（美元）</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">工具抽佣</span><b>{{ platform_usd.commission }}</b></div>
+      <div class="fact"><span class="sl-dim">系统工具直销</span><b>{{ platform_usd.revenue }}</b></div>
+    </div>
   </div>
-</section>
+</div>
 
 <section class="sl-panel">
-  <h2>Recent Tool calls</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
-    <thead><tr><th>id</th><th>Tool</th><th>User</th><th>Status</th><th>Started</th></tr></thead>
+  <div class="sl-panel-head"><h2>最近工具调用</h2></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
+    <thead><tr><th>ID</th><th>工具</th><th>用户</th><th>状态</th><th>开始时间</th></tr></thead>
     <tbody>
     {% for r in recent %}
-      <tr><td>{{ r.id }}</td><td>{{ r.tool_id }}</td><td>{{ (r.username or '—') }}</td>
-      <td><span class="sl-badge sl-badge-{{ 'ok' if r.status == 'ok' else 'err' }}">{{ r.status }}</span></td>
+      <tr><td>{{ r.id }}</td><td class="sl-mono">{{ r.tool_id }}</td><td>{{ (r.username or '—') }}</td>
+      <td><span class="tag {{ 'tag-success' if r.status == 'ok' else 'tag-danger' }}">{{ r.status }}</span></td>
       <td>{{ fmt_ts(r.started_at) }}</td></tr>
     {% else %}
-      <tr><td colspan="5" class="sl-empty">No calls yet</td></tr>
+      <tr><td colspan="5" class="sl-empty">暂无调用</td></tr>
     {% endfor %}
     </tbody>
   </table>

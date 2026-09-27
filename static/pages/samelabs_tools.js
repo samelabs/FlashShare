@@ -45,14 +45,14 @@
     b.addEventListener('click', function () {
       if (!armed) {
         armed = true; b.textContent = '确认删除?';
-        t = setTimeout(function () { armed = false; b.textContent = 'Delete'; }, 4000);
+        t = setTimeout(function () { armed = false; b.textContent = '删除'; }, 4000);
         return;
       }
       clearTimeout(t); b.disabled = true;
       slPost(toolUrl(b.dataset.del, 'delete'), {})
         .then(function (r) {
           if (r.ok && r.data.ok) { slToast('ok', '已删除', b.dataset.del); setTimeout(function () { location.reload(); }, 600); }
-          else { slToast('err', '删除失败', (r.data && r.data.error) || ''); b.disabled = false; armed = false; b.textContent = 'Delete'; }
+          else { slToast('err', '删除失败', (r.data && r.data.error) || ''); b.disabled = false; armed = false; b.textContent = '删除'; }
         });
     });
   });
@@ -107,8 +107,8 @@
         setTimeout(function () { location.reload(); }, 600);
       } else {
         var why = (r.data && r.data.error) || '请求失败';
-        if (why === 'duplicate_tool') why = 'tool_id 已存在';
-        if (why === 'bad_tool_id') why = 'tool_id 格式非法 (a-z0-9_)';
+        if (why === 'duplicate_tool') why = '工具 ID 已存在';
+        if (why === 'bad_tool_id') why = '工具 ID 格式非法（a-z0-9_）';
         slToast('err', '创建失败', why);
       }
     });

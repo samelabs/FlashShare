@@ -101,7 +101,7 @@ async def user_detail(user_id: int, request: Request):
         request, "samelabs/user_detail.html",
         ctx(request, user, u=prof, orders=orders, calls=calls,
             withdrawals=wds, ledger=ledger, fmt_num=fmt_num,
-            page_title=f"User #{user_id}", page_id="users"))
+            page_title=f"用户 #{user_id}", page_id="users"))
 
 
 @router.post("/samelabs/users/{user_id}/reset-password")

@@ -1,15 +1,17 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Orders{% endblock %}
-{% block crumb %}Samelabs / Commerce / Orders{% endblock %}
+{% set page_title = "订单" %}
+{% set nav_id = "commerce_orders" %}
+{% block title %}订单{% endblock %}
+{% block crumb %}运营后台 / 交易 / 订单{% endblock %}
 {% block body %}
 <section class="sl-panel">
-  <h2>Orders (read-only facts)</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
+  <div class="sl-panel-head"><h2>订单</h2><span class="sl-panel-sub">只读记录，不做修改</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
     <thead><tr>
-      <th>ID</th><th>User</th><th>Kind</th><th>Item</th><th>Provider</th>
-      <th>Provider order</th><th>Amount</th><th>Credits snapshot</th>
-      <th>Status</th><th>Granted</th><th>Created</th><th>Paid</th><th>Refunded</th>
+      <th>ID</th><th>用户</th><th>类型</th><th>商品</th><th>渠道</th>
+      <th>渠道订单号</th><th>金额</th><th>积分快照</th>
+      <th>状态</th><th>已发放</th><th>创建</th><th>支付</th><th>退款</th>
     </tr></thead>
     <tbody>
     {% for o in orders %}
@@ -19,14 +21,14 @@
         <td>{{ (o.provider_order_id or '—') }}</td>
         <td class="sl-num">{{ fmt_num(o.amount_cents) }} {{ o.currency }}</td>
         <td class="sl-num">{{ fmt_num(o.credits_snapshot) if o.credits_snapshot is not none else '—' }}</td>
-        <td><span class="sl-badge">{{ o.status }}</span></td>
+        <td><span class="tag tag-neutral">{{ o.status }}</span></td>
         <td>{{ '✔' if o.granted else '✕' }}</td>
         <td>{{ fmt_ts(o.created_at) }}</td>
         <td>{{ fmt_ts(o.paid_at) if o.paid_at else '—' }}</td>
         <td>{{ fmt_ts(o.refunded_at) if o.refunded_at else '—' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="13" class="sl-empty">No orders</td></tr>
+      <tr><td colspan="13" class="sl-empty">暂无订单</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -34,7 +36,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/commerce/orders?page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/commerce/orders?page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

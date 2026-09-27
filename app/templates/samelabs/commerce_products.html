@@ -1,6 +1,8 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Products{% endblock %}
-{% block crumb %}Samelabs / Commerce / Products{% endblock %}
+{% set page_title = "产品与档位" %}
+{% set nav_id = "commerce_products" %}
+{% block title %}产品与档位{% endblock %}
+{% block crumb %}运营后台 / 交易 / 产品与档位{% endblock %}
 {% block body %}
 
 
@@ -27,8 +29,8 @@
         </span>
         <span class="tier-fact sl-dim">{{ p.member_count }} 订阅{% if p.pending_count %} · {{ p.pending_count }} 排期{% endif %}</span>
       </div>
-      {% if p.active %}<span class="sl-badge sl-b-ok tier-card-state">生效中</span>
-      {% else %}<span class="sl-badge sl-b-muted tier-card-state">已停用</span>{% endif %}
+      {% if p.active %}<span class="tag tag-success tier-card-state">生效中</span>
+      {% else %}<span class="tag tag-neutral tier-card-state">已停用</span>{% endif %}
     </button>
     {% else %}
     <p class="sl-dim" style="padding:16px">暂无档位</p>
@@ -53,7 +55,7 @@
   <div class="modal-panel tier-editor">
     <div class="tier-editor-head">
       <h3 id="tierEditorTitle">档位配置</h3>
-      <span class="sl-badge sl-b-muted sl-mono" id="tierEditorCode"></span>
+      <span class="tag tag-neutral sl-mono" id="tierEditorCode"></span>
       <button type="button" class="modal-close-btn" id="tierModalClose" aria-label="关闭">✕</button>
     </div>
 
@@ -92,7 +94,7 @@
 </div>
 
 
-<hr class="sl-sep">
+<hr class="sl-hr">
 
 
 <div class="sl-panel">
@@ -111,8 +113,8 @@
         <span class="tier-fact">{{ '+' ~ p.credits ~ ' 积分' }}</span>
         <span class="tier-fact{% if not p.price_cents %} miss{% endif %}">{{ '$' ~ '%.0f'|format(p.price_cents / 100) if p.price_cents else '未定价' }}</span>
       </div>
-      {% if p.active %}<span class="sl-badge sl-b-ok tier-card-state">生效中</span>
-      {% else %}<span class="sl-badge sl-b-muted tier-card-state">已停用</span>{% endif %}
+      {% if p.active %}<span class="tag tag-success tier-card-state">生效中</span>
+      {% else %}<span class="tag tag-neutral tier-card-state">已停用</span>{% endif %}
     </button>
     {% else %}
     <p class="sl-dim" style="padding:16px">暂无积分包</p>
@@ -137,7 +139,7 @@
   <div class="modal-panel tier-editor">
     <div class="tier-editor-head">
       <h3 id="pkgEditorTitle">积分包配置</h3>
-      <span class="sl-badge sl-b-muted sl-mono" id="pkgEditorCode"></span>
+      <span class="tag tag-neutral sl-mono" id="pkgEditorCode"></span>
       <button type="button" class="modal-close-btn" id="pkgModalClose" aria-label="关闭">✕</button>
     </div>
     <div class="tier-editor-body">

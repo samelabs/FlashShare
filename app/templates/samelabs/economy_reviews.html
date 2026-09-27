@@ -1,40 +1,41 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Payment reviews{% endblock %}
-{% block crumb %}Samelabs / Economy / Payment reviews{% endblock %}
+{% set page_title = "支付审核" %}
+{% block title %}支付审核{% endblock %}
+{% block crumb %}运营后台 / 经济 / 支付审核{% endblock %}
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head">
-    <h2>Payment review queue</h2>
-    <span class="sl-panel-sub">Provider events that need a human decision (e.g. partial refunds). Zero automatic balance movement — resolve marks the row reviewed and writes the audit.</span>
+    <h2>支付审核队列</h2>
+    <span class="sl-panel-sub">需要人工裁定的支付事件（如部分退款）。标记处理不会改动任何余额，只记录处理结果。</span>
   </div>
   <form method="get" action="/samelabs/economy/reviews" class="sl-toolbar">
     <select name="status" class="sl-input">
-      <option value="">— all statuses —</option>
+      <option value="">— 全部状态 —</option>
       {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == q_status }}>{{ s }}</option>{% endfor %}
     </select>
-    <button class="sl-btn" type="submit">Filter</button>
+    <button class="sl-btn" type="submit">筛选</button>
     <span class="sl-dim">{{ fmt_num(total) }} rows</span>
   </form>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
       <thead>
-        <tr><th>ID</th><th>Event</th><th>Event id</th><th>Transaction</th>
-        <th>Detail</th><th>Status</th><th>Created</th><th>Resolved</th><th>Actions</th></tr>
+        <tr><th>ID</th><th>事件</th><th>事件 ID</th><th>交易</th>
+        <th>详情</th><th>状态</th><th>到达时间</th><th>处理时间</th><th>操作</th></tr>
       </thead>
       <tbody>
         {% for r in reviews %}
         <tr data-rid="{{ r.id }}">
           <td>#{{ r.id }}</td>
-          <td class="mono">{{ r.event_type }}</td>
-          <td class="mono">{{ r.event_id }}</td>
-          <td class="mono">{{ r.txn_id }}</td>
-          <td class="mono">{{ r.detail_json }}</td>
+          <td class="sl-mono">{{ r.event_type }}</td>
+          <td class="sl-mono">{{ r.event_id }}</td>
+          <td class="sl-mono">{{ r.txn_id }}</td>
+          <td class="sl-mono">{{ r.detail_json }}</td>
           <td><span class="tag {{ 'tag-warning' if r.status == 'open' else 'tag-success' }}">{{ r.status }}</span></td>
           <td>{{ fmt_ts(r.created_at) }}</td>
           <td>{{ fmt_ts(r.resolved_at) if r.resolved_at else '—' }}</td>
           <td>
             {% if r.status == 'open' %}
-            <button type="button" class="sl-btn sl-btn-primary btn-resolve" data-rid="{{ r.id }}">Resolve</button>
+            <button type="button" class="btn sl-btn sl-btn-primary js-resolve" data-rid="{{ r.id }}">标记已处理</button>
             {% else %}—{% endif %}
           </td>
         </tr>
@@ -48,7 +49,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/economy/reviews?status={{ q_status|urlencode }}&amp;page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/economy/reviews?status={{ q_status|urlencode }}&amp;page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

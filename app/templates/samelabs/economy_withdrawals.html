@@ -1,45 +1,46 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Withdrawals{% endblock %}
-{% block crumb %}Samelabs / Economy / Withdrawals{% endblock %}
+{% set page_title = "提现" %}
+{% block title %}提现{% endblock %}
+{% block crumb %}运营后台 / 经济 / 提现{% endblock %}
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head">
-    <h2>Withdrawal queue</h2>
-    <span class="sl-panel-sub">pending → approved (one withdraw ledger row) → paid (external payout_ref). Reject never debits. Destination = request-time snapshot.</span>
+    <h2>提现队列</h2>
+    <span class="sl-panel-sub">批准后从收益池扣款；标记打款时填外部凭证；驳回不扣款。收款渠道以申请时快照为准。</span>
   </div>
   <form method="get" action="/samelabs/economy/withdrawals" class="sl-toolbar">
     <select name="status" class="sl-input">
-      <option value="">— all statuses —</option>
+      <option value="">— 全部状态 —</option>
       {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == q_status }}>{{ s }}</option>{% endfor %}
     </select>
-    <button class="sl-btn" type="submit">Filter</button>
+    <button class="sl-btn" type="submit">筛选</button>
     <span class="sl-dim">{{ fmt_num(total) }} rows</span>
   </form>
   <div class="sl-tablewrap">
     <table class="sl-tbl">
       <thead>
-        <tr><th>ID</th><th>User</th><th>Amount</th><th>Payout destination (snapshot)</th>
-        <th>Status</th><th>Reviewed</th><th>Paid</th><th>payout_ref</th><th>Requested</th><th>Actions</th></tr>
+        <tr><th>ID</th><th>用户</th><th>金额</th><th>收款渠道（快照）</th>
+        <th>状态</th><th>审核时间</th><th>打款时间</th><th>打款凭证</th><th>申请时间</th><th>操作</th></tr>
       </thead>
       <tbody id="wRows">
         {% for w in withdrawals %}
         <tr data-wid="{{ w.id }}">
           <td>#{{ w.id }}</td>
           <td><a href="/samelabs/users/{{ w.user_id }}">{{ w.username }}</a></td>
-          <td class="mono">{{ w.amount_usd }}</td>
-          <td class="mono">{{ w.payout }}</td>
+          <td class="sl-num">{{ w.amount_usd }}</td>
+          <td class="sl-mono">{{ w.payout }}</td>
           <td><span class="tag {{ {'pending':'tag-warning','approved':'tag-success','rejected':'tag-danger','paid':'tag-success','payout_failed':'tag-danger'}.get(w.status, 'tag-neutral') }}">{{ w.status }}</span></td>
           <td>{{ fmt_ts(w.reviewed_at) if w.reviewed_at else '—' }}</td>
           <td>{{ fmt_ts(w.paid_at) if w.paid_at else '—' }}</td>
-          <td class="mono">{{ (w.payout_ref or '—') }}</td>
+          <td class="sl-mono">{{ (w.payout_ref or '—') }}</td>
           <td>{{ fmt_ts(w.created_at) }}</td>
           <td>
             {% if w.status == 'pending' %}
-            <button type="button" class="btn sl-btn sl-btn-primary btn-approve" data-wid="{{ w.id }}">Approve</button>
-            <button type="button" class="sl-btn btn-reject" data-wid="{{ w.id }}">Reject</button>
+            <button type="button" class="btn sl-btn sl-btn-primary js-approve" data-wid="{{ w.id }}">批准</button>
+            <button type="button" class="btn sl-btn-danger js-reject" data-wid="{{ w.id }}">驳回</button>
             {% elif w.status == 'approved' %}
-            <button type="button" class="btn sl-btn sl-btn-primary btn-paid" data-wid="{{ w.id }}">Mark paid…</button>
-            <button type="button" class="sl-btn btn-payout-failed" data-wid="{{ w.id }}">Payout failed…</button>
+            <button type="button" class="btn sl-btn sl-btn-primary js-paid" data-wid="{{ w.id }}">标记已打款…</button>
+            <button type="button" class="btn sl-btn-danger js-payout-failed" data-wid="{{ w.id }}">打款失败…</button>
             {% else %}—{% endif %}
           </td>
         </tr>
@@ -53,7 +54,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/economy/withdrawals?status={{ q_status|urlencode }}&amp;page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/economy/withdrawals?status={{ q_status|urlencode }}&amp;page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

@@ -100,18 +100,18 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
   check("1 Overview (operator session accepted)", !page.url().includes("/auth/login"), page.url());
   const ov = await page.content();
   check("1b asset separation on DOM",
-    /Provider Economy/.test(ov) && /Platform Income/.test(ov) && /Consumer Credits/.test(ov));
+    /开发者收益/.test(ov) && /平台收入/.test(ov) && /消费积分/.test(ov));
 
   for (const [n, p, needle] of [
-    ["2 Users", "/samelabs/users", "Spendable Credits"],
-    ["3 Tool Supply", "/samelabs/tools", "tool_key"],
-    ["4 Orders", "/samelabs/commerce/orders", "Status"],
-    ["5 Memberships", "/samelabs/commerce/memberships", "Membership"],
+    ["2 Users", "/samelabs/users", "可花积分"],
+    ["3 Tool Supply", "/samelabs/tools", "工具键"],
+    ["4 Orders", "/samelabs/commerce/orders", "状态"],
+    ["5 Memberships", "/samelabs/commerce/memberships", "会员"],
     ["6 Products", "/samelabs/commerce/products", "订阅档位"],
-    ["7 Credits", "/samelabs/economy/credits", "SPENDABLE"],
-    ["8 Provider Earnings", "/samelabs/economy/earnings", "USD"],
-    ["10 Platform Income", "/samelabs/economy/platform", "platform_commission"],
-    ["11 Audit", "/samelabs/audit", "Action"],
+    ["7 Credits", "/samelabs/economy/credits", "积分流水"],
+    ["8 Provider Earnings", "/samelabs/economy/earnings", "开发者收益"],
+    ["10 Platform Income", "/samelabs/economy/platform", "平台佣金"],
+    ["11 Audit", "/samelabs/audit", "操作审计"],
   ]) {
     await page.goto(BASE + p);
     const c = await page.content();
@@ -134,7 +134,7 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
 
   // A2 approve via the two-state confirm button → approved state in DOM
   await page.goto(BASE + "/samelabs/economy/withdrawals");
-  const btnA = page.locator(`tr[data-wid="${WID}"] .btn-approve`);
+  const btnA = page.locator(`tr[data-wid="${WID}"] .js-approve`);
   await btnA.click();                       // arm
   await page.waitForTimeout(100);
   await btnA.click();                       // confirm
@@ -144,10 +144,10 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
 
   // A3 paid: arm → fill dynamic ref input → confirm
   await page.goto(BASE + "/samelabs/economy/withdrawals");
-  const btnP = page.locator(`tr[data-wid="${WID}"] .btn-paid`);
+  const btnP = page.locator(`tr[data-wid="${WID}"] .js-paid`);
   await btnP.click();                       // arm → ref input appears
   await page.waitForTimeout(200);
-  await page.fill(".payout-ref-input", "RTX-CHROME-1");
+  await page.fill(".js-payout-ref-input", "RTX-CHROME-1");
   await btnP.click();                       // confirm
   await page.waitForTimeout(1200);
   c = await page.content();

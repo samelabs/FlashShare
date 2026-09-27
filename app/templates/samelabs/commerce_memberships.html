@@ -1,14 +1,16 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Memberships{% endblock %}
-{% block crumb %}Samelabs / Commerce / Memberships{% endblock %}
+{% set page_title = "会员" %}
+{% set nav_id = "commerce_memberships" %}
+{% block title %}会员{% endblock %}
+{% block crumb %}运营后台 / 交易 / 会员{% endblock %}
 {% block body %}
 <section class="sl-panel">
-  <h2>Memberships (memberships row = single authority)</h2>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
+  <div class="sl-panel-head"><h2>会员</h2><span class="sl-panel-sub">每个用户一条当前会员记录</span></div>
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
     <thead><tr>
-      <th>User</th><th>Plan</th><th>Provider subscription</th><th>Stored status</th><th>Effective</th>
-      <th>Started</th><th>Renews</th><th>Cancel scheduled</th>
+      <th>用户</th><th>档位</th><th>订阅号</th><th>记录状态</th><th>生效状态</th>
+      <th>开始</th><th>续期</th><th>排期取消</th>
     </tr></thead>
     <tbody>
     {% for m in memberships %}
@@ -16,14 +18,14 @@
         <td><a href="/samelabs/users/{{ m.user_id }}">{{ m.username }}</a> (#{{ m.user_id }})</td>
         <td>{{ (m.plan_code or '?') }} — {{ (m.plan_name or '') }}</td>
         <td>{{ m.provider_subscription_id }}</td>
-        <td><span class="sl-badge">{{ m.status }}</span></td>
-        <td><span class="sl-badge {{ 'sl-b-ok' if m.effective else 'sl-b-muted' }}">{{ m.effective_status }}</span></td>
+        <td><span class="tag tag-neutral">{{ m.status }}</span></td>
+        <td><span class="tag {{ 'tag-success' if m.effective else 'tag-neutral' }}">{{ m.effective_status }}</span></td>
         <td>{{ fmt_ts(m.started_at) }}</td>
         <td>{{ fmt_ts(m.renews_at) if m.renews_at else '—' }}</td>
         <td>{{ fmt_ts(m.cancel_scheduled_at) if m.cancel_scheduled_at else '—' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="8" class="sl-empty">No memberships</td></tr>
+      <tr><td colspan="8" class="sl-empty">暂无会员</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -31,7 +33,7 @@
   {% if pages > 1 %}
   <nav class="sl-pager">
     {% for p in range(1, pages + 1) %}
-      <a href="/samelabs/commerce/memberships?page={{ p }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+      <a href="/samelabs/commerce/memberships?page={{ p }}" class="{{ 'cur' if p == page else '' }}">{{ p }}</a>
     {% endfor %}
   </nav>
   {% endif %}

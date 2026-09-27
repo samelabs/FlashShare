@@ -1,18 +1,19 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% block title %}Tool Supply{% endblock %}
-{% block crumb %}Samelabs / Tool Supply{% endblock %}
+{% set page_title = "工具供给" %}
+{% block title %}工具供给{% endblock %}
+{% block crumb %}运营后台 / 工具供给{% endblock %}
 {% block body %}
 <section class="sl-panel">
-  <div class="sl-toolbar">
-    <h2>All Tools (catalog + pricing)</h2>
-    <button class="sl-btn" type="button" id="btnCreateHttp">+ Operator HTTP Tool</button>
+  <div class="sl-panel-head">
+    <h2>全部工具（目录 + 定价）</h2>
+    <button class="sl-btn" type="button" id="btnCreateHttp">＋ 新建运营 HTTP 工具</button>
   </div>
-  <div class="sl-table-wrap">
-  <table class="sl-table">
+  <div class="sl-tablewrap">
+  <table class="sl-tbl">
     <thead><tr>
-      <th>tool_key</th><th>Owner</th><th>Class</th><th>Execution</th>
-      <th>Visibility</th><th>Enabled</th><th>Trusted</th>
-      <th>Price (Credits/call)</th><th>Calls OK</th><th>Provider Earnings (USD)</th><th></th>
+      <th>工具键</th><th>所有者</th><th>类别</th><th>执行方式</th>
+      <th>可见性</th><th>启用</th><th>受信</th>
+      <th>价格（积分/次）</th><th>成功调用</th><th>开发者收益（美元）</th><th></th>
     </tr></thead>
     <tbody>
     {% for t in tools %}
@@ -22,16 +23,16 @@
         <td>{{ t.cls }}</td>
         <td>{{ t.execution }}</td>
         <td>{{ t.visibility }}</td>
-        <td><label class="sl-switch"><input type="checkbox"
+        <td><label class="switch"><input type="checkbox"
               data-toggle-enabled="{{ t.tool_key }}"
-              {{ 'checked' if t.enabled }}><span></span></label></td>
+              {{ 'checked' if t.enabled }}><span class="switch-track"></span></label></td>
         <td>{{ '✔' if t.trusted else '✕' }}</td>
         <td class="sl-num">
           {% if t.cost is not none %}
           <form class="sl-inline-form" data-pricing="{{ t.tool_key }}">
-            <input type="number" name="cost" value="{{ t.cost }}" min="0" max="1000000" step="1">
-            <label class="sl-switch"><input type="checkbox" name="enabled" {{ 'checked' if t.priced }}><span></span></label>
-            <button class="sl-btn sl-btn-sm" type="submit">Save</button>
+            <input class="sl-input" type="number" name="cost" value="{{ t.cost }}" min="0" max="1000000" step="1">
+            <label class="switch"><input type="checkbox" name="enabled" {{ 'checked' if t.priced }}><span class="switch-track"></span></label>
+            <button class="sl-btn sl-btn-sm" type="submit">保存</button>
           </form>
           {% else %}—{% endif %}
         </td>
@@ -39,13 +40,13 @@
         <td class="sl-num">{{ (t.provider_earn_usd or '—') }}</td>
         <td>
           {% if t.owner_id is none and t.execution == 'http' %}
-          <button class="btn sl-btn sl-btn-sm sl-btn-danger" type="button"
-                  data-del="{{ t.tool_key }}">Delete</button>
+          <button class="btn sl-btn-danger" type="button"
+                  data-del="{{ t.tool_key }}">删除</button>
           {% endif %}
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="11" class="sl-empty">No tools</td></tr>
+      <tr><td colspan="11" class="sl-empty">暂无工具</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -54,32 +55,34 @@
 
 <dialog class="sl-modal" id="createHttpModal">
   <form class="sl-modal-form" id="createHttpForm">
-    <h3>Create Operator HTTP Tool</h3>
-    <label>tool_id (bare id, first-party namespace)
-      <input type="text" name="tool_id" pattern="[a-z][a-z0-9_]{1,40}" required>
+    <h3>新建运营 HTTP 工具</h3>
+    <label>工具 ID（官方命名空间，a-z0-9_）
+      <input class="sl-input" type="text" name="tool_id" pattern="[a-z][a-z0-9_]{1,40}" required>
     </label>
-    <label>Label <input type="text" name="label" maxlength="64"></label>
-    <label>Endpoint URL <input type="url" name="url" placeholder="https://…" required></label>
-    <label>Timeout (s) <input type="number" name="timeout_s" value="60" min="5" max="300"></label>
-    <label>Auth header (optional) <input type="text" name="auth_header"></label>
-    <label>Auth token (optional, Vault) <input type="password" name="auth_token"></label>
-    <label>Accept exts (comma-separated, optional) <input type="text" name="accept" placeholder=".png,.pdf"></label>
-    <label>Files min (0 = text-only)
-      <input type="number" name="files_min" value="1" min="0" max="20">
+    <label>名称 <input class="sl-input" type="text" name="label" maxlength="64"></label>
+    <label>端点 URL <input class="sl-input" type="url" name="url" placeholder="https://…" required></label>
+    <label>超时（秒） <input class="sl-input" type="number" name="timeout_s" value="60" min="5" max="300"></label>
+    <label>鉴权头（可选） <input class="sl-input" type="text" name="auth_header"></label>
+    <label>鉴权令牌（可选，加密存储） <input class="sl-input" type="password" name="auth_token"></label>
+    <label>接受扩展名（逗号分隔，可选） <input class="sl-input" type="text" name="accept" placeholder=".png,.pdf"></label>
+    <label>最少文件数（0 = 纯文本工具）
+      <input class="sl-input" type="number" name="files_min" value="1" min="0" max="20">
     </label>
-    <label>Files max (1-20)
-      <input type="number" name="files_max" value="1" min="1" max="20">
+    <label>最多文件数（1-20）
+      <input class="sl-input" type="number" name="files_max" value="1" min="1" max="20">
     </label>
-    <label class="sl-check"><input type="checkbox" name="out_text"> text out</label>
-    <label class="sl-check"><input type="checkbox" name="out_json"> json out</label>
-    <label class="sl-check"><input type="checkbox" name="out_file" checked> file out</label>
-    <label>Params declaration (optional, JSON array — same contract as the user publish surface)
-      <textarea name="params" rows="4" placeholder='[{"key":"mode","type":"enum","label":"Mode","options":["fast","best"],"required":true}]' style="font-family:monospace;font-size:12px"></textarea>
+    <div class="sl-modal-checks">
+      <label class="check"><input type="checkbox" name="out_text"> 文本输出</label>
+      <label class="check"><input type="checkbox" name="out_json"> JSON 输出</label>
+      <label class="check"><input type="checkbox" name="out_file" checked> 文件输出</label>
+    </div>
+    <label>参数声明（可选，JSON 数组，与用户发布同一契约）
+      <textarea name="params" rows="4" placeholder='[{"key":"mode","type":"enum","label":"Mode","options":[{"value":"fast"},{"value":"best"}],"required":true}]' style="font-family:monospace;font-size:12px"></textarea>
     </label>
-    <label>Price (Credits/call) <input type="number" name="cost" value="0" min="0"></label>
+    <label>价格（积分/次） <input class="sl-input" type="number" name="cost" value="0" min="0"></label>
     <div class="sl-modal-actions">
-      <button class="sl-btn" type="button" id="createHttpCancel">Cancel</button>
-      <button class="btn sl-btn sl-btn-primary" type="button" id="createHttpSubmit">Create</button>
+      <button class="sl-btn" type="button" id="createHttpCancel">取消</button>
+      <button class="btn sl-btn sl-btn-primary" type="button" id="createHttpSubmit">创建</button>
     </div>
   </form>
 </dialog>
