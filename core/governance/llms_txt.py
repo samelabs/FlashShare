@@ -22,9 +22,11 @@ def build_llms_txt() -> str:
 
     lines = []
     a = lines.append
-    a("> 518.PLUS — a tools platform for people and AI agents. One catalog "
-      "of tools: use them directly on the web, or let an AI agent call "
-      "them through MCP.")
+    a("> 518.PLUS — easily share files and AI capabilities. Use the "
+      "tools on the web, or let an AI agent call them through MCP. To "
+      "give a person a link to a file: call share; hand them "
+      "result_url (one page for all files) — page_url is per file, "
+      "download_url is a direct download.")
     a("")
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
@@ -80,7 +82,9 @@ def build_llms_txt() -> str:
     a('  {"kind":"file","filename":"...","content_type":"...","size":N}')
     a("In tools/call the items arrive directly: structuredContent.items "
       "carries them with a download_url per file; small images also "
-      "appear as image content blocks. Every structuredContent response "
+      "appear as image content blocks — unless the image bytes are "
+      "identical to this call's input (a pass-through share never "
+      "echoes your own bytes back). Every structuredContent response "
       "additionally carries a content text block holding the JSON "
       "serialization of that structuredContent (backward-compat form). "
       "result_url is a human-viewable page (/r/{id}).")
@@ -104,7 +108,10 @@ def build_llms_txt() -> str:
     a("## Large files: two-stage upload (bytes never pass through the model)")
     a("For files too large to inline as base64, call the free meta tool "
       "create_upload first, PUT the raw bytes to the returned one-time "
-      "URL, then reference the result:")
+      "URL, then reference the result. Staged files are intermediates, "
+      "not shares: use the PUT within 10 minutes; the stored copy "
+      "lives at most 1 day and never appears in list_uploads (only "
+      "its public_id/source_token reference matters).")
     a("")
     a(f'curl -s {mcp_url} \\')
     a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
@@ -123,8 +130,10 @@ def build_llms_txt() -> str:
     a('Then tools/call any tool with files[]: '
       '[{"public_id":"...","source_token":"..."}].')
     a("")
-    a("## Your staged files: list and delete (free meta tools)")
-    a("- list_uploads: your still-live files (newest first, 20 per "
+    a("## Your live files: list and delete (free meta tools)")
+    a("- list_uploads: your still-live SHARED files (files you shared "
+      "or that tool calls produced for you — create_upload staging is "
+      "not listed), newest first, 20 per "
       'page, params {"offset":N}) — each entry: public_id, '
       "filename, size, content_type, expires_at, downloads_remaining, "
       "page_url, download_url.")

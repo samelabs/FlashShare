@@ -10,9 +10,11 @@
       ordered items; settlement is one transaction (injected landing
       failure leaves zero uploads rows)
   M*  MCP: outputSchema present and consistent; structuredContent items
-      match; small image → image content block + resource_link; json
-      item rendered as text; error text is plain English with a hint
-      (format mismatch lists accept; file count states the window)
+      match; pass-through share of a small image emits NO image block
+      (echo suppressed) while a transformed image does; json item
+      rendered as text; isError text is one JSON block with error +
+      message + hint (format mismatch lists accept; file count states
+      the window)
   X*  developer endpoint invalid shape → call failed + exact refund;
       valid items shape (text + json + file via data_b64) round-trips
 
@@ -393,14 +395,38 @@ try:
           {k for k in schema["properties"]} == {
               "call_id", "replay", "result_url", "expires_at", "items"}
           and len(sc_props) == 3, schema["properties"].keys())
-    # image content block for a small image result
+    # image echo suppression: share returns the input bytes unchanged,
+    # so the image block is dropped (only the resource_link) — an
+    # agent's own upload must not bounce back into its context.
     st, d = _call("share", {"files": [{"filename": "img.png", "b64": A64}],
                             "client_ref": f"mi-{_u}"}, TOK, 40)
     content = (d.get("result") or {}).get("content") or []
     kinds = [c["type"] for c in content]
-    check("M4 small image → image block + resource_link",
+    check("M4 pass-through share → resource_link, NO image block",
+          "image" not in kinds and "resource_link" in kinds, kinds)
+    # a transformed image still gets the block. compress only re-encodes
+    # ABOVE the target: a >1MB noise PNG forces a real JPEG conversion
+    # (bytes differ, echo rule does not apply).
+    import io as _io
+    import random as _random
+    from PIL import Image as _Img
+    _rng = _random.Random(0xC0)
+    _img = _Img.new("RGB", (1024, 1024))
+    _img.putdata([(_rng.randrange(256), _rng.randrange(256),
+                   _rng.randrange(256)) for _ in range(1024 * 1024)])
+    _buf = _io.BytesIO()
+    _img.save(_buf, "PNG")
+    BIG64 = base64.b64encode(_buf.getvalue()).decode()
+    st, d = _call("compress", {"files": [{"filename": "big.png",
+                                          "b64": BIG64}],
+                               "params": {"preset": "1mb"},
+                               "client_ref": f"mi2-{_u}"}, TOK, 43)
+    content = (d.get("result") or {}).get("content") or []
+    kinds = [c["type"] for c in content]
+    check("M4b re-encoded image → image block + resource_link",
           "image" in kinds and "resource_link" in kinds
-          and content[0].get("mimeType") == "image/png", kinds)
+          and any(c.get("mimeType") == "image/jpeg" for c in content
+                  if c["type"] == "image"), kinds)
     # format mismatch error text
     bad_b = base64.b64encode(b"not a png at all").decode()
     st, d = _call("compress", {"files": [{"filename": "z.png",
