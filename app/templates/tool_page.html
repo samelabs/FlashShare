@@ -13,6 +13,10 @@
   <p class="page-head-sub">{{ tool.desc | lt(lang) }}</p>
   {% endif %}
 
+  {% if owner_gate_notice %}
+  <p class="hint" data-i18n="tool_gate_hint">{{ texts.tool_gate_hint }}</p>
+  {% endif %}
+
   <div class="page-head toolpage-head">
     <div class="page-head-meta">
       {% if handle %}

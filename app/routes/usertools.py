@@ -184,7 +184,7 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         return None, "bad_output_content_type"
 
     if "visibility" in raw or not partial:
-        vis = str(raw.get("visibility") or "public").strip()
+        vis = str(raw.get("visibility") or "unlisted").strip()
         if vis not in ("private", "unlisted", "public"):
             return None, "bad_visibility"
         fields["visibility"] = vis
@@ -226,11 +226,11 @@ async def list_user_tools(request: Request):
 
 @router.post("/api/usertools")
 async def create_user_tool(request: Request):
-    """Submit a tool manifest. Publish IS listing: new tools land
-    visibility=public immediately (open platform — no review, no
-    blocking gate). The owner can switch to unlisted/private any time
-    via PATCH. SSRF pre-check runs here so misconfiguration fails at
-    submission, not at first customer call."""
+    """Submit a tool manifest. New tools land visibility=unlisted (not
+    in the public market): publishing publicly requires that the OWNER
+    has successfully run the tool at least once (the only gate — the
+    platform still does no review). The owner flips it public via PATCH
+    after a successful self-run; unlisted/private anytime."""
     user, err = _require_auth(request)
     if err:
         return err
@@ -267,9 +267,14 @@ async def create_user_tool(request: Request):
         code = "https_required" if exc.code == "ssrf_blocked" else "bad_url"
         return JSONResponse({"ok": False, "error": code}, 422)
 
-    # Open platform: submit = listed. visibility rides the submitted
-    # value (validator default public); no self-test gate.
-    fields.setdefault("visibility", "public")
+    # Publish gate: a brand-new tool cannot have an owner run yet, so
+    # an explicit visibility=public at creation is always premature.
+    if fields.get("visibility") == "public":
+        return JSONResponse(
+            {"ok": False, "error": "needs_successful_run"}, 422)
+    # New tools are unlisted by default (validator default); the owner
+    # runs it once and flips public via PATCH — no self-test gate here.
+    fields.setdefault("visibility", "unlisted")
 
     # params 声明 (tool modes spec v3): 可选, 提交时全量校验, 存库即合法
     # 简介 (tool modes v3: 名称/简介/模式/使用): 可选, str|dict 双形态, ≤200/项
@@ -492,6 +497,18 @@ async def update_user_tool(tool_id: str, request: Request):
                 sets["label"] = (fields["label"] if isinstance(fields["label"], dict)
                     else {"en": fields["label"]})
         if "visibility" in fields:
+            # Publish gate (owner decision: no review, but a public tool
+            # must have been run successfully by its owner at least
+            # once). Only the transition INTO public is gated; staying
+            # public and un-publishing stay free. Same transaction as
+            # the visibility write.
+            if fields["visibility"] == "public" \
+                    and row["visibility"] != "public":
+                from repo.ledger import owner_successful_call_exists
+                if not owner_successful_call_exists(
+                        con, tool_key, int(user["id"])):
+                    return JSONResponse(
+                        {"ok": False, "error": "needs_successful_run"}, 422)
             sets["visibility"] = fields["visibility"]
         # Window/accept ride the canonical inputs patch — the supply
         # patch vocabulary has no flat files_min/files_max/accept keys

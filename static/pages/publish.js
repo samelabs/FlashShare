@@ -397,7 +397,8 @@ async function submit() {
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
     params: params.length ? params : undefined,
   };
-  // 发布即上架: 新工具默认公开; 编辑态不动可见性 (防公开工具被编辑静默降级)
+  // 新工具默认 unlisted (作者成功运行一次后才能公开); 编辑态不动可见性
+  // (防公开工具被编辑静默降级)
   const editing = !!_editId;
   // 编辑态 tool_id immutable: 去掉 body.tool_id, 走 URL 路径定位
   if (editing) delete body.tool_id;
@@ -410,7 +411,8 @@ async function submit() {
   const d = await r.json();
   if (d.ok) {
     if (editing) location.href = "/account/tools";
-    else location.href = "/account/tools?created=" + encodeURIComponent(body.tool_id);
+    // 新发布默认不公开: 直接落到工具页 (作者可运行一次, 顶部提示如何公开)
+    else location.href = "/tool/" + encodeURIComponent(d.tool_key);
     return;
   }
   // 服务端错误码 → 字段定位
