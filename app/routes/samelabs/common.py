@@ -21,15 +21,28 @@ def gate(request: Request):
     """Return (user, None) for operator browser sessions, else
     (None, response). Session-only: Bearer capability tokens are
     rejected even when the underlying account is an operator — the
-    control plane is not a token surface."""
+    control plane is not a token surface.
+
+    Denial shape follows the caller: a browser navigation (Accept:
+    text/html) gets the login redirect; anything else (fetch, API
+    clients) gets a 401 JSON body — a program never follows a login
+    HTML redirect."""
     if getattr(request.state, "auth_via", "") != "session":
-        return None, RedirectResponse("/auth/login?next=/samelabs",
-                                      status_code=302)
+        return None, _deny(request)
     user = getattr(request.state, "user", None)
     if not is_operator(user):
-        return None, RedirectResponse("/auth/login?next=/samelabs",
-                                      status_code=302)
+        return None, _deny(request)
     return user, None
+
+
+def _deny(request: Request):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept.lower():
+        return RedirectResponse("/auth/login?next=/samelabs",
+                                status_code=302)
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"ok": False, "error": "operator_auth_required"},
+                        status_code=401)
 
 
 _SL_CSS_VERSION = hashlib.md5(
