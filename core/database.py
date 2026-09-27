@@ -576,7 +576,9 @@ _SCHEMA_SQL = (
     CREATE INDEX IF NOT EXISTS platform_tools_owner_idx
       ON platform_tools(owner_id)
     """,
-    # activities 表已移除（每日登录积分亦已删除, C1), 无表无 seed。
+    # activities 表已移除 — 每日登录额度在 settings 的 daily_login_amount
+    # (新库不写该键 = 0 = 停用, 运营后台开启), 无表无 seed;
+    # 发放流水在 ledger (note='activity:daily_login')。
     # ── platform: withdrawals (provider payout requests) ──
     # S4 final authority: review fields (reviewed_*) + paid fields
     # (paid_*, payout_ref) + request-time payout_channel_snapshot.
