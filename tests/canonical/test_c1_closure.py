@@ -267,9 +267,11 @@ uid2, _ck2 = _register(_u + "b")
 TOKEN2 = create_key(uid2, "c1b")["key"]
 st, d = _call("delete_upload", {"public_id": pid}, TOKEN2)
 res = (d or {}).get("result") or {}
+_err_json = json.loads(((res.get("content") or [{}])[0].get("text") or "{}"))
 check("C5 foreign/unknown delete → isError not_found (no oracle)",
-      res.get("isError") is True and
-      (res.get("structuredContent") or {}).get("error") == "not_found",
+      res.get("isError") is True
+      and _err_json.get("error") == "not_found"
+      and isinstance(_err_json.get("message"), str),
       str(d)[:100])
 
 # specs present in tools/list alongside create_upload
