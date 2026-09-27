@@ -175,11 +175,6 @@ try:
     # fixtures: membership + base grant for the period from ANOTHER txn,
     # upgrade txn with NO grant row (callback lost), then reverse it.
     with db() as con:
-        con.execute(
-            "insert into orders (user_id, kind, item_id, provider, status,"
-            " amount_cents, currency, created_at) values (%s,'plan',1,"
-            "'creem','paid',500,'USD',%s) returning id",
-            (uid, ts)) if False else None
         sub_id = f"sub_fx2_{_u}"
         con.execute(
             "insert into orders (user_id, kind, item_id, provider,"
@@ -202,6 +197,12 @@ try:
     grant(uid, 500, "grant_plan", ref_type="creem_transaction",
           ref_id="txn_base_" + _u, idem_key=f"plan:{uid}:{ts}",
           note="base cycle")
+    # the period's base payment is the recorded fact reverse() classifies by
+    with db() as con:
+        con.execute(
+            "insert into subscription_period_payments (sub_id, period_start,"
+            " user_id, base_txn_id, created_at) values (%s,%s,%s,%s,%s)",
+            (sub_id, ts, uid, "txn_base_" + _u, ts))
     from economy import reverse as _rev
     _upg_txn = {"id": "txn_upg_" + _u, "subscription": sub_id,
                 "status": "refunded", "type": "invoice",
