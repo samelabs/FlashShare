@@ -331,7 +331,9 @@ async def login_submit(request: Request):
         return resp
     if _login_throttled(throttle_key):
         if wants_json:
-            return _auth_json_err("err_login_failed")
+            # JSON callers get the throttle status explicitly (429); the
+            # code matches the message the form flow shows here
+            return _auth_json_err("err_login_failed", 429)
         ctx = _ctx_base(request)
         ctx.update({"shell_class": "", "share_url": "",
                     "error": texts.get("err_login_failed", "Invalid credentials"),

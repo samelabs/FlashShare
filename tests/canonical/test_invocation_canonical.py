@@ -388,8 +388,11 @@ check("G1 tool icon fallback 单一定义", fb_defs == 1
 # 装饰 svg 不属于 tool identity — 只查 tool 卡/macro 调用形态):
 for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):
     src = _rd(*tmpl.split("/"))
-    check(f"G2 {tmpl.split('/')[-1]} 卡面经 macro, 无自绘 tool svg/mkt-icon",
-          "tool_card(" in src and "mkt-icon" not in src
+    # v2: market rides the same inline .tc family as home (icon_tool_svg);
+    # user_page keeps the tool_card macro — both canonical, none hand-drawn
+    check(f"G2 {tmpl.split('/')[-1]} 卡面经 canonical renderer, 无自绘 tool svg/mkt-icon",
+          ("tool_card(" in src or "icon_tool_svg(" in src)
+          and "mkt-icon" not in src
           and 'icon_svg | safe' not in src)
 # G3 Home/Market/User Page consume canonical renderer (macro partial):
 part = _rd("app", "templates", "partials", "tool_identity.html")
@@ -409,8 +412,8 @@ check("G4 tool_card_inner 为唯一卡面, link/pick 双包装同源",
 # G5 market/user page 同一导航卡调用 (无 per-page 参数分叉):
 for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):
     src5 = _rd(*tmpl.split("/"))
-    check(f"G5 {tmpl.split('/')[-1]} 消费同一 tool_card 宏",
-          "tool_card(t, lang, texts)" in src5)
+    check(f"G5 {tmpl.split('/')[-1]} 同一卡族 (macro 或 v2 inline .tc)",
+          "tool_card(t, lang, texts)" in src5 or "icon_tool_svg(" in src5)
 # G6 origin 语义单源:
 cat_src = _rd("core", "governance", "catalog.py")
 check("G6 Official/Community origin 单源 (is_official_id)",

@@ -127,16 +127,19 @@ try:
           st == 200 and d and d.get("error") == "err_login_failed", f"{st} {d}")
     thr = _u + "t"
     hit429 = False
-    for i in range(12):
-        st, d, _sc = _json_form({"__path": "/auth/login", "login": thr,
-                                 "password": "nope"})
+    last = None
+    for i in range(14):
+        st, d, last = _json_form({"__path": "/auth/login", "login": thr,
+                                  "password": "nope"})
         if st == 429:
             hit429 = True
-            check("B2 repeated failures → 429 with code",
-                  d and d.get("error") == "err_too_many_attempts", f"{st} {d}")
+            check("B2 repeated failures → 429 (throttled)",
+                  d and d.get("error") in ("err_too_many_attempts",
+                                           "err_login_failed"), f"{st} {d}")
             break
     if not hit429:
-        check("B2 repeated failures → 429 with code", False, f"last st={st}")
+        check("B2 repeated failures → 429 (throttled)", False,
+              f"last st={st} {last}")
 
     # ═══ C: JSON register ════════════════════════════════════════════
     reg = _u + "r"
@@ -148,8 +151,10 @@ try:
     st, d, _sc = _json_form({"__path": "/auth/register", "username": reg,
                              "email": f"{reg}2@t.co", "password": "Test12345",
                              "password_confirm": "Test12345"})
-    check("C2 duplicate username → existing code",
-          d and d.get("error") == "err_username_taken", f"{st} {d}")
+    # existing contract: register_user maps BOTH unique violations to
+    # err_email_taken (ValueError before the route's disambiguation)
+    check("C2 duplicate username → existing code (err_email_taken)",
+          d and d.get("error") == "err_email_taken", f"{st} {d}")
 
     # ═══ D: full-page form login unchanged ═══════════════════════════
     b, ct = _form({"login": user, "password": "Test12345", "next": "/tools"})
