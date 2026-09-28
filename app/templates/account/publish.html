@@ -139,7 +139,8 @@
 window.__PAGE__ = "publish";
 window.__PUB_TOOL__ = JSON.parse({{ tool_json | tojson }});
 window.__FORMAT_FAMILIES__ = JSON.parse({{ format_manifest_json | tojson }});
-window.__DELIVERY__ = {"days": [1], "downloads": [50], "defaultDays": 1, "defaultDownloads": 50};
+window.__LIMITS__ = {{ limits_json|safe }};
+window.__DELIVERY__ = {{ delivery_json|safe }};
 </script>
 {% endblock %}
 

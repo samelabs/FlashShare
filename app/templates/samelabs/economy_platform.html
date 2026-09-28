@@ -1,7 +1,7 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% set page_title = "平台收入" %}
-{% block title %}平台收入{% endblock %}
-{% block crumb %}运营后台 / 经济 / 平台收入{% endblock %}
+{% set page_title = texts.sl_nav_platform %}
+{% block title %}{{ texts.sl_nav_platform }}{% endblock %}
+{% block crumb %}{{ texts.sl_brand_sub }} / {{ texts.sl_g_economy }} / {{ texts.sl_nav_platform }}{% endblock %}
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head"><h2>平台佣金</h2><span class="sl-panel-sub">第三方工具结算分成比例。只接受 0–100 的整数；配置缺失或非法时相关调用会在扣费前被拒绝。每次修改写审计。</span></div>

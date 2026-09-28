@@ -1,7 +1,7 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% set page_title = "内容管理" %}
-{% block title %}内容管理{% endblock %}
-{% block crumb %}运营后台 / 内容管理{% endblock %}
+{% set page_title = texts.sl_nav_content %}
+{% block title %}{{ texts.sl_nav_content }}{% endblock %}
+{% block crumb %}{{ texts.sl_brand_sub }} / {{ texts.sl_nav_content }}{% endblock %}
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head"><h2>查找内容</h2><span class="sl-panel-sub">按分享 id / 结果 id / 用户（ID 或用户名）/ 工具键；「下架」即删除该文件（含物理存储），写审计</span></div>

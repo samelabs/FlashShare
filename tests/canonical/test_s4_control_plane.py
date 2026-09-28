@@ -498,7 +498,7 @@ client = TestClient(_app)
 sess = create_browser_session(op)
 r = client.get("/samelabs", cookies={COOKIE_NAME: sess})
 check("CP1a session operator enters Overview",
-      r.status_code == 200 and "总览" in r.text, r.status_code)
+      r.status_code == 200 and "/samelabs/users" in r.text, r.status_code)
 r = client.get("/samelabs", follow_redirects=False)
 check("CP1b anonymous redirected", r.status_code in (302, 307, 401),
       r.status_code)

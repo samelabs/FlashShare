@@ -1,8 +1,8 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% set page_title = "会员" %}
+{% set page_title = texts.sl_nav_memberships %}
 {% set nav_id = "commerce_memberships" %}
-{% block title %}会员{% endblock %}
-{% block crumb %}运营后台 / 交易 / 会员{% endblock %}
+{% block title %}{{ texts.sl_nav_memberships }}{% endblock %}
+{% block crumb %}{{ texts.sl_brand_sub }} / {{ texts.sl_g_commerce }} / {{ texts.sl_nav_memberships }}{% endblock %}
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head"><h2>会员</h2><span class="sl-panel-sub">每个用户一条当前会员记录</span></div>

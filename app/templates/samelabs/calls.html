@@ -1,7 +1,7 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% set page_title = "调用日志" %}
-{% block title %}调用日志{% endblock %}
-{% block crumb %}运营后台 / 调用日志{% endblock %}
+{% set page_title = texts.sl_nav_calls %}
+{% block title %}{{ texts.sl_nav_calls }}{% endblock %}
+{% block crumb %}{{ texts.sl_brand_sub }} / {{ texts.sl_nav_calls }}{% endblock %}
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head"><h2>工具调用</h2><span class="sl-panel-sub">费用与结算结果取自账本事实（consume / refund / 分账行）</span></div>

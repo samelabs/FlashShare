@@ -310,7 +310,7 @@ _p3 = _err_sentence(d)
 check("P3 format outside accept → isError + English sentence",
       (d.get("result") or {}).get("isError") is True
       and "not supported" in _p3
-      and "err_format_mismatch" in _p3, _p3[:110])
+      and "err_format_not_supported" in _p3, _p3[:110])
 st, _h, d = _zero_side_effects("P4", lambda: _call(
     "compress", {"files": [{"filename": "a.png", "b64": _b64(PNG)}],
                  "delivery": {"expiry_days": 30, "allowed_downloads": 50},
@@ -384,13 +384,13 @@ st, _h, d = _call(nameA, {"files": [{"filename": "a.png", "b64": _b64(PNG)}],
 _t7 = _err_sentence(d)
 check("T7 name A routes to key A (format gate reached)",
       (d.get("result") or {}).get("isError") is True
-      and "err_format_mismatch" in _t7, _t7[:110])
+      and "err_format_not_supported" in _t7, _t7[:110])
 st, _h, d = _call(nameB, {"files": [{"filename": "a.png", "b64": _b64(PNG)}],
                           "params": {"beta": "v"}, "client_ref": f"t8-{_u}"})
 _t8 = _err_sentence(d)
 check("T8 name B routes to key B (format gate reached)",
       (d.get("result") or {}).get("isError") is True
-      and "err_format_mismatch" in _t8, _t8[:110])
+      and "err_format_not_supported" in _t8, _t8[:110])
 _spec = next((t for t in _listed if t["name"] == "compress"), {})
 _items = (((_spec.get("inputSchema") or {}).get("properties") or {}).get("files") or {}).get("items") or {}
 _forms = sorted(tuple(sorted(x.get("required") or [])) for x in _items.get("oneOf") or [])

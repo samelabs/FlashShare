@@ -21,7 +21,7 @@ _STATIC = _BASE / "static"
 # (tokens + components + the 518.css page file): any file change bumps
 # every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v65"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+_CSS_VERSION = "v66"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
 for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
@@ -73,9 +73,15 @@ def fmt_ts(ts) -> str:
 def error_text(request: Request, code: str) -> str:
     """Domain error code → localized user text. Codes without a text in
     SERVER_I18N render the generic localized message; a raw err_* key or
-    exception text never reaches the page."""
+    exception text never reaches the page. Client-parametrized values
+    ({mb}/{formats}/…) render bare here — the server has no channel for
+    the values on this path, so placeholders and their empty brackets
+    are stripped instead of leaking."""
+    import re as _re
     texts = server_text(getattr(request.state, "lang", "en"))
-    return texts.get(code) or texts["err_unexpected"]
+    text = texts.get(code) or texts["err_unexpected"]
+    text = _re.sub(r"\{[a-z_]+\}", "", text)
+    return _re.sub(r"\s*[（(]\s*[）)]\s*$", "", text).rstrip()
 
 
 def ctx_base(request: Request, page_id: str = "") -> dict:

@@ -85,7 +85,6 @@
           <h3 data-i18n="home_dark_title">{{ texts.home_dark_title }}</h3>
           <p data-i18n="home_dark_sub">{{ texts.home_dark_sub }}</p>
           <div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap">
-            <a class="btn btn-s" href="/agents" data-i18n="home_dark_cta">{{ texts.home_dark_cta }}</a>
             <a class="btn btn-q" href="/llms.txt"><span data-i18n="home_agent_guide">{{ texts.home_agent_guide }}</span></a>
           </div>
         </div>
@@ -115,7 +114,7 @@
 <script>
 window.__LIMITS__ = {{ limits_json|safe }};
 window.__TOOLS__ = JSON.parse({{ tools_json|tojson }});
-window.__DELIVERY__ = {"days": {{ delivery_expiry_days|tojson }}, "downloads": {{ delivery_download_limits|tojson }}, "defaultDays": {{ delivery_default_expiry|tojson }}, "defaultDownloads": {{ delivery_default_downloads|tojson }}};
+window.__DELIVERY__ = {{ delivery_json|safe }};
 window.__PAGE__ = "home";
 </script>
 {% endblock %}

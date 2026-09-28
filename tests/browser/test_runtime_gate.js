@@ -194,6 +194,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
   const password = "Test12345";
   let apiKey = "";
   let retryRef = "";
+  let createdToolId = "";
 
   for (const [ctxName, vp] of Object.entries(VIEWPORTS)) {
     // ── 1. register (real form) + 2. login (real form) — desktop does the real flows ──
@@ -372,6 +373,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // A malicious enum option value stored in a declaration must
       // refill as TEXT on the author's edit page, never execute.
       const xssTool = "gxp" + Math.random().toString(36).slice(2, 7);
+      createdToolId = xssTool;
       const xssPayload = '"><img src=x onerror="window.__xssAudit=1">';
       const created = await page.evaluate(async ({ tid, payload }) => {
         const r = await fetch("/api/usertools", {
@@ -463,6 +465,184 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     item0.kind === "file" && /\/f\//.test(item0.page_url || "") && /\/r\//.test(sc.result_url || ""),
     JSON.stringify(sc).slice(0, 200));
   check("mcp tools/call: share link downloadUrl", /\/f\//.test(item0.download_url || "") && /\?download=1$/.test(item0.download_url || ""));
+
+  // ── UI-polish permanent regression ─────────────────────────────
+  // (a) horizontal-overflow sweep at 360px with long-word (de) and RTL (ar)
+  //     locales on the core surfaces;
+  // (b) mobile language switch entry exists in the nav sheet and switches
+  //     in place;
+  // (c) primary touch targets reach 44x44 on mobile (rect or ::after hit
+  //     extension);
+  // (d) the empty-state upload zone is visible and clickable on a file tool;
+  // (e) CLS <= 0.1 on home / tool page / publish edit.
+  {
+    const OVERFLOW_PAGES = ["/", "/tools", "/tool/compress", "/pricing",
+      "/auth/login", "/account/credits"];
+    for (const lang of ["de", "ar"]) {
+      const ctx = await browser.newContext({ viewport: { width: 360, height: 640 } });
+      await ctx.addCookies([{ name: "flashshare_lang", value: lang, url: BASE }]);
+      const page = await ctx.newPage();
+      for (const p of OVERFLOW_PAGES) {
+        if (p.startsWith("/account")) {
+          const cookies = await (await browser.contexts())[0].cookies();
+          await ctx.addCookies(cookies);
+        }
+        await gotoReady(page, p, "body");
+        await page.waitForTimeout(400);
+        const audit = await page.evaluate(() => ({
+          vw: document.documentElement.clientWidth,
+          sw: document.documentElement.scrollWidth,
+        }));
+        check(`polish 360/${lang} ${p}: no horizontal overflow`, audit.sw <= audit.vw + 1, JSON.stringify(audit));
+      }
+      await ctx.close();
+    }
+
+    // (b) mobile language entry
+    {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844, hasTouch: true } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/", "body");
+      await page.click("#mobileNavBtn");
+      await page.waitForTimeout(300);
+      const entry = await page.evaluate(() => {
+        const z = document.querySelector(".mobile-nav-lang");
+        const b = document.querySelector("#langButtonM");
+        const r = b ? b.getBoundingClientRect() : null;
+        return {
+          present: !!z && z.offsetParent !== null,
+          btn: !!b && r.width > 0 && r.height >= 40,
+        };
+      });
+      check("polish mobile: language entry in nav sheet", entry.present && entry.btn, JSON.stringify(entry));
+      await page.click("#langButtonM");
+      await page.waitForTimeout(300);
+      const menuOpen = await page.evaluate(() => {
+        const m = document.querySelector("#langMenuM");
+        return m && !m.classList.contains("hidden") && m.querySelectorAll(".lang-option").length >= 10;
+      });
+      check("polish mobile: language menu opens with options", menuOpen);
+      await page.click("#langMenuM .lang-option[data-lang=en]");
+      await page.waitForTimeout(600);
+      const switched = await page.evaluate(() => window.__LANG);
+      check("polish mobile: language switch applies in place", switched === "en", switched);
+      await ctx.close();
+    }
+
+    // (c) touch targets + (d) upload zone + (e) CLS
+    {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844, hasTouch: true } });
+      await ctx.addInitScript(() => {
+        window.__cls = 0;
+        try {
+          new PerformanceObserver((l) => {
+            for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
+          }).observe({ type: "layout-shift", buffered: true });
+        } catch (e) { /* older engine */ }
+      });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/tool/compress", ".composer");
+      await page.waitForTimeout(900);
+      const touch = await page.evaluate(() => {
+        const sels = [".ti-drop", ".ti-add", "button.send", "#mobileNavBtn", ".ft a"];
+        const bad = [];
+        for (const sel of sels) {
+          for (const el of Array.from(document.querySelectorAll(sel)).slice(0, 3)) {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0) continue;
+            let hit = r.width >= 44 && r.height >= 44;
+            if (!hit) {
+              // ::after hit-extension counts (padding expansion pattern)
+              const pa = getComputedStyle(el, "::after");
+              hit = pa.content !== "none" && pa.position === "absolute";
+            }
+            if (!hit) bad.push(`${sel} ${Math.round(r.width)}x${Math.round(r.height)}`);
+          }
+        }
+        return bad;
+      });
+      check("polish mobile: primary touch targets >= 44 (rect or ::after)", touch.length === 0, touch.join(", "));
+
+      const zone = await page.evaluate(() => {
+        const z = document.querySelector(".ti-drop");
+        if (!z) return { present: false };
+        const r = z.getBoundingClientRect();
+        const cx = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { present: true, w: Math.round(r.width), clickable: cx === z || z.contains(cx) };
+      });
+      check("polish mobile: upload zone visible + clickable", zone.present && zone.w >= 120 && zone.clickable, JSON.stringify(zone));
+
+      // ── F20/F21: zone states formats + count + per-file cap + daily quota;
+      //    an oversize file is rejected client-side with the cap value ──
+      const zoneCopy = await page.evaluate(() => ({
+        sub: (document.querySelector(".ti-drop small") || {}).innerText || "",
+        limits: window.__LIMITS__ || null,
+      }));
+      check("polish limits: zone copy shows formats/count/size/daily",
+        /MB/.test(zoneCopy.sub) && zoneCopy.sub.split("·").length >= 4,
+        zoneCopy.sub);
+      const mb = zoneCopy.limits && zoneCopy.limits.maxFileMb;
+      check("polish limits: __LIMITS__ projection present", !!mb && !!zoneCopy.limits.dailyFiles, JSON.stringify(zoneCopy.limits));
+      const oversize = await page.evaluate(async (mbv) => {
+        const buf = new Uint8Array((mbv + 2) * 1024 * 1024);
+        const f = new File([buf], "oversize.png", { type: "image/png" });
+        const dt = new DataTransfer();
+        dt.items.add(f);
+        const input = document.querySelector(".ti-file-input");
+        input.files = dt.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 400));
+        const err = document.querySelector(".ti-error");
+        return { hidden: err ? err.hidden : null, text: err ? err.innerText : "" };
+      }, mb || 50);
+      check("polish limits: oversize file blocked client-side with cap value",
+        oversize.hidden === false && new RegExp(String(mb || 50)).test(oversize.text),
+        JSON.stringify(oversize));
+
+      // authenticated context for the publish probes (form login, same
+      // pattern as the sweep)
+      const authCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+      {
+        const lp = await authCtx.newPage();
+        await gotoReady(lp, "/auth/login", "input[name=login]");
+        await lp.fill("input[name=login]", username);
+        await lp.fill("input[name=password]", password);
+        await Promise.all([lp.waitForNavigation({ timeout: 15000 }), lp.click("button[type=submit]")]);
+        await lp.close();
+      }
+
+      // __LIMITS__ identical fields across surfaces
+      const limFields = async (p) => {
+        const pg = await (p.startsWith("/account") ? authCtx : ctx).newPage();
+        await gotoReady(pg, p, "body");
+        await pg.waitForTimeout(300);
+        const v = await pg.evaluate(() => window.__LIMITS__ || null);
+        await pg.close();
+        return v ? Object.keys(v).sort().join(",") + "|" + JSON.stringify(v.maxFileMb) + "," + JSON.stringify(v.dailyFiles) : "none";
+      };
+      const fHome = await limFields("/");
+      const fToolV = await limFields("/tool/compress");
+      const fPub = await limFields("/account/tools/publish");
+      check("polish limits: __LIMITS__ consistent across home/tool/publish",
+        fHome === fToolV && fHome === fPub && fHome !== "none", `${fHome} | ${fToolV} | ${fPub}`);
+
+      // (e) CLS on tool page (same page), then home, then publish edit
+      const clsTool = await page.evaluate(() => +(window.__cls || 0).toFixed(3));
+      check("polish CLS tool page <= 0.1", clsTool <= 0.1, String(clsTool));
+      const home = await ctx.newPage();
+      await gotoReady(home, "/", "body");
+      await home.waitForTimeout(1200);
+      const clsHome = await home.evaluate(() => +(window.__cls || 0).toFixed(3));
+      check("polish CLS home <= 0.1", clsHome <= 0.1, String(clsHome));
+      const pub = await authCtx.newPage();
+      await gotoReady(pub, `/account/tools/publish?id=${createdToolId}`, "#pubForm");
+      await pub.waitForTimeout(1200);
+      const clsPub = await pub.evaluate(() => +(window.__cls || 0).toFixed(3));
+      check("polish CLS publish edit <= 0.1", clsPub <= 0.1, String(clsPub));
+      await authCtx.close();
+      await ctx.close();
+    }
+  }
 
   await browser.close();
 

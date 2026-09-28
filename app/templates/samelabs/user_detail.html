@@ -1,6 +1,6 @@
 {% extends "samelabs/base_samelabs.html" %}
 {% block title %}用户 #{{ u.id }}{% endblock %}
-{% block crumb %}运营后台 / <a href="/samelabs/users">用户</a> / #{{ u.id }}{% endblock %}
+{% block crumb %}{{ texts.sl_brand_sub }} / <a href="/samelabs/users">{{ texts.sl_nav_users }}</a> / #{{ u.id }}{% endblock %}
 {% block body %}
 <div class="sl-cards">
   <div class="card card-pad">

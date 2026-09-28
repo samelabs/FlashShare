@@ -197,10 +197,10 @@ try:
                             "client_ref": f"apc2-{_u}"}, TOK)
     _t = _tool_text(d)
     # NUL text → sniff err_content_mismatch_text, which the call layer
-    # surfaces to agents as err_format_mismatch (IO-1 mapping, unchanged)
+    # surfaces to agents as err_format_not_supported (IO-1 mapping, unchanged)
     check("C2 NUL .log rejected",
           (d.get("result") or {}).get("isError") is True
-          and _t.get("error") == "err_format_mismatch"
+          and _t.get("error") == "err_format_not_supported"
           and isinstance(_t.get("message"), str), _t)
 
     # ═══ D. unified isError JSON (both failure kinds) ═══════════════
@@ -218,7 +218,7 @@ try:
     _t2 = _tool_text(d)
     check("D2 tool accept mismatch parses as JSON with error+message",
           (d.get("result") or {}).get("isError") is True
-          and _t2.get("error") == "err_format_mismatch"
+          and _t2.get("error") == "err_format_not_supported"
           and isinstance(_t2.get("message"), str) and _t2["message"], _t2)
     check("D3 both carry client_ref",
           _t1.get("client_ref") == f"apd1-{_u}"

@@ -246,6 +246,7 @@ body.sl-body {
 @media (max-width: 960px) {
   .sl-sidebar { display: none; }
   .sl-shell { display: block; }
+  .sl-main { margin-left: 0; }
   .sl-mnav {
     display: flex; gap: var(--s1); align-items: center;
     overflow-x: auto; padding: var(--s2) var(--s4);
@@ -256,13 +257,13 @@ body.sl-body {
   .sl-mnav::-webkit-scrollbar { display: none; }
   .sl-mnav a {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 6px 12px; border-radius: var(--r-full);
+    min-height: 44px; padding: 6px 12px; border-radius: var(--r-full);
     color: var(--ink-2); text-decoration: none;
     font-size: var(--fs-base); font-weight: 500; white-space: nowrap;
   }
   .sl-mnav a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
   .sl-mnav .m-brand { flex: 0 0 auto; display: inline-flex; align-items: center; padding-right: var(--s2); margin-right: var(--s1); border-right: 1px solid var(--sl-line); }
-  .sl-mnav .m-brand .sl-brand-mark { width: 24px; height: 24px; font-size: 10px; }
+  .sl-mnav .m-brand .sl-brand-mark { width: 24px; height: 24px; font-size: 12px; }
   .sl-topbar { top: 49px; }
   .sl-content { padding: var(--s4); }
 }

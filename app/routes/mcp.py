@@ -878,7 +878,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             # well-formed request carrying a bad file is domain-level
             # and agent-fixable; -32602 stays for malformed request
             # shape only).
-            code = ("err_format_mismatch"
+            code = ("err_format_not_supported"
                     if _final_t.startswith("err_content_mismatch")
                     or _final_t == "err_file_type_blocked" else _final_t)
             return _tool_result_error(mid, {"error": code},
@@ -1038,8 +1038,7 @@ def _error_message(code, tool: dict | None = None) -> str:
     fall back to the generic sentence."""
     code = str(code or "tool_failed")
     base = {
-        "err_format_mismatch": "The file format is not supported by this tool.",
-        "err_format_not_supported": "The file format is not accepted by 518.",
+        "err_format_not_supported": "The file format is not supported by this tool.",
         "err_file_type_blocked": "This file type is blocked on 518.",
         "err_file_count": "The number of files is outside this tool's window.",
         "err_insufficient_credits": "Not enough credits for this call.",
@@ -1060,7 +1059,7 @@ def _error_message(code, tool: dict | None = None) -> str:
     }.get(code)
     msg = base or "The call failed."
     hint = ""
-    if code == "err_format_mismatch":
+    if code == "err_format_not_supported":
         accept = tool.get("accept") if isinstance(tool, dict) else None
         if accept:
             hint = f" Accepted formats: {', '.join(accept)}."
