@@ -40,18 +40,6 @@
     copyLink.addEventListener("click", () => copyText(window.location.href, copyLink));
   }
 
-  // QR modal
-  const qrBtn = document.getElementById("rQrBtn");
-  const qrModal = document.getElementById("rQrModal");
-  if (qrBtn && qrModal) {
-    qrBtn.addEventListener("click", () => qrModal.classList.remove("hidden"));
-    const close = document.getElementById("rQrModalClose");
-    if (close) close.addEventListener("click", () => qrModal.classList.add("hidden"));
-    qrModal.addEventListener("click", (e) => {
-      if (e.target === qrModal) qrModal.classList.add("hidden");
-    });
-  }
-
   // System share (site-wide Web Share authority; user cancel is not an
   // error — red line 9). The result PAGE is the shared artifact; file
   // items keep their own per-item downloads.

@@ -793,11 +793,26 @@ async def result_page(result_id: str, request: Request):
             d["is_pdf"] = ct.lower() == "application/pdf"
             d["size_text"] = format_bytes(int(d.get("size") or 0))
             d["glyph"] = file_glyph(ct, d.get("filename") or "")
+            # human type from the format-family vocabulary (no raw MIME)
+            from governance.formats import sniff_ext_to_families
+            _fams = sniff_ext_to_families(
+                (d.get("filename") or "").rsplit(".", 1)[-1].lower()
+                if "." in (d.get("filename") or "") else "")
+            if _fams:
+                _fk = ("pdf" if d.get("is_pdf")
+                       else sorted(_fams)[0])
+            else:
+                _fk = "document"
+            d["type_text"] = texts.get("fmt_family_" + _fk) or texts.get("fam_" + _fk) or texts.get("out_kind_text", "")
             # Remaining downloads live in ONE place: the file row,
             # computed by the single calculator.
             d["remaining"] = None
             u = uploads_by_pid.get(d.get("public_id"))
-            if u is not None:
+            if u is None:
+                # no mapping row → the file was deleted; dead row, no
+                # download control (presentation only, no new fields)
+                d["deleted"] = True
+            else:
                 live = await asyncio.to_thread(storage_info, u["gokapi_id"]) \
                     if u["gokapi_id"] else None
                 d["remaining"] = remaining_downloads(
@@ -823,6 +838,12 @@ async def result_page(result_id: str, request: Request):
         "expire_text": format_ts(int(expire_at)),
         "items": items,
         "file_count": file_count,
+        "first_file": next((d for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
+        "first_file_name": next((d.get("filename") for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
+        "min_remaining": next(iter(sorted(
+            [d["remaining"] for d in items
+             if d.get("kind") == "file" and not d.get("deleted")
+             and d.get("remaining") is not None])), None),
         "result_url": public_result_url(result_id),
         "file_size_icon": icon_svg("file_size"),
         "expiry_icon": icon_svg("expiry"),

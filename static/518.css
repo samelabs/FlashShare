@@ -731,17 +731,11 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 
 /* ═══ IO-3a: 结果卡 (页内) 与 /r 结果页 ═══ */
 .rs-json-head { justify-content: flex-end; padding-block-start: 0; padding-block-end: var(--s2); }
-.r-page .r-head { margin-block-end: var(--s5); }
-.r-page .r-actions { margin-block-start: var(--s4); }
 
 /* ═══ IO-3a: 工具页页头 ═══ */
 
 /* ═══ IO-3a: 文件页 (/f) — 与结果页同语言 ═══ */
-.file-page { text-align: start; }
-.file-page .page-head { margin-block-end: var(--s4); }
-.file-page .file-preview { margin-block: var(--s4); border: 0; }
 .file-hero-row { margin-block-start: var(--s4); background: var(--sunk); }
-.file-page .file-actions { margin-block-start: var(--s4); justify-content: flex-start; }
 
 /* Download-all / action labels never wrap inside their button */
 .r-actions .btn, .file-actions .btn { white-space: nowrap; }
@@ -902,3 +896,34 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .dark { grid-template-columns: 1fr; padding: 28px 22px; gap: 24px; }
   .dark h3 { font-size: 24px; }
 }
+
+/* ═══ /r 结果页 (v2 .rp/.rc) — /f 共用卡片族 ═══ */
+.rp { max-width: 640px; margin: 0 auto; padding: 56px 0 72px; }
+.rc { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); overflow: hidden; }
+.rc-top { padding: 28px; text-align: center; }
+.rc-top .fi { display: flex; justify-content: center; margin-bottom: 14px; }
+.rc-top .fi span { width: 54px; height: 66px; border-radius: 10px; border: 3px solid var(--card); box-shadow: var(--sh-2); background: linear-gradient(135deg, rgba(255, 154, 138, 1), rgba(210, 74, 74, 1)); }
+.rc-top .fi span + span { margin-left: -18px; transform: rotate(8deg); background: linear-gradient(135deg, rgba(154, 174, 255, 1), rgba(74, 90, 210, 1)); }
+.rc-top .fi span:first-child { transform: rotate(-6deg); }
+.rc-top h1 { font-size: 24px; font-weight: 750; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.rc-top .m { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
+.rc-top .linkbar { margin-top: 20px; text-align: start; }
+.rc-top .acts { justify-content: center; margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+.rc-files { display: flex; flex-direction: column; }
+.rc-files .item-file { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 14px 20px; }
+.rc-files .pv.img { width: 52px; height: 52px; }
+.rc-files .item-text, .rc-files .rs-json { border: 0; border-top: 1px solid var(--line); border-radius: 0; margin: 0 !important; padding: 14px 20px; }
+.qrrow { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-top: 1px solid var(--line); background: var(--sunk); font-size: 13px; color: var(--ink-2); }
+.qrrow .q { width: 56px; height: 56px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; }
+.qrrow .q img { width: 40px; height: 40px; }
+.r-gone { opacity: 0.62; }
+.r-gone small { color: var(--ink-3); }
+.made { text-align: center; font-size: 13px; color: var(--ink-3); margin-top: 20px; }
+.made a { color: var(--ink); font-weight: 650; }
+@media (max-width: 767px) {
+  .rp { padding: 28px 0 48px; }
+  .rc-top { padding: 22px 18px; }
+}
+.rc-preview { padding: 0 20px 20px; }
+.rc-preview img { max-width: 100%; max-height: 560px; height: auto; display: block; margin: 0 auto; border-radius: var(--r); border: 1px solid var(--line); }
+.rc-zip { padding: 0 20px 20px; }
