@@ -502,3 +502,46 @@ function init() {
 }
 
 init();
+
+// ── live preview: mount the real composer from the current form state ──
+(function () {
+  var mount = document.getElementById("pubPreviewMount");
+  if (!mount || !window.ToolInput) return;
+  var ctrl = null;
+  var refresh = function () {
+    var label = document.getElementById("fLabel").value.trim();
+    var fmin = parseInt(document.getElementById("fFilesMin").value, 10);
+    var fmax = parseInt(document.getElementById("fFilesMax").value, 10);
+    var fminOk = Number.isFinite(fmin) && fmin >= 0 ? fmin : 1;
+    var fmaxOk = Number.isFinite(fmax) && fmax >= 1 ? fmax : 1;
+    var outs = [];
+    if (document.getElementById("fOutText").checked) outs.push("text");
+    if (document.getElementById("fOutJson").checked) outs.push("json");
+    if (document.getElementById("fOutFile").checked) outs.push("file");
+    var accept = [...selectedExts].sort();
+    var params = [];
+    document.querySelectorAll(".param-row").forEach(function (row) {
+      var key = row.querySelector(".pr-key") ? row.querySelector(".pr-key").value.trim() : "";
+      if (!key) return;
+      var type = row.querySelector(".pr-type") ? row.querySelector(".pr-type").value : "text";
+      var lab = row.querySelector(".pr-label") ? row.querySelector(".pr-label").value.trim() : key;
+      var item = { key: key, type: type, label: lab, options: [{ value: "v", label: lab || key }] };
+      params.push(item);
+    });
+    var tool = {
+      id: "preview", label: label || (_msg("mytools_ph_label")),
+      icon: "wand", files_min: fminOk, files_max: fmaxOk,
+      accept: accept.length ? accept : null,
+      outputs: outs.length ? outs : ["file"],
+      params: params, cost: parseInt(document.getElementById("fCost").value, 10) || 0,
+    };
+    if (!ctrl) {
+      ctrl = window.ToolInput.mount(mount, { tool: tool });
+    } else {
+      ctrl.setTool(tool);
+    }
+  };
+  document.getElementById("pubForm").addEventListener("input", refresh);
+  document.getElementById("pubForm").addEventListener("change", refresh);
+  refresh();
+})();

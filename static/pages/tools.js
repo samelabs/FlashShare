@@ -76,6 +76,7 @@ async function loadTools() {
     const head = document.createElement('div');
     head.className = 'usertools-head';
     const name = document.createElement('strong');
+    name.className = 'usertools-name';
     name.textContent = window.resolveLabel(t.label) || t.tool_id;
     const key = document.createElement('span');
     key.className = 'usertools-key';
@@ -87,7 +88,11 @@ async function loadTools() {
 
     const meta = document.createElement('div');
     meta.className = 'usertools-meta';
-    meta.textContent = (t.calls ? t.calls.ok : 0) + ' ' + _msg('mytools_calls')
+    const nf = (n) => Number(n || 0).toLocaleString(window.__LANG || 'en');
+    const earnUsd = t.calls && t.calls.earned
+      ? ' · $' + (t.calls.earned / 1000).toFixed(3) : '';
+    meta.textContent = (t.calls ? nf(t.calls.ok) : '0') + ' ' + _msg('mytools_calls')
+      + earnUsd
       + ' · ' + (t.enabled ? _msg('mytools_enabled') : _msg('mytools_disabled'))
       + (t.delisted ? ' · ' + _msg('mytools_delisted') : '');
 

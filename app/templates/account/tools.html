@@ -7,12 +7,14 @@
 <section class="acct-page">
   <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1>{{ texts.acct_tools }}</h1>
+  <div class="acct-layout">
   {% include "account/_nav.html" %}
+  <div class="acct-body">
 
   <div class="acct-card">
     <div class="acct-card-head">
       <h2 data-i18n="mytools_title">{{ texts.mytools_title }}</h2>
-      <a class="btn btn-primary" href="/account/tools/publish" id="openPublish" style="text-decoration:none;border:0;border-radius:10px;padding:9px 18px;font-size:13.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px"><span data-i18n="mytools_create">{{ texts.mytools_create }}</span></a>
+      <a class="btn btn-p" href="/account/tools/publish" id="openPublish"><span data-i18n="mytools_create">{{ texts.mytools_create }}</span></a>
     </div>
     <p class="profile-note" data-i18n="mytools_desc">{{ texts.mytools_desc }}</p>
     <details class="contract-doc">
@@ -48,6 +50,8 @@ Content-Type: application/json
     </details>
     <div id="toolList" class="usertools-list"></div>
     <p id="toolNone" class="profile-note hidden" data-i18n="mytools_none">{{ texts.mytools_none }}</p>
+  </div>
+  </div>
   </div>
 </section>
 {% endblock %}

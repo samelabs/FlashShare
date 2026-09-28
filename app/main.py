@@ -101,6 +101,27 @@ def _lt(value, lang: str):
 
 templates.env.filters["lt"] = _lt
 templates.env.globals["lt"] = _lt
+
+
+def _numfmt(value, lang: str):
+    """Group digits by the page language's convention (display layer
+    only — the value itself is untouched)."""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return value
+    sep = {"fr": "\u202f", "ru": "\u202f", "de": ".", "pt": ".",
+           "es": "."}.get(lang, ",")
+    sign = "-" if n < 0 else ""
+    digits = str(abs(n))
+    grouped = ""
+    while len(digits) > 3:
+        grouped = sep + digits[-3:] + grouped
+        digits = digits[:-3]
+    return sign + digits + grouped
+
+
+templates.env.filters["num"] = _numfmt
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 

@@ -435,33 +435,26 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 /* ═══ STEP 3: 账户页 6 页新视觉 (对齐 proto/account.html) ═══ */
 
 /* ── 页骨架: 560px 居中(对齐首页 workspace), 16px 节奏 ── */
-.acct-page { width: 100%; max-width: 560px; margin: 0 auto; padding: 18px 16px 32px; display: flex; flex-direction: column; gap: 16px; }
-.acct-page h1 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; margin: 0; }
-.acct-page h1 + .acct-nav { margin-top: 0; }
-
-/* ── 分区 tabs: 单行分段控件(proto .tabs), 当前项红底白字 ── */
-.acct-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
-.acct-nav::-webkit-scrollbar { display: none; }
-.acct-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 4px; border-radius: 9px; color: var(--ink-2); font-size: 12.5px; font-weight: 600; white-space: nowrap; text-decoration: none; transition: background var(--ease), color var(--ease); min-width: 0; }
+.acct-page { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 24px var(--gut) 48px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.acct-page h1 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; margin: 0; }
+.acct-layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 24px; align-items: start; }
+.acct-nav { display: flex; flex-direction: column; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 6px; position: sticky; top: 76px; }
+.acct-tab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: var(--r-sm); color: var(--ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; transition: background var(--ease), color var(--ease); }
 .acct-tab svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
 @media (hover:hover) and (pointer:fine) { .acct-tab:hover { background: var(--sunk); color: var(--ink); } }
-.acct-tab.active { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
-.acct-tab-sep { display: none; }
-
-/* ── 余额主角卡(proto .balance-card): 大数字 + 右侧签到态 ── */
-.acct-hero { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin: 0; }
-.acct-balance { min-width: 0; }
-.acct-bal-label { font-size: 12.5px; font-weight: 650; color: var(--ink-2); letter-spacing: .03em; }
-.acct-bal-num { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.acct-daily { flex-shrink: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 11px 16px; color: var(--ink); cursor: default; }
-.acct-daily.done { color: var(--ok); border-color: transparent; background: var(--ok-50); }
-.acct-daily:not(.done) { border-color: var(--brand); color: var(--brand); }
-.acct-daily:not(.done) .acct-daily-claim button { background: var(--brand); color: var(--brand-ink); border: 0; border-radius: 9px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
-.acct-daily svg { width: 18px; height: 18px; flex-shrink: 0; }
-.acct-daily strong { display: block; font-size: 13.5px; }
-.acct-daily-sub { font-size: 12px; color: var(--ink-2); }
-.acct-daily-claim { margin: 0; }
-
+.acct-tab.active { background: var(--ink); color: var(--brand-ink); }
+.acct-body { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 1023px) {
+  .acct-layout { display: block; }
+  .acct-nav { position: static; flex-direction: row; gap: 2px; overflow-x: auto; scrollbar-width: none; border-radius: var(--r-full); }
+  .acct-nav::-webkit-scrollbar { display: none; }
+  .acct-tab { flex: none; padding: 8px 12px; border-radius: var(--r-full); }
+  .acct-tab.active { background: var(--ink); color: var(--brand-ink); }
+}
+@media (max-width: 767px) {
+  .acct-page { padding: 16px var(--gut) 32px; }
+  .acct-page h1 { font-size: 22px; }
+}
 /* ── 内容卡(proto .panel): 白卡+细边, 统一 16/18px 内距 ── */
 .acct-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg, 16px); padding: 16px 18px; margin: 0; }
 .acct-card h2 { font-size: 14.5px; font-weight: 700; margin: 0 0 10px; }
@@ -554,12 +547,15 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .credit-note-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── /account/tools v2: modal submit + icon grid + card list ── */
-.acct-page .usertools-item { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s3) 0; border-bottom: 1px dashed var(--line); }
+.acct-page .usertools-item { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
 .acct-page .usertools-item:last-child { border-bottom: none; }
 .acct-page .usertools-head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-width: 0; }
-.acct-page .usertools-key { font-size: var(--fs-xs); color: var(--ink-2); font-family: var(--font-mono, monospace); overflow: hidden; text-overflow: ellipsis; }
-.acct-page .usertools-vis { font-size: var(--fs-xs); padding: 2px 8px; border-radius: var(--r-full); border: 1px solid var(--line-2); white-space: nowrap; }
-.acct-page .usertools-meta { font-size: var(--fs-sm); color: var(--ink-3); }
+.acct-page .usertools-head strong { font-size: var(--fs-md); font-weight: 650; }
+.acct-page .usertools-key { font-size: var(--fs-xs); color: var(--ink-3); font-family: var(--font-mono, monospace); overflow: hidden; text-overflow: ellipsis; }
+.acct-page .usertools-vis { font-size: var(--fs-xs); padding: 2px 9px; border-radius: var(--r-full); background: var(--sunk); color: var(--ink-2); white-space: nowrap; border: 0; }
+.acct-page .usertools-vis.v-public { background: var(--ok-50); color: var(--ok); }
+.acct-page .usertools-meta { font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.acct-page .tool-panel-actions { margin-top: 0; }
 .acct-page .btn-secondary.danger { border-color: var(--danger); color: var(--danger); }
 
 /* ── earnings page: stat cells + ledger rows (were unstyled) ── */
@@ -973,4 +969,29 @@ body { overflow-x: clip; }
 @media (max-width: 767px) {
   .agents-v2 { padding: 24px 0 48px; }
   .agents-steps { grid-template-columns: 1fr; }
+}
+
+/* ═══ 发布页 (v2): 双栏 + 实时预览 ═══ */
+.pub-body .pub-form { display: flex; flex-direction: column; gap: 16px; }
+.pub-cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.pub-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pub-aside { position: sticky; top: 76px; min-width: 0; }
+.pub-aside .composer { box-shadow: var(--sh-1); }
+@media (max-width: 1023px) {
+  .pub-cols { display: flex; flex-direction: column-reverse; }
+  .pub-aside { position: static; }
+}
+
+/* account area uses the full content width (the default shell caps at 880) */
+.shell:has(.acct-page) { width: min(var(--wrap), calc(100vw - var(--s4))); }
+.acct-bal-num { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--ink); }
+.acct-bal-label { font-size: var(--fs-sm); color: var(--ink-3); margin-top: 4px; }
+@media (max-width: 1100px) {
+  .pub-cols { display: flex; flex-direction: column-reverse; }
+  .pub-aside { position: static; }
+}
+@media (max-width: 767px) {
+  .acct-card { min-width: 0; }
+  .acct-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .acct-tablewrap .acct-table { white-space: nowrap; }
 }
