@@ -40,30 +40,11 @@
 
   
 
-  {% if topup_ready and credits_ready and packages %}
-  <div class="acct-card">
-    <div class="acct-card-head">
-      <h2 data-i18n="topup_title">{{ texts.topup_title }}</h2>
-    </div>
-    <div class="topup-grid">
-      {% for p in packages %}
-      <div class="topup-item">
-        <strong class="topup-credits">+{{ p.credits|num(lang) }}</strong>
-        <span class="topup-price">${{ '%.2f'|format(p.price_cents / 100) }}</span>
-        <button type="button" class="btn btn-p topup-buy" data-pkg="{{ p.id }}" data-i18n="topup_buy">{{ texts.topup_buy }}</button>
-      </div>
-      {% endfor %}
-    </div>
-    <p class="acct-card-sub" data-i18n="topup_note">{{ texts.topup_note }}</p>
-  </div>
-  {% endif %}
-
   {% set m = access.membership if access else None %}
-  {% set sellable = plans | selectattr("ready") | list %}
-  {% if m or sellable %}
   <div class="acct-card">
     <div class="acct-card-head">
       <h2 data-i18n="sub_title">{{ texts.sub_title }}</h2>
+      <a class="btn btn-p btn-sm" href="/pricing"><span data-i18n="pricing_manage">{{ texts.pricing_manage }}</span></a>
     </div>
     {% if m %}
     <div class="sub-status">
@@ -77,35 +58,10 @@
       {% if pending_downgrade %}<span class="sub-warn">{{ texts.sub_downgrade_scheduled.replace('{plan}', pending_downgrade.name).replace('{date}', fmt_ts(pending_downgrade.effective_at)) }}</span>{% endif %}
       {# plan/date 插值属服务端事实, 语言切换由整页刷新承载 (与 sub_until 同模式) #}
     </div>
+    {% else %}
+    <p class="acct-card-sub" data-i18n="pricing_free_name">{{ texts.pricing_free_name }}</p>
     {% endif %}
-    {% if sellable %}
-    <div class="topup-grid sub-grid">
-      {% for pl in sellable %}
-      <div class="topup-item">
-        <strong class="topup-credits">{{ pl.name }} · +{{ pl.monthly_credits|num(lang) }}</strong>
-        <span class="sub-period" data-i18n="sub_per_period">{{ texts.sub_per_period }}</span>
-        <span class="topup-price">${{ '%.2f'|format(pl.price_cents / 100) }}<span class="sub-per">/{{ pl.period_days }}d</span></span>
-        {% if pl.action == 'subscribe' %}
-        <button type="button" class="btn btn-p sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
-        {% elif pl.action == 'current' %}
-        <span class="topup-status" data-i18n="sub_current">{{ texts.sub_current }}</span>
-        {% elif pl.action == 'upgrade' %}
-        <button type="button" class="btn btn-p sub-upgrade" data-plan="{{ pl.code }}">{{ texts.sub_upgrade_btn|replace('{plan}', pl.name) }}</button>
-        {% elif pl.action == 'downgrade' %}
-        <button type="button" class="btn btn-ghost sub-downgrade" data-plan="{{ pl.code }}">{{ texts.sub_downgrade_btn|replace('{plan}', pl.name) }}</button>
-        {% elif pl.action == 'pending' %}
-        <span class="topup-status" data-i18n="sub_downgrade_done">{{ texts.sub_downgrade_done }}</span>
-        {% else %}
-        <span class="topup-status" data-i18n="sub_unavailable">{{ texts.sub_unavailable }}</span>
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-    <p class="acct-card-sub" data-i18n="sub_note">{{ texts.sub_note }}</p>
   </div>
-  {% endif %}
-
 
   <div class="acct-card">
     <div class="acct-card-head">
@@ -151,5 +107,4 @@
 
 {% block script %}
   <script src="/static/pages/common.js?v={{ pages_version }}"></script>
-  <script src="/static/pages/credits.js?v={{ pages_version }}"></script>
 {% endblock %}

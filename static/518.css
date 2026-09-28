@@ -275,8 +275,6 @@ select { width: auto; margin-top: 0; }
 .sub-badge.on { border-color: var(--brand); color: var(--brand); }
 .sub-meta { font-size: var(--fs-sm); color: var(--ink); }
 .sub-warn { font-size: var(--fs-xs); color: var(--ink-2); }
-.sub-period { display: block; font-size: var(--fs-xs); color: var(--ink-2); margin-top: 2px; }
-.topup-price .sub-per { font-size: var(--fs-xs); color: var(--ink-2); font-weight: 400; }
 .plus-badge { display: inline-flex; padding: 1px 7px; margin-left: 5px; border-radius: var(--r-full); border: 1px solid var(--brand); color: var(--brand); font-size: 10px; font-weight: 700; letter-spacing: .05em; vertical-align: middle; }
 /* 发布表单高级项折叠 */
 .usertools-adv { margin: 2px 0 0; }
@@ -622,13 +620,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 
 /* ── register bonus banner (activities-driven) ── */
 
-/* ── top-up packs (packages data-driven) ── */
-.topup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
-.topup-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--s3); background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r); }
-.topup-credits { font-size: var(--fs-lg); font-weight: 700; color: var(--brand); }
-.topup-price { font-size: var(--fs-sm); color: var(--ink); font-weight: 600; }
-.topup-status { font-size: var(--fs-xs); color: var(--ink-2); }
-
 /* ── provider call-log drawer ── */
 .calls-drawer { margin-top: var(--s2); padding: var(--s2) var(--s3); background: var(--sunk); border: 1px dashed var(--line); border-radius: var(--r-sm); display: flex; flex-direction: column; gap: 2px; }
 .calls-drawer .wd-row { border-bottom: 1px dashed var(--line); }
@@ -948,6 +939,34 @@ body { overflow-x: clip; }
 .market-bento { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 1023px) { .market-bento { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 767px) { .market-bento { grid-template-columns: 1fr 1fr; gap: 10px; } .market-v2 { padding: 24px 0 48px; } }
+
+/* ═══ /pricing ═══ */
+.pricing-page { padding: 40px 0 72px; min-width: 0; }
+.pricing-page .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
+.pricing-page .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
+.pricing-page .pr-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; align-items: stretch; }
+.pricing-page .pr-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); }
+.pricing-page .pr-card.on { border-color: var(--brand); }
+.pricing-page .pr-name { font-size: var(--fs-md); font-weight: 700; color: var(--ink); }
+.pricing-page .pr-price { font-size: 32px; font-weight: 750; letter-spacing: -0.03em; color: var(--ink); line-height: 1.1; }
+.pricing-page .pr-per { font-size: var(--fs-sm); font-weight: 500; color: var(--ink-3); margin-left: 4px; letter-spacing: 0; }
+.pricing-page .pr-desc { margin: 0; font-size: var(--fs-sm); color: var(--ink-2); }
+.pricing-page .pr-credits { font-size: var(--fs-sm); font-weight: 700; color: var(--brand-600); }
+.pricing-page .pr-perks { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.pricing-page .pr-perks li { display: flex; gap: 8px; align-items: flex-start; font-size: var(--fs-sm); color: var(--ink-2); }
+.pricing-page .pr-perks svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; color: var(--ok); stroke: currentColor; fill: none; }
+.pricing-page .pr-card .btn, .pricing-page .pr-status { align-self: stretch; text-align: center; }
+.pricing-page .pr-status { padding: 10px; font-size: var(--fs-sm); font-weight: 600; color: var(--ink-2); background: var(--sunk); border-radius: var(--r-full); }
+.pricing-page .pr-note { margin: 12px 0 0; font-size: var(--fs-sm); color: var(--ink-3); }
+.pricing-page .pr-h2 { margin: 40px 0 0; font-size: var(--fs-xl); font-weight: 750; letter-spacing: -0.02em; }
+.pricing-page .pr-packs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
+.pricing-page .pr-pack { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.pricing-page .pr-pack-credits { font-size: var(--fs-lg); font-weight: 750; color: var(--brand); }
+.pricing-page .pr-pack-price { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+.pricing-page .pr-refund { margin-top: 8px; }
+.pricing-page .pr-refund p { max-width: 720px; font-size: var(--fs-sm); color: var(--ink-2); line-height: var(--lh-loose); }
+.pricing-page .pr-refund > p:first-of-type { margin: 12px 0 0; }
+@media (max-width: 767px) { .pricing-page { padding: 24px 0 48px; } .pricing-page .pr-plans { grid-template-columns: 1fr; } }
 
 /* ═══ /agents (v2) ═══ */
 .agents-v2 { padding: 40px 0 72px; min-width: 0; }

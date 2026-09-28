@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.pricing_title }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{{ texts.pricing_sub }}{% endblock %}
+
+{% block content %}
+<section class="pricing-page">
+  <div class="wrap">
+    <div class="sec-h">
+      <div>
+        <h1 data-i18n="pricing_title">{{ texts.pricing_title }}</h1>
+        <p class="sec-sub" data-i18n="pricing_sub">{{ texts.pricing_sub }}</p>
+      </div>
+    </div>
+
+    {% macro perks(b) %}
+    <ul class="pr-perks">
+      <li>{{ icon_svg("check") }}<span>{{ texts.pricing_files_day.replace('{n}', b.files_24h|num(lang)) }}</span></li>
+      <li>{{ icon_svg("check") }}<span>{{ texts.pricing_bytes_day.replace('{size}', b.bytes_24h) }}</span></li>
+      <li>{{ icon_svg("check") }}<span>{{ texts.pricing_expiry.replace('{n}', b.expiry_days|string) }}</span></li>
+      <li>{{ icon_svg("check") }}<span>{{ texts.pricing_downloads.replace('{n}', b.downloads|num(lang)) }}</span></li>
+    </ul>
+    {% endmacro %}
+
+    <div class="pr-plans">
+      <div class="pr-card">
+        <div class="pr-name" data-i18n="pricing_free_name">{{ texts.pricing_free_name }}</div>
+        <div class="pr-price">$0</div>
+        <p class="pr-desc" data-i18n="pricing_free_desc">{{ texts.pricing_free_desc }}</p>
+        {% if daily_amount > 0 %}<div class="pr-credits">{{ texts.pricing_daily.replace('{n}', daily_amount|num(lang)) }}</div>{% endif %}
+        {{ perks(free) }}
+        {% if not user %}<a class="btn btn-s js-auth" href="/auth/register" data-i18n="signUp">{{ texts.signUp }}</a>{% endif %}
+      </div>
+      {% for pl in plans %}
+      <div class="pr-card{% if pl.action == 'current' %} on{% endif %}">
+        <div class="pr-name">{{ pl.name }}</div>
+        <div class="pr-price">${{ '%.2f'|format(pl.price_cents / 100) }}<span class="pr-per">/ {{ texts.pricing_days.replace('{n}', pl.period_days|string) }}</span></div>
+        <div class="pr-credits">{{ texts.pricing_credits_period.replace('{n}', pl.monthly_credits|num(lang)).replace('{d}', pl.period_days|string) }}</div>
+        {{ perks(pl.benefits) }}
+        {% if pl.action == 'subscribe' %}
+        <button type="button" class="btn btn-p sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
+        {% elif pl.action == 'current' %}
+        <span class="pr-status" data-i18n="sub_current">{{ texts.sub_current }}</span>
+        {% elif pl.action == 'upgrade' %}
+        <button type="button" class="btn btn-p sub-upgrade" data-plan="{{ pl.code }}">{{ texts.sub_upgrade_btn|replace('{plan}', pl.name) }}</button>
+        {% elif pl.action == 'downgrade' %}
+        <button type="button" class="btn btn-s sub-downgrade" data-plan="{{ pl.code }}">{{ texts.sub_downgrade_btn|replace('{plan}', pl.name) }}</button>
+        {% elif pl.action == 'pending' %}
+        <span class="pr-status" data-i18n="sub_downgrade_done">{{ texts.sub_downgrade_done }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if plans %}<p class="pr-note" data-i18n="sub_note">{{ texts.sub_note }}</p>{% endif %}
+
+    {% if packages %}
+    <h2 class="pr-h2" data-i18n="pricing_packs_title">{{ texts.pricing_packs_title }}</h2>
+    <p class="pr-note" data-i18n="pricing_packs_sub">{{ texts.pricing_packs_sub }}</p>
+    <div class="pr-packs">
+      {% for p in packages %}
+      <div class="pr-pack">
+        <strong class="pr-pack-credits">+{{ p.credits|num(lang) }}</strong>
+        <span class="pr-pack-price">${{ '%.2f'|format(p.price_cents / 100) }}</span>
+        <button type="button" class="btn btn-p btn-sm topup-buy" data-pkg="{{ p.id }}" data-i18n="topup_buy">{{ texts.topup_buy }}</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not plans and not packages %}
+    <p class="pr-note" data-i18n="pricing_none">{{ texts.pricing_none }}</p>
+    {% endif %}
+
+    <div class="pr-refund" id="refund">
+      <h2 class="pr-h2" data-i18n="pricing_refund_title">{{ texts.pricing_refund_title }}</h2>
+      <p data-i18n="pricing_refund_body">{{ texts.pricing_refund_body }}</p>
+      <p class="pr-note"><span data-i18n="pricing_pay_note">{{ texts.pricing_pay_note }}</span> <a href="/terms#refund" data-i18n="pricing_terms_link">{{ texts.pricing_terms_link }}</a></p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/pages/pricing.js?v={{ pages_version }}"></script>
+{% endblock %}

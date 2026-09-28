@@ -564,8 +564,9 @@ check("AP-C1 account_credits 不 import economy.subscription / 不调 plan_of",
       "economy.subscription" not in _acct_blk and "plan_of" not in _acct_code)
 check("AP-C2 account_credits 无 plus 判断 / 无 my_plan= 覆盖",
       '"plus"' not in _acct_code and "my_plan=" not in _acct_code)
-check("AP-C3 all_plans 行集目录 且 plans=plans 传模板",
-      "all_plans" in _acct_blk and "plans=plans" in _acct_blk)
+_shop_blk = _pages_src.split("def _shop_offers")[1].split("\n@router")[0]
+check("AP-C3 shop projection reads the all_plans row set and returns plans",
+      "all_plans" in _shop_blk and '"plans": plans' in _shop_blk)
 _acct_ctx_blk = _pages_src.split("def _account_ctx")[1].split("\ndef ")[0]
 check("AP-C4 _account_ctx 仍调 _ctx_base (membership 继承 base projection)",
       "_ctx_base(" in _acct_ctx_blk)
