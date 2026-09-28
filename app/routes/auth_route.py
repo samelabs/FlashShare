@@ -31,7 +31,7 @@ from identity.auth import (
 )
 from i18n import server_text
 from utils import now, b64url
-from app.web_auth import require_session_auth, redirect_with_session
+from app.web_auth import require_session_auth, redirect_with_session, client_ip
 from app.web_ctx import error_text
 
 router = APIRouter()
@@ -92,10 +92,6 @@ def _login_throttled(key: tuple) -> bool:
 
 def _record_login_failure(key: tuple) -> None:
     _record_hit(_login_failures, key, _LOGIN_FAIL_WINDOW)
-
-
-def _client_ip(request: Request) -> str:
-    return request.headers.get("X-Real-IP", request.client.host if request.client else "")
 
 
 def _lang(request: Request) -> str:
@@ -322,7 +318,7 @@ async def login_submit(request: Request):
                     "next": next_url})
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
-    ip = _client_ip(request)
+    ip = client_ip(request)
     throttle_key = (ip, login.lower())
     if _throttled(_login_ip_failures, (ip,), _LOGIN_IP_FAIL_LIMIT, _LOGIN_FAIL_WINDOW):
         if wants_json:
@@ -389,7 +385,7 @@ async def register_submit(request: Request):
         resp.status_code = status
         return resp
 
-    ip_key = (_client_ip(request),)
+    ip_key = (client_ip(request),)
     if _throttled(_register_attempts, ip_key, _REGISTER_IP_LIMIT, _REGISTER_IP_WINDOW):
         return _err(error_text(request, "err_too_many_attempts"), 429,
                     "err_too_many_attempts")

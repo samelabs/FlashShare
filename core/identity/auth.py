@@ -300,41 +300,46 @@ def update_profile(user_id: int, display_name: str | None = None,
                 raise ValueError("err_email_used")
 
 
-def _rotate_password_credentials(con, user_id: int, new_hash: str) -> None:
-    """Password change invalidates every pre-existing browser session.
-    API keys are independent program credentials and survive it."""
-    ts = now()
-    users_repo.update_password_hash(con, user_id, new_hash, ts)
-    sessions_repo.delete_user_sessions(con, user_id)
-
-
 def change_password(user_id: int, old_password: str, new_password: str) -> None:
+    """Rotate the password under a compare-and-set: the UPDATE only lands
+    while the stored hash is still the one this call verified, so two
+    concurrent changes from the same old password cannot overwrite each
+    other — the loser gets the typed old-password error. Sessions are
+    cleared only when the write actually happened."""
     with db() as con:
         row = users_repo.by_id(con, user_id)
     if not row or not row["password_hash"]:
         raise ValueError("err_no_password_set")
-    if not verify_password(old_password, row["password_hash"]):
+    old_hash = row["password_hash"]
+    if not verify_password(old_password, old_hash):
         raise ValueError("err_old_password_wrong")
     err = validate_password(new_password)
     if err:
         raise ValueError(err)
     new_hash = hash_password(new_password)
     with db() as con:
-        _rotate_password_credentials(con, user_id, new_hash)
+        if users_repo.update_password_hash_if_current(
+                con, user_id, new_hash, old_hash, now()):
+            sessions_repo.delete_user_sessions(con, user_id)
+        else:
+            # lost the race: the hash moved after this call verified it
+            raise ValueError("err_old_password_wrong")
 
 
 def set_password(user_id: int, new_password: str) -> None:
-    """Set password for OAuth-only users; rotate all old credentials too."""
-    with db() as con:
-        row = users_repo.by_id(con, user_id)
-    if row and row["password_hash"]:
-        raise ValueError("err_password_already_set")
+    """First-ever password set (OAuth-only account) under a compare-and-
+    set: only the first concurrent setter wins; the loser gets the typed
+    already-set error instead of silently overwriting. Sessions are
+    cleared only when the write actually happened."""
     err = validate_password(new_password)
     if err:
         raise ValueError(err)
-    new_hash = hash_password(new_password)
     with db() as con:
-        _rotate_password_credentials(con, user_id, new_hash)
+        if users_repo.update_password_hash_if_unset(
+                con, user_id, hash_password(new_password), now()):
+            sessions_repo.delete_user_sessions(con, user_id)
+        else:
+            raise ValueError("err_password_already_set")
 
 
 # ── Serialization ───────────────────────────────────────

@@ -21,7 +21,7 @@
       slBusy(b, slPost('/samelabs/content/uploads/' + b.dataset.delUpload + '/delete', {}))
         .then(function (r) {
           if (r.ok && r.data.ok) {
-            slToast('ok', '已下架', b.dataset.name + '（已删除文件与物理存储，已写审计）');
+            slToast('ok', '已下架', b.dataset.name + '（公开链接已删除，存储文件已提交删除；已写审计）');
             var tr = b.closest('tr');
             if (tr) tr.remove();
           } else {

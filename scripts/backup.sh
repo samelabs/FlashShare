@@ -2,29 +2,36 @@
 # FlashShare production backup: PostgreSQL dump + Gokapi data/config archive.
 # Rotation: keep 7 daily + 4 weekly; checksums; optional off-host upload via
 # rclone when FLASHSHARE_BACKUP_REMOTE is configured; failures log to journal.
+# DATABASE_URL and FLASHSHARE_BACKUP_REMOTE come from /etc/flashshare.env —
+# the same file the systemd unit loads (no second variable source); backups
+# are created 0600 (umask 077). Root paths may be overridden via environment
+# for isolated runs.
 set -euo pipefail
+umask 077
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DOW="$(date -u +%u)"   # 1=Mon..7=Sun
-BACKUP_ROOT="/var/backups/flashshare"
+BACKUP_ROOT="${FLASHSHARE_BACKUP_ROOT:-/var/backups/flashshare}"
 DAILY_DIR="$BACKUP_ROOT/daily"
 WEEKLY_DIR="$BACKUP_ROOT/weekly"
 KEEP_DAILY=7
 KEEP_WEEKLY=4
-ENV_FILE="/etc/flashshare.env"
-GOKAPI_DATA="/var/lib/gokapi/data"
-GOKAPI_CONFIG="/opt/gokapi/data"
-REMOTE="${FLASHSHARE_BACKUP_REMOTE:-}"   # rclone remote:path; empty = off-host disabled
+ENV_FILE="${FLASHSHARE_ENV_FILE:-/etc/flashshare.env}"
+GOKAPI_DATA="${FLASHSHARE_GOKAPI_DATA:-/var/lib/gokapi/data}"
+GOKAPI_CONFIG="${FLASHSHARE_GOKAPI_CONFIG:-/opt/gokapi/data}"
 
 log() { echo "flashshare-backup: $*" ; }
 fail() { log "FAILED: $*"; exit 1; }
 
-# ── env (root-readable) ──
+# ── env (root-readable; single source for every setting) ──
 [ -r "$ENV_FILE" ] || fail "env file not readable"
-DB_URL="$(grep -E '^DATABASE_URL=' "$ENV_FILE" | head -1 | cut -d= -f2-)"
+# env_value KEY — the KEY= line's value from ENV_FILE ('' when absent)
+env_value() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- || true; }
+DB_URL="$(env_value DATABASE_URL)"
 [ -n "$DB_URL" ] || fail "DATABASE_URL missing"
 # normalize the +psycopg variant back to plain postgresql://
 if [[ "$DB_URL" == postgresql+psycopg://* ]]; then DB_URL="postgresql://${DB_URL#postgresql+psycopg://}"; fi
+REMOTE="$(env_value FLASHSHARE_BACKUP_REMOTE)"   # rclone remote:path; '' = off-host disabled
 
 mkdir -p "$DAILY_DIR" "$WEEKLY_DIR"
 
@@ -80,8 +87,12 @@ if [ -n "$REMOTE" ]; then
       || fail "rclone pg upload failed"
     rclone copy "$GK_FILE" "$REMOTE/daily/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
       || fail "rclone gokapi upload failed"
-    [ "$DOW" = "7" ] && rclone copy "$WEEKLY_DIR/pg-$STAMP.dump" "$REMOTE/weekly/" 2>>/tmp/fsb-rclone.log || true
-    [ "$DOW" = "7" ] && rclone copy "$WEEKLY_DIR/gokapi-$STAMP.tar.gz" "$REMOTE/weekly/" 2>>/tmp/fsb-rclone.log || true
+    if [ "$DOW" = "7" ]; then
+      rclone copy "$WEEKLY_DIR/pg-$STAMP.dump" "$REMOTE/weekly/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
+        || fail "rclone weekly pg upload failed"
+      rclone copy "$WEEKLY_DIR/gokapi-$STAMP.tar.gz" "$REMOTE/weekly/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
+        || fail "rclone weekly gokapi upload failed"
+    fi
     log "off-host upload OK → $REMOTE"
   else
     log "FAILED: FLASHSHARE_BACKUP_REMOTE set but rclone not installed — off-host copy skipped"

@@ -241,17 +241,57 @@ server {
     # TLS 证书配置按现有站点沿用（Cloudflare 模式保持不变）
     client_max_body_size 110m;          # 单次批量上限 100MB + 表单开销
 
+    # Cloudflare real-IP restoration: only Cloudflare's published ranges
+    # may override $remote_addr (https://www.cloudflare.com/ips/). Every
+    # proxy location then derives X-Real-IP from the RESTORED
+    # $remote_addr, so a client-sent X-Real-IP is always overwritten.
+    # The app itself listens on 127.0.0.1 only and never sees traffic
+    # that skipped this chain.
+    set_real_ip_from 173.245.48.0/20;
+    set_real_ip_from 103.21.244.0/22;
+    set_real_ip_from 103.22.200.0/22;
+    set_real_ip_from 103.31.4.0/22;
+    set_real_ip_from 141.101.64.0/18;
+    set_real_ip_from 108.162.192.0/18;
+    set_real_ip_from 190.93.240.0/20;
+    set_real_ip_from 188.114.96.0/20;
+    set_real_ip_from 197.234.240.0/22;
+    set_real_ip_from 198.41.128.0/17;
+    set_real_ip_from 162.158.0.0/15;
+    set_real_ip_from 104.16.0.0/13;
+    set_real_ip_from 104.24.0.0/14;
+    set_real_ip_from 172.64.0.0/13;
+    set_real_ip_from 131.0.72.0/22;
+    set_real_ip_from 2400:cb00::/32;
+    set_real_ip_from 2606:4700::/32;
+    set_real_ip_from 2803:f800::/32;
+    set_real_ip_from 2405:b500::/32;
+    set_real_ip_from 2405:8100::/32;
+    set_real_ip_from 2a06:98c0::/29;
+    set_real_ip_from 2c0f:f248::/32;
+    real_ip_header CF-Connecting-IP;
+
+    # Baseline security response headers (HSTS is configured at the
+    # Cloudflare edge, not here). X-Frame-Options SAMEORIGIN keeps
+    # same-origin embedding (/f, /r, 打印页) working.
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header X-Frame-Options SAMEORIGIN always;
+
     location /downloadFile {            # 分享文件的计数下载
         proxy_pass http://127.0.0.1:53842/downloadFile;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
     }
     location /dh/ {                     # Gokapi 热链
         proxy_pass http://127.0.0.1:53842/h/;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
     }
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;      # 覆盖客户端传入值
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;        # 工具执行与大文件上传
@@ -335,9 +375,12 @@ curl -s https://518.plus/healthz
 > remote）。不要把同服务器目录当作 remote。
 
 - `backup.sh`：daily 04:30 UTC（systemd timer）pg_dump custom 格式 + Gokapi sqlite（`.backup` 一致性快照）与 data 目录 tar.gz；SHA256SUMS；本地 `/var/backups/flashshare/`（daily×7 + 周日 weekly×4 轮换）。
+- 配置单源 `/etc/flashshare.env`：unit 通过 `EnvironmentFile=-/etc/flashshare.env` 加载，脚本对
+  `DATABASE_URL` 与 `FLASHSHARE_BACKUP_REMOTE` 用同一解析（读同一 env 文件），不存在第二套变量来源。
+- 备份文件权限 0600：脚本 `umask 077` + unit `UMask=0077`，不依赖宿主 umask。
 - off-host 上传：`FLASHSHARE_BACKUP_REMOTE`（rclone remote:path）配置后自动启用；未配置时显式 WARNING（仅 on-host）。rclone 未装而 remote 已配 → 非零退出（timer failed 可见）。
 - `restore-proof.sh`：monthly timer — 最新备份恢复到 scratch DB + 解档校验行数/校验和后清理。
-- failure 可观测：journalctl -u flashshare-backup（非零退出 = unit failed）。
+- failure 可观测：journalctl -u flashshare-backup（非零退出 = unit failed）；每日与周日的 rclone 上传失败同样以非零退出可见。
 
 ## Gokapi 集成约束（已验证事实）
 

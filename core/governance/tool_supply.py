@@ -284,19 +284,27 @@ def build_http_binding(fields: dict, existing: Optional[dict] = None) -> dict:
     只在这里 seal 一次 (全仓 supply 路径唯一 seal 入口)。Output landing
     identity is endpoint-product-owned (既定产品裁定), binding 不携带
     output 字段。
+
+    Credential clear (single point): fields 同时携带 auth_header 与
+    auth_token 且均为空串 = 显式清除 — 两个键从 merged binding 移除,
+    远端调用不再携带该头; 仅一个为空/为 None 不构成清除 (调用方
+    _validate_submission 已以 422 拒绝单边提交)。
     """
     if any(k not in _BINDING_KEYS for k in fields):
         raise DeclarationError("bad_binding")
     if existing is not None and any(k not in _BINDING_KEYS for k in existing):
         raise DeclarationError("bad_binding")
     decl = {k: existing[k] for k in _BINDING_KEYS if existing and k in existing}
+    if fields.get("auth_header") == "" and fields.get("auth_token") == "":
+        decl.pop("auth_header", None)
+        decl.pop("auth_token", None)
     if "url" in fields:
         decl["url"] = fields["url"]
     if "timeout_s" in fields:
         decl["timeout_s"] = fields["timeout_s"]
-    if "auth_header" in fields:
+    if "auth_header" in fields and fields["auth_header"]:
         decl["auth_header"] = fields["auth_header"]
-    if "auth_token" in fields:
+    if "auth_token" in fields and fields["auth_token"]:
         from secrets_vault import seal
         decl["auth_token"] = seal(fields["auth_token"])
     return decl
