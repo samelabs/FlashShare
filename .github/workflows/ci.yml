@@ -573,6 +573,9 @@ jobs:
       - name: API keys canonical
         run: python tests/canonical/test_api_keys.py
 
+      - name: Flow clarity (search single point / catalog_search / developers) canonical
+        run: python tests/canonical/test_flow_clarity.py
+
       - name: Failure diagnostics
         if: failure()
         shell: bash

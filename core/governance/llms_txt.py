@@ -168,6 +168,33 @@ def build_llms_txt() -> str:
     a("- Tool calls are metered in credits: 1000 credits = 1 USD. "
       "Failed calls are refunded automatically.")
     a("")
+    a("## Limits")
+    from config import MAX_UPLOAD_BYTES as _max_bytes
+    from governance.entitlements import resolve_from_membership
+    from utils import format_bytes
+    _ent = resolve_from_membership(None)
+    a(f"- Per file: {_max_bytes // 1024 // 1024} MB (every files[] item "
+      "and every file a tool produces).")
+    a(f"- Anonymous / free accounts: up to "
+      f"{_ent['ingress_files_24h']} files and "
+      f"{format_bytes(_ent['ingress_bytes_24h'])} per rolling 24 hours.")
+    a(f"- Free delivery options: expiry_days "
+      f"{list(_ent['expiry_days'])}, allowed_downloads "
+      f"{list(_ent['download_limits'])}.")
+    a("- Membership plans raise the file count, the 24-hour total and "
+      "the delivery options — see /pricing.")
+    a("")
+    a("## Publish your own tool")
+    a("Wrap any public HTTPS endpoint as a 518 tool: implement one JSON "
+      "contract — source files arrive as one-time signed fetch URLs, "
+      f"you answer with ordered text/json/file items — and submit it at "
+      f"{BASE_URL}/account/tools/publish.")
+    a("A new tool starts unlisted; after one successful run from its "
+      "page it can go public, and then the web interface and every MCP "
+      "agent can call it, earning you credits on each paid call.")
+    a(f"Full guide — request/response examples, declarations, limits, "
+      f"pricing and commission: {BASE_URL}/developers")
+    a("")
     a("## Tool catalog (every public tool, generated live — "
       "tools/list shows your working set of these)")
     a("")

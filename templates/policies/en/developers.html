@@ -1,0 +1,106 @@
+<p>Every 518.PLUS tool wraps one HTTPS endpoint you control. Publish it once and it works on both surfaces at the same time: the web interface for people, and the MCP server for AI agents — same invocation pipeline, same accounting. This page is the complete contract your endpoint implements.</p>
+
+<h2>Five minutes to a published tool</h2>
+<ol>
+  <li>Write an HTTPS endpoint that answers POST with the JSON response below (minimal Python and Node examples at the end of this page).</li>
+  <li>Submit it on the publish form — up to {{ max_tools }} tools per account, each with a name, description, format and parameter declarations. New tools start unlisted.</li>
+  <li>Preview-run your tool once from its own page. After one successful run by you, the author, it can go public — flip it and it appears in the market and in agents' <code>catalog_search</code>.</li>
+</ol>
+<p><a class="btn btn-p" href="/account/tools/publish">Start publishing</a></p>
+
+<h2>Request (518 → your endpoint)</h2>
+<pre class="doc-pre" id="ex-req">POST https://your-endpoint.example/your-path
+Content-Type: application/json
+
+{
+  "files": [
+    { "filename": "photo.png", "content_type": "image/png", "size": 123456,
+      "url": "{{ base_url }}/api/source/FILE-ID?t=ONE-TIME-TOKEN" }
+  ],
+  "params": { "mode": "fast" }
+}</pre>
+<p>The platform never pushes file bytes. Each file arrives as a one-time signed URL together with its filename, content type and size — your endpoint pulls it (or ignores it). The URL works exactly once and expires quickly, so fetch it during the request. <code>params</code> carries exactly the parameters you declared, nothing else. Your endpoint has {{ timeout_min_s }}–{{ timeout_max_s }} seconds (your own setting) to answer.</p>
+
+<h2>Response (your endpoint → 518)</h2>
+<pre class="doc-pre" id="ex-res">{
+  "items": [
+    { "kind": "text", "text": "Done — result at {{ base_url }}/f/abc123" },
+    { "kind": "json", "data": { "width": 64, "height": 32 } },
+    { "kind": "file", "filename": "out.png", "content_type": "image/png",
+      "data_b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" }
+  ]
+}</pre>
+<ul>
+  <li><strong>text</strong> and <strong>json</strong> items are stored and shown verbatim; links inside text are displayed as-is.</li>
+  <li><strong>file</strong> items carry <code>data_b64</code> (base64 bytes) or <code>url</code> — for a url the platform fetches it server-side and re-stores the file as a temporary share link.</li>
+  <li>At most {{ max_items }} items per call; the combined text+json payload is at most {{ inline_max_bytes }} bytes; every item's kind must be among the outputs you declared.</li>
+</ul>
+
+<h2>Declaring parameters</h2>
+<p>Up to {{ max_params }} parameters, each one of four types: <code>enum</code> (fixed option list), <code>number</code> (optional min/max), <code>boolean</code>, <code>text</code>. Text values accept up to {{ text_param_chars }} characters. Required parameters are enforced by the platform before your endpoint is called.</p>
+
+<h2>Declaring files</h2>
+<p>Declare the accepted formats as a list of file extensions (<code>.png</code>, <code>.pdf</code>, …) and the count window: 0 (text-only tool) up to {{ files_max }} files per call. Files outside the declared formats are rejected before your endpoint is called. One file may be at most {{ max_upload_mb }} MB.</p>
+
+<h2>Limits</h2>
+<ul>
+  <li>Endpoint timeout: {{ timeout_min_s }}–{{ timeout_max_s }} seconds (you choose per tool).</li>
+  <li>Result items: at most {{ max_items }} per call.</li>
+  <li>Text+json combined payload: at most {{ inline_max_bytes }} bytes per call.</li>
+  <li>Single file (input and output): at most {{ max_upload_mb }} MB.</li>
+  <li>Text parameter values: at most {{ text_param_chars }} characters.</li>
+</ul>
+
+<h2>Authentication header</h2>
+<p>Optional: store a header name and token (for example <code>Authorization: Bearer …</code>) with your submission; the platform seals the token and sends the header on every call. Transport-owned header names (Host, Content-Length, …) are refused at submission.</p>
+
+<h2>Security</h2>
+<ul>
+  <li>The signed source URLs are one-time and short-lived — they cannot be reused or shared.</li>
+  <li>Your endpoint must be public HTTPS: private, loopback and metadata addresses are refused (SSRF guard on every hop, redirects included).</li>
+  <li>Everything your endpoint returns is byte-validated against the platform's format whitelist before it is stored; a mismatch fails the call.</li>
+</ul>
+
+<h2>Publish gate</h2>
+<p>Tools are created unlisted. Public visibility unlocks after one successful run by the author from the tool's own page; the platform performs no other review, and can delist a tool that breaks the rules.</p>
+
+<h2>Pricing, commission, earnings and withdrawal</h2>
+<p>You set the price per call in credits — 0 (free) up to {{ max_price }}, where 1000 credits = 1 USD. On every successful paid call your earnings pool is credited the price minus the {{ commission_rate if commission_rate is not none else '—' }}% platform commission. Earnings are withdrawable in USD (minimum ${{ min_withdrawal_usd }}); credits you spend are a separate pool.</p>
+
+<h2>Names and discovery (MCP)</h2>
+<p>On MCP your tool is named <code>owner__tool</code> (for example <code>alice__pdf2svg</code>). Agents find it with <code>catalog_search</code> and can call it by name right away — the search result already carries the full input schema. Users who like it pin it to their favorites, which puts it in their <code>tools/list</code> working set.</p>
+
+<h2>Minimal example endpoints</h2>
+<p>Python (FastAPI) — text in, text + json out:</p>
+<pre class="doc-pre">from fastapi import FastAPI, Request
+
+app = FastAPI()
+
+@app.post("/shout")
+async def shout(req: Request):
+    body = await req.json()
+    text = str(body["params"].get("text", ""))
+    return {"items": [
+        {"kind": "text", "text": text.upper()},
+        {"kind": "json", "data": {"length": len(text)}},
+    ]}</pre>
+<p>Node (no dependencies) — fetches the signed URL, echoes the file back:</p>
+<pre class="doc-pre">const http = require("http"), https = require("https");
+http.createServer((req, res) => {
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", () => {
+    https.get(JSON.parse(body).files[0].url, (f) => {
+      const chunks = [];
+      f.on("data", (c) => chunks.push(c));
+      f.on("end", () => {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ items: [{
+          kind: "file", filename: "copy.png",
+          content_type: "image/png",
+          data_b64: Buffer.concat(chunks).toString("base64"),
+        }] }));
+      });
+    });
+  });
+}).listen(3000);</pre>

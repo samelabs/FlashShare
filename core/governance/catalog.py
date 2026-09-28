@@ -187,37 +187,22 @@ def catalog_item(tool: dict) -> dict | None:
 
 # ── Catalog (single source for web home, MCP tools/list) ──
 
-def search_catalog(q: str, viewer_id: int | None = None, limit: int = 30) -> list:
-    """518-native tool search: prefix/substring match across name (all label
-    langs) and tool key, self-operated + community in ONE result list.
-
-    NOT a directory page (that's the MCP-marketplace pattern) — the home
-    search box IS the tool selector: typing filters, clicking selects the
-    active tool, the upload flow is unchanged. Community rows carry a
-    provider badge so provenance is visible at a glance.
+def search_catalog(q: str, limit: int = 20) -> list:
+    """Public tool search — THE one search surface behind the home
+    selector (/api/tools/search), the /tools market page and MCP
+    catalog_search: one predicate (repo._market_base: public visibility
+    + pricing INNER JOIN), one ordering (featured → sort_order →
+    successful calls → id, same as market_rows) and one projection
+    (row_to_item). 查询按空白分词 AND, 每词命中 tool_key/label/desc
+    之一, LIKE 通配符按字面匹配 (repo 单点); 空查询 = 浏览 (排序前
+    limit 个)。搜索是公开发现面: 私有/unlisted 工具不进入 (owner 面
+    走 list_catalog / own surface)。
     """
-    q = (q or "").strip().lower()
-    if not q:
-        return []
-    like3 = (f"%{q}%", f"%{q}%", f"%{q}%")
+    q = (q or "").strip() or None
     with db() as con:
-        rows = catalog_repo.search(con, VIS_PUBLIC, viewer_id, like3, limit)
-    out = []
-    for row in rows:
-        p = _price_of(row["tool_key"])
-        if p is None:
-            continue
-        out.append(row_to_item(row, p))
-    return out
-
-
-def _price_of(tool_key: str) -> dict | None:
-    """pricing overlay for one row: None = disabled/hidden."""
-    from governance.pricing import get_pricing
-    p = get_pricing(tool_key)
-    if not p or not p["enabled"]:
-        return None
-    return p
+        rows = catalog_repo.market_rows(con, VIS_PUBLIC, q, limit, 0)
+    return [row_to_item(row, {"cost": row["price_cost"], "enabled": True})
+            for row in rows]
 
 
 def catalog_version() -> str:
