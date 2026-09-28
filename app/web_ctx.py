@@ -55,7 +55,7 @@ sys.path.insert(0, str(_CORE))
 
 from config import (APP_NAME, BASE_URL, SOCIAL_IMAGE_URL,
                     PUBLIC_SUPPORT_CHANNEL, X_CLIENT_ID, X_CLIENT_SECRET)
-from i18n import LOCALE_TAGS, server_text
+from i18n import LOCALE_TAGS, language_from_code, server_text
 from icons import _ICONS, icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
 from identity.auth import public_user
 from economy.billing import spendable_balance
@@ -116,7 +116,11 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         # (the deployment authority, never the proxied host) + path only —
         # query strings (tracking params, ?lang, search terms) never enter
         # a canonical/og:url.
-        "canonical_url": BASE_URL + request.url.path,
+        # canonical never carries tracking/query params, except an explicit
+        # ?lang=xx: each hreflang alternate must be its own canonical
+        "canonical_url": BASE_URL + request.url.path + (
+            f"?lang={lang}" if language_from_code(
+                request.query_params.get("lang", "")) else ""),
         # Default is NOT indexable; the ten public route families opt in
         # with "index, follow" (hreflang follows that flag, nothing else).
         "seo_robots": "noindex",

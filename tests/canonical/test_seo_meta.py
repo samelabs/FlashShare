@@ -226,6 +226,12 @@ def main():
           and html.count('rel="alternate" hreflang=') == 11,
           f"{st} robots={_meta(html, 'robots')}")
 
+    # ── explicit ?lang page is its own canonical (hreflang alternates) ──
+    st, html = _page("/pricing?lang=de&utm_source=x")
+    canon = _tag(html, r'<link rel="canonical" href="([^"]*)"')
+    check("H /pricing?lang=de: canonical keeps ?lang, drops tracking params",
+          canon == f"{BASE_URL}/pricing?lang=de" and _meta(html, "og:url") == canon, f"{canon!r}")
+
     # ── noindex pages: canonical/og present, hreflang absent ───────────
     for p in ("/auth/login", "/auth/register", "/account/keys",
               "/account/tools/publish", f"/r/{_RESULT_ID}"):
@@ -246,9 +252,9 @@ def main():
     check("H search params stripped from canonical",
           _tag(html, r'<link rel="canonical" href="([^"]*)"') == BASE_URL + "/tools")
     st, html = _page("/?lang=zh")
-    check("H ?lang renders that locale but keeps a clean canonical",
+    check("H ?lang renders that locale and is its own canonical (hreflang alternate)",
           _meta(html, "og:locale") == "zh-CN"
-          and _tag(html, r'<link rel="canonical" href="([^"]*)"') == BASE_URL + "/")
+          and _tag(html, r'<link rel="canonical" href="([^"]*)"') == BASE_URL + "/?lang=zh")
 
     # ── C*: share cards for /r (and /f parity via the same override) ──
     st, html = _page(f"/r/{_RESULT_ID}")
@@ -305,8 +311,11 @@ def main():
     # ── R*: robots.txt ─────────────────────────────────────────────────
     st, data, _, _ = _req("GET", "/robots.txt")
     body = data.decode()
-    for dis in ("/account", "/samelabs", "/auth", "/r", "/api/", "/mcp", "/dh/"):
+    for dis in ("/account", "/samelabs", "/auth", "/api/", "/mcp", "/dh/"):
         check(f"R robots: Disallow {dis}", f"Disallow: {dis}" in body)
+    check("R robots: share pages /f and /r stay fetchable (preview bots, agents)",
+          not any(ln.strip() in ("Disallow: /r", "Disallow: /r/", "Disallow: /f", "Disallow: /f/")
+                  for ln in body.splitlines()))
     check("R robots: sitemap pointer", f"Sitemap: {BASE_URL}/sitemap.xml" in body)
 
     # ── P*: PWA manifest ───────────────────────────────────────────────

@@ -306,6 +306,7 @@ class _AnonReq:
     # ctx_base reads request.url.path for the canonical URL — a minimal
     # stand-in keeps the fake a faithful Request shape
     url = type("U", (), {"path": "/"})()
+    query_params = {}
 try:
     _c = _wctx.ctx_base(_AnonReq())
     check("WC-X2 匿名 context 不调用 project (access=None)",

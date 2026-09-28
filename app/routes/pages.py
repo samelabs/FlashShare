@@ -87,17 +87,17 @@ async def llms_txt():
 
 @router.get("/robots.txt")
 async def robots():
-    """Crawl boundary. Share links (/f/) stay FETCHABLE for agents that
-    honor robots (indexing is refused per-response via X-Robots-Tag, not
-    here). Private/ephemeral namespaces are excluded: account, the
-    operator back office, auth pages, per-run result pages, the JSON API
+    """Crawl boundary. Share links (/f/ and result pages /r/) stay
+    FETCHABLE: link-preview bots and agents that honor robots must be able
+    to read the share card and the result a person was handed; indexing
+    is refused per-response (noindex), not here. Private namespaces are
+    excluded: account, the operator back office, auth pages, the JSON API
     and the MCP machine surface (a POST JSON-RPC endpoint — MCP clients
     are not crawlers). /dh/ is the Nginx→Gokapi hotlink path."""
     body = ("User-agent: *\n"
             "Disallow: /account\n"
             "Disallow: /samelabs\n"
             "Disallow: /auth\n"
-            "Disallow: /r\n"
             "Disallow: /api/\n"
             "Disallow: /mcp\n"
             "Disallow: /dh/\n"
