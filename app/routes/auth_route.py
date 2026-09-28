@@ -9,7 +9,7 @@ import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 
 import psycopg2
 
@@ -128,7 +128,9 @@ def _login_maintenance(uid: int) -> None:
 @router.get("/x/login")
 async def x_login(request: Request):
     if not X_CLIENT_ID or not X_CLIENT_SECRET:
-        return HTMLResponse("X login not configured", 500)
+        # X login unavailable on this deployment: the entry points are
+        # hidden, and a direct hit goes back to the regular login page.
+        return RedirectResponse("/auth/login", 302)
 
     wants_bind = request.query_params.get("bind") == "1"
     bind_user_id = None

@@ -297,6 +297,12 @@ async def _resource_housekeeping_loop():
 async def startup():
     global _housekeeping_task
     init_db()
+    # X login needs both halves of the OAuth client; one without the other
+    # silently disables it, so say so in the startup log.
+    from config import X_CLIENT_ID, X_CLIENT_SECRET
+    if bool(X_CLIENT_ID) != bool(X_CLIENT_SECRET):
+        logger.warning("X login disabled: set both FLASHSHARE_X_CLIENT_ID "
+                       "and FLASHSHARE_X_CLIENT_SECRET")
     # Gokapi capability probe (task 7): fail-closed BEFORE traffic. If the
     # service key lacks DOWNLOAD permission the whole tool/preview chain
     # would fail at user time — abort startup with the explicit marker.
