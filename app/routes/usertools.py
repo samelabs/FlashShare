@@ -113,15 +113,31 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
             return None, "bad_timeout"
         fields["timeout_s"] = timeout_s
 
-    if raw.get("auth_header") and raw.get("auth_token"):
-        # 存原文; seal 只在 tool_supply.build_http_binding 组装时做一次
-        fields["auth_header"] = str(raw["auth_header"]).strip()[:64]
-        fields["auth_token"] = str(raw["auth_token"]).strip()[:512]
-        # Credential-header authority boundary (user tools only): the
-        # transport owns Host/framing — a developer credential may never
-        # claim those names. Trusted operator rows keep header freedom.
-        from remote import auth_header_allowed
-        if not auth_header_allowed(fields["auth_header"]):
+    if "auth_header" in raw or "auth_token" in raw:
+        # Credential is a PAIR; three PATCH shapes are legal:
+        #   both non-empty → store (sealed once in build_http_binding)
+        #   both present and both empty → explicit clear
+        #   both absent → keep the stored credential (no keys in fields)
+        # Anything one-sided → 422: an empty value must never silently
+        # leave a half credential behind.
+        has_h, has_t = "auth_header" in raw, "auth_token" in raw
+        header = str(raw.get("auth_header") or "").strip()
+        token = str(raw.get("auth_token") or "").strip()
+        if header and token:
+            # 存原文; seal 只在 tool_supply.build_http_binding 组装时做一次
+            fields["auth_header"] = header[:64]
+            fields["auth_token"] = token[:512]
+            # Credential-header authority boundary (user tools only): the
+            # transport owns Host/framing — a developer credential may never
+            # claim those names. Trusted operator rows keep header freedom.
+            from remote import auth_header_allowed
+            if not auth_header_allowed(fields["auth_header"]):
+                return None, "bad_auth_header"
+        elif has_h and has_t:
+            # both keys present, both empty → explicit credential clear
+            fields["auth_header"] = ""
+            fields["auth_token"] = ""
+        elif has_h or has_t:
             return None, "bad_auth_header"
 
     if "accept" in raw or "format_families" in raw or not partial:

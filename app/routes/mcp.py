@@ -26,6 +26,7 @@ from config import BASE_URL, MAX_UPLOAD_BYTES, MCP_ALLOWED_ORIGINS, PRODUCT_VERS
 from governance.catalog import list_catalog, mcp_name, mcp_names, tool_key_for_mcp_name
 from governance.tool_params import resolve_label
 from utils import format_bytes, sanitize_filename
+from app.web_auth import client_ip
 
 router = APIRouter()
 _log = logging.getLogger("flashshare")
@@ -39,6 +40,10 @@ BATCH_REMOVED_IN = "2025-06-18"
 MAX_B64_BYTES = MAX_UPLOAD_BYTES * 2
 MAX_SOURCE_URL_LEN = 2048
 URL_FETCH_TIMEOUT_S = 30
+# Application-layer cap on one /mcp request body (inline base64 sources
+# are the only payload that can grow unbounded). Larger files must go
+# through the create_upload two-stage path — the rejection message says so.
+MCP_MAX_BODY_BYTES = 16 * 1024 * 1024
 # Server-defined JSON-RPC error (reserved range -32000..-32099): the
 # client_ref is bound to a different input, or its ingress is running.
 ERR_IDEMPOTENCY = -32009
@@ -58,6 +63,33 @@ def _rpc_err(id_, code, message, data=None):
     if data is not None:
         err["data"] = data
     return _rpc(id_, error=err)
+
+
+async def _read_body_limited(request: Request) -> bytes | None:
+    """Read the /mcp body under MCP_MAX_BODY_BYTES; None when it exceeds
+    the cap. Content-Length is checked first (reject without reading);
+    the stream is then read with a cumulative count so a request WITHOUT
+    Content-Length (chunked) is stopped at the first overflow byte."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > MCP_MAX_BODY_BYTES:
+                return None
+        except ValueError:
+            pass  # malformed length: the stream count below still decides
+    buf = bytearray()
+    async for chunk in request.stream():
+        buf.extend(chunk)
+        if len(buf) > MCP_MAX_BODY_BYTES:
+            return None
+    return bytes(buf)
+
+
+def _body_too_large(cors: dict) -> JSONResponse:
+    return JSONResponse(
+        _rpc_err(None, -32600,
+                 "request body too large; upload large files with create_upload"),
+        status_code=413, headers=cors)
 
 
 # ── Origin / CORS ──
@@ -150,8 +182,11 @@ async def mcp_post(request: Request):
             _rpc_err(None, -32600, "unsupported MCP-Protocol-Version",
                      {"supported": list(SUPPORTED_VERSIONS)}),
             status_code=400, headers=cors)
+    body = await _read_body_limited(request)
+    if body is None:
+        return _body_too_large(cors)
     try:
-        msg = json.loads(await request.body())
+        msg = json.loads(body)
     except Exception:
         return JSONResponse(_rpc_err(None, -32700, "parse error"),
                             headers=cors)
@@ -246,7 +281,10 @@ async def _dispatch(request: Request, user: dict, msg):
                 "(我的收藏). Find any other tool with catalog_search and "
                 "call it by name; pin_tool adds one to your favorites. "
                 "Pass "
-                "files inline (base64), by https URL, or by reference; "
+                "files inline (base64 — one request body is capped at "
+                f"{MCP_MAX_BODY_BYTES // (1024 * 1024)} MB; larger files "
+                "go through create_upload), by https URL, or by "
+                "reference; "
                 "for large local files call create_upload first and "
                 "PUT the raw bytes to the one-time URL it returns, "
                 "then use the returned {public_id, source_token} as "
@@ -902,8 +940,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                                           client_ref, tool)
             uploads[i] = _url_upload(_url, _fname, _body)
 
-    ip = request.headers.get("X-Real-IP",
-                             request.client.host if request.client else "").strip()
+    ip = client_ip(request)
 
     # Ingress receipt: client_ref IS the request_ref. Same ref + same
     # validated content replays the stored source handles (zero new

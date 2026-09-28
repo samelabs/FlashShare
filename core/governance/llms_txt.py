@@ -69,7 +69,13 @@ def build_llms_txt() -> str:
     a("## Inputs (tools/call)")
     a("files[] items — 0..20 files per the tool's declared window "
       "(text-only tools take no files); each item is exactly one form:")
-    a('1. Inline: {"filename":"a.png","b64":"<base64>"}')
+    try:
+        from app.routes.mcp import MCP_MAX_BODY_BYTES
+        body_cap = f"{MCP_MAX_BODY_BYTES // (1024 * 1024)} MB"
+    except Exception:  # app layer unreachable in this process
+        body_cap = "16 MB"
+    a(f'1. Inline: {{"filename":"a.png","b64":"<base64>"}} — one /mcp '
+      f"request body is capped at {body_cap}")
     a('2. https URL: {"url":"https://example.com/a.png"} — 518 fetches it '
       'server-side (public hosts only)')
     a('3. Reference: {"public_id":"...","source_token":"..."} to an '
@@ -108,7 +114,8 @@ def build_llms_txt() -> str:
       "result expires; after it, result_url and every file link 404.")
     a("")
     a("## Large files: two-stage upload (bytes never pass through the model)")
-    a("For files too large to inline as base64, call the free meta tool "
+    a("For files too large to inline as base64 (the request body cap "
+      f"is {body_cap}), call the free meta tool "
       "create_upload first, PUT the raw bytes to the returned one-time "
       "URL, then reference the result. Staged files are intermediates, "
       "not shares: use the PUT within 10 minutes; the stored copy "

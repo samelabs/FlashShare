@@ -50,7 +50,7 @@ from execution.pool import default_process_tool as process_tool
 logger = logging.getLogger("flashshare")
 router = APIRouter()
 
-from execution.dispatch import client_ip as _client_ip
+from app.web_auth import client_ip as _client_ip
 
 
 # ── Tools ──

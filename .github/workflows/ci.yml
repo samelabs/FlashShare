@@ -329,6 +329,10 @@ jobs:
             python tests/canonical/test_audit_fix.py
           expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
             python tests/canonical/test_audit_fix.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_prod_hardening.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_prod_hardening.py
           # semantic guards (do not replace behavior tests):
           # orchestrator is staging-only and holds no source-deletion
           # authority; finalize_call_ok is the single tool_calls.upload_id
@@ -400,6 +404,9 @@ jobs:
 
       - name: Publish escape JS contract
         run: node tests/ci/test_publish_escape_contract.js
+
+      - name: Prod hardening ops contract
+        run: python tests/ci/test_prod_hardening_contract.py
 
       - name: Start real FlashShare app
         shell: bash
@@ -520,6 +527,8 @@ jobs:
         run: python tests/canonical/test_publish_gate.py
       - name: Audit-fix canonical
         run: python tests/canonical/test_audit_fix.py
+      - name: Prod hardening canonical
+        run: python tests/canonical/test_prod_hardening.py
       - name: Daily login credit canonical
         run: python tests/canonical/test_daily_login.py
       - name: Commission effective-time canonical
