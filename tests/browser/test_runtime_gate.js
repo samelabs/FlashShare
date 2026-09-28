@@ -237,7 +237,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         await menuBtn.click();
         await page.waitForSelector("#userDropdown:not(.hidden)", { timeout: 5000 });
         await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), logout.click()]);
-        check("web logout: back to anon", (await page.$(".topbar-login")) !== null);
+        check("web logout: back to anon", (await page.$('header a[href="/auth/login"]')) !== null);
       }
       await gotoReady(page, "/auth/login", "input[name=login]");
       await page.fill("input[name=login]", username);

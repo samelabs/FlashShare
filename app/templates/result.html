@@ -50,12 +50,12 @@
           </details>
         </div>
         {% elif it.deleted %}
-        <div class="item-file r-gone">
+        <div class="item-file rs-item rs-file r-gone">
           <span class="pv doc" aria-hidden="true">{{ icon_svg("doc") }}</span>
           <div class="if-body"><b>{{ it.filename }}</b><small data-i18n="r_file_gone">{{ texts.r_file_gone }}</small></div>
         </div>
         {% else %}
-        <div class="item-file">
+        <div class="item-file rs-item rs-file">
           {% if it.is_image %}
           <img class="pv img" src="/f/{{ it.public_id }}/inline" alt="" loading="lazy" decoding="async">
           {% else %}
