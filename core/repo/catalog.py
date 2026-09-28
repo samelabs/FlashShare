@@ -26,7 +26,8 @@ def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
         args += [like, like, like]
     base = (
         "FROM platform_tools pt "
-        "JOIN users u ON u.id = pt.owner_id "
+        # LEFT JOIN: first-party rows carry owner_id NULL and must list
+        "LEFT JOIN users u ON u.id = pt.owner_id "
         "JOIN pricing pr ON pr.tool_id = pt.tool_key "
         f"WHERE {where} AND pr.enabled")
     return base, args
@@ -47,8 +48,11 @@ def market_rows(con, visibility_public: str, q: Optional[str],
     base, args = _market_base(visibility_public, q)
     return con.execute(
         f"SELECT pt.*, pr.cost AS price_cost, "
-        f"u.username AS owner_handle {base} "
-        "ORDER BY pt.featured DESC, pt.sort_order, pt.id "
+        f"u.username AS owner_handle, "
+        f"(SELECT COUNT(*) FROM tool_calls tc "
+        f" WHERE tc.tool_id = pt.tool_key AND tc.status = 'ok') "
+        f"AS ok_calls {base} "
+        "ORDER BY pt.featured DESC, pt.sort_order, ok_calls DESC, pt.id "
         "LIMIT %s OFFSET %s",
         args + [limit, offset]).fetchall()
 
