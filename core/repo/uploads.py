@@ -73,6 +73,19 @@ def owned_row(con, upload_id: int, user_id: int) -> Optional[dict]:
         (upload_id, user_id)).fetchone()
 
 
+def owned_row_for_update(con, upload_id: int, user_id: int) -> Optional[dict]:
+    """Owner-scoped FOR UPDATE read for the single delete point: reading
+    and deleting in ONE transaction, concurrent deleters converge (the
+    loser's predicate re-evaluates after the winner commits → None)."""
+    return con.execute(
+        """
+        SELECT id, user_id, public_id, gokapi_id, file_name,
+               content_type, size_bytes
+        FROM uploads WHERE id = %s AND user_id = %s FOR UPDATE
+        """,
+        (upload_id, user_id)).fetchone()
+
+
 def active_storage_rows(con, now_ts: int) -> list:
     """Local live mappings used by storage reconciliation."""
     return con.execute(

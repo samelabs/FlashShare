@@ -31,22 +31,31 @@ def housekeeping_once() -> dict:
     # the 24h audit window (same cadence as upload_usage retention)
     tickets = tickets_repo.purge(ts)
 
-    storage_ok, files = list_gokapi_files()
     reconciled = 0
+    # Order matters: read the local row set FIRST, snapshot Gokapi SECOND.
+    # A share lands as Gokapi-write (W) then uploads-row insert (R); if the
+    # snapshot were taken before R, a landing in between (T0 < W < R < read)
+    # would present a gokapi_id absent from the snapshot and the fresh row
+    # would be mistaken for stale storage. With read-first, every row in the
+    # comparison set predates the snapshot — its absence there is real
+    # evidence the physical file is gone.
+    with db() as con:
+        local = uploads_repo.active_storage_rows(con, ts)
+    storage_ok, files = list_gokapi_files()
     if storage_ok:
         live_ids = {
             str(item.get("Id"))
             for item in files
             if isinstance(item, dict) and item.get("Id")
         }
-        with db() as con:
-            local = uploads_repo.active_storage_rows(con, ts)
-            stale_ids = [
-                int(row["id"])
-                for row in local
-                if row["gokapi_id"] and str(row["gokapi_id"]) not in live_ids
-            ]
-            reconciled = uploads_repo.delete_rows_by_ids(con, stale_ids)
+        stale_ids = [
+            int(row["id"])
+            for row in local
+            if row["gokapi_id"] and str(row["gokapi_id"]) not in live_ids
+        ]
+        if stale_ids:
+            with db() as con:
+                reconciled = uploads_repo.delete_rows_by_ids(con, stale_ids)
 
     return {
         "expired": expired,

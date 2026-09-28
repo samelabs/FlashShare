@@ -119,13 +119,21 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
         return None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
-    # params 声明是可选能力: 无声明的工具 params 自由直传。
+    # params 声明是可选能力: 无声明的工具 params 自由直传 — 但序列化
+    # 尺寸仍受同一 TEXT_PARAM_MAX_CHARS 约束 (claim/扣费之前拒绝)。
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:
             return tool, enforce_params_decl(decl, params), None, None
         except ParamsValueError as exc:
             return None, None, {"ok": False, "error": str(exc)}, 422
+    from governance.tool_params import TEXT_PARAM_MAX_CHARS
+    try:
+        params_len = len(_json.dumps(params, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return None, None, {"ok": False, "error": "invalid_request"}, 422
+    if params_len > TEXT_PARAM_MAX_CHARS:
+        return None, None, {"ok": False, "error": "param_too_long"}, 422
     return tool, None, None, None
 
 

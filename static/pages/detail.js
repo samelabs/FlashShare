@@ -69,8 +69,9 @@ if (deleteBtn) deleteBtn.addEventListener("click", () => openDelete(pid));
 const zipPreviewBtn = document.getElementById("zipPreviewBtn");
 if (zipPreviewBtn) {
   const s = document.createElement("script");
-  // versioned like every other static script (same template stamp)
-  s.src = "/static/zip-preview.js?v=" + encodeURIComponent(__PAGE__.pagesVersion || "");
+  // versioned with its OWN content stamp (zip-preview.js lives in static/,
+  // outside the pages digest — borrowing pages_version never busts its cache)
+  s.src = "/static/zip-preview.js?v=" + encodeURIComponent(__PAGE__.zipPreviewVersion || "");
   s.onload = () => window.zipPreview && window.zipPreview.wireRemotePreview(zipPreviewBtn, window.__ZIP_PID__);
   document.head.appendChild(s);
 }

@@ -423,15 +423,18 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
         # difference as grant_plan_upgrade. Both kinds carry the paid
         # transaction ref (ref_type=creem_transaction) — the single fact
         # a later refund/chargeback reverses. Base idem plan:{uid}:{ps};
-        # upgrade idem plan-upgrade:{uid}:{ps}:{plan} (two distinct idem
-        # shapes → a base row never swallows an upgrade top-up).
+        # upgrade idem plan-upgrade:{uid}:{ps}:{plan}:{txn_ref} (two
+        # distinct idem shapes → a base row never swallows an upgrade
+        # top-up; the txn_ref keeps a second, separately-paid upgrade in
+        # the same period from replaying the first one's grant row —
+        # period_plan_credits aggregates by the prefix, unaffected).
         from economy.billing import grant
         if already > 0:
             _moved = plan_total - already
             grant(order["user_id"], _moved,
                   "grant_plan_upgrade",
                   ref_type="creem_transaction", ref_id=txn_ref,
-                  idem_key=f"plan-upgrade:{order['user_id']}:{period_start}:{plan['code']}",
+                  idem_key=f"plan-upgrade:{order['user_id']}:{period_start}:{plan['code']}:{txn_ref}",
                   note=f"{plan['code']} upgrade top-up {period_start}-{period_end}")
         else:
             _moved = plan_total

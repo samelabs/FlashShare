@@ -23,6 +23,16 @@ from utils import now
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_-]{5,32}$")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+# Platform-identity namespace: registration and X auto-naming never take
+# these handles (case-insensitive — usernames are unique per folded name).
+# The platform account bootstrap (governance.platform) inserts directly
+# and does not pass through this vocabulary.
+RESERVED_USERNAMES = frozenset({
+    "platform", "admin", "administrator", "samelabs", "system",
+    "support", "official", "518plus", "security", "staff",
+    "operator", "moderator",
+})
+
 
 def validate_username(username: str) -> str | None:
     if not username:
@@ -33,6 +43,8 @@ def validate_username(username: str) -> str | None:
         return "err_username_long"
     if not USERNAME_RE.match(username):
         return "err_username_invalid"
+    if username.lower() in RESERVED_USERNAMES:
+        return "err_username_reserved"
     return None
 
 
@@ -84,10 +96,14 @@ def register_user(username: str, email: str, password: str) -> int:
         try:
             row = users_repo.insert_local(con, username, email, pw_hash,
                                           username, ts)
-        except _UniqueViolation:
-            # lost the race against the lower(email) unique index:
-            # converges to the same typed contract, never a 500
-            raise ValueError("err_email_taken")
+        except _UniqueViolation as exc:
+            # lost the race against a folded unique index (username or
+            # email): converges to the same typed contract, never a 500
+            constraint = str(getattr(
+                getattr(exc, "diag", None), "constraint_name", "") or "")
+            if "username" in constraint:
+                raise ValueError("err_username_taken") from exc
+            raise ValueError("err_email_taken") from exc
         return row["id"]
 
 
@@ -200,6 +216,10 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
 
         username = (x_username or "")[:32]
         if not username or len(username) < 5:
+            username = f"x_{x_id}"[:32]
+        if username.lower() in RESERVED_USERNAMES:
+            # a reserved handle must not become an account namespace —
+            # fall back to the neutral X-identity name
             username = f"x_{x_id}"[:32]
         base_name = username
         suffix = 1

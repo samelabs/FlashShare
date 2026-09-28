@@ -189,6 +189,15 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
     revenue_millis = credits_to_millis(cost if owner_id is None else 0)
 
     with db() as con:
+        # Lock order: third-party payout locks BOTH endpoints' users rows
+        # (payer + owner, ascending by id) BEFORE land_items_result — the
+        # uploads INSERT's FK takes FOR KEY SHARE on the payer row, which
+        # must never order after another transaction's FOR UPDATE on a
+        # users row (two reciprocal provider calls could otherwise cycle).
+        # The platform row is always locked last (see governance.platform).
+        if payout_millis > 0:
+            for uid in sorted((int(user["id"]), int(owner_id))):
+                ledger_repo.lock_user(con, uid)
         _upload_id, result_public_id, public_result = land_items_result(
             con, user["id"], staged, BASE_URL, delivery)
         finalize_call_ok(
@@ -204,11 +213,10 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
             # third-party: two independent legs, conservation holds at
             # every commission rate (0% / 30% / 100%) — USD-millis legs
             if payout_millis > 0:
-                # S4: serialize on the provider users row — the SAME
-                # cash-pool anchor withdrawal request/approve use, so a
-                # concurrent withdrawal cannot interleave between the
-                # pool read and the earning write.
-                ledger_repo.lock_user(con, owner_id)
+                # S4: the owner row was already locked up front (with the
+                # payer) — the SAME cash-pool anchor withdrawal
+                # request/approve use, so a concurrent withdrawal cannot
+                # interleave between the pool read and the earning write.
                 base = ledger_repo.earn_pool_balance(con, owner_id)
                 insert_provider_earn_if_absent(
                     con, owner_id, payout_millis, base + payout_millis, call_id,

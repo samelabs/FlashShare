@@ -144,10 +144,14 @@ try:
           and len(r["items"][0]["data"]) == 8, str(r)[:80])
     try:
         worker_mod.process_tool("zz_cap1", [(b"", "i", "t", 0)], {})
-        check("B2 output cap+1 → ValueError fail closed", False, "no raise")
-    except ValueError as e:
-        check("B2 output cap+1 → ValueError fail closed",
-              "output_too_large" in str(e), str(e))
+        check("B2 output cap+1 → ToolError fail closed", False, "no raise")
+    except Exception as e:
+        # typed contract codes cross the pool boundary as tools.ToolError
+        # (dispatch converts to a 4xx); ValueError here would surface 500
+        from tools import ToolError as _TE
+        check("B2 output cap+1 → ToolError fail closed",
+              isinstance(e, _TE) and "output_too_large" in str(e),
+              f"{type(e).__name__}: {e}")
 finally:
     _cfg.MAX_UPLOAD_BYTES = _orig_cap
     _tools._registry[:] = [t for t in _tools._registry

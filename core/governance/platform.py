@@ -74,8 +74,10 @@ def record_platform_income(con, call_id, kind: str, amount: int, note: str,
     settlements queue on it, so balance_after is a consecutive running
     total (same anchor pattern as the provider_earn writer). Lock order
     inside the settlement transaction (gate._finish): tool_calls row →
-    provider users row → platform users row (always last). Nothing locks
-    the platform row before another users row, so no cycle can form."""
+    users rows in ascending-id order (payer + owner locked up front,
+    BEFORE the uploads landing whose FK takes KEY SHARE on the payer) →
+    platform users row (always last). The users-row order is total, so
+    no cycle can form — including two reciprocal provider calls."""
     if amount <= 0:
         return
     pid = ensure_platform_account(con)
