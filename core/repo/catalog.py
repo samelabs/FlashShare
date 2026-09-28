@@ -8,21 +8,32 @@ from typing import Optional, Sequence
 
 # ── platform_tools ──
 
+def _like_token(tok: str) -> str:
+    """One search token → a literal LIKE pattern: %tok% with LIKE
+    wildcards (% _) and the escape character itself escaped — a query
+    containing % or _ matches those characters literally."""
+    tok = tok.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{tok}%"
+
+
 def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
     """公开市场查询基座 (selection/search/pricing visibility): the ONE
     public-visibility predicate (enabled ∧ ¬delisted ∧ owner-alive) +
     public visibility, INNER JOIN pricing (缺行=未完成商业创建, 不上面;
-    pricing.enabled=false 排除); 搜索范围 tool_key+label+desc(各语言)。
+    pricing.enabled=false 排除)。搜索 = 空白分词 AND: 每个词都须命中
+    tool_key+label+desc(各语言) 之一, LIKE 通配符按字面匹配 (THE one
+    search predicate — home selector / /tools market / MCP
+    catalog_search 全部经由此处)。
     返回 (FROM+WHERE 片段, 参数)。"""
     where = ("pt.enabled AND NOT pt.delisted"
              " AND (pt.owner_id IS NULL OR u.status <> 'suspended')"
              " AND pt.visibility = %s")
     args: list = [visibility_public]
-    if q:
+    for tok in (q or "").lower().split():
+        like = _like_token(tok)
         where += (" AND (LOWER(pt.tool_key) LIKE %s"
                   " OR LOWER(pt.label_json)::jsonb::text LIKE %s"
                   " OR LOWER(pt.desc_json)::jsonb::text LIKE %s)")
-        like = f"%{q.lower()}%"
         args += [like, like, like]
     base = (
         "FROM platform_tools pt "
@@ -115,33 +126,6 @@ def visible_to(con, visibility_public: str, viewer_id: Optional[int]) -> list:
         " ORDER BY platform_tools.featured DESC, platform_tools.sort_order,"
         " platform_tools.id",
         args).fetchall()
-
-
-def search(con, visibility_public: str, viewer_id: Optional[int],
-           like3, limit: int) -> list:
-    """Search shares ONE ordering with every list surface
-    (featured → sort_order → id) and matches key + label + desc (all
-    languages). `like3` = (key_like, label_like, desc_like)."""
-    like_k, like_l, like_d = like3
-    vis_col = "visibility = %s" if viewer_id is None \
-        else "(visibility = %s OR owner_id = %s)"
-    args = ([visibility_public] if viewer_id is None
-            else [visibility_public, viewer_id])
-    return con.execute(
-        """
-        SELECT platform_tools.*, o.username AS owner_handle
-        FROM platform_tools
-        LEFT JOIN users o ON o.id = platform_tools.owner_id
-        WHERE platform_tools.enabled AND NOT platform_tools.delisted
-          AND (platform_tools.owner_id IS NULL OR o.status <> 'suspended')
-          AND """ + vis_col + """
-          AND (LOWER(platform_tools.tool_key) LIKE %s
-               OR LOWER(platform_tools.label_json)::jsonb::text LIKE %s
-               OR LOWER(platform_tools.desc_json)::jsonb::text LIKE %s)
-        ORDER BY platform_tools.featured DESC,
-                 platform_tools.sort_order, platform_tools.id LIMIT %s
-        """,
-        args + [like_k, like_l, like_d, limit]).fetchall()
 
 
 def version_digest(con) -> dict:

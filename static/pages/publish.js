@@ -366,6 +366,11 @@ async function submit() {
     }
   }
   const isEditPatch = !!_editId;   // Web PATCH: 空 desc = 显式删除当前 locale
+  // 已存凭证的编辑态: 勾选"移除认证凭证" = 提交两个空串 (服务端
+  // build_http_binding 单点解释为清除); 未勾选且输入框为空 = 不提及, 保留旧凭证
+  const removeAuth = isEditPatch
+    && !document.getElementById("pubRemoveAuthRow").classList.contains("hidden")
+    && document.getElementById("fRemoveAuth").checked;
   // 4C-2: 受控空态 (族外 accept token) / 取消到 0 个 exact format → 拦截,
   // 禁止在未明确选择时保存覆盖原 contract。
   if (!selectedFam || collectAccept().length === 0) {
@@ -396,8 +401,8 @@ async function submit() {
       const el = document.getElementById("fOut" + k.charAt(0).toUpperCase() + k.slice(1));
       return el && el.checked;
     }),
-    auth_header: document.getElementById("fAuthHeader").value.trim() || undefined,
-    auth_token: document.getElementById("fAuthToken").value.trim() || undefined,
+    auth_header: removeAuth ? "" : (document.getElementById("fAuthHeader").value.trim() || undefined),
+    auth_token: removeAuth ? "" : (document.getElementById("fAuthToken").value.trim() || undefined),
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
     params: params.length ? params : undefined,
   };
@@ -482,6 +487,8 @@ function refill(t) {
   refreshParamNone();
   document.getElementById("pubTitle").textContent = _msg("pub_edit_title").replace("{id}", t.tool_id);
   document.getElementById("pubSubmit").textContent = _msg("pub_save");
+  // 编辑态已有凭证: 显示"移除认证凭证"勾选项 (新建态保持隐藏)
+  document.getElementById("pubRemoveAuthRow").classList.toggle("hidden", !t.has_auth);
 }
 
 // ── init ──

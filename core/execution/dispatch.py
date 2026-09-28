@@ -32,15 +32,12 @@ import json
 from config import PUBLIC_ID_RE
 from governance.catalog import resolve as resolve_tool
 
+from app.web_auth import client_ip  # single read point (trusted proxy chain)
+
 from . import ExecutionError
 from .gate import run as gate_run
 from .invocation import parse_tool_invocation, InvocationError
 from .source import resolve_upload
-
-
-def client_ip(request) -> str:
-    return request.headers.get("X-Real-IP",
-                               request.client.host if request.client else "").strip()
 
 
 def preflight(user: dict, tool_id: str, delivery: dict, params: dict):

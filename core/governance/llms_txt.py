@@ -69,7 +69,13 @@ def build_llms_txt() -> str:
     a("## Inputs (tools/call)")
     a("files[] items — 0..20 files per the tool's declared window "
       "(text-only tools take no files); each item is exactly one form:")
-    a('1. Inline: {"filename":"a.png","b64":"<base64>"}')
+    try:
+        from app.routes.mcp import MCP_MAX_BODY_BYTES
+        body_cap = f"{MCP_MAX_BODY_BYTES // (1024 * 1024)} MB"
+    except Exception:  # app layer unreachable in this process
+        body_cap = "16 MB"
+    a(f'1. Inline: {{"filename":"a.png","b64":"<base64>"}} — one /mcp '
+      f"request body is capped at {body_cap}")
     a('2. https URL: {"url":"https://example.com/a.png"} — 518 fetches it '
       'server-side (public hosts only)')
     a('3. Reference: {"public_id":"...","source_token":"..."} to an '
@@ -108,7 +114,8 @@ def build_llms_txt() -> str:
       "result expires; after it, result_url and every file link 404.")
     a("")
     a("## Large files: two-stage upload (bytes never pass through the model)")
-    a("For files too large to inline as base64, call the free meta tool "
+    a("For files too large to inline as base64 (the request body cap "
+      f"is {body_cap}), call the free meta tool "
       "create_upload first, PUT the raw bytes to the returned one-time "
       "URL, then reference the result. Staged files are intermediates, "
       "not shares: use the PUT within 10 minutes; the stored copy "
@@ -160,6 +167,33 @@ def build_llms_txt() -> str:
     a("## Billing")
     a("- Tool calls are metered in credits: 1000 credits = 1 USD. "
       "Failed calls are refunded automatically.")
+    a("")
+    a("## Limits")
+    from config import MAX_UPLOAD_BYTES as _max_bytes
+    from governance.entitlements import resolve_from_membership
+    from utils import format_bytes
+    _ent = resolve_from_membership(None)
+    a(f"- Per file: {_max_bytes // 1024 // 1024} MB (every files[] item "
+      "and every file a tool produces).")
+    a(f"- Anonymous / free accounts: up to "
+      f"{_ent['ingress_files_24h']} files and "
+      f"{format_bytes(_ent['ingress_bytes_24h'])} per rolling 24 hours.")
+    a(f"- Free delivery options: expiry_days "
+      f"{list(_ent['expiry_days'])}, allowed_downloads "
+      f"{list(_ent['download_limits'])}.")
+    a("- Membership plans raise the file count, the 24-hour total and "
+      "the delivery options — see /pricing.")
+    a("")
+    a("## Publish your own tool")
+    a("Wrap any public HTTPS endpoint as a 518 tool: implement one JSON "
+      "contract — source files arrive as one-time signed fetch URLs, "
+      f"you answer with ordered text/json/file items — and submit it at "
+      f"{BASE_URL}/account/tools/publish.")
+    a("A new tool starts unlisted; after one successful run from its "
+      "page it can go public, and then the web interface and every MCP "
+      "agent can call it, earning you credits on each paid call.")
+    a(f"Full guide — request/response examples, declarations, limits, "
+      f"pricing and commission: {BASE_URL}/developers")
     a("")
     a("## Tool catalog (every public tool, generated live — "
       "tools/list shows your working set of these)")

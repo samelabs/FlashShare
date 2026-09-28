@@ -1,0 +1,106 @@
+<p>518.PLUS 的每个工具都包装一个由你控制的 HTTPS 端点。发布一次，两个表面同时可用：给人用的网页界面，和给 AI Agent 用的 MCP 服务器——同一条调用管线、同一套结算。本页是你的端点需要实现的完整契约。</p>
+
+<h2>五分钟发布一个工具</h2>
+<ol>
+  <li>写一个 HTTPS 端点，按下面的返回格式应答 POST（页尾有 Python 与 Node 最小示例）。</li>
+  <li>在发布表单提交——每个账号最多 {{ max_tools }} 个工具，填写名称、简介、格式与参数声明。新工具默认不公开。</li>
+  <li>在工具自己的页面预览运行一次。作者本人成功运行一次后即可公开——公开后进入市场，也能被 Agent 的 <code>catalog_search</code> 搜到。</li>
+</ol>
+<p><a class="btn btn-p" href="/account/tools/publish">开始发布</a></p>
+
+<h2>请求（518 → 你的端点）</h2>
+<pre class="doc-pre" id="ex-req">POST https://your-endpoint.example/your-path
+Content-Type: application/json
+
+{
+  "files": [
+    { "filename": "photo.png", "content_type": "image/png", "size": 123456,
+      "url": "{{ base_url }}/api/source/FILE-ID?t=ONE-TIME-TOKEN" }
+  ],
+  "params": { "mode": "fast" }
+}</pre>
+<p>平台绝不推送文件内容。每个文件以一次性签名 URL 到达，同时附带文件名、类型与大小——由你的端点自行拉取（或忽略）。该 URL 恰好可用一次且很快过期，请在请求期间取回。<code>params</code> 只包含你声明的参数，别无其它。你的端点有 {{ timeout_min_s }}–{{ timeout_max_s }} 秒（你自己的设置）作答时间。</p>
+
+<h2>返回（你的端点 → 518）</h2>
+<pre class="doc-pre" id="ex-res">{
+  "items": [
+    { "kind": "text", "text": "Done — result at {{ base_url }}/f/abc123" },
+    { "kind": "json", "data": { "width": 64, "height": 32 } },
+    { "kind": "file", "filename": "out.png", "content_type": "image/png",
+      "data_b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" }
+  ]
+}</pre>
+<ul>
+  <li><strong>text</strong> 与 <strong>json</strong> 项原样存储与展示；text 中的链接按原样显示。</li>
+  <li><strong>file</strong> 项用 <code>data_b64</code>（base64 字节）或 <code>url</code>——url 由平台服务端拉取并转存为临时分享链接。</li>
+  <li>每次调用最多 {{ max_items }} 项；text+json 合计最多 {{ inline_max_bytes }} 字节；每一项的类型必须在你声明的输出集合内。</li>
+</ul>
+
+<h2>参数声明</h2>
+<p>最多 {{ max_params }} 个参数，四种类型：<code>enum</code>（固定选项）、<code>number</code>（可选最小/最大值）、<code>boolean</code>、<code>text</code>。text 取值最多 {{ text_param_chars }} 字符。必填参数由平台在校验后才会调用你的端点。</p>
+
+<h2>文件声明</h2>
+<p>接受格式声明为扩展名列表（<code>.png</code>、<code>.pdf</code>……），并声明数量窗口：0（纯文本工具）到 {{ files_max }} 个。超出声明格式的文件在调用你的端点之前就会被拒绝。单个文件最大 {{ max_upload_mb }} MB。</p>
+
+<h2>限制</h2>
+<ul>
+  <li>端点超时：{{ timeout_min_s }}–{{ timeout_max_s }} 秒（每个工具自选）。</li>
+  <li>结果项：每次调用最多 {{ max_items }} 项。</li>
+  <li>text+json 合计载荷：每次调用最多 {{ inline_max_bytes }} 字节。</li>
+  <li>单文件（输入与输出）：最大 {{ max_upload_mb }} MB。</li>
+  <li>text 参数取值：最多 {{ text_param_chars }} 字符。</li>
+</ul>
+
+<h2>认证头</h2>
+<p>可选：提交时保存一个头名称与令牌（例如 <code>Authorization: Bearer …</code>）；平台封存令牌并在每次调用时发送该头。传输层自有的头名（Host、Content-Length……）在提交时即被拒绝。</p>
+
+<h2>安全</h2>
+<ul>
+  <li>签名源文件 URL 一次性且短时效——无法重放或分享。</li>
+  <li>你的端点必须是公网 HTTPS：私网、回环与元数据地址一律拒绝（每一跳含重定向都做 SSRF 校验）。</li>
+  <li>端点返回的一切都会按平台格式白名单做字节校验后再存储；不匹配即失败。</li>
+</ul>
+
+<h2>发布门</h2>
+<p>工具创建时不公开。作者在工具页面成功运行一次后解锁公开；平台不做其它审核，但可下架违规工具。</p>
+
+<h2>定价、佣金、收益与提现</h2>
+<p>每次调用的价格由你按积分设定——0（免费）到 {{ max_price }}，1000 积分 = 1 美元。每笔成功付费调用，价格扣除 {{ commission_rate if commission_rate is not none else '—' }}% 平台佣金后计入你的收益池。收益可按美元提现（最低 ${{ min_withdrawal_usd }}）；你消费的积分是另一个独立池。</p>
+
+<h2>命名与被发现（MCP）</h2>
+<p>在 MCP 上你的工具名为 <code>owner__tool</code>（例如 <code>alice__pdf2svg</code>）。Agent 用 <code>catalog_search</code> 即可找到并直接按名调用——搜索结果自带完整 input schema。喜欢的用户可将其收藏，收藏即进入其 <code>tools/list</code> 工作集。</p>
+
+<h2>最小示例端点</h2>
+<p>Python（FastAPI）——文本进，text + json 出：</p>
+<pre class="doc-pre">from fastapi import FastAPI, Request
+
+app = FastAPI()
+
+@app.post("/shout")
+async def shout(req: Request):
+    body = await req.json()
+    text = str(body["params"].get("text", ""))
+    return {"items": [
+        {"kind": "text", "text": text.upper()},
+        {"kind": "json", "data": {"length": len(text)}},
+    ]}</pre>
+<p>Node（零依赖）——拉取签名 URL，把文件原样回传：</p>
+<pre class="doc-pre">const http = require("http"), https = require("https");
+http.createServer((req, res) => {
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", () => {
+    https.get(JSON.parse(body).files[0].url, (f) => {
+      const chunks = [];
+      f.on("data", (c) => chunks.push(c));
+      f.on("end", () => {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ items: [{
+          kind: "file", filename: "copy.png",
+          content_type: "image/png",
+          data_b64: Buffer.concat(chunks).toString("base64"),
+        }] }));
+      });
+    });
+  });
+}).listen(3000);</pre>

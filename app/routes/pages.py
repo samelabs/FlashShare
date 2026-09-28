@@ -130,6 +130,60 @@ async def privacy(request: Request):
     return templates.TemplateResponse(request, "doc.html", ctx)
 
 
+def _developer_facts() -> dict:
+    """Code-constant projection for the developer guide: every number
+    the /developers page shows comes from the authority module that
+    enforces it — the policy doc never hand-writes a limit (the page
+    renders through the app Jinja env, placeholders = these keys)."""
+    from config import MAX_UPLOAD_BYTES
+    from remote import MIN_TIMEOUT_S, MAX_TIMEOUT_S
+    from governance.tool_supply import MAX_INPUT_FILES
+    from governance.tool_params import TEXT_PARAM_MAX_CHARS, MAX_PARAMS
+    from governance.user_tools import MAX_TOOLS_PER_USER
+    from governance.commission import commission_rate
+    from execution.results import MAX_RESULT_ITEMS, MAX_INLINE_RESULT_BYTES
+    from economy.earnings import MIN_WITHDRAWAL_MILLIS
+    from app.routes.usertools import MAX_PRICE
+    with db() as con:
+        rate = commission_rate(con)
+    return {
+        "base_url": BASE_URL,
+        "max_upload_mb": MAX_UPLOAD_BYTES // 1024 // 1024,
+        "files_max": MAX_INPUT_FILES,
+        "timeout_min_s": MIN_TIMEOUT_S,
+        "timeout_max_s": MAX_TIMEOUT_S,
+        "max_items": MAX_RESULT_ITEMS,
+        "inline_max_bytes": MAX_INLINE_RESULT_BYTES,
+        "text_param_chars": TEXT_PARAM_MAX_CHARS,
+        "max_params": MAX_PARAMS,
+        "max_tools": MAX_TOOLS_PER_USER,
+        "max_price": MAX_PRICE,
+        "commission_rate": rate,
+        "min_withdrawal_usd": MIN_WITHDRAWAL_MILLIS // 1000,
+    }
+
+
+@router.get("/developers", response_class=HTMLResponse)
+async def developers(request: Request):
+    """Public developer guide: the southbound HTTP contract, request/
+    response shapes, declarations, limits and economics. Same policy-doc
+    mechanism as /terms (per-locale file, en fallback) plus one render
+    pass that substitutes the code-constant facts — open to everyone,
+    anonymous included."""
+    from app.main import templates
+    ctx = _ctx_base_impl(request, "publish")
+    lang = ctx["lang"]
+    body = _load_doc("developers.html", lang)
+    body = templates.env.from_string(body).render(_developer_facts())
+    ctx.update({
+        "shell_class": "",
+        "share_url": "",
+        "doc_title": ctx["texts"].get("developers_title", "Developer Guide"),
+        "doc_body": body,
+    })
+    return templates.TemplateResponse(request, "doc.html", ctx)
+
+
 @router.get("/agents", response_class=HTMLResponse)
 async def agents_page(request: Request):
     """Agent support surface: the MCP server."""

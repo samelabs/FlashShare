@@ -25,7 +25,8 @@ from fastapi.responses import JSONResponse, Response
 from config import BASE_URL, MAX_UPLOAD_BYTES, MCP_ALLOWED_ORIGINS, PRODUCT_VERSION
 from governance.catalog import list_catalog, mcp_name, mcp_names, tool_key_for_mcp_name
 from governance.tool_params import resolve_label
-from utils import sanitize_filename
+from utils import format_bytes, sanitize_filename
+from app.web_auth import client_ip
 
 router = APIRouter()
 _log = logging.getLogger("flashshare")
@@ -39,6 +40,10 @@ BATCH_REMOVED_IN = "2025-06-18"
 MAX_B64_BYTES = MAX_UPLOAD_BYTES * 2
 MAX_SOURCE_URL_LEN = 2048
 URL_FETCH_TIMEOUT_S = 30
+# Application-layer cap on one /mcp request body (inline base64 sources
+# are the only payload that can grow unbounded). Larger files must go
+# through the create_upload two-stage path — the rejection message says so.
+MCP_MAX_BODY_BYTES = 16 * 1024 * 1024
 # Server-defined JSON-RPC error (reserved range -32000..-32099): the
 # client_ref is bound to a different input, or its ingress is running.
 ERR_IDEMPOTENCY = -32009
@@ -58,6 +63,33 @@ def _rpc_err(id_, code, message, data=None):
     if data is not None:
         err["data"] = data
     return _rpc(id_, error=err)
+
+
+async def _read_body_limited(request: Request) -> bytes | None:
+    """Read the /mcp body under MCP_MAX_BODY_BYTES; None when it exceeds
+    the cap. Content-Length is checked first (reject without reading);
+    the stream is then read with a cumulative count so a request WITHOUT
+    Content-Length (chunked) is stopped at the first overflow byte."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > MCP_MAX_BODY_BYTES:
+                return None
+        except ValueError:
+            pass  # malformed length: the stream count below still decides
+    buf = bytearray()
+    async for chunk in request.stream():
+        buf.extend(chunk)
+        if len(buf) > MCP_MAX_BODY_BYTES:
+            return None
+    return bytes(buf)
+
+
+def _body_too_large(cors: dict) -> JSONResponse:
+    return JSONResponse(
+        _rpc_err(None, -32600,
+                 "request body too large; upload large files with create_upload"),
+        status_code=413, headers=cors)
 
 
 # ── Origin / CORS ──
@@ -150,8 +182,11 @@ async def mcp_post(request: Request):
             _rpc_err(None, -32600, "unsupported MCP-Protocol-Version",
                      {"supported": list(SUPPORTED_VERSIONS)}),
             status_code=400, headers=cors)
+    body = await _read_body_limited(request)
+    if body is None:
+        return _body_too_large(cors)
     try:
-        msg = json.loads(await request.body())
+        msg = json.loads(body)
     except Exception:
         return JSONResponse(_rpc_err(None, -32700, "parse error"),
                             headers=cors)
@@ -218,6 +253,19 @@ async def _dispatch(request: Request, user: dict, msg):
         version = (requested if isinstance(requested, str)
                    and requested in SUPPORTED_VERSIONS else LATEST)
         from governance.catalog import catalog_version
+        # The caller's real account limits, from the same entitlement
+        # projection the delivery schemas advertise (one read).
+        from governance.access_projection import project
+        ent = project(user["id"])["entitlements"]
+        limits_txt = (
+            "Your account limits: "
+            f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB per input file, up "
+            f"to {ent['ingress_files_24h']} files and "
+            f"{format_bytes(ent['ingress_bytes_24h'])} total per rolling "
+            "24 hours; your delivery options: expiry_days "
+            f"{list(ent['expiry_days'])}, allowed_downloads "
+            f"{list(ent['download_limits'])}."
+        )
         return _rpc(mid, {
             "protocolVersion": version,
             # no server→client stream exists, so no list_changed notifications
@@ -233,7 +281,10 @@ async def _dispatch(request: Request, user: dict, msg):
                 "(我的收藏). Find any other tool with catalog_search and "
                 "call it by name; pin_tool adds one to your favorites. "
                 "Pass "
-                "files inline (base64), by https URL, or by reference; "
+                "files inline (base64 — one request body is capped at "
+                f"{MCP_MAX_BODY_BYTES // (1024 * 1024)} MB; larger files "
+                "go through create_upload), by https URL, or by "
+                "reference; "
                 "for large local files call create_upload first and "
                 "PUT the raw bytes to the one-time URL it returns, "
                 "then use the returned {public_id, source_token} as "
@@ -253,7 +304,8 @@ async def _dispatch(request: Request, user: dict, msg):
                 "delete_upload (remove one by public_id — same effect "
                 "as deleting on the web). Calls are metered in "
                 "credits (1000 credits = 1 USD); failed calls are "
-                "refunded automatically. Catalog version: "
+                "refunded automatically. "
+                f"{limits_txt} Catalog version: "
                 f"{catalog_version()}."
             ),
         })
@@ -559,6 +611,76 @@ _RESULT_SCHEMA = {
 }
 
 
+def _catalog_spec(t: dict, names: dict, ent: dict) -> dict:
+    """One catalog item → THE tool spec. tools/list and catalog_search
+    share this exact constructor (name/title/description/inputSchema/
+    outputSchema/annotations), so a search hit is directly callable
+    without listing the tool first.
+
+    `names` = a shared mcp_names() map; `ent` = the calling bearer's
+    entitlements projection (delivery enums) — the discovery layer
+    advertises THIS caller's real values; tools/call still runs the
+    authoritative chain regardless of what the schema advertised."""
+    summary = _spec_summary(t, names)
+    props = {
+        "files": {
+            "type": "array",
+            "description": "Input files (optional for text-only tools): "
+                           "each item is inline base64, an https URL, or "
+                           "a reference to an existing upload",
+            "minItems": int(t.get("files_min", 1) or 0),
+            "maxItems": int(t.get("files_max", 1) or 1),
+            "items": _FILE_ITEM_SCHEMA,
+        },
+    }
+    required = ["client_ref"]
+    if int(t.get("files_min", 1) or 0) >= 1:
+        required.append("files")
+    decl = t.get("params") or []
+    if decl:
+        from governance.tool_params import to_input_schema_properties
+        sub_props, sub_required = to_input_schema_properties(decl)
+        props["params"] = {
+            "type": "object",
+            "description": "Tool parameters (validated server-side)",
+            "properties": sub_props,
+            **({"required": sub_required} if sub_required else {}),
+        }
+        # required parameter NAMES live at params.required — the
+        # top level requires params itself when any is mandatory,
+        # never the individual names.
+        if sub_required:
+            required.append("params")
+    else:
+        props["params"] = {"type": "object", "description": "Tool-specific parameters"}
+    props["delivery"] = {
+        "type": "object",
+        "description": "Result delivery policy (optional; defaults 1 day / 50 downloads)",
+        "properties": {
+            "expiry_days": {"type": "integer", "enum": list(ent["expiry_days"])},
+            "allowed_downloads": {"type": "integer", "enum": list(ent["download_limits"])},
+        },
+    }
+    props["client_ref"] = {
+        "type": "string",
+        "description": "Required stable operation identity (max 128 chars): "
+                       "generate once per logical operation and reuse the "
+                       "same value to retry it safely",
+    }
+    return {
+        "name": summary["name"],
+        "title": summary["title"],
+        "description": summary["description"],
+        "annotations": {"title": summary["title"]},
+        "inputSchema": {
+            "type": "object",
+            "properties": props,
+            "required": required,
+        },
+        "outputSchema": _RESULT_SCHEMA,
+    }
+
+
 def _tool_specs(user: dict) -> list:
     # Discovery-layer projection: schema enums show THIS bearer's real
     # entitlement (one access-projection read per _tool_specs call).
@@ -566,8 +688,6 @@ def _tool_specs(user: dict) -> list:
     # authoritative chain regardless of what the schema advertised.
     from governance.access_projection import project
     ent = project(user["id"])["entitlements"]
-    expiry_enum = list(ent["expiry_days"])
-    downloads_enum = list(ent["download_limits"])
     specs = [_CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
              _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC]
     _names = mcp_names()
@@ -575,69 +695,18 @@ def _tool_specs(user: dict) -> list:
     # everything else is found via catalog_search and called by name.
     from governance.favorites import mcp_working_set
     for t in mcp_working_set(user, list_catalog(user["id"])):
-        summary = _spec_summary(t, _names)
-        props = {
-            "files": {
-                "type": "array",
-                "description": "Input files (optional for text-only tools): "
-                               "each item is inline base64, an https URL, or "
-                               "a reference to an existing upload",
-                "minItems": int(t.get("files_min", 1) or 0),
-                "maxItems": int(t.get("files_max", 1) or 1),
-                "items": _FILE_ITEM_SCHEMA,
-            },
-        }
-        required = ["client_ref"]
-        if int(t.get("files_min", 1) or 0) >= 1:
-            required.append("files")
-        decl = t.get("params") or []
-        if decl:
-            from governance.tool_params import to_input_schema_properties
-            sub_props, sub_required = to_input_schema_properties(decl)
-            props["params"] = {
-                "type": "object",
-                "description": "Tool parameters (validated server-side)",
-                "properties": sub_props,
-                **({"required": sub_required} if sub_required else {}),
-            }
-            # required parameter NAMES live at params.required — the
-            # top level requires params itself when any is mandatory,
-            # never the individual names.
-            if sub_required:
-                required.append("params")
-        else:
-            props["params"] = {"type": "object", "description": "Tool-specific parameters"}
-        props["delivery"] = {
-            "type": "object",
-            "description": "Result delivery policy (optional; defaults 1 day / 50 downloads)",
-            "properties": {
-                "expiry_days": {"type": "integer", "enum": expiry_enum},
-                "allowed_downloads": {"type": "integer", "enum": downloads_enum},
-            },
-        }
-        props["client_ref"] = {
-            "type": "string",
-            "description": "Required stable operation identity (max 128 chars): "
-                           "generate once per logical operation and reuse the "
-                           "same value to retry it safely",
-        }
-        specs.append({
-            "name": summary["name"],
-            "title": summary["title"],
-            "description": summary["description"],
-            "inputSchema": {
-                "type": "object",
-                "properties": props,
-                "required": required,
-            },
-            "outputSchema": _RESULT_SCHEMA,
-        })
+        specs.append(_catalog_spec(t, _names, ent))
     specs.append({
         "name": "catalog_search",
         "title": "Catalog Search",
-        "description": "Find tools by keyword (id and labels, all "
-                       "languages). Returns the same name/title/"
-                       "description summary tools/list uses.",
+        "description": "Find public tools by keyword: every whitespace-"
+                       "separated term must match the tool's id, name or "
+                       "description (all AND; % and _ match literally). An "
+                       "empty query browses the most-used public tools. "
+                       "Each result carries the exact spec tools/list "
+                       "shows (inputSchema included) plus favorite — "
+                       "call it by name right away; pin_tool adds it to "
+                       "your working set.",
         "inputSchema": {
             "type": "object",
             "properties": {"q": {"type": "string"}},
@@ -649,15 +718,43 @@ def _tool_specs(user: dict) -> list:
                 "query": {"type": "string"},
                 "tools": {"type": "array", "items": {
                     "type": "object",
-                    "properties": {"name": {"type": "string"},
-                                   "title": {"type": "string"},
-                                   "description": {"type": "string"}},
-                    "required": ["name", "title", "description"]}},
+                    "properties": {
+                        "name": {"type": "string"},
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "inputSchema": {"type": "object"},
+                        "outputSchema": {"type": "object"},
+                        "annotations": {"type": "object"},
+                        "favorite": {"type": "boolean"}},
+                    "required": ["name", "title", "description",
+                                 "inputSchema", "outputSchema",
+                                 "favorite"]}},
             },
             "required": ["query", "tools"],
         },
     })
     return specs
+
+
+def _catalog_search_result(user: dict, q: str) -> dict:
+    """catalog_search result payload: public search hits projected to the
+    exact callable spec tools/list carries (shared _catalog_spec
+    constructor) plus the caller's favorite flag — one projection read
+    for this bearer's delivery enums, kept OUT of the _call_tool
+    dispatch path (the call path reads no projection)."""
+    from governance.catalog import search_catalog
+    from governance.favorites import favorite_keys
+    from governance.access_projection import project
+    hits = search_catalog(q, limit=20)
+    favs = set(favorite_keys(user["id"]))
+    _names = mcp_names()
+    ent = project(user["id"])["entitlements"]
+    tools = []
+    for h in hits:
+        spec = _catalog_spec(h, _names, ent)
+        spec["favorite"] = h["id"] in favs
+        tools.append(spec)
+    return {"query": q, "tools": tools}
 
 
 def _tool_result_error(mid, body: dict, client_ref: str, tool: dict | None = None):
@@ -679,14 +776,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602, "invalid params: arguments must be an object")
     if name == "catalog_search":
-        from governance.catalog import search_catalog, list_catalog
+        # Search IS the public market predicate (same predicate/order/
+        # projection as the home selector and /tools); empty q browses
+        # the most-used public tools. See _catalog_search_result.
         q = str(args.get("q") or "").strip()[:64]
-        hits = search_catalog(q, user["id"], limit=20) if q else []
-        by_key = {t["id"]: t for t in list_catalog(user["id"])}
-        _names = mcp_names()
-        summaries = [_spec_summary(by_key[h["id"]], _names)
-                     for h in hits if h["id"] in by_key]
-        return _meta_result(mid, {"query": q, "tools": summaries})
+        return _meta_result(mid, _catalog_search_result(user, q))
 
     if name == "create_upload":
         return _create_upload(user, mid, args, request)
@@ -846,8 +940,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                                           client_ref, tool)
             uploads[i] = _url_upload(_url, _fname, _body)
 
-    ip = request.headers.get("X-Real-IP",
-                             request.client.host if request.client else "").strip()
+    ip = client_ip(request)
 
     # Ingress receipt: client_ref IS the request_ref. Same ref + same
     # validated content replays the stored source handles (zero new

@@ -122,9 +122,33 @@ def unbind_x(con, user_id: int, ts: int) -> None:
 
 
 def update_password_hash(con, user_id: int, pw_hash: str, ts: int) -> None:
+    """Unconditional password overwrite — operator reset surface only
+    (an operator reset is an authority action and must clobber).
+    Self-service change/set use the compare-and-set variants below."""
     con.execute(
         "UPDATE users SET password_hash = %s, updated_at = %s WHERE id = %s",
         (pw_hash, ts, user_id))
+
+
+def update_password_hash_if_current(con, user_id: int, pw_hash: str,
+                                    old_hash: str, ts: int) -> int:
+    """CAS write for change_password: only the transaction whose verified
+    old hash still matches wins; a concurrent writer makes this affect
+    0 rows instead of being blindly overwritten."""
+    return con.execute(
+        "UPDATE users SET password_hash = %s, updated_at = %s"
+        " WHERE id = %s AND password_hash = %s",
+        (pw_hash, ts, user_id, old_hash)).rowcount
+
+
+def update_password_hash_if_unset(con, user_id: int, pw_hash: str,
+                                  ts: int) -> int:
+    """CAS write for set_password: only the first set of a previously
+    NULL hash wins; a concurrent setter makes this affect 0 rows."""
+    return con.execute(
+        "UPDATE users SET password_hash = %s, updated_at = %s"
+        " WHERE id = %s AND password_hash IS NULL",
+        (pw_hash, ts, user_id)).rowcount
 
 
 def set_status(con, user_id: int, status: str, ts: int) -> dict:
