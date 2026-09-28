@@ -3,78 +3,66 @@
 {% block desc %}{{ texts.market_sub }}{% endblock %}
 
 {% block content %}
-{% from "partials/tool_identity.html" import tool_card with context %}
-<section class="acct-page market-page">
-  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span>Tools</span></nav>
-  <div class="page-head">
-    <h1 data-i18n="market_title">{{ texts.market_title }}</h1>
-    <p class="page-head-sub" data-i18n="market_sub">{{ texts.market_sub }}</p>
-    <p class="hint market-dev-note" data-i18n="market_dev_note">{{ texts.market_dev_note }}</p>
-    <div class="hero-callouts">
-      <a class="open-callout" href="/account/tools/publish">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M12 12v4"/></svg>
-        <span data-i18n="publish_guide">{{ texts.publish_guide }}</span>
-        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-      </a>
-      <a class="open-callout open-callout-ghost" href="/account/tools">
-        <span data-i18n="acct_tools">{{ texts.acct_tools }}</span>
-        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-      </a>
+<section class="market-v2">
+  <div class="wrap">
+    <div class="sec-h">
+      <div>
+        <h1 data-i18n="market_title">{{ texts.market_title }}</h1>
+        <p class="sec-sub" data-i18n="market_sub">{{ texts.market_sub }}</p>
+      </div>
+      <a class="btn btn-p" href="/account/tools/publish">{{ icon_svg("upload") }}<span data-i18n="acct_tools_publish">{{ texts.acct_tools_publish }}</span></a>
     </div>
-  </div>
 
-  <div class="section-h">
-    <span class="t" data-i18n="market_all">{{ texts.market_all }}</span>
-    <span class="n">{{ market_total }}</span>
-  </div>
+    <form class="tool-search market-search" method="get" action="/tools" role="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
+      <input type="search" name="q" value="{{ market_q }}" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}" aria-label="{{ texts.tool_search_ph }}">
+    </form>
 
-  <form class="tool-search" method="get" action="/tools" role="search">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
-    <input type="search" name="q" value="{{ market_q }}" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}" aria-label="{{ texts.tool_search_ph }}">
-  </form>
-
-  {% if market_total == 0 and market_q %}
-  <div class="market-none" id="marketNone">
-    <span data-i18n="tool_search_none">{{ texts.tool_search_none }}</span>
-  </div>
-  {% elif tools_all %}
-  <div class="market-grid" id="marketGrid">
-    {% for t in tools_all %}{{ tool_card(t, lang, texts) }}{% endfor %}
-  </div>
-  {% else %}
-  <div class="empty market-empty">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-    <div class="empty-title" data-i18n="market_empty_title">{{ texts.market_empty_title }}</div>
-    <div class="empty-sub" data-i18n="market_empty_sub">{{ texts.market_empty_sub }}</div>
-    <div class="empty-actions">
-      <a class="open-callout" href="/account/tools/publish">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M12 12v4"/></svg>
-        <span data-i18n="publish_guide">{{ texts.publish_guide }}</span>
-        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-      </a>
-      <a class="open-callout open-callout-ghost" href="/account/tools">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
-        <span data-i18n="acct_tools">{{ texts.acct_tools }}</span>
-        <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-      </a>
+    {% if market_total == 0 and market_q %}
+    <div class="empty">
+      {{ icon_svg("search") }}
+      <div class="empty-title" data-i18n="tool_search_none">{{ texts.tool_search_none }}</div>
+      <div class="empty-actions"><a class="btn btn-s" href="/tools"><span data-i18n="market_all">{{ texts.market_all }}</span></a></div>
     </div>
-  </div>
-  {% endif %}
-
-  {% if market_total_pages > 1 %}
-  <nav class="market-pager" aria-label="pagination">
-    {% set qs = ('&amp;q=' ~ (market_q | urlencode)) if market_q else '' %}
-    <a class="pager-btn{% if market_page <= 1 %} disabled{% endif %}"{% if market_page > 1 %} href="/tools?page={{ market_page - 1 }}{{ qs }}"{% endif %} data-i18n="pager_prev">{{ texts.pager_prev }}</a>
-    {% for pi in market_page_items %}
-    {% if pi.ellipsis %}
-    <span class="pager-ellipsis" aria-hidden="true">…</span>
+    {% elif tools_all %}
+    <div class="bento market-bento">
+      {% for t in tools_all %}
+      <a class="tc" href="/tool/{{ t.id }}" data-tool-id="{{ t.id }}">
+        <span class="ic" aria-hidden="true">{{ icon_tool_svg(t.icon) }}</span>
+        <h4>{{ (t.label | lt(lang)) or t.id }}</h4>
+        {% if t.desc %}<p>{{ t.desc | lt(lang) }}</p>{% endif %}
+        <div class="ft2">
+          <span class="tag">{% if t.files_min == 0 and t.files_max == 0 %}{{ texts['out_kind_text'] }}{% elif t.files_min == t.files_max and t.files_max == 1 %}{{ texts.n_files_one }}{% else %}{{ texts.files_window_short.format(min=t.files_min, max=t.files_max) }}{% endif %}</span>
+          {% if t.cost %}<span class="tag cost">{{ t.cost }} {{ texts.credits_short }}</span>{% else %}<span class="tag free">{{ texts.free }}</span>{% endif %}
+          {% if t.owner_handle %}<a class="by" href="/u/{{ t.owner_handle }}">@{{ t.owner_handle }}</a>{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
     {% else %}
-    <a class="pager-num{% if pi.page == market_page %} active{% endif %}" href="/tools?page={{ pi.page }}{{ qs }}">{{ pi.page }}</a>
+    <div class="empty">
+      {{ icon_svg("wand") }}
+      <div class="empty-title" data-i18n="market_empty_title">{{ texts.market_empty_title }}</div>
+      <div class="empty-sub" data-i18n="market_empty_sub">{{ texts.market_empty_sub }}</div>
+      <div class="empty-actions"><a class="btn btn-p" href="/account/tools/publish">{{ icon_svg("upload") }}<span data-i18n="acct_tools_publish">{{ texts.acct_tools_publish }}</span></a></div>
+    </div>
     {% endif %}
-    {% endfor %}
-    <a class="pager-btn{% if market_page >= market_total_pages %} disabled{% endif %}"{% if market_page < market_total_pages %} href="/tools?page={{ market_page + 1 }}{{ qs }}"{% endif %} data-i18n="pager_next">{{ texts.pager_next }}</a>
-  </nav>
-  {% endif %}
+
+    {% if market_total_pages > 1 %}
+    <nav class="market-pager" aria-label="pagination">
+      {% set qs = ('&amp;q=' ~ (market_q | urlencode)) if market_q else '' %}
+      <a class="pager-btn{% if market_page <= 1 %} disabled{% endif %}"{% if market_page > 1 %} href="/tools?page={{ market_page - 1 }}{{ qs }}"{% endif %} data-i18n="pager_prev">{{ texts.pager_prev }}</a>
+      {% for pi in market_page_items %}
+      {% if pi.ellipsis %}
+      <span class="pager-ellipsis" aria-hidden="true">…</span>
+      {% else %}
+      <a class="pager-num{% if pi.page == market_page %} active{% endif %}" href="/tools?page={{ pi.page }}{{ qs }}">{{ pi.page }}</a>
+      {% endif %}
+      {% endfor %}
+      <a class="pager-btn{% if market_page >= market_total_pages %} disabled{% endif %}"{% if market_page < market_total_pages %} href="/tools?page={{ market_page + 1 }}{{ qs }}"{% endif %} data-i18n="pager_next">{{ texts.pager_next }}</a>
+    </nav>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}
 

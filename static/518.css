@@ -943,3 +943,34 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* hero backdrop spans the viewport, not the content column */
 .glow, .grid-bg { left: 50%; right: auto; width: 100vw; transform: translateX(-50%); }
 body { overflow-x: clip; }
+
+/* ═══ 工具市场 (v2) ═══ */
+.market-v2 { padding: 40px 0 72px; min-width: 0; }
+.market-v2 .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
+.market-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
+.market-search { margin: 0 0 20px; max-width: 460px; }
+.market-bento { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1023px) { .market-bento { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 767px) { .market-bento { grid-template-columns: 1fr 1fr; gap: 10px; } .market-v2 { padding: 24px 0 48px; } }
+
+/* ═══ /agents (v2) ═══ */
+.agents-v2 { padding: 40px 0 72px; min-width: 0; }
+.agents-v2 .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
+.agents-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
+.agents-topbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: 20px; }
+.agents-topbar .agents-url { flex: 1; min-width: 260px; }
+.agents-v2 .hint { margin: 10px 0 0; }
+.agents-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; }
+.step-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px; display: flex; gap: 12px; align-items: flex-start; }
+.step-card .n { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--brand-ink); display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; }
+.step-card p { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+.agents-tabs-wrap { margin-top: 28px; }
+.agents-tabs { margin-bottom: 12px; flex-wrap: wrap; }
+.tab-panel { position: relative; }
+.tab-copy { position: absolute; top: 10px; right: 10px; z-index: 2; }
+.tab-term { margin: 0; padding-top: 56px; white-space: pre-wrap; word-break: break-word; }
+.agents-market-link { margin-top: 28px; }
+@media (max-width: 767px) {
+  .agents-v2 { padding: 24px 0 48px; }
+  .agents-steps { grid-template-columns: 1fr; }
+}

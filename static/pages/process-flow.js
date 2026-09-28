@@ -138,7 +138,15 @@
     // 0-file tools (files_min === 0) run without any file; every other
     // tool needs at least one input file.
     if (!fileList.length && filesMin > 0) return null;
-    if (!window.__USER__) { location.href = "/auth/login"; return null; }
+    if (!window.__USER__) {
+      // login modal instead of a page jump: the picked files/params stay
+      // in this invocation's closure and the run resumes on success
+      const ok = await new Promise((res) => {
+        if (window.openAuthModal) window.openAuthModal({ mode: "login", onSuccess: () => res(true), onClose: () => res(false) });
+        else { location.href = "/auth/login"; res(false); }
+      });
+      if (!ok || !window.__USER__) return null;
+    }
     if (typeof window.newOperationRef !== "function") {
       throw new Error(errText("failed"));
     }

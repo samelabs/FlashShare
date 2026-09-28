@@ -7,7 +7,7 @@
     </a>
     <nav class="nav" aria-label="{{ texts.nav_menu }}">
       <a href="/tools" {% if page_id == 'tools' %}class="on"{% endif %} data-i18n="nav_tools">{{ texts.nav_tools }}</a>
-      <a href="/agents" {% if page_id == 'agents' %}class="on"{% endif %} data-i18n="agents_title">{{ texts.agents_title }}</a>
+      <a href="/agents" {% if page_id == 'agents' %}class="on"{% endif %} data-i18n="nav_ai">{{ texts.nav_ai }}</a>
       <a href="/account/tools/publish" {% if page_id == 'publish' %}class="on"{% endif %} data-i18n="acct_tools_publish">{{ texts.acct_tools_publish }}</a>
     </nav>
     <div class="hd-r">
@@ -58,8 +58,8 @@
         </div>
       </div>
       {% else %}
-      <a class="btn btn-q" href="/auth/login" data-i18n="signIn">{{ texts.signIn }}</a>
-      <a class="btn btn-p" href="/auth/register" data-i18n="signUp">{{ texts.signUp }}</a>
+      <a class="btn btn-q js-auth" href="/auth/login" data-i18n="signIn">{{ texts.signIn }}</a>
+      <a class="btn btn-p js-auth" href="/auth/register" data-i18n="signUp">{{ texts.signUp }}</a>
       {% endif %}
       <button class="ib menu" id="mobileNavBtn" type="button" aria-label="{{ texts.nav_menu }}" aria-haspopup="menu" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg>
@@ -75,8 +75,8 @@
     <a href="/account/tools/publish" role="menuitem">{{ icon_svg("upload") }}<span data-i18n="acct_tools_publish">{{ texts.acct_tools_publish }}</span></a>
     {% if not user %}
     <div class="mobile-nav-auth" role="group" aria-label="{{ texts['acct_nav'] }}">
-      <a class="mobile-nav-login" href="/auth/login" role="menuitem" data-i18n="signIn">{{ texts.signIn }}</a>
-      <a class="mobile-nav-register" href="/auth/register" role="menuitem" data-i18n="signUp">{{ texts.signUp }}</a>
+      <a class="mobile-nav-login js-auth" href="/auth/login" role="menuitem" data-i18n="signIn">{{ texts.signIn }}</a>
+      <a class="mobile-nav-register js-auth" href="/auth/register" role="menuitem" data-i18n="signUp">{{ texts.signUp }}</a>
     </div>
     {% endif %}
   </nav>

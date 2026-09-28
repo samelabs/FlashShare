@@ -414,7 +414,13 @@
 
     async function doRun() {
       clearError();
-      if (!window.__USER__) { window.location.href = "/auth/login"; return; }
+      if (!window.__USER__) {
+        const ok = await new Promise((res) => {
+          if (window.openAuthModal) window.openAuthModal({ mode: "login", onSuccess: () => res(true), onClose: () => res(false) });
+          else { window.location.href = "/auth/login"; res(false); }
+        });
+        if (!ok || !window.__USER__) return;
+      }
       if (!tool) return;
       if (window.toolOperationBusy && window.toolOperationBusy()) return;
       const err = validateBeforeRun();

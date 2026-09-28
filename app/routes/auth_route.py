@@ -156,6 +156,11 @@ async def x_login(request: Request):
     resp = RedirectResponse("https://x.com/i/oauth2/authorize?" + urllib.parse.urlencode(params))
     resp.set_cookie(_OAUTH_COOKIE, state, max_age=OAUTH_TTL, path="/auth/x",
                     httponly=True, secure=True, samesite="lax")
+    # short-lived return target (login flows hand it over; bind does not)
+    if not wants_bind:
+        resp.set_cookie(_X_NEXT_COOKIE, _safe_next(request.query_params.get("next")),
+                        max_age=_X_NEXT_TTL, path="/auth/x",
+                        httponly=True, secure=True, samesite="lax")
     return resp
 
 
@@ -228,8 +233,10 @@ async def x_callback(request: Request):
         resp = RedirectResponse("/account/profile", 302)
     else:
         await asyncio.to_thread(_login_maintenance, user_id)
-        resp = redirect_with_session("/", user_id)
+        resp = redirect_with_session(
+            _safe_next(request.cookies.get(_X_NEXT_COOKIE)), user_id)
     resp.delete_cookie(_OAUTH_COOKIE, path="/auth/x")
+    resp.delete_cookie(_X_NEXT_COOKIE, path="/auth/x")
     return resp
 
 
@@ -247,43 +254,112 @@ async def x_unbind(request: Request):
 
 # ── Local auth ──
 
+_X_NEXT_COOKIE = "fs_x_next"
+_X_NEXT_TTL = 600  # seconds — the X-login return target window
+
+
+def _safe_next(value) -> str:
+    """Login-return target: site-relative only ("/…", never "//…")."""
+    v = (value or "").strip()
+    # browsers treat "\\" like "/" in URLs ("/\\evil.com" == "//evil.com");
+    # control characters never belong in a return path
+    if (v.startswith("/") and not v.startswith("//")
+            and "\\" not in v and not any(ord(c) < 0x20 for c in v)):
+        return v
+    return "/"
+
+
+def _wants_json(request: Request) -> bool:
+    return "application/json" in (request.headers.get("accept") or "")
+
+
+def _auth_json_ok(user_id: int) -> JSONResponse:
+    """Success JSON for the login modal: the SAME browser session
+    cookie the form redirect mints (one create_browser_session path),
+    plus the header-swap facts."""
+    from repo.users import by_id as user_by_id
+    from identity.auth import public_user
+    from app.web_auth import create_browser_session
+    from config import COOKIE_NAME, SESSION_TTL
+    with db() as con:
+        row = user_by_id(con, user_id)
+    pub = public_user(row) if row else {}
+    token = create_browser_session(user_id)
+    resp = JSONResponse({"ok": True, "user": {
+        "username": pub.get("username"),
+        "display_name": pub.get("displayName") or pub.get("username"),
+    }})
+    resp.set_cookie(COOKIE_NAME, token, max_age=SESSION_TTL,
+                    httponly=True, secure=True, samesite="lax")
+    return resp
+
+
+def _auth_json_err(code: str, status: int = 200) -> JSONResponse:
+    """Failure JSON for the modal: the RAW domain error code (the client
+    translates via the same i18n boundary); status mirrors the form flow
+    (throttling stays 429)."""
+    return JSONResponse({"ok": False, "error": code}, status_code=status)
+
+
 @router.post("/login")
 async def login_submit(request: Request):
     from app.main import templates
     from app.web_ctx import ctx_base as _ctx_base
     texts = server_text(_lang(request))
+    wants_json = _wants_json(request)
     form = await request.form()
     login = (form.get("login") or "").strip()
     password = form.get("password") or ""
+    next_url = _safe_next(form.get("next"))
     if not login or not password:
+        if wants_json:
+            return _auth_json_err("err_fill_login")
         ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_fill_login", "Please fill in all fields")})
+        ctx.update({"shell_class": "", "share_url": "",
+                    "error": texts.get("err_fill_login", "Please fill in all fields"),
+                    "next": next_url})
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     ip = _client_ip(request)
     throttle_key = (ip, login.lower())
     if _throttled(_login_ip_failures, (ip,), _LOGIN_IP_FAIL_LIMIT, _LOGIN_FAIL_WINDOW):
+        if wants_json:
+            return _auth_json_err("err_too_many_attempts", 429)
         ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": error_text(request, "err_too_many_attempts")})
+        ctx.update({"shell_class": "", "share_url": "",
+                    "error": error_text(request, "err_too_many_attempts"),
+                    "next": next_url})
         resp = templates.TemplateResponse(request, "auth/login.html", ctx)
         resp.status_code = 429
         return resp
     if _login_throttled(throttle_key):
+        if wants_json:
+            # JSON callers get the throttle status explicitly (429); the
+            # code matches the message the form flow shows here
+            return _auth_json_err("err_login_failed", 429)
         ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
+        ctx.update({"shell_class": "", "share_url": "",
+                    "error": texts.get("err_login_failed", "Invalid credentials"),
+                    "next": next_url})
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     user_id = await asyncio.to_thread(authenticate_local, login, password)
     if not user_id:
         _record_login_failure(throttle_key)
         _record_hit(_login_ip_failures, (ip,), _LOGIN_FAIL_WINDOW)
+        if wants_json:
+            return _auth_json_err("err_login_failed")
         ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": texts.get("err_login_failed", "Invalid credentials")})
+        ctx.update({"shell_class": "", "share_url": "",
+                    "error": texts.get("err_login_failed", "Invalid credentials"),
+                    "next": next_url})
         return templates.TemplateResponse(request, "auth/login.html", ctx)
 
     _login_failures.pop(throttle_key, None)
     await asyncio.to_thread(_login_maintenance, user_id)
-    return redirect_with_session("/", user_id)
+    if wants_json:
+        return _auth_json_ok(user_id)
+    return redirect_with_session(next_url, user_id)
 
 
 @router.post("/register")
@@ -291,50 +367,64 @@ async def register_submit(request: Request):
     from app.main import templates
     from app.web_ctx import ctx_base as _ctx_base
     texts = server_text(_lang(request))
+    wants_json = _wants_json(request)
     form = await request.form()
     username = (form.get("username") or "").strip()
     email = normalize_email(form.get("email"))
     password = form.get("password") or ""
     password_confirm = form.get("password_confirm") or ""
+    next_url = _safe_next(form.get("next"))
 
-    def _err(msg, status=200):
+    def _err(msg, status=200, code=None):
+        if wants_json:
+            # JSON callers get the RAW code (client-side i18n boundary);
+            # msg here is already the translated text for the form path.
+            return _auth_json_err(code or "err_invalid_request", status)
         ctx = _ctx_base(request)
-        ctx.update({"shell_class": "", "share_url": "", "error": msg})
+        ctx.update({"shell_class": "", "share_url": "", "error": msg,
+                    "next": next_url})
         resp = templates.TemplateResponse(request, "auth/register.html", ctx)
         resp.status_code = status
         return resp
 
     ip_key = (_client_ip(request),)
     if _throttled(_register_attempts, ip_key, _REGISTER_IP_LIMIT, _REGISTER_IP_WINDOW):
-        return _err(error_text(request, "err_too_many_attempts"), 429)
+        return _err(error_text(request, "err_too_many_attempts"), 429,
+                    "err_too_many_attempts")
     _record_hit(_register_attempts, ip_key, _REGISTER_IP_WINDOW)
 
     err = validate_username(username)
     if err:
-        return _err(texts.get(err, err))
+        return _err(texts.get(err, err), code=err)
     err = validate_email(email)
     if err:
-        return _err(texts.get(err, err))
+        return _err(texts.get(err, err), code=err)
     err = validate_password(password)
     if err:
-        return _err(texts.get(err, err))
+        return _err(texts.get(err, err), code=err)
     if password != password_confirm:
-        return _err(texts.get("passwordMismatch", "Passwords do not match"))
+        return _err(texts.get("passwordMismatch", "Passwords do not match"),
+                    code="passwordMismatch")
 
     try:
         user_id = await asyncio.to_thread(register_user, username, email, password)
     except ValueError as exc:
-        return _err(error_text(request, str(exc)))
+        return _err(error_text(request, str(exc)), code=str(exc))
     except psycopg2.IntegrityError:
         if username_taken(username):
-            return _err(texts.get("err_username_taken", "err_username_taken"))
-        return _err(texts.get("err_email_taken", "err_email_taken"))
+            return _err(texts.get("err_username_taken", "err_username_taken"),
+                        code="err_username_taken")
+        return _err(texts.get("err_email_taken", "err_email_taken"),
+                    code="err_email_taken")
     except Exception:
         logger.exception("register failed for username=%s", username)
-        return _err(texts.get("err_invalid_request", "err_invalid_request"))
+        return _err(texts.get("err_invalid_request", "err_invalid_request"),
+                    code="err_invalid_request")
 
     await asyncio.to_thread(_login_maintenance, user_id)
-    return redirect_with_session("/", user_id)
+    if wants_json:
+        return _auth_json_ok(user_id)
+    return redirect_with_session(next_url, user_id)
 
 
 @router.post("/logout")

@@ -5,31 +5,38 @@
 
 {% block content %}
 <section class="auth-page">
-  <h1 data-i18n="registerTitle">{{ texts.registerTitle }}</h1>
-  {% if error %}<p class="error-note">{{ error }}</p>{% endif %}
-  <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
-  <div class="auth-divider"><span data-i18n="auth_or">{{ texts.auth_or }}</span></div>
-  <form method="post" action="/auth/register" class="auth-form" id="registerForm">
-    <label class="field">
-      <span class="field-label" data-i18n="usernameHint">{{ texts.usernameHint }}</span>
-      <input class="input" type="text" name="username" id="regUsername" required autocomplete="username" minlength="5" maxlength="32" pattern="[A-Za-z0-9_\-]{5,32}">
-    </label>
-    <label class="field">
-      <span class="field-label" data-i18n="emailLabel">{{ texts.emailLabel }}</span>
-      <input class="input" type="email" name="email" id="regEmail" required autocomplete="email" maxlength="254">
-    </label>
-    <label class="field">
-      <span class="field-label" data-i18n="newPassword">{{ texts.newPassword }}</span>
-      <input class="input" type="password" name="password" id="regPassword" required autocomplete="new-password" minlength="8" maxlength="128">
-    </label>
-    <label class="field">
-      <span class="field-label" data-i18n="confirmPasswordLabel">{{ texts.confirmPasswordLabel }}</span>
-      <input class="input" type="password" name="password_confirm" id="regPasswordConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
-    </label>
-    <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
-    <button type="submit" class="btn btn-primary btn-lg" id="regSubmit"><span data-i18n="signUp">{{ texts.signUp }}</span></button>
-  </form>
-  <p class="auth-hint"><span data-i18n="registerHint">{{ texts.registerHint }}</span> <a href="/auth/login" data-i18n="signIn">{{ texts.signIn }}</a></p>
+  <div class="auth-card">
+    <h1 data-i18n="registerTitle">{{ texts.registerTitle }}</h1>
+    <p class="auth-sub" data-i18n="auth_modal_sub">{{ texts.auth_modal_sub }}</p>
+    {% if error %}<p class="error-note">{{ error }}</p>{% endif %}
+    {% if x_login_enabled %}
+    <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login?next={{ next|urlencode }}"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
+    <div class="auth-divider"><span data-i18n="auth_or">{{ texts.auth_or }}</span></div>
+    {% endif %}
+    <form method="post" action="/auth/register" class="auth-form" id="registerForm">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="field">
+        <span class="field-label" data-i18n="usernameHint">{{ texts.usernameHint }}</span>
+        <input class="input" type="text" name="username" id="regUsername" required autocomplete="username" minlength="5" maxlength="32" pattern="[A-Za-z0-9_\-]{5,32}">
+      </label>
+      <label class="field">
+        <span class="field-label" data-i18n="emailLabel">{{ texts.emailLabel }}</span>
+        <input class="input" type="email" name="email" id="regEmail" required autocomplete="email" maxlength="254">
+      </label>
+      <label class="field">
+        <span class="field-label" data-i18n="newPassword">{{ texts.newPassword }}</span>
+        <input class="input" type="password" name="password" id="regPassword" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <label class="field">
+        <span class="field-label" data-i18n="confirmPasswordLabel">{{ texts.confirmPasswordLabel }}</span>
+        <input class="input" type="password" name="password_confirm" id="regPasswordConfirm" required autocomplete="new-password" minlength="8" maxlength="128">
+      </label>
+      <p class="form-hint" id="pwMismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
+      <button type="submit" class="btn btn-p btn-lg" id="regSubmit"><span data-i18n="signUp">{{ texts.signUp }}</span></button>
+    </form>
+    <p class="auth-hint"><span data-i18n="registerHint">{{ texts.registerHint }}</span> <a href="/auth/login?next={{ next|urlencode }}" data-i18n="signIn">{{ texts.signIn }}</a></p>
+    <p class="auth-terms"><a href="/terms" data-i18n="footer_terms">{{ texts.footer_terms }}</a> · <a href="/privacy" data-i18n="footer_privacy">{{ texts.footer_privacy }}</a></p>
+  </div>
 </section>
 {% endblock %}
 
