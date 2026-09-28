@@ -981,3 +981,17 @@ body { overflow-x: clip; }
   .pub-cols { display: flex; flex-direction: column-reverse; }
   .pub-aside { position: static; }
 }
+
+/* account area uses the full content width (the default shell caps at 880) */
+.shell:has(.acct-page) { width: min(var(--wrap), calc(100vw - var(--s4))); }
+.acct-bal-num { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--ink); }
+.acct-bal-label { font-size: var(--fs-sm); color: var(--ink-3); margin-top: 4px; }
+@media (max-width: 1100px) {
+  .pub-cols { display: flex; flex-direction: column-reverse; }
+  .pub-aside { position: static; }
+}
+@media (max-width: 767px) {
+  .acct-card { min-width: 0; }
+  .acct-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .acct-tablewrap .acct-table { white-space: nowrap; }
+}

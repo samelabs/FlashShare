@@ -58,11 +58,13 @@
   </div>
   {% endif %}
 
+  {% set m = access.membership if access else None %}
+  {% set sellable = plans | selectattr("ready") | list %}
+  {% if m or sellable %}
   <div class="acct-card">
     <div class="acct-card-head">
       <h2 data-i18n="sub_title">{{ texts.sub_title }}</h2>
     </div>
-    {% set m = access.membership if access else None %}
     {% if m %}
     <div class="sub-status">
       <span class="sub-badge{% if m.member %} on{% endif %}">{{ m.name }}</span>
@@ -76,7 +78,6 @@
       {# plan/date 插值属服务端事实, 语言切换由整页刷新承载 (与 sub_until 同模式) #}
     </div>
     {% endif %}
-    {% set sellable = plans | selectattr("ready") | list %}
     {% if sellable %}
     <div class="topup-grid sub-grid">
       {% for pl in sellable %}
@@ -103,6 +104,7 @@
     {% endif %}
     <p class="acct-card-sub" data-i18n="sub_note">{{ texts.sub_note }}</p>
   </div>
+  {% endif %}
 
 
   <div class="acct-card">
