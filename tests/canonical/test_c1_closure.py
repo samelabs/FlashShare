@@ -344,24 +344,22 @@ check("E6 delivery docstring: coerce_share_delivery mention removed",
 # ══════════ F. UI consistency ══════════
 _tpl = open(_os.path.join(_REPO, "app", "templates", "tool_page.html"),
             encoding="utf-8").read()
-check("F1 tool page: crumbs + unified count + localized outputs + one MCP entry",
-      'class="crumbs"' in _tpl
-      and "tool_files_window" not in _tpl
+check("F1 tool page: unified count + localized outputs + one MCP entry",
+      "tool_files_window" not in _tpl
       and "files_window_short" in _tpl and "n_files_one" in _tpl
       and "out_kind_" in _tpl and "{{ o }}" not in _tpl
       and _tpl.count("toolMcpName") == 1
-      and 'copyfield toolpage-mcp' in _tpl.split("toolpage-run", 1)[1],
+      and 'class="mcpline"' in _tpl,
       "")
 _res = open(_os.path.join(_REPO, "app", "templates", "result.html"),
             encoding="utf-8").read()
 _det = open(_os.path.join(_REPO, "app", "templates", "detail.html"),
             encoding="utf-8").read()
 check("F2 /r + /f share the action bar inside the card",
-      'class="row row-wrap r-actions"' in _res
-      and 'class="row row-wrap r-actions file-actions"' in _det
-      and _det.index("r-actions file-actions")
-          < _det.index("file-hero-row")
-      and _res.index("r-actions") > _res.index("page-head-meta")
+      'class="acts"' in _res
+      and 'class="acts"' in _det
+      and _det.index('class="acts"') < _det.index("rc-preview")
+      and 'class="linkbar"' in _res and 'class="linkbar"' in _det
       and "rPrintBtn" not in _res
       and "rShareBtn" in _res and "shareImgBtn" in _det, "")
 check("F3 /f stray empty divider gone (owner tools only render for owners)",

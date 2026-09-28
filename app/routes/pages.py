@@ -797,7 +797,11 @@ async def result_page(result_id: str, request: Request):
             # computed by the single calculator.
             d["remaining"] = None
             u = uploads_by_pid.get(d.get("public_id"))
-            if u is not None:
+            if u is None:
+                # no mapping row → the file was deleted; dead row, no
+                # download control (presentation only, no new fields)
+                d["deleted"] = True
+            else:
                 live = await asyncio.to_thread(storage_info, u["gokapi_id"]) \
                     if u["gokapi_id"] else None
                 d["remaining"] = remaining_downloads(
@@ -814,6 +818,18 @@ async def result_page(result_id: str, request: Request):
         from governance.tool_params import resolve_label
         tool_name = resolve_label(_json.loads(trow["label_json"]),
                                   ctx["lang"]) or tool_name
+    # human type from the format-family vocabulary (no raw MIME) —
+    # resolved once ctx texts exist
+    from governance.formats import sniff_ext_to_families
+    for d in items:
+        if d.get("kind") != "file":
+            continue
+        _fn = d.get("filename") or ""
+        _fams = sniff_ext_to_families(
+            "." + _fn.rsplit(".", 1)[-1].lower() if "." in _fn else "")
+        _fk = ("pdf" if d.get("is_pdf") else sorted(_fams)[0]) if _fams else "document"
+        d["type_text"] = (ctx["texts"].get("fmt_family_" + _fk)
+                          or ctx["texts"].get("out_kind_text", ""))
     from utils import public_result_url
     ctx["shell_class"] = "file-shell"
     ctx.update({
@@ -823,6 +839,12 @@ async def result_page(result_id: str, request: Request):
         "expire_text": format_ts(int(expire_at)),
         "items": items,
         "file_count": file_count,
+        "first_file": next((d for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
+        "first_file_name": next((d.get("filename") for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
+        "min_remaining": next(iter(sorted(
+            [d["remaining"] for d in items
+             if d.get("kind") == "file" and not d.get("deleted")
+             and d.get("remaining") is not None])), None),
         "result_url": public_result_url(result_id),
         "file_size_icon": icon_svg("file_size"),
         "expiry_icon": icon_svg("expiry"),

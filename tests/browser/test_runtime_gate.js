@@ -85,9 +85,9 @@ const VIEWPORTS = {
 // visual contract per page: overflow/overlap/CTA checks are generic; the
 // per-page required selectors anchor "this page actually rendered".
 const PAGES = [
-  { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-card"] },
+  { path: "/", name: "home", anonOk: true, need: ["#toolInput", "#homeBento .tc"] },
   { path: "/tools", name: "tools", anonOk: true, need: [] },
-  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", "#toolRunForm"] },
+  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"] },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#mcpConf", "#cfgClaudeCode", "#cfgVscode", "#cfgClaudeDesktop"], copy: ["#copyMcp", "#copyConf"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
@@ -237,7 +237,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         await menuBtn.click();
         await page.waitForSelector("#userDropdown:not(.hidden)", { timeout: 5000 });
         await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), logout.click()]);
-        check("web logout: back to anon", (await page.$(".topbar-login")) !== null);
+        check("web logout: back to anon", (await page.$('header a[href="/auth/login"]')) !== null);
       }
       await gotoReady(page, "/auth/login", "input[name=login]");
       await page.fill("input[name=login]", username);
@@ -248,10 +248,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
       // 3. home real render
       const homeAudit = await visualAudit("desktop", page, "home-logged-in", true);
-      check("home: tool grid rendered", (await page.$$(".tool-card")).length >= 1, homeAudit.bodyText.slice(0, 120));
+      check("home: tool grid rendered", (await page.$$("#homeBento .tc")).length >= 1, homeAudit.bodyText.slice(0, 120));
 
       // 4-7. upload + execute compress via real UI (home surface)
-      await page.click(".tool-card[data-tool-id=compress]");
+      await page.click(".ti-picker");
+      await page.click('.tsel-item[data-tool="compress"]');
       // params render inline in the shared input component — no overlay
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
       check("home: input component rendered (run + file picker)",

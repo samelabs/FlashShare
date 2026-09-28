@@ -396,8 +396,8 @@ part = _rd("app", "templates", "partials", "tool_identity.html")
 check("G3 partial 消费 icon_tool_svg 单一 renderer",
       "icon_tool_svg" in part and "icon_svg(" not in part)
 home_src3 = _rd("app", "templates", "home.html")
-check("G3b home 工具卡经 partial (无 icon_path 工具渲染)",
-      "tool_pick(" in home_src3
+check("G3b home 工具卡经 canonical renderer (无 icon_path 工具渲染)",
+      "icon_tool_svg(" in home_src3
       and '{{ icon_path(t.icon' not in home_src3)
 # G4 卡面单源: 唯一 interior macro 渲染 图标/名称/描述/官方标/输入/输出/价格,
 # 两个包装宏 (link/pick) 都消费它; author/calls 槽位不进卡 (页头/详情页职责):
@@ -424,12 +424,13 @@ for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html",
 # G7 card href 仍是 Tool Page:
 check("G7 card href = /tool/{id}",
       'href="/tool/{{ t.id }}"' in part)
-# G8 home 保持执行 surface (pick div, 非导航 a):
+# G8 v2 home: bento cards navigate to the tool page; the execution
+# surface is the composer (mount + in-place tool selector):
 home_src = _rd("app", "templates", "home.html")
-check("G8 home tool-card 为执行 surface (partial div role=button, home 无导航 a)",
-      '<div class="tool-card"' in part and 'role="button"' in part
-      and "tool_pick(" in home_src
-      and '<a class="tool-card"' not in home_src)
+check("G8 home 卡为导航面 + composer 为执行面 (选择器原地切换)",
+      'href="/tool/{{ t.id }}"' in home_src
+      and 'id="toolInput"' in home_src
+      and "icon_tool_svg(" in home_src)
 check("PG19 production 零 deprecated icon fallback 字面 (wand 兜底仅 icons.py)",
       sum(_rd("app", "templates", t).count('or "wand"')
           for t in ("home.html", "tools_market.html", "user_page.html")) == 0)

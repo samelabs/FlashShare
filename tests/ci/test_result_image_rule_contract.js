@@ -61,7 +61,7 @@ function runRenderItems(item, contentType) {
     { kind: "file", public_id: "p1", filename: "a.png", size: 8,
       download_url: "/f/p1?download=1", page_url: "/f/p1" },
     "image/png");
-  assert.ok(html.includes('rs-image'),
+  assert.ok(html.includes('class="pv img"'),
     "image/png generates a result preview");
   assert.ok(html.includes("/f/p1/inline"),
     "image/png preview uses the /inline URL");

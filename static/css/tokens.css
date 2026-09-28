@@ -1,59 +1,60 @@
 /* ══════════════════════════════════════════════════════════════
-   518.PLUS design tokens — the ONLY place raw design values live.
+   518.PLUS design tokens — the ONLY place raw design values live
+   (values per the approved v2 prototype :root).
    components.css consumes tokens; page CSS consumes both.
-   Names are semantic (surface/ink/line/…) so a dark theme can be
-   added later as one [data-theme="dark"] override block.
+   Guarded by tools/guard_css_tokens.py: no :root anywhere else,
+   every variable reference must resolve here, no raw hex outside
+   this file.
    ══════════════════════════════════════════════════════════════ */
 
 :root {
   color-scheme: light;
 
-  /* ── Color: brand (the one constant across redesigns) ── */
+  /* ── Color: brand ── */
   --brand: #ff4d4d;
-  --brand-strong: #ff2442;
+  --brand-600: #e5383b;
+  --brand-50: #fff3f3;
+  --brand-100: #ffe2e2;
+  --brand-strong: #ff2442;            /* hover on brand fills */
   --brand-deep: #e63b3b;
-  --brand-soft: #fff1f2;
-  --brand-ink: #ffffff;              /* text on brand fills */
+  --brand-soft: #fff1f2;              /* legacy soft name, same role */
+  --brand-ink: #ffffff;               /* text on brand fills */
+  --ink-hover: #262a31;               /* hover on ink (dark) fills */
 
   /* ── Color: neutral surfaces & ink ── */
-  --gray-50: #f7f9f9;
+  --ink: #0b0d10;
+  --ink-2: #454b54;
+  --ink-3: #8a909a;
+  --ink-4: #b4b9c1;
+  --line: rgba(11, 13, 16, 0.08);
+  --line-2: rgba(11, 13, 16, 0.14);
+  --bg: #fbfbfc;
+  --card: #ffffff;
+  --sunk: #f4f5f7;                    /* wells, code, chips */
+  --overlay: rgba(11, 13, 16, 0.5);
+
+  /* ── Color: semantic ── */
+  --ok: #12a150;
+  --ok-50: #eafbf1;
+  --warn: #f59e0b;
+  --warn-50: #fffbeb;
+  --danger: #dc2626;
+  --danger-strong: #b91c1c;
+  --danger-50: #fef2f2;
+  --info: #2563eb;
+  --info-50: #eff6ff;
+
+  /* ── Color: raw ramp (rare, direct use) ── */
   --gray-100: #f2f4f5;
   --gray-200: #e8ecee;
   --gray-300: #d4dcdf;
   --gray-400: #b3bfc4;
-  --gray-500: #7d8b91;
-  --gray-600: #536471;
   --gray-700: #38444c;
-  --gray-800: #1d272e;
   --gray-900: #0f1419;
 
-  --surface-page: #f5f5f7;           /* app background */
-  --surface-card: #ffffff;           /* raised content */
-  --surface-sunken: var(--gray-50);  /* wells, code blocks */
-  --surface-overlay: rgba(15, 20, 25, 0.5);
-
-  --ink: var(--gray-900);            /* primary text */
-  --ink-secondary: var(--gray-600);  /* supporting text */
-  --ink-tertiary: var(--gray-500);   /* meta/placeholder */
-  --ink-inverse: var(--brand-ink);
-
-  --line: var(--gray-200);           /* hairline */
-  --line-strong: var(--gray-300);    /* inputs/controls */
-
-  /* ── Color: semantic ── */
-  --success: #16a34a;
-  --success-soft: #f0fdf4;
-  --warning: #d97706;
-  --warning-soft: #fffbeb;
-  --danger: #dc2626;
-  --danger-strong: #b91c1c;
-  --danger-soft: #fef2f2;
-  --info: #2563eb;
-  --info-soft: #eff6ff;
-
   /* ── Typography ── */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    Helvetica, Arial, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Noto Sans SC", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font: var(--font-sans);
 
@@ -66,16 +67,8 @@
   --fs-2xl: clamp(26px, 4.5vw, 36px);
 
   --lh-tight: 1.25;
-  --lh-base: 1.5;
+  --lh-base: 1.55;
   --lh-loose: 1.65;
-
-  /* legacy text-size aliases (untouched pages still consume them) */
-  --text-xs: var(--fs-xs);
-  --text-sm: var(--fs-sm);
-  --text-base: var(--fs-base);
-  --text-lg: var(--fs-lg);
-  --text-xl: var(--fs-xl);
-  --text-2xl: var(--fs-2xl);
 
   /* ── Spacing (4px base) ── */
   --s0: 2px;
@@ -93,21 +86,17 @@
 
   /* ── Radius ── */
   --r-xs: 6px;
-  --r-sm: 8px;
-  --r: 12px;
-  --r-lg: 16px;
-  --r-full: 9999px;
+  --r-sm: 10px;
+  --r: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-full: 999px;
 
   /* ── Shadows ── */
-  --shadow-1: 0 1px 3px rgba(15, 20, 25, 0.04);
-  --shadow-2: 0 2px 8px rgba(15, 20, 25, 0.06);
-  --shadow-3: 0 8px 28px rgba(15, 20, 25, 0.12);
-  --shadow-4: 0 24px 56px rgba(15, 20, 25, 0.2);
-  /* legacy aliases */
-  --sh-sm: var(--shadow-1);
-  --sh: var(--shadow-2);
-  --sh-lg: var(--shadow-3);
-  --sh-xl: var(--shadow-4);
+  --sh-1: 0 1px 2px rgba(11, 13, 16, 0.04), 0 1px 1px rgba(11, 13, 16, 0.03);
+  --sh-2: 0 1px 2px rgba(11, 13, 16, 0.04), 0 8px 24px -8px rgba(11, 13, 16, 0.10);
+  --sh-3: 0 2px 4px rgba(11, 13, 16, 0.04), 0 24px 48px -16px rgba(11, 13, 16, 0.18);
+  --sh-4: 0 2px 4px rgba(11, 13, 16, 0.04), 0 32px 64px -20px rgba(11, 13, 16, 0.24);
 
   /* ── Borders ── */
   --border-w: 1px;
@@ -122,13 +111,39 @@
   --ease: 0.2s ease;
   --ease-in: 0.15s ease;
 
-  /* ── Layout: two content widths ──
-     reading  = result pages, doc pages, long forms
-     work     = home/tool workbench (input + results + picker)        */
-  --container-read: 760px;
-  --container-work: 1040px;
+  /* ── Layout: two content widths + page gutter ──
+     wrap = regular sections; narrow  = tool main column / result page  */
+  --wrap: 1120px;
+  --gut: 24px;
+  --container-read: 780px;
+  --container-work: 1120px;
+
+  /* ── Operator back-office surface (samelabs.css consumers) ── */
+  --sl-ok: #0f9f6e;
+  --sl-ok-soft: rgba(15, 159, 110, 0.10);
+  --sl-warn: #b7791f;
+  --sl-warn-soft: rgba(183, 121, 31, 0.10);
+  --sl-err: #d64545;
+  --sl-err-soft: rgba(214, 69, 69, 0.10);
+  --sl-purple: #7c5cf0;
+  --sl-purple-soft: rgba(124, 92, 240, 0.10);
+  --sl-surface: #ffffff;
+  --sl-line: #e8edf0;
+  --sl-th-bg: #fafbfc;
+  --sl-row-alt: #fbfcfd;
+  --sl-row-hover: #f7f9fb;
+  --sl-ink-faint: #8a97a3;
+  /* dark developer panel + terminal */
+  --term-bg: #15181d;
+  --term-ink: #c9ced6;
+  --term-dim: #6b7280;
+  --term-warm: #ff8a7a;
+  --term-ok: #7ee2a8;
+  --sl-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sl-ease: 0.15s ease;
+
   /* Breakpoints (media queries only; documented here):
-     desktop  ≥ 960px   tablet 600–959px   phone ≤ 599px (390 ref)  */
+     desktop ≥ 1024px   tablet 768–1023px   phone ≤ 767px (390 ref)  */
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -141,9 +156,9 @@ svg:not([width]):not([height]) { width: 20px; height: 20px; }
 body {
   margin: 0;
   font-family: var(--font);
-  font-size: var(--fs-base);
+  font-size: var(--fs-md);
   line-height: var(--lh-base);
-  background: var(--surface-page);
+  background: var(--bg);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -158,8 +173,8 @@ body {
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 a { color: var(--brand); text-decoration: none; }
-h1, h2 { letter-spacing: -0.02em; }
-h1, h2, h3, p, dl, dd { margin: 0; }
+h1, h2 { letter-spacing: -0.02em; margin: 0; }
+h3, p, dl, dd { margin: 0; }
 pre { margin: 0; font-family: var(--font-mono); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -167,9 +182,11 @@ pre { margin: 0; font-family: var(--font-mono); }
 }
 
 /* ── Layout containers ─────────────────────────────────────── */
+.wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gut); }
 .container-read { width: min(var(--container-read), 100% - var(--s6)); margin-inline: auto; }
 .container-work { width: min(var(--container-work), 100% - var(--s6)); margin-inline: auto; }
-@media (max-width: 599px) {
+@media (max-width: 767px) {
+  :root { --gut: 16px; }
   .container-read, .container-work { width: min(100% - var(--s4), var(--container-read)); }
 }
 
@@ -181,8 +198,8 @@ pre { margin: 0; font-family: var(--font-mono); }
 .row { display: flex; align-items: center; gap: var(--s2); }
 .row-wrap { flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
-.muted { color: var(--ink-secondary); }
-.tertiary { color: var(--ink-tertiary); }
+.muted { color: var(--ink-2); }
+.tertiary { color: var(--ink-3); }
 .nowrap { white-space: nowrap; }
 .hidden { display: none !important; }
 .visually-hidden {

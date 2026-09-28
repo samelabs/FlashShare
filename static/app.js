@@ -138,46 +138,59 @@ function newOperationRef() {
 window.newOperationRef = newOperationRef;
 
 // ── Result presentation (IO-2): the SAME structure as the /r result
-// page renders server-side — ordered items (text kept verbatim in <pre>,
-// JSON pretty-printed, files previewed/linked) with per-item actions. ──
+// page renders server-side — link bar first, then ordered items
+// (file = preview + one download; text = tinted block + copy; json =
+// collapsible code). Single input + single output file adds the
+// size-delta line. Structure classes rs-* stay stable (/r page +
+// browser suites ride on them). ──
 function renderResultItems(items, opts) {
   opts = opts || {};
-  // Standalone PWA: downloads are buttons routed through the engine
-  // authority (no <a download> navigation inside an installed PWA).
   const pwa = !!opts.pwa;
+  const inputSizes = Array.isArray(opts.inputSizes) ? opts.inputSizes : null;
   const copyBtn = (kind) =>
     '<button class="btn btn-icon btn-sm rs-copy" type="button" data-copy="' + kind +
     '" aria-label="' + t("copy") + '" title="' + t("copy") + '">' + svgIcon("copy") + "</button>";
-  const dlControl = (pid, filename, dlUrl) => {
-    dlUrl = dlUrl || ("/f/" + encodeURIComponent(pid) + "?download=1");
+  const dlControl = (it) => {
+    const dlUrl = it.download_url ||
+      ("/f/" + encodeURIComponent(it.public_id) + "?download=1");
     return pwa
       ? '<button class="btn btn-secondary btn-sm rs-dl" type="button" data-dl-url="' + escapeHtml(dlUrl) +
-        '" data-dl-name="' + escapeHtml(filename || "download") + '" aria-label="' + t("downloadFile") + '" title="' + t("downloadFile") + '">' +
-        svgIcon("download") + '<span>' + t("downloadFile") + "</span></button>"
-      : '<a class="btn btn-secondary btn-sm rs-dl" href="' + escapeHtml(dlUrl) + '" download aria-label="' + t("downloadFile") + '">' +
-        svgIcon("download") + '<span>' + t("downloadFile") + "</span></a>";
+        '" data-dl-name="' + escapeHtml(it.filename || "download") + '" aria-label="' + t("downloadFile") +
+        '" title="' + t("downloadFile") + '">' + svgIcon("download") + "<span>" + t("downloadFile") + "</span></button>"
+      : '<a class="btn btn-secondary btn-sm rs-dl" href="' + escapeHtml(dlUrl) +
+        '" download aria-label="' + t("downloadFile") + '" title="' + t("downloadFile") + '">' +
+        svgIcon("download") + "<span>" + t("downloadFile") + "</span></a>";
   };
-  const fileRow = (it, withCounter) => {
+  const fileItems = (items || []).filter((it) => it.kind === "file");
+  const showDelta = inputSizes && inputSizes.length === 1 && fileItems.length === 1
+    && fileItems[0].size;
+  const fileRow = (it) => {
     const ct = it.content_type || "";
     const isImg = ct.startsWith("image/") && ct.toLowerCase() !== "image/svg+xml";
-    const glyph = isImg
-      ? '<img class="file-thumb" src="/f/' + encodeURIComponent(it.public_id) + '/inline" alt="" loading="lazy">'
-      : '<span class="file-thumb file-thumb-glyph" aria-hidden="true">' + svgIcon("doc") + "</span>";
-    const left = it.remaining != null
-      ? " · " + t("r_downloads_left") + " " + it.remaining
-      : (it.downloads ? " · " + it.downloads : "");
-    return '<div class="file-row">'
-      + glyph
-      + '<span class="file-name">' + escapeHtml(it.filename || "file") + "</span>"
-      + '<span class="file-meta">' + fmtSize(it.size || 0) + escapeHtml(left) + "</span>"
-      + dlControl(it.public_id, it.filename, it.download_url)
-      + "</div>";
+    const sizeTxt = showDelta
+      ? fmtSize(inputSizes[0]) + " → " + fmtSize(it.size || 0)
+      : fmtSize(it.size || 0);
+    let delta = "";
+    if (showDelta && inputSizes[0] > 0) {
+      const pct = Math.round((1 - (it.size || 0) / inputSizes[0]) * 100);
+      if (pct !== 0) {
+        const down = pct > 0;
+        delta = '<span class="delta' + (down ? "" : " up") + '">' + (down ? "↓ " + pct + "%" : "↑ " + (-pct) + "%") + "</span>";
+      }
+    }
+    const pv = isImg
+      ? '<img class="pv img" src="/f/' + encodeURIComponent(it.public_id) + '/inline" alt="" loading="lazy" decoding="async">'
+      : '<span class="pv doc" aria-hidden="true">' + svgIcon("doc") + "</span>";
+    return '<div class="item-file rs-item rs-file">' + pv
+      + '<div class="if-body"><b>' + escapeHtml(it.filename || "file") + "</b>"
+      + "<small>" + escapeHtml(sizeTxt) + "</small>" + delta + "</div>"
+      + '<div class="a">' + dlControl(it) + "</div></div>";
   };
   const rows = (items || []).map(function (it) {
     if (it.kind === "text") {
-      return '<div class="rs-item rs-text">'
-        + '<div class="rs-item-head"><span class="rs-item-kind">' + escapeHtml(t("r_text_out")) + "</span>" + copyBtn("text") + "</div>"
-        + '<div class="rs-body"><pre class="rs-text">' + escapeHtml(it.text || "") + "</pre></div></div>";
+      return '<div class="item-text rs-item rs-text">'
+        + '<div class="lbl"><span>' + escapeHtml(t("r_text_out")) + "</span>" + copyBtn("text") + "</div>"
+        + escapeHtml(it.text || "") + "</div>";
     }
     if (it.kind === "json") {
       const rendered = JSON.stringify(it.data, null, 2);
@@ -188,17 +201,7 @@ function renderResultItems(items, opts) {
         + "</details>"
         + '<div class="rs-item-head rs-json-head">' + copyBtn("json") + "</div></div>";
     }
-    // file item — same preview rule as the server inline/detail embed:
-    // raster/inlineable images preview; image/svg+xml never embeds.
-    const ct = it.content_type || "";
-    const isImg = ct.startsWith("image/") && ct.toLowerCase() !== "image/svg+xml";
-    if (isImg) {
-      return '<div class="rs-item rs-image">'
-        + '<span class="rs-image"><img src="/f/' + encodeURIComponent(it.public_id)
-        + '/inline" alt="' + escapeHtml(it.filename || "") + '" loading="lazy" decoding="async"></span>'
-        + '<div class="rs-item-body">' + fileRow(it, true) + "</div></div>";
-    }
-    return '<div class="rs-item rs-file">' + fileRow(it, true) + "</div>";
+    return fileRow(it);
   }).join("");
   return rows;
 }
@@ -207,14 +210,22 @@ function wireResultItemActions() {
   if (!result) return;
   result.querySelectorAll("[data-copy]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const item = btn.closest(".rs-item");
-      const pre = item ? item.querySelector(".rs-text, .rs-json") : null;
-      if (!pre) return;
+      let text = "";
+      if (btn.dataset.copy === "link") {
+        const bar = btn.closest(".linkbar");
+        const span = bar && bar.querySelector("span");
+        text = span ? span.textContent : "";
+      } else {
+        const item = btn.closest(".rs-item");
+        const pre = item ? item.querySelector(".rs-text, .rs-json") : null;
+        text = pre ? pre.textContent : "";
+      }
+      if (!text) return;
       try {
-        await navigator.clipboard.writeText(pre.textContent);
+        await navigator.clipboard.writeText(text);
         const orig = btn.innerHTML;
         btn.innerHTML = svgIcon("check");
-        btn.style.color = "var(--success)";
+        btn.style.color = "var(--ok)";
         setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 1400);
       } catch (e) { /* clipboard blocked — text stays selectable */ }
     });
@@ -231,14 +242,16 @@ function wireResultItemActions() {
 
 function showItemsResult(res) {
   // items result record ({result_id, items, expires_at, …}) → the shared
-  // result card (same rs-* components as the /r page); the /r page link
-  // exposes the durable shareable view.
+  // result card (link bar first + items; same structure the /r page
+  // renders); the link exposes the durable shareable view.
   const el = result || document.getElementById("result");
   if (!el) return;
   const pwa = !!(typeof window.isStandalonePWA === "function"
     && window.isStandalonePWA());
   const resultId = res.result_id ||
     (res.result_url ? String(res.result_url).split("/").pop() : "");
+  const linkUrl = res.result_url ||
+    (resultId ? location.origin + "/r/" + encodeURIComponent(resultId) : "");
   const files = (res.items || []).filter(it => it.kind === "file");
   const dlAll = files.length > 1
     ? '<button class="btn btn-secondary btn-sm" id="resDownloadAll" type="button">' + svgIcon("download") +
@@ -248,11 +261,20 @@ function showItemsResult(res) {
     ? '<a class="btn btn-ghost btn-sm" href="/r/' + encodeURIComponent(resultId) + '">' +
       svgIcon("eye") + "<span>" + t("resultPage") + "</span></a>"
     : "";
-  const rows = renderResultItems(res.items, { pwa: pwa });
+  const linkbar = linkUrl
+    ? '<div class="linkbar">' + svgIcon("link")
+      + "<span>" + escapeHtml(linkUrl) + "</span>"
+      + '<button class="btn btn-p rs-copy" type="button" data-copy="link">' + svgIcon("copy")
+      + "<span>" + t("copy_link") + "</span></button></div>"
+    : "";
+  const rows = renderResultItems(res.items, { pwa: pwa, inputSizes: window.__lastInputSizes || null });
+  window.__lastInputSizes = null;
   el.innerHTML =
-    '<div class="card card-pad rs-card result-card">'
-    + '<div class="rs-card-head"><h3>' + t("resultReady") + '</h3><span class="row">' + dlAll + page + "</span></div>"
-    + '<div class="rs-card-body">'
+    '<div class="out result-card">'
+    + '<div class="out-h"><span class="ok" aria-hidden="true">' + svgIcon("check") + "</span>"
+    + "<b>" + t("resultReady") + '</b><span class="t">' + dlAll + page + "</span></div>"
+    + '<div class="out-b">'
+    + linkbar
     + (rows || '<p class="empty">' + t("resultEmpty") + "</p>")
     + "</div></div>";
   el.classList.add("has-result");

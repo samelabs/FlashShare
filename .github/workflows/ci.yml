@@ -41,6 +41,8 @@ jobs:
           done < <(git ls-files '*.js')
       - name: Operator-surface class guard
         run: python tools/guard_samelabs_classes.py
+      - name: CSS token guard
+        run: python tools/guard_css_tokens.py
       - name: Source-of-truth guards
         shell: bash
         run: |

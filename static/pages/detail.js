@@ -7,8 +7,8 @@ copyBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(landingUrl.value);
   const orig = copyBtn.innerHTML;
   copyBtn.innerHTML = window.iconSvg("check");
-  copyBtn.style.color = "var(--accent)";
-  copyBtn.style.borderColor = "var(--accent)";
+  copyBtn.style.color = "var(--brand)";
+  copyBtn.style.borderColor = "var(--brand)";
   setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);
 });
 
