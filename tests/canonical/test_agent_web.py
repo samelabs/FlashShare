@@ -2,7 +2,10 @@
 """Agent-web surface (B7): robots policy, real 404, /llms.txt generated
 guide, discovery links, and share-page agent affordances.
 
-  R*  robots.txt: /f/ and /mcp fetchable; /api/ /auth/ /dh/ Disallowed;
+  R*  robots.txt: /f/ fetchable; /api/ /auth/ /dh/ /mcp Disallowed
+      (the SEO/PWA batch narrowed the crawl boundary: private/ephemeral
+      namespaces — account/samelabs/auth//r — and the POST-only machine
+      surface /mcp stay out of crawlers; share links stay fetchable);
       stale /d/ rule gone
   X*  X-Robots-Tag: noindex, nofollow on every /f/ and /mcp response
   N*  unknown page → real 404 + rendered page with home/tools/MCP/
@@ -112,9 +115,9 @@ try:
     check("R2 /f/ is fetchable (not Disallowed)",
           "Disallow: /f/" not in body and "/f/" not in body.split("Sitemap")[0], body)
     check("R3 /api/ /auth/ /dh/ stay Disallowed",
-          all(f"Disallow: {p}" in body for p in ("/api/", "/auth/", "/dh/")), body)
-    check("R4 stale /d/ rule removed; /mcp not blocked",
-          "Disallow: /d/\n" not in body and "Disallow: /mcp" not in body, body)
+          all(f"Disallow: {p}" in body for p in ("/api/", "/auth\n", "/dh/")), body)
+    check("R4 stale /d/ rule removed; /mcp not crawlable",
+          "Disallow: /d/\n" not in body and "Disallow: /mcp" in body, body)
 
     # ═══ X. per-response noindex ═══
     # (a live /f/ row is created below; first prove the /mcp half)

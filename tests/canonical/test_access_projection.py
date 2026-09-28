@@ -303,6 +303,9 @@ finally:
 _wctx.project = _boom_project
 class _AnonReq:
     state = type("S", (), {"lang": "en", "user": None})()
+    # ctx_base reads request.url.path for the canonical URL — a minimal
+    # stand-in keeps the fake a faithful Request shape
+    url = type("U", (), {"path": "/"})()
 try:
     _c = _wctx.ctx_base(_AnonReq())
     check("WC-X2 匿名 context 不调用 project (access=None)",

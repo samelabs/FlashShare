@@ -128,6 +128,12 @@ async def file_route(public_id: str, request: Request):
     ctx = _ctx_base(request)
     ctx.update({
         "shell_class": "file-shell",
+        # share page stays follow-able but never indexed; the share card
+        # wording differs from the page title, so it goes through the
+        # og_* overrides (base.html single point renders the tags)
+        "seo_robots": "noindex, follow",
+        "og_title": f"{upload['file_name']} · {format_bytes(upload['size_bytes'])}",
+        "og_desc": f"{texts['card_expires']}: {format_ts(expire_at)} · {texts['card_downloads']}: {downloads}",
         "share_url": share_url,
         "public_id": pid,
         "file_name": upload["file_name"],

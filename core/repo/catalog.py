@@ -67,6 +67,17 @@ def market_rows(con, visibility_public: str, q: Optional[str],
         "LIMIT %s OFFSET %s",
         args + [limit, offset]).fetchall()
 
+
+def public_sitemap_rows(con, visibility_public: str) -> list:
+    """sitemap.xml 的公开目录行 (tool_key + 作者 handle + 声明 updated_at),
+    无分页 — sitemap 就是全量公开集。可见性沿用 _market_base 单一谓词,
+    此处不另立规则。"""
+    base, args = _market_base(visibility_public, None)
+    return con.execute(
+        f"SELECT pt.tool_key, pt.updated_at, u.username AS owner_handle "
+        f"{base} ORDER BY pt.id", args).fetchall()
+
+
 def by_tool_key(con, tool_key: str) -> Optional[dict]:
     return con.execute(
         "SELECT * FROM platform_tools WHERE tool_key = %s", (tool_key,)).fetchone()

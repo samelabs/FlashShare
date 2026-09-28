@@ -178,10 +178,10 @@
               + (val !== undefined && val !== null ? esc(String(val)) : "") + '"></div>';
           } else {
             const ph = prm.placeholder ? esc(resolveLabel(prm.placeholder)) : "";
-            html += '<div class="prow" style="align-items:flex-start"><span class="prow-label" style="padding-top:8px">'
+            html += '<div class="prow prow-text"><span class="prow-label">'
               + esc(label) + "</span>"
               + '<textarea class="textarea tp-text" data-param="' + esc(prm.key)
-              + '" rows="2" style="flex:1;min-width:220px" placeholder="' + ph + '">'
+              + '" rows="2" placeholder="' + ph + '">'
               + (val !== undefined && val !== null ? esc(String(val)) : "") + "</textarea></div>";
           }
         });

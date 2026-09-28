@@ -290,7 +290,7 @@ select { width: auto; margin-top: 0; }
 .pub-card { display: flex; flex-direction: column; }
 .pub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s2) var(--s3); }
 .pub-grid label, .pub-grid .pub-wide { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--ink-3); }
-.pub-grid input, .pub-grid select { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; font-size: 14px; }
+.pub-grid input, .pub-grid select { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
 .pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .pub-grid .pub-wide { grid-column: 1 / -1; }
 .pub-err { font-size: 12px; color: var(--danger); min-height: 0; font-style: normal; }
@@ -300,14 +300,14 @@ select { width: auto; margin-top: 0; }
 /* 参数行编辑器 */
 .param-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--bg); }
 .param-row-head { display: grid; grid-template-columns: 1fr 130px 1fr auto auto; gap: 8px; align-items: center; }
-.param-row-head input, .param-row-head select { padding: 8px 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; font-size: 13.5px; min-width: 0; }
+.param-row-head input, .param-row-head select { padding: 8px 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; min-width: 0; }
 .param-row-head .pr-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pr-req { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
 .pr-del, .pr-opt-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; }
 @media (hover:hover) and (pointer:fine) { .pr-del:hover, .pr-opt-del:hover { color: var(--danger); } }
 .param-row-body { margin-top: 10px; }
 .pr-opt { display: grid; grid-template-columns: 140px 1fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
-.pr-opt input { padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; font-size: 13px; min-width: 0; }
+.pr-opt input { padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; min-width: 0; }
 .pr-opt .pr-opt-del { padding: 7px 10px; }
 @media (max-width: 640px) {
   .pr-opt { grid-template-columns: 1fr auto; }
@@ -320,7 +320,7 @@ select { width: auto; margin-top: 0; }
 .pr-default-wrap select, .pr-inline select { padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; }
 .pr-inline { display: flex; gap: 10px; flex-wrap: wrap; }
 .pr-inline label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
-.pr-inline input { padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; font-size: 13px; max-width: 9em; }
+.pr-inline input { padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; max-width: 9em; }
 .pr-ph-wrap input { max-width: 16em; }
 @media (max-width: 640px) {
   .param-row-head { grid-template-columns: 1fr 1fr; }
@@ -338,7 +338,14 @@ select { width: auto; margin-top: 0; }
 .ext-grid { margin-top: 8px; }
 /* 多语言行: 全宽 grid = 语言(原生名) | 名称 | 简介 | 删除 */
 .lang-row { display: grid; grid-template-columns: 108px 1fr 2fr 34px; gap: 8px; margin-bottom: 8px; }
-.lang-row .lang-pick, .lang-row input { padding: var(--s2) var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; font-size: var(--fs-sm); }
+.lang-row .lang-pick, .lang-row input { padding: var(--s2) var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
+/* 桌面紧凑输入字号 (≤767 回落 components.css 输入地板 16px, 防聚焦放大) */
+@media (min-width: 768px) {
+  .pub-grid input, .pub-grid select { font-size: 14px; }
+  .param-row-head input, .param-row-head select { font-size: 13.5px; }
+  .pr-opt input, .pr-inline input { font-size: 13px; }
+  .lang-row .lang-pick, .lang-row input { font-size: var(--fs-sm); }
+}
 .lang-row .lang-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; font-size: 14px; }
 @media (hover:hover) and (pointer:fine) { .lang-row .lang-del:hover { color: var(--danger); } }
 @media (max-width: 640px) { .lang-row { grid-template-columns: 96px 1fr 34px; } .lang-row .lang-desc { grid-column: 1 / 3; grid-row: 2; } .lang-row .lang-del { grid-row: 1; grid-column: 3; } }
