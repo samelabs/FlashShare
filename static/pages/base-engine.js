@@ -29,16 +29,22 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
       document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){try{el.setAttribute("placeholder",window.t(el.getAttribute("data-i18n-placeholder")))}catch(err){}});
       if(typeof window.__afterI18n==="function")window.__afterI18n();
     };
-    // Language switcher
+    // Language switcher — one binder for every mount (header + mobile sheet)
     (function(){
       if(window.__LANG_INIT)return;window.__LANG_INIT=true;
-      var lb=document.getElementById("langButton"),lm=document.getElementById("langMenu");
-      if(!lb||!lm)return;
-      lb.title=window.__LANG_LABELS[window.__LANG]||"English";
-      lb.addEventListener("click",function(){var h=lm.classList.toggle("hidden");lb.setAttribute("aria-expanded",h?"false":"true")});
-      lm.innerHTML=window.__SUPPORTED_LANGS.map(function(c){return'<button class="lang-option'+(c===window.__LANG?" active":"")+'" type="button" role="option" aria-selected="'+(c===window.__LANG)+'" data-lang="'+c+'">'+window.__LANG_LABELS[c]+"</button>"}).join("");
-      lm.addEventListener("click",function(e){var o=e.target.closest("[data-lang]");if(!o)return;var l=window.__SUPPORTED_LANGS.indexOf(o.dataset.lang)>=0?o.dataset.lang:"en";window.__LANG=l;document.cookie="flashshare_lang="+l+";Path=/;Max-Age=31536000;SameSite=Lax";if(typeof window.__afterI18n==="function"){lb.title=window.__LANG_LABELS[l]||"English";lm.classList.add("hidden");lb.setAttribute("aria-expanded","false");lm.querySelectorAll(".lang-option").forEach(function(b){b.classList.toggle("active",b.dataset.lang===l);b.setAttribute("aria-selected",b.dataset.lang===l)});window.applyI18n()}else{location.reload()}});
-      document.addEventListener("click",function(e){if(lb.contains(e.target)||lm.contains(e.target))return;lm.classList.add("hidden");lb.setAttribute("aria-expanded","false")});
+      var mounts=Array.prototype.slice.call(document.querySelectorAll(".lang-switch, .mobile-nav-lang"));
+      if(!mounts.length)return;
+      function langOptions(){return window.__SUPPORTED_LANGS.map(function(c){return'<button class="lang-option'+(c===window.__LANG?" active":"")+'" type="button" role="option" aria-selected="'+(c===window.__LANG)+'" data-lang="'+c+'">'+window.__LANG_LABELS[c]+"</button>"}).join("")}
+      function closeAll(){mounts.forEach(function(m){var b=m.querySelector("button[aria-haspopup]"),u=m.querySelector(".lang-menu");if(b)b.setAttribute("aria-expanded","false");if(u)u.classList.add("hidden")})}
+      mounts.forEach(function(m){
+        var lb=m.querySelector("button[aria-haspopup]"),lm=m.querySelector(".lang-menu");
+        if(!lb||!lm)return;
+        lb.title=window.__LANG_LABELS[window.__LANG]||"English";
+        lb.addEventListener("click",function(e){e.stopPropagation();var willOpen=lm.classList.contains("hidden");closeAll();if(willOpen){lm.classList.remove("hidden");lb.setAttribute("aria-expanded","true")}});
+        lm.innerHTML=langOptions();
+        lm.addEventListener("click",function(e){var o=e.target.closest("[data-lang]");if(!o)return;var l=window.__SUPPORTED_LANGS.indexOf(o.dataset.lang)>=0?o.dataset.lang:"en";window.__LANG=l;document.cookie="flashshare_lang="+l+";Path=/;Max-Age=31536000;SameSite=Lax";if(typeof window.__afterI18n==="function"){mounts.forEach(function(mm){var bb=mm.querySelector("button[aria-haspopup]"),uu=mm.querySelector(".lang-menu");if(bb)bb.title=window.__LANG_LABELS[l]||"English";if(uu){uu.classList.add("hidden");uu.querySelectorAll(".lang-option").forEach(function(b){b.classList.toggle("active",b.dataset.lang===l);b.setAttribute("aria-selected",b.dataset.lang===l)})}});lb.setAttribute("aria-expanded","false");window.applyI18n()}else{location.reload()}});
+      });
+      document.addEventListener("click",closeAll);
     })();
 
 /*

@@ -26,7 +26,6 @@ from governance.catalog import list_catalog
 from governance.catalog import seed_from_registry
 from governance.tool_params import resolve_label
 
-MAX_UPLOAD_MB = MAX_UPLOAD_BYTES // (1024 * 1024)
 from database import db
 
 
@@ -316,24 +315,47 @@ async def user_page(request: Request, handle: str):
     return templates.TemplateResponse(request, "user_page.html", ctx)
 
 
-def _delivery_projection(ctx: dict) -> str:
-    """Delivery options for the shared input component (tool pages).
-    Same entitlement source as the home surface — ctx_base's single
-    access projection; anonymous falls back to the Free capability
-    (resolve_from_membership(None)), never hand-written Free values."""
+def _limits_projection(ctx: dict) -> dict:
+    """THE single file/delivery limits projection for every input surface
+    (home, tool page, publish preview). Source is always ctx_base's access
+    projection; anonymous falls back to the Free capability
+    (resolve_from_membership(None)), never hand-written Free values.
+    Injected verbatim as window.__LIMITS__; window.__DELIVERY__ derives
+    from the same dict, so no surface can drift from another."""
     if ctx.get("access"):
         ent = ctx["access"]["entitlements"]
     else:
         from governance.entitlements import resolve_from_membership
         _raw = resolve_from_membership(None)
-        ent = {"expiry_days": list(_raw["expiry_days"]),
+        ent = {"ingress_files_24h": _raw["ingress_files_24h"],
+               "ingress_bytes_24h": _raw["ingress_bytes_24h"],
+               "expiry_days": list(_raw["expiry_days"]),
                "download_limits": list(_raw["download_limits"])}
     days = list(ent["expiry_days"])
     dls = list(ent["download_limits"])
-    return json.dumps({
-        "days": days, "downloads": dls,
+    gb = ent["ingress_bytes_24h"] / (1024 * 1024 * 1024)
+    return {
+        "maxFileMb": MAX_UPLOAD_BYTES // (1024 * 1024),
+        "dailyFiles": ent["ingress_files_24h"],
+        "dailyGb": int(gb) if gb == int(gb) else round(gb, 1),
+        "expiryDays": days,
+        "downloadLimits": dls,
         "defaultDays": 1 if 1 in days else days[0],
         "defaultDownloads": 50 if 50 in dls else dls[0],
+    }
+
+
+def _limits_json(ctx: dict) -> str:
+    return json.dumps(_limits_projection(ctx), ensure_ascii=False)
+
+
+def _delivery_projection(ctx: dict) -> str:
+    """Delivery options for the shared input component — derived from the
+    single limits projection (same source, same shape everywhere)."""
+    p = _limits_projection(ctx)
+    return json.dumps({
+        "days": p["expiryDays"], "downloads": p["downloadLimits"],
+        "defaultDays": p["defaultDays"], "defaultDownloads": p["defaultDownloads"],
     })
 
 
@@ -380,7 +402,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
             and int(tool["owner_id"]) == int(user["id"])
             and tool.get("visibility") != "public"),
         "tools_json": json.dumps([tool_public], ensure_ascii=False),
-        "limits_json": ctx.get("limits_json") or json.dumps({"max_upload_mb": MAX_UPLOAD_MB}, ensure_ascii=False),
+        "limits_json": _limits_json(ctx),
     })
     return ctx
 
@@ -459,7 +481,6 @@ async def home(request: Request):
     texts = ctx["texts"]
 
     tools = list_catalog(user["id"] if user else None)  # grid: local + remote + community (public)
-    max_mb = MAX_UPLOAD_BYTES // 1024 // 1024
     home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
         "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
         "url": BASE_URL,
@@ -470,42 +491,21 @@ async def home(request: Request):
     # back to the canonical pure Free capability (resolve_from_membership
     # (None)), never hand-written Free values. Web boundary converts the
     # internal tuples to lists once, here.
-    if ctx.get("access"):
-        ent = ctx["access"]["entitlements"]
-    else:
-        from governance.entitlements import resolve_from_membership
-        _raw = resolve_from_membership(None)
-        ent = {"plan_code": _raw["plan_code"],
-               "ingress_files_24h": _raw["ingress_files_24h"],
-               "ingress_bytes_24h": _raw["ingress_bytes_24h"],
-               "expiry_days": list(_raw["expiry_days"]),
-               "download_limits": list(_raw["download_limits"])}
-    limits = {
-        "maxMb": max_mb,
-        "dailyUploads": ent["ingress_files_24h"],
-        "dailyMb": ent["ingress_bytes_24h"] // 1024 // 1024,
-        "maxDays": max(ent["expiry_days"]),
-        "maxDownloads": max(ent["download_limits"]),
-        "expiryDays": list(ent["expiry_days"]),
-        "downloadLimits": list(ent["download_limits"]),
-    }
-    # UI default preference (not entitlement policy): keep 1/50 when
-    # allowed, else the first allowed value.
-    def_exp = 1 if 1 in ent["expiry_days"] else ent["expiry_days"][0]
-    def_dl = 50 if 50 in ent["download_limits"] else ent["download_limits"][0]
+    lim = _limits_projection(ctx)
 
     ctx.update({
         "shell_class": "",
         "share_url": home_share_url,
-        "max_mb": max_mb,
-        "daily_uploads": ent["ingress_files_24h"],
-        "daily_mb": ent["ingress_bytes_24h"] // 1024 // 1024,
+        "max_mb": lim["maxFileMb"],
+        "daily_uploads": lim["dailyFiles"],
+        "daily_mb": int(lim["dailyGb"] * 1024),
         "tools": tools,
-        "delivery_expiry_days": list(ent["expiry_days"]),
-        "delivery_download_limits": list(ent["download_limits"]),
-        "delivery_default_expiry": def_exp,
-        "delivery_default_downloads": def_dl,
-        "limits_json": json.dumps(limits),
+        "delivery_expiry_days": lim["expiryDays"],
+        "delivery_download_limits": lim["downloadLimits"],
+        "delivery_default_expiry": lim["defaultDays"],
+        "delivery_default_downloads": lim["defaultDownloads"],
+        "delivery_json": _delivery_projection(ctx),
+        "limits_json": json.dumps(lim),
         "tools_json": json.dumps(tools, ensure_ascii=False),
         "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
         "og_desc": texts.get("subtitle", texts.get("seo_desc", "")),
@@ -670,6 +670,7 @@ async def pricing_page(request: Request):
     with db() as con:
         daily = _daily_amount(con)
     ctx.update({"shell_class": "", "daily_amount": daily,
+                "max_file_mb": _limits_projection(ctx)["maxFileMb"],
                 **_shop_offers(user, membership)})
     return templates.TemplateResponse(request, "pricing.html", ctx)
 
@@ -825,6 +826,8 @@ async def account_tools_publish(request: Request):
                        tool_json=json.dumps(tool, ensure_ascii=False) if tool else "null",
                        format_manifest_json=json.dumps(format_manifest(), ensure_ascii=False),
                        commission_rate=rate)
+    ctx["limits_json"] = _limits_json(ctx)
+    ctx["delivery_json"] = _delivery_projection(ctx)
     return templates.TemplateResponse(request, "account/publish.html", ctx)
 
 

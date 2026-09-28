@@ -336,10 +336,11 @@ st, (exp, dexp), (dl, ddl), lim = _home_options()   # anonymous
 check("HD-A1 匿名 expiry options == resolve_from_membership(None) Free",
       st == 200 and exp == FREE_EXP, str(exp))
 check("HD-A2 匿名 download options == Free", dl == FREE_DL, str(dl))
-check("HD-A3 匿名 __LIMITS__ 四兼容字段+数组 来自 Free entitlement",
-      lim and lim["maxDays"] == max(FREE_EXP) and lim["maxDownloads"] == max(FREE_DL)
-      and lim["expiryDays"] == FREE_EXP and lim["downloadLimits"] == FREE_DL
-      and lim["dailyUploads"] == FREE["ingress_files_24h"], str(lim))
+check("HD-A3 匿名 __LIMITS__ 单一投影字段 来自 Free entitlement + 平台上限",
+      lim and lim["expiryDays"] == FREE_EXP and lim["downloadLimits"] == FREE_DL
+      and lim["dailyFiles"] == FREE["ingress_files_24h"]
+      and lim["maxFileMb"] > 0 and lim["dailyGb"] > 0
+      and lim["defaultDays"] == 1 and lim["defaultDownloads"] == 50, str(lim))
 
 st, (exp, dexp), (dl, ddl), lim = _home_options(_mf_ck)   # Free
 check("HD-F1 Free 登录 options == Free entitlement", st == 200 and exp == FREE_EXP and dl == FREE_DL)
@@ -349,8 +350,7 @@ st, (exp, dexp), (dl, ddl), lim = _home_options(_login_http(_mp))   # PLUS
 check("HD-P1 PLUS expiry == [1,3,7,30] (来自 projection 非模板分支)", exp == PLUS_EXP, str(exp))
 check("HD-P2 PLUS downloads == [1,10,50,100,200,1000]", dl == PLUS_DL, str(dl))
 check("HD-P3 PLUS __LIMITS__ 反映 plus entitlement",
-      lim and lim["maxDays"] == 30 and lim["maxDownloads"] == 1000
-      and lim["expiryDays"] == PLUS_EXP)
+      lim and lim["expiryDays"] == PLUS_EXP and lim["downloadLimits"] == PLUS_DL)
 
 st, (exp, dexp), (dl, ddl), lim = _home_options(_login_http(_me_))   # expired
 check("HD-E1 expired 精确回落 Free options", exp == FREE_EXP and dl == FREE_DL)
@@ -525,10 +525,11 @@ check("AP-W7 header.html 不自行推导 membership (只读 access.membership)",
 _pages_src = open(_os.path.join(_REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
 _home_blk = _pages_src.split("async def home")[1].split("async def ")[0]
 _home_code = "\n".join(l for l in _home_blk.split("\n") if not l.strip().startswith("#"))
-check("AP-H1 home 不第二次 project() (消费 ctx[access])",
-      "project(" not in _home_code and 'ctx["access"]' in _home_blk)
-check("AP-H2 home entitlement 来自 ctx access 或 resolve_from_membership(None)",
-      "resolve_from_membership(None)" in _home_blk)
+_proj_blk = _pages_src.split("def _limits_projection")[1].split("def ")[0]
+check("AP-H1 home 不第二次 project() (消费单一投影)",
+      "project(" not in _home_code and "_limits_projection(ctx)" in _home_blk)
+check("AP-H2 投影函数 entitlement 来自 ctx access 或 resolve_from_membership(None)",
+      "resolve_from_membership(None)" in _proj_blk and 'ctx["access"]' in _proj_blk)
 check("AP-H3 home block 无 plus policy / 无 DAILY_* 直用 / 无硬编码 7/200",
       '"plus"' not in _home_blk and "DAILY_UPLOADS" not in _home_blk
       and "DAILY_BYTES" not in _home_blk
@@ -537,9 +538,8 @@ check("AP-H3 home block 无 plus policy / 无 DAILY_* 直用 / 无硬编码 7/20
 # __DELIVERY__ 循环 (数据驱动, 无固定枚举), 组件读取同一来源。
 _tmpl = open(_os.path.join(_REPO, "app", "templates", "home.html"), encoding="utf-8").read()
 _deliv_blk = _tmpl[_tmpl.index("window.__DELIVERY__"):_tmpl.index("</script>", _tmpl.index("window.__DELIVERY__"))]
-check("AP-H4 __DELIVERY__ 注入用循环 (无固定 oneDay/threeDays/sevenDays 枚举)",
-      "delivery_expiry_days" in _deliv_blk
-      and "delivery_download_limits" in _deliv_blk
+check("AP-H4 __DELIVERY__ 注入自单一投影 delivery_json (无固定枚举)",
+      "delivery_json" in _deliv_blk
       and "oneDay" not in _deliv_blk and "sevenDays" not in _deliv_blk)
 check("AP-H5 模板无 plus 分支 (PLUS 30/1000 来自数据非判断)",
       "plus" not in _deliv_blk.lower())

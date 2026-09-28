@@ -26,6 +26,7 @@
         <div class="pr-name" data-i18n="pricing_free_name">{{ texts.pricing_free_name }}</div>
         <div class="pr-price">$0</div>
         <p class="pr-desc" data-i18n="pricing_free_desc">{{ texts.pricing_free_desc }}</p>
+        <div class="pr-filemax">{{ texts.pricing_file_max|replace('{mb}', max_file_mb|string) }}</div>
         {% if daily_amount > 0 %}<div class="pr-credits">{{ texts.pricing_daily.replace('{n}', daily_amount|num(lang)) }}</div>{% endif %}
         {{ perks(free) }}
         {% if not user %}<a class="btn btn-s js-auth" href="/auth/register" data-i18n="signUp">{{ texts.signUp }}</a>{% endif %}
@@ -35,6 +36,7 @@
         <div class="pr-name">{{ pl.name }}</div>
         <div class="pr-price">${{ '%.2f'|format(pl.price_cents / 100) }}<span class="pr-per">/ {{ texts.pricing_days.replace('{n}', pl.period_days|string) }}</span></div>
         <div class="pr-credits">{{ texts.pricing_credits_period.replace('{n}', pl.monthly_credits|num(lang)).replace('{d}', pl.period_days|string) }}</div>
+        <div class="pr-filemax">{{ texts.pricing_file_max|replace('{mb}', max_file_mb|string) }}</div>
         {{ perks(pl.benefits) }}
         {% if pl.action == 'subscribe' %}
         <button type="button" class="btn btn-p sub-buy" data-plan="{{ pl.id }}" data-i18n="sub_subscribe">{{ texts.sub_subscribe }}</button>
@@ -55,12 +57,13 @@
     {% if packages %}
     <h2 class="pr-h2" data-i18n="pricing_packs_title">{{ texts.pricing_packs_title }}</h2>
     <p class="pr-note" data-i18n="pricing_packs_sub">{{ texts.pricing_packs_sub }}</p>
+    <p class="pr-note" data-i18n="pricing_credits_use">{{ texts.pricing_credits_use }}</p>
     <div class="pr-packs">
       {% for p in packages %}
       <div class="pr-pack">
         <strong class="pr-pack-credits">+{{ p.credits|num(lang) }}</strong>
         <span class="pr-pack-price">${{ '%.2f'|format(p.price_cents / 100) }}</span>
-        <button type="button" class="btn btn-p btn-sm topup-buy" data-pkg="{{ p.id }}" data-i18n="topup_buy">{{ texts.topup_buy }}</button>
+        <button type="button" class="btn btn-s btn-sm topup-buy" data-pkg="{{ p.id }}" data-i18n="topup_buy">{{ texts.topup_buy }}</button>
       </div>
       {% endfor %}
     </div>

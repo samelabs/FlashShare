@@ -1,6 +1,6 @@
 {% extends "samelabs/base_samelabs.html" %}
 {% block title %}工具 {{ t.tool_key }}{% endblock %}
-{% block crumb %}运营后台 / <a href="/samelabs/tools">工具供给</a> / {{ t.tool_key }}{% endblock %}
+{% block crumb %}{{ texts.sl_brand_sub }} / <a href="/samelabs/tools">{{ texts.sl_nav_tools }}</a> / {{ t.tool_key }}{% endblock %}
 {% block body %}
 <div class="sl-cards">
   <div class="card card-pad">

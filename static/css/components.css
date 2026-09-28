@@ -173,9 +173,18 @@
 
 .item-text {
   background: var(--sunk); border-radius: var(--r); padding: 14px 16px;
-  font-size: var(--fs-base); position: relative; white-space: pre-wrap;
-  word-break: break-word; max-height: 380px; overflow: auto;
+  font-size: var(--fs-base); position: relative;
 }
+.item-text pre.rs-text { padding: 0; background: none; border-radius: 0; font-family: var(--font-sans); font-size: var(--fs-base); }
+.item-text pre.rs-text a, .rs-link-card { color: var(--brand-600); }
+.rs-link-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  padding: 12px 14px; border: var(--border-w) solid var(--line); border-radius: var(--r);
+  background: var(--card); text-decoration: none; min-width: 0;
+}
+.rs-link-card b { font-size: var(--fs-md); color: var(--ink); overflow-wrap: anywhere; }
+.rs-link-card small { flex-basis: 100%; order: 2; color: var(--ink-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-link-card .btn { margin-inline-start: auto; }
 .item-text .lbl {
   font-size: var(--fs-xs); color: var(--ink-3); display: flex;
   justify-content: space-between; align-items: center; margin-block-end: 6px;
@@ -215,7 +224,7 @@ pre.rs-text, pre.rs-json {
   background: var(--sunk); border-radius: var(--r-sm);
   padding: var(--s3); max-height: 380px; overflow: auto; margin: 0;
 }
-.rs-item.rs-text, .rs-item.rs-json { white-space: normal; font-family: var(--font-sans); }
+.rs-item.rs-json { white-space: normal; font-family: var(--font-sans); }
 .rs-json-details summary {
   list-style: none; cursor: pointer; padding: var(--s2) var(--s3);
   font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.05em;
@@ -417,9 +426,19 @@ pre.rs-text, pre.rs-json {
 .composer .c-err { margin: var(--s3) var(--s4) 0; }
 .c-files { display: flex; gap: var(--s2); flex-wrap: wrap; padding: 14px 16px 0; }
 .c-files:empty { display: none; }
-.c-files-opt { display: flex; align-items: center; gap: 8px; padding: 16px 20px 8px; min-height: 60px; font-size: 16px; color: var(--ink-3); }
-.c-files-opt[hidden] { display: none; }
-.c-files-opt svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+/* 空态上传区: 整块点击/拖入 (files_max>0 才渲染) */
+.ti-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; margin: 14px 16px 0; min-height: 132px; padding: var(--s3);
+  border: 1.5px dashed var(--line-2); border-radius: var(--r-lg);
+  background: none; font: inherit; cursor: pointer; text-align: center;
+}
+.ti-drop[hidden] { display: none; }
+.ti-drop .dz-ic svg { width: 26px; height: 26px; stroke: var(--ink-3); stroke-width: 1.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ti-drop b { font-size: var(--fs-md); font-weight: 650; color: var(--ink); }
+.ti-drop small { font-size: var(--fs-xs); color: var(--ink-3); }
+@media (hover:hover) and (pointer:fine) { .ti-drop:hover { border-color: var(--brand); background: var(--brand-50); } }
+.ti-drop:focus-visible, .ti-drop.dragover { border-color: var(--brand); background: var(--brand-50); outline: none; }
 .chipf {
   display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px;
   border: var(--border-w) solid var(--line); border-radius: 12px;
@@ -435,7 +454,7 @@ pre.rs-text, pre.rs-json {
   cursor: pointer; display: grid; place-items: center; padding: var(--s1);
   border-radius: var(--r-xs);
 }
-.chipf .x svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
+.chipf .x svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
 @media (hover:hover) and (pointer:fine) { .chipf .x:hover { color: var(--danger); background: var(--danger-50); } }
 
 .c-text {
@@ -468,13 +487,14 @@ pre.rs-text, pre.rs-json {
 }
 .ib svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 @media (hover:hover) and (pointer:fine) { .ib:hover { background: rgba(11, 13, 16, 0.05); } }
+@media (max-width: 767px) { .ib { position: relative; } .ib::after { content: ""; position: absolute; inset: -5px; } }
 .opt {
   display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
   border-radius: var(--r-full); background: var(--sunk); border: 0;
   font: inherit; font-size: 13px; color: var(--ink-2); font-weight: 500; cursor: pointer;
 }
 .opt b { color: var(--ink); font-weight: 600; }
-.opt svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.opt svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .send {
   width: 40px; height: 40px; border-radius: 50%; background: var(--brand);
   color: var(--brand-ink); border: 0; display: grid; place-items: center;
@@ -482,7 +502,7 @@ pre.rs-text, pre.rs-json {
 }
 .send svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .send.wide { width: auto; padding: 0 18px; border-radius: var(--r-full); gap: 6px; display: inline-flex; align-items: center; font: inherit; font-weight: 650; font-size: var(--fs-base); }
-.send.wide svg { width: 16px; height: 16px; }
+.send.wide svg { width: 18px; height: 18px; }
 .send:disabled { opacity: 0.55; cursor: default; pointer-events: none; }
 .ti-progress { font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
@@ -500,8 +520,16 @@ pre.rs-text, pre.rs-json {
   .composer { border-radius: 22px; }
   .c-text { min-height: 72px; font-size: var(--fs-md); }
   .c-bar { gap: 4px; }
-  .send.wide { padding: 0 14px; }
+  .send.wide { padding: 0 14px; min-height: 44px; }
+  /* 添加文件: 移动端图标按钮; .ib 统一伪元素扩点击区到 ≥44 (视觉不变) */
+  .tp-seg .tp-option { position: relative; }
+  .tp-seg .tp-option::after { content: ""; position: absolute; inset: -7px -4px; }
 }
+/* 添加文件: 桌面图标 + 文字; 输入区挂载预留高度 (CLS) */
+.ti-mount { min-height: 224px; }
+.ti-add { width: auto; min-width: 36px; padding: 0 10px; gap: 6px; font: inherit; font-size: var(--fs-sm); font-weight: 550; }
+.ti-add svg { width: 20px; height: 20px; }
+@media (max-width: 767px) { .ti-add .ti-add-label { display: none; } }
 
 /* Phone: file rows wrap — name keeps its line, meta + actions flow */
 @media (max-width: 599px) {

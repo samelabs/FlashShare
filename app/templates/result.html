@@ -36,10 +36,10 @@
       <div class="rc-files">
         {% for it in items %}
         {% if it.kind == 'text' %}
-        <div class="rs-item rs-text item-text" style="margin: 0 20px 14px">
+        <div class="rs-item item-text">
           <div class="lbl"><span data-i18n="r_text_out">{{ texts.r_text_out }}</span>
             <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-text aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button></div>
-          {{ it.text }}
+          <pre class="rs-text">{{ it.text }}</pre>
         </div>
         {% elif it.kind == 'json' %}
         <div class="rs-item rs-json" style="margin: 0 20px 14px">

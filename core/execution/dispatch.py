@@ -167,7 +167,7 @@ def source_accept_error(tool: dict, filenames: list) -> str | None:
             for fn in filenames:
                 ext = _os.path.splitext(str(fn or "").lower())[1]
                 if ext not in allowed_exts:
-                    return "err_format_mismatch"
+                    return "err_format_not_supported"
     return None
 
 

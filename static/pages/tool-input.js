@@ -3,7 +3,9 @@
 // (enum→分段按钮 / number→数字输入 / boolean→开关 / text→文本域);
 // 文件位 (files_max>0): 拖放 / 回形针选择 / 粘贴, files_min=0 标"可选"。
 // 校验走与后端同一报错边界 (统一内联提示, 不用 alert):
-//   文件数越窗 → err_file_count {min}{max}; 格式 → err_format_mismatch;
+//   文件数越窗 → err_file_count {min}{max}; 格式 → err_format_not_supported
+//   {formats}; 超单文件上限 → err_file_too_large {mb} (选择时前端预检,
+//   超限不发请求);
 //   必填参数 → param_required。
 // Ctrl/Cmd+Enter 提交。执行走全局单源 window.runToolFlow
 // (process-flow.js): files / params / delivery / client_ref 的字段、
@@ -76,7 +78,11 @@
     const thumbUrls = [];
 
     function filesMin() { return tool ? Math.max(0, tool.files_min || 0) : 1; }
-    function filesMax() { return tool ? Math.min(20, tool.files_max || 1) : 1; }
+    // files_max=0 是显式"无文件位"(纯文本工具), 不能落进 ||1 缺省
+    function filesMax() {
+      if (!tool) return 1;
+      return tool.files_max === 0 ? 0 : Math.min(20, tool.files_max || 1);
+    }
     function acceptTokens() {
       return (tool && Array.isArray(tool.accept) && tool.accept.length)
         ? tool.accept.map((a) => String(a).replace(/^\./, "").toLowerCase())
@@ -113,13 +119,24 @@
       let html = '<div class="composer ti-card" data-tool="' + esc(tool ? tool.id : "") + '">'
         + '<p class="error-note ti-error" hidden></p>';
 
-      // 文件位 (files_max>0): 已选 chip 行; files_min=0 → "可选"注记行
+      // 文件位 (files_max>0): 空态 = 整块上传区 (点击/拖入), 有文件 = chip 列表
       if (hasFilesSlot()) {
+        const countTxt = (filesMin() === filesMax() && filesMax() === 1)
+          ? t("n_files_one")
+          : t("files_window_short", { min: filesMin(), max: filesMax() });
+        const fmtTxt = accept
+          ? accept.map((a) => a.toUpperCase()).join(" · ")
+          : t("ti_accept_common");
+        const lim = window.__LIMITS__ || {};
+        const segs = [countTxt, fmtTxt];
+        if (lim.maxFileMb) segs.push(t("ti_zone_file_max", { mb: lim.maxFileMb }));
+        if (lim.dailyFiles) segs.push(t("ti_zone_daily", { n: lim.dailyFiles, gb: lim.dailyGb }));
         html += '<div class="c-files"></div>'
-          + '<div class="c-files-opt c-files-hint"' + (files.length ? ' hidden' : '') + '>'
-          + icon("clip") + "<span>"
-          + (filesMin() === 0 ? esc(t("ti_files_optional")) + " · " : "")
-          + esc(t("ti_drop_hint")) + "</span></div>";
+          + '<button type="button" class="ti-drop" aria-label="' + esc(t("ti_zone_main")) + '">'
+          + '<span class="dz-ic" aria-hidden="true">' + icon("upload") + "</span>"
+          + "<b>" + esc(t("ti_zone_main")) + "</b>"
+          + "<small>" + esc(segs.join(" · ")) + "</small>"
+          + "</button>";
       }
 
       // 正文: 主 text 参数 (或纯文件工具的拖放提示文案)
@@ -180,7 +197,8 @@
         : esc(t("ti_run"));
       html += '<div class="c-bar">'
         + (hasFilesSlot()
-          ? '<button type="button" class="ib ti-add" aria-label="' + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">' + icon("clip") + "</button>"
+          ? '<button type="button" class="ib ti-add" aria-label="' + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">'
+          + icon("clip") + '<span class="ti-add-label">' + esc(t("ti_add_files")) + "</span></button>"
           : "")
         + '<button type="button" class="opt ti-del" aria-haspopup="true" aria-expanded="false">'
         + icon("expiry") + '<span class="ti-del-label">' + dLabel + "</span></button>"
@@ -272,15 +290,24 @@
       if (!incoming.length) return;
       const accept = acceptTokens();
       const max = filesMax();
-      const rejected = [];
+      const maxBytes = ((window.__LIMITS__ || {}).maxFileMb || 50) * 1024 * 1024;
+      let rejectedFormat = null, rejectedCount = false, rejectedSize = false;
       for (const f of incoming) {
         const ext = extOf(f.name);
-        if (accept ? accept.indexOf(ext) === -1 : !EXT_TO_TYPE[ext]) { rejected.push(f.name); continue; }
-        if (files.length >= max) { rejected.push(f.name); continue; }
+        if (accept ? accept.indexOf(ext) === -1 : !EXT_TO_TYPE[ext]) {
+          rejectedFormat = accept ? accept.map((a) => a.toUpperCase()).join(" · ") : t("ti_accept_common");
+          continue;
+        }
+        if (f.size > maxBytes) { rejectedSize = true; continue; }
+        if (files.length >= max) { rejectedCount = true; continue; }
         files.push(f);
       }
-      if (rejected.length) {
-        showError(accept ? t("err_format_mismatch") : t("err_file_count", { min: filesMin(), max: max }));
+      if (rejectedFormat) {
+        showError(t("err_format_not_supported", { formats: rejectedFormat }));
+      } else if (rejectedSize) {
+        showError(t("err_file_too_large", { mb: Math.round(maxBytes / 1024 / 1024) }));
+      } else if (rejectedCount) {
+        showError(t("err_file_count", { min: filesMin(), max: max }));
       } else {
         clearError();
       }
@@ -302,8 +329,8 @@
       if (!rows) return;
       thumbUrls.forEach((u) => URL.revokeObjectURL(u));
       thumbUrls.length = 0;
-      const optLine = container.querySelector(".c-files-opt");
-      if (optLine) optLine.hidden = files.length > 0;
+      const zone = container.querySelector(".ti-drop");
+      if (zone) zone.hidden = files.length > 0;
       if (!files.length) { rows.innerHTML = ""; return; }
       rows.innerHTML = files.map((f, i) => {
         const isImg = /^image\//.test(f.type || "") && (f.type || "").toLowerCase() !== "image/svg+xml";
@@ -333,20 +360,24 @@
       const addBtns = container.querySelectorAll(".ti-add");
       const input = fileInput();
       addBtns.forEach((b) => b.addEventListener("click", () => input && input.click()));
+      const zone = container.querySelector(".ti-drop");
+      if (zone) zone.addEventListener("click", () => input && input.click());
       if (input) input.addEventListener("change", () => {
         addFiles(input.files);
         input.value = "";
       });
-      // 拖放: 整个输入卡即落点
+      // 拖放: 整个输入卡即落点; 空态上传区单独高亮
       const card = container.querySelector(".composer");
       if (card) {
         ["dragenter", "dragover"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();
           card.classList.add("dragover", "focus");
+          if (zone && !zone.hidden) zone.classList.add("dragover");
         }));
         ["dragleave", "drop"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();
           card.classList.remove("dragover");
+          if (zone) zone.classList.remove("dragover");
         }));
         card.addEventListener("drop", (e) => {
           if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);

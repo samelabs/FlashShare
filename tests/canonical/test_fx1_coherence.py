@@ -455,7 +455,7 @@ try:
     r7a = d.get("result") or {}
     t7a = ((r7a.get("content") or [{}])[0].get("text") or "")
     check("X7a content-sniff mismatch → isError (not -32602)",
-          r7a.get("isError") is True and "err_format_mismatch" in t7a
+          r7a.get("isError") is True and "err_format_not_supported" in t7a
           and "not supported" in t7a, t7a[:110])
     st, d = _call("compress", {"files": [
         {"filename": "a.pdf", "b64": base64.b64encode(b"%PDF-fake").decode()}],
@@ -463,11 +463,11 @@ try:
     r7b = d.get("result") or {}
     t7b = ((r7b.get("content") or [{}])[0].get("text") or "")
     check("X7b accept mismatch → isError with the same sentence shape",
-          r7b.get("isError") is True and "err_format_mismatch" in t7b
+          r7b.get("isError") is True and "err_format_not_supported" in t7b
           and "not supported" in t7b, t7b[:110])
     check("X7c both expressions identical shape (isError, code present)",
           (r7a.get("isError") is True) == (r7b.get("isError") is True)
-          and "err_format_mismatch" in t7a and "err_format_mismatch" in t7b)
+          and "err_format_not_supported" in t7a and "err_format_not_supported" in t7b)
 
     # ═══ X11: index uniqueness + ticket purge ═══
     with db() as con:

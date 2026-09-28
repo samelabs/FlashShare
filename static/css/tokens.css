@@ -24,7 +24,7 @@
   /* ── Color: neutral surfaces & ink ── */
   --ink: #0b0d10;
   --ink-2: #454b54;
-  --ink-3: #8a909a;
+  --ink-3: #5f6670;
   --ink-4: #b4b9c1;
   --line: rgba(11, 13, 16, 0.08);
   --line-2: rgba(11, 13, 16, 0.14);
@@ -36,6 +36,7 @@
   /* ── Color: semantic ── */
   --ok: #12a150;
   --ok-50: #eafbf1;
+  --ok-700: #0a7d3d;              /* text-grade green (4.5+ on ok-50) */
   --warn: #f59e0b;
   --warn-50: #fffbeb;
   --danger: #dc2626;
@@ -58,7 +59,7 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font: var(--font-sans);
 
-  --fs-xs: 11px;
+  --fs-xs: 12px;
   --fs-sm: 12.5px;
   --fs-base: 14px;
   --fs-md: 15px;

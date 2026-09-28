@@ -189,9 +189,9 @@ function renderResultItems(items, opts) {
   };
   const rows = (items || []).map(function (it) {
     if (it.kind === "text") {
-      return '<div class="item-text rs-item rs-text">'
+      return '<div class="rs-item item-text">'
         + '<div class="lbl"><span>' + escapeHtml(t("r_text_out")) + "</span>" + copyBtn("text") + "</div>"
-        + escapeHtml(it.text || "") + "</div>";
+        + '<pre class="rs-text">' + escapeHtml(it.text || "") + "</pre></div>";
     }
     if (it.kind === "json") {
       const rendered = JSON.stringify(it.data, null, 2);
@@ -279,6 +279,14 @@ function showItemsResult(res) {
     + (rows || '<p class="empty">' + t("resultEmpty") + "</p>")
     + "</div></div>";
   el.classList.add("has-result");
+  // A result that is one https link from the tool: the tool's link is the
+  // primary action; the platform result link stays reachable via the
+  // result-page button, not as a competing first-row link.
+  const cards = window.linkifyResultText ? window.linkifyResultText(el) : 0;
+  if (cards === 1 && (res.items || []).length === 1) {
+    const bar = el.querySelector(".out-b > .linkbar");
+    if (bar) bar.remove();
+  }
   wireResultItemActions();
   const allBtn = el.querySelector("#resDownloadAll");
   if (allBtn) allBtn.addEventListener("click", () => {

@@ -1,8 +1,8 @@
 {% extends "samelabs/base_samelabs.html" %}
-{% set page_title = "订单" %}
+{% set page_title = texts.sl_nav_orders %}
 {% set nav_id = "commerce_orders" %}
-{% block title %}订单{% endblock %}
-{% block crumb %}运营后台 / 交易 / 订单{% endblock %}
+{% block title %}{{ texts.sl_nav_orders }}{% endblock %}
+{% block crumb %}{{ texts.sl_brand_sub }} / {{ texts.sl_g_commerce }} / {{ texts.sl_nav_orders }}{% endblock %}
 {% block body %}
 <section class="sl-panel">
   <div class="sl-panel-head"><h2>订单</h2><span class="sl-panel-sub">只读记录，不做修改</span></div>

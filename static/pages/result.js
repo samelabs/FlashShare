@@ -26,6 +26,8 @@
     } catch (e) { /* clipboard blocked — SSR content stays selectable */ }
   }
 
+  window.linkifyResultText && window.linkifyResultText(document);
+
   // Per-item copy: text items copy their text, JSON items copy the
   // pretty-printed JSON exactly as rendered.
   document.querySelectorAll("[data-copy-text], [data-copy-json]").forEach((btn) => {
