@@ -518,3 +518,17 @@ pre.rs-text, pre.rs-json {
   .r-actions .btn span { display: none; }
   .r-actions .btn { width: 44px; padding: 0; }
 }
+
+/* ── Auth modal (login/register overlay, site-wide) ────────────
+   Rides the .modal/.modal-panel primitives; panel takes the v2
+   radius/shadow, forms reuse .field/.input/.btn. ── */
+.auth-modal { width: min(400px, 100%); border-radius: var(--r-xl); box-shadow: var(--sh-3); padding: var(--s5) var(--s4) var(--s4); }
+.auth-modal h2 { font-size: var(--fs-lg); font-weight: 750; text-align: center; margin: 0 0 var(--s3); }
+.auth-modal .auth-x-wrap .x-login { width: 100%; }
+.auth-modal .seg { width: 100%; margin: 0 0 var(--s3); }
+.auth-modal .seg button { flex: 1; }
+.auth-modal .auth-sub { text-align: center; font-size: var(--fs-sm); color: var(--ink-3); margin: -6px 0 var(--s3); }
+.auth-modal form { display: flex; flex-direction: column; gap: var(--form-gap); }
+.auth-modal .auth-terms { text-align: center; font-size: var(--fs-xs); color: var(--ink-3); margin: var(--s3) 0 0; }
+.auth-modal .auth-terms a { color: var(--ink-2); text-decoration: underline; }
+@media (max-width: 767px) { .auth-modal { padding: var(--s4) var(--s3); } }

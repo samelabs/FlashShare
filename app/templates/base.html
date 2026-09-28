@@ -46,9 +46,11 @@
 <script>
 window.__USER__ = {{ user_json|tojson }};
 window.__LANG = "{{ lang }}";
+window.__X_LOGIN__ = {{ x_login_enabled|tojson }};
 </script>
 <script src="/static/pages/icons.js?v={{ pages_version }}"></script>
 <script src="/static/pages/base-engine.js?v={{ pages_version }}"></script>
+<script src="/static/pages/auth-modal.js?v={{ pages_version }}"></script>
   <script src="/static/i18n.js?v={{ i18n_version }}"></script>
   {% block script_head %}{% endblock %}
   {% block script %}{% endblock %}
