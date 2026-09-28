@@ -793,17 +793,6 @@ async def result_page(result_id: str, request: Request):
             d["is_pdf"] = ct.lower() == "application/pdf"
             d["size_text"] = format_bytes(int(d.get("size") or 0))
             d["glyph"] = file_glyph(ct, d.get("filename") or "")
-            # human type from the format-family vocabulary (no raw MIME)
-            from governance.formats import sniff_ext_to_families
-            _fams = sniff_ext_to_families(
-                (d.get("filename") or "").rsplit(".", 1)[-1].lower()
-                if "." in (d.get("filename") or "") else "")
-            if _fams:
-                _fk = ("pdf" if d.get("is_pdf")
-                       else sorted(_fams)[0])
-            else:
-                _fk = "document"
-            d["type_text"] = texts.get("fmt_family_" + _fk) or texts.get("fam_" + _fk) or texts.get("out_kind_text", "")
             # Remaining downloads live in ONE place: the file row,
             # computed by the single calculator.
             d["remaining"] = None
@@ -829,6 +818,18 @@ async def result_page(result_id: str, request: Request):
         from governance.tool_params import resolve_label
         tool_name = resolve_label(_json.loads(trow["label_json"]),
                                   ctx["lang"]) or tool_name
+    # human type from the format-family vocabulary (no raw MIME) —
+    # resolved once ctx texts exist
+    from governance.formats import sniff_ext_to_families
+    for d in items:
+        if d.get("kind") != "file":
+            continue
+        _fn = d.get("filename") or ""
+        _fams = sniff_ext_to_families(
+            _fn.rsplit(".", 1)[-1].lower() if "." in _fn else "")
+        _fk = ("pdf" if d.get("is_pdf") else sorted(_fams)[0]) if _fams else "document"
+        d["type_text"] = (ctx["texts"].get("fmt_family_" + _fk)
+                          or ctx["texts"].get("out_kind_text", ""))
     from utils import public_result_url
     ctx["shell_class"] = "file-shell"
     ctx.update({
