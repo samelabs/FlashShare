@@ -70,8 +70,9 @@ def error_text(request: Request, code: str) -> str:
     return texts.get(code) or texts["err_unexpected"]
 
 
-def ctx_base(request: Request) -> dict:
-    """Base context for all pages."""
+def ctx_base(request: Request, page_id: str = "") -> dict:
+    """Base context for all pages. page_id names the surface for the
+    header nav highlight (empty string = no highlight)."""
     lang = request.state.lang
     user = request.state.user
     from economy.billing import spendable_balance as get_balance
@@ -97,6 +98,7 @@ def ctx_base(request: Request) -> dict:
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
         "support_channel": PUBLIC_SUPPORT_CHANNEL,
+        "page_id": page_id,
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
         "css_version": _CSS_VERSION,

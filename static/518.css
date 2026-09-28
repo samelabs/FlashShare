@@ -57,44 +57,21 @@ h1, h2 { letter-spacing: -0.02em; }
   .drop { padding: 28px 16px 22px; }
 }
 
-/* ── Topbar ───────────────────────────────────────────────── */
-.topbar { min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: var(--s3); padding: 0 max(var(--s2), calc((100vw - 880px) / 2 + var(--s2))); flex-shrink: 0; background: var(--card); z-index: var(--z-dropdown); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
-.brand { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; letter-spacing: -0.03em; text-decoration: none; white-space: nowrap; color: var(--ink); flex-shrink: 0; }
-.brand-mark { width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-.brand-mark img { width: 24px; height: 24px; display: block; }
-.brand-num { color: var(--brand); }
-.brand-dot { color: var(--ink); }
-.brand-plus { color: var(--ink); }
-.brand-logo { font-size: var(--fs-base); font-weight: 800; letter-spacing: -0.03em; color: var(--ink); background: none; -webkit-text-fill-color: var(--ink); }
-.brand strong { font: inherit; }
-.top-actions { display: flex; align-items: center; gap: var(--s4); flex: 0 0 auto; margin-left: var(--s3); }
+/* ── Header (v2 .hd) ─────────────────────────────────────── */
+.hd { position: sticky; top: 0; z-index: var(--z-dropdown); backdrop-filter: saturate(1.4) blur(14px); background: rgba(251, 251, 252, 0.72); border-bottom: 1px solid var(--line); }
+.hd .hd-in { height: 60px; display: flex; align-items: center; gap: 24px; }
+.logo { display: flex; align-items: center; gap: 9px; font-weight: 750; font-size: 17px; letter-spacing: -0.03em; flex-shrink: 0; white-space: nowrap; color: var(--ink); }
+.logo i { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, rgba(255, 107, 91, 1), rgba(255, 59, 79, 1)); display: grid; place-items: center; overflow: hidden; box-shadow: 0 4px 10px -2px rgba(255, 77, 77, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.logo i img { width: 16px; height: 16px; }
+.logo b { color: var(--brand); }
+.nav { display: flex; gap: 2px; }
+.nav a { padding: 7px 12px; border-radius: var(--r-full); color: var(--ink-2); font-size: var(--fs-base); font-weight: 500; }
+.nav a:hover, .nav a.on { color: var(--ink); background: rgba(11, 13, 16, 0.05); }
+.hd-r { margin-inline-start: auto; display: flex; align-items: center; gap: 6px; }
+.av { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, rgba(43, 47, 54, 1), rgba(11, 13, 16, 1)); color: var(--brand-ink); display: grid; place-items: center; font-size: 13px; font-weight: 600; margin-inline-start: 4px; overflow: hidden; border: 0; cursor: pointer; padding: 0; }
+.av img { width: 100%; height: 100%; object-fit: cover; }
+.hd .menu { display: none; }
 
-/* Nav icon buttons (history, etc.) */
-.nav-icon { width: 32px; height: 32px; min-height: 32px; padding: 0; border: none; background: transparent; color: var(--ink-2); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background var(--ease), color var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
-@media (hover:hover) and (pointer:fine) { .nav-icon:hover { background: var(--sunk); color: var(--ink); } }
-.nav-icon:active { transform: scale(0.92); }
-.nav-icon svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-/* 菜单按钮只在窄屏出现 (<768px, 见窄屏抽屉块); 宽屏顶栏 = Tools/MCP 直达 */
-.nav-menu-btn { display: none; }
-
-/* Topbar: auth buttons */
-.topbar-login, .topbar-register { padding: var(--s2) var(--s4); border-radius: var(--r-full); font-size: var(--fs-sm); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; white-space: nowrap; transition: opacity var(--ease-in); }
-.topbar-login { color: var(--ink); border: 1px solid var(--line-2); }
-@media (hover:hover) and (pointer:fine) { .topbar-login:hover { background: var(--sunk); } }
-.topbar-register { background: var(--ink); color: var(--brand-ink); }
-@media (hover:hover) and (pointer:fine) { .topbar-register:hover { opacity: .85; } }
-
-/* Topbar: avatar (img if bound, same-size initial placeholder otherwise) */
-.topbar-profile { background: none; border: none; padding: 0; cursor: pointer; border-radius: 50%; text-decoration: none; display: inline-flex; align-items: center; }
-@media (hover:hover) and (pointer:fine) { .topbar-profile:hover { background: var(--sunk); } }
-.topbar-profile img, .topbar-profile .avatar-fallback { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1px solid var(--line-2); display: block; }
-.topbar-profile .avatar-fallback { display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--brand-ink); font-size: var(--fs-base); font-weight: 700; flex-shrink: 0; }
-
-/* Topbar: language switch */
-.lang-switch { position: relative; display: flex; align-items: center; }
-.lang-button { height: 32px; min-width: 72px; border: none; background: transparent; color: var(--ink-2); padding: 0 var(--s5) 0 var(--s3); font-size: var(--fs-sm); font-weight: 600; position: relative; cursor: pointer; transition: color var(--ease); display: inline-flex; align-items: center; white-space: nowrap; }
-.lang-button::after { content: ""; position: absolute; right: var(--s3); top: 50%; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-65%) rotate(45deg); opacity: .55; }
-@media (hover:hover) and (pointer:fine) { .lang-button:hover, .lang-button[aria-expanded="true"] { color: var(--ink); } }
 
 /* ── Dropdowns (shared) ───────────────────────────────────── */
 .user-menu { position: relative; display: flex; align-items: center; }
@@ -272,11 +249,6 @@ select { width: auto; margin-top: 0; }
 /* ── Footer ───────────────────────────────────────────────── */
 .site-footer { background: var(--bg); padding: var(--s3) var(--s2) max(var(--s3), env(safe-area-inset-bottom)); text-align: center; }
 .footer-inner { max-width: 880px; margin: 0 auto; display: flex; align-items: center; justify-content: center; gap: var(--s2); flex-wrap: wrap; }
-.footer-copy { font-size: var(--fs-xs); color: var(--ink-2); }
-.footer-copy .brand-logo { font-size: var(--fs-xs); font-weight: 700; }
-.footer-links { display: flex; gap: var(--s2); }
-.footer-links a { font-size: var(--fs-xs); color: var(--ink-2); text-decoration: none; }
-.footer-links a:hover { text-decoration: underline; }
 .doc-support { margin-top: 1em; font-size: 0.9em; }
 .doc-support a { color: var(--ink-2); }
 
@@ -388,14 +360,10 @@ select { width: auto; margin-top: 0; }
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 820px) {
   .shell { width: calc(100vw - 24px); padding: var(--s2) var(--s2) 0; }
-  .topbar { padding: 0 calc(12px + var(--s2)); gap: var(--s2); }
-  .top-actions { gap: var(--s2); min-width: 0; flex: 0 1 auto; flex-wrap: nowrap; }
-  .top-actions > * { flex: 0 1 auto; min-width: 0; }
-  .lang-button { min-width: 0; padding: 0 30px 0 var(--s2); font-size: var(--fs-xs); }
+        .lang-button { min-width: 0; padding: 0 30px 0 var(--s2); font-size: var(--fs-xs); }
   .lang-button::after { right: 12px; }
   .lang-menu { width: 128px; }
-  .brand-logo { font-size: var(--fs-sm); }
-  .workspace { max-width: 100%; }
+    .workspace { max-width: 100%; }
   h1 { font-size: clamp(30px, 10vw, 40px); }
       .limit:not(:last-child)::after { display: none; }
 
@@ -415,8 +383,7 @@ select { width: auto; margin-top: 0; }
    Tools/MCP 与未登录 登录/注册 收进抽屉。站名 flex-shrink:0 恒不压缩
    (红线10), 半透明遮罩点击关闭 (common.js wireMobileNav)。 */
 @media (max-width: 767px) {
-  .topbar-agents, .topbar-login, .topbar-register { display: none; }
-  .nav-menu-btn { display: inline-flex; }
+    .nav-menu-btn { display: inline-flex; }
   .mobile-nav-backdrop {
     position: fixed; inset: 45px 0 0 0; z-index: calc(var(--z-dropdown) - 1);
     background: var(--overlay);
@@ -460,8 +427,6 @@ select { width: auto; margin-top: 0; }
 
 /* ── RTL: Arabic ──────────────────────────────────────────── */
 html[dir="rtl"] body { font-family: -apple-system, "Segoe UI", Tahoma, Roboto, Arial, sans-serif; }
-html[dir="rtl"] .topbar { direction: rtl; }
-html[dir="rtl"] .top-actions { flex-direction: row-reverse; }
 html[dir="rtl"] .lang-button { padding: 0 0 0 var(--s4); }
 html[dir="rtl"] .lang-button::after { right: auto; left: var(--s1); }
 html[dir="rtl"] .lang-menu { right: auto; left: 0; }
@@ -551,8 +516,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .acct-empty { text-align: center; color: var(--ink-2); padding: var(--s4) 0; }
 
 @media (max-width: 640px) {
-  .top-actions { gap: var(--s1); margin-left: 0; }
-  .topbar { gap: var(--s2); }
 
   .acct-hero { flex-direction: column; }
   .acct-balance, .acct-daily { flex-basis: auto; }
@@ -634,7 +597,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .tool-search-item.active, .tool-search-item:hover { background: var(--sunk); }
 .tool-search-empty { padding: 12px; text-align: center; color: var(--ink-2); font-size: var(--fs-sm); }
 
-/* ── topbar MCP entry (primary service surface) ── */
 .topbar-agents { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); text-decoration: none; padding: 6px 10px; border-radius: var(--r-full); border: 1px solid var(--line-2); white-space: nowrap; transition: background var(--ease), border-color var(--ease); }
 .topbar-agents:hover { background: var(--sunk); border-color: var(--brand); }
 
@@ -870,3 +832,16 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .toolpage .panel .d a { color: var(--brand); font-weight: 600; }
 .toolpage .panel .d { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .toolpage .panel .d .mono { font-size: 13px; }
+
+/* ── Footer (v2 .ft) ─────────────────────────────────────── */
+.ft { padding: 40px 0; color: var(--ink-3); font-size: 13px; border-top: 1px solid var(--line); margin-top: auto; }
+.ft .ft-in { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.ft .ft-in > span:first-child { margin-inline-end: auto; }
+.ft a:hover { color: var(--ink); }
+@media (max-width: 767px) {
+  .nav, .hd-r .lang { display: none; }
+  .hd .menu { display: grid; }
+  .ft .ft-in { gap: 12px; }
+  .hd-r .btn { display: none; }
+  .hd .menu { display: grid; }
+}
