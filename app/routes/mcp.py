@@ -228,8 +228,11 @@ async def _dispatch(request: Request, user: dict, msg):
                 "capabilities. To give a person a link to a file: call "
                 "share; hand them result_url (one page for all files) "
                 "— page_url is per file, download_url is a direct "
-                "download. Discover tools with tools/list (paginated — "
-                "pass the returned cursor) or catalog_search. Pass "
+                "download. tools/list is your working set: the "
+                "first-party tools, your own tools and your favorites "
+                "(我的收藏). Find any other tool with catalog_search and "
+                "call it by name; pin_tool adds one to your favorites. "
+                "Pass "
                 "files inline (base64), by https URL, or by reference; "
                 "for large local files call create_upload first and "
                 "PUT the raw bytes to the one-time URL it returns, "
@@ -454,6 +457,39 @@ _DELETE_UPLOAD_SPEC = {
 }
 
 
+def _pin_spec(name: str, title: str, description: str) -> dict:
+    return {
+        "name": name,
+        "title": title,
+        "description": description,
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {
+                "type": "string",
+                "description": "The tool's MCP name (from catalog_search "
+                               "or tools/list)"}},
+            "required": ["name"],
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"},
+                           "favorite": {"type": "boolean"}},
+            "required": ["name", "favorite"],
+        },
+    }
+
+
+_PIN_TOOL_SPEC = _pin_spec(
+    "pin_tool", "Add to My Favorites",
+    "Add a tool to your favorites (我的收藏). tools/list carries the "
+    "first-party tools, your own tools and your favorites; any other "
+    "tool stays callable by name after catalog_search. Pin the tools you "
+    "reuse, then call tools/list again to see them. Free.")
+_UNPIN_TOOL_SPEC = _pin_spec(
+    "unpin_tool", "Remove from My Favorites",
+    "Remove a tool from your favorites. It stays callable by name. Free.")
+
+
 def _spec_summary(t: dict, names: dict | None = None) -> dict:
     """name/title/description summary (tools/list + catalog_search share
     the exact same shape). English only — MCP is a machine surface.
@@ -529,9 +565,12 @@ def _tool_specs(user: dict) -> list:
     expiry_enum = list(ent["expiry_days"])
     downloads_enum = list(ent["download_limits"])
     specs = [_CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
-             _DELETE_UPLOAD_SPEC]
+             _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC]
     _names = mcp_names()
-    for t in list_catalog(user["id"]):
+    # Working set, not an access boundary: first-party + own + favorites;
+    # everything else is found via catalog_search and called by name.
+    from governance.favorites import mcp_working_set
+    for t in mcp_working_set(user, list_catalog(user["id"])):
         summary = _spec_summary(t, _names)
         props = {
             "files": {
@@ -651,6 +690,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         return _list_uploads(user, mid, args)
     if name == "delete_upload":
         return _delete_upload(user, mid, args)
+    if name in ("pin_tool", "unpin_tool"):
+        return _pin_tool(user, mid, args, on=(name == "pin_tool"))
 
     # client_ref is REQUIRED and validated BEFORE any base64 decode,
     # quota check, or Gokapi upload — a missing/invalid ref must never
@@ -1005,6 +1046,7 @@ def _error_message(code, tool: dict | None = None) -> str:
         "err_download_limit_not_entitled": "The requested delivery.allowed_downloads is not available on your current plan.",
         "tool_failed": "The tool failed to produce a result.",
         "not_found": "No such file of yours.",
+        "tool_not_found": "No such tool is available to you. Use catalog_search to find the exact name.",
         "invalid_id": "That public id is malformed.",
     }.get(code)
     msg = base or "The call failed."
@@ -1040,6 +1082,16 @@ def _iserror(mid, payload: dict, client_ref: str | None = None,
                      "text": json.dumps(body, ensure_ascii=False)}],
         "isError": True,
     })
+
+
+def _pin_tool(user: dict, mid, args: dict, on: bool) -> dict:
+    from governance.favorites import set_favorite
+    name = str(args.get("name") or "").strip()
+    tool_key = tool_key_for_mcp_name(name) if name else None
+    err = set_favorite(user["id"], tool_key or "", on) if tool_key else "tool_not_found"
+    if err:
+        return _iserror(mid, {"error": err, "name": name})
+    return _meta_result(mid, {"name": name, "favorite": on})
 
 
 def _meta_result(mid, payload: dict, isError: bool = False) -> dict:

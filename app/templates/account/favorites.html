@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.acct_favorites }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="acct-page">
+  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
+  <h1 data-i18n="acct_favorites">{{ texts.acct_favorites }}</h1>
+  <div class="acct-layout">
+  {% include "account/_nav.html" %}
+  <div class="acct-body">
+
+  <p class="hint">{{ icon_svg("bot") }}<span data-i18n="fav_mcp_note">{{ texts.fav_mcp_note }}</span></p>
+
+  {% if favorites %}
+  <div class="bento fav-bento" id="favList">
+    {% for t in favorites %}
+    <div class="fav-item" data-tool="{{ t.id }}">
+      <a class="tc" href="/tool/{{ t.id }}">
+        <span class="ic" aria-hidden="true">{{ icon_tool_svg(t.icon) }}</span>
+        <h4>{{ (t.label | lt(lang)) or t.id }}</h4>
+        {% if t.desc %}<p>{{ t.desc | lt(lang) }}</p>{% endif %}
+        <div class="ft2">
+          {% if t.cost %}<span class="tag cost">{{ t.cost }} {{ texts.credits_short }}</span>{% else %}<span class="tag free">{{ texts.free }}</span>{% endif %}
+          <code class="fav-mcp">{{ t.mcp_name }}</code>
+        </div>
+      </a>
+      <button type="button" class="btn btn-q btn-sm fav-remove" data-tool="{{ t.id }}">{{ icon_svg("star") }}<span data-i18n="fav_remove_btn">{{ texts.fav_remove_btn }}</span></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="empty fav-empty" id="favEmpty"{% if favorites %} hidden{% endif %}>
+    {{ icon_svg("star") }}
+    <div class="empty-title" data-i18n="fav_empty_title">{{ texts.fav_empty_title }}</div>
+    <div class="empty-sub" data-i18n="fav_empty_sub">{{ texts.fav_empty_sub }}</div>
+    <div class="empty-actions"><a class="btn btn-p" href="/tools"><span data-i18n="nav_tools">{{ texts.nav_tools }}</span></a></div>
+  </div>
+
+  </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/pages/favorites.js?v={{ pages_version }}"></script>
+{% endblock %}

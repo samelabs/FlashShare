@@ -362,6 +362,8 @@ check("T3 names reverse to their exact keys",
 check("T4 projection injective over the whole catalog",
       len(set(_names.values())) == len(_names))
 check("T5 first-party names unchanged", _names.get("compress") == "compress")
+for _nm in (nameA, nameB):
+    _call("pin_tool", {"name": _nm})
 _listed, _cur = [], None
 for _ in range(20):
     st, _h, d = _mcp({"jsonrpc": "2.0", "id": 3, "method": "tools/list",
@@ -372,7 +374,7 @@ for _ in range(20):
     if not _cur:
         break
 _lnames = [t["name"] for t in _listed]
-check("T6 tools/list carries both tools under distinct names",
+check("T6 pinned tools/list carries both tools under distinct names",
       nameA in _lnames and nameB in _lnames and len(_lnames) == len(set(_lnames)))
 # discriminating call: A requires 'alpha', B requires 'beta'; both accept
 # pdf only — a correctly routed call passes params and stops at the

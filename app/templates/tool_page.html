@@ -29,6 +29,9 @@
         <span class="tag">{{ texts.files_window_short.format(min=tool.files_min, max=tool.files_max) }}</span>
         {% endif %}
         <span class="tag">{{ texts.tool_runs.format(n=stats.calls) }}</span>
+        <button type="button" class="tag fav-btn{% if is_favorite %} on{% endif %}" id="favBtn"
+                data-tool="{{ tool_key }}" aria-pressed="{{ 'true' if is_favorite else 'false' }}"
+                title="{{ texts.fav_hint }}">{{ icon_svg("star") }}<span data-i18n="{{ 'fav_on' if is_favorite else 'fav_add' }}">{{ texts.fav_on if is_favorite else texts.fav_add }}</span></button>
       </div>
     </div>
   </div>
@@ -71,4 +74,5 @@ window.__PAGE__ = "tool";
 <script src="/static/app.js?v={{ app_js_version }}"></script>
 <script src="/static/pages/tool-input.js?v={{ pages_version }}"></script>
 <script src="/static/pages/tool_page.js?v={{ pages_version }}"></script>
+<script src="/static/pages/favorites.js?v={{ pages_version }}"></script>
 {% endblock %}

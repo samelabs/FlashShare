@@ -34,6 +34,7 @@ _ICONS = {
     "send": '<path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path>',
     "bolt": '<path d="M13 3L4 14h7l-1 7 9-11h-7z"></path>',
     "card": '<rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M8 15h8M8 18h5"></path>',
+    "star": '<path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"></path>',
     "wrench": '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"></path>',
     "bot": '<rect x="4" y="8" width="16" height="12" rx="3"></rect><path d="M12 4v4"></path><path d="M9 14h.01"></path><path d="M15 14h.01"></path>',
 

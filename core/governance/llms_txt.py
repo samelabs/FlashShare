@@ -49,8 +49,10 @@ def build_llms_txt() -> str:
     a('  -H "Content-Type: application/json" \\')
     a('  -d \'{"jsonrpc":"2.0","id":2,"method":"tools/list"}\'')
     a("")
-    a("# paginate with params {\"cursor\":\"<nextCursor>\"}; the meta tool "
-      "catalog_search finds tools by keyword")
+    a("# tools/list is your working set: first-party tools, your own tools "
+      "and your favorites (paginate with params {\"cursor\":\"<nextCursor>\"}). "
+      "The meta tool catalog_search finds any other tool by keyword; call it "
+      "by name, and pin_tool / unpin_tool manage your favorites.")
     a("")
     a(f'curl -s {mcp_url} \\')
     a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
@@ -159,7 +161,8 @@ def build_llms_txt() -> str:
     a("- Tool calls are metered in credits: 1000 credits = 1 USD. "
       "Failed calls are refunded automatically.")
     a("")
-    a("## Tool catalog (public, generated live — same source as tools/list)")
+    a("## Tool catalog (every public tool, generated live — "
+      "tools/list shows your working set of these)")
     a("")
     names = mcp_names()
     for t in list_catalog(None):

@@ -151,6 +151,11 @@ def _owner_handle(owner_id) -> str:
     return row["username"] if row else "unknown"
 
 
+def _favorite_keys_for(user) -> list:
+    from governance.favorites import favorite_keys
+    return favorite_keys(user["id"])
+
+
 def _public_stats(tool_key: str) -> dict:
     """Public counters: successful calls only. No user-level data."""
     from database import db
@@ -311,6 +316,8 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "handle": _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None,
         "stats": _public_stats(tool_key),
         "mcp_name": mcp_name(tool_key),
+        "tool_key": tool_key,
+        "is_favorite": bool(user) and tool_key in _favorite_keys_for(user),
         "is_mcp": mcp,
         # publish gate guidance: the author viewing their own not-yet-public
         # tool sees the run-once hint (server-rendered, one sentence)
@@ -909,6 +916,28 @@ async def result_qr(result_id: str):
 
 
 
+
+
+@router.get("/account/favorites", response_class=HTMLResponse)
+async def account_favorites(request: Request):
+    """我的收藏: the user's pinned tools (same set MCP tools/list carries
+    besides first-party and own tools)."""
+    from app.main import templates
+    from governance.catalog import list_catalog, mcp_names
+    from governance.favorites import favorite_keys
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login?next=/account/favorites"})
+    catalog = list_catalog(user["id"])
+    by_id = {t["id"]: t for t in catalog}
+    names = mcp_names()
+    favs = []
+    for k in favorite_keys(user["id"], catalog):
+        t = dict(by_id[k])
+        t["mcp_name"] = names.get(k, k.replace("/", "__"))
+        favs.append(t)
+    ctx = _account_ctx(request, "favorites", favorites=favs)
+    return templates.TemplateResponse(request, "account/favorites.html", ctx)
 
 
 @router.get("/account/keys", response_class=HTMLResponse)

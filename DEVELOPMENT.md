@@ -170,16 +170,162 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
 - 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
-- **1.0 上线 = 全新数据库**（不迁移旧数据，无 migration SQL）：
-  1. 在服务器 env 文件补齐上面的必填项，以及要开放的可选项（X 登录、Creem、`TOOL_VAULT_KEY`）；
-  2. 新建空库，`DATABASE_URL` 指向它；旧库保留只读，不与新代码混跑；
-  3. ff-only 同步 `main` → start unit → `init_db()` 建表并写入 free 档与预置工具；
-  4. `curl $FLASHSHARE_BASE_URL/healthz` 返回 `source_sha` = 目标 SHA、`source_dirty=false`；
-     启动日志有 gokapi capability probe OK，无 X 登录半配置 WARNING；
-  5. smoke：注册 → 首页分享一个文件拿到链接 → 打开 `/r/{id}` → 用 API key 走一次 MCP `share`；
-  6. 运营账号（users.status 设为运营状态）登录后台：总览「集成」卡、按需在「平台收入」设置抽佣率与每日登录积分。
+- **1.0 上线 = 全新数据库**：见下文「生产部署指南」。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
+
+## 生产部署指南（1.0 首次上线）
+
+面向服务器侧执行者。按顺序做，每一步都有"通过标准"，不通过就停下排查，不要跳步。
+
+### 0. 拓扑
+
+```
+浏览器 / AI agent ──HTTPS──> Cloudflare ──> Nginx (518.plus)
+                                            ├─ /                → 518 app      127.0.0.1:8000 (systemd flashshare-api)
+                                            ├─ /downloadFile     → Gokapi       127.0.0.1:53842/downloadFile
+                                            └─ /dh/              → Gokapi       127.0.0.1:53842/h/
+518 app ──> PostgreSQL（DATABASE_URL）
+518 app ──> Gokapi API（FLASHSHARE_GOKAPI_URL + FLASHSHARE_GOKAPI_KEY）
+```
+
+- 文件字节只存在 Gokapi；下载由 Nginx 直接转给 Gokapi，不经过 Python。
+- 518 通过 Gokapi API 上传 / 列表 / 删除，并用 `/api/files/download/{id}`（不计下载次数）做站内预览。
+
+### 1. 依赖
+
+| 组件 | 要求 |
+| --- | --- |
+| Python | 3.12，`/opt/flashshare/venv`，`pip install -r requirements.txt` |
+| PostgreSQL | 16；为 1.0 新建空库与专用用户 |
+| Gokapi | **v2.2.4**（`/opt/gokapi/gokapi`），只监听 127.0.0.1 |
+| LibreOffice | `soffice` 可执行（文档转 PDF 工具）；不在 PATH 时设 `FLASHSHARE_SOFFICE` |
+| Nginx | 反代 518 与 Gokapi 两条下载路径 |
+
+### 2. Gokapi（上次部署卡住的环节）
+
+518 启动时会做 **Gokapi 能力探测**，不通过就拒绝启动（fail-closed），日志里是
+`gokapi capability probe failed: <原因>`。常见原因只有三个：
+
+| 日志原因 | 含义 | 处理 |
+| --- | --- | --- |
+| `gokapi_unreachable` | 连不上 Gokapi | Gokapi 没运行，或 `FLASHSHARE_GOKAPI_URL` 端口 / 路径不对 |
+| `gokapi_download_permission_missing` | API key 缺少 **Download** 权限 | 在 Gokapi 后台新建一个勾选全部权限（含 Download）的 key，替换 `FLASHSHARE_GOKAPI_KEY` |
+| `api_key_not_configured` | 没配 key | 设置 `FLASHSHARE_GOKAPI_KEY` |
+
+操作步骤：
+
+1. 运行 Gokapi v2.2.4，只绑定本机：数据目录与配置目录放在 `/opt/gokapi/` 下，端口 53842。
+   首次启动会进入 Gokapi 自带的设置向导：存储选本地磁盘，对外地址填 `https://518.plus/`，
+   管理员账号自行设定。已有实例可以沿用，旧文件会按各自的有效期自然过期。
+2. 用管理员账号登录 Gokapi 后台 → API 菜单 → 新建 API key → **权限全部勾选**
+   （View / Upload / Delete / API-Mod / Edit / **Download**）。
+   旧 key 通常没有 Download 权限，这是 1.0 新增的硬要求。
+3. 在服务器上验证这把 key（把 `$KEY` 换成新 key）：
+   ```bash
+   # 能列出文件 → 返回 JSON（空库时是空列表）
+   curl -s -H "apikey: $KEY" http://127.0.0.1:53842/api/files/list
+   # Download 权限：返回 404 且 body 含 "ErrorCode":5 = 权限正确；返回 401 = 缺 Download 权限
+   curl -s -w "\n%{http_code}\n" -H "apikey: $KEY" \
+     http://127.0.0.1:53842/api/files/download/__capability_probe__
+   ```
+   **通过标准**：第二条返回 `404` 与 `"ErrorCode":5`（存储非空时对真实 id 返回 200 也算通过）。
+4. `/etc/flashshare.env` 写入：
+   `FLASHSHARE_GOKAPI_URL=http://127.0.0.1:53842`、`FLASHSHARE_GOKAPI_KEY=<新 key>`。
+
+### 3. Nginx
+
+```nginx
+server {
+    server_name 518.plus;
+    # TLS 证书配置按现有站点沿用（Cloudflare 模式保持不变）
+    client_max_body_size 110m;          # 单次批量上限 100MB + 表单开销
+
+    location /downloadFile {            # 分享文件的计数下载
+        proxy_pass http://127.0.0.1:53842/downloadFile;
+        proxy_set_header Host $host;
+    }
+    location /dh/ {                     # Gokapi 热链
+        proxy_pass http://127.0.0.1:53842/h/;
+        proxy_set_header Host $host;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;        # 工具执行与大文件上传
+        proxy_request_buffering off;
+    }
+}
+```
+
+**通过标准**：`nginx -t` 通过；上线后分享一个文件，点「下载」能拿到文件（`/f/{id}?download=1` → 302 → `/downloadFile?id=…` → 200）。
+下载 404 = `/downloadFile` 这条 location 没配或端口不对。
+
+### 4. systemd 单元 `flashshare-api`
+
+```ini
+[Unit]
+Description=518.PLUS API
+After=network.target postgresql.service
+
+[Service]
+User=flashshare
+WorkingDirectory=/opt/flashshare
+EnvironmentFile=/etc/flashshare.env
+ExecStart=/bin/bash /opt/flashshare/run.sh
+Restart=on-failure
+KillMode=control-group
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`run.sh` 以单 worker 监听 127.0.0.1:8000（`--proxy-headers`）。改任何 static 文件或 env 后都要 `systemctl restart flashshare-api`。
+
+### 5. 环境变量与数据库
+
+1. `/etc/flashshare.env` 按上文「Environment variables」补齐必填项；`TOOL_VAULT_KEY` 必配
+   （生成：`venv/bin/python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`）；
+   `FLASHSHARE_SESSION_SECRET` 用新的随机长串。
+2. 新建空库，`DATABASE_URL=postgresql+psycopg://<user>:<pass>@127.0.0.1:5432/<新库名>`。旧库只读保留，不删除，不与新代码混跑。
+3. 暂不开放充值时，不配置任何 `CREEM_*`；X 登录按「Environment variables」一节配置或整组不配。
+
+### 6. 上线
+
+```bash
+cd /opt/flashshare
+git fetch origin && git status --short          # 必须无未提交改动
+git rev-parse HEAD > /root/flashshare.prev_sha  # 记录回滚点
+systemctl stop flashshare-api
+git merge --ff-only origin/main
+systemctl start flashshare-api
+journalctl -u flashshare-api -n 50 --no-pager
+curl -s https://518.plus/healthz
+```
+
+**通过标准**：
+- 日志含 `gokapi capability probe: download permission OK` 与 `518.PLUS started`，无 ERROR；无 X 登录半配置 WARNING。
+- `healthz` 返回 `source_sha` = 目标提交、`source_dirty=false`。
+- Cloudflare 清一次静态缓存。
+
+### 7. 冒烟（真实站点）
+
+1. 注册新账号 → 首页拖入一张图片 → 拿到链接 → 打开 `/r` 页 → 点下载拿到文件。
+2. `/account/keys` 建 API key，然后：
+   ```bash
+   curl -s https://518.plus/mcp -H "Authorization: Bearer fsk_…" -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+   ```
+   返回工具列表；再按 `/llms.txt` 的示例调一次 `share`，拿到 `result_url` 并能打开。
+3. 手机打开首页与 `/r` 页，无横向滚动。
+4. 运营账号：把指定用户的 `users.status` 设为 `samelabs`（`UPDATE users SET status='samelabs' WHERE username='<用户名>';`），登录 `/samelabs`，总览「集成」卡显示正确；按需设置抽佣率与每日登录积分（默认 0 = 关闭）。
+
+### 8. 回滚
+
+第 6–7 步任一失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → 恢复旧的 `DATABASE_URL` → `systemctl start flashshare-api` → 报告现象与日志。不做临时修补。
 
 ## Production backup（scripts/）
 
