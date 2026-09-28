@@ -8,4 +8,6 @@ Wants=network-online.target
 Type=oneshot
 ExecStart=/bin/bash /opt/flashshare/scripts/backup.sh
 # failure logging: journal captures stderr; non-zero exit marks unit failed
-Environment=FLASHSHARE_BACKUP_REMOTE=
+# all settings (incl. FLASHSHARE_BACKUP_REMOTE) come from the shared env file
+EnvironmentFile=-/etc/flashshare.env
+UMask=0077

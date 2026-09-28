@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 from config import BASE_URL, MAX_UPLOAD_BYTES
 from database import db
+from app.web_auth import client_ip
 
 router = APIRouter()
 logger = logging.getLogger("flashshare")
@@ -91,9 +92,7 @@ async def mcp_upload_put(ticket: str, request: Request):
     if not ok:
         return _err(415, final_type)
 
-    ip = request.headers.get("X-Real-IP",
-                             request.client.host if request.client else ""
-                             ).strip()
+    ip = client_ip(request)
 
     # ── ingress path identical to the inline-base64 MCP source ──
     from sharing.ingress_identity import ingress_request_hash

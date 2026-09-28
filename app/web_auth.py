@@ -12,6 +12,18 @@ from security import token_hash
 from utils import now, b64url
 
 
+def client_ip(request: Request) -> str:
+    """Client IP behind the trusted proxy chain — the single read point
+    every surface (login throttle, ingress receipts, invocation audit)
+    goes through. Nginx sets X-Real-IP from the restored $remote_addr,
+    overwriting any client-supplied value; without the header the direct
+    peer address is the truth. An empty header value counts as missing."""
+    ip = request.headers.get("X-Real-IP", "").strip()
+    if ip:
+        return ip
+    return request.client.host if request.client else ""
+
+
 def require_session_auth(request: Request):
     """Account-control/money surfaces require a live browser session."""
     tok = request.cookies.get(COOKIE_NAME)
