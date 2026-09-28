@@ -133,6 +133,12 @@
   --sl-row-alt: #fbfcfd;
   --sl-row-hover: #f7f9fb;
   --sl-ink-faint: #8a97a3;
+  /* dark developer panel + terminal */
+  --term-bg: #15181d;
+  --term-ink: #c9ced6;
+  --term-dim: #6b7280;
+  --term-warm: #ff8a7a;
+  --term-ok: #7ee2a8;
   --sl-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sl-ease: 0.15s ease;
 
