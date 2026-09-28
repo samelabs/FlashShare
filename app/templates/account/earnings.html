@@ -7,7 +7,9 @@
 <section class="acct-page">
   <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1>{{ texts.menu_earnings }}</h1>
+  <div class="acct-layout">
   {% include "account/_nav.html" %}
+  <div class="acct-body">
 
   <div class="acct-card">
     <div class="acct-card-head">
@@ -38,6 +40,8 @@
     <div id="earnHist" class="wd-list"></div>
     <div id="wdPager" class="acct-pager hidden"></div>
     <p id="earnNone" class="profile-note hidden" data-i18n="earn_none">{{ texts.earn_none }}</p>
+  </div>
+  </div>
   </div>
 </section>
 
