@@ -188,10 +188,10 @@ try:
             " enabled, created_at, updated_at) values (%s, %s, %s, 'http',"
             " 'produce', '{\"en\": \"Community G\"}', 'wand', '{}', '[\"file\"]',"
             " 'public', TRUE, %s, %s)",
-            (f"{com}/g", None, "g", int(time.time()), int(time.time())))
+            (f"{com}/g", None, "g", int(_time.time()), int(_time.time())))
         con.execute(
             "insert into pricing (tool_id, cost, enabled, updated_at)"
-            " values (%s, 0, TRUE, %s)", (f"{com}/g", int(time.time())))
+            " values (%s, 0, TRUE, %s)", (f"{com}/g", int(_time.time())))
     st, _h, body, _sc = _req("GET", "/tools", None, {"Accept": "text/html"})
     body = body if isinstance(body, str) else ""
     check("G1 market lists first-party compress",
