@@ -968,7 +968,7 @@ body { overflow-x: clip; }
 .agents-tabs { margin-bottom: 12px; flex-wrap: wrap; }
 .tab-panel { position: relative; }
 .tab-copy { position: absolute; top: 10px; right: 10px; z-index: 2; }
-.tab-term { margin: 0; padding-top: 20px; white-space: pre-wrap; word-break: break-word; }
+.tab-term { margin: 0; padding-top: 56px; white-space: pre-wrap; word-break: break-word; }
 .agents-market-link { margin-top: 28px; }
 @media (max-width: 767px) {
   .agents-v2 { padding: 24px 0 48px; }

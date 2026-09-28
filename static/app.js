@@ -167,11 +167,12 @@ function renderResultItems(items, opts) {
   const fileRow = (it) => {
     const ct = it.content_type || "";
     const isImg = ct.startsWith("image/") && ct.toLowerCase() !== "image/svg+xml";
-    const sizeTxt = showDelta
+    const changed = showDelta && (it.size || 0) !== inputSizes[0];
+    const sizeTxt = changed
       ? fmtSize(inputSizes[0]) + " → " + fmtSize(it.size || 0)
       : fmtSize(it.size || 0);
     let delta = "";
-    if (showDelta && inputSizes[0] > 0) {
+    if (changed && inputSizes[0] > 0) {
       const pct = Math.round((1 - (it.size || 0) / inputSizes[0]) * 100);
       if (pct !== 0) {
         const down = pct > 0;

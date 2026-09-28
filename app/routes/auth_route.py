@@ -261,7 +261,10 @@ _X_NEXT_TTL = 600  # seconds — the X-login return target window
 def _safe_next(value) -> str:
     """Login-return target: site-relative only ("/…", never "//…")."""
     v = (value or "").strip()
-    if v.startswith("/") and not v.startswith("//"):
+    # browsers treat "\\" like "/" in URLs ("/\\evil.com" == "//evil.com");
+    # control characters never belong in a return path
+    if (v.startswith("/") and not v.startswith("//")
+            and "\\" not in v and not any(ord(c) < 0x20 for c in v)):
         return v
     return "/"
 

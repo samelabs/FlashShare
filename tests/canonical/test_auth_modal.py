@@ -165,7 +165,8 @@ try:
     check("D2 redirects to next", loc.endswith("/tools"), loc)
 
     # ═══ E: next sanitation (form path proves the same _safe_next) ═══
-    for bad in ("//evil.com", "https://evil.com", "javascript:alert(1)"):
+    for bad in ("//evil.com", "https://evil.com", "javascript:alert(1)",
+                "/\\evil.com", "/\r\nSet-Cookie: x=1"):
         b, ct = _form({"login": user, "password": "Test12345", "next": bad})
         st, _h, _d, _sc = _req("POST", "/auth/login", b, {"Content-Type": ct})
         loc = (_h or {}).get("location", "")
