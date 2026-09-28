@@ -13,7 +13,7 @@ import sys
 # Core modules are in ../core/
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent.parent))  # core/ (execution/ 的上一级)
 
-from tools import get_tool
+from tools import get_tool, ToolError
 
 
 def _read_bounded(stream, cap: int) -> bytes:
@@ -28,7 +28,7 @@ def _read_bounded(stream, cap: int) -> bytes:
                 break
             total += len(chunk)
             if total > cap:
-                raise ValueError("err_output_too_large")
+                raise ToolError("err_output_too_large")
             chunks.append(chunk)
         return b"".join(chunks)
     finally:
@@ -55,7 +55,9 @@ def process_tool(tool_id: str, sources: list, params: dict) -> dict:
         per-file cap (validated here, before staging).
 
     Raises:
-        ValueError with typed err_* codes on contract violations.
+        tools.ToolError with typed err_* codes on contract violations
+        (dispatch converts ToolError to a typed 4xx; "Unknown tool" stays
+        a plain ValueError).
     """
     # Ensure tools are registered in this process (important for pool respawn)
     from tools import load_all
@@ -85,7 +87,7 @@ def process_tool(tool_id: str, sources: list, params: dict) -> dict:
     raw_output = handler(tool_input, params)
     if not isinstance(raw_output, dict) \
             or not isinstance(raw_output.get("items"), list):
-        raise ValueError("err_items_shape")
+        raise ToolError("err_items_shape")
 
     from config import MAX_UPLOAD_BYTES
     from execution.results import (validate_items_declaration,
@@ -94,7 +96,7 @@ def process_tool(tool_id: str, sources: list, params: dict) -> dict:
     try:
         normalized = validate_items_declaration(raw_output["items"])
     except ItemsError as exc:
-        raise ValueError(str(exc)) from exc
+        raise ToolError(str(exc)) from exc
 
     inline_total = 0
     out_items = []
@@ -103,13 +105,13 @@ def process_tool(tool_id: str, sources: list, params: dict) -> dict:
             stream = raw.get("stream")
             data = raw.get("data")
             if data is None and stream is None:
-                raise ValueError("err_items_shape")
+                raise ToolError("err_items_shape")
             if data is None:
                 data = _read_bounded(stream, MAX_UPLOAD_BYTES)
             if not isinstance(data, bytes) or not data:
-                raise ValueError("err_items_shape")
+                raise ToolError("err_items_shape")
             if len(data) > MAX_UPLOAD_BYTES:
-                raise ValueError("err_output_too_large")
+                raise ToolError("err_output_too_large")
             out_items.append({"kind": "file",
                               "filename": norm["filename"],
                               "content_type": norm["content_type"],
@@ -126,5 +128,5 @@ def process_tool(tool_id: str, sources: list, params: dict) -> dict:
             out_items.append(item)
 
     if len(out_items) > MAX_RESULT_ITEMS:
-        raise ValueError("err_items_too_many")
+        raise ToolError("err_items_too_many")
     return {"items": out_items}

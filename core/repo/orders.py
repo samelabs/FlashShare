@@ -513,8 +513,13 @@ def period_base_payment(con, sub_id: str,
 
 
 def period_has_payment_reversal(con, user_id: int, period_start: int) -> bool:
-    """该 billing period 的 plan-derived grants 中, 是否存在其支付交易已被
-    经济反转的 (grant ref -> creem_transaction, 对应 revoke 行存在)。
+    """该 billing period 的基础支付 (base grant, idem plan:{uid}:{ps}) 是否
+    已被经济反转 (对应 revoke 行 payment-reversal:{base txn} 存在) —
+    反转使该周期的 paid 有效性失效: 旧 subscription.paid 重放授零、
+    过期 Membership 保持过期。
+    升级补差 (grant_plan_upgrade) 的退款不封周期: 基础支付仍然有效
+    (refund 流程自身也绝不断开 base-paid 周期), 同周期一笔新的升级
+    交易照常入账 — 其幂等键含交易号, 不会重放旧 grant。
     reversal scope = period: 只有被反转支付所属的周期被封, 新周期的
     matching paid transaction 仍可正常授予。"""
     row = con.execute(
@@ -527,13 +532,12 @@ def period_has_payment_reversal(con, user_id: int, period_start: int) -> bool:
          AND r.ref_id = g.ref_id
          AND r.idem_key = 'payment-reversal:' || g.ref_id
         WHERE g.user_id = %s
-          AND g.kind IN ('grant_plan', 'grant_plan_upgrade')
+          AND g.kind = 'grant_plan'
           AND g.ref_type = 'creem_transaction'
-          AND (g.idem_key = %s OR g.idem_key LIKE %s)
+          AND g.idem_key = %s
         LIMIT 1
         """,
-        (user_id, f"plan:{user_id}:{period_start}",
-         f"plan-upgrade:{user_id}:{period_start}:%")).fetchone()
+        (user_id, f"plan:{user_id}:{period_start}")).fetchone()
     return row is not None
 
 

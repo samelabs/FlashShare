@@ -151,10 +151,10 @@ try:
     st, d, _sc = _json_form({"__path": "/auth/register", "username": reg,
                              "email": f"{reg}2@t.co", "password": "Test12345",
                              "password_confirm": "Test12345"})
-    # existing contract: register_user maps BOTH unique violations to
-    # err_email_taken (ValueError before the route's disambiguation)
-    check("C2 duplicate username → existing code (err_email_taken)",
-          d and d.get("error") == "err_email_taken", f"{st} {d}")
+    # folded-unique violations are discriminated by constraint: a duplicate
+    # handle reports err_username_taken (audit-fix item 11)
+    check("C2 duplicate username → err_username_taken",
+          d and d.get("error") == "err_username_taken", f"{st} {d}")
 
     # ═══ D: full-page form login unchanged ═══════════════════════════
     b, ct = _form({"login": user, "password": "Test12345", "next": "/tools"})

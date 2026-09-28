@@ -111,7 +111,7 @@ _SCHEMA_SQL = (
     """
     CREATE TABLE IF NOT EXISTS users (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      username       TEXT NOT NULL UNIQUE,
+      username       TEXT NOT NULL,
       email          TEXT UNIQUE,
       password_hash  TEXT,
       display_name   TEXT NOT NULL,
@@ -132,6 +132,10 @@ _SCHEMA_SQL = (
     # (X-only accounts, platform row) never collide under a partial index
     """CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_uk
        ON users (lower(email)) WHERE email IS NOT NULL""",
+    # one handle per folded name — registration, X auto-naming and the
+    # author page all resolve usernames case-insensitively
+    """CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_uk
+       ON users (lower(username))""",
     # ── sessions ──
     """
     CREATE TABLE IF NOT EXISTS sessions (

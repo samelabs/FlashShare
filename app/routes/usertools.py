@@ -601,12 +601,21 @@ async def update_user_tool(tool_id: str, request: Request):
         if sets or fields:
             if row["execution"] == "http":
                 sets["binding"] = merged_decl
-            from governance.tool_supply import update_tool
-            update_tool(tool_key, sets, con=con)
+            from governance.tool_supply import update_tool, DeclarationError
+            try:
+                update_tool(tool_key, sets, con=con)
+            except DeclarationError as exc:
+                # 与 create 路径同一受控 422 (如 enabled 非 bool →
+                # bad_enabled), 不落全局 500
+                return JSONResponse({"ok": False, "error": str(exc)}, 422)
 
         if "cost" in fields:
+            # 沿用当前商业开关: 作者改价不得推翻 operator 的 pricing 下架
+            # (operator 的持久权威 = pricing.enabled + delisted)
+            from repo import catalog as catalog_repo
             from governance.pricing import set_pricing
-            set_pricing(tool_key, fields["cost"], True,
+            pr = catalog_repo.pricing_row(con, tool_key) or {}
+            set_pricing(tool_key, fields["cost"], bool(pr.get("enabled")),
                         admin_user_id=user["id"], con=con)
     return {"ok": True}
 

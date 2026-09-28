@@ -44,6 +44,13 @@ _app_digest = hashlib.md5()
 _app_src = _STATIC / "app.js"
 _app_digest.update(_app_src.read_bytes())
 APP_JS_VERSION = _app_digest.hexdigest()[:8]
+
+# zip-preview.js 独立内容戳 — 同款缺陷类: 它在 static 根目录, pages 目录
+# 聚合摘要不覆盖它, detail.js 若借用 pages_version 则该文件改动戳不变。
+_zip_digest = hashlib.md5()
+_zip_src = _STATIC / "zip-preview.js"
+_zip_digest.update(_zip_src.read_bytes())
+ZIP_PREVIEW_VERSION = _zip_digest.hexdigest()[:8]
 sys.path.insert(0, str(_CORE))
 
 from config import (APP_NAME, BASE_URL, SOCIAL_IMAGE_URL,
@@ -107,6 +114,7 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         "css_version": _CSS_VERSION,
         "pages_version": PAGES_VERSION,
         "app_js_version": APP_JS_VERSION,
+        "zip_preview_version": ZIP_PREVIEW_VERSION,
         "i18n_version": _I18N_VERSION,
         "fmt_ts": fmt_ts,
         "year": datetime.datetime.now().year,

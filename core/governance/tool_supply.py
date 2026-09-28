@@ -41,6 +41,12 @@ _VISIBILITIES = ("private", "unlisted", "public")
 _MAX_LABEL = 40
 _MAX_DESC = 200
 
+# Line-projection surfaces (llms.txt catalog lines, MCP descriptions) render
+# label/desc verbatim; a control character in any locale value could forge
+# structure there. Rejected at the supply single point — output ends never
+# re-sanitize.
+_CTRL_CHARS = _re.compile(r"[\x00-\x1f\x7f]")
+
 
 class DeclarationError(ValueError):
     """canonical ToolDeclaration 校验失败。str(exc) 为错误码。"""
@@ -50,19 +56,21 @@ def _check_localized(value, max_len: int, required: bool) -> str | dict | None:
     """LocalizedText canonical shape 校验。返回归一化值。
 
     str: 非空且 <= max_len; dict: 非空且每值为非空 str <= max_len。
-    required=False 时 None 通过。错误码 = bad_label (label/desc 共用公开码)。
+    任一语言值含控制字符 (含 \r \n \t) 拒绝。required=False 时 None 通过。
+    错误码 = bad_label (label/desc 共用公开码)。
     """
     if value is None:
         if required:
             raise DeclarationError("bad_label")
         return None
     if isinstance(value, str):
-        if not (0 < len(value) <= max_len):
+        if not (0 < len(value) <= max_len) or _CTRL_CHARS.search(value):
             raise DeclarationError("bad_label")
         return value
     if isinstance(value, dict) and value:
         for v in value.values():
-            if not isinstance(v, str) or not (0 < len(v) <= max_len):
+            if not isinstance(v, str) or not (0 < len(v) <= max_len) \
+                    or _CTRL_CHARS.search(v):
                 raise DeclarationError("bad_label")
         return value
     raise DeclarationError("bad_label")

@@ -390,8 +390,15 @@ from execution import gate as _gate_mod  # noqa: E402
 from repo import ledger as _ledger  # noqa: E402
 _gate_src = inspect.getsource(_gate_mod)
 _earn_src = inspect.getsource(earnings)
+_w15_sorted = 'for uid in sorted((int(user["id"]), int(owner_id))):' in _gate_src
+# order: the ascending user-row locks precede the uploads landing call
+# (the import line at function top is not the landing itself)
+_w15_order = (_gate_src.find("for uid in sorted(") != -1
+              and _gate_src.find("for uid in sorted(")
+                  < _gate_src.find("land_items_result("))
 check("W15 gate provider_earn writer locks user row",
-      "lock_user(con, owner_id)" in _gate_src, None)
+      _w15_sorted and _w15_order
+      and "ledger_repo.lock_user(con, uid)" in _gate_src, None)
 check("W15b request_withdrawal locks user row",
       "ledger_repo.lock_user(con, user_id)" in _earn_src, None)
 check("W15c approve_withdrawal locks user row",

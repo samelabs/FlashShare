@@ -176,13 +176,24 @@ def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
     return uploads
 
 
-def delete_upload(upload_id: int, user_id: int) -> bool:
+def delete_upload(upload_id: int, user_id: int, audit=None) -> bool:
+    """The ONE delete implementation: FOR UPDATE read + row delete (+ the
+    optional operator audit callback) in a single transaction; the Gokapi
+    physical delete runs AFTER commit and only warns on failure (natural
+    TTL is the backstop).
+
+    audit(con, row) — called inside the transaction, after the DELETE, so
+    the audit fact and the mapping-row deletion commit or roll back
+    together. `row` is the locked pre-delete snapshot (owner-scoped).
+    Returns False when the row is absent (delete-by-absence converged).
+    """
     with db() as con:
-        row = uploads_repo.owned_row(con, upload_id, user_id)
-    if not row:
-        return False
-    with db() as con:
+        row = uploads_repo.owned_row_for_update(con, upload_id, user_id)
+        if not row:
+            return False
         uploads_repo.delete_upload_row(con, upload_id, user_id)
+        if audit is not None:
+            audit(con, dict(row))
     try:
         storage_delete(row["gokapi_id"])
     except Exception:

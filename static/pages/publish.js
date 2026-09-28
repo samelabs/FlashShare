@@ -145,6 +145,10 @@ const PARAM_TYPES = [
   ["number", "pub_pt_number"], ["boolean", "pub_pt_boolean"],
 ];
 const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
+// 用户数据入 HTML 统一转义 (app.js 的五字符 escapeHtml; 发布页脚本在
+// app.js 之后加载) — 回填的 key/label/placeholder/default/option value
+// 与文本全部经它, 禁止只转引号的局部写法。
+const _esc = s => window.escapeHtml(String(s == null ? "" : s));
 // LocalizedText 编辑回填 (the billing fix): 只经 canonical resolveLabel 读 dict —
 // 禁止 Object.values()[0] / 把 dict 当 string。服务端 merge 负责 patch 语义。
 const _ltBack = v => window.resolveLabel ? window.resolveLabel(v) : (typeof v === "string" ? v : "");
@@ -170,9 +174,9 @@ function paramRowHtml(p) {
     `<option value="${v}"${p.type === v ? " selected" : ""}>${_msg(k)}</option>`).join("");
   return `<div class="param-row" data-pid="${id}">
     <div class="param-row-head">
-      <input class="pr-key" placeholder="style" maxlength="32" value="${(p.key || "").replace(/"/g, "&quot;")}">
+      <input class="pr-key" placeholder="style" maxlength="32" value="${_esc(p.key || "")}">
       <select class="pr-type">${typeOpts}</select>
-      <input class="pr-label" maxlength="80" placeholder="${_msg("pub_param_label_ph")}" value="${_ltBack(p.label).replace(/"/g, "&quot;")}">
+      <input class="pr-label" maxlength="80" placeholder="${_msg("pub_param_label_ph")}" value="${_esc(_ltBack(p.label))}">
       <label class="pr-req"><input type="checkbox" class="pr-required"${p.required ? " checked" : ""}><span>${_msg("pub_param_required")}</span></label>
       <button type="button" class="pr-del" aria-label="✕">✕</button>
     </div>
@@ -185,21 +189,21 @@ function paramBodyHtml(type, p) {
   p = p || {};
   if (type === "enum") {
     const opts = (p.options || []).map(o =>
-      `<div class="pr-opt"><input class="pr-opt-val" placeholder="warm" maxlength="32" value="${(o.value || "").replace(/"/g, "&quot;")}">` +
-      `<input class="pr-opt-label" maxlength="40" placeholder="${_msg("pub_param_optlabel_ph")}" value="${_ltBack(o.label).replace(/"/g, "&quot;")}">` +
+      `<div class="pr-opt"><input class="pr-opt-val" placeholder="warm" maxlength="32" value="${_esc(o.value || "")}">` +
+      `<input class="pr-opt-label" maxlength="40" placeholder="${_msg("pub_param_optlabel_ph")}" value="${_esc(_ltBack(o.label))}">` +
       `<button type="button" class="pr-opt-del">✕</button></div>`).join("");
     return `<div class="pr-opts">${opts}</div>
       <div class="pr-enum-foot">
         <button type="button" class="btn btn-secondary pr-opt-add">+ ${_msg("pub_add_param_option")}</button>
         <label class="pr-default-wrap"><span>${_msg("pub_param_default")}</span>
-        <select class="pr-default">${(p.options || [{ value: "" }]).map(o => `<option value="${o.value}"${p.default === o.value ? " selected" : ""}>${o.value}</option>`).join("")}</select></label>
+        <select class="pr-default">${(p.options || [{ value: "" }]).map(o => `<option value="${_esc(o.value)}"${p.default === o.value ? " selected" : ""}>${_esc(o.value)}</option>`).join("")}</select></label>
       </div>`;
   }
   if (type === "number") {
     return `<div class="pr-inline">
-      <label><span>min</span><input class="pr-min" type="number" step="any" value="${p.min != null ? p.min : ""}"></label>
-      <label><span>max</span><input class="pr-max" type="number" step="any" value="${p.max != null ? p.max : ""}"></label>
-      <label><span>${_msg("pub_param_default")}</span><input class="pr-default-n" type="number" step="any" value="${p.default != null ? p.default : ""}"></label>
+      <label><span>min</span><input class="pr-min" type="number" step="any" value="${p.min != null ? _esc(p.min) : ""}"></label>
+      <label><span>max</span><input class="pr-max" type="number" step="any" value="${p.max != null ? _esc(p.max) : ""}"></label>
+      <label><span>${_msg("pub_param_default")}</span><input class="pr-default-n" type="number" step="any" value="${p.default != null ? _esc(p.default) : ""}"></label>
     </div>`;
   }
   if (type === "boolean") {
@@ -207,8 +211,8 @@ function paramBodyHtml(type, p) {
       <select class="pr-default-b"><option value="">—</option><option value="true"${p.default === true ? " selected" : ""}>true</option><option value="false"${p.default === false ? " selected" : ""}>false</option></select></label>`;
   }
   return `<div class="pr-inline">
-    <label class="pr-ph-wrap"><span>placeholder</span><input class="pr-ph" maxlength="80" value="${_ltBack(p.placeholder).replace(/"/g, "&quot;")}"></label>
-    <label><span>${_msg("pub_param_default")}</span><input class="pr-default-t" maxlength="200" value="${(p.default || "").replace(/"/g, "&quot;")}"></label>
+    <label class="pr-ph-wrap"><span>placeholder</span><input class="pr-ph" maxlength="80" value="${_esc(_ltBack(p.placeholder))}"></label>
+    <label><span>${_msg("pub_param_default")}</span><input class="pr-default-t" maxlength="200" value="${_esc(p.default || "")}"></label>
   </div>`;
 }
 

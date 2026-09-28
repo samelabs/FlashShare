@@ -367,6 +367,41 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("keys: real fsk_ API key created + auto-revealed", /^fsk_/.test(apiKey), apiKey.slice(0, 10));
       check("keys: key appears in list", (await page.$$(".key-item")).length >= 1);
       await visualAudit("desktop", page, "account-keys-created", true);
+
+      // ── 13. publish edit refill escapes stored declaration data ──
+      // A malicious enum option value stored in a declaration must
+      // refill as TEXT on the author's edit page, never execute.
+      const xssTool = "gxp" + Math.random().toString(36).slice(2, 7);
+      const xssPayload = '"><img src=x onerror="window.__xssAudit=1">';
+      const created = await page.evaluate(async ({ tid, payload }) => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tool_id: tid, label: "Gate XSS", url: "https://93.184.216.34/x",
+            timeout_s: 30, files_min: 0, files_max: 1,
+            format_families: "image", accept: [".png"],
+            outputs: ["text"], cost: 0,
+            params: [{ key: "style", type: "enum", required: false,
+                       options: [{ value: payload, label: payload }] }],
+          }),
+        });
+        return { ok: r.ok, status: r.status, body: (await r.text()).slice(0, 160) };
+      }, { tid: xssTool, payload: xssPayload });
+      check("publish-xss: tool with malicious option value created",
+        created.ok, created.status + " " + created.body);
+      await gotoReady(page, `/account/tools/publish?id=${xssTool}`, "#pubForm");
+      const xssState = await page.evaluate(() => ({
+        fired: window.__xssAudit === 1,
+        optVal: (document.querySelector(".pr-opt-val") || {}).value,
+        optText: (document.querySelector(".pr-default option") || {}).textContent,
+      }));
+      check("publish-xss: malicious option value did NOT execute", xssState.fired === false);
+      check("publish-xss: option value refilled as editable text",
+        xssState.optVal === xssPayload, xssState.optVal);
+      check("publish-xss: default <option> text escaped",
+        xssState.optText === xssPayload, xssState.optText);
+      await visualAudit("desktop", page, "publish-edit-xss-refill", true);
     }
 
     // ── per-viewport page contract sweep ──

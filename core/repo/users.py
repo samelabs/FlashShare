@@ -13,10 +13,11 @@ def by_id(con, user_id: int) -> Optional[dict]:
 
 
 def by_username_or_email(con, login: str, email: str) -> Optional[dict]:
-    """login matches username exactly; email is the normalized (lowercase)
-    form and matches case-insensitively."""
+    """username identity is case-insensitive (one handle per folded name,
+    users_username_lower_uk); email is the normalized (lowercase) form."""
     return con.execute(
-        "SELECT id, password_hash, status FROM users WHERE username = %s OR lower(email) = %s",
+        "SELECT id, password_hash, status FROM users"
+        " WHERE lower(username) = lower(%s) OR lower(email) = %s",
         (login, email)).fetchone()
 
 
@@ -26,8 +27,11 @@ def by_x_user_id(con, x_id: str) -> Optional[dict]:
 
 
 def username_exists(con, username: str) -> bool:
+    """Folded (case-insensitive) handle check — one identity per
+    lower(username), backed by users_username_lower_uk."""
     return con.execute(
-        "SELECT 1 FROM users WHERE username = %s", (username,)).fetchone() is not None
+        "SELECT 1 FROM users WHERE lower(username) = lower(%s)",
+        (username,)).fetchone() is not None
 
 
 def email_taken_by_other(con, email: str, user_id: int) -> bool:
@@ -179,6 +183,8 @@ def username_of(con, user_id: int) -> Optional[dict]:
 
 
 def id_by_username(con, username: str) -> Optional[dict]:
-    """用户页路由: username → id (只取 id, 不泄露其它列)。"""
+    """用户页路由/platform lookup: username → id (只取 id, 不泄露其它列)。
+    username 身份按折叠名匹配 (与注册判重同一语义)。"""
     return con.execute(
-        "SELECT id FROM users WHERE username = %s", (username,)).fetchone()
+        "SELECT id FROM users WHERE lower(username) = lower(%s)",
+        (username,)).fetchone()

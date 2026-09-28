@@ -508,7 +508,11 @@ def _spec_summary(t: dict, names: dict | None = None) -> dict:
     desc = (resolve_label(t.get("desc"), "en") or title).rstrip(".")
     price = (f" Price: {int(t['cost'])} credits per call."
              if int(t["cost"]) > 0 else " Free.")
-    author = (f" by @{t['owner_handle']}" if t.get("owner_handle") else "")
+    # community tools carry an explicit third-party marker so an agent
+    # reading the description knows the party it is calling; first-party
+    # tools (no owner) stay unannotated
+    author = (f" Third-party tool by @{t['owner_handle']}."
+              if t.get("owner_handle") else "")
     return {
         "name": mcp_name(t["id"], names),
         "title": title,
@@ -751,8 +755,13 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # filename|None)) | ("ref", (public_id, source_token)). Shape only —
     # no network, no storage.
     try:
-        files_arg = args.get("files")
-        if files_arg is None:
+        if "files" in args:
+            files_arg = args.get("files")
+            if files_arg is None:
+                # explicit null is NOT a missing key — same rejection as
+                # params:null (the adapter defaults only what is absent)
+                return _rpc_err(mid, -32602, "invalid files")
+        else:
             files_arg = []          # text-only tools: 0 files is legal
         if not isinstance(files_arg, list):
             raise ValueError("files[] must be an array")
