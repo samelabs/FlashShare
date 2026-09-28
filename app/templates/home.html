@@ -64,7 +64,7 @@
       <div class="bento" id="homeBento">
         {% for t in tools[:8] %}
         <a class="tc" href="/tool/{{ t.id }}" data-tool-id="{{ t.id }}">
-          <span class="ic" aria-hidden="true">{{ tool_icon_svg(t.icon) }}</span>
+          <span class="ic" aria-hidden="true">{{ icon_tool_svg(t.icon) }}</span>
           <h4>{{ (t.label | lt(lang)) or t.id }}</h4>
           {% if t.desc %}<p>{{ t.desc | lt(lang) }}</p>{% endif %}
           <div class="ft2">
@@ -86,7 +86,7 @@
           <p data-i18n="home_dark_sub">{{ texts.home_dark_sub }}</p>
           <div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap">
             <a class="btn btn-s" href="/agents" data-i18n="home_dark_cta">{{ texts.home_dark_cta }}</a>
-            <a class="btn btn-q" href="/llms.txt">llms.txt</a>
+            <a class="btn btn-q" href="/llms.txt"><span data-i18n="home_agent_guide">{{ texts.home_agent_guide }}</span></a>
           </div>
         </div>
         <div class="term">
