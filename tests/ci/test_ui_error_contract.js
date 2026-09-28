@@ -352,14 +352,14 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     const detail = fs.readFileSync(path.join(REPO, "static", "pages", "detail.js"), "utf8");
     assert.ok(!detail.includes("_errMap"), "detail.js: second error dictionary removed");
     assert.ok(detail.includes("_errm(msg)"), "detail.js routes through the unified boundary");
-    for (const f of ["credits.js", "keys.js", "profile.js", "earnings.js",
+    for (const f of ["pricing.js", "keys.js", "profile.js", "earnings.js",
                      "publish.js", "tools.js"]) {
       const src = fs.readFileSync(path.join(REPO, "static", "pages", f), "utf8");
       assert.ok(!/\|\|\s*['"]error['"]/.test(src), f + ": no raw 'error' fallback");
       assert.ok(!/alert\((?:d|dd|r\.data)?\.?error\)/.test(src), f + ": no alert(raw error)");
     }
-    const credits = fs.readFileSync(path.join(REPO, "static", "pages", "credits.js"), "utf8");
-    assert.ok(credits.includes("_errm(why)"), "credits.js checkout errors go through _errm");
+    const pricing = fs.readFileSync(path.join(REPO, "static", "pages", "pricing.js"), "utf8");
+    assert.ok(pricing.includes("_errm(why)"), "pricing.js checkout errors go through _errm");
   }
 
   console.log("PASS: UI error/retry contract (11 groups)");

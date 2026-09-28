@@ -545,8 +545,8 @@ _db_src = open(_os.path.join(_REPO, "core", "database.py"), encoding="utf-8").re
 # T5/T6 behavior-verify the canonical seeds; test_architecture_unification
 # proves no RENAME / old migration exists — no source-string migration claim
 # is needed here.
-_tmpl_src = open(_os.path.join(_REPO, "app", "templates", "account", "credits.html"), encoding="utf-8").read()
-check("PG9 Account 三态动作 (Subscribe/Current/Upgrade/Downgrade)",
+_tmpl_src = open(_os.path.join(_REPO, "app", "templates", "pricing.html"), encoding="utf-8").read()
+check("PG9 /pricing 三态动作 (Subscribe/Current/Upgrade/Downgrade)",
       "sub-upgrade" in _tmpl_src and "sub-downgrade" in _tmpl_src and "sub_current" in _tmpl_src)
 _repo_src2 = open(_os.path.join(_REPO, "core", "repo", "orders.py"), encoding="utf-8").read()
 _apk_blk = _repo_src2.split("def active_packages")[1].split("\ndef ")[0]

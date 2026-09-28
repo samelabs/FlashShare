@@ -702,9 +702,9 @@ check("SG19b HTTP 全在锁事务外 (AST: 锁 with 块内无 retrieve/create)",
       bool(_locked_bodies)
       and all("retrieve_checkout" not in b and "create_checkout" not in b
               for b in _locked_bodies))
-check("SG16 Account 可售列表消费同一 sellable 单点",
-      "t.sellable" in _pages_g.split("def account_credits")[1].split("async def ")[0]
-      and "plan_catalog.catalog()" in _pages_g.split("def account_credits")[1].split("async def ")[0])
+_shop_g = _pages_g.split("def _shop_offers")[1].split("\n@router")[0]
+check("SG16 /pricing sellable list consumes the same sellable authority",
+      "t.sellable" in _shop_g and "plan_catalog.catalog()" in _shop_g)
 
 # ═══ MC: /samelabs/plans member_count == canonical effective predicate ═══
 # membership_counts_by_plan(con, ts) 必须与 membership_is_effective 同义:

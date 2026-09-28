@@ -1,6 +1,17 @@
-// credits page: top-up & subscription checkout wiring
+// /pricing: credit-pack & subscription checkout wiring
 (function () {
   "use strict";
+
+  // Signed out: any buy button opens the login modal; after login the page
+  // reloads so every plan shows the viewer's own action.
+  document.addEventListener("click", function (e) {
+    if (window.__USER__) return;
+    var btn = e.target.closest(".topup-buy, .sub-buy");
+    if (!btn || !window.openAuthModal) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    window.openAuthModal({ mode: "register", onSuccess: function () { window.location.reload(); } });
+  }, true);
 
   // Purchase intent identity is server-side Order.id: a retry of the
   // same package/plan converges on the same pending Order (same
@@ -36,7 +47,7 @@
   }
 
   // 充值 (一次性 package)
-  var topupGrid = document.querySelector(".topup-grid");
+  var topupGrid = document.querySelector(".pr-packs");
   if (topupGrid) {
     topupGrid.addEventListener("click", function (e) {
       var btn = e.target.closest(".topup-buy");
@@ -47,7 +58,7 @@
 
   // 会员卡片: 服务端 action 已定 (subscribe/upgrade/downgrade), 前端只按
   // 按钮类分流端点 — 档名语义不进 JS。
-  var subGrid = document.querySelector(".sub-grid");
+  var subGrid = document.querySelector(".pr-plans");
   if (subGrid) {
     subGrid.addEventListener("click", function (e) {
       var buy = e.target.closest(".sub-buy");

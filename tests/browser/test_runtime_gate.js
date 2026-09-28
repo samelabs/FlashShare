@@ -90,6 +90,7 @@ const PAGES = [
   { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"] },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#cfgClaudeCode", "#cfgCurl"], copy: ["#copyMcp", '[data-copy-target="cfgClaudeCode"]'] },
+  { path: "/pricing", name: "pricing", anonOk: true, need: [".pr-plans .pr-card", "#refund"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
   { path: "/auth/register", name: "auth-register", anonOk: true, need: ["#regUsername"] },
   { path: "/account/credits", name: "account-credits", need: [] },
