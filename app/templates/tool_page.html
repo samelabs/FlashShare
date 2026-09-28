@@ -14,7 +14,7 @@
         {% if handle %}
         <a class="auth" href="/u/{{ handle }}"><i aria-hidden="true"></i>@{{ handle }}</a>
         {% else %}
-        <span class="auth"><i class="official" aria-hidden="true"></i><span class="tag tag-brand">518.PLUS</span></span>
+        <span class="auth"><i class="official" aria-hidden="true"></i>518.PLUS</span>
         {% endif %}
         {% if tool.cost %}
         <span class="tag tag-brand">{{ tool.cost }} {{ texts.credits_short }}</span>
@@ -42,7 +42,7 @@
   <div id="result" class="result hidden" aria-live="polite"></div>
 
   <div class="mcpline">
-    {{ icon_svg("wand") }}
+    {{ icon_svg("bot") }}
     <span data-i18n="mcp_line_label">{{ texts.mcp_line_label }}</span>
     <code id="toolMcpName">{{ mcp_name }}</code>
     <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span>{{ texts['copy'] }}</span></button>

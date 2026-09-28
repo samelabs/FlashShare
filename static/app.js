@@ -264,13 +264,13 @@ function showItemsResult(res) {
   const linkbar = linkUrl
     ? '<div class="linkbar">' + svgIcon("link")
       + "<span>" + escapeHtml(linkUrl) + "</span>"
-      + '<button class="btn btn-primary rs-copy" type="button" data-copy="link">' + svgIcon("copy")
+      + '<button class="btn btn-p rs-copy" type="button" data-copy="link">' + svgIcon("copy")
       + "<span>" + t("copy_link") + "</span></button></div>"
     : "";
   const rows = renderResultItems(res.items, { pwa: pwa, inputSizes: window.__lastInputSizes || null });
   window.__lastInputSizes = null;
   el.innerHTML =
-    '<div class="card out rs-card result-card">'
+    '<div class="out result-card">'
     + '<div class="out-h"><span class="ok" aria-hidden="true">' + svgIcon("check") + "</span>"
     + "<b>" + t("resultReady") + '</b><span class="t">' + dlAll + page + "</span></div>"
     + '<div class="out-b">'

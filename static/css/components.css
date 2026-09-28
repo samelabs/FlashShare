@@ -28,7 +28,11 @@
   fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
 }
 
-.btn.btn-primary, a.btn-primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.btn.btn-primary, .btn.btn-p, a.btn-primary, a.btn-p {
+  background: var(--ink); border-color: var(--ink); color: var(--brand-ink);
+}
+@media (hover:hover) and (pointer:fine) { .btn-primary:hover, .btn-p:hover { background: var(--ink-hover); border-color: var(--ink-hover); } }
+.btn.btn-b, a.btn-b { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); box-shadow: 0 6px 16px -6px rgba(255, 77, 77, 0.6); }
 @media (hover:hover) and (pointer:fine) { .btn-primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); } }
 
 .btn-secondary { background: var(--card); border-color: var(--line-2); color: var(--ink); }
@@ -413,7 +417,9 @@ pre.rs-text, pre.rs-json {
 .composer .c-err { margin: var(--s3) var(--s4) 0; }
 .c-files { display: flex; gap: var(--s2); flex-wrap: wrap; padding: 14px 16px 0; }
 .c-files:empty { display: none; }
-.c-files-opt { display: none; padding: 14px 16px 0; font-size: var(--fs-xs); color: var(--ink-3); }
+.c-files-opt { display: flex; align-items: center; gap: 8px; padding: 16px 20px 8px; min-height: 60px; font-size: 16px; color: var(--ink-3); }
+.c-files-opt[hidden] { display: none; }
+.c-files-opt svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .chipf {
   display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px;
   border: var(--border-w) solid var(--line); border-radius: 12px;

@@ -116,9 +116,10 @@
       // 文件位 (files_max>0): 已选 chip 行; files_min=0 → "可选"注记行
       if (hasFilesSlot()) {
         html += '<div class="c-files"></div>'
-          + '<div class="c-files-opt"' + (files.length ? ' hidden' : '') + '>'
+          + '<div class="c-files-opt c-files-hint"' + (files.length ? ' hidden' : '') + '>'
+          + icon("clip") + "<span>"
           + (filesMin() === 0 ? esc(t("ti_files_optional")) + " · " : "")
-          + esc(t("ti_drop_hint")) + "</div>";
+          + esc(t("ti_drop_hint")) + "</span></div>";
       }
 
       // 正文: 主 text 参数 (或纯文件工具的拖放提示文案)
@@ -129,8 +130,6 @@
         html += '<textarea class="c-text tp-text" data-param="' + esc(main.key)
           + '" rows="3" placeholder="' + ph + '">'
           + esc(val === undefined || val === null ? "" : String(val)) + "</textarea>";
-      } else {
-        html += '<div class="c-text-hint">' + esc(t("ti_composer_files_ph")) + "</div>";
       }
 
       // 参数区: 其余参数 (enum→seg / number / boolean / text)
