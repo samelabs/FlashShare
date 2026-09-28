@@ -826,7 +826,7 @@ async def result_page(result_id: str, request: Request):
             continue
         _fn = d.get("filename") or ""
         _fams = sniff_ext_to_families(
-            _fn.rsplit(".", 1)[-1].lower() if "." in _fn else "")
+            "." + _fn.rsplit(".", 1)[-1].lower() if "." in _fn else "")
         _fk = ("pdf" if d.get("is_pdf") else sorted(_fams)[0]) if _fams else "document"
         d["type_text"] = (ctx["texts"].get("fmt_family_" + _fk)
                           or ctx["texts"].get("out_kind_text", ""))

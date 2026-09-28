@@ -30,7 +30,6 @@
           <a class="btn btn-b" href="{{ first_file.download_url }}" download>{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
           {% endif %}
           <button class="btn btn-s" id="rShareBtn" type="button" aria-label="{{ texts.share_via_system }}" title="{{ texts.share_via_system }}">{{ icon_svg("share") }}<span data-i18n="share_via_system">{{ texts.share_via_system }}</span></button>
-          <button class="btn btn-s" id="rQrBtn" type="button" aria-label="QR">{{ icon_svg("qr") }}<span>QR</span></button>
         </div>
       </div>
 
@@ -64,7 +63,6 @@
           <div class="if-body">
             <b>{{ it.filename }}</b>
             <small>{{ it.size_text }} · {{ it.type_text }}</small>
-            {% if it.remaining is not none %}<span class="delta">{% if it.remaining == 0 %}0{% else %}{{ it.remaining }}{% endif %}</span>{% endif %}
           </div>
           <div class="a">
             {% if it.is_pdf %}
@@ -82,7 +80,7 @@
         <span data-i18n="r_qr_hint">{{ texts.r_qr_hint }}</span>
       </div>
     </div>
-    <p class="made"><span data-i18n="r_made_with">{{ texts.r_made_with }}</span> <a href="/"><b>518.PLUS</b></a> — <span data-i18n="r_made_slogan">{{ texts.r_made_slogan }}</span></p>
+    <p class="made"><a href="/" data-i18n="r_made_with">{{ texts.r_made_with }}</a> — <span data-i18n="r_made_slogan">{{ texts.r_made_slogan }}</span></p>
   </div>
 </section>
 {% endblock %}

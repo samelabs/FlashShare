@@ -827,10 +827,9 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .quick a { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 13px; border-radius: var(--r-full); background: var(--card); border: 1px solid var(--line); font-size: 13px; color: var(--ink-2); box-shadow: var(--sh-1); }
 .quick a svg { width: 15px; height: 15px; color: var(--ink); stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 @media (hover:hover) and (pointer:fine) { .quick a:hover { border-color: var(--line-2); } }
-.c-hint { font-size: 12px; color: var(--ink-3); text-align: center; margin-top: 12px; }
 
 /* 工具选择器胶囊 (home composer c-bar 内) */
-.tsel { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 8px; border-radius: var(--r-full); border: 1px solid var(--line-2); font: inherit; font-size: var(--fs-base); font-weight: 600; background: var(--card); cursor: pointer; position: relative; }
+.tsel { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 8px; border-radius: var(--r-full); border: 1px solid var(--line-2); font: inherit; font-size: var(--fs-base); font-weight: 600; background: var(--card); color: var(--ink); cursor: pointer; position: relative; }
 .tsel .tic { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
 .tsel .tic svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tsel > svg { width: 14px; height: 14px; color: var(--ink-3); stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
@@ -927,3 +926,20 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .rc-preview { padding: 0 20px 20px; }
 .rc-preview img { max-width: 100%; max-height: 560px; height: auto; display: block; margin: 0 auto; border-radius: var(--r); border: 1px solid var(--line); }
 .rc-zip { padding: 0 20px 20px; }
+
+/* ── acceptance fixes: result host is not a second card; left-aligned
+   composer/result inside the centered hero; /r rows read left-to-right ── */
+.result:has(> .out) { padding: 0; background: none; border: 0; box-shadow: none; }
+.hero .home-composer, .hero .result { text-align: start; max-width: 760px; margin-inline: auto; }
+.hero .result { margin-top: var(--s5); }
+.r-page .rc-files, .r-page .item-file, .r-page .if-body { text-align: start; }
+.r-page .item-file { flex-wrap: nowrap; }
+.r-page .item-file .if-body { flex: 1; min-width: 0; }
+.r-page .item-file .if-body b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-page .item-file .a { width: auto; margin-inline-start: auto; flex: none; }
+.r-page .item-file .a .btn { flex: none; }
+.av { flex: none; min-height: 0; height: 32px; }
+.ft a { color: var(--ink-3); }
+/* hero backdrop spans the viewport, not the content column */
+.glow, .grid-bg { left: 50%; right: auto; width: 100vw; transform: translateX(-50%); }
+body { overflow-x: clip; }

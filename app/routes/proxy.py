@@ -149,7 +149,7 @@ async def file_route(public_id: str, request: Request):
                       texts.get("fmt_family_" + ("pdf" if ((upload["content_type"] or "").lower() == "application/pdf") else (sorted(_fams)[0] if _fams else "document")))
                       or texts.get("out_kind_text", ""))(
             __import__("governance.formats", fromlist=["sniff_ext_to_families"]).sniff_ext_to_families(
-                (upload["file_name"] or "").rsplit(".", 1)[-1].lower()
+                "." + (upload["file_name"] or "").rsplit(".", 1)[-1].lower()
                 if "." in (upload["file_name"] or "") else ""), upload["file_name"]),
         "is_owner": bool(user and "user_id" in upload.keys() and user["id"] == upload["user_id"]),
         "escaped_url": html_escape(url),
