@@ -995,3 +995,16 @@ body { overflow-x: clip; }
   .acct-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .acct-tablewrap .acct-table { white-space: nowrap; }
 }
+
+/* ── 我的收藏 ── */
+.toolpage .fav-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 0; height: 22px; padding: 0 8px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink-2); cursor: pointer; font: inherit; font-size: 12px; font-weight: 500; }
+.toolpage .fav-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.toolpage .fav-btn.on { color: var(--warn); border-color: var(--warn); background: var(--warn-50); }
+.toolpage .fav-btn.on svg { fill: currentColor; }
+.acct-page .fav-bento { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.acct-page .fav-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.acct-page .fav-item .tc { flex: 1; }
+.acct-page .fav-mcp { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.acct-page .fav-remove { align-self: flex-start; }
+.acct-page .fav-remove svg { width: 14px; height: 14px; fill: currentColor; color: var(--warn); }
+.acct-page .fav-empty[hidden] { display: none; }

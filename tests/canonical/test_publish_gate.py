@@ -264,8 +264,11 @@ try:
           st == 200 and (d or {}).get("ok"), f"{st} {d}")
     st, _h, market, _sc = _req("GET", "/tools")
     check("G6c visible on /tools", tk in (market or ""))
-    check("G6d in a non-owner's MCP tools/list",
-          tk.replace("/", "__") in _tools_list(R_TOK))
+    st, d = _call("pin_tool", {"name": tk.replace("/", "__")}, R_TOK)
+    check("G6d a non-owner can pin it into their MCP tools/list",
+          ((d.get("result") or {}).get("structuredContent") or {})
+          .get("favorite") is True
+          and tk.replace("/", "__") in _tools_list(R_TOK), str(d)[:200])
 
     # ═══ G7: un-publishing stays free ════════════════════════════════
     st, _h, d, _sc = _patch_vis(a_ck, "gate1", "unlisted")
