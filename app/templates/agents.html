@@ -3,42 +3,47 @@
 {% block desc %}{{ texts.agents_mcp_desc }}{% endblock %}
 
 {% block content %}
-<section class="doc agents-page">
-  <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span>{{ texts.agents_title }}</span></nav>
-  <div class="page-head">
-    <h1>{{ texts.agents_title }}</h1>
-    <p class="page-head-sub">{{ texts.agents_mcp_intro }}</p>
-  </div>
+<section class="agents-v2">
+  <div class="wrap">
+    <div class="sec-h">
+      <div>
+        <h1>{{ texts.agents_title }}</h1>
+        <p class="sec-sub">{{ texts.agents_mcp_intro }}</p>
+      </div>
+    </div>
 
-  <div class="agents-quickstart">
-    <h2>{{ texts.agents_qs }}</h2>
-    <ol>
-      <li>{{ texts.agents_qs1 }} <a href="/account/keys">{{ texts.acct_keys }}</a> <span data-i18n="agents_key_prefix">{{ texts.agents_key_prefix }}</span></li>
-      <li>{{ texts.agents_qs2 }}</li>
-      <li>{{ texts.agents_qs3 }}</li>
-    </ol>
-  </div>
+    <div class="agents-topbar">
+      <div class="copyfield agents-url">
+        <input class="input" id="mcpUrl" readonly value="{{ BASE_URL }}/mcp" aria-label="MCP URL">
+        <button type="button" class="btn btn-p" id="copyMcp" data-copy-target="mcpUrl" data-i18n="copy">{{ texts['copy'] }}</button>
+      </div>
+      <a class="btn btn-s" href="/account/keys">{{ icon_svg("settings") }}<span data-i18n="acct_keys">{{ texts.acct_keys }}</span></a>
+      <a class="btn btn-q" href="/llms.txt">llms.txt</a>
+    </div>
+    <p class="hint">Auth: <code>Authorization: Bearer &lt;fsk_…&gt;</code></p>
 
-  <h2>{{ texts.agents_mcp_h }}</h2>
-  <div class="copyfield">
-    <input class="input" id="mcpUrl" readonly value="{{ BASE_URL }}/mcp">
-    <button type="button" class="btn btn-secondary" id="copyMcp" data-copy-target="mcpUrl" data-i18n="copy">{{ texts['copy'] }}</button>
-  </div>
-  <p class="hint">Auth: <code>Authorization: Bearer &lt;fsk_…&gt;</code> · plain-text agent guide: <a href="/llms.txt">/llms.txt</a></p>
-  <div class="agents-mcp-config">
-    <h3>{{ texts.agents_mcp_conf }}</h3>
-    <dl>
-      <dt data-i18n="agents_hdr_name">{{ texts.agents_hdr_name }}</dt><dd><code>Authorization</code></dd>
-      <dt data-i18n="agents_hdr_value">{{ texts.agents_hdr_value }}</dt><dd><code>Bearer &lt;fsk_…&gt;</code></dd>
-    </dl>
-    <p class="hint" data-i18n="agents_key_note">{{ texts.agents_key_note }}</p>
+    <div class="agents-steps">
+      <div class="step-card"><span class="n">1</span><p>{{ texts.agents_qs1 }} <a href="/account/keys">{{ texts.acct_keys }}</a> <span data-i18n="agents_key_prefix">{{ texts.agents_key_prefix }}</span></p></div>
+      <div class="step-card"><span class="n">2</span><p>{{ texts.agents_qs2 }}</p></div>
+      <div class="step-card"><span class="n">3</span><p>{{ texts.agents_qs3 }}</p></div>
+    </div>
 
-    <h3>Claude Code</h3>
-<pre class="agents-pre"><code id="cfgClaudeCode">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;fsk_…&gt;"</code></pre>
-    <button type="button" class="btn btn-secondary" data-copy-target="cfgClaudeCode" data-i18n="copy">{{ texts['copy'] }}</button>
-
-    <h3>Cursor · <code>~/.cursor/mcp.json</code></h3>
-<pre class="agents-pre"><code id="mcpConf">{
+    <div class="agents-tabs-wrap">
+      <div class="seg agents-tabs" role="tablist">
+        <button type="button" role="tab" class="on" data-tab="claude-code">Claude Code</button>
+        <button type="button" role="tab" data-tab="cursor">Cursor</button>
+        <button type="button" role="tab" data-tab="vscode">VS Code</button>
+        <button type="button" role="tab" data-tab="desktop">Claude Desktop</button>
+        <button type="button" role="tab" data-tab="curl">curl</button>
+      </div>
+      <div class="tab-panels">
+        <div class="tab-panel" data-panel="claude-code" role="tabpanel">
+          <button type="button" class="btn btn-s tab-copy" data-copy-target="cfgClaudeCode">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+<pre class="term tab-term"><code id="cfgClaudeCode">claude mcp add --transport http 518 {{ BASE_URL }}/mcp --header "Authorization: Bearer &lt;fsk_…&gt;"</code></pre>
+        </div>
+        <div class="tab-panel hidden" data-panel="cursor" role="tabpanel">
+          <button type="button" class="btn btn-s tab-copy" data-copy-target="mcpConf">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+<pre class="term tab-term"><code id="mcpConf">{
   "mcpServers": {
     "518": {
       "type": "http",
@@ -47,10 +52,10 @@
     }
   }
 }</code></pre>
-    <button type="button" class="btn btn-secondary" id="copyConf" data-copy-target="mcpConf" data-i18n="copy">{{ texts['copy'] }}</button>
-
-    <h3>VS Code · <code>.vscode/mcp.json</code></h3>
-<pre class="agents-pre"><code id="cfgVscode">{
+        </div>
+        <div class="tab-panel hidden" data-panel="vscode" role="tabpanel">
+          <button type="button" class="btn btn-s tab-copy" data-copy-target="cfgVscode">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+<pre class="term tab-term"><code id="cfgVscode">{
   "servers": {
     "518": {
       "type": "http",
@@ -59,10 +64,10 @@
     }
   }
 }</code></pre>
-    <button type="button" class="btn btn-secondary" data-copy-target="cfgVscode" data-i18n="copy">{{ texts['copy'] }}</button>
-
-    <h3>Claude Desktop · <code>claude_desktop_config.json</code></h3>
-<pre class="agents-pre"><code id="cfgClaudeDesktop">{
+        </div>
+        <div class="tab-panel hidden" data-panel="desktop" role="tabpanel">
+          <button type="button" class="btn btn-s tab-copy" data-copy-target="cfgClaudeDesktop">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+<pre class="term tab-term"><code id="cfgClaudeDesktop">{
   "mcpServers": {
     "518": {
       "command": "npx",
@@ -71,18 +76,25 @@
     }
   }
 }</code></pre>
-    <button type="button" class="btn btn-secondary" data-copy-target="cfgClaudeDesktop" data-i18n="copy">{{ texts['copy'] }}</button>
-  </div>
+        </div>
+        <div class="tab-panel hidden" data-panel="curl" role="tabpanel">
+          <button type="button" class="btn btn-s tab-copy" data-copy-target="cfgCurl">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+<pre class="term tab-term"><code id="cfgCurl">curl -s {{ BASE_URL }}/mcp \
+  -H "Authorization: Bearer fsk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'</code></pre>
+        </div>
+      </div>
+    </div>
 
-  <div class="agents-market-link">
-    <a class="open-callout" href="/tools">
-      <span data-i18n="market_title">{{ texts.market_title }}</span>
-      <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-    </a>
+    <div class="agents-market-link">
+      <a class="btn btn-s" href="/tools">{{ icon_svg("wand") }}<span data-i18n="market_title">{{ texts.market_title }}</span></a>
+    </div>
   </div>
 </section>
 {% endblock %}
 
 {% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
 <script src="/static/pages/agents.js?v={{ pages_version }}"></script>
 {% endblock %}

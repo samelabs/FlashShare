@@ -209,6 +209,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Ce point de terminaison n'est pas autorisé.",
         "credits_balance": "Solde de crédits",
         "agents_title": "MCP",
+        "nav_ai": "Connecter l'IA",
 
         "agents_mcp_h": "Serveur MCP",
         "agents_mcp_desc": "Ajoutez cette URL dans votre client MCP. Mêmes outils, même facturation à l'usage.",
@@ -780,6 +781,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "이 엔드포인트는 허용되지 않습니다.",
         "credits_balance": "크레딧 잔액",
         "agents_title": "MCP",
+        "nav_ai": "AI 연결",
 
         "agents_mcp_h": "MCP 서버",
         "agents_mcp_desc": "MCP 클라이언트에 이 URL을 추가하세요. 같은 도구, 같은 사용량 기반 과금.",
@@ -1351,6 +1353,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Эта конечная точка не разрешена.",
         "credits_balance": "Баланс кредитов",
         "agents_title": "MCP",
+        "nav_ai": "Подключить ИИ",
 
         "agents_mcp_h": "MCP-сервер",
         "agents_mcp_desc": "Добавьте этот URL в свой MCP-клиент. Те же инструменты, та же оплата по использованию.",
@@ -1922,6 +1925,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "هذه النقطة الطرفية غير مسموح بها.",
         "credits_balance": "رصيد النقاط",
         "agents_title": "MCP",
+        "nav_ai": "اربط الذكاء الاصطناعي",
 
         "agents_mcp_h": "خادم MCP",
         "agents_mcp_desc": "أضف هذا الرابط إلى عميل MCP. نفس الأدوات ونفس الدفع حسب الاستخدام.",
@@ -2493,6 +2497,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Dieser Endpunkt ist nicht erlaubt.",
         "credits_balance": "Guthaben",
         "agents_title": "MCP",
+        "nav_ai": "KI anbinden",
 
         "agents_mcp_h": "MCP-Server",
         "agents_mcp_desc": "Fügen Sie diese URL zu Ihrem MCP-Client hinzu. Gleiche Tools, gleiche nutzungsbasierte Abrechnung.",
@@ -3064,6 +3069,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Este endpoint não é permitido.",
         "credits_balance": "Saldo de créditos",
         "agents_title": "MCP",
+        "nav_ai": "Conectar IA",
 
         "agents_mcp_h": "Servidor MCP",
         "agents_mcp_desc": "Adicione esta URL ao seu cliente MCP. Mesmas ferramentas, mesma cobrança por uso.",
@@ -3635,6 +3641,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "このエンドポイントは許可されていません。",
         "credits_balance": "クレジット残高",
         "agents_title": "MCP",
+        "nav_ai": "AI をつなぐ",
 
         "agents_mcp_h": "MCP サーバー",
         "agents_mcp_desc": "MCP クライアントにこの URL を追加してください。同じツール、同じ従量課金。",
@@ -4206,6 +4213,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "该端点不被允许。",
         "credits_balance": "积分余额",
         "agents_title": "MCP",
+        "nav_ai": "接入 AI",
 
         "agents_mcp_h": "MCP 服务器",
         "agents_mcp_desc": "在 MCP 客户端添加此地址即可。同样的工具、同样的按量计费。",
@@ -4777,6 +4785,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Este endpoint no está permitido.",
         "credits_balance": "Saldo de créditos",
         "agents_title": "MCP",
+        "nav_ai": "Conectar IA",
 
         "agents_mcp_h": "Servidor MCP",
         "agents_mcp_desc": "Añada esta URL a su cliente MCP. Mismas herramientas, mismo pago por uso.",
@@ -5348,6 +5357,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "This endpoint is not allowed.",
         "credits_balance": "Credit balance",
         "agents_title": "MCP",
+        "nav_ai": "Connect AI",
 
         "agents_mcp_h": "MCP Server",
         "agents_mcp_desc": "Add this URL to your MCP client. Same tools, same usage-based billing.",
