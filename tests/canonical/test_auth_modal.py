@@ -181,14 +181,23 @@ try:
 
     # ═══ G: market lists first-party + community tools ═══════════════
     com = _u + "c"
+    b, ct = _form({"username": com, "password": "Test12345",
+                   "password_confirm": "Test12345", "email": f"{com}@t.co"})
+    _req("POST", "/auth/register", b, {"Content-Type": ct})
+    with db() as con:
+        uid_com = int(con.execute(
+            "select id from users where username=%s", (com,)).fetchone()["id"])
     with db() as con:
         con.execute(
-            "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " tool_type, label_json, icon, inputs_json, outputs_json, visibility,"
-            " enabled, created_at, updated_at) values (%s, %s, %s, 'http',"
-            " 'produce', '{\"en\": \"Community G\"}', 'wand', '{}', '[\"file\"]',"
-            " 'public', TRUE, %s, %s)",
-            (f"{com}/g", None, "g", int(_time.time()), int(_time.time())))
+            """
+            INSERT INTO platform_tools (tool_key, tool_id, execution,
+              visibility, label_json, enabled, owner_id,
+              files_min, files_max, outputs_json, created_at, updated_at)
+            VALUES (%s, 'g', 'http', 'public',
+              '{"en": "Community G"}', TRUE, %s,
+              1, 1, '["file"]', %s, %s)
+            """,
+            (f"{com}/g", uid_com, int(_time.time()), int(_time.time())))
         con.execute(
             "insert into pricing (tool_id, cost, enabled, updated_at)"
             " values (%s, 0, TRUE, %s)", (f"{com}/g", int(_time.time())))
