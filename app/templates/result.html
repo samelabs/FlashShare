@@ -37,7 +37,7 @@
       <div class="rc-files">
         {% for it in items %}
         {% if it.kind == 'text' %}
-        <div class="item-text rs-item rs-text" style="margin: 0 20px 14px">
+        <div class="rs-item rs-text item-text" style="margin: 0 20px 14px">
           <div class="lbl"><span data-i18n="r_text_out">{{ texts.r_text_out }}</span>
             <button class="btn btn-icon btn-sm rs-copy" type="button" data-copy-text aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}</button></div>
           {{ it.text }}
@@ -50,12 +50,12 @@
           </details>
         </div>
         {% elif it.deleted %}
-        <div class="item-file rs-item rs-file r-gone">
+        <div class="rs-item rs-file item-file r-gone">
           <span class="pv doc" aria-hidden="true">{{ icon_svg("doc") }}</span>
           <div class="if-body"><b>{{ it.filename }}</b><small data-i18n="r_file_gone">{{ texts.r_file_gone }}</small></div>
         </div>
         {% else %}
-        <div class="item-file rs-item rs-file">
+        <div class="rs-item rs-file item-file">
           {% if it.is_image %}
           <img class="pv img" src="/f/{{ it.public_id }}/inline" alt="" loading="lazy" decoding="async">
           {% else %}

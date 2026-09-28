@@ -251,7 +251,8 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("home: tool grid rendered", (await page.$("#homeBento .tc")).length >= 1, homeAudit.bodyText.slice(0, 120));
 
       // 4-7. upload + execute compress via real UI (home surface)
-      await page.click(".tool-card[data-tool-id=compress]");
+      await page.click(".ti-picker");
+      await page.click('.tsel-item[data-tool="compress"]');
       // params render inline in the shared input component — no overlay
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
       check("home: input component rendered (run + file picker)",
