@@ -17,37 +17,7 @@
       <a class="btn btn-p" href="/account/tools/publish" id="openPublish"><span data-i18n="mytools_create">{{ texts.mytools_create }}</span></a>
     </div>
     <p class="profile-note" data-i18n="mytools_desc">{{ texts.mytools_desc }}</p>
-    <details class="contract-doc">
-      <summary data-i18n="contract_summary">{{ texts.contract_summary }}</summary>
-      <div class="contract-body">
-        <h4 data-i18n="contract_req_h">{{ texts.contract_req_h }}</h4>
-        <pre>POST https://your-endpoint/your-path
-Content-Type: application/json
-
-{
-  "files": [
-    { "filename": "a.png", "content_type": "image/png",
-      "size": 12345, "url": "{{ BASE_URL }}/api/source/…（one-time signed URL）" }
-  ],
-  "params": { … }
-}</pre>
-        <p data-i18n="contract_req_note">{{ texts.contract_req_note }}</p>
-        <h4 data-i18n="contract_resp_h">{{ texts.contract_resp_h }}</h4>
-        <pre>{ "items": [
-    { "kind": "text", "text": "…" },
-    { "kind": "json", "data": { … } },
-    { "kind": "file", "filename": "x.png", "content_type": "image/png",
-      "data_b64": "…" },
-    { "kind": "file", "filename": "y.pdf", "content_type": "application/pdf",
-      "url": "https://your-host/y.pdf" }
-] }</pre>
-        <p data-i18n="contract_out_note">{{ texts.contract_out_note }}</p>
-        <h4 data-i18n="contract_auth_h">{{ texts.contract_auth_h }}</h4>
-        <p data-i18n="contract_auth_note">{{ texts.contract_auth_note }}</p>
-        <h4 data-i18n="contract_sec_h">{{ texts.contract_sec_h }}</h4>
-        <p data-i18n="contract_sec_note">{{ texts.contract_sec_note }}</p>
-      </div>
-    </details>
+    <p class="profile-note"><a href="/developers" data-i18n="mytools_guide">{{ texts.mytools_guide }}</a></p>
     <div id="toolList" class="usertools-list"></div>
     <p id="toolNone" class="profile-note hidden" data-i18n="mytools_none">{{ texts.mytools_none }}</p>
   </div>

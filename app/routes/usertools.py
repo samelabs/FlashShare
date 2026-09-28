@@ -104,11 +104,12 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         fields["url"] = url
 
     if "timeout_s" in raw or not partial:
+        from remote import MIN_TIMEOUT_S, MAX_TIMEOUT_S
         try:
             timeout_s = int(raw.get("timeout_s") or 60)
         except (ValueError, TypeError):
             return None, "bad_timeout"
-        if not (5 <= timeout_s <= 300):
+        if not (MIN_TIMEOUT_S <= timeout_s <= MAX_TIMEOUT_S):
             return None, "bad_timeout"
         fields["timeout_s"] = timeout_s
 
@@ -207,12 +208,13 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
 
 @router.get("/api/tools/search")
 async def search_tools(request: Request, q: str = ""):
-    """Home tool search — one list, self-operated first, community next.
-    Anonymous: public rows only. Signed-in: own private/unlisted included."""
+    """Public tool search (home selector surface) — the same predicate,
+    ordering and projection as the /tools market and MCP catalog_search
+    (single point: governance.search_catalog). Empty query browses the
+    top entries; anonymous and signed-in callers see the same public set
+    (private/unlisted tools live on the owner surface, not in search)."""
     from governance.catalog import search_catalog
-    user = request.state.user
-    viewer = user["id"] if user else None
-    return {"ok": True, "tools": search_catalog(q, viewer)}  # noqa: E501 (search_catalog caps at 30)
+    return {"ok": True, "tools": search_catalog(q)}
 
 
 @router.get("/api/usertools")

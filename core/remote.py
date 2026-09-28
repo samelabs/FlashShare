@@ -41,6 +41,7 @@ import urllib.request
 from config import MAX_UPLOAD_BYTES
 from execution.results import (MAX_RESULT_ITEMS, MAX_INLINE_RESULT_BYTES)  # noqa: E402
 
+MIN_TIMEOUT_S = 5
 DEFAULT_TIMEOUT_S = 60
 MAX_TIMEOUT_S = 300
 MAX_OUTPUT_BYTES = MAX_UPLOAD_BYTES
@@ -420,30 +421,18 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
         raise RemoteError("timeout", "") from exc
 
 
-def drive_http(endpoint_decl: dict, sources: list, params: dict,
-               auth_headers: dict, trusted: bool) -> dict:
-    """The ONE southbound developer contract (IO-1).
+def dispatch_payload(sources: list, params: dict) -> dict:
+    """The southbound request body, ONE constructor (IO-1):
 
-    Request  {"files": [{"filename", "content_type", "size", "url"}],
-              "params": {...}}   (pull model; signed one-time fetch URLs)
-    Response {"items": [{"kind":"text","text": str}
-                        | {"kind":"json","data": <json>}
-                        | {"kind":"file", "filename": str,
-                           "content_type": str, "data_b64" | "url"}]}
+        {"files": [{"filename", "content_type", "size", "url"}],
+         "params": {...}}   (pull model; signed one-time fetch URLs)
 
-    Every file item is fetched/decoded, byte-validated and normalized to
-    a landing result ({filename, content_type, bytes, size}); a response
-    that does not match the items shape raises RemoteError
-    ("invalid_response") — the call fails and the caller refunds.
-
-    Trusted rows: guard_endpoint (operator policy) then the classic
-    urllib driver. Untrusted rows: the pinned transport itself is the
-    runtime security authority (single DNS resolution per hop)."""
-    timeout_s = min(int(endpoint_decl.get("timeout_s") or DEFAULT_TIMEOUT_S),
-                    MAX_TIMEOUT_S)
-    url = (guard_endpoint(endpoint_decl["url"], trusted) if trusted
-           else endpoint_decl["url"])
-    payload = {
+    `sources` are the orchestrator's upload dicts; nothing else ever
+    rides in the body (delivery is a platform fact; credentials go in
+    headers). The public developer guide's example request is checked
+    against THIS function (canonical test) — the docs cannot drift
+    from the contract."""
+    return {
         "files": [
             {"filename": s["filename"], "content_type": s["content_type"],
              "size": s["size"], "url": s["url"]}
@@ -451,14 +440,22 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
         ],
         "params": params,
     }
-    status, body, resp_ctype = _http_call(url, payload, auth_headers, timeout_s, trusted)
-    if status != 200:
-        raise RemoteError("http_status", f"{status}")
-    try:
-        out = json.loads(body)
-    except Exception as exc:
-        raise RemoteError("invalid_response",
-                          "response must be JSON with an items array") from exc
+
+
+def parse_endpoint_items(out, url_fetch) -> list:
+    """Validate/normalize ONE decoded endpoint response against the
+    southbound contract (IO-1):
+
+        {"items": [{"kind":"text","text": str}
+                   | {"kind":"json","data": <json>}
+                   | {"kind":"file", "filename": str,
+                      "content_type": str, "data_b64" | "url"}]}
+
+    Shape violations raise RemoteError("invalid_response"); every file
+    item is fetched (url, through `url_fetch` — the caller's SSRF-guarded
+    transport) or decoded (data_b64) and normalized to a landing result
+    ({filename, content_type, bytes, size}). The developer guide's
+    example response is validated by THIS function (canonical test)."""
     if not isinstance(out, dict) or not isinstance(out.get("items"), list):
         raise RemoteError("invalid_response", "missing items array")
     items = out["items"]
@@ -493,20 +490,18 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
             results.append({"kind": "json", "data": data})
         elif kind == "file":
             if "url" in it:
-                data = _pull_item_file_url(it["url"], timeout_s, trusted)
-                wrapped = _wrap_raw(data, it.get("filename"),
-                                    it.get("content_type"))
+                data = url_fetch(it["url"])
             elif "data_b64" in it:
                 try:
                     data = base64.b64decode(it["data_b64"], validate=True)
                 except Exception as exc:
                     raise RemoteError("bad_output",
                                       "b64 decode failed") from exc
-                wrapped = _wrap_raw(data, it.get("filename"),
-                                    it.get("content_type"))
             else:
                 raise RemoteError("invalid_response",
                                   "file item needs data_b64 or url")
+            wrapped = _wrap_raw(data, it.get("filename"),
+                                it.get("content_type"))
             results.append({"kind": "file",
                             "filename": wrapped["filename"],
                             "content_type": wrapped["content_type"],
@@ -514,7 +509,34 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
                             "bytes": wrapped["bytes"]})
         else:
             raise RemoteError("invalid_response", "unknown item kind")
-    return {"items": results}
+    return results
+
+
+def drive_http(endpoint_decl: dict, sources: list, params: dict,
+               auth_headers: dict, trusted: bool) -> dict:
+    """The ONE southbound developer contract (IO-1) — see
+    dispatch_payload (request) and parse_endpoint_items (response).
+    A response that does not match the items shape raises RemoteError
+    ("invalid_response") — the call fails and the caller refunds.
+
+    Trusted rows: guard_endpoint (operator policy) then the classic
+    urllib driver. Untrusted rows: the pinned transport itself is the
+    runtime security authority (single DNS resolution per hop)."""
+    timeout_s = min(int(endpoint_decl.get("timeout_s") or DEFAULT_TIMEOUT_S),
+                    MAX_TIMEOUT_S)
+    url = (guard_endpoint(endpoint_decl["url"], trusted) if trusted
+           else endpoint_decl["url"])
+    payload = dispatch_payload(sources, params)
+    status, body, resp_ctype = _http_call(url, payload, auth_headers, timeout_s, trusted)
+    if status != 200:
+        raise RemoteError("http_status", f"{status}")
+    try:
+        out = json.loads(body)
+    except Exception as exc:
+        raise RemoteError("invalid_response",
+                          "response must be JSON with an items array") from exc
+    return {"items": parse_endpoint_items(
+        out, lambda u: _pull_item_file_url(u, timeout_s, trusted))}
 
 
 def _pull_item_file_url(item_url: str, timeout_s: int, trusted: bool) -> bytes:

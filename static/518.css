@@ -259,6 +259,7 @@ select { width: auto; margin-top: 0; }
 /* ── Doc Pages ───────────────────────────────────────────── */
 .doc { line-height: 1.7; width: 100%; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
 .doc h1 { font-size: var(--fs-xl); }
+.doc-pre { background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s2) var(--s3); overflow-x: auto; font-size: var(--fs-xs); line-height: 1.6; font-family: var(--font-mono, monospace); }
 
 /* ── /agents (agent support surface) ─────────────────────── */
 
@@ -625,15 +626,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .calls-drawer .wd-row { border-bottom: 1px dashed var(--line); }
 .calls-drawer .wd-row:last-child { border-bottom: none; }
 .calls-drawer .wd-row strong:last-child { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-2); }
-
-/* ── provider contract doc (collapsed) ── */
-.contract-doc { margin: var(--s2) 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunk); }
-.contract-doc summary { padding: 10px 14px; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--ink-2); }
-.contract-doc[open] summary { border-bottom: 1px solid var(--line); color: var(--ink); }
-.contract-body { padding: var(--s2) var(--s3); font-size: var(--fs-sm); }
-.contract-body h4 { margin: var(--s2) 0 var(--s1); font-size: var(--fs-sm); }
-.contract-body pre { background: var(--sunk); padding: 10px 12px; border-radius: var(--r-sm); overflow-x: auto; font-size: var(--fs-xs); line-height: 1.6; }
-.contract-body p { color: var(--ink-2); }
 
 /* ═══ STEP 9: 工具市场 + 工具主页 ═══ */
 
