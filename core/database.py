@@ -769,6 +769,19 @@ _SCHEMA_SQL = (
       ON mcp_upload_tickets (user_id, client_ref)
       WHERE used_at IS NULL
     """,
+    # ── tool_favorites: 我的收藏 ──
+    # A user's pinned tools. Drives the web favorites list and the MCP
+    # tools/list selection (meta + first-party + favorites). Rows for a
+    # tool that later stops being visible simply drop out of every
+    # projection (the catalog visibility predicate filters them).
+    """
+    CREATE TABLE IF NOT EXISTS tool_favorites (
+      user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tool_key   TEXT   NOT NULL,
+      created_at BIGINT NOT NULL,
+      PRIMARY KEY (user_id, tool_key)
+    )
+    """,
     )
 
 

@@ -194,9 +194,10 @@ try:
                   if ln.startswith("- ")}
     expect_names = {_names.get(t["id"], t["id"].replace("/", "__"))
                     for t in _pub}
+    first_party = {n for n in expect_names if "__" not in n}
     check("L7 llms.txt tool names == public catalog names",
           llms_names == expect_names
-          and expect_names <= listed,
+          and first_party <= listed,
           (sorted(llms_names), sorted(expect_names)))
 
     # ═══ D. discovery links ═══

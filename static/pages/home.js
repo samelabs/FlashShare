@@ -93,11 +93,16 @@
   }
 
   // ── 快捷胶囊: 排序最前的 5 个非分享工具 ──
+  // 我的收藏 first (signed-in users), then the default picks, 5 in all
+  let favKeys = [];
   function renderQuick() {
     const wrap = document.getElementById("quickTools");
     if (!wrap) return;
     const esc = window.escapeHtml || String;
-    const picks = tools.filter((t) => t.id !== "share").slice(0, 5);
+    const favs = favKeys.map((k) => tools.find((t) => t.id === k))
+      .filter((t) => t && t.id !== "share");
+    const rest = tools.filter((t) => t.id !== "share" && favs.indexOf(t) < 0);
+    const picks = favs.concat(rest).slice(0, 5);
     wrap.innerHTML = picks.map((tool) =>
       '<a class="quick-item" href="#" role="button" data-tool="' + esc(tool.id) + '">'
       + (tool.icon ? window.iconSvg(tool.icon) : "") + esc(toolName(tool)) + "</a>").join("");
@@ -118,4 +123,13 @@
   const savedTool = tools.find((t) => t.id === saved);
   const share = tools.find((t) => t.id === "share");
   selectTool(savedTool || share || tools[0], { skipPersist: !savedTool });
+
+  if (window.__USER__) {
+    fetch("/api/favorites").then((r) => r.json()).then((d) => {
+      if (d && d.ok && Array.isArray(d.tools) && d.tools.length) {
+        favKeys = d.tools;
+        renderQuick();
+      }
+    }).catch(() => {});
+  }
 })();

@@ -284,7 +284,7 @@ def files_schema(t):
 check("H1 compress files[] maxItems=1", files_schema(comp).get("maxItems") == 1 and files_schema(comp).get("minItems") == 1, str(files_schema(comp)))
 check("H2 zip_pack files[] maxItems=20", files_schema(zp).get("maxItems") == 20, str(files_schema(zp)))
 _META = ("catalog_search", "create_upload", "list_uploads",
-         "delete_upload")
+         "delete_upload", "pin_tool", "unpin_tool")
 all_have_files = all("files" in (t.get("inputSchema", {}).get("properties") or {}) for t in tools if t["name"] not in _META)
 no_b64 = all("file_b64" not in (t.get("inputSchema", {}).get("properties") or {}) for t in tools)
 check("H3 所有工具只有 files[] 模型", all_have_files and no_b64, f"{len(tools)} tools")
