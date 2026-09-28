@@ -25,15 +25,17 @@ body.sl-body {
 }
 
 /* ── 独立壳: 左固定侧栏 + 右内容 ─────────────────────────── */
-.sl-shell { display: flex; min-height: 100vh; }
+.sl-shell { display: block; min-height: 100dvh; }
 
 .sl-sidebar {
   width: 208px; flex: 0 0 208px;
   background: var(--sl-surface);
   border-right: 1px solid var(--sl-line);
   display: flex; flex-direction: column;
-  position: sticky; top: 0; height: 100vh;
+  position: fixed; inset-block: 0; left: 0; height: 100dvh;
   padding: var(--s4) var(--s3);
+  overflow-y: auto;
+  z-index: 5;
 }
 .sl-brand {
   display: flex; align-items: center; gap: var(--s2);
@@ -93,7 +95,7 @@ body.sl-body {
 @media (hover:hover) and (pointer:fine) { .sl-exit:hover { background: var(--sl-err-soft); color: var(--sl-err); } }
 
 /* ── 右侧内容区 ─────────────────────────────────────────── */
-.sl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sl-main { margin-left: 208px; min-width: 0; display: flex; flex-direction: column; }
 .sl-topbar {
   display: flex; align-items: center; gap: var(--s3);
   padding: var(--s3) var(--s5);
