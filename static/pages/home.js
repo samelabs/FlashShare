@@ -20,6 +20,7 @@
       ctrl.setTool(tool);
     }
     activeTool = tool;
+    document.body.dataset.tool = tool.id;
     const res = document.getElementById("result");
     if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }
     window.invalidateToolOperation && window.invalidateToolOperation();

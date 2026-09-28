@@ -85,7 +85,7 @@ const VIEWPORTS = {
 // visual contract per page: overflow/overlap/CTA checks are generic; the
 // per-page required selectors anchor "this page actually rendered".
 const PAGES = [
-  { path: "/", name: "home", anonOk: true, need: ["#toolInput", ".tool-card"] },
+  { path: "/", name: "home", anonOk: true, need: ["#toolInput", "#homeBento .tc"] },
   { path: "/tools", name: "tools", anonOk: true, need: [] },
   { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"] },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
