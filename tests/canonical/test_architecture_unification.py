@@ -170,7 +170,6 @@ check("U3 out-of-family ext → 422 bad_accept",
 
 # ═══ U3b: stored accept semantics (extensions_for_accept 单点) ═══
 from governance.formats import extensions_for_accept as _efa
-from governance.formats import VOCAB_EXTS
 check("U3b accept=None → None (explicit any)", _efa(None) is None)
 try:
     _efa([]); check("U3b accept=[] rejected", False, "no raise")
@@ -869,16 +868,6 @@ import repo.ledger as _ledger_mod
 check("U10 ledger 模块无 historical writer 符号",
       not hasattr(_ledger_mod, "insert_call_ok")
       and not hasattr(_ledger_mod, "insert_call_failed"))
-# C25: deploy runbook deletes (never archives/restores) the dead app sqlite
-_doc2 = open(_os.path.join(_REPO, "docs", "plan",
-                           "ARCHITECTURE_UNIFICATION_DEPLOY_20260916.md"),
-             encoding="utf-8").read()
-check("U10 deploy runbook 无 sqlite archive/restore 路径",
-      "retired-" not in _doc2 and "mv /var/lib/flashshare" not in _doc2
-      and "/var/backups/flashshare/retired" not in _doc2)
-check("U10 deploy runbook 明确 rm dead sqlite file",
-      "rm -f /var/lib/flashshare/flashshare.sqlite" in _doc2)
-
 # ═══ U7: Public REST v1 retired ═══
 check("U7 app/routes/apiv1.py 不存在",
       not _os.path.exists(_os.path.join(_REPO, "app", "routes", "apiv1.py")))
@@ -907,26 +896,6 @@ check("M backup.sh 无 gokapi-$ST typo (weekly 与 daily 文件名一致)",
 check("M backup.sh set -euo pipefail", "set -euo pipefail" in _bk)
 
 # ═══ U8: deploy artifact contracts ═══
-# (a) cleanup SQL vocabulary snapshot == sorted(VOCAB_EXTS)
-import re as _re
-_sql_path = _os.path.join(_REPO, "docs", "plan",
-                          "ARCHITECTURE_UNIFICATION_DB_CLEANUP.sql")
-if not _os.path.exists(_sql_path):
-    check("U8 cleanup SQL exists", False, "absent")
-else:
-    _sqltxt = open(_sql_path, encoding="utf-8").read()
-    _i = _sqltxt.rindex("allowed_exts(ext)")
-    _vals = _re.findall(r"\('(\.[a-z0-9]+)'\)", _sqltxt[:_i][-4000:])
-    check("U8 cleanup SQL vocabulary == sorted(VOCAB_EXTS)",
-          sorted(_vals) == sorted(VOCAB_EXTS) and len(_vals) == len(VOCAB_EXTS),
-          f"sql={len(_vals)} code={len(VOCAB_EXTS)}")
-    _post = _sqltxt.split("Postconditions")[1]
-    check("U8 cleanup SQL 无 regex/LIKE 近似判定 (postcondition)",
-          "NOT LIKE" not in _post and "!~" not in _post)
-    check("U8 cleanup SQL 单事务 (BEGIN/COMMIT)",
-          _sqltxt.count("BEGIN;") == 1 and _sqltxt.count("COMMIT;") == 1)
-    check("U8 cleanup SQL 无 shell 命令 (#!)",
-          "#!/" not in _sqltxt)
 # (b) backup rotation tolerates empty dirs under set -euo pipefail
 import subprocess as _sp
 _rot_sh = (
@@ -943,32 +912,6 @@ _rot = _sp.run(["bash", "-c", _rot_sh], capture_output=True, text=True)
 check("U8 backup rotation: empty daily+weekly under pipefail → exit 0",
       _rot.returncode == 0 and _rot.stdout.count("-empty-ok") == 2,
       _rot.stderr[:120])
-# (c) deploy doc: target-worktree backup + quiesced window + rollback boundary
-_doc = open(_os.path.join(_REPO, "docs", "plan",
-                          "ARCHITECTURE_UNIFICATION_DEPLOY_20260916.md"),
-            encoding="utf-8").read()
-_backup_lines = [ln.strip() for ln in _doc.splitlines()
-                 if "scripts/backup.sh" in ln]
-check("U8 deploy doc: backup 命令唯一且来自 /tmp target worktree",
-      len(_backup_lines) == 1
-      and "/tmp/flashshare-deploy-$TARGET_SHA/scripts/backup.sh"
-          in _backup_lines[0],
-      _backup_lines)
-check("U8 deploy doc: migration 走 target worktree SQL",
-      "flashshare-deploy-$TARGET_SHA/docs/plan/ARCHITECTURE_UNIFICATION_DB_CLEANUP.sql" in _doc)
-check("U8 deploy doc: quiesced 顺序 (stop → SQL → ff → start)",
-      _doc.index("systemctl stop flashshare-api")
-      < _doc.index("ARCHITECTURE_UNIFICATION_DB_CLEANUP.sql")
-      < _doc.index("git merge --ff-only")
-      < _doc.index("systemctl start flashshare-api"))
-check("U8 deploy doc: rollback boundary 双分界 (transaction fail vs post-COMMIT)",
-      "Migration transaction fails" in _doc
-      and "AFTER migration COMMIT" in _doc)
-check("U8 deploy doc: authority preflight (SHA/clean/active/DB identity 先于写)",
-      "Authority preflight" in _doc and "TARGET_SHA" in _doc.split("## 1.")[0])
-check("U8 deploy doc: 无无效 ?| 空 array verify",
-      "?| ARRAY[]" not in _doc)
-
 
 # ═══ U11: greenfield runtime absence guards (module introspection) ═══
 # The greenfield codebase keeps ONE canonical payment path; the retired

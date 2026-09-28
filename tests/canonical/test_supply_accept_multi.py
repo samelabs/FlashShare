@@ -66,7 +66,7 @@ def req(method, path, body, cookie=None):
 # ── A: user accept 语义 ──
 cookie = new_user()
 base = {"tool_id": "acctest", "label": {"en": "Acc"}, "execution": "http",
-        "url": "https://httpbin.org/anything", "timeout_s": 30,
+        "url": "https://93.184.216.34/anything", "timeout_s": 30,
         "visibility": "private", "format_families": "document", "params": []}
 
 # A1: 无 accept → bad_accept (accept 是显式必填 contract, 不猜全族)
@@ -122,14 +122,14 @@ if admin_cookie:
                       (-1, "bad_files_max")]:
         st, r = req("POST", "/samelabs/tools/create", {
             "tool_id": f"mtest{uuid.uuid4().hex[:6]}", "label": "MT",
-            "url": "https://httpbin.org/anything", "timeout_s": 30,
+            "url": "https://93.184.216.34/anything", "timeout_s": 30,
             "accept": ".png,.jpg", "files_max": val}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
         check(f"C files_max={val!r} → {want}", got == want, f"{st} {r}")
     # D: accept=".png,.jpg" files_max=20 → DB canonical + bounds
     tid = "dbcheck" + uuid.uuid4().hex[:5]
     st, r = req("POST", "/samelabs/tools/create", {
-        "tool_id": tid, "label": "DB", "url": "https://httpbin.org/anything",
+        "tool_id": tid, "label": "DB", "url": "https://93.184.216.34/anything",
         "timeout_s": 30, "accept": ".png,.jpg", "files_max": 20}, admin_cookie)
     check("D operator create ok", r.get("ok"), str(r))
     import psycopg2 as _pg2, json as _js

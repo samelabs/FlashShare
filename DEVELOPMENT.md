@@ -48,16 +48,28 @@
 - `FLASHSHARE_BASE_URL` — 对外基地址（og 链接/MCP endpoint/分享链接）
 - `FLASHSHARE_GOKAPI_URL` / `FLASHSHARE_GOKAPI_KEY` — Gokapi API
 
-可选：
+可选（未配置时对应能力关闭或取默认值）：
 
-- `FLASHSHARE_REGISTER_LIMIT_PER_HOUR` — 注册每 IP 每小时上限（默认 30；CI 等隔离栈调高）
-- `FLASHSHARE_LOGIN_LIMIT_PER_15MIN` — 登录失败每 IP 每 15 分钟上限（默认 50；CI 等隔离栈调高）
-- `TOOL_VAULT_KEY` — secrets_vault 加密密钥（Fernet）：工具鉴权凭据与API key 加密副本共用；未配置时创建 API key 直接失败（不降级为只显示一次）
-- `FLASHSHARE_MCP_ALLOWED_ORIGINS` — 可选，逗号分隔的额外浏览器 origin
-  （`scheme://host[:port]`）。`/mcp` 对带 `Origin` 头的请求只放行
-  `FLASHSHARE_BASE_URL` 的 origin 与此列表，其余 403；无 `Origin` 头的
-  非浏览器客户端不受影响。
-- 其余见 `core/config.py`（全部 `FLASHSHARE_*` 前缀）
+- 限额：`FLASHSHARE_MAX_UPLOAD_MB`（单文件，默认 50）、`FLASHSHARE_MAX_BATCH_MB`（单次合计，默认 100）；
+  `FLASHSHARE_DAILY_UPLOADS` / `FLASHSHARE_DAILY_MB`（仅用于**首次**创建 free 档的 24h 配额，默认 100 / 1024；
+  free 行建成后以 plans 表为准，改 env 不覆盖）
+- 风控：`FLASHSHARE_REGISTER_LIMIT_PER_HOUR`（注册每 IP 每小时，默认 30）、
+  `FLASHSHARE_LOGIN_LIMIT_PER_15MIN`（登录失败每 IP 每 15 分钟，默认 50）；CI 等隔离栈调高
+- `TOOL_VAULT_KEY` — secrets_vault 加密密钥（Fernet）：工具鉴权凭据与 API key 加密副本共用；
+  未配置时创建 API key 直接失败（不降级为只显示一次）
+- `FLASHSHARE_MCP_ALLOWED_ORIGINS` — 逗号分隔的额外浏览器 origin（`scheme://host[:port]`）。
+  `/mcp` 对带 `Origin` 头的请求只放行 `FLASHSHARE_BASE_URL` 的 origin 与此列表，其余 403；
+  无 `Origin` 头的非浏览器客户端不受影响
+- X 登录：`FLASHSHARE_X_CLIENT_ID` + `FLASHSHARE_X_CLIENT_SECRET`（两者都配才启用；只配一半时
+  启动日志 WARNING，登录入口隐藏）。X Developer Portal 设置：OAuth 2.0、类型 Web App
+  （confidential client）、权限 `tweet.read` `users.read`、Callback URI
+  `${FLASHSHARE_BASE_URL}/auth/x/callback`（逐字一致）。运营后台总览「集成」卡显示是否已配置与回调地址
+- 支付（Creem）：`CREEM_API_KEY`、`CREEM_WEBHOOK_SECRET`、`CREEM_CREDITS_PRODUCT_ID`、
+  `CREEM_CREDITS_CURRENCY`；`CREEM_TEST_MODE=1` 走测试环境。三项（key / product / currency）齐全才开放积分充值
+- `FLASHSHARE_PUBLIC_SUPPORT_CHANNEL` — 对外支持渠道（页面展示）
+- `FLASHSHARE_SOFFICE` — LibreOffice 可执行路径（文档转 PDF，默认 `soffice`）
+- `FLASHSHARE_LOG_DIR` — 日志目录（默认 `/var/log/flashshare`）
+- `FLASHSHARE_BACKUP_REMOTE` — 备份脚本的 off-host rclone 目的地（见下文 backup）
 
 生产值在服务器 env 文件（不进仓库）；测试用 isolated DB + 任意测试 secret。
 
@@ -155,7 +167,15 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ## Production deploy 概要
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
-- 部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
+- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
+- **1.0 上线 = 全新数据库**（不迁移旧数据，无 migration SQL）：
+  1. 在服务器 env 文件补齐上面的必填项，以及要开放的可选项（X 登录、Creem、`TOOL_VAULT_KEY`）；
+  2. 新建空库，`DATABASE_URL` 指向它；旧库保留只读，不与新代码混跑；
+  3. ff-only 同步 `main` → start unit → `init_db()` 建表并写入 free 档与预置工具；
+  4. `curl $FLASHSHARE_BASE_URL/healthz` 返回 `source_sha` = 目标 SHA、`source_dirty=false`；
+     启动日志有 gokapi capability probe OK，无 X 登录半配置 WARNING；
+  5. smoke：注册 → 首页分享一个文件拿到链接 → 打开 `/r/{id}` → 用 API key 走一次 MCP `share`；
+  6. 运营账号（users.status 设为运营状态）登录后台：总览「集成」卡、按需在「平台收入」设置抽佣率与每日登录积分。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 

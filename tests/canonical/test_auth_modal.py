@@ -179,6 +179,10 @@ try:
     check("F1 login page renders without X button",
           st == 200 and "x-login" not in body and "/auth/x/login" not in body, st)
     check("F2 flag injected false", "window.__X_LOGIN__ = false" in body, "")
+    st, _h, _d, _sc = _req("GET", "/auth/x/login", None, {"Accept": "text/html"})
+    check("F3 unconfigured X login redirects to the login page",
+          st == 302 and (_h or {}).get("location", "").endswith("/auth/login"),
+          f"{st} {(_h or {}).get('location')}")
 
     # ═══ G: market lists first-party + community tools ═══════════════
     com = _u + "c"

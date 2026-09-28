@@ -105,7 +105,7 @@ _tool = "txtx" + uuid.uuid4().hex[:4]
 _tool_key = f"{_uname}/{_tool}"
 st, r = req("POST", "/api/usertools", {
     "tool_id": _tool, "label": {"en": "Tx Tool"}, "execution": "http",
-    "url": "https://httpbin.org/anything", "timeout_s": 30,
+    "url": "https://93.184.216.34/anything", "timeout_s": 30,
     "visibility": "private", "format_families": "document",
     "accept": [".pdf"], "cost": 5}, cookie=cookie, host=_HOST2)
 check("T0 create ok (cost=5)", st == 200 and r.get("ok"), f"{st} {r}")
@@ -150,7 +150,7 @@ _tool2 = "txdl" + uuid.uuid4().hex[:4]
 _tool2_key = f"{_uname}/{_tool2}"
 st, r = req("POST", "/api/usertools", {
     "tool_id": _tool2, "label": {"en": "Del Fail"}, "execution": "http",
-    "url": "https://httpbin.org/anything", "timeout_s": 30,
+    "url": "https://93.184.216.34/anything", "timeout_s": 30,
     "visibility": "private", "format_families": "document",
     "accept": [".pdf"], "cost": 3}, cookie=cookie, host=_HOST2)
 check("T4a second tool created (cost=3)", st == 200 and r.get("ok"), f"{st} {r}")

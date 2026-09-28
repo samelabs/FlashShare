@@ -54,9 +54,15 @@ async def overview(request: Request, range: str = "30"):
         "commission": millis_to_usd_str(int(platform["commission_millis"])),
         "revenue": millis_to_usd_str(int(platform["revenue_millis"])),
     }
+    from config import BASE_URL, X_CLIENT_ID, X_CLIENT_SECRET
+    integrations = {
+        "x_login": bool(X_CLIENT_ID and X_CLIENT_SECRET),
+        "x_callback": f"{BASE_URL}/auth/x/callback",
+    }
     return templates.TemplateResponse(
         request, "samelabs/overview.html",
         ctx(request, user, product=product, consumer=consumer,
+            integrations=integrations,
             provider_usd=provider_usd, platform_usd=platform_usd,
             recent=recent, daily=daily, days=days, fmt_num=fmt_num,
             page="overview"))

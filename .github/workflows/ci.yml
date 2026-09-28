@@ -15,7 +15,7 @@ concurrency:
 jobs:
   fast:
     name: fast-gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
 
   canonical:
     name: canonical-integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: fast
     timeout-minutes: 10
     services:
@@ -554,7 +554,7 @@ jobs:
 
   browser:
     name: browser-runtime
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: fast
     timeout-minutes: 15
     services:

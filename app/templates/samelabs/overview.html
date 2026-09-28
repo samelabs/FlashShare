@@ -37,6 +37,13 @@
       <div class="fact"><span class="sl-dim">系统工具直销</span><b>{{ platform_usd.revenue }}</b></div>
     </div>
   </div>
+  <div class="card card-pad">
+    <h2>集成</h2>
+    <div class="facts">
+      <div class="fact"><span class="sl-dim">X 登录</span><b>{% if integrations.x_login %}已配置{% else %}未配置{% endif %}</b></div>
+      <div class="fact"><span class="sl-dim">X 回调地址</span><b><code>{{ integrations.x_callback }}</code></b></div>
+    </div>
+  </div>
 </div>
 
 <section class="sl-panel">
