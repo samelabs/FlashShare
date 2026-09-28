@@ -7,9 +7,13 @@
 <section class="acct-page pub-page" id="pubPage">
   <nav class="crumbs"><a href="/">518.PLUS</a><span class="crumb-sep">/</span><span data-i18n="acct_nav">{{ texts.acct_nav }}</span></nav>
   <h1 id="pubTitle">{{ texts.pub_title }}</h1>
+  <div class="acct-layout">
   {% include "account/_nav.html" %}
+  <div class="acct-body pub-body">
 
   <form class="pub-form" id="pubForm" novalidate>
+    <div class="pub-cols">
+    <div class="pub-main">
     <!-- ── 1. 基础信息 ── -->
     <div class="acct-card pub-card">
       <div class="acct-card-head"><h2 data-i18n="pub_sec_basic">{{ texts.pub_sec_basic }}</h2></div>
@@ -26,10 +30,6 @@
         <label class="pub-wide"><span data-i18n="mytools_f_desc">{{ texts.mytools_f_desc }}</span>
           <input id="fDesc" maxlength="200" data-i18n-placeholder="mytools_ph_desc" placeholder="{{ texts.mytools_ph_desc }}">
           <em class="pub-err" data-err="desc"></em></label>
-        <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span>
-          <input id="fCost" type="number" min="0" max="100000" value="0">
-          <em class="pub-err" data-err="cost"></em>
-          {% if commission_rate is not none %}<em class="pub-hint"><span data-i18n="commission_rate_note">{{ texts.commission_rate_note }}</span> {{ commission_rate }}%</em>{% endif %}</label>
       </div>
       <details class="usertools-adv pub-wide" id="langMore">
         <summary data-i18n="mytools_add_lang">{{ texts.mytools_add_lang }}</summary>
@@ -38,13 +38,12 @@
       </details>
     </div>
 
-    <!-- ── 2. 接受格式 ── -->
+    <!-- ── 2. 输入 ── -->
     <div class="acct-card pub-card">
-      <div class="acct-card-head"><h2 data-i18n="mytools_f_accept">{{ texts.mytools_f_accept }}</h2></div>
+      <div class="acct-card-head"><h2 data-i18n="pub_sec_input">{{ texts.pub_sec_input }}</h2></div>
       <div class="pub-grid">
         <div class="pub-wide fam-block">
           <span class="fam-grid" id="famGrid"></span>
-          <!-- 4C-2: family = taxonomy; exact formats = executable contract -->
           <span class="fam-grid ext-grid" id="extGrid"></span>
           <span class="fam-hint" id="famHint"></span>
           <em class="pub-err" data-err="accept"></em>
@@ -59,6 +58,24 @@
           <input id="fFilesMax" type="number" min="1" max="20" value="1">
           <em class="pub-err" data-err="files_max"></em>
         </label>
+      </div>
+    </div>
+
+    <!-- ── 3. 参数 ── -->
+    <div class="acct-card pub-card">
+      <div class="acct-card-head">
+        <h2 data-i18n="pub_sec_params">{{ texts.pub_sec_params }}</h2>
+        <button type="button" class="btn btn-secondary" id="addParam">+ {{ texts.pub_add_param }}</button>
+      </div>
+      <p class="profile-note" data-i18n="pub_params_hint_v2">{{ texts.pub_params_hint_v2 }}</p>
+      <div id="paramRows"></div>
+      <p class="profile-note hidden" id="paramNone" data-i18n="pub_params_none">{{ texts.pub_params_none }}</p>
+    </div>
+
+    <!-- ── 4. 输出 ── -->
+    <div class="acct-card pub-card">
+      <div class="acct-card-head"><h2 data-i18n="pub_sec_output">{{ texts.pub_sec_output }}</h2></div>
+      <div class="pub-grid">
         <div class="pub-wide pub-outputs">
           <span class="pub-outputs-label" data-i18n="mytools_f_outputs">{{ texts.mytools_f_outputs }}</span>
           <span class="pub-outputs-checks">
@@ -72,18 +89,18 @@
       </div>
     </div>
 
-    <!-- ── 3. 模式与参数 ── -->
+    <!-- ── 5. 定价 ── -->
     <div class="acct-card pub-card">
-      <div class="acct-card-head">
-        <h2 data-i18n="pub_sec_params">{{ texts.pub_sec_params }}</h2>
-        <button type="button" class="btn btn-secondary" id="addParam">+ {{ texts.pub_add_param }}</button>
+      <div class="acct-card-head"><h2 data-i18n="pub_sec_price">{{ texts.pub_sec_price }}</h2></div>
+      <div class="pub-grid">
+        <label><span data-i18n="mytools_f_price">{{ texts.mytools_f_price }}</span>
+          <input id="fCost" type="number" min="0" max="100000" value="0">
+          <em class="pub-err" data-err="cost"></em>
+          {% if commission_rate is not none %}<em class="pub-hint"><span data-i18n="commission_rate_note">{{ texts.commission_rate_note }}</span> {{ commission_rate }}%</em>{% endif %}</label>
       </div>
-      <p class="profile-note" data-i18n="pub_params_hint">{{ texts.pub_params_hint }}</p>
-      <div id="paramRows"></div>
-      <p class="profile-note hidden" id="paramNone" data-i18n="pub_params_none">{{ texts.pub_params_none }}</p>
     </div>
 
-    <!-- ── 4. 高级 ── -->
+    <!-- ── 6. 高级 ── -->
     <div class="acct-card pub-card">
       <div class="acct-card-head"><h2 data-i18n="mytools_adv">{{ texts.mytools_adv }}</h2></div>
       <div class="pub-grid">
@@ -100,7 +117,19 @@
       <button type="button" class="btn btn-secondary" id="pubCancel">{{ texts.cancel }}</button>
       <button type="button" class="btn btn-primary" id="pubSubmit"><span data-i18n="mytools_submit">{{ texts.mytools_submit }}</span></button>
     </div>
+    </div>
+
+    <aside class="pub-aside">
+      <div class="acct-card pub-card pub-preview-card">
+        <div class="acct-card-head"><h2 data-i18n="pub_preview">{{ texts.pub_preview }}</h2></div>
+        <p class="profile-note" data-i18n="pub_preview_hint">{{ texts.pub_preview_hint }}</p>
+        <div id="pubPreviewMount" class="ti-mount"></div>
+      </div>
+    </aside>
+    </div>
   </form>
+  </div>
+  </div>
 </section>
 {% endblock %}
 
@@ -109,10 +138,14 @@
 window.__PAGE__ = "publish";
 window.__PUB_TOOL__ = JSON.parse({{ tool_json | tojson }});
 window.__FORMAT_FAMILIES__ = JSON.parse({{ format_manifest_json | tojson }});
+window.__DELIVERY__ = {"days": [1], "downloads": [50], "defaultDays": 1, "defaultDownloads": 50};
 </script>
 {% endblock %}
 
 {% block script %}
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
+<script src="/static/pages/process-flow.js?v={{ pages_version }}"></script>
+<script src="/static/app.js?v={{ app_js_version }}"></script>
+<script src="/static/pages/tool-input.js?v={{ pages_version }}"></script>
 <script src="/static/pages/publish.js?v={{ pages_version }}"></script>
 {% endblock %}

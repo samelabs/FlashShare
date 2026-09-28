@@ -970,3 +970,14 @@ body { overflow-x: clip; }
   .agents-v2 { padding: 24px 0 48px; }
   .agents-steps { grid-template-columns: 1fr; }
 }
+
+/* ═══ 发布页 (v2): 双栏 + 实时预览 ═══ */
+.pub-body .pub-form { display: flex; flex-direction: column; gap: 16px; }
+.pub-cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.pub-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pub-aside { position: sticky; top: 76px; min-width: 0; }
+.pub-aside .composer { box-shadow: var(--sh-1); }
+@media (max-width: 1023px) {
+  .pub-cols { display: flex; flex-direction: column-reverse; }
+  .pub-aside { position: static; }
+}
