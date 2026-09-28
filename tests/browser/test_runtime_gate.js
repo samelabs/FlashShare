@@ -248,7 +248,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
       // 3. home real render
       const homeAudit = await visualAudit("desktop", page, "home-logged-in", true);
-      check("home: tool grid rendered", (await page.$("#homeBento .tc")).length >= 1, homeAudit.bodyText.slice(0, 120));
+      check("home: tool grid rendered", (await page.$$("#homeBento .tc")).length >= 1, homeAudit.bodyText.slice(0, 120));
 
       // 4-7. upload + execute compress via real UI (home surface)
       await page.click(".ti-picker");

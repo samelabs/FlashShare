@@ -28,6 +28,7 @@
   function selectTool(tool, opts) {
     opts = opts || {};
     mountInput(tool);
+    ensurePicker();
     if (!opts.skipPersist) {
       try { localStorage.setItem("flashshare_tool", tool.id); } catch (e) {}
     }
@@ -115,6 +116,5 @@
   const saved = (() => { try { return localStorage.getItem("flashshare_tool") || ""; } catch (e) { return ""; } })();
   const savedTool = tools.find((t) => t.id === saved);
   const share = tools.find((t) => t.id === "share");
-  ensurePicker();
   selectTool(savedTool || share || tools[0], { skipPersist: !savedTool });
 })();
