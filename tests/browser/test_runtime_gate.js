@@ -644,6 +644,56 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     }
   }
 
+  // ── Text results: line breaks, exact copy, safe links, single-link card ──
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    await gotoReady(page, "/", "#toolInput");
+    await page.evaluate(() => {
+      window.__copied = null;
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText: (s) => { window.__copied = s; return Promise.resolve(); } },
+        configurable: true,
+      });
+    });
+    const MIXED = "line one\nline two see https://example.com/a. " +
+      "and javascript:alert(1) or http://plain.example/x";
+    await page.evaluate((text) => showItemsResult({ result_id: "rtest1",
+      items: [{ kind: "text", text }] }), MIXED);
+    await page.evaluate(() => document.getElementById("result").classList.remove("hidden"));
+    const mixed = await page.evaluate(() => {
+      const pre = document.querySelector("#result pre.rs-text");
+      const links = [...pre.querySelectorAll("a")].map((a) => [a.getAttribute("href"), a.rel, a.target]);
+      return { lines: pre.getBoundingClientRect().height, lh: parseFloat(getComputedStyle(pre).lineHeight) || 20,
+        ws: getComputedStyle(pre).whiteSpace, links, bar: !!document.querySelector("#result .linkbar") };
+    });
+    check("text result keeps line breaks (pre-wrap, >1 line)",
+      mixed.ws === "pre-wrap" && mixed.lines > mixed.lh * 1.5, JSON.stringify(mixed));
+    check("text result links only https, new tab, noopener",
+      mixed.links.length === 1 && mixed.links[0][0] === "https://example.com/a"
+      && /noopener/.test(mixed.links[0][1]) && mixed.links[0][2] === "_blank", JSON.stringify(mixed.links));
+    check("mixed text keeps the platform result link bar", mixed.bar);
+    await page.click("#result .item-text .rs-copy");
+    await page.waitForTimeout(100);
+    check("text copy equals the original text exactly",
+      await page.evaluate((t) => window.__copied === t, MIXED));
+    const SINGLE = "https://example.com/page?q=\"><img/src=x/onerror=window.__x=1>";
+    await page.evaluate((text) => showItemsResult({ result_id: "rtest2",
+      items: [{ kind: "text", text }] }), SINGLE);
+    const single = await page.evaluate(() => ({
+      card: !!document.querySelector("#result .rs-link-card"),
+      host: (document.querySelector("#result .rs-link-card b") || {}).textContent,
+      bar: !!document.querySelector("#result .linkbar"),
+      page: !!document.querySelector('#result a[href^="/r/"]'),
+      img: !!document.querySelector("#result img[src='x']"),
+      x: window.__x === 1,
+    }));
+    check("single https URL renders a link card; platform link demoted to result-page button",
+      single.card && single.host === "example.com" && !single.bar && single.page, JSON.stringify(single));
+    check("hostile URL text never becomes markup", !single.img && !single.x, JSON.stringify(single));
+    await ctx.close();
+  }
+
   await browser.close();
 
   // artifacts sanity

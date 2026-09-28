@@ -67,3 +67,71 @@ window.wireMobileNav = function () {
   sheet.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => setOpen(false)));
 };
 document.addEventListener("DOMContentLoaded", () => window.wireMobileNav());
+
+// ── Text result links (tool page result + /r page, one implementation) ──
+// Tool-returned text is untrusted: built with DOM nodes only, and only
+// https:// URLs become links (new tab, noopener/noreferrer/nofollow).
+// A text item that is exactly one https URL becomes a link card (domain
+// shown prominently); the <pre> keeps the raw text for copy.
+// Returns the number of single-link cards created.
+window.linkifyResultText = function (root) {
+  const URL_RE = /https:\/\/[^\s<>"'`]+/g;
+  const TRAIL = /[.,;:!?)\]}'"。，；：！？）】」』]+$/;
+  const safeUrl = (raw) => {
+    try {
+      const u = new URL(raw);
+      return u.protocol === "https:" ? u : null;
+    } catch (e) { return null; }
+  };
+  const linkEl = (u, text) => {
+    const a = document.createElement("a");
+    a.href = u.href;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer nofollow";
+    a.textContent = text;
+    return a;
+  };
+  let cards = 0;
+  (root || document).querySelectorAll("pre.rs-text").forEach((pre) => {
+    if (pre.dataset.linked) return;
+    pre.dataset.linked = "1";
+    const text = pre.textContent;
+    const whole = text.trim();
+    const single = /^https:\/\/\S+$/.test(whole) ? safeUrl(whole) : null;
+    if (single) {
+      const item = pre.closest(".rs-item");
+      const card = linkEl(single, "");
+      card.className = "rs-link-card";
+      const host = document.createElement("b");
+      host.textContent = single.hostname;
+      const full = document.createElement("small");
+      full.textContent = whole;
+      const go = document.createElement("span");
+      go.className = "btn btn-p btn-sm";
+      go.textContent = window.t ? window.t("open") : "Open";
+      card.append(host, full, go);
+      pre.hidden = true;
+      pre.parentNode.insertBefore(card, pre);
+      if (item) item.classList.add("rs-link");
+      cards += 1;
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let found = false;
+    text.replace(URL_RE, (m, idx) => {
+      const trimmed = m.replace(TRAIL, "");
+      const u = safeUrl(trimmed);
+      if (!u) return m;
+      found = true;
+      frag.append(text.slice(last, idx), linkEl(u, trimmed));
+      last = idx + trimmed.length;
+      return m;
+    });
+    if (!found) return;
+    frag.append(text.slice(last));
+    pre.textContent = "";
+    pre.append(frag);
+  });
+  return cards;
+};

@@ -173,9 +173,18 @@
 
 .item-text {
   background: var(--sunk); border-radius: var(--r); padding: 14px 16px;
-  font-size: var(--fs-base); position: relative; white-space: pre-wrap;
-  word-break: break-word; max-height: 380px; overflow: auto;
+  font-size: var(--fs-base); position: relative;
 }
+.item-text pre.rs-text { padding: 0; background: none; border-radius: 0; font-family: var(--font-sans); font-size: var(--fs-base); }
+.item-text pre.rs-text a, .rs-link-card { color: var(--brand-600); }
+.rs-link-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  padding: 12px 14px; border: var(--border-w) solid var(--line); border-radius: var(--r);
+  background: var(--card); text-decoration: none; min-width: 0;
+}
+.rs-link-card b { font-size: var(--fs-md); color: var(--ink); overflow-wrap: anywhere; }
+.rs-link-card small { flex-basis: 100%; order: 2; color: var(--ink-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-link-card .btn { margin-inline-start: auto; }
 .item-text .lbl {
   font-size: var(--fs-xs); color: var(--ink-3); display: flex;
   justify-content: space-between; align-items: center; margin-block-end: 6px;
@@ -215,7 +224,7 @@ pre.rs-text, pre.rs-json {
   background: var(--sunk); border-radius: var(--r-sm);
   padding: var(--s3); max-height: 380px; overflow: auto; margin: 0;
 }
-.rs-item.rs-text, .rs-item.rs-json { white-space: normal; font-family: var(--font-sans); }
+.rs-item.rs-json { white-space: normal; font-family: var(--font-sans); }
 .rs-json-details summary {
   list-style: none; cursor: pointer; padding: var(--s2) var(--s3);
   font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.05em;
