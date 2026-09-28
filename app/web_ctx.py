@@ -46,7 +46,8 @@ _app_digest.update(_app_src.read_bytes())
 APP_JS_VERSION = _app_digest.hexdigest()[:8]
 sys.path.insert(0, str(_CORE))
 
-from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, PUBLIC_SUPPORT_CHANNEL
+from config import (APP_NAME, BASE_URL, SOCIAL_IMAGE_URL,
+                    PUBLIC_SUPPORT_CHANNEL, X_CLIENT_ID, X_CLIENT_SECRET)
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
 from identity.auth import public_user
@@ -99,6 +100,8 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         "APP_NAME": APP_NAME,
         "support_channel": PUBLIC_SUPPORT_CHANNEL,
         "page_id": page_id,
+        # X one-click login availability (pages + modal gate)
+        "x_login_enabled": bool(X_CLIENT_ID and X_CLIENT_SECRET),
         "BASE_URL": BASE_URL,
         "SOCIAL_IMAGE_URL": SOCIAL_IMAGE_URL,
         "css_version": _CSS_VERSION,

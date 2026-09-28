@@ -461,18 +461,22 @@ async def home(request: Request):
 # ── Auth pages ──
 
 @router.get("/auth/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = ""):
+async def login_page(request: Request, error: str = "", next: str = "/"):
     from app.main import templates
+    from app.routes.auth_route import _safe_next
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "error": error})
+    ctx.update({"shell_class": "", "share_url": "", "error": error,
+                "next": _safe_next(next)})
     return templates.TemplateResponse(request, "auth/login.html", ctx)
 
 
 @router.get("/auth/register", response_class=HTMLResponse)
-async def register_page(request: Request, error: str = ""):
+async def register_page(request: Request, error: str = "", next: str = "/"):
     from app.main import templates
+    from app.routes.auth_route import _safe_next
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": "", "error": error})
+    ctx.update({"shell_class": "", "share_url": "", "error": error,
+                "next": _safe_next(next)})
     return templates.TemplateResponse(request, "auth/register.html", ctx)
 
 
