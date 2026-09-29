@@ -71,6 +71,9 @@ h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Dropdowns (shared) ───────────────────────────────────── */
 .user-menu { position: relative; display: flex; align-items: center; }
+/* 语言入口 = 顶栏唯一挂载点: 菜单锚定到按钮自身 (所有视口可见),
+   右对齐且永不超出视口 (RTL 由下方镜像规则翻转)。 */
+.lang-switch { position: relative; display: flex; align-items: center; }
 .lang-menu, .user-dropdown {
   position: absolute; right: 0; top: calc(100% + var(--s1));
   z-index: var(--z-dropdown);
@@ -80,7 +83,7 @@ h1, h2 { letter-spacing: -0.02em; }
   background: var(--bg);
   box-shadow: var(--sh-3);
 }
-.lang-menu { width: 144px; }
+.lang-menu { width: 144px; max-width: calc(100vw - 32px); }
 
 .user-dropdown.hidden, .lang-menu.hidden { display: none; }
 /* Header credit chip (signed-in users) */
@@ -747,10 +750,9 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .status-page p { color: var(--ink-2); max-width: 44ch; }
 
 /* ═══ 工具页 (v2): tp-h 头部 / tp-main 主栏 780 / mcpline ═══ */
+/* 参数区 CSS 在 components.css (.prow/.tp-seg) — 首页与工具页同一套 */
 .toolpage { padding-top: 40px; padding-bottom: 64px; min-width: 0; }
 .tp-main { max-width: var(--container-read); margin: 0 auto; min-width: 0; width: 100%; }
-.toolpage .seg { max-width: 100%; flex-wrap: wrap; }
-.toolpage .prow { max-width: 100%; }
 .tp-h { display: flex; gap: 18px; align-items: center; }
 .tp-h .ic { width: 60px; height: 60px; border-radius: 18px; background: var(--card); border: var(--border-w) solid var(--line); box-shadow: var(--sh-2); display: grid; place-items: center; flex: none; }
 .tp-h .ic svg { width: 28px; height: 28px; stroke: var(--ink); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -788,11 +790,11 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .ft .ft-in > span:first-child { margin-inline-end: auto; }
 .ft a:hover { color: var(--ink); }
 @media (max-width: 767px) {
-  .nav, .hd-r .lang { display: none; }
+  .nav { display: none; }
+  /* 语言按钮保持显示: 全站唯一语言入口, 位于菜单图标之前 (header DOM 序) */
   .hd .menu { display: grid; }
   .ft .ft-in { gap: 12px; }
   .hd-r .btn { display: none; }
-  .hd .menu { display: grid; }
 }
 
 /* ═══ 首页 (v2): hero / 快捷胶囊 / bento / dark / feat ═══ */
@@ -898,7 +900,8 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .rc-top .acts { justify-content: center; margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .rc-files { display: flex; flex-direction: column; }
 .rc-files .item-file { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 14px 20px; }
-.rc-files .pv.img { width: 52px; height: 52px; }
+/* /r 媒体组 (单图主视图 / 多图宫格) 与行式条目同一分隔节奏 */
+.r-page .rc-files .rs-media { border-top: 1px solid var(--line); padding: 14px 20px; }
 .rc-files .item-text, .rc-files .rs-json { border: 0; border-top: 1px solid var(--line); border-radius: 0; margin: 0 !important; padding: 14px 20px; }
 .qrrow { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-top: 1px solid var(--line); background: var(--sunk); font-size: 13px; color: var(--ink-2); }
 .qrrow .q { width: 56px; height: 56px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; }
@@ -1059,12 +1062,6 @@ body { overflow-x: clip; }
 .toolpage .fav-btn svg { width: 18px; height: 18px; }
 /* 快捷胶囊图标 18 */
 .quick a svg { width: 18px; height: 18px; }
-/* 移动抽屉: 语言入口 (复用 header 语言菜单逻辑) */
-.mobile-nav-lang { display: flex; flex-direction: column; gap: 2px; padding: 6px 6px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
-.mobile-lang-btn { width: 100%; min-height: 44px; padding: 0 var(--s3); border: 0; border-radius: var(--r-sm); background: none; display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: var(--fs-md); font-weight: 650; color: var(--ink); cursor: pointer; }
-.mobile-lang-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
-.mobile-lang-menu { position: static; display: grid; grid-template-columns: 1fr 1fr; width: auto; box-shadow: none; border: 0; background: none; padding: 0 4px; }
-.mobile-lang-menu .lang-option { min-height: 44px; }
 /* 抽屉菜单项触达 ≥44 */
 .mobile-nav-sheet a { min-height: 44px; }
 /* 市场卡: 移动端同行等高 */

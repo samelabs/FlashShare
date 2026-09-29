@@ -209,12 +209,62 @@
 .item-file b { font-size: var(--fs-base); font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-file small { font-size: var(--fs-xs); color: var(--ink-3); display: block; margin-block-start: 2px; }
 .item-file .a { margin-inline-start: auto; display: flex; gap: 6px; flex: none; }
-.delta {
-  display: inline-flex; align-items: center; gap: 6px; height: 24px;
-  padding: 0 10px; border-radius: var(--r-full); background: var(--ok-50);
-  color: var(--ok); font-size: var(--fs-xs); font-weight: 650; margin-block-start: 6px;
+
+/* ── Result media (inline result card + /r page, one structure):
+   single image = full main view (≤60vh, never cropped; download +
+   size-delta line BELOW the image); multiple images = grid (phone 2
+   cols / desktop 3) with click-to-zoom cells. ── */
+.rs-media { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.rs-image { margin: 0; background: var(--sunk); text-align: center; border-radius: var(--r); overflow: hidden; }
+.rs-image img {
+  display: block; margin-inline: auto;
+  max-width: 100%; max-height: 60vh; height: auto; width: auto;
+  object-fit: contain;
 }
-.delta.up { background: var(--warn-50); color: var(--warn); }
+/* size-delta + name + download under the media — small text only,
+   never larger than body copy, never inside the card title */
+.rs-img-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
+.rs-img-meta b {
+  font-size: var(--fs-base); font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.rs-img-meta small { font-size: var(--fs-xs); color: var(--ink-3); }
+.rs-img-meta .rs-dl { margin-inline-start: auto; flex: none; }
+.rs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
+.rs-cell {
+  margin: 0; display: flex; flex-direction: column; gap: var(--s1); min-width: 0;
+  border: var(--border-w) solid var(--line); border-radius: var(--r-sm);
+  padding: var(--s1); background: var(--card);
+}
+.rs-cell-img {
+  display: block; width: 100%; padding: 0; border: 0; min-height: 0;
+  border-radius: var(--r-xs); background: var(--sunk); cursor: zoom-in; overflow: hidden;
+}
+.rs-cell-img img {
+  display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+}
+.rs-cell figcaption { min-width: 0; }
+.rs-cell figcaption b {
+  display: block; font-size: var(--fs-xs); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rs-cell figcaption small { font-size: var(--fs-xs); color: var(--ink-3); }
+.rs-cell .rs-dl { align-self: flex-start; }
+@media (max-width: 767px) {
+  .rs-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Full-size lightbox (shared authority: common.js wireImageZoom) */
+.img-zoom {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: grid; place-items: center; padding: var(--s4);
+  background: var(--overlay); cursor: zoom-out;
+}
+.img-zoom.hidden { display: none; }
+.img-zoom img {
+  max-width: 92vw; max-height: 92vh; width: auto; height: auto;
+  object-fit: contain; border-radius: var(--r-sm);
+}
 
 /* json item: collapsible code block (structure unchanged) */
 .rs-json-details { border: var(--border-w) solid var(--line); border-radius: var(--r); overflow: hidden; }
@@ -240,8 +290,6 @@ pre.rs-text, pre.rs-json {
 
 /* legacy /f preview + /r SSR rows (pages keep their markup until the
    next batch; minimal styles so nothing collapses) */
-.rs-image { display: block; background: var(--sunk); text-align: center; border-radius: var(--r); overflow: hidden; }
-.rs-image img { max-width: 100%; max-height: 560px; height: auto; display: block; margin-inline: auto; }
 .rs-item-head {
   display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
   padding: var(--s2) var(--s3);
@@ -467,28 +515,84 @@ pre.rs-text, pre.rs-json {
 .c-text::placeholder { color: var(--ink-3); }
 .c-text-hint { padding: 16px 20px 8px; min-height: 60px; font-size: 16px; color: var(--ink-3); }
 
+/* 纯文本工具 (files_max=0) 的对话框形态: 单个自动增高输入框
+   (1..8 行, 封顶内部滚动), 发送按钮在输入框右下角内侧。 */
+.ti-chat-wrap { position: relative; margin: 14px 16px 0; }
+.ti-chat-wrap .c-text {
+  padding: 12px 60px 12px 16px; min-height: 48px;
+  max-height: calc(8 * 1.55em + 24px);
+  resize: none; overflow-y: auto;
+  background: var(--sunk); border-radius: var(--r-lg);
+  transition: box-shadow var(--ease);
+}
+.ti-chat-wrap .c-text:focus { box-shadow: 0 0 0 3px var(--brand-100); }
+.ti-chat-wrap .send {
+  position: absolute; inset-block-end: 8px; inset-inline-end: 8px;
+  width: 36px; height: 36px;
+}
+.ti-chat-wrap .send svg { width: 16px; height: 16px; }
+
+/* 行尾"+ 添加"小块: 已有文件且未达上限时出现在文件列表末尾
+   (chipf 底形 + 虚线描边区分真实文件行) */
+.ti-add-block {
+  border: 1.5px dashed var(--line-2); background: none;
+  color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 550;
+}
+.ti-add-block .th.d { background: var(--brand-50); }
+.ti-add-block b { color: var(--brand); }
+@media (hover:hover) and (pointer:fine) { .ti-add-block:hover { border-color: var(--brand); color: var(--ink); } }
+.ti-add-block:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
 .params { display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 6px; }
 .params:empty { display: none; }
 .params .divider { height: 1px; background: var(--line); margin: 4px 0 0; }
-.prow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.prow > label, .prow > .prow-label { font-size: 13px; color: var(--ink-3); min-width: 56px; }
-.prow .input { width: 180px; }
-/* 多行文本参数行: 桌面标签与输入框并排; 手机标签在上、输入框占满整行 */
+/* 参数行: 桌面 = 标签在左、控件在右; 手机 = 标签在上、控件占满宽度
+   (首页与工具页同一套 — 首页 hero 与 .toolpage 共用本组件) */
+.prow { display: flex; align-items: center; gap: var(--s2) var(--s3); }
+.prow > label, .prow > .prow-label {
+  font-size: 13px; color: var(--ink-3);
+  flex: 0 0 auto; min-width: 56px; max-width: 44%;
+  overflow-wrap: anywhere;
+}
+/* 控件自适应宽度 (不再写死 180px): 输入框按内容伸缩, seg 随选项换行 */
+.prow .input { width: auto; min-width: 96px; max-width: 240px; flex: 0 1 auto; }
+.prow .seg, .prow .switch { flex: 0 1 auto; max-width: 100%; }
 .prow-text { align-items: flex-start; }
 .prow-text > .prow-label { padding-top: 8px; }
 .prow-text > .textarea { flex: 1; min-width: 220px; }
 @media (max-width: 767px) {
-  .prow-text { flex-direction: column; align-items: stretch; }
-  .prow-text > .prow-label { padding-top: 0; min-width: 0; }
+  .prow { flex-direction: column; align-items: stretch; gap: var(--s1); }
+  .prow > .prow-label { min-width: 0; max-width: none; padding-top: 0; }
+  .prow .input { width: 100%; max-width: none; }
   .prow-text > .textarea { min-width: 0; width: 100%; }
 }
+/* 参数分段选项: 超出一行自动换行; 外框普通圆角 (换行后不再是胶囊形) */
 .seg { display: inline-flex; padding: 3px; background: var(--sunk); border-radius: var(--r-full); gap: 2px; flex-wrap: wrap; }
+.tp-seg { border-radius: var(--r-sm); }
 .seg button {
   height: 30px; padding: 0 13px; border-radius: var(--r-full); border: 0;
   background: none; display: inline-flex; align-items: center;
   font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-2); cursor: pointer;
 }
 .seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
+
+/* "更多参数"折叠: 参数超过 3 个时, 其余收进展开区 */
+.ti-more { display: flex; flex-direction: column; gap: 14px; }
+.ti-more-btn {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 0; padding: 2px 0; border: 0; border-radius: 0;
+  background: none; color: var(--ink-3);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.ti-more-btn .chev {
+  width: 7px; height: 7px; flex: none;
+  border-inline-end: 1.5px solid currentColor; border-block-end: 1.5px solid currentColor;
+  transform: rotate(-45deg); transition: transform var(--ease);
+}
+.ti-more-btn.open .chev { transform: rotate(135deg); }
+.ti-more-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.ti-more-body { display: flex; flex-direction: column; gap: 14px; }
+.ti-more-body[hidden] { display: none; }
 
 .c-bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px 12px; flex-wrap: wrap; position: relative; }
 .c-bar .sp { flex: 1; }
@@ -536,11 +640,8 @@ pre.rs-text, pre.rs-json {
   .tp-seg .tp-option { position: relative; }
   .tp-seg .tp-option::after { content: ""; position: absolute; inset: -7px -4px; }
 }
-/* 添加文件: 桌面图标 + 文字; 输入区挂载预留高度 (CLS) */
+/* 输入区挂载预留高度 (CLS) */
 .ti-mount { min-height: 224px; }
-.ti-add { width: auto; min-width: 36px; padding: 0 10px; gap: 6px; font: inherit; font-size: var(--fs-sm); font-weight: 550; }
-.ti-add svg { width: 20px; height: 20px; }
-@media (max-width: 767px) { .ti-add .ti-add-label { display: none; } }
 
 /* Phone: file rows wrap — name keeps its line, meta + actions flow */
 @media (max-width: 599px) {
