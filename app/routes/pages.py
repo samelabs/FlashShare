@@ -56,8 +56,13 @@ def _ctx_base(request):
 
 @router.get("/site.webmanifest")
 async def manifest():
+    """PWA manifest; the description is injected from the i18n single
+    source (the en seo_desc that also feeds the home meta description) —
+    the static file carries no second copy to drift."""
     with open(_STATIC / "manifest.json") as f:
-        return Response(content=f.read(), media_type="application/manifest+json")
+        data = json.load(f)
+    data["description"] = server_text("en").get("seo_desc", "")
+    return Response(content=json.dumps(data), media_type="application/manifest+json")
 
 @router.get("/sw.js")
 async def service_worker():
@@ -82,23 +87,64 @@ async def llms_txt():
 
 @router.get("/robots.txt")
 async def robots():
-    """Share links (/f/) stay FETCHABLE for agents that honor robots
-    (indexing is refused per-response via X-Robots-Tag, not here); /mcp
-    is likewise open — HTTP POST JSON-RPC, no installation required.
-    /dh/ is the Nginx→Gokapi hotlink path (still Disallow); the old /d/
-    rule referenced a retired path and was removed."""
-    body = (f"User-agent: *\nDisallow: /api/\nDisallow: /auth/\n"
-            f"Disallow: /dh/\nAllow: /\n"
+    """Crawl boundary. Share links (/f/ and result pages /r/) stay
+    FETCHABLE: link-preview bots and agents that honor robots must be able
+    to read the share card and the result a person was handed; indexing
+    is refused per-response (noindex), not here. Private namespaces are
+    excluded: account, the operator back office, auth pages, the JSON API
+    and the MCP machine surface (a POST JSON-RPC endpoint — MCP clients
+    are not crawlers). /dh/ is the Nginx→Gokapi hotlink path."""
+    body = ("User-agent: *\n"
+            "Disallow: /account\n"
+            "Disallow: /samelabs\n"
+            "Disallow: /auth\n"
+            "Disallow: /api/\n"
+            "Disallow: /mcp\n"
+            "Disallow: /dh/\n"
+            "Allow: /\n"
             f"Sitemap: {BASE_URL}/sitemap.xml\n")
     return Response(content=body, media_type="text/plain")
 
 @router.get("/sitemap.xml")
 async def sitemap():
-    body = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    body += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    body += f'<url><loc>{BASE_URL}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n'
-    body += '</urlset>'
-    return Response(content=body, media_type="application/xml")
+    """Every indexable page (the same set the routes mark
+    seo_robots='index, follow'): the static surfaces, every public tool
+    page + its MCP page, and the author pages behind public supply.
+    lastmod only where a real update time exists — the tool declaration
+    row's updated_at; static pages carry none rather than a fabricated
+    date. Visibility comes from the one public-market predicate
+    (repo._market_base), never re-derived here."""
+    from database import db
+    from repo import catalog as catalog_repo
+    from governance.catalog import VIS_PUBLIC
+    with db() as con:
+        rows = catalog_repo.public_sitemap_rows(con, VIS_PUBLIC)
+
+    def _xml_escape(s: str) -> str:
+        return (s.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace('"', "&quot;"))
+
+    def _w3c_date(ts) -> str:
+        return datetime.datetime.fromtimestamp(
+            int(ts), datetime.timezone.utc).strftime("%Y-%m-%d")
+
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for p in ("/", "/tools", "/agents", "/pricing", "/developers",
+              "/terms", "/privacy"):
+        lines.append(f"<url><loc>{_xml_escape(BASE_URL + p)}</loc></url>")
+    owners = []
+    for r in rows:
+        loc = _xml_escape(f"{BASE_URL}/tool/{r['tool_key']}")
+        lastmod = _w3c_date(r["updated_at"])
+        lines.append(f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>")
+        lines.append(f"<url><loc>{loc}/mcp</loc><lastmod>{lastmod}</lastmod></url>")
+        if r["owner_handle"]:
+            owners.append(r["owner_handle"])
+    for handle in sorted(set(owners)):
+        lines.append(f"<url><loc>{_xml_escape(BASE_URL + '/u/' + handle)}</loc></url>")
+    lines.append("</urlset>")
+    return Response(content="\n".join(lines), media_type="application/xml")
 
 
 def _support_note() -> str:
@@ -117,7 +163,8 @@ async def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"), "doc_body": _load_doc("terms.html", lang) + _support_note()})
+    ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"),
+        "doc_desc": ctx["texts"].get("terms_desc", ""), "doc_body": _load_doc("terms.html", lang) + _support_note()})
     return templates.TemplateResponse(request, "doc.html", ctx)
 
 
@@ -126,7 +173,8 @@ async def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
-    ctx.update({"shell_class": "", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"), "doc_body": _load_doc("privacy.html", lang) + _support_note()})
+    ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"),
+        "doc_desc": ctx["texts"].get("privacy_desc", ""), "doc_body": _load_doc("privacy.html", lang) + _support_note()})
     return templates.TemplateResponse(request, "doc.html", ctx)
 
 
@@ -177,8 +225,10 @@ async def developers(request: Request):
     body = templates.env.from_string(body).render(_developer_facts())
     ctx.update({
         "shell_class": "",
+        "seo_robots": "index, follow",
         "share_url": "",
         "doc_title": ctx["texts"].get("developers_title", "Developer Guide"),
+        "doc_desc": ctx["texts"].get("developers_desc", ""),
         "doc_body": body,
     })
     return templates.TemplateResponse(request, "doc.html", ctx)
@@ -189,7 +239,7 @@ async def agents_page(request: Request):
     """Agent support surface: the MCP server."""
     from app.main import templates
     ctx = _ctx_base(request)
-    ctx.update({"shell_class": "", "share_url": ""})
+    ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": ""})
     return templates.TemplateResponse(request, "agents.html", ctx)
 
 
@@ -269,6 +319,7 @@ async def tools_market(request: Request):
     ctx = _ctx_base(request)
     ctx.update({
         "shell_class": "",
+        "seo_robots": "index, follow",
         "tools_all": tools,
         "market_q": q,
         "market_page": page_data["page"],
@@ -307,6 +358,7 @@ async def user_page(request: Request, handle: str):
     user = request.state.user
     ctx.update({
         "shell_class": "",
+        "seo_robots": "index, follow",
         "owner_handle": handle,
         "owner_tools": tools,
         "owner_total_calls": total_calls,
@@ -383,13 +435,20 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     ctx = _ctx_base(request)
     from icons import icon_svg
     tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "wand")
+    tool_name = resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id
+    handle = _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None
+    # meta description = 工具说明 (LocalizedText 协议解析);
+    # 无说明的工具退回 "工具名 · @作者", 不输出空 description
+    tool_desc = resolve_label(tool_public.get("desc") or {}, ctx["lang"]) or (
+        f"{tool_name} · @{handle}" if handle else tool_name)
     ctx.update({
         "shell_class": "",
+        "seo_robots": "index, follow",
+        "tool_desc": tool_desc,
         "tool": tool_public,
         "delivery_json": _delivery_projection(ctx),
-        # LocalizedText 协议单链解析; tool_id 兜底属调用方 (协议注释见 app/main.py lt filter)
-        "tool_name": resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id,
-        "handle": _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None,
+        "tool_name": tool_name,
+        "handle": handle,
         "stats": _public_stats(tool_key),
         "mcp_name": mcp_name(tool_key),
         "tool_key": tool_key,
@@ -495,6 +554,7 @@ async def home(request: Request):
 
     ctx.update({
         "shell_class": "",
+        "seo_robots": "index, follow",
         "share_url": home_share_url,
         "max_mb": lim["maxFileMb"],
         "daily_uploads": lim["dailyFiles"],
@@ -507,8 +567,6 @@ async def home(request: Request):
         "delivery_json": _delivery_projection(ctx),
         "limits_json": json.dumps(lim),
         "tools_json": json.dumps(tools, ensure_ascii=False),
-        "og_title": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
-        "og_desc": texts.get("subtitle", texts.get("seo_desc", "")),
         "file_size_icon": icon_svg("file_size"),
         "upload_count_icon": icon_svg("upload_count"),
         "bandwidth_icon": icon_svg("bandwidth"),
@@ -669,7 +727,7 @@ async def pricing_page(request: Request):
     membership = (ctx.get("access") or {}).get("membership")
     with db() as con:
         daily = _daily_amount(con)
-    ctx.update({"shell_class": "", "daily_amount": daily,
+    ctx.update({"shell_class": "", "seo_robots": "index, follow", "daily_amount": daily,
                 "max_file_mb": _limits_projection(ctx)["maxFileMb"],
                 **_shop_offers(user, membership)})
     return templates.TemplateResponse(request, "pricing.html", ctx)
@@ -928,6 +986,24 @@ async def result_page(result_id: str, request: Request):
                           or ctx["texts"].get("out_kind_text", ""))
     from utils import public_result_url
     ctx["shell_class"] = "file-shell"
+    # Share card (noindex page, but link previews need a card): title =
+    # tool + what came back (files / texts / mixed); description = the
+    # delivery facts (expiry + remaining downloads). Same approach as /f.
+    texts = ctx["texts"]
+    text_count = sum(1 for d in items if d.get("kind") in ("text", "json"))
+    if file_count and not text_count:
+        og_title = f"{tool_name} · {texts['r_n_files'].format(n=file_count)}"
+    elif text_count and not file_count:
+        og_title = f"{tool_name} · {texts['r_og_text_results'].format(n=text_count)}"
+    else:
+        og_title = f"{tool_name} · {texts['r_og_items'].format(n=len(items))}"
+    og_desc = f"{texts['r_expires']}: {format_ts(int(expire_at))}"
+    min_remaining = next(iter(sorted(
+        [d["remaining"] for d in items
+         if d.get("kind") == "file" and not d.get("deleted")
+         and d.get("remaining") is not None])), None)
+    if min_remaining is not None:
+        og_desc += f" · {texts['r_downloads_left']}: {min_remaining}"
     ctx.update({
         "result_id": result_id,
         "tool_name": tool_name,
@@ -937,11 +1013,10 @@ async def result_page(result_id: str, request: Request):
         "file_count": file_count,
         "first_file": next((d for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
         "first_file_name": next((d.get("filename") for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
-        "min_remaining": next(iter(sorted(
-            [d["remaining"] for d in items
-             if d.get("kind") == "file" and not d.get("deleted")
-             and d.get("remaining") is not None])), None),
+        "min_remaining": min_remaining,
         "result_url": public_result_url(result_id),
+        "og_title": og_title,
+        "og_desc": og_desc,
         "file_size_icon": icon_svg("file_size"),
         "expiry_icon": icon_svg("expiry"),
         "download_count_icon": icon_svg("download_count"),

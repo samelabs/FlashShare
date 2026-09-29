@@ -370,7 +370,9 @@ pre.rs-text, pre.rs-json {
 
 /* ── Copy field (value + copy button, e.g. MCP name) ───────── */
 .copyfield { display: flex; gap: var(--s2); align-items: stretch; }
-.copyfield .input { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.copyfield .input { font-family: var(--font-mono); }
+/* 桌面紧凑字号; ≤767 回落底部输入地板 16px (防聚焦放大) */
+@media (min-width: 768px) { .copyfield .input { font-size: var(--fs-sm); } }
 
 /* ── Tool card (ONE card, three surfaces: home picker + market +
    user page — wrappers differ, interior identical via
@@ -471,6 +473,15 @@ pre.rs-text, pre.rs-json {
 .prow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .prow > label, .prow > .prow-label { font-size: 13px; color: var(--ink-3); min-width: 56px; }
 .prow .input { width: 180px; }
+/* 多行文本参数行: 桌面标签与输入框并排; 手机标签在上、输入框占满整行 */
+.prow-text { align-items: flex-start; }
+.prow-text > .prow-label { padding-top: 8px; }
+.prow-text > .textarea { flex: 1; min-width: 220px; }
+@media (max-width: 767px) {
+  .prow-text { flex-direction: column; align-items: stretch; }
+  .prow-text > .prow-label { padding-top: 0; min-width: 0; }
+  .prow-text > .textarea { min-width: 0; width: 100%; }
+}
 .seg { display: inline-flex; padding: 3px; background: var(--sunk); border-radius: var(--r-full); gap: 2px; flex-wrap: wrap; }
 .seg button {
   height: 30px; padding: 0 13px; border-radius: var(--r-full); border: 0;
@@ -518,7 +529,7 @@ pre.rs-text, pre.rs-json {
 
 @media (max-width: 767px) {
   .composer { border-radius: 22px; }
-  .c-text { min-height: 72px; font-size: var(--fs-md); }
+  .c-text { min-height: 72px; }
   .c-bar { gap: 4px; }
   .send.wide { padding: 0 14px; min-height: 44px; }
   /* 添加文件: 移动端图标按钮; .ib 统一伪元素扩点击区到 ≥44 (视觉不变) */
@@ -568,3 +579,15 @@ pre.rs-text, pre.rs-json {
 .auth-card .auth-terms { text-align: center; font-size: var(--fs-xs); color: var(--ink-3); margin: 0; }
 .auth-card .auth-terms a { color: var(--ink-2); text-decoration: underline; }
 @media (max-width: 767px) { .auth-card { padding: var(--s5) var(--s4); } }
+
+/* ── Mobile input floor (site-wide, phone widths) ──────────────
+   iOS/Android auto-zoom any focused control rendered below 16px.
+   On ≤767px every input-like control is forced to 16px; the compact
+   desktop sizes live in min-width:768px blocks next to their page
+   rules (518.css/samelabs.css), never in !important fights. This
+   file loads last, so the class selectors here outrank the base
+   .input/.select/.sl-input sizes above. */
+@media (max-width: 767px) {
+  input, select, textarea,
+  .input, .textarea, .select, .sl-input { font-size: 16px; }
+}

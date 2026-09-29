@@ -3,20 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f1419">
   <meta name="author" content="518.PLUS">
-  <meta property="og:site_name" content="{{ APP_NAME }}">
-  <meta property="og:locale" content="{{ locale }}">
-  <meta name="twitter:card" content="summary">
   <link rel="icon" href="/static/images/favicon.ico?v=2" sizes="any">
   <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM guide">
   <link rel="service" type="application/json" href="/mcp" title="MCP endpoint">
   <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png?v=2">
   <link rel="manifest" href="/site.webmanifest">
   {% block head %}{% endblock %}
+  {# ── SEO/social single point ────────────────────────────────────
+     Pages provide the title/desc blocks; every og/twitter/canonical/
+     robots/hreflang tag derives HERE. Only share cards whose wording
+     must differ from the page title (/f, /r) set og_title/og_desc in
+     context — never hand-written og tags in page templates. #}
+  {% set share_title = og_title|default("", true) or self.title() %}
+  {% set share_desc = og_desc|default("", true) or self.desc() %}
   <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
   <meta name="description" content="{% block desc %}{{ texts.subtitle }}{% endblock %}">
+  <meta name="robots" content="{{ seo_robots }}">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ APP_NAME }}">
+  <meta property="og:locale" content="{{ locale }}">
+  <meta property="og:title" content="{{ share_title }}">
+  <meta property="og:description" content="{{ share_desc }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:image" content="{{ SOCIAL_IMAGE_URL }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{ share_title }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ share_title }}">
+  <meta name="twitter:description" content="{{ share_desc }}">
+  <meta name="twitter:image" content="{{ SOCIAL_IMAGE_URL }}">
+  {% if seo_robots == "index, follow" %}
+  {# indexable pages carry the 10-language hreflang set (?lang=xx on the
+     same canonical path) + x-default; noindex pages emit none #}
+  {% for h in hreflang %}<link rel="alternate" hreflang="{{ h.tag }}" href="{{ canonical_url }}?lang={{ h.lang }}">
+  {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ canonical_url }}">
+  {% endif %}
   {% block meta %}{% endblock %}
+  {# ── PWA chrome ── theme_color mirrors the manifest (light = page
+     surface --bg, dark = --gray-900); both values are design tokens #}
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfc">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1419">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="{{ APP_NAME }}">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <link rel="stylesheet" href="/static/css/tokens.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/518.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/css/components.css?v={{ css_version }}">

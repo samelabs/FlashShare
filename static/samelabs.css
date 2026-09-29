@@ -180,6 +180,8 @@ body.sl-body {
 }
 .sl-input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .sl-input::placeholder { color: var(--sl-ink-faint); }
+/* 多行参数编辑 (声明 JSON): 等宽字体; 字号走全局输入规则 (移动端 16px 地板) */
+.sl-textarea { width: 100%; padding: 8px 11px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--sl-surface); color: var(--ink); font-family: var(--sl-mono); box-sizing: border-box; }
 
 /* ── 按钮 ───────────────────────────────────────────────── */
 .sl-btn {

@@ -644,6 +644,141 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     }
   }
 
+  // ── SEO/PWA batch: mobile input floor + focus stability + offline ──
+  // (a) at 390x844 and 360x640 every VISIBLE text-entry control renders
+  //     >= 16px (no iOS/Android focus auto-zoom) and focusing them never
+  //     blows out the viewport horizontally;
+  // (b) the site-wide login overlay carries the same floor;
+  // (c) the service worker registers on home and an offline navigation
+  //     serves the offline page (HTML is never cached, /offline is).
+  {
+    const INPUT_PAGES = ["/", "/tool/compress", "/pricing",
+      "/account/tools/publish", "/account/keys", "/account/profile"];
+    const auditInputs = (pg) => pg.evaluate(() => {
+      const skip = new Set(["hidden", "checkbox", "radio", "file", "submit", "button", "image", "reset"]);
+      const bad = [];
+      document.querySelectorAll("input, select, textarea").forEach((el) => {
+        if (skip.has(el.type || "")) return;
+        const cs = getComputedStyle(el);
+        if (cs.display === "none" || cs.visibility === "hidden") return;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return;
+        const fs = parseFloat(cs.fontSize);
+        if (fs < 16) bad.push(`${el.tagName.toLowerCase()}[${(el.getAttribute("name") || el.id || el.className || "").toString().slice(0, 30)}] ${fs}px`);
+      });
+      return bad;
+    });
+    for (const w of [390, 360]) {
+      const ctx = await browser.newContext({ viewport: { width: w, height: w === 390 ? 844 : 640, isMobile: true, hasTouch: true } });
+      {
+        const lp = await ctx.newPage();
+        await gotoReady(lp, "/auth/login", "input[name=login]");
+        await lp.fill("input[name=login]", username);
+        await lp.fill("input[name=password]", password);
+        await Promise.all([lp.waitForNavigation({ timeout: 15000 }), lp.click("button[type=submit]")]);
+        await lp.close();
+      }
+      for (const p of INPUT_PAGES) {
+        const page = await ctx.newPage();
+        await gotoReady(page, p, "body");
+        await page.waitForTimeout(300);
+        const bad = await auditInputs(page);
+        check(`input-floor ${w} ${p}: visible inputs >= 16px`, bad.length === 0, bad.join(", "));
+        const focus = await page.evaluate(() => {
+          const skip = new Set(["hidden", "checkbox", "radio", "file", "submit", "button", "image", "reset"]);
+          [...document.querySelectorAll("input, select, textarea")]
+            .filter((el) => !skip.has(el.type || "")).forEach((el) => el.focus());
+          return { sw: document.documentElement.scrollWidth, vw: document.documentElement.clientWidth };
+        });
+        check(`input-floor ${w} ${p}: focus keeps scrollWidth <= innerWidth`, focus.sw <= focus.vw + 1, JSON.stringify(focus));
+        await page.close();
+      }
+      await ctx.close();
+    }
+
+    // (b) login overlay on a phone viewport
+    {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/", "body");
+      await page.click("#mobileNavBtn");
+      await page.waitForTimeout(300);
+      await page.click(".mobile-nav-login");
+      await page.waitForSelector(".auth-modal input", { timeout: 5000 });
+      const bad = await auditInputs(page);
+      check("input-floor 390 login overlay: inputs >= 16px", bad.length === 0, bad.join(", "));
+      await ctx.close();
+    }
+
+    // (c) PWA: SW registers + offline navigation. The offline half uses a
+    // REAL dead origin: page-level offline emulation does not cover the
+    // service worker's own network-first fetch (verified: playwright 1.55
+    // leaves SW fetches online), so the gate serves the real app on a
+    // throwaway port, lets the real sw.js register there, stops that
+    // server and navigates — the SW's fetch must genuinely fail and fall
+    // back to the pre-cached /offline page.
+    {
+      const { spawn } = require("child_process");
+      let port = -1;
+      for (const cand of [8410, 8411, 8412, 8413]) {
+        const busy = await new Promise((resolve) => {
+          const net = require("net");
+          const s = net.connect({ host: "127.0.0.1", port: cand }, () => { s.destroy(); resolve(true); });
+          s.on("error", () => resolve(false));
+        });
+        if (!busy) { port = cand; break; }
+      }
+      check("pwa: throwaway port available for the offline probe", port > 0, "8410-8413 all busy");
+      if (port > 0) {
+        const OFFLINE_BASE = `http://127.0.0.1:${port}`;
+        const py = process.env.PYTHON || "python3";
+        const child = spawn(py, ["-m", "uvicorn", "app.main:app",
+          "--host", "127.0.0.1", "--port", String(port), "--workers", "1"],
+          { cwd: process.cwd(), env: process.env, stdio: "ignore" });
+        let up = false;
+        for (let i = 0; i < 60 && !up; i++) {
+          up = await new Promise((resolve) => {
+            const req = require("http").get(`${OFFLINE_BASE}/healthz`, (r) => { r.resume(); resolve(r.statusCode === 200); });
+            req.on("error", () => resolve(false));
+            req.setTimeout(1500, () => { req.destroy(); resolve(false); });
+          });
+          if (!up) await new Promise((r) => setTimeout(r, 500));
+        }
+        check("pwa: throwaway app up", up === true);
+        if (up) {
+          const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+          const page = await ctx.newPage();
+          await page.goto(`${OFFLINE_BASE}/`, { waitUntil: "domcontentloaded", timeout: 20000 });
+          const sw = await page.evaluate(async (origin) => {
+            if (!("serviceWorker" in navigator)) return { ok: false };
+            await navigator.serviceWorker.register(origin + "/sw.js", { updateViaCache: "none" }).catch(() => {});
+            await navigator.serviceWorker.ready;
+            const keys = await caches.keys();
+            let offlineCached = false;
+            try {
+              const c = await caches.open(keys.find((k) => k.startsWith("flashshare-pwa-")) || keys[0]);
+              offlineCached = !!(await c.match("/offline"));
+            } catch (e) { /* no cache */ }
+            return { ok: true, offlineCached };
+          }, OFFLINE_BASE);
+          check("pwa: service worker registers + activates (real origin)", sw.ok === true);
+          check("pwa: offline page pre-cached at install", sw.offlineCached === true);
+          child.kill("SIGTERM");
+          await new Promise((resolve) => child.once("exit", resolve));
+          let offlineOk = false;
+          try {
+            await page.goto(`${OFFLINE_BASE}/tools`, { waitUntil: "domcontentloaded", timeout: 15000 });
+            await page.waitForSelector(".status-glyph", { timeout: 8000 });
+            offlineOk = true;
+          } catch (e) { offlineOk = false; }
+          check("pwa: offline navigation returns the offline page", offlineOk === true);
+          await ctx.close();
+        }
+        try { child.kill("SIGKILL"); } catch (e) { /* already gone */ }
+      }
+    }
+  }
+
   // ── Text results: line breaks, exact copy, safe links, single-link card ──
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });

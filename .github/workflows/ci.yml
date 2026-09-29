@@ -576,6 +576,9 @@ jobs:
       - name: Flow clarity (search single point / catalog_search / developers) canonical
         run: python tests/canonical/test_flow_clarity.py
 
+      - name: SEO meta / share cards / sitemap / PWA canonical
+        run: python tests/canonical/test_seo_meta.py
+
       - name: Failure diagnostics
         if: failure()
         shell: bash

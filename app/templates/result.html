@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ texts.r_page_title }} · {{ tool_name }} - {{ APP_NAME }}{% endblock %}
-{% block desc %}{% endblock %}
-{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+{% block desc %}{{ og_desc }}{% endblock %}
 
 {% block content %}
 <section class="file-page r-page">

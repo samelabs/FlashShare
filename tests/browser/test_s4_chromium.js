@@ -220,6 +220,37 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
   check("U6 no-channel → submit disabled", ncDisabled !== null);
   check("U6b no-channel → Profile guidance link", ncHref === "/account/profile", ncHref);
 
+  // ── back-office mobile input floor: every visible text-entry control on
+  // the operator users page renders >= 16px at phone width (no focus
+  // auto-zoom); .sl-input rides the same components.css floor as the
+  // public surfaces. ──
+  {
+    const mctx = await browser.newContext({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
+    const mp = await mctx.newPage();
+    await mp.goto(BASE + "/");
+    await mp.evaluate(([t]) => {
+      document.cookie = "flashshare_session=" + t + "; path=/";
+    }, [OP_TOK]);
+    await mp.goto(BASE + "/samelabs/users");
+    await mp.waitForTimeout(400);
+    const bad = await mp.evaluate(() => {
+      const skip = new Set(["hidden", "checkbox", "radio", "file", "submit", "button", "image", "reset"]);
+      const out = [];
+      document.querySelectorAll("input, select, textarea").forEach((el) => {
+        if (skip.has(el.type || "")) return;
+        const cs = getComputedStyle(el);
+        if (cs.display === "none" || cs.visibility === "hidden") return;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return;
+        const fs = parseFloat(cs.fontSize);
+        if (fs < 16) out.push(`${el.tagName.toLowerCase()} ${fs}px`);
+      });
+      return out;
+    });
+    check("MO input floor /samelabs/users at 390 >= 16px", bad.length === 0, bad.join(", "));
+    await mctx.close();
+  }
+
   await browser.close();
   console.log();
   if (FAIL.length) { console.log(`FAILED ${FAIL.length}`); process.exit(1); }

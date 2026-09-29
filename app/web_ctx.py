@@ -21,7 +21,7 @@ _STATIC = _BASE / "static"
 # (tokens + components + the 518.css page file): any file change bumps
 # every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v67"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+_CSS_VERSION = "v68"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
 for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
@@ -55,11 +55,19 @@ sys.path.insert(0, str(_CORE))
 
 from config import (APP_NAME, BASE_URL, SOCIAL_IMAGE_URL,
                     PUBLIC_SUPPORT_CHANNEL, X_CLIENT_ID, X_CLIENT_SECRET)
-from i18n import LOCALE_TAGS, server_text
+from i18n import LOCALE_TAGS, language_from_code, server_text
 from icons import _ICONS, icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
 from identity.auth import public_user
 from economy.billing import spendable_balance
 from governance.access_projection import project
+
+# hreflang alternates (one source, every indexable page): en first for a
+# stable order, then the rest alphabetically. x-default = the bare path.
+_HREFLANG = [{"tag": LOCALE_TAGS["en"], "lang": "en"}] + sorted(
+    ({"tag": LOCALE_TAGS[l], "lang": l} for l in LOCALE_TAGS if l != "en"),
+    key=lambda h: h["lang"])
+
+
 def fmt_ts(ts) -> str:
     """Unix ts → local time string for templates.
 
@@ -102,6 +110,21 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         "locale": LOCALE_TAGS.get(lang, "en"),
         "direction": "rtl" if lang == "ar" else "ltr",
         "texts": server_text(lang),
+        # ── SEO single point (base.html renders every og/twitter/
+        # canonical/hreflang tag from these; pages only set the values) ──
+        # Canonical absolute URL of the current page: origin from BASE_URL
+        # (the deployment authority, never the proxied host) + path only —
+        # query strings (tracking params, ?lang, search terms) never enter
+        # a canonical/og:url.
+        # canonical never carries tracking/query params, except an explicit
+        # ?lang=xx: each hreflang alternate must be its own canonical
+        "canonical_url": BASE_URL + request.url.path + (
+            f"?lang={lang}" if language_from_code(
+                request.query_params.get("lang", "")) else ""),
+        # Default is NOT indexable; the ten public route families opt in
+        # with "index, follow" (hreflang follows that flag, nothing else).
+        "seo_robots": "noindex",
+        "hreflang": _HREFLANG,
         "user": public_user(user) if user else None,
         # dict (not pre-dumped JSON) so base.html can apply |tojson,
         # which escapes < > & — required inside a <script> block.
