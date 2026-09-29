@@ -259,7 +259,7 @@ try:
     from governance.tool_supply import create_tool
     create_tool({
         "tool_key": f"{_u}a/{USER_TOOL}", "tool_id": USER_TOOL,
-        "owner_id": uid, "execution": "http", "tool_type": "produce",
+        "owner_id": uid, "execution": "http",
         "label": {"en": "FX User Tool"}, "icon": "wand",
         "inputs": {"files": {"min": 0, "max": 3, "accept": None}},
         "outputs": ["text"],
@@ -329,7 +329,7 @@ try:
              "content_type": "image/png", "size": len(PNG)},
         ]}
     _tools.register(
-        tool_id=f"fxlocal{_u}", tool_type="produce",
+        tool_id=f"fxlocal{_u}",
         label={"en": "FX Local Two"}, icon="wand",
         handler=_two_files_handler,
         files_min=0, files_max=1, outputs=("file",))
@@ -351,7 +351,7 @@ try:
         return out
 
     _tool_row = {"id": f"fxlocal{_u}", "tool_key": f"fxlocal{_u}",
-                 "type": "produce", "owner_id": None,
+                 "owner_id": None,
                  "execution": "local", "files_max": 1}
     _user_row = {"id": uid, "username": _u + "a"}
 

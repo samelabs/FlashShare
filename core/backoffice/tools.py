@@ -33,7 +33,7 @@ def _safe_remote_projection(con, tool_key: str) -> dict | None:
     row = _catalog_repo.by_tool_key(con, tool_key)
     if row is None:
         return None
-    d = {k: row[k] for k in ("tool_key", "tool_id", "execution", "tool_type",
+    d = {k: row[k] for k in ("tool_key", "tool_id", "execution",
                              "visibility", "enabled", "featured",
                              "sort_order", "files_min", "files_max")}
     accept_json = row["accept_json"]
@@ -57,7 +57,7 @@ def _snap_remote(r) -> dict:
     if r is None:
         return {}
     return {k: r[k] for k in ("tool_key", "tool_id", "execution",
-                              "tool_type", "visibility", "enabled",
+                              "visibility", "enabled",
                               "featured", "sort_order", "files_min", "files_max",
                               "outputs", "accept",
                               "cost") if k in r.keys()}
@@ -181,7 +181,6 @@ def create_http_tool(operator_id: int, payload: dict) -> str:
         "tool_id": tool_id,
         "owner_id": None,
         "execution": "http",
-        "tool_type": "produce",
         "label": {"en": payload["label"], "zh": payload["label"]},
         "desc": None,
         "icon": "wand",

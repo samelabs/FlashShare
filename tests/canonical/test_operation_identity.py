@@ -127,9 +127,9 @@ def _mktool(tool_id, owner_id=None, cost=100):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon,"
+            " execution, label_json, icon,"
             " visibility, enabled, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', 'produce', %s, 'wand',"
+            " values (%s, %s, %s, 'local', %s, 'wand',"
             " 'public', TRUE, %s, %s)",
             (tool_id, owner_id, tool_id, _json.dumps({"en": "OI"}), ts, ts))
         con.execute(
@@ -174,7 +174,7 @@ uR = _mkuser(_u + "replay")
 tR = f"oitool_{_u}"
 _mktool(tR, owner_id=owner, cost=100)
 _grant(uR, 10000, "manual_topup", note="oi")
-toolR = {"id": tR, "tool_key": tR, "type": "produce", "owner_id": owner}
+toolR = {"id": tR, "tool_key": tR, "owner_id": owner}
 
 async def _st_ok():
     return _mkstaged("replay")
@@ -210,7 +210,7 @@ uC = _mkuser(_u + "conf")
 tC = f"oiconf_{_u}"
 _mktool(tC, owner_id=owner, cost=100)
 _grant(uC, 10000, "manual_topup", note="oi")
-toolC = {"id": tC, "tool_key": tC, "type": "produce", "owner_id": owner}
+toolC = {"id": tC, "tool_key": tC, "owner_id": owner}
 refC = f"job-{_u}-C"
 
 async def _st_c():
@@ -251,7 +251,7 @@ uN = _mkuser(_u + "run")
 tN = f"oirun_{_u}"
 _mktool(tN, owner_id=owner, cost=100)
 _grant(uN, 10000, "manual_topup", note="oi")
-toolN = {"id": tN, "tool_key": tN, "type": "produce", "owner_id": owner}
+toolN = {"id": tN, "tool_key": tN, "owner_id": owner}
 refN = f"job-{_u}-N"
 
 _gate_state = {}
@@ -292,7 +292,7 @@ uF = _mkuser(_u + "fail")
 tF = f"oifail_{_u}"
 _mktool(tF, owner_id=owner, cost=100)
 _grant(uF, 10000, "manual_topup", note="oi")
-toolF = {"id": tF, "tool_key": tF, "type": "produce", "owner_id": owner}
+toolF = {"id": tF, "tool_key": tF, "owner_id": owner}
 refF = f"job-{_u}-F"
 
 async def _st_fail():
@@ -326,7 +326,7 @@ uX = _mkuser(_u + "conc")
 tX = f"oiconc_{_u}"
 _mktool(tX, owner_id=owner, cost=100)
 _grant(uX, 10000, "manual_topup", note="oi")
-toolX = {"id": tX, "tool_key": tX, "type": "produce", "owner_id": owner}
+toolX = {"id": tX, "tool_key": tX, "owner_id": owner}
 refX = f"job-{_u}-X"
 
 import threading

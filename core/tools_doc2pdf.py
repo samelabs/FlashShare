@@ -16,7 +16,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import register, ToolError
 
 # Extensions LibreOffice converts reliably with writer/calc/impress filters.
 ACCEPTED_EXT = {
@@ -46,6 +46,53 @@ PDF_MAGIC = b"%PDF"
 
 _profile_counter = [0]
 
+# Deployment capability probe input: one plain line of text.
+_PROBE_TEXT = "flashshare doc2pdf probe\n"
+_PROBE_TIMEOUT = 60  # seconds; generous enough for a cold profile start
+
+# Exact deployment packages the probe failure message names (Debian/Ubuntu
+# naming; -nogui variants cover writer/calc/impress without an X stack).
+REQUIRED_PACKAGES = ("libreoffice-writer-nogui", "libreoffice-calc-nogui",
+                     "libreoffice-impress-nogui", "fonts-noto-cjk")
+
+
+def probe_engine() -> None:
+    """One-shot startup probe: convert a one-line txt end-to-end.
+
+    Raises RuntimeError (detail in str) when the engine cannot produce a
+    PDF — callers log the failure (naming the required packages) but do
+    NOT block startup: doc2pdf returns its typed per-call error and every
+    other surface keeps serving.
+    """
+    import tempfile
+    from pathlib import Path as _Path
+    # Stable (not per-run) profile: startup probes reuse the initialized
+    # profile, so restarts probe in seconds instead of cold-starting
+    # soffice every time. No concurrency here — one probe per process.
+    profile_dir = _Path(tempfile.gettempdir()) / "flashshare_lo_probe_profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="flashshare_doc2pdf_probe_") as workdir:
+        src = _Path(workdir) / "probe.txt"
+        src.write_text(_PROBE_TEXT, encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [SOFFICE, "--headless", "--norestore", "--nolockcheck",
+                 f"-env:UserInstallation={profile_dir.as_uri()}",
+                 "--convert-to", "pdf", "--outdir", workdir, str(src)],
+                capture_output=True, timeout=_PROBE_TIMEOUT)
+        except FileNotFoundError:
+            raise RuntimeError(
+                f"'{SOFFICE}' executable not found") from None
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("soffice timed out") from None
+        out = _Path(workdir) / "probe.pdf"
+        if proc.returncode != 0 or not out.exists()                 or not out.read_bytes().startswith(PDF_MAGIC):
+            detail = (proc.stderr or proc.stdout or b"").decode(
+                "utf-8", "replace").strip()[:300]
+            raise RuntimeError(
+                f"txt→pdf conversion failed (exit={proc.returncode})"
+                + (f": {detail}" if detail else ""))
+
 
 def doc2pdf_handler(tool_input, params):
     """Convert a document to PDF.
@@ -55,7 +102,8 @@ def doc2pdf_handler(tool_input, params):
         params: {"preset": "auto"} — single operation, no variants yet.
 
     Returns:
-        {"stream": BytesIO, "filename": str, "content_type": "application/pdf", "size": int}
+        {"items": [{"kind": "file", "stream": BytesIO, "filename": str,
+                    "content_type": "application/pdf", "size": int}]}
     """
     stream = tool_input.get("stream")
     filename = tool_input.get("filename") or "document"
@@ -128,7 +176,6 @@ def doc2pdf_handler(tool_input, params):
 
 register(
     tool_id="doc2pdf",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Document to PDF", "zh": "文档转PDF", "ja": "ドキュメント→PDF変換",
         "ko": "문서를 PDF로", "es": "Documento a PDF", "ar": "مستند إلى PDF",
