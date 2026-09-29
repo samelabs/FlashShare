@@ -91,9 +91,9 @@ def _mktool(tool_id, owner_id=None, cost=100, outputs_json='["file"]'):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, visibility, enabled,"
+            " execution, label_json, icon, visibility, enabled,"
             " outputs_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', 'produce', %s, 'wand',"
+            " values (%s, %s, %s, 'local', %s, 'wand',"
             " 'public', TRUE, %s, %s, %s)",
             (tool_id, owner_id, tool_id, _json.dumps({"en": "B2"}),
              outputs_json, ts, ts))
@@ -127,7 +127,7 @@ def _staged_fn(tag):
     return _f
 
 def _run(user, tool_id, ref, staged_fn, owner=None, outputs_json=None):
-    tool = {"id": tool_id, "tool_key": tool_id, "type": "produce",
+    tool = {"id": tool_id, "tool_key": tool_id,
             "owner_id": owner}
     if outputs_json is not None:
         tool["outputs_json"] = outputs_json
@@ -589,7 +589,7 @@ ttx = f"b2out_{_u}"
 _mktool(ttx, owner_id=owner, cost=100, outputs_json='["text"]')
 _grant(uto, 10000, "manual_topup", note="b2")
 b_out_pre = spendable_balance(uto)
-tool_row = {"id": ttx, "tool_key": ttx, "type": "produce",
+tool_row = {"id": ttx, "tool_key": ttx,
             "owner_id": owner, "outputs_json": '["text"]'}
 res, err, code = _drive(tool_row, uto, [TEXT_ITEM, FILE_ITEM])
 with db() as con:
@@ -616,7 +616,7 @@ check("O2 zero result items landed, zero staged objects",
 ttx2 = f"b2out2_{_u}"
 _mktool(ttx2, owner_id=owner, cost=100, outputs_json='["text","file"]')
 _grant(uto, 10000, "manual_topup", note="b2")
-tool_row2 = {"id": ttx2, "tool_key": ttx2, "type": "produce",
+tool_row2 = {"id": ttx2, "tool_key": ttx2,
              "owner_id": owner, "outputs_json": '["text","file"]'}
 res2, err2, code2 = _drive(tool_row2, uto, [TEXT_ITEM, FILE_ITEM])
 check("O3 declared text+file → same output set succeeds",
@@ -633,16 +633,16 @@ trt = f"b2rt_{_u}"
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id,"
-        " execution, tool_type, label_json, icon, visibility, enabled,"
+        " execution, label_json, icon, visibility, enabled,"
         " outputs_json, endpoint_json, created_at, updated_at)"
-        " values (%s, %s, %s, 'http', 'produce', %s, 'wand', 'public',"
+        " values (%s, %s, %s, 'http', %s, 'wand', 'public',"
         " TRUE, '[\"text\"]', %s, %s, %s)",
         (trt, owner, trt, _json.dumps({"en": "B2R"}),
          _json.dumps({"url": "http://127.0.0.1:9/none"}), ts, ts))
     con.execute(
         "insert into pricing (tool_id, cost, enabled, updated_at)"
         " values (%s, 100, TRUE, %s)", (trt, ts))
-tool_rt = {"id": trt, "tool_key": trt, "type": "produce",
+tool_rt = {"id": trt, "tool_key": trt,
            "owner_id": owner, "outputs_json": '["text"]',
            "endpoint_json": _json.dumps({"url": "http://127.0.0.1:9/none"})}
 async def _drive_remote():

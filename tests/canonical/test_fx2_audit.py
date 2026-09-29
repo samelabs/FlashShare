@@ -58,8 +58,8 @@ _BASE = f"http://127.0.0.1:{_TEST_PORT}"
 _u = "fx2" + uuid.uuid4().hex[:8]
 
 PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNk"
-    "+M+QzGdlGU0AAAvKBwGAWjR9awAAAABJRU5ErkJggg==")
+    "iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAIAAAACUFjqAAAAPElEQVR4nGM8YWPDgBsw4ZFjYGBggV"
+    "A+N7agSWzR8EFIw/loqlEMNz98GJ/dJ21tyXIaVtcxMDAwUuRvAGHKDXGPxOJMAAAAAElFTkSuQmCC")
 
 
 def _req(method, path, body=None, headers=None):

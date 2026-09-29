@@ -130,10 +130,8 @@ def _handler_returning(n):
     return _h
 
 import tools as _tools
-_tools._registry.append({"id": "zz_at_cap", "handler": _handler_returning(8),
-                         "type": "produce"})
-_tools._registry.append({"id": "zz_cap1", "handler": _handler_returning(9),
-                         "type": "produce"})
+_tools._registry.append({"id": "zz_at_cap", "handler": _handler_returning(8)})
+_tools._registry.append({"id": "zz_cap1", "handler": _handler_returning(9)})
 import config as _cfg
 _orig_cap = _cfg.MAX_UPLOAD_BYTES
 try:
@@ -301,9 +299,9 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " tool_type, label_json, icon, visibility,"
+            " label_json, icon, visibility,"
             " enabled, created_at, updated_at)"
-            " values (%s, NULL, %s, 'local', 'produce', %s,"
+            " values (%s, NULL, %s, 'local', %s,"
             " 'wand', 'public', TRUE, %s, %s)",
             (f"ebtool_{_u}", f"ebtool_{_u}",
              _json.dumps({"en": "EB"}), ts, ts))
@@ -328,7 +326,7 @@ try:
     result, err, status = asyncio.new_event_loop().run_until_complete(gate.run(
         {"id": user_id},
         {"id": f"ebtool_{_u}", "tool_key": f"ebtool_{_u}",
-         "type": "produce", "owner_id": None},
+         "owner_id": None},
         inv, _boom))
     check("E1 gate 响应: tool_failed / 500",
           err is not None and err.get("error") == "tool_failed" and status == 500,
@@ -420,8 +418,8 @@ def _mkrow58(execution):
              _ts58, _ts58)).fetchone()["id"]
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, visibility, enabled,"
-            " created_at, updated_at) values (%s, NULL, %s, %s, 'produce',"
+            " execution, label_json, visibility, enabled,"
+            " created_at, updated_at) values (%s, NULL, %s, %s,"
             " '{}', 'public', TRUE, %s, %s)"
             " on conflict (tool_key) do update set execution=excluded.execution",
             (f"eb58/{execution}", execution, execution, _ts58, _ts58))
@@ -479,9 +477,9 @@ with db() as con:
     con.execute("ALTER TABLE platform_tools DROP CONSTRAINT IF EXISTS platform_tools_execution_ck")
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, visibility, enabled, created_at, updated_at)"
+        " label_json, visibility, enabled, created_at, updated_at)"
         " values ('eb58/bad_exec_inv', NULL, 'bad_exec_inv', 'mcp',"
-        " 'produce', '{}', 'private', FALSE, %s, %s)", (_ts58, _ts58))
+        " '{}', 'private', FALSE, %s, %s)", (_ts58, _ts58))
 try:
     _vcr()
     check("G-startup stored execution='mcp' → invariant fail", False, "no raise")
@@ -493,9 +491,9 @@ with db() as con:
     con.execute("ALTER TABLE platform_tools DROP CONSTRAINT IF EXISTS platform_tools_execution_ck")
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, visibility, enabled, created_at, updated_at)"
+        " label_json, visibility, enabled, created_at, updated_at)"
         " values ('eb58/bad_exec_inv2', NULL, 'bad_exec_inv2', 'quantum',"
-        " 'produce', '{}', 'unlisted', TRUE, %s, %s)", (_ts58, _ts58))
+        " '{}', 'unlisted', TRUE, %s, %s)", (_ts58, _ts58))
 try:
     _vcr()
     check("G-startup arbitrary execution='quantum' → invariant fail", False, "no raise")

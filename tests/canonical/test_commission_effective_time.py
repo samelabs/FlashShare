@@ -89,9 +89,9 @@ def _mktool(tool_id, owner_id=None, cost=100):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon,"
+            " execution, label_json, icon,"
             " visibility, enabled, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', 'produce', %s, 'wand',"
+            " values (%s, %s, %s, 'local', %s, 'wand',"
             " 'public', TRUE, %s, %s)",
             (tool_id, owner_id, tool_id, _json.dumps({"en": "CT"}), ts, ts))
         con.execute(
@@ -115,7 +115,7 @@ from execution import gate
 def _run(user, tool_id, ref, staged_fn, owner=None):
     return asyncio.new_event_loop().run_until_complete(gate.run(
         {"id": user},
-        {"id": tool_id, "tool_key": tool_id, "type": "produce",
+        {"id": tool_id, "tool_key": tool_id,
          "owner_id": owner},
         _inv(tool_id, ref), staged_fn))
 

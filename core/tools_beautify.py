@@ -28,7 +28,7 @@ import random
 
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import register, ToolError
 
 MAX_DIM = 1400
 RADIUS = 16
@@ -384,7 +384,6 @@ _PRESET_LABELS = {
 
 register(
     tool_id="beautify",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Frame", "zh": "截图美化", "ja": "スクリーンショット美化",
         "ko": "스크린샷 미화", "es": "Embellecer captura", "ar": "تجميل لقطة الشاشة",

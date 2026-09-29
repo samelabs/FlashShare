@@ -29,7 +29,7 @@ TARGET_SAFE_KEYS = {
     "withdrawal": {"id", "user_id", "amount", "status", "reviewed_at",
                    "reviewed_by", "paid_at", "paid_by", "reason",
                    "resolved_by"},
-    "remote_tool": {"tool_key", "tool_id", "execution", "tool_type",
+    "remote_tool": {"tool_key", "tool_id", "execution",
                     "visibility", "enabled", "featured", "sort_order",
                     "files_min", "files_max", "outputs", "accept", "cost"},
     "setting": {"rate", "amount"},

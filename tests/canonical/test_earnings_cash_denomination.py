@@ -147,9 +147,9 @@ def _mktool(tk, own, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " tool_type, label_json, icon, visibility, enabled,"
+            " label_json, icon, visibility, enabled,"
             " params_json, endpoint_json, created_at, updated_at) values"
-            " (%s, %s, %s, 'http', 'produce', %s, 'wand', 'public',"
+            " (%s, %s, %s, 'http', %s, 'wand', 'public',"
             " true, '[]', %s, %s, %s)",
             (tk, own, tk.split("/")[-1], _json2.dumps({"en": "S3"}),
              _json2.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
@@ -188,7 +188,7 @@ def _run(user_id, tool_id, ref, own):
     from execution import gate as _g
     return _asyncio.new_event_loop().run_until_complete(_g.run(
         {"id": user_id},
-        {"id": tool_id, "tool_key": tool_id, "type": "produce", "owner_id": own},
+        {"id": tool_id, "tool_key": tool_id, "owner_id": own},
         _inv(tool_id, ref), _orch))
 
 def _call_id(tool_id, ref):
