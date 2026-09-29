@@ -14,13 +14,13 @@
     <div class="hd-r">
       <div class="lang-switch" id="langSwitch">
         <button class="ib lang" id="langButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a14 14 0 0 1 0 18"></path><path d="M12 3a14 14 0 0 0 0 18"></path></svg>
+          {{ icon_svg("translate") }}
         </button>
         <div class="lang-menu hidden" id="langMenu" role="listbox" aria-label="Language"></div>
       </div>
       {% if user %}
       <button class="ib" id="historyBtn" type="button" aria-label="{{ texts.menu_recent }}" title="{{ texts.menu_recent }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="5" rx="1"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><path d="M10 13h4"></path></svg>
+        {{ icon_svg("history") }}
       </button>
       <div class="user-menu">
         <button class="av" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="{{ texts.menu_account }}">
