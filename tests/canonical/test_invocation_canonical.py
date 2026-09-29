@@ -397,18 +397,21 @@ for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):
 # G3 Home/Market/User Page consume canonical renderer (macro partial):
 part = _rd("app", "templates", "partials", "tool_identity.html")
 check("G3 partial 消费 icon_tool_svg 单一 renderer",
-      "icon_tool_svg" in part and "icon_svg(" not in part)
+      "icon_tool_svg(t.icon)" in part
+      and "icon_svg(t." not in part
+      and 'icon_svg("verified")' in part)  # 会员徽章: 全局 registry 单源
 home_src3 = _rd("app", "templates", "home.html")
-check("G3b home 工具卡经 canonical renderer (无 icon_path 工具渲染)",
-      "icon_tool_svg(" in home_src3
+check("G3b home 工具卡经 tool_card 宏 (无 per-page icon 渲染)",
+      "tool_card(t, lang, texts)" in home_src3
+      and "icon_tool_svg(" not in home_src3
       and '{{ icon_path(t.icon' not in home_src3)
-# G4 卡面单源: 唯一 interior macro 渲染 图标/名称/描述/官方标/输入/输出/价格,
-# 两个包装宏 (link/pick) 都消费它; author/calls 槽位不进卡 (页头/详情页职责):
-check("G4 tool_card_inner 为唯一卡面, link/pick 双包装同源",
-      "tool_card_inner(" in part
-      and part.count("{{ tool_card_inner(t, lang, texts) }}") == 2
-      and "tcard-author" not in part and "t.stats" not in part
-      and "tool-card-origin" in part and "show_author" not in part)
+# G4 卡面单源: 唯一 tool_card 宏渲染四行卡 (图标+名称/说明 2 行/底部标签行
+# +作者文本); 作者在卡内是文本 (卡片=单一导航面), calls 槽位不进卡:
+check("G4 tool_card 为唯一卡面 (四行卡, 作者为文本, 无 calls 槽位)",
+      part.count("{% macro tool_card(") == 1
+      and "icon_tool_svg(t.icon)" in part
+      and "t.stats" not in part
+      and '<a class="by"' not in part and 'class="by"' in part)
 # G5 market/user page 同一导航卡调用 (无 per-page 参数分叉):
 for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):
     src5 = _rd(*tmpl.split("/"))
@@ -431,9 +434,9 @@ check("G7 card href = /tool/{id}",
 # surface is the composer (mount + in-place tool selector):
 home_src = _rd("app", "templates", "home.html")
 check("G8 home 卡为导航面 + composer 为执行面 (选择器原地切换)",
-      'href="/tool/{{ t.id }}"' in home_src
-      and 'id="toolInput"' in home_src
-      and "icon_tool_svg(" in home_src)
+      'id="toolInput"' in home_src
+      and "tool_card(t, lang, texts)" in home_src
+      and "icon_tool_svg(" not in home_src)
 check("PG19 production 零 deprecated icon fallback 字面 (wand 兜底仅 icons.py)",
       sum(_rd("app", "templates", t).count('or "wand"')
           for t in ("home.html", "tools_market.html", "user_page.html")) == 0)

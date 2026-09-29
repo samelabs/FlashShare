@@ -38,6 +38,12 @@ _ICONS = {
     "wrench": '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"></path>',
     "bot": '<rect x="4" y="8" width="16" height="12" rx="3"></rect><path d="M12 4v4"></path><path d="M9 14h.01"></path><path d="M15 14h.01"></path>',
 
+    # ── Badges ──
+    # Membership verification badge: solid brand-red rosette + white check.
+    # Colors are baked in (unlike stroke icons) — the badge reads as the
+    # platform mark on any surface, never as currentColor ink.
+    "verified": '<path fill="#ff4d4d" stroke="none" d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"></path><path d="M8.6 12.1l2.3 2.3 4.6-4.6" stroke="#ffffff" stroke-width="2.4"></path>',
+
     # ── QR ──
     "qr": '<path d="M4 4h6v6H4z"></path><path d="M14 4h6v6h-6z"></path><path d="M4 14h6v6H4z"></path><path d="M15 15h2"></path><path d="M19 14v3"></path><path d="M14 19h3"></path><path d="M20 20h-1"></path>',
 

@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 # Local CI mirror — the single local test entry point.
 #   tools/ci_local.sh [--browser] [suite ...]
-# Starts an isolated stack (fresh DB, fake Gokapi, app), runs
+# Starts an isolated stack (fresh DB, fake Gokapi :53898, app :8100), runs
 # the given suites (default: every tests/ci + tests/canonical step of
 # .github/workflows/ci.yml, in order), prints one exit-code table, stops.
 # Full-suite verification is GitHub CI; locally run only affected suites.
 # Env: PG_ADMIN_URL (default postgresql://127.0.0.1:5432/postgres),
 #      PYTHON (default venv/bin/python), PLAYWRIGHT_CORE_PATH / CHROMIUM_PATH,
-#      APP_PORT / GOKAPI_PORT (defaults 8100 / 53898; override to run
-#      alongside another local stack).
+#      APP_PORT (default 8100) / GOKAPI_PORT (default 53898) — parallel
+#      stacks (per-batch worktrees) each pick their own isolated ports.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 PY=${PYTHON:-venv/bin/python}
 ADMIN=${PG_ADMIN_URL:-postgresql://127.0.0.1:5432/postgres}
+APP_PORT=${APP_PORT:-8100}
+GOKAPI_PORT=${GOKAPI_PORT:-53898}
 BROWSER=0; [ "${1:-}" = --browser ] && { BROWSER=1; shift; }
 DB=ci_local_$$; OUT=/tmp/ci-local-$$; mkdir -p "$OUT/log"
 BASE=${ADMIN%/*}
-APP_PORT=${APP_PORT:-8100}; GOKAPI_PORT=${GOKAPI_PORT:-53898}
 
 export PYTHONDONTWRITEBYTECODE=1
 export DATABASE_URL=${BASE/postgresql:/postgresql+psycopg:}/$DB TEST_DB_URL=$BASE/$DB
@@ -44,7 +45,7 @@ psql "$ADMIN" -qc "CREATE DATABASE $DB" >/dev/null || { echo "cannot create $DB"
 "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT" --workers 1 \
   >"$OUT/app.log" 2>&1 & PIDS+=($!)
 for _ in $(seq 60); do
-  curl -fsS http://127.0.0.1:$APP_PORT/healthz >/dev/null 2>&1 && break
+  curl -fsS "http://127.0.0.1:$APP_PORT/healthz" >/dev/null 2>&1 && break
   kill -0 "${PIDS[1]}" 2>/dev/null || { tail -30 "$OUT/app.log"; exit 2; }
   sleep 1
 done

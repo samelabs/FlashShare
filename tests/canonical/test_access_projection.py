@@ -256,29 +256,32 @@ def _get_home(ck=None):
     return r.status, body
 
 def _has_plus_badge(body):
-    return "plus-badge" in body and "PLUS" in body.split("plus-badge")[0][-200:] + body.split("plus-badge")[1][:20] if "plus-badge" in body else False
+    # home-polish: the membership mark in the header is the verified
+    # badge (class "verified", avatar corner + user-menu name) fed by the
+    # same access projection; the retired plus-badge text is gone.
+    return 'class="verified' in body
 
 # Free authenticated
 st, body = _get_home(_mf_ck)
 check("WC-F1 Free 登录 GET / → 200", st == 200, str(st))
-check("WC-F2 Free header 无 PLUS badge (与 project.membership=None 一致)",
+check("WC-F2 Free header 无认证徽章 (与 project.membership=None 一致)",
       not _has_plus_badge(body) and project(_mf_id)["membership"] is None)
 
 # PLUS authenticated
 st, body = _get_home(_login_http(_mp))
-check("WC-P1 PLUS 登录 GET / → 200 + header PLUS badge",
+check("WC-P1 PLUS 登录 GET / → 200 + header 认证徽章",
       st == 200 and _has_plus_badge(body)
       and project(_mp_id)["membership"]["member"] is True)
 
 # Expired
 st, body = _get_home(_login_http(_me_))
-check("WC-E1 expired 登录 GET / → 200 无 PLUS badge (fact 保留 member=false)",
+check("WC-E1 expired 登录 GET / → 200 无认证徽章 (fact 保留 member=false)",
       st == 200 and not _has_plus_badge(body)
       and project(_me_id)["membership"]["member"] is False)
 
 # Anonymous
 st, body = _get_home()
-check("WC-A1 匿名 GET / → 200 无 PLUS badge", st == 200 and not _has_plus_badge(body))
+check("WC-A1 匿名 GET / → 200 无认证徽章", st == 200 and not _has_plus_badge(body))
 
 # ═══ 7e. Read-model failure contract (函数级) ═══
 import app.web_ctx as _wctx

@@ -24,6 +24,7 @@ from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
 from governance.catalog import list_catalog
 from governance.catalog import seed_from_registry
+from governance.formats import format_manifest
 from governance.tool_params import resolve_label
 
 from database import db
@@ -354,12 +355,17 @@ async def user_page(request: Request, handle: str):
         t["stats"] = _public_stats(t["id"])
     with db() as con:
         total_calls = ok_calls_by_owner(con, owner_id, [t["id"] for t in tools])
+    # Verified badge fact: the author is a current effective member —
+    # the same batch predicate the access projection uses (no second
+    # membership judgment here).
+    from economy.subscription import effective_member_ids
     ctx = _ctx_base(request)
     user = request.state.user
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",
         "owner_handle": handle,
+        "owner_verified": owner_id in effective_member_ids([owner_id]),
         "owner_tools": tools,
         "owner_total_calls": total_calls,
         "is_self": bool(user and user.get("id") == owner_id),
@@ -373,9 +379,16 @@ def _limits_projection(ctx: dict) -> dict:
     projection; anonymous falls back to the Free capability
     (resolve_from_membership(None)), never hand-written Free values.
     Injected verbatim as window.__LIMITS__; window.__DELIVERY__ derives
-    from the same dict, so no surface can drift from another."""
+    from the same dict, so no surface can drift from another.
+
+    dailyRemaining = rolling-24h ingress headroom (entitlement files minus
+    usage facts, same projection) — the quota hint consumes it and never
+    recomputes a second number.
+    """
     if ctx.get("access"):
         ent = ctx["access"]["entitlements"]
+        used_files = int((ctx["access"].get("usage") or {})
+                         .get("ingress_files_24h") or 0)
     else:
         from governance.entitlements import resolve_from_membership
         _raw = resolve_from_membership(None)
@@ -383,12 +396,15 @@ def _limits_projection(ctx: dict) -> dict:
                "ingress_bytes_24h": _raw["ingress_bytes_24h"],
                "expiry_days": list(_raw["expiry_days"]),
                "download_limits": list(_raw["download_limits"])}
+        used_files = 0
     days = list(ent["expiry_days"])
     dls = list(ent["download_limits"])
     gb = ent["ingress_bytes_24h"] / (1024 * 1024 * 1024)
+    daily_files = ent["ingress_files_24h"]
     return {
         "maxFileMb": MAX_UPLOAD_BYTES // (1024 * 1024),
-        "dailyFiles": ent["ingress_files_24h"],
+        "dailyFiles": daily_files,
+        "dailyRemaining": max(0, daily_files - used_files),
         "dailyGb": int(gb) if gb == int(gb) else round(gb, 1),
         "expiryDays": days,
         "downloadLimits": dls,
@@ -462,6 +478,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
             and tool.get("visibility") != "public"),
         "tools_json": json.dumps([tool_public], ensure_ascii=False),
         "limits_json": _limits_json(ctx),
+        "formats_json": json.dumps(format_manifest(), ensure_ascii=False),
     })
     return ctx
 
@@ -566,6 +583,9 @@ async def home(request: Request):
         "delivery_default_downloads": lim["defaultDownloads"],
         "delivery_json": _delivery_projection(ctx),
         "limits_json": json.dumps(lim),
+        # 格式族单源 (governance.formats): composer 上传区族名文案词表,
+        # 与发布页 window.__FORMAT_FAMILIES__ 同名同形。
+        "formats_json": json.dumps(format_manifest(), ensure_ascii=False),
         "tools_json": json.dumps(tools, ensure_ascii=False),
         "file_size_icon": icon_svg("file_size"),
         "upload_count_icon": icon_svg("upload_count"),

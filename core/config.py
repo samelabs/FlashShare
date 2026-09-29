@@ -36,7 +36,7 @@ def _required_env(name: str) -> str:
 
 
 BASE_URL = _required_env("FLASHSHARE_BASE_URL").rstrip("/")
-SOCIAL_IMAGE_PATH = "/static/images/og-image.png?v=2"
+SOCIAL_IMAGE_PATH = "/static/images/og-image.png?v=3"
 SOCIAL_IMAGE_URL = f"{BASE_URL}{SOCIAL_IMAGE_PATH}"
 
 # Extra browser origins admitted on /mcp besides the BASE_URL origin

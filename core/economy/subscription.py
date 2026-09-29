@@ -669,3 +669,21 @@ def plan_of(user_id: int) -> dict | None:
         "cancel_scheduled_at": d["cancel_scheduled_at"],
         "member": live,
     }
+
+
+def effective_member_ids(user_ids: list) -> set:
+    """Batch read side of plan_of().member — the verified-badge predicate.
+
+    user_ids → 当前有效会员集合。与 access projection 同一判定
+    (membership_is_effective, 规范四: active/canceled/past_due 且
+    renews_at > now)，一次往返；无 membership 行的 id 自然不在集合内。
+    只读 facts，无缓存 — 返回后数据允许立即变化 (read model 语义)。
+    """
+    ids = sorted({int(u) for u in user_ids if u is not None})
+    if not ids:
+        return set()
+    ts = now()
+    with db() as con:
+        rows = orders_repo.membership_effective_rows(con, ids)
+    return {int(r["user_id"]) for r in rows
+            if membership_is_effective(r["status"], r["renews_at"], ts)}

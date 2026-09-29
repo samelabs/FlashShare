@@ -39,35 +39,6 @@ window.wirePwaDownloadLinks = function (scope) {
   });
 };
 
-// Mobile top-bar navigation sheet: visible only at narrow widths (CSS),
-// toggled by the menu button; closes on backdrop / outside click / Escape /
-// nav. The backdrop is the touch-friendly outside.
-window.wireMobileNav = function () {
-  const btn = document.getElementById("mobileNavBtn");
-  const sheet = document.getElementById("mobileNavSheet");
-  const backdrop = document.getElementById("mobileNavBackdrop");
-  if (!btn || !sheet || btn.dataset.wired) return;
-  btn.dataset.wired = "1";
-  const setOpen = (open) => {
-    sheet.classList.toggle("hidden", !open);
-    if (backdrop) backdrop.classList.toggle("hidden", !open);
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-  };
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    setOpen(sheet.classList.contains("hidden"));
-  });
-  if (backdrop) backdrop.addEventListener("click", () => setOpen(false));
-  document.addEventListener("click", (e) => {
-    if (!sheet.contains(e.target) && e.target !== btn) setOpen(false);
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") setOpen(false);
-  });
-  sheet.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => setOpen(false)));
-};
-document.addEventListener("DOMContentLoaded", () => window.wireMobileNav());
-
 // ── Image zoom (single site-wide lightbox authority) ──────────────
 // Result grids (inline result card + /r result page) open a full-size
 // view on click: one overlay element, image untouched (no fetch, no

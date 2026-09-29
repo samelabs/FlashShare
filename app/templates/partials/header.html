@@ -2,7 +2,7 @@
 <header class="hd">
   <div class="wrap hd-in">
     <a class="logo" href="/" aria-label="518.PLUS">
-      <i aria-hidden="true"><img src="/static/images/brand-mark.png" alt="" width="16" height="16" loading="eager" decoding="async"></i>
+      <img class="logo-mark" src="/static/images/brand-mark.png?v=3" alt="" width="28" height="28" loading="eager" decoding="async">
       <span>518<b>.</b>PLUS</span>
     </a>
     <nav class="nav" aria-label="{{ texts.nav_menu }}">
@@ -30,9 +30,12 @@
           <span class="avatar-fallback">{{ (user.displayName or user.username or '?')[:1].upper() }}</span>
           {% endif %}
         </button>
+        {% if access and access.membership and access.membership.member %}
+        <span class="verified av-verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>
+        {% endif %}
         <div class="user-dropdown hidden" id="userDropdown" role="menu">
           <div class="user-info">
-            <span class="user-name">{{ (user.displayName or user.username) }} <span class="user-handle">@{{ user.username }}</span>{% if access and access.membership and access.membership.member %} <span class="plus-badge">{{ access.membership.badge }}</span>{% endif %}</span>
+            <span class="user-name">{{ (user.displayName or user.username) }} <span class="user-handle">@{{ user.username }}</span>{% if access and access.membership and access.membership.member %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</span>
           </div>
           <div class="menu-sec" role="group" aria-label="{{ texts.acct_credits }}">
             <a href="/account/credits" role="menuitem">
@@ -68,7 +71,8 @@
     </div>
   </div>
 
-  {# 窄屏菜单抽屉 (<768px): 导航 + 未登录认证入口; 遮罩点击关闭 (common.js) #}
+  {# 窄屏菜单抽屉 (<768px): 导航 + 未登录认证入口; 遮罩点击关闭
+     (base-engine.js wireMobileNav, 全站单点) #}
   <div class="mobile-nav-backdrop hidden" id="mobileNavBackdrop"></div>
   <nav class="mobile-nav-sheet hidden" id="mobileNavSheet" aria-label="{{ texts.nav_menu }}">
     <a href="/tools" role="menuitem">{{ icon_svg("wand") }}<span data-i18n="nav_tools">{{ texts.nav_tools }}</span></a>

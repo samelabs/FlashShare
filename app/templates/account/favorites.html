@@ -13,18 +13,11 @@
   <p class="hint">{{ icon_svg("bot") }}<span data-i18n="fav_mcp_note">{{ texts.fav_mcp_note }}</span></p>
 
   {% if favorites %}
+  {% from "partials/tool_identity.html" import tool_card with context %}
   <div class="bento fav-bento" id="favList">
     {% for t in favorites %}
     <div class="fav-item" data-tool="{{ t.id }}">
-      <a class="tc" href="/tool/{{ t.id }}">
-        <span class="ic" aria-hidden="true">{{ icon_tool_svg(t.icon) }}</span>
-        <h4>{{ (t.label | lt(lang)) or t.id }}</h4>
-        {% if t.desc %}<p>{{ t.desc | lt(lang) }}</p>{% endif %}
-        <div class="ft2">
-          {% if t.cost %}<span class="tag cost">{{ t.cost }} {{ texts.credits_short }}</span>{% else %}<span class="tag free">{{ texts.free }}</span>{% endif %}
-          <code class="fav-mcp">{{ t.mcp_name }}</code>
-        </div>
-      </a>
+      {% call tool_card(t, lang, texts) %}<code class="fav-mcp">{{ t.mcp_name }}</code>{% endcall %}
       <button type="button" class="btn btn-q btn-sm fav-remove" data-tool="{{ t.id }}">{{ icon_svg("star") }}<span data-i18n="fav_remove_btn">{{ texts.fav_remove_btn }}</span></button>
     </div>
     {% endfor %}

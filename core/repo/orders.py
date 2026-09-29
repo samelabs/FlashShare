@@ -339,6 +339,22 @@ def membership_row(con, user_id: int) -> Optional[dict]:
         """, (user_id,)).fetchone()
 
 
+def membership_effective_rows(con, user_ids: list) -> list:
+    """Batch membership facts for the effective predicate (one round trip).
+
+    plan_of() 的批量读侧: 每 user 至多一行 (user_id PK), 只取谓词字段。
+    谓词应用留在 economy.subscription — 本函数只做 SQL。
+    """
+    if not user_ids:
+        return []
+    return con.execute(
+        """
+        SELECT user_id, status, renews_at
+        FROM memberships
+        WHERE user_id = ANY(%s)
+        """, (list(user_ids),)).fetchall()
+
+
 def membership_by_sub(con, sub_id: str) -> Optional[dict]:
     """provider subscription → current Membership 定位 (事件/reconcile 绑定)。"""
     return con.execute(

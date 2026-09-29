@@ -1,6 +1,7 @@
-// ── 首页 (v2): composer 默认挂载分享, 底栏工具选择器 + 快捷胶囊 ──
-// 选择器与快捷胶囊都复用 window.__TOOLS__; 选中后 ToolInput.setTool
-// 原地切换 (不跳转); 执行链与 tool 页同一 runToolFlow 单源。
+// ── 首页 (v3): composer 默认挂载分享, 底栏工具选择器 (顶部过滤输入) ──
+// 选择器复用 window.__TOOLS__; 选中后 ToolInput.setTool 原地切换 (不跳
+// 转); 执行链与 tool 页同一 runToolFlow 单源。卡片/市场搜索负责发现面,
+// 首页不再有快捷胶囊。
 (function () {
   "use strict";
 
@@ -34,7 +35,6 @@
       try { localStorage.setItem("flashshare_tool", tool.id); } catch (e) {}
     }
     updatePickerLabel();
-    renderQuick();
   }
 
   function toolName(tool) { return window.resolveLabel(tool.label) || tool.id; }
@@ -53,7 +53,10 @@
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
     const pop = document.createElement("div");
     pop.className = "tsel-pop hidden";
-    pop.setAttribute("role", "listbox");
+    pop.innerHTML = '<div class="tsel-filter">'
+      + '<input type="search" autocomplete="off" role="combobox" aria-controls="tselList" aria-expanded="false"'
+      + ' placeholder="' + escAttr(window.t("tool_search_ph")) + '" aria-label="' + escAttr(window.t("tool_search_ph")) + '"></div>'
+      + '<div class="tsel-list" id="tselList" role="listbox" aria-label="' + escAttr(window.t("tool_search_ph")) + '"></div>';
     bar.insertBefore(btn, bar.firstChild);
     bar.insertBefore(pop, btn.nextSibling);
     btn.addEventListener("click", (e) => {
@@ -61,22 +64,49 @@
       const open = pop.classList.contains("hidden");
       pop.classList.toggle("hidden", !open);
       btn.setAttribute("aria-expanded", open ? "true" : "false");
-      renderPickerList();
+      if (open) {
+        renderPickerList();
+        const q = pop.querySelector(".tsel-filter input");
+        if (q) { q.value = ""; if (window.matchMedia && window.matchMedia("(min-width: 768px)").matches) q.focus(); }
+      }
     });
     pop.addEventListener("click", (e) => e.stopPropagation());
+    const q = pop.querySelector(".tsel-filter input");
+    if (q) {
+      q.addEventListener("input", renderPickerList);
+      q.addEventListener("keydown", (e) => { if (e.key === "Escape") { pop.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); } });
+    }
     document.addEventListener("click", () => { pop.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); });
+  }
+
+  function escAttr(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+  // 过滤谓词与市场搜索同一规则: 分词 AND, 命中 名称/说明/id — 名称与
+  // 说明索引全部语言值 (同后端 label_json/desc_json::text LIKE)。
+  function pickerHaystack(tool) {
+    return [tool.id, tool.label, tool.desc]
+      .map((v) => (v && typeof v === "object") ? JSON.stringify(v).toLowerCase()
+                                                  : String(v || "").toLowerCase())
+      .join("\n");
   }
 
   function renderPickerList() {
     const pop = mountEl.querySelector(".tsel-pop");
     if (!pop) return;
+    const list = pop.querySelector(".tsel-list");
+    const qEl = pop.querySelector(".tsel-filter input");
+    const tokens = (qEl ? qEl.value : "").toLowerCase().split(/\s+/).filter(Boolean);
     const esc = window.escapeHtml || String;
-    pop.innerHTML = tools.map((tool) => {
+    const matches = tools.filter((tool) => {
+      const hay = pickerHaystack(tool);
+      return tokens.every((tok) => hay.indexOf(tok) >= 0);
+    });
+    list.innerHTML = matches.length ? matches.map((tool) => {
       const on = activeTool && activeTool.id === tool.id;
       return '<button type="button" role="option" aria-selected="' + on + '" class="tsel-item' + (on ? " on" : "") + '" data-tool="' + esc(tool.id) + '">'
         + (tool.icon ? window.iconSvg(tool.icon) : "") + "<span>" + esc(toolName(tool)) + "</span></button>";
-    }).join("");
-    pop.querySelectorAll(".tsel-item").forEach((b) => {
+    }).join("") : '<div class="tsel-empty" role="status">' + esc(window.t("tool_search_none")) + "</div>";
+    list.querySelectorAll(".tsel-item").forEach((b) => {
       b.addEventListener("click", () => {
         const tool = tools.find((t) => t.id === b.dataset.tool);
         if (tool) selectTool(tool);
@@ -92,44 +122,9 @@
     if (name) name.textContent = activeTool ? toolName(activeTool) : "";
   }
 
-  // ── 快捷胶囊: 排序最前的 5 个非分享工具 ──
-  // 我的收藏 first (signed-in users), then the default picks, 5 in all
-  let favKeys = [];
-  function renderQuick() {
-    const wrap = document.getElementById("quickTools");
-    if (!wrap) return;
-    const esc = window.escapeHtml || String;
-    const favs = favKeys.map((k) => tools.find((t) => t.id === k))
-      .filter((t) => t && t.id !== "share");
-    const rest = tools.filter((t) => t.id !== "share" && favs.indexOf(t) < 0);
-    const picks = favs.concat(rest).slice(0, 5);
-    wrap.innerHTML = picks.map((tool) =>
-      '<a class="quick-item" href="#" role="button" data-tool="' + esc(tool.id) + '">'
-      + (tool.icon ? window.iconSvg(tool.icon) : "") + esc(toolName(tool)) + "</a>").join("");
-    wrap.querySelectorAll(".quick-item").forEach((a) => {
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        const tool = tools.find((t) => t.id === a.dataset.tool);
-        if (tool) {
-          selectTool(tool);
-          mountEl.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      });
-    });
-  }
-
   // ── init: 默认分享 (显式保存的选择优先) ──
   const saved = (() => { try { return localStorage.getItem("flashshare_tool") || ""; } catch (e) { return ""; } })();
   const savedTool = tools.find((t) => t.id === saved);
   const share = tools.find((t) => t.id === "share");
   selectTool(savedTool || share || tools[0], { skipPersist: !savedTool });
-
-  if (window.__USER__) {
-    fetch("/api/favorites").then((r) => r.json()).then((d) => {
-      if (d && d.ok && Array.isArray(d.tools) && d.tools.length) {
-        favKeys = d.tools;
-        renderQuick();
-      }
-    }).catch(() => {});
-  }
 })();

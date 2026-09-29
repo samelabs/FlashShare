@@ -127,12 +127,17 @@ def is_official_id(tool_id: str) -> bool:
     return "/" not in (tool_id or "")
 
 
-def row_to_item(row: dict, price: dict) -> dict:
+def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
     """platform_tools row + pricing row → canonical catalog item shape.
 
     row_to_item() defines THE canonical public catalog projection —
     list/search/owner/tool-page all consume this projection; no surface
     may rebuild a second public shape.
+
+    owner_verified: the tool owner is a current effective member —
+    computed by the caller via economy.subscription.effective_member_ids
+    (the batch predicate shared with the access projection). First-party
+    rows (owner NULL) always project False.
     """
     item = {
         "id": row["tool_key"],  # namespaced key is THE identity from now on
@@ -158,7 +163,17 @@ def row_to_item(row: dict, price: dict) -> dict:
     # community 作者 handle (identity contract; official 行为 NULL —
     # Official 不伪造 author)
     item["owner_handle"] = row.get("owner_handle")
+    # 认证徽章数据: owner 当前为有效会员 (判定与 access projection 同谓词;
+    # 官方工具 owner 为 NULL → False)
+    item["owner_verified"] = bool(owner_verified) and row.get("owner_id") is not None
     return item
+
+
+def _verified_owner_set(rows: list) -> set:
+    """owner_id 列表 → 当前有效会员集合 (批量谓词单点, 一批一次查询)。"""
+    from economy.subscription import effective_member_ids
+    return effective_member_ids([r["owner_id"] for r in rows
+                                 if r.get("owner_id") is not None])
 
 
 def catalog_item(tool: dict) -> dict | None:
@@ -180,7 +195,8 @@ def catalog_item(tool: dict) -> dict | None:
     price = get_pricing(tool["tool_key"])
     if not price["enabled"]:
         return None
-    return row_to_item(tool, price)
+    return row_to_item(tool, price,
+                       owner_verified=tool.get("owner_id") in _verified_owner_set([tool]))
 
 
 # ── Catalog (single source for web home, MCP tools/list) ──
@@ -199,7 +215,9 @@ def search_catalog(q: str, limit: int = 20) -> list:
     q = (q or "").strip() or None
     with db() as con:
         rows = catalog_repo.market_rows(con, VIS_PUBLIC, q, limit, 0)
-    return [row_to_item(row, {"cost": row["price_cost"], "enabled": True})
+    verified = _verified_owner_set(rows)
+    return [row_to_item(row, {"cost": row["price_cost"], "enabled": True},
+                        owner_verified=row["owner_id"] in verified)
             for row in rows]
 
 
@@ -225,11 +243,13 @@ def owner_public_tools(owner_id: int) -> list:
             owner_suspended=bool(owner_row
                                  and owner_row["status"] == "suspended"))
     out = []
+    verified = _verified_owner_set(rows)
     for row in rows:
         p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
         if not p["enabled"]:
             continue
-        out.append(row_to_item(row, p))
+        out.append(row_to_item(row, p,
+                               owner_verified=row["owner_id"] in verified))
     return out
 
 
@@ -248,11 +268,13 @@ def list_catalog(viewer_id: int | None = None) -> list:
         rows = catalog_repo.visible_to(con, VIS_PUBLIC, viewer_id)
 
     result = []
+    verified = _verified_owner_set(rows)
     for row in rows:
         p = prices.get(row["tool_key"]) or {"cost": 0, "enabled": False}  # missing → hidden
         if not p["enabled"]:
             continue
-        result.append(row_to_item(row, p))
+        result.append(row_to_item(row, p,
+                                  owner_verified=row["owner_id"] in verified))
     return result
 
 
@@ -281,8 +303,12 @@ def market_page(q: str | None = None, page: int = 1) -> dict:
         rows = catalog_repo.market_rows(
             con, VIS_PUBLIC, q, MARKET_PAGE_SIZE,
             (canonical_page - 1) * MARKET_PAGE_SIZE)
-    items = [row_to_item(row, {"cost": row["price_cost"], "enabled": True})
-             for row in rows]
+    items = []
+    verified = _verified_owner_set(rows)
+    for row in rows:
+        items.append(row_to_item(
+            row, {"cost": row["price_cost"], "enabled": True},
+            owner_verified=row["owner_id"] in verified))
     return {"items": items, "total": total, "page": canonical_page,
             "total_pages": total_pages}
 

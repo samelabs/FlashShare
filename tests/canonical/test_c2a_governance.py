@@ -170,10 +170,16 @@ set_tool_delisted(op, tk, True)
 st, _h, home = _req("GET", "/")
 st, _h, market = _req("GET", "/tools")
 st, _h, author = _req("GET", f"/u/{dev_ck_user}")
+# author page asserts the tool's visible artifacts (card link + label),
+# never a bare substring — cache-bust stamps (?v=…) can contain any hex
+# run and once false-positived on "aaa".
+card_href = f'href="/tool/{tk}"'
 check("B1 delisted: gone from home + market (author page row gone)",
       tk not in (home or "") and tk not in (market or "")
-      and "aaa" not in (author or ""),
-      f"home={tk in (home or '')} market={tk in (market or '')}")
+      and card_href not in (author or "")
+      and "Alpha Tool" not in (author or ""),
+      f"home={tk in (home or '')} market={tk in (market or '')}"
+      f" authorCard={card_href in (author or '')}")
 st, _h, d = _req("GET", f"/api/tools/search?q=alpha")
 check("B2 delisted: search misses", st == 200 and
       not any(t["id"] == tk for t in (d.get("tools") or [])), str(d)[:100])
@@ -271,12 +277,13 @@ with db() as con:
                 " where tool_key=%s", (tk3,))
 
 # ═══ E. author visibility ═══
+# home-polish: the card is a single navigation surface (→ tool page);
+# the author renders as text on the card, the author page is reached
+# from the tool page.
 st, _h, home = _req("GET", "/")
-check("E1 community card links the author page",
-      f'href="/u/{dev_ck_user}"' in (home or ""))
+check("E1 community card shows the author", f'@{dev_ck_user}' in (home or ""))
 st, _h, market = _req("GET", "/tools")
-check("E2 market card links the author page",
-      f'href="/u/{dev_ck_user}"' in (market or ""))
+check("E2 market card shows the author", f'@{dev_ck_user}' in (market or ""))
 # MCP summaries
 from identity.apikeys import create_key
 from economy.billing import grant as _grant

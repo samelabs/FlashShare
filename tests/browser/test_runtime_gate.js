@@ -80,14 +80,15 @@ function setGokapiFail(mode) {
 const VIEWPORTS = {
   desktop: { width: 1280, height: 900 },
   mobile: { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
+  narrow: { width: 360, height: 780, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
 };
 
 // visual contract per page: overflow/overlap/CTA checks are generic; the
 // per-page required selectors anchor "this page actually rendered".
 const PAGES = [
-  { path: "/", name: "home", anonOk: true, need: ["#toolInput", "#homeBento .tc"] },
-  { path: "/tools", name: "tools", anonOk: true, need: [] },
-  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"] },
+  { path: "/", name: "home", anonOk: true, need: ["#toolInput", "#homeBento .tc"], cards: "#homeBento .tc" },
+  { path: "/tools", name: "tools", anonOk: true, need: [], cards: ".market-bento .tc" },
+  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"], noRuns: true },
   { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#cfgClaudeCode", "#cfgCurl"], copy: ["#copyMcp", '[data-copy-target="cfgClaudeCode"]'] },
   { path: "/pricing", name: "pricing", anonOk: true, need: [".pr-plans .pr-card", "#refund"] },
@@ -166,6 +167,38 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
   check(`${ctx} ${spec.name}: HTTP ${spec.anonOk || sessionCookie ? "200" : "auth"}`, resp && (resp.status() === 200 || resp.status() === 302), resp && resp.status());
   for (const sel of spec.need) {
     check(`${ctx} ${spec.name}: has ${sel}`, await page.$(sel) !== null);
+  }
+  // tool-card geometry: same-row cards equal height, tag row pinned to
+  // the card bottom, every tag shown in full (never truncated)
+  if (spec.cards) {
+    const g = await page.evaluate((sel) => {
+      const cards = [...document.querySelectorAll(sel)].filter((c) => c.offsetParent);
+      const rows = new Map();
+      let maxDiff = 0, bottomOk = cards.length > 0, tagWrap = false;
+      cards.forEach((c) => {
+        const r = c.getBoundingClientRect();
+        const key = Math.round(r.top);
+        if (!rows.has(key)) rows.set(key, []);
+        rows.get(key).push(r.height);
+        const ft = c.querySelector(".ft2");
+        if (!ft) { bottomOk = false; return; }
+        const fr = ft.getBoundingClientRect();
+        const pt = parseFloat(getComputedStyle(ft).paddingTop) || 0;
+        if (r.bottom - fr.bottom > 24) bottomOk = false;
+        ft.querySelectorAll(".tag").forEach((tg) => {
+          if (tg.scrollWidth > tg.clientWidth + 1) tagWrap = true;
+        });
+      });
+      rows.forEach((hs) => { maxDiff = Math.max(maxDiff, Math.max(...hs) - Math.min(...hs)); });
+      return { cards: cards.length, maxDiff: Math.round(maxDiff * 10) / 10, bottomOk, tagWrap };
+    }, spec.cards);
+    check(`${ctx} ${spec.name}: card row heights equal (≤1px)`, g.cards >= 1 && g.maxDiff <= 1, JSON.stringify(g));
+    check(`${ctx} ${spec.name}: tag row pinned to card bottom`, g.bottomOk);
+    check(`${ctx} ${spec.name}: tags are never truncated`, !g.tagWrap);
+  }
+  if (spec.noRuns) {
+    const meta = await page.evaluate(() => ((document.querySelector(".tp-h .meta") || {}).textContent || "").trim());
+    check(`${ctx} ${spec.name}: no runs counter below 10 calls`, meta !== "" && !/已运行|runs/.test(meta), meta.slice(0, 80));
   }
   // copy buttons are wired (page JS handler gives the copied state)
   for (const sel of spec.copy || []) {
@@ -253,6 +286,21 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // 3. home real render
       const homeAudit = await visualAudit("desktop", page, "home-logged-in", true);
       check("home: tool grid rendered", (await page.$$("#homeBento .tc")).length >= 1, homeAudit.bodyText.slice(0, 120));
+
+      // home structure contract (home-polish): the dark MCP explainer is
+      // the ONLY mcp section, quick pills are gone, the tools head carries
+      // a search form that submits to the market
+      const homeStruct = await page.evaluate(() => ({
+        dark: document.querySelectorAll(".home .dark").length,
+        quick: document.querySelectorAll(".quick, #quickTools").length,
+        pill: document.querySelectorAll(".hero .pill").length,
+        search: !!(document.querySelector(".sec-h form.tool-search[action='/tools']") && document.querySelector(".sec-h form.tool-search input[name=q]")),
+        featCards: document.querySelectorAll(".feat > div").length,
+      }));
+      check("home: exactly one MCP explainer block", homeStruct.dark === 1, JSON.stringify(homeStruct));
+      check("home: no quick pills", homeStruct.quick === 0 && homeStruct.pill === 0);
+      check("home: tools search submits to /tools?q=", homeStruct.search);
+      check("home: two feature cards after dedupe", homeStruct.featCards === 2);
 
       // 4-7. upload + execute compress via real UI (home surface)
       await page.click(".ti-picker");
@@ -419,6 +467,26 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("retry: same logical operation (client_ref reused)", retryRefBody === failedRef, `${failedRef} vs ${retryRefBody}`);
       check("retry: no re-upload", legs.uploads.length === uploadsBefore, `${uploadsBefore} -> ${legs.uploads.length}`);
       await visualAudit("desktop", page, "tool-retry-success", true);
+
+      // ── picker filter (home-polish): same matching rule as the market
+      // search — whitespace tokens AND-matched against name/desc/id (all
+      // locale values indexed, like the server's label_json::text LIKE).
+      // Driven in zh so the token is the localized tool name.
+      await page.evaluate(() => { document.cookie = "flashshare_lang=zh;Path=/;Max-Age=31536000"; });
+      await gotoReady(page, "/?lang=zh", ".ti-picker");
+      await page.click(".ti-picker");
+      check("picker: filter input present", await page.$(".tsel-filter input") !== null);
+      const allCount = await page.evaluate(() => document.querySelectorAll(".tsel-item").length);
+      await page.fill(".tsel-filter input", "压缩");
+      await page.waitForTimeout(50);
+      const filtered = await page.evaluate(() => [...document.querySelectorAll(".tsel-item")].map((b) => b.textContent.trim()));
+      check("picker: zh token narrows the list", filtered.length >= 1 && filtered.length < allCount, JSON.stringify({ allCount, filtered }));
+      check("picker: zh token matches compress", filtered.some((l) => l.includes("压缩")), JSON.stringify(filtered));
+      await page.fill(".tsel-filter input", "");
+      await page.waitForTimeout(50);
+      check("picker: empty query restores the full list",
+        (await page.evaluate(() => document.querySelectorAll(".tsel-item").length)) === allCount);
+      await page.evaluate(() => { document.cookie = "flashshare_lang=en;Path=/;Max-Age=31536000"; });
 
       // 8. create a real fsk_ API key via UI (viewable-anytime flow:
       //    creation reveals the first row's full key inline)
@@ -680,22 +748,43 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         if (!z) return { present: false };
         const r = z.getBoundingClientRect();
         const cx = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        return { present: true, w: Math.round(r.width), clickable: cx === z || z.contains(cx) };
+        const card = z.closest(".composer").getBoundingClientRect();
+        return { present: true, w: Math.round(r.width), cardW: Math.round(card.width),
+                 clickable: cx === z || z.contains(cx) };
       });
       check("polish mobile: upload zone visible + clickable", zone.present && zone.w >= 120 && zone.clickable, JSON.stringify(zone));
+      check("polish mobile: upload zone spans the composer width", zone.present && zone.w >= zone.cardW - 40, JSON.stringify(zone));
 
-      // ── F20/F21: zone states formats + count + per-file cap + daily quota;
-      //    an oversize file is rejected client-side with the cap value ──
+      // ── F20/F21 (home-polish contract): upload zone secondary copy =
+      // format FAMILIES (single-source governance.formats manifest) ·
+      // per-file cap · (multi-file) max count — no extension listing, no
+      // inline daily quota (moved to the low-headroom hint below);
+      // an oversize file is rejected client-side with the cap value ──
       const zoneCopy = await page.evaluate(() => ({
         sub: (document.querySelector(".ti-drop small") || {}).innerText || "",
         limits: window.__LIMITS__ || null,
       }));
-      check("polish limits: zone copy shows formats/count/size/daily",
-        /MB/.test(zoneCopy.sub) && zoneCopy.sub.split("·").length >= 4,
+      check("polish limits: zone copy shows family/size (no ext list, no daily)",
+        /MB/.test(zoneCopy.sub) && zoneCopy.sub.split("·").length >= 2
+        && !/\.(png|jpe?g|webp|pdf|docx|zip)\b/i.test(zoneCopy.sub)
+        && !/24\s*h|24 ?小时|GB/i.test(zoneCopy.sub),
         zoneCopy.sub);
       const mb = zoneCopy.limits && zoneCopy.limits.maxFileMb;
-      check("polish limits: __LIMITS__ projection present", !!mb && !!zoneCopy.limits.dailyFiles, JSON.stringify(zoneCopy.limits));
-      const oversize = await page.evaluate(async (mbv) => {
+      check("polish limits: __LIMITS__ projection present (with dailyRemaining)",
+        !!mb && Number.isFinite(zoneCopy.limits.dailyRemaining), JSON.stringify(zoneCopy.limits));
+      // low-headroom hint: hidden at ample headroom, shown when remaining < 20%
+      check("polish limits: quota hint hidden at ample headroom", (await page.$(".ti-quota")) === null);
+      await page.evaluate(() => {
+        window.__LIMITS__.dailyRemaining = 0;
+        window.__toolInputRefresh && window.__toolInputRefresh();
+      });
+      await page.waitForTimeout(100);
+      const quotaShown = await page.evaluate(() => {
+        const q = document.querySelector(".ti-quota");
+        return q ? { text: q.innerText, below: q.getBoundingClientRect().top >= (document.querySelector(".composer").getBoundingClientRect().top) } : null;
+      });
+      check("polish limits: quota hint appears when remaining < 20%",
+        quotaShown !== null && quotaShown.text.length > 0 && quotaShown.below, JSON.stringify(quotaShown));      const oversize = await page.evaluate(async (mbv) => {
         const buf = new Uint8Array((mbv + 2) * 1024 * 1024);
         const f = new File([buf], "oversize.png", { type: "image/png" });
         const dt = new DataTransfer();
@@ -753,6 +842,41 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("polish CLS publish edit <= 0.1", clsPub <= 0.1, String(clsPub));
       await authCtx.close();
       await ctx.close();
+    }
+  }
+  // ── home-polish: composer bottom bar — the run button shares the
+  // expiry row at every width (mobile rows: picker full-width, then
+  // expiry + run flush right); no horizontal overflow either. ──
+  {
+    for (const w of [390, 360]) {
+      const bctx = await browser.newContext({ viewport: { width: w, height: 844, isMobile: true, hasTouch: true } });
+      const bpage = await bctx.newPage();
+      for (const p of ["/", "/tool/compress"]) {
+        await gotoReady(bpage, p, ".composer");
+        await bpage.waitForTimeout(300);
+        const bar = await bpage.evaluate(() => {
+          const del = document.querySelector(".ti-del");
+          const run = document.querySelector(".ti-run");
+          const tsel = document.querySelector(".tsel");
+          const cbar = document.querySelector(".c-bar");
+          if (!del || !run || !cbar) return null;
+          const dr = del.getBoundingClientRect(), rr = run.getBoundingClientRect(), br = cbar.getBoundingClientRect();
+        return {
+          // same flex line = centers align (run is 44px tall on mobile,
+          // expiry 36 — tops differ by design, centers must not)
+          sameRow: Math.abs((dr.top + dr.height / 2) - (rr.top + rr.height / 2)) < 8,
+          runRightGap: Math.round(br.right - rr.right),
+          tselW: tsel ? Math.round(tsel.getBoundingClientRect().width) : 0,
+          barW: Math.round(br.width),
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+        });
+        check(`bar ${w} ${p}: run button on the expiry row`, bar !== null && bar.sameRow, JSON.stringify(bar));
+        check(`bar ${w} ${p}: run button flush right (within bar padding)`, bar !== null && bar.runRightGap >= 0 && bar.runRightGap <= 16, JSON.stringify(bar));
+        if (p === "/") check(`bar ${w} home: picker row spans the bar`, bar !== null && bar.barW - bar.tselW <= 26, JSON.stringify(bar));
+        check(`bar ${w} ${p}: no horizontal overflow`, bar !== null && bar.overflow <= 1, JSON.stringify(bar));
+      }
+      await bctx.close();
     }
   }
 
@@ -1227,6 +1351,48 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         parity.ok && parity.maxH <= parity.vhCap + 1, JSON.stringify(parity));
       await ctx.close();
     }
+  }
+
+  // ── home-polish: the mobile drawer opens on EVERY page (top-bar wiring
+  // lives in base-engine.js, loaded site-wide). Open via the menu button,
+  // close via Escape and via the backdrop, per URL. ──
+  {
+    const dctx = await browser.newContext({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
+    {
+      const lp = await dctx.newPage();
+      await gotoReady(lp, "/auth/login", "input[name=login]");
+      await lp.fill("input[name=login]", username);
+      await lp.fill("input[name=password]", password);
+      await Promise.all([lp.waitForNavigation({ timeout: 15000 }), lp.click("button[type=submit]")]);
+      await lp.close();
+    }
+    const fPath = (() => { try { return item0.page_url ? new URL(item0.page_url, BASE).pathname : null; } catch (e) { return null; } })();
+    const rPath = (() => { try { return sc.result_url ? new URL(sc.result_url, BASE).pathname : null; } catch (e) { return null; } })();
+    const drawerPages = ["/", "/tools", "/tool/compress", "/tool/compress/mcp",
+      "/developers", "/terms", "/pricing", "/auth/login",
+      fPath || "/f/none", rPath || "/r/none", "/no-such-page-404", "/account/profile"];
+    const dpage = await dctx.newPage();
+    for (const p of drawerPages) {
+      await gotoReady(dpage, p, "body");
+      await dpage.waitForTimeout(150);
+      const open = await dpage.evaluate(() => {
+        const btn = document.getElementById("mobileNavBtn");
+        const sheet = document.getElementById("mobileNavSheet");
+        if (!btn || !sheet) return { wired: false };
+        btn.click();
+        return { wired: true, open: !sheet.classList.contains("hidden"), backdrop: !document.getElementById("mobileNavBackdrop").classList.contains("hidden") };
+      });
+      check(`drawer ${p}: opens`, open.wired && open.open === true, JSON.stringify(open));
+      await dpage.keyboard.press("Escape");
+      const escClosed = await dpage.evaluate(() => document.getElementById("mobileNavSheet").classList.contains("hidden"));
+      check(`drawer ${p}: Escape closes`, escClosed === true);
+      await dpage.evaluate(() => document.getElementById("mobileNavBtn").click());
+      const backdropShown = await dpage.evaluate(() => !document.getElementById("mobileNavBackdrop").classList.contains("hidden"));
+      await dpage.evaluate(() => document.getElementById("mobileNavBackdrop").click());
+      const backdropClosed = await dpage.evaluate(() => document.getElementById("mobileNavSheet").classList.contains("hidden"));
+      check(`drawer ${p}: backdrop closes`, backdropShown && backdropClosed === true);
+    }
+    await dctx.close();
   }
 
   await browser.close();

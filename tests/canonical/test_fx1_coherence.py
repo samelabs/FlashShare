@@ -664,7 +664,10 @@ try:
     try:
         import time as _time2
         _ok_up = False
-        for _ in range(40):
+        # 120 x 0.5s = 60s: startup now includes the doc2pdf engine probe
+        # (one real soffice conversion — ~20s on a cold profile), so the
+        # old 20s budget raced the probe.
+        for _ in range(120):
             _time2.sleep(0.5)
             try:
                 _r = _ureq.urlopen(f"http://127.0.0.1:{_rl_port}/healthz", timeout=2)

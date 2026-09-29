@@ -196,14 +196,18 @@ def count_by_owner(con, user_id: int) -> int:
 def public_rows_by_owner(con, owner_id: int, visibility_public: str,
                          owner_suspended: bool = False) -> list:
     """用户页 (开发者公开面): 该作者的公开工具行, 同一可见性谓词与
-    呈现序。停用作者 → 空列表 (作者页整体不可见, 调用方 404)。"""
+    呈现序。停用作者 → 空列表 (作者页整体不可见, 调用方 404)。
+    JOIN users: owner_handle 是卡片 identity contract 字段 — 与
+    market_rows/visible_to 同形, 作者页卡片与其他三面同卡。"""
     if owner_suspended:
         return []
     return con.execute(
-        "SELECT * FROM platform_tools "
-        "WHERE owner_id = %s AND enabled AND NOT delisted"
-        " AND visibility = %s "
-        "ORDER BY featured DESC, sort_order, id",
+        "SELECT pt.*, u.username AS owner_handle "
+        "FROM platform_tools pt "
+        "JOIN users u ON u.id = pt.owner_id "
+        "WHERE pt.owner_id = %s AND pt.enabled AND NOT pt.delisted"
+        " AND pt.visibility = %s "
+        "ORDER BY pt.featured DESC, pt.sort_order, pt.id",
         (owner_id, visibility_public)).fetchall()
 
 
