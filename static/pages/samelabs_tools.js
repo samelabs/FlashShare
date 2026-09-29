@@ -92,7 +92,7 @@
       auth_token: form.auth_token.value,
       accept: form.accept.value.trim(),
       files_min: parseInt(form.files_min.value, 10) || 0,
-      files_max: parseInt(form.files_max.value, 10) || 1,
+      files_max: parseInt(form.files_max.value, 10),
       outputs: ["text", "json", "file"].filter(function (k) {
         var el = form["out_" + k];
         return el && el.checked;

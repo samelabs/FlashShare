@@ -13,6 +13,33 @@ def now() -> int:
     return int(time.time())
 
 
+# List paging bounds: past the last page a list is simply empty, so a
+# page/offset beyond these never needs to reach SQL (keeps OFFSET inside
+# bigint and the scan finite).
+MAX_LIST_PAGE = 10_000
+MAX_LIST_OFFSET = 1_000_000
+
+
+def page_number(raw) -> int:
+    """1-based page from a request value: non-integers → 1, clamped to
+    [1, MAX_LIST_PAGE]."""
+    try:
+        page = int(raw)
+    except (TypeError, ValueError):
+        return 1
+    return min(max(page, 1), MAX_LIST_PAGE)
+
+
+def list_offset(raw) -> int:
+    """Row offset from a request value: non-integers and negatives → 0,
+    clamped to MAX_LIST_OFFSET."""
+    try:
+        offset = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return min(max(offset, 0), MAX_LIST_OFFSET)
+
+
 def b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 

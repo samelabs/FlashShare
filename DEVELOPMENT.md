@@ -363,6 +363,7 @@ curl -s https://518.plus/healthz
    返回工具列表；再按 `/llms.txt` 的示例调一次 `share`，拿到 `result_url` 并能打开。
 3. 手机打开首页与 `/r` 页，无横向滚动。
 4. 运营账号：把指定用户的 `users.status` 设为 `samelabs`（`UPDATE users SET status='samelabs' WHERE username='<用户名>';`），登录 `/samelabs`，总览「集成」卡显示正确；按需设置抽佣率与每日登录积分（默认 0 = 关闭）。
+5. 列表展示：首页工具区、`/tools`、`catalog_search` 空查询与 `llms.txt` 只列「推荐」工具（新库的平台工具首装即为推荐）。在 `/samelabs/tools` 为要展示的工具开启推荐并设置排序；未推荐的公开工具仍可被搜索到。
 
 ### 8. 回滚
 

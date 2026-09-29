@@ -271,7 +271,12 @@ def patch_locale_guard(old_snapshot, merged, lang: str, new_text: str):
 
 
 class ParamsValueError(ValueError):
-    """运行时取值违规 (→ 422)。与声明校验的 ParamsDeclError 分离。"""
+    """运行时取值违规 (→ 422)。与声明校验的 ParamsDeclError 分离。
+    str(exc) = 错误码; field = 违规参数的 key (denial 的结构化字段)。"""
+
+    def __init__(self, code: str, field: str):
+        super().__init__(code)
+        self.field = field
 
 
 def enforce_params_decl(decl: list, values: dict) -> dict:
@@ -287,7 +292,7 @@ def enforce_params_decl(decl: list, values: dict) -> dict:
                 if p.get("default") is not None:
                     out[key] = p["default"]
                 else:
-                    raise ParamsValueError("param_required")
+                    raise ParamsValueError("param_required", key)
             elif p.get("default") is not None:
                 out[key] = p["default"]
             continue
@@ -296,23 +301,23 @@ def enforce_params_decl(decl: list, values: dict) -> dict:
         if t == "enum":
             sv = str(v)
             if sv not in [o["value"] for o in p.get("options", [])]:
-                raise ParamsValueError("param_invalid")
+                raise ParamsValueError("param_invalid", key)
             out[key] = sv
         elif t == "number":
             try:
                 nv = float(v)
             except (TypeError, ValueError):
-                raise ParamsValueError("param_invalid")
+                raise ParamsValueError("param_invalid", key)
             if p.get("min") is not None and nv < p["min"]:
-                raise ParamsValueError("param_out_of_range")
+                raise ParamsValueError("param_out_of_range", key)
             if p.get("max") is not None and nv > p["max"]:
-                raise ParamsValueError("param_out_of_range")
+                raise ParamsValueError("param_out_of_range", key)
             out[key] = nv
         elif t == "boolean":
             out[key] = bool(v) if not isinstance(v, str) else v.lower() in ("1", "true", "yes", "on")
         else:  # text
             tv = str(v)
             if len(tv) > TEXT_PARAM_MAX_CHARS:
-                raise ParamsValueError("param_too_long")
+                raise ParamsValueError("param_too_long", key)
             out[key] = tv
     return out

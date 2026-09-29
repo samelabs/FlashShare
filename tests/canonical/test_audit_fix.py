@@ -785,6 +785,10 @@ check("G13c catalog_search community result annotated",
       len(_annotated) == 1 and "Third-party tool by @" in
       (_annotated[0].get("description") or ""),
       str(_found)[:200])
+# llms.txt lists the recommended (featured) tools
+with db() as con:
+    con.execute("update platform_tools set featured = true"
+                " where tool_key=%s", (_key13,))
 r = client.get("/llms.txt")
 _llms = r.text
 check("G13d llms.txt unchanged (by @, no third-party marker)",

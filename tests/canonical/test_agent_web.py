@@ -159,11 +159,12 @@ try:
           and "create_upload" in body and "-X PUT" in body, None)
     check("L5 share link semantics + billing documented",
           "?download=1" in body and "1000 credits = 1 USD" in body, None)
-    # catalog parity with tools/list
-    from governance.catalog import list_catalog, mcp_names
+    # catalog parity: llms.txt lists the recommended (featured) tools
+    from governance.catalog import search_catalog, mcp_names
+    from governance.llms_txt import LLMS_TOOLS_MAX
     from governance.tool_params import resolve_label
     _names = mcp_names()
-    _pub = list_catalog(None)
+    _pub = search_catalog("", limit=LLMS_TOOLS_MAX)
     parity = True
     for t in _pub:
         nm = _names.get(t["id"], t["id"].replace("/", "__"))
@@ -171,7 +172,7 @@ try:
         if line not in body:
             parity = False
             break
-    check("L6 catalog lines match public tools (same source as tools/list)",
+    check("L6 catalog lines match the recommended tools",
           parity and "- share:" in body, None)
     # register + token → tools/list parity over the wire
     b, ct2 = _form({"username": _u + "a", "password": "Test12345",
@@ -192,13 +193,13 @@ try:
                           {"Content-Type": "application/json",
                            "Authorization": f"Bearer {tok}"})
     listed = {t["name"] for t in d["result"]["tools"]}
-    catalog_block = body.split("## Tool catalog")[1].split("(server:")[0]
+    catalog_block = body.split("## Recommended tools")[1].split("(server:")[0]
     llms_names = {ln[2:].split(":")[0] for ln in catalog_block.splitlines()
                   if ln.startswith("- ")}
     expect_names = {_names.get(t["id"], t["id"].replace("/", "__"))
                     for t in _pub}
     first_party = {n for n in expect_names if "__" not in n}
-    check("L7 llms.txt tool names == public catalog names",
+    check("L7 llms.txt tool names == recommended catalog names",
           llms_names == expect_names
           and first_party <= listed,
           (sorted(llms_names), sorted(expect_names)))

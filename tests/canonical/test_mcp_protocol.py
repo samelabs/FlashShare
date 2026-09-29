@@ -303,6 +303,8 @@ st, _h, d = _zero_side_effects("P2", lambda: _call(
 check("P2 invalid declared param → isError param_invalid",
       (d.get("result") or {}).get("isError") is True and _tool_text(d).get("error") == "param_invalid",
       str(d)[:120])
+check("P2b the denial names the parameter (field)",
+      _tool_text(d).get("field") == "preset", str(d)[:160])
 st, _h, d = _zero_side_effects("P3", lambda: _call(
     "compress", {"files": [{"filename": "a.pdf", "b64": _b64(PDF)}],
                  "client_ref": f"p3-{_u}"}))

@@ -16,7 +16,8 @@ def _like_token(tok: str) -> str:
     return f"%{tok}%"
 
 
-def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
+def _market_base(visibility_public: str, q: Optional[str],
+                 curated: bool = True) -> tuple:
     """公开市场查询基座 (selection/search/pricing visibility): the ONE
     public-visibility predicate (enabled ∧ ¬delisted ∧ owner-alive) +
     public visibility, INNER JOIN pricing (缺行=未完成商业创建, 不上面;
@@ -24,12 +25,18 @@ def _market_base(visibility_public: str, q: Optional[str]) -> tuple:
     tool_key+label+desc(各语言) 之一, LIKE 通配符按字面匹配 (THE one
     search predicate — home selector / /tools market / MCP
     catalog_search 全部经由此处)。
+    列表规则: 空查询 = 浏览, 只列运营推荐 (featured) 的工具, 按
+    sort_order 排; 有查询 = 搜索, 命中全部公开工具。curated=False 仅供
+    sitemap (全量公开集)。
     返回 (FROM+WHERE 片段, 参数)。"""
     where = ("pt.enabled AND NOT pt.delisted"
              " AND (pt.owner_id IS NULL OR u.status <> 'suspended')"
              " AND pt.visibility = %s")
     args: list = [visibility_public]
-    for tok in (q or "").lower().split():
+    tokens = (q or "").lower().split()
+    if curated and not tokens:
+        where += " AND pt.featured"
+    for tok in tokens:
         like = _like_token(tok)
         where += (" AND (LOWER(pt.tool_key) LIKE %s"
                   " OR LOWER(pt.label_json)::jsonb::text LIKE %s"
@@ -72,7 +79,7 @@ def public_sitemap_rows(con, visibility_public: str) -> list:
     """sitemap.xml 的公开目录行 (tool_key + 作者 handle + 声明 updated_at),
     无分页 — sitemap 就是全量公开集。可见性沿用 _market_base 单一谓词,
     此处不另立规则。"""
-    base, args = _market_base(visibility_public, None)
+    base, args = _market_base(visibility_public, None, curated=False)
     return con.execute(
         f"SELECT pt.tool_key, pt.updated_at, u.username AS owner_handle "
         f"{base} ORDER BY pt.id", args).fetchall()
@@ -279,15 +286,17 @@ def insert_tool_row(con, row: dict) -> None:
 
 def upsert_seed_tool_row(con, row: dict) -> dict:
     """first-party seed upsert (保留行身份; visibility/enabled 语义由 SQL
-    固化: seed 不动 visibility, enabled 反映声明)。row 已序列化。"""
+    固化: seed 不动 visibility, enabled 反映声明)。新行以 featured 插入
+    (首装即进浏览列表); 已有行的 featured/sort_order 属运营, seed 不覆盖。
+    row 已序列化。"""
     cols = [c for c in _TOOL_COLUMNS if c in row and c not in ("visibility",)]
     params = {c: row[c] for c in cols}
     params["ts"] = row["ts"]
     placeholders = ", ".join(f"%({c})s" for c in cols)
     return con.execute(
         f"""
-        INSERT INTO platform_tools ({', '.join(cols)}, visibility, created_at, updated_at)
-        VALUES ({placeholders}, 'public', %(ts)s, %(ts)s)
+        INSERT INTO platform_tools ({', '.join(cols)}, visibility, featured, created_at, updated_at)
+        VALUES ({placeholders}, 'public', TRUE, %(ts)s, %(ts)s)
         ON CONFLICT (tool_key) DO UPDATE SET
           label_json   = EXCLUDED.label_json,
           desc_json    = COALESCE(EXCLUDED.desc_json, platform_tools.desc_json),

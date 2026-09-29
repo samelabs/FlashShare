@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from database import db
 from repo import operator_views
-from utils import format_bytes, remaining_downloads
+from utils import format_bytes, remaining_downloads, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
 
@@ -27,7 +27,7 @@ async def content(request: Request, share: str = "", result: str = "",
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     share = share.strip()[:64]
     result = result.strip()[:64]
     user = user.strip()[:64]

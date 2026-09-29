@@ -42,7 +42,7 @@ from storage import (read as storage_read, write as storage_write,
 from tools import ToolError
 from execution.source import resolve_upload
 from identity.auth import public_user
-from utils import now, sanitize_filename, generate_public_id, public_file_url
+from utils import now, sanitize_filename, generate_public_id, public_file_url, list_offset
 from app.models import RenameRequest
 from execution.pool import get_pool as _get_pool
 from execution.pool import default_process_tool as process_tool
@@ -147,10 +147,7 @@ async def get_uploads(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    try:
-        offset = int(request.query_params.get("offset", "0"))
-    except ValueError:
-        offset = 0
+    offset = list_offset(request.query_params.get("offset", "0"))
     uploads = list_uploads(user["id"], offset=offset, limit=20)
     return {"ok": True, "uploads": uploads, "has_more": len(uploads) == 20}
 

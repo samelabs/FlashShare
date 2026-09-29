@@ -149,10 +149,12 @@ st, _h, d = _req("PATCH", "/api/usertools/aaa", {"visibility": "public"},
                  {"Content-Type": "application/json", "Cookie": CK})
 check("A4b public after the owner's successful run", st == 200 and d.get("ok"),
       f"{st} {d}")
-st, _h, home = _req("GET", "/")
-st, _h, market = _req("GET", "/tools")
-check("A3b visible on home + market once public",
-      tk in (home or "") and tk in (market or ""))
+# public = searchable (browse lists carry featured tools only)
+st, _h, market = _req("GET", "/tools?q=Alpha")
+st, _h, d = _req("GET", "/api/tools/search?q=alpha")
+check("A3b searchable on market + selector once public",
+      tk in (market or "")
+      and any(t["id"] == tk for t in (d.get("tools") or [])))
 # explicit private still honored
 st, _h, d = _publish(CK, "bbb", "Beta", {"visibility": "private"})
 with db() as con:
@@ -168,7 +170,7 @@ with db() as con:
 from backoffice.tools import set_tool_delisted
 set_tool_delisted(op, tk, True)
 st, _h, home = _req("GET", "/")
-st, _h, market = _req("GET", "/tools")
+st, _h, market = _req("GET", "/tools?q=Alpha")
 st, _h, author = _req("GET", f"/u/{dev_ck_user}")
 # author page asserts the tool's visible artifacts (card link + label),
 # never a bare substring — cache-bust stamps (?v=…) can contain any hex
@@ -200,8 +202,8 @@ with db() as con:
         " order by id desc limit 1", (tk,)).fetchone()
 check("B5 delist audited", au is not None, str(au))
 set_tool_delisted(op, tk, False)
-st, _h, home = _req("GET", "/")
-check("B6 restore revives listing", tk in (home or ""))
+st, _h, market = _req("GET", "/tools?q=Alpha")
+check("B6 restore revives listing", tk in (market or ""))
 # dev enable writes audit
 st, _h, d = _req("PATCH", "/api/usertools/aaa", {"enabled": False},
                  {"Content-Type": "application/json", "Cookie": CK})
@@ -280,8 +282,8 @@ with db() as con:
 # home-polish: the card is a single navigation surface (→ tool page);
 # the author renders as text on the card, the author page is reached
 # from the tool page.
-st, _h, home = _req("GET", "/")
-check("E1 community card shows the author", f'@{dev_ck_user}' in (home or ""))
+st, _h, found = _req("GET", "/tools?q=Alpha")
+check("E1 community card shows the author", f'@{dev_ck_user}' in (found or ""))
 st, _h, market = _req("GET", "/tools")
 check("E2 market card shows the author", f'@{dev_ck_user}' in (market or ""))
 # MCP summaries

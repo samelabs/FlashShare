@@ -40,7 +40,7 @@ Content-Type: application/json
 <p>Up to {{ max_params }} parameters, each one of four types: <code>enum</code> (fixed option list), <code>number</code> (optional min/max), <code>boolean</code>, <code>text</code>. Text values accept up to {{ text_param_chars }} characters. Required parameters are enforced by the platform before your endpoint is called.</p>
 
 <h2>Declaring files</h2>
-<p>Declare the accepted formats as a list of file extensions (<code>.png</code>, <code>.pdf</code>, …) and the count window: 0 (text-only tool) up to {{ files_max }} files per call. Files outside the declared formats are rejected before your endpoint is called. One file may be at most {{ max_upload_mb }} MB.</p>
+<p>Declare the accepted formats as a list of file extensions (<code>.png</code>, <code>.pdf</code>, …) and the count window: 0 up to {{ files_max }} files per call. A text-only tool (at most 0 files) declares no formats; its first text parameter is the input box. Files outside the declared formats are rejected before your endpoint is called. One file may be at most {{ max_upload_mb }} MB.</p>
 
 <h2>Limits</h2>
 <ul>

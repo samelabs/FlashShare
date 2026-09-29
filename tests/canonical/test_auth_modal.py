@@ -210,7 +210,9 @@ try:
     body = body if isinstance(body, str) else ""
     check("G1 market lists first-party compress",
           st == 200 and 'href="/tool/compress"' in body, st)
-    check("G2 market lists the public community tool",
+    st, _h, body, _sc = _req("GET", "/tools?q=Community", None, {"Accept": "text/html"})
+    body = body if isinstance(body, str) else ""
+    check("G2 market search finds the public community tool",
           f"href=\"/tool/{com}/g\"" in body, com)
 
 finally:

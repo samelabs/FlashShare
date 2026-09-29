@@ -208,9 +208,10 @@ def search_catalog(q: str, limit: int = 20) -> list:
     + pricing INNER JOIN), one ordering (featured → sort_order →
     successful calls → id, same as market_rows) and one projection
     (row_to_item). 查询按空白分词 AND, 每词命中 tool_key/label/desc
-    之一, LIKE 通配符按字面匹配 (repo 单点); 空查询 = 浏览 (排序前
-    limit 个)。搜索是公开发现面: 私有/unlisted 工具不进入 (owner 面
-    走 list_catalog / own surface)。
+    之一, LIKE 通配符按字面匹配 (repo 单点); 空查询 = 浏览, 只列运营
+    推荐 (featured) 的工具, 按 sort_order 取前 limit 个; 有查询 = 搜索,
+    命中全部公开工具。搜索是公开发现面: 私有/unlisted 工具不进入
+    (owner 面走 list_catalog / own surface)。
     """
     q = (q or "").strip() or None
     with db() as con:
@@ -289,7 +290,8 @@ def market_page(q: str | None = None, page: int = 1) -> dict:
 
     返回 {items, total, page, total_pages}。页边界 canonical 行为:
     非法/非正数页 → 1; 超过末页 → 末页 (空目录时 total_pages=1)。
-    排序与可见性语义同 visible_to: featured DESC, sort_order, id;
+    列表规则同 search_catalog: 空查询只列推荐 (featured), 有查询命中
+    全部公开工具; 排序 featured DESC, sort_order, 成功调用数, id;
     pricing INNER JOIN (缺行=未完成商业创建, 不上面), pricing.enabled=false
     排除。
     Web 页码窗口 (ellipsis/page window) 属 presentation, 不在此层。

@@ -8,7 +8,7 @@ from database import db
 from economy.billing import SPENDABLE_KINDS
 from economy.money import millis_to_usd_str
 from repo import operator_views
-from utils import now
+from utils import now, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
 
@@ -27,7 +27,7 @@ async def users(request: Request, q: str = "", page: int = 1):
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     q = q.strip()[:100]
     with db() as con:
         rows, total = operator_views.users_page(

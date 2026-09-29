@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse, Response
 from config import BASE_URL, MAX_UPLOAD_BYTES, MCP_ALLOWED_ORIGINS, PRODUCT_VERSION
 from governance.catalog import list_catalog, mcp_name, mcp_names, tool_key_for_mcp_name
 from governance.tool_params import resolve_label
-from utils import format_bytes, sanitize_filename
+from utils import MAX_LIST_OFFSET, format_bytes, sanitize_filename
 from app.web_auth import client_ip
 
 router = APIRouter()
@@ -550,12 +550,15 @@ def _spec_summary(t: dict, names: dict | None = None) -> dict:
     names = names if names is not None else mcp_names()
     label = t["label"]
     title = label.get("en") or t["id"]
-    mn = int(t.get("files_min", 1) or 0)
-    mx = int(t.get("files_max", 1) or 1)
+    mn = int(t["files_min"])
+    mx = int(t["files_max"])
     accept = t.get("accept")
-    files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
-    if accept:
-        files_txt += f", formats: {', '.join(accept)}"
+    if mx == 0:
+        files_txt = "text only, no files"
+    else:
+        files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
+        if accept:
+            files_txt += f", formats: {', '.join(accept)}"
     outs = ", ".join(t.get("outputs") or ["file"])
     desc = (resolve_label(t.get("desc"), "en") or title).rstrip(".")
     price = (f" Price: {int(t['cost'])} credits per call."
@@ -622,19 +625,20 @@ def _catalog_spec(t: dict, names: dict, ent: dict) -> dict:
     advertises THIS caller's real values; tools/call still runs the
     authoritative chain regardless of what the schema advertised."""
     summary = _spec_summary(t, names)
-    props = {
-        "files": {
+    props = {}
+    mn, mx = int(t["files_min"]), int(t["files_max"])
+    if mx > 0:
+        # text-only tools (files_max = 0) expose no files argument
+        props["files"] = {
             "type": "array",
-            "description": "Input files (optional for text-only tools): "
-                           "each item is inline base64, an https URL, or "
-                           "a reference to an existing upload",
-            "minItems": int(t.get("files_min", 1) or 0),
-            "maxItems": int(t.get("files_max", 1) or 1),
+            "description": "Input files: each item is inline base64, an "
+                           "https URL, or a reference to an existing upload",
+            "minItems": mn,
+            "maxItems": mx,
             "items": _FILE_ITEM_SCHEMA,
-        },
-    }
+        }
     required = ["client_ref"]
-    if int(t.get("files_min", 1) or 0) >= 1:
+    if mn >= 1:
         required.append("files")
     decl = t.get("params") or []
     if decl:
@@ -693,8 +697,8 @@ def _tool_specs(user: dict) -> list:
     _names = mcp_names()
     # Working set, not an access boundary: first-party + own + favorites;
     # everything else is found via catalog_search and called by name.
-    from governance.favorites import mcp_working_set
-    for t in mcp_working_set(user, list_catalog(user["id"])):
+    from governance.favorites import working_set
+    for t in working_set(user, list_catalog(user["id"])):
         specs.append(_catalog_spec(t, _names, ent))
     specs.append({
         "name": "catalog_search",
@@ -702,20 +706,25 @@ def _tool_specs(user: dict) -> list:
         "description": "Find public tools by keyword: every whitespace-"
                        "separated term must match the tool's id, name or "
                        "description (all AND; % and _ match literally). An "
-                       "empty query browses the most-used public tools. "
-                       "Each result carries the exact spec tools/list "
-                       "shows (inputSchema included) plus favorite — "
-                       "call it by name right away; pin_tool adds it to "
-                       "your working set.",
+                       "empty query lists the recommended tools. Results "
+                       "are paged (page starts at 1; total_pages tells "
+                       "when to stop). Each result carries the exact spec "
+                       "tools/list shows (inputSchema included) plus "
+                       "favorite — call it by name right away; pin_tool "
+                       "adds it to your working set.",
         "inputSchema": {
             "type": "object",
-            "properties": {"q": {"type": "string"}},
+            "properties": {"q": {"type": "string"},
+                           "page": {"type": "integer", "minimum": 1}},
             "required": ["q"],
         },
         "outputSchema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string"},
+                "page": {"type": "integer"},
+                "total_pages": {"type": "integer"},
+                "total": {"type": "integer"},
                 "tools": {"type": "array", "items": {
                     "type": "object",
                     "properties": {
@@ -730,31 +739,40 @@ def _tool_specs(user: dict) -> list:
                                  "inputSchema", "outputSchema",
                                  "favorite"]}},
             },
-            "required": ["query", "tools"],
+            "required": ["query", "page", "total_pages", "total",
+                         "tools"],
         },
     })
     return specs
 
 
-def _catalog_search_result(user: dict, q: str) -> dict:
-    """catalog_search result payload: public search hits projected to the
-    exact callable spec tools/list carries (shared _catalog_spec
-    constructor) plus the caller's favorite flag — one projection read
-    for this bearer's delivery enums, kept OUT of the _call_tool
-    dispatch path (the call path reads no projection)."""
-    from governance.catalog import search_catalog
-    from governance.favorites import favorite_keys
+def _catalog_search_result(user: dict, q: str, page: int) -> dict:
+    """catalog_search result payload: one page of the public market
+    (governance.market_page — the same predicate, order, page size and
+    page clamp as the web /tools market) projected to the exact callable
+    spec tools/list carries (shared _catalog_spec constructor) plus the
+    caller's favorite flag — one projection read for this bearer's
+    delivery enums, kept OUT of the _call_tool dispatch path (the call
+    path reads no projection)."""
+    from governance.catalog import market_page
     from governance.access_projection import project
-    hits = search_catalog(q, limit=20)
-    favs = set(favorite_keys(user["id"]))
+    from database import db
+    from repo import favorites as fav_repo
+    data = market_page(q or None, page)
+    # hits are public by construction — the raw pin set flags them
+    # (no visibility-filtered catalog read needed)
+    with db() as con:
+        favs = set(fav_repo.list_keys(con, user["id"]))
     _names = mcp_names()
     ent = project(user["id"])["entitlements"]
     tools = []
-    for h in hits:
+    for h in data["items"]:
         spec = _catalog_spec(h, _names, ent)
         spec["favorite"] = h["id"] in favs
         tools.append(spec)
-    return {"query": q, "tools": tools}
+    return {"query": q, "page": data["page"],
+            "total_pages": data["total_pages"], "total": data["total"],
+            "tools": tools}
 
 
 def _tool_result_error(mid, body: dict, client_ref: str, tool: dict | None = None):
@@ -776,11 +794,15 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602, "invalid params: arguments must be an object")
     if name == "catalog_search":
-        # Search IS the public market predicate (same predicate/order/
-        # projection as the home selector and /tools); empty q browses
-        # the most-used public tools. See _catalog_search_result.
+        # Search IS the public market (same predicate/order/projection/
+        # paging as /tools); empty q lists the recommended tools. See
+        # _catalog_search_result.
         q = str(args.get("q") or "").strip()[:64]
-        return _meta_result(mid, _catalog_search_result(user, q))
+        page = args.get("page", 1)
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+            return _rpc_err(mid, -32602, "invalid params: page must be an "
+                                         "integer >= 1")
+        return _meta_result(mid, _catalog_search_result(user, q, page))
 
     if name == "create_upload":
         return _create_upload(user, mid, args, request)
@@ -1149,6 +1171,11 @@ def _error_message(code, tool: dict | None = None) -> str:
         "not_found": "No such file of yours.",
         "tool_not_found": "No such tool is available to you. Use catalog_search to find the exact name.",
         "invalid_id": "That public id is malformed.",
+        "param_required": "A required parameter is missing.",
+        "param_invalid": "A parameter value is not allowed.",
+        "param_out_of_range": "A number parameter is out of range.",
+        "param_too_long": "A text parameter is too long.",
+        "err_output_mismatch": "The tool's service returned a result kind this tool does not declare.",
     }.get(code)
     msg = base or "The call failed."
     hint = ""
@@ -1156,12 +1183,17 @@ def _error_message(code, tool: dict | None = None) -> str:
         accept = tool.get("accept") if isinstance(tool, dict) else None
         if accept:
             hint = f" Accepted formats: {', '.join(accept)}."
-    elif code == "err_file_count":
-        mn = int((tool or {}).get("files_min", 1) or 0)
-        mx = int((tool or {}).get("files_max", 1) or 1)
-        hint = f" This tool accepts {mn} to {mx} files."
+    elif code == "err_file_count" and isinstance(tool, dict):
+        mn, mx = int(tool["files_min"]), int(tool["files_max"])
+        hint = (" This tool takes no files." if mx == 0
+                else f" This tool accepts {mn} to {mx} files.")
     elif code == "err_insufficient_credits":
         hint = " Top up credits and retry with the same client_ref."
+    elif code == "param_too_long":
+        from governance.tool_params import TEXT_PARAM_MAX_CHARS
+        hint = f" Text parameters take at most {TEXT_PARAM_MAX_CHARS} characters."
+    if code.startswith("param_"):
+        hint += " Check the tool's inputSchema (field names the parameter)."
     return f"{msg}{hint}"
 
 
@@ -1411,8 +1443,10 @@ def _list_uploads(user: dict, mid, args: dict) -> dict:
     from sharing.uploads import list_uploads as _web_list
     offset = args.get("offset", 0)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-        offset = 0
-    rows = _web_list(user["id"], offset=offset, limit=20)
+        return _rpc_err(mid, -32602, "invalid params: offset must be an "
+                                     "integer >= 0")
+    rows = _web_list(user["id"], offset=min(offset, MAX_LIST_OFFSET),
+                     limit=20)
     uploads = [{
         "public_id": r["public_id"],
         "filename": r["file_name"],

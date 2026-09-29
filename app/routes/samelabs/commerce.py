@@ -9,7 +9,7 @@ import psycopg2
 
 from database import db
 from repo import operator_views, orders as _orders_repo
-from utils import now
+from utils import now, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
 
@@ -26,7 +26,7 @@ async def orders(request: Request, page: int = 1):
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     with db() as con:
         rows, total = operator_views.orders_page(
             con, _PAGE, (page - 1) * _PAGE)
@@ -45,7 +45,7 @@ async def memberships(request: Request, page: int = 1):
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     with db() as con:
         rows, total = operator_views.memberships_page(
             con, _PAGE, (page - 1) * _PAGE, now())

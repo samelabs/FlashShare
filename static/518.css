@@ -665,6 +665,8 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* ═══ IO-2: 发布表单文件窗口 + 产出类型 ═══ */
 .pub-page .pub-files-limit { display: flex; flex-direction: column; gap: 6px; }
 .pub-page .pub-files-limit input { width: 100%; }
+.pub-page .pub-input-mode { display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pub-page .pub-input-mode .pub-hint { flex-basis: 100%; }
 .pub-page .pub-outputs { display: flex; flex-direction: column; gap: 8px; }
 .pub-outputs-label { font-size: 13px; font-weight: 650; color: var(--ink); }
 .pub-outputs-checks { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -763,6 +765,17 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .hero h1 { margin-top: 20px; font-size: 64px; line-height: 1.05; letter-spacing: -0.045em; font-weight: 800; color: var(--ink); }
 .hero h1 .grad { background: linear-gradient(92deg, rgba(255, 90, 77, 1) 10%, rgba(255, 45, 85, 1) 60%, rgba(255, 122, 69, 1)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero p { margin-top: 16px; color: var(--ink-2); font-size: 18px; }
+/* hero 背景大字: MCP (装饰, 读屏隐藏) — 位于 glow/grid 之上、正文之下 */
+.home .hero-mark { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); z-index: 0;
+  font-size: clamp(120px, 24vw, 300px); font-weight: 900; line-height: 1; letter-spacing: -0.06em;
+  white-space: nowrap; pointer-events: none; user-select: none;
+  background: linear-gradient(180deg, rgba(255, 77, 77, 0.16), rgba(255, 77, 77, 0.02) 85%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.home .hero > .wrap { position: relative; z-index: 1; }
+.home .hero-sub { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.home .hero-sep { color: var(--line-2); }
+.home .hero-sub a { color: var(--brand); font-weight: 650; text-decoration: none; }
+.home .hero-sub a:hover { text-decoration: underline; }
 .home .composer { max-width: 760px; margin: 36px auto 0; text-align: start; }
 
 /* 工具选择器胶囊 (home composer c-bar 内) */
@@ -816,6 +829,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .hero { padding: 48px 0 16px; }
   .hero h1 { font-size: 40px; }
   .hero p { font-size: 16px; }
+  .home .hero-mark { top: 28px; }
   .home .composer { border-radius: 22px; margin-top: 24px; }
   .bento { grid-template-columns: 1fr 1fr; gap: 10px; }
   .sec { padding: 48px 0; }

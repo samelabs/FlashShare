@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from database import db
 from economy.money import millis_to_usd_str
 from repo import operator_views
-from utils import now
+from utils import now, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num, tool_class
 
@@ -32,7 +32,7 @@ async def tools(request: Request, q: str = "", cls: str = "",
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     q = q.strip()[:100]
     if cls not in ("", "official", "community"):
         cls = ""
@@ -249,10 +249,12 @@ async def create_http_tool(request: Request):
                 or files_min < 0:
             return JSONResponse({"ok": False, "error": "bad_files_min"}, 422)
         if isinstance(files_max, bool) or not isinstance(files_max, int) \
-                or not (1 <= files_max <= 20):
+                or not (0 <= files_max <= 20):
             return JSONResponse({"ok": False, "error": "bad_files_max"}, 422)
         if files_min > files_max:
             return JSONResponse({"ok": False, "error": "bad_files_range"}, 422)
+        if files_max == 0 and accept_raw:
+            return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
         outputs = raw.get("outputs", ["file"])
         if not isinstance(outputs, list) or not outputs \
                 or any(k not in ("text", "json", "file") for k in outputs):

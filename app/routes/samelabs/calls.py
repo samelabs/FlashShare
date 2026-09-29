@@ -13,6 +13,7 @@ from fastapi import APIRouter, Request
 from database import db
 from economy.money import millis_to_usd_str
 from repo import operator_views
+from utils import page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
 
@@ -48,7 +49,7 @@ async def calls(request: Request, tool: str = "", user: str = "",
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     if status not in _STATUSES:
         status = ""
     ts_from = _date_to_ts(date_from)

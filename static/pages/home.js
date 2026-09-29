@@ -1,7 +1,8 @@
 // ── 首页 (v3): composer 默认挂载分享, 底栏工具选择器 (顶部过滤输入) ──
-// 选择器复用 window.__TOOLS__; 选中后 ToolInput.setTool 原地切换 (不跳
-// 转); 执行链与 tool 页同一 runToolFlow 单源。卡片/市场搜索负责发现面,
-// 首页不再有快捷胶囊。
+// 选择器列表 = window.__TOOLS__ (工作集: 官方 + 自己的 + 收藏); 输入查询
+// 时追加公开搜索命中 (/api/tools/search, 与市场/MCP catalog_search 同一
+// 谓词)。选中后 ToolInput.setTool 原地切换 (不跳转); 执行链与 tool 页
+// 同一 runToolFlow 单源。
 (function () {
   "use strict";
 
@@ -12,6 +13,10 @@
 
   let ctrl = null;
   let activeTool = null;
+  // 公开搜索命中 (仅对应 searchQ 这一查询串有效)
+  let searchQ = "";
+  let searchHits = [];
+  let searchTimer = null;
 
   function mountInput(tool) {
     if (!ctrl) {
@@ -73,7 +78,7 @@
     pop.addEventListener("click", (e) => e.stopPropagation());
     const q = pop.querySelector(".tsel-filter input");
     if (q) {
-      q.addEventListener("input", renderPickerList);
+      q.addEventListener("input", () => { renderPickerList(); scheduleSearch(q.value); });
       q.addEventListener("keydown", (e) => { if (e.key === "Escape") { pop.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); } });
     }
     document.addEventListener("click", () => { pop.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); });
@@ -90,17 +95,40 @@
       .join("\n");
   }
 
+  function scheduleSearch(raw) {
+    clearTimeout(searchTimer);
+    const q = raw.trim();
+    if (!q) return;
+    searchTimer = setTimeout(() => {
+      fetch("/api/tools/search?q=" + encodeURIComponent(q))
+        .then((r) => r.json())
+        .then((d) => {
+          const qEl = mountEl.querySelector(".tsel-filter input");
+          if (!qEl || qEl.value.trim() !== q) return;   // 过期查询
+          searchQ = q;
+          searchHits = (d && d.tools) || [];
+          renderPickerList();
+        })
+        .catch(() => {});
+    }, 200);
+  }
+
   function renderPickerList() {
     const pop = mountEl.querySelector(".tsel-pop");
     if (!pop) return;
     const list = pop.querySelector(".tsel-list");
     const qEl = pop.querySelector(".tsel-filter input");
-    const tokens = (qEl ? qEl.value : "").toLowerCase().split(/\s+/).filter(Boolean);
+    const raw = qEl ? qEl.value : "";
+    const tokens = raw.toLowerCase().split(/\s+/).filter(Boolean);
     const esc = window.escapeHtml || String;
     const matches = tools.filter((tool) => {
       const hay = pickerHaystack(tool);
       return tokens.every((tok) => hay.indexOf(tok) >= 0);
     });
+    if (tokens.length && searchQ === raw.trim()) {
+      const seen = new Set(matches.map((m) => m.id));
+      searchHits.forEach((h) => { if (!seen.has(h.id)) matches.push(h); });
+    }
     list.innerHTML = matches.length ? matches.map((tool) => {
       const on = activeTool && activeTool.id === tool.id;
       return '<button type="button" role="option" aria-selected="' + on + '" class="tsel-item' + (on ? " on" : "") + '" data-tool="' + esc(tool.id) + '">'
@@ -108,7 +136,8 @@
     }).join("") : '<div class="tsel-empty" role="status">' + esc(window.t("tool_search_none")) + "</div>";
     list.querySelectorAll(".tsel-item").forEach((b) => {
       b.addEventListener("click", () => {
-        const tool = tools.find((t) => t.id === b.dataset.tool);
+        const tool = tools.find((t) => t.id === b.dataset.tool)
+          || searchHits.find((t) => t.id === b.dataset.tool);
         if (tool) selectTool(tool);
         pop.classList.add("hidden");
       });

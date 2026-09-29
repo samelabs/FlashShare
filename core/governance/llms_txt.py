@@ -7,9 +7,11 @@ only the stable prose is literal. text/plain; charset=utf-8, English
 """
 from config import BASE_URL, PRODUCT_VERSION
 
+LLMS_TOOLS_MAX = 50
+
 
 def build_llms_txt() -> str:
-    from governance.catalog import list_catalog, mcp_names
+    from governance.catalog import mcp_names, search_catalog
     from governance.tool_params import resolve_label
 
     mcp_url = f"{BASE_URL}/mcp"
@@ -195,11 +197,11 @@ def build_llms_txt() -> str:
     a(f"Full guide — request/response examples, declarations, limits, "
       f"pricing and commission: {BASE_URL}/developers")
     a("")
-    a("## Tool catalog (every public tool, generated live — "
-      "tools/list shows your working set of these)")
+    a("## Recommended tools (generated live; catalog_search finds every "
+      "other public tool)")
     a("")
     names = mcp_names()
-    for t in list_catalog(None):
+    for t in search_catalog("", limit=LLMS_TOOLS_MAX):
         name = names.get(t["id"], t["id"].replace("/", "__"))
         label = t.get("label") or {}
         desc = resolve_label(label, "en") or t["id"]

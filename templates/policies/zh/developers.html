@@ -40,7 +40,7 @@ Content-Type: application/json
 <p>最多 {{ max_params }} 个参数，四种类型：<code>enum</code>（固定选项）、<code>number</code>（可选最小/最大值）、<code>boolean</code>、<code>text</code>。text 取值最多 {{ text_param_chars }} 字符。必填参数由平台在校验后才会调用你的端点。</p>
 
 <h2>文件声明</h2>
-<p>接受格式声明为扩展名列表（<code>.png</code>、<code>.pdf</code>……），并声明数量窗口：0（纯文本工具）到 {{ files_max }} 个。超出声明格式的文件在调用你的端点之前就会被拒绝。单个文件最大 {{ max_upload_mb }} MB。</p>
+<p>接受格式声明为扩展名列表（<code>.png</code>、<code>.pdf</code>……），并声明数量窗口：0 到 {{ files_max }} 个。纯文本工具（最多 0 个文件）不声明格式，第一个文本参数即输入框。超出声明格式的文件在调用你的端点之前就会被拒绝。单个文件最大 {{ max_upload_mb }} MB。</p>
 
 <h2>限制</h2>
 <ul>

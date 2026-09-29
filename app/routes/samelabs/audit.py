@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from database import db
 from repo import operator_views
+from utils import page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
 
@@ -18,7 +19,7 @@ async def audit(request: Request, page: int = 1):
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     with db() as con:
         rows, total = operator_views.audit_page(
             con, _PAGE, (page - 1) * _PAGE)
