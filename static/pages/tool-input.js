@@ -50,6 +50,25 @@
   const resolveLabel = (l) => window.resolveLabel(l);
   const icon = (name) => window.iconSvg ? window.iconSvg(name) : "";
 
+  // 上传区格式族文案: 族单源 = governance.formats.format_manifest()
+  // (window.__FORMAT_FAMILIES__, 发布页同一词表), 显示名走 i18n
+  // family_{key}; accept 未声明 → "常见格式"。manifest 缺位时按扩展名
+  // 罗列回落 (fail-visible, 不冒充族名)。
+  function acceptFamilyText(accept) {
+    if (!accept) return t("ti_accept_common");
+    const mf = window.__FORMAT_FAMILIES__;
+    if (!mf || !Array.isArray(mf.order) || !mf.families) {
+      return accept.map((a) => a.toUpperCase()).join(" · ");
+    }
+    const set = new Set(accept);
+    const names = mf.order
+      .filter((k) => ((mf.families[k] || {}).exts || [])
+        .some((e) => set.has(String(e).replace(/^\./, "").toLowerCase())))
+      .map((k) => t("family_" + k));
+    return names.length ? names.join(" · ")
+                        : accept.map((a) => a.toUpperCase()).join(" · ");
+  }
+
   // 参数持久化单点 (localStorage 权威, 与旧实现同键同语义)。
   function savedParams(toolId) {
     try {
@@ -121,22 +140,22 @@
 
       // 文件位 (files_max>0): 空态 = 整块上传区 (点击/拖入), 有文件 = chip 列表
       if (hasFilesSlot()) {
-        const countTxt = (filesMin() === filesMax() && filesMax() === 1)
-          ? t("n_files_one")
-          : t("files_window_short", { min: filesMin(), max: filesMax() });
-        const fmtTxt = accept
-          ? accept.map((a) => a.toUpperCase()).join(" · ")
-          : t("ti_accept_common");
         const lim = window.__LIMITS__ || {};
-        const segs = [countTxt, fmtTxt];
+        const segs = [acceptFamilyText(accept)];
         if (lim.maxFileMb) segs.push(t("ti_zone_file_max", { mb: lim.maxFileMb }));
-        if (lim.dailyFiles) segs.push(t("ti_zone_daily", { n: lim.dailyFiles, gb: lim.dailyGb }));
+        if (filesMax() > 1) segs.push(t("ti_max_files", { n: filesMax() }));
+        // 24h 额度低余量提示 (同一 limits 投影的 dailyRemaining; ≥20% 不打扰)
+        let quota = "";
+        if (Number.isFinite(lim.dailyRemaining) && Number.isFinite(lim.dailyFiles)
+            && lim.dailyFiles > 0 && lim.dailyRemaining / lim.dailyFiles < 0.2) {
+          quota = '<p class="ti-quota">' + esc(t("quota_low_hint", { n: lim.dailyRemaining })) + "</p>";
+        }
         html += '<div class="c-files"></div>'
           + '<button type="button" class="ti-drop" aria-label="' + esc(t("ti_zone_main")) + '">'
           + '<span class="dz-ic" aria-hidden="true">' + icon("upload") + "</span>"
           + "<b>" + esc(t("ti_zone_main")) + "</b>"
           + "<small>" + esc(segs.join(" · ")) + "</small>"
-          + "</button>";
+          + "</button>" + quota;
       }
 
       // 正文: 主 text 参数 (或纯文件工具的拖放提示文案)

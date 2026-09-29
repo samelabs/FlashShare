@@ -47,6 +47,49 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
       document.addEventListener("click",closeAll);
     })();
 
+// ── Top-bar interactions (site-wide single source) ────────────────
+// Every header control lives HERE because only this file is loaded by
+// base.html on every page: the mobile nav drawer, the user dropdown,
+// the history modal open/close (history DATA loading stays in
+// footer.js) and the language menus (binder above).
+// Mobile top-bar navigation sheet: visible only at narrow widths (CSS),
+// toggled by the menu button; closes on backdrop / outside click / Escape /
+// nav. The backdrop is the touch-friendly outside.
+window.wireMobileNav = function () {
+  const btn = document.getElementById("mobileNavBtn");
+  const sheet = document.getElementById("mobileNavSheet");
+  const backdrop = document.getElementById("mobileNavBackdrop");
+  if (!btn || !sheet || btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  const setOpen = (open) => {
+    sheet.classList.toggle("hidden", !open);
+    if (backdrop) backdrop.classList.toggle("hidden", !open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(sheet.classList.contains("hidden"));
+  });
+  if (backdrop) backdrop.addEventListener("click", () => setOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!sheet.contains(e.target) && e.target !== btn) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+  });
+  sheet.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => setOpen(false)));
+};
+document.addEventListener("DOMContentLoaded", () => window.wireMobileNav());
+
+// User dropdown menu (site-wide)
+(function(){var b=document.getElementById("userMenuBtn"),d=document.getElementById("userDropdown");if(b&&d){b.addEventListener("click",function(e){e.stopPropagation();var h=d.classList.toggle("hidden");b.setAttribute("aria-expanded",h?"false":"true")});document.addEventListener("click",function(e){if(e.target===b||d.contains(e.target))return;d.classList.add("hidden");b.setAttribute("aria-expanded","false")})}})();
+
+// History modal open/close (data loading = footer.js _loadHistory)
+(function(){
+var hb=document.getElementById("historyBtn"),hm=document.getElementById("historyModal"),hc2=document.getElementById("historyModalClose");
+if(hb&&hm){hb.addEventListener("click",function(){hm.classList.remove("hidden");var h2=hm.querySelector("h2");if(h2)h2.textContent=window.t("recent");window._loadHistory&&window._loadHistory()});if(hc2)hc2.addEventListener("click",function(){hm.classList.add("hidden")});hm.addEventListener("click",function(e){if(e.target===hm&&!hm.dataset.locked&&!window._dlLock)hm.classList.add("hidden")})}
+})();
+
 /*
  * LocalizedText protocol resolver (JS twin of governance.tool_params.resolve_label).
  * Accepted shapes: string | {locale: string}

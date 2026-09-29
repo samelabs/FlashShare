@@ -1,50 +1,34 @@
-{#- Tool identity contract: ONE server-side icon renderer + ONE card
-interior. icon/fallback/label/desc/origin/cost 全部经此表达 — surface
-模板禁止自建 icon SVG 或 fallback。
+{#- Tool identity contract: ONE server-side icon renderer + ONE card.
+icon/fallback/label/desc/author/cost 全部经此表达 — surface 模板禁止
+自建 icon SVG 或 fallback。
 
 消费约定:
   t 必须携带 canonical catalog projection 字段:
-  id, origin, label, desc, icon(→ icon_tool_svg), cost,
-  files_min/files_max, outputs
-  tool_card_inner = 唯一卡面 (图标块/名称/一句描述/官方标/输入/输出/价格);
-  两个包装宏决定交互面:
-    tool_pick — 首页执行 surface (div role=button, home.js 绑定选择)
-    tool_card — 导航 surface (a → /tool/{id}; market/user page)
-  卡片视觉单源在 components.css .tool-card*; 页面只提供网格容器。-#}
+  id, label, desc, icon(→ icon_tool_svg), cost,
+  files_min/files_max, owner_handle, owner_verified
+  tool_card = 唯一卡面 (home / market / author page 同一组件):
+  图标+名称 / 说明(固定 2 行) / 底部标签行(数量 · 价格) + 作者(第三方)。
+  底部行追加平台内容用 {% call %} (favorites 的 mcp 名)。
+  卡片视觉单源在 components.css .tc*; 页面只提供网格容器。
+  作者在卡内是文本不是链接: 卡片是单一导航面 (→ 工具页), 避免
+  <a> 嵌套; 作者页经工具页到达。-#}
 
 {% macro tool_icon(icon, cls="tool-ident-icon") -%}
 <span class="{{ cls }}">{{ icon_tool_svg(icon) | safe }}</span>
 {%- endmacro %}
 
-{% macro tool_card_inner(t, lang, texts) -%}
-{{ tool_icon(t.icon, "tool-card-icon") }}
-<span class="tool-card-body">
-  <span class="tool-card-name">{{ t.label | lt(lang) or t.id }}</span>
-  {% if t.desc %}<span class="tool-card-desc">{{ t.desc | lt(lang) }}</span>{% endif %}
-  <span class="tool-card-meta">
-    {% if t.origin == 'official' %}<span class="tool-card-origin">{{ texts.market_official }}</span>
-    {% elif t.owner_handle %}<a class="tool-card-author" href="/u/{{ t.owner_handle }}">@{{ t.owner_handle }}</a>{% endif %}
-    {% if t.files_min == 0 %}
-    <span class="tag">{{ texts['out_kind_text'] }}</span>
-    {% elif t.files_min == t.files_max %}
-    <span class="tag">{{ texts['n_files_one'] }}</span>
-    {% else %}
-    <span class="tag">{{ texts['files_window_short'].format(min=t.files_min, max=t.files_max) }}</span>
-    {% endif %}
-    {% for o in (t.outputs or ['file']) %}
-    <span class="tag tag-neutral">{{ texts['out_kind_' ~ o] if texts.get('out_kind_' ~ o) else o }}</span>
-    {% endfor %}
-    {% if t.cost > 0 %}<span class="tag tag-brand">{{ t.cost }} {{ texts['credits_short'] }}</span>
-    {% else %}<span class="tag tag-success">{{ texts['free'] }}</span>{% endif %}
-  </span>
-</span>
-{%- endmacro %}
-
 {% macro tool_card(t, lang, texts) -%}
-<a class="tool-card" href="/tool/{{ t.id }}">{{ tool_card_inner(t, lang, texts) }}</a>
-{%- endmacro %}
-
-{% macro tool_pick(t, lang, texts) -%}
-<div class="tool-card" data-tool-id="{{ t.id }}" role="button" tabindex="0"
-     aria-pressed="false">{{ tool_card_inner(t, lang, texts) }}</div>
+<a class="tc" href="/tool/{{ t.id }}" data-tool-id="{{ t.id }}">
+  <span class="tc-h">
+    <span class="ic" aria-hidden="true">{{ icon_tool_svg(t.icon) }}</span>
+    <h4>{{ (t.label | lt(lang)) or t.id }}</h4>
+  </span>
+  <p class="tc-desc">{% if t.desc %}{{ t.desc | lt(lang) }}{% endif %}</p>
+  <div class="ft2">
+    <span class="tag">{% if t.files_min == 0 and t.files_max == 0 %}{{ texts['out_kind_text'] }}{% elif t.files_min == t.files_max and t.files_max == 1 %}{{ texts.n_files_one }}{% else %}{{ texts.files_window_short.format(min=t.files_min, max=t.files_max) }}{% endif %}</span>
+    {% if t.cost %}<span class="tag cost">{{ t.cost }} {{ texts.credits_short }}</span>{% else %}<span class="tag free">{{ texts.free }}</span>{% endif %}
+    {% if t.owner_handle %}<span class="by"><span class="by-name">@{{ t.owner_handle }}</span>{% if t.owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</span>{% endif %}
+    {%- if caller is defined %}{{ caller() }}{% endif -%}
+  </div>
+</a>
 {%- endmacro %}

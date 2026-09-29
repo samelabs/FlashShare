@@ -439,6 +439,9 @@ jobs:
       - name: IO contract (inputs window / items results) canonical
         run: python tests/canonical/test_io_contract.py
 
+      - name: Owner verified badge canonical
+        run: python tests/canonical/test_owner_verified.py
+
       - name: FX-1 coherence canonical
         run: python tests/canonical/test_fx1_coherence.py
 

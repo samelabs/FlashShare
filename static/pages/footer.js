@@ -3,8 +3,8 @@ window.__syncCredits = function (n) {
   var el = document.getElementById("headerCredits");
   if (el && typeof n === "number") el.textContent = String(n);
 };
-// User dropdown menu (shared across all pages)
-(function(){var b=document.getElementById("userMenuBtn"),d=document.getElementById("userDropdown");if(b&&d){b.addEventListener("click",function(e){e.stopPropagation();var h=d.classList.toggle("hidden");b.setAttribute("aria-expanded",h?"false":"true")});document.addEventListener("click",function(e){if(e.target===b||d.contains(e.target))return;d.classList.add("hidden");b.setAttribute("aria-expanded","false")})}})();
+// Top-bar interaction wiring (user dropdown, history modal open/close,
+// mobile drawer) lives in base-engine.js — the site-wide single source.
 // History modal + data loading (shared across all pages)
 (function(){
 var _ts=window.__I18N__ ? (window.__I18N__[window.__LANG]||{}) : {};
@@ -54,7 +54,4 @@ function _appendSentinel(l){
 var s=document.createElement("div");s.className="hist-sentinel";s.style.height="1px";l.appendChild(s);
 var ob=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting&&!_histLoading){_histLoading=true;ob.disconnect();var off=_histOffset;fetch("/api/uploads?offset="+off).then(function(r){return r.json()}).then(function(d){if(d&&d.ok&&d.uploads&&d.uploads.length){d.uploads.forEach(function(x){_uploads.push(x)});var html=d.uploads.map(function(x,i){return _renderItem(x,_uploads.length-d.uploads.length+i)}).join("");var nd=document.createElement("div");nd.innerHTML=html;_bindActions(nd);l.removeChild(s);while(nd.firstChild)l.appendChild(nd.firstChild);_histOffset=_uploads.length;if(d.has_more)_appendSentinel(l)}_histLoading=false})["catch"](function(){_histLoading=false})}})},{root:l,rootMargin:"40px"});ob.observe(s)
 }
-
-var hb=document.getElementById("historyBtn"),hm=document.getElementById("historyModal"),hc2=document.getElementById("historyModalClose");
-if(hb&&hm){hb.addEventListener("click",function(){hm.classList.remove("hidden");var h2=hm.querySelector("h2");if(h2)h2.textContent=_tx("recent");window._loadHistory()});if(hc2)hc2.addEventListener("click",function(){hm.classList.add("hidden")});hm.addEventListener("click",function(e){if(e.target===hm&&!hm.dataset.locked&&!window._dlLock)hm.classList.add("hidden")})}
 })();

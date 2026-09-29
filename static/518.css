@@ -5,23 +5,11 @@
 /* ── Design Tokens ────────────────────────────────────────── */
 
 
-/* ── Reset ────────────────────────────────────────────────── */
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
-
-/* ── SVG兜底: 任何未显式定尺寸的svg不得撑满(裸viewBox默认300x150) ── */
-svg:not([width]):not([height]) { width: 20px; height: 20px; }
+/* ── Reset/body/links/inputs/buttons: single-sourced in tokens.css /
+   components.css — this file only adds page-level rules. ── */
 .brand .mark svg,
 .section-h svg { width: unset; height: unset; }
 .brand .mark svg { width: 14px; height: 14px; }
-
-body { margin: 0; font-family: var(--font); background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; touch-action: manipulation; min-height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
-/* Keyboard focus ring — consistent across all interactive elements */
-:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-
-/* Global link reset: no underline by default; in-content contexts opt in explicitly. */
-a { color: var(--brand); text-decoration: none; }
-h1, h2 { letter-spacing: -0.02em; }
 
 /* ── Layout ───────────────────────────────────────────────── */
 .shell { width: min(880px, calc(100vw - var(--s4))); margin: 0 auto; padding: 0 var(--s2); flex: 1; display: flex; flex-direction: column; }
@@ -70,7 +58,6 @@ h1, h2 { letter-spacing: -0.02em; }
 
 
 /* ── Dropdowns (shared) ───────────────────────────────────── */
-.user-menu { position: relative; display: flex; align-items: center; }
 .lang-menu, .user-dropdown {
   position: absolute; right: 0; top: calc(100% + var(--s1));
   z-index: var(--z-dropdown);
@@ -105,21 +92,7 @@ h1, h2 { letter-spacing: -0.02em; }
 .limit:not(:last-child)::after { content: ""; position: absolute; right: 0; top: var(--s2); bottom: var(--s2); width: 1px; background: var(--line); }
 .limit span { color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.2; }
 
-/* ── Buttons ──────────────────────────────────────────────── */
-.x-login, button { border: 0; background: var(--brand); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; transition: opacity var(--ease), background var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
-@media (hover:hover) and (pointer:fine) { button:hover { background: var(--brand-strong); } }
-.x-login:active, button:active { transform: scale(0.96); }
-.user-dropdown a:active, .user-dropdown button:active { transform: none; } /* menu rows must not wobble */
-@media (hover:hover) and (pointer:fine) { .x-login:hover, button:hover { opacity: .85; } }
-.x-login.loading { pointer-events: none; opacity: .7; }
-button:disabled { opacity: .4; cursor: not-allowed; }
-button svg { width: 18px; height: 18px; display: block; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-.x-glyph { font-family: ui-serif, Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1; font-weight: 800; }
-/* X brand button (auth surfaces only): black plate, white ink — narrow
-   selector, global button palette untouched. */
-.auth-x-wrap .x-login { background: var(--ink); color: var(--brand-ink); }
-@media (hover:hover) and (pointer:fine) { .auth-x-wrap .x-login:hover { background: var(--ink-hover); opacity: 1; } }
-.auth-x-wrap .x-login:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* ── Buttons: element baseline + .btn 族单源 components.css ── */
 
 /* ── Userbox (legacy compat) ──────────────────────────────── */
 .logout { width: 32px; height: 32px; min-height: 32px; border-radius: 50%; background: transparent; color: var(--ink-2); padding: 0; border: 1px solid transparent; }
@@ -128,19 +101,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 /* ── Upload Zone ──────────────────────────────────────────── */
 .upload { display: block; }
 
-/* ── Controls ─────────────────────────────────────────────── */
-/* ── Form control baseline (single source) ─────────────────────
-   16px floor: iOS/Android auto-zoom any focused input <16px;
-   font-family: inherit — UA default differs from page font otherwise.
-   NOTE: this selector must stay UNPREFIXED. A prior revision glued the
-   comment to `.controls`, silently scoping the floor to `.controls
-   input` — every input elsewhere kept UA ~13px and iOS zoomed on focus. */
-input, select, textarea {
-  font-family: inherit;
-  font-size: 16px;
-}
-
-select { width: auto; margin-top: 0; }
+/* ── Controls: element floor single-sourced in components.css ── */
 /* ── Upload Progress ──────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes brand-shimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
@@ -260,12 +221,11 @@ select { width: auto; margin-top: 0; }
 /* ── Doc Pages ───────────────────────────────────────────── */
 .doc { line-height: 1.7; width: 100%; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
 .doc h1 { font-size: var(--fs-xl); }
-.doc-pre { background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s2) var(--s3); overflow-x: auto; font-size: var(--fs-xs); line-height: 1.6; font-family: var(--font-mono, monospace); }
 
 /* ── /agents (agent support surface) ─────────────────────── */
 
-/* ── Misc ─────────────────────────────────────────────────── */
-.hidden { display: none; }
+/* ── Misc ───────────────────────────────────────────────────
+   .hidden 单源 tokens.css */
 
 /* ── Tool Overlay (shared by all tools) ───────────────────── */
 /* 模式选择 = 纯文字 pill (radio 圆点视觉废弃: 非激活态常驻灰点突兀, 选中态以边框+文字色区分) */
@@ -525,8 +485,6 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .agents-quickstart ol { margin: 0 0 var(--s2) var(--s3); color: var(--ink-2); font-size: var(--fs-sm); }
 .agents-mcp-config { margin: var(--s2) 0; }
 .agents-mcp-config h3 { font-size: var(--fs-sm); font-weight: 600; margin-bottom: var(--s1); }
-.agents-pre { background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s2) var(--s3); overflow-x: auto; font-size: var(--fs-xs); margin: 0 0 var(--s1); }
-.agents-pre code { font-family: var(--font-mono, monospace); }
 
 /* ── Tool cost badges (pricing surfaced in UI) ── */
 .tool-cost { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; padding: 0 6px; margin-left: auto; border-radius: 99px; font-size: var(--fs-xs, 12px); font-weight: 700; background: var(--info-50); color: var(--info); font-variant-numeric: tabular-nums; }
@@ -585,16 +543,13 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .wd-row strong:last-child { font-variant-numeric: tabular-nums; }
 .account h3 { font-size: var(--fs-base); font-weight: 600; margin: var(--s3) 0 var(--s1); color: var(--ink); }
 
-/* ── Home capability panel: stats bar + tool search ── */
-.tool-search { position: relative; width: 100%; margin: 0 0 var(--s3); }
-.tool-search > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; stroke: var(--ink-2); fill: none; pointer-events: none; }
-.tool-search input { width: 100%; box-sizing: border-box; padding: 10px 14px 10px 38px; border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--bg); color: var(--ink); }
-.tool-search input:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
-.tool-search-pop { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40; background: var(--bg); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--sh-3, 0 8px 24px rgba(0,0,0,.12)); max-height: 320px; overflow-y: auto; padding: 4px; }
-.tool-search-item { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: 8px 10px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--ink); cursor: pointer; text-align: left; }
-.tool-search-item svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-.tool-search-item.active, .tool-search-item:hover { background: var(--sunk); }
-.tool-search-empty { padding: 12px; text-align: center; color: var(--ink-2); font-size: var(--fs-sm); }
+/* ── Home capability panel: stats bar + tool search ──
+   .tool-search 基座单源 components.css; 页面只留宽度/位置差。 */
+.sec-h .sec-search { width: 240px; margin: 0; flex: none; }
+@media (max-width: 767px) {
+  .sec-h { flex-wrap: wrap; }
+  .sec-h .sec-search { width: 100%; flex: 1 1 100%; }
+}
 
 .topbar-agents { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); text-decoration: none; padding: 6px 10px; border-radius: var(--r-full); border: 1px solid var(--line-2); white-space: nowrap; transition: background var(--ease), border-color var(--ease); }
 .topbar-agents:hover { background: var(--sunk); border-color: var(--brand); }
@@ -640,7 +595,7 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 
 /* ── 市场页 ── */
 .market-page { gap: 14px; }
-/* 工具卡本体 = components.css .tool-card (单源, home/market/user 同卡);
+/* 工具卡本体 = components.css .tc (单源, home/market/user/favorites 同卡);
    此处只有网格容器。 */
 .market-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mkt-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; background: var(--sunk); border: 1px solid var(--line); font-size: 11px; font-weight: 700; color: var(--ink-2); text-decoration: none; }
@@ -795,7 +750,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .hd .menu { display: grid; }
 }
 
-/* ═══ 首页 (v2): hero / 快捷胶囊 / bento / dark / feat ═══ */
+/* ═══ 首页 (v2): hero / bento / dark / feat ═══ */
 .home { position: relative; }
 .glow { position: absolute; inset: 0 0 auto 0; height: 620px; pointer-events: none; z-index: -1;
   background: radial-gradient(60% 50% at 50% 0%, rgba(255, 77, 77, 0.13), transparent 70%),
@@ -804,26 +759,24 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
   background-size: 48px 48px; mask-image: radial-gradient(70% 60% at 50% 0%, var(--ink) 30%, transparent 80%); opacity: 0.6; }
 .hero { padding: 88px 0 28px; text-align: center; position: relative; }
-.pill { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 6px; border-radius: var(--r-full); background: var(--card); border: 1px solid var(--line); box-shadow: var(--sh-1); font-size: 13px; color: var(--ink-2); }
-.pill em { font-style: normal; background: var(--brand-50); color: var(--brand); font-weight: 650; padding: 2px 8px; border-radius: var(--r-full); font-size: 12px; }
-.pill svg { width: 18px; height: 18px; }
 .hero h1 { margin-top: 20px; font-size: 64px; line-height: 1.05; letter-spacing: -0.045em; font-weight: 800; color: var(--ink); }
 .hero h1 .grad { background: linear-gradient(92deg, rgba(255, 90, 77, 1) 10%, rgba(255, 45, 85, 1) 60%, rgba(255, 122, 69, 1)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero p { margin-top: 16px; color: var(--ink-2); font-size: 18px; }
 .home .composer { max-width: 760px; margin: 36px auto 0; text-align: start; }
-.quick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
-.quick a { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 13px; border-radius: var(--r-full); background: var(--card); border: 1px solid var(--line); font-size: 13px; color: var(--ink-2); box-shadow: var(--sh-1); }
-.quick a svg { width: 15px; height: 15px; color: var(--ink); stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-@media (hover:hover) and (pointer:fine) { .quick a:hover { border-color: var(--line-2); } }
 
 /* 工具选择器胶囊 (home composer c-bar 内) */
 .tsel { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 8px; border-radius: var(--r-full); border: 1px solid var(--line-2); font: inherit; font-size: var(--fs-base); font-weight: 600; background: var(--card); color: var(--ink); cursor: pointer; position: relative; }
 .tsel .tic { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
 .tsel .tic svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tsel > svg { width: 14px; height: 14px; color: var(--ink-3); stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
-.tsel-pop { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: var(--z-dropdown); background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--sh-3); padding: 4px; min-width: 200px; max-height: 300px; overflow-y: auto; }
+.tsel-pop { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: var(--z-dropdown); background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--sh-3); padding: 4px; min-width: 200px; max-width: 100%; max-height: 320px; overflow-y: auto; }
+.tsel-filter { padding: 4px; position: sticky; top: 0; background: var(--card); z-index: 1; }
+.tsel-filter input { width: 100%; box-sizing: border-box; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-size: var(--fs-sm); color: var(--ink); background: var(--bg); }
+.tsel-filter input:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: var(--brand); }
+.tsel-list { display: flex; flex-direction: column; }
 .tsel-item { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: 8px 10px; border: 0; background: transparent; border-radius: var(--r-sm); color: var(--ink); font: inherit; font-size: var(--fs-base); cursor: pointer; text-align: start; }
 .tsel-item svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.tsel-empty { padding: 12px; text-align: center; color: var(--ink-2); font-size: var(--fs-sm); }
 @media (hover:hover) and (pointer:fine) { .tsel-item:hover { background: var(--sunk); } }
 .tsel-item.on { background: var(--brand-50); color: var(--brand); }
 
@@ -833,17 +786,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .sec-h h2 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; }
 .sec-h p { color: var(--ink-3); font-size: 14px; margin-top: 4px; }
 .bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.tc { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px; box-shadow: var(--sh-1); transition: 0.18s; display: flex; flex-direction: column; min-height: 150px; color: var(--ink); }
-@media (hover:hover) and (pointer:fine) { .tc:hover { box-shadow: var(--sh-2); transform: translateY(-2px); border-color: var(--line-2); } }
-.tc .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--sunk); color: var(--ink); }
-.tc .ic svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.tc h4 { margin-top: 14px; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
-.tc p { font-size: 13px; color: var(--ink-2); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.tc .ft2 { margin-top: auto; padding-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
-.tag { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--r-full); background: var(--sunk); font-size: 12px; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
-.tag.free { background: var(--ok-50); color: var(--ok-700); }
-.tag.cost { background: var(--brand-50); color: var(--brand-600); }
-.by { font-size: 12px; color: var(--ink-3); }
+/* .tc 卡本体 = components.css (home/market/user/favorites 单源四行卡) */
 
 .dark { background: var(--ink); color: var(--card); border-radius: var(--r-xl); padding: 48px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; position: relative; overflow: hidden; }
 .dark:before { content: ""; position: absolute; inset: auto -10% -60% 40%; height: 120%; background: radial-gradient(closest-side, rgba(255, 77, 77, 0.35), transparent); pointer-events: none; }
@@ -857,7 +800,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .term .g { color: var(--term-ok); }
 .dark > *, .bento > * { min-width: 0; }
 
-.feat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+.feat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
 .feat > div { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px; }
 .feat h4 { font-size: 15px; font-weight: 650; margin-top: 12px; }
 .feat p { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
@@ -873,11 +816,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .hero h1 { font-size: 40px; }
   .hero p { font-size: 16px; }
   .home .composer { border-radius: 22px; margin-top: 24px; }
-  .quick { justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: calc(-1 * var(--gut)); margin-right: calc(-1 * var(--gut)); padding: 0 var(--gut); }
-  .quick a { flex: none; }
   .bento { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .tc { min-height: 0; padding: 14px; }
-  .tc p { font-size: 12px; }
   .sec { padding: 48px 0; }
   .sec-h h2 { font-size: 22px; }
   .dark { grid-template-columns: 1fr; padding: 28px 22px; gap: 24px; }
@@ -1036,16 +975,12 @@ body { overflow-x: clip; }
   .ft .ft-in a::after { content: ""; position: absolute; inset: -14px -4px; }
   .toolpage .fav-btn { position: relative; }
   .toolpage .fav-btn::after { content: ""; position: absolute; inset: -6px -8px; }
-  .quick a { position: relative; }
-  .quick a::after { content: ""; position: absolute; inset: -5px -3px; }
   .rs-item .a .btn { position: relative; }
   .rs-item .a .btn::after { content: ""; position: absolute; inset: -6px -6px; }
   .made a { position: relative; }
   .made a::after { content: ""; position: absolute; inset: -10px -4px; }
   .crumbs a { position: relative; }
   .crumbs a::after { content: ""; position: absolute; inset: -10px -4px; }
-  .hero .pill { position: relative; }
-  .hero .pill::after { content: ""; position: absolute; inset: -7px -4px; }
 }
 @media (min-width: 768px) {
   .ft .ft-in a { padding: 6px 0; }
@@ -1057,8 +992,6 @@ body { overflow-x: clip; }
 /* 收藏按钮: 高度 32 + 图标 18 (原 22/13) */
 .toolpage .fav-btn { height: 32px; padding: 0 10px; }
 .toolpage .fav-btn svg { width: 18px; height: 18px; }
-/* 快捷胶囊图标 18 */
-.quick a svg { width: 18px; height: 18px; }
 /* 移动抽屉: 语言入口 (复用 header 语言菜单逻辑) */
 .mobile-nav-lang { display: flex; flex-direction: column; gap: 2px; padding: 6px 6px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
 .mobile-lang-btn { width: 100%; min-height: 44px; padding: 0 var(--s3); border: 0; border-radius: var(--r-sm); background: none; display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: var(--fs-md); font-weight: 650; color: var(--ink); cursor: pointer; }

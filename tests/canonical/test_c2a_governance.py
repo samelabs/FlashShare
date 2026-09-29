@@ -271,12 +271,13 @@ with db() as con:
                 " where tool_key=%s", (tk3,))
 
 # ═══ E. author visibility ═══
+# home-polish: the card is a single navigation surface (→ tool page);
+# the author renders as text on the card, the author page is reached
+# from the tool page.
 st, _h, home = _req("GET", "/")
-check("E1 community card links the author page",
-      f'href="/u/{dev_ck_user}"' in (home or ""))
+check("E1 community card shows the author", f'@{dev_ck_user}' in (home or ""))
 st, _h, market = _req("GET", "/tools")
-check("E2 market card links the author page",
-      f'href="/u/{dev_ck_user}"' in (market or ""))
+check("E2 market card shows the author", f'@{dev_ck_user}' in (market or ""))
 # MCP summaries
 from identity.apikeys import create_key
 from economy.billing import grant as _grant

@@ -35,15 +35,12 @@
 
   <section class="hero">
     <div class="wrap">
-      <a class="pill" href="/agents"><em>MCP</em><span data-i18n="home_mcp_pill">{{ texts.home_mcp_pill }}</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
       <h1><span data-i18n="hero_title_1">{{ texts.hero_title_1 }}</span><br><span class="grad" data-i18n="hero_title_2">{{ texts.hero_title_2 }}</span></h1>
       <p data-i18n="hero_sub_v2">{{ texts.hero_sub_v2 }}</p>
 
       <div class="home-composer" id="homeComposer">
         <div id="toolInput" class="ti-mount"></div>
       </div>
-      <div class="quick" id="quickTools"></div>
       <div id="result" class="result hidden" aria-live="polite"></div>
     </div>
   </section>
@@ -51,24 +48,15 @@
   <section class="sec">
     <div class="wrap">
       <div class="sec-h">
-        <div><h2 data-i18n="home_tools_title">{{ texts.home_tools_title }}</h2>
-          <p data-i18n="home_tools_sub">{{ texts.home_tools_sub }}</p></div>
-        <a class="btn btn-s" href="/tools"><span data-i18n="home_all_tools">{{ texts.home_all_tools }}</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+        <h2 data-i18n="home_tools_title">{{ texts.home_tools_title }}</h2>
+        <form class="tool-search sec-search" method="get" action="/tools" role="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_path("search") }}</svg>
+          <input type="search" name="q" autocomplete="off" data-i18n-placeholder="tool_search_ph" placeholder="{{ texts.tool_search_ph }}" aria-label="{{ texts.tool_search_ph }}">
+        </form>
       </div>
       <div class="bento" id="homeBento">
-        {% for t in tools[:8] %}
-        <a class="tc" href="/tool/{{ t.id }}" data-tool-id="{{ t.id }}">
-          <span class="ic" aria-hidden="true">{{ icon_tool_svg(t.icon) }}</span>
-          <h4>{{ (t.label | lt(lang)) or t.id }}</h4>
-          {% if t.desc %}<p>{{ t.desc | lt(lang) }}</p>{% endif %}
-          <div class="ft2">
-            <span class="tag">{% if t.files_min == 0 and t.files_max == 0 %}{{ texts['out_kind_text'] }}{% elif t.files_min == t.files_max and t.files_max == 1 %}{{ texts.n_files_one }}{% else %}{{ texts.files_window_short.format(min=t.files_min, max=t.files_max) }}{% endif %}</span>
-            {% if t.cost %}<span class="tag cost">{{ t.cost }} {{ texts.credits_short }}</span>{% else %}<span class="tag free">{{ texts.free }}</span>{% endif %}
-            {% if t.owner_handle %}<a class="by" href="/u/{{ t.owner_handle }}">@{{ t.owner_handle }}</a>{% endif %}
-          </div>
-        </a>
-        {% endfor %}
+        {% from "partials/tool_identity.html" import tool_card with context %}
+        {% for t in tools[:8] %}{{ tool_card(t, lang, texts) }}{% endfor %}
       </div>
     </div>
   </section>
@@ -92,7 +80,6 @@
         </div>
       </div>
       <div class="feat">
-        <div><span class="ic">{{ icon_svg("bolt") }}</span><h4 data-i18n="home_feat1_t">{{ texts.home_feat1_t }}</h4><p data-i18n="home_feat1_s">{{ texts.home_feat1_s }}</p></div>
         <div><span class="ic">{{ icon_svg("expiry") }}</span><h4 data-i18n="home_feat2_t">{{ texts.home_feat2_t }}</h4><p data-i18n="home_feat2_s">{{ texts.home_feat2_s }}</p></div>
         <div><span class="ic">{{ icon_svg("wrench") }}</span><h4 data-i18n="home_feat3_t">{{ texts.home_feat3_t }}</h4><p data-i18n="home_feat3_s">{{ texts.home_feat3_s }}</p></div>
       </div>
@@ -108,6 +95,7 @@
 {% block script_head %}
 <script>
 window.__LIMITS__ = {{ limits_json|safe }};
+window.__FORMAT_FAMILIES__ = JSON.parse({{ formats_json|tojson }});
 window.__TOOLS__ = JSON.parse({{ tools_json|tojson }});
 window.__DELIVERY__ = {{ delivery_json|safe }};
 window.__PAGE__ = "home";
