@@ -196,11 +196,15 @@ try:
                                        "b64": _b64(b"ab\x00cd")}],
                             "client_ref": f"apc2-{_u}"}, TOK)
     _t = _tool_text(d)
-    # NUL text → sniff err_content_mismatch_text, which the call layer
-    # surfaces to agents as err_format_not_supported (IO-1 mapping, unchanged)
+    # NUL text → sniff err_content_mismatch_text, surfaced VERBATIM with
+    # the structured ingress detail (detected/suggested_name null when
+    # the real format is unrecognizable)
     check("C2 NUL .log rejected",
           (d.get("result") or {}).get("isError") is True
-          and _t.get("error") == "err_format_not_supported"
+          and _t.get("error") == "err_content_mismatch_text"
+          and _t.get("filename") == "bad.log"
+          and _t.get("detected") is None
+          and _t.get("suggested_name") is None
           and isinstance(_t.get("message"), str), _t)
 
     # ═══ D. unified isError JSON (both failure kinds) ═══════════════

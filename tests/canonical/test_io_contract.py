@@ -448,9 +448,20 @@ try:
     res = d.get("result") or {}
     txt = ((res.get("content") or [{}])[0].get("text", ""))
     err = (d.get("error") or {}).get("message", "")
-    check("M5 format-mismatch error is plain English + accepted formats",
+    # content/extension mismatch keeps its typed code and carries the
+    # structured ingress detail (detected/suggested_name null for an
+    # unrecognizable body)
+    try:
+        _m5 = _json.loads(txt)
+    except Exception:
+        _m5 = {}
+    check("M5 format-mismatch error is plain English + typed detail",
           ((d.get("result") or {}).get("isError") is True
-            and "not supported" in txt and ".png" in txt)
+            and _m5.get("error") == "err_content_mismatch_image"
+            and _m5.get("filename") == "z.png"
+            and _m5.get("detected") is None
+            and _m5.get("suggested_name") is None
+            and "does not match" in txt)
           or ("not supported" in err and ".png" in err), (txt, err))
     # catalog_search summary shape
     st, d = _call("catalog_search", {"q": "share"}, TOK, 42)

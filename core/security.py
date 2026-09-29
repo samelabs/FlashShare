@@ -28,6 +28,59 @@ def verify_source_token(token: str, user_id: int, file_id: str) -> bool:
     return hmac.compare_digest(sign_source_token(user_id, file_id), token)
 
 
+# ISO-BMFF container brands (bytes 8..12 of a `ftyp` box) → extension.
+_BMFF_BRANDS = {
+    b"heic": ".heic", b"heix": ".heic", b"hevc": ".heic",
+    b"mif1": ".heic", b"msf1": ".heic",
+    b"avif": ".avif",
+    b"qt  ": ".mov",
+    b"isom": ".mp4", b"mp41": ".mp4", b"mp42": ".mp4",
+    b"iso2": ".mp4", b"M4V ": ".mp4",
+}
+
+
+def detect_ext(head: bytes) -> str | None:
+    """Magic-number → extension, the single detection point for ingress
+    diagnostics (content/extension mismatch reports) and placeholder
+    result names. Covers common binary formats; unknown → None."""
+    m = {
+        b"\x89PNG\r\n\x1a\n": ".png",
+        b"\xff\xd8": ".jpg",
+        b"GIF87a": ".gif", b"GIF89a": ".gif",
+        b"%PDF": ".pdf",
+        b"BM": ".bmp",
+        b"PK\x03\x04": ".zip",
+        b"\x1f\x8b": ".gz",
+        b"ID3": ".mp3", b"\xff\xfb": ".mp3", b"\xff\xf3": ".mp3",
+        b"RIFF": ".webp",  # RIFF 容器细化需读 8-12 位 (WEBP/WAV), 保守归 webp
+    }
+    for magic, ext in m.items():
+        if head.startswith(magic):
+            if magic == b"RIFF" and len(head) >= 12 and head[8:12] == b"WAVE":
+                return ".wav"
+            if magic == b"RIFF" and len(head) >= 12 and head[8:12] != b"WEBP":
+                continue
+            return ext
+    if len(head) >= 12 and head[4:8] == b"ftyp":
+        return _BMFF_BRANDS.get(head[8:12])
+    return None
+
+
+def mismatch_detail(filename: str, sample: bytes) -> dict:
+    """Structured sniff-rejection detail shared by every ingress surface
+    (web /api/uploads, MCP ticket PUT, MCP inline/url sources):
+    the sanitized filename, the detected real format (or None) and a
+    rename suggestion built from the original stem (or None). The error
+    code itself stays verbatim at each entry point."""
+    detected = detect_ext(sample)
+    stem = os.path.splitext(filename)[0]
+    return {
+        "filename": filename,
+        "detected": detected,
+        "suggested_name": stem + detected if detected else None,
+    }
+
+
 def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
     ext = os.path.splitext(filename.lower())[1]
     if ext in BLOCKED_EXT:

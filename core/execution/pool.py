@@ -16,13 +16,48 @@ logger = logging.getLogger("flashshare")
 
 _pool_lock = threading.Lock()
 
+# worker 数是 capacity 事实, 初始池与每个 replacement 池一致。
+WORKERS = 2
+
 # Eager init at import (原语义: 避免首请求延迟)
-_pool = ProcessPoolExecutor(max_workers=2)
+_pool = ProcessPoolExecutor(max_workers=WORKERS)
 _reset_count = 0
+
+# 本地执行背压: 进程内在途计数上限。worker 池只限制并行执行数,
+# 排队中的 invocation 仍会占住 claim/扣费后的等待 — 在途上限
+# (4×workers) 让超载在 claim 之前就被拒 (err_busy), 不扣费。
+LOCAL_MAX_INFLIGHT = 4 * WORKERS
+
+_inflight_lock = threading.Lock()
+_inflight = 0
+
+
+def try_acquire() -> bool:
+    """占一个本地执行在途名额; 满额返回 False (调用方拒绝, 不排队)。"""
+    global _inflight
+    with _inflight_lock:
+        if _inflight >= LOCAL_MAX_INFLIGHT:
+            return False
+        _inflight += 1
+        return True
+
+
+def release() -> None:
+    """释放一个在途名额 (与 try_acquire 成对; 下限 0 防御性钳位)。"""
+    global _inflight
+    with _inflight_lock:
+        if _inflight > 0:
+            _inflight -= 1
+
+
+def inflight_count() -> int:
+    """当前在途数 (观测/日志用)。"""
+    with _inflight_lock:
+        return _inflight
 
 
 def _new_pool() -> ProcessPoolExecutor:
-    return ProcessPoolExecutor(max_workers=2)
+    return ProcessPoolExecutor(max_workers=WORKERS)
 
 
 def get_pool() -> ProcessPoolExecutor:

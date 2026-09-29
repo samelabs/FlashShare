@@ -580,7 +580,8 @@ def _wrap_raw(body: bytes, filename: str | None = None,
     + byte validation (sniff_allowed falls back to mimetypes).
     """
     if not filename:
-        ext = _sniff_ext(body[:64])
+        from security import detect_ext
+        ext = detect_ext(body[:64])
         if not ext:
             raise RemoteError("bad_output", "unknown output format (no filename given)")
         filename = "result" + ext
@@ -606,29 +607,6 @@ def _wrap_raw(body: bytes, filename: str | None = None,
         final_type = _mt.guess_type(name)[0] or "application/octet-stream"
     return {"filename": name, "content_type": final_type,
             "bytes": validated}
-
-
-def _sniff_ext(head: bytes) -> str | None:
-    """产物魔数 → 扩展名 (占位名生成用)。仅覆盖常见二进制格式; 未识别 → None。"""
-    m = {
-        b"\x89PNG\r\n\x1a\n": ".png",
-        b"\xff\xd8": ".jpg",
-        b"GIF87a": ".gif", b"GIF89a": ".gif",
-        b"%PDF": ".pdf",
-        b"BM": ".bmp",
-        b"PK\x03\x04": ".zip",
-        b"\x1f\x8b": ".gz",
-        b"ID3": ".mp3", b"\xff\xfb": ".mp3", b"\xff\xf3": ".mp3",
-        b"RIFF": ".webp",  # RIFF 容器细化需读 8-12 位 (WEBP/WAV), 保守归 webp
-    }
-    for magic, ext in m.items():
-        if head.startswith(magic):
-            if magic == b"RIFF" and len(head) >= 12 and head[8:12] == b"WAVE":
-                return ".wav"
-            if magic == b"RIFF" and len(head) >= 12 and head[8:12] != b"WEBP":
-                continue
-            return ext
-    return None
 
 
 def sniff_final_type(filename: str, declared: str, body: bytes) -> str:

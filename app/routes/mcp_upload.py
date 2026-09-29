@@ -85,12 +85,12 @@ async def mcp_upload_put(ticket: str, request: Request):
 
     # ── same sniff/format gate as every other ingress surface ──
     from utils import sanitize_filename
-    from security import sniff_allowed
+    from security import sniff_allowed, mismatch_detail
     filename = sanitize_filename(row["filename"] or "upload")
     ok, final_type = sniff_allowed(filename, row["content_type"] or "",
                                    body[:512])
     if not ok:
-        return _err(415, final_type)
+        return _err(415, final_type, **mismatch_detail(filename, body[:512]))
 
     ip = client_ip(request)
 

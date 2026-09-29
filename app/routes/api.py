@@ -281,7 +281,13 @@ async def create_upload(request: Request):
         filename = sanitize_filename(file.filename or "upload")
         valid, final_type = sniff_allowed(filename, file.content_type or "", content[:512])
         if not valid:
-            return JSONResponse({"ok": False, "error": final_type}, 400)
+            # Same structured rejection shape as every other ingress
+            # surface; the offending file is named (batch uploads are
+            # still rejected as a whole).
+            from security import mismatch_detail
+            return JSONResponse({"ok": False, "error": final_type,
+                                 **mismatch_detail(filename, content[:512])},
+                                400)
         pending.append((content, size, filename, final_type))
 
     if not pending:
