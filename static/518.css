@@ -364,7 +364,7 @@
     padding: var(--s2) var(--s3); border-radius: var(--r-sm);
     color: var(--ink); text-decoration: none; font-weight: 650; font-size: var(--fs-md);
   }
-  .mobile-nav-sheet a svg { width: 18px; height: 18px; stroke: currentColor; }
+  .mobile-nav-sheet a svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-2); }
   @media (hover:hover) and (pointer:fine) {
     .mobile-nav-sheet a:hover { background: var(--gray-100); }
   }
