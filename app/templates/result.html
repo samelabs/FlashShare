@@ -25,12 +25,47 @@
         <div class="acts">
           {% if file_count > 1 %}
           <button class="btn btn-b" id="rDownloadAll" type="button">{{ icon_svg("download") }}<span data-i18n="r_download_all">{{ texts.r_download_all }}</span></button>
-          {% elif first_file %}
+          {% elif first_file and not (first_file.is_image and not first_file.deleted) %}
           <a class="btn btn-b" href="{{ first_file.download_url }}" download>{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
           {% endif %}
           <button class="btn btn-s" id="rShareBtn" type="button" aria-label="{{ texts.share_via_system }}" title="{{ texts.share_via_system }}">{{ icon_svg("share") }}<span data-i18n="share_via_system">{{ texts.share_via_system }}</span></button>
         </div>
       </div>
+
+      {# 媒体组: 单文件结果为单图 = 主视图 (原图 ≤60vh 不裁切, 下载在图下方);
+         多图为宫格 (点击放大, 每张可单独下载)。结构与 app.js
+         renderResultItems 完全同构 (rs-media/rs-image/rs-grid/rs-cell)。 #}
+      {% set live_images = items | selectattr("is_image") | rejectattr("deleted") | list %}
+      {% if live_images | length == 1 and file_count == 1 %}
+      <div class="rc-files">
+        <div class="rs-item rs-media">
+          <figure class="rs-image">
+            <img src="/f/{{ live_images[0].public_id }}/inline" alt="{{ live_images[0].filename }}" loading="lazy" decoding="async">
+          </figure>
+          <div class="rs-img-meta">
+            <b>{{ live_images[0].filename }}</b>
+            <small>{{ live_images[0].size_text }} · {{ live_images[0].type_text }}</small>
+            <a class="btn btn-secondary btn-sm rs-dl" href="{{ live_images[0].download_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+          </div>
+        </div>
+      </div>
+      {% elif live_images %}
+      <div class="rc-files">
+        <div class="rs-item rs-media">
+          <div class="rs-grid">
+            {% for it in live_images %}
+            <figure class="rs-cell">
+              <button type="button" class="rs-cell-img" data-zoom="/f/{{ it.public_id }}/inline" aria-label="{{ it.filename }}">
+                <img src="/f/{{ it.public_id }}/inline" alt="{{ it.filename }}" loading="lazy" decoding="async">
+              </button>
+              <figcaption><b>{{ it.filename }}</b><small>{{ it.size_text }}</small></figcaption>
+              <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+            </figure>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
 
       <div class="rc-files">
         {% for it in items %}
@@ -52,13 +87,9 @@
           <span class="pv doc" aria-hidden="true">{{ icon_svg("doc") }}</span>
           <div class="if-body"><b>{{ it.filename }}</b><small data-i18n="r_file_gone">{{ texts.r_file_gone }}</small></div>
         </div>
-        {% else %}
+        {% elif not it.is_image %}
         <div class="rs-item rs-file item-file">
-          {% if it.is_image %}
-          <img class="pv img" src="/f/{{ it.public_id }}/inline" alt="" loading="lazy" decoding="async">
-          {% else %}
           <span class="pv doc" aria-hidden="true">{{ icon_svg(it.glyph or "doc") }}</span>
-          {% endif %}
           <div class="if-body">
             <b>{{ it.filename }}</b>
             <small>{{ it.size_text }} · {{ it.type_text }}</small>
