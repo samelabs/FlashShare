@@ -169,7 +169,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     check(`${ctx} ${spec.name}: has ${sel}`, await page.$(sel) !== null);
   }
   // tool-card geometry: same-row cards equal height, tag row pinned to
-  // the card bottom, tags on a single non-wrapping line
+  // the card bottom, every tag shown in full (never truncated)
   if (spec.cards) {
     const g = await page.evaluate((sel) => {
       const cards = [...document.querySelectorAll(sel)].filter((c) => c.offsetParent);
@@ -185,14 +185,16 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         const fr = ft.getBoundingClientRect();
         const pt = parseFloat(getComputedStyle(ft).paddingTop) || 0;
         if (r.bottom - fr.bottom > 24) bottomOk = false;
-        if (fr.height - pt > 26) tagWrap = true;
+        ft.querySelectorAll(".tag").forEach((tg) => {
+          if (tg.scrollWidth > tg.clientWidth + 1) tagWrap = true;
+        });
       });
       rows.forEach((hs) => { maxDiff = Math.max(maxDiff, Math.max(...hs) - Math.min(...hs)); });
       return { cards: cards.length, maxDiff: Math.round(maxDiff * 10) / 10, bottomOk, tagWrap };
     }, spec.cards);
     check(`${ctx} ${spec.name}: card row heights equal (≤1px)`, g.cards >= 1 && g.maxDiff <= 1, JSON.stringify(g));
     check(`${ctx} ${spec.name}: tag row pinned to card bottom`, g.bottomOk);
-    check(`${ctx} ${spec.name}: tag row does not wrap`, !g.tagWrap);
+    check(`${ctx} ${spec.name}: tags are never truncated`, !g.tagWrap);
   }
   if (spec.noRuns) {
     const meta = await page.evaluate(() => ((document.querySelector(".tp-h .meta") || {}).textContent || "").trim());
@@ -746,9 +748,12 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         if (!z) return { present: false };
         const r = z.getBoundingClientRect();
         const cx = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        return { present: true, w: Math.round(r.width), clickable: cx === z || z.contains(cx) };
+        const card = z.closest(".composer").getBoundingClientRect();
+        return { present: true, w: Math.round(r.width), cardW: Math.round(card.width),
+                 clickable: cx === z || z.contains(cx) };
       });
       check("polish mobile: upload zone visible + clickable", zone.present && zone.w >= 120 && zone.clickable, JSON.stringify(zone));
+      check("polish mobile: upload zone spans the composer width", zone.present && zone.w >= zone.cardW - 40, JSON.stringify(zone));
 
       // ── F20/F21 (home-polish contract): upload zone secondary copy =
       // format FAMILIES (single-source governance.formats manifest) ·

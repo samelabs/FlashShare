@@ -513,14 +513,11 @@ pre.rs-text, pre.rs-json {
 }
 .tc .ft2 {
   margin-top: auto; padding-top: 12px; min-width: 0;
-  display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   font-size: 12px; color: var(--ink-3);
 }
-/* 标签不换行, 超出省略: 卡内标签转为块级 (flex item), 文本可截断 */
-.tc .ft2 .tag {
-  display: block; flex: 0 1 auto; min-width: 0; max-width: none; line-height: 22px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+/* 标签从不截断: 窄卡上整枚标签换到下一行, 同行卡片仍由网格拉伸等高 */
+.tc .ft2 .tag { flex: 0 0 auto; white-space: nowrap; }
 .tc .by {
   margin-inline-start: auto; flex: 0 1 auto; min-width: 0;
   display: flex; align-items: center; gap: 3px;
@@ -560,6 +557,7 @@ pre.rs-text, pre.rs-json {
 .ti-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; margin: 14px 16px 0; min-height: 132px; padding: var(--s3);
+  width: calc(100% - 32px); box-sizing: border-box;
   border: 1.5px dashed var(--line-2); border-radius: var(--r-lg);
   background: none; font: inherit; cursor: pointer; text-align: center;
 }
