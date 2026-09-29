@@ -17,11 +17,6 @@ Tool lifecycle:
 
 from pathlib import Path
 
-# Tool type constants
-TYPE_VIEW = "view"
-TYPE_PEEK = "peek"
-TYPE_PRODUCE = "produce"
-
 # Icon identifiers (matched in frontend SVG sprite)
 VALID_ICONS = {
     "shield", "image", "archive", "edit", "crop",
@@ -41,14 +36,13 @@ class ToolError(Exception):
 _registry = []
 
 
-def register(tool_id, tool_type, label, icon, handler,
+def register(tool_id, label, icon, handler,
              accept=None, desc=None, files_min=1, files_max=1,
              outputs=("file",), params=None):
     """Register a tool.
 
     Args:
         tool_id: unique string identifier (lowercase + underscores).
-        tool_type: TYPE_VIEW, TYPE_PEEK, or TYPE_PRODUCE.
         label: dict of {lang_code: display_name}. Must contain "en".
         icon: icon identifier from VALID_ICONS.
         handler: callable(tool_input: dict, params: dict) -> dict.
@@ -85,7 +79,6 @@ def register(tool_id, tool_type, label, icon, handler,
         "tool_id": tool_id,
         "owner_id": None,
         "execution": "local",
-        "tool_type": tool_type,
         "label": label,
         "desc": desc,
         "icon": icon,
@@ -102,7 +95,6 @@ def register(tool_id, tool_type, label, icon, handler,
         raise ValueError(f"invalid tool declaration: {exc}") from exc
     _registry.append({
         "id": tool_id,
-        "type": tool_type,
         "label": decl["label"],
         "desc": decl["desc"],
         "icon": icon,

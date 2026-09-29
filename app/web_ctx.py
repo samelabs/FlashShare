@@ -21,7 +21,7 @@ _STATIC = _BASE / "static"
 # (tokens + components + the 518.css page file): any file change bumps
 # every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v69"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+_CSS_VERSION = "v70"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
 for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]

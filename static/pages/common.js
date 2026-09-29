@@ -39,6 +39,43 @@ window.wirePwaDownloadLinks = function (scope) {
   });
 };
 
+// ── Image zoom (single site-wide lightbox authority) ──────────────
+// Result grids (inline result card + /r result page) open a full-size
+// view on click: one overlay element, image untouched (no fetch, no
+// re-render), click anywhere / Escape closes. Long-press save on the
+// underlying grid cells is untouched (the overlay only covers click).
+window.wireImageZoom = function (scope) {
+  const root = scope || document;
+  if (!root.querySelectorAll) return;
+  root.querySelectorAll("[data-zoom]").forEach((btn) => {
+    if (btn.dataset.zoomWired) return;
+    btn.dataset.zoomWired = "1";
+    btn.addEventListener("click", () => {
+      let layer = document.getElementById("imgZoom");
+      if (!layer) {
+        layer = document.createElement("div");
+        layer.id = "imgZoom";
+        layer.className = "img-zoom hidden";
+        layer.setAttribute("role", "dialog");
+        layer.setAttribute("aria-modal", "true");
+        layer.innerHTML = "<img alt=\"\">";
+        layer.addEventListener("click", () => layer.classList.add("hidden"));
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") layer.classList.add("hidden");
+        });
+        document.body.appendChild(layer);
+      }
+      const src = btn.getAttribute("data-zoom") || "";
+      const img = layer.querySelector("img");
+      if (img && src) {
+        img.src = src;
+        img.alt = btn.getAttribute("aria-label") || "";
+        layer.classList.remove("hidden");
+      }
+    });
+  });
+};
+
 // ── Text result links (tool page result + /r page, one implementation) ──
 // Tool-returned text is untrusted: built with DOM nodes only, and only
 // https:// URLs become links (new tab, noopener/noreferrer/nofollow).

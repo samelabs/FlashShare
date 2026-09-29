@@ -36,7 +36,6 @@ from governance.tool_params import validate_params_decl, ParamsDeclError
 import re as _re
 _TOOL_ID_RE = _re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 _EXECUTIONS = ("local", "http")
-_TOOL_TYPES = ("view", "peek", "produce")
 _VISIBILITIES = ("private", "unlisted", "public")
 _MAX_LABEL = 40
 _MAX_DESC = 200
@@ -166,8 +165,6 @@ def validate_tool_declaration(decl: dict) -> dict:
 
     if decl.get("execution") not in _EXECUTIONS:
         raise DeclarationError("bad_execution")
-    if decl.get("tool_type") not in _TOOL_TYPES:
-        raise DeclarationError("bad_tool_type")
     if decl.get("visibility") not in _VISIBILITIES:
         raise DeclarationError("bad_visibility")
 
@@ -211,7 +208,6 @@ def validate_tool_declaration(decl: dict) -> dict:
         "tool_id": tool_id,
         "owner_id": owner_id,
         "execution": decl["execution"],
-        "tool_type": decl["tool_type"],
         "label": label,
         "desc": desc,
         "icon": icon,
@@ -320,7 +316,6 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "owner_id": decl.get("owner_id"),
         "tool_id": decl["tool_id"],
         "execution": decl["execution"],
-        "tool_type": decl["tool_type"],
         "label_json": json.dumps(decl["label"], ensure_ascii=False),
         "desc_json": (json.dumps(decl["desc"], ensure_ascii=False)
                       if decl.get("desc") else None),

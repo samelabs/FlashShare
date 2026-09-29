@@ -18,7 +18,7 @@ import os
 
 from PIL import Image, ImageOps
 
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import register, ToolError
 
 MAX_SOURCES = 20
 DPI = 150
@@ -38,7 +38,8 @@ def img2pdf_handler(tool_input, params):
         params: {} (no presets — conversion is a single operation)
 
     Returns:
-        {"stream": BytesIO, "filename": str, "content_type": str, "size": int}
+        {"items": [{"kind": "file", "stream": BytesIO, "filename": str,
+                    "content_type": str, "size": int}]}
     """
     sources = tool_input.get("sources", [])
     if not sources:
@@ -117,7 +118,6 @@ def img2pdf_handler(tool_input, params):
 
 register(
     tool_id="img2pdf",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Images to PDF", "zh": "图片转PDF", "ja": "画像をPDFへ",
         "ko": "이미지를 PDF로", "es": "Imágenes a PDF", "ar": "صور إلى PDF",

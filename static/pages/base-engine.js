@@ -29,10 +29,11 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
       document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el){try{el.setAttribute("placeholder",window.t(el.getAttribute("data-i18n-placeholder")))}catch(err){}});
       if(typeof window.__afterI18n==="function")window.__afterI18n();
     };
-    // Language switcher — one binder for every mount (header + mobile sheet)
+    // Language switcher — header top bar only (the single site-wide
+    // entry; visible on every viewport)
     (function(){
       if(window.__LANG_INIT)return;window.__LANG_INIT=true;
-      var mounts=Array.prototype.slice.call(document.querySelectorAll(".lang-switch, .mobile-nav-lang"));
+      var mounts=Array.prototype.slice.call(document.querySelectorAll(".lang-switch"));
       if(!mounts.length)return;
       function langOptions(){return window.__SUPPORTED_LANGS.map(function(c){return'<button class="lang-option'+(c===window.__LANG?" active":"")+'" type="button" role="option" aria-selected="'+(c===window.__LANG)+'" data-lang="'+c+'">'+window.__LANG_LABELS[c]+"</button>"}).join("")}
       function closeAll(){mounts.forEach(function(m){var b=m.querySelector("button[aria-haspopup]"),u=m.querySelector(".lang-menu");if(b)b.setAttribute("aria-expanded","false");if(u)u.classList.add("hidden")})}

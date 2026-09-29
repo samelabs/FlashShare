@@ -138,11 +138,12 @@ function newOperationRef() {
 window.newOperationRef = newOperationRef;
 
 // ── Result presentation (IO-2): the SAME structure as the /r result
-// page renders server-side — link bar first, then ordered items
+// page renders server-side — link bar first, then media (single image =
+// full main view / multiple images = grid), then the ordered items
 // (file = preview + one download; text = tinted block + copy; json =
 // collapsible code). Single input + single output file adds the
-// size-delta line. Structure classes rs-* stay stable (/r page +
-// browser suites ride on them). ──
+// size-delta line BELOW the media, never in the card title. Structure
+// classes rs-* stay stable (/r page + browser suites ride on them). ──
 function renderResultItems(items, opts) {
   opts = opts || {};
   const pwa = !!opts.pwa;
@@ -161,33 +162,59 @@ function renderResultItems(items, opts) {
         '" download aria-label="' + t("downloadFile") + '" title="' + t("downloadFile") + '">' +
         svgIcon("download") + "<span>" + t("downloadFile") + "</span></a>";
   };
+  const isImage = (it) => {
+    const ct = it.content_type || "";
+    return ct.startsWith("image/") && ct.toLowerCase() !== "image/svg+xml";
+  };
   const fileItems = (items || []).filter((it) => it.kind === "file");
+  const imageItems = fileItems.filter(isImage);
+  // Size-delta: single input + single output only, as a small line
+  // under the media — never a title badge, never the main view.
   const showDelta = inputSizes && inputSizes.length === 1 && fileItems.length === 1
     && fileItems[0].size;
-  const fileRow = (it) => {
-    const ct = it.content_type || "";
-    const isImg = ct.startsWith("image/") && ct.toLowerCase() !== "image/svg+xml";
-    const changed = showDelta && (it.size || 0) !== inputSizes[0];
-    const sizeTxt = changed
-      ? fmtSize(inputSizes[0]) + " → " + fmtSize(it.size || 0)
-      : fmtSize(it.size || 0);
-    let delta = "";
-    if (changed && inputSizes[0] > 0) {
+  const deltaLine = (it) => {
+    if (!showDelta || (it.size || 0) === inputSizes[0]) return "";
+    let pctTxt = "";
+    if (inputSizes[0] > 0) {
       const pct = Math.round((1 - (it.size || 0) / inputSizes[0]) * 100);
-      if (pct !== 0) {
-        const down = pct > 0;
-        delta = '<span class="delta' + (down ? "" : " up") + '">' + (down ? "↓ " + pct + "%" : "↑ " + (-pct) + "%") + "</span>";
-      }
+      if (pct > 0) pctTxt = " · ↓ " + pct + "%";
+      else if (pct < 0) pctTxt = " · ↑ " + (-pct) + "%";
     }
-    const pv = isImg
-      ? '<img class="pv img" src="/f/' + encodeURIComponent(it.public_id) + '/inline" alt="" loading="lazy" decoding="async">'
-      : '<span class="pv doc" aria-hidden="true">' + svgIcon("doc") + "</span>";
+    return "<small>" + escapeHtml(fmtSize(inputSizes[0]) + " → " + fmtSize(it.size || 0) + pctTxt) + "</small>";
+  };
+  // Single image result = main view (full image, ≤60vh, no crop) with
+  // one download below; multiple images = grid (click to zoom).
+  let media = "";
+  if (imageItems.length === 1 && fileItems.length === 1) {
+    const it = imageItems[0];
+    media = '<div class="rs-item rs-media">'
+      + '<figure class="rs-image"><img src="/f/' + encodeURIComponent(it.public_id)
+      + '/inline" alt="' + escapeHtml(it.filename || "") + '" loading="lazy" decoding="async"></figure>'
+      + '<div class="rs-img-meta"><b>' + escapeHtml(it.filename || "file") + "</b>"
+      + deltaLine(it) + dlControl(it) + "</div></div>";
+  } else if (imageItems.length) {
+    media = '<div class="rs-item rs-media"><div class="rs-grid">'
+      + imageItems.map((it) =>
+        '<figure class="rs-cell">'
+        + '<button type="button" class="rs-cell-img" data-zoom="/f/' + encodeURIComponent(it.public_id)
+        + '/inline" aria-label="' + escapeHtml(it.filename || "") + '">'
+        + '<img src="/f/' + encodeURIComponent(it.public_id) + '/inline" alt="'
+        + escapeHtml(it.filename || "") + '" loading="lazy" decoding="async"></button>'
+        + '<figcaption><b>' + escapeHtml(it.filename || "file") + "</b>"
+        + "<small>" + escapeHtml(fmtSize(it.size || 0)) + "</small></figcaption>"
+        + dlControl(it)
+        + "</figure>").join("")
+      + "</div></div>";
+  }
+  const fileRow = (it) => {
+    const pv = '<span class="pv doc" aria-hidden="true">' + svgIcon("doc") + "</span>";
     return '<div class="item-file rs-item rs-file">' + pv
       + '<div class="if-body"><b>' + escapeHtml(it.filename || "file") + "</b>"
-      + "<small>" + escapeHtml(sizeTxt) + "</small>" + delta + "</div>"
+      + "<small>" + escapeHtml(fmtSize(it.size || 0)) + "</small>" + deltaLine(it) + "</div>"
       + '<div class="a">' + dlControl(it) + "</div></div>";
   };
-  const rows = (items || []).map(function (it) {
+  const rows = (items || []).filter((it) => !(it.kind === "file" && isImage(it)))
+    .map(function (it) {
     if (it.kind === "text") {
       return '<div class="rs-item item-text">'
         + '<div class="lbl"><span>' + escapeHtml(t("r_text_out")) + "</span>" + copyBtn("text") + "</div>"
@@ -204,7 +231,7 @@ function renderResultItems(items, opts) {
     }
     return fileRow(it);
   }).join("");
-  return rows;
+  return media + rows;
 }
 
 function wireResultItemActions() {
@@ -239,6 +266,8 @@ function wireResultItemActions() {
   // Standalone PWA: download anchors route through the engine authority
   // (common.js wirePwaDownloadLinks — no in-window navigation).
   window.wirePwaDownloadLinks && window.wirePwaDownloadLinks(result);
+  // Grid cells open the full-size view (shared lightbox, /r uses the same)
+  window.wireImageZoom && window.wireImageZoom(result);
 }
 
 function showItemsResult(res) {

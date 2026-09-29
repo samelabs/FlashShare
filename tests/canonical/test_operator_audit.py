@@ -199,9 +199,9 @@ def _audit_fail_on(marker_action):
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility,"
+        " label_json, icon, visibility,"
         " enabled, created_at, updated_at)"
-        " values (%s, NULL, %s, 'local', 'produce', '{\"en\":\"OA\"}',"
+        " values (%s, NULL, %s, 'local', '{\"en\":\"OA\"}',"
         " 'wand', 'public', TRUE, %s, %s)",
         (f"oatool_{_u}", f"oatool_{_u}", ts, ts))
 r = _post(f"/samelabs/tools/oatool_{_u}/pricing",
@@ -560,9 +560,9 @@ import json as _json3
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility,"
+        " label_json, icon, visibility,"
         " enabled, created_at, updated_at)"
-        " values (%s, NULL, %s, 'http', 'produce', %s,"
+        " values (%s, NULL, %s, 'http', %s,"
         " 'wand', 'public', TRUE, %s, %s)",
         (rt + "2", rt + "2", _json3.dumps({"en": "OA2"}), ts, ts))
     con.execute(
@@ -705,9 +705,9 @@ rt4 = f"oatool4_{_u}"
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility,"
+        " label_json, icon, visibility,"
         " enabled, created_at, updated_at)"
-        " values (%s, NULL, %s, 'local', 'produce', %s, 'wand',"
+        " values (%s, NULL, %s, 'local', %s, 'wand',"
         " 'public', TRUE, %s, %s)",
         (rt4, rt4, _json3.dumps({"en": "CC4"}), ts, ts))
     con.execute(
@@ -850,9 +850,9 @@ except ValueError as e:
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility,"
+        " label_json, icon, visibility,"
         " enabled, created_at, updated_at)"
-        " values (%s, NULL, %s, 'local', 'produce', %s, 'wand',"
+        " values (%s, NULL, %s, 'local', %s, 'wand',"
         " 'public', TRUE, %s, %s)",
         (rt4 + "z", rt4 + "z", _json3.dumps({"en": "ZZ"}), ts, ts))
     con.execute(
@@ -933,9 +933,9 @@ rt5 = f"oatool5_{_u}"
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility,"
+        " label_json, icon, visibility,"
         " enabled, created_at, updated_at)"
-        " values (%s, NULL, %s, 'local', 'produce', %s, 'wand',"
+        " values (%s, NULL, %s, 'local', %s, 'wand',"
         " 'public', TRUE, %s, %s)",
         (rt5, rt5, _json3.dumps({"en": "R5"}), ts, ts))
 r = _post(f"/samelabs/tools/{rt5}/pricing",

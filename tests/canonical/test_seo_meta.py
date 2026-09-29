@@ -131,8 +131,8 @@ def _setup_fixtures():
     _API_KEY = _json.loads(data)["key"]["key"]
 
     img = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91J1vAAAADklEQVR4nGNg"
-        "GBgAgv0BBwDQ/0QDAAAAAElFTkSuQmCC")
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD9"
+        "1JpzAAAAFklEQVR4nGOI6rE5oaHBxMDAMClFBAAa3ANHnVmc8QAAAABJRU5ErkJggg==")
     st, data, _, _ = _req("POST", "/mcp", {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": "compress", "arguments": {

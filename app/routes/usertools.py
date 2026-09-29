@@ -320,7 +320,6 @@ async def create_user_tool(request: Request):
         "tool_id": tool_id,
         "owner_id": user["id"],
         "execution": execution,
-        "tool_type": "produce",
         "label": label if isinstance(label, dict) else {"en": label},
         "desc": desc if isinstance(desc, dict) else ({"en": desc} if desc else None),
         "icon": "wand",

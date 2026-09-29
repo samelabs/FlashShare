@@ -436,7 +436,7 @@ from governance.tool_supply import (validate_tool_declaration as _vtd,
 
 def _decl(**kw):
     d = {"tool_key": f"cf_{_u}", "tool_id": f"cf_{_u}", "owner_id": None,
-         "execution": "local", "tool_type": "produce",
+         "execution": "local",
          "label": {"en": "CF"}, "desc": None, "icon": "wand",
          "inputs": {"files": {"min": 0, "max": 1, "accept": None}},
          "outputs": ["text"], "params": None, "visibility": "unlisted",
@@ -464,7 +464,7 @@ _seed_err = ""
 for t in _reg:
     try:
         _vtd({"tool_key": t["id"], "tool_id": t["id"], "owner_id": None,
-              "execution": "local", "tool_type": t["type"],
+              "execution": "local",
               "label": t["label"], "desc": t["desc"], "icon": t["icon"],
               "inputs": {"files": {"min": t["files_min"], "max": t["files_max"],
                                    "accept": sorted(t["accept"]) if t["accept"] else None}},
@@ -536,9 +536,9 @@ def _mk_local_tool(tool_id, owner_id, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, visibility, enabled,"
+            " execution, label_json, icon, visibility, enabled,"
             " created_at, updated_at)"
-            " values (%s, %s, %s, 'local', 'produce', %s, 'wand',"
+            " values (%s, %s, %s, 'local', %s, 'wand',"
             " 'public', TRUE, %s, %s)",
             (tool_id, owner_id, tool_id,
              _json.dumps({"en": "AX"}), ts, ts))
@@ -559,7 +559,7 @@ def _run_gate(payer, tool_id, owner, ref):
     try:
         return loop.run_until_complete(_gate.run(
             {"id": payer},
-            {"id": tool_id, "tool_key": tool_id, "type": "produce",
+            {"id": tool_id, "tool_key": tool_id,
              "owner_id": owner},
             ToolInvocation(tool_id=tool_id, files=[SourceFile("p", "t")],
                            params={},

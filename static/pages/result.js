@@ -73,4 +73,7 @@
   // Standalone PWA: download anchors route through the engine authority
   // (common.js wirePwaDownloadLinks — no in-window navigation).
   window.wirePwaDownloadLinks && window.wirePwaDownloadLinks(document);
+  // Image grid cells open the full-size view (same lightbox as the
+  // inline result card — common.js single authority).
+  window.wireImageZoom && window.wireImageZoom(document);
 })();

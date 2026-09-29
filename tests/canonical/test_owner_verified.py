@@ -118,6 +118,12 @@ try:
     listed = [t for t in list_catalog() if t["id"] == KEY]
     check("OV-B5 list_catalog projection carries the same flag",
           len(listed) == 1 and listed[0]["owner_verified"] is True)
+    from governance.catalog import owner_public_tools
+    own = [t for t in owner_public_tools(u_active) if t["id"] == KEY]
+    check("OV-B6 author-page projection carries owner_handle + verified",
+          len(own) == 1 and own[0]["owner_handle"]
+          and own[0]["owner_verified"] is True,
+          own and (own[0].get("owner_handle"), own[0].get("owner_verified")))
 
     # ═══ C. expiry flips the flag — no second membership judgment ═══
     with db() as con:
@@ -126,7 +132,10 @@ try:
     after = [t for t in search_catalog("") if t["id"] == KEY]
     check("OV-C1 expired membership → projection False (badge disappears)",
           len(after) == 1 and after[0]["owner_verified"] is False)
-    check("OV-C2 plan_of agrees with the projection",
+    after_own = [t for t in owner_public_tools(u_active) if t["id"] == KEY]
+    check("OV-C2 author-page projection flips too",
+          len(after_own) == 1 and after_own[0]["owner_verified"] is False)
+    check("OV-C3 plan_of agrees with the projection",
           (plan_of(u_active) or {}).get("member") is False)
 finally:
     with db() as con:

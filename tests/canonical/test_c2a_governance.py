@@ -170,10 +170,15 @@ set_tool_delisted(op, tk, True)
 st, _h, home = _req("GET", "/")
 st, _h, market = _req("GET", "/tools")
 st, _h, author = _req("GET", f"/u/{dev_ck_user}")
+# author page asserts the tool's visible artifacts (card link + label),
+# never a bare substring — cache-bust stamps (?v=…) can contain any hex
+# run and once false-positived on "aaa".
 check("B1 delisted: gone from home + market (author page row gone)",
       tk not in (home or "") and tk not in (market or "")
-      and "aaa" not in (author or ""),
-      f"home={tk in (home or '')} market={tk in (market or '')}")
+      and f'href="/tool/{tk}"' not in (author or "")
+      and "Alpha Tool" not in (author or ""),
+      f"home={tk in (home or '')} market={tk in (market or '')}"
+      f" authorCard={f'href=\"/tool/{tk}\"' in (author or '')}")
 st, _h, d = _req("GET", f"/api/tools/search?q=alpha")
 check("B2 delisted: search misses", st == 200 and
       not any(t["id"] == tk for t in (d.get("tools") or [])), str(d)[:100])

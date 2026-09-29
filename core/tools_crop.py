@@ -18,7 +18,7 @@ import os
 
 from PIL import Image, ImageOps
 
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import register, ToolError
 
 ACCEPTED = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -55,7 +55,8 @@ def crop_white_handler(tool_input, params):
         params: {} (single operation, no presets)
 
     Returns:
-        {"stream", "filename", "content_type", "size"}
+        {"items": [{"kind": "file", "stream", "filename",
+                    "content_type", "size"}]}
     """
     filename = tool_input.get("filename") or ""
     ext = os.path.splitext(filename.lower())[1]
@@ -133,7 +134,6 @@ def crop_white_handler(tool_input, params):
 
 register(
     tool_id="crop_white",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Crop White", "zh": "裁白", "ja": "白トリミング",
         "ko": "흰색 자르기", "es": "Recortar blanco", "ar": "اقتصاص الأبيض",

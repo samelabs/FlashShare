@@ -75,9 +75,9 @@ def _mktool(tk, owner, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " tool_type, label_json, icon, visibility, enabled,"
+            " label_json, icon, visibility, enabled,"
             " params_json, endpoint_json, created_at, updated_at) values"
-            " (%s, %s, %s, 'http', 'produce', %s, 'wand', 'public',"
+            " (%s, %s, %s, 'http', %s, 'wand', 'public',"
             " true, '[]', %s, %s, %s)",
             (tk, owner, tk.split("/")[-1], _json.dumps({"en": "KC"}),
              _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
@@ -96,9 +96,9 @@ for t, cost in ((tool_0, 100), (tool_30, 100), (tool_100, 100)):
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility, enabled,"
+        " label_json, icon, visibility, enabled,"
         " params_json, endpoint_json, created_at, updated_at) values"
-        " (%s, NULL, %s, 'http', 'produce', %s, 'wand', 'public',"
+        " (%s, NULL, %s, 'http', %s, 'wand', 'public',"
         " true, '[]', %s, %s, %s)",
         (tool_fp, tool_fp.split("/")[-1], _json.dumps({"en": "KC"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
@@ -135,7 +135,7 @@ from repo.catalog import by_tool_key as _bt
 _u2 = "ka" + _os.urandom(3).hex()
 decl = {
     "tool_key": f"{_u2}o/atomic", "tool_id": "atomic",
-    "owner_id": owner_id, "execution": "http", "tool_type": "produce",
+    "owner_id": owner_id, "execution": "http",
     "label": {"en": "AT"}, "desc": None, "icon": "wand",
     "inputs": {"files": {"min": 1, "max": 1, "accept": [".png"]}},
     "outputs": ["file"],
@@ -157,7 +157,7 @@ from execution.gate import run as gate_run
 def _row(tk_):
     with db() as con:
         row = _bt(con, tk_)
-    d = dict(row); d["id"] = d["tool_key"]; d["type"] = d["tool_type"]
+    d = dict(row); d["id"] = d["tool_key"]
     return d
 
 from execution.invocation import SourceFile as _SF
@@ -477,9 +477,9 @@ _u3 = "kp" + _os.urandom(3).hex()
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility, enabled,"
+        " label_json, icon, visibility, enabled,"
         " params_json, endpoint_json, created_at, updated_at) values"
-        " (%s, NULL, %s, 'http', 'produce', %s, 'wand', 'public',"
+        " (%s, NULL, %s, 'http', %s, 'wand', 'public',"
         " true, '[]', %s, %s, %s)",
         (f"{_u3}noprice", "noprice", _json.dumps({"en": "NP"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
@@ -491,9 +491,9 @@ check("K20 resolve ok 但 catalog_item(missing pricing) → None",
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " tool_type, label_json, icon, visibility, enabled,"
+        " label_json, icon, visibility, enabled,"
         " params_json, endpoint_json, created_at, updated_at) values"
-        " (%s, NULL, %s, 'http', 'produce', %s, 'wand', 'public',"
+        " (%s, NULL, %s, 'http', %s, 'wand', 'public',"
         " true, '[]', %s, %s, %s)",
         (f"{_u3}offprice", "offprice", _json.dumps({"en": "OP"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))

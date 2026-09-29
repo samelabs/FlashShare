@@ -59,7 +59,6 @@ def seed_from_registry() -> dict:
             "tool_id": t["id"],
             "owner_id": None,
             "execution": "local",
-            "tool_type": t["type"],
             "label": t["label"],
             "desc": t.get("desc"),
             "icon": t["icon"],
@@ -143,7 +142,6 @@ def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
     item = {
         "id": row["tool_key"],  # namespaced key is THE identity from now on
         "origin": "official" if is_official_id(row["tool_key"]) else "community",
-        "type": row["tool_type"],
         "label": json.loads(row["label_json"]),
         "icon": row["icon"],
         # 4C-2: 公开 accept 一律投影成 canonical extension tokens

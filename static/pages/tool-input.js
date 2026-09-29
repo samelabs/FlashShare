@@ -1,13 +1,16 @@
 // ── tool-input: the composer (首页 / 工具页同一组件, v2 视觉) ────
 // 按所选工具的声明呈现: 主 text 参数 = 输入框正文, 其余参数进参数区
 // (enum→分段按钮 / number→数字输入 / boolean→开关 / text→文本域);
-// 文件位 (files_max>0): 拖放 / 回形针选择 / 粘贴, files_min=0 标"可选"。
+// 文件位 (files_max>0): 空态整块上传区, 有文件时行尾"+ 添加"小块
+// (达上限即隐), 拖放 / 粘贴恒可入; 纯文本工具 (files_max=0) 呈对话
+// 框形态: 单个自动增高输入框 (1..8 行, 封顶后内部滚动), 发送按钮在
+// 输入框右下角内侧。参数超过 3 个: 前 3 个直显, 其余收进"更多参数"。
 // 校验走与后端同一报错边界 (统一内联提示, 不用 alert):
 //   文件数越窗 → err_file_count {min}{max}; 格式 → err_format_not_supported
 //   {formats}; 超单文件上限 → err_file_too_large {mb} (选择时前端预检,
 //   超限不发请求);
 //   必填参数 → param_required。
-// Ctrl/Cmd+Enter 提交。执行走全局单源 window.runToolFlow
+// Ctrl/Cmd+Enter 提交 (Enter 换行)。执行走全局单源 window.runToolFlow
 // (process-flow.js): files / params / delivery / client_ref 的字段、
 // 校验与请求形状完全不变 — 本组件只管输入呈现与即时校验。
 (function () {
@@ -34,6 +37,8 @@
   window.EXT_TO_TYPE = EXT_TO_TYPE;
 
   const t = (k, vars) => window.t(k, vars);
+  // 参数区直显上限: 超出的参数收进"更多参数"展开区
+  const MAX_VISIBLE_PARAMS = 3;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmtSize = (n) => {
@@ -115,6 +120,50 @@
       return null;
     }
 
+    // ── 参数行 HTML (单源: 直显区与"更多参数"折叠区同一渲染) ──
+    function paramRowHtml(prm, saved) {
+      const label = resolveLabel(prm.label) || prm.key;
+      const val = saved[prm.key] !== undefined ? saved[prm.key] : prm.default;
+      if (prm.type === "enum") {
+        return '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
+          + '<span class="seg tp-seg" data-param="' + esc(prm.key) + '">'
+          + (prm.options || []).map((o) =>
+            '<button type="button" class="tp-option' + (val === o.value ? " on" : "")
+            + '" data-value="' + esc(o.value) + '">'
+            + esc(resolveLabel(o.label) || o.value) + "</button>").join("")
+          + "</span></div>";
+      }
+      if (prm.type === "boolean") {
+        return '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
+          + '<label class="switch"><input type="checkbox" class="tp-bool" data-param="' + esc(prm.key) + '"'
+          + (val === true || val === "true" ? " checked" : "")
+          + '><span class="switch-track"></span></label></div>';
+      }
+      if (prm.type === "number") {
+        const mn = prm.min !== undefined ? ' min="' + esc(prm.min) + '"' : "";
+        const mx = prm.max !== undefined ? ' max="' + esc(prm.max) + '"' : "";
+        return '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
+          + '<input type="number" class="input tp-number" data-param="' + esc(prm.key)
+          + '"' + mn + mx + ' value="'
+          + (val !== undefined && val !== null ? esc(String(val)) : "") + '"></div>';
+      }
+      const ph = prm.placeholder ? esc(resolveLabel(prm.placeholder)) : "";
+      return '<div class="prow prow-text"><span class="prow-label">' + esc(label) + "</span>"
+        + '<textarea class="textarea tp-text" data-param="' + esc(prm.key)
+        + '" rows="2" placeholder="' + ph + '">'
+        + (val !== undefined && val !== null ? esc(String(val)) : "") + "</textarea></div>";
+    }
+
+    // 聊天输入框自动增高: 1..8 行, 封顶后内部滚动 (高度封顶由 CSS
+    // max-height 兜底, JS 只做即时贴合 scrollHeight)
+    function autoGrowChat(ta) {
+      if (!ta) return;
+      ta.style.height = "auto";
+      const cs = getComputedStyle(ta);
+      const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      ta.style.height = Math.min(ta.scrollHeight, 8 * (parseFloat(cs.lineHeight) || 24) + pad) + "px";
+    }
+
     function showError(msg) {
       const line = container.querySelector(".ti-error");
       if (!line) return;
@@ -134,6 +183,9 @@
       const accept = acceptTokens();
       const saved = savedParams(tool ? tool.id : "");
       const cost = tool ? Math.max(0, parseInt(tool.cost || 0, 10) || 0) : 0;
+      // 纯文本工具 (files_max=0) = 对话框形态
+      const chatForm = !hasFilesSlot() && !!main;
+      const paramRow = (prm) => paramRowHtml(prm, saved);
 
       let html = '<div class="composer ti-card" data-tool="' + esc(tool ? tool.id : "") + '">'
         + '<p class="error-note ti-error" hidden></p>';
@@ -158,56 +210,43 @@
           + "</button>" + quota;
       }
 
-      // 正文: 主 text 参数 (或纯文件工具的拖放提示文案)
+      // 正文: 主 text 参数 — 纯文本工具 (files_max=0) = 对话框形态
+      // (自动增高 1..8 行 + 右下角内侧发送); 有文件位 = 常规多行输入
       if (main) {
         const ph = main.placeholder ? esc(resolveLabel(main.placeholder))
           : esc(t("ti_composer_ph"));
         const val = saved[main.key] !== undefined ? saved[main.key] : (main.default || "");
-        html += '<textarea class="c-text tp-text" data-param="' + esc(main.key)
-          + '" rows="3" placeholder="' + ph + '">'
-          + esc(val === undefined || val === null ? "" : String(val)) + "</textarea>";
+        const text = esc(val === undefined || val === null ? "" : String(val));
+        if (chatForm) {
+          html += '<div class="ti-chat-wrap">'
+            + '<textarea class="c-text tp-text ti-chat-text" data-param="' + esc(main.key)
+            + '" rows="1" placeholder="' + ph + '">' + text + "</textarea>"
+            + '<button type="button" class="send ti-run" aria-label="' + esc(t("ti_run"))
+            + '" title="' + esc(t("ti_run")) + '">' + icon("send") + "</button></div>";
+        } else {
+          html += '<textarea class="c-text tp-text" data-param="' + esc(main.key)
+            + '" rows="3" placeholder="' + ph + '">' + text + "</textarea>";
+        }
       }
 
-      // 参数区: 其余参数 (enum→seg / number / boolean / text)
+      // 参数区: 其余参数 (enum→seg / number / boolean / text)。
+      // >3 个: 前 3 直显, 其余收进"更多参数"展开区 (值仍参与收集/校验)。
+      const visibleParams = rest.slice(0, MAX_VISIBLE_PARAMS);
+      const extraParams = rest.slice(MAX_VISIBLE_PARAMS);
       if (rest.length) {
         html += '<div class="params"><div class="divider"></div>';
-        rest.forEach((prm) => {
-          const label = resolveLabel(prm.label) || prm.key;
-          const val = saved[prm.key] !== undefined ? saved[prm.key] : prm.default;
-          if (prm.type === "enum") {
-            html += '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
-              + '<span class="seg tp-seg" data-param="' + esc(prm.key) + '">';
-            (prm.options || []).forEach((o) => {
-              html += '<button type="button" class="tp-option' + (val === o.value ? " on" : "")
-                + '" data-value="' + esc(o.value) + '">'
-                + esc(resolveLabel(o.label) || o.value) + "</button>";
-            });
-            html += "</span></div>";
-          } else if (prm.type === "boolean") {
-            html += '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
-              + '<label class="switch"><input type="checkbox" class="tp-bool" data-param="' + esc(prm.key) + '"'
-              + (val === true || val === "true" ? " checked" : "")
-              + '><span class="switch-track"></span></label></div>';
-          } else if (prm.type === "number") {
-            const mn = prm.min !== undefined ? ' min="' + esc(prm.min) + '"' : "";
-            const mx = prm.max !== undefined ? ' max="' + esc(prm.max) + '"' : "";
-            html += '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
-              + '<input type="number" class="input tp-number" data-param="' + esc(prm.key)
-              + '"' + mn + mx + ' value="'
-              + (val !== undefined && val !== null ? esc(String(val)) : "") + '"></div>';
-          } else {
-            const ph = prm.placeholder ? esc(resolveLabel(prm.placeholder)) : "";
-            html += '<div class="prow prow-text"><span class="prow-label">'
-              + esc(label) + "</span>"
-              + '<textarea class="textarea tp-text" data-param="' + esc(prm.key)
-              + '" rows="2" placeholder="' + ph + '">'
-              + (val !== undefined && val !== null ? esc(String(val)) : "") + "</textarea></div>";
-          }
-        });
+        html += visibleParams.map(paramRow).join("");
+        if (extraParams.length) {
+          html += '<div class="ti-more">'
+            + '<button type="button" class="ti-more-btn" aria-expanded="false">'
+            + esc(t("ti_more_params")) + '<i class="chev" aria-hidden="true"></i></button>'
+            + '<div class="ti-more-body" hidden>'
+            + extraParams.map(paramRow).join("") + "</div></div>";
+        }
         html += "</div>";
       }
 
-      // 底栏: 回形针 + delivery 胶囊 + 发送 (免费=动作词, 收费=动作词 · N 积分)
+      // 底栏: delivery 胶囊 + 发送 (聊天形态的发送在输入框内侧, 此处无)
       const del = window.__DELIVERY__ || { days: [1], downloads: [50], defaultDays: 1, defaultDownloads: 50 };
       const dLabel = "<b>" + del.defaultDays + " " + t(del.defaultDays === 1 ? "day_unit" : "days_unit")
         + "</b> · " + del.defaultDownloads + " " + t("times_unit");
@@ -215,10 +254,6 @@
         ? esc(t("ti_run")) + " · " + cost + " " + esc(t("credits_short"))
         : esc(t("ti_run"));
       html += '<div class="c-bar">'
-        + (hasFilesSlot()
-          ? '<button type="button" class="ib ti-add" aria-label="' + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">'
-          + icon("clip") + '<span class="ti-add-label">' + esc(t("ti_add_files")) + "</span></button>"
-          : "")
         + '<button type="button" class="opt ti-del" aria-haspopup="true" aria-expanded="false">'
         + icon("expiry") + '<span class="ti-del-label">' + dLabel + "</span></button>"
         + '<div class="c-del-pop hidden">'
@@ -235,7 +270,7 @@
         + "</div>"
         + '<span class="ti-progress" aria-live="polite"></span>'
         + '<span class="sp"></span>'
-        + '<button type="button" class="send wide ti-run">' + runLabel + " " + icon("send") + "</button>"
+        + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + " " + icon("send") + "</button>")
         + "</div>";
 
       // 隐藏文件输入 (测试与无 JS 场景的稳定钩子)
@@ -249,7 +284,30 @@
       bindFiles();
       bindDelivery();
       bindRun();
+      bindMoreParams();
+      bindChatGrow();
       renderRows();
+    }
+
+    // ── "更多参数"折叠: 前 3 直显, 其余收进展开区 ──
+    function bindMoreParams() {
+      const btn = container.querySelector(".ti-more-btn");
+      const body = container.querySelector(".ti-more-body");
+      if (!btn || !body) return;
+      btn.addEventListener("click", () => {
+        const open = body.hidden;
+        body.hidden = !open;
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        btn.classList.toggle("open", open);
+      });
+    }
+
+    // ── 聊天输入框: 输入即自动增高 (1..8 行), 初始值也贴合一次 ──
+    function bindChatGrow() {
+      const ta = container.querySelector(".ti-chat-text");
+      if (!ta) return;
+      autoGrowChat(ta);
+      ta.addEventListener("input", () => autoGrowChat(ta));
     }
 
     // ── 参数控件 ──
@@ -370,15 +428,25 @@
           + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
           + icon("close") + "</button></span>";
       }).join("");
+      // 行尾"+ 添加"小块: 已有文件且未达上限才显示 (点击选择, 拖入走整卡落点)
+      if (files.length < filesMax()) {
+        rows.innerHTML += '<button type="button" class="chipf ti-add-block" aria-label="'
+          + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">'
+          + '<span class="th d" aria-hidden="true">' + icon("clip") + "</span>"
+          + "<span><b>+</b> " + esc(t("ti_add_files")) + "</span></button>";
+      }
       rows.querySelectorAll("[data-rm]").forEach((b) => {
         b.addEventListener("click", () => removeFile(+b.dataset.rm));
       });
+      const addBtn = rows.querySelector(".ti-add-block");
+      if (addBtn) {
+        const input = fileInput();
+        addBtn.addEventListener("click", () => input && input.click());
+      }
     }
 
     function bindFiles() {
-      const addBtns = container.querySelectorAll(".ti-add");
       const input = fileInput();
-      addBtns.forEach((b) => b.addEventListener("click", () => input && input.click()));
       const zone = container.querySelector(".ti-drop");
       if (zone) zone.addEventListener("click", () => input && input.click());
       if (input) input.addEventListener("change", () => {

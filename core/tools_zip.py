@@ -13,7 +13,7 @@ import io
 import os
 import zipfile
 
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import register, ToolError
 
 MAX_SOURCES = 20
 
@@ -49,7 +49,8 @@ def zip_pack_handler(tool_input, params):
         params: {} (no presets, packing is a single operation)
 
     Returns:
-        {"stream": BytesIO, "filename": str, "content_type": str, "size": int}
+        {"items": [{"kind": "file", "stream": BytesIO, "filename": str,
+                    "content_type": str, "size": int}]}
     """
     sources = tool_input.get("sources", [])
     if not sources:
@@ -87,7 +88,6 @@ def zip_pack_handler(tool_input, params):
 
 register(
     tool_id="zip_pack",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Zip Files", "zh": "ZIP打包", "ja": "ZIP圧縮",
         "ko": "ZIP 압축", "es": "Comprimir ZIP", "ar": "إنشاء ZIP",

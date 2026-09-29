@@ -154,7 +154,7 @@ try:
                                         DeclarationError)
     good = validate_tool_declaration({
         "tool_key": f"{_u}t", "tool_id": f"{_u}t", "owner_id": None,
-        "execution": "local", "tool_type": "produce",
+        "execution": "local",
         "label": {"en": "T"}, "icon": "wand",
         "inputs": {"files": {"min": 0, "max": 20, "accept": None}},
         "outputs": ["text", "json"], "params": None,
@@ -168,7 +168,7 @@ try:
         ({"min": 0, "max": 0}, "max=0"),
     ):
         decl = {"tool_key": f"{_u}t2", "tool_id": f"{_u}t2", "owner_id": None,
-                "execution": "local", "tool_type": "produce",
+                "execution": "local",
                 "label": {"en": "T"}, "icon": "wand",
                 "inputs": {"files": {**bad, "accept": None}},
                 "outputs": ["file"], "params": None,
@@ -251,9 +251,12 @@ try:
           hashlib.md5(blob).hexdigest() == hashlib.md5(PNG).hexdigest(),
           len(blob))
     st, _h, page, _sc = _req("GET", f"/r/{sc['result_url'].rsplit('/', 1)[1]}")
+    # Image results render as one media group: 3 image files = one
+    # rs-item grid carrying 3 rs-cells, each with its own download.
     check("R4 /r page renders ordered items",
-          st == 200 and page.count('class="rs-item') >= 3
-          and "r0.png" in page, st)
+          st == 200 and page.count('class="rs-cell"') == 3
+          and "r0.png" in page and "r1.png" in page and "r2.png" in page
+          and page.count("rs-dl") >= 3, st)
     _rp = _call("share", {"files": files3, "client_ref": f"r3-{_u}"},
                 TOK, 21)[1]
     check("R5 replay returns the same items (idempotent)",
@@ -295,7 +298,7 @@ try:
         try:
             _gate._finish({"id": uid},
                           {"id": "share", "tool_key": "share",
-                           "type": "produce", "owner_id": None},
+                           "owner_id": None},
                           int(_anchor["id"]), 25, _staged, 0,
                           {"expiry_days": 1, "allowed_downloads": 5})
             finished = "no-raise"
@@ -363,12 +366,13 @@ try:
     check("E3 expired /r → 404 (no existence oracle)", st == 404, st)
     st, _h_q, _b_q, _sc_q = _req("GET", f"/r/{_dead_id}/qr.svg")
     check("E3b expired /r QR → 404", st == 404, st)
-    # live result page renders header facts + ordered items + per-file rows
+    # live result page renders header facts + the media grid + downloads
     st, _h_r, page_r, _sc_r = _req(
         "GET", f"/r/{sc['result_url'].rsplit('/', 1)[1]}")
     check("E4 /r page: tool name + expiry + downloads facts + items",
           st == 200 and "Lossless Share" in page_r
-          and page_r.count('class="rs-item') >= 3
+          and page_r.count('class="rs-cell"') == 3
+          and page_r.count("rs-dl") >= 3
           and "?download=1" in page_r, st)
     # MCP expires_at mirrors the record authority
     st, d = _call("compress", {"files": [{"filename": "e2.png", "b64": A64}],
