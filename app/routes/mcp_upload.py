@@ -87,10 +87,14 @@ async def mcp_upload_put(ticket: str, request: Request):
     from utils import sanitize_filename
     from security import sniff_allowed, mismatch_detail
     filename = sanitize_filename(row["filename"] or "upload")
-    ok, final_type = sniff_allowed(filename, row["content_type"] or "",
-                                   body[:512])
+    ok, final_type, final_name = sniff_allowed(filename,
+                                               row["content_type"] or "",
+                                               body[:512])
     if not ok:
         return _err(415, final_type, **mismatch_detail(filename, body[:512]))
+    # same-family admission may re-identify the file; storage, ingress
+    # hash and every downstream fact use the final name
+    filename = final_name
 
     ip = client_ip(request)
 

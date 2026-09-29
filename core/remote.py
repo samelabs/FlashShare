@@ -136,14 +136,18 @@ def guard_endpoint(url: str, trusted: bool) -> str:
 
 # ── Shared output validation (zero trust: sniff + size, no exemptions) ──
 
-def validate_output(filename: str, content_type: str, body: bytes) -> bytes:
+def validate_output(filename: str, content_type: str, body: bytes) -> tuple:
+    """Zero-trust landing gate for endpoint products: size cap + sniff.
+    Returns (body, final_filename) — same-family admission may
+    re-identify the file; the caller lands it under the final name."""
     from security import sniff_allowed
     if len(body) > MAX_OUTPUT_BYTES:
         raise RemoteError("bad_output", f"{len(body)} bytes over cap")
-    ok, final = sniff_allowed(filename, content_type or "", body[:512])
+    ok, final, final_name = sniff_allowed(filename, content_type or "",
+                                          body[:512])
     if not ok:
         raise RemoteError("bad_output", f"sniff rejected: {final}")
-    return body
+    return body, final_name
 
 
 # ── Pinned HTTPS transport (untrusted URLs) ─────────────────────────────
@@ -596,7 +600,7 @@ def _wrap_raw(body: bytes, filename: str | None = None,
         # reaches raw mode); a true .json product travels through the JSON
         # envelope with explicit product metadata instead.
         given_ctype = ""
-    validated = validate_output(name, given_ctype, body)
+    validated, name = validate_output(name, given_ctype, body)
     final_type = sniff_final_type(name, given_ctype, body)
     # sniff_final_type returns the declared type when sniff_allowed cannot
     # determine better; with an empty declaration it resolves via
@@ -610,6 +614,9 @@ def _wrap_raw(body: bytes, filename: str | None = None,
 
 
 def sniff_final_type(filename: str, declared: str, body: bytes) -> str:
+    """Declared MIME checked against the sniffed filename (the caller
+    passes sniff_allowed's final_filename — same-family admission may
+    have re-identified the file before this runs)."""
     from security import sniff_allowed
-    ok, final = sniff_allowed(filename, declared, body[:512])
+    ok, final, _final_name = sniff_allowed(filename, declared, body[:512])
     return final if ok else declared

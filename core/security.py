@@ -41,8 +41,8 @@ _BMFF_BRANDS = {
 
 def detect_ext(head: bytes) -> str | None:
     """Magic-number → extension, the single detection point for ingress
-    diagnostics (content/extension mismatch reports) and placeholder
-    result names. Covers common binary formats; unknown → None."""
+    diagnostics (content/extension mismatch reports), same-family image
+    admission and placeholder result names. Unknown → None."""
     m = {
         b"\x89PNG\r\n\x1a\n": ".png",
         b"\xff\xd8": ".jpg",
@@ -53,6 +53,8 @@ def detect_ext(head: bytes) -> str | None:
         b"\x1f\x8b": ".gz",
         b"ID3": ".mp3", b"\xff\xfb": ".mp3", b"\xff\xf3": ".mp3",
         b"RIFF": ".webp",  # RIFF 容器细化需读 8-12 位 (WEBP/WAV), 保守归 webp
+        b"\x00\x00\x01\x00": ".ico",
+        b"II*\x00": ".tif", b"MM\x00*": ".tif",
     }
     for magic, ext in m.items():
         if head.startswith(magic):
@@ -69,55 +71,78 @@ def detect_ext(head: bytes) -> str | None:
 def mismatch_detail(filename: str, sample: bytes) -> dict:
     """Structured sniff-rejection detail shared by every ingress surface
     (web /api/uploads, MCP ticket PUT, MCP inline/url sources):
-    the sanitized filename, the detected real format (or None) and a
-    rename suggestion built from the original stem (or None). The error
-    code itself stays verbatim at each entry point."""
-    detected = detect_ext(sample)
-    stem = os.path.splitext(filename)[0]
-    return {
-        "filename": filename,
-        "detected": detected,
-        "suggested_name": stem + detected if detected else None,
-    }
+    the sanitized filename and the detected real format (or None).
+    No rename suggestion: cases a rename could fix are already admitted
+    upstream by same-family admission; what remains is not fixable that
+    way. The error code itself stays verbatim at each entry point."""
+    return {"filename": filename, "detected": detect_ext(sample)}
+
+
+def _image_ext_mime(ext: str) -> str:
+    """MIME for a detected image extension: mimetypes first, the formats
+    single source (governance.formats MIME_EXTS) when mimetypes has no
+    entry (e.g. .heic / .avif)."""
+    import mimetypes
+    mt = mimetypes.guess_type("file" + ext)[0]
+    if mt:
+        return mt
+    from governance.formats import MIME_EXTS
+    for mime, exts in MIME_EXTS.items():
+        if ext in exts:
+            return mime
+    return "application/octet-stream"
+
+
+# Same-family admission window: image extensions whose magic number we
+# verify AND can re-identify via detect_ext. Content that IS a
+# recognized, platform-allowed image under a sibling image extension is
+# admitted under its detected name instead of being rejected.
+_SNIFF_IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".gif",
+                               ".webp", ".bmp"})
 
 
 def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
+    """(ok, final_type | error_code, final_filename).
+
+    final_filename is the name every downstream fact must use (storage,
+    ingress hash, tool accept gate, result naming). It equals the input
+    name except in the same-family image admission branch, where a
+    sibling-extension image is stored under stem + detected extension
+    with the detected extension's MIME. Rejections keep the original
+    name so the error can identify the file as uploaded."""
+    from governance.formats import FAMILIES
     ext = os.path.splitext(filename.lower())[1]
     if ext in BLOCKED_EXT:
-        return False, "err_file_type_blocked"
+        return False, "err_file_type_blocked", filename
     if ext not in ALLOWED_EXT:
-        return False, "err_format_not_supported"
+        return False, "err_format_not_supported", filename
 
-    if ext in {".jpg", ".jpeg"} and not sample.startswith(b"\xff\xd8"):
-        return False, "err_content_mismatch_image"
-    if ext == ".png" and not sample.startswith(b"\x89PNG\r\n\x1a\n"):
-        return False, "err_content_mismatch_image"
-    if ext == ".gif" and not (sample.startswith(b"GIF87a") or sample.startswith(b"GIF89a")):
-        return False, "err_content_mismatch_image"
-    if ext == ".webp" and not (len(sample) >= 12 and sample[:4] == b"RIFF" and sample[8:12] == b"WEBP"):
-        return False, "err_content_mismatch_image"
-    if ext == ".bmp" and not sample.startswith(b"BM"):
-        return False, "err_content_mismatch_image"
+    if ext in _SNIFF_IMAGE_EXTS:
+        detected = detect_ext(sample)
+        if detected in FAMILIES["image"].exts and detected in ALLOWED_EXT:
+            stem = os.path.splitext(filename)[0]
+            return True, _image_ext_mime(detected), stem + detected
+        return False, "err_content_mismatch_image", filename
     if ext == ".pdf" and not sample.startswith(b"%PDF"):
-        return False, "err_content_mismatch_pdf"
+        return False, "err_content_mismatch_pdf", filename
     if ext in {".zip", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"} and not (
         sample.startswith(b"PK\x03\x04") or sample.startswith(b"PK\x05\x06") or sample.startswith(b"PK\x07\x08")
     ):
-        return False, "err_content_mismatch_archive"
+        return False, "err_content_mismatch_archive", filename
     if ext in {".doc", ".xls", ".ppt"} and not sample.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
-        return False, "err_content_mismatch_office"
+        return False, "err_content_mismatch_office", filename
     if ext == ".7z" and not sample.startswith(b"\x37\x7a\xbc\xaf\x27\x1c"):
-        return False, "err_content_mismatch_archive"
+        return False, "err_content_mismatch_archive", filename
     if ext == ".rar" and not (sample.startswith(b"Rar!\x1a\x07\x00") or sample.startswith(b"Rar!\x1a\x07\x01\x00")):
-        return False, "err_content_mismatch_archive"
+        return False, "err_content_mismatch_archive", filename
     if ext in {".txt", ".csv", ".md", ".json", ".xml", ".yaml", ".yml",
                ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
                ".svg", ".step", ".stp", ".iges", ".igs", ".obj",
                ".log", ".diff", ".patch", ".toml", ".ini",
                ".sh", ".tsx", ".jsx", ".go", ".rs", ".java", ".ipynb"} and b"\x00" in sample:
-        return False, "err_content_mismatch_text"
+        return False, "err_content_mismatch_text", filename
     import mimetypes
-    return True, content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return True, content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream", filename
 
 
 def hash_password(password: str) -> str:

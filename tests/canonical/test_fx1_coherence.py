@@ -448,8 +448,8 @@ try:
           str(sc)[:100])
 
     # ═══ X7: sniff vs accept mismatch share one expression ═══
-    # (sniff keeps its typed err_content_mismatch_* code + structured
-    #  rename detail; accept mismatch stays err_format_not_supported)
+    # (sniff keeps its typed err_content_mismatch_* code + detected-format
+    #  detail; accept mismatch stays err_format_not_supported)
     TXT_AS_PNG = b"this is plain text, not a png"
     st, d = _call(OP_TOOL, {"files": [
         {"filename": "fake.png", "b64": base64.b64encode(TXT_AS_PNG).decode()}],
@@ -461,7 +461,7 @@ try:
           and '"error": "err_content_mismatch_image"' in t7a
           and '"filename": "fake.png"' in t7a
           and '"detected": null' in t7a
-          and '"suggested_name": null' in t7a
+          and "suggested_name" not in t7a
           and "does not match" in t7a, t7a[:110])
     st, d = _call("compress", {"files": [
         {"filename": "a.pdf", "b64": base64.b64encode(b"%PDF-fake").decode()}],

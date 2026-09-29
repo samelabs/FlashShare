@@ -20,17 +20,18 @@
   }
 
   // Sniff rejections carry structured ingress detail (filename +
-  // detected + suggested_name): render the actionable rename sentence
-  // instead of the bare code message. Falls back to the unified
-  // error boundary for every other payload (or when i18n is absent).
+  // detected): render the localized mismatch sentence naming the file
+  // and its real format. Same-family admission already fixed the
+  // renamable cases upstream, so no rename suggestion remains. Falls
+  // back to the unified error boundary for every other payload (or
+  // when i18n is absent).
   function payloadErrText(data) {
     const code = data && typeof data === "object" ? data.error : null;
     if (code && typeof data.filename === "string" && window.t
         && String(code).indexOf("err_content_mismatch") === 0) {
-      if (data.suggested_name) {
+      if (data.detected) {
         return window.t("err_content_mismatch_named", {
-          name: data.filename, ext: data.detected || "",
-          suggest: data.suggested_name,
+          name: data.filename, ext: data.detected,
         });
       }
       return window.t("err_content_mismatch_named_unknown", { name: data.filename });

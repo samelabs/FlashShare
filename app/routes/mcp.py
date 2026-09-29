@@ -994,22 +994,24 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     _canon = []
     for i in _ingest_idx:
         _fn, _ct, _body = uploads[i]
-        _ok_t, _final_t = _sniff(_fn, _ct, _body[:512])
+        _ok_t, _final_t, _final_fn = _sniff(_fn, _ct, _body[:512])
         if not _ok_t:
             # Pre-execution input errors are isError tool results — the
             # SAME expression as the accept gate below (IO-1 rule: a
             # well-formed request carrying a bad file is domain-level
             # and agent-fixable; -32602 stays for malformed request
             # shape only). Content/extension mismatches keep their
-            # typed code and carry the structured rename hint (the
-            # same shape the web upload and ticket PUT entries return).
+            # typed code and carry the detected format (the same shape
+            # the web upload and ticket PUT entries return).
             code = ("err_format_not_supported"
                     if _final_t == "err_file_type_blocked" else _final_t)
             return _tool_result_error(
                 mid, {"error": code,
                       **_mismatch(_san(_fn), _body[:512])},
                 client_ref, tool)
-        _canon.append(((_san(_fn), _final_t, _body)))
+        # _final_fn: same-family admission may re-identify the file —
+        # accept gate, ingress hash, staging and result naming all use it
+        _canon.append((_san(_final_fn), _final_t, _body))
     _names = {**ref_names,
               **{i: c[0] for i, c in zip(_ingest_idx, _canon)}}
     _aerr = _accept_err(tool, [_names[i] for i in range(len(items))])
@@ -1158,8 +1160,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     return _rpc(mid, await _mcp_success(result, payload, _input_digests))
 
 
-def _error_message(code, tool: dict | None = None,
-                   payload: dict | None = None) -> str:
+def _error_message(code, tool: dict | None = None) -> str:
     """THE single human-text map: one plain-English sentence + an
     actionable hint for the codes an agent can act on. Unknown codes
     fall back to the generic sentence."""
@@ -1210,10 +1211,6 @@ def _error_message(code, tool: dict | None = None,
     elif code == "param_too_long":
         from governance.tool_params import TEXT_PARAM_MAX_CHARS
         hint = f" Text parameters take at most {TEXT_PARAM_MAX_CHARS} characters."
-    elif (code.startswith("err_content_mismatch")
-          and isinstance(payload, dict) and payload.get("suggested_name")):
-        hint = (f" Rename the file to {payload['suggested_name']} and "
-                "retry with the same client_ref.")
     if code.startswith("param_"):
         hint += " Check the tool's inputSchema (field names the parameter)."
     return f"{msg}{hint}"
@@ -1227,7 +1224,7 @@ def _iserror(mid, payload: dict, client_ref: str | None = None,
     ...every structured field the denial already carried}. Existing
     fields are never dropped."""
     code = payload.get("error") or "tool_failed"
-    body = {"error": code, "message": _error_message(code, tool, payload)}
+    body = {"error": code, "message": _error_message(code, tool)}
     if client_ref is not None:
         body["client_ref"] = client_ref
     body.update({k: v for k, v in payload.items()

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Ingress guard canonical — actionable content/extension mismatch
-reports (A), the MCP tools/call entry rate limit (B) and local
-execution-pool backpressure (C).
+"""Ingress guard canonical — same-family image admission and typed
+mismatch rejections (A), the MCP tools/call entry rate limit (B) and
+local execution-pool backpressure (C).
 
   A*  detect_ext is the single magic-number authority (fixed signatures
-      + ISO-BMFF brands); every ingress surface that rejects on sniff
-      returns the SAME structure: the error code verbatim, the
-      sanitized filename, the detected real format (or null) and a
-      stem-based rename suggestion (or null). Batch uploads are still
-      rejected as a whole, naming the offending file.
+      + ISO-BMFF brands + ICO/TIFF). An image under a sibling image
+      extension (jpg/jpeg/png/gif/webp/bmp) is ADMITTED under its
+      detected name: every ingress surface (web /api/uploads, MCP
+      ticket PUT, MCP inline/url sources) stores, hashes and names
+      results with sniff_allowed's final_filename. What is NOT a
+      platform-allowed image is rejected with {error, filename,
+      detected} — no rename suggestion (renamable cases were admitted).
   B*  Every tools/call counts against ONE per-user sliding window
       (60 calls / 60 s) — meta tools and catalog search included;
       the 61st call inside the window answers isError err_rate_limited.
@@ -72,6 +74,7 @@ HEIC = b"\x00\x00\x00\x18ftypheic" + b"\x00" * 40
 AVIF = b"\x00\x00\x00\x18ftypavif" + b"\x00" * 40
 MOV = b"\x00\x00\x00\x14ftypqt  " + b"\x00" * 40
 MP4 = b"\x00\x00\x00\x18ftypisom" + b"\x00" * 40
+PDF = b"%PDF-1.4\n%%EOF\n"
 GARBAGE = b"NOTAFILE" + b"\x7f" * 24
 
 
@@ -156,11 +159,46 @@ def _register(name):
     return uid, ck, d_k["key"]["key"]
 
 
-def _mismatch_ok(payload, code, filename, detected, suggested):
+def _mismatch_ok(payload, code, filename, detected):
+    """The rejection contract: code verbatim + sanitized filename +
+    detected real format (or None) — and nothing else (no rename
+    suggestion: renamable cases are admitted upstream)."""
     return (payload.get("error") == code
             and payload.get("filename") == filename
             and payload.get("detected") == detected
-            and payload.get("suggested_name") == suggested)
+            and "suggested_name" not in payload)
+
+
+def _download(url):
+    """Anonymous /f/{pid}?download=1 bytes. The 302 Location (gokapi
+    hotlink) may be app-relative — resolve it manually against the
+    gokapi base instead of letting urllib mis-follow it."""
+    import http.client as _hcl
+    import urllib.request as _ur
+    import urllib.parse as _up
+    if url.startswith("/"):
+        url = _BASE + url
+    parts = _up.urlparse(url)
+    conn = _hcl.HTTPConnection(parts.hostname, parts.port, timeout=60)
+    conn.request("GET", parts.path + (("?" + parts.query) if parts.query else ""))
+    r = conn.getresponse()
+    if r.status // 100 == 3:
+        loc = r.getheader("Location") or ""
+        r.read()
+        conn.close()
+        if loc and not loc.startswith("http"):
+            loc = (_os.environ.get("FLASHSHARE_GOKAPI_URL", "").rstrip("/")
+                   + loc)
+        with _ur.urlopen(loc, timeout=60) as rr:
+            return rr.read()
+    data = r.read()
+    conn.close()
+    return data
+
+
+def _items(d):
+    return ((((d or {}).get("result") or {}).get("structuredContent")
+             or {}).get("items") or [{}])
 
 
 uids = []
@@ -178,6 +216,9 @@ try:
             ("isom brand", MP4[:12], ".mp4"),
             ("M4V brand", b"\x00\x00\x00\x18ftypM4V ", ".mp4"),
             ("WAV in RIFF", b"RIFFxxxxWAVE", ".wav"),
+            ("ICO", b"\x00\x00\x01\x00\x04\x00", ".ico"),
+            ("TIFF LE", b"II*\x00\x08\x00", ".tif"),
+            ("TIFF BE", b"MM\x00*\x00\x08", ".tif"),
             ("unknown", GARBAGE, None),
             ("short head", b"\x00\x00\x00", None)):
         check(f"A0 detect_ext {label} → {want}",
@@ -189,85 +230,121 @@ try:
     uids = [uid_a, uid_b, uid_c]
     check("F1 three fixtures registered", all(uids), uids)
 
-    # ═══ A1. web /api/uploads: a.jpg carrying HEIC magic ═══
-    body, ct = _multipart([("a.jpg", "image/jpeg", HEIC)],
+    # ═══ A1. same-family admission — web /api/uploads ═══
+    body, ct = _multipart([("a.jpg", "image/jpeg", PNG)],
                           {"tool": "share", "client_ref": f"ig-a1-{_u}"})
     st, _h, d, _sc = _req("POST", "/api/uploads", body,
                           {"Content-Type": ct, "Cookie": ck_a})
-    check("A1 web 400 with full mismatch structure",
+    _f = (d or {}).get("file") or {}
+    check("A1 web admits PNG-in-jpg, stored as a.png / image/png",
+          st == 200 and (d or {}).get("ok") is True
+          and _f.get("filename") == "a.png"
+          and _f.get("contentType") == "image/png", (st, d))
+
+    # ═══ A2. same-family admission — MCP ticket PUT ═══
+    st, d = _call("create_upload", {"filename": "a.jpg", "size": len(PNG),
+                                    "client_ref": f"ig-a2-{_u}"}, tok_a)
+    ticket = (((d or {}).get("result") or {}).get("structuredContent") or {})
+    tp = ticket.get("upload_url", "")
+    check("A2a create_upload issues the ticket", tp.startswith(_BASE), ticket)
+    st_p, _h, d_p, _sc = _req("PUT", tp[len(_BASE):], PNG)
+    check("A2b PUT admits PNG-in-jpg (200, usable reference)",
+          st_p == 200 and isinstance(d_p, dict)
+          and d_p.get("public_id") and d_p.get("source_token"), (st_p, d_p))
+    st, d = _call("share", {"files": [{"public_id": d_p["public_id"],
+                                       "source_token": d_p["source_token"]}],
+                            "client_ref": f"ig-a2c-{_u}"}, tok_a)
+    check("A2c the staged reference lands as a.png / image/png",
+          (d.get("result") or {}).get("isError") is False
+          and _items(d)[0].get("filename") == "a.png"
+          and _items(d)[0].get("content_type") == "image/png", str(d)[:140])
+
+    # ═══ A3. same-family admission — MCP inline source ═══
+    st, d = _call("share", {"files": [{"filename": "a.jpg", "b64": _b64(PNG)}],
+                            "client_ref": f"ig-a3-{_u}"}, tok_a)
+    check("A3 MCP inline admits PNG-in-jpg as a.png / image/png",
+          (d.get("result") or {}).get("isError") is False
+          and _items(d)[0].get("filename") == "a.png"
+          and _items(d)[0].get("content_type") == "image/png", str(d)[:140])
+
+    # ═══ A4. HEIC content under b.jpg → b.heic ═══
+    st, d = _call("share", {"files": [{"filename": "b.jpg", "b64": _b64(HEIC)}],
+                            "client_ref": f"ig-a4-{_u}"}, tok_a)
+    check("A4 MCP inline admits HEIC-in-jpg as b.heic / image/heic",
+          (d.get("result") or {}).get("isError") is False
+          and _items(d)[0].get("filename") == "b.heic"
+          and _items(d)[0].get("content_type") == "image/heic", str(d)[:140])
+    body, ct = _multipart([("b.jpg", "image/jpeg", HEIC)],
+                          {"tool": "share", "client_ref": f"ig-a4b-{_u}"})
+    st, _h, d, _sc = _req("POST", "/api/uploads", body,
+                          {"Content-Type": ct, "Cookie": ck_a})
+    check("A4b web admits HEIC-in-jpg as b.heic",
+          st == 200 and (d or {}).get("ok") is True
+          and ((d or {}).get("file") or {}).get("filename") == "b.heic",
+          (st, d))
+
+    # ═══ A5. batch: whole-batch rejection names the offender ═══
+    body, ct = _multipart([("c.jpg", "image/jpeg", PNG),
+                           ("d.png", "image/png", PDF)],
+                          {"tool": "share", "client_ref": f"ig-a5-{_u}"})
+    st, _h, d, _sc = _req("POST", "/api/uploads", body,
+                          {"Content-Type": ct, "Cookie": ck_a})
+    check("A5 batch rejected as a whole, offender named with detected ext",
           st == 400 and isinstance(d, dict) and d.get("ok") is False
-          and _mismatch_ok(d, "err_content_mismatch_image", "a.jpg",
-                           ".heic", "a.heic"), (st, d))
-
-    # ═══ A2. web: unrecognizable magic → detected/suggested null ═══
-    body, ct = _multipart([("a.jpg", "image/jpeg", GARBAGE)],
-                          {"tool": "share", "client_ref": f"ig-a2-{_u}"})
+          and _mismatch_ok(d, "err_content_mismatch_image", "d.png", ".pdf"),
+          (st, d))
+    body, ct = _multipart([("e.jpg", "image/jpeg", PNG),
+                           ("f.jpg", "image/jpeg", HEIC)],
+                          {"tool": "share", "client_ref": f"ig-a5b-{_u}"})
     st, _h, d, _sc = _req("POST", "/api/uploads", body,
                           {"Content-Type": ct, "Cookie": ck_a})
-    check("A2 web unknown magic → detected null, no suggestion",
+    _fs = (d or {}).get("files") or []
+    check("A5b batch admission renames each entry to its detected name",
+          st == 200 and (d or {}).get("ok") is True
+          and [f.get("filename") for f in _fs] == ["e.png", "f.heic"],
+          (st, [f.get("filename") for f in _fs]))
+
+    # ═══ A6. rejections keep {error, filename, detected} only ═══
+    body, ct = _multipart([("g.jpg", "image/jpeg", GARBAGE)],
+                          {"tool": "share", "client_ref": f"ig-a6-{_u}"})
+    st, _h, d, _sc = _req("POST", "/api/uploads", body,
+                          {"Content-Type": ct, "Cookie": ck_a})
+    check("A6 web unknown magic → reject, detected null",
           st == 400 and _mismatch_ok(d, "err_content_mismatch_image",
-                                     "a.jpg", None, None), (st, d))
-
-    # ═══ A3. web: batch rejected as a whole, offender named ═══
-    body, ct = _multipart([("good.png", "image/png", PNG),
-                          ("b.jpg", "image/jpeg", HEIC)],
-                          {"tool": "share", "client_ref": f"ig-a3-{_u}"})
-    st, _h, d, _sc = _req("POST", "/api/uploads", body,
-                          {"Content-Type": ct, "Cookie": ck_a})
-    check("A3 web batch rejection names the offending file",
-          st == 400 and _mismatch_ok(d, "err_content_mismatch_image",
-                                     "b.jpg", ".heic", "b.heic"), (st, d))
-
-    # ═══ A4. web: unknown extension keeps its code in the same shape ═══
-    body, ct = _multipart([("x.bin", "application/octet-stream", GARBAGE)],
-                          {"tool": "share", "client_ref": f"ig-a4-{_u}"})
-    st, _h, d, _sc = _req("POST", "/api/uploads", body,
-                          {"Content-Type": ct, "Cookie": ck_a})
-    check("A4 web unknown ext → err_format_not_supported, detected null",
-          st == 400 and _mismatch_ok(d, "err_format_not_supported",
-                                     "x.bin", None, None), (st, d))
-
-    # ═══ A5. MCP ticket PUT: a.jpg carrying HEIC magic ═══
-    # two tickets: each consumed PUT is one-shot even on sniff rejection
-    st, d = _call("create_upload", {"filename": "a.jpg", "size": len(HEIC),
-                                    "client_ref": f"ig-a5b-{_u}"}, tok_a)
-    ticket = (((d or {}).get("result") or {}).get("structuredContent") or {})
-    tp = ticket.get("upload_url", "")
-    check("A5a create_upload issues the ticket", tp.startswith(_BASE), ticket)
-    st_p, _h, d_p, _sc = _req("PUT", tp[len(_BASE):], HEIC)
-    check("A5b PUT 415 with full mismatch structure",
-          st_p == 415 and isinstance(d_p, dict) and d_p.get("ok") is False
-          and _mismatch_ok(d_p, "err_content_mismatch_image", "a.jpg",
-                           ".heic", "a.heic"), (st_p, d_p))
-    st, d = _call("create_upload", {"filename": "a.jpg", "size": len(GARBAGE),
-                                    "client_ref": f"ig-a5c-{_u}"}, tok_a)
-    ticket = (((d or {}).get("result") or {}).get("structuredContent") or {})
-    tp = ticket.get("upload_url", "")
-    st_p, _h, d_p, _sc = _req("PUT", tp[len(_BASE):], GARBAGE)
-    check("A5c PUT unknown magic → detected null (415)",
-          st_p == 415 and _mismatch_ok(d_p, "err_content_mismatch_image",
-                                       "a.jpg", None, None), (st_p, d_p))
-
-    # ═══ A6. MCP tools/call inline source ═══
-    st, d = _call("share", {"files": [{"filename": "a.jpg", "b64": _b64(HEIC)}],
-                            "client_ref": f"ig-a6-{_u}"}, tok_a)
-    _t = _tool_text(d)
-    check("A6 MCP inline isError with full mismatch structure",
-          (d.get("result") or {}).get("isError") is True
-          and _mismatch_ok(_t, "err_content_mismatch_image", "a.jpg",
-                           ".heic", "a.heic")
-          and "Rename the file to a.heic" in _t.get("message", ""), _t)
-    st, d = _call("share", {"files": [{"filename": "a.jpg",
+                                     "g.jpg", None), (st, d))
+    st, d = _call("share", {"files": [{"filename": "g.jpg",
                                        "b64": _b64(GARBAGE)}],
                             "client_ref": f"ig-a6b-{_u}"}, tok_a)
     _t = _tool_text(d)
-    check("A6b MCP inline unknown magic → detected null, no rename hint",
+    check("A6b MCP inline unknown magic → reject, detected null",
           (d.get("result") or {}).get("isError") is True
-          and _mismatch_ok(_t, "err_content_mismatch_image", "a.jpg",
-                           None, None)
+          and _mismatch_ok(_t, "err_content_mismatch_image", "g.jpg", None)
           and "Rename the file" not in _t.get("message", ""), _t)
+    body, ct = _multipart([("x.bin", "application/octet-stream", GARBAGE)],
+                          {"tool": "share", "client_ref": f"ig-a6c-{_u}"})
+    st, _h, d, _sc = _req("POST", "/api/uploads", body,
+                          {"Content-Type": ct, "Cookie": ck_a})
+    check("A6c web unknown ext → err_format_not_supported, detected null",
+          st == 400 and _mismatch_ok(d, "err_format_not_supported",
+                                     "x.bin", None), (st, d))
 
-    # ═══ A7. MCP URL source (in-process, pinned transport replaced) ═══
+    # ═══ A7. zip_pack: the archive entry carries the canonical name ═══
+    st, d = _call("zip_pack", {"files": [{"filename": "a.jpg",
+                                          "b64": _b64(PNG)}],
+                               "client_ref": f"ig-a7-{_u}"}, tok_a)
+    import io as _io
+    import zipfile as _zf
+    try:
+        _names = _zf.ZipFile(
+            _io.BytesIO(_download(_items(d)[0].get("download_url", ""))
+                        )).namelist()
+    except Exception as _exc:
+        _names = f"{type(_exc).__name__}: {_exc}"
+    check("A7 zip_pack archive entry is the detected a.png",
+          (d.get("result") or {}).get("isError") is False
+          and _names == ["a.png"], (_names, str(d)[:130]))
+
+    # ═══ A8. MCP URL source (in-process, pinned transport replaced) ═══
     import remote as _remote
     from app.routes import mcp as _M
 
@@ -277,21 +354,21 @@ try:
         headers = {}
 
     _orig_pinned = _remote.pinned_request
-    _remote.pinned_request = lambda url, **k: (200, HEIC)
+    _remote.pinned_request = lambda url, **k: (200, PDF)
     try:
         r = asyncio.run(_M._call_tool(_Req(), {"id": uid_a}, 1, {
             "name": "share",
-            "arguments": {"files": [{"url": f"https://files.example/{_u}/a.jpg"}],
-                          "client_ref": f"ig-a7-{_u}"}}))
+            "arguments": {"files": [{"url": f"https://files.example/{_u}/x.png"}],
+                          "client_ref": f"ig-a8-{_u}"}}))
         _t = _tool_text(r)
-        check("A7 MCP url source isError with full mismatch structure",
+        check("A8 MCP url source rejects non-image content, detected .pdf",
               (r.get("result") or {}).get("isError") is True
-              and _mismatch_ok(_t, "err_content_mismatch_image", "a.jpg",
-                               ".heic", "a.heic"), _t)
+              and _mismatch_ok(_t, "err_content_mismatch_image", "x.png",
+                               ".pdf"), _t)
     finally:
         _remote.pinned_request = _orig_pinned
     fn_noext = _M._url_upload("https://files.example/plain", None, PNG)[0]
-    check("A7b extension-less URL filename gets the detected ext",
+    check("A8b extension-less URL filename gets the detected ext",
           fn_noext == "plain.png", fn_noext)
 
     # ═══ B. MCP tools/call entry rate limit (fresh user, fresh window) ═══
