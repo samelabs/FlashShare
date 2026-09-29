@@ -154,7 +154,7 @@ try:
                                         DeclarationError)
     good = validate_tool_declaration({
         "tool_key": f"{_u}t", "tool_id": f"{_u}t", "owner_id": None,
-        "execution": "local", "tool_type": "produce",
+        "execution": "local",
         "label": {"en": "T"}, "icon": "wand",
         "inputs": {"files": {"min": 0, "max": 20, "accept": None}},
         "outputs": ["text", "json"], "params": None,
@@ -168,7 +168,7 @@ try:
         ({"min": 0, "max": 0}, "max=0"),
     ):
         decl = {"tool_key": f"{_u}t2", "tool_id": f"{_u}t2", "owner_id": None,
-                "execution": "local", "tool_type": "produce",
+                "execution": "local",
                 "label": {"en": "T"}, "icon": "wand",
                 "inputs": {"files": {**bad, "accept": None}},
                 "outputs": ["file"], "params": None,
@@ -298,7 +298,7 @@ try:
         try:
             _gate._finish({"id": uid},
                           {"id": "share", "tool_key": "share",
-                           "type": "produce", "owner_id": None},
+                           "owner_id": None},
                           int(_anchor["id"]), 25, _staged, 0,
                           {"expiry_days": 1, "allowed_downloads": 5})
             finished = "no-raise"

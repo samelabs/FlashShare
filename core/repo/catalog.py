@@ -255,7 +255,7 @@ def set_tool_presentation(con, tool_key: str, featured: bool,
 
 # ── 通用 tool row writers (阶段 B: 消费 tool_supply 序列化 row, 无业务验证) ──
 
-_TOOL_COLUMNS = ("tool_key", "owner_id", "tool_id", "execution", "tool_type",
+_TOOL_COLUMNS = ("tool_key", "owner_id", "tool_id", "execution",
                  "label_json", "desc_json", "icon", "accept_json",
                  "params_json", "files_min", "files_max",
                  "outputs_json",
@@ -285,7 +285,6 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
         INSERT INTO platform_tools ({', '.join(cols)}, visibility, created_at, updated_at)
         VALUES ({placeholders}, 'public', %(ts)s, %(ts)s)
         ON CONFLICT (tool_key) DO UPDATE SET
-          tool_type    = EXCLUDED.tool_type,
           label_json   = EXCLUDED.label_json,
           desc_json    = COALESCE(EXCLUDED.desc_json, platform_tools.desc_json),
           icon         = EXCLUDED.icon,

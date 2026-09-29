@@ -547,8 +547,6 @@ _SCHEMA_SQL = (
                                            -- CHECK below pins the current vocabulary
                                            -- (startup catalog invariant enforces it for
                                            --  pre-CHECK stored rows; no migration/backfill)
-      tool_type      TEXT NOT NULL DEFAULT 'produce',
-                                           -- produce | view | peek
       label_json     TEXT NOT NULL,          -- {lang: display_name}
       desc_json      TEXT,                   -- 简介 {lang: str} | str (可空)
       sort_order     INT NOT NULL DEFAULT 0, -- 后台遴选排序 (首页/市场呈现序)

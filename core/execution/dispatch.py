@@ -68,7 +68,6 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
             return None, None, {"ok": False, "error": "tool_disabled"}, 403
         return None, None, {"ok": False, "error": "tool_not_found"}, 404
     tool["id"] = tool["tool_key"]
-    tool["type"] = tool["tool_type"]
 
     # Stored-contract validation BEFORE the metering gate, via THE
     # single stored parser (formats.parse_stored_accept): SQL NULL = any;

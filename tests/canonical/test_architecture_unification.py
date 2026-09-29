@@ -242,18 +242,18 @@ check("U6 main startup 有 validate_catalog_rows", "validate_catalog_rows()" in 
 _cur.execute("delete from pricing where tool_id='badaccept'")
 _cur.execute("delete from platform_tools where tool_key='badaccept'")
 _cur.execute(
-    "insert into platform_tools (tool_key, owner_id, tool_id, execution, tool_type,"
+    "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
     " label_json, icon, accept_json, visibility, enabled, trusted,"
-    " created_at, updated_at) values (%s, NULL, %s, 'local', 'produce', '{}',"
+    " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
     " 'wand', '[\"application/pdf\"]', 'public', true, false, %s, %s)",
     ("badaccept", "badaccept", ts, ts))
 for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
     _cur.execute("delete from pricing where tool_id=%s", (_bk,))
     _cur.execute("delete from platform_tools where tool_key=%s", (_bk,))
     _cur.execute(
-        "insert into platform_tools (tool_key, owner_id, tool_id, execution, tool_type,"
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, icon, accept_json, visibility, enabled, trusted,"
-        " created_at, updated_at) values (%s, NULL, %s, 'local', 'produce', '{}',"
+        " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
         " 'wand', %s, 'public', true, false, %s, %s)",
         (_bk, _bk, _bj, ts, ts))
 _cur.execute(

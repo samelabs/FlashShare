@@ -495,9 +495,9 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon, visibility, enabled,"
+            " execution, label_json, icon, visibility, enabled,"
             " created_at, updated_at)"
-            " values (%s, NULL, %s, 'local', 'produce', %s, 'wand',"
+            " values (%s, NULL, %s, 'local', %s, 'wand',"
             " 'public', TRUE, %s, %s)",
             (tool5, tool5, _json.dumps({"en": "MC"}), ts, ts))
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
@@ -524,7 +524,7 @@ try:
             ip="127.0.0.1")
     def _run(ref):
         return asyncio.new_event_loop().run_until_complete(_gate.run(
-            {"id": u5}, {"id": tool5, "tool_key": tool5, "type": "produce",
+            {"id": u5}, {"id": tool5, "tool_key": tool5,
                          "owner_id": None}, _inv(ref), _stage_ok))
     def _calls(ref):
         with db() as con:
@@ -611,9 +611,9 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, tool_type, label_json, icon,"
+            " execution, label_json, icon,"
             " visibility, enabled, endpoint_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'http', 'produce', %s, 'wand',"
+            " values (%s, %s, %s, 'http', %s, 'wand',"
             " 'unlisted', TRUE, %s, %s, %s)",
             (tkey6, owner, tid6, _json.dumps({"en": "T6"}),
              _json.dumps({"url": "https://example.com/x", "timeout_s": 10}),

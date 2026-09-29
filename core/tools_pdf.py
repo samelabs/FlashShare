@@ -12,7 +12,7 @@ import io
 
 from pypdf import PdfReader, PdfWriter
 
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import register, ToolError
 
 MAX_PAGES = 500
 MAX_SOURCES = 20
@@ -31,7 +31,8 @@ def pdf_merge_handler(tool_input, params):
         params: {} (no presets, merge is a single operation)
 
     Returns:
-        {"stream": BytesIO, "filename": str, "content_type": str, "size": int}
+        {"items": [{"kind": "file", "stream": BytesIO, "filename": str,
+                    "content_type": str, "size": int}]}
     """
     sources = tool_input.get("sources", [])
     if not sources:
@@ -87,7 +88,6 @@ def pdf_merge_handler(tool_input, params):
 
 register(
     tool_id="pdf_merge",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Merge PDF", "zh": "PDF合并", "ja": "PDF結合",
         "ko": "PDF 병합", "es": "Combinar PDF", "ar": "دمج PDF",

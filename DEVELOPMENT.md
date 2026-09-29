@@ -199,7 +199,7 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 | Python | 3.12，`/opt/flashshare/venv`，`pip install -r requirements.txt` |
 | PostgreSQL | 16；为 1.0 新建空库与专用用户 |
 | Gokapi | **v2.2.4**（`/opt/gokapi/gokapi`），只监听 127.0.0.1 |
-| LibreOffice | `soffice` 可执行（文档转 PDF 工具）；不在 PATH 时设 `FLASHSHARE_SOFFICE` |
+| LibreOffice | 文档转 PDF 工具，需安装 `libreoffice-writer-nogui`、`libreoffice-calc-nogui`、`libreoffice-impress-nogui` 与 `fonts-noto-cjk`（中日韩文档必需）；`soffice` 不在 PATH 时设 `FLASHSHARE_SOFFICE`。启动时会探测一次 txt→PDF 转换，失败记 ERROR 日志（不阻止启动） |
 | Nginx | 反代 518 与 Gokapi 两条下载路径 |
 
 ### 2. Gokapi（上次部署卡住的环节）
@@ -354,6 +354,7 @@ curl -s https://518.plus/healthz
 ### 7. 冒烟（真实站点）
 
 1. 注册新账号 → 首页拖入一张图片 → 拿到链接 → 打开 `/r` 页 → 点下载拿到文件。
+1. 拖入一个 `txt` 与一个 `docx`（含中文段落）→ 文档转 PDF 输出可打开的 PDF（验证 LibreOffice 包与 CJK 字体就位）。
 2. `/account/keys` 建 API key，然后：
    ```bash
    curl -s https://518.plus/mcp -H "Authorization: Bearer fsk_…" -H "Content-Type: application/json" \

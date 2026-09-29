@@ -1,66 +1,81 @@
 """Privacy tool — strips metadata and disrupts AI image watermarks.
 
 Pure Pillow pipeline. Zero I/O dependencies.
-Handler receives a stream (bytes in), returns a stream (bytes out).
+Handler receives a stream (bytes in), returns IO-1 items (bytes out).
 Never imports gokapi, database, or any storage/record layer.
 
 Pipeline:
-    decode → exif_transpose → convert(RGB) → thumbnail(2048)
+    decode → exif_transpose → ICC→sRGB → cap at 4096
     → noise injection → Gaussian blur → USM sharpen → resample roundtrip
-    → clean JPEG save → inject XMP brand
+    → clean re-encode (no EXIF/XMP/IPTC/comment chunks)
+
+Output format keeps the input family: PNG (alpha preserved) → PNG,
+JPEG → JPEG; any other accepted input → PNG when it carries
+transparency, else JPEG. The clean file is never larger than 4096 on
+its longest edge.
 """
 
 import gc
 import io
-from datetime import datetime, timezone
 
 from PIL import Image, ImageFilter, ImageChops, ImageOps
 
-from config import APP_NAME, BASE_URL
-from tools import register, TYPE_PRODUCE, ToolError
+from tools import register, ToolError
 
-MAX_DIM = 2048
+MAX_DIM = 4096  # same ceiling as compress — no extra shrink below it
 
 PRESETS = {
-    "light":    {"noise_sigma": 4,  "noise_blend": 0.06, "blur": 0.5, "usm_r": 1,   "usm_p": 60,  "usm_t": 2, "scale": 0.93},
+    "light":    {"noise_sigma": 4,  "noise_blend": 0.05, "blur": 0.4, "usm_r": 1,   "usm_p": 60,  "usm_t": 2, "scale": 0.96},
     "standard": {"noise_sigma": 12, "noise_blend": 0.10, "blur": 0.5, "usm_r": 1,   "usm_p": 60,  "usm_t": 2, "scale": 0.93},
     "strong":   {"noise_sigma": 16, "noise_blend": 0.12, "blur": 0.8, "usm_r": 1,   "usm_p": 80,  "usm_t": 2, "scale": 0.90},
-    "max":      {"noise_sigma": 20, "noise_blend": 0.15, "blur": 1.0, "usm_r": 1.5, "usm_p": 100, "usm_t": 1, "scale": 0.88},
+    "max":      {"noise_sigma": 20, "noise_blend": 0.15, "blur": 1.0, "usm_r": 1.5, "usm_p": 100, "usm_t": 1, "scale": 0.90},
 }
 
 
-def _inject_xmp(jpeg_bytes: bytes) -> bytes:
-    """Inject XMP creator metadata into JPEG bytes (before first SOS)."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    xmp = (
-        b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>'
-        b'<x:xmpmeta xmlns:x="adobe:ns:meta/">'
-        b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
-        b'<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">'
-        b'<dc:creator><rdf:Seq><rdf:li>' + APP_NAME.encode() + b'</rdf:li></rdf:Seq></dc:creator>'
-        b'<dc:description><rdf:Alt><rdf:li xml:lang="x-default">'
-        b'Processed by ' + BASE_URL.encode() + b'/privacy at ' + now.encode() + b'</rdf:li></rdf:Alt></dc:description>'
-        b'</rdf:Description>'
-        b'</rdf:RDF>'
-        b'</x:xmpmeta>'
-        b'<?xpacket end="w"?>'
-    )
-    app1 = b'\xff\xe1' + (len(xmp) + 2).to_bytes(2, 'big') + xmp
-    sos = jpeg_bytes.find(b'\xff\xda')
-    if sos < 0:
-        return jpeg_bytes
-    return jpeg_bytes[:sos] + app1 + jpeg_bytes[sos:]
+def _has_alpha(img: Image.Image) -> bool:
+    if img.mode in ("RGBA", "LA"):
+        return True
+    return img.mode == "P" and "transparency" in img.info
+
+
+def _to_srgb(img: Image.Image) -> Image.Image:
+    """Convert pixels into the sRGB space when an ICC profile is attached.
+
+    The profile itself is not carried over — outputs embed no metadata."""
+    icc = img.info.get("icc_profile")
+    if not icc:
+        return img
+    try:
+        from PIL import ImageCms
+        src = ImageCms.ImageCmsProfile(io.BytesIO(icc))
+        dst = ImageCms.createProfile("sRGB")
+        mode = "RGBA" if _has_alpha(img) else "RGB"
+        return ImageCms.profileToProfile(img, src, dst, outputMode=mode)
+    except Exception:
+        # Broken/unsupported profile: pixel values pass through and every
+        # metadata chunk is still dropped by the clean re-encode.
+        return img
+
+
+def _roundtrip(channel: Image.Image, scale: float, w: int, h: int) -> Image.Image:
+    """Downscale-then-upscale resample roundtrip (breaks watermark grid
+    alignment); final size is exactly (w, h) so channels stay aligned."""
+    tw = max(1, int(w * scale))
+    th = max(1, int(h * scale))
+    channel = channel.resize((tw, th), Image.LANCZOS)
+    return channel.resize((w, h), Image.LANCZOS)
 
 
 def privacy_handler(tool_input: dict, params: dict) -> dict:
-    """Process an image to strip metadata and disrupt watermarks.
+    """Strip metadata and disrupt AI watermarks from one image.
 
     Args:
         tool_input: {"stream": file-like, "filename": str, "content_type": str, "size": int}
         params: {"preset": str, ...}
 
     Returns:
-        {"stream": BytesIO, "filename": str, "content_type": str, "size": int}
+        {"items": [{"kind": "file", "stream": BytesIO, "filename": str,
+                    "content_type": str, "size": int}]}
 
     Raises:
         ToolError if format is not supported.
@@ -78,53 +93,88 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
     preset = params["preset"]
     p = PRESETS[preset]
 
-    # ---- CP6.3: Decode + orient + downscale ----
-    img = Image.open(tool_input["stream"])
+    # ---- CP6.3: Decode + orient + ICC→sRGB ----
+    try:
+        img = Image.open(tool_input["stream"])
+        img.load()
+    except ToolError:
+        raise
+    except Exception as exc:
+        raise ToolError("err_format_not_supported") from exc
     img = ImageOps.exif_transpose(img)
-    img = img.convert("RGB")
+    img = _to_srgb(img)
+
+    # Output family: PNG stays PNG (alpha preserved), JPEG stays JPEG;
+    # other accepted formats keep transparency via PNG, else JPEG.
+    if ct == "image/png":
+        keep_png = True
+    elif ct == "image/jpeg":
+        keep_png = False
+    else:
+        keep_png = _has_alpha(img)
+
+    alpha = None
+    if _has_alpha(img):
+        rgba = img.convert("RGBA")
+        alpha = rgba.getchannel("A")
+        img = rgba.convert("RGB")
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+
+    # ---- CP6.4: Cap the longest edge (no shrink below the ceiling) ----
     if max(img.size) > MAX_DIM:
         img.thumbnail((MAX_DIM, MAX_DIM), Image.LANCZOS)
+        if alpha is not None:
+            alpha.thumbnail((MAX_DIM, MAX_DIM), Image.LANCZOS)
     w, h = img.size
 
-    # ---- CP6.4: Noise injection (disrupt watermark signal) ----
+    # ---- CP6.5: Noise injection (disrupt watermark signal) ----
     noise = Image.effect_noise((w, h), p["noise_sigma"]).convert("RGB")
     img = ImageChops.blend(img, noise, p["noise_blend"])
     del noise
     gc.collect()
 
-    # ---- CP6.5: Gaussian blur (cover high-frequency watermark) ----
+    # ---- CP6.6: Gaussian blur (cover high-frequency watermark) ----
     img = img.filter(ImageFilter.GaussianBlur(radius=p["blur"]))
 
-    # ---- CP6.6: USM sharpen (recover edges, not watermark) ----
+    # ---- CP6.7: USM sharpen (recover edges, not watermark) ----
     img = img.filter(ImageFilter.UnsharpMask(
         radius=p["usm_r"], percent=p["usm_p"], threshold=p["usm_t"]))
 
-    # ---- CP6.7: Resample roundtrip (break watermark grid alignment) ----
+    # ---- CP6.8: Resample roundtrip (break watermark grid alignment) ----
     scale = p["scale"]
-    tw = max(1, int(w * scale))
-    th = max(1, int(h * scale))
-    img = img.resize((tw, th), Image.LANCZOS)
-    img = img.resize((w, h), Image.LANCZOS)
+    img = _roundtrip(img, scale, w, h)
+    if alpha is not None:
+        alpha = _roundtrip(alpha, scale, w, h)
 
-    # ---- CP6.8: Clean output (metadata stripped, brand injected) ----
+    # ---- CP6.9: Clean output (no metadata chunks are written) ----
     buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=90, progressive=True)
+    if keep_png:
+        out = Image.merge("RGBA", (*img.split(), alpha)) if alpha is not None else img
+        out.save(buf, "PNG")
+        out_ext, out_ct = "png", "image/png"
+    else:
+        img.save(buf, "JPEG", quality=90, progressive=True)
+        out_ext, out_ct = "jpg", "image/jpeg"
     raw = buf.getvalue()
-    raw = _inject_xmp(raw)
+    del img, alpha
+    gc.collect()
 
     out_buf = io.BytesIO(raw)
     out_buf.seek(0)
 
-    # Derive output filename from original
     orig_name = tool_input.get("filename", "image")
     stem = orig_name.rsplit(".", 1)[0] if "." in orig_name else orig_name
-    out_name = f"privacy_{stem}.jpg"
+    out_name = f"{stem}_clean.{out_ext}"
 
     return {
-        "stream": out_buf,
-        "filename": out_name,
-        "content_type": "image/jpeg",
-        "size": len(raw),
+        "items": [{
+            "kind": "file",
+            "stream": out_buf,
+            "filename": out_name,
+            "content_type": out_ct,
+            "size": len(raw),
+        }],
     }
 
 
@@ -153,7 +203,6 @@ def share_handler(tool_input, params):
 
 register(
     tool_id="share",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Lossless Share", "zh": "无损分享", "ja": "ロスレス共有",
         "ko": "무손실 공유", "es": "Compartir sin pérdida", "ar": "مشاركة بدون فقدان",
@@ -184,7 +233,6 @@ register(
 
 register(
     tool_id="privacy",
-    tool_type=TYPE_PRODUCE,
     label={
         "en": "Clean",
         "zh": "图片净化",
@@ -199,7 +247,7 @@ register(
     },
     desc={
         "fr": "Supprime les metadonnees et les filigranes IA.",
-        "ko": "이미지 메타데이터와 AI 워터마크를 제거합니다。",
+        "ko": "이미지 메타데이터와 AI 워터마크를 제거합니다.",
         "ru": "Удаляет метаданные и водяные знаки ИИ.",
         "ar": "يزيل البيانات الوصفية والعلامات المائية للذكاء الاصطناعي.",
         "de": "Entfernt Metadaten und AI-Wasserzeichen.",
