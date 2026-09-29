@@ -370,23 +370,6 @@ def call_stats_by_tool(con, tool_key: str) -> dict:
         (tool_key,)).fetchone()
 
 
-def ok_calls_by_tools(con, tool_keys) -> dict:
-    """批量公开计数: {tool_id: ok_count}。口径与 call_stats_by_tool 一致
-    (成功调用 = status='ok'); 无记录的 tool 不出现在结果里 → 调用方按 0 处理。
-    一次查询覆盖整页, 消除市场页 N+1。"""
-    keys = list(tool_keys)
-    if not keys:
-        return {}
-    rows = con.execute(
-        """
-        SELECT tool_id, COUNT(*) FILTER (WHERE status = 'ok') AS ok
-        FROM tool_calls WHERE tool_id = ANY(%s)
-        GROUP BY tool_id
-        """,
-        (keys,)).fetchall()
-    return {r["tool_id"]: int(r["ok"]) for r in rows}
-
-
 def calls_by_tool_excluding_owner(con, tool_key: str, owner_id: int,
                                   limit: int = 20) -> list:
     return con.execute(

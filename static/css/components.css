@@ -697,7 +697,6 @@ pre.rs-text, pre.rs-json {
 }
 .send svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .send.wide { width: auto; padding: 0 18px; border-radius: var(--r-full); gap: 6px; display: inline-flex; align-items: center; font: inherit; font-weight: 650; font-size: var(--fs-base); }
-.send.wide svg { width: 18px; height: 18px; }
 .send:disabled { opacity: 0.55; cursor: default; pointer-events: none; }
 .ti-progress { font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 

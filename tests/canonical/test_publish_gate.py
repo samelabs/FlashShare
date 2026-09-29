@@ -262,8 +262,8 @@ try:
     st, _h, d, _sc = _patch_vis(a_ck, "gate1", "public")
     check("G6b PATCH public after the owner's ok run → 200",
           st == 200 and (d or {}).get("ok"), f"{st} {d}")
-    st, _h, market, _sc = _req("GET", "/tools")
-    check("G6c visible on /tools", tk in (market or ""))
+    st, _h, market, _sc = _req("GET", "/tools?q=" + _u)
+    check("G6c searchable on /tools", tk in (market or ""))
     st, d = _call("pin_tool", {"name": tk.replace("/", "__")}, R_TOK)
     check("G6d a non-owner can pin it into their MCP tools/list",
           ((d.get("result") or {}).get("structuredContent") or {})

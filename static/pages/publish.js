@@ -269,17 +269,17 @@ function addParamRow(p) {
   refreshParamNone();
 }
 
-function collectParams() {
-  // 组装 params 数组; 校验失败返回 null 并行内标错
+function collectParams(preview) {
+  // 组装 params 数组; 提交态校验失败返回 null 并行内标错。
+  // preview=true (实时预览): 同一组装, 跳过无效行, 不标错。
   let ok = true;
   const rows = [...document.querySelectorAll(".param-row")];
-  rows.forEach(r => { const e = r.querySelector(".pub-err"); if (e) e.textContent = ""; });
+  if (!preview) rows.forEach(r => { const e = r.querySelector(".pub-err"); if (e) e.textContent = ""; });
   const seen = new Set();
   const out = [];
   for (const row of rows) {
-    const id = row.dataset.pid;
     const key = row.querySelector(".pr-key").value.trim();
-    const err = msg => { row.querySelector(".pub-err").textContent = _msg(msg); ok = false; };
+    const err = msg => { if (!preview) row.querySelector(".pub-err").textContent = _msg(msg); ok = false; };
     if (!key) { err("pub_param_key_req"); continue; }
     if (!KEY_RE.test(key)) { err("bad_param_key"); continue; }
     if (seen.has(key)) { err("bad_param_key"); continue; }
@@ -324,7 +324,18 @@ function collectParams() {
     }
     out.push(item);
   }
-  return ok ? out : null;
+  return (ok || preview) ? out : null;
+}
+
+// ── 输入方式: 文件 / 纯文本 (files_max = 0, 无文件位, 无格式声明) ──
+function inputMode() {
+  const el = document.querySelector('input[name="fInputMode"]:checked');
+  return el ? el.value : "files";
+}
+function applyInputMode() {
+  const text = inputMode() === "text";
+  document.querySelectorAll(".pub-files-only").forEach(el => el.classList.toggle("hidden", text));
+  document.getElementById("pubTextHint").classList.toggle("hidden", !text);
 }
 
 // ── 行内错误 (服务端码 → 字段定位) ──
@@ -373,13 +384,14 @@ async function submit() {
     && document.getElementById("fRemoveAuth").checked;
   // 4C-2: 受控空态 (族外 accept token) / 取消到 0 个 exact format → 拦截,
   // 禁止在未明确选择时保存覆盖原 contract。
-  if (!selectedFam || collectAccept().length === 0) {
+  const textOnly = inputMode() === "text";
+  if (!textOnly && (!selectedFam || collectAccept().length === 0)) {
     showErrors({ accept: "bad_format_family" });
     return;
   }
-  const fmin = parseInt(document.getElementById("fFilesMin").value, 10);
-  const fmax = parseInt(document.getElementById("fFilesMax").value, 10);
-  if (!(fmin >= 0 && fmax >= 1 && fmin <= fmax && fmax <= 20)) {
+  const fmin = textOnly ? 0 : parseInt(document.getElementById("fFilesMin").value, 10);
+  const fmax = textOnly ? 0 : parseInt(document.getElementById("fFilesMax").value, 10);
+  if (!textOnly && !(fmin >= 0 && fmax >= 1 && fmin <= fmax && fmax <= 20)) {
     showErrors({ files_max: "bad_files_range" });
     return;
   }
@@ -393,10 +405,10 @@ async function submit() {
     desc: (desc || (!isEditPatch ? undefined : "")),
     url: document.getElementById("fUrl").value.trim(),
     timeout_s: parseInt(document.getElementById("fTimeout").value, 10) || 60,
-    format_families: collectFamilies(),
-    accept: collectAccept(),
-    files_min: parseInt(document.getElementById("fFilesMin").value, 10),
-    files_max: parseInt(document.getElementById("fFilesMax").value, 10),
+    format_families: textOnly ? undefined : collectFamilies(),
+    accept: textOnly ? undefined : collectAccept(),
+    files_min: fmin,
+    files_max: fmax,
     outputs: ["text", "json", "file"].filter((k) => {
       const el = document.getElementById("fOut" + k.charAt(0).toUpperCase() + k.slice(1));
       return el && el.checked;
@@ -456,9 +468,13 @@ function refill(t) {
   // 完全未知 accept → famKey 为空 → 受控空态 (不默认 image, 不覆盖原声明)。
   const accExts = extsFromAccept(t.accept);
   const fams = famKeyFromAccept(t.accept);
-  renderFamGrid(fams[0] || null, accExts, false);
-  document.getElementById("fFilesMin").value = t.files_min != null ? t.files_min : 1;
-  document.getElementById("fFilesMax").value = t.files_max != null ? t.files_max : 1;
+  const textOnly = t.files_max === 0;
+  document.querySelector('input[name="fInputMode"][value="' + (textOnly ? "text" : "files") + '"]').checked = true;
+  // 纯文本工具切回文件输入时: 族网格按新建态默认, 窗口回到 1..1
+  renderFamGrid(fams[0] || null, accExts, textOnly);
+  document.getElementById("fFilesMin").value = textOnly ? 1 : t.files_min;
+  document.getElementById("fFilesMax").value = textOnly ? 1 : t.files_max;
+  applyInputMode();
   ["text", "json", "file"].forEach((k) => {
     const el = document.getElementById("fOut" + k.charAt(0).toUpperCase() + k.slice(1));
     if (el) el.checked = (t.outputs || ["file"]).indexOf(k) !== -1;
@@ -504,6 +520,9 @@ function init() {
   initLangRowDel();
   bindFormatPickers();
   renderFamGrid(null, null, true);   // 新建态: 默认首族 + 全选
+  document.querySelectorAll('input[name="fInputMode"]').forEach(r =>
+    r.addEventListener("change", applyInputMode));
+  applyInputMode();
   document.getElementById("addParam").addEventListener("click", () => addParamRow());
   document.getElementById("pubSubmit").addEventListener("click", submit);
   document.getElementById("pubCancel").addEventListener("click",
@@ -521,24 +540,18 @@ init();
   var ctrl = null;
   var refresh = function () {
     var label = document.getElementById("fLabel").value.trim();
+    var textOnly = inputMode() === "text";
     var fmin = parseInt(document.getElementById("fFilesMin").value, 10);
     var fmax = parseInt(document.getElementById("fFilesMax").value, 10);
-    var fminOk = Number.isFinite(fmin) && fmin >= 0 ? fmin : 1;
-    var fmaxOk = Number.isFinite(fmax) && fmax >= 1 ? fmax : 1;
+    var fminOk = textOnly ? 0 : (Number.isFinite(fmin) && fmin >= 0 ? fmin : 1);
+    var fmaxOk = textOnly ? 0 : (Number.isFinite(fmax) && fmax >= 1 ? fmax : 1);
     var outs = [];
     if (document.getElementById("fOutText").checked) outs.push("text");
     if (document.getElementById("fOutJson").checked) outs.push("json");
     if (document.getElementById("fOutFile").checked) outs.push("file");
-    var accept = [...selectedExts].sort();
-    var params = [];
-    document.querySelectorAll(".param-row").forEach(function (row) {
-      var key = row.querySelector(".pr-key") ? row.querySelector(".pr-key").value.trim() : "";
-      if (!key) return;
-      var type = row.querySelector(".pr-type") ? row.querySelector(".pr-type").value : "text";
-      var lab = row.querySelector(".pr-label") ? row.querySelector(".pr-label").value.trim() : key;
-      var item = { key: key, type: type, label: lab, options: [{ value: "v", label: lab || key }] };
-      params.push(item);
-    });
+    var accept = textOnly ? [] : [...selectedExts].sort();
+    // 预览与提交同一参数组装 (真实 options/default/min/max/placeholder)
+    var params = collectParams(true);
     var tool = {
       id: "preview", label: label || (_msg("mytools_ph_label")),
       icon: "wand", files_min: fminOk, files_max: fmaxOk,

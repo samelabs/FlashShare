@@ -85,11 +85,11 @@
     <label>鉴权头（可选） <input class="sl-input" type="text" name="auth_header"></label>
     <label>鉴权令牌（可选，加密存储） <input class="sl-input" type="password" name="auth_token"></label>
     <label>接受扩展名（逗号分隔，可选） <input class="sl-input" type="text" name="accept" placeholder=".png,.pdf"></label>
-    <label>最少文件数（0 = 纯文本工具）
+    <label>最少文件数（0 = 可不带文件）
       <input class="sl-input" type="number" name="files_min" value="1" min="0" max="20">
     </label>
-    <label>最多文件数（1-20）
-      <input class="sl-input" type="number" name="files_max" value="1" min="1" max="20">
+    <label>最多文件数（0-20，0 = 纯文本工具）
+      <input class="sl-input" type="number" name="files_max" value="1" min="0" max="20">
     </label>
     <div class="sl-modal-checks">
       <label class="check"><input type="checkbox" name="out_text"> 文本输出</label>

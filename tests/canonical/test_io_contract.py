@@ -161,16 +161,25 @@ try:
         "visibility": "public", "enabled": True})
     check("D1 min=0 declaration valid",
           good["inputs"]["files"]["min"] == 0, good)
+    text_only = validate_tool_declaration({
+        "tool_key": f"{_u}t3", "tool_id": f"{_u}t3", "owner_id": None,
+        "execution": "local",
+        "label": {"en": "T"}, "icon": "wand",
+        "inputs": {"files": {"min": 0, "max": 0, "accept": None}},
+        "outputs": ["text"], "params": None,
+        "visibility": "public", "enabled": True})
+    check("D1b text-only declaration (files 0..0) valid",
+          text_only["inputs"]["files"]["max"] == 0, text_only)
     for bad, why in (
-        ({"min": -1, "max": 1}, "min<0"),
-        ({"min": 2, "max": 1}, "min>max"),
-        ({"min": 1, "max": 21}, "max>20"),
-        ({"min": 0, "max": 0}, "max=0"),
+        ({"min": -1, "max": 1, "accept": None}, "min<0"),
+        ({"min": 2, "max": 1, "accept": None}, "min>max"),
+        ({"min": 1, "max": 21, "accept": None}, "max>20"),
+        ({"min": 0, "max": 0, "accept": [".png"]}, "max=0 with accept"),
     ):
         decl = {"tool_key": f"{_u}t2", "tool_id": f"{_u}t2", "owner_id": None,
                 "execution": "local",
                 "label": {"en": "T"}, "icon": "wand",
-                "inputs": {"files": {**bad, "accept": None}},
+                "inputs": {"files": bad},
                 "outputs": ["file"], "params": None,
                 "visibility": "public", "enabled": True}
         try:

@@ -113,9 +113,10 @@ OUTPUT_KINDS = ("text", "json", "file")
 
 
 def _normalize_inputs(inputs) -> dict:
-    """inputs.files = {min, max, accept}: min may be 0 (text-only tools),
-    max <= MAX_INPUT_FILES, min <= max; accept keeps the canonical
-    extension-token rules (None = any, non-empty token list)."""
+    """inputs.files = {min, max, accept}: 0 <= min <= max <= MAX_INPUT_FILES.
+    max = 0 declares a text-only tool (no file slot; accept must be None);
+    otherwise accept keeps the canonical extension-token rules (None =
+    any, non-empty token list)."""
     if not isinstance(inputs, dict) or set(inputs.keys()) - {"files"}:
         raise DeclarationError("bad_inputs")
     files = inputs.get("files")
@@ -126,9 +127,11 @@ def _normalize_inputs(inputs) -> dict:
     if isinstance(mn, bool) or not isinstance(mn, int) or mn < 0:
         raise DeclarationError("bad_inputs")
     if isinstance(mx, bool) or not isinstance(mx, int) \
-            or not (1 <= mx <= MAX_INPUT_FILES):
+            or not (0 <= mx <= MAX_INPUT_FILES):
         raise DeclarationError("bad_inputs")
     if mn > mx:
+        raise DeclarationError("bad_inputs")
+    if mx == 0 and files.get("accept") is not None:
         raise DeclarationError("bad_inputs")
     return {"files": {"min": mn, "max": mx,
                       "accept": _normalize_accept(files.get("accept"))}}

@@ -1,10 +1,10 @@
 """governance/favorites — 我的收藏 (a user's pinned tools), single point.
 
-One rule decides what a user's MCP tools/list carries besides the meta
-tools: first-party tools, the user's own tools, and the user's
-favorites. Every other visible tool stays reachable through
-catalog_search and tools/call by name — the list is a working set, not
-an access boundary.
+One rule decides a user's working set — MCP tools/list (besides the
+meta tools) and the web composer's tool picker: first-party tools, the
+user's own tools, and the user's favorites. Every other visible tool
+stays reachable through search (catalog_search / the picker's query)
+and by name — the list is a working set, not an access boundary.
 """
 
 from database import db
@@ -41,10 +41,14 @@ def set_favorite(user_id: int, tool_key: str, on: bool) -> str | None:
     return None
 
 
-def mcp_working_set(user: dict, catalog: list) -> list:
-    """Catalog items a user's MCP tools/list carries: first-party tools,
-    the user's own tools, then their favorites (pin order)."""
+def working_set(user: dict | None, catalog: list) -> list:
+    """A user's working set — what MCP tools/list and the web composer's
+    tool picker carry: first-party tools, the user's own tools, then
+    their favorites (pin order). Anonymous = first-party tools. Any
+    other public tool is found through search."""
     from governance.catalog import is_official_id
+    if not user:
+        return [t for t in catalog if is_official_id(t["id"])]
     favs = favorite_keys(user["id"], catalog)
     handle = user.get("username")
     base = [t for t in catalog

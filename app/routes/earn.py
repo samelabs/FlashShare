@@ -20,7 +20,7 @@ from database import db
 from economy import earnings
 from repo.sessions import user_by_session_token
 from security import token_hash
-from utils import now
+from utils import now, page_number
 
 router = APIRouter()
 
@@ -45,14 +45,8 @@ async def my_earnings(request: Request):
     if err:
         return err
     # growth contract: rev page paginates (50/page); withdrawals 20/page
-    try:
-        rev_pg = max(1, int(request.query_params.get("rev_page", "1") or 1))
-    except ValueError:
-        rev_pg = 1
-    try:
-        wd_pg = max(1, int(request.query_params.get("wd_page", "1") or 1))
-    except ValueError:
-        wd_pg = 1
+    rev_pg = page_number(request.query_params.get("rev_page", "1"))
+    wd_pg = page_number(request.query_params.get("wd_page", "1"))
     from economy.money import (millis_to_usd_cents_str,
                                millis_to_usd_str)
     s_raw = earnings.earnings_summary(user["id"])

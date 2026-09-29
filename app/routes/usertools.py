@@ -140,7 +140,35 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
         elif has_h or has_t:
             return None, "bad_auth_header"
 
-    if "accept" in raw or "format_families" in raw or not partial:
+    # IO-1 input/output contract: files count window + output kinds.
+    # create defaults to 1..1 / ["file"]; PATCH updates only on presence.
+    # The window comes first: files_max = 0 (text-only tool, no file
+    # slot) decides whether the accept contract applies at all.
+    if "files_min" in raw or "files_max" in raw or not partial:
+        _cur_min = int(row["files_min"]) if row else 1
+        _cur_max = int(row["files_max"]) if row else 1
+        mn = raw.get("files_min", _cur_min if partial else 1)
+        mx = raw.get("files_max", _cur_max if partial else 1)
+        if isinstance(mn, bool) or not isinstance(mn, int) or mn < 0:
+            return None, "bad_files_min"
+        if isinstance(mx, bool) or not isinstance(mx, int) \
+                or not (0 <= mx <= 20):
+            return None, "bad_files_max"
+        if mn > mx:
+            return None, "bad_files_range"
+        fields["files_min"] = mn
+        fields["files_max"] = mx
+    eff_max = fields.get("files_max",
+                         int(row["files_max"]) if row else 1)
+    if eff_max == 0:
+        # text-only: no file slot, so no format family / accept
+        if raw.get("accept") is not None \
+                or raw.get("format_families") is not None:
+            return None, "bad_accept"
+        if not partial or "files_max" in fields:
+            fields["accept"] = None
+    elif ("accept" in raw or "format_families" in raw or not partial
+          or (row is not None and int(row["files_max"]) == 0)):
         # 4C-2 Tool Input Contract: format_families 保留为 authoring taxonomy;
         # accept 是 exact executable contract — 存库永远写 sorted canonical
         # extension tokens。accept 必须显式声明 (见下)。
@@ -167,22 +195,6 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
             return None, "bad_accept"
         fields["accept"] = sorted(canon)
 
-    # IO-1 input/output contract: files count window + output kinds.
-    # create defaults to 1..1 / ["file"]; PATCH updates only on presence.
-    if "files_min" in raw or "files_max" in raw or not partial:
-        _cur_min = int(row["files_min"]) if row else 1
-        _cur_max = int(row["files_max"]) if row else 1
-        mn = raw.get("files_min", _cur_min if partial else 1)
-        mx = raw.get("files_max", _cur_max if partial else 1)
-        if isinstance(mn, bool) or not isinstance(mn, int) or mn < 0:
-            return None, "bad_files_min"
-        if isinstance(mx, bool) or not isinstance(mx, int) \
-                or not (1 <= mx <= 20):
-            return None, "bad_files_max"
-        if mn > mx:
-            return None, "bad_files_range"
-        fields["files_min"] = mn
-        fields["files_max"] = mx
     if "outputs" in raw or not partial:
         outputs = raw.get("outputs", ["file"])
         if not isinstance(outputs, list) or not outputs \
@@ -226,8 +238,8 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
 async def search_tools(request: Request, q: str = ""):
     """Public tool search (home selector surface) — the same predicate,
     ordering and projection as the /tools market and MCP catalog_search
-    (single point: governance.search_catalog). Empty query browses the
-    top entries; anonymous and signed-in callers see the same public set
+    (single point: governance.search_catalog). Empty query lists the
+    recommended tools; anonymous and signed-in callers see the same public set
     (private/unlisted tools live on the owner surface, not in search)."""
     from governance.catalog import search_catalog
     return {"ok": True, "tools": search_catalog(q)}

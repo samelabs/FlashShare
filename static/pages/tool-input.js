@@ -270,7 +270,7 @@
         + "</div>"
         + '<span class="ti-progress" aria-live="polite"></span>'
         + '<span class="sp"></span>'
-        + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + " " + icon("send") + "</button>")
+        + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + "</button>")
         + "</div>";
 
       // 隐藏文件输入 (测试与无 JS 场景的稳定钩子)

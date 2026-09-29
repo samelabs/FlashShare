@@ -34,9 +34,10 @@
   <div class="grid-bg"></div>
 
   <section class="hero">
+    <span class="hero-mark" aria-hidden="true">MCP</span>
     <div class="wrap">
       <h1><span data-i18n="hero_title_1">{{ texts.hero_title_1 }}</span><br><span class="grad" data-i18n="hero_title_2">{{ texts.hero_title_2 }}</span></h1>
-      <p data-i18n="hero_sub_v2">{{ texts.hero_sub_v2 }}</p>
+      <p class="hero-sub"><span data-i18n="hero_sub_v2">{{ texts.hero_sub_v2 }}</span><span class="hero-sep" aria-hidden="true">|</span><a href="/developers" data-i18n="hero_join">{{ texts.hero_join }}</a></p>
 
       <div class="home-composer" id="homeComposer">
         <div id="toolInput" class="ti-mount"></div>
@@ -56,7 +57,7 @@
       </div>
       <div class="bento" id="homeBento">
         {% from "partials/tool_identity.html" import tool_card with context %}
-        {% for t in tools[:8] %}{{ tool_card(t, lang, texts) }}{% endfor %}
+        {% for t in tools %}{{ tool_card(t, lang, texts) }}{% endfor %}
       </div>
     </div>
   </section>

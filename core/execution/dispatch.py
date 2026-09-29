@@ -122,7 +122,8 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
         try:
             return tool, enforce_params_decl(decl, params), None, None
         except ParamsValueError as exc:
-            return None, None, {"ok": False, "error": str(exc)}, 422
+            return None, None, {"ok": False, "error": str(exc),
+                                "field": exc.field}, 422
     from governance.tool_params import TEXT_PARAM_MAX_CHARS
     try:
         params_len = len(_json.dumps(params, ensure_ascii=False))
@@ -135,9 +136,9 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
 
 def source_count_error(tool: dict, n: int) -> str | None:
     """File-count window from the declaration: [files_min, files_max].
-    0 is legal for text-only tools."""
-    mn = int(tool.get("files_min", 1) or 0)
-    mx = int(tool.get("files_max", 1) or 1)
+    0 is legal for text-only tools (files_max = 0 admits no file)."""
+    mn = int(tool["files_min"])
+    mx = int(tool["files_max"])
     if not (mn <= n <= mx):
         return "err_file_count"
     return None

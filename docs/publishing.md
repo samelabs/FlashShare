@@ -39,9 +39,9 @@ The declaration and execution contract for tools published on 518.PLUS.
 |---|---|
 | `tool_id` / `tool_key` | 唯一身份，`^[a-z][a-z0-9_]{1,40}$` |
 | `execution` | 当前用户工具固定为 `http` |
-| `format_families` | 七族准入词表单选（image/document/archive/cad3d/media/data/code），accept 由族派生 |
-| `files_min` | 输入文件数下限，int ≥ 0（0 = 纯文本/参数工具，可不带文件调用）；缺省 1 |
-| `files_max` | 输入文件数上限，int 1..20；须 ≥ files_min；缺省 1 |
+| `format_families` | 七族准入词表单选（image/document/archive/cad3d/media/data/code），accept 由族派生；纯文本工具不带 |
+| `files_min` | 输入文件数下限，int ≥ 0（0 = 可不带文件调用）；缺省 1 |
+| `files_max` | 输入文件数上限，int 0..20；须 ≥ files_min；缺省 1。0 = 纯文本工具：无文件位，不带 format_families/accept，第一个 text 参数作为输入框 |
 | `outputs` | 产出类型非空子集 `["text","json","file"]`（声明工具可能返回哪些结果项）；缺省 `["file"]` |
 | `param.key` | `^[a-z][a-z0-9_]{0,31}$`，同工具内唯一 |
 | `param.type` | `enum` / `text` / `number` / `boolean` |
@@ -171,6 +171,7 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 - 改为 `public`（PATCH `visibility: "public"`）要求该工具存在至少一条"所有者本人发起、状态为 `ok`"的 `tool_calls` 记录；不满足 → 422 `needs_successful_run`。判定与可见性写入同一事务。
 - 他人的成功调用、本人失败的调用都不解锁；仅"本人 + 成功"计入。
 - 已经是 `public` 的工具不受影响；`public → unlisted/private`（取消公开）不受限制。
+- 公开工具都能被搜索到（`/tools?q=`、首页工具选择器、MCP `catalog_search`）；不带查询的列表（首页工具区、`/tools`、`catalog_search` 空查询、`/llms.txt`）只展示运营推荐的工具，按运营排序。
 
 ## 执行契约
 

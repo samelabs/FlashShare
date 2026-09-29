@@ -12,6 +12,7 @@ from database import db
 from economy.billing import SPENDABLE_KINDS
 from economy.money import millis_to_usd_str
 from repo import operator_views
+from utils import page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
 
@@ -27,7 +28,7 @@ async def credits(request: Request, user_id: int | None = None,
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     with db() as con:
         rows, total = operator_views.credits_page(
             con, user_id, kind or None, SPENDABLE_KINDS, _PAGE,
@@ -46,7 +47,7 @@ async def provider_earnings(request: Request, page: int = 1):
     if resp:
         return resp
     from app.main import templates
-    page = max(1, page)
+    page = page_number(page)
     with db() as con:
         rows, total = operator_views.provider_earnings_page(
             con, _PAGE, (page - 1) * _PAGE)
@@ -72,7 +73,7 @@ async def platform_income(request: Request, page: int = 1):
     from app.main import templates
     from governance.commission import commission_rate
     from economy.daily import daily_amount
-    page = max(1, page)
+    page = page_number(page)
     with db() as con:
         rows, total = operator_views.platform_income_page(
             con, _PAGE, (page - 1) * _PAGE)
@@ -178,7 +179,7 @@ async def withdrawals(request: Request, status: str = "", page: int = 1):
         return resp
     from app.main import templates
     from repo.economy import withdrawals_queue
-    page = max(1, page)
+    page = page_number(page)
     # unknown filter value → unfiltered view (never passed into SQL)
     q_status = status if status in _WD_STATUSES else ""
     with db() as con:
@@ -209,7 +210,7 @@ async def payment_reviews(request: Request, status: str = "", page: int = 1):
         return resp
     from app.main import templates
     from repo import payment_reviews as reviews_repo
-    page = max(1, page)
+    page = page_number(page)
     q_status = status if status in ("open", "resolved") else ""
     with db() as con:
         rows, total = reviews_repo.reviews_page(

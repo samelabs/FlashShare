@@ -118,14 +118,23 @@ print("operator login:", "ok" if admin_cookie else "fail")
 if admin_cookie:
     # C: files_max 类型矩阵 (IO-1)
     for val, want in [(5, "ok"), (20, "ok"), ("true", "bad_files_max"),
-                      (True, "bad_files_max"), (0, "bad_files_max"),
-                      (-1, "bad_files_max")]:
+                      (True, "bad_files_max"), (21, "bad_files_max"),
+                      (0, "bad_files_range"), (-1, "bad_files_max")]:
         st, r = req("POST", "/samelabs/tools/create", {
             "tool_id": f"mtest{uuid.uuid4().hex[:6]}", "label": "MT",
             "url": "https://93.184.216.34/anything", "timeout_s": 30,
             "accept": ".png,.jpg", "files_max": val}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
         check(f"C files_max={val!r} → {want}", got == want, f"{st} {r}")
+    # C2: text-only window (files 0..0) is legal only without accept
+    for acc, want in [("", "ok"), (".png", "bad_accept")]:
+        st, r = req("POST", "/samelabs/tools/create", {
+            "tool_id": f"mtxt{uuid.uuid4().hex[:6]}", "label": "MT",
+            "url": "https://93.184.216.34/anything", "timeout_s": 30,
+            "accept": acc, "files_min": 0, "files_max": 0}, admin_cookie)
+        got = "ok" if r.get("ok") else r.get("error")
+        check(f"C2 text-only accept={acc!r} → {want}", got == want,
+              f"{st} {r}")
     # D: accept=".png,.jpg" files_max=20 → DB canonical + bounds
     tid = "dbcheck" + uuid.uuid4().hex[:5]
     st, r = req("POST", "/samelabs/tools/create", {

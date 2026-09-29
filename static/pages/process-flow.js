@@ -133,8 +133,9 @@
     if (blockConcurrentRun()) return null;
     const fileList = Array.from(files || []);
     if (!tool) return null;
-    const filesMin = Math.max(0, tool.files_min || 0);
-    const filesMax = Math.min(20, tool.files_max || 1);
+    // declared window (catalog item contract; files_max 0 = text-only)
+    const filesMin = tool.files_min;
+    const filesMax = tool.files_max;
     // 0-file tools (files_min === 0) run without any file; every other
     // tool needs at least one input file.
     if (!fileList.length && filesMin > 0) return null;

@@ -18,7 +18,7 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES
-from utils import file_glyph
+from utils import file_glyph, page_number
 from i18n import LOCALE_TAGS, server_text
 from icons import _ICONS, icon_svg, icon_path
 from tools import load_all
@@ -300,22 +300,12 @@ async def tools_market(request: Request):
     visibility, ordering and paging all happen in SQL."""
     from app.main import templates
     from governance.catalog import market_page as market_page_data
-    from repo.ledger import ok_calls_by_tools
-    from database import db
 
-    raw_page = request.query_params.get("page", "1")
-    try:
-        page = max(int(raw_page), 1)
-    except ValueError:
-        page = 1
+    page = page_number(request.query_params.get("page", "1"))
     q = (request.query_params.get("q") or "").strip()
 
     page_data = market_page_data(q=q or None, page=page)
     tools = page_data["items"]
-    with db() as con:
-        stats = ok_calls_by_tools(con, [t["id"] for t in tools])
-    for t in tools:
-        t["stats"] = {"calls": stats.get(t["id"], 0)}
 
     ctx = _ctx_base(request)
     ctx.update({
@@ -351,8 +341,6 @@ async def user_page(request: Request, handle: str):
                                           _ctx_base(request), status_code=404)
     owner_id = urow["id"]
     tools = owner_public_tools(owner_id)
-    for t in tools:
-        t["stats"] = _public_stats(t["id"])
     with db() as con:
         total_calls = ok_calls_by_owner(con, owner_id, [t["id"] for t in tools])
     # Verified badge fact: the author is a current effective member —
@@ -548,6 +536,8 @@ def _load_doc(name: str, lang: str = "en") -> str:
 
 # ── Home ──
 
+HOME_GRID_SIZE = 8
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     from app.main import templates
@@ -556,7 +546,13 @@ async def home(request: Request):
     user = request.state.user
     texts = ctx["texts"]
 
-    tools = list_catalog(user["id"] if user else None)  # grid: local + remote + community (public)
+    # Grid = the curated browse list (featured, operator order); the
+    # composer picker = the viewer's working set (first-party + own +
+    # favorites); any other public tool comes from the picker's search.
+    from governance.catalog import search_catalog
+    from governance.favorites import working_set
+    featured = search_catalog("", limit=HOME_GRID_SIZE)
+    picker = working_set(user, list_catalog(user["id"] if user else None))
     home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
         "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
         "url": BASE_URL,
@@ -576,7 +572,7 @@ async def home(request: Request):
         "max_mb": lim["maxFileMb"],
         "daily_uploads": lim["dailyFiles"],
         "daily_mb": int(lim["dailyGb"] * 1024),
-        "tools": tools,
+        "tools": featured,
         "delivery_expiry_days": lim["expiryDays"],
         "delivery_download_limits": lim["downloadLimits"],
         "delivery_default_expiry": lim["defaultDays"],
@@ -586,7 +582,7 @@ async def home(request: Request):
         # 格式族单源 (governance.formats): composer 上传区族名文案词表,
         # 与发布页 window.__FORMAT_FAMILIES__ 同名同形。
         "formats_json": json.dumps(format_manifest(), ensure_ascii=False),
-        "tools_json": json.dumps(tools, ensure_ascii=False),
+        "tools_json": json.dumps(picker, ensure_ascii=False),
         "file_size_icon": icon_svg("file_size"),
         "upload_count_icon": icon_svg("upload_count"),
         "bandwidth_icon": icon_svg("bandwidth"),
@@ -760,11 +756,7 @@ async def account_credits(request: Request):
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from economy.billing import spendable_balance as get_balance, history_paged
-    pg = 1
-    try:
-        pg = max(1, int(request.query_params.get("page", "1") or 1))
-    except ValueError:
-        pg = 1
+    pg = page_number(request.query_params.get("page", "1"))
     size = 20
     rows, total = history_paged(user["id"], page=pg, size=size)
     rows = [dict(r) for r in rows]
