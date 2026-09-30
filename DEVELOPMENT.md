@@ -170,11 +170,11 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
 - 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
-- **1.0 上线 = 全新数据库**：见下文「生产部署指南」。
+- 生产数据库由生产侧自行管理：部署只同步代码并重启，不创建、迁移或替换数据库。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 
-## 生产部署指南（1.0 首次上线）
+## 生产部署指南
 
 面向服务器侧执行者。按顺序做，每一步都有"通过标准"，不通过就停下排查，不要跳步。
 
@@ -197,7 +197,7 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 | 组件 | 要求 |
 | --- | --- |
 | Python | 3.12，`/opt/flashshare/venv`，`pip install -r requirements.txt` |
-| PostgreSQL | 16；为 1.0 新建空库与专用用户 |
+| PostgreSQL | 16；由生产侧提供并管理 |
 | Gokapi | **v2.2.4**（`/opt/gokapi/gokapi`），只监听 127.0.0.1 |
 | LibreOffice | 文档转 PDF 工具，需安装 `libreoffice-writer-nogui`、`libreoffice-calc-nogui`、`libreoffice-impress-nogui` 与 `fonts-noto-cjk`（中日韩文档必需）；`soffice` 不在 PATH 时设 `FLASHSHARE_SOFFICE`。启动时会探测一次 txt→PDF 转换，失败记 ERROR 日志（不阻止启动） |
 | Nginx | 反代 518 与 Gokapi 两条下载路径 |
@@ -336,7 +336,7 @@ WantedBy=multi-user.target
 1. `/etc/flashshare.env` 按上文「Environment variables」补齐必填项；`TOOL_VAULT_KEY` 必配
    （生成：`venv/bin/python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`）；
    `FLASHSHARE_SESSION_SECRET` 用新的随机长串。
-2. 新建空库，`DATABASE_URL=postgresql+psycopg://<user>:<pass>@127.0.0.1:5432/<新库名>`。旧库只读保留，不删除，不与新代码混跑。
+2. `DATABASE_URL` 指向生产侧管理的库（`postgresql+psycopg://…`）；部署不创建、迁移或替换数据库，两套代码不连同一个库。
 3. 暂不开放充值时，不配置任何 `CREEM_*`；X 登录按「Environment variables」一节配置或整组不配。
 
 ### 6. 上线
@@ -369,11 +369,11 @@ curl -s https://518.plus/healthz
    返回工具列表；再按 `/llms.txt` 的示例调一次 `share`，拿到 `result_url` 并能打开。
 3. 手机打开首页与 `/r` 页，无横向滚动。
 4. 运营账号：把指定用户的 `users.status` 设为 `samelabs`（`UPDATE users SET status='samelabs' WHERE username='<用户名>';`），登录 `/samelabs`，总览「集成」卡显示正确；按需设置抽佣率与每日登录积分（默认 0 = 关闭）。
-5. 列表展示：首页工具区、`/tools`、`catalog_search` 空查询与 `llms.txt` 只列「推荐」工具（新库的平台工具首装即为推荐）。在 `/samelabs/tools` 为要展示的工具开启推荐并设置排序；未推荐的公开工具仍可被搜索到。
+5. 列表展示：首页工具区、`/tools`、`catalog_search` 空查询与 `llms.txt` 只列「推荐」工具（平台工具首次写入时即为推荐）。在 `/samelabs/tools` 为要展示的工具开启推荐并设置排序；未推荐的公开工具仍可被搜索到。
 
 ### 8. 回滚
 
-第 6–7 步任一失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → 恢复旧的 `DATABASE_URL` → `systemctl start flashshare-api` → 报告现象与日志。不做临时修补。
+第 6–7 步任一失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → `systemctl start flashshare-api` → 报告现象与日志。不做临时修补。
 
 ## Production backup（scripts/）
 
