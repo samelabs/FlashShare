@@ -136,14 +136,18 @@ def guard_endpoint(url: str, trusted: bool) -> str:
 
 # ── Shared output validation (zero trust: sniff + size, no exemptions) ──
 
-def validate_output(filename: str, content_type: str, body: bytes) -> bytes:
+def validate_output(filename: str, content_type: str, body: bytes) -> tuple:
+    """Zero-trust landing gate for endpoint products: size cap + sniff.
+    Returns (body, final_filename) — same-family admission may
+    re-identify the file; the caller lands it under the final name."""
     from security import sniff_allowed
     if len(body) > MAX_OUTPUT_BYTES:
         raise RemoteError("bad_output", f"{len(body)} bytes over cap")
-    ok, final = sniff_allowed(filename, content_type or "", body[:512])
+    ok, final, final_name = sniff_allowed(filename, content_type or "",
+                                          body[:512])
     if not ok:
         raise RemoteError("bad_output", f"sniff rejected: {final}")
-    return body
+    return body, final_name
 
 
 # ── Pinned HTTPS transport (untrusted URLs) ─────────────────────────────
@@ -580,7 +584,8 @@ def _wrap_raw(body: bytes, filename: str | None = None,
     + byte validation (sniff_allowed falls back to mimetypes).
     """
     if not filename:
-        ext = _sniff_ext(body[:64])
+        from security import detect_ext
+        ext = detect_ext(body[:64])
         if not ext:
             raise RemoteError("bad_output", "unknown output format (no filename given)")
         filename = "result" + ext
@@ -595,7 +600,7 @@ def _wrap_raw(body: bytes, filename: str | None = None,
         # reaches raw mode); a true .json product travels through the JSON
         # envelope with explicit product metadata instead.
         given_ctype = ""
-    validated = validate_output(name, given_ctype, body)
+    validated, name = validate_output(name, given_ctype, body)
     final_type = sniff_final_type(name, given_ctype, body)
     # sniff_final_type returns the declared type when sniff_allowed cannot
     # determine better; with an empty declaration it resolves via
@@ -608,30 +613,10 @@ def _wrap_raw(body: bytes, filename: str | None = None,
             "bytes": validated}
 
 
-def _sniff_ext(head: bytes) -> str | None:
-    """产物魔数 → 扩展名 (占位名生成用)。仅覆盖常见二进制格式; 未识别 → None。"""
-    m = {
-        b"\x89PNG\r\n\x1a\n": ".png",
-        b"\xff\xd8": ".jpg",
-        b"GIF87a": ".gif", b"GIF89a": ".gif",
-        b"%PDF": ".pdf",
-        b"BM": ".bmp",
-        b"PK\x03\x04": ".zip",
-        b"\x1f\x8b": ".gz",
-        b"ID3": ".mp3", b"\xff\xfb": ".mp3", b"\xff\xf3": ".mp3",
-        b"RIFF": ".webp",  # RIFF 容器细化需读 8-12 位 (WEBP/WAV), 保守归 webp
-    }
-    for magic, ext in m.items():
-        if head.startswith(magic):
-            if magic == b"RIFF" and len(head) >= 12 and head[8:12] == b"WAVE":
-                return ".wav"
-            if magic == b"RIFF" and len(head) >= 12 and head[8:12] != b"WEBP":
-                continue
-            return ext
-    return None
-
-
 def sniff_final_type(filename: str, declared: str, body: bytes) -> str:
+    """Declared MIME checked against the sniffed filename (the caller
+    passes sniff_allowed's final_filename — same-family admission may
+    have re-identified the file before this runs)."""
     from security import sniff_allowed
-    ok, final = sniff_allowed(filename, declared, body[:512])
+    ok, final, _final_name = sniff_allowed(filename, declared, body[:512])
     return final if ok else declared

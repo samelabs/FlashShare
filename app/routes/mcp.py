@@ -793,6 +793,13 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         args = {}
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602, "invalid params: arguments must be an object")
+    # Entry-wide rate limit, BEFORE any branch (meta tools, catalog
+    # search and URL-source fetching all count): a runaway agent is
+    # stopped at the entry, not per-branch. The execution gate keeps
+    # its own separate client_ref throttle.
+    from economy.antibuse import mcp_call_throttled
+    if mcp_call_throttled(user["id"]):
+        return _iserror(mid, {"error": "err_rate_limited"})
     if name == "catalog_search":
         # Search IS the public market (same predicate/order/projection/
         # paging as /tools); empty q lists the recommended tools. See
@@ -981,24 +988,30 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         IngressUnresolved as _IngressUnresolved,
         OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
     from utils import sanitize_filename as _san
-    from security import sniff_allowed as _sniff, sign_source_token
+    from security import (sniff_allowed as _sniff, sign_source_token,
+                          mismatch_detail as _mismatch)
     _ingest_idx = sorted(uploads)
     _canon = []
     for i in _ingest_idx:
         _fn, _ct, _body = uploads[i]
-        _ok_t, _final_t = _sniff(_fn, _ct, _body[:512])
+        _ok_t, _final_t, _final_fn = _sniff(_fn, _ct, _body[:512])
         if not _ok_t:
             # Pre-execution input errors are isError tool results — the
             # SAME expression as the accept gate below (IO-1 rule: a
             # well-formed request carrying a bad file is domain-level
             # and agent-fixable; -32602 stays for malformed request
-            # shape only).
+            # shape only). Content/extension mismatches keep their
+            # typed code and carry the detected format (the same shape
+            # the web upload and ticket PUT entries return).
             code = ("err_format_not_supported"
-                    if _final_t.startswith("err_content_mismatch")
-                    or _final_t == "err_file_type_blocked" else _final_t)
-            return _tool_result_error(mid, {"error": code},
-                                      client_ref, tool)
-        _canon.append(((_san(_fn), _final_t, _body)))
+                    if _final_t == "err_file_type_blocked" else _final_t)
+            return _tool_result_error(
+                mid, {"error": code,
+                      **_mismatch(_san(_fn), _body[:512])},
+                client_ref, tool)
+        # _final_fn: same-family admission may re-identify the file —
+        # accept gate, ingress hash, staging and result naming all use it
+        _canon.append((_san(_final_fn), _final_t, _body))
     _names = {**ref_names,
               **{i: c[0] for i, c in zip(_ingest_idx, _canon)}}
     _aerr = _accept_err(tool, [_names[i] for i in range(len(items))])
@@ -1156,9 +1169,15 @@ def _error_message(code, tool: dict | None = None) -> str:
         "err_format_not_supported": "The file format is not supported by this tool.",
         "err_file_type_blocked": "This file type is blocked on 518.",
         "err_file_count": "The number of files is outside this tool's window.",
+        "err_content_mismatch_image": "The image content does not match the file's extension.",
+        "err_content_mismatch_pdf": "The document content does not match the file's extension.",
+        "err_content_mismatch_archive": "The archive content does not match the file's extension.",
+        "err_content_mismatch_office": "The document content does not match the file's extension.",
+        "err_content_mismatch_text": "The text content does not match the file's extension.",
         "err_insufficient_credits": "Not enough credits for this call.",
         "tool_disabled": "This tool is currently disabled.",
         "err_rate_limited": "Too many requests; retry shortly.",
+        "err_busy": "The service is busy; please retry shortly with the same client_ref.",
         "err_call_in_progress": "This operation is already running; retry the same client_ref for its result.",
         "idempotency_conflict": "This client_ref was used for different input; use a new client_ref.",
         "err_file_too_large": "A file exceeds the size limit.",
@@ -1513,8 +1532,8 @@ def _url_upload(url: str, filename, body: bytes) -> tuple:
         filename = urllib.parse.unquote(path.rsplit("/", 1)[-1])
     fn = sanitize_filename(str(filename or "download"))
     if not os.path.splitext(fn)[1]:
-        from remote import _sniff_ext
-        fn += _sniff_ext(body[:64]) or ""
+        from security import detect_ext
+        fn += detect_ext(body[:64]) or ""
     return fn, _guess_ctype(fn), body
 
 

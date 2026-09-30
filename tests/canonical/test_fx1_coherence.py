@@ -448,6 +448,8 @@ try:
           str(sc)[:100])
 
     # ═══ X7: sniff vs accept mismatch share one expression ═══
+    # (sniff keeps its typed err_content_mismatch_* code + detected-format
+    #  detail; accept mismatch stays err_format_not_supported)
     TXT_AS_PNG = b"this is plain text, not a png"
     st, d = _call(OP_TOOL, {"files": [
         {"filename": "fake.png", "b64": base64.b64encode(TXT_AS_PNG).decode()}],
@@ -455,8 +457,12 @@ try:
     r7a = d.get("result") or {}
     t7a = ((r7a.get("content") or [{}])[0].get("text") or "")
     check("X7a content-sniff mismatch → isError (not -32602)",
-          r7a.get("isError") is True and "err_format_not_supported" in t7a
-          and "not supported" in t7a, t7a[:110])
+          r7a.get("isError") is True
+          and '"error": "err_content_mismatch_image"' in t7a
+          and '"filename": "fake.png"' in t7a
+          and '"detected": null' in t7a
+          and "suggested_name" not in t7a
+          and "does not match" in t7a, t7a[:110])
     st, d = _call("compress", {"files": [
         {"filename": "a.pdf", "b64": base64.b64encode(b"%PDF-fake").decode()}],
         "client_ref": f"x7b-{_u}"}, TOK, 21)
@@ -467,7 +473,8 @@ try:
           and "not supported" in t7b, t7b[:110])
     check("X7c both expressions identical shape (isError, code present)",
           (r7a.get("isError") is True) == (r7b.get("isError") is True)
-          and "err_format_not_supported" in t7a and "err_format_not_supported" in t7b)
+          and '"error": "err_content_mismatch_image"' in t7a
+          and "err_format_not_supported" in t7b)
 
     # ═══ X11: index uniqueness + ticket purge ═══
     with db() as con:

@@ -19,6 +19,26 @@
     return m || "failed";
   }
 
+  // Sniff rejections carry structured ingress detail (filename +
+  // detected): render the localized mismatch sentence naming the file
+  // and its real format. Same-family admission already fixed the
+  // renamable cases upstream, so no rename suggestion remains. Falls
+  // back to the unified error boundary for every other payload (or
+  // when i18n is absent).
+  function payloadErrText(data) {
+    const code = data && typeof data === "object" ? data.error : null;
+    if (code && typeof data.filename === "string" && window.t
+        && String(code).indexOf("err_content_mismatch") === 0) {
+      if (data.detected) {
+        return window.t("err_content_mismatch_named", {
+          name: data.filename, ext: data.detected,
+        });
+      }
+      return window.t("err_content_mismatch_named_unknown", { name: data.filename });
+    }
+    return errText(code);
+  }
+
   // ── Logical operation state (module-private) ──
   // {ref, files(File[]), tool, params, delivery, sources(uploaded handles), phase}
   // phase: "idle" | "running" | "upload-retry" | "execute-retry"
@@ -90,7 +110,7 @@
       xhr.onload = () => {
         try {
           const data = JSON.parse(xhr.responseText);
-          if (xhr.status >= 400 || !data.ok) { reject(new Error(errText(data.error))); return; }
+          if (xhr.status >= 400 || !data.ok) { reject(new Error(payloadErrText(data))); return; }
           resolve(data);
         } catch (e) { reject(new Error(errText("failed"))); }
       };
@@ -248,8 +268,8 @@
         // tool_failed → explicit retry continues the SAME ref + fingerprint
         op.phase = "execute-retry";
         const ref = null;
-        if (opts.onError) opts.onError(errText(data.error), ref);
-        else window.showToolError && window.showToolError(errText(data.error), null);
+        if (opts.onError) opts.onError(payloadErrText(data), ref);
+        else window.showToolError && window.showToolError(payloadErrText(data), null);
         return null;
       }
       if (window.__syncCredits && typeof data.balance === "number") {

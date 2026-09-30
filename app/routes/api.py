@@ -279,10 +279,19 @@ async def create_upload(request: Request):
         if size == 0:
             return JSONResponse({"ok": False, "error": "err_empty_file"}, 400)
         filename = sanitize_filename(file.filename or "upload")
-        valid, final_type = sniff_allowed(filename, file.content_type or "", content[:512])
+        valid, final_type, final_name = sniff_allowed(
+            filename, file.content_type or "", content[:512])
         if not valid:
-            return JSONResponse({"ok": False, "error": final_type}, 400)
-        pending.append((content, size, filename, final_type))
+            # Same structured rejection shape as every other ingress
+            # surface; the offending file is named (batch uploads are
+            # still rejected as a whole).
+            from security import mismatch_detail
+            return JSONResponse({"ok": False, "error": final_type,
+                                 **mismatch_detail(filename, content[:512])},
+                                400)
+        # final_name: same-family admission may have re-identified the
+        # file — storage, ingress hash and result naming all use it
+        pending.append((content, size, final_name, final_type))
 
     if not pending:
         return JSONResponse({"ok": False, "error": "err_select_file"}, 400)

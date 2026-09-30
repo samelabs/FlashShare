@@ -34,3 +34,27 @@ def gate_ref_throttled(user_id: int) -> bool:
             return True
         q.append(ts)
         return False
+
+
+# MCP tools/call 入口统一限流: 覆盖 meta 工具与 URL 源拉取等一切分支
+# (任何单分支自身的防护都不替代入口计数)。同一 user 每 60s 最多 60 次。
+MCP_CALL_LIMIT = 60
+MCP_CALL_WINDOW = 60
+
+_call_lock = threading.Lock()
+_call_hits: dict[int, deque] = defaultdict(deque)
+
+
+def mcp_call_throttled(user_id: int) -> bool:
+    """True = 本次 tools/call 超限 (调用方返回 isError err_rate_limited)。
+    滑动窗口, O(1) 均摊; 与 gate_ref_throttled 同一写法, 独立计数。"""
+    ts = now()
+    cutoff = ts - MCP_CALL_WINDOW
+    with _call_lock:
+        q = _call_hits[user_id]
+        while q and q[0] < cutoff:
+            q.popleft()
+        if len(q) >= MCP_CALL_LIMIT:
+            return True
+        q.append(ts)
+        return False
