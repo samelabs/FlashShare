@@ -188,16 +188,23 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .out-h .t { font-size: var(--fs-xs); color: var(--ink-3); margin-inline-start: auto; display: inline-flex; gap: var(--s2); align-items: center; }
 .out-b { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 
+/* Lightweight one-line link strip: no heavy border, no fill — a quiet
+   bottom line only; the URL is tertiary text on a single ellipsized
+   line and the copy action is a compact secondary button (visual
+   weight stays below the primary actions). */
 .linkbar {
-  display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 16px;
-  border-radius: var(--r-full); background: var(--sunk);
-  border: var(--border-w) solid var(--line);
+  display: flex; align-items: center; gap: 8px; padding: 5px 2px 5px 12px;
+  border-radius: 0; background: none;
+  border: 0; border-bottom: var(--border-w) solid var(--line);
 }
-.linkbar > svg { width: 16px; height: 16px; color: var(--ink-3); stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.linkbar > svg { width: 15px; height: 15px; color: var(--ink-3); stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .linkbar span {
-  flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-base);
+  flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--ink-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.linkbar .btn { flex: none; height: 28px; min-height: 0; padding-inline: var(--s2); font-size: var(--fs-xs); }
+.linkbar .btn svg { width: 14px; height: 14px; }
 
 .item-text {
   background: var(--sunk); border-radius: var(--r); padding: 14px 16px;
@@ -234,7 +241,11 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 }
 .item-file .pv.doc svg { width: 22px; height: 22px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .item-file .if-body { min-width: 0; flex: 1; }
-.item-file b { font-size: var(--fs-base); font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* single-line filename, middle ellipsis: the stem span ellipsizes, the
+   extension span stays pinned; b[title] carries the full name */
+.item-file b.if-name { font-size: var(--fs-base); font-weight: 600; display: flex; align-items: baseline; min-width: 0; }
+.item-file b.if-name .if-stem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-file b.if-name .if-ext { flex: none; white-space: nowrap; }
 .item-file small { font-size: var(--fs-xs); color: var(--ink-3); display: block; margin-block-start: 2px; }
 .item-file .a { margin-inline-start: auto; display: flex; gap: 6px; flex: none; }
 
@@ -252,10 +263,6 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 /* size-delta + name + download under the media — small text only,
    never larger than body copy, never inside the card title */
 .rs-img-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
-.rs-img-meta b {
-  font-size: var(--fs-base); font-weight: 600; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
-}
 .rs-img-meta small { font-size: var(--fs-xs); color: var(--ink-3); }
 .rs-img-meta .rs-dl { margin-inline-start: auto; flex: none; }
 .rs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
@@ -272,10 +279,6 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
 }
 .rs-cell figcaption { min-width: 0; }
-.rs-cell figcaption b {
-  display: block; font-size: var(--fs-xs); font-weight: 600;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 .rs-cell figcaption small { font-size: var(--fs-xs); color: var(--ink-3); }
 .rs-cell .rs-dl { align-self: flex-start; }
 @media (max-width: 767px) {

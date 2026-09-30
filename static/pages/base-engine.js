@@ -128,9 +128,10 @@ window.resolveLabel = function (label) {
  * Standalone hard constraints (product decision):
  *   - never fetch the file body, never build Blob/File for downloads
  *   - never navigate the current PWA window to the download URL
- *   - Web Share available → share the URL itself ({title, url});
- *     user cancel (AbortError) is a normal end, no fallback
- *   - no Web Share → secondary browsing context (_blank) handoff
+ *   - download = open the download URL in a secondary browsing context
+ *     (_blank) — Web Share is NOT part of download; system share lives
+ *     only on the explicit share actions (result page share button /
+ *     share entry on the result card)
  *   - non-standalone browsers keep the plain download behavior
  */
 window.isStandalonePWA = function () {
@@ -138,18 +139,9 @@ window.isStandalonePWA = function () {
       || window.navigator.standalone === true;
 };
 window.pwaDownload = async function (downloadUrl, title) {
-  // standalone-only path; callers must use plain download elsewhere
-  title = title || "download";
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: title, url: downloadUrl });
-    } catch (e) {
-      if (e && e.name === "AbortError") return true; // user cancel = normal end
-      // share failed: secondary context handoff — NEVER current-window nav
-      _pwaSecondaryHandoff(downloadUrl);
-    }
-    return true;
-  }
+  // standalone-only path; callers must use plain download elsewhere.
+  // title is kept for the public signature; the handoff opens the URL.
+  void title;
   _pwaSecondaryHandoff(downloadUrl);
   return true;
 };

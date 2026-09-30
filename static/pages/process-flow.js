@@ -255,6 +255,10 @@
       // identity minted for THIS run (identical to the upload leg's ref).
       window.showToolProcessing &&
         window.showToolProcessing(window.resolveLabel ? window.resolveLabel(tool.label) || tool.id : tool.id);
+      // the resolved tool name rides along for the result images' alt
+      // (filenames are not titles) — same stash pattern as __lastInputSizes
+      window.__lastToolLabel = window.resolveLabel
+        ? (window.resolveLabel(tool.label) || tool.id) : tool.id;
 
       let data;
       try {

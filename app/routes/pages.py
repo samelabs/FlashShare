@@ -1024,7 +1024,6 @@ async def result_page(result_id: str, request: Request):
         "items": items,
         "file_count": file_count,
         "first_file": next((d for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
-        "first_file_name": next((d.get("filename") for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
         "min_remaining": min_remaining,
         "result_url": public_result_url(result_id),
         "og_title": og_title,
@@ -1034,32 +1033,6 @@ async def result_page(result_id: str, request: Request):
         "download_count_icon": icon_svg("download_count"),
     })
     return templates.TemplateResponse(request, "result.html", ctx)
-
-
-@router.get("/r/{result_id}/qr.svg")
-async def result_qr(result_id: str):
-    """QR for the result page link (same SVG authority as /f/{id}/qr.svg;
-    a QR exists only for live results — expired/unknown → 404)."""
-    from repo.ledger import call_by_result_public_id
-    from utils import qr_svg, now
-    with db() as con:
-        row = call_by_result_public_id(con, result_id)
-    if row is None:
-        return Response(status_code=404)
-    try:
-        import json as _json
-        record = _json.loads(row["result_json"])
-        expire_at = record.get("expires_at")
-    except Exception:
-        expire_at = None
-    if not expire_at or int(expire_at) <= now():
-        return Response(status_code=404)
-    from utils import public_result_url
-    return Response(content=qr_svg(public_result_url(result_id)),
-                    media_type="image/svg+xml; charset=utf-8")
-
-
-
 
 
 @router.get("/account/favorites", response_class=HTMLResponse)

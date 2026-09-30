@@ -8,11 +8,7 @@
     <div class="rc">
       <div class="rc-top">
         <div class="fi" aria-hidden="true">{% for _ in range(file_count if file_count <= 2 else 2) %}<span></span>{% endfor %}</div>
-        {% if file_count > 0 %}
-        <h1>{% if file_count == 1 and first_file_name %}{{ first_file_name }}{% else %}{{ texts.r_n_files.format(n=file_count) }}{% endif %}</h1>
-        {% else %}
-        <h1>{{ tool_name }}</h1>
-        {% endif %}
+        <h1>{{ tool_name if tool_name else texts.r_n_files.format(n=file_count) }}</h1>
         <div class="m">
           {% if tool_name %}<span data-i18n="r_via_tool">{{ texts.r_via_tool }}</span>「{{ tool_name }}」 · {% endif %}
           {{ texts.r_expires }}: {{ expire_text }}
@@ -20,7 +16,7 @@
         </div>
         <div class="linkbar">
           {{ icon_svg("link") }}<span>{{ result_url }}</span>
-          <button class="btn btn-p" id="rCopyLink" type="button">{{ icon_svg("copy") }}<span data-i18n="copy_link">{{ texts.copy_link }}</span></button>
+          <button class="btn btn-secondary btn-sm" id="rCopyLink" type="button">{{ icon_svg("copy") }}<span data-i18n="copy_link">{{ texts.copy_link }}</span></button>
         </div>
         <div class="acts">
           {% if file_count > 1 %}
@@ -40,10 +36,9 @@
       <div class="rc-files">
         <div class="rs-item rs-media">
           <figure class="rs-image">
-            <img src="/f/{{ live_images[0].public_id }}/inline" alt="{{ live_images[0].filename }}" loading="lazy" decoding="async">
+            <img src="/f/{{ live_images[0].public_id }}/inline" alt="{{ tool_name }}" loading="lazy" decoding="async">
           </figure>
           <div class="rs-img-meta">
-            <b>{{ live_images[0].filename }}</b>
             <small>{{ live_images[0].size_text }} · {{ live_images[0].type_text }}</small>
             <a class="btn btn-secondary btn-sm rs-dl" href="{{ live_images[0].download_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
           </div>
@@ -56,9 +51,9 @@
             {% for it in live_images %}
             <figure class="rs-cell">
               <button type="button" class="rs-cell-img" data-zoom="/f/{{ it.public_id }}/inline" aria-label="{{ it.filename }}">
-                <img src="/f/{{ it.public_id }}/inline" alt="{{ it.filename }}" loading="lazy" decoding="async">
+                <img src="/f/{{ it.public_id }}/inline" alt="{{ tool_name }}" loading="lazy" decoding="async">
               </button>
-              <figcaption><b>{{ it.filename }}</b><small>{{ it.size_text }}</small></figcaption>
+              <figcaption><small>{{ it.size_text }}</small></figcaption>
               <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
             </figure>
             {% endfor %}
@@ -85,13 +80,17 @@
         {% elif it.deleted %}
         <div class="rs-item rs-file item-file r-gone">
           <span class="pv doc" aria-hidden="true">{{ icon_svg("doc") }}</span>
-          <div class="if-body"><b>{{ it.filename }}</b><small data-i18n="r_file_gone">{{ texts.r_file_gone }}</small></div>
+          {% set _nm = it.filename or "" %}
+          {% set _i = _nm.rfind('.') %}
+          <div class="if-body"><b class="if-name" title="{{ _nm }}"><span class="if-stem">{{ _nm[:_i] if _i > 0 else _nm }}</span>{% if _i > 0 %}<span class="if-ext">{{ _nm[_i:] }}</span>{% endif %}</b><small data-i18n="r_file_gone">{{ texts.r_file_gone }}</small></div>
         </div>
         {% elif not it.is_image %}
         <div class="rs-item rs-file item-file">
           <span class="pv doc" aria-hidden="true">{{ icon_svg(it.glyph or "doc") }}</span>
+          {% set _nm = it.filename or "" %}
+          {% set _i = _nm.rfind('.') %}
           <div class="if-body">
-            <b>{{ it.filename }}</b>
+            <b class="if-name" title="{{ _nm }}"><span class="if-stem">{{ _nm[:_i] if _i > 0 else _nm }}</span>{% if _i > 0 %}<span class="if-ext">{{ _nm[_i:] }}</span>{% endif %}</b>
             <small>{{ it.size_text }} · {{ it.type_text }}</small>
           </div>
           <div class="a">
@@ -103,11 +102,6 @@
         </div>
         {% endif %}
         {% endfor %}
-      </div>
-
-      <div class="qrrow">
-        <span class="q"><img src="/r/{{ result_id }}/qr.svg" alt="QR" width="40" height="40" loading="lazy"></span>
-        <span data-i18n="r_qr_hint">{{ texts.r_qr_hint }}</span>
       </div>
     </div>
     <p class="made"><a href="/" data-i18n="r_made_with">{{ texts.r_made_with }}</a> — <span data-i18n="r_made_slogan">{{ texts.r_made_slogan }}</span></p>
