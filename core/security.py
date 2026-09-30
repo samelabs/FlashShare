@@ -119,10 +119,13 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
 
     if ext in _SNIFF_IMAGE_EXTS:
         detected = detect_ext(sample)
-        if detected in FAMILIES["image"].exts and detected in ALLOWED_EXT:
+        if detected == (".jpg" if ext == ".jpeg" else ext):
+            pass  # content matches its own extension: name kept as is
+        elif detected in FAMILIES["image"].exts and detected in ALLOWED_EXT:
             stem = os.path.splitext(filename)[0]
             return True, _image_ext_mime(detected), stem + detected
-        return False, "err_content_mismatch_image", filename
+        else:
+            return False, "err_content_mismatch_image", filename
     if ext == ".pdf" and not sample.startswith(b"%PDF"):
         return False, "err_content_mismatch_pdf", filename
     if ext in {".zip", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"} and not (

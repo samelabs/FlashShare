@@ -223,6 +223,12 @@ try:
             ("short head", b"\x00\x00\x00", None)):
         check(f"A0 detect_ext {label} → {want}",
               detect_ext(head) == want, detect_ext(head))
+    from security import sniff_allowed
+    for name, head in (("x.jpeg", b"\xff\xd8\xe0" + b"\x00" * 16),
+                       ("x.png", PNG)):
+        _ok, _ct, _fn = sniff_allowed(name, "", head)
+        check(f"A0b matching content keeps its name ({name})",
+              _ok and _fn == name, (_ok, _ct, _fn))
 
     uid_a, ck_a, tok_a = _register(_u + "a")
     uid_b, _ck_b, tok_b = _register(_u + "b")
