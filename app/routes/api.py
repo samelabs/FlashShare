@@ -404,7 +404,7 @@ async def delete_upload_route(public_id: str, request: Request):
     if upload["user_id"] != user["id"]:
         return JSONResponse({"ok": False, "error": "forbidden"}, 403)
     try:
-        delete_upload(upload["id"], user["id"])
+        await asyncio.to_thread(delete_upload, upload["id"], user["id"])
     except Exception:
         logger.exception("delete failed for %s", public_id)
         return JSONResponse({"ok": False, "error": "delete_failed"}, 500)

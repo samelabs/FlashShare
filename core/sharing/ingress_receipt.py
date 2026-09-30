@@ -225,15 +225,17 @@ def resolve_outcome(ingress_id: int) -> dict:
     return {"outcome": OUTCOME_UNRESOLVED}
 
 
-def recover_abandoned_ingress_requests() -> dict:
-    """Startup (single-worker): every running receipt settled to failed
-    with its EXACT usage ids released in one transaction per receipt.
-    No Gokapi deletion — the receipt never held durable object-id
-    authority; physical orphans carry no public mapping and expire by
-    the existing Gokapi TTL."""
+def recover_abandoned_ingress_requests(
+        older_than_s: int | None = None) -> dict:
+    """Startup (older_than_s=None: every running receipt) or hourly
+    housekeeping (only receipts older than the given age): each settled
+    to failed with its EXACT usage ids released in one transaction per
+    receipt. No Gokapi deletion — the receipt never held durable
+    object-id authority; physical orphans carry no public mapping and
+    expire by the existing Gokapi TTL."""
     recovered = 0
     with db() as con:
-        rows = _repo.running_receipts(con)
+        rows = _repo.running_receipts(con, older_than_s)
     for r in rows:
         with db() as con:
             live = _repo.by_id_for_update(con, int(r["id"]))

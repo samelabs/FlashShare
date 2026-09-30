@@ -30,6 +30,11 @@ def housekeeping_once() -> dict:
     # one-time PUT credentials: expired-unused immediately, used after
     # the 24h audit window (same cadence as upload_usage retention)
     tickets = tickets_repo.purge(ts)
+    # receipts stuck running by an in-process settlement failure wedged
+    # their (user, scope, client_ref) until now — settle anything older
+    # than 30 minutes (fresh claims are left alone)
+    from sharing.ingress_receipt import recover_abandoned_ingress_requests
+    receipts = recover_abandoned_ingress_requests(older_than_s=1800)
 
     reconciled = 0
     # Order matters: read the local row set FIRST, snapshot Gokapi SECOND.
@@ -61,6 +66,7 @@ def housekeeping_once() -> dict:
         "expired": expired,
         "usage_purged": usage,
         "tickets_purged": tickets,
+        "receipts_recovered": receipts.get("recovered", 0),
         "storage_checked": storage_ok,
         "storage_reconciled": reconciled,
     }

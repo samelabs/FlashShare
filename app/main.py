@@ -216,6 +216,20 @@ async def auth_middleware(request: Request, call_next):
                                 status_code=401)
 
     user_id = request.state.user.get("id") if request.state.user else None
+    # Small-form surface cap: these endpoints carry tiny credentials /
+    # diagnostic payloads; a body over 64KB is abuse, not input. Checked
+    # BEFORE the heavy-path semaphore so bulk cannot occupy concurrency
+    # slots (and cannot be slow-dripped through them).
+    if path in ("/api/client-error", "/auth/login", "/auth/register"):
+        _declared_len = request.headers.get("content-length")
+        if _declared_len:
+            try:
+                if int(_declared_len) > 65536:
+                    return JSONResponse(
+                        {"ok": False, "error": "err_payload_too_large"},
+                        status_code=413)
+            except ValueError:
+                pass  # malformed length: the transport still bounds it
     if any(path.startswith(p) for p in _HEAVY_PATHS):
         async with _concurrency:
             response = await call_next(request)

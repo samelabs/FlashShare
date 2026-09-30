@@ -77,10 +77,21 @@ def insert_running(con, user_id: int, request_ref: str, scope: str,
     return dict(row) if row else None
 
 
-def running_receipts(con) -> list[dict]:
-    rows = con.execute(
-        "SELECT id, user_id, usage_ids FROM ingress_requests"
-        " WHERE status='running'").fetchall()
+def running_receipts(con, older_than_s: int | None = None) -> list[dict]:
+    """Running receipts, optionally only those whose started_at is older
+    than the given age (hourly housekeeping settles only stale rows;
+    startup passes None to sweep everything)."""
+    if older_than_s is None:
+        rows = con.execute(
+            "SELECT id, user_id, usage_ids FROM ingress_requests"
+            " WHERE status='running'").fetchall()
+    else:
+        from utils import now as _now
+        cutoff = _now() - int(older_than_s)
+        rows = con.execute(
+            "SELECT id, user_id, usage_ids FROM ingress_requests"
+            " WHERE status='running' AND started_at <= %s",
+            (cutoff,)).fetchall()
     return [dict(r) for r in rows]
 
 
