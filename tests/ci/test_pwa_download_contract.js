@@ -7,10 +7,10 @@
  *   - no fetch of the file body
  *   - no Blob/File construction
  *   - current window location never modified
- *   - Web Share payload is a URL ({title, url}), not files
- *   - AbortError (user cancel) ends normally, no fallback
- *   - without Web Share → secondary-context handoff (_blank anchor),
- *     never current-window navigation
+ *   - download NEVER calls Web Share (system share lives only on the
+ *     explicit share actions) — even when navigator.share is available
+ *   - the download URL always opens in a secondary browsing context
+ *     (_blank anchor), never current-window navigation
  */
 "use strict";
 const fs = require("fs");
@@ -87,7 +87,8 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
       "app.js carries no second detection (no inline alias)");
   }
 
-  // 1. standalone + Web Share → share URL, zero fetch/blob/file, no nav
+  // 1. standalone + Web Share available → download NEVER shares; the
+  //    download URL opens in a secondary context; zero fetch/blob/file
   {
     const { sandbox, events } = makeSandbox({ standalone: true, webShare: true });
     assert.strictEqual(sandbox.isStandalonePWA(), true, "standalone detected");
@@ -96,45 +97,24 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
     assert.strictEqual(events.blobs, 0, "no Blob created");
     assert.strictEqual(events.files, 0, "no File created");
     assert.strictEqual(events.locationSet, false, "current location untouched");
-    assert.strictEqual(events.shares.length, 1, "one share call");
-    const payload = events.shares[0];
-    assert.ok(payload.url && !payload.files, "share payload is a URL, not files");
-    assert.strictEqual(payload.url, "/f/x?download=1");
-    assert.strictEqual(payload.title, "a.png");
-    console.log("✓ standalone+WebShare: URL share, no fetch/blob/file/nav");
+    assert.strictEqual(events.shares.length, 0, "download never calls Web Share");
+    assert.strictEqual(events.anchorClicks.length, 1, "one secondary-context handoff");
+    assert.strictEqual(events.anchorClicks[0], "/f/x?download=1");
+    console.log("✓ standalone+WebShare: no share call, _blank handoff, no fetch/blob/file/nav");
   }
 
-  // 2. user cancel (AbortError) → normal end, no fallback handoff
-  {
-    const { sandbox, events } = makeSandbox({ standalone: true, webShare: true, shareReject: "abort" });
-    const r = await sandbox.pwaDownload("/f/y?download=1", "b.png");
-    assert.strictEqual(r, true, "cancel resolves normally");
-    assert.strictEqual(events.anchorClicks.length, 0, "no fallback after cancel");
-    assert.strictEqual(events.locationSet, false);
-    console.log("✓ AbortError = normal end, no fallback");
-  }
-
-  // 3. share failure → secondary context, never current-window nav
-  {
-    const { sandbox, events } = makeSandbox({ standalone: true, webShare: true, shareReject: "fail" });
-    await sandbox.pwaDownload("/f/z?download=1", "c.png");
-    assert.strictEqual(events.locationSet, false, "failure never navigates current window");
-    assert.strictEqual(events.anchorClicks.length, 1, "secondary-context handoff happened");
-    assert.strictEqual(events.anchorClicks[0], "/f/z?download=1");
-    console.log("✓ share failure → _blank handoff, no current-window nav");
-  }
-
-  // 4. no Web Share → secondary context immediately, zero fetch
+  // 2. no Web Share → the same secondary-context handoff, zero fetch
   {
     const { sandbox, events } = makeSandbox({ standalone: true, webShare: false });
     await sandbox.pwaDownload("/f/w?download=1", "d.png");
     assert.strictEqual(events.fetches, 0);
     assert.strictEqual(events.locationSet, false);
     assert.strictEqual(events.anchorClicks.length, 1, "_blank handoff");
+    assert.strictEqual(events.anchorClicks[0], "/f/w?download=1");
     console.log("✓ no Web Share → _blank handoff, no fetch");
   }
 
-  // 5. non-standalone is NOT the helper's path (callers keep plain download)
+  // 3. non-standalone is NOT the helper's path (callers keep plain download)
   {
     const { sandbox } = makeSandbox({ standalone: false });
     assert.strictEqual(sandbox.isStandalonePWA(), false, "browser not standalone");
@@ -210,5 +190,5 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
   assert.ok(!/'\.rs-item \.rs-dl\[href/ .test(resultjs),
     "result.js download-all is not anchor-only");
 }
-console.log("PASS: PWA download authority contract (8 groups)");
+console.log("PASS: PWA download authority contract (6 groups)");
 })().catch((e) => { console.error(e); process.exit(1); });

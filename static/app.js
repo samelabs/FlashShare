@@ -148,6 +148,22 @@ function renderResultItems(items, opts) {
   opts = opts || {};
   const pwa = !!opts.pwa;
   const inputSizes = Array.isArray(opts.inputSizes) ? opts.inputSizes : null;
+  // Image alt is the tool name (filenames are not titles); the flow layer
+  // stashes the resolved label like __lastInputSizes.
+  const altText = typeof window.__lastToolLabel === "string" ? window.__lastToolLabel : "";
+  // Long non-image names: single line, middle ellipsis, extension kept —
+  // stem and ext are separate spans so CSS can ellipsize only the stem.
+  const nameParts = (fn) => {
+    const i = fn.lastIndexOf(".");
+    return i > 0 ? [fn.slice(0, i), fn.slice(i)] : [fn, ""];
+  };
+  const fileName = (fn) => {
+    const [stem, ext] = nameParts(fn || "");
+    return '<b class="if-name" title="' + escapeHtml(fn || "") + '">'
+      + '<span class="if-stem">' + escapeHtml(stem) + "</span>"
+      + (ext ? '<span class="if-ext">' + escapeHtml(ext) + "</span>" : "")
+      + "</b>";
+  };
   const copyBtn = (kind) =>
     '<button class="btn btn-icon btn-sm rs-copy" type="button" data-copy="' + kind +
     '" aria-label="' + t("copy") + '" title="' + t("copy") + '">' + svgIcon("copy") + "</button>";
@@ -189,8 +205,8 @@ function renderResultItems(items, opts) {
     const it = imageItems[0];
     media = '<div class="rs-item rs-media">'
       + '<figure class="rs-image"><img src="/f/' + encodeURIComponent(it.public_id)
-      + '/inline" alt="' + escapeHtml(it.filename || "") + '" loading="lazy" decoding="async"></figure>'
-      + '<div class="rs-img-meta"><b>' + escapeHtml(it.filename || "file") + "</b>"
+      + '/inline" alt="' + escapeHtml(altText) + '" loading="lazy" decoding="async"></figure>'
+      + '<div class="rs-img-meta">'
       + deltaLine(it) + dlControl(it) + "</div></div>";
   } else if (imageItems.length) {
     media = '<div class="rs-item rs-media"><div class="rs-grid">'
@@ -199,9 +215,8 @@ function renderResultItems(items, opts) {
         + '<button type="button" class="rs-cell-img" data-zoom="/f/' + encodeURIComponent(it.public_id)
         + '/inline" aria-label="' + escapeHtml(it.filename || "") + '">'
         + '<img src="/f/' + encodeURIComponent(it.public_id) + '/inline" alt="'
-        + escapeHtml(it.filename || "") + '" loading="lazy" decoding="async"></button>'
-        + '<figcaption><b>' + escapeHtml(it.filename || "file") + "</b>"
-        + "<small>" + escapeHtml(fmtSize(it.size || 0)) + "</small></figcaption>"
+        + escapeHtml(altText) + '" loading="lazy" decoding="async"></button>'
+        + '<figcaption><small>' + escapeHtml(fmtSize(it.size || 0)) + "</small></figcaption>"
         + dlControl(it)
         + "</figure>").join("")
       + "</div></div>";
@@ -209,7 +224,7 @@ function renderResultItems(items, opts) {
   const fileRow = (it) => {
     const pv = '<span class="pv doc" aria-hidden="true">' + svgIcon("doc") + "</span>";
     return '<div class="item-file rs-item rs-file">' + pv
-      + '<div class="if-body"><b>' + escapeHtml(it.filename || "file") + "</b>"
+      + '<div class="if-body">' + fileName(it.filename)
       + "<small>" + escapeHtml(fmtSize(it.size || 0)) + "</small>" + deltaLine(it) + "</div>"
       + '<div class="a">' + dlControl(it) + "</div></div>";
   };
@@ -283,7 +298,9 @@ function showItemsResult(res) {
   const linkUrl = res.result_url ||
     (resultId ? location.origin + "/r/" + encodeURIComponent(resultId) : "");
   const files = (res.items || []).filter(it => it.kind === "file");
-  const dlAll = files.length > 1
+  // Download-all is hidden in the installed-PWA mode: opening N secondary
+  // contexts gets popup-blocked; each file keeps its own download.
+  const dlAll = files.length > 1 && !pwa
     ? '<button class="btn btn-secondary btn-sm" id="resDownloadAll" type="button">' + svgIcon("download") +
       "<span>" + t("r_download_all") + " (" + files.length + ")</span></button>"
     : "";
@@ -294,7 +311,7 @@ function showItemsResult(res) {
   const linkbar = linkUrl
     ? '<div class="linkbar">' + svgIcon("link")
       + "<span>" + escapeHtml(linkUrl) + "</span>"
-      + '<button class="btn btn-p rs-copy" type="button" data-copy="link">' + svgIcon("copy")
+      + '<button class="btn btn-secondary btn-sm rs-copy" type="button" data-copy="link">' + svgIcon("copy")
       + "<span>" + t("copy_link") + "</span></button></div>"
     : "";
   const rows = renderResultItems(res.items, { pwa: pwa, inputSizes: window.__lastInputSizes || null });

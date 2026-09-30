@@ -59,6 +59,11 @@
   // counter); no server-side packaging is minted for a bundle.
   const allBtn = document.getElementById("rDownloadAll");
   if (allBtn) {
+    // Installed-PWA mode hides the bundle action: opening one secondary
+    // context per file gets popup-blocked; per-file downloads remain.
+    if (window.isStandalonePWA && window.isStandalonePWA()) {
+      allBtn.style.display = "none";
+    }
     allBtn.addEventListener("click", () => {
       // Both download shapes: plain anchors AND the PWA-rebound
       // buttons (wirePwaDownloadLinks strips their href — an

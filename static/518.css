@@ -848,16 +848,13 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .rc-top .fi span:first-child { transform: rotate(-6deg); }
 .rc-top h1 { font-size: 24px; font-weight: 750; letter-spacing: -0.03em; overflow-wrap: anywhere; }
 .rc-top .m { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
-.rc-top .linkbar { margin-top: 20px; text-align: start; }
+.rc-top .linkbar { margin-top: 20px; }
 .rc-top .acts { justify-content: center; margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .rc-files { display: flex; flex-direction: column; }
 .rc-files .item-file { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 14px 20px; }
 /* /r 媒体组 (单图主视图 / 多图宫格) 与行式条目同一分隔节奏 */
 .r-page .rc-files .rs-media { border-top: 1px solid var(--line); padding: 14px 20px; }
 .rc-files .item-text, .rc-files .rs-json { border: 0; border-top: 1px solid var(--line); border-radius: 0; margin: 0 !important; padding: 14px 20px; }
-.qrrow { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-top: 1px solid var(--line); background: var(--sunk); font-size: 13px; color: var(--ink-2); }
-.qrrow .q { width: 56px; height: 56px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; }
-.qrrow .q img { width: 40px; height: 40px; }
 .r-gone { opacity: 0.62; }
 .r-gone small { color: var(--ink-3); }
 .made { text-align: center; font-size: 13px; color: var(--ink-3); margin-top: 20px; }

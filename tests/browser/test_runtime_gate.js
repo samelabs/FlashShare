@@ -631,6 +631,29 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     JSON.stringify(sc).slice(0, 200));
   check("mcp tools/call: share link downloadUrl", /\/f\//.test(item0.download_url || "") && /\?download=1$/.test(item0.download_url || ""));
 
+  // ── 9-12. MCP share with TWO files → a real multi-file /r result page
+  // (drives the download-all + standalone probes below) ──
+  const mshare = await post("/mcp", {
+    jsonrpc: "2.0", id: 4, method: "tools/call", params: {
+      name: "share",
+      arguments: {
+        files: [
+          { filename: "gate-share-a.png", b64: IMG.toString("base64") },
+          { filename: "gate-share-b.png", b64: IMG.toString("base64") },
+        ],
+        delivery: { expiry_days: 1, allowed_downloads: 50 },
+        client_ref: "mcp-share-gate-" + Math.random().toString(36).slice(2, 10),
+      },
+    },
+  }, { Authorization: `Bearer ${apiKey}` });
+  const msc = (((mshare.json || {}).result || {}).structuredContent) || {};
+  // public_result_url is absolute; gotoReady takes a path
+  const mcpShareRUrl = (msc.result_url || "").replace(BASE, "") || "";
+  check("mcp tools/call share (2 files): ok + multi-file result_url",
+    ((mshare.json || {}).result || {}).isError === false
+      && /\/r\//.test(mcpShareRUrl) && (msc.items || []).length === 2,
+    JSON.stringify((mshare.json || {}).result || {}).slice(0, 160));
+
   // ── UI-polish permanent regression ─────────────────────────────
   // (a) horizontal-overflow sweep at 360px with long-word (de) and RTL (ar)
   //     locales on the core surfaces;
@@ -1349,7 +1372,153 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         JSON.stringify(parity));
       check("/r page: main view capped at 60vh",
         parity.ok && parity.maxH <= parity.vhCap + 1, JSON.stringify(parity));
+      // filenames are never titles: h1 = tool name, no QR row, compact
+      // secondary copy action (result-page batch checks 1-3)
+      const head = await page.evaluate(() => ({
+        h1: (document.querySelector(".rc-top h1") || {}).textContent || "",
+        qr: !!document.querySelector(".qrrow"),
+        copyCls: (document.getElementById("rCopyLink") || {}).className || "",
+      }));
+      check("/r page: h1 is the tool name, never the input filename",
+        head.h1.trim().length > 0 && !/gate-photo|\.png/i.test(head.h1),
+        JSON.stringify(head));
+      check("/r page: no QR row", head.qr === false, JSON.stringify(head));
+      check("/r page: copy action is a compact secondary button (no btn-p)",
+        /\bbtn-secondary\b/.test(head.copyCls) && !/\bbtn-p\b/.test(head.copyCls),
+        JSON.stringify(head));
       await ctx.close();
+    }
+
+    // (5b) multi-file /r: download-all in a normal browser; simulated
+    //      standalone hides it and download NEVER touches navigator.share
+    if (mcpShareRUrl) {
+      {
+        const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+        const page = await ctx.newPage();
+        await gotoReady(page, mcpShareRUrl, ".rs-media");
+        const norm = await page.evaluate(() => {
+          const b = document.getElementById("rDownloadAll");
+          return {
+            exists: !!b,
+            visible: !!b && b.getBoundingClientRect().height > 0,
+            files: document.querySelectorAll(".rs-item .rs-dl").length,
+          };
+        });
+        check("/r multi-file: download-all visible in a normal browser",
+          norm.exists && norm.visible && norm.files >= 2, JSON.stringify(norm));
+        await ctx.close();
+      }
+      {
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        await ctx.addInitScript(() => {
+          const orig = window.matchMedia ? window.matchMedia.bind(window) : null;
+          window.matchMedia = (q) => (/display-mode:\s*standalone/.test(q))
+            ? { matches: true, media: q, onchange: null,
+                addListener() {}, removeListener() {},
+                addEventListener() {}, removeEventListener() {},
+                dispatchEvent() { return false; } }
+            : (orig ? orig(q) : { matches: false, media: q, onchange: null,
+                addListener() {}, removeListener() {},
+                addEventListener() {}, removeEventListener() {},
+                dispatchEvent() { return false; } });
+          window.__shareCalls = 0;
+          navigator.share = function () { window.__shareCalls++; return Promise.resolve(); };
+        });
+        const page = await ctx.newPage();
+        await gotoReady(page, mcpShareRUrl, ".rs-media");
+        const pwa = await page.evaluate(() => {
+          const all = document.getElementById("rDownloadAll");
+          const dl = document.querySelector(".rs-item .rs-dl");
+          return {
+            standalone: !!(window.isStandalonePWA && window.isStandalonePWA()),
+            allExists: !!all,
+            allHidden: !!all && all.getBoundingClientRect().height === 0,
+            dlRebound: !!dl && dl.tagName === "A"
+              && dl.getAttribute("role") === "button" && !dl.hasAttribute("href"),
+            perFileDl: document.querySelectorAll(".rs-item .rs-dl").length >= 2,
+          };
+        });
+        check("/r standalone: download-all hidden, per-file downloads kept",
+          pwa.standalone && pwa.allExists && pwa.allHidden
+            && pwa.dlRebound && pwa.perFileDl, JSON.stringify(pwa));
+        await page.click(".rs-item .rs-dl");
+        await page.waitForTimeout(400);
+        const shares = await page.evaluate(() => window.__shareCalls);
+        check("/r standalone: clicking download never calls navigator.share",
+          shares === 0, shares);
+        await ctx.close();
+      }
+    }
+
+    // (5c) DOM-probe walkthrough (no screenshots): the four result
+    //      shapes — single image / image grid / non-image file (long
+    //      name) / text — at 390x844 and 1280x860: no horizontal
+    //      overflow, no filename captions on images, single-line names
+    //      with middle ellipsis keeping the extension, full name in
+    //      title, linkbar one line with a secondary copy button.
+    {
+      const LONG_NAME = "a-very-long-source-file-name-designed-to-overflow-the-row-and-prove-the-middle-ellipsis-keeps-the-tail-while-the-stem-shrinks-away" + "x".repeat(60) + ".pdf";
+      const CASES = [
+        ["single-image", [
+          { kind: "file", public_id: "pa", filename: "one.png", size: 90000,
+            content_type: "image/png", download_url: "/f/pa?download=1" }]],
+        ["image-grid", [
+          { kind: "file", public_id: "pb", filename: "g1.png", size: 90000,
+            content_type: "image/png", download_url: "/f/pb?download=1" },
+          { kind: "file", public_id: "pc", filename: "g2.jpg", size: 90000,
+            content_type: "image/jpeg", download_url: "/f/pc?download=1" },
+          { kind: "file", public_id: "pd", filename: "g3.webp", size: 90000,
+            content_type: "image/webp", download_url: "/f/pd?download=1" }]],
+        ["file-row", [
+          { kind: "file", public_id: "pe", filename: LONG_NAME, size: 5000,
+            content_type: "application/pdf", download_url: "/f/pe?download=1" }]],
+        ["text", [{ kind: "text", text: "probe summary line" }]],
+      ];
+      for (const [w, h] of [[1280, 860], [390, 844]]) {
+        const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+        const page = await ctx.newPage();
+        await gotoReady(page, "/", "#toolInput");
+        for (const [name, items] of CASES) {
+          const probe = await page.evaluate((items) => {
+            showItemsResult({ result_id: "rprobe", items });
+            document.getElementById("result").classList.remove("hidden");
+            const r = document.getElementById("result");
+            const nameEl = r.querySelector(".item-file b.if-name");
+            const stem = nameEl && nameEl.querySelector(".if-stem");
+            const ext = nameEl && nameEl.querySelector(".if-ext");
+            const bar = r.querySelector(".linkbar");
+            const barBtn = bar && bar.querySelector(".btn");
+            return {
+              sw: document.documentElement.scrollWidth,
+              vw: document.documentElement.clientWidth,
+              metaB: r.querySelectorAll(".rs-img-meta b").length,
+              capB: r.querySelectorAll(".rs-cell figcaption b").length,
+              nameOneLine: !nameEl || (nameEl.getBoundingClientRect().height <= 30
+                && getComputedStyle(nameEl).display.includes("flex")),
+              stemClipped: !stem || stem.scrollWidth > stem.clientWidth,
+              extKept: !ext || ext.textContent,
+              titleFull: !nameEl || nameEl.getAttribute("title"),
+              barH: bar ? Math.round(bar.getBoundingClientRect().height) : 0,
+              barBtnCls: barBtn ? barBtn.className : "",
+            };
+          }, items);
+          check(`probe ${w} ${name}: no overflow, no filename captions on images`,
+            probe.sw <= probe.vw + 1 && probe.metaB === 0 && probe.capB === 0,
+            JSON.stringify(probe));
+          check(`probe ${w} ${name}: linkbar is one light line, secondary copy`,
+            probe.barH > 0 && probe.barH <= 44
+              && /\bbtn-secondary\b/.test(probe.barBtnCls)
+              && !/\bbtn-p\b/.test(probe.barBtnCls),
+            JSON.stringify(probe));
+          if (name === "file-row") {
+            check(`probe ${w} file-row: single-line name, middle ellipsis keeps ".pdf", title carries the full name`,
+              probe.nameOneLine && probe.stemClipped
+                && probe.extKept === ".pdf" && probe.titleFull === items[0].filename,
+              JSON.stringify(probe));
+          }
+        }
+        await ctx.close();
+      }
     }
   }
 
