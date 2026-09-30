@@ -69,7 +69,9 @@ def validate_password(password: str) -> str | None:
         return "err_password_empty"
     if len(password) < 8:
         return "err_password_short"
-    if len(password) > 128:
+    # bcrypt itself refuses passwords over 72 UTF-8 bytes; validating the
+    # same bound here keeps register/change/set on one typed error path
+    if len(password.encode("utf-8")) > 72:
         return "err_password_long"
     return None
 

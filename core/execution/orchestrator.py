@@ -84,17 +84,25 @@ def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
 # 不再从 params 取 lifecycle / silent fallback / 猜默认值。
 
 
+# Wall-clock ceiling for ONE local handler run. A wedged worker would
+# otherwise pin its in-flight slot (and the caller's request) forever.
+LOCAL_EXEC_TIMEOUT_S = 120
+
+
 async def _run_handler(pool, process_tool, tool_id, sources, params):
     """worker 调用 (sources list, possibly empty); BrokenProcessPool
     (worker 进程死亡) → 池重建 + 本 invocation 走 gate 失败收敛
-    (exact refund, terminal failed, 不自动重跑)。"""
+    (exact refund, terminal failed, 不自动重跑)。
+    超时 (LOCAL_EXEC_TIMEOUT_S) → 池重建 + 旧池仍存活的 worker 显式
+    terminate (shutdown 不杀在跑进程), 重抛 err_endpoint_timeout →
+    既有超时码的退款收敛路径。"""
     from concurrent.futures.process import BrokenProcessPool
     from . import pool as pool_mod
     loop = asyncio.get_event_loop()
     try:
         fut = loop.run_in_executor(
             pool, process_tool, tool_id, sources, params)
-        return await fut
+        return await asyncio.wait_for(fut, LOCAL_EXEC_TIMEOUT_S)
     except BrokenProcessPool as exc:
         # worker 进程死亡 (submit 或 await 阶段): CAS 重建池 (同一 broken
         # pool 的并发观察者只产生一个 replacement), 本 invocation 重抛为
@@ -102,6 +110,17 @@ async def _run_handler(pool, process_tool, tool_id, sources, params):
         # 对外 tool_failed)。不自动重跑。
         pool_mod.reset_pool(pool, "broken_process_pool")
         raise RuntimeError("worker_pool_broken") from exc
+    except asyncio.TimeoutError:
+        # worker 卡死: 先 CAS 重建 (并发观察者只采纳一个 replacement),
+        # 再对旧池仍存活的进程 terminate, 让新调用立刻有干净 worker 可用。
+        pool_mod.reset_pool(pool, "timeout")
+        for _proc in list(getattr(pool, "_processes", {}).values()):
+            try:
+                if _proc.is_alive():
+                    _proc.terminate()
+            except Exception:
+                pass
+        raise ExecutionError("err_endpoint_timeout") from None
 
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,

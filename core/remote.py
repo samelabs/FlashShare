@@ -38,7 +38,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from config import MAX_UPLOAD_BYTES
+from config import MAX_BATCH_BYTES, MAX_UPLOAD_BYTES
 from execution.results import (MAX_RESULT_ITEMS, MAX_INLINE_RESULT_BYTES)  # noqa: E402
 
 MIN_TIMEOUT_S = 5
@@ -469,6 +469,7 @@ def parse_endpoint_items(out, url_fetch) -> list:
     import base64
     results = []
     inline_total = 0
+    file_total = 0
     for it in items:
         if not isinstance(it, dict):
             raise RemoteError("invalid_response", "item must be an object")
@@ -504,6 +505,14 @@ def parse_endpoint_items(out, url_fetch) -> list:
             else:
                 raise RemoteError("invalid_response",
                                   "file item needs data_b64 or url")
+            # Cumulative file budget: the same platform batch ceiling
+            # (config MAX_BATCH_BYTES) ingress enforces on the way in.
+            # Once exceeded, no further item is fetched or decoded.
+            file_total += len(data)
+            if file_total > MAX_BATCH_BYTES:
+                raise RemoteError(
+                    "too_large",
+                    f"file items total {file_total} over {MAX_BATCH_BYTES}")
             wrapped = _wrap_raw(data, it.get("filename"),
                                 it.get("content_type"))
             results.append({"kind": "file",

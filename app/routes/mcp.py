@@ -309,19 +309,19 @@ async def _dispatch(request: Request, user: dict, msg):
                 f"{catalog_version()}."
             ),
         })
-    if method == "notifications/initialized":
+    # notifications are NEVER answered — the early-out precedes every
+    # responding branch, including ping
+    if is_notification:
         return None
     if method == "ping":
         return _rpc(mid, {})
-    if is_notification:
-        return None
     if method == "tools/list":
         page_size = 50
         specs = _tool_specs(user)
         cur = params.get("cursor")
         try:
             start = int(cur) if cur else 0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return _rpc_err(mid, -32602, "invalid cursor")
         if start < 0:
             return _rpc_err(mid, -32602, "invalid cursor")
@@ -816,7 +816,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if name == "list_uploads":
         return _list_uploads(user, mid, args)
     if name == "delete_upload":
-        return _delete_upload(user, mid, args)
+        return await _delete_upload(user, mid, args)
     if name in ("pin_tool", "unpin_tool"):
         return _pin_tool(user, mid, args, on=(name == "pin_tool"))
 
@@ -1089,7 +1089,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                 from storage import delete as _gk_del
                 for _gid in _gids:
                     try:
-                        _gk_del(_gid)
+                        await asyncio.to_thread(_gk_del, _gid)
                     except Exception:
                         pass
                 try:
@@ -1117,7 +1117,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     from storage import delete as _gk_del
                     for _gid in _gids:
                         try:
-                            _gk_del(_gid)
+                            await asyncio.to_thread(_gk_del, _gid)
                         except Exception:
                             pass
                     try:
@@ -1177,6 +1177,7 @@ def _error_message(code, tool: dict | None = None) -> str:
         "err_insufficient_credits": "Not enough credits for this call.",
         "tool_disabled": "This tool is currently disabled.",
         "err_rate_limited": "Too many requests; retry shortly.",
+        "err_upload_in_progress": "An upload with this client_ref is still settling; retry shortly with the same client_ref.",
         "err_busy": "The service is busy; please retry shortly with the same client_ref.",
         "err_call_in_progress": "This operation is already running; retry the same client_ref for its result.",
         "idempotency_conflict": "This client_ref was used for different input; use a new client_ref.",
@@ -1482,7 +1483,7 @@ def _list_uploads(user: dict, mid, args: dict) -> dict:
                               "has_more": len(rows) == 20})
 
 
-def _delete_upload(user: dict, mid, args: dict) -> dict:
+async def _delete_upload(user: dict, mid, args: dict) -> dict:
     """delete_upload meta tool: resolves public_id → ownership the same
     way the web DELETE /api/uploads/{public_id} route does, then rides
     the SAME sharing.delete_upload single point (Gokapi physical file +
@@ -1501,7 +1502,7 @@ def _delete_upload(user: dict, mid, args: dict) -> dict:
         return _iserror(mid, {
             "deleted": False, "public_id": public_id,
             "error": "not_found"})
-    _web_delete(upload["id"], user["id"])
+    await asyncio.to_thread(_web_delete, upload["id"], user["id"])
     return _meta_result(mid, {"deleted": True, "public_id": public_id})
 
 

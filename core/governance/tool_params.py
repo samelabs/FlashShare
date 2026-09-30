@@ -4,6 +4,7 @@ One validator for the params_json declaration — the ONLY place that knows
 the contract. 提交时全量校验, 存库即合法, 读取面永不二次校验 (单点原则)。
 来源无关: 协议只看数据形态 (label: str | dict), 不看发布者/执行类。
 """
+import math
 import re
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
@@ -307,6 +308,8 @@ def enforce_params_decl(decl: list, values: dict) -> dict:
             try:
                 nv = float(v)
             except (TypeError, ValueError):
+                raise ParamsValueError("param_invalid", key)
+            if not math.isfinite(nv):
                 raise ParamsValueError("param_invalid", key)
             if p.get("min") is not None and nv < p["min"]:
                 raise ParamsValueError("param_out_of_range", key)

@@ -236,10 +236,16 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ### 3. Nginx
 
 ```nginx
+http {
+    # 防慢速请求占满应用并发名额：按客户端 IP 计数的并发连接 zone
+    limit_conn_zone $binary_remote_addr zone=perip:10m;
+
 server {
     server_name 518.plus;
     # TLS 证书配置按现有站点沿用（Cloudflare 模式保持不变）
     client_max_body_size 110m;          # 单次批量上限 100MB + 表单开销
+    limit_conn perip 20;                # 防慢速请求占满应用并发名额：同一 IP 最多 20 条并发连接
+    client_body_timeout 30s;            # 防慢速请求占满应用并发名额：请求体 30s 内必须送达完毕
 
     # Cloudflare real-IP restoration: only Cloudflare's published ranges
     # may override $remote_addr (https://www.cloudflare.com/ips/). Every
@@ -391,6 +397,7 @@ curl -s https://518.plus/healthz
 - service API key 必须拥有 **DOWNLOAD permission**（v2.2.4 `ApiPermDownload`，位 512）；无该 permission 时 internal read 实际返回 **401**（`{"Result":"error","ErrorMessage":"Unauthorized","ErrorCode":2}`，鉴权门在文件查找之前）。早期记录的"401（admin-session scope）"实为 key 缺 DOWNLOAD permission 所致，并非通道不存在。
 - missing file（permission 通过后）= **404** + `{"Result":"error","ErrorMessage":"file not found","ErrorCode":5}`；startup probe 的 synthetic id 分支据此 exact response 判 auth-passed，其余一切 status/body fail-closed（`gokapi_download_permission_missing` / `gokapi_download_capability_unknown_*`）。
 - `/downloadFile` 是 recipient counted path：**200 且 DownloadCount +1**（实测 0→1）。
+- `/f/{id}/inline`（图片、PDF 预览）走 non-counting internal read：**不消耗 `allowed_downloads`**；下载次数只约束 `?download=1` 的下载路径。
 - **禁止 sqlite/data-dir/private-storage fallback**：不读 Gokapi 私有 sqlite/schema/content 目录，不做同机文件系统 fallback。
 - **验证分层**：fake Gokapi CI（`tests/support/fake_gokapi.py`）只验证 518 adapter contract；真实 v2.2.4 compatibility proof 是 release gate，不由 fake 替代。
 

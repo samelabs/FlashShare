@@ -331,6 +331,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_ingress_guard.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_launch_harden.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_launch_harden.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_auth_modal.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_auth_modal.py
@@ -547,6 +551,8 @@ jobs:
         run: python tests/canonical/test_listing.py
       - name: Ingress guard canonical
         run: python tests/canonical/test_ingress_guard.py
+      - name: Launch hardening canonical
+        run: python tests/canonical/test_launch_harden.py
       - name: Auth modal canonical
         run: python tests/canonical/test_auth_modal.py
       - name: Publish gate canonical
