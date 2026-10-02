@@ -2,6 +2,11 @@
 
 本文件记录面向用户的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本以功能批次划分。
 
+## [1.2] - Unreleased
+
+### Removed
+- **doc2pdf（文档转 PDF）系统工具**：下线并代码级剥离——LibreOffice/soffice 系统依赖不再属于部署包，启动探测与相关部署要求一并移除。计量历史保留（目录行自动退休）；如需该能力可由运营以 HTTP 工具形态另发。
+
 ## [1.1] - 2026-10-02
 
 ### Changed
