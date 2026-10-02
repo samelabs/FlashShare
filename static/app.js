@@ -170,9 +170,13 @@ function renderResultItems(items, opts) {
   const dlControl = (it) => {
     const dlUrl = it.download_url ||
       ("/f/" + encodeURIComponent(it.public_id) + "?download=1");
+    // images / PDFs: a standalone PWA opens the inline view instead
+    const ct = (it.content_type || "").toLowerCase();
+    const viewable = (ct.startsWith("image/") && ct !== "image/svg+xml") || ct === "application/pdf";
+    const viewUrl = viewable && it.public_id ? "/f/" + encodeURIComponent(it.public_id) + "/inline" : "";
     return pwa
       ? '<button class="btn btn-secondary btn-sm rs-dl" type="button" data-dl-url="' + escapeHtml(dlUrl) +
-        '" data-dl-name="' + escapeHtml(it.filename || "download") + '" aria-label="' + t("downloadFile") +
+        '" data-view-url="' + escapeHtml(viewUrl) + '" aria-label="' + t("downloadFile") +
         '" title="' + t("downloadFile") + '">' + svgIcon("download") + "<span>" + t("downloadFile") + "</span></button>"
       : '<a class="btn btn-secondary btn-sm rs-dl" href="' + escapeHtml(dlUrl) +
         '" download aria-label="' + t("downloadFile") + '" title="' + t("downloadFile") + '">' +
@@ -275,7 +279,7 @@ function wireResultItemActions() {
   });
   result.querySelectorAll("[data-dl-url]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      window.pwaDownload && window.pwaDownload(btn.dataset.dlUrl, btn.dataset.dlName);
+      window.pwaDownload && window.pwaDownload(btn.dataset.dlUrl, btn.dataset.viewUrl);
     });
   });
   // Standalone PWA: download anchors route through the engine authority

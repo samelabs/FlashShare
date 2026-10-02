@@ -122,8 +122,8 @@ window.resolveLabel = function (label) {
 /*
  * ── PWA download authority (site-wide single point) ─────────────────
  * The ONLY standalone-PWA download policy. All download entries
- * (result card, history, detail page) call window.pwaDownload /
- * window.shareFileViaURL; nobody re-implements the standalone branch.
+ * (result card, history, detail page) call window.pwaDownload;
+ * nobody re-implements the standalone branch.
  *
  * Standalone hard constraints (product decision):
  *   - never fetch the file body, never build Blob/File for downloads
@@ -138,11 +138,13 @@ window.isStandalonePWA = function () {
   return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
       || window.navigator.standalone === true;
 };
-window.pwaDownload = async function (downloadUrl, title) {
+window.pwaDownload = function (downloadUrl, viewUrl) {
   // standalone-only path; callers must use plain download elsewhere.
-  // title is kept for the public signature; the handoff opens the URL.
-  void title;
-  _pwaSecondaryHandoff(downloadUrl);
+  // Images / PDFs open their inline view (a standalone context cannot
+  // save an attachment response — it shows a blank sheet; the view can
+  // be long-pressed or shared from the viewer). Other types open the
+  // download URL.
+  _pwaSecondaryHandoff(viewUrl || downloadUrl);
   return true;
 };
 function _pwaSecondaryHandoff(downloadUrl) {
@@ -156,39 +158,26 @@ function _pwaSecondaryHandoff(downloadUrl) {
     a.remove();
   } catch (e) { /* last resort: open in secondary context */ }
 }
-// Explicit "share the FILE" action (distinct from download): may read the
-// File, but must gate on canShare({files}) and, inside a standalone PWA,
-// must never fall back to navigating the current window.
-window.shareFileViaURL = async function (url, filename, btn) {
-  var orig = btn ? btn.innerHTML : "";
-  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="btn-spinner"></div>'; }
-  var restore = function () { if (btn) { btn.disabled = false; btn.innerHTML = orig; } };
-  var filesShareable = !!(navigator.canShare && navigator.share);
-  if (filesShareable) {
-    try {
-      var res = await fetch(url);
-      if (res.ok) {
-        var blob = await res.blob();
-        var file = new File([blob], filename || "download", { type: blob.type || "application/octet-stream" });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: filename || "download" });
-          restore();
-          return true;
-        }
-      }
-    } catch (e) {
-      if (e && e.name === "AbortError") { restore(); return true; }
-      // fall through: share URL instead — never navigate current window
-    }
+// Share the current PAGE (site-wide single point for every share
+// button). navigator.share is called synchronously inside the click so
+// the user activation is still valid (an awaited fetch first would
+// expire it and the system sheet never opens). Never fetches the file
+// (a fetch would also spend a download). No Web Share → copy the link
+// and confirm on the button. User cancel (AbortError) is a normal end.
+window.sharePage = function (btn) {
+  var url = window.location.href.split("#")[0];
+  if (navigator.share) {
+    navigator.share({ title: document.title, url: url }).catch(function () {});
+    return;
   }
-  try {
-    if (navigator.share) { await navigator.share({ title: filename || "download", url: url }); restore(); return true; }
-  } catch (e) {
-    if (e && e.name === "AbortError") { restore(); return true; }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(function () {
+      if (!btn) return;
+      var orig = btn.innerHTML;
+      btn.innerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
+      setTimeout(function () { btn.innerHTML = orig; }, 1400);
+    }).catch(function () {});
   }
-  _pwaSecondaryHandoff(url);
-  restore();
-  return true;
 };
 
 // ── Site-wide async confirm authority (VIS-006 / RC-VIS-002) ──

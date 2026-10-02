@@ -81,7 +81,9 @@ def build_llms_txt() -> str:
     a('2. https URL: {"url":"https://example.com/a.png"} — 518 fetches it '
       'server-side (public hosts only)')
     a('3. Reference: {"public_id":"...","source_token":"..."} to an '
-      'existing upload of yours')
+      'existing upload of yours — a file item returned by an earlier call '
+      'is referenced with just {"public_id":"..."} (chain tools without '
+      're-uploading)')
     a("Plain-text input goes through the tool's params (text parameters "
       "accept up to 100,000 characters).")
     a("")

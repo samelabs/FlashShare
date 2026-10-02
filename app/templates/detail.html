@@ -11,17 +11,17 @@
     <div class="rc">
       <div class="rc-top">
         <div class="fi" aria-hidden="true"><span></span></div>
-        <h1 id="fileName">{{ file_name }}</h1>
+        {% set _i = file_name.rfind('.') %}
+        <h1 id="fileName" class="f-name" title="{{ file_name }}"><span class="if-stem">{{ file_name[:_i] if _i > 0 else file_name }}</span>{% if _i > 0 %}<span class="if-ext">{{ file_name[_i:] }}</span>{% endif %}</h1>
         <div class="m">
-          <span>{{ size_text }} · {{ type_text }}</span> ·
-          <span>{{ texts.file_expires_label }}: {{ expire_text }}</span> ·
-          <span data-i18n="r_downloads_left">{{ texts.r_downloads_left }}</span> {{ downloads_left }}
+          <span>{{ size_text }} · {{ type_text }}</span>
+          <span>{{ texts.expires_on.format(date=expire_text) }} · {{ texts.downloads_left_n.format(n=downloads_left) }}</span>
         </div>
         <div class="linkbar">{{ icon_svg("link") }}<span>{{ escaped_url }}</span>
           <button class="btn btn-secondary btn-sm" id="copyBtn" type="button">{{ icon_svg("copy") }}<span data-i18n="copy_link">{{ texts['copy_link'] }}</span></button>
         </div>
         <div class="acts">
-        <a class="btn btn-b" href="{{ dl_url }}" download aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+        <a class="btn btn-b" href="{{ dl_url }}" download{% if is_image or is_pdf %} data-view-url="{{ inline_url }}"{% endif %} aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
         <button class="btn btn-s" id="qrBtn" type="button" aria-label="QR" title="QR">{{ icon_svg("qr") }}<span>QR</span></button>
         <button class="btn btn-s" id="shareImgBtn" type="button" aria-label="{{ texts.share_via_system }}" title="{{ texts.share_via_system }}">{{ icon_svg("share") }}<span>{{ texts.share_via_system }}</span></button>
         <a class="btn btn-icon" href="{{ share_url }}" target="_blank" rel="noreferrer" aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
@@ -73,5 +73,6 @@
 
 {% block script %}
 <script>window.__PAGE__ = { publicId: {{ public_id|tojson }}, dlUrl: {{ dl_url|tojson }}, fileName: {{ file_name|tojson }}, pagesVersion: {{ pages_version|tojson }}, icons: { check: {{ icon_svg("check")|tojson }} } };</script>
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
 <script src="/static/pages/detail.js?v={{ pages_version }}"></script>
 {% endblock %}

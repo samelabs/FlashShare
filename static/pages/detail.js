@@ -12,24 +12,11 @@ copyBtn.addEventListener("click", async () => {
   setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);
 });
 
-const _pwa = window.isStandalonePWA ? window.isStandalonePWA()
-  : (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
-const dlBtn = document.querySelector('a.btn.btn-primary[download]');
-if (dlBtn && _pwa) {
-  dlBtn.removeAttribute('href');
-  dlBtn.addEventListener('click', () => {
-    // Site-wide PWA download authority (base-engine.js): URL share /
-    // secondary-context handoff — never fetches the body and never
-    // navigates the current PWA window.
-    window.pwaDownload && window.pwaDownload(__PAGE__.dlUrl, __PAGE__.fileName);
-  });
-}
+// Standalone PWA: the download anchor routes through the single
+// download authority (common.js wirePwaDownloadLinks → pwaDownload).
+window.wirePwaDownloadLinks && window.wirePwaDownloadLinks(document);
 const shareImgBtn = document.getElementById("shareImgBtn");
-shareImgBtn.addEventListener("click", () => {
-  // Explicit share-file action: site-wide authority (canShare gate; a
-  // standalone-PWA failure never navigates the current window).
-  window.shareFileViaURL && window.shareFileViaURL(__PAGE__.dlUrl, __PAGE__.fileName, shareImgBtn);
-});
+shareImgBtn.addEventListener("click", () => window.sharePage(shareImgBtn));
 
 const qrBtn = document.getElementById("qrBtn");
 const qrModal = document.getElementById("qrModal");

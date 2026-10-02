@@ -91,7 +91,8 @@
     // first attempt and on upload-response-loss retry, so the server's
     // ingress receipt replays instead of minting a second logical op.
     const formData = new FormData();
-    op.files.forEach(f => formData.append("file", f));
+    // referenced files are already on 518 — only picked files upload
+    op.files.forEach(f => { if (!f.ref) formData.append("file", f); });
     if (op.tool) formData.append("tool", op.tool.id);
     formData.append("client_ref", op.ref);
     return new Promise((resolve, reject) => {
@@ -235,9 +236,19 @@
       // Step 1: upload — skipped for 0-file calls and for retries with
       // retained handles.
       if (fileList.length && (!isRetry || !op.sources)) {
-        const up = await uploadLeg();
-        const uploaded = up.files || [up.file];
-        op.sources = uploaded.map(f => ({ stagingId: f.stagingId, sourceToken: f.sourceToken || "" }));
+        // picked files upload once; referenced files ({ref, publicId})
+        // join the source list as owner refs, in the user's order
+        let uploaded = [];
+        if (fileList.some(f => !f.ref)) {
+          const up = await uploadLeg();
+          uploaded = up.files || [up.file];
+        }
+        let k = 0;
+        op.sources = fileList.map(f => {
+          if (f.ref) return { stagingId: f.publicId, sourceToken: "" };
+          const u = uploaded[k++];
+          return { stagingId: u.stagingId, sourceToken: u.sourceToken || "" };
+        });
       } else if (!fileList.length) {
         op.sources = [];
       }

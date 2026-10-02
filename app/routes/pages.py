@@ -1016,7 +1016,15 @@ async def result_page(result_id: str, request: Request):
          and d.get("remaining") is not None])), None)
     if min_remaining is not None:
         og_desc += f" · {texts['r_downloads_left']}: {min_remaining}"
+    # Share card image: the first live image result itself (inline
+    # preview is the non-counting channel), else the site card.
+    _first_img = next((d for d in items if d.get("kind") == "file"
+                       and d.get("is_image") and not d.get("deleted")), None)
+    _viewer = request.state.user
     ctx.update({
+        "og_image": (f"{BASE_URL}/f/{_first_img['public_id']}/inline"
+                     if _first_img else SOCIAL_IMAGE_URL),
+        "is_owner": bool(_viewer and _viewer.get("id") == row["user_id"]),
         "result_id": result_id,
         "tool_name": tool_name,
         "generated_text": format_ts(row["finished_at"]),
