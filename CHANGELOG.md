@@ -2,6 +2,11 @@
 
 本文件记录面向用户的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本以功能批次划分。
 
+## [1.2] - Unreleased
+
+### Added
+- **MCP 无头注册**：`POST /auth/mcp/register`——agent 无需网页即可自助开户，同一响应返回账户（用户名/密码）与 API key（明文仅此一次）；不设会话、无每日登录福利（人类网页登录后才有）。MCP 未带 key 的 401 指引与 `llms.txt` 同步指向该端点。按 IP 限流（默认 10 次/小时，可配 `FLASHSHARE_MCP_REGISTER_LIMIT_PER_HOUR`）。
+
 ## [1.1] - 2026-10-02
 
 ### Changed

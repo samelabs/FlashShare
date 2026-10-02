@@ -108,6 +108,7 @@ jobs:
       # remain 30/hour register, 50/15min login; no ip is ever exempt)
       FLASHSHARE_REGISTER_LIMIT_PER_HOUR: "10000"
       FLASHSHARE_LOGIN_LIMIT_PER_15MIN: "10000"
+      FLASHSHARE_MCP_REGISTER_LIMIT_PER_HOUR: "10000"
       FLASHSHARE_TEST_PORT: "8100"
     steps:
       - uses: actions/checkout@v4
@@ -555,6 +556,8 @@ jobs:
         run: python tests/canonical/test_listing.py
       - name: R/F governance canonical
         run: python tests/canonical/test_rf_governance.py
+      - name: MCP register canonical
+        run: python tests/canonical/test_mcp_register.py
       - name: Ingress guard canonical
         run: python tests/canonical/test_ingress_guard.py
       - name: Launch hardening canonical
