@@ -170,8 +170,10 @@ async def mcp_post(request: Request):
         return JSONResponse(
             {"error": "unauthorized",
              "message": (
-                 "Missing or invalid API key. Create one at "
-                 f"{_base}/account/keys; guide: {_base}/llms.txt")},
+                 "Missing or invalid API key. Register headlessly: POST "
+                 f"{_base}/auth/mcp/register with an optional "
+                 '{"username": "..."} JSON body returns an API key. '
+                 f"Human path: {_base}/account/keys. Guide: {_base}/llms.txt")},
             status_code=401,
             headers={**cors, "WWW-Authenticate": 'Bearer realm="518"'},
         )

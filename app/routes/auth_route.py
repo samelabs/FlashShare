@@ -63,6 +63,9 @@ _login_ip_failures: dict[tuple, list[int]] = {}
 _REGISTER_IP_LIMIT = _env_int("FLASHSHARE_REGISTER_LIMIT_PER_HOUR", 30)
 _REGISTER_IP_WINDOW = 60 * 60
 _register_attempts: dict[tuple, list[int]] = {}
+_MCP_REGISTER_IP_LIMIT = _env_int("FLASHSHARE_MCP_REGISTER_LIMIT_PER_HOUR", 10)
+_MCP_REGISTER_IP_WINDOW = 60 * 60
+_mcp_register_attempts: dict[tuple, list[int]] = {}
 
 # X OAuth browser binding: the initiating browser holds the state in an
 # HttpOnly cookie; the callback must present the same value.
@@ -423,6 +426,71 @@ async def register_submit(request: Request):
     if wants_json:
         return _auth_json_ok(user_id)
     return redirect_with_session(next_url, user_id)
+
+
+# Headless MCP registration: the machine surface's only unauthenticated
+# write. An agent registers itself and receives its Bearer key in the
+# same response. Reuses the web validators and the apikeys single
+# point; sets no session (no human, no cookie). No login maintenance —
+# daily-login benefits start only when a human logs into this account
+# on the web, so headless account farming yields no credits. If key
+# creation fails after register committed (vault unavailable), the
+# account stays as a zero-balance row; retrying with a fresh username
+# is the recovery.
+@router.post("/mcp/register")
+async def mcp_register(request: Request):
+    try:
+        raw = await request.json()
+        if not isinstance(raw, dict):
+            raise ValueError
+    except Exception:
+        return JSONResponse({"ok": False, "error": "err_invalid_request"}, 400)
+
+    username = str(raw.get("username") or "").strip()
+
+    ip_key = (client_ip(request),)
+    if _throttled(_mcp_register_attempts, ip_key,
+                  _MCP_REGISTER_IP_LIMIT, _MCP_REGISTER_IP_WINDOW):
+        return JSONResponse(
+            {"ok": False, "error": "err_too_many_attempts"}, 429)
+    _record_hit(_mcp_register_attempts, ip_key, _MCP_REGISTER_IP_WINDOW)
+
+    if username:
+        err = validate_username(username)
+        if err:
+            return JSONResponse({"ok": False, "error": err}, 400)
+    else:
+        username = "agent_" + secrets.token_hex(4)
+    email = f"mcp-{secrets.token_hex(8)}@mcp.518.plus"
+    password = secrets.token_urlsafe(18)
+
+    def _err(status, code):
+        return JSONResponse({"ok": False, "error": code}, status)
+
+    try:
+        user_id = await asyncio.to_thread(
+            register_user, username, email, password)
+    except ValueError as exc:
+        token = str(exc)
+        status = 409 if token in ("err_username_taken", "err_email_taken") \
+            else 400
+        return _err(status, token)
+    except psycopg2.IntegrityError:
+        if username_taken(username):
+            return _err(409, "err_username_taken")
+        return _err(409, "err_email_taken")
+    except Exception:
+        logger.exception("mcp register failed for username=%s", username)
+        return _err(500, "err_invalid_request")
+
+    from identity.apikeys import create_key
+    try:
+        key = await asyncio.to_thread(create_key, user_id, "mcp")
+    except ValueError as exc:
+        return _err(503, str(exc))
+    key.pop("key_sealed", None)  # server-side sealed copy never leaves
+    return JSONResponse({"ok": True, "username": username,
+                         "password": password, "key": key})
 
 
 @router.post("/logout")
