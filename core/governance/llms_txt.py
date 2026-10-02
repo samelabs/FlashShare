@@ -33,8 +33,11 @@ def build_llms_txt() -> str:
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
     a(f"- Protocol versions: {versions} (latest: {latest})")
-    a("- Auth: Bearer API key, prefix fsk_ — create one in the web UI "
-      "at /account/keys (Account → API keys); view it there any time")
+    a("- Auth: Bearer API key, prefix fsk_ — get one headlessly: "
+      "POST /auth/mcp/register with an optional "
+      '{"username": "..."} JSON body returns an account and its key '
+      "(plaintext shown once); humans can also create keys in the web UI "
+      "at /account/keys (Account → API keys)")
     a("- Agent guide (this file): /llms.txt")
     a("")
     a("## No-install usage (curl)")
