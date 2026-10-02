@@ -349,20 +349,6 @@ async def startup():
     except InternalDownloadUnavailable as exc:
         logger.error("gokapi capability probe failed: %s", exc)
         raise RuntimeError(f"gokapi capability probe failed: {exc}") from exc
-    # doc2pdf engine probe (non-blocking): one one-line txt conversion
-    # exercises soffice end-to-end. On failure the tool returns its typed
-    # per-call error and everything else keeps serving — we log ERROR
-    # naming the exact packages the deployment is missing.
-    from tools_doc2pdf import probe_engine, REQUIRED_PACKAGES
-    try:
-        probe_engine()
-        logger.info("doc2pdf engine probe: txt→pdf OK")
-    except Exception as exc:
-        logger.error(
-            "doc2pdf engine probe failed: %s — document-to-PDF needs %s "
-            "installed (or FLASHSHARE_SOFFICE pointing at the soffice "
-            "binary); doc2pdf will fail per call until fixed",
-            exc, ", ".join(REQUIRED_PACKAGES))
     # Tier 数据 fail-closed 校验: 非法 plans 行 (缺 free / 权益越界) 必须
     # abort 启动 — 不留"流量已就绪但目录非法"的窗口。
     from governance.plan_catalog import validate_config

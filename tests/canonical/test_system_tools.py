@@ -11,7 +11,7 @@ through the REAL execution.worker.process_tool with fixed in-test fixtures:
 
 Specialized assertions pin the per-tool contracts (privacy metadata
 stripping / format keeping / PSNR floor, compress auto+targets with
-transparency survival, ico multi sizes, crop_white bbox, doc2pdf txt+docx).
+transparency survival, ico multi sizes, crop_white bbox).
 A newly registered tool without a fixture FAILS this suite — real-run
 coverage is mandatory for every system tool.
 """
@@ -175,43 +175,6 @@ def _jpeg_with_exif_xmp():
     return soi + exif_app1 + xmp_app1 + raw[2:]
 
 
-def txt_zh():
-    return ("518.PLUS doc2pdf 冒烟测试\n"
-            "中文段落：春江潮水连海平，海上明月共潮生。\n"
-            "second paragraph: ASCII line for the same document.\n").encode("utf-8")
-
-
-def docx_zh():
-    """Minimal valid OOXML package with one Chinese + one ASCII paragraph."""
-    document = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<w:document xmlns:w="http://schemas.openxmlformats.org/'
-        'wordprocessingml/2006/main"><w:body>'
-        '<w:p><w:r><w:t>中文段落：落霞与孤鹜齐飞，秋水共长天一色。</w:t></w:r></w:p>'
-        '<w:p><w:r><w:t>doc2pdf probe paragraph.</w:t></w:r></w:p>'
-        '<w:sectPr/></w:body></w:document>')
-    content_types = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/'
-        'content-types"><Default Extension="rels" ContentType="application/'
-        'vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml"'
-        ' ContentType="application/xml"/><Override PartName="/word/document.xml"'
-        ' ContentType="application/vnd.openxmlformats-officedocument.'
-        'wordprocessingml.document.main+xml"/></Types>')
-    rels = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
-        'relationships"><Relationship Id="rId1" Type="http://schemas.'
-        'openxmlformats.org/officeDocument/2006/relationships/officeDocument"'
-        ' Target="word/document.xml"/></Relationships>')
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("[Content_Types].xml", content_types)
-        zf.writestr("_rels/.rels", rels)
-        zf.writestr("word/document.xml", document)
-    return buf.getvalue()
-
-
 def psnr_rgb(a, b):
     """PSNR (dB) between two same-size images, RGB channels."""
     if a.size != b.size:
@@ -257,6 +220,8 @@ FIXTURES = {
     "beautify": [
         {"files": [(badge_png(), "badge.png", "image/png")],
          "params": {}},
+        {"files": [(badge_png(), "auto.png", "image/png")],
+         "params": {"preset": "auto"}},
     ],
     "crop_white": [
         {"files": [(white_bordered_png(), "scan.png", "image/png")],
@@ -267,12 +232,6 @@ FIXTURES = {
          "params": {"preset": "multi"}},
         {"files": [(badge_png(), "mark.png", "image/png")],
          "params": {"preset": "ico_32"}},
-    ],
-    "doc2pdf": [
-        {"files": [(txt_zh(), "note.txt", "text/plain")], "params": {}},
-        {"files": [(docx_zh(), "note.docx",
-                    "application/vnd.openxmlformats-officedocument."
-                    "wordprocessingml.document")], "params": {}},
     ],
     "img2pdf": [
         {"files": [(badge_png(), "a.png", "image/png"),
@@ -501,23 +460,6 @@ def spec_crop_white():
           out["items"][0]["data"] == data, "")
 
 
-def spec_doc2pdf():
-    _, out = run_tool("doc2pdf", {"files": [(txt_zh(), "note.txt", "text/plain")],
-                                  "params": {}})
-    data = out["items"][0]["data"]
-    check("doc2pdf txt→PDF (Chinese text)", data.startswith(b"%PDF")
-          and out["items"][0]["filename"] == "note.pdf"
-          and len(PdfPages(data)) >= 1, out["items"][0]["filename"])
-
-    _, out = run_tool("doc2pdf", {"files": [(docx_zh(), "note.docx",
-                                             "application/vnd.openxmlformats-"
-                                             "officedocument.wordprocessingml.document")],
-                                  "params": {}})
-    data = out["items"][0]["data"]
-    check("doc2pdf docx→PDF (Chinese paragraph)", data.startswith(b"%PDF")
-          and len(PdfPages(data)) >= 1, "")
-
-
 def PdfPages(data):
     from pypdf import PdfReader
     return PdfReader(io.BytesIO(data)).pages
@@ -555,13 +497,30 @@ def spec_multi_file_tools():
 
 
 def spec_beautify():
-    _, out = run_tool("beautify", {"files": [(badge_png(), "badge.png", "image/png")],
-                                   "params": {}})
-    img = Image.open(io.BytesIO(out["items"][0]["data"]))
+    def _run(params):
+        _, out = run_tool("beautify", {"files": [(badge_png(), "badge.png", "image/png")],
+                                       "params": params})
+        return Image.open(io.BytesIO(out["items"][0]["data"]))
+
+    img = _run({})
     src = Image.open(io.BytesIO(badge_png()))
     pad = 60
     check("beautify padded container (PADDING=60)",
           img.size == (src.size[0] + pad * 2, src.size[1] + pad * 2), str(img.size))
+
+    base = img.size
+    check("beautify caption band adds pad+44",
+          _run({"caption": "518.PLUS"}).size == (base[0], base[1] + pad + 44), "")
+    check("beautify caption+mention band adds pad+44+34",
+          _run({"caption": "hi", "mention": "samelabs"}).size
+          == (base[0], base[1] + pad + 44 + 34), "")
+    sq = _run({"aspect": "1:1"}).size
+    check("beautify 1:1 canvas contains the shot",
+          sq[0] == sq[1] and min(sq) >= max(base), str(sq))
+    tall = _run({"aspect": "9:16"}).size
+    check("beautify 9:16 ratio", abs(tall[0] / tall[1] - 9 / 16) < 0.01, str(tall))
+    check("beautify auto preset renders from the image's palette",
+          _run({"preset": "auto", "caption": "自动配色"}).size == (base[0], base[1] + pad + 44), "")
 
 
 # ═══════════════════════ main ═══════════════════════════════════════════
@@ -583,7 +542,6 @@ spec_privacy()
 spec_compress()
 spec_ico()
 spec_crop_white()
-spec_doc2pdf()
 spec_multi_file_tools()
 spec_beautify()
 

@@ -671,9 +671,8 @@ try:
     try:
         import time as _time2
         _ok_up = False
-        # 120 x 0.5s = 60s: startup now includes the doc2pdf engine probe
-        # (one real soffice conversion — ~20s on a cold profile), so the
-        # old 20s budget raced the probe.
+        # 120 x 0.5s = 60s: cold-start can include first-import cost, so
+        # the old 20s budget raced slow machines.
         for _ in range(120):
             _time2.sleep(0.5)
             try:
