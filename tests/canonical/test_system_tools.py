@@ -220,6 +220,8 @@ FIXTURES = {
     "beautify": [
         {"files": [(badge_png(), "badge.png", "image/png")],
          "params": {}},
+        {"files": [(badge_png(), "auto.png", "image/png")],
+         "params": {"preset": "auto"}},
     ],
     "crop_white": [
         {"files": [(white_bordered_png(), "scan.png", "image/png")],
@@ -495,13 +497,30 @@ def spec_multi_file_tools():
 
 
 def spec_beautify():
-    _, out = run_tool("beautify", {"files": [(badge_png(), "badge.png", "image/png")],
-                                   "params": {}})
-    img = Image.open(io.BytesIO(out["items"][0]["data"]))
+    def _run(params):
+        _, out = run_tool("beautify", {"files": [(badge_png(), "badge.png", "image/png")],
+                                       "params": params})
+        return Image.open(io.BytesIO(out["items"][0]["data"]))
+
+    img = _run({})
     src = Image.open(io.BytesIO(badge_png()))
     pad = 60
     check("beautify padded container (PADDING=60)",
           img.size == (src.size[0] + pad * 2, src.size[1] + pad * 2), str(img.size))
+
+    base = img.size
+    check("beautify caption band adds pad+44",
+          _run({"caption": "518.PLUS"}).size == (base[0], base[1] + pad + 44), "")
+    check("beautify caption+mention band adds pad+44+34",
+          _run({"caption": "hi", "mention": "samelabs"}).size
+          == (base[0], base[1] + pad + 44 + 34), "")
+    sq = _run({"aspect": "1:1"}).size
+    check("beautify 1:1 canvas contains the shot",
+          sq[0] == sq[1] and min(sq) >= max(base), str(sq))
+    tall = _run({"aspect": "9:16"}).size
+    check("beautify 9:16 ratio", abs(tall[0] / tall[1] - 9 / 16) < 0.01, str(tall))
+    check("beautify auto preset renders from the image's palette",
+          _run({"preset": "auto", "caption": "自动配色"}).size == (base[0], base[1] + pad + 44), "")
 
 
 # ═══════════════════════ main ═══════════════════════════════════════════
