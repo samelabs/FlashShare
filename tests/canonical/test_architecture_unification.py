@@ -576,11 +576,12 @@ check("C31 accept 展示无 MIME indexOf(\"/\")",
 # C32: single product version authority (root VERSION)
 _ver32 = open(_os2.path.join(_REPO, "VERSION"), encoding="utf-8").read()
 check("C32 VERSION 为 major.minor 唯一 release authority",
-      _ver32 == "1.0\n" and _re31.fullmatch(r"[0-9]+\.[0-9]+", _ver32.strip()))
+      _ver32.endswith("\n") and _ver32.count("\n") == 1
+      and _re31.fullmatch(r"[0-9]+\.[0-9]+", _ver32.strip()))
 sys.path.insert(0, _os2.path.join(_REPO, "core"))
 from config import PRODUCT_VERSION as _PV32  # noqa: E402
 check("C32 runtime PRODUCT_VERSION == root VERSION",
-      _PV32 == _ver32.strip() == "1.0")
+      _PV32 == _ver32.strip())
 _mcp32 = open(_os2.path.join(_REPO, "app", "routes", "mcp.py"),
               encoding="utf-8").read()
 check("C32 MCP serverInfo.version 消费 derived PRODUCT_VERSION",

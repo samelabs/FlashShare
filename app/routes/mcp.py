@@ -365,7 +365,8 @@ _FILE_ITEM_SCHEMA = {
             "title": "reference",
             "description": "An existing 518 upload owned by you: public_id "
                            "plus the source_token returned with it (omit the "
-                           "token for your own shared uploads). No re-upload, "
+                           "token for your own shared uploads, including the "
+                           "file items a previous call returned). No re-upload, "
                            "no ingress quota. For files too large to inline "
                            "as base64, call the meta tool 'create_upload' "
                            "and PUT the raw bytes to the returned upload_url "
@@ -603,9 +604,11 @@ _RESULT_SCHEMA = {
                                 "filename": {"type": "string"},
                                 "content_type": {"type": "string"},
                                 "size": {"type": "integer"},
+                                "public_id": {"type": "string"},
                                 "download_url": {"type": "string"},
                                 "page_url": {"type": "string"}},
-                 "required": ["kind", "filename", "content_type", "size",
+                 "required": ["kind", "public_id", "filename",
+                              "content_type", "size",
                               "download_url", "page_url"]},
             ]},
         },
@@ -1302,7 +1305,7 @@ async def _mcp_success(result: dict, payload: dict,
             dl = it["download_url"]
             ct = it.get("content_type") or "application/octet-stream"
             size = int(it.get("size") or 0)
-            sc_items.append({"kind": "file",
+            sc_items.append({"kind": "file", "public_id": pid,
                              "filename": it.get("filename"),
                              "content_type": ct, "size": size,
                              "download_url": dl, "page_url": it["page_url"]})

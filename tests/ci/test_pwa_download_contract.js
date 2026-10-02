@@ -92,7 +92,7 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
   {
     const { sandbox, events } = makeSandbox({ standalone: true, webShare: true });
     assert.strictEqual(sandbox.isStandalonePWA(), true, "standalone detected");
-    await sandbox.pwaDownload("/f/x?download=1", "a.png");
+    await sandbox.pwaDownload("/f/x?download=1");
     assert.strictEqual(events.fetches, 0, "no fetch in standalone download");
     assert.strictEqual(events.blobs, 0, "no Blob created");
     assert.strictEqual(events.files, 0, "no File created");
@@ -103,10 +103,20 @@ function makeSandbox({ standalone, webShare, shareReject } = {}) {
     console.log("✓ standalone+WebShare: no share call, _blank handoff, no fetch/blob/file/nav");
   }
 
+  // 1b. image / PDF: the inline view opens instead of the attachment
+  {
+    const { sandbox, events } = makeSandbox({ standalone: true, webShare: true });
+    await sandbox.pwaDownload("/f/x?download=1", "/f/x/inline");
+    assert.strictEqual(events.shares.length, 0, "no Web Share");
+    assert.strictEqual(events.anchorClicks.length, 1, "one handoff");
+    assert.strictEqual(events.anchorClicks[0], "/f/x/inline", "view URL opened");
+    console.log("✓ standalone viewable file: inline view handoff");
+  }
+
   // 2. no Web Share → the same secondary-context handoff, zero fetch
   {
     const { sandbox, events } = makeSandbox({ standalone: true, webShare: false });
-    await sandbox.pwaDownload("/f/w?download=1", "d.png");
+    await sandbox.pwaDownload("/f/w?download=1");
     assert.strictEqual(events.fetches, 0);
     assert.strictEqual(events.locationSet, false);
     assert.strictEqual(events.anchorClicks.length, 1, "_blank handoff");

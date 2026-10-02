@@ -27,14 +27,15 @@
   <meta property="og:title" content="{{ share_title }}">
   <meta property="og:description" content="{{ share_desc }}">
   <meta property="og:url" content="{{ canonical_url }}">
-  <meta property="og:image" content="{{ SOCIAL_IMAGE_URL }}">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
+  {% set share_image = og_image|default("", true) or SOCIAL_IMAGE_URL %}
+  <meta property="og:image" content="{{ share_image }}">
+  {% if share_image == SOCIAL_IMAGE_URL %}<meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">{% endif %}
   <meta property="og:image:alt" content="{{ share_title }}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ share_title }}">
   <meta name="twitter:description" content="{{ share_desc }}">
-  <meta name="twitter:image" content="{{ SOCIAL_IMAGE_URL }}">
+  <meta name="twitter:image" content="{{ share_image }}">
   {% if seo_robots == "index, follow" %}
   {# indexable pages carry the 10-language hreflang set (?lang=xx on the
      same canonical path) + x-default; noindex pages emit none #}

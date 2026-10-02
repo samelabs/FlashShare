@@ -47,11 +47,7 @@
   // items keep their own per-item downloads.
   const shareBtn = document.getElementById("rShareBtn");
   if (shareBtn) {
-    shareBtn.addEventListener("click", async () => {
-      if (!navigator.share) return;
-      try { await navigator.share({ title: document.title, url: window.location.href }); }
-      catch (e) { if (e && e.name === "AbortError") return; }
-    });
+    shareBtn.addEventListener("click", () => window.sharePage(shareBtn));
   }
 
   // Download all: sequential per-file downloads. Each file already has

@@ -132,8 +132,7 @@ async def file_route(public_id: str, request: Request):
         # wording differs from the page title, so it goes through the
         # og_* overrides (base.html single point renders the tags)
         "seo_robots": "noindex, follow",
-        "og_title": f"{upload['file_name']} · {format_bytes(upload['size_bytes'])}",
-        "og_desc": f"{texts['card_expires']}: {format_ts(expire_at)} · {texts['card_downloads']}: {downloads}",
+        "og_title": upload["file_name"],
         "share_url": share_url,
         "public_id": pid,
         "file_name": upload["file_name"],
@@ -165,6 +164,14 @@ async def file_route(public_id: str, request: Request):
         "expiry_icon": icon_svg("expiry"),
         "download_count_icon": icon_svg("download_count"),
     })
+    # Share card: the file's own facts; an image previews itself (inline
+    # preview is the non-counting channel), other types keep the site card.
+    ctx["og_desc"] = (f"{ctx['type_text']} · {ctx['size_text']} · "
+                      f"{texts['card_expires']}: {ctx['expire_text']} · "
+                      f"{texts['r_downloads_left']}: {_dl_left}")
+    if ctx["is_image"]:
+        from config import BASE_URL
+        ctx["og_image"] = f"{BASE_URL}/f/{pid}/inline"
     ctx["file_format_icon"] = lambda: file_format_icon(upload["file_name"])
     resp = templates.TemplateResponse(request, "detail.html", ctx)
     for k, v in _share_link_headers(upload["public_id"],

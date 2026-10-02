@@ -29,12 +29,12 @@ window.wirePwaDownloadLinks = function (scope) {
   if (!(typeof window.isStandalonePWA === "function" && window.isStandalonePWA())) return;
   scope.querySelectorAll('a[href*="download=1"]').forEach((a) => {
     const url = a.getAttribute("href") || "";
-    const name = (a.textContent || "download").split("·")[0].trim() || "download";
+    const viewUrl = a.getAttribute("data-view-url") || "";
     a.removeAttribute("href");
     a.removeAttribute("download");
     a.setAttribute("role", "button");
     a.addEventListener("click", () => {
-      window.pwaDownload && window.pwaDownload(url, name);
+      window.pwaDownload && window.pwaDownload(url, viewUrl);
     });
   });
 };

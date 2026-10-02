@@ -154,7 +154,23 @@ async function visualAudit(ctx, page, name, screenshot = true) {
 // manifest/icons), which on a slow CI runner can miss every idle window
 // for 30s straight.
 async function gotoReady(page, path, readySel, timeout = 20000) {
-  const resp = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout });
+  let resp;
+  try {
+    resp = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout });
+  } catch (e) {
+    // name the stall: document state of the target, or an unresponsive
+    // main thread (evaluate itself never returns)
+    const state = await Promise.race([
+      page.evaluate(() => ({
+        url: location.href, readyState: document.readyState,
+        scripts: [...document.scripts].map((s) => (s.src || "inline").replace(/^.*\//, "")),
+        errors: window.__pageErrors || [],
+      })).catch((x) => "evaluate failed: " + x.message),
+      new Promise((r) => setTimeout(() => r("main thread unresponsive"), 5000)),
+    ]);
+    console.error("gotoReady stall:", path, JSON.stringify(state));
+    throw e;
+  }
   if (readySel) await page.waitForSelector(readySel, { timeout });
   return resp;
 }

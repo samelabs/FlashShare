@@ -142,6 +142,39 @@ async def fetch_source(request: Request, gokapi_id: str):
 
 # ── Uploads ──
 
+@router.get("/results/{result_id}/files")
+async def result_files(result_id: str, request: Request):
+    """The live file items of one of MY results — the source list the
+    composer takes over ("continue processing"). Owner only; anyone
+    else (and dead / unknown results) reads as not_found."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from repo.ledger import call_by_result_public_id
+    from sharing.uploads import get_live_upload_by_public_id
+    with db() as con:
+        row = call_by_result_public_id(con, result_id)
+    if row is None or row["user_id"] != user["id"]:
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    try:
+        items = json.loads(row["result_json"]).get("items") or []
+    except (TypeError, ValueError):
+        items = []
+    files = []
+    for it in items:
+        if it.get("kind") != "file" or not it.get("public_id"):
+            continue
+        up = get_live_upload_by_public_id(it["public_id"])
+        if up is None or up["user_id"] != user["id"]:
+            continue
+        files.append({"public_id": up["public_id"],
+                      "filename": up["file_name"],
+                      "size": int(up["size_bytes"] or 0),
+                      "content_type": up["content_type"]
+                      or "application/octet-stream"})
+    return {"ok": True, "files": files}
+
+
 @router.get("/uploads")
 async def get_uploads(request: Request):
     user, err = _require_auth(request)

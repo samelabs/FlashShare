@@ -864,6 +864,13 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .rc-top { padding: 22px 18px; }
 }
 .rc-preview { padding: 0 20px 20px; }
+/* /f: single-line file name (stem ellipsis, extension kept), two short
+   fact lines, preview spaced from the action row */
+.file-page .rc-top h1.f-name { display: flex; justify-content: center; min-width: 0; font-size: 20px; overflow-wrap: normal; }
+.file-page .f-name .if-stem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-page .f-name .if-ext { flex: none; white-space: nowrap; }
+.file-page .rc-top .m span { display: block; }
+.file-page .rc-preview { padding-top: var(--s4); }
 .rc-preview img { max-width: 100%; max-height: 560px; height: auto; display: block; margin: 0 auto; border-radius: var(--r); border: 1px solid var(--line); }
 .rc-zip { padding: 0 20px 20px; }
 

@@ -156,4 +156,21 @@
   const savedTool = tools.find((t) => t.id === saved);
   const share = tools.find((t) => t.id === "share");
   selectTool(savedTool || share || tools[0], { skipPersist: !savedTool });
+
+  // "Continue processing" (/r owner action): ?from=<result_id> brings that
+  // result's files into the composer as references (no re-upload).
+  const fromResult = new URLSearchParams(location.search).get("from");
+  if (fromResult && ctrl && ctrl.addFiles) {
+    fetch("/api/results/" + encodeURIComponent(fromResult) + "/files")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d || !d.ok || !d.files.length) return;
+        ctrl.addFiles(d.files.map((f) => ({
+          ref: true, publicId: f.public_id, name: f.filename,
+          size: f.size, type: f.content_type,
+        })));
+        history.replaceState(null, "", location.pathname);
+      })
+      .catch(() => {});
+  }
 })();

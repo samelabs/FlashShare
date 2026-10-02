@@ -412,7 +412,10 @@
       rows.innerHTML = files.map((f, i) => {
         const isImg = /^image\//.test(f.type || "") && (f.type || "").toLowerCase() !== "image/svg+xml";
         let thumb;
-        if (isImg) {
+        if (isImg && f.ref) {
+          // referenced file (already on 518): its inline preview
+          thumb = '<img class="th" src="/f/' + encodeURIComponent(f.publicId) + '/inline" alt="" loading="lazy">';
+        } else if (isImg) {
           const u = URL.createObjectURL(f);
           thumbUrls.push(u);
           thumb = '<img class="th" src="' + u + '" alt="" loading="lazy">';
@@ -615,6 +618,9 @@
       setTool: setTool,
       rerender: rerender,
       files: () => files.slice(),
+      // referenced files ({ref, publicId, name, size, type}) enter the
+      // same list as picked files; the run leg sends them as source refs
+      addFiles: addFiles,
     };
   }
 
