@@ -153,23 +153,36 @@ async function visualAudit(ctx, page, name, screenshot = true) {
 // the pages legitimately trail async fetches (page data + SW register +
 // manifest/icons), which on a slow CI runner can miss every idle window
 // for 30s straight.
+// One bounded retry: a warm-cache repeat navigation can stall inside the
+// CI client while the server has completed every request (evidence:
+// 2026-10-02 main run 36977147395 — document 200 + all assets 304 logged,
+// domcontentloaded never fired, head scripts never even requested). A real
+// breakage fails both attempts; a client hiccup recovers here.
 async function gotoReady(page, path, readySel, timeout = 20000) {
   let resp;
-  try {
-    resp = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout });
-  } catch (e) {
-    // name the stall: document state of the target, or an unresponsive
-    // main thread (evaluate itself never returns)
-    const state = await Promise.race([
-      page.evaluate(() => ({
-        url: location.href, readyState: document.readyState,
-        scripts: [...document.scripts].map((s) => (s.src || "inline").replace(/^.*\//, "")),
-        errors: window.__pageErrors || [],
-      })).catch((x) => "evaluate failed: " + x.message),
-      new Promise((r) => setTimeout(() => r("main thread unresponsive"), 5000)),
-    ]);
-    console.error("gotoReady stall:", path, JSON.stringify(state));
-    throw e;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      resp = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout });
+      break;
+    } catch (e) {
+      // name the stall: document state of the target, or an unresponsive
+      // main thread (evaluate itself never returns). Pending resources
+      // show which URL the browser is still waiting on.
+      const state = await Promise.race([
+        page.evaluate(() => ({
+          url: location.href, readyState: document.readyState,
+          scripts: [...document.scripts].map((s) => (s.src || "inline").replace(/^.*\//, "")),
+          pending: performance.getEntriesByType("resource")
+            .filter((r) => r.responseEnd === 0)
+            .map((r) => r.name.replace(/^.*\//, "").slice(0, 48))
+            .slice(0, 10),
+          errors: window.__pageErrors || [],
+        })).catch((x) => "evaluate failed: " + x.message),
+        new Promise((r) => setTimeout(() => r("main thread unresponsive"), 5000)),
+      ]);
+      console.error(`gotoReady stall (attempt ${attempt}/2):`, path, JSON.stringify(state));
+      if (attempt >= 2) throw e;
+    }
   }
   if (readySel) await page.waitForSelector(readySel, { timeout });
   return resp;
@@ -256,6 +269,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     {
       const cdp = await context.newCDPSession(page);
       await cdp.send("Network.enable");
+      // Cache-cold every navigation: warm-cache repeat navigations stall
+      // in the CI client while the server completes every request
+      // (2026-10-02: three runs, identical stall at the suite's only
+      // re-navigation). Disabling the HTTP cache removes the trigger.
+      await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
       cdp.on("Network.requestWillBeSent", (e) => {
         if (e.request.url.includes("/api/")) netTrace.push({ ev: "sent", url: e.request.url.replace(/^https?:\/\/[^/]+/, ""), id: e.requestId, t: Date.now() });
       });
