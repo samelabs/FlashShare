@@ -13,10 +13,10 @@
     </nav>
     <div class="hd-r">
       <div class="lang-switch" id="langSwitch">
-        <button class="ib lang" id="langButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Language">
+        <button class="ib lang" id="langButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="{{ texts.lang_switch }}">
           {{ icon_svg("translate") }}
         </button>
-        <div class="lang-menu hidden" id="langMenu" role="listbox" aria-label="Language"></div>
+        <div class="lang-menu hidden" id="langMenu" role="listbox" aria-label="{{ texts.lang_switch }}"></div>
       </div>
       {% if user %}
       <button class="ib" id="historyBtn" type="button" aria-label="{{ texts.menu_recent }}" title="{{ texts.menu_recent }}">
