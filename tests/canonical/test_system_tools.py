@@ -220,8 +220,8 @@ FIXTURES = {
     "beautify": [
         {"files": [(badge_png(), "badge.png", "image/png")],
          "params": {}},
-        {"files": [(badge_png(), "auto.png", "image/png")],
-         "params": {"preset": "auto"}},
+        {"files": [(badge_png(), "story.png", "image/png")],
+         "params": {"preset": "blur", "aspect": "9:16"}},
     ],
     "crop_white": [
         {"files": [(white_bordered_png(), "scan.png", "image/png")],
@@ -502,25 +502,23 @@ def spec_beautify():
                                        "params": params})
         return Image.open(io.BytesIO(out["items"][0]["data"]))
 
-    img = _run({})
     src = Image.open(io.BytesIO(badge_png()))
-    pad = 60
-    check("beautify padded container (PADDING=60)",
-          img.size == (src.size[0] + pad * 2, src.size[1] + pad * 2), str(img.size))
-
-    base = img.size
-    check("beautify caption band adds pad+44",
-          _run({"caption": "518.PLUS"}).size == (base[0], base[1] + pad + 44), "")
-    check("beautify caption+mention band adds pad+44+34",
-          _run({"caption": "hi", "mention": "samelabs"}).size
-          == (base[0], base[1] + pad + 44 + 34), "")
-    sq = _run({"aspect": "1:1"}).size
-    check("beautify 1:1 canvas contains the shot",
-          sq[0] == sq[1] and min(sq) >= max(base), str(sq))
-    tall = _run({"aspect": "9:16"}).size
-    check("beautify 9:16 ratio", abs(tall[0] / tall[1] - 9 / 16) < 0.01, str(tall))
-    check("beautify auto preset renders from the image's palette",
-          _run({"preset": "auto", "caption": "自动配色"}).size == (base[0], base[1] + pad + 44), "")
+    img = _run({})
+    pad_x = (img.size[0] - src.size[0]) / 2
+    pad_y = (img.size[1] - src.size[1]) / 2
+    check("beautify original: symmetric padding around the unscaled shot",
+          pad_x == pad_y and pad_x >= 32, f"{src.size} -> {img.size}")
+    # social canvases: fixed export sizes (platform-native, never re-cropped)
+    for aspect, size in {"1:1": (1080, 1080), "4:5": (1080, 1350),
+                         "3:4": (1080, 1440), "9:16": (1080, 1920),
+                         "16:9": (1600, 900)}.items():
+        got = _run({"aspect": aspect}).size
+        check(f"beautify {aspect} → {size[0]}x{size[1]} export", got == size, str(got))
+    # the declaration carries no text overlay parameters
+    from tools import _registry
+    keys = [p["key"] for t in _registry if t["id"] == "beautify"
+            for p in (t.get("params") or [])]
+    check("beautify params = style + canvas only", keys == ["preset", "aspect"], str(keys))
 
 
 # ═══════════════════════ main ═══════════════════════════════════════════

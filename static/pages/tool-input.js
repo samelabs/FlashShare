@@ -125,16 +125,28 @@
       const label = resolveLabel(prm.label) || prm.key;
       const val = saved[prm.key] !== undefined ? saved[prm.key] : prm.default;
       if (prm.type === "enum") {
+        // ratio-valued options ("W:H") carry a shape of that ratio; the
+        // non-ratio options of the same parameter (e.g. "original") get
+        // a dashed free shape so the cards stay aligned
+        const opts = prm.options || [];
+        const ratioOf = (v) => /^(\d{1,2}):(\d{1,2})$/.exec(String(v));
+        const hasRatio = opts.some((o) => ratioOf(o.value));
+        const shape = (v) => {
+          if (!hasRatio) return "";
+          const m = ratioOf(v);
+          return m ? '<i class="tp-ratio" aria-hidden="true" style="aspect-ratio:' + m[1] + "/" + m[2] + '"></i>'
+            : '<i class="tp-ratio free" aria-hidden="true"></i>';
+        };
         return '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
           + '<span class="seg tp-seg" data-param="' + esc(prm.key) + '">'
-          + (prm.options || []).map((o) =>
+          + opts.map((o) =>
             '<button type="button" class="tp-option' + (val === o.value ? " on" : "")
-            + '" data-value="' + esc(o.value) + '">'
-            + esc(resolveLabel(o.label) || o.value) + "</button>").join("")
+            + '" data-value="' + esc(o.value) + '">' + shape(o.value)
+            + "<span>" + esc(resolveLabel(o.label) || o.value) + "</span></button>").join("")
           + "</span></div>";
       }
       if (prm.type === "boolean") {
-        return '<div class="prow"><span class="prow-label">' + esc(label) + "</span>"
+        return '<div class="prow prow-bool"><span class="prow-label">' + esc(label) + "</span>"
           + '<label class="switch"><input type="checkbox" class="tp-bool" data-param="' + esc(prm.key) + '"'
           + (val === true || val === "true" ? " checked" : "")
           + '><span class="switch-track"></span></label></div>';
