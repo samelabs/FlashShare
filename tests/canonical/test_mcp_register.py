@@ -105,11 +105,53 @@ try:
            == "2025-03-26")
     check("R3 returned key passes MCP initialize", ok3, f"{st3} {d3}")
 
-    # R4: the 401 guidance points agents at the headless endpoint
+    # R4: no key = anonymous discovery that points at the register tool
     st4, _h4, d4, _sc4 = _initialize(None)
-    msg = str(((d4 or {}) if isinstance(d4, dict) else {}).get("message") or "")
-    check("R4 anonymous initialize → 401 + headless guidance",
-          st4 == 401 and "/auth/mcp/register" in msg, f"{st4} {msg[:80]}")
+    _ins = str((((d4 or {}) if isinstance(d4, dict) else {})
+                .get("result") or {}).get("instructions") or "")
+    check("R4 anonymous initialize → 200 + register guidance",
+          st4 == 200 and "'register'" in _ins
+          and "Authorization: Bearer" in _ins, f"{st4} {_ins[:80]}")
+
+    def _anon(method, params=None, token=None):
+        return _req("POST", "/mcp", {
+            "jsonrpc": "2.0", "id": 7, "method": method,
+            "params": params or {}},
+            {"Content-Type": "application/json",
+             "Accept": "application/json, text/event-stream",
+             **({"Authorization": f"Bearer {token}"} if token else {})})
+
+    st, _h, d, _sc = _anon("tools/list")
+    _names = [t["name"] for t in ((d or {}).get("result") or {}).get("tools", [])]
+    check("R4b anonymous tools/list → register + first-party tools, no meta tools",
+          st == 200 and _names[:1] == ["register"] and "share" in _names
+          and "create_upload" not in _names and "catalog_search" not in _names,
+          _names[:6])
+    st, _h, d, _sc = _anon("tools/call", {"name": "share", "arguments": {
+        "files": [{"filename": "a.txt", "b64": "aGk="}], "client_ref": "r4c"}})
+    _r = (d or {}).get("result") or {}
+    _body = _json.loads(((_r.get("content") or [{}])[0]).get("text") or "{}")
+    check("R4c anonymous tools/call → isError err_auth_required naming register (no HTTP 401)",
+          st == 200 and _r.get("isError") is True
+          and _body.get("error") == "err_auth_required"
+          and "register" in _body.get("message", ""), f"{st} {_body}")
+    st, _h, d, _sc = _anon("tools/call", {"name": "register", "arguments": {}})
+    _r = (d or {}).get("result") or {}
+    _out = _r.get("structuredContent") or {}
+    check("R4d register tool → api_key + username/password + pricing_url",
+          st == 200 and _r.get("isError") is False
+          and str(_out.get("api_key", "")).startswith("fsk_")
+          and _out.get("username") and _out.get("password")
+          and str(_out.get("pricing_url", "")).endswith("/pricing"), _out)
+    st, _h, d, _sc = _anon("tools/list", token=_out.get("api_key"))
+    _names = [t["name"] for t in ((d or {}).get("result") or {}).get("tools", [])]
+    check("R4e the registered key unlocks the full working set (no register)",
+          st == 200 and "create_upload" in _names and "register" not in _names,
+          _names[:6])
+    st, _h, d, _sc = _anon("ping", token="fsk_definitely_invalid")
+    check("R4f invalid key → 401 + WWW-Authenticate (never silently anonymous)",
+          st == 401 and _h.get("www-authenticate") == 'Bearer realm="518"'
+          and "register" in str((d or {}).get("message", "")), f"{st} {d}")
 
     # R5: a provided username follows the web validators — taken → 409
     chosen = "mr" + _uuid.uuid4().hex[:8]

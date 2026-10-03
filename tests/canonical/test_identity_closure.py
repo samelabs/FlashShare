@@ -404,7 +404,13 @@ try:
     check("G1 stale cookie + valid Bearer on /mcp → authenticated (not 401)",
           r.status_code == 200 and "result" in r.json(), r.status_code)
     r = _req("POST", "/mcp", cookies={COOKIE_NAME: "stale-" + _u}, json=rpc)
-    check("G2 stale cookie, no Bearer → 401", r.status_code == 401, r.status_code)
+    # a cookie is never a machine credential: stale cookie + no Bearer is
+    # the anonymous surface (register + first-party tools only)
+    _g2 = [t["name"] for t in ((r.json().get("result") or {}).get("tools") or [])] \
+        if r.status_code == 200 else []
+    check("G2 stale cookie, no Bearer → anonymous tools/list (register, no meta tools)",
+          r.status_code == 200 and "register" in _g2
+          and "list_uploads" not in _g2, f"{r.status_code} {_g2[:5]}")
     r = _req("GET", "/account/profile", cookies={COOKIE_NAME: "stale-" + _u},
              headers={"Authorization": f"Bearer {tok}"})
     check("G3 stale cookie + Bearer on /account → login redirect (Bearer never a web user)",
