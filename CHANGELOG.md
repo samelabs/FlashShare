@@ -2,6 +2,13 @@
 
 本文件记录面向用户的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本以功能批次划分。
 
+## [Unreleased]
+
+### Changed
+- **MCP 免密钥接入**：不带 API key 也能连上 MCP——`initialize` 与 `tools/list` 正常返回（平台工具 + 免费的 `register` 工具），agent 在 MCP 内调用 `register` 即可自助开户拿到 key，无需先去网页。未注册时调用其他工具返回说明如何注册的工具错误，而非 HTTP 401；只有带了无效 key 才返回 401。
+- **付费说明**：工具描述直接写明价格，调用即计费、无确认步骤，失败自动退款；积分不足时错误信息给出充值入口（账户所有者登录后在 `/pricing` 充值）并提示用同一 `client_ref` 重试、不会重复扣费。`llms.txt` 与 MCP 说明页同步。
+- **MCP 结果更精简**：结果中每个文件的链接只在 JSON 结果里出现一次，不再额外重复一组链接块（新生成的图片仍附预览）。
+
 ## [1.2] - 2026-10-02
 
 ### Added

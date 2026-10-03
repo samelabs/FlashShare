@@ -553,10 +553,13 @@ check("AP-H5 模板无 plus 分支 (PLUS 30/1000 来自数据非判断)",
 _mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"), encoding="utf-8").read()
 _specs_blk = _mcp_src.split("def _tool_specs")[1].split("\ndef ")[0]
 _specs_code = "\n".join(l for l in _specs_blk.split("\n") if not l.strip().startswith("#"))
-check("AP-M1 _tool_specs 使用 project(user[\"id\"]) 消费 projection",
-      'project(user["id"])' in _specs_blk)
-check("AP-M2 _tool_specs 只调用一次 project(",
-      _specs_code.count("project(") == 1)
+_ent_blk = _mcp_src.split("def _entitlements")[1].split("\ndef ")[0]
+check("AP-M1 _tool_specs 经 _entitlements 消费 projection (bearer → project(user[\"id\"]))",
+      "_entitlements(user)" in _specs_code
+      and 'project(user["id"])' in _ent_blk)
+check("AP-M2 _tool_specs 只读取一次 entitlements",
+      _specs_code.count("_entitlements(") == 1
+      and "project(" not in _specs_code)
 check("AP-M3 _tool_specs 无 plus policy / FREE / _PLANS / plan_of",
       '"plus"' not in _specs_code and "FREE" not in _specs_code
       and "_PLANS" not in _specs_code and "plan_of" not in _specs_code)

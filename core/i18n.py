@@ -473,6 +473,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Trop de tentatives, veuillez réessayer plus tard",
 # B4 mcp closure
         "agents_key_prefix": "(commence par fsk_)",
+        "agents_no_key": "Pas encore de clé ? Ajoutez seulement l'URL du serveur : votre agent appelle l'outil gratuit register pour s'inscrire et obtenir sa clé.",
         "agents_key_note": "Remplacez <key> dans les extraits ci-dessous par votre clé API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Ce délai de livraison n'est pas disponible avec votre offre actuelle",
@@ -1100,6 +1101,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
 # B4 mcp closure
         "agents_key_prefix": "(fsk_로 시작)",
+        "agents_no_key": "키가 없어도 연결할 수 있습니다. 서버 URL만 추가하면 에이전트가 무료 register 도구로 가입하고 키를 받습니다.",
         "agents_key_note": "아래 설정의 <key>를 내 API 키로 바꾸세요.",
 # B5 frontend closure
         "err_expiry_not_entitled": "현재 멤버십에서는 이 만료 기간을 사용할 수 없습니다",
@@ -1727,6 +1729,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Слишком много попыток, попробуйте позже",
 # B4 mcp closure
         "agents_key_prefix": "(начинается с fsk_)",
+        "agents_no_key": "Ещё нет ключа? Добавьте только URL сервера — агент вызовет бесплатный инструмент register, зарегистрируется и получит ключ.",
         "agents_key_note": "Замените <key> в примерах ниже на свой ключ API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Этот срок доставки недоступен на текущем тарифе",
@@ -2354,6 +2357,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "محاولات كثيرة جداً، حاول لاحقاً",
 # B4 mcp closure
         "agents_key_prefix": "(يبدأ بـ fsk_)",
+        "agents_no_key": "لا تملك مفتاحًا بعد؟ أضف عنوان الخادم فقط — يستدعي وكيلك أداة register المجانية للتسجيل والحصول على مفتاحه.",
         "agents_key_note": "استبدل <key> في المقتطفات أدناه بمفتاح API الخاص بك.",
 # B5 frontend closure
         "err_expiry_not_entitled": "مدة التسليم هذه غير متاحة في خطتك الحالية",
@@ -2981,6 +2985,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Zu viele Versuche, bitte später erneut versuchen",
 # B4 mcp closure
         "agents_key_prefix": "(beginnt mit fsk_)",
+        "agents_no_key": "Noch kein Schlüssel? Nur die Server-URL hinzufügen – dein Agent ruft das kostenlose Tool register auf, registriert sich und erhält seinen Schlüssel.",
         "agents_key_note": "Ersetze <key> in den Snippets unten durch deinen API-Schlüssel.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Diese Liefergültigkeit ist in Ihrem aktuellen Tarif nicht verfügbar",
@@ -3608,6 +3613,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Muitas tentativas, tente novamente mais tarde",
 # B4 mcp closure
         "agents_key_prefix": "(começa com fsk_)",
+        "agents_no_key": "Ainda sem chave? Adicione só a URL do servidor — seu agente chama a ferramenta gratuita register para se cadastrar e obter a chave.",
         "agents_key_note": "Substitua <key> nos trechos abaixo pela sua chave de API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Este prazo de entrega não está disponível no seu plano atual",
@@ -4235,6 +4241,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "試行回数が多すぎます。しばらくしてから再度お試しください",
 # B4 mcp closure
         "agents_key_prefix": "（fsk_ で始まる）",
+        "agents_no_key": "キーがなくても接続できます：サーバー URL だけを追加し、エージェントが無料の register ツールで登録してキーを取得します。",
         "agents_key_note": "以下の設定の <key> をあなたの API キーに置き換えてください。",
 # B5 frontend closure
         "err_expiry_not_entitled": "この配送有効期限は現在のプランでは利用できません",
@@ -4862,6 +4869,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "尝试次数过多，请稍后再试",
 # B4 mcp closure
         "agents_key_prefix": "（fsk_ 开头）",
+        "agents_no_key": "没有密钥也能先接入：只填服务端 URL，Agent 调用免费的 register 工具即可自助注册并拿到密钥。",
         "agents_key_note": "将下方配置中的 <key> 替换为你的 API 密钥。",
 # B5 frontend closure
         "err_expiry_not_entitled": "当前会员不支持该有效期档位",
@@ -5489,6 +5497,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Demasiados intentos, inténtalo más tarde",
 # B4 mcp closure
         "agents_key_prefix": "(empieza por fsk_)",
+        "agents_no_key": "¿Aún sin clave? Añade solo la URL del servidor: tu agente usa la herramienta gratuita register para registrarse y obtener su clave.",
         "agents_key_note": "Reemplaza <key> en los fragmentos de abajo por tu clave API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Esta validez de entrega no está disponible en tu plan actual",
@@ -6116,6 +6125,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Too many attempts, please try again later",
 # B4 mcp closure
         "agents_key_prefix": "(starts with fsk_)",
+        "agents_no_key": "No key yet? Add just the server URL — your agent calls the free register tool to sign up and get its key.",
         "agents_key_note": "Replace <key> in the snippets below with your API key.",
 # B5 frontend closure
         "err_expiry_not_entitled": "This delivery expiry is not available on your current plan",
