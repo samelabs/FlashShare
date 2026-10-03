@@ -2,6 +2,7 @@
 {% block title %}{{ tool_name }} - {{ APP_NAME }}{% endblock %}
 {% block desc %}{{ tool_desc }}{% endblock %}
 
+{% from "partials/share_bar.html" import share_bar with context %}
 {% block content %}
 <section class="workspace toolpage" id="toolPage">
   <div class="tp-main">
@@ -32,6 +33,7 @@
         <button type="button" class="tag fav-btn{% if is_favorite %} on{% endif %}" id="favBtn"
                 data-tool="{{ tool_key }}" aria-pressed="{{ 'true' if is_favorite else 'false' }}"
                 title="{{ texts.fav_hint }}">{{ icon_svg("star") }}<span data-i18n="{{ 'fav_on' if is_favorite else 'fav_add' }}">{{ texts.fav_on if is_favorite else texts.fav_add }}</span></button>
+        {{ share_bar(canonical_url, tool_name, compact=true) }}
       </div>
     </div>
   </div>

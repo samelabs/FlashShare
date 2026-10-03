@@ -1,0 +1,13 @@
+{# Share bar — the one share surface of /f, /r, tool and author pages:
+   copy link · system share · X · QR (optional). url/title describe THIS
+   page (the X card and the shared text are the same page). compact =
+   icon-only pills inline with a page header (tool / author pages).
+   Behavior: base-engine.js (delegated on .share-bar [data-sb]). #}
+{% macro share_bar(url, title, qr_src="", compact=false) %}
+<div class="share-bar{% if compact %} sb-compact{% endif %}" data-share-url="{{ url }}" data-share-title="{{ title }}">
+  <button type="button" class="sb-btn" data-sb="copy" aria-label="{{ texts['copy_link'] }}" title="{{ texts['copy_link'] }}">{{ icon_svg("copy") }}<span data-i18n="copy_link">{{ texts['copy_link'] }}</span></button>
+  <button type="button" class="sb-btn" data-sb="share" aria-label="{{ texts['share_via_system'] }}" title="{{ texts['share_via_system'] }}">{{ icon_svg("share") }}<span data-i18n="share_via_system">{{ texts['share_via_system'] }}</span></button>
+  <a class="sb-btn" href="https://x.com/intent/tweet?text={{ title|urlencode }}&amp;url={{ url|urlencode }}" target="_blank" rel="noreferrer" aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span><span>X</span></a>
+  {% if qr_src %}<button type="button" class="sb-btn" data-sb="qr" data-qr-src="{{ qr_src }}" aria-label="{{ texts['qrCode'] }}" title="{{ texts['qrCode'] }}">{{ icon_svg("qr") }}<span data-i18n="qrCode">{{ texts['qrCode'] }}</span></button>{% endif %}
+</div>
+{% endmacro %}

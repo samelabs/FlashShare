@@ -7,6 +7,10 @@
   C*  Continue processing: /api/results/{id}/files is owner-only; MCP
       result file items carry public_id, and a later call can take that
       public_id as a reference (no re-upload).
+  B*  Share bar + agent view: /f and /r carry the one share bar whose X
+      link shares THIS page; a page without its own image gets the small
+      card; Accept: application/json returns the page facts as JSON;
+      the history list shares through the system share (no X link).
 """
 import base64
 import http.client as _hc
@@ -166,6 +170,44 @@ try:
     og = _re.search(r'property="og:image" content="([^"]+)"', page or "")
     check("S3 /r with an image uses it as og:image",
           og and og.group(1).endswith(f"/f/{img_pid}/inline"), og and og.group(1))
+
+    # ═══ B: share bar, card type, agent JSON ═══
+    pdf_pid = next((f["public_id"] for f in files
+                    if f["filename"].endswith(".pdf")), "")
+    _st, _h, page, _sc = _req("GET", f"/f/{pdf_pid}", None, {"Accept": "text/html"})
+    _page_url = f"/f/{pdf_pid}"
+    from urllib.parse import unquote as _uq
+    _x = _re.search(r'href="(https://x\.com/intent/tweet\?[^"]+)"', page or "")
+    _xh = _uq(_x.group(1).replace("&amp;", "&")) if _x else ""
+    check("B1 /f share bar X link shares this file page",
+          'class="share-bar"' in (page or "")
+          and _xh.startswith("https://x.com/intent/tweet?text=doc.pdf&url=")
+          and _xh.endswith(_page_url), _xh)
+    check("B2 /f non-image → small card; image → large card",
+          'name="twitter:card" content="summary"' in (page or ""), "")
+    _st, _h, ipage, _sc = _req("GET", f"/f/{img_pid}", None, {"Accept": "text/html"})
+    check("B2b /f image page keeps the large card",
+          'name="twitter:card" content="summary_large_image"' in (ipage or ""), "")
+    st, h, d, _sc = _req("GET", f"/f/{pdf_pid}", None, {"Accept": "application/json"})
+    check("B3 /f Accept: application/json → file facts",
+          st == 200 and isinstance(d, dict) and d.get("public_id") == pdf_pid
+          and d.get("filename") == "doc.pdf"
+          and str(d.get("download_url", "")).endswith(f"/f/{pdf_pid}?download=1")
+          and "accept" in (h.get("vary") or "").lower(), f"{st} {d}")
+    st, h, d, _sc = _req("GET", f"/r/{rid}", None, {"Accept": "application/json"})
+    _fi = [i for i in ((d or {}).get("items") or []) if i.get("kind") == "file"]
+    check("B4 /r Accept: application/json → result facts",
+          st == 200 and isinstance(d, dict) and len(_fi) == 2
+          and all(i.get("download_url") and i.get("public_id") for i in _fi)
+          and str(d.get("result_url", "")).endswith(f"/r/{rid}"), f"{st} {d}")
+    st, _h, page, _sc = _req("GET", f"/f/{pdf_pid}", None,
+                             {"Accept": "text/html,application/json;q=0.9"})
+    check("B5 a browser Accept still gets the HTML page",
+          st == 200 and isinstance(page, str) and "<html" in page, st)
+    _foot = open(_os.path.join(_REPO, "static", "pages", "footer.js"),
+                 encoding="utf-8").read()
+    check("B6 history list shares via the system share, no X intent link",
+          "x.com/intent" not in _foot and "shareLink" in _foot, "")
 
     # ═══ C: continue processing ═══
     st, _h, d, _sc = _req("GET", f"/api/results/{rid}/files", None, {"Cookie": a_ck})

@@ -1398,7 +1398,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
           maxH: cap, vhCap: Math.round(window.innerHeight * 0.6),
           dlInMeta: !!meta.querySelector(".rs-dl"),
           noActsDownload: !document.querySelector(".rc-top .acts a.btn-b"),
-          share: !!document.getElementById("rShareBtn"),
+          share: !!document.querySelector(".rc-top .share-bar [data-sb='share']"),
         };
       });
       check("/r page: same media structure (main view + meta + download below)",
@@ -1406,20 +1406,21 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         JSON.stringify(parity));
       check("/r page: main view capped at 60vh",
         parity.ok && parity.maxH <= parity.vhCap + 1, JSON.stringify(parity));
-      // filenames are never titles: h1 = tool name, no QR row, compact
-      // secondary copy action (result-page batch checks 1-3)
+      // the title is the content: a single-file result is titled by its
+      // file name, the tool rides the meta line; no QR row; copy / share
+      // / X live in the one share bar
       const head = await page.evaluate(() => ({
         h1: (document.querySelector(".rc-top h1") || {}).textContent || "",
+        meta: (document.querySelector(".rc-top .m") || {}).textContent || "",
         qr: !!document.querySelector(".qrrow"),
-        copyCls: (document.getElementById("rCopyLink") || {}).className || "",
+        bar: [...document.querySelectorAll(".rc-top .share-bar .sb-btn")].length,
       }));
-      check("/r page: h1 is the tool name, never the input filename",
-        head.h1.trim().length > 0 && !/gate-photo|\.png/i.test(head.h1),
+      check("/r page: single-file h1 is the result file name, tool in the meta line",
+        /\.png$/i.test(head.h1.trim()) && head.meta.trim().length > 0,
         JSON.stringify(head));
       check("/r page: no QR row", head.qr === false, JSON.stringify(head));
-      check("/r page: copy action is a compact secondary button (no btn-p)",
-        /\bbtn-secondary\b/.test(head.copyCls) && !/\bbtn-p\b/.test(head.copyCls),
-        JSON.stringify(head));
+      check("/r page: share bar = copy · share · X",
+        head.bar === 3, JSON.stringify(head));
       await ctx.close();
     }
 

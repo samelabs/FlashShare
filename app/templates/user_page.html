@@ -4,6 +4,7 @@
 
 {% block content %}
 {% from "partials/tool_identity.html" import tool_card with context %}
+{% from "partials/share_bar.html" import share_bar with context %}
 <section class="acct-page user-page" id="userPage">
   <nav class="crumbs"><a href="/tools">Tools</a><span class="crumb-sep">/</span><span>@{{ handle }}</span></nav>
   <div class="userpage-hero">
@@ -11,6 +12,7 @@
     <div class="page-head userpage-id">
       <h1 class="userpage-handle">@{{ owner_handle }}{% if owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</h1>
       <p class="page-head-sub" data-i18n="owner_page_desc">{{ texts.owner_page_desc }}</p>
+      {{ share_bar(canonical_url, "@" ~ owner_handle, compact=true) }}
     </div>
     <div class="userpage-nums">
       <div class="userpage-num"><strong>{{ owner_tools | length }}</strong><span data-i18n="owner_tools_n">{{ texts.owner_tools_n }}</span></div>

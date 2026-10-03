@@ -259,8 +259,8 @@ def main():
     # ── C*: share cards for /r (and /f parity via the same override) ──
     st, html = _page(f"/r/{_RESULT_ID}")
     og_t = _meta(html, "og:title")
-    check("C /r: og:title = tool + result count", st == 200
-          and og_t and og_t.startswith("Compress · ") and _re.search(r"\d", og_t), og_t)
+    check("C /r: og:title = result content · tool", st == 200
+          and og_t and og_t.endswith(" · Compress") and len(og_t) > len(" · Compress"), og_t)
     check("C /r: og:description = expiry + remaining downloads",
           "Available until" in (_meta(html, "og:description") or "")
           and "Downloads left" in (_meta(html, "og:description") or ""),

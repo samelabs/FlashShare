@@ -1,29 +1,9 @@
 window.__ZIP_PID__ = __PAGE__.publicId;
 
-// Copy link
-const copyBtn = document.getElementById("copyBtn");
-const landingUrl = document.getElementById("landingUrl");
-copyBtn.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(landingUrl.value);
-  const orig = copyBtn.innerHTML;
-  copyBtn.innerHTML = window.iconSvg("check");
-  copyBtn.style.color = "var(--brand)";
-  copyBtn.style.borderColor = "var(--brand)";
-  setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ""; copyBtn.style.borderColor = ""; }, 1400);
-});
-
 // Standalone PWA: the download anchor routes through the single
 // download authority (common.js wirePwaDownloadLinks → pwaDownload).
+// Copy / share / X / QR live in the share bar (base-engine.js).
 window.wirePwaDownloadLinks && window.wirePwaDownloadLinks(document);
-const shareImgBtn = document.getElementById("shareImgBtn");
-shareImgBtn.addEventListener("click", () => window.sharePage(shareImgBtn));
-
-const qrBtn = document.getElementById("qrBtn");
-const qrModal = document.getElementById("qrModal");
-const qrModalClose = document.getElementById("qrModalClose");
-qrBtn.addEventListener("click", () => qrModal.classList.remove("hidden"));
-qrModalClose.addEventListener("click", () => qrModal.classList.add("hidden"));
-qrModal.addEventListener("click", (e) => { if (e.target === qrModal) qrModal.classList.add("hidden"); });
 
 const wsContainer = document.getElementById("workspaceTools");
 const pid = wsContainer ? wsContainer.dataset.pid : "";

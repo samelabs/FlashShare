@@ -1,43 +1,42 @@
 {% extends "base.html" %}
-{% block head %}<link rel="enclosure" href="{{ dl_url }}"{% if content_type %} type="{{ content_type }}"{% endif %}>{% endblock %}
+{% block head %}<link rel="enclosure" href="{{ dl_url }}"{% if content_type %} type="{{ content_type }}"{% endif %}>
+<link rel="alternate" type="application/json" href="{{ share_page_url }}" title="File facts (send Accept: application/json)">{% endblock %}
 
 {% block title %}{{ file_name }} — 518.PLUS{% endblock %}
 {% block desc %}{{ file_name }} · {{ texts.file_expires_label }}: {{ card_date }}{% endblock %}
 
 
+{% from "partials/share_bar.html" import share_bar with context %}
 {% block content %}
 <section class="file-page">
   <div class="rp">
     <div class="rc">
+      {# 首屏: 预览 (图片即内容, 不再叠加格式图标) → 文件名 → 两行要素 →
+         主操作 (下载 + 该类型专属动作) → 分享条 (复制/系统分享/X/二维码) #}
+      {% if is_image %}
+      <div class="file-preview rc-preview">
+        <img src="{{ inline_url }}" alt="{{ file_name }}" decoding="async">
+      </div>
+      {% endif %}
       <div class="rc-top">
-        <div class="fi" aria-hidden="true"><span></span></div>
+        {% if not is_image %}<div class="fi" aria-hidden="true"><span></span></div>{% endif %}
         {% set _i = file_name.rfind('.') %}
         <h1 id="fileName" class="f-name" title="{{ file_name }}"><span class="if-stem">{{ file_name[:_i] if _i > 0 else file_name }}</span>{% if _i > 0 %}<span class="if-ext">{{ file_name[_i:] }}</span>{% endif %}</h1>
         <div class="m">
           <span>{{ size_text }} · {{ type_text }}</span>
           <span>{{ texts.expires_on.format(date=expire_text) }} · {{ texts.downloads_left_n.format(n=downloads_left) }}</span>
         </div>
-        <div class="linkbar">{{ icon_svg("link") }}<span>{{ escaped_url }}</span>
-          <button class="btn btn-secondary btn-sm" id="copyBtn" type="button">{{ icon_svg("copy") }}<span data-i18n="copy_link">{{ texts['copy_link'] }}</span></button>
-        </div>
         <div class="acts">
-        <a class="btn btn-b" href="{{ dl_url }}" download{% if is_image or is_pdf %} data-view-url="{{ inline_url }}"{% endif %} aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
-        <button class="btn btn-s" id="qrBtn" type="button" aria-label="QR" title="QR">{{ icon_svg("qr") }}<span>QR</span></button>
-        <button class="btn btn-s" id="shareImgBtn" type="button" aria-label="{{ texts.share_via_system }}" title="{{ texts.share_via_system }}">{{ icon_svg("share") }}<span>{{ texts.share_via_system }}</span></button>
-        <a class="btn btn-icon" href="{{ share_url }}" target="_blank" rel="noreferrer" aria-label="X" title="X"><span class="x-glyph" aria-hidden="true">𝕏</span></a>
-        {% if is_pdf %}
-        <a class="btn btn-s" href="/f/{{ public_id }}/print" target="_blank" rel="noopener" aria-label="{{ texts.print_btn }}">{{ icon_svg("print") }}<span data-i18n="print_btn">{{ texts.print_btn }}</span></a>
-        {% endif %}
-        {% if is_zip %}
-        <button class="btn btn-s" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
-        {% endif %}
-        <input id="landingUrl" value="{{ escaped_url }}" readonly type="hidden">
+          <a class="btn btn-b" href="{{ dl_url }}" download{% if is_image or is_pdf %} data-view-url="{{ inline_url }}"{% endif %} aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+          {% if is_pdf %}
+          <a class="btn btn-s" href="/f/{{ public_id }}/print" target="_blank" rel="noopener" aria-label="{{ texts.print_btn }}">{{ icon_svg("print") }}<span data-i18n="print_btn">{{ texts.print_btn }}</span></a>
+          {% endif %}
+          {% if is_zip %}
+          <button class="btn btn-s" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
+          {% endif %}
+        </div>
+        {{ share_bar(share_page_url, file_name, "/f/" ~ public_id ~ "/qr.svg") }}
       </div>
-      {% if is_image %}
-      <div class="file-preview rc-preview">
-        <img src="{{ inline_url }}" alt="{{ file_name }}" loading="lazy" decoding="async">
-      </div>
-      {% endif %}
       {% if is_zip %}
       <div id="zipPreview" class="rc-zip hidden"></div>
       {% endif %}
@@ -49,7 +48,6 @@
         </div>
       </div>
       {% endif %}
-      </div>
     </div>
   </div>
 </section>
@@ -57,12 +55,6 @@
 
 {% block modals %}
 {{ super() }}
-<div class="modal hidden" id="qrModal" role="dialog" aria-modal="true">
-  <div class="modal-panel qr-modal-panel">
-    <button class="modal-close" id="qrModalClose" type="button" aria-label="Close">{{ close_icon }}</button>
-    <img id="qrModalImg" src="/f/{{ public_id }}/qr.svg" alt="QR" width="200" height="200">
-  </div>
-</div>
 <div class="modal hidden" id="toolModal" role="dialog" aria-modal="true">
   <div class="modal-panel">
     <button class="modal-close" id="toolModalClose" type="button" aria-label="Close">{{ close_icon }}</button>

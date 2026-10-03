@@ -158,27 +158,69 @@ function _pwaSecondaryHandoff(downloadUrl) {
     a.remove();
   } catch (e) { /* last resort: open in secondary context */ }
 }
-// Share the current PAGE (site-wide single point for every share
-// button). navigator.share is called synchronously inside the click so
-// the user activation is still valid (an awaited fetch first would
-// expire it and the system sheet never opens). Never fetches the file
-// (a fetch would also spend a download). No Web Share → copy the link
-// and confirm on the button. User cancel (AbortError) is a normal end.
-window.sharePage = function (btn) {
-  var url = window.location.href.split("#")[0];
+// Share a link (site-wide single point for every share action: the
+// share bar and the history list). navigator.share is called
+// synchronously inside the click so the user activation is still valid
+// (an awaited fetch first would expire it and the system sheet never
+// opens). Never fetches the file (a fetch would also spend a download).
+// No Web Share → copy the link and confirm on the button. User cancel
+// (AbortError) is a normal end.
+function _sbConfirm(btn) {
+  if (!btn) return;
+  var ic = btn.querySelector("svg, .x-glyph");
+  if (!ic || btn.dataset.sbBusy) return;
+  btn.dataset.sbBusy = "1";
+  var orig = ic.outerHTML;
+  ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
+  setTimeout(function () {
+    var now = btn.querySelector("svg") || btn.firstChild;
+    if (now) now.outerHTML = orig;
+    delete btn.dataset.sbBusy;
+  }, 1400);
+}
+window.shareLink = function (url, title, btn) {
   if (navigator.share) {
-    navigator.share({ title: document.title, url: url }).catch(function () {});
+    navigator.share({ title: title || document.title, url: url }).catch(function () {});
     return;
   }
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(function () {
-      if (!btn) return;
-      var orig = btn.innerHTML;
-      btn.innerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
-      setTimeout(function () { btn.innerHTML = orig; }, 1400);
-    }).catch(function () {});
+    navigator.clipboard.writeText(url).then(function () { _sbConfirm(btn); }).catch(function () {});
   }
 };
+function _sbQr(src) {
+  var m = document.getElementById("sbQrModal");
+  if (!m) {
+    m = document.createElement("div");
+    m.className = "modal hidden";
+    m.id = "sbQrModal";
+    m.setAttribute("role", "dialog");
+    m.setAttribute("aria-modal", "true");
+    m.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">'
+      + (window.iconSvg ? window.iconSvg("x") : "×") + '</button><img alt="QR" width="200" height="200"></div>';
+    document.body.appendChild(m);
+    m.addEventListener("click", function (e) {
+      if (e.target === m || (e.target.closest && e.target.closest(".modal-close"))) m.classList.add("hidden");
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") m.classList.add("hidden");
+    });
+  }
+  m.querySelector("img").src = src;
+  m.classList.remove("hidden");
+}
+// Share bar (partials/share_bar.html): copy / system share / QR; the X
+// entry is a plain link built server-side for the same url + title.
+document.addEventListener("click", function (e) {
+  var b = e.target.closest && e.target.closest(".share-bar [data-sb]");
+  if (!b) return;
+  var bar = b.closest(".share-bar");
+  var url = bar.getAttribute("data-share-url") || window.location.href.split("#")[0];
+  var act = b.getAttribute("data-sb");
+  if (act === "share") window.shareLink(url, bar.getAttribute("data-share-title"), b);
+  else if (act === "copy" && navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(function () { _sbConfirm(b); }).catch(function () {});
+  } else if (act === "qr") _sbQr(b.getAttribute("data-qr-src"));
+});
 
 // ── Site-wide async confirm authority (VIS-006 / RC-VIS-002) ──
 // One modal-based confirm for core destructive operations: history

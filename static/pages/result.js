@@ -1,7 +1,7 @@
 // ── Result page (/r/{id}) enhancements ─────────────────────────
 // The page is server-rendered readable (text/JSON shown, files linked
 // — no JS required). This file wires the progressive actions only:
-// copy text / copy JSON / copy link / QR / print / download all.
+// copy text / copy JSON / download all.
 // Result expiry is enforced server-side (expired → 404), so every
 // element this script touches only exists on a live result.
 (function () {
@@ -36,19 +36,7 @@
     btn.addEventListener("click", () => copyText(pre ? pre.textContent : "", btn));
   });
 
-  // Copy result link
-  const copyLink = document.getElementById("rCopyLink");
-  if (copyLink) {
-    copyLink.addEventListener("click", () => copyText(window.location.href, copyLink));
-  }
-
-  // System share (site-wide Web Share authority; user cancel is not an
-  // error — red line 9). The result PAGE is the shared artifact; file
-  // items keep their own per-item downloads.
-  const shareBtn = document.getElementById("rShareBtn");
-  if (shareBtn) {
-    shareBtn.addEventListener("click", () => window.sharePage(shareBtn));
-  }
+  // Copy link / system share / X live in the share bar (base-engine.js).
 
   // Download all: sequential per-file downloads. Each file already has
   // its own download=1 link (browser-native download, own expiry and

@@ -266,12 +266,11 @@ try:
           st == 200 and page.count('class="rs-cell"') == 3
           and "r0.png" in page and "r1.png" in page and "r2.png" in page
           and page.count("rs-dl") >= 3, st)
-    # filenames are not titles/captions: grid cells show size only, the
-    # img alt is the tool name (names ride the zoom aria-label only)
-    check("R4b /r media: no filename captions, alt is the tool name",
+    # grid cells caption name + size (same row facts as file rows); the
+    # img alt stays the tool name
+    check("R4b /r media: filename + size captions, alt is the tool name",
           st == 200
-          and page.count("<figcaption><small>") == 3
-          and "<figcaption><b>" not in page
+          and page.count('<figcaption><b class="if-name"') == 3
           and page.count('alt="Lossless Share"') == 3, st)
     _rp = _call("share", {"files": files3, "client_ref": f"r3-{_u}"},
                 TOK, 21)[1]
@@ -388,14 +387,15 @@ try:
           and page_r.count('class="rs-cell"') == 3
           and page_r.count("rs-dl") >= 3
           and "?download=1" in page_r, st)
-    # the h1 is the tool name — filenames are never titles; no QR row;
-    # the copy action is a compact secondary button (never btn-p)
-    check("E4b /r page: h1 is the tool name, no qrrow, secondary copy",
+    # the h1 is the content (3 files → "3 files"), the tool rides the
+    # meta line; no QR row; copy/share/X are the one share bar
+    check("E4b /r page: h1 = content count, tool in meta, share bar, no qrrow",
           st == 200
-          and "<h1>Lossless Share</h1>" in page_r
+          and "<h1>3 files</h1>" in page_r
+          and "「Lossless Share」" in page_r
           and "qrrow" not in page_r
-          and 'class="btn btn-secondary btn-sm" id="rCopyLink"' in page_r
-          and 'btn-p" id="rCopyLink' not in page_r, st)
+          and 'class="share-bar"' in page_r
+          and 'data-sb="copy"' in page_r and "x.com/intent/tweet" in page_r, st)
     # MCP expires_at mirrors the record authority
     st, d = _call("compress", {"files": [{"filename": "e2.png", "b64": A64}],
                                "client_ref": f"e2-{_u}"}, TOK, 44)
