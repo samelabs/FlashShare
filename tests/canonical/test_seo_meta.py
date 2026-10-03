@@ -175,9 +175,18 @@ def main():
         tw_t, tw_d = _meta(html, "twitter:title"), _meta(html, "twitter:description")
         canon = _tag(html, r'<link rel="canonical" href="([^"]*)"')
         check(f"M {p}: 200 + title + description", st == 200 and bool(title) and bool(desc), f"{st} {title!r} {desc!r}")
-        check(f"M {p}: og/twitter reuse the same values",
-              og_t == tw_t == title and og_d == tw_d == desc,
-              f"og:{og_t!r} tw:{tw_t!r} t:{title!r} ogd:{og_d!r} d:{desc!r}")
+        # /developers overrides og_* with its own share-card values (the
+        # shareable title/description, no site suffix) — like /f and /r;
+        # every other page derives og/twitter straight from title/desc.
+        if p == "/developers":
+            check(f"M {p}: og/twitter reuse the same share values",
+                  og_t == tw_t and og_d == tw_d
+                  and title == f"{og_t} - 518.PLUS" and og_d == desc,
+                  f"og:{og_t!r} tw:{tw_t!r} t:{title!r} ogd:{og_d!r} d:{desc!r}")
+        else:
+            check(f"M {p}: og/twitter reuse the same values",
+                  og_t == tw_t == title and og_d == tw_d == desc,
+                  f"og:{og_t!r} tw:{tw_t!r} t:{title!r} ogd:{og_d!r} d:{desc!r}")
         check(f"M {p}: canonical + og:url = BASE_URL + path",
               canon == BASE_URL + p and _meta(html, "og:url") == canon, f"{canon!r}")
         check(f"M {p}: og:image + twitter:card large",

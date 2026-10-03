@@ -633,8 +633,8 @@ check("SG6 /subscribe 有 plan_change_required 拦截",
 check("SG7 entitlement profile 单点 (_require_profile + 未知 raise)",
       "_require_profile" in open(_os.path.join(_REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read())
 _tmpl = open(_os.path.join(_REPO, "app", "templates", "account", "credits.html"), encoding="utf-8").read()
-check("SG8 Account badge 展示 access.membership.name (当前 tier)",
-      "{{ m.name }}" in _tmpl)
+check("SG8 Account badge 展示 access.membership.name (当前 tier; Free 回退)",
+      "{{ m.name if m and m.member else texts.pricing_free_name }}" in _tmpl)
 check("SG9 旧 upsert_membership 单体 writer 已拆 (bind/state 语义分离)",
       "def upsert_membership(" not in _repo_src
       and "def bind_membership(" in _repo_src
