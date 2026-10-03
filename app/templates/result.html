@@ -26,7 +26,7 @@
           <a class="btn btn-s" href="/?from={{ result_id }}">{{ icon_svg("wand") }}<span data-i18n="continue_processing">{{ texts.continue_processing }}</span></a>
           {% endif %}
         </div>
-        {{ share_bar(result_url, r_title) }}
+        {{ share_bar(result_url, r_title, compact=true) }}
       </div>
 
       {# 媒体组: 单文件结果为单图 = 主视图 (原图 ≤60vh 不裁切, 下载在图下方);
