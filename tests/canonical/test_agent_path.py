@@ -125,14 +125,22 @@ from database import db
 
 uid = None
 try:
-    # ═══ A. 401 is self-describing ══════════════════════════════════
+    # ═══ A. no key = anonymous discovery; a bad key = self-describing 401
     st, h, d = (lambda r: (r[0], r[1], r[2]))(_req(
         "POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"},
         {"Content-Type": "application/json"}))
-    check("A1 no key → 401 with JSON body",
+    check("A0 no key → ping answers (anonymous discovery, no 401)",
+          st == 200 and isinstance(d, dict) and d.get("result") == {},
+          f"{st} {d}")
+    st, h, d = (lambda r: (r[0], r[1], r[2]))(_req(
+        "POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"},
+        {"Content-Type": "application/json",
+         "Authorization": "Bearer fsk_not_a_real_key"}))
+    check("A1 invalid key → 401 with JSON body",
           st == 401 and isinstance(d, dict), f"{st} {d}")
-    check("A2 body error=unauthorized, message points at /account/keys",
+    check("A2 body error=unauthorized, message points at register + /account/keys",
           isinstance(d, dict) and d.get("error") == "unauthorized"
+          and "register" in str(d.get("message", ""))
           and "/account/keys" in str(d.get("message", "")), d)
     check("A3 WWW-Authenticate kept",
           h.get("www-authenticate") == 'Bearer realm="518"',
@@ -236,7 +244,8 @@ try:
               ((d.get("result") or {}).get("content") or [])]
     check("E1 share of own PNG → NO image block (echo suppressed)",
           (d.get("result") or {}).get("isError") is False
-          and "image" not in _kinds and "resource_link" in _kinds, _kinds)
+          and "image" not in _kinds and "resource_link" not in _kinds
+          and _kinds == ["text"], _kinds)
     # compress only re-encodes images ABOVE the target: a >1MB noise
     # PNG forces a real JPEG conversion (bytes differ from the input,
     # so the echo rule must NOT suppress the block).
@@ -258,7 +267,7 @@ try:
               ((d.get("result") or {}).get("content") or [])]
     check("E2 compress re-encoded image → image block still attached",
           (d.get("result") or {}).get("isError") is False
-          and "image" in _kinds and "resource_link" in _kinds, _kinds)
+          and "image" in _kinds and "resource_link" not in _kinds, _kinds)
 
     # ═══ F. discovery mentions the human-link path ══════════════════
     st, d = _mcp({"jsonrpc": "2.0", "id": 30,

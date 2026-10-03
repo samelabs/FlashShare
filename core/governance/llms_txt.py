@@ -33,11 +33,13 @@ def build_llms_txt() -> str:
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
     a(f"- Protocol versions: {versions} (latest: {latest})")
-    a("- Auth: Bearer API key, prefix fsk_ — get one headlessly: "
-      "POST /auth/mcp/register with an optional "
-      '{"username": "..."} JSON body returns an account and its key '
-      "(plaintext shown once); humans can also create keys in the web UI "
-      "at /account/keys (Account → API keys)")
+    a("- Auth: Bearer API key, prefix fsk_. Connect without a key first: "
+      "initialize and tools/list work anonymously, and the tool "
+      "`register` (optional username) creates an account and returns "
+      "its key — then send Authorization: "
+      "Bearer <key>. Same over plain HTTP: POST /auth/mcp/register with "
+      'an optional {"username": "..."} JSON body. Humans can also '
+      "create keys in the web UI at /account/keys (Account → API keys)")
     a("- Agent guide (this file): /llms.txt")
     a("")
     a("## No-install usage (curl)")
@@ -176,7 +178,13 @@ def build_llms_txt() -> str:
     a("")
     a("## Billing")
     a("- Tool calls are metered in credits: 1000 credits = 1 USD. "
-      "Failed calls are refunded automatically.")
+      "Each tool's description states its price (free or N "
+      "credits/call); a call is charged when it runs — no confirmation "
+      "step. Failed calls are refunded automatically.")
+    a("- Out of credits → the call returns err_insufficient_credits; "
+      f"the account owner logs in and tops up at {BASE_URL}/pricing, "
+      "then the agent retries with the same client_ref (never charged "
+      "twice). Free tools need no credits.")
     a("")
     a("## Limits")
     from config import MAX_UPLOAD_BYTES as _max_bytes

@@ -361,7 +361,13 @@ check("U9 initialize serverInfo.version == root VERSION",
 r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 92,
                               "method": "initialize",
                               "params": {"protocolVersion": "2025-06-18"}})
-check("U9 anonymous /mcp → 401", r.status_code == 401, f"{r.status_code}")
+check("U9 anonymous /mcp initialize → 200 discovery (no Bearer needed)",
+      r.status_code == 200 and "serverInfo" in r.text, f"{r.status_code}")
+r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 93,
+                              "method": "initialize",
+                              "params": {"protocolVersion": "2025-06-18"}},
+                headers={"Authorization": "Bearer fsk_invalid"})
+check("U9 invalid Bearer on /mcp → 401", r.status_code == 401, f"{r.status_code}")
 r = client.get("/api/me", headers={"Authorization": f"Bearer {_vtok}"})
 check("U9 Bearer 在 browser surface (/api/me) 被拒",
       r.status_code == 401, f"{r.status_code} {r.text[:80]}")

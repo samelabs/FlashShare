@@ -422,14 +422,17 @@ try:
               "call_id", "replay", "result_url", "expires_at", "items"}
           and len(sc_props) == 3, schema["properties"].keys())
     # image echo suppression: share returns the input bytes unchanged,
-    # so the image block is dropped (only the resource_link) — an
-    # agent's own upload must not bounce back into its context.
+    # so the image block is dropped — an agent's own upload must not
+    # bounce back into its context. File links live once, in the JSON
+    # text block (no duplicate resource_link blocks).
     st, d = _call("share", {"files": [{"filename": "img.png", "b64": A64}],
                             "client_ref": f"mi-{_u}"}, TOK, 40)
     content = (d.get("result") or {}).get("content") or []
     kinds = [c["type"] for c in content]
-    check("M4 pass-through share → resource_link, NO image block",
-          "image" not in kinds and "resource_link" in kinds, kinds)
+    _m4 = _json.loads(content[-1].get("text") or "{}") if content else {}
+    check("M4 pass-through share → JSON block only (link inside), NO image block",
+          kinds == ["text"]
+          and (_m4.get("items") or [{}])[0].get("download_url"), kinds)
     # a transformed image still gets the block. compress only re-encodes
     # ABOVE the target: a >1MB noise PNG forces a real JPEG conversion
     # (bytes differ, echo rule does not apply).
@@ -449,8 +452,9 @@ try:
                                "client_ref": f"mi2-{_u}"}, TOK, 43)
     content = (d.get("result") or {}).get("content") or []
     kinds = [c["type"] for c in content]
-    check("M4b re-encoded image → image block + resource_link",
-          "image" in kinds and "resource_link" in kinds
+    check("M4b re-encoded image → image block + JSON block, no resource_link",
+          "image" in kinds and "resource_link" not in kinds
+          and kinds[-1] == "text"
           and any(c.get("mimeType") == "image/jpeg" for c in content
                   if c["type"] == "image"), kinds)
     # format mismatch error text

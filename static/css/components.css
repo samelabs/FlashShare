@@ -662,6 +662,41 @@ pre.rs-text, pre.rs-json {
 }
 .seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
 
+/* 参数卡片: 参数区每行 = 标签在上、控件在下 (各宽度一致); 枚举参数的
+   每个选项是一张独立卡片, 网格自动换行, 选中 = 品牌色描边。开关行保持
+   标签与开关同一行。比例值 (W:H) 的选项卡内画出该比例的小框。 */
+.params .prow { flex-direction: column; align-items: stretch; gap: var(--s2); }
+.params .prow > .prow-label {
+  min-width: 0; max-width: none; padding-top: 0;
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+}
+.params .prow.prow-bool { flex-direction: row; align-items: center; justify-content: space-between; }
+.params .prow-text > .textarea { min-width: 0; width: 100%; }
+.params .prow .tp-seg {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(84px, 100%), 1fr));
+  gap: 8px; width: 100%; padding: 0; background: none; border-radius: 0;
+}
+.tp-seg .tp-option {
+  height: auto; min-height: 40px; min-width: 0; padding: 8px 10px; gap: 6px;
+  flex-direction: column; overflow-wrap: anywhere; justify-content: center; text-align: center;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm);
+  background: var(--card); color: var(--ink-2); box-shadow: none;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.tp-seg .tp-option.on {
+  border-color: var(--brand); color: var(--brand); background: var(--brand-50);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+@media (hover:hover) and (pointer:fine) {
+  .tp-seg .tp-option:hover:not(.on) { border-color: var(--ink-4); color: var(--ink); }
+}
+.tp-seg .tp-option:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.tp-seg .tp-ratio {
+  display: block; height: 22px; max-width: 36px;
+  border: 1.5px solid currentColor; border-radius: 3px; opacity: .8;
+}
+.tp-seg .tp-ratio.free { aspect-ratio: 1; border-style: dashed; }
+
 /* "更多参数"折叠: 参数超过 3 个时, 其余收进展开区 */
 .ti-more { display: flex; flex-direction: column; gap: 14px; }
 .ti-more-btn {
@@ -729,8 +764,7 @@ pre.rs-text, pre.rs-json {
   .ti-progress { flex-shrink: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
   .send.wide { padding: 0 14px; min-height: 44px; }
   /* 添加文件: 移动端图标按钮; .ib 统一伪元素扩点击区到 ≥44 (视觉不变) */
-  .tp-seg .tp-option { position: relative; }
-  .tp-seg .tp-option::after { content: ""; position: absolute; inset: -7px -4px; }
+  .tp-seg .tp-option { min-height: 44px; }
 }
 /* 输入区挂载预留高度 (CLS) */
 .ti-mount { min-height: 224px; }
