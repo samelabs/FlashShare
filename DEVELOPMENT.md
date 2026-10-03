@@ -89,8 +89,11 @@ PG_ADMIN_URL=postgresql://<user>@127.0.0.1:5432/postgres \
 tools/ci_local.sh --browser                               # 不带参数 = ci.yml 全部 + 两道浏览器门禁
 ```
 
-浏览器门禁需 `PLAYWRIGHT_CORE_PATH`（playwright-core 1.55.0）；本机无 Playwright Chromium 时设
-`CHROMIUM_PATH` 指向系统 Chrome。下面是它内部使用的环境（手工排障时参考）：
+浏览器门禁需 `PLAYWRIGHT_CORE_PATH`（playwright-core 1.55.0）。**推荐与 CI 同源**：安装 Playwright 捆绑
+Chromium 并让 `CHROMIUM_PATH` 指向其可执行文件（`npx playwright-core@1.55.0 install chromium`，可执行文件在
+`~/Library/Caches/ms-playwright/chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium` 一类路径下）。
+系统 Chrome 仅作无捆绑包时的后备：它与 playwright-core 存在版本斜差，偶发的等待/evaluate 失真优先怀疑该变量。
+下面是 ci_local 内部使用的环境（手工排障时参考）：
 
 - isolated PostgreSQL 16 库（每个分支/批次独立库，验收后 DROP）
 - `tests/support/fake_gokapi.py`（Gokapi HTTP boundary test service）
