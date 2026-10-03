@@ -232,7 +232,10 @@ check("O6 expose WWW-Authenticate + Mcp-Session-Id",
 st, h, _d = _req("OPTIONS", "/mcp", None, {"Origin": "https://evil.example"})
 check("O7 preflight foreign origin → 403", st == 403, f"{st}")
 st, h, _d = _mcp(_ping, token=None)
-check("O8 anonymous → 401 WWW-Authenticate: Bearer realm=\"518\"",
+check("O8 anonymous ping → 200 (discovery needs no key)",
+      st == 200 and (_d or {}).get("result") == {}, f"{st} {_d}")
+st, h, _d = _mcp(_ping, token="fsk_invalid_key")
+check("O8b invalid key → 401 WWW-Authenticate: Bearer realm=\"518\"",
       st == 401 and h.get("www-authenticate") == 'Bearer realm="518"', f"{st} {h.get('www-authenticate')}")
 
 # ══════════ 4. JSON-RPC batches ══════════

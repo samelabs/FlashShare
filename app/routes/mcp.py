@@ -165,15 +165,19 @@ async def mcp_post(request: Request):
     if _origin_denied(request):
         return Response(status_code=403, headers=cors)
     user = _bearer_user(request)
-    if not user:
+    # No credentials = anonymous discovery: initialize / tools/list
+    # answer, and the `register` tool hands the agent its key in-band.
+    # A presented-but-invalid key is still a hard 401 (a real error the
+    # caller must see, never silently downgraded to anonymous).
+    if not user and request.headers.get("authorization"):
         from config import BASE_URL as _base
         return JSONResponse(
             {"error": "unauthorized",
              "message": (
-                 "Missing or invalid API key. Register headlessly: POST "
-                 f"{_base}/auth/mcp/register with an optional "
-                 '{"username": "..."} JSON body returns an API key. '
-                 f"Human path: {_base}/account/keys. Guide: {_base}/llms.txt")},
+                 "Invalid API key. Get a new one with the MCP tool "
+                 f"'register' (call it without an Authorization header), "
+                 f"POST {_base}/auth/mcp/register, or {_base}/account/keys. "
+                 f"Guide: {_base}/llms.txt")},
             status_code=401,
             headers={**cors, "WWW-Authenticate": 'Bearer realm="518"'},
         )
@@ -255,16 +259,23 @@ async def _dispatch(request: Request, user: dict, msg):
         version = (requested if isinstance(requested, str)
                    and requested in SUPPORTED_VERSIONS else LATEST)
         from governance.catalog import catalog_version
+        from config import BASE_URL as _base
         # The caller's real account limits, from the same entitlement
-        # projection the delivery schemas advertise (one read).
-        from governance.access_projection import project
-        ent = project(user["id"])["entitlements"]
+        # projection the delivery schemas advertise (one read); an
+        # anonymous caller sees the Free plan it would register into.
+        ent = _entitlements(user)
+        account_txt = "" if user else (
+            "You are connected without an API key: tools/list shows "
+            "the first-party tools and every other call needs an "
+            "account. Call the free tool 'register' once (optional "
+            "username) — it returns your API key; reconnect with the "
+            "header Authorization: Bearer <key>. ")
         limits_txt = (
-            "Your account limits: "
-            f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB per input file, up "
+            ("Your account limits: " if user else "Free plan limits: ")
+            + f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB per input file, up "
             f"to {ent['ingress_files_24h']} files and "
             f"{format_bytes(ent['ingress_bytes_24h'])} total per rolling "
-            "24 hours; your delivery options: expiry_days "
+            "24 hours; delivery options: expiry_days "
             f"{list(ent['expiry_days'])}, allowed_downloads "
             f"{list(ent['download_limits'])}."
         )
@@ -275,7 +286,8 @@ async def _dispatch(request: Request, user: dict, msg):
             "serverInfo": {"name": "518plus", "version": PRODUCT_VERSION},
             "instructions": (
                 "518.PLUS makes it easy to share files and AI "
-                "capabilities. To give a person a link to a file: call "
+                f"capabilities. {account_txt}"
+                "To give a person a link to a file: call "
                 "share; hand them result_url (one page for all files) "
                 "— page_url is per file, download_url is a direct "
                 "download. tools/list is your working set: the "
@@ -304,9 +316,14 @@ async def _dispatch(request: Request, user: dict, msg):
                 "page. Manage your live shared files with the free "
                 "meta tools list_uploads (paginated) and "
                 "delete_upload (remove one by public_id — same effect "
-                "as deleting on the web). Calls are metered in "
-                "credits (1000 credits = 1 USD); failed calls are "
-                "refunded automatically. "
+                "as deleting on the web). Billing: each tool's "
+                "description states its price (Free or N credits per "
+                "call; 1000 credits = 1 USD) and a call is charged when "
+                "it runs — no confirmation step; failed calls are "
+                "refunded automatically. If credits run out, the call "
+                "returns err_insufficient_credits: the account owner "
+                f"tops up at {_base}/pricing (log in with the account), "
+                "then retry with the same client_ref. "
                 f"{limits_txt} Catalog version: "
                 f"{catalog_version()}."
             ),
@@ -319,7 +336,7 @@ async def _dispatch(request: Request, user: dict, msg):
         return _rpc(mid, {})
     if method == "tools/list":
         page_size = 50
-        specs = _tool_specs(user)
+        specs = _tool_specs(user) if user else _anon_tool_specs()
         cur = params.get("cursor")
         try:
             start = int(cur) if cur else 0
@@ -332,6 +349,8 @@ async def _dispatch(request: Request, user: dict, msg):
             out["nextCursor"] = str(start + page_size)
         return _rpc(mid, out)
     if method == "tools/call":
+        if not user:
+            return await _anon_call(request, mid, params)
         return await _call_tool(request, user, mid, params)
     return _rpc_err(mid, -32601, f"method not found: {method}")
 
@@ -690,13 +709,106 @@ def _catalog_spec(t: dict, names: dict, ent: dict) -> dict:
     }
 
 
+def _entitlements(user: dict | None) -> dict:
+    """Delivery/ingress entitlements for discovery text and schema
+    enums: the bearer's projection, or the Free plan an anonymous
+    caller would register into (the canonical pure Free capability)."""
+    if user:
+        from governance.access_projection import project
+        return project(user["id"])["entitlements"]
+    from governance.entitlements import resolve_from_membership
+    return resolve_from_membership(None)
+
+
+# The only tool an anonymous caller can run: headless registration
+# (the same function as POST /auth/mcp/register).
+_REGISTER_SPEC = {
+    "name": "register",
+    "title": "Register",
+    "description":
+        "Create a free 518.PLUS account for this agent and get its API "
+        "key. Call once, without an Authorization header; then send "
+        "every MCP request with the header Authorization: Bearer <key>. "
+        "Store the key (the owner can view it again at /account/keys "
+        "after logging in with the returned username/password). username "
+        "is optional (letters, digits, underscore; one is generated "
+        "otherwise). The returned username and password let the human "
+        "owner log in on the web to top up credits for paid tools "
+        "(free tools need no credits).",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "username": {"type": "string",
+                         "description": "Optional account name"},
+        },
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "api_key": {"type": "string"},
+            "username": {"type": "string"},
+            "password": {"type": "string"},
+            "login_url": {"type": "string"},
+            "pricing_url": {"type": "string"},
+            "next": {"type": "string"},
+        },
+        "required": ["api_key", "username", "password", "next"],
+    },
+}
+
+
+def _anon_tool_specs() -> list:
+    """tools/list without a key: register + the first-party tools
+    (Free-plan delivery enums). Calling any of them needs a key; the
+    descriptions are the same text a registered agent sees."""
+    from governance.favorites import working_set
+    ent = _entitlements(None)
+    names = mcp_names()
+    return [_REGISTER_SPEC] + [_catalog_spec(t, names, ent)
+                               for t in working_set(None, list_catalog(None))]
+
+
+async def _anon_call(request: Request, mid, params: dict):
+    """tools/call without a key: `register` runs; any other tool answers
+    a tool error that says how to get a key (never an HTTP rejection)."""
+    name = params.get("name")
+    args = params.get("arguments")
+    if not isinstance(args, dict):
+        args = {}
+    from config import BASE_URL as _base
+    if name == "register":
+        from app.routes.auth_route import headless_register
+        raw = {}
+        if args.get("username") is not None:
+            raw["username"] = args.get("username")
+        status, body = await headless_register(request, raw)
+        if not body.get("ok"):
+            return _iserror(mid, {"error": body.get("error")})
+        out = {
+            "api_key": body["key"]["key"],
+            "username": body["username"],
+            "password": body["password"],
+            "login_url": f"{_base}/auth/login",
+            "pricing_url": f"{_base}/pricing",
+            "next": ("Reconnect with the header Authorization: Bearer "
+                     "<api_key>, then call tools/list. Free tools work "
+                     "right away; paid tools need credits — the owner "
+                     "logs in with this username/password and tops up "
+                     "at pricing_url."),
+        }
+        return _rpc(mid, {
+            "content": [{"type": "text",
+                         "text": json.dumps(out, ensure_ascii=False)}],
+            "structuredContent": out, "isError": False})
+    return _iserror(mid, {"error": "err_auth_required"})
+
+
 def _tool_specs(user: dict) -> list:
     # Discovery-layer projection: schema enums show THIS bearer's real
     # entitlement (one access-projection read per _tool_specs call).
     # Not an authorization surface — tools/call still runs the full
     # authoritative chain regardless of what the schema advertised.
-    from governance.access_projection import project
-    ent = project(user["id"])["entitlements"]
+    ent = _entitlements(user)
     specs = [_CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
              _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC]
     _names = mcp_names()
@@ -760,7 +872,6 @@ def _catalog_search_result(user: dict, q: str, page: int) -> dict:
     delivery enums, kept OUT of the _call_tool dispatch path (the call
     path reads no projection)."""
     from governance.catalog import market_page
-    from governance.access_projection import project
     from database import db
     from repo import favorites as fav_repo
     data = market_page(q or None, page)
@@ -769,7 +880,7 @@ def _catalog_search_result(user: dict, q: str, page: int) -> dict:
     with db() as con:
         favs = set(fav_repo.list_keys(con, user["id"]))
     _names = mcp_names()
-    ent = project(user["id"])["entitlements"]
+    ent = _entitlements(user)
     tools = []
     for h in data["items"]:
         spec = _catalog_spec(h, _names, ent)
@@ -1180,6 +1291,13 @@ def _error_message(code, tool: dict | None = None) -> str:
         "err_content_mismatch_office": "The document content does not match the file's extension.",
         "err_content_mismatch_text": "The text content does not match the file's extension.",
         "err_insufficient_credits": "Not enough credits for this call.",
+        "err_auth_required": "This call needs an API key.",
+        "err_too_many_attempts": "Too many registrations from this address; retry later.",
+        "err_username_taken": "That username is taken; pick another or omit it.",
+        "err_username_invalid": "That username is not allowed; use letters, digits and underscore, or omit it.",
+        "err_username_short": "That username is too short; pick a longer one or omit it.",
+        "err_username_long": "That username is too long; pick a shorter one or omit it.",
+        "err_username_reserved": "That username is reserved; pick another or omit it.",
         "tool_disabled": "This tool is currently disabled.",
         "err_rate_limited": "Too many requests; retry shortly.",
         "err_upload_in_progress": "An upload with this client_ref is still settling; retry shortly with the same client_ref.",
@@ -1213,7 +1331,14 @@ def _error_message(code, tool: dict | None = None) -> str:
         hint = (" This tool takes no files." if mx == 0
                 else f" This tool accepts {mn} to {mx} files.")
     elif code == "err_insufficient_credits":
-        hint = " Top up credits and retry with the same client_ref."
+        from config import BASE_URL as _base
+        hint = (" The account owner tops up at "
+                f"{_base}/pricing (log in with the account); then retry "
+                "with the same client_ref — it is not charged twice.")
+    elif code == "err_auth_required":
+        hint = (" Call the free tool 'register' (no Authorization "
+                "header) to get one, then reconnect with Authorization: "
+                "Bearer <key>.")
     elif code == "param_too_long":
         from governance.tool_params import TEXT_PARAM_MAX_CHARS
         hint = f" Text parameters take at most {TEXT_PARAM_MAX_CHARS} characters."
@@ -1274,11 +1399,16 @@ async def _mcp_success(result: dict, payload: dict,
     direct result) + structuredContent (the machine shape, matching
     every tool's outputSchema).
 
+    content = text items as plain text, a preview image block for each
+    new image result (≤1 MB), and one text block with the JSON of
+    structuredContent (MCP backward compatibility) — file links live
+    there once, not repeated as extra link blocks.
+
     input_digests = sha256 set of THIS call's input file bodies. An
     image result byte-identical to an input (a pass-through tool echoing
-    what the agent just sent) gets no image block — only the
-    resource_link — so the agent's own bytes never bounce back into its
-    context. General rule, no per-tool branching."""
+    what the agent just sent) gets no image block, so the agent's own
+    bytes never bounce back into its context. General rule, no per-tool
+    branching."""
     from config import BASE_URL
     import hashlib as _hl
     input_digests = input_digests or frozenset()
@@ -1332,17 +1462,8 @@ async def _mcp_success(result: dict, payload: dict,
                             "type": "image",
                             "data": _b64.b64encode(body).decode(),
                             "mimeType": ct})
-                        content.append({
-                            "type": "resource_link", "uri": dl,
-                            "name": it.get("filename") or pid})
-                        continue
                 except (InternalDownloadUnavailable, Exception):
                     pass
-            content.append({"type": "resource_link", "uri": dl,
-                            "name": it.get("filename") or pid,
-                            "mimeType": ct, "size": size})
-    if not content:
-        content.append({"type": "text", "text": "(no output items)"})
     result_url = result.get("result_url") or ""
     structured = {
         "call_id": payload.get("call_id"),
@@ -1353,7 +1474,7 @@ async def _mcp_success(result: dict, payload: dict,
     }
     # MCP-spec backward-compat: a text block carrying the JSON
     # serialization of structuredContent rides along with the item
-    # blocks (image previews / resource_links stay untouched).
+    # blocks (text items / image previews).
     content.append({"type": "text",
                     "text": json.dumps(structured, ensure_ascii=False)})
     return {"content": content, "structuredContent": structured,

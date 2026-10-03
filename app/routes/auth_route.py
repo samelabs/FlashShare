@@ -428,44 +428,28 @@ async def register_submit(request: Request):
     return redirect_with_session(next_url, user_id)
 
 
-# Headless MCP registration: the machine surface's only unauthenticated
-# write. An agent registers itself and receives its Bearer key in the
-# same response. Reuses the web validators and the apikeys single
-# point; sets no session (no human, no cookie). No login maintenance —
-# daily-login benefits start only when a human logs into this account
-# on the web, so headless account farming yields no credits. If key
-# creation fails after register committed (vault unavailable), the
-# account stays as a zero-balance row; retrying with a fresh username
-# is the recovery.
-@router.post("/mcp/register")
-async def mcp_register(request: Request):
-    try:
-        raw = await request.json()
-        if not isinstance(raw, dict):
-            raise ValueError
-    except Exception:
-        return JSONResponse({"ok": False, "error": "err_invalid_request"}, 400)
-
+async def headless_register(request: Request, raw) -> tuple[int, dict]:
+    """The single headless registration: (HTTP status, JSON body).
+    Shared by POST /auth/mcp/register and the MCP `register` tool (same
+    validators, same per-IP limit, same apikeys single point)."""
+    if not isinstance(raw, dict):
+        return 400, {"ok": False, "error": "err_invalid_request"}
     username = str(raw.get("username") or "").strip()
 
     ip_key = (client_ip(request),)
     if _throttled(_mcp_register_attempts, ip_key,
                   _MCP_REGISTER_IP_LIMIT, _MCP_REGISTER_IP_WINDOW):
-        return JSONResponse(
-            {"ok": False, "error": "err_too_many_attempts"}, 429)
+        return 429, {"ok": False, "error": "err_too_many_attempts"}
     _record_hit(_mcp_register_attempts, ip_key, _MCP_REGISTER_IP_WINDOW)
 
     if username:
         err = validate_username(username)
         if err:
-            return JSONResponse({"ok": False, "error": err}, 400)
+            return 400, {"ok": False, "error": err}
     else:
         username = "agent_" + secrets.token_hex(4)
     email = f"mcp-{secrets.token_hex(8)}@mcp.518.plus"
     password = secrets.token_urlsafe(18)
-
-    def _err(status, code):
-        return JSONResponse({"ok": False, "error": code}, status)
 
     try:
         user_id = await asyncio.to_thread(
@@ -474,23 +458,42 @@ async def mcp_register(request: Request):
         token = str(exc)
         status = 409 if token in ("err_username_taken", "err_email_taken") \
             else 400
-        return _err(status, token)
+        return status, {"ok": False, "error": token}
     except psycopg2.IntegrityError:
         if username_taken(username):
-            return _err(409, "err_username_taken")
-        return _err(409, "err_email_taken")
+            return 409, {"ok": False, "error": "err_username_taken"}
+        return 409, {"ok": False, "error": "err_email_taken"}
     except Exception:
         logger.exception("mcp register failed for username=%s", username)
-        return _err(500, "err_invalid_request")
+        return 500, {"ok": False, "error": "err_invalid_request"}
 
     from identity.apikeys import create_key
     try:
         key = await asyncio.to_thread(create_key, user_id, "mcp")
     except ValueError as exc:
-        return _err(503, str(exc))
+        return 503, {"ok": False, "error": str(exc)}
     key.pop("key_sealed", None)  # server-side sealed copy never leaves
-    return JSONResponse({"ok": True, "username": username,
-                         "password": password, "key": key})
+    return 200, {"ok": True, "username": username,
+                 "password": password, "key": key}
+
+
+# Headless MCP registration over plain HTTP: the machine surface's only
+# unauthenticated write besides the MCP `register` tool (same function).
+# An agent registers itself and receives its Bearer key in the same
+# response; sets no session (no human, no cookie). No login maintenance
+# — daily-login benefits start only when a human logs into this account
+# on the web, so headless account farming yields no credits. If key
+# creation fails after register committed (vault unavailable), the
+# account stays as a zero-balance row; retrying with a fresh username
+# is the recovery.
+@router.post("/mcp/register")
+async def mcp_register(request: Request):
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = None
+    status, body = await headless_register(request, raw)
+    return JSONResponse(body, status)
 
 
 @router.post("/logout")
