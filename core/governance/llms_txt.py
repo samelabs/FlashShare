@@ -203,6 +203,8 @@ def build_llms_txt() -> str:
       "the delivery options — see /pricing.")
     a("")
     a("## Publish your own tool")
+    a(f"Full guide — request/response examples, declarations, limits, "
+      f"pricing and commission: {BASE_URL}/developers")
     a("Wrap any public HTTPS endpoint as a 518 tool: implement one JSON "
       "contract — source files arrive as one-time signed fetch URLs, "
       f"you answer with ordered text/json/file items — and submit it at "
@@ -210,8 +212,6 @@ def build_llms_txt() -> str:
     a("A new tool starts unlisted; after one successful run from its "
       "page it can go public, and then the web interface and every MCP "
       "agent can call it, earning you credits on each paid call.")
-    a(f"Full guide — request/response examples, declarations, limits, "
-      f"pricing and commission: {BASE_URL}/developers")
     a("")
     a("## Recommended tools (generated live; catalog_search finds every "
       "other public tool)")

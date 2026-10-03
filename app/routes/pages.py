@@ -218,19 +218,26 @@ async def developers(request: Request):
     response shapes, declarations, limits and economics. Same policy-doc
     mechanism as /terms (per-locale file, en fallback) plus one render
     pass that substitutes the code-constant facts — open to everyone,
-    anonymous included."""
+    anonymous included. The only doc page carrying a share bar and its
+    own share-card title/description (a shareable value sentence, not
+    the SEO description)."""
     from app.main import templates
     ctx = _ctx_base_impl(request, "publish")
     lang = ctx["lang"]
     body = _load_doc("developers.html", lang)
     body = templates.env.from_string(body).render(_developer_facts())
+    title = ctx["texts"].get("developers_title", "Developer Guide")
+    desc = ctx["texts"].get("developers_desc", "")
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",
         "share_url": "",
-        "doc_title": ctx["texts"].get("developers_title", "Developer Guide"),
-        "doc_desc": ctx["texts"].get("developers_desc", ""),
+        "doc_title": title,
+        "doc_desc": desc,
         "doc_body": body,
+        "doc_share_url": f"{BASE_URL}/developers",
+        "og_title": title,
+        "og_desc": desc,
     })
     return templates.TemplateResponse(request, "doc.html", ctx)
 
