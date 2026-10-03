@@ -149,14 +149,10 @@ async def sitemap():
 
 
 def _support_note() -> str:
-    """Append the public support channel to policy pages when configured."""
-    from config import PUBLIC_SUPPORT_CHANNEL
-    if not PUBLIC_SUPPORT_CHANNEL:
-        return ""
-    href = (PUBLIC_SUPPORT_CHANNEL if PUBLIC_SUPPORT_CHANNEL.startswith("http")
-            else f"mailto:{PUBLIC_SUPPORT_CHANNEL}")
-    return (f'<p class="doc-support"><a href="{href}" rel="noopener">'
-            f'{PUBLIC_SUPPORT_CHANNEL}</a></p>')
+    """Append the one support email to the bottom of policy pages."""
+    from config import SUPPORT_EMAIL
+    return (f'<p class="doc-support"><a href="mailto:{SUPPORT_EMAIL}" '
+            f'rel="noopener">{SUPPORT_EMAIL}</a></p>')
 
 
 @router.get("/terms", response_class=HTMLResponse)

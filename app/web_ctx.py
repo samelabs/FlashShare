@@ -54,7 +54,7 @@ ZIP_PREVIEW_VERSION = _zip_digest.hexdigest()[:8]
 sys.path.insert(0, str(_CORE))
 
 from config import (APP_NAME, BASE_URL, SOCIAL_IMAGE_URL,
-                    PUBLIC_SUPPORT_CHANNEL, X_CLIENT_ID, X_CLIENT_SECRET)
+                    SUPPORT_EMAIL, X_CLIENT_ID, X_CLIENT_SECRET)
 from i18n import LOCALE_TAGS, language_from_code, server_text
 from icons import _ICONS, icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
 from identity.auth import public_user
@@ -143,7 +143,7 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         "access": access,
         "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
-        "support_channel": PUBLIC_SUPPORT_CHANNEL,
+        "support_email": SUPPORT_EMAIL,
         "page_id": page_id,
         # X one-click login availability (pages + modal gate)
         "x_login_enabled": bool(X_CLIENT_ID and X_CLIENT_SECRET),

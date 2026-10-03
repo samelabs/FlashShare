@@ -53,8 +53,10 @@ GOKAPI_KEY = _required_env("FLASHSHARE_GOKAPI_KEY")
 
 SESSION_SECRET = os.environ.get("FLASHSHARE_SESSION_SECRET", "")
 
-# Public support channel (email or URL). Empty = support surfaces hidden.
-PUBLIC_SUPPORT_CHANNEL = os.environ.get("FLASHSHARE_PUBLIC_SUPPORT_CHANNEL", "").strip()
+# The one public support address (account recovery, payments/refunds,
+# data requests). A constant, not an env value: the address is printed
+# verbatim in the policy documents and SECURITY.md.
+SUPPORT_EMAIL = "ad@live.it"
 if not SESSION_SECRET:
     raise RuntimeError("FLASHSHARE_SESSION_SECRET environment variable must be set")
 
