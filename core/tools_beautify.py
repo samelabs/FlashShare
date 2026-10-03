@@ -299,7 +299,8 @@ def beautify_handler(tool_input, params):
     # enforce_params_decl is the sole params authority: missing →
     # declaration default injected, illegal enum → 422 before the handler
     # runs. Direct canonical read; fail loud on any bypass.
-    p = PRESETS[params["preset"]]
+    preset = params["preset"]
+    p = PRESETS[preset]
     aspect = params["aspect"]
 
     # ── 3. Decode + orient + downscale ──
