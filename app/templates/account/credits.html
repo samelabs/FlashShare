@@ -57,7 +57,7 @@
       {# plan/date 插值属服务端事实, 语言切换由整页刷新承载 (与 sub_until 同模式) #}
     </div>
     <ul class="plan-facts">
-      <li><span class="pf-label" data-i18n="plan_file_label">{{ texts.plan_file_label }}</span><strong class="pf-val">{{ texts.pricing_file_max|replace('{mb}', plan_facts.max_file_mb|string) }}</strong></li>
+      <li><span class="pf-label" data-i18n="plan_file_label">{{ texts.plan_file_label }}</span><strong class="pf-val">≤ {{ plan_facts.max_file_mb }} MB</strong></li>
       <li><span class="pf-label" data-i18n="plan_files_24h_label">{{ texts.plan_files_24h_label }}</span><strong class="pf-val">{{ plan_facts.files_used }} / {{ plan_facts.files_cap }}</strong></li>
       <li><span class="pf-label" data-i18n="plan_bytes_24h_label">{{ texts.plan_bytes_24h_label }}</span><strong class="pf-val">{{ plan_facts.bytes_used }} / {{ plan_facts.bytes_cap }}</strong></li>
       <li><span class="pf-label" data-i18n="plan_delivery_label">{{ texts.plan_delivery_label }}</span><strong class="pf-val">{{ plan_facts.expiry_days|join(' / ') }} {{ texts.plan_days_word }} / {{ plan_facts.download_limits|join(' / ') }} {{ texts.plan_downloads_word }}</strong></li>
