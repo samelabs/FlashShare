@@ -267,15 +267,6 @@ def _favorite_keys_for(user) -> list:
     return favorite_keys(user["id"])
 
 
-def _public_stats(tool_key: str) -> dict:
-    """Public counters: successful calls only. No user-level data."""
-    from database import db
-    from repo.ledger import call_stats_by_tool
-    with db() as con:
-        row = call_stats_by_tool(con, tool_key)
-    return {"calls": int(row["ok"]) if row else 0}
-
-
 def _market_page_window(current: int, total_pages: int,
                         radius: int = 2, edge: int = 2) -> list:
     """Web 页码窗口 (presentation, 非 governance): 固定大小, 不随 total_pages
@@ -336,7 +327,6 @@ async def user_page(request: Request, handle: str):
     from app.main import templates
     from governance.catalog import owner_public_tools
     from database import db
-    from repo.ledger import ok_calls_by_owner
 
     with db() as con:
         urow = con.execute(
@@ -348,8 +338,6 @@ async def user_page(request: Request, handle: str):
                                           _ctx_base(request), status_code=404)
     owner_id = urow["id"]
     tools = owner_public_tools(owner_id)
-    with db() as con:
-        total_calls = ok_calls_by_owner(con, owner_id, [t["id"] for t in tools])
     # Verified badge fact: the author is a current effective member —
     # the same batch predicate the access projection uses (no second
     # membership judgment here).
@@ -362,7 +350,6 @@ async def user_page(request: Request, handle: str):
         "owner_handle": handle,
         "owner_verified": owner_id in effective_member_ids([owner_id]),
         "owner_tools": tools,
-        "owner_total_calls": total_calls,
         "is_self": bool(user and user.get("id") == owner_id),
     })
     return templates.TemplateResponse(request, "user_page.html", ctx)
@@ -460,7 +447,6 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "delivery_json": _delivery_projection(ctx),
         "tool_name": tool_name,
         "handle": handle,
-        "stats": _public_stats(tool_key),
         "mcp_name": mcp_name(tool_key),
         "tool_key": tool_key,
         "is_favorite": bool(user) and tool_key in _favorite_keys_for(user),
