@@ -787,11 +787,26 @@ async def account_credits(request: Request):
     _base = _ctx_base(request)  # access projection 单次读
     _membership = (_base.get("access") or {}).get("membership")
     shop = _shop_offers(user, _membership)
+    # Plan facts for the current-plan card: every number projects from
+    # the same access projection the header uses — nothing hand-written.
+    _access = _base.get("access") or {}
+    _ent = _access.get("entitlements") or {}
+    _usage = _access.get("usage") or {}
+    plan_facts = {
+        "max_file_mb": _limits_projection(_base)["maxFileMb"],
+        "files_used": int(_usage.get("ingress_files_24h") or 0),
+        "files_cap": int(_ent.get("ingress_files_24h") or 0),
+        "bytes_used": _fmt_bytes(int(_usage.get("ingress_bytes_24h") or 0)),
+        "bytes_cap": _fmt_bytes(int(_ent.get("ingress_bytes_24h") or 0)),
+        "expiry_days": list(_ent.get("expiry_days") or []),
+        "download_limits": list(_ent.get("download_limits") or []),
+    }
     ctx = _account_ctx(request, "credits", _base=_base,
                        balance=get_balance(user["id"]),
                        granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
                        pending_downgrade=shop["pending_downgrade"],
+                       plan_facts=plan_facts,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)
