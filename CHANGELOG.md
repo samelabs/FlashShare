@@ -2,7 +2,7 @@
 
 本文件记录面向用户的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本以功能批次划分。
 
-## [Unreleased]
+## [1.3] - 2026-10-03
 
 ### Changed
 - **MCP 免密钥接入**：不带 API key 也能连上 MCP——`initialize` 与 `tools/list` 正常返回（平台工具 + 免费的 `register` 工具），agent 在 MCP 内调用 `register` 即可自助开户拿到 key，无需先去网页。未注册时调用其他工具返回说明如何注册的工具错误，而非 HTTP 401；只有带了无效 key 才返回 401。
