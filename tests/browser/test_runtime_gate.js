@@ -357,17 +357,29 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       try {
         await page.waitForSelector(".result-card", { timeout: 60000 });
       } catch (e) {
-        const dbg = await page.evaluate(() => ({
-          submits: window.__submits || 0,
-          snapshot: (window.__submitSnapshots || [])[0] || null,
-          fileCount: (document.querySelector(".ti-file-input") || { files: [] }).files.length,
-          busy: !!(window.toolOperationBusy && window.toolOperationBusy()),
-          btnDisabled: (document.querySelector(".ti-run") || {}).disabled,
-          datasetTool: document.body.dataset.tool,
-          resultHTML: ((document.getElementById("result") || {}).innerHTML || "").slice(0, 200),
-          net: netTrace.slice(-12),
-        })).catch(() => null);
-        check("first-run: DEBUG dump", false, JSON.stringify(dbg));
+        // evidence must survive: netTrace lives in Node (CDP events), the
+        // page callback cannot see it — assemble the dump Node-side; an
+        // evaluate failure names itself instead of collapsing to null.
+        let dbg;
+        try {
+          dbg = await page.evaluate(() => ({
+            submits: window.__submits || 0,
+            snapshot: (window.__submitSnapshots || [])[0] || null,
+            fileCount: (document.querySelector(".ti-file-input") || { files: [] }).files.length,
+            busy: !!(window.toolOperationBusy && window.toolOperationBusy()),
+            btnDisabled: (document.querySelector(".ti-run") || {}).disabled,
+            datasetTool: document.body.dataset.tool,
+            resultHTML: ((document.getElementById("result") || {}).innerHTML || "").slice(0, 200),
+          }));
+        } catch (evErr) {
+          dbg = { evaluateFailed: String((evErr && evErr.message) || evErr) };
+        }
+        const dump1 = JSON.stringify({ url: page.url(), net: netTrace.slice(-12), ...dbg });
+        console.log("DEBUG first-run:", dump1); // full evidence, beyond check()'s 400-char cap
+        check("first-run: DEBUG dump", false, dump1);
+        await page.screenshot({
+          path: path.join(OUT, "first-run-timeout.png"), fullPage: true,
+        }).catch(() => {}); // evidence shot is best-effort, never masks the throw
         throw e;
       }
       // wait for terminal state: either preview/actions (success) or error
@@ -454,14 +466,24 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       try {
         await page.waitForSelector("#toolRetry", { timeout: 60000 });
       } catch (e) {
-        const dbg = await page.evaluate(() => ({
-          canRetry: !!(window.canRetryToolOperation && window.canRetryToolOperation()),
-          busy: !!(window.toolOperationBusy && window.toolOperationBusy()),
-          resultHTML: (document.getElementById("result") || {}).innerHTML || "",
-          errs: (window.__pageErrors || []).join(" || ").slice(0, 500),
-          net: netTrace.slice(-12),
-        })).catch(() => null);
-        check("retry: DEBUG state dump", false, JSON.stringify(dbg));
+        // same evidence contract as the first-run dump (see above)
+        let dbg;
+        try {
+          dbg = await page.evaluate(() => ({
+            canRetry: !!(window.canRetryToolOperation && window.canRetryToolOperation()),
+            busy: !!(window.toolOperationBusy && window.toolOperationBusy()),
+            resultHTML: (document.getElementById("result") || {}).innerHTML || "",
+            errs: (window.__pageErrors || []).join(" || ").slice(0, 500),
+          }));
+        } catch (evErr) {
+          dbg = { evaluateFailed: String((evErr && evErr.message) || evErr) };
+        }
+        const dump2 = JSON.stringify({ url: page.url(), net: netTrace.slice(-12), ...dbg });
+        console.log("DEBUG retry:", dump2); // full evidence, beyond check()'s 400-char cap
+        check("retry: DEBUG state dump", false, dump2);
+        await page.screenshot({
+          path: path.join(OUT, "retry-timeout.png"), fullPage: true,
+        }).catch(() => {}); // best-effort, never masks the throw
         throw e;
       }
       const errText = await page.evaluate(() => {
