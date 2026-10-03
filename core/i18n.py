@@ -134,9 +134,9 @@ SERVER_I18N = {
     "credits_prices": "Tarifs des outils",
     "credits_per_call": "crédits par appel",
     "agents_qs": "Démarrage rapide",
-    "agents_qs1": "Créez d'abord une clé API :",
-    "agents_qs2": "Ajoutez l'URL du serveur + la clé API Bearer dans votre client MCP",
-    "agents_qs3": "Demandez à votre agent de traiter vos fichiers dans la conversation",
+    "agents_qs1": "Ajoutez l'URL du serveur dans votre client MCP — la connexion fonctionne sans clé.",
+    "agents_qs2": "Demandez à votre agent d'appeler l'outil gratuit register pour obtenir une clé, ou créez-en une vous-même :",
+    "agents_qs3": "Envoyez ensuite Authorization: Bearer <clé> et laissez votre agent traiter vos fichiers.",
 
     "agents_mcp_conf": "Config client",
     "agents_hdr_name": "Nom du header",
@@ -191,7 +191,7 @@ SERVER_I18N = {
         "pub_param_key_req": "参数键必填",
         "tool_search_ph": "Rechercher…",
         "tool_search_none": "Aucun outil trouvé",
-        "agents_mcp_intro": "518.PLUS fournit un serveur MCP standard (Streamable HTTP). Configurez-le une fois dans n'importe quel client MCP et votre agent appelle tous les outils fichiers de 518 — facturé à l'usage, échecs remboursés.",
+        "agents_mcp_intro": "Les outils sont facturés à l'appel au prix indiqué dans leur description — un appel est débité dès son exécution, sans étape de confirmation, et les appels échoués sont remboursés automatiquement. Les crédits sont rechargés par le propriétaire du compte sur /pricing.",
 
         "mytools_err_bad_label": "Nom invalide (1-40 caractères)",
         "mytools_err_bad_url": "URL invalide",
@@ -231,7 +231,7 @@ SERVER_I18N = {
         "nav_ai": "Connecter l'IA",
 
         "agents_mcp_h": "Serveur MCP",
-        "agents_mcp_desc": "Ajoutez cette URL dans votre client MCP. Mêmes outils, même facturation à l'usage.",
+        "agents_mcp_desc": "Connectez n'importe quel client MCP : facturation à l'appel, prix indiqué par outil, échecs remboursés automatiquement.",
         "active": "Actif",
         "print_loading": "Préparation des pages…",
         "print_btn": "Imprimer",
@@ -468,8 +468,7 @@ SERVER_I18N = {
         "err_unexpected": "Une erreur s'est produite, veuillez réessayer",
         "err_too_many_attempts": "Trop de tentatives, veuillez réessayer plus tard",
 # B4 mcp closure
-        "agents_key_prefix": "(commence par fsk_)",
-        "agents_no_key": "Pas encore de clé ? Ajoutez seulement l'URL du serveur : votre agent appelle l'outil gratuit register pour s'inscrire et obtenir sa clé.",
+        "agents_header_note": "Pas encore de clé ? Connectez-vous d'abord sans cette ligne, puis obtenez-en une avec register.",
         "agents_key_note": "Remplacez <key> dans les extraits ci-dessous par votre clé API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Ce délai de livraison n'est pas disponible avec votre offre actuelle",
@@ -759,9 +758,9 @@ SERVER_I18N = {
     "credits_prices": "도구 단가",
     "credits_per_call": "크레딧/회",
     "agents_qs": "빠른 시작",
-    "agents_qs1": "먼저 API 키를 만드세요:",
-    "agents_qs2": "MCP 클라이언트에 서버 URL + Bearer API 키를 추가하세요",
-    "agents_qs3": "대화에서 바로 에이전트에게 파일 처리를 요청하세요",
+    "agents_qs1": "MCP 클라이언트에 서버 URL을 추가하세요 — 키 없이도 연결됩니다.",
+    "agents_qs2": "에이전트가 무료 register 도구를 호출해 키를 받게 하거나, 직접 만드세요:",
+    "agents_qs3": "이후 Authorization: Bearer <키>를 함께 보내고 에이전트에게 바로 파일 처리를 맡기세요.",
 
     "agents_mcp_conf": "클라이언트 설정",
     "agents_hdr_name": "헤더 이름",
@@ -816,7 +815,7 @@ SERVER_I18N = {
         "pub_param_key_req": "매개변수 키 필요",
         "tool_search_ph": "검색…",
         "tool_search_none": "일치하는 도구 없음",
-        "agents_mcp_intro": "518.PLUS는 표준 MCP 서버(Streamable HTTP)를 제공합니다. MCP 클라이언트에 한 번 설정하면 에이전트가 518의 모든 파일 도구를 호출합니다 — 호출당 과금, 실패 시 환불.",
+        "agents_mcp_intro": "도구는 각 도구 설명에 적힌 가격으로 호출당 과금됩니다 — 호출이 실행되면 확인 절차 없이 바로 과금되며, 실패한 호출은 자동 환불됩니다. 크레딧은 계정 소유자가 /pricing에서 충전합니다.",
 
         "mytools_err_bad_label": "잘못된 이름 (1-40자)",
         "mytools_err_bad_url": "잘못된 URL",
@@ -857,7 +856,7 @@ SERVER_I18N = {
         "nav_ai": "AI 연결",
 
         "agents_mcp_h": "MCP 서버",
-        "agents_mcp_desc": "MCP 클라이언트에 이 URL을 추가하세요. 같은 도구, 같은 사용량 기반 과금.",
+        "agents_mcp_desc": "어느 MCP 클라이언트든 연결 가능: 호출당 과금, 도구별 가격 표기, 실패 시 자동 환불.",
         "active": "활성",
         "print_loading": "페이지를 준비하는 중…",
         "print_btn": "인쇄",
@@ -1094,8 +1093,7 @@ SERVER_I18N = {
         "err_unexpected": "문제가 발생했습니다. 다시 시도해 주세요",
         "err_too_many_attempts": "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
 # B4 mcp closure
-        "agents_key_prefix": "(fsk_로 시작)",
-        "agents_no_key": "키가 없어도 연결할 수 있습니다. 서버 URL만 추가하면 에이전트가 무료 register 도구로 가입하고 키를 받습니다.",
+        "agents_header_note": "아직 키가 없나요? 이 줄을 빼고 먼저 연결한 뒤 register로 키를 받으세요.",
         "agents_key_note": "아래 설정의 <key>를 내 API 키로 바꾸세요.",
 # B5 frontend closure
         "err_expiry_not_entitled": "현재 멤버십에서는 이 만료 기간을 사용할 수 없습니다",
@@ -1386,9 +1384,9 @@ SERVER_I18N = {
     "credits_prices": "Цены инструментов",
     "credits_per_call": "кредитов за вызов",
     "agents_qs": "Быстрый старт",
-    "agents_qs1": "Сначала создайте ключ API:",
-    "agents_qs2": "Добавьте URL сервера + ключ API Bearer в ваш MCP-клиент",
-    "agents_qs3": "Просите агента обработать файлы прямо в диалоге",
+    "agents_qs1": "Добавьте URL сервера в свой MCP-клиент — подключение работает без ключа.",
+    "agents_qs2": "Пусть агент вызовет бесплатный инструмент register и получит ключ, или создайте его самостоятельно:",
+    "agents_qs3": "Затем отправляйте Authorization: Bearer <ключ> и поручайте агенту обработку файлов.",
 
     "agents_mcp_conf": "Конфиг клиента",
     "agents_hdr_name": "Имя заголовка",
@@ -1443,7 +1441,7 @@ SERVER_I18N = {
         "pub_param_key_req": "Требуется ключ",
         "tool_search_ph": "Поиск…",
         "tool_search_none": "Ничего не найдено",
-        "agents_mcp_intro": "518.PLUS предоставляет стандартный MCP-сервер (Streamable HTTP). Настройте один раз в любом MCP-клиенте — и агент вызовет все файловые инструменты 518: оплата за вызов, при сбое возврат.",
+        "agents_mcp_intro": "Инструменты оплачиваются за вызов по цене, указанной в их описании, — вызов списывает кредиты сразу при запуске, без подтверждения, а неудачные вызовы возвращаются автоматически. Кредиты пополняет владелец аккаунта на /pricing.",
 
         "mytools_err_bad_label": "Неверное имя (1-40 символов)",
         "mytools_err_bad_url": "Неверный URL",
@@ -1483,7 +1481,7 @@ SERVER_I18N = {
         "nav_ai": "Подключить ИИ",
 
         "agents_mcp_h": "MCP-сервер",
-        "agents_mcp_desc": "Добавьте этот URL в свой MCP-клиент. Те же инструменты, та же оплата по использованию.",
+        "agents_mcp_desc": "Подключите любой MCP-клиент: оплата за вызов, цена указана у каждого инструмента, неудачи возвращаются автоматически.",
         "active": "Активен",
         "print_loading": "Подготовка страниц…",
         "print_btn": "Печать",
@@ -1720,8 +1718,7 @@ SERVER_I18N = {
         "err_unexpected": "Что-то пошло не так, попробуйте снова",
         "err_too_many_attempts": "Слишком много попыток, попробуйте позже",
 # B4 mcp closure
-        "agents_key_prefix": "(начинается с fsk_)",
-        "agents_no_key": "Ещё нет ключа? Добавьте только URL сервера — агент вызовет бесплатный инструмент register, зарегистрируется и получит ключ.",
+        "agents_header_note": "Ещё нет ключа? Сначала подключитесь без этой строки, затем получите ключ через register.",
         "agents_key_note": "Замените <key> в примерах ниже на свой ключ API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Этот срок доставки недоступен на текущем тарифе",
@@ -2012,9 +2009,9 @@ SERVER_I18N = {
     "credits_prices": "أسعار الأدوات",
     "credits_per_call": "رصيد لكل استخدام",
     "agents_qs": "البداية السريعة",
-    "agents_qs1": "أنشئ مفتاح API أولاً:",
-    "agents_qs2": "أضف عنوان URL للخادم + مفتاح API بنوع Bearer في عميل MCP",
-    "agents_qs3": "اطلب من وكيلك معالجة ملفاتك في المحادثة مباشرة",
+    "agents_qs1": "أضف عنوان URL للخادم في عميل MCP — يتصل دون مفتاح.",
+    "agents_qs2": "اطلب من وكيلك استدعاء أداة register المجانية للحصول على مفتاح، أو أنشئ مفتاحًا بنفسك:",
+    "agents_qs3": "ثم أرسل Authorization: Bearer <مفتاح> ودع وكيلك يعالج الملفات مباشرة.",
 
     "agents_mcp_conf": "إعداد العميل",
     "agents_hdr_name": "اسم الترويسة",
@@ -2069,7 +2066,7 @@ SERVER_I18N = {
         "pub_param_key_req": "مفتاح المعامل مطلوب",
         "tool_search_ph": "بحث…",
         "tool_search_none": "لا توجد أدوات مطابقة",
-        "agents_mcp_intro": "يوفر 518.PLUS خادم MCP قياسيًا (Streamable HTTP). اضبطه مرة واحدة في أي عميل MCP ليستدعي وكيلك جميع أدوات ملفات 518 — محاسبة لكل استدعاء واسترداد عند الفشل.",
+        "agents_mcp_intro": "تُحاسب الأدوات لكل استدعاء بالسعر المذكور في وصف كل أداة — يُخصم المبلغ عند التشغيل دون خطوة تأكيد، وتُسترد قيمة الاستدعاءات الفاشلة تلقائيًا. يشحن مالك الحساب الرصيد في /pricing.",
 
         "mytools_err_bad_label": "اسم غير صالح (1-40 حرفًا)",
         "mytools_err_bad_url": "رابط غير صالح",
@@ -2109,7 +2106,7 @@ SERVER_I18N = {
         "nav_ai": "اربط الذكاء الاصطناعي",
 
         "agents_mcp_h": "خادم MCP",
-        "agents_mcp_desc": "أضف هذا الرابط إلى عميل MCP. نفس الأدوات ونفس الدفع حسب الاستخدام.",
+        "agents_mcp_desc": "اربط أي عميل MCP: محاسبة لكل استدعاء، السعر مذكور مع كل أداة، والفشل يُسترد تلقائيًا.",
         "active": "نشط",
         "print_loading": "جارٍ تحضير الصفحات…",
         "print_btn": "طباعة",
@@ -2346,8 +2343,7 @@ SERVER_I18N = {
         "err_unexpected": "حدث خطأ ما، حاول مرة أخرى",
         "err_too_many_attempts": "محاولات كثيرة جداً، حاول لاحقاً",
 # B4 mcp closure
-        "agents_key_prefix": "(يبدأ بـ fsk_)",
-        "agents_no_key": "لا تملك مفتاحًا بعد؟ أضف عنوان الخادم فقط — يستدعي وكيلك أداة register المجانية للتسجيل والحصول على مفتاحه.",
+        "agents_header_note": "لا مفتاح بعد؟ اتصل أولًا بدون هذا السطر، ثم احصل على مفتاح عبر register.",
         "agents_key_note": "استبدل <key> في المقتطفات أدناه بمفتاح API الخاص بك.",
 # B5 frontend closure
         "err_expiry_not_entitled": "مدة التسليم هذه غير متاحة في خطتك الحالية",
@@ -2637,9 +2633,9 @@ SERVER_I18N = {
     "credits_prices": "Tool-Preise",
     "credits_per_call": "Credits pro Aufruf",
     "agents_qs": "Schnellstart",
-    "agents_qs1": "Erstelle zuerst einen API-Schlüssel:",
-    "agents_qs2": "Füge die Server-URL + den Bearer-API-Schlüssel in deinem MCP-Client hinzu",
-    "agents_qs3": "Bitte deinen Agenten, Dateien direkt im Chat zu verarbeiten",
+    "agents_qs1": "Füge die Server-URL in deinem MCP-Client hinzu — die Verbindung funktioniert ohne Schlüssel.",
+    "agents_qs2": "Lass deinen Agenten das kostenlose Tool register aufrufen, um einen Schlüssel zu bekommen, oder erstelle selbst einen:",
+    "agents_qs3": "Sende danach Authorization: Bearer <Schlüssel> und lass deinen Agenten Dateien direkt verarbeiten.",
 
     "agents_mcp_conf": "Client-Konfig",
     "agents_hdr_name": "Header-Name",
@@ -2694,7 +2690,7 @@ SERVER_I18N = {
         "pub_param_key_req": "Parameterschlüssel erforderlich",
         "tool_search_ph": "Suchen…",
         "tool_search_none": "Kein Tool gefunden",
-        "agents_mcp_intro": "518.PLUS betreibt einen Standard-MCP-Server (Streamable HTTP). Einmal konfiguriert, ruft dein Agent alle 518-Dateitools auf — nutzungsbasiert, Fehlschläge werden erstattet.",
+        "agents_mcp_intro": "Tools werden pro Aufruf zum im Tool-Text genannten Preis abgerechnet — ein Aufruf wird beim Ausführen abgerechnet, ohne Bestätigungsschritt; fehlgeschlagene Aufrufe werden automatisch erstattet. Credits lädt der Kontoinhaber unter /pricing auf.",
 
         "mytools_err_bad_label": "Ungültiger Name (1-40 Zeichen)",
         "mytools_err_bad_url": "Ungültige URL",
@@ -2735,7 +2731,7 @@ SERVER_I18N = {
         "nav_ai": "KI anbinden",
 
         "agents_mcp_h": "MCP-Server",
-        "agents_mcp_desc": "Fügen Sie diese URL zu Ihrem MCP-Client hinzu. Gleiche Tools, gleiche nutzungsbasierte Abrechnung.",
+        "agents_mcp_desc": "Verbinde einen beliebigen MCP-Client: Abrechnung pro Aufruf, Preise pro Tool angegeben, Fehlschläge automatisch erstattet.",
         "active": "Aktiv",
         "print_loading": "Seiten werden vorbereitet…",
         "print_btn": "Drucken",
@@ -2972,8 +2968,7 @@ SERVER_I18N = {
         "err_unexpected": "Etwas ist schiefgelaufen, bitte erneut versuchen",
         "err_too_many_attempts": "Zu viele Versuche, bitte später erneut versuchen",
 # B4 mcp closure
-        "agents_key_prefix": "(beginnt mit fsk_)",
-        "agents_no_key": "Noch kein Schlüssel? Nur die Server-URL hinzufügen – dein Agent ruft das kostenlose Tool register auf, registriert sich und erhält seinen Schlüssel.",
+        "agents_header_note": "Noch kein Schlüssel? Verbinde dich zuerst ohne diese Zeile und hole dir dann einen mit register.",
         "agents_key_note": "Ersetze <key> in den Snippets unten durch deinen API-Schlüssel.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Diese Liefergültigkeit ist in Ihrem aktuellen Tarif nicht verfügbar",
@@ -3264,9 +3259,9 @@ SERVER_I18N = {
     "credits_prices": "Preços das ferramentas",
     "credits_per_call": "créditos por uso",
     "agents_qs": "Início rápido",
-    "agents_qs1": "Crie primeiro uma chave de API:",
-    "agents_qs2": "Adicione a URL do servidor + a chave de API Bearer no seu cliente MCP",
-    "agents_qs3": "Peça ao seu agente para processar arquivos na conversa",
+    "agents_qs1": "Adicione a URL do servidor no seu cliente MCP — conecta sem chave.",
+    "agents_qs2": "Peça ao seu agente para chamar a ferramenta gratuita register e obter uma chave, ou crie uma você mesmo:",
+    "agents_qs3": "Depois envie Authorization: Bearer <chave> e deixe seu agente processar arquivos direto na conversa.",
 
     "agents_mcp_conf": "Config do cliente",
     "agents_hdr_name": "Nome do header",
@@ -3321,7 +3316,7 @@ SERVER_I18N = {
         "pub_param_key_req": "Chave do parâmetro obrigatória",
         "tool_search_ph": "Buscar…",
         "tool_search_none": "Nenhuma ferramenta encontrada",
-        "agents_mcp_intro": "O 518.PLUS roda um servidor MCP padrão (Streamable HTTP). Configure uma vez em qualquer cliente MCP e seu agente chama todas as ferramentas de arquivo do 518 — cobrança por chamada, falhas reembolsadas.",
+        "agents_mcp_intro": "As ferramentas são cobradas por chamada pelo preço indicado na descrição de cada uma — a chamada é debitada quando executa, sem etapa de confirmação, e chamadas com falha são reembolsadas automaticamente. Os créditos são recarregados pelo dono da conta em /pricing.",
 
         "mytools_err_bad_label": "Nome inválido (1-40 caracteres)",
         "mytools_err_bad_url": "URL inválida",
@@ -3361,7 +3356,7 @@ SERVER_I18N = {
         "nav_ai": "Conectar IA",
 
         "agents_mcp_h": "Servidor MCP",
-        "agents_mcp_desc": "Adicione esta URL ao seu cliente MCP. Mesmas ferramentas, mesma cobrança por uso.",
+        "agents_mcp_desc": "Conecte qualquer cliente MCP: cobrança por chamada, preço indicado por ferramenta, falhas reembolsadas automaticamente.",
         "active": "Ativo",
         "print_loading": "Preparando páginas…",
         "print_btn": "Imprimir",
@@ -3598,8 +3593,7 @@ SERVER_I18N = {
         "err_unexpected": "Algo deu errado, tente novamente",
         "err_too_many_attempts": "Muitas tentativas, tente novamente mais tarde",
 # B4 mcp closure
-        "agents_key_prefix": "(começa com fsk_)",
-        "agents_no_key": "Ainda sem chave? Adicione só a URL do servidor — seu agente chama a ferramenta gratuita register para se cadastrar e obter a chave.",
+        "agents_header_note": "Ainda sem chave? Conecte primeiro sem esta linha e depois pegue uma com register.",
         "agents_key_note": "Substitua <key> nos trechos abaixo pela sua chave de API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Este prazo de entrega não está disponível no seu plano atual",
@@ -3890,9 +3884,9 @@ SERVER_I18N = {
     "credits_prices": "ツール単価",
     "credits_per_call": "クレジット/回",
     "agents_qs": "クイックスタート",
-    "agents_qs1": "まず API キーを作成します：",
-    "agents_qs2": "MCP クライアントにサーバー URL と Bearer API キーを追加します",
-    "agents_qs3": "会話の中でエージェントにファイル処理を依頼",
+    "agents_qs1": "MCP クライアントにサーバー URL を追加します — キーなしで接続できます。",
+    "agents_qs2": "エージェントに無料の register ツールを呼び出してキーを取得させるか、自分で作成してください：",
+    "agents_qs3": "そのあとは Authorization: Bearer <キー> を送り、会話の中でエージェントにファイル処理を任せます。",
 
     "agents_mcp_conf": "クライアント設定",
     "agents_hdr_name": "ヘッダー名",
@@ -3947,7 +3941,7 @@ SERVER_I18N = {
         "pub_param_key_req": "パラメータキーは必須",
         "tool_search_ph": "検索…",
         "tool_search_none": "該当するツールがありません",
-        "agents_mcp_intro": "518.PLUS は標準 MCP サーバー（Streamable HTTP）を提供します。任意の MCP クライアントで一度設定すれば、エージェントが 518 の全ファイルツールを呼び出せます — 呼び出しごとの課金、失敗時は返金。",
+        "agents_mcp_intro": "ツールは各ツールの説明に記載された価格で呼び出しごとに課金されます — 実行時に確認なしで課金され、失敗した呼び出しは自動的に返金されます。クレジットはアカウント所有者が /pricing でチャージします。",
 
         "mytools_err_bad_label": "無効な名前（1-40文字）",
         "mytools_err_bad_url": "無効なURL",
@@ -3987,7 +3981,7 @@ SERVER_I18N = {
         "nav_ai": "AI をつなぐ",
 
         "agents_mcp_h": "MCP サーバー",
-        "agents_mcp_desc": "MCP クライアントにこの URL を追加してください。同じツール、同じ従量課金。",
+        "agents_mcp_desc": "どの MCP クライアントでも接続できます：呼び出しごとの課金、ツールごとに価格明記、失敗時は自動返金。",
         "active": "有効",
         "print_loading": "ページを準備しています…",
         "print_btn": "印刷",
@@ -4224,8 +4218,7 @@ SERVER_I18N = {
         "err_unexpected": "問題が発生しました。もう一度お試しください",
         "err_too_many_attempts": "試行回数が多すぎます。しばらくしてから再度お試しください",
 # B4 mcp closure
-        "agents_key_prefix": "（fsk_ で始まる）",
-        "agents_no_key": "キーがなくても接続できます：サーバー URL だけを追加し、エージェントが無料の register ツールで登録してキーを取得します。",
+        "agents_header_note": "キーがまだなければ、まずこの行を外して接続し、register で取得してください。",
         "agents_key_note": "以下の設定の <key> をあなたの API キーに置き換えてください。",
 # B5 frontend closure
         "err_expiry_not_entitled": "この配送有効期限は現在のプランでは利用できません",
@@ -4515,9 +4508,9 @@ SERVER_I18N = {
     "credits_prices": "工具定价",
     "credits_per_call": "积分/次",
     "agents_qs": "快速开始",
-    "agents_qs1": "先创建一个 API 密钥：",
-    "agents_qs2": "在 MCP 客户端填入服务端 URL + Bearer API 密钥",
-    "agents_qs3": "在对话里直接让 Agent 处理文件（压缩 / 转换 / 合并…）",
+    "agents_qs1": "在 MCP 客户端添加服务端 URL——无需密钥即可连接。",
+    "agents_qs2": "让 Agent 调用免费的 register 工具获取密钥，或自己创建：",
+    "agents_qs3": "之后带上 Authorization: Bearer <密钥>，直接让 Agent 处理文件。",
 
     "agents_mcp_conf": "客户端配置",
     "agents_hdr_name": "Header 名称",
@@ -4572,7 +4565,7 @@ SERVER_I18N = {
         "pub_param_key_req": "参数键必填",
         "tool_search_ph": "搜索…",
         "tool_search_none": "没有匹配的工具",
-        "agents_mcp_intro": "518.PLUS 提供标准 MCP 服务端（Streamable HTTP）。在任意 MCP 客户端配置一次，你的 Agent 即可调用 518 全部文件处理工具——按次计费，失败自动退款。",
+        "agents_mcp_intro": "工具按次计费，价格写在各工具的说明中——调用即扣费、无确认步骤，失败自动退款。积分由账户所有者在 /pricing 充值。",
 
         "mytools_err_bad_label": "名称无效（1-40 字符）",
         "mytools_err_bad_url": "URL 无效",
@@ -4613,7 +4606,7 @@ SERVER_I18N = {
         "nav_ai": "接入 AI",
 
         "agents_mcp_h": "MCP 服务器",
-        "agents_mcp_desc": "在 MCP 客户端添加此地址即可。同样的工具、同样的按量计费。",
+        "agents_mcp_desc": "任意 MCP 客户端均可接入：按次计费、价格见各工具说明、失败自动退款。",
         "active": "生效中",
         "print_loading": "正在准备打印页…",
         "print_btn": "打印",
@@ -4850,8 +4843,7 @@ SERVER_I18N = {
         "err_unexpected": "操作失败，请重试",
         "err_too_many_attempts": "尝试次数过多，请稍后再试",
 # B4 mcp closure
-        "agents_key_prefix": "（fsk_ 开头）",
-        "agents_no_key": "没有密钥也能先接入：只填服务端 URL，Agent 调用免费的 register 工具即可自助注册并拿到密钥。",
+        "agents_header_note": "还没有密钥？可先删掉此行直接连接，再用 register 获取。",
         "agents_key_note": "将下方配置中的 <key> 替换为你的 API 密钥。",
 # B5 frontend closure
         "err_expiry_not_entitled": "当前会员不支持该有效期档位",
@@ -5142,9 +5134,9 @@ SERVER_I18N = {
     "credits_prices": "Precios de herramientas",
     "credits_per_call": "créditos por uso",
     "agents_qs": "Inicio rápido",
-    "agents_qs1": "Crea primero una clave API:",
-    "agents_qs2": "Añade la URL del servidor + la clave API Bearer en tu cliente MCP",
-    "agents_qs3": "Pide a tu agente que procese archivos en la conversación",
+    "agents_qs1": "Añade la URL del servidor en tu cliente MCP — conecta sin clave.",
+    "agents_qs2": "Pide a tu agente que llame a la herramienta gratuita register para obtener una clave, o crea una tú mismo:",
+    "agents_qs3": "Después envía Authorization: Bearer <clave> y deja que tu agente procese archivos en la conversación.",
 
     "agents_mcp_conf": "Config del cliente",
     "agents_hdr_name": "Nombre del header",
@@ -5199,7 +5191,7 @@ SERVER_I18N = {
         "pub_param_key_req": "Se requiere la clave",
         "tool_search_ph": "Buscar…",
         "tool_search_none": "No se encontraron herramientas",
-        "agents_mcp_intro": "518.PLUS ofrece un servidor MCP estándar (Streamable HTTP). Configúralo una vez en cualquier cliente MCP y tu agente llama a todas las herramientas de archivos de 518 — pago por llamada, fallos reembolsados.",
+        "agents_mcp_intro": "Las herramientas se cobran por llamada al precio indicado en su descripción — la llamada se cobra al ejecutarse, sin paso de confirmación, y las llamadas fallidas se reembolsan automáticamente. El propietario de la cuenta recarga créditos en /pricing.",
 
         "mytools_err_bad_label": "Nombre inválido (1-40 caracteres)",
         "mytools_err_bad_url": "URL no válida",
@@ -5239,7 +5231,7 @@ SERVER_I18N = {
         "nav_ai": "Conectar IA",
 
         "agents_mcp_h": "Servidor MCP",
-        "agents_mcp_desc": "Añada esta URL a su cliente MCP. Mismas herramientas, mismo pago por uso.",
+        "agents_mcp_desc": "Conecta cualquier cliente MCP: cobro por llamada, precio indicado en cada herramienta, fallos reembolsados automáticamente.",
         "active": "Activo",
         "print_loading": "Preparando páginas…",
         "print_btn": "Imprimir",
@@ -5476,8 +5468,7 @@ SERVER_I18N = {
         "err_unexpected": "Algo salió mal, inténtalo de nuevo",
         "err_too_many_attempts": "Demasiados intentos, inténtalo más tarde",
 # B4 mcp closure
-        "agents_key_prefix": "(empieza por fsk_)",
-        "agents_no_key": "¿Aún sin clave? Añade solo la URL del servidor: tu agente usa la herramienta gratuita register para registrarse y obtener su clave.",
+        "agents_header_note": "¿Aún sin clave? Conéctate primero sin esta línea y consigue una con register.",
         "agents_key_note": "Reemplaza <key> en los fragmentos de abajo por tu clave API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Esta validez de entrega no está disponible en tu plan actual",
@@ -5767,9 +5758,9 @@ SERVER_I18N = {
     "credits_prices": "Tool pricing",
     "credits_per_call": "credits per call",
     "agents_qs": "Quick start",
-    "agents_qs1": "Create an API key first:",
-    "agents_qs2": "Add the server URL + Bearer API key in your MCP client",
-    "agents_qs3": "Ask your agent to process files right in the conversation",
+    "agents_qs1": "Add the server URL in your MCP client — it connects without a key.",
+    "agents_qs2": "Have your agent call the free register tool to get a key, or create one yourself:",
+    "agents_qs3": "Then send Authorization: Bearer <key> and let your agent handle files right in the conversation.",
 
     "agents_mcp_conf": "Client config",
     "agents_hdr_name": "Header name",
@@ -5824,7 +5815,7 @@ SERVER_I18N = {
         "pub_param_key_req": "Parameter key required",
         "tool_search_ph": "Search…",
         "tool_search_none": "No matching tools",
-        "agents_mcp_intro": "518.PLUS runs a standard MCP server (Streamable HTTP). Configure it once in any MCP client and your agent can call every 518 file tool — metered per call, failed calls refunded.",
+        "agents_mcp_intro": "Tools are billed per call at the price stated in each tool's description — a call is charged when it runs, with no confirmation step, and failed calls are refunded automatically. Credits are topped up by the account owner at /pricing.",
 
         "mytools_err_bad_label": "Invalid name (1-40 chars)",
         "mytools_err_bad_url": "Invalid URL",
@@ -5865,7 +5856,7 @@ SERVER_I18N = {
         "nav_ai": "Connect AI",
 
         "agents_mcp_h": "MCP Server",
-        "agents_mcp_desc": "Add this URL to your MCP client. Same tools, same usage-based billing.",
+        "agents_mcp_desc": "Connect any MCP client: per-call billing, prices stated per tool, failed calls refunded automatically.",
         "active": "Active",
         "print_loading": "Preparing pages…",
         "print_btn": "Print",
@@ -6102,8 +6093,7 @@ SERVER_I18N = {
         "err_unexpected": "Something went wrong, please try again",
         "err_too_many_attempts": "Too many attempts, please try again later",
 # B4 mcp closure
-        "agents_key_prefix": "(starts with fsk_)",
-        "agents_no_key": "No key yet? Add just the server URL — your agent calls the free register tool to sign up and get its key.",
+        "agents_header_note": "No key yet? Connect without this line first, then get one with register.",
         "agents_key_note": "Replace <key> in the snippets below with your API key.",
 # B5 frontend closure
         "err_expiry_not_entitled": "This delivery expiry is not available on your current plan",
