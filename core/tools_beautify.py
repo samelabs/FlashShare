@@ -25,32 +25,27 @@ Theme names are scenario-driven (what users share on social media):
 import io
 import math
 import random
-from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
 from tools import register, ToolError
 
 MAX_DIM = 1400
-RADIUS = 16
-PADDING = 60
-SHADOW_BLUR = 30
-SHADOW_ALPHA = 130
-SHADOW_OFFSET = 6
+SHADOW_ALPHA = 120
 
-# Bundled caption font (Noto Sans SC, OFL — static/fonts/NotoSansSC-OFL.txt):
-# CJK + Latin + @ in one face, shipped in-repo so every environment
-# (CI / prod / local) renders identical bands with zero system fonts.
-_FONT_PATH = str(Path(__file__).resolve().parent.parent
-                 / "static" / "fonts" / "NotoSansSC-Regular.otf")
-_font_cache: dict[int, ImageFont.FreeTypeFont] = {}
-
-
-def _caption_font(size: int) -> ImageFont.FreeTypeFont:
-    f = _font_cache.get(size)
-    if f is None:
-        f = _font_cache[size] = ImageFont.truetype(_FONT_PATH, size)
-    return f
+# Social canvas presets: the export size each platform expects (fixed
+# pixels, so a post never gets re-cropped). "original" keeps the shot's
+# own shape and pads it proportionally.
+CANVAS = {
+    "1:1": (1080, 1080),    # square feed post
+    "4:5": (1080, 1350),    # portrait feed post
+    "3:4": (1080, 1440),    # portrait note (Xiaohongshu)
+    "9:16": (1080, 1920),   # story / short video cover
+    "16:9": (1600, 900),    # landscape link post (X)
+}
+CANVAS_MARGIN = 0.08        # share of the short side kept free on a canvas
+ORIGINAL_PAD = 0.07         # share of the long side padded around "original"
+MAX_UPSCALE = 2.0           # small shots grow at most 2x to fill a canvas
 
 
 # ── Background generators ──────────────────────────────────
@@ -237,22 +232,6 @@ def _wallpaper(size, src_img):
     return blurred
 
 
-def _palette_bg(size, src_img):
-    """Diagonal gradient from the image's own two dominant colors —
-    every shot gets a background derived from itself. A flat-color
-    source yields one dominant color; the second stop is that color
-    lifted, keeping the gradient subtle instead of crashing."""
-    small = src_img.convert("RGB")
-    small.thumbnail((64, 64))
-    pal = small.quantize(colors=4).getpalette() or []
-    cands = [tuple(pal[i:i + 3]) for i in range(0, min(len(pal), 12), 3)
-             if len(pal[i:i + 3]) == 3]
-    c1 = cands[0] if cands else (235, 238, 242)
-    c2 = next((c for c in cands[1:] if c != c1),
-              tuple(min(255, v + 26) for v in c1))
-    return _diagonal(size, [c1, c2])
-
-
 def _noise_texture(size, base_color, noise_sigma=50, blend_alpha=0.1):
     """Frosted glass / matte noise texture.
 
@@ -298,10 +277,6 @@ PRESETS = {
     # ── Source-based ──
     "blur":      {"bg": lambda s, i: _wallpaper(s, i)},
 
-    # ── Palette-derived: the image's own dominant colors become a
-    # diagonal gradient — every shot gets a background that matches it ──
-    "auto":      {"bg": lambda s, i: _palette_bg(s, i)},
-
     # ── Noise texture ──
     "frost":     {"bg": lambda s, i: _noise_texture(s, (235, 238, 242), noise_sigma=60, blend_alpha=0.15)},
 }
@@ -310,7 +285,10 @@ PRESETS = {
 def beautify_handler(tool_input, params):
     """Wrap a screenshot in a styled container.
 
-    Pipeline: decode → background → shadow (1/2 scale) → rounded mask → composite → PNG.
+    Pipeline: decode → canvas geometry → background → shadow (1/2
+    scale) → rounded mask → composite → PNG. Padding, corner radius and
+    shadow all scale with the placed image, so a small shot and a large
+    one read the same.
     """
     # ── 1. Format validation ──
     ct = tool_input.get("content_type", "")
@@ -321,106 +299,57 @@ def beautify_handler(tool_input, params):
     # enforce_params_decl is the sole params authority: missing →
     # declaration default injected, illegal enum → 422 before the handler
     # runs. Direct canonical read; fail loud on any bypass.
-    preset = params["preset"]
-    p = PRESETS[preset]
+    p = PRESETS[params["preset"]]
     aspect = params["aspect"]
-    caption = str(params["caption"]).strip()[:200]
-    mention = str(params["mention"]).strip()[:64]
-    if mention and not mention.startswith("@"):
-        mention = "@" + mention
 
     # ── 3. Decode + orient + downscale ──
     img = Image.open(tool_input["stream"])
     img = ImageOps.exif_transpose(img).convert("RGB")
     if max(img.size) > MAX_DIM:
         img.thumbnail((MAX_DIM, MAX_DIM), Image.LANCZOS)
+    # tiny-image guard: a 1px image degenerates the rounded-rect coords
+    if img.width < 4 or img.height < 4:
+        img = img.resize((max(img.width, 4), max(img.height, 4)), Image.LANCZOS)
+
+    # ── 4. Canvas geometry ──
+    if aspect in CANVAS:
+        sw, sh = CANVAS[aspect]
+        margin = round(min(sw, sh) * CANVAS_MARGIN)
+        scale = min((sw - 2 * margin) / img.width,
+                    (sh - 2 * margin) / img.height, MAX_UPSCALE)
+        if abs(scale - 1) > 0.01:
+            img = img.resize((max(4, round(img.width * scale)),
+                              max(4, round(img.height * scale))), Image.LANCZOS)
+        gap = margin
+    else:
+        gap = max(32, round(max(img.size) * ORIGINAL_PAD))
+        sw, sh = img.width + 2 * gap, img.height + 2 * gap
     w, h = img.size
+    ix, iy = (sw - w) // 2, (sh - h) // 2
+    radius = min(32, max(8, round(min(w, h) * 0.02)), w // 2, h // 2)
+    blur = max(8, round(gap * 0.45))
+    offset = max(2, round(blur * 0.25))
 
-    # ── 3.5 Tiny-image guard (冒烟发现: 1px 图使 rounded rect 坐标退化) ──
-    # 与 privacy 的 tw=max(1,...) 同约定: 极小图先放大到可渲染底尺。
-    if w < 4 or h < 4:
-        w2, h2 = max(w, 4), max(h, 4)
-        img = img.resize((w2, h2), Image.LANCZOS)
-        w, h = w2, h2
-
-    # ── 4. Canvas geometry: caption band + optional target ratio ──
-    # The band reserves space under the image for the texts; a target
-    # ratio enlarges the canvas (contain) so the whole shot stays visible.
-    pad = PADDING
-    band = 0
-    if caption or mention:
-        band = pad + (44 if caption else 0) + (34 if mention else 0)
-    sw, sh = w + pad * 2, h + pad * 2 + band
-    if aspect != "original":
-        ratio = {"1:1": 1.0, "3:4": 3 / 4, "9:16": 9 / 16}[aspect]
-        if sw / sh < ratio:
-            sw = int(sh * ratio)
-        else:
-            sh = int(sw / ratio)
-    ix, iy = (sw - w) // 2, (sh - band - h) // 2
-
-    # ── 4.5 Generate background ──
+    # ── 5. Background ──
     bg = p["bg"]((sw, sh), img)
 
-    # ── 5. Shadow at 1/2 scale (performance), positioned at the image ──
-    half_sw, half_sh = sw // 2, sh // 2
-    half_ix, half_iy = ix // 2, iy // 2
-    half_w, half_h = w // 2, h // 2
-    half_offset = SHADOW_OFFSET // 2
-    half_radius = max(1, RADIUS // 2)
-    half_blur = max(1, SHADOW_BLUR // 2)
-
-    shadow_half = Image.new("RGBA", (half_sw, half_sh), (0, 0, 0, 0))
+    # ── 6. Shadow at 1/2 scale (performance), positioned under the image ──
+    shadow_half = Image.new("RGBA", (sw // 2, sh // 2), (0, 0, 0, 0))
     ImageDraw.Draw(shadow_half).rounded_rectangle(
-        [half_ix, half_iy + half_offset,
-         half_ix + half_w - 1, half_iy + half_h - 1 + half_offset],
-        radius=min(half_radius, half_w // 2, half_h // 2),
-        fill=(0, 0, 0, SHADOW_ALPHA))
-    shadow_half = shadow_half.filter(ImageFilter.GaussianBlur(radius=half_blur))
+        [ix // 2, (iy + offset) // 2,
+         (ix + w) // 2 - 1, (iy + h + offset) // 2 - 1],
+        radius=max(1, radius // 2), fill=(0, 0, 0, SHADOW_ALPHA))
+    shadow_half = shadow_half.filter(ImageFilter.GaussianBlur(radius=max(1, blur // 2)))
     shadow = shadow_half.resize((sw, sh), Image.LANCZOS)
 
-    # ── 6. Rounded mask (radius 钳制: 不超过半边长) ──
+    # ── 7. Rounded mask + composite ──
     mask = Image.new("L", (w, h), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, w - 1, h - 1], radius=min(RADIUS, w // 2, h // 2), fill=255)
-
-    # ── 7. Composite: shadow + image on background ──
-    canvas = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
-    canvas.paste(shadow, (0, 0), shadow)
-    canvas.paste(img, (ix, iy + SHADOW_OFFSET), mask)
-
-    bg_rgba = bg.convert("RGBA")
-    bg_rgba.alpha_composite(canvas)
-
-    # ── 7.5 Caption band: caption (autoscaled to fit) + weaker mention.
-    # Text color follows the band area's luminance so it stays readable
-    # on every preset, light or dark. ──
-    if band:
-        out = bg_rgba.convert("RGB")
-        draw = ImageDraw.Draw(out)
-        band_px = out.crop((0, sh - band, sw, sh)).resize((1, 1))
-        r, g, b = band_px.getpixel((0, 0))
-        lum = 0.299 * r + 0.587 * g + 0.114 * b
-        color = (52, 52, 60) if lum > 150 else (244, 244, 248)
-        ty = iy + h + pad // 2
-        if caption:
-            size = max(18, sw // 28)
-            fnt = _caption_font(size)
-            while size > 14 and draw.textlength(caption, font=fnt) > sw * 0.86:
-                size -= 2
-                fnt = _caption_font(size)
-            draw.text((sw // 2, ty + 22), caption, font=fnt,
-                      fill=color, anchor="mm")
-            ty += 44
-        if mention:
-            size = max(14, sw // 40)
-            fnt = _caption_font(size)
-            draw.text((sw // 2, ty + 17), mention, font=fnt,
-                      fill=color, anchor="mm")
-
-    # ── 8. Flatten to RGB + output ──
-    if not band:
-        out = bg_rgba.convert("RGB")
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1],
+                                           radius=radius, fill=255)
+    out = bg.convert("RGBA")
+    out.alpha_composite(shadow)
+    out.paste(img, (ix, iy), mask)
+    out = out.convert("RGB")
 
     buf = io.BytesIO()
     # optimize=True costs ~500ms per image to save ~3KB (measured on 920x720)
@@ -447,7 +376,6 @@ def beautify_handler(tool_input, params):
 # ── Registration ───────────────────────────────────────────
 
 _PRESET_LABELS = {
-    "auto":      {"en": "Auto",      "zh": "自动配色", "ja": "自動",       "ko": "자동",      "es": "Auto",      "ar": "تلقائي",   "de": "Auto",      "ru": "Авто",      "pt": "Auto",      "fr": "Auto"},
     "pure":      {"en": "Pure",      "zh": "纯白",   "ja": "ピュア",     "ko": "퓨어",      "es": "Puro",      "ar": "نقي",      "de": "Rein",      "ru": "Чистый",    "pt": "Puro",      "fr": "Pur"},
     "carbon":    {"en": "Carbon",    "zh": "暗黑",   "ja": "カーボン",   "ko": "카본",      "es": "Carbón",    "ar": "فحمي",     "de": "Karbon",    "ru": "Карбон",    "pt": "Carbono",   "fr": "Carbone"},
     "dawn":      {"en": "Dawn",      "zh": "晨光",   "ja": "朝光",       "ko": "새벽",      "es": "Alba",      "ar": "فجر",      "de": "Morgendämmerung", "ru": "Рассвет", "pt": "Amanhecer", "fr": "Aube"},
@@ -498,28 +426,10 @@ register(
                                              "es": "Original", "ar": "الأصلي", "de": "Original",
                                              "ru": "Оригинал", "pt": "Original", "fr": "Original"}},
              {"value": "1:1", "label": "1:1"},
+             {"value": "4:5", "label": "4:5"},
              {"value": "3:4", "label": "3:4"},
-             {"value": "9:16", "label": "9:16"}],
+             {"value": "9:16", "label": "9:16"},
+             {"value": "16:9", "label": "16:9"}],
          "default": "original"},
-        {"key": "caption", "type": "text",
-         "label": {"en": "Caption", "zh": "文案", "ja": "キャプション", "ko": "캡션",
-                   "es": "Texto", "ar": "نص", "de": "Text", "ru": "Подпись",
-                   "pt": "Texto", "fr": "Légende"},
-         "placeholder": {"en": "Watermark text (≤200 chars)", "zh": "水印文案（≤200 字）",
-                         "ja": "透かしテキスト（200字以内）", "ko": "워터마크 텍스트(200자 이하)",
-                         "es": "Texto de marca (≤200)", "ar": "نص العلامة (≤200)",
-                         "de": "Wasserzeichentext (≤200)", "ru": "Текст водяного знака (≤200)",
-                         "pt": "Texto da marca (≤200)", "fr": "Texte du filigrane (≤200)"},
-         "default": ""},
-        {"key": "mention", "type": "text",
-         "label": {"en": "Mention", "zh": "@提及", "ja": "@メンション", "ko": "@멘션",
-                   "es": "@Mención", "ar": "@إشارة", "de": "@Erwähnung", "ru": "@Упоминание",
-                   "pt": "@Menção", "fr": "@Mention"},
-         "placeholder": {"en": "Platform @username (≤64 chars)", "zh": "平台 @用户名（≤64 字）",
-                         "ja": "プラットフォームの@ユーザー名（64字以内）", "ko": "플랫폼 @사용자명(64자 이하)",
-                         "es": "@usuario de la plataforma (≤64)", "ar": "@اسم المستخدم في المنصة (≤64)",
-                         "de": "@Benutzername der Plattform (≤64)", "ru": "@имя пользователя платформы (≤64)",
-                         "pt": "@usuário da plataforma (≤64)", "fr": "@utilisateur de la plateforme (≤64)"},
-         "default": ""},
     ],
 )
