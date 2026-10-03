@@ -116,6 +116,38 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     "Something went wrong. Please try again.",
     "unknown tool_failed → canonical generic failure text, never raw code");
 
+  // 3b. server error codes with dedicated i18n text resolve through the
+  //     same boundary (never generic, never raw); {n} fills from the
+  //     injected limits projection and strips cleanly without it
+  {
+    const codes = {
+      err_upload_in_progress: "An upload is settling — retry the same action.",
+      param_too_long: "A text parameter is longer than {n} characters.",
+      err_metering_failed: "Billing could not be completed.",
+      err_upload_failed: "The upload failed.",
+      err_ingress_unresolved: "A file could not be resolved.",
+      err_items_shape: "Malformed result.",
+      err_items_too_large: "Result too large.",
+      err_items_too_many: "Too many items.",
+    };
+    const prevT = sandbox.t;
+    sandbox.t = (k) => codes[k] || prevT(k);
+    sandbox.window.t = sandbox.t;
+    sandbox.__LIMITS__ = { textParamMax: 100000 };
+    for (const [code, text] of Object.entries(codes)) {
+      const expected = code === "param_too_long"
+        ? "A text parameter is longer than 100000 characters."
+        : text;
+      assert.strictEqual(sandbox.window._errm(code), expected,
+        `_errm(${code}) maps to its localized text`);
+    }
+    delete sandbox.__LIMITS__;
+    assert.strictEqual(sandbox.window._errm("param_too_long"),
+      "A text parameter is longer than characters.",
+      "no projection → {n} stripped from the sentence");
+    sandbox.t = prevT; sandbox.window.t = prevT;
+  }
+
   // 4. static source bans: no raw window.t("...") inside HTML strings in
   //    detail.js (VIS-003), no native confirm( in profile/tokens/footer
   const detail = fs.readFileSync(path.join(REPO, "static", "pages", "detail.js"), "utf8");

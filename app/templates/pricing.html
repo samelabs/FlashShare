@@ -52,7 +52,7 @@
       </div>
       {% endfor %}
     </div>
-    {% if plans %}<p class="pr-note" data-i18n="sub_note">{{ texts.sub_note }}</p>{% endif %}
+    {% if plans and sub_note_d %}<p class="pr-note">{{ texts.sub_note|replace('{d}', sub_note_d) }}</p>{% endif %}
 
     {% if packages %}
     <h2 class="pr-h2" data-i18n="pricing_packs_title">{{ texts.pricing_packs_title }}</h2>

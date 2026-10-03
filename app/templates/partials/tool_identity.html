@@ -25,8 +25,8 @@ icon/fallback/label/desc/author/cost 全部经此表达 — surface 模板禁止
   </span>
   <p class="tc-desc">{% if t.desc %}{{ t.desc | lt(lang) }}{% endif %}</p>
   <div class="ft2">
-    <span class="tag">{% if t.files_min == 0 and t.files_max == 0 %}{{ texts['out_kind_text'] }}{% elif t.files_min == t.files_max and t.files_max == 1 %}{{ texts.n_files_one }}{% else %}{{ texts.files_window_short.format(min=t.files_min, max=t.files_max) }}{% endif %}</span>
-    {% if t.cost %}<span class="tag cost">{{ t.cost }} {{ texts.credits_short }}</span>{% else %}<span class="tag free">{{ texts.free }}</span>{% endif %}
+    <span class="tag" {% if t.files_min == 0 and t.files_max == 0 %}data-i18n="out_kind_text"{% elif t.files_min == t.files_max and t.files_max == 1 %}data-i18n="n_files_one"{% endif %}>{% if t.files_min == 0 and t.files_max == 0 %}{{ texts['out_kind_text'] }}{% elif t.files_min == t.files_max and t.files_max == 1 %}{{ texts.n_files_one }}{% else %}{{ texts.files_window_short.format(min=t.files_min, max=t.files_max) }}{% endif %}</span>
+    {% if t.cost %}<span class="tag cost">{{ t.cost }} {{ texts.credits_short }}</span>{% else %}<span class="tag free" data-i18n="free">{{ texts.free }}</span>{% endif %}
     {% if t.owner_handle %}<span class="by"><span class="by-name">@{{ t.owner_handle }}</span>{% if t.owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</span>{% endif %}
     {%- if caller is defined %}{{ caller() }}{% endif -%}
   </div>

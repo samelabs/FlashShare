@@ -20,12 +20,12 @@
         {% if tool.cost %}
         <span class="tag tag-brand">{{ tool.cost }} {{ texts.credits_short }}</span>
         {% else %}
-        <span class="tag tag-success">{{ texts.free }}</span>
+        <span class="tag tag-success" data-i18n="free">{{ texts.free }}</span>
         {% endif %}
         {% if tool.files_min == 0 and tool.files_max == 0 %}
-        <span class="tag">{{ texts['out_kind_text'] }}</span>
+        <span class="tag" data-i18n="out_kind_text">{{ texts['out_kind_text'] }}</span>
         {% elif tool.files_min == tool.files_max and tool.files_min == 1 %}
-        <span class="tag">{{ texts.n_files_one }}</span>
+        <span class="tag" data-i18n="n_files_one">{{ texts.n_files_one }}</span>
         {% else %}
         <span class="tag">{{ texts.files_window_short.format(min=tool.files_min, max=tool.files_max) }}</span>
         {% endif %}

@@ -66,9 +66,9 @@
   </main>
 
   {% block modals %}
-  <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-label="Recent uploads">
+  <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-label="{{ texts.recent }}">
     <div class="modal-panel history-panel">
-      <button class="modal-close" id="historyModalClose" type="button" aria-label="Close">{{ close_icon }}</button>
+      <button class="modal-close" id="historyModalClose" type="button" aria-label="{{ texts.close }}">{{ close_icon }}</button>
       <h2 data-i18n="recent">{{ texts.recent }}</h2>
       <span class="history-count" id="historyCount"></span>
       <div id="historyList" class="history-list" data-empty=""></div>

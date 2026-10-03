@@ -10,13 +10,27 @@ window._errm = code => {
   code = String(code);
   // Platform i18n layer (protocol error codes are _msg keys, NOT LocalizedText —
   // user-declared text resolves via resolveLabel, never through this path).
-  if (window._msg(code) !== code) return window._msg(code);
-  const k = 'mytools_err_' + code;
-  if (window._msg(k) !== k) return window._msg(k);
-  const k2 = 'err_' + code;
-  if (window._msg(k2) !== k2) return window._msg(k2);
-  // unknown machine code — canonical localized generic failure, never raw
-  return window.t("err_unexpected");
+  let m;
+  if (window._msg(code) !== code) m = window._msg(code);
+  else {
+    const k = 'mytools_err_' + code;
+    const k2 = 'err_' + code;
+    if (window._msg(k) !== k) m = window._msg(k);
+    else if (window._msg(k2) !== k2) m = window._msg(k2);
+    else m = null;
+  }
+  if (m === null) {
+    // unknown machine code — canonical localized generic failure, never raw
+    return window.t("err_unexpected");
+  }
+  // {n} = a server-injected limit (param_too_long carries the text-param
+  // cap via window.__LIMITS__.textParamMax; projection is the authority).
+  if (m.indexOf("{n}") >= 0) {
+    const lim = window.__LIMITS__ && window.__LIMITS__.textParamMax;
+    m = lim ? m.split("{n}").join(String(lim))
+            : m.replace(/\s*\{n\}/g, "");
+  }
+  return m;
 };
 // Standalone-PWA download rebinding (single source): inside an installed
 // PWA an <a download> navigates the window and traps the user, so every

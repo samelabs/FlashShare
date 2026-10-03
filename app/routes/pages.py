@@ -379,8 +379,13 @@ def _limits_projection(ctx: dict) -> dict:
     dls = list(ent["download_limits"])
     gb = ent["ingress_bytes_24h"] / (1024 * 1024 * 1024)
     daily_files = ent["ingress_files_24h"]
+    from governance.tool_params import TEXT_PARAM_MAX_CHARS
     return {
         "maxFileMb": MAX_UPLOAD_BYTES // (1024 * 1024),
+        # text-parameter cap for the param_too_long copy (authority:
+        # governance.tool_params — the projection is the injection point
+        # every input surface already carries)
+        "textParamMax": TEXT_PARAM_MAX_CHARS,
         "dailyFiles": daily_files,
         "dailyRemaining": max(0, daily_files - used_files),
         "dailyGb": int(gb) if gb == int(gb) else round(gb, 1),
@@ -730,6 +735,11 @@ async def pricing_page(request: Request):
     ctx.update({"shell_class": "", "seo_robots": "index, follow", "daily_amount": daily,
                 "max_file_mb": _limits_projection(ctx)["maxFileMb"],
                 **_shop_offers(user, membership)})
+    # The blanket sub_note carries the plans' period — honest only when
+    # every listed plan shares one; mixed periods leave the note out and
+    # the per-plan cards (dynamic {d}) carry the fact.
+    periods = {p["period_days"] for p in ctx.get("plans") or []}
+    ctx["sub_note_d"] = str(next(iter(periods))) if len(periods) == 1 else None
     return templates.TemplateResponse(request, "pricing.html", ctx)
 
 

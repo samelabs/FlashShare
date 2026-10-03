@@ -132,6 +132,7 @@ def _register(name):
 
 
 from database import db  # noqa: E402
+from i18n import server_text as _texts  # noqa: E402
 import re as _re  # noqa: E402
 
 
@@ -204,6 +205,14 @@ try:
                              {"Accept": "text/html,application/json;q=0.9"})
     check("B5 a browser Accept still gets the HTML page",
           st == 200 and isinstance(page, str) and "<html" in page, st)
+    # the print view reads its texts through the template var t (= texts);
+    # the print_loading / print_hint keys are the live copy of that page
+    st, _h, page, _sc = _req("GET", f"/f/{pdf_pid}/print", None,
+                             {"Accept": "text/html"})
+    _tx = _texts("en")
+    check("B5b /f print page renders print_loading + print_hint",
+          st == 200 and _tx.get("print_loading") in (page or "")
+          and _tx.get("print_hint") in (page or ""), st)
     _foot = open(_os.path.join(_REPO, "static", "pages", "footer.js"),
                  encoding="utf-8").read()
     check("B6 history list shares via the system share, no X intent link",
