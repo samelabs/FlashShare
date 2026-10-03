@@ -42,24 +42,27 @@
   {% set m = access.membership if access else None %}
   <div class="acct-card">
     <div class="acct-card-head">
-      <h2 data-i18n="sub_title">{{ texts.sub_title }}</h2>
-      <a class="btn btn-p btn-sm" href="/pricing"><span data-i18n="pricing_manage">{{ texts.pricing_manage }}</span></a>
+      <h2 data-i18n="plan_current">{{ texts.plan_current }}</h2>
+      <a class="btn btn-p btn-sm" href="/pricing"><span data-i18n="plan_manage">{{ texts.plan_manage }}</span></a>
     </div>
-    {% if m %}
     <div class="sub-status">
-      <span class="sub-badge{% if m.member %} on{% endif %}">{{ m.name }}</span>
+      <span class="sub-badge{% if m and m.member %} on{% endif %}">{{ m.name if m and m.member else texts.pricing_free_name }}</span>
       <span class="sub-meta">
-        {% if m.member %}{{ texts.sub_until }} {{ fmt_ts(m.renews_at) }}
-        {% elif m.status == 'expired' %}<span data-i18n="sub_status_expired">{{ texts.sub_status_expired }}</span>
-        {% else %}<span data-i18n="sub_status_inactive">{{ texts.sub_status_inactive }}</span>{% endif %}
+        {% if m and m.member %}{{ texts.sub_until }} {{ fmt_ts(m.renews_at) }}
+        {% elif m and m.status == 'expired' %}<span data-i18n="sub_status_expired">{{ texts.sub_status_expired }}</span>
+        {% elif m %}<span data-i18n="sub_status_inactive">{{ texts.sub_status_inactive }}</span>{% endif %}
       </span>
-      {% if m.cancel_scheduled_at %}<span class="sub-warn" data-i18n="sub_ends_no_renew">{{ texts.sub_ends_no_renew }}</span>{% endif %}
+      {% if m and m.cancel_scheduled_at %}<span class="sub-warn" data-i18n="sub_ends_no_renew">{{ texts.sub_ends_no_renew }}</span>{% endif %}
       {% if pending_downgrade %}<span class="sub-warn">{{ texts.sub_downgrade_scheduled.replace('{plan}', pending_downgrade.name).replace('{date}', fmt_ts(pending_downgrade.effective_at)) }}</span>{% endif %}
       {# plan/date 插值属服务端事实, 语言切换由整页刷新承载 (与 sub_until 同模式) #}
     </div>
-    {% else %}
-    <p class="acct-card-sub" data-i18n="pricing_free_name">{{ texts.pricing_free_name }}</p>
-    {% endif %}
+    <ul class="plan-facts">
+      <li><span class="pf-label" data-i18n="plan_file_label">{{ texts.plan_file_label }}</span><strong class="pf-val">≤ {{ plan_facts.max_file_mb }} MB</strong></li>
+      <li><span class="pf-label" data-i18n="plan_files_24h_label">{{ texts.plan_files_24h_label }}</span><strong class="pf-val">{{ plan_facts.files_used }} / {{ plan_facts.files_cap }}</strong></li>
+      <li><span class="pf-label" data-i18n="plan_bytes_24h_label">{{ texts.plan_bytes_24h_label }}</span><strong class="pf-val">{{ plan_facts.bytes_used }} / {{ plan_facts.bytes_cap }}</strong></li>
+      <li><span class="pf-label" data-i18n="plan_expiry_label">{{ texts.plan_expiry_label }}</span><strong class="pf-val">{{ plan_facts.expiry_days|join(' / ') }} {{ texts.plan_days_word }}</strong></li>
+      <li><span class="pf-label" data-i18n="plan_downloads_label">{{ texts.plan_downloads_label }}</span><strong class="pf-val">{{ plan_facts.download_limits|join(' / ') }} {{ texts.plan_downloads_word }}</strong></li>
+    </ul>
   </div>
 
   <div class="acct-card">

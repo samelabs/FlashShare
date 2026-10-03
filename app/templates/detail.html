@@ -35,7 +35,7 @@
           <button class="btn btn-s" id="zipPreviewBtn" type="button" aria-label="{{ texts.zip_preview_btn }}">{{ icon_svg("eye") }}<span data-i18n="zip_preview_btn">{{ texts.zip_preview_btn }}</span></button>
           {% endif %}
         </div>
-        {{ share_bar(share_page_url, file_name, "/f/" ~ public_id ~ "/qr.svg") }}
+        {{ share_bar(share_page_url, file_name, "/f/" ~ public_id ~ "/qr.svg", compact=true) }}
       </div>
       {% if is_zip %}
       <div id="zipPreview" class="rc-zip hidden"></div>

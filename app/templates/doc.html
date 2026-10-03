@@ -2,8 +2,10 @@
 {% block title %}{{ doc_title }} - {{ APP_NAME }}{% endblock %}
 {% block desc %}{{ doc_desc }}{% endblock %}
 {% block content %}
+{% from "partials/share_bar.html" import share_bar with context %}
 <section class="panel doc">
   <h1>{{ doc_title }}</h1>
+  {% if doc_share_url %}{{ share_bar(doc_share_url, doc_title, compact=true) }}{% endif %}
   {{ doc_body|safe }}
   <p><a href="/">← {{ texts.home if texts.home else 'Home' }}</a></p>
 </section>

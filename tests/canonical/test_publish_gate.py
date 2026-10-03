@@ -196,6 +196,8 @@ try:
     check("G1e author's own tool page renders with the gate hint",
           st == 200 and "tool_gate_hint" in (page or "")
           and "data-i18n=\"tool_gate_hint\"" in (page or ""), st)
+    check("G1f tool page shows no run-count tag",
+          "tool_runs" not in (page or ""), st)
 
     # ═══ G2: explicit public at creation refused ═════════════════════
     st, _h, d, _sc = _publish(a_ck, "gate2", {"visibility": "public"})

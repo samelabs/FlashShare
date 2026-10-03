@@ -67,8 +67,7 @@
 - 支付（Creem）：`CREEM_API_KEY`、`CREEM_WEBHOOK_SECRET`、`CREEM_CREDITS_PRODUCT_ID`、
   `CREEM_CREDITS_CURRENCY`；`CREEM_TEST_MODE=1` 走测试环境。三项（key / product / currency）齐全才开放积分充值。
   会员档与积分包在运营后台配置；公开定价页 `/pricing` 只列出可售项（会员档需定价 + 绑定 Creem product + 权益齐全），
-  都不可售时显示「尚未开放」。退款请求经 `FLASHSHARE_PUBLIC_SUPPORT_CHANNEL` 受理（服务条款第 8 节），在 Creem 后台执行退款
-- `FLASHSHARE_PUBLIC_SUPPORT_CHANNEL` — 对外支持渠道（页面展示）
+  都不可售时显示「尚未开放」。退款请求经支持邮箱 `SUPPORT_EMAIL`（`core/config.py` 常量 ad@live.it，页面/政策/SECURITY.md 同源）受理（服务条款第 8 节），在 Creem 后台执行退款
 - `FLASHSHARE_LOG_DIR` — 日志目录（默认 `/var/log/flashshare`）
 - `FLASHSHARE_BACKUP_REMOTE` — 备份脚本的 off-host rclone 目的地（见下文 backup）
 

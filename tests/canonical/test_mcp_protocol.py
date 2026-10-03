@@ -573,7 +573,8 @@ check("S3 Claude Desktop via mcp-remote with API key placeholder (C1)",
       and "Bearer &lt;fsk_…&gt;" in html_en
       and "${TOKEN}" not in html_en)
 check("S4 localized prose, API key placeholder",
-      st2 == 200 and "（fsk_ で始まる）" in html_ja and "（fsk_ 开头）" not in html_ja
+      st2 == 200 and "MCP クライアントにサーバー URL を追加します" in html_ja
+      and "（fsk_ で始まる）" not in html_ja and "（fsk_ 开头）" not in html_ja
       and "&lt;fsk_…&gt;" in html_ja and "&lt;token&gt;" not in html_ja)
 check("S5 tool MCP page: Claude Code snippet + copy targets + page script",
       st3 == 200 and 'id="mcpAdd"' in html_tm and 'data-copy-target="mcpCall"' in html_tm

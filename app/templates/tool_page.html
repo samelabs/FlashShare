@@ -29,7 +29,6 @@
         {% else %}
         <span class="tag">{{ texts.files_window_short.format(min=tool.files_min, max=tool.files_max) }}</span>
         {% endif %}
-        {% if stats.calls >= 10 %}<span class="tag">{{ texts.tool_runs.format(n=stats.calls) }}</span>{% endif %}
         <button type="button" class="tag fav-btn{% if is_favorite %} on{% endif %}" id="favBtn"
                 data-tool="{{ tool_key }}" aria-pressed="{{ 'true' if is_favorite else 'false' }}"
                 title="{{ texts.fav_hint }}">{{ icon_svg("star") }}<span data-i18n="{{ 'fav_on' if is_favorite else 'fav_add' }}">{{ texts.fav_on if is_favorite else texts.fav_add }}</span></button>

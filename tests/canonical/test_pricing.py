@@ -173,6 +173,9 @@ try:
         check(f"P6 /terms?lang={lang} has the refund section",
               st == 200 and 'id="refund"' in html and "14" in html
               and "Creem" in html, st)
+        check(f"P6b /terms?lang={lang} links /pricing + support email",
+              st == 200 and 'href="/pricing"' in html
+              and "ad@live.it" in html, st)
 finally:
     _cleanup()
 

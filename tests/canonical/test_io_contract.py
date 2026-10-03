@@ -394,7 +394,7 @@ try:
           and "<h1>3 files</h1>" in page_r
           and "「Lossless Share」" in page_r
           and "qrrow" not in page_r
-          and 'class="share-bar"' in page_r
+          and 'class="share-bar sb-compact"' in page_r
           and 'data-sb="copy"' in page_r and "x.com/intent/tweet" in page_r, st)
     # MCP expires_at mirrors the record authority
     st, d = _call("compress", {"files": [{"filename": "e2.png", "b64": A64}],

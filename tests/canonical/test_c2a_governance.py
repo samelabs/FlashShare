@@ -182,6 +182,8 @@ check("B1 delisted: gone from home + market (author page row gone)",
       and "Alpha Tool" not in (author or ""),
       f"home={tk in (home or '')} market={tk in (market or '')}"
       f" authorCard={card_href in (author or '')}")
+check("B1b author page shows no call-count stat",
+      "owner_calls_n" not in (author or ""), "")
 st, _h, d = _req("GET", f"/api/tools/search?q=alpha")
 check("B2 delisted: search misses", st == 200 and
       not any(t["id"] == tk for t in (d.get("tools") or [])), str(d)[:100])

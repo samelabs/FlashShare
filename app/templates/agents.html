@@ -8,7 +8,7 @@
     <div class="sec-h">
       <div>
         <h1>{{ texts.agents_title }}</h1>
-        <p class="sec-sub">{{ texts.agents_mcp_intro }}</p>
+        <p class="sec-sub"><span data-i18n="agents_mcp_intro">{{ texts.agents_mcp_intro }}</span> <span data-i18n="agents_mcp_intro_2">{{ texts.agents_mcp_intro_2 }}</span> <a href="/pricing">/pricing</a></p>
       </div>
     </div>
 
@@ -18,14 +18,14 @@
         <button type="button" class="btn btn-p" id="copyMcp" data-copy-target="mcpUrl" data-i18n="copy">{{ texts['copy'] }}</button>
       </div>
     </div>
-    <p class="hint"><code>Authorization: Bearer &lt;fsk_…&gt;</code></p>
-    <p class="hint" data-i18n="agents_no_key">{{ texts.agents_no_key }}</p>
 
     <div class="agents-steps">
-      <div class="step-card"><span class="n">1</span><p>{{ texts.agents_qs1 }} <a href="/account/keys">{{ texts.acct_keys }}</a> <span data-i18n="agents_key_prefix">{{ texts.agents_key_prefix }}</span></p></div>
-      <div class="step-card"><span class="n">2</span><p>{{ texts.agents_qs2 }}</p></div>
-      <div class="step-card"><span class="n">3</span><p>{{ texts.agents_qs3 }}</p></div>
+      <div class="step-card"><span class="n">1</span><p data-i18n="agents_qs1">{{ texts.agents_qs1 }}</p></div>
+      <div class="step-card"><span class="n">2</span><p><span data-i18n="agents_qs2">{{ texts.agents_qs2 }}</span> <a href="/account/keys">{{ texts.acct_keys }}</a></p></div>
+      <div class="step-card"><span class="n">3</span><p data-i18n="agents_qs3">{{ texts.agents_qs3 }}</p></div>
     </div>
+
+    <p class="hint" data-i18n="agents_header_note">{{ texts.agents_header_note }}</p>
 
     <div class="agents-tabs-wrap">
       <div class="seg agents-tabs" role="tablist">

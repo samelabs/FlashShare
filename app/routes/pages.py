@@ -149,14 +149,10 @@ async def sitemap():
 
 
 def _support_note() -> str:
-    """Append the public support channel to policy pages when configured."""
-    from config import PUBLIC_SUPPORT_CHANNEL
-    if not PUBLIC_SUPPORT_CHANNEL:
-        return ""
-    href = (PUBLIC_SUPPORT_CHANNEL if PUBLIC_SUPPORT_CHANNEL.startswith("http")
-            else f"mailto:{PUBLIC_SUPPORT_CHANNEL}")
-    return (f'<p class="doc-support"><a href="{href}" rel="noopener">'
-            f'{PUBLIC_SUPPORT_CHANNEL}</a></p>')
+    """Append the one support email to the bottom of policy pages."""
+    from config import SUPPORT_EMAIL
+    return (f'<p class="doc-support"><a href="mailto:{SUPPORT_EMAIL}" '
+            f'rel="noopener">{SUPPORT_EMAIL}</a></p>')
 
 
 @router.get("/terms", response_class=HTMLResponse)
@@ -218,19 +214,26 @@ async def developers(request: Request):
     response shapes, declarations, limits and economics. Same policy-doc
     mechanism as /terms (per-locale file, en fallback) plus one render
     pass that substitutes the code-constant facts — open to everyone,
-    anonymous included."""
+    anonymous included. The only doc page carrying a share bar and its
+    own share-card title/description (a shareable value sentence, not
+    the SEO description)."""
     from app.main import templates
     ctx = _ctx_base_impl(request, "publish")
     lang = ctx["lang"]
     body = _load_doc("developers.html", lang)
     body = templates.env.from_string(body).render(_developer_facts())
+    title = ctx["texts"].get("developers_title", "Developer Guide")
+    desc = ctx["texts"].get("developers_desc", "")
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",
         "share_url": "",
-        "doc_title": ctx["texts"].get("developers_title", "Developer Guide"),
-        "doc_desc": ctx["texts"].get("developers_desc", ""),
+        "doc_title": title,
+        "doc_desc": desc,
         "doc_body": body,
+        "doc_share_url": f"{BASE_URL}/developers",
+        "og_title": title,
+        "og_desc": desc,
     })
     return templates.TemplateResponse(request, "doc.html", ctx)
 
@@ -239,7 +242,7 @@ async def developers(request: Request):
 async def agents_page(request: Request):
     """Agent support surface: the MCP server."""
     from app.main import templates
-    ctx = _ctx_base(request)
+    ctx = _ctx_base_impl(request, "agents")
     ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": ""})
     return templates.TemplateResponse(request, "agents.html", ctx)
 
@@ -258,15 +261,6 @@ def _owner_handle(owner_id) -> str:
 def _favorite_keys_for(user) -> list:
     from governance.favorites import favorite_keys
     return favorite_keys(user["id"])
-
-
-def _public_stats(tool_key: str) -> dict:
-    """Public counters: successful calls only. No user-level data."""
-    from database import db
-    from repo.ledger import call_stats_by_tool
-    with db() as con:
-        row = call_stats_by_tool(con, tool_key)
-    return {"calls": int(row["ok"]) if row else 0}
 
 
 def _market_page_window(current: int, total_pages: int,
@@ -307,7 +301,7 @@ async def tools_market(request: Request):
     page_data = market_page_data(q=q or None, page=page)
     tools = page_data["items"]
 
-    ctx = _ctx_base(request)
+    ctx = _ctx_base_impl(request, "tools")
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",
@@ -329,7 +323,6 @@ async def user_page(request: Request, handle: str):
     from app.main import templates
     from governance.catalog import owner_public_tools
     from database import db
-    from repo.ledger import ok_calls_by_owner
 
     with db() as con:
         urow = con.execute(
@@ -341,8 +334,6 @@ async def user_page(request: Request, handle: str):
                                           _ctx_base(request), status_code=404)
     owner_id = urow["id"]
     tools = owner_public_tools(owner_id)
-    with db() as con:
-        total_calls = ok_calls_by_owner(con, owner_id, [t["id"] for t in tools])
     # Verified badge fact: the author is a current effective member —
     # the same batch predicate the access projection uses (no second
     # membership judgment here).
@@ -355,7 +346,6 @@ async def user_page(request: Request, handle: str):
         "owner_handle": handle,
         "owner_verified": owner_id in effective_member_ids([owner_id]),
         "owner_tools": tools,
-        "owner_total_calls": total_calls,
         "is_self": bool(user and user.get("id") == owner_id),
     })
     return templates.TemplateResponse(request, "user_page.html", ctx)
@@ -453,7 +443,6 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "delivery_json": _delivery_projection(ctx),
         "tool_name": tool_name,
         "handle": handle,
-        "stats": _public_stats(tool_key),
         "mcp_name": mcp_name(tool_key),
         "tool_key": tool_key,
         "is_favorite": bool(user) and tool_key in _favorite_keys_for(user),
@@ -798,11 +787,26 @@ async def account_credits(request: Request):
     _base = _ctx_base(request)  # access projection 单次读
     _membership = (_base.get("access") or {}).get("membership")
     shop = _shop_offers(user, _membership)
+    # Plan facts for the current-plan card: every number projects from
+    # the same access projection the header uses — nothing hand-written.
+    _access = _base.get("access") or {}
+    _ent = _access.get("entitlements") or {}
+    _usage = _access.get("usage") or {}
+    plan_facts = {
+        "max_file_mb": _limits_projection(_base)["maxFileMb"],
+        "files_used": int(_usage.get("ingress_files_24h") or 0),
+        "files_cap": int(_ent.get("ingress_files_24h") or 0),
+        "bytes_used": _fmt_bytes(int(_usage.get("ingress_bytes_24h") or 0)),
+        "bytes_cap": _fmt_bytes(int(_ent.get("ingress_bytes_24h") or 0)),
+        "expiry_days": list(_ent.get("expiry_days") or []),
+        "download_limits": list(_ent.get("download_limits") or []),
+    }
     ctx = _account_ctx(request, "credits", _base=_base,
                        balance=get_balance(user["id"]),
                        granted_today=granted_today(user["id"]) if daily_amount > 0 else True,
                        daily_amount=daily_amount,
                        pending_downgrade=shop["pending_downgrade"],
+                       plan_facts=plan_facts,
                        rows=rows, total=total, pg=pg,
                        pages=(total + size - 1) // size)
     return templates.TemplateResponse(request, "account/credits.html", ctx)

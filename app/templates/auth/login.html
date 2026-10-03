@@ -25,15 +25,9 @@
       <button type="submit" class="btn btn-p btn-lg"><span data-i18n="signIn">{{ texts.signIn }}</span></button>
     </form>
     <p class="auth-hint"><span data-i18n="loginHint">{{ texts.loginHint }}</span> <a href="/auth/register?next={{ next|urlencode }}" data-i18n="signUp">{{ texts.signUp }}</a></p>
-    {% if support_channel %}
     <p class="auth-hint">
-      {% if support_channel.startswith("http") %}
-      <a href="{{ support_channel }}" target="_blank" rel="noopener" data-i18n="support_recovery_hint">{{ texts.support_recovery_hint }}</a>
-      {% else %}
-      <a href="mailto:{{ support_channel }}" data-i18n="support_recovery_hint">{{ texts.support_recovery_hint }}</a>
-      {% endif %}
+      <a href="mailto:{{ support_email }}" data-i18n="support_recovery_hint">{{ texts.support_recovery_hint }}</a>
     </p>
-    {% endif %}
     <p class="auth-terms"><a href="/terms" data-i18n="footer_terms">{{ texts.footer_terms }}</a> · <a href="/privacy" data-i18n="footer_privacy">{{ texts.footer_privacy }}</a></p>
   </div>
 </section>

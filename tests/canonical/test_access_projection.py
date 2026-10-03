@@ -440,14 +440,16 @@ def _get_credits(ck):
     r = conn.getresponse(); body = r.read().decode(); conn.close()
     return r.status, body
 
-# Free: 无 membership fact → Account subscription status block 不渲染。
-# 稳定 DOM marker (class 选择器), 不用 "PLUS" 字符串 (可售目录/header 可含)。
+# Free: 无 membership fact → 当前方案卡仍渲染, 但 badge 是 Free 字样、
+# 永不出现 member 样式。稳定 DOM marker (class 选择器), 不用 "PLUS"
+# 字符串 (可售目录/header 可含)。
 st, body = _get_credits(_mf_ck)
 _proj_f = project(_mf_id)["membership"]
-check("AC-F1 Free /account/credits → 200, membership None, 无 sub-status / 无 sub-badge on",
+check("AC-F1 Free /account/credits → 200, membership None, plan card = Free badge (never member styling)",
       st == 200 and _proj_f is None
-      and 'class="sub-status"' not in body
-      and 'class="sub-badge on"' not in body, f"{st}")
+      and 'class="sub-badge on"' not in body
+      and 'data-i18n="plan_current"' in body
+      and ">Free</span>" in body, f"{st}")
 
 # PLUS: Account membership block 真渲染 (非 header badge 借证)
 _mp_ck2 = _login_http(_mp)
