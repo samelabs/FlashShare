@@ -374,8 +374,9 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         } catch (evErr) {
           dbg = { evaluateFailed: String((evErr && evErr.message) || evErr) };
         }
-        check("first-run: DEBUG dump", false,
-              JSON.stringify({ ...dbg, url: page.url(), net: netTrace.slice(-12) }));
+        const dump1 = JSON.stringify({ url: page.url(), net: netTrace.slice(-12), ...dbg });
+        console.log("DEBUG first-run:", dump1); // full evidence, beyond check()'s 400-char cap
+        check("first-run: DEBUG dump", false, dump1);
         await page.screenshot({
           path: path.join(OUT, "first-run-timeout.png"), fullPage: true,
         }).catch(() => {}); // evidence shot is best-effort, never masks the throw
@@ -471,14 +472,15 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
           dbg = await page.evaluate(() => ({
             canRetry: !!(window.canRetryToolOperation && window.canRetryToolOperation()),
             busy: !!(window.toolOperationBusy && window.toolOperationBusy()),
-            resultHTML: (document.getElementById("result") || "").innerHTML || "",
+            resultHTML: (document.getElementById("result") || {}).innerHTML || "",
             errs: (window.__pageErrors || []).join(" || ").slice(0, 500),
           }));
         } catch (evErr) {
           dbg = { evaluateFailed: String((evErr && evErr.message) || evErr) };
         }
-        check("retry: DEBUG state dump", false,
-              JSON.stringify({ ...dbg, url: page.url(), net: netTrace.slice(-12) }));
+        const dump2 = JSON.stringify({ url: page.url(), net: netTrace.slice(-12), ...dbg });
+        console.log("DEBUG retry:", dump2); // full evidence, beyond check()'s 400-char cap
+        check("retry: DEBUG state dump", false, dump2);
         await page.screenshot({
           path: path.join(OUT, "retry-timeout.png"), fullPage: true,
         }).catch(() => {}); // best-effort, never masks the throw
