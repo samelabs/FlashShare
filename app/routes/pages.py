@@ -246,7 +246,7 @@ async def developers(request: Request):
 async def agents_page(request: Request):
     """Agent support surface: the MCP server."""
     from app.main import templates
-    ctx = _ctx_base(request)
+    ctx = _ctx_base_impl(request, "agents")
     ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": ""})
     return templates.TemplateResponse(request, "agents.html", ctx)
 
@@ -305,7 +305,7 @@ async def tools_market(request: Request):
     page_data = market_page_data(q=q or None, page=page)
     tools = page_data["items"]
 
-    ctx = _ctx_base(request)
+    ctx = _ctx_base_impl(request, "tools")
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",

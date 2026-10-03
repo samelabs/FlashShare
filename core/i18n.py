@@ -228,7 +228,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Ce point de terminaison n'est pas autorisé.",
         "credits_balance": "Solde de crédits",
         "agents_title": "MCP",
-        "nav_ai": "Connecter l'IA",
+        "nav_ai": "Accès MCP",
 
         "agents_mcp_h": "Serveur MCP",
         "agents_mcp_desc": "Connectez n'importe quel client MCP : facturation à l'appel, prix indiqué par outil, échecs remboursés automatiquement.",
@@ -851,7 +851,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "이 엔드포인트는 허용되지 않습니다.",
         "credits_balance": "크레딧 잔액",
         "agents_title": "MCP",
-        "nav_ai": "AI 연결",
+        "nav_ai": "MCP 연결",
 
         "agents_mcp_h": "MCP 서버",
         "agents_mcp_desc": "어느 MCP 클라이언트든 연결 가능: 호출당 과금, 도구별 가격 표기, 실패 시 자동 환불.",
@@ -1474,7 +1474,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Эта конечная точка не разрешена.",
         "credits_balance": "Баланс кредитов",
         "agents_title": "MCP",
-        "nav_ai": "Подключить ИИ",
+        "nav_ai": "Подключение MCP",
 
         "agents_mcp_h": "MCP-сервер",
         "agents_mcp_desc": "Подключите любой MCP-клиент: оплата за вызов, цена указана у каждого инструмента, неудачи возвращаются автоматически.",
@@ -2097,7 +2097,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "هذه النقطة الطرفية غير مسموح بها.",
         "credits_balance": "رصيد النقاط",
         "agents_title": "MCP",
-        "nav_ai": "اربط الذكاء الاصطناعي",
+        "nav_ai": "ربط MCP",
 
         "agents_mcp_h": "خادم MCP",
         "agents_mcp_desc": "اربط أي عميل MCP: محاسبة لكل استدعاء، السعر مذكور مع كل أداة، والفشل يُسترد تلقائيًا.",
@@ -2720,7 +2720,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Dieser Endpunkt ist nicht erlaubt.",
         "credits_balance": "Guthaben",
         "agents_title": "MCP",
-        "nav_ai": "KI anbinden",
+        "nav_ai": "MCP-Zugang",
 
         "agents_mcp_h": "MCP-Server",
         "agents_mcp_desc": "Verbinde einen beliebigen MCP-Client: Abrechnung pro Aufruf, Preise pro Tool angegeben, Fehlschläge automatisch erstattet.",
@@ -3343,7 +3343,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Este endpoint não é permitido.",
         "credits_balance": "Saldo de créditos",
         "agents_title": "MCP",
-        "nav_ai": "Conectar IA",
+        "nav_ai": "Acesso MCP",
 
         "agents_mcp_h": "Servidor MCP",
         "agents_mcp_desc": "Conecte qualquer cliente MCP: cobrança por chamada, preço indicado por ferramenta, falhas reembolsadas automaticamente.",
@@ -3966,7 +3966,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "このエンドポイントは許可されていません。",
         "credits_balance": "クレジット残高",
         "agents_title": "MCP",
-        "nav_ai": "AI をつなぐ",
+        "nav_ai": "MCP 接続",
 
         "agents_mcp_h": "MCP サーバー",
         "agents_mcp_desc": "どの MCP クライアントでも接続できます：呼び出しごとの課金、ツールごとに価格明記、失敗時は自動返金。",
@@ -4589,7 +4589,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "该端点不被允许。",
         "credits_balance": "积分余额",
         "agents_title": "MCP",
-        "nav_ai": "接入 AI",
+        "nav_ai": "MCP 接入",
 
         "agents_mcp_h": "MCP 服务器",
         "agents_mcp_desc": "任意 MCP 客户端均可接入：按次计费、价格见各工具说明、失败自动退款。",
@@ -5212,7 +5212,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "Este endpoint no está permitido.",
         "credits_balance": "Saldo de créditos",
         "agents_title": "MCP",
-        "nav_ai": "Conectar IA",
+        "nav_ai": "Acceso MCP",
 
         "agents_mcp_h": "Servidor MCP",
         "agents_mcp_desc": "Conecta cualquier cliente MCP: cobro por llamada, precio indicado en cada herramienta, fallos reembolsados automáticamente.",
@@ -5835,7 +5835,7 @@ SERVER_I18N = {
         "err_endpoint_blocked": "This endpoint is not allowed.",
         "credits_balance": "Credit balance",
         "agents_title": "MCP",
-        "nav_ai": "Connect AI",
+        "nav_ai": "MCP",
 
         "agents_mcp_h": "MCP Server",
         "agents_mcp_desc": "Connect any MCP client: per-call billing, prices stated per tool, failed calls refunded automatically.",
