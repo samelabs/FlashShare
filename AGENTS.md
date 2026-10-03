@@ -19,14 +19,21 @@
 
 - **Owner**：产品意图与最终裁定；授权 production deploy。
 - **PM（主线把控）**：冻结每个批次的执行指令，按精确 SHA 验收（diff / 本地
-  canonical / GitHub CI / 必要时真浏览器），创建 PR、决定合入顺序，验收通过且 CI 全绿后合入 `main`。
+  canonical / GitHub CI / 必要时真浏览器），决定合入顺序，验收结论以
+  「验收通过 + 精确 SHA」形式下达。
 - **执行 agent**（本地或服务器）：只执行 PM 下发的单个批次。
   MAY：`git fetch`、在指定分支上 commit、push 该 non-main 分支（替换自己的
-  WIP 提交时仅可 `--force-with-lease` 该分支）。
-  MUST NOT：push main、force push 他人分支、开/合 PR、deploy、
-  超出批次范围修改、把本地测试结果声明为 GitHub CI 结果（本地绿 ≠ CI 绿，
-  两者来源分开表述）。完成后报告并 **STOP**。
+  WIP 提交时仅可 `--force-with-lease` 该分支）、开 PR；
+  在 PM 验收通过（报告中写明的精确 SHA）且该 SHA 的 GitHub CI 全绿后，
+  以 merge commit 合并该 PR 并删除远程分支、在合并后的 main tip 打版本 tag。
+  MUST NOT：push main（验收合并除外）、force push 他人分支、发布 GitHub
+  Release、改动已发布 tag、deploy、超出批次范围修改、把本地测试结果声明为
+  GitHub CI 结果（本地绿 ≠ CI 绿，两者来源分开表述）。完成后报告并 **STOP**。
 - **Production deploy**：由服务器侧 agent 在 owner 明确指令后执行。
+- 版本表达 = `main` 上的 `VERSION` + `CHANGELOG` 版本段 + 同名 tag
+  （`v<VERSION>`）；不发布 GitHub Release。
+- 每个版本合入前执行版本机制确认（MCP / 经济 / 分享 / 工具链 / 运营），
+  结果写入该版本 PR 描述。
 
 ### 仓库卫生
 
