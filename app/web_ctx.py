@@ -21,7 +21,7 @@ _STATIC = _BASE / "static"
 # (tokens + components + the 518.css page file): any file change bumps
 # every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v76"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+_CSS_VERSION = "v77"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
 for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
@@ -76,6 +76,15 @@ def fmt_ts(ts) -> str:
         return "—"
     return datetime.datetime.fromtimestamp(
         int(ts), datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
+
+
+def wants_json(request: Request) -> bool:
+    """Content negotiation for the share pages (/f, /r): an agent that
+    asks for JSON (and not HTML) gets the page facts as JSON instead of
+    the human page. Browsers always send text/html, so they never hit
+    this branch."""
+    accept = (request.headers.get("accept") or "").lower()
+    return "application/json" in accept and "text/html" not in accept
 
 
 def error_text(request: Request, code: str) -> str:

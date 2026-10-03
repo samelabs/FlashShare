@@ -143,3 +143,63 @@ window.linkifyResultText = function (root) {
   });
   return cards;
 };
+
+// Store-only ZIP writer (no compression — the bundled files are images,
+// PDFs and archives that are already compressed). [{name, blob}] → Blob.
+// UTF-8 names (flag bit 11); duplicate names get " (2)", " (3)"…
+// Sizes stay below 4 GB (callers cap the bundle), so no ZIP64.
+window.zipStore = function (entries) {
+  const crcTable = window.__crcTable || (window.__crcTable = (() => {
+    const tb = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      tb[n] = c >>> 0;
+    }
+    return tb;
+  })());
+  return (async () => {
+    const enc = new TextEncoder();
+    const seen = {};
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    const now = new Date();
+    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    for (const e of entries) {
+      let name = String(e.name || "file").replace(/[\\/]/g, "_");
+      if (seen[name]) {
+        const dot = name.lastIndexOf(".");
+        const n = ++seen[name];
+        name = dot > 0 ? name.slice(0, dot) + " (" + n + ")" + name.slice(dot) : name + " (" + n + ")";
+      }
+      seen[name] = seen[name] || 1;
+      const nameBytes = enc.encode(name);
+      const data = new Uint8Array(await e.blob.arrayBuffer());
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < data.length; i++) crc = crcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+      crc = (crc ^ 0xFFFFFFFF) >>> 0;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(8, 0, true); lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+      lh.setUint16(26, nameBytes.length, true); lh.setUint16(28, 0, true);
+      parts.push(lh.buffer, nameBytes, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+      ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true);
+      ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true);
+      ch.setUint32(24, data.length, true); ch.setUint16(28, nameBytes.length, true);
+      ch.setUint32(42, offset, true);
+      central.push(ch.buffer, nameBytes);
+      offset += 30 + nameBytes.length + data.length;
+    }
+    const cdSize = central.reduce((n, b) => n + b.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+    return new Blob(parts.concat(central, [end.buffer]), { type: "application/zip" });
+  })();
+};

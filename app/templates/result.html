@@ -1,22 +1,20 @@
 {% extends "base.html" %}
-{% block title %}{{ texts.r_page_title }} · {{ tool_name }} - {{ APP_NAME }}{% endblock %}
+{% block title %}{{ r_title }} - {{ APP_NAME }}{% endblock %}
 {% block desc %}{{ og_desc }}{% endblock %}
+{% block head %}<link rel="alternate" type="application/json" href="{{ result_url }}" title="Result facts (send Accept: application/json)">{% endblock %}
 
+{% from "partials/share_bar.html" import share_bar with context %}
 {% block content %}
 <section class="file-page r-page">
   <div class="rp">
     <div class="rc">
+      {# 首屏: 标题 = 内容 (单文件=文件名 / 多文件=N 个文件 / 纯文本=工具名),
+         工具名降为一行小字 → 到期与剩余次数 → 主操作 → 分享条 #}
       <div class="rc-top">
-        <div class="fi" aria-hidden="true">{% for _ in range(file_count if file_count <= 2 else 2) %}<span></span>{% endfor %}</div>
-        <h1>{{ tool_name if tool_name else texts.r_n_files.format(n=file_count) }}</h1>
+        <h1>{{ r_title }}</h1>
         <div class="m">
-          {% if tool_name %}<span data-i18n="r_via_tool">{{ texts.r_via_tool }}</span>「{{ tool_name }}」 · {% endif %}
-          {{ texts.r_expires }}: {{ expire_text }}
-          {% if min_remaining is not none %} · <span data-i18n="r_downloads_left">{{ texts.r_downloads_left }}</span> {{ min_remaining }}{% endif %}
-        </div>
-        <div class="linkbar">
-          {{ icon_svg("link") }}<span>{{ result_url }}</span>
-          <button class="btn btn-secondary btn-sm" id="rCopyLink" type="button">{{ icon_svg("copy") }}<span data-i18n="copy_link">{{ texts.copy_link }}</span></button>
+          {% if tool_name and r_title != tool_name %}<span><span data-i18n="r_via_tool">{{ texts.r_via_tool }}</span>「{{ tool_name }}」</span>{% endif %}
+          <span>{{ texts.expires_on.format(date=expire_text) }}{% if min_remaining is not none %} · {{ texts.downloads_left_n.format(n=min_remaining) }}{% endif %}</span>
         </div>
         <div class="acts">
           {% if file_count > 1 %}
@@ -27,8 +25,8 @@
           {% if is_owner and file_count %}
           <a class="btn btn-s" href="/?from={{ result_id }}">{{ icon_svg("wand") }}<span data-i18n="continue_processing">{{ texts.continue_processing }}</span></a>
           {% endif %}
-          <button class="btn btn-s" id="rShareBtn" type="button" aria-label="{{ texts.share_via_system }}" title="{{ texts.share_via_system }}">{{ icon_svg("share") }}<span data-i18n="share_via_system">{{ texts.share_via_system }}</span></button>
         </div>
+        {{ share_bar(result_url, r_title) }}
       </div>
 
       {# 媒体组: 单文件结果为单图 = 主视图 (原图 ≤60vh 不裁切, 下载在图下方);
@@ -43,7 +41,7 @@
           </figure>
           <div class="rs-img-meta">
             <small>{{ live_images[0].size_text }} · {{ live_images[0].type_text }}</small>
-            <a class="btn btn-secondary btn-sm rs-dl" href="{{ live_images[0].download_url }}" download data-view-url="/f/{{ live_images[0].public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+            <a class="btn btn-secondary btn-sm rs-dl" href="{{ live_images[0].download_url }}" data-name="{{ live_images[0].filename }}" data-size="{{ live_images[0].size }}" download data-view-url="/f/{{ live_images[0].public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
           </div>
         </div>
       </div>
@@ -56,8 +54,10 @@
               <button type="button" class="rs-cell-img" data-zoom="/f/{{ it.public_id }}/inline" aria-label="{{ it.filename }}">
                 <img src="/f/{{ it.public_id }}/inline" alt="{{ tool_name }}" loading="lazy" decoding="async">
               </button>
-              <figcaption><small>{{ it.size_text }}</small></figcaption>
-              <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" download data-view-url="/f/{{ it.public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+              {% set _nm = it.filename or "" %}
+              {% set _i = _nm.rfind('.') %}
+              <figcaption><b class="if-name" title="{{ _nm }}"><span class="if-stem">{{ _nm[:_i] if _i > 0 else _nm }}</span>{% if _i > 0 %}<span class="if-ext">{{ _nm[_i:] }}</span>{% endif %}</b><small>{{ it.size_text }}</small></figcaption>
+              <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" data-name="{{ it.filename }}" data-size="{{ it.size }}" download data-view-url="/f/{{ it.public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
             </figure>
             {% endfor %}
           </div>
@@ -100,7 +100,7 @@
             {% if it.is_pdf %}
             <a class="btn btn-ghost btn-sm" href="{{ it.page_url }}" target="_blank" rel="noopener" aria-label="{{ texts.r_preview }}">{{ icon_svg("eye") }}</a>
             {% endif %}
-            <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" download{% if it.is_pdf %} data-view-url="/f/{{ it.public_id }}/inline"{% endif %} aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}</a>
+            <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" data-name="{{ it.filename }}" data-size="{{ it.size }}" download{% if it.is_pdf %} data-view-url="/f/{{ it.public_id }}/inline"{% endif %} aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}</a>
           </div>
         </div>
         {% endif %}

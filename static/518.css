@@ -848,7 +848,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .rc-top .fi span:first-child { transform: rotate(-6deg); }
 .rc-top h1 { font-size: 24px; font-weight: 750; letter-spacing: -0.03em; overflow-wrap: anywhere; }
 .rc-top .m { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
-.rc-top .linkbar { margin-top: 20px; }
+.rc-top .share-bar { margin-top: 16px; }
 .rc-top .acts { justify-content: center; margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .rc-files { display: flex; flex-direction: column; }
 .rc-files .item-file { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 14px 20px; }
@@ -869,8 +869,8 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .file-page .rc-top h1.f-name { display: flex; justify-content: center; min-width: 0; font-size: 20px; overflow-wrap: normal; }
 .file-page .f-name .if-stem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-page .f-name .if-ext { flex: none; white-space: nowrap; }
-.file-page .rc-top .m span { display: block; }
-.file-page .rc-preview { padding-top: var(--s4); }
+.file-page .rc-top .m > span { display: block; }
+.file-page .rc-preview { padding: 20px 20px 0; }
 .rc-preview img { max-width: 100%; max-height: 560px; height: auto; display: block; margin: 0 auto; border-radius: var(--r); border: 1px solid var(--line); }
 .rc-zip { padding: 0 20px 20px; }
 

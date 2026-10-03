@@ -32,7 +32,9 @@
   {% if share_image == SOCIAL_IMAGE_URL %}<meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">{% endif %}
   <meta property="og:image:alt" content="{{ share_title }}">
-  <meta name="twitter:card" content="summary_large_image">
+  {# content pages without an image of their own (/f non-image, /r
+     without images) set og_card=summary: the page facts lead the card #}
+  <meta name="twitter:card" content="{{ og_card|default("summary_large_image", true) }}">
   <meta name="twitter:title" content="{{ share_title }}">
   <meta name="twitter:description" content="{{ share_desc }}">
   <meta name="twitter:image" content="{{ share_image }}">

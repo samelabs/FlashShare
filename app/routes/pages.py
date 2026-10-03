@@ -10,7 +10,7 @@ import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, Response, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
 
 _BASE = Path(__file__).resolve().parent.parent.parent
 _CORE = _BASE / "core"
@@ -553,10 +553,6 @@ async def home(request: Request):
     from governance.favorites import working_set
     featured = search_catalog("", limit=HOME_GRID_SIZE)
     picker = working_set(user, list_catalog(user["id"] if user else None))
-    home_share_url = "https://x.com/intent/tweet?" + urllib.parse.urlencode({
-        "text": texts.get("home_share_text", texts.get("seo_title", "518.PLUS")),
-        "url": BASE_URL,
-    })
 
     # Delivery/ingress entitlement projection — consume ctx_base's single
     # access projection read (never a second project()); anonymous falls
@@ -568,7 +564,6 @@ async def home(request: Request):
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",
-        "share_url": home_share_url,
         "max_mb": lim["maxFileMb"],
         "daily_uploads": lim["dailyFiles"],
         "daily_mb": int(lim["dailyGb"] * 1024),
@@ -973,6 +968,32 @@ async def result_page(result_id: str, request: Request):
                 d["remaining"] = remaining_downloads(
                     int(u["allowed_downloads"] or 0), live)
         items.append(d)
+    # Agents asking for JSON get the result facts, not the human page.
+    from app.web_ctx import wants_json
+    from utils import public_result_url
+    if wants_json(request):
+        out = []
+        for d in items:
+            if d.get("kind") == "file":
+                if d.get("deleted"):
+                    out.append({"kind": "file", "filename": d.get("filename"),
+                                "deleted": True})
+                    continue
+                out.append({"kind": "file", "public_id": d.get("public_id"),
+                            "filename": d.get("filename"),
+                            "content_type": d.get("content_type"),
+                            "size": int(d.get("size") or 0),
+                            "downloads_remaining": d.get("remaining"),
+                            "download_url": d.get("download_url"),
+                            "page_url": d.get("page_url")})
+            elif d.get("kind") == "text":
+                out.append({"kind": "text", "text": d.get("text")})
+            elif d.get("kind") == "json":
+                out.append({"kind": "json", "data": d.get("data")})
+        return JSONResponse({"result_url": public_result_url(result_id),
+                             "tool": row["tool_id"],
+                             "expires_at": int(expire_at), "items": out},
+                            headers={"Vary": "Accept"})
     # Tool display name: the call's tool row label (resolver chain).
     ctx = _ctx_base(request)
     tool_name = row["tool_id"]
@@ -1003,12 +1024,18 @@ async def result_page(result_id: str, request: Request):
     # delivery facts (expiry + remaining downloads). Same approach as /f.
     texts = ctx["texts"]
     text_count = sum(1 for d in items if d.get("kind") in ("text", "json"))
-    if file_count and not text_count:
-        og_title = f"{tool_name} · {texts['r_n_files'].format(n=file_count)}"
-    elif text_count and not file_count:
-        og_title = f"{tool_name} · {texts['r_og_text_results'].format(n=text_count)}"
+    # Page/card title = what came back: one file → its name; several →
+    # "N files"; text-only → the tool. The tool is secondary context.
+    _first_file = next((d for d in items if d.get("kind") == "file"
+                        and not d.get("deleted")), None)
+    if file_count == 1 and _first_file:
+        r_title = _first_file.get("filename") or tool_name
+    elif file_count > 1:
+        r_title = texts["r_n_files"].format(n=file_count)
     else:
-        og_title = f"{tool_name} · {texts['r_og_items'].format(n=len(items))}"
+        r_title = tool_name or texts["r_page_title"]
+    og_title = (f"{r_title} · {tool_name}"
+                if tool_name and r_title != tool_name else r_title)
     og_desc = f"{texts['r_expires']}: {format_ts(int(expire_at))}"
     min_remaining = next(iter(sorted(
         [d["remaining"] for d in items
@@ -1024,6 +1051,10 @@ async def result_page(result_id: str, request: Request):
     ctx.update({
         "og_image": (f"{BASE_URL}/f/{_first_img['public_id']}/inline"
                      if _first_img else SOCIAL_IMAGE_URL),
+        # no image in the result → small card: the result facts lead,
+        # not the site banner
+        "og_card": "summary_large_image" if _first_img else "summary",
+        "r_title": r_title,
         "is_owner": bool(_viewer and _viewer.get("id") == row["user_id"]),
         "result_id": result_id,
         "tool_name": tool_name,
@@ -1031,7 +1062,7 @@ async def result_page(result_id: str, request: Request):
         "expire_text": format_ts(int(expire_at)),
         "items": items,
         "file_count": file_count,
-        "first_file": next((d for d in items if d.get("kind") == "file" and not d.get("deleted")), None),
+        "first_file": _first_file,
         "min_remaining": min_remaining,
         "result_url": public_result_url(result_id),
         "og_title": og_title,
@@ -1040,7 +1071,9 @@ async def result_page(result_id: str, request: Request):
         "expiry_icon": icon_svg("expiry"),
         "download_count_icon": icon_svg("download_count"),
     })
-    return templates.TemplateResponse(request, "result.html", ctx)
+    resp = templates.TemplateResponse(request, "result.html", ctx)
+    resp.headers["Vary"] = "Accept"
+    return resp
 
 
 @router.get("/account/favorites", response_class=HTMLResponse)

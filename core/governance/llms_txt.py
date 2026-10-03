@@ -169,6 +169,9 @@ def build_llms_txt() -> str:
     a("## Share links")
     a(f"- /f/{{id}} is the human page; /f/{{id}}?download=1 is the direct "
       "download (302 redirect to the file).")
+    a("- File pages (/f/{public_id}) and result pages (/r/{id}) answer "
+      "`Accept: application/json` with their facts (file name, size, "
+      "type, expiry, remaining downloads, download_url) instead of HTML.")
     a("- Download counts and expiry follow the `delivery` object of the "
       "tools/call that produced the file; anonymous download needs no "
       "token.")

@@ -355,13 +355,13 @@ _res = open(_os.path.join(_REPO, "app", "templates", "result.html"),
             encoding="utf-8").read()
 _det = open(_os.path.join(_REPO, "app", "templates", "detail.html"),
             encoding="utf-8").read()
-check("F2 /r + /f share the action bar inside the card",
+check("F2 /r + /f: action row + the one share bar inside the card",
       'class="acts"' in _res
       and 'class="acts"' in _det
-      and _det.index('class="acts"') < _det.index("rc-preview")
-      and 'class="linkbar"' in _res and 'class="linkbar"' in _det
-      and "rPrintBtn" not in _res
-      and "rShareBtn" in _res and "shareImgBtn" in _det, "")
+      and _det.index("rc-preview") < _det.index('class="acts"')
+      and "share_bar(" in _res and "share_bar(" in _det
+      and "linkbar" not in _res and "linkbar" not in _det
+      and "rPrintBtn" not in _res, "")
 check("F3 /f stray empty divider gone (owner tools only render for owners)",
       '{% if is_owner %}\n      <div class="workspace-tools"' in _det)
 _ag = open(_os.path.join(_REPO, "app", "templates", "agents.html"),

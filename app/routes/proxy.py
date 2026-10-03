@@ -19,7 +19,6 @@ from storage import info as storage_info
 from utils import file_glyph
 from utils import (
     public_file_url, format_bytes, format_ts, file_format_icon,
-    html_escape,
 )
 from i18n import LOCALE_TAGS, server_text
 from icons import icon_svg
@@ -122,7 +121,22 @@ async def file_route(public_id: str, request: Request):
 
     pid = urllib.parse.quote(upload["public_id"])
     url = public_file_url(upload["public_id"])
-    share_url = html_escape("https://x.com/intent/tweet?" + urllib.parse.urlencode({"text": texts["share_text"], "url": url}))
+
+    # Agents asking for JSON get the page facts, not the human page.
+    from app.web_ctx import wants_json
+    if wants_json(request):
+        return JSONResponse({
+            "public_id": upload["public_id"],
+            "filename": upload["file_name"],
+            "size": int(upload["size_bytes"] or 0),
+            "content_type": upload["content_type"] or "",
+            "expires_at": int(expire_at) if expire_at else None,
+            "downloads_remaining": _dl_left,
+            "page_url": url,
+            "download_url": url + "?download=1",
+        }, headers={"Vary": "Accept",
+                    **_share_link_headers(upload["public_id"],
+                                          upload["content_type"] or "")})
 
     from app.web_ctx import ctx_base as _ctx_base
     ctx = _ctx_base(request)
@@ -133,7 +147,7 @@ async def file_route(public_id: str, request: Request):
         # og_* overrides (base.html single point renders the tags)
         "seo_robots": "noindex, follow",
         "og_title": upload["file_name"],
-        "share_url": share_url,
+        "share_page_url": url,
         "public_id": pid,
         "file_name": upload["file_name"],
         "content_type": upload["content_type"] or "",
@@ -157,7 +171,6 @@ async def file_route(public_id: str, request: Request):
                 "." + (upload["file_name"] or "").rsplit(".", 1)[-1].lower()
                 if "." in (upload["file_name"] or "") else ""), upload["file_name"]),
         "is_owner": bool(user and "user_id" in upload.keys() and user["id"] == upload["user_id"]),
-        "escaped_url": html_escape(url),
         "dl_url": f"/f/{pid}?download=1",
         "inline_url": f"/f/{pid}/inline",
         "file_size_icon": icon_svg("file_size"),
@@ -172,11 +185,15 @@ async def file_route(public_id: str, request: Request):
     if ctx["is_image"]:
         from config import BASE_URL
         ctx["og_image"] = f"{BASE_URL}/f/{pid}/inline"
+    else:
+        # small card: the file facts lead, not the site banner
+        ctx["og_card"] = "summary"
     ctx["file_format_icon"] = lambda: file_format_icon(upload["file_name"])
     resp = templates.TemplateResponse(request, "detail.html", ctx)
     for k, v in _share_link_headers(upload["public_id"],
                                     upload["content_type"] or "").items():
         resp.headers[k] = v
+    resp.headers["Vary"] = "Accept"
     return resp
 
 

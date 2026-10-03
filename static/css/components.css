@@ -280,6 +280,9 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 }
 .rs-cell figcaption { min-width: 0; }
 .rs-cell figcaption small { font-size: var(--fs-xs); color: var(--ink-3); }
+.rs-cell figcaption .if-name { display: flex; min-width: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); }
+.rs-cell figcaption .if-stem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-cell figcaption .if-ext { flex: none; }
 .rs-cell .rs-dl { align-self: flex-start; }
 @media (max-width: 767px) {
   .rs-grid { grid-template-columns: repeat(2, 1fr); }
@@ -815,3 +818,24 @@ pre.rs-text, pre.rs-json {
   input, select, textarea,
   .input, .textarea, .select, .sl-input { font-size: 16px; }
 }
+
+/* 分享条 (partials/share_bar.html): 复制链接 / 系统分享 / X / 二维码 —
+   等宽图标卡片一行排开, 图标在上、短标签在下; /f /r 工具页 作者页同一组件 */
+.share-bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.share-bar .sb-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-height: 56px; min-width: 0; padding: 8px 4px;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--card);
+  font: inherit; font-size: 12px; font-weight: 550; color: var(--ink-2);
+  text-decoration: none; cursor: pointer; transition: border-color .15s, color .15s;
+}
+.share-bar .sb-btn > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-bar .sb-btn svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.share-bar .sb-btn .x-glyph { font-size: 17px; height: 18px; display: inline-flex; align-items: center; }
+@media (hover:hover) and (pointer:fine) { .share-bar .sb-btn:hover { border-color: var(--ink-4); color: var(--ink); } }
+.share-bar .sb-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.share-bar.sb-compact { display: inline-flex; gap: 6px; vertical-align: middle; }
+.share-bar.sb-compact .sb-btn { flex-direction: row; min-height: 30px; width: 30px; padding: 0; border-radius: var(--r-full); }
+.share-bar.sb-compact .sb-btn svg { width: 15px; height: 15px; }
+.share-bar.sb-compact .sb-btn .x-glyph { font-size: 14px; height: 15px; }
+.share-bar.sb-compact .sb-btn > span:last-child:not(.x-glyph) { display: none; }
