@@ -227,7 +227,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "Connectez n'importe quel client MCP : facturation à l'appel, prix indiqué par outil, échecs remboursés automatiquement.",
         "active": "Actif",
+        "print_loading": "Préparation des pages…",
         "print_btn": "Imprimer",
+        "print_hint": "Si la fenêtre d'impression ne s'ouvre pas, téléchargez le fichier et imprimez-le localement.",
     "zip_preview_title": "Contenu du ZIP",
     "zip_preview_btn": "Aperçu du ZIP",
     "zip_preview_meta": "{files} fichiers · {dirs} dossiers",
@@ -796,7 +798,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "어느 MCP 클라이언트든 연결 가능: 호출당 과금, 도구별 가격 표기, 실패 시 자동 환불.",
         "active": "활성",
+        "print_loading": "페이지를 준비하는 중…",
         "print_btn": "인쇄",
+        "print_hint": "인쇄 창이 열리지 않으면 파일을 다운로드한 후 인쇄하세요.",
     "zip_preview_title": "ZIP 내용",
     "zip_preview_btn": "ZIP 미리보기",
     "zip_preview_meta": "파일 {files}개 · 폴더 {dirs}개",
@@ -1365,7 +1369,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "Подключите любой MCP-клиент: оплата за вызов, цена указана у каждого инструмента, неудачи возвращаются автоматически.",
         "active": "Активен",
+        "print_loading": "Подготовка страниц…",
         "print_btn": "Печать",
+        "print_hint": "Если окно печати не открылось, скачайте файл и распечатайте локально.",
     "zip_preview_title": "Содержимое ZIP",
     "zip_preview_btn": "Просмотр ZIP",
     "zip_preview_meta": "Файлов: {files} · Папок: {dirs}",
@@ -1934,7 +1940,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "اربط أي عميل MCP: محاسبة لكل استدعاء، السعر مذكور مع كل أداة، والفشل يُسترد تلقائيًا.",
         "active": "نشط",
+        "print_loading": "جارٍ تحضير الصفحات…",
         "print_btn": "طباعة",
+        "print_hint": "إذا لم تفتح نافذة الطباعة، نزّل الملف واطبعه محليًا.",
     "zip_preview_title": "محتويات ZIP",
     "zip_preview_btn": "معاينة ZIP",
     "zip_preview_meta": "{files} ملفات · {dirs} مجلدات",
@@ -2503,7 +2511,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "Verbinde einen beliebigen MCP-Client: Abrechnung pro Aufruf, Preise pro Tool angegeben, Fehlschläge automatisch erstattet.",
         "active": "Aktiv",
+        "print_loading": "Seiten werden vorbereitet…",
         "print_btn": "Drucken",
+        "print_hint": "Falls der Druckdialog nicht öffnet, lade die Datei herunter und drucke sie lokal.",
     "zip_preview_title": "ZIP-Inhalt",
     "zip_preview_btn": "ZIP Vorschau",
     "zip_preview_meta": "{files} Dateien · {dirs} Ordner",
@@ -3072,7 +3082,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "Conecte qualquer cliente MCP: cobrança por chamada, preço indicado por ferramenta, falhas reembolsadas automaticamente.",
         "active": "Ativo",
+        "print_loading": "Preparando páginas…",
         "print_btn": "Imprimir",
+        "print_hint": "Se a janela de impressão não abrir, baixe o arquivo e imprima localmente.",
     "zip_preview_title": "Conteúdo do ZIP",
     "zip_preview_btn": "Pré-visualizar ZIP",
     "zip_preview_meta": "{files} arquivos · {dirs} pastas",
@@ -3641,7 +3653,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "どの MCP クライアントでも接続できます：呼び出しごとの課金、ツールごとに価格明記、失敗時は自動返金。",
         "active": "有効",
+        "print_loading": "ページを準備しています…",
         "print_btn": "印刷",
+        "print_hint": "印刷ダイアログが開かない場合は、ダウンロードしてから印刷してください。",
     "zip_preview_title": "ZIPの内容",
     "zip_preview_btn": "ZIPをプレビュー",
     "zip_preview_meta": "ファイル {files} 個 · フォルダ {dirs} 個",
@@ -4210,7 +4224,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "任意 MCP 客户端均可接入：按次计费、价格见各工具说明、失败自动退款。",
         "active": "生效中",
+        "print_loading": "正在准备打印页…",
         "print_btn": "打印",
+        "print_hint": "如未弹出打印窗口，请下载文件后在本地打印。",
     "zip_preview_title": "ZIP 内容",
     "zip_preview_btn": "预览 ZIP",
     "zip_preview_meta": "{files} 个文件 · {dirs} 个文件夹",
@@ -4779,7 +4795,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "Conecta cualquier cliente MCP: cobro por llamada, precio indicado en cada herramienta, fallos reembolsados automáticamente.",
         "active": "Activo",
+        "print_loading": "Preparando páginas…",
         "print_btn": "Imprimir",
+        "print_hint": "Si no se abre el diálogo de impresión, descarga el archivo e imprímelo localmente.",
     "zip_preview_title": "Contenido del ZIP",
     "zip_preview_btn": "Previsualizar ZIP",
     "zip_preview_meta": "{files} archivos · {dirs} carpetas",
@@ -5348,7 +5366,9 @@ SERVER_I18N = {
 
         "agents_mcp_desc": "Connect any MCP client: per-call billing, prices stated per tool, failed calls refunded automatically.",
         "active": "Active",
+        "print_loading": "Preparing pages…",
         "print_btn": "Print",
+        "print_hint": "If the print dialog does not open, download the file and print it locally.",
     "zip_preview_title": "ZIP Contents",
     "zip_preview_btn": "Preview ZIP",
     "zip_preview_meta": "{files} files · {dirs} folders",
