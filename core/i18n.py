@@ -474,7 +474,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Trop de tentatives, veuillez réessayer plus tard",
 # B4 mcp closure
         "agents_header_note": "Pas encore de clé ? Connectez-vous d'abord sans cette ligne, puis obtenez-en une avec register.",
-        "agents_key_note": "Remplacez <key> dans les extraits ci-dessous par votre clé API.",
+        "agents_key_note": "Remplacez fsk_… dans les extraits ci-dessous par votre clé API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Ce délai de livraison n'est pas disponible avec votre offre actuelle",
         "err_download_limit_not_entitled": "Cette limite de téléchargements n'est pas disponible avec votre offre actuelle",
@@ -1104,7 +1104,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
 # B4 mcp closure
         "agents_header_note": "아직 키가 없나요? 이 줄을 빼고 먼저 연결한 뒤 register로 키를 받으세요.",
-        "agents_key_note": "아래 설정의 <key>를 내 API 키로 바꾸세요.",
+        "agents_key_note": "아래 설정의 fsk_…를 내 API 키로 바꾸세요.",
 # B5 frontend closure
         "err_expiry_not_entitled": "현재 멤버십에서는 이 만료 기간을 사용할 수 없습니다",
         "err_download_limit_not_entitled": "현재 멤버십에서는 이 다운로드 횟수를 사용할 수 없습니다",
@@ -1734,7 +1734,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Слишком много попыток, попробуйте позже",
 # B4 mcp closure
         "agents_header_note": "Ещё нет ключа? Сначала подключитесь без этой строки, затем получите ключ через register.",
-        "agents_key_note": "Замените <key> в примерах ниже на свой ключ API.",
+        "agents_key_note": "Замените fsk_… в примерах ниже на свой ключ API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Этот срок доставки недоступен на текущем тарифе",
         "err_download_limit_not_entitled": "Этот лимит загрузок недоступен на текущем тарифе",
@@ -2364,7 +2364,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "محاولات كثيرة جداً، حاول لاحقاً",
 # B4 mcp closure
         "agents_header_note": "لا مفتاح بعد؟ اتصل أولًا بدون هذا السطر، ثم احصل على مفتاح عبر register.",
-        "agents_key_note": "استبدل <key> في المقتطفات أدناه بمفتاح API الخاص بك.",
+        "agents_key_note": "استبدل fsk_… في المقتطفات أدناه بمفتاح API الخاص بك.",
 # B5 frontend closure
         "err_expiry_not_entitled": "مدة التسليم هذه غير متاحة في خطتك الحالية",
         "err_download_limit_not_entitled": "حد التنزيلات هذا غير متاح في خطتك الحالية",
@@ -2994,7 +2994,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Zu viele Versuche, bitte später erneut versuchen",
 # B4 mcp closure
         "agents_header_note": "Noch kein Schlüssel? Verbinde dich zuerst ohne diese Zeile und hole dir dann einen mit register.",
-        "agents_key_note": "Ersetze <key> in den Snippets unten durch deinen API-Schlüssel.",
+        "agents_key_note": "Ersetze fsk_… in den Snippets unten durch deinen API-Schlüssel.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Diese Liefergültigkeit ist in Ihrem aktuellen Tarif nicht verfügbar",
         "err_download_limit_not_entitled": "Dieses Download-Limit ist in Ihrem aktuellen Tarif nicht verfügbar",
@@ -3624,7 +3624,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Muitas tentativas, tente novamente mais tarde",
 # B4 mcp closure
         "agents_header_note": "Ainda sem chave? Conecte primeiro sem esta linha e depois pegue uma com register.",
-        "agents_key_note": "Substitua <key> nos trechos abaixo pela sua chave de API.",
+        "agents_key_note": "Substitua fsk_… nos trechos abaixo pela sua chave de API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Este prazo de entrega não está disponível no seu plano atual",
         "err_download_limit_not_entitled": "Este limite de downloads não está disponível no seu plano atual",
@@ -4254,7 +4254,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "試行回数が多すぎます。しばらくしてから再度お試しください",
 # B4 mcp closure
         "agents_header_note": "キーがまだなければ、まずこの行を外して接続し、register で取得してください。",
-        "agents_key_note": "以下の設定の <key> をあなたの API キーに置き換えてください。",
+        "agents_key_note": "以下の設定の fsk_… をあなたの API キーに置き換えてください。",
 # B5 frontend closure
         "err_expiry_not_entitled": "この配送有効期限は現在のプランでは利用できません",
         "err_download_limit_not_entitled": "このダウンロード回数は現在のプランでは利用できません",
@@ -4884,7 +4884,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "尝试次数过多，请稍后再试",
 # B4 mcp closure
         "agents_header_note": "还没有密钥？可先删掉此行直接连接，再用 register 获取。",
-        "agents_key_note": "将下方配置中的 <key> 替换为你的 API 密钥。",
+        "agents_key_note": "将下方配置中的 fsk_… 替换为你的 API 密钥。",
 # B5 frontend closure
         "err_expiry_not_entitled": "当前会员不支持该有效期档位",
         "err_download_limit_not_entitled": "当前会员不支持该下载次数档位",
@@ -5514,7 +5514,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Demasiados intentos, inténtalo más tarde",
 # B4 mcp closure
         "agents_header_note": "¿Aún sin clave? Conéctate primero sin esta línea y consigue una con register.",
-        "agents_key_note": "Reemplaza <key> en los fragmentos de abajo por tu clave API.",
+        "agents_key_note": "Reemplaza fsk_… en los fragmentos de abajo por tu clave API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Esta validez de entrega no está disponible en tu plan actual",
         "err_download_limit_not_entitled": "Este límite de descargas no está disponible en tu plan actual",
@@ -6144,7 +6144,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Too many attempts, please try again later",
 # B4 mcp closure
         "agents_header_note": "No key yet? Connect without this line first, then get one with register.",
-        "agents_key_note": "Replace <key> in the snippets below with your API key.",
+        "agents_key_note": "Replace fsk_… in the snippets below with your API key.",
 # B5 frontend closure
         "err_expiry_not_entitled": "This delivery expiry is not available on your current plan",
         "err_download_limit_not_entitled": "This download limit is not available on your current plan",
