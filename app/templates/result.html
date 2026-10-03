@@ -41,7 +41,7 @@
           </figure>
           <div class="rs-img-meta">
             <small>{{ live_images[0].size_text }} · {{ live_images[0].type_text }}</small>
-            <a class="btn btn-secondary btn-sm rs-dl" href="{{ live_images[0].download_url }}" download data-view-url="/f/{{ live_images[0].public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+            <a class="btn btn-secondary btn-sm rs-dl" href="{{ live_images[0].download_url }}" data-name="{{ live_images[0].filename }}" data-size="{{ live_images[0].size }}" download data-view-url="/f/{{ live_images[0].public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
           </div>
         </div>
       </div>
@@ -57,7 +57,7 @@
               {% set _nm = it.filename or "" %}
               {% set _i = _nm.rfind('.') %}
               <figcaption><b class="if-name" title="{{ _nm }}"><span class="if-stem">{{ _nm[:_i] if _i > 0 else _nm }}</span>{% if _i > 0 %}<span class="if-ext">{{ _nm[_i:] }}</span>{% endif %}</b><small>{{ it.size_text }}</small></figcaption>
-              <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" download data-view-url="/f/{{ it.public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
+              <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" data-name="{{ it.filename }}" data-size="{{ it.size }}" download data-view-url="/f/{{ it.public_id }}/inline" aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}<span data-i18n="download_file">{{ texts.download_file }}</span></a>
             </figure>
             {% endfor %}
           </div>
@@ -100,7 +100,7 @@
             {% if it.is_pdf %}
             <a class="btn btn-ghost btn-sm" href="{{ it.page_url }}" target="_blank" rel="noopener" aria-label="{{ texts.r_preview }}">{{ icon_svg("eye") }}</a>
             {% endif %}
-            <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" download{% if it.is_pdf %} data-view-url="/f/{{ it.public_id }}/inline"{% endif %} aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}</a>
+            <a class="btn btn-secondary btn-sm rs-dl" href="{{ it.download_url }}" data-name="{{ it.filename }}" data-size="{{ it.size }}" download{% if it.is_pdf %} data-view-url="/f/{{ it.public_id }}/inline"{% endif %} aria-label="{{ texts.download_file }}">{{ icon_svg("download") }}</a>
           </div>
         </div>
         {% endif %}
