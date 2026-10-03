@@ -223,6 +223,17 @@
 /* ── Doc Pages ───────────────────────────────────────────── */
 .doc { line-height: 1.7; width: 100%; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
 .doc h1 { font-size: var(--fs-xl); }
+.doc h2 { margin: 2em 0 0.6em; font-size: 19px; line-height: 1.35; letter-spacing: -0.01em; }
+.doc p { margin: 0 0 1em; max-width: 72ch; }
+.doc ul, .doc ol { margin: 0 0 1.2em; padding-inline-start: 1.4em; }
+.doc li { margin: 0.35em 0; }
+.doc li::marker { color: var(--ink-3); }
+.doc .doc-pre { margin: 0 0 1.2em; }
+@media (max-width: 640px) {
+  .doc { padding: var(--s3) var(--s2) var(--s4); }
+  .doc h2 { font-size: 17px; margin: 1.6em 0 0.5em; }
+  .doc p { max-width: none; }
+}
 
 /* ── /agents (agent support surface) ─────────────────────── */
 
