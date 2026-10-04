@@ -1,0 +1,108 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "518-plus",
+  "version": "1.0.0",
+  "description": "Process and temporarily share files with 518.PLUS.",
+  "author": {
+    "name": "518.PLUS",
+    "email": "ad@live.it",
+    "url": "https://518.plus"
+  },
+  "homepage": "https://518.plus",
+  "license": "AGPL-3.0",
+  "keywords": [
+    "files",
+    "documents",
+    "images",
+    "pdf",
+    "sharing",
+    "mcp"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "518.PLUS",
+        "shortDescription": "Process and share files",
+        "longDescription": "Process, convert, compress, format, bundle, and temporarily share files with 518.PLUS. This plugin exposes a fixed set of 518.PLUS first-party file tools through MCP. It does not expose the third-party Tool Market. Files are processed in your connected 518.PLUS account, and generated files or share links are temporary and follow your account's retention and download limits.",
+        "developerName": "518.PLUS",
+        "category": "Productivity",
+        "capabilities": [
+          "Temporarily share files",
+          "Compress images",
+          "Format screenshots",
+          "Crop white image margins",
+          "Create favicon ICO files",
+          "Convert images to PDF",
+          "Merge PDF files",
+          "Create ZIP archives"
+        ],
+        "websiteURL": "https://518.plus",
+        "supportURL": "https://518.plus/support",
+        "privacyPolicyURL": "https://518.plus/privacy",
+        "termsOfServiceURL": "https://518.plus/terms",
+        "defaultPrompt": [
+          "Share the attached file with a temporary link.",
+          "Compress this image and give me the result.",
+          "Merge these PDF files in the order I attached them."
+        ],
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Create a temporary share link for an attached file.",
+              "prompt": "Share the attached PDF with a temporary link.",
+              "tools_triggered": "share",
+              "expected_behavior": "Create a temporary 518.PLUS result containing the unchanged PDF and return a human-viewable result link."
+            },
+            {
+              "description": "Compress an attached image.",
+              "prompt": "Compress this attached PNG while keeping it suitable for sharing.",
+              "tools_triggered": "compress",
+              "expected_behavior": "Return a compressed image as a temporary 518.PLUS result without modifying the source file."
+            },
+            {
+              "description": "Format an attached screenshot.",
+              "prompt": "Put this screenshot in a clean 1:1 frame for a social post.",
+              "tools_triggered": "beautify",
+              "expected_behavior": "Use the screenshot-formatting tool with the requested aspect ratio and return the generated image."
+            },
+            {
+              "description": "Merge multiple PDF files.",
+              "prompt": "Merge these two attached PDFs in attachment order.",
+              "tools_triggered": "pdf_merge",
+              "expected_behavior": "Return one merged PDF whose page order follows the input attachment order."
+            },
+            {
+              "description": "Convert multiple images into a PDF.",
+              "prompt": "Turn these attached images into one PDF in attachment order.",
+              "tools_triggered": "img2pdf",
+              "expected_behavior": "Return one PDF containing the attached images in the same order."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Digital-credit purchasing is outside the public plugin surface.",
+              "prompt": "Buy 10,000 credits for my 518.PLUS account."
+            },
+            {
+              "description": "Third-party Tool Market discovery and execution are not exposed by this plugin.",
+              "prompt": "Search the 518 Tool Market for a third-party OCR tool and run it."
+            },
+            {
+              "description": "Permanent storage is unsupported because 518.PLUS plugin results are temporary.",
+              "prompt": "Store this attached file permanently with no expiry."
+            }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "This plugin does not sell products or process payments."
+      },
+      "publication": {
+        "release_notes": "Initial 518.PLUS plugin submission with a fixed first-party MCP surface for file processing and temporary sharing."
+      }
+    }
+  }
+}

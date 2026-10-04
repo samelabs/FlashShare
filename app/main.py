@@ -26,7 +26,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse, RedirectResponse
 from markupsafe import escape as html_escape
 
-from config import APP_NAME, COOKIE_NAME, SESSION_TTL
+from config import APP_NAME, BASE_URL, COOKIE_NAME, SESSION_TTL
 from database import init_db
 from security import token_hash
 from i18n import language_from_code, language_from_header
@@ -147,14 +147,22 @@ def get_user_from_request(request: Request):
         # A stale/invalid cookie is no identity: /mcp still resolves its
         # Bearer below; every other path stays anonymous.
     path = request.url.path
-    if path == "/mcp":
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            from identity.apikeys import authenticate_key
-            user = authenticate_key(auth[7:].strip())
-            if user:
-                request.state.auth_via = "token"
-            return user
+    auth = request.headers.get("authorization", "")
+    if path == "/mcp/openai" and auth.lower().startswith("bearer "):
+        from identity.oauth_provider import authenticate_access_token
+        identity = authenticate_access_token(
+            auth[7:].strip(), resource=f"{BASE_URL}/mcp/openai")
+        if identity:
+            request.state.auth_via = "oauth"
+            request.state.oauth_scopes = identity["scopes"]
+            return identity["user"]
+        return None
+    if path == "/mcp" and auth.lower().startswith("bearer "):
+        from identity.apikeys import authenticate_key
+        user = authenticate_key(auth[7:].strip())
+        if user:
+            request.state.auth_via = "token"
+        return user
     return None
 
 
@@ -278,13 +286,15 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Routes ──
 
-from app.routes import pages, api, auth_route, proxy, samelabs, mcp, mcp_upload, usertools, favorites  # noqa: E402
+from app.routes import pages, api, auth_route, proxy, samelabs, mcp, mcp_openai, oauth_provider, mcp_upload, usertools, favorites  # noqa: E402
 
 app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
 app.include_router(auth_route.router, prefix="/auth")
 app.include_router(samelabs.router)
 app.include_router(mcp.router)
+app.include_router(mcp_openai.router)
+app.include_router(oauth_provider.router)
 app.include_router(mcp_upload.router)
 from app.routes import topup  # noqa: E402
 app.include_router(topup.router)

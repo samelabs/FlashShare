@@ -15,6 +15,17 @@ LOCALE_TAGS = {
 
 SERVER_I18N = {
     "fr": {
+        "oauth_consent_title": "Connecter une application",
+        "oauth_consent_intro": "Cette application demande l’accès à votre compte 518.PLUS.",
+        "oauth_consent_scopes": "Autorisations",
+        "oauth_scope_files_read": "Voir vos fichiers partagés encore disponibles",
+        "oauth_scope_files_write": "Traiter, créer et supprimer les fichiers que vous lui demandez de gérer",
+        "oauth_connected_as": "Connecté en tant que",
+        "oauth_allow": "Autoriser",
+        "support_title": "Assistance",
+        "support_desc": "Assistance 518.PLUS pour les comptes, fichiers et connexions MCP.",
+        "support_body": "Pour l’accès au compte, le traitement de fichiers, les connexions MCP, les demandes de confidentialité ou de données et la facturation, contactez-nous par e-mail.",
+        "support_security_note": "N’envoyez jamais de mots de passe, clés API ou autres secrets par e-mail.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "Fermer",
         "lang_switch": "Changer de langue",
@@ -586,6 +597,17 @@ SERVER_I18N = {
         "copy_link": "Copier le lien"
 },
     "ko": {
+        "oauth_consent_title": "애플리케이션 연결",
+        "oauth_consent_intro": "이 애플리케이션이 518.PLUS 계정 접근 권한을 요청합니다.",
+        "oauth_consent_scopes": "권한",
+        "oauth_scope_files_read": "현재 공유 중인 파일 보기",
+        "oauth_scope_files_write": "사용자가 요청한 파일 처리, 생성 및 삭제",
+        "oauth_connected_as": "로그인 계정",
+        "oauth_allow": "허용",
+        "support_title": "지원",
+        "support_desc": "518.PLUS 계정, 파일 및 MCP 연결 지원.",
+        "support_body": "계정 접근, 파일 처리, MCP 연결, 개인정보·데이터 요청 및 결제 지원은 이메일로 문의하세요.",
+        "support_security_note": "지원 이메일에 비밀번호, API 키 또는 기타 비밀정보를 보내지 마세요.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "닫기",
         "lang_switch": "언어 전환",
@@ -1157,6 +1179,17 @@ SERVER_I18N = {
         "copy_link": "링크 복사"
 },
     "ru": {
+        "oauth_consent_title": "Подключить приложение",
+        "oauth_consent_intro": "Это приложение запрашивает доступ к вашей учетной записи 518.PLUS.",
+        "oauth_consent_scopes": "Разрешения",
+        "oauth_scope_files_read": "Просматривать ваши действующие общие файлы",
+        "oauth_scope_files_write": "Обрабатывать, создавать и удалять файлы по вашему запросу",
+        "oauth_connected_as": "Выполнен вход как",
+        "oauth_allow": "Разрешить",
+        "support_title": "Поддержка",
+        "support_desc": "Поддержка 518.PLUS по аккаунтам, файлам и MCP-подключениям.",
+        "support_body": "По вопросам доступа к аккаунту, обработки файлов, MCP-подключений, конфиденциальности, данных и оплаты напишите нам по электронной почте.",
+        "support_security_note": "Не отправляйте пароли, API-ключи и другие секреты в письмах поддержке.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "Закрыть",
         "lang_switch": "Сменить язык",
@@ -1728,6 +1761,17 @@ SERVER_I18N = {
         "copy_link": "Копировать ссылку"
 },
     "ar": {
+        "oauth_consent_title": "ربط التطبيق",
+        "oauth_consent_intro": "يطلب هذا التطبيق الوصول إلى حسابك في 518.PLUS.",
+        "oauth_consent_scopes": "الأذونات",
+        "oauth_scope_files_read": "عرض ملفاتك المشتركة المتاحة",
+        "oauth_scope_files_write": "معالجة الملفات وإنشاؤها وحذفها عندما تطلب منه إدارتها",
+        "oauth_connected_as": "تم تسجيل الدخول باسم",
+        "oauth_allow": "سماح",
+        "support_title": "الدعم",
+        "support_desc": "دعم حسابات وملفات واتصالات MCP في 518.PLUS.",
+        "support_body": "للمساعدة في الوصول إلى الحساب ومعالجة الملفات واتصالات MCP وطلبات الخصوصية أو البيانات والفوترة، تواصل معنا عبر البريد الإلكتروني.",
+        "support_security_note": "لا ترسل كلمات المرور أو مفاتيح API أو أي أسرار أخرى في رسائل الدعم.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "إغلاق",
         "lang_switch": "تغيير اللغة",
@@ -2299,6 +2343,17 @@ SERVER_I18N = {
         "copy_link": "نسخ الرابط"
 },
     "de": {
+        "oauth_consent_title": "Anwendung verbinden",
+        "oauth_consent_intro": "Diese Anwendung fordert Zugriff auf dein 518.PLUS-Konto an.",
+        "oauth_consent_scopes": "Berechtigungen",
+        "oauth_scope_files_read": "Deine noch verfügbaren geteilten Dateien ansehen",
+        "oauth_scope_files_write": "Dateien auf deine Anweisung verarbeiten, erstellen und löschen",
+        "oauth_connected_as": "Angemeldet als",
+        "oauth_allow": "Zulassen",
+        "support_title": "Support",
+        "support_desc": "Support für 518.PLUS-Konten, Dateien und MCP-Verbindungen.",
+        "support_body": "Bei Kontozugriff, Dateiverarbeitung, MCP-Verbindungen, Datenschutz- oder Datenanfragen und Abrechnung kontaktiere uns per E-Mail.",
+        "support_security_note": "Sende keine Passwörter, API-Schlüssel oder andere Geheimnisse per Support-E-Mail.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "Schließen",
         "lang_switch": "Sprache wechseln",
@@ -2870,6 +2925,17 @@ SERVER_I18N = {
         "copy_link": "Link kopieren"
 },
     "pt": {
+        "oauth_consent_title": "Conectar aplicativo",
+        "oauth_consent_intro": "Este aplicativo está solicitando acesso à sua conta 518.PLUS.",
+        "oauth_consent_scopes": "Permissões",
+        "oauth_scope_files_read": "Ver seus arquivos compartilhados ainda disponíveis",
+        "oauth_scope_files_write": "Processar, criar e excluir arquivos quando você pedir",
+        "oauth_connected_as": "Conectado como",
+        "oauth_allow": "Permitir",
+        "support_title": "Suporte",
+        "support_desc": "Suporte para contas, arquivos e conexões MCP do 518.PLUS.",
+        "support_body": "Para acesso à conta, processamento de arquivos, conexões MCP, solicitações de privacidade ou dados e cobrança, entre em contato por e-mail.",
+        "support_security_note": "Não envie senhas, chaves de API ou outros segredos por e-mail de suporte.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "Fechar",
         "lang_switch": "Mudar idioma",
@@ -3441,6 +3507,17 @@ SERVER_I18N = {
         "copy_link": "Copiar link"
 },
     "ja": {
+        "oauth_consent_title": "アプリを接続",
+        "oauth_consent_intro": "このアプリが 518.PLUS アカウントへのアクセスを求めています。",
+        "oauth_consent_scopes": "権限",
+        "oauth_scope_files_read": "現在共有中のファイルを表示",
+        "oauth_scope_files_write": "依頼したファイルの処理・作成・削除",
+        "oauth_connected_as": "ログイン中",
+        "oauth_allow": "許可",
+        "support_title": "サポート",
+        "support_desc": "518.PLUS のアカウント、ファイル、MCP 接続に関するサポート。",
+        "support_body": "アカウントへのアクセス、ファイル処理、MCP 接続、プライバシー・データに関する依頼、請求についてはメールでお問い合わせください。",
+        "support_security_note": "サポートメールにパスワード、API キー、その他の秘密情報を送らないでください。",
         # C2 a11y labels (close / language switch / pagination)
         "close": "閉じる",
         "lang_switch": "言語を切り替える",
@@ -4012,6 +4089,17 @@ SERVER_I18N = {
         "copy_link": "リンクをコピー"
 },
     "zh": {
+        "oauth_consent_title": "连接应用",
+        "oauth_consent_intro": "此应用正在请求访问你的 518.PLUS 账户。",
+        "oauth_consent_scopes": "权限",
+        "oauth_scope_files_read": "查看你仍有效的共享文件",
+        "oauth_scope_files_write": "按你的要求处理、创建和删除文件",
+        "oauth_connected_as": "当前登录",
+        "oauth_allow": "允许",
+        "support_title": "客户支持",
+        "support_desc": "518.PLUS 账户、文件与 MCP 连接支持。",
+        "support_body": "如需账户访问、文件处理、MCP 连接、隐私或数据请求及账单支持，请通过电子邮件联系我们。",
+        "support_security_note": "请勿在支持邮件中发送密码、API 密钥或其他敏感凭据。",
         # C2 a11y labels (close / language switch / pagination)
         "close": "关闭",
         "lang_switch": "切换语言",
@@ -4583,6 +4671,17 @@ SERVER_I18N = {
         "copy_link": "复制链接"
 },
     "es": {
+        "oauth_consent_title": "Conectar aplicación",
+        "oauth_consent_intro": "Esta aplicación solicita acceso a tu cuenta de 518.PLUS.",
+        "oauth_consent_scopes": "Permisos",
+        "oauth_scope_files_read": "Ver tus archivos compartidos que siguen disponibles",
+        "oauth_scope_files_write": "Procesar, crear y eliminar archivos cuando se lo pidas",
+        "oauth_connected_as": "Sesión iniciada como",
+        "oauth_allow": "Permitir",
+        "support_title": "Soporte",
+        "support_desc": "Soporte para cuentas, archivos y conexiones MCP de 518.PLUS.",
+        "support_body": "Para acceso a la cuenta, procesamiento de archivos, conexiones MCP, solicitudes de privacidad o datos y facturación, contáctanos por correo electrónico.",
+        "support_security_note": "No envíes contraseñas, claves API ni otros secretos por correo de soporte.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "Cerrar",
         "lang_switch": "Cambiar idioma",
@@ -5154,6 +5253,17 @@ SERVER_I18N = {
         "copy_link": "Copiar enlace"
 },
     "en": {
+        "oauth_consent_title": "Connect application",
+        "oauth_consent_intro": "This application is requesting access to your 518.PLUS account.",
+        "oauth_consent_scopes": "Permissions",
+        "oauth_scope_files_read": "View your live shared files",
+        "oauth_scope_files_write": "Process, create and delete files you ask it to manage",
+        "oauth_connected_as": "Signed in as",
+        "oauth_allow": "Allow",
+        "support_title": "Support",
+        "support_desc": "Customer support for 518.PLUS accounts, files and MCP connections.",
+        "support_body": "For account access, file processing, MCP connections, privacy or data requests, and billing support, contact us by email.",
+        "support_security_note": "Do not send passwords, API keys, or other secrets in support email.",
         # C2 a11y labels (close / language switch / pagination)
         "close": "Close",
         "lang_switch": "Switch language",

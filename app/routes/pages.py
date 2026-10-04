@@ -132,7 +132,7 @@ async def sitemap():
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for p in ("/", "/tools", "/agents", "/pricing", "/developers",
-              "/terms", "/privacy"):
+              "/support", "/terms", "/privacy"):
         lines.append(f"<url><loc>{_xml_escape(BASE_URL + p)}</loc></url>")
     owners = []
     for r in rows:
@@ -153,6 +153,30 @@ def _support_note() -> str:
     from config import SUPPORT_EMAIL
     return (f'<p class="doc-support"><a href="mailto:{SUPPORT_EMAIL}" '
             f'rel="noopener">{SUPPORT_EMAIL}</a></p>')
+
+
+@router.get("/support", response_class=HTMLResponse)
+async def support(request: Request):
+    from app.main import templates
+    from config import SUPPORT_EMAIL
+    ctx = _ctx_base(request)
+    texts = ctx["texts"]
+    body = (
+        f"<p>{texts.get('support_body', 'For account access, file processing, MCP connections, privacy or data requests, and billing support, contact us by email.')}</p>"
+        f'<p class="doc-support"><a href="mailto:{SUPPORT_EMAIL}" rel="noopener">{SUPPORT_EMAIL}</a></p>'
+        f"<p>{texts.get('support_security_note', 'Do not send passwords, API keys, or other secrets in support email.')}</p>"
+    )
+    ctx.update({
+        "shell_class": "",
+        "seo_robots": "index, follow",
+        "share_url": "",
+        "doc_title": texts.get("support_title", "Support"),
+        "doc_desc": texts.get(
+            "support_desc",
+            "Customer support for 518.PLUS accounts, files and MCP connections."),
+        "doc_body": body,
+    })
+    return templates.TemplateResponse(request, "doc.html", ctx)
 
 
 @router.get("/terms", response_class=HTMLResponse)

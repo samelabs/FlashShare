@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.oauth_consent_title }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{% endblock %}
+
+{% block content %}
+<section class="auth-page">
+  <div class="auth-card">
+    <h1 data-i18n="oauth_consent_title">{{ texts.oauth_consent_title }}</h1>
+    <p class="auth-sub" data-i18n="oauth_consent_intro">{{ texts.oauth_consent_intro }}</p>
+    <p><strong>{{ client_name }}</strong></p>
+    <p class="auth-hint"><span data-i18n="oauth_connected_as">{{ texts.oauth_connected_as }}</span> {{ oauth_user }}</p>
+    <div class="field">
+      <span class="field-label" data-i18n="oauth_consent_scopes">{{ texts.oauth_consent_scopes }}</span>
+      <ul>
+        {% if oauth_read %}<li data-i18n="oauth_scope_files_read">{{ texts.oauth_scope_files_read }}</li>{% endif %}
+        {% if oauth_write %}<li data-i18n="oauth_scope_files_write">{{ texts.oauth_scope_files_write }}</li>{% endif %}
+      </ul>
+    </div>
+    <form method="post" action="/oauth/authorize" class="auth-form">
+      {% for key, value in oauth_params.items() %}
+      <input type="hidden" name="{{ key }}" value="{{ value }}">
+      {% endfor %}
+      <input type="hidden" name="consent_nonce" value="{{ oauth_nonce }}">
+      <button type="submit" name="action" value="allow" class="btn btn-p btn-lg">
+        <span data-i18n="oauth_allow">{{ texts.oauth_allow }}</span>
+      </button>
+      <button type="submit" name="action" value="deny" class="btn btn-lg">
+        <span data-i18n="cancel">{{ texts.cancel }}</span>
+      </button>
+    </form>
+    <p class="auth-terms"><a href="/terms" data-i18n="footer_terms">{{ texts.footer_terms }}</a> · <a href="/privacy" data-i18n="footer_privacy">{{ texts.footer_privacy }}</a></p>
+  </div>
+</section>
+{% endblock %}

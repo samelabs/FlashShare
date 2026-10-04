@@ -240,6 +240,10 @@ jobs:
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_mcp_protocol.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_openai_mcp_auth.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_openai_mcp_auth.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_zip_preview_unavailable.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_zip_preview_unavailable.py
@@ -460,6 +464,9 @@ jobs:
 
       - name: Stage C canonical
         run: python tests/canonical/test_invocation_canonical.py
+
+      - name: OpenAI MCP OAuth/public-surface canonical
+        run: python tests/canonical/test_openai_mcp_auth.py
 
       - name: Supply accept/multi canonical
         run: python tests/canonical/test_supply_accept_multi.py

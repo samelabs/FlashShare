@@ -158,6 +158,60 @@ _SCHEMA_SQL = (
       bind_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE
     )
     """,
+    # ── OAuth 2.1 provider for the reviewable public MCP surface ──
+    """
+    CREATE TABLE IF NOT EXISTS oauth_mcp_clients (
+      client_id                  TEXT PRIMARY KEY,
+      client_name                TEXT NOT NULL,
+      redirect_uris              JSONB NOT NULL,
+      token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none'
+                                 CHECK (token_endpoint_auth_method = 'none'),
+      created_at                 BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS oauth_mcp_codes (
+      code_hash      TEXT PRIMARY KEY,
+      user_id        BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      client_id      TEXT NOT NULL REFERENCES oauth_mcp_clients(client_id)
+                     ON DELETE CASCADE,
+      redirect_uri   TEXT NOT NULL,
+      code_challenge TEXT NOT NULL,
+      scope           TEXT NOT NULL,
+      resource        TEXT NOT NULL,
+      expires_at      BIGINT NOT NULL,
+      created_at      BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS oauth_mcp_codes_expiry_idx
+      ON oauth_mcp_codes(expires_at)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS oauth_mcp_tokens (
+      id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      access_token_hash   TEXT NOT NULL UNIQUE,
+      refresh_token_hash  TEXT NOT NULL UNIQUE,
+      user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      client_id           TEXT NOT NULL REFERENCES oauth_mcp_clients(client_id)
+                          ON DELETE CASCADE,
+      scope                TEXT NOT NULL,
+      resource             TEXT NOT NULL,
+      access_expires_at    BIGINT NOT NULL,
+      refresh_expires_at   BIGINT NOT NULL,
+      created_at           BIGINT NOT NULL,
+      last_used_at         BIGINT,
+      revoked_at           BIGINT
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS oauth_mcp_tokens_user_idx
+      ON oauth_mcp_tokens(user_id, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS oauth_mcp_tokens_refresh_expiry_idx
+      ON oauth_mcp_tokens(refresh_expires_at)
+    """,
     # ── uploads ──
     """
     CREATE TABLE IF NOT EXISTS uploads (
@@ -814,9 +868,11 @@ def init_db() -> None:
         # primitives (same ones the hourly housekeeping consumes); local
         # imports keep the schema module decoupled at load time.
         from repo.sessions import delete_expired_oauth, delete_expired
+        from repo.oauth_provider import delete_expired as delete_expired_plugin_oauth
         from repo.upload_usage import purge_before
         delete_expired_oauth(con, ts)
         delete_expired(con, ts)
+        delete_expired_plugin_oauth(con, ts)
         # Quota facts only serve the rolling 24h window (queries read
         # created_at > now-24h); older rows have no business value.
         # purge_before uses created_at <= cutoff — the canonical window

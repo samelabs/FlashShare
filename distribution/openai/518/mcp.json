@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "518-plus": {
+      "type": "streamable-http",
+      "url": "https://518.plus/mcp/openai"
+    }
+  }
+}
