@@ -571,7 +571,7 @@ def _spec_summary(t: dict, names: dict | None = None) -> dict:
     tools/list O(tools²) DB+CPU; every caller passes one shared map."""
     names = names if names is not None else mcp_names()
     label = t["label"]
-    title = label.get("en") or t["id"]
+    title = resolve_label(label, "en") or t["id"]
     mn = int(t["files_min"])
     mx = int(t["files_max"])
     accept = t.get("accept")

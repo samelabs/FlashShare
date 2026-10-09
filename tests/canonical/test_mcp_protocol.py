@@ -196,6 +196,29 @@ check("V2 capabilities.tools.listChanged is false",
       ((d.get("result") or {}).get("capabilities") or {}).get("tools") == {"listChanged": False},
       str(d)[:120])
 
+# Discovery must accept both valid LocalizedText forms: a plain string
+# and a locale map without "en" (fallback to the first available locale).
+# The same summary builder feeds tools/list and catalog_search.
+from app.routes.mcp import _spec_summary
+_label_base = {
+    "id": "labelprobe/demo", "files_min": 0, "files_max": 0,
+    "outputs": ["text"], "cost": 0,
+    "desc": {"zh": "整理文件"},
+}
+for label, expected in (
+    ("Plain Label", "Plain Label"),
+    ({"zh": "工具名称"}, "工具名称"),
+):
+    _summary = _spec_summary(
+        {**_label_base, "label": label},
+        {"labelprobe/demo": "labelprobe__demo"},
+    )
+    check(f"V3 MCP discovery title handles {type(label).__name__}",
+          _summary["title"] == expected
+          and _summary["name"] == "labelprobe__demo"
+          and "整理文件" in _summary["description"],
+          _summary)
+
 # ══════════ 2. MCP-Protocol-Version header ══════════
 _ping = {"jsonrpc": "2.0", "id": 5, "method": "ping"}
 st, _h, d = _mcp(_ping, extra={"MCP-Protocol-Version": "2031-01-01"})

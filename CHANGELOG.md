@@ -2,6 +2,11 @@
 
 本文件记录面向用户的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本以功能批次划分。
 
+## [Unreleased]
+
+### Fixed
+- MCP 工具发现：正确解析单字符串或缺少英文翻译的多语言工具名称，确保 tools/list 和 catalog_search 显示可读名称，不再抛错或回退为内部工具 ID。
+
 ## [1.4] - 2026-10-03
 
 ### Added
