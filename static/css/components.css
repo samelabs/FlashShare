@@ -446,12 +446,20 @@ pre.rs-text, pre.rs-json {
   border: var(--border-w) solid var(--line); border-radius: var(--r-lg);
   padding: var(--s5) var(--s4) var(--s4); position: relative; box-shadow: var(--sh-4);
 }
+/* 图标关闭钮 (5 个弹窗面共用): 32×32 正方形热区 + grid 居中;
+   min-height:0 抵消全局 button 基样的 40px 高 (不抵消则钮被拉高、
+   字形贴顶, 呈失控观感) */
 .modal-close {
   position: absolute; inset-block-start: var(--s2); inset-inline-end: var(--s2);
+  width: 32px; height: 32px; min-height: 0; padding: 0;
+  display: grid; place-items: center;
   background: none; border: 0; cursor: pointer; color: var(--ink-2);
-  padding: var(--s2); border-radius: var(--r-sm); display: flex;
+  border-radius: var(--r-full);
 }
-.modal-close svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
+/* 字形尺寸有意走全局 svg 基样 (svg:not([width]) 的 20px, 特异度
+   (0,2,1) 高于本规则的 class 级写法 — 写 width 只会留下永不生效的
+   死声明); 这里只管描边语言 */
+.modal-close svg { stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
 @media (hover:hover) and (pointer:fine) { .modal-close:hover { background: var(--gray-100); color: var(--ink); } }
 
 /* ── Toast ─────────────────────────────────────────────────── */
