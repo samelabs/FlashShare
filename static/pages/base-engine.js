@@ -196,7 +196,7 @@ function _sbQr(src) {
     m.setAttribute("role", "dialog");
     m.setAttribute("aria-modal", "true");
     m.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">'
-      + (window.iconSvg ? window.iconSvg("x") : "×") + '</button><img alt="QR" width="200" height="200"></div>';
+      + (window.iconSvg ? window.iconSvg("close") : "×") + '</button><img alt="QR" width="200" height="200"></div>';
     document.body.appendChild(m);
     m.addEventListener("click", function (e) {
       if (e.target === m || (e.target.closest && e.target.closest(".modal-close"))) m.classList.add("hidden");
@@ -221,6 +221,25 @@ document.addEventListener("click", function (e) {
     navigator.clipboard.writeText(url).then(function () { _sbConfirm(b); }).catch(function () {});
   } else if (act === "qr") _sbQr(b.getAttribute("data-qr-src"));
 });
+
+// ── Site-wide toast (the single transient notice surface) ──
+// Drives the .toast component (components.css). Single-slot: a new
+// notice replaces the one on screen — rapid rejections must not stack.
+// Text-first by design; no icons, no actions.
+window.globalToast = function (message) {
+  var old = document.querySelector(".toast");
+  if (old) old.remove();
+  var el = document.createElement("div");
+  el.className = "toast";
+  el.setAttribute("role", "status");
+  el.textContent = message;
+  document.body.appendChild(el);
+  requestAnimationFrame(function () { el.classList.add("on"); });
+  setTimeout(function () {
+    el.classList.remove("on");
+    setTimeout(function () { el.remove(); }, 260);
+  }, 2600);
+};
 
 // ── Site-wide async confirm authority (VIS-006 / RC-VIS-002) ──
 // One modal-based confirm for core destructive operations: history

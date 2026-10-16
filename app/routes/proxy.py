@@ -204,7 +204,8 @@ async def file_qr(public_id: str):
     from utils import qr_svg
     url = public_file_url(public_id)
     svg = qr_svg(url)
-    return Response(content=svg, media_type="image/svg+xml; charset=utf-8")
+    return Response(content=svg, media_type="image/svg+xml; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/f/{public_id}/zip-list")

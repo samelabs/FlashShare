@@ -2,6 +2,7 @@
 {% block title %}{{ texts.pricing_title }} - {{ APP_NAME }}{% endblock %}
 {% block desc %}{{ texts.pricing_sub }}{% endblock %}
 
+{% from "partials/share_bar.html" import share_bar with context %}
 {% block content %}
 <section class="pricing-page">
   <div class="wrap">
@@ -9,6 +10,7 @@
       <div>
         <h1 data-i18n="pricing_title">{{ texts.pricing_title }}</h1>
         <p class="sec-sub" data-i18n="pricing_sub">{{ texts.pricing_sub }}</p>
+        {{ share_bar(canonical_url, texts.pricing_title, qr_src="/qr.svg?p=%2Fpricing", compact=true) }}
       </div>
     </div>
 

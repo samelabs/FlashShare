@@ -7,8 +7,8 @@
 // 输入框右下角内侧。参数超过 3 个: 前 3 个直显, 其余收进"更多参数"。
 // 校验走与后端同一报错边界 (统一内联提示, 不用 alert):
 //   文件数越窗 → err_file_count {min}{max}; 格式 → err_format_not_supported
-//   {formats}; 超单文件上限 → err_file_too_large {mb} (选择时前端预检,
-//   超限不发请求);
+//   (中性文案, 全局 toast 提醒); 超单文件上限 → err_file_too_large {mb}
+//   (选择时前端预检, 超限不发请求);
 //   必填参数 → param_required。
 // Ctrl/Cmd+Enter 提交 (Enter 换行)。执行走全局单源 window.runToolFlow
 // (process-flow.js): files / params / delivery / client_ref 的字段、
@@ -266,6 +266,7 @@
         ? esc(t("ti_run")) + " · " + cost + " " + esc(t("credits_short"))
         : esc(t("ti_run"));
       html += '<div class="c-bar">'
+        + '<span class="ti-del-wrap">'
         + '<button type="button" class="opt ti-del" aria-haspopup="true" aria-expanded="false">'
         + icon("expiry") + '<span class="ti-del-label">' + dLabel + "</span></button>"
         + '<div class="c-del-pop hidden">'
@@ -280,6 +281,7 @@
           + n + " " + t("times_unit") + "</option>").join("")
         + "</select></label>"
         + "</div>"
+        + "</span>"
         + '<span class="ti-progress" aria-live="polite"></span>'
         + '<span class="sp"></span>'
         + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + "</button>")
@@ -380,11 +382,11 @@
       const accept = acceptTokens();
       const max = filesMax();
       const maxBytes = ((window.__LIMITS__ || {}).maxFileMb || 50) * 1024 * 1024;
-      let rejectedFormat = null, rejectedCount = false, rejectedSize = false;
+      let rejectedFormat = false, rejectedCount = false, rejectedSize = false;
       for (const f of incoming) {
         const ext = extOf(f.name);
         if (accept ? accept.indexOf(ext) === -1 : !EXT_TO_TYPE[ext]) {
-          rejectedFormat = accept ? accept.map((a) => a.toUpperCase()).join(" · ") : t("ti_accept_common");
+          rejectedFormat = true;
           continue;
         }
         if (f.size > maxBytes) { rejectedSize = true; continue; }
@@ -392,7 +394,8 @@
         files.push(f);
       }
       if (rejectedFormat) {
-        showError(t("err_format_not_supported", { formats: rejectedFormat }));
+        // 格式拒绝 = 即时中性提醒 (全局 toast); 越窗/超限仍走内联
+        window.globalToast(t("err_format_not_supported"));
       } else if (rejectedSize) {
         showError(t("err_file_too_large", { mb: Math.round(maxBytes / 1024 / 1024) }));
       } else if (rejectedCount) {
@@ -447,8 +450,8 @@
       if (files.length < filesMax()) {
         rows.innerHTML += '<button type="button" class="chipf ti-add-block" aria-label="'
           + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">'
-          + '<span class="th d" aria-hidden="true">' + icon("clip") + "</span>"
-          + "<span><b>+</b> " + esc(t("ti_add_files")) + "</span></button>";
+          + '<span class="th d" aria-hidden="true">' + icon("plus") + "</span>"
+          + "<span><b>" + esc(t("ti_add_files")) + "</b></span></button>";
       }
       rows.querySelectorAll("[data-rm]").forEach((b) => {
         b.addEventListener("click", () => removeFile(+b.dataset.rm));
