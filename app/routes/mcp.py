@@ -564,6 +564,35 @@ _UNPIN_TOOL_SPEC = _pin_spec(
     "Remove a tool from your favorites. It stays callable by name. Free.")
 
 
+# ── Strict arguments: an undeclared key is REJECTED, never silently
+# dropped. A wrong parameter name would otherwise run as a successful
+# unfiltered/default call — the worst failure mode for an agent (it
+# cannot tell the mistake from the result). Allowed keys come from each
+# tool's own inputSchema (single source); platform tools take the four
+# argument forms of the canonical invocation (files / params / delivery
+# / client_ref). Aligns the adapter with the frozen rule: only what is
+# ABSENT gets a default; anything explicitly present but not declared
+# is a -32602 naming the unknown key.
+_CALL_ARG_KEYS = frozenset({"files", "params", "delivery", "client_ref"})
+
+
+def _reject_unknown_args(mid, name: str, args: dict):
+    spec = _META_SPECS_BY_NAME.get(name)
+    if spec is not None:
+        allowed = set(spec["inputSchema"]["properties"])
+    elif name == "catalog_search":
+        allowed = {"q", "page"}
+    else:
+        allowed = set(_CALL_ARG_KEYS)
+    unknown = sorted(set(args) - allowed)
+    if unknown:
+        return _rpc_err(
+            mid, -32602,
+            "unknown argument key: %s (allowed: %s)"
+            % (", ".join(unknown), ", ".join(sorted(allowed))))
+    return None
+
+
 def _spec_summary(t: dict, names: dict | None = None) -> dict:
     """name/title/description summary (tools/list + catalog_search share
     the exact same shape). English only — MCP is a machine surface.
@@ -756,6 +785,12 @@ _REGISTER_SPEC = {
     },
 }
 
+# built after every meta spec exists (module order): the strict-args
+# allowed-key map — see _reject_unknown_args above for the rationale
+_META_SPECS_BY_NAME = {s["name"]: s for s in (
+    _REGISTER_SPEC, _CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
+    _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC)}
+
 
 def _anon_tool_specs() -> list:
     """tools/list without a key: register + the first-party tools
@@ -778,6 +813,9 @@ async def _anon_call(request: Request, mid, params: dict):
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602,
                         "invalid params: arguments must be an object")
+    bad_args = _reject_unknown_args(mid, name, args)
+    if bad_args:
+        return bad_args
     from config import BASE_URL as _base
     if name == "register":
         from app.routes.auth_route import headless_register
@@ -823,12 +861,15 @@ def _tool_specs(user: dict) -> list:
     specs.append({
         "name": "catalog_search",
         "title": "Catalog Search",
-        "description": "Find public tools by keyword: every whitespace-"
-                       "separated term must match the tool's id, name or "
-                       "description (all AND; % and _ match literally). An "
-                       "empty query lists the recommended tools. Results "
-                       "are paged (page starts at 1; total_pages tells "
-                       "when to stop). Each result carries the exact spec "
+        "description": "Discover public tools. An EMPTY query lists "
+                       "EVERY public tool page by page (total + "
+                       "total_pages tell the full depth) — read the "
+                       "list when you'd rather browse than guess "
+                       "keywords. A non-empty query filters: every "
+                       "whitespace-separated term must match the tool's "
+                       "id, name or description (all AND; % and _ match "
+                       "literally). Results are paged (page starts at "
+                       "1). Each result carries the exact spec "
                        "tools/list shows (inputSchema included) plus "
                        "favorite — call it by name right away; pin_tool "
                        "adds it to your working set.",
@@ -868,16 +909,19 @@ def _tool_specs(user: dict) -> list:
 
 def _catalog_search_result(user: dict, q: str, page: int) -> dict:
     """catalog_search result payload: one page of the public market
-    (governance.market_page — the same predicate, order, page size and
-    page clamp as the web /tools market) projected to the exact callable
-    spec tools/list carries (shared _catalog_spec constructor) plus the
+    (governance.market_page — the same predicate, order and page clamp
+    as the web /tools market) projected to the exact callable spec
+    tools/list carries (shared _catalog_spec constructor) plus the
     caller's favorite flag — one projection read for this bearer's
     delivery enums, kept OUT of the _call_tool dispatch path (the call
-    path reads no projection)."""
+    path reads no projection). An EMPTY query enumerates the FULL
+    public catalog (curated=False — the featured-only browse stays a
+    web-page behavior): for an agent, reading the whole list paged is
+    the primary discovery path, search the accelerator."""
     from governance.catalog import market_page
     from database import db
     from repo import favorites as fav_repo
-    data = market_page(q or None, page)
+    data = market_page(q or None, page, curated=False)
     # hits are public by construction — the raw pin set flags them
     # (no visibility-filtered catalog read needed)
     with db() as con:
@@ -912,6 +956,9 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         args = {}
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602, "invalid params: arguments must be an object")
+    bad_args = _reject_unknown_args(mid, name, args)
+    if bad_args:
+        return bad_args
     # Entry-wide rate limit, BEFORE any branch (meta tools, catalog
     # search and URL-source fetching all count): a runaway agent is
     # stopped at the entry, not per-branch. The execution gate keeps

@@ -282,7 +282,8 @@ def list_catalog(viewer_id: int | None = None) -> list:
 MARKET_PAGE_SIZE = 24
 
 
-def market_page(q: str | None = None, page: int = 1) -> dict:
+def market_page(q: str | None = None, page: int = 1,
+                curated: bool = True) -> dict:
     """公开市场页: 搜索 + 分页列表。顺序固定为 COUNT → total_pages →
     clamp page → OFFSET → rows — 未经 clamp 的 page 永不进入 SQL OFFSET
     (page=10^100 只是一次 COUNT, 不是巨大 OFFSET)。canonical projection
@@ -293,18 +294,19 @@ def market_page(q: str | None = None, page: int = 1) -> dict:
     列表规则同 search_catalog: 空查询只列推荐 (featured), 有查询命中
     全部公开工具; 排序 featured DESC, sort_order, 成功调用数, id;
     pricing INNER JOIN (缺行=未完成商业创建, 不上面), pricing.enabled=false
-    排除。
+    排除。curated=False 关掉空查询的 featured 过滤 = 全量公开目录分页
+    (MCP catalog_search 的枚举面, 与 sitemap 同源谓词)。
     Web 页码窗口 (ellipsis/page window) 属 presentation, 不在此层。
     """
     q = (q or "").strip() or None
     with db() as con:
-        total = catalog_repo.market_count(con, VIS_PUBLIC, q)
+        total = catalog_repo.market_count(con, VIS_PUBLIC, q, curated)
     total_pages = max(1, -(-total // MARKET_PAGE_SIZE))
     canonical_page = min(max(page, 1), total_pages)
     with db() as con:
         rows = catalog_repo.market_rows(
             con, VIS_PUBLIC, q, MARKET_PAGE_SIZE,
-            (canonical_page - 1) * MARKET_PAGE_SIZE)
+            (canonical_page - 1) * MARKET_PAGE_SIZE, curated)
     items = []
     verified = _verified_owner_set(rows)
     for row in rows:

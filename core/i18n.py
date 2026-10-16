@@ -185,8 +185,6 @@ SERVER_I18N = {
         "pub_param_key_req": "参数键必填",
         "tool_search_ph": "Rechercher…",
         "tool_search_none": "Aucun outil trouvé",
-        "agents_mcp_intro": "Les outils sont facturés à l'appel au prix indiqué dans leur description — un appel est débité dès son exécution, sans étape de confirmation, et les appels échoués sont remboursés automatiquement.",
-        "agents_mcp_intro_2": "Les crédits sont rechargés par le propriétaire du compte sur :",
 
         "mytools_err_bad_label": "Nom invalide (1-40 caractères)",
         "mytools_err_bad_url": "URL invalide",
@@ -755,8 +753,6 @@ SERVER_I18N = {
         "pub_param_key_req": "매개변수 키 필요",
         "tool_search_ph": "검색…",
         "tool_search_none": "일치하는 도구 없음",
-        "agents_mcp_intro": "도구는 각 도구 설명에 적힌 가격으로 호출당 과금됩니다 — 호출이 실행되면 확인 절차 없이 바로 과금되며, 실패한 호출은 자동 환불됩니다.",
-        "agents_mcp_intro_2": "크레딧은 계정 소유자가 다음에서 충전합니다:",
 
         "mytools_err_bad_label": "잘못된 이름 (1-40자)",
         "mytools_err_bad_url": "잘못된 URL",
@@ -1327,8 +1323,6 @@ SERVER_I18N = {
         "pub_param_key_req": "Требуется ключ",
         "tool_search_ph": "Поиск…",
         "tool_search_none": "Ничего не найдено",
-        "agents_mcp_intro": "Инструменты оплачиваются за вызов по цене, указанной в их описании, — вызов списывает кредиты сразу при запуске, без подтверждения, а неудачные вызовы возвращаются автоматически.",
-        "agents_mcp_intro_2": "Кредиты пополняет владелец аккаунта на:",
 
         "mytools_err_bad_label": "Неверное имя (1-40 символов)",
         "mytools_err_bad_url": "Неверный URL",
@@ -1898,8 +1892,6 @@ SERVER_I18N = {
         "pub_param_key_req": "مفتاح المعامل مطلوب",
         "tool_search_ph": "بحث…",
         "tool_search_none": "لا توجد أدوات مطابقة",
-        "agents_mcp_intro": "تُحاسب الأدوات لكل استدعاء بالسعر المذكور في وصف كل أداة — يُخصم المبلغ عند التشغيل دون خطوة تأكيد، وتُسترد قيمة الاستدعاءات الفاشلة تلقائيًا.",
-        "agents_mcp_intro_2": "يشحن مالك الحساب الرصيد عبر:",
 
         "mytools_err_bad_label": "اسم غير صالح (1-40 حرفًا)",
         "mytools_err_bad_url": "رابط غير صالح",
@@ -2468,8 +2460,6 @@ SERVER_I18N = {
         "pub_param_key_req": "Parameterschlüssel erforderlich",
         "tool_search_ph": "Suchen…",
         "tool_search_none": "Kein Tool gefunden",
-        "agents_mcp_intro": "Tools werden pro Aufruf zum im Tool-Text genannten Preis abgerechnet — ein Aufruf wird beim Ausführen abgerechnet, ohne Bestätigungsschritt; fehlgeschlagene Aufrufe werden automatisch erstattet.",
-        "agents_mcp_intro_2": "Credits lädt der Kontoinhaber auf:",
 
         "mytools_err_bad_label": "Ungültiger Name (1-40 Zeichen)",
         "mytools_err_bad_url": "Ungültige URL",
@@ -3040,8 +3030,6 @@ SERVER_I18N = {
         "pub_param_key_req": "Chave do parâmetro obrigatória",
         "tool_search_ph": "Buscar…",
         "tool_search_none": "Nenhuma ferramenta encontrada",
-        "agents_mcp_intro": "As ferramentas são cobradas por chamada pelo preço indicado na descrição de cada uma — a chamada é debitada quando executa, sem etapa de confirmação, e chamadas com falha são reembolsadas automaticamente.",
-        "agents_mcp_intro_2": "Os créditos são recarregados pelo dono da conta em:",
 
         "mytools_err_bad_label": "Nome inválido (1-40 caracteres)",
         "mytools_err_bad_url": "URL inválida",
@@ -3611,8 +3599,6 @@ SERVER_I18N = {
         "pub_param_key_req": "パラメータキーは必須",
         "tool_search_ph": "検索…",
         "tool_search_none": "該当するツールがありません",
-        "agents_mcp_intro": "ツールは各ツールの説明に記載された価格で呼び出しごとに課金されます — 実行時に確認なしで課金され、失敗した呼び出しは自動的に返金されます。",
-        "agents_mcp_intro_2": "クレジットのチャージはアカウント所有者が行います。入口:",
 
         "mytools_err_bad_label": "無効な名前（1-40文字）",
         "mytools_err_bad_url": "無効なURL",
@@ -4181,8 +4167,6 @@ SERVER_I18N = {
         "pub_param_key_req": "参数键必填",
         "tool_search_ph": "搜索…",
         "tool_search_none": "没有匹配的工具",
-        "agents_mcp_intro": "工具按次计费，价格写在各工具的说明中——调用即扣费、无确认步骤，失败自动退款。",
-        "agents_mcp_intro_2": "积分由账户所有者负责充值，入口：",
 
         "mytools_err_bad_label": "名称无效（1-40 字符）",
         "mytools_err_bad_url": "URL 无效",
@@ -4753,8 +4737,6 @@ SERVER_I18N = {
         "pub_param_key_req": "Se requiere la clave",
         "tool_search_ph": "Buscar…",
         "tool_search_none": "No se encontraron herramientas",
-        "agents_mcp_intro": "Las herramientas se cobran por llamada al precio indicado en su descripción — la llamada se cobra al ejecutarse, sin paso de confirmación, y las llamadas fallidas se reembolsan automáticamente.",
-        "agents_mcp_intro_2": "El propietario de la cuenta recarga créditos en:",
 
         "mytools_err_bad_label": "Nombre inválido (1-40 caracteres)",
         "mytools_err_bad_url": "URL no válida",
@@ -5323,8 +5305,6 @@ SERVER_I18N = {
         "pub_param_key_req": "Parameter key required",
         "tool_search_ph": "Search…",
         "tool_search_none": "No matching tools",
-        "agents_mcp_intro": "Tools are billed per call at the price stated in each tool's description — a call is charged when it runs, with no confirmation step, and failed calls are refunded automatically.",
-        "agents_mcp_intro_2": "Credits are topped up by the account owner at:",
 
         "mytools_err_bad_label": "Invalid name (1-40 chars)",
         "mytools_err_bad_url": "Invalid URL",

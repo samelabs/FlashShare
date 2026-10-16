@@ -219,6 +219,40 @@ for label, expected in (
           and "整理文件" in _summary["description"],
           _summary)
 
+# ══════════ 1b. strict arguments: an undeclared key is -32602, named ══════════
+# A wrong parameter name must never run as a successful default/unfiltered
+# call — the agent cannot tell the mistake from the result. Allowed keys
+# come from each tool's inputSchema (platform tools: files/params/
+# delivery/client_ref).
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 91, "method": "tools/call",
+                   "params": {"name": "catalog_search",
+                              "arguments": {"query": "pdf"}}}, token=TOKEN)
+_err = (d or {}).get("error") or {}
+check("V4a meta tool unknown key → -32602 naming it",
+      _err.get("code") == -32602 and "query" in (_err.get("message") or ""),
+      d)
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 92, "method": "tools/call",
+                   "params": {"name": "share",
+                              "arguments": {"client_ref": "v4b",
+                                            "queries": ["a"]}}}, token=TOKEN)
+_err = (d or {}).get("error") or {}
+check("V4b platform tool unknown key → -32602 naming it",
+      _err.get("code") == -32602 and "queries" in (_err.get("message") or ""),
+      d)
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 93, "method": "tools/call",
+                   "params": {"name": "register",
+                              "arguments": {"username": f"{_u}v4c",
+                                            "role": "agent"}}})
+_err = (d or {}).get("error") or {}
+check("V4c anonymous register unknown key → -32602 naming it",
+      _err.get("code") == -32602 and "role" in (_err.get("message") or ""),
+      d)
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 94, "method": "tools/call",
+                   "params": {"name": "catalog_search",
+                              "arguments": {"q": "pdf", "page": 1}}},
+                  token=TOKEN)
+check("V4d declared keys still pass", "result" in (d or {}), d)
+
 # ══════════ 2. MCP-Protocol-Version header ══════════
 _ping = {"jsonrpc": "2.0", "id": 5, "method": "ping"}
 st, _h, d = _mcp(_ping, extra={"MCP-Protocol-Version": "2031-01-01"})

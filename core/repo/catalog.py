@@ -51,19 +51,21 @@ def _market_base(visibility_public: str, q: Optional[str],
     return base, args
 
 
-def market_count(con, visibility_public: str, q: Optional[str]) -> int:
+def market_count(con, visibility_public: str, q: Optional[str],
+                 curated: bool = True) -> int:
     """公开市场匹配总数 (COUNT 先行 — 供 clamp 后再取行, 未经 clamp 的
-    page 不得进入 OFFSET)。"""
-    base, args = _market_base(visibility_public, q)
+    page 不得进入 OFFSET)。curated 语义同 _market_base。"""
+    base, args = _market_base(visibility_public, q, curated)
     return int(con.execute(f"SELECT COUNT(*) AS n {base}", args).fetchone()["n"])
 
 
 def market_rows(con, visibility_public: str, q: Optional[str],
-                limit: int, offset: int) -> list:
+                limit: int, offset: int, curated: bool = True) -> list:
     """公开市场一页行 (offset 必须来自 clamp 后的 canonical page)。
     JOIN users: community 作者 handle 是卡片 identity contract 字段
-    (official 行 owner 为空 → owner_handle NULL, 不伪造 author)。"""
-    base, args = _market_base(visibility_public, q)
+    (official 行 owner 为空 → owner_handle NULL, 不伪造 author)。
+    curated 语义同 _market_base。"""
+    base, args = _market_base(visibility_public, q, curated)
     return con.execute(
         f"SELECT pt.*, pr.cost AS price_cost, "
         f"u.username AS owner_handle, "

@@ -58,8 +58,11 @@ def build_llms_txt() -> str:
     a("")
     a("# tools/list is your working set: first-party tools, your own tools "
       "and your favorites (paginate with params {\"cursor\":\"<nextCursor>\"}). "
-      "The meta tool catalog_search finds any other tool by keyword; call it "
-      "by name, and pin_tool / unpin_tool manage your favorites.")
+      "The meta tool catalog_search reaches every public tool: an EMPTY "
+      "query lists them ALL page by page (total + total_pages carry the "
+      "full depth) — read the list when browsing beats guessing keywords; "
+      "a non-empty query filters. Call any tool by name; pin_tool / "
+      "unpin_tool manage your favorites.")
     a("")
     a(f'curl -s {mcp_url} \\')
     a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
@@ -72,6 +75,12 @@ def build_llms_txt() -> str:
     a("client_ref is REQUIRED on every tools/call: a stable identity for "
       "one logical operation — reuse the same value to retry safely "
       "(replays return the original result, no double charge).")
+    a("")
+    a("Arguments are strict: each tool accepts exactly the keys its "
+      "inputSchema declares (plus files/params/delivery/client_ref for "
+      "platform tools). An unknown key is rejected with -32602 naming "
+      "it — never silently dropped — so a typo'd parameter cannot look "
+      "like a successful call.")
     a("")
     a("## Inputs (tools/call)")
     a("files[] items — 0..20 files per the tool's declared window "
