@@ -266,6 +266,7 @@
         ? esc(t("ti_run")) + " · " + cost + " " + esc(t("credits_short"))
         : esc(t("ti_run"));
       html += '<div class="c-bar">'
+        + '<span class="ti-del-wrap">'
         + '<button type="button" class="opt ti-del" aria-haspopup="true" aria-expanded="false">'
         + icon("expiry") + '<span class="ti-del-label">' + dLabel + "</span></button>"
         + '<div class="c-del-pop hidden">'
@@ -280,6 +281,7 @@
           + n + " " + t("times_unit") + "</option>").join("")
         + "</select></label>"
         + "</div>"
+        + "</span>"
         + '<span class="ti-progress" aria-live="polite"></span>'
         + '<span class="sp"></span>'
         + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + "</button>")

@@ -748,14 +748,46 @@ pre.rs-text, pre.rs-json {
 .ti-progress { font-size: var(--fs-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* delivery pill popover (existing values, existing entitlement logic) */
+/* ── 锚定浮层家族 (共享视觉语言): 卡面 + line-2 描边 + 大圆角 +
+   sh-3 投影 + popIn 入场; 锚定各自的触发者, 不随底栏换行漂移 ── */
+@keyframes popIn { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+/* 有效期/次数浮层: 锚定"1 天 · 50 次"胶囊正上方 */
+.ti-del-wrap { position: relative; display: inline-flex; }
 .c-del-pop {
-  position: absolute; inset-block-end: calc(100% + 8px); inset-inline-end: 0;
+  position: absolute; inset-block-end: calc(100% + 8px); inset-inline-start: 0;
   z-index: var(--z-dropdown); background: var(--card);
-  border: var(--border-w) solid var(--line-2); border-radius: var(--r);
-  box-shadow: var(--sh-3); padding: var(--s4); display: flex; gap: var(--s4);
-  min-width: 260px;
+  border: var(--border-w) solid var(--line-2); border-radius: var(--r-lg);
+  box-shadow: var(--sh-3); padding: var(--s4);
+  display: flex; flex-direction: column; gap: var(--s3);
+  width: min(280px, calc(100vw - 48px));
+  animation: popIn .16s var(--ease);
 }
-.c-del-pop .field { min-width: 110px; }
+.c-del-pop .field { min-width: 0; }
+
+/* 浮层内滚动区: 细滚动条、透明轨道、浅色滑块 (替代系统深灰粗条) */
+.tsel-list, .lang-menu, .user-dropdown, .history-panel, .modal-panel {
+  scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
+}
+.tsel-list::-webkit-scrollbar, .lang-menu::-webkit-scrollbar, .user-dropdown::-webkit-scrollbar,
+.history-panel::-webkit-scrollbar, .modal-panel::-webkit-scrollbar { width: 6px; height: 6px; }
+.tsel-list::-webkit-scrollbar-track, .lang-menu::-webkit-scrollbar-track, .user-dropdown::-webkit-scrollbar-track,
+.history-panel::-webkit-scrollbar-track, .modal-panel::-webkit-scrollbar-track { background: transparent; }
+.tsel-list::-webkit-scrollbar-thumb, .lang-menu::-webkit-scrollbar-thumb, .user-dropdown::-webkit-scrollbar-thumb,
+.history-panel::-webkit-scrollbar-thumb, .modal-panel::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: var(--r-full); }
+.tsel-list::-webkit-scrollbar-thumb:hover, .lang-menu::-webkit-scrollbar-thumb:hover, .user-dropdown::-webkit-scrollbar-thumb:hover,
+.history-panel::-webkit-scrollbar-thumb:hover, .modal-panel::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+
+/* 手机端: 锚定空间不足, 有效期浮层与工具选择浮层同形 — 居中卡片
+   (常态 transform 负责居中; tselIn 动画帧含同一偏移避免入场跳位) */
+@media (max-width: 767px) {
+  .c-del-pop {
+    position: fixed; inset-block-end: auto; top: 50%; inset-inline-start: 50%;
+    transform: translate(-50%, -50%);
+    width: min(320px, calc(100vw - 48px));
+    animation: tselIn .16s var(--ease);
+  }
+}
 
 @media (max-width: 767px) {
   .composer { border-radius: 22px; }

@@ -65,14 +65,17 @@
 /* 语言入口 = 顶栏唯一挂载点: 菜单锚定到按钮自身 (所有视口可见),
    右对齐且永不超出视口 (RTL 由下方镜像规则翻转)。 */
 .lang-switch { position: relative; display: flex; align-items: center; }
+/* 顶栏菜单与锚定浮层家族同语言 (components.css popIn): 卡面 + line-2
+   描边 + 大圆角 + sh-3 投影 + 入场动画 */
 .lang-menu, .user-dropdown {
   position: absolute; right: 0; top: calc(100% + var(--s1));
   z-index: var(--z-dropdown);
   padding: var(--s1);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--card);
   box-shadow: var(--sh-3);
+  animation: popIn .14s var(--ease);
 }
 .lang-menu { width: 144px; max-width: calc(100vw - 32px); }
 
