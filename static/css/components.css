@@ -761,10 +761,10 @@ pre.rs-text, pre.rs-json {
   .composer { border-radius: 22px; }
   .c-text { min-height: 72px; }
   .c-bar { gap: 4px; }
-  /* 两行底栏: 第一行工具选择器占满 (首页); 第二行 有效期 + 运行 —
-     运行靠右且与有效期同一行 (任何宽度都不单独换行): .sp 退场,
-     运行吃 margin-inline-start:auto, 进度文本可收缩。 */
-  .c-bar .tsel { flex: 1 1 100%; }
+  /* 手机底栏: 工具选择器内容自适应宽度 (不拉伸满宽, 最宽让出半行);
+     有效期/运行 自然换行到第二行 — .sp 退场, 运行吃
+     margin-inline-start:auto, 进度文本可收缩。 */
+  .c-bar .tsel { flex: 0 1 auto; max-width: min(320px, 100%); }
   .c-bar .sp { display: none; }
   .c-bar .ti-run { margin-inline-start: auto; }
   .ti-progress { flex-shrink: 1; min-width: 0; overflow: hidden; white-space: nowrap; }

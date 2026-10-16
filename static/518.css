@@ -745,22 +745,20 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tp-url code { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; max-width: 420px; }
 .tp-url .btn-icon { flex: none; color: var(--ink-2); }
 @media (hover:hover) and (pointer:fine) { .tp-url .btn-icon:hover { color: var(--ink); } }
-/* MCP 调用卡: 调用名 + 说明 + 接入入口 (bot 图标 = AI Agent 语义) */
-.mcpline { margin-block-start: 20px; display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); font-size: 13px; color: var(--ink-2); }
-.mcpline > svg { width: 18px; height: 18px; margin-block-start: 2px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.mcpline .mcp-body { flex: 1; min-width: 0; }
-.mcpline .mcp-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.mcpline .mcp-k { font-weight: 700; color: var(--ink); }
-.mcpline code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 3px 8px; border-radius: 6px; color: var(--ink); }
-.mcpline .mcp-desc { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; }
-.mcpline .mcp-go { flex: none; align-self: center; white-space: nowrap; }
+/* MCP 名片: 两行 (服务端地址 + 调用名), 右侧一键复制 */
+.mcpline { margin-block-start: 20px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); font-size: 13px; color: var(--ink-2); }
+.mcpline .mcp-badge { flex: none; height: 22px; padding: 0 9px; border-radius: var(--r-full); background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 750; letter-spacing: .04em; display: inline-flex; align-items: center; }
+.mcpline .mcp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.mcpline .mcp-row { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.mcpline .mcp-k { font-weight: 650; font-size: 12px; flex: none; }
+.mcpline code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 2px 8px; border-radius: 6px; color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcpline #toolMcpCopy { flex: none; }
 @media (max-width: 767px) {
   .toolpage { padding-top: 24px; padding-bottom: 48px; }
   .tp-h { align-items: flex-start; }
   .tp-h .ic { width: 48px; height: 48px; border-radius: 14px; }
   .tp-h h1 { font-size: 24px; }
   .mcpline { flex-wrap: wrap; }
-  .mcpline .mcp-go { align-self: flex-start; }
 }
 
 /* tool_mcp.html panels (page rebuilt next batch — keeps its layout) */
@@ -812,14 +810,19 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tsel .tic { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
 .tsel .tic svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tsel > svg { width: 14px; height: 14px; color: var(--ink-3); stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
-.tsel-pop { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: var(--z-dropdown); background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--sh-3); padding: 4px; min-width: 200px; max-width: 100%; max-height: 320px; overflow-y: auto; }
-.tsel-filter { padding: 4px; position: sticky; top: 0; background: var(--card); z-index: 1; }
-.tsel-filter input { width: 100%; box-sizing: border-box; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-size: var(--fs-sm); color: var(--ink); background: var(--bg); }
+/* 选择浮层: 呼出后屏幕居中 (手机/电脑同形), 工具列表左对齐;
+   点浮层外任意处关闭 (home.js document 级监听), Esc 关闭。
+   入场动画自带 translate(-50%,-50%) — 复用 modalIn 的纯 scale
+   会在动画期覆盖居中偏移导致跳位 */
+@keyframes tselIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+.tsel-pop { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: var(--z-modal); width: min(360px, calc(100vw - 48px)); max-height: min(64vh, 460px); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--sh-3); padding: var(--s2); animation: tselIn .16s var(--ease); }
+.tsel-filter { padding: 2px var(--s1) var(--s2); }
+.tsel-filter input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-size: var(--fs-base); color: var(--ink); background: var(--bg); }
 .tsel-filter input:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: var(--brand); }
-.tsel-list { display: flex; flex-direction: column; }
-.tsel-item { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: 8px 10px; border: 0; background: transparent; border-radius: var(--r-sm); color: var(--ink); font: inherit; font-size: var(--fs-base); cursor: pointer; text-align: start; }
+.tsel-list { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; padding: 0 2px; }
+.tsel-item { display: flex; align-items: center; justify-content: flex-start; gap: var(--s2); width: 100%; padding: 9px 10px; border: 0; background: transparent; border-radius: var(--r-sm); color: var(--ink); font: inherit; font-size: var(--fs-base); cursor: pointer; text-align: start; }
 .tsel-item svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.tsel-empty { padding: 12px; text-align: center; color: var(--ink-2); font-size: var(--fs-sm); }
+.tsel-empty { padding: var(--s5) var(--s4); text-align: center; color: var(--ink-2); font-size: var(--fs-sm); }
 @media (hover:hover) and (pointer:fine) { .tsel-item:hover { background: var(--sunk); } }
 .tsel-item.on { background: var(--brand-50); color: var(--brand); }
 
@@ -1050,14 +1053,12 @@ body { overflow-x: clip; }
 /* 头像按钮移动端触达 */
 @media (max-width: 767px) { .hd .av { position: relative; } .hd .av::after { content: ""; position: absolute; inset: -6px; } }
 .pr-filemax { font-size: var(--fs-xs); color: var(--ink-3); margin-top: 2px; }
-/* 触控补齐: 账户页标签 / delivery 胶囊 / mcpline 链接 / 认证条款 / 404 空态 / 顶栏 logo */
+/* 触控补齐: 账户页标签 / delivery 胶囊 / 认证条款 / 404 空态 / 顶栏 logo */
 @media (max-width: 767px) {
   .acct-nav .acct-tab { position: relative; }
   .acct-nav .acct-tab::after { content: ""; position: absolute; inset: -3px -6px; }
   .ti-del { position: relative; }
   .ti-del::after { content: ""; position: absolute; inset: -4px -2px; }
-  .mcpline a { position: relative; }
-  .mcpline a::after { content: ""; position: absolute; inset: -10px -6px; }
   .auth-terms a { position: relative; }
   .auth-terms a::after { content: ""; position: absolute; inset: -12px -4px; }
   .status-page .empty a { position: relative; }

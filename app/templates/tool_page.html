@@ -51,18 +51,14 @@
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
-  {# MCP 调用卡: AI Agent 经 MCP 使用此工具 — 调用名 + 一句说明 +
-     指向本工具 MCP 接入页 (完整可复制配置) #}
+  {# MCP 名片: 两行 — 服务端地址 + 调用名; 一键复制 = 提示语 + URL #}
   <div class="mcpline">
-    {{ icon_svg("bot") }}
+    <span class="mcp-badge" aria-hidden="true">MCP</span>
     <div class="mcp-body">
-      <div class="mcp-top">
-        <span class="mcp-k" data-i18n="mcp_call_name">{{ texts.mcp_call_name }}</span>
-        <code id="toolMcpName">{{ mcp_name }}</code>
-      </div>
-      <p class="mcp-desc" data-i18n="tp_mcp_desc">{{ texts.tp_mcp_desc }}</p>
+      <div class="mcp-row"><span class="mcp-k">MCP server</span><code class="mcp-url" dir="ltr">{{ BASE_URL }}/mcp</code></div>
+      <code id="toolMcpName">{{ mcp_name }}</code>
     </div>
-    <a class="btn btn-ghost btn-sm mcp-go" href="{{ mcp_page_url }}">{{ icon_svg("settings") }}<span data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</span></a>
+    <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
   </div>
   </div>
 </section>

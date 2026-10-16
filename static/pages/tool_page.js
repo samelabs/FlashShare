@@ -18,6 +18,31 @@
   window.__TOOLPAGE__ = true;
 })();
 
+// MCP card copy: one click copies a ready-to-paste sentence carrying the
+// MCP server URL and this tool's call name (prompt words + URL)
+(function () {
+  const btn = document.getElementById("toolMcpCopy");
+  const url = document.querySelector(".mcpline .mcp-url");
+  const name = document.getElementById("toolMcpName");
+  if (btn && url && name) {
+    btn.addEventListener("click", async () => {
+      try {
+        const payload = window.t("mcp_copy_text",
+          { url: url.textContent.trim(), name: name.textContent.trim() });
+        await navigator.clipboard.writeText(payload);
+        const ic = btn.querySelector("svg");
+        if (!ic) return;
+        const orig = ic.outerHTML;
+        ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
+        setTimeout(() => {
+          const cur = btn.querySelector("svg") || btn.firstChild;
+          if (cur) cur.outerHTML = orig;
+        }, 1400);
+      } catch (e) { /* clipboard blocked — the card text stays selectable */ }
+    });
+  }
+})();
+
 // Page URL copy (the visible address row under the header)
 (function () {
   const btn = document.getElementById("tpUrlCopy");
@@ -31,8 +56,8 @@
         const orig = ic.outerHTML;
         ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
         setTimeout(() => {
-          const now = btn.querySelector("svg") || btn.firstChild;
-          if (now) now.outerHTML = orig;
+          const cur = btn.querySelector("svg") || btn.firstChild;
+          if (cur) cur.outerHTML = orig;
         }, 1400);
       } catch (e) { /* clipboard blocked — the URL stays selectable */ }
     });
