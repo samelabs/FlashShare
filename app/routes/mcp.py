@@ -773,8 +773,11 @@ async def _anon_call(request: Request, mid, params: dict):
     a tool error that says how to get a key (never an HTTP rejection)."""
     name = params.get("name")
     args = params.get("arguments")
-    if not isinstance(args, dict):
+    if args is None:
         args = {}
+    elif not isinstance(args, dict):
+        return _rpc_err(mid, -32602,
+                        "invalid params: arguments must be an object")
     from config import BASE_URL as _base
     if name == "register":
         from app.routes.auth_route import headless_register
