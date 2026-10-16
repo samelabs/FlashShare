@@ -196,7 +196,7 @@ function _sbQr(src) {
     m.setAttribute("role", "dialog");
     m.setAttribute("aria-modal", "true");
     m.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">'
-      + (window.iconSvg ? window.iconSvg("x") : "×") + '</button><img alt="QR" width="200" height="200"></div>';
+      + (window.iconSvg ? window.iconSvg("close") : "×") + '</button><img alt="QR" width="200" height="200"></div>';
     document.body.appendChild(m);
     m.addEventListener("click", function (e) {
       if (e.target === m || (e.target.closest && e.target.closest(".modal-close"))) m.classList.add("hidden");

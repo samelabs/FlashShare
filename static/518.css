@@ -820,13 +820,14 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tsel .tic { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
 .tsel .tic svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tsel > svg { width: 14px; height: 14px; color: var(--ink-3); stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
-/* 首页两枚选择胶囊 (工具选择 / 有效期次数): hover 反色 — 深底白字 */
+/* 首页两枚选择胶囊 (工具选择 / 有效期次数): hover 反色 — 品牌红底 +
+   品牌反色字 (与主按钮 .btn-p 同语言), 图标底 chip 转为浅白透明 */
 @media (hover:hover) and (pointer:fine) {
-  .tsel:hover, .c-bar .ti-del:hover { background: var(--ink); border-color: var(--ink); color: var(--card); }
-  .tsel:hover .tic { background: rgba(255, 255, 255, 0.16); color: var(--card); }
-  .tsel:hover > svg { color: var(--card); }
-  .c-bar .ti-del:hover b { color: var(--card); }
-  .c-bar .ti-del:hover svg { color: var(--card); }
+  .tsel:hover, .c-bar .ti-del:hover { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+  .tsel:hover .tic { background: rgba(255, 255, 255, 0.18); color: var(--brand-ink); }
+  .tsel:hover > svg { color: var(--brand-ink); }
+  .c-bar .ti-del:hover b { color: var(--brand-ink); }
+  .c-bar .ti-del:hover svg { color: var(--brand-ink); }
 }
 /* 选择浮层: 呼出后屏幕居中 (手机/电脑同形), 工具列表左对齐;
    点浮层外任意处关闭 (home.js document 级监听), Esc 关闭。
