@@ -603,7 +603,7 @@ _files21 = [{"b64": base64.b64encode(_png1).decode(), "filename": f"e{i}.png"}
 st, d = _mcp({"files": _files21})
 _res = d.get("result") or {}
 _content = ((_res.get("content") or [{}])[0].get("text") or "")
-_cd = json.loads(_content) if _content.startswith("{") else {}
+_cd = _res.get("structuredContent") or {}
 check("ME-A1 MCP E2E 21 files → HTTP 200, 无 top-level jsonrpc error",
       st == 200 and "error" not in d, f"{st} {str(d.get('error'))[:60]}")
 check("ME-A2 result.isError == true + err_too_many_files {limit:20, incoming:21}",
@@ -627,7 +627,7 @@ _files_q = [{"b64": base64.b64encode(_png1).decode(), "filename": "q.png"}]
 st, d = _mcp({"files": _files_q})
 _res = d.get("result") or {}
 _content = ((_res.get("content") or [{}])[0].get("text") or "")
-_qd = json.loads(_content) if _content.startswith("{") else {}
+_qd = _res.get("structuredContent") or {}
 check("MQ-1 MCP quota denial: HTTP 200 + isError + 完整结构",
       st == 200 and _res.get("isError") is True
       and _qd.get("error") == "err_ingress_files_24h"
@@ -864,7 +864,7 @@ else:
     md = json.loads(raw)
 _mres = md.get("result") or {}
 _mtxt = ((_mres.get("content") or [{}])[0].get("text") or "")
-_mdj = json.loads(_mtxt) if _mtxt.startswith("{") else {}
+_mdj = _mres.get("structuredContent") or {}
 # 真 before/after 差分: 计数在请求发出之前先取 (上一段是伪序)
 _gk_before_pf = _gokapi_count()
 _cur.execute("select count(*) from upload_usage where user_id=%s", (_pfw_id,))
@@ -881,13 +881,14 @@ else:
     md = json.loads(raw)
 _mres = md.get("result") or {}
 _mtxt = ((_mres.get("content") or [{}])[0].get("text") or "")
-_mdj = json.loads(_mtxt) if _mtxt.startswith("{") else {}
+_mdj = _mres.get("structuredContent") or {}
 _gk_after_pf = _gokapi_count()
 _cur.execute("select count(*) from upload_usage where user_id=%s", (_pfw_id,))
 _uu_after_pf = _cur.fetchone()[0]
 check("PF-M1 MCP priced+balance0 → 200 isError err_insufficient_credits {balance:0, cost:5}",
       r.status == 200 and _mres.get("isError") is True
-      and _mdj == {"error": "err_insufficient_credits", "balance": 0, "cost": 5}
+      and _mdj.get("error") == "err_insufficient_credits"
+      and _mdj.get("balance") == 0 and _mdj.get("cost") == 5
       and "error" not in md, f"{r.status} {_mtxt[:90]}")
 check("PF-M2 MCP denial 零 ingress (真实请求前后差分: Gokapi & upload_usage)",
       _gk_after_pf == _gk_before_pf and _uu_after_pf == _uu_before_pf,

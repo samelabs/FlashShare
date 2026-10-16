@@ -172,10 +172,10 @@ def _err_sentence(d):
 
 
 def _tool_text(d):
-    try:
-        return json.loads(((d.get("result") or {}).get("content") or [{}])[0].get("text") or "{}")
-    except Exception:
-        return {}
+    """Machine channel of a tools/call result: structuredContent (the
+    content text block is the readable summary — error/message/etc.
+    ride both)."""
+    return ((d.get("result") or {}).get("structuredContent") or {})
 
 
 def _b64(b):

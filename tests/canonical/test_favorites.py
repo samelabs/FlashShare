@@ -4,10 +4,12 @@
   W*  Web API: pin/unpin a visible tool; GET lists it; an unknown tool
       and another user's non-public tool are refused (404); the account
       page renders the pinned tool; the tool page star reflects state.
-  M*  MCP working set: tools/list = meta (incl. pin_tool/unpin_tool) +
-      first-party + own tools + favorites. A community tool is absent
-      until pinned, present after pin_tool, absent after unpin_tool, and
-      catalog_search finds it either way.
+  M*  MCP master list + independent favorites: tools/list = meta (incl.
+      pin_tool/unpin_tool/list_favorites) + every public tool + own
+      tools, each with a favorite flag. A community tool is present
+      with favorite:false before pinning, flag true after pin_tool,
+      false again after unpin_tool (still listed); list_favorites
+      carries exactly the pins; catalog_search finds it either way.
 """
 import base64
 import http.client as _hc
@@ -103,13 +105,10 @@ def _b64(b):
 
 
 def _tool_text(d):
-    """content[0].text parsed as JSON (the unified isError shape)."""
-    try:
-        return _json.loads(
-            (((d or {}).get("result") or {}).get("content")
-             or [{}])[0].get("text") or "{}")
-    except Exception:
-        return {}
+    """structuredContent — the machine channel (content text is the
+    readable summary)."""
+    return (((d or {}).get("result") or {}).get("structuredContent")
+            or {})
 
 
 
@@ -128,9 +127,27 @@ def _register(name):
     return uid, ck, d_k["key"]["key"]
 
 
-def _names(token):
+def _tools(token):
     _st, d = _mcp({"jsonrpc": "2.0", "id": 9, "method": "tools/list"}, token)
-    return [t["name"] for t in ((d or {}).get("result") or {}).get("tools", [])]
+    return [t for t in ((d or {}).get("result") or {}).get("tools", [])]
+
+
+def _names(token):
+    return [t["name"] for t in _tools(token)]
+
+
+def _flag(token, mcp_name):
+    return next((t.get("favorite") for t in _tools(token)
+                 if t.get("name") == mcp_name), None)
+
+
+def _fav_names(token):
+    _st, d = _mcp({"jsonrpc": "2.0", "id": 19, "method": "tools/call",
+                   "params": {"name": "list_favorites",
+                              "arguments": {}}}, token)
+    return [t["name"] for t in
+            (((d or {}).get("result") or {}).get("structuredContent")
+             or {}).get("tools", [])]
 
 
 def _fav(cookie, key, on):
@@ -158,13 +175,15 @@ try:
     mname = key.replace("/", "__")
     check("M0 setup: public community tool exists", st == 200, f"{st} {d}")
 
-    # ═══ M: MCP working set ═══
+    # ═══ M: MCP master list + independent favorites ═══
     names = _names(R_TOK)
-    check("M1 meta tools incl. pin_tool/unpin_tool",
-          {"create_upload", "catalog_search", "pin_tool", "unpin_tool"} <= set(names),
+    check("M1 meta tools incl. pin_tool/unpin_tool/list_favorites",
+          {"create_upload", "catalog_search", "pin_tool", "unpin_tool",
+           "list_favorites"} <= set(names),
           names)
     check("M2 first-party tools listed", "share" in names and "compress" in names, names)
-    check("M3 community tool NOT listed before pinning", mname not in names, names)
+    check("M3 master list: community tool present, not yet favorite",
+          mname in names and _flag(R_TOK, mname) is False, names)
     check("M4 author sees own tool in tools/list", mname in _names(A_TOK))
     st, d = _call("catalog_search", {"q": "Fav Tool"}, R_TOK)
     found = [t["name"] for t in (((d or {}).get("result") or {})
@@ -173,23 +192,27 @@ try:
     st, d = _call("pin_tool", {"name": mname}, R_TOK)
     sc = ((d or {}).get("result") or {}).get("structuredContent") or {}
     check("M6 pin_tool ok", sc.get("favorite") is True and sc.get("name") == mname, d)
-    check("M7 pinned tool now in tools/list", mname in _names(R_TOK))
+    check("M7 pinned: favorite flag true + list_favorites carries it",
+          _flag(R_TOK, mname) is True and mname in _fav_names(R_TOK))
     st, d = _call("pin_tool", {"name": "no_such_tool_xyz"}, R_TOK)
     _t = _tool_text(d)
     check("M8 pin unknown tool → isError tool_not_found",
           ((d or {}).get("result") or {}).get("isError") is True
           and _t.get("error") == "tool_not_found", d)
     st, d = _call("unpin_tool", {"name": mname}, R_TOK)
-    check("M9 unpin_tool ok, gone from tools/list",
+    check("M9 unpin_tool ok — flag false, gone from list_favorites, still in master list",
           (((d or {}).get("result") or {}).get("structuredContent") or {}).get("favorite") is False
-          and mname not in _names(R_TOK))
+          and mname not in _fav_names(R_TOK)
+          and _flag(R_TOK, mname) is False
+          and mname in _names(R_TOK))
 
     # ═══ W: web ═══
     st, _h, d, _sc = _fav(r_ck, key, True)
     check("W1 web pin ok", st == 200 and (d or {}).get("ok"), f"{st} {d}")
     st, _h, d, _sc = _req("GET", "/api/favorites", None, {"Cookie": r_ck})
     check("W2 GET lists it", (d or {}).get("tools") == [key], d)
-    check("W3 web pin shows up in MCP tools/list", mname in _names(R_TOK))
+    check("W3 web pin shows in MCP: flag true + in list_favorites",
+          _flag(R_TOK, mname) is True and mname in _fav_names(R_TOK))
     st, _h, page, _sc = _req("GET", "/account/favorites", None,
                              {"Cookie": r_ck, "Accept": "text/html"})
     check("W4 account page renders the pinned tool",

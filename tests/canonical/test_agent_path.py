@@ -112,13 +112,10 @@ def _b64(b):
 
 
 def _tool_text(d):
-    """content[0].text parsed as JSON (the unified isError shape)."""
-    try:
-        return _json.loads(
-            (((d or {}).get("result") or {}).get("content")
-             or [{}])[0].get("text") or "{}")
-    except Exception:
-        return {}
+    """structuredContent — the machine channel of an isError result
+    (content text is the readable summary)."""
+    return (((d or {}).get("result") or {}).get("structuredContent")
+            or {})
 
 
 from database import db

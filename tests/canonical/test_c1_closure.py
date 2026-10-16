@@ -146,17 +146,11 @@ st, d = _call("compress", {"files": [{"filename": "a.png", "b64":
 res = (d or {}).get("result") or {}
 sc = res.get("structuredContent") or {}
 texts = _sc_text_blocks(res)
-parsed = None
-for t in texts:
-    try:
-        cand = json.loads(t)
-    except Exception:
-        continue
-    if isinstance(cand, dict) and "items" in cand:
-        parsed = cand
-        break
-check("A1 execution tool: content carries the structuredContent JSON text block",
-      res.get("isError") is False and parsed == sc and bool(sc.get("items")),
+check("A1 execution tool: readable summary text + structuredContent items",
+      res.get("isError") is False
+      and bool(texts) and "Result page:" in texts[-1]
+      and not texts[-1].lstrip().startswith("{")
+      and bool(sc.get("items")),
       f"{str(d)[:110]}")
 
 st, d = _call("create_upload", {"filename": "big.png", "size": len(PNG),
@@ -164,25 +158,27 @@ st, d = _call("create_upload", {"filename": "big.png", "size": len(PNG),
 res = (d or {}).get("result") or {}
 sc = res.get("structuredContent") or {}
 texts = _sc_text_blocks(res)
-check("A2 create_upload: text block == structuredContent",
-      res.get("isError") is False and texts and
-      json.loads(texts[0]) == sc and "upload_url" in sc, str(d)[:110])
+check("A2 create_upload: readable text names the one-time URL + sc field",
+      res.get("isError") is False and bool(texts) and
+      "upload" in texts[0].lower() and sc.get("upload_url")
+      and not texts[0].lstrip().startswith("{"), str(d)[:110])
 
 st, d = _call("catalog_search", {"q": "compress"}, TOKEN)
 res = (d or {}).get("result") or {}
 sc = res.get("structuredContent") or {}
 texts = _sc_text_blocks(res)
-check("A3 catalog_search: text block == structuredContent",
-      res.get("isError") is False and texts and
-      json.loads(texts[0]) == sc and sc.get("tools"), str(d)[:110])
+check("A3 catalog_search: readable tool list + sc tools",
+      res.get("isError") is False and bool(texts) and
+      "- " in texts[0] and sc.get("tools")
+      and not texts[0].lstrip().startswith("{"), str(d)[:110])
 
-# one builder: all four envelope sites share the _meta_result/_mcp_success
-# construction (source-level single point)
+# one builder: every envelope site routes through _meta_result /
+# _mcp_success / _iserror (source-level single points)
 _mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"),
                 encoding="utf-8").read()
 check("A4 single envelope builder in source",
       "def _meta_result(" in _mcp_src
-      and _mcp_src.count('"structuredContent"') <= 3,
+      and _mcp_src.count('"structuredContent"') <= 4,
       str(_mcp_src.count('"structuredContent"')))
 
 # ══════════ B. invalid delivery → isError + legal values ══════════
@@ -196,11 +192,7 @@ for label, dv in (("bad expiry", {"expiry_days": 5}),
             "delivery": dv, "client_ref": f"b-{label[:3]}-{_u}"}
     st, d = _call("compress", args, TOKEN)
     res = (d or {}).get("result") or {}
-    err = None
-    try:
-        err = json.loads(_sc_text_blocks(res)[0])
-    except Exception:
-        pass
+    err = res.get("structuredContent") or {}
     ok = (res.get("isError") is True
           and (d.get("error") is None)
           and err and err.get("error") == "invalid_delivery"
@@ -268,7 +260,7 @@ uid2, _ck2 = _register(_u + "b")
 TOKEN2 = create_key(uid2, "c1b")["key"]
 st, d = _call("delete_upload", {"public_id": pid}, TOKEN2)
 res = (d or {}).get("result") or {}
-_err_json = json.loads(((res.get("content") or [{}])[0].get("text") or "{}"))
+_err_json = res.get("structuredContent") or {}
 check("C5 foreign/unknown delete → isError not_found (no oracle)",
       res.get("isError") is True
       and _err_json.get("error") == "not_found"

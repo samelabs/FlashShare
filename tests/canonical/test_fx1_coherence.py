@@ -407,8 +407,9 @@ try:
                       "client_ref": ref}, TOK, _secrets.randbelow(10**6))
     REF = f"tk-{_u}"
     st, d = _create_upload(REF)
-    _u1 = (((d.get("result") or {}).get("content") or [{}])[0].get("text") or "")
-    t1 = _json.loads(_u1)["upload_url"].rsplit("/", 1)[-1]
+    _u1 = (((d.get("result") or {}).get("structuredContent")
+            or {}).get("upload_url") or "")
+    t1 = _u1.rsplit("/", 1)[-1]
     # burn the ticket with a WRONG body (declared size exceeded → 413)
     st_put, _h, d_put, _sc = _req(
         "PUT", f"/mcp/upload/{t1}", PNG + b"x" * 10, {})
@@ -416,8 +417,8 @@ try:
           st_put == 413, f"{st_put} {str(d_put)[:60]}")
     # re-issue with the SAME ref and correct bytes → success
     st, d = _create_upload(REF)
-    _u2 = _json.loads((((d.get("result") or {}).get("content") or [{}])[0]
-                       .get("text") or ""))["upload_url"]
+    _u2 = (((d.get("result") or {}).get("structuredContent")
+            or {}).get("upload_url") or "")
     t2 = _u2.rsplit("/", 1)[-1]
     check("X5b same-ref re-issue after failed ticket is a NEW ticket",
           t2 != t1, (t1, t2))
@@ -429,8 +430,8 @@ try:
     first_tok = (d_ok or {}).get("source_token")
     # success + same ref again → replay returns the SAME handles
     st, d = _create_upload(REF)
-    _u3 = _json.loads((((d.get("result") or {}).get("content") or [{}])[0]
-                       .get("text") or ""))["upload_url"]
+    _u3 = (((d.get("result") or {}).get("structuredContent")
+            or {}).get("upload_url") or "")
     t3 = _u3.rsplit("/", 1)[-1]
     st_put, _h, d_rp, _sc = _req("PUT", f"/mcp/upload/{t3}", PNG, {})
     check("X5d replay after success returns the original handles",
@@ -456,12 +457,13 @@ try:
         "client_ref": f"x7a-{_u}"}, TOK, 20)
     r7a = d.get("result") or {}
     t7a = ((r7a.get("content") or [{}])[0].get("text") or "")
+    e7a = r7a.get("structuredContent") or {}
     check("X7a content-sniff mismatch → isError (not -32602)",
           r7a.get("isError") is True
-          and '"error": "err_content_mismatch_image"' in t7a
-          and '"filename": "fake.png"' in t7a
-          and '"detected": null' in t7a
-          and "suggested_name" not in t7a
+          and e7a.get("error") == "err_content_mismatch_image"
+          and e7a.get("filename") == "fake.png"
+          and e7a.get("detected") is None
+          and e7a.get("suggested_name") is None
           and "does not match" in t7a, t7a[:110])
     st, d = _call("compress", {"files": [
         {"filename": "a.pdf", "b64": base64.b64encode(b"%PDF-fake").decode()}],
@@ -473,7 +475,8 @@ try:
           and "not supported" in t7b, t7b[:110])
     check("X7c both expressions identical shape (isError, code present)",
           (r7a.get("isError") is True) == (r7b.get("isError") is True)
-          and '"error": "err_content_mismatch_image"' in t7a
+          and (r7a.get("structuredContent") or {}).get("error")
+          == "err_content_mismatch_image"
           and "err_format_not_supported" in t7b)
 
     # ═══ X11: index uniqueness + ticket purge ═══
@@ -575,9 +578,7 @@ try:
                        "client_ref": REF3}, TOK, 400 + _)
         try:
             sc = (d.get("result") or {}).get("structuredContent") or {}
-            _txt = _json.loads((((d.get("result") or {}).get("content") or [{}])[0]
-                                .get("text") or "{}"))
-            return sc.get("upload_url") or _txt.get("upload_url")
+            return sc.get("upload_url")
         except Exception:
             return None
     with _cf.ThreadPoolExecutor(max_workers=8) as _ex:

@@ -423,16 +423,20 @@ try:
           and len(sc_props) == 3, schema["properties"].keys())
     # image echo suppression: share returns the input bytes unchanged,
     # so the image block is dropped — an agent's own upload must not
-    # bounce back into its context. File links live once, in the JSON
-    # text block (no duplicate resource_link blocks).
+    # bounce back into its context. The one content block is the
+    # READABLE summary (no JSON dump); the file link lives once, in
+    # structuredContent.items (no duplicate resource_link blocks).
     st, d = _call("share", {"files": [{"filename": "img.png", "b64": A64}],
                             "client_ref": f"mi-{_u}"}, TOK, 40)
     content = (d.get("result") or {}).get("content") or []
     kinds = [c["type"] for c in content]
-    _m4 = _json.loads(content[-1].get("text") or "{}") if content else {}
-    check("M4 pass-through share → JSON block only (link inside), NO image block",
+    _m4_sc = (d.get("result") or {}).get("structuredContent") or {}
+    _m4_text = content[-1].get("text") if content else ""
+    check("M4 pass-through share → readable summary block only, NO image block",
           kinds == ["text"]
-          and (_m4.get("items") or [{}])[0].get("download_url"), kinds)
+          and (_m4_sc.get("items") or [{}])[0].get("download_url")
+          and not _m4_text.lstrip().startswith("{")
+          and "download" in _m4_text, kinds)
     # a transformed image still gets the block. compress only re-encodes
     # ABOVE the target: a >1MB noise PNG forces a real JPEG conversion
     # (bytes differ, echo rule does not apply).
@@ -467,11 +471,8 @@ try:
     err = (d.get("error") or {}).get("message", "")
     # content/extension mismatch keeps its typed code and carries the
     # structured ingress detail (detected/suggested_name null for an
-    # unrecognizable body)
-    try:
-        _m5 = _json.loads(txt)
-    except Exception:
-        _m5 = {}
+    # unrecognizable body) — readable text + structuredContent channel
+    _m5 = res.get("structuredContent") or {}
     check("M5 format-mismatch error is plain English + typed detail",
           ((d.get("result") or {}).get("isError") is True
             and _m5.get("error") == "err_content_mismatch_image"

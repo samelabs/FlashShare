@@ -124,12 +124,7 @@ def _call(name, arguments, token, mid=1):
 
 def _create_upload(args, token, mid=1):
     st, d = _call("create_upload", args, token, mid)
-    txt = None
-    try:
-        txt = _json.loads((((d or {}).get("result") or {})
-                           .get("content") or [{}])[0].get("text") or "null")
-    except Exception:
-        pass
+    txt = (((d or {}).get("result") or {}).get("structuredContent") or {})
     return st, d, txt
 
 
@@ -205,7 +200,8 @@ try:
     st, d, t = _create_upload({"filename": "a.png", "size": MAX_UPLOAD_BYTES + 1,
                                "client_ref": "e2"}, tok)
     check("E2 size over the platform cap → -32602, no ticket",
-          (d.get("error") or {}).get("code") == -32602 and t is None, str(d)[:90])
+          (d.get("error") or {}).get("code") == -32602
+          and not t.get("upload_url"), str(d)[:90])
     with db() as con:
         n = con.execute("select count(*) c from mcp_upload_tickets"
                         " where user_id=%s", (uid,)).fetchone()["c"]
@@ -336,7 +332,8 @@ try:
     _u2_txt = ((_u2.get("content") or [{}])[0].get("text") or "")
     check("U2 blocked extension refused at create_upload, no ticket",
           _u2.get("isError") is True
-          and '"err_file_type_blocked"' in _u2_txt
+          and (_u2.get("structuredContent") or {}).get("error")
+          == "err_file_type_blocked"
           and "upload_url" not in _u2_txt, _u2_txt[:100])
     # staging failure → quota and storage reclaimed (gokapi on-demand fail)
     _gk("POST", "/ci/fail-upload", {"mode": "500"})

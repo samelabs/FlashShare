@@ -56,13 +56,12 @@ def build_llms_txt() -> str:
     a('  -H "Content-Type: application/json" \\')
     a('  -d \'{"jsonrpc":"2.0","id":2,"method":"tools/list"}\'')
     a("")
-    a("# tools/list is your working set: first-party tools, your own tools "
-      "and your favorites (paginate with params {\"cursor\":\"<nextCursor>\"}). "
-      "The meta tool catalog_search reaches every public tool: an EMPTY "
-      "query lists them ALL page by page (total + total_pages carry the "
-      "full depth) — read the list when browsing beats guessing keywords; "
-      "a non-empty query filters. Call any tool by name; pin_tool / "
-      "unpin_tool manage your favorites.")
+    a("# tools/list is the master list: every public tool plus your own, "
+      "with a favorite flag marking your pins (paginate with params "
+      "{\"cursor\":\"<nextCursor>\"}). list_favorites lists exactly your "
+      "pins; pin_tool / unpin_tool manage them. catalog_search filters "
+      "by keyword — an EMPTY query walks the FULL public catalog page "
+      "by page (total + total_pages carry the full depth).")
     a("")
     a(f'curl -s {mcp_url} \\')
     a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
@@ -110,9 +109,9 @@ def build_llms_txt() -> str:
       "carries them with a download_url per file; small images also "
       "appear as image content blocks — unless the image bytes are "
       "identical to this call's input (a pass-through share never "
-      "echoes your own bytes back). Every structuredContent response "
-      "additionally carries a content text block holding the JSON "
-      "serialization of that structuredContent (backward-compat form). "
+      "echoes your own bytes back). The content text block is a "
+      "READABLE summary (result link, expiry, file list); the machine "
+      "fields live in structuredContent. "
       "result_url is a human-viewable page (/r/{id}).")
     a("")
     a("## Delivery (result retention)")

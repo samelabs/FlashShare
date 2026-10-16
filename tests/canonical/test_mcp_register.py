@@ -130,7 +130,7 @@ try:
     st, _h, d, _sc = _anon("tools/call", {"name": "share", "arguments": {
         "files": [{"filename": "a.txt", "b64": "aGk="}], "client_ref": "r4c"}})
     _r = (d or {}).get("result") or {}
-    _body = _json.loads(((_r.get("content") or [{}])[0]).get("text") or "{}")
+    _body = (_r.get("structuredContent") or {})
     check("R4c anonymous tools/call → isError err_auth_required naming register (no HTTP 401)",
           st == 200 and _r.get("isError") is True
           and _body.get("error") == "err_auth_required"
