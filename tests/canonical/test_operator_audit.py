@@ -633,7 +633,7 @@ grep_upd = _sp.run(["grep", "-rn", "-E",
                     "core/", "app/"], capture_output=True, text=True)
 check("G5 生产代码零 UPDATE/DELETE operator_audit writer",
       not grep_upd.stdout.strip(), grep_upd.stdout[:100])
-ins_writers = _sp.run(["grep", "-rn", "INSERT INTO operator_audit",
+ins_writers = _sp.run(["grep", "-rn", "-I", "INSERT INTO operator_audit",
                        "core/", "app/"], capture_output=True, text=True)
 check("G6 单一 INSERT writer = repo/operator_audit.py",
       ins_writers.stdout.strip().count(":") >= 1

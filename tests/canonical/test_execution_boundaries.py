@@ -323,7 +323,7 @@ try:
 
     from execution import gate
     bal_before = spendable_balance(user_id)
-    result, err, status = asyncio.new_event_loop().run_until_complete(gate.run(
+    result, err, status = asyncio.run(gate.run(
         {"id": user_id},
         {"id": f"ebtool_{_u}", "tool_key": f"ebtool_{_u}",
          "owner_id": None},
