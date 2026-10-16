@@ -476,13 +476,19 @@ def _tool_qr_response(owner, tool_id):
     page itself, so the QR never leaks an unresolvable link's existence
     beyond what the page already exposes)."""
     from governance.catalog import resolve
-    from utils import qr_svg
+    from utils import QR_MAX_PAYLOAD, qr_svg
     tool_key = f"{owner}/{tool_id}" if owner else tool_id
     tool, err = resolve(tool_key, None)
     if err:
         return Response(status_code=404)
+    # 41-char tool_id + 32-char owner can exceed the fixed V4-L capacity
+    # (BASE_URL + 80-char path > 78 bytes) — out-of-capacity is the page's
+    # 404 surface too, never a 500 from qr_svg's ValueError.
+    if len(f"{BASE_URL}/tool/{tool_key}".encode()) > QR_MAX_PAYLOAD:
+        return Response(status_code=404)
     return Response(content=qr_svg(f"{BASE_URL}/tool/{tool_key}"),
-                    media_type="image/svg+xml; charset=utf-8")
+                    media_type="image/svg+xml; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ── First-party bare-id routes (官方工具, 无作者命名空间) ──
@@ -1134,9 +1140,14 @@ async def site_qr(p: str = "/"):
     if (not p.startswith("/") or p.startswith("//")
             or "\\" in p or ":" in p):
         return Response(status_code=400)
-    from utils import qr_svg
+    from utils import QR_MAX_PAYLOAD, qr_svg
+    # capacity guard (unauthenticated endpoint — a legal long path must
+    # not turn qr_svg's ValueError into a 500)
+    if len((BASE_URL + p).encode()) > QR_MAX_PAYLOAD:
+        return Response(status_code=400)
     return Response(content=qr_svg(BASE_URL + p),
-                    media_type="image/svg+xml; charset=utf-8")
+                    media_type="image/svg+xml; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/r/{result_id}/qr.svg")
@@ -1156,7 +1167,8 @@ async def result_qr(result_id: str):
     if not expire_at or int(expire_at) <= now():
         return Response(status_code=404)
     return Response(content=qr_svg(public_result_url(result_id)),
-                    media_type="image/svg+xml; charset=utf-8")
+                    media_type="image/svg+xml; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/account/favorites", response_class=HTMLResponse)

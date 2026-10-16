@@ -31,12 +31,14 @@
           { url: url.textContent.trim(), name: name.textContent.trim() });
         await navigator.clipboard.writeText(payload);
         const ic = btn.querySelector("svg");
-        if (!ic) return;
+        if (!ic || btn.dataset.cpBusy) return;
+        btn.dataset.cpBusy = "1";
         const orig = ic.outerHTML;
         ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
         setTimeout(() => {
           const cur = btn.querySelector("svg") || btn.firstChild;
           if (cur) cur.outerHTML = orig;
+          delete btn.dataset.cpBusy;
         }, 1400);
       } catch (e) { /* clipboard blocked — the card text stays selectable */ }
     });
@@ -52,12 +54,14 @@
       try {
         await navigator.clipboard.writeText(code.textContent);
         const ic = btn.querySelector("svg");
-        if (!ic) return;
+        if (!ic || btn.dataset.cpBusy) return;
+        btn.dataset.cpBusy = "1";
         const orig = ic.outerHTML;
         ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
         setTimeout(() => {
           const cur = btn.querySelector("svg") || btn.firstChild;
           if (cur) cur.outerHTML = orig;
+          delete btn.dataset.cpBusy;
         }, 1400);
       } catch (e) { /* clipboard blocked — the URL stays selectable */ }
     });

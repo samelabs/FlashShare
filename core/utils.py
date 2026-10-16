@@ -287,8 +287,13 @@ def qr_svg(value: str) -> str:
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {total} {total}" width="{total}" height="{total}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#ffffff"/><g fill="#0f1419">{"".join(rects)}</g></svg>'
 
 
+# Fixed V4-L encoder capacity in payload bytes. Endpoints minting QRs
+# must reject longer payloads BEFORE calling qr_svg (qr_svg raises).
+QR_MAX_PAYLOAD = 78
+
+
 def _qr_codewords(data: bytes) -> list:
-    if len(data) > 78:
+    if len(data) > QR_MAX_PAYLOAD:
         raise ValueError("QR payload too long")
     bits = [0, 1, 0, 0]
     bits.extend(((len(data) >> i) & 1) for i in range(7, -1, -1))
