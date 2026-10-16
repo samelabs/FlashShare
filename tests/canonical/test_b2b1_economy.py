@@ -131,7 +131,7 @@ def _run(user, tool_id, ref, staged_fn, owner=None, outputs_json=None):
             "owner_id": owner}
     if outputs_json is not None:
         tool["outputs_json"] = outputs_json
-    return asyncio.new_event_loop().run_until_complete(gate.run(
+    return asyncio.run(gate.run(
         {"id": user}, tool, _inv(tool_id, ref), staged_fn))
 
 def _split_for(call_id):
@@ -577,7 +577,7 @@ def _drive(tool, user_id, return_items, cost=100, owner_id=owner):
     inv = ToolInvocation(tool_id=tool["id"], files=[], params={},
                          delivery=DELIVERY,
                          client_ref=f"b2out:{_ref_seq[0]}:{_u}")
-    return asyncio.new_event_loop().run_until_complete(
+    return asyncio.run(
         gate.run({"id": user_id}, tool, inv, orchestrate))
 
 # storage object count before (fake gokapi is the physical authority)
@@ -650,7 +650,7 @@ async def _drive_remote():
         {"ip": "127.0.0.1"}, tool_rt, [], {}, {"id": uto}, DELIVERY)
 
 try:
-    got = asyncio.new_event_loop().run_until_complete(_drive_remote())
+    got = asyncio.run(_drive_remote())
 except Exception as exc:
     got = exc
 _remote_mod.drive_http = _orig_drive

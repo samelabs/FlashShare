@@ -113,7 +113,7 @@ def _inv(tool_id, ref=None):
 from execution import gate
 
 def _run(user, tool_id, ref, staged_fn, owner=None):
-    return asyncio.new_event_loop().run_until_complete(gate.run(
+    return asyncio.run(gate.run(
         {"id": user},
         {"id": tool_id, "tool_key": tool_id,
          "owner_id": owner},
