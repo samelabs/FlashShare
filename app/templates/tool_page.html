@@ -32,9 +32,15 @@
         <button type="button" class="tag fav-btn{% if is_favorite %} on{% endif %}" id="favBtn"
                 data-tool="{{ tool_key }}" aria-pressed="{{ 'true' if is_favorite else 'false' }}"
                 title="{{ texts.fav_hint }}">{{ icon_svg("star") }}<span data-i18n="{{ 'fav_on' if is_favorite else 'fav_add' }}">{{ texts.fav_on if is_favorite else texts.fav_add }}</span></button>
-        {{ share_bar(canonical_url, tool_name, compact=true) }}
+        {{ share_bar(canonical_url, tool_name, qr_src=qr_src, compact=true) }}
       </div>
     </div>
+  </div>
+
+  {# 本页公开地址: 可见 + 可复制 (传给手机的入口之一) #}
+  <div class="tp-url">
+    <code dir="ltr">{{ canonical_url }}</code>
+    <button class="btn btn-icon btn-sm" id="tpUrlCopy" type="button" aria-label="{{ texts['copy_link'] }}" title="{{ texts['copy_link'] }}">{{ icon_svg("copy") }}</button>
   </div>
 
   {% if owner_gate_notice %}
@@ -45,12 +51,18 @@
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
+  {# MCP 调用卡: AI Agent 经 MCP 使用此工具 — 调用名 + 一句说明 +
+     指向本工具 MCP 接入页 (完整可复制配置) #}
   <div class="mcpline">
     {{ icon_svg("bot") }}
-    <span data-i18n="mcp_line_label">{{ texts.mcp_line_label }}</span>
-    <code id="toolMcpName">{{ mcp_name }}</code>
-    <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span>{{ texts['copy'] }}</span></button>
-    <a href="/agents" data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</a>
+    <div class="mcp-body">
+      <div class="mcp-top">
+        <span class="mcp-k" data-i18n="mcp_call_name">{{ texts.mcp_call_name }}</span>
+        <code id="toolMcpName">{{ mcp_name }}</code>
+      </div>
+      <p class="mcp-desc" data-i18n="tp_mcp_desc">{{ texts.tp_mcp_desc }}</p>
+    </div>
+    <a class="btn btn-ghost btn-sm mcp-go" href="{{ mcp_page_url }}">{{ icon_svg("settings") }}<span data-i18n="tool_mcp_hint">{{ texts.tool_mcp_hint }}</span></a>
   </div>
   </div>
 </section>

@@ -740,16 +740,27 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .toolpage .ti-mount { margin-block-start: 28px; }
 .toolpage #result { margin-block-start: 20px; }
 .tp-gate-hint { margin-block-start: 14px; }
-.mcpline { margin-block-start: 20px; display: flex; align-items: center; gap: 10px; padding: 14px 18px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
-.mcpline > svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+/* 本页公开地址行: 头部之下, 可见 + 可复制 */
+.tp-url { margin-block-start: 12px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tp-url code { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; max-width: 420px; }
+.tp-url .btn-icon { flex: none; color: var(--ink-2); }
+@media (hover:hover) and (pointer:fine) { .tp-url .btn-icon:hover { color: var(--ink); } }
+/* MCP 调用卡: 调用名 + 说明 + 接入入口 (bot 图标 = AI Agent 语义) */
+.mcpline { margin-block-start: 20px; display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); font-size: 13px; color: var(--ink-2); }
+.mcpline > svg { width: 18px; height: 18px; margin-block-start: 2px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.mcpline .mcp-body { flex: 1; min-width: 0; }
+.mcpline .mcp-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mcpline .mcp-k { font-weight: 700; color: var(--ink); }
 .mcpline code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 3px 8px; border-radius: 6px; color: var(--ink); }
-.mcpline a { margin-inline-start: auto; font-weight: 600; color: var(--ink); }
+.mcpline .mcp-desc { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; }
+.mcpline .mcp-go { flex: none; align-self: center; white-space: nowrap; }
 @media (max-width: 767px) {
   .toolpage { padding-top: 24px; padding-bottom: 48px; }
   .tp-h { align-items: flex-start; }
   .tp-h .ic { width: 48px; height: 48px; border-radius: 14px; }
   .tp-h h1 { font-size: 24px; }
-  .mcpline a { margin-inline-start: 0; }
+  .mcpline { flex-wrap: wrap; }
+  .mcpline .mcp-go { align-self: flex-start; }
 }
 
 /* tool_mcp.html panels (page rebuilt next batch — keeps its layout) */

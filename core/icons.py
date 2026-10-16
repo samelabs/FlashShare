@@ -49,6 +49,7 @@ _ICONS = {
 
     # ── Actions ──
     "check": '<path d="M20 6L9 17l-5-5"></path>',
+    "plus": '<path d="M12 5v14"></path><path d="M5 12h14"></path>',
     "close": '<path d="M6 6l12 12"></path><path d="M18 6L6 18"></path>',
     "refresh": '<path d="M20 11a8 8 0 0 0-14.2-4.9L4 8"></path><path d="M4 4v4h4"></path><path d="M4 13a8 8 0 0 0 14.2 4.9L20 16"></path><path d="M20 20v-4h-4"></path>',
     "edit": '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>',

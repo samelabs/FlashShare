@@ -455,6 +455,8 @@ pre.rs-text, pre.rs-json {
 @media (hover:hover) and (pointer:fine) { .modal-close:hover { background: var(--gray-100); color: var(--ink); } }
 
 /* ── Toast ─────────────────────────────────────────────────── */
+/* Driven by window.globalToast (base-engine.js): enter (.on) fades in,
+   dismiss removes .on and the node after the transition. */
 .toast {
   position: fixed; inset-block-end: var(--s5); inset-inline: 0;
   margin-inline: auto; width: fit-content; max-width: min(420px, calc(100% - var(--s6)));
@@ -462,7 +464,10 @@ pre.rs-text, pre.rs-json {
   background: var(--gray-900); color: var(--brand-ink); border-radius: var(--r);
   padding: var(--s3) var(--s4); font-size: var(--fs-base); font-weight: 600;
   box-shadow: var(--sh-3); z-index: var(--z-toast);
+  opacity: 0; transform: translateY(6px);
+  transition: opacity .22s var(--ease), transform .22s var(--ease);
 }
+.toast.on { opacity: 1; transform: translateY(0); }
 .toast svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .toast-success svg { color: var(--ok); }
 .toast-error svg { color: var(--danger); }
@@ -619,14 +624,15 @@ pre.rs-text, pre.rs-json {
 .ti-chat-wrap .send svg { width: 16px; height: 16px; }
 
 /* 行尾"+ 添加"小块: 已有文件且未达上限时出现在文件列表末尾
-   (chipf 底形 + 虚线描边区分真实文件行) */
+   (chipf 底形 + 虚线描边区分真实文件行; plus 图标 = 添加语义) */
 .ti-add-block {
   border: 1.5px dashed var(--line-2); background: none;
   color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 550;
 }
-.ti-add-block .th.d { background: var(--brand-50); }
+.ti-add-block .th.d { background: var(--brand-50); border-color: transparent; }
+.ti-add-block .th.d svg { stroke: var(--brand); }
 .ti-add-block b { color: var(--brand); }
-@media (hover:hover) and (pointer:fine) { .ti-add-block:hover { border-color: var(--brand); color: var(--ink); } }
+@media (hover:hover) and (pointer:fine) { .ti-add-block:hover { border-color: var(--brand); background: var(--brand-50); color: var(--ink); } }
 .ti-add-block:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 .params { display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 6px; }

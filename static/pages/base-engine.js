@@ -222,6 +222,25 @@ document.addEventListener("click", function (e) {
   } else if (act === "qr") _sbQr(b.getAttribute("data-qr-src"));
 });
 
+// ── Site-wide toast (the single transient notice surface) ──
+// Drives the .toast component (components.css). Single-slot: a new
+// notice replaces the one on screen — rapid rejections must not stack.
+// Text-first by design; no icons, no actions.
+window.globalToast = function (message) {
+  var old = document.querySelector(".toast");
+  if (old) old.remove();
+  var el = document.createElement("div");
+  el.className = "toast";
+  el.setAttribute("role", "status");
+  el.textContent = message;
+  document.body.appendChild(el);
+  requestAnimationFrame(function () { el.classList.add("on"); });
+  setTimeout(function () {
+    el.classList.remove("on");
+    setTimeout(function () { el.remove(); }, 260);
+  }, 2600);
+};
+
 // ── Site-wide async confirm authority (VIS-006 / RC-VIS-002) ──
 // One modal-based confirm for core destructive operations: history
 // delete, detail delete, profile X unbind, token revoke, homepage

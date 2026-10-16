@@ -461,14 +461,41 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "tools_json": json.dumps([tool_public], ensure_ascii=False),
         "limits_json": _limits_json(ctx),
         "formats_json": json.dumps(format_manifest(), ensure_ascii=False),
+        # share-bar QR src + the tool's own MCP setup page (path-relative,
+        # same shapes as detail.html's /f/{id}/qr.svg)
+        "qr_src": request.url.path + "/qr.svg",
+        "mcp_page_url": request.url.path + "/mcp",
     })
     return ctx
+
+
+def _tool_qr_response(owner, tool_id):
+    """QR SVG of a tool page URL — the page's own resolve() permission
+    (public/unlisted answer everyone; private/unknown → 404, same as the
+    page itself, so the QR never leaks an unresolvable link's existence
+    beyond what the page already exposes)."""
+    from governance.catalog import resolve
+    from utils import qr_svg
+    tool_key = f"{owner}/{tool_id}" if owner else tool_id
+    tool, err = resolve(tool_key, None)
+    if err:
+        return Response(status_code=404)
+    return Response(content=qr_svg(f"{BASE_URL}/tool/{tool_key}"),
+                    media_type="image/svg+xml; charset=utf-8")
 
 
 # ── First-party bare-id routes (官方工具, 无作者命名空间) ──
 # /tool/{x}/mcp 必须注册在 /tool/{owner}/{tool_id} 之前, 否则
 # /tool/compress/mcp 被两段式错吞 (owner=compress, tool_id=mcp)。
 # FastAPI 按注册序匹配。
+
+@router.get("/tool/{tool_id}/qr.svg")
+async def tool_first_party_qr(tool_id: str):
+    """官方工具页 QR (/tool/compress/qr.svg) — 与工具页同一 resolve
+    权限 (public/unlisted 对所有人)。两段路径, 必须先于
+    /tool/{owner}/{tool_id} 注册, 否则被当作 owner/tool_id 吞掉。"""
+    return _tool_qr_response(None, tool_id)
+
 
 @router.get("/tool/{tool_id}/mcp", response_class=HTMLResponse)
 async def tool_first_party_mcp_page(request: Request, tool_id: str):
@@ -505,6 +532,12 @@ async def tool_page(request: Request, owner: str, tool_id: str):
     if ctx is None:
         return _H("", status_code=404)
     return templates.TemplateResponse(request, "tool_page.html", ctx)
+
+
+@router.get("/tool/{owner}/{tool_id}/qr.svg")
+async def tool_qr(owner: str, tool_id: str):
+    """社区工具页 QR — 权限同工具页 (见 _tool_qr_response)。"""
+    return _tool_qr_response(owner, tool_id)
 
 
 @router.get("/tool/{owner}/{tool_id}/mcp", response_class=HTMLResponse)
@@ -1088,6 +1121,26 @@ async def result_page(result_id: str, request: Request):
     resp = templates.TemplateResponse(request, "result.html", ctx)
     resp.headers["Vary"] = "Accept"
     return resp
+
+
+@router.get("/r/{result_id}/qr.svg")
+async def result_qr(result_id: str):
+    """结果页 QR — 与结果页同一可见性: 未知/过期 → 404 (无存在性预言),
+    存活则编码结果页公开 URL。"""
+    from repo.ledger import call_by_result_public_id
+    from utils import now, public_result_url, qr_svg
+    with db() as con:
+        row = call_by_result_public_id(con, result_id)
+    if row is None:
+        return Response(status_code=404)
+    try:
+        expire_at = (json.loads(row["result_json"]) or {}).get("expires_at")
+    except Exception:
+        expire_at = None
+    if not expire_at or int(expire_at) <= now():
+        return Response(status_code=404)
+    return Response(content=qr_svg(public_result_url(result_id)),
+                    media_type="image/svg+xml; charset=utf-8")
 
 
 @router.get("/account/favorites", response_class=HTMLResponse)

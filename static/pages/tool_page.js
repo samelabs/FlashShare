@@ -18,19 +18,23 @@
   window.__TOOLPAGE__ = true;
 })();
 
-// MCP name copy (the AI-call-name line at the bottom of the page)
+// Page URL copy (the visible address row under the header)
 (function () {
-  const btn = document.getElementById("toolMcpCopy");
-  const code = document.getElementById("toolMcpName");
+  const btn = document.getElementById("tpUrlCopy");
+  const code = document.querySelector(".tp-url code");
   if (btn && code) {
     btn.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(code.textContent);
-        const span = btn.querySelector("span");
-        const orig = span.textContent;
-        span.textContent = window.t("copied");
-        setTimeout(() => { span.textContent = orig; }, 1400);
-      } catch (e) { /* clipboard blocked — value stays selectable */ }
+        const ic = btn.querySelector("svg");
+        if (!ic) return;
+        const orig = ic.outerHTML;
+        ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
+        setTimeout(() => {
+          const now = btn.querySelector("svg") || btn.firstChild;
+          if (now) now.outerHTML = orig;
+        }, 1400);
+      } catch (e) { /* clipboard blocked — the URL stays selectable */ }
     });
   }
 })();
