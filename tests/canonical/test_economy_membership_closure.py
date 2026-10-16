@@ -523,7 +523,7 @@ try:
                 expire_at=ts + 86400, url_hotlink="")],
             ip="127.0.0.1")
     def _run(ref):
-        return asyncio.new_event_loop().run_until_complete(_gate.run(
+        return asyncio.run(_gate.run(
             {"id": u5}, {"id": tool5, "tool_key": tool5,
                          "owner_id": None}, _inv(ref), _stage_ok))
     def _calls(ref):

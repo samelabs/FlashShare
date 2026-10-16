@@ -134,7 +134,7 @@ async def _stage_ok(tool_id, tag="ok", **kw):
     return _mkstaged(tag=tag, **kw)
 
 def _run_gate(user, tool_id, ref, staged_fn, tool_owner=None):
-    return asyncio.new_event_loop().run_until_complete(gate.run(
+    return asyncio.run(gate.run(
         {"id": user},
         {"id": tool_id, "tool_key": tool_id,
          "owner_id": tool_owner},
@@ -184,6 +184,13 @@ with db() as con:
 check("B6b platform_revenue = 25 (绑定 call id)", int(rev) == 25, str(rev))
 
 # ══════════ C. third-party earning/commission 同事务 ══════════
+# C1 断言 rate 30 的拆账; 抽佣率是 settings 里的全局态 (别的套件会删/
+# 复原它), 本套件自种所需值, 不依赖运行顺序留下的库态
+with db() as con:
+    con.execute(
+        "insert into settings (key, value, updated_at) values"
+        " ('commission_rate', '30', %s) on conflict (key) do update"
+        " set value = excluded.value", (ts,))
 owner = _mkuser(_u + "owner")
 user2 = _mkuser(_u + "u2")
 tool2 = f"rstool2_{_u}"

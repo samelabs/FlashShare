@@ -150,7 +150,7 @@ from execution import gate
 from governance.commission import commission_rate
 
 def _run(user, tool, inv, staged_fn):
-    return asyncio.new_event_loop().run_until_complete(
+    return asyncio.run(
         gate.run({"id": user}, tool, inv, staged_fn))
 
 def _ledger_n(user_id, kind):

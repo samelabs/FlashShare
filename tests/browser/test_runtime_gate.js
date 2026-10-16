@@ -952,7 +952,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         });
         check(`bar ${w} ${p}: run button on the expiry row`, bar !== null && bar.sameRow, JSON.stringify(bar));
         check(`bar ${w} ${p}: run button flush right (within bar padding)`, bar !== null && bar.runRightGap >= 0 && bar.runRightGap <= 16, JSON.stringify(bar));
-        if (p === "/") check(`bar ${w} home: picker row spans the bar`, bar !== null && bar.barW - bar.tselW <= 26, JSON.stringify(bar));
+        // 2026-10 batch: the mobile picker pill shrink-wraps to its label
+        // (no full-bar stretch); it must stay a real pill on the row while
+        // leaving clear room beside it (spacer/run column).
+        if (p === "/") check(`bar ${w} home: picker pill natural width (no full-bar stretch)`, bar !== null && bar.tselW >= 100 && bar.barW - bar.tselW >= 40, JSON.stringify(bar));
         check(`bar ${w} ${p}: no horizontal overflow`, bar !== null && bar.overflow <= 1, JSON.stringify(bar));
       }
       await bctx.close();
@@ -1430,7 +1433,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         parity.ok && parity.maxH <= parity.vhCap + 1, JSON.stringify(parity));
       // the title is the content: a single-file result is titled by its
       // file name, the tool rides the meta line; no QR row; copy / share
-      // / X live in the one share bar
+      // / X / QR live in the one share bar
       const head = await page.evaluate(() => ({
         h1: (document.querySelector(".rc-top h1") || {}).textContent || "",
         meta: (document.querySelector(".rc-top .m") || {}).textContent || "",
@@ -1441,8 +1444,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         /\.png$/i.test(head.h1.trim()) && head.meta.trim().length > 0,
         JSON.stringify(head));
       check("/r page: no QR row", head.qr === false, JSON.stringify(head));
-      check("/r page: share bar = copy · share · X",
-        head.bar === 3, JSON.stringify(head));
+      // 2026-10 batch: the QR button rides the share bar as the fourth
+      // piece (same icon language as copy/share/X); no separate QR row.
+      check("/r page: share bar = copy · share · X · QR",
+        head.bar === 4, JSON.stringify(head));
       await ctx.close();
     }
 

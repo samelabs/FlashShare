@@ -12,7 +12,7 @@
     <div class="page-head userpage-id">
       <h1 class="userpage-handle">@{{ owner_handle }}{% if owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</h1>
       <p class="page-head-sub" data-i18n="owner_page_desc">{{ texts.owner_page_desc }}</p>
-      {{ share_bar(canonical_url, "@" ~ owner_handle, compact=true) }}
+      {{ share_bar(canonical_url, "@" ~ owner_handle, qr_src=qr_src, compact=true) }}
     </div>
     <div class="userpage-nums">
       <div class="userpage-num"><strong>{{ owner_tools | length }}</strong><span data-i18n="owner_tools_n">{{ texts.owner_tools_n }}</span></div>

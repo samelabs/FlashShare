@@ -135,6 +135,27 @@ try:
           st == 200 and _r.get("isError") is True
           and _body.get("error") == "err_auth_required"
           and "register" in _body.get("message", ""), f"{st} {_body}")
+    # Malformed anonymous register arguments must not create an account.
+    # Count rows before/after the real HTTP request, not just the response.
+    from database import db
+    with db() as con:
+        _before = int(con.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"])
+    st_bad, _h_bad, d_bad, _sc_bad = _anon(
+        "tools/call", {"name": "register", "arguments": ["invalid"]})
+    _unexpected = (((d_bad or {}).get("result") or {})
+                   .get("structuredContent") or {}).get("username")
+    with db() as con:
+        _after = int(con.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"])
+        if _unexpected:
+            # Cleanup a leaked account if this regression fails on old code.
+            _row = con.execute(
+                "SELECT id FROM users WHERE username=%s", (_unexpected,)).fetchone()
+            if _row:
+                uids.append(int(_row["id"]))
+    check("R4c2 malformed register arguments → -32602, zero account writes",
+          st_bad == 200 and ((d_bad or {}).get("error") or {}).get("code") == -32602
+          and _before == _after,
+          f"{st_bad} {d_bad} users {_before}->{_after}")
     st, _h, d, _sc = _anon("tools/call", {"name": "register", "arguments": {}})
     _r = (d or {}).get("result") or {}
     _out = _r.get("structuredContent") or {}

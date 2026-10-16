@@ -186,7 +186,7 @@ async def _orch():
 
 def _run(user_id, tool_id, ref, own):
     from execution import gate as _g
-    return _asyncio.new_event_loop().run_until_complete(_g.run(
+    return _asyncio.run(_g.run(
         {"id": user_id},
         {"id": tool_id, "tool_key": tool_id, "owner_id": own},
         _inv(tool_id, ref), _orch))

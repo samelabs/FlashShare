@@ -20,6 +20,9 @@
        Infinity to -32602; the password cap is bcrypt's own 72 UTF-8
        bytes on the single validate_password point (register/change/
        set all share it).
+  H7*  QR minting endpoints: payloads beyond the fixed encoder capacity
+       (78 bytes) answer typed 400/404 — never a 500; the site QR mints
+       same-site paths only; QR responses are cacheable.
 
 Fail-closed env guard; per-run unique names; fixtures cleaned at end.
 """
@@ -362,6 +365,35 @@ try:
         "Content-Type": ct, "Accept": "application/json"})
     check("H6c register with a 75-byte password → typed err_password_long",
           (d_pw or {}).get("error") == "err_password_long", (st_pw, d_pw))
+
+    # ═══ H7. QR surfaces: capacity guard + same-site-only + cacheable ═══
+    # The fixed V4-L encoder holds 78 payload bytes and RAISES beyond
+    # that; every public minting endpoint must reject out-of-capacity
+    # input as a typed 4xx, never surface a 500. The site QR mints
+    # same-site paths only (no scheme/protocol-relative/backslash/colon)
+    # and all QR responses are cacheable.
+    long_p = "/" + "a" * 100
+    st, _h, _d, _sc = _req("GET", "/qr.svg?p=" + long_p)
+    check("H7a site QR over capacity → 400 (no 500 from the encoder)",
+          st == 400, st)
+    for bad, why in (("%2F%2Fevil.com", "protocol-relative"),
+                     ("https%3A%2F%2Fevil.com", "scheme"),
+                     ("%5Cevil", "backslash"),
+                     ("javascript%3Aalert(1)", "colon")):
+        st, _h, _d, _sc = _req("GET", "/qr.svg?p=" + bad)
+        check(f"H7a site QR rejects {why} → 400", st == 400, (bad, st))
+    st, h, _d, _sc = _req("GET", "/qr.svg?p=%2F")
+    check("H7a site QR home path → 200 svg + Cache-Control",
+          st == 200 and "svg" in (h.get("content-type") or "")
+          and "max-age" in (h.get("cache-control") or ""), (st, h.get("cache-control")))
+    st, _h, _d, _sc = _req("GET", "/tool/compress/qr.svg")
+    check("H7b bare-id tool QR → 200", st == 200, st)
+    st, _h, _d, _sc = _req("GET", "/tool/no_such_tool_xyz/qr.svg")
+    check("H7b unknown tool QR → 404 (page's own surface)",
+          st == 404, st)
+    st, _h, _d, _sc = _req("GET", "/r/no_such_result/qr.svg")
+    check("H7b unknown result QR → 404 (no existence oracle)",
+          st == 404, st)
 finally:
     if uid:
         from database import db
