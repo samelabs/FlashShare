@@ -740,7 +740,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tp-h .tp-desc { color: var(--ink-2); margin-block-start: 2px; }
 .tp-h .meta { display: flex; gap: 6px; margin-block-start: 10px; flex-wrap: wrap; align-items: center; }
 .tp-h .auth { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); margin-inline-end: 6px; }
-.mcpline { align-items: center; }
 .tp-h .auth i { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, rgba(255, 107, 91, 1), rgba(255, 59, 79, 1)); display: inline-block; }
 .tp-h .auth i.official { background: linear-gradient(135deg, rgba(255, 179, 107, 1), rgba(255, 90, 77, 1)); }
 .toolpage .ti-mount { margin-block-start: 28px; }
