@@ -2,6 +2,7 @@
 {% block title %}{{ texts.agents_title }} - {{ APP_NAME }}{% endblock %}
 {% block desc %}{{ texts.agents_mcp_desc }}{% endblock %}
 
+{% from "partials/share_bar.html" import share_bar with context %}
 {% block content %}
 <section class="agents-v2">
   <div class="wrap">
@@ -9,6 +10,7 @@
       <div>
         <h1>{{ texts.agents_title }}</h1>
         <p class="sec-sub"><span data-i18n="agents_mcp_intro">{{ texts.agents_mcp_intro }}</span> <span data-i18n="agents_mcp_intro_2">{{ texts.agents_mcp_intro_2 }}</span> <a href="/pricing" data-i18n="nav_pricing">{{ texts.nav_pricing }}</a></p>
+        {{ share_bar(canonical_url, texts.agents_title, qr_src="/qr.svg?p=%2Fagents", compact=true) }}
       </div>
     </div>
 

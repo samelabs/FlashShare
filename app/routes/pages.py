@@ -347,6 +347,7 @@ async def user_page(request: Request, handle: str):
         "owner_verified": owner_id in effective_member_ids([owner_id]),
         "owner_tools": tools,
         "is_self": bool(user and user.get("id") == owner_id),
+        "qr_src": "/qr.svg?p=" + urllib.parse.quote(request.url.path),
     })
     return templates.TemplateResponse(request, "user_page.html", ctx)
 
@@ -1121,6 +1122,21 @@ async def result_page(result_id: str, request: Request):
     resp = templates.TemplateResponse(request, "result.html", ctx)
     resp.headers["Vary"] = "Accept"
     return resp
+
+
+@router.get("/qr.svg")
+async def site_qr(p: str = "/"):
+    """QR of an on-site URL for share bars on pages without a dedicated
+    qr endpoint (agents / market / pricing / home / author). Only
+    same-site paths are minted: no scheme, no protocol-relative, no
+    backslash, no colon — the endpoint cannot encode third-party URLs,
+    so it cannot be abused to print phishing codes on 518 branding."""
+    if (not p.startswith("/") or p.startswith("//")
+            or "\\" in p or ":" in p):
+        return Response(status_code=400)
+    from utils import qr_svg
+    return Response(content=qr_svg(BASE_URL + p),
+                    media_type="image/svg+xml; charset=utf-8")
 
 
 @router.get("/r/{result_id}/qr.svg")
