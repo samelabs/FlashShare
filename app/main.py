@@ -150,10 +150,26 @@ def get_user_from_request(request: Request):
     if path == "/mcp":
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+            if token.startswith("fsot_"):
+                # OAuth access token (consent-granted, resource-bound)
+                from identity.oauth_provider import (
+                    MCP_RESOURCE, authenticate_access_token)
+                identity = authenticate_access_token(
+                    token, resource=MCP_RESOURCE)
+                if identity:
+                    request.state.auth_via = "oauth"
+                    request.state.auth_scopes = identity["scopes"]
+                    request.state.oauth_client_id = identity["client_id"]
+                return identity["user"] if identity else None
             from identity.apikeys import authenticate_key
-            user = authenticate_key(auth[7:].strip())
+            from identity.capabilities import scope_set
+            user = authenticate_key(token)
             if user:
                 request.state.auth_via = "token"
+                request.state.auth_scopes = scope_set(
+                    user.pop("key_scopes", None))
+                request.state.oauth_client_id = None
             return user
     return None
 
@@ -278,13 +294,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Routes ──
 
-from app.routes import pages, api, auth_route, proxy, samelabs, mcp, mcp_upload, usertools, favorites  # noqa: E402
+from app.routes import pages, api, auth_route, proxy, samelabs, mcp, oauth_provider, mcp_upload, usertools, favorites  # noqa: E402
 
 app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
 app.include_router(auth_route.router, prefix="/auth")
 app.include_router(samelabs.router)
 app.include_router(mcp.router)
+app.include_router(oauth_provider.router)
 app.include_router(mcp_upload.router)
 from app.routes import topup  # noqa: E402
 app.include_router(topup.router)

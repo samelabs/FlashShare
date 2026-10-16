@@ -136,10 +136,50 @@ def _cors_headers(request: Request):
     return headers
 
 
+def _auth_challenge_json(mid):
+    """401 for an authenticated-only tools/call: JSON-RPC error body +
+    the spec challenge header (connectors start OAuth from it)."""
+    from config import BASE_URL as _base
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        _rpc_err(mid, -32001, "unauthorized: a bearer credential is "
+                 "required (fsk_ API key via the free 'register' tool, "
+                 "or OAuth — see /.well-known/oauth-authorization-server)",
+                 {"register": "call the register tool without an "
+                  "Authorization header"}),
+        status_code=401,
+        headers={"WWW-Authenticate":
+                 f'Bearer resource_metadata="{_base}'
+                 '/.well-known/oauth-protected-resource"'})
+
+
 def _bearer_user(request: Request):
+    """The /mcp caller when authenticated by a bearer credential:
+    an fsk_ API key (token) or a consent-granted OAuth access token
+    (oauth). Both carry their capability set on request.state."""
     user = getattr(request.state, "user", None)
     via = getattr(request.state, "auth_via", "")
-    return user if (user and via == "token") else None
+    return user if (user and via in ("token", "oauth")) else None
+
+
+def _auth_challenge(cors: dict) -> JSONResponse:
+    """Spec-canonical 401: WWW-Authenticate points at the RFC 9728
+    protected-resource metadata so platform connectors auto-start the
+    OAuth flow; the body still names the zero-friction register path."""
+    from config import BASE_URL as _base
+    return JSONResponse(
+        {"error": "unauthorized",
+         "message": (
+             "A bearer credential is required: an fsk_ API key (get one "
+             "from the free MCP tool 'register', call it without an "
+             "Authorization header; humans can create keys at "
+             f"{_base}/account/keys) or an OAuth access token "
+             f"({_base}/.well-known/oauth-authorization-server). "
+             f"Guide: {_base}/llms.txt")},
+        status_code=401,
+        headers={**cors, "WWW-Authenticate":
+                 f'Bearer resource_metadata="{_base}'
+                 '/.well-known/oauth-protected-resource"'})
 
 
 @router.options("/mcp")
@@ -170,17 +210,7 @@ async def mcp_post(request: Request):
     # A presented-but-invalid key is still a hard 401 (a real error the
     # caller must see, never silently downgraded to anonymous).
     if not user and request.headers.get("authorization"):
-        from config import BASE_URL as _base
-        return JSONResponse(
-            {"error": "unauthorized",
-             "message": (
-                 "Invalid API key. Get a new one with the MCP tool "
-                 f"'register' (call it without an Authorization header), "
-                 f"POST {_base}/auth/mcp/register, or {_base}/account/keys. "
-                 f"Guide: {_base}/llms.txt")},
-            status_code=401,
-            headers={**cors, "WWW-Authenticate": 'Bearer realm="518"'},
-        )
+        return _auth_challenge(cors)
     version = request.headers.get("mcp-protocol-version")
     version = HEADER_DEFAULT_VERSION if version is None else version.strip()
     if version not in SUPPORTED_VERSIONS:
@@ -206,10 +236,18 @@ async def mcp_post(request: Request):
             return JSONResponse(_rpc_err(None, -32600, "invalid request: empty batch"),
                                 status_code=400, headers=cors)
         out = []
+        passthrough = None
         for m in msg:
             r = await _dispatch_safe(request, user, m)
+            if isinstance(r, Response):
+                # batch + HTTP-level answer: the challenge stands for the
+                # whole request (batching is MCP-2025-11-removed anyway)
+                passthrough = r
+                break
             if r is not None:
                 out.append(r)
+        if passthrough is not None:
+            return passthrough
         if not out:
             # only notifications / responses: accepted, nothing to answer
             return Response(status_code=202, headers=cors)
@@ -217,6 +255,9 @@ async def mcp_post(request: Request):
     resp = await _dispatch_safe(request, user, msg)
     if resp is None:
         return Response(status_code=202, headers=cors)
+    if isinstance(resp, Response):
+        # an HTTP-level answer (the 401 challenge) passes through as-is
+        return resp
     return JSONResponse(resp, headers=cors)
 
 
@@ -351,7 +392,14 @@ async def _dispatch(request: Request, user: dict, msg):
         return _rpc(mid, out)
     if method == "tools/call":
         if not user:
-            return await _anon_call(request, mid, params)
+            # register stays anonymously callable (the zero-friction
+            # onboarding path); every other tool needs a credential —
+            # spec-canonical 401 + WWW-Authenticate so platform
+            # connectors auto-start OAuth
+            name = params.get("name") if isinstance(params, dict) else None
+            if name == "register":
+                return await _anon_call(request, mid, params)
+            return _auth_challenge_json(mid)
         return await _call_tool(request, user, mid, params)
     return _rpc_err(mid, -32601, f"method not found: {method}")
 
@@ -1017,6 +1065,21 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from economy.antibuse import mcp_call_throttled
     if mcp_call_throttled(user["id"]):
         return _iserror(mid, {"error": "err_rate_limited"})
+    # Capability chokepoint — the ONE authorization comparison for every
+    # bearer (fsk_ key scopes and OAuth consent grants alike)
+    from identity.capabilities import op_allowed
+    granted = getattr(getattr(request, "state", None), "auth_scopes", None)
+    if granted is not None and not op_allowed(name, granted):
+        from identity.capabilities import OP_SCOPES
+        need = OP_SCOPES.get(name)
+        return _iserror(mid, {
+            "error": "err_insufficient_scope",
+            "required_scope": need,
+            "granted_scopes": sorted(granted),
+            "message": (
+                f"This credential is not allowed to do this (needs "
+                f"{need}; granted: {', '.join(sorted(granted)) or 'none'})."),
+        })
     if name == "catalog_search":
         # Search IS the public market (same predicate/order/projection/
         # paging as /tools); empty q lists the recommended tools. See
@@ -1386,6 +1449,19 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     result = payload.get("result") or {}
     _input_digests = frozenset(
         _hl.sha256(_b).hexdigest() for _, _, _b in _canon)
+    # OAuth plugin attribution — an MCP-layer post-hook on the settled
+    # call (the execution chain stays untouched): stamp the consented
+    # client on the tool_calls row.
+    _client_id = getattr(getattr(request, "state", None), "oauth_client_id", None)
+    if _client_id and payload.get("call_id"):
+        try:
+            from database import db as _db
+            with _db() as _con:
+                _con.execute(
+                    "update tool_calls set oauth_client_id=%s where id=%s",
+                    (_client_id, payload["call_id"]))
+        except Exception:
+            pass  # attribution is telemetry, never blocks the result
     return _rpc(mid, await _mcp_success(result, payload, _input_digests))
 
 

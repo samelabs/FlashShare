@@ -33,13 +33,29 @@ def build_llms_txt() -> str:
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
     a(f"- Protocol versions: {versions} (latest: {latest})")
-    a("- Auth: Bearer API key, prefix fsk_. Connect without a key first: "
+    a("- Auth: one of two bearer credentials —")
+    a("  1. API key, prefix fsk_ (for agents that hold their own secret): "
       "initialize and tools/list work anonymously, and the tool "
       "`register` (optional username) creates an account and returns "
-      "its key — then send Authorization: "
-      "Bearer <key>. Same over plain HTTP: POST /auth/mcp/register with "
-      'an optional {"username": "..."} JSON body. Humans can also '
-      "create keys in the web UI at /account/keys (Account → API keys)")
+      "its key — then send Authorization: Bearer <key>. Same over plain "
+      'HTTP: POST /auth/mcp/register with an optional {"username": "..."} '
+      "JSON body. Humans can also create keys in the web UI at "
+      "/account/keys (Account → API keys).")
+    a("  2. OAuth 2.1 (for packaged plugins and platform connectors): "
+      "PKCE S256 public clients, client identity by CIMD — the "
+      "client_id IS an HTTPS URL to a JSON metadata document "
+      '(client_name, redirect_uris, token_endpoint_auth_method "none") '
+
+      "that this server fetches and verifies. Start at "
+      "/.well-known/oauth-authorization-server; tokens are bound to "
+      "this /mcp resource. Scopes (granted at consent, enforced per "
+      "operation): tools:call (execute tools; paid tools spend the "
+      "account's credits), files:read (list your live files), "
+      "files:delete (delete your files).")
+    a("- Anonymous tools/call answers 401 with a WWW-Authenticate "
+      "challenge pointing at /.well-known/oauth-protected-resource "
+      "(except the free `register` tool, which is how agents "
+      "self-onboard in one call).")
     a("- Agent guide (this file): /llms.txt")
     a("")
     a("## No-install usage (curl)")

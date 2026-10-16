@@ -292,8 +292,8 @@ st, h, _d = _mcp(_ping, token=None)
 check("O8 anonymous ping → 200 (discovery needs no key)",
       st == 200 and (_d or {}).get("result") == {}, f"{st} {_d}")
 st, h, _d = _mcp(_ping, token="fsk_invalid_key")
-check("O8b invalid key → 401 WWW-Authenticate: Bearer realm=\"518\"",
-      st == 401 and h.get("www-authenticate") == 'Bearer realm="518"', f"{st} {h.get('www-authenticate')}")
+check("O8b invalid key → 401 WWW-Authenticate resource_metadata",
+      st == 401 and "oauth-protected-resource" in (h.get("www-authenticate") or ""), f"{st} {h.get('www-authenticate')}")
 
 # ══════════ 4. JSON-RPC batches ══════════
 _batch = [{"jsonrpc": "2.0", "id": 1, "method": "ping"},

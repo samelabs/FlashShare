@@ -16,6 +16,14 @@ LOCALE_TAGS = {
 SERVER_I18N = {
     "fr": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "Connecter une application",
+        "oauth_consent_intro": "Cette application demande l’accès à votre compte 518.PLUS.",
+        "oauth_connected_as": "Connecté en tant que",
+        "oauth_consent_scopes": "Autorisations",
+        "oauth_scope_tools_call": "Utiliser les outils (les outils payants consomment vos crédits)",
+        "oauth_scope_files_read": "Voir vos fichiers partagés encore disponibles",
+        "oauth_scope_files_delete": "Supprimer vos fichiers partagés",
+        "oauth_allow": "Autoriser",
         "close": "Fermer",
         "lang_switch": "Changer de langue",
         "pagination": "pagination",
@@ -438,6 +446,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Trop de tentatives, veuillez réessayer plus tard",
 # B4 mcp closure
         "agents_header_note": "Pas encore de clé ? Connectez-vous d'abord sans cette ligne, puis obtenez-en une avec register.",
+        "agents_oauth_note": "Vous empaquetez un plugin ou un connecteur ? Utilisez OAuth 2.1 : le client_id est une URL HTTPS vers votre document de métadonnées client (CIMD) ; les utilisateurs consentent une fois, puis votre plugin appelle /mcp avec des jetons à portée limitée. Point d’entrée : /.well-known/oauth-authorization-server.",
         "agents_key_note": "Remplacez fsk_… dans les extraits ci-dessous par votre clé API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Ce délai de livraison n'est pas disponible avec votre offre actuelle",
@@ -585,6 +594,14 @@ SERVER_I18N = {
 },
     "ko": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "애플리케이션 연결",
+        "oauth_consent_intro": "이 애플리케이션이 518.PLUS 계정 접근 권한을 요청합니다.",
+        "oauth_connected_as": "로그인 계정",
+        "oauth_consent_scopes": "권한",
+        "oauth_scope_tools_call": "도구 실행 (유료 도구는 크레딧 소모)",
+        "oauth_scope_files_read": "현재 공유 중인 파일 보기",
+        "oauth_scope_files_delete": "공유 파일 삭제",
+        "oauth_allow": "허용",
         "close": "닫기",
         "lang_switch": "언어 전환",
         "pagination": "페이지 매김",
@@ -1007,6 +1024,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주세요",
 # B4 mcp closure
         "agents_header_note": "아직 키가 없나요? 이 줄을 빼고 먼저 연결한 뒤 register로 키를 받으세요.",
+        "agents_oauth_note": "플러그인이나 커넥터를 배포하나요? OAuth 2.1을 사용하세요. client_id는 클라이언트 메타데이터 문서의 HTTPS URL(CIMD)이며, 사용자가 한 번 동의하면 범위가 한정된 토큰으로 /mcp를 호출할 수 있습니다. 시작점: /.well-known/oauth-authorization-server.",
         "agents_key_note": "아래 설정의 fsk_…를 내 API 키로 바꾸세요.",
 # B5 frontend closure
         "err_expiry_not_entitled": "현재 멤버십에서는 이 만료 기간을 사용할 수 없습니다",
@@ -1154,6 +1172,14 @@ SERVER_I18N = {
 },
     "ru": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "Подключить приложение",
+        "oauth_consent_intro": "Это приложение запрашивает доступ к вашей учетной записи 518.PLUS.",
+        "oauth_connected_as": "Выполнен вход как",
+        "oauth_consent_scopes": "Разрешения",
+        "oauth_scope_tools_call": "Вызывать инструменты (платные списывают кредиты)",
+        "oauth_scope_files_read": "Просматривать ваши действующие общие файлы",
+        "oauth_scope_files_delete": "Удалять ваши общие файлы",
+        "oauth_allow": "Разрешить",
         "close": "Закрыть",
         "lang_switch": "Сменить язык",
         "pagination": "разбивка на страницы",
@@ -1576,6 +1602,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Слишком много попыток, попробуйте позже",
 # B4 mcp closure
         "agents_header_note": "Ещё нет ключа? Сначала подключитесь без этой строки, затем получите ключ через register.",
+        "agents_oauth_note": "Упаковываете плагин или коннектор? Используйте OAuth 2.1: client_id — это HTTPS-URL документа метаданных вашего клиента (CIMD); пользователь соглашается один раз, и плагин вызывает /mcp с ограниченными по охвату токенами. Начало: /.well-known/oauth-authorization-server.",
         "agents_key_note": "Замените fsk_… в примерах ниже на свой ключ API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Этот срок доставки недоступен на текущем тарифе",
@@ -1723,6 +1750,14 @@ SERVER_I18N = {
 },
     "ar": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "ربط التطبيق",
+        "oauth_consent_intro": "يطلب هذا التطبيق الوصول إلى حسابك في 518.PLUS.",
+        "oauth_connected_as": "تم تسجيل الدخول باسم",
+        "oauth_consent_scopes": "الأذونات",
+        "oauth_scope_tools_call": "استدعاء الأدوات (الأدوات المدفوعة تستهلك رصيدك)",
+        "oauth_scope_files_read": "عرض ملفاتك المشتركة المتاحة",
+        "oauth_scope_files_delete": "حذف ملفاتك المشتركة",
+        "oauth_allow": "سماح",
         "close": "إغلاق",
         "lang_switch": "تغيير اللغة",
         "pagination": "ترقيم الصفحات",
@@ -2145,6 +2180,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "محاولات كثيرة جداً، حاول لاحقاً",
 # B4 mcp closure
         "agents_header_note": "لا مفتاح بعد؟ اتصل أولًا بدون هذا السطر، ثم احصل على مفتاح عبر register.",
+        "agents_oauth_note": "تُغلّف إضافة أو موصلاً؟ استخدم OAuth 2.1: معرّف العميل هو عنوان HTTPS لمستند بيانات عميلك (CIMD)؛ يوافق المستخدم مرة واحدة ثم تستدعي إضافتك /mcp برموز محدودة النطاق. البداية: /.well-known/oauth-authorization-server.",
         "agents_key_note": "استبدل fsk_… في المقتطفات أدناه بمفتاح API الخاص بك.",
 # B5 frontend closure
         "err_expiry_not_entitled": "مدة التسليم هذه غير متاحة في خطتك الحالية",
@@ -2292,6 +2328,14 @@ SERVER_I18N = {
 },
     "de": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "Anwendung verbinden",
+        "oauth_consent_intro": "Diese Anwendung fordert Zugriff auf dein 518.PLUS-Konto an.",
+        "oauth_connected_as": "Angemeldet als",
+        "oauth_consent_scopes": "Berechtigungen",
+        "oauth_scope_tools_call": "Tools aufrufen (bezahlte Tools verbrauchen deine Credits)",
+        "oauth_scope_files_read": "Deine noch verfügbaren geteilten Dateien ansehen",
+        "oauth_scope_files_delete": "Deine geteilten Dateien löschen",
+        "oauth_allow": "Zulassen",
         "close": "Schließen",
         "lang_switch": "Sprache wechseln",
         "pagination": "Seitennavigation",
@@ -2714,6 +2758,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Zu viele Versuche, bitte später erneut versuchen",
 # B4 mcp closure
         "agents_header_note": "Noch kein Schlüssel? Verbinde dich zuerst ohne diese Zeile und hole dir dann einen mit register.",
+        "agents_oauth_note": "Du packst ein Plugin oder einen Connector? Nutze OAuth 2.1: Die client_id ist eine HTTPS-URL zu deinem Client-Metadaten-Dokument (CIMD); Nutzer stimmen einmal zu, dann ruft dein Plugin /mcp mit Scoped Tokens auf. Einstieg: /.well-known/oauth-authorization-server.",
         "agents_key_note": "Ersetze fsk_… in den Snippets unten durch deinen API-Schlüssel.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Diese Liefergültigkeit ist in Ihrem aktuellen Tarif nicht verfügbar",
@@ -2861,6 +2906,14 @@ SERVER_I18N = {
 },
     "pt": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "Conectar aplicativo",
+        "oauth_consent_intro": "Este aplicativo está solicitando acesso à sua conta 518.PLUS.",
+        "oauth_connected_as": "Conectado como",
+        "oauth_consent_scopes": "Permissões",
+        "oauth_scope_tools_call": "Usar ferramentas (as pagas consomem seus créditos)",
+        "oauth_scope_files_read": "Ver seus arquivos compartilhados ainda disponíveis",
+        "oauth_scope_files_delete": "Excluir seus arquivos compartilhados",
+        "oauth_allow": "Permitir",
         "close": "Fechar",
         "lang_switch": "Mudar idioma",
         "pagination": "paginação",
@@ -3283,6 +3336,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Muitas tentativas, tente novamente mais tarde",
 # B4 mcp closure
         "agents_header_note": "Ainda sem chave? Conecte primeiro sem esta linha e depois pegue uma com register.",
+        "agents_oauth_note": "Empacotando um plugin ou conector? Use OAuth 2.1: o client_id é uma URL HTTPS para o documento de metadados do seu cliente (CIMD); os usuários consentem uma vez e seu plugin chama /mcp com tokens de escopo limitado. Comece em /.well-known/oauth-authorization-server.",
         "agents_key_note": "Substitua fsk_… nos trechos abaixo pela sua chave de API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Este prazo de entrega não está disponível no seu plano atual",
@@ -3430,6 +3484,14 @@ SERVER_I18N = {
 },
     "ja": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "アプリを接続",
+        "oauth_consent_intro": "このアプリが 518.PLUS アカウントへのアクセスを求めています。",
+        "oauth_connected_as": "ログイン中",
+        "oauth_consent_scopes": "権限",
+        "oauth_scope_tools_call": "ツールを実行する（有料ツールはクレジットを消費）",
+        "oauth_scope_files_read": "現在共有中のファイルを表示",
+        "oauth_scope_files_delete": "共有ファイルを削除する",
+        "oauth_allow": "許可",
         "close": "閉じる",
         "lang_switch": "言語を切り替える",
         "pagination": "ページ送り",
@@ -3852,6 +3914,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "試行回数が多すぎます。しばらくしてから再度お試しください",
 # B4 mcp closure
         "agents_header_note": "キーがまだなければ、まずこの行を外して接続し、register で取得してください。",
+        "agents_oauth_note": "プラグインやコネクタを配布する場合は OAuth 2.1 を利用できます。client_id はクライアントメタデータドキュメントの HTTPS URL（CIMD）で、ユーザーが一度同意すれば範囲限定トークンで /mcp を呼び出せます。入口は /.well-known/oauth-authorization-server。",
         "agents_key_note": "以下の設定の fsk_… をあなたの API キーに置き換えてください。",
 # B5 frontend closure
         "err_expiry_not_entitled": "この配送有効期限は現在のプランでは利用できません",
@@ -3999,6 +4062,14 @@ SERVER_I18N = {
 },
     "zh": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "连接应用",
+        "oauth_consent_intro": "此应用正在请求访问你的 518.PLUS 账户。",
+        "oauth_connected_as": "当前登录",
+        "oauth_consent_scopes": "权限",
+        "oauth_scope_tools_call": "调用工具（付费工具会消耗你的积分）",
+        "oauth_scope_files_read": "查看你仍有效的共享文件",
+        "oauth_scope_files_delete": "删除你的共享文件",
+        "oauth_allow": "允许",
         "close": "关闭",
         "lang_switch": "切换语言",
         "pagination": "分页",
@@ -4421,6 +4492,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "尝试次数过多，请稍后再试",
 # B4 mcp closure
         "agents_header_note": "还没有密钥？可先删掉此行直接连接，再用 register 获取。",
+        "agents_oauth_note": "封装插件或连接器？使用 OAuth 2.1：client_id 就是你客户端元数据文档的 HTTPS 地址（CIMD）；用户授权一次，插件即可携带限定范围的令牌调用 /mcp。入口：/.well-known/oauth-authorization-server。",
         "agents_key_note": "将下方配置中的 fsk_… 替换为你的 API 密钥。",
 # B5 frontend closure
         "err_expiry_not_entitled": "当前会员不支持该有效期档位",
@@ -4568,6 +4640,14 @@ SERVER_I18N = {
 },
     "es": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "Conectar aplicación",
+        "oauth_consent_intro": "Esta aplicación solicita acceso a tu cuenta de 518.PLUS.",
+        "oauth_connected_as": "Sesión iniciada como",
+        "oauth_consent_scopes": "Permisos",
+        "oauth_scope_tools_call": "Usar herramientas (las de pago consumen tus créditos)",
+        "oauth_scope_files_read": "Ver tus archivos compartidos que siguen disponibles",
+        "oauth_scope_files_delete": "Eliminar tus archivos compartidos",
+        "oauth_allow": "Permitir",
         "close": "Cerrar",
         "lang_switch": "Cambiar idioma",
         "pagination": "paginación",
@@ -4990,6 +5070,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Demasiados intentos, inténtalo más tarde",
 # B4 mcp closure
         "agents_header_note": "¿Aún sin clave? Conéctate primero sin esta línea y consigue una con register.",
+        "agents_oauth_note": "¿Empaquetas un plugin o conector? Usa OAuth 2.1: el client_id es una URL HTTPS a tu documento de metadatos de cliente (CIMD); los usuarios consienten una vez y tu plugin llama a /mcp con tokens de alcance limitado. Empieza en /.well-known/oauth-authorization-server.",
         "agents_key_note": "Reemplaza fsk_… en los fragmentos de abajo por tu clave API.",
 # B5 frontend closure
         "err_expiry_not_entitled": "Esta validez de entrega no está disponible en tu plan actual",
@@ -5137,6 +5218,14 @@ SERVER_I18N = {
 },
     "en": {
         # C2 a11y labels (close / language switch / pagination)
+        "oauth_consent_title": "Connect application",
+        "oauth_consent_intro": "This application is requesting access to your 518.PLUS account.",
+        "oauth_connected_as": "Signed in as",
+        "oauth_consent_scopes": "Permissions",
+        "oauth_scope_tools_call": "Call tools (paid tools spend your credits)",
+        "oauth_scope_files_read": "View your live shared files",
+        "oauth_scope_files_delete": "Delete your shared files",
+        "oauth_allow": "Allow",
         "close": "Close",
         "lang_switch": "Switch language",
         "pagination": "pagination",
@@ -5559,6 +5648,7 @@ SERVER_I18N = {
         "err_too_many_attempts": "Too many attempts, please try again later",
 # B4 mcp closure
         "agents_header_note": "No key yet? Connect without this line first, then get one with register.",
+        "agents_oauth_note": "Packaging a plugin or connector? Use OAuth 2.1: the client_id is an HTTPS URL to your client metadata document (CIMD); users consent once and your plugin calls /mcp with scoped tokens. Start at /.well-known/oauth-authorization-server.",
         "agents_key_note": "Replace fsk_… in the snippets below with your API key.",
 # B5 frontend closure
         "err_expiry_not_entitled": "This delivery expiry is not available on your current plan",

@@ -143,6 +143,7 @@ jobs:
           }
           expect_exit_2 env -u FLASHSHARE_TEST_PORT -u TEST_DB_URL \
             python tests/canonical/test_invocation_canonical.py
+            python tests/canonical/test_mcp_oauth.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
             python tests/canonical/test_x_identity_avatar.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
@@ -163,6 +164,10 @@ jobs:
             python tests/canonical/test_remote_security.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_invocation_canonical.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_mcp_oauth.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_mcp_oauth.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=08000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_supply_accept_multi.py
           expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \

@@ -10,16 +10,17 @@ from typing import Optional
 
 
 def insert_key(con, user_id: int, name: str, key_hash: str,
-               key_sealed: str, prefix: str, ts: int) -> dict:
+               key_sealed: str, prefix: str, ts: int,
+               scopes: str) -> dict:
     return con.execute(
         """
         INSERT INTO api_keys (user_id, name, key_hash, key_sealed, prefix,
-                              created_at)
-        VALUES (%s, %s, %s, %s, %s, %s)
+                              created_at, scopes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING id, user_id, name, key_sealed, prefix, last_used_at,
-                  created_at
+                  created_at, scopes
         """,
-        (user_id, name, key_hash, key_sealed, prefix, ts)).fetchone()
+        (user_id, name, key_hash, key_sealed, prefix, ts, scopes)).fetchone()
 
 
 def count_keys_for_update(con, user_id: int) -> int:
@@ -62,7 +63,8 @@ def user_by_api_key(con, key_hash: str) -> Optional[dict]:
     """The owner of a Bearer key. Suspended accounts never authenticate."""
     return con.execute(
         """
-        SELECT k.id AS key_id, u.* FROM api_keys k
+        SELECT k.id AS key_id, k.scopes AS key_scopes, u.*
+               FROM api_keys k
         JOIN users u ON u.id = k.user_id
         WHERE k.key_hash = %s AND u.status <> 'suspended'
         """,

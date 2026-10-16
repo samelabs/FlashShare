@@ -127,14 +127,12 @@ try:
           st == 200 and _names[:1] == ["register"] and "share" in _names
           and "create_upload" not in _names and "catalog_search" not in _names,
           _names[:6])
-    st, _h, d, _sc = _anon("tools/call", {"name": "share", "arguments": {
+    st, h, d, _sc = _anon("tools/call", {"name": "share", "arguments": {
         "files": [{"filename": "a.txt", "b64": "aGk="}], "client_ref": "r4c"}})
-    _r = (d or {}).get("result") or {}
-    _body = (_r.get("structuredContent") or {})
-    check("R4c anonymous tools/call → isError err_auth_required naming register (no HTTP 401)",
-          st == 200 and _r.get("isError") is True
-          and _body.get("error") == "err_auth_required"
-          and "register" in _body.get("message", ""), f"{st} {_body}")
+    _wa = (h or {}).get("www-authenticate") or ""
+    check("R4c anonymous tools/call → 401 + WWW-Authenticate challenge (register stays the anonymous path)",
+          st == 401 and "oauth-protected-resource" in _wa
+          and "register" in _json.dumps(d or {}), f"{st} {_wa}")
     # Malformed anonymous register arguments must not create an account.
     # Count rows before/after the real HTTP request, not just the response.
     from database import db
@@ -171,7 +169,8 @@ try:
           _names[:6])
     st, _h, d, _sc = _anon("ping", token="fsk_definitely_invalid")
     check("R4f invalid key → 401 + WWW-Authenticate (never silently anonymous)",
-          st == 401 and _h.get("www-authenticate") == 'Bearer realm="518"'
+          st == 401
+          and "oauth-protected-resource" in (_h.get("www-authenticate") or "")
           and "register" in str((d or {}).get("message", "")), f"{st} {d}")
 
     # R5: a provided username follows the web validators — taken → 409

@@ -139,8 +139,8 @@ try:
           isinstance(d, dict) and d.get("error") == "unauthorized"
           and "register" in str(d.get("message", ""))
           and "/account/keys" in str(d.get("message", "")), d)
-    check("A3 WWW-Authenticate kept",
-          h.get("www-authenticate") == 'Bearer realm="518"',
+    check("A3 WWW-Authenticate kept (resource metadata)",
+          "oauth-protected-resource" in (h.get("www-authenticate") or ""),
           h.get("www-authenticate"))
     st, _h, d = (lambda r: (r[0], r[1], r[2]))(_req(
         "POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"},
