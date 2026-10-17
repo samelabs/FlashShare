@@ -941,7 +941,17 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* ── acceptance fixes: result host is not a second card; left-aligned
    composer/result inside the centered hero; /r rows read left-to-right ── */
 .result:has(> .out) { padding: 0; background: none; border: 0; box-shadow: none; }
-.hero .home-composer, .hero .result { text-align: start; max-width: 760px; margin-inline: auto; }
+/* R2 hero 双栏: 输入框主位 (composer 收窄到工作宽度), 终端卡是
+   主视觉配角; <1024px 纵向堆叠 */
+.hero-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr); gap: var(--s8); align-items: center; margin-top: var(--s6); text-align: start; }
+.hero .home-composer, .hero .result { text-align: start; max-width: 640px; }
+.hero .hero-share { margin-top: var(--s3); justify-content: flex-start; }
+.hero-term { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.hero-term .term { border-radius: var(--r-lg); box-shadow: var(--sh-3); font-size: 12.5px; }
+@media (max-width: 1023px) {
+  .hero-grid { grid-template-columns: 1fr; gap: var(--s5); }
+  .hero-term { order: 2; }
+}
 .hero .result { margin-top: var(--s5); }
 .r-page .rc-files, .r-page .item-file, .r-page .if-body { text-align: start; }
 .r-page .item-file { flex-wrap: nowrap; }
@@ -996,8 +1006,9 @@ body { overflow-x: clip; }
 .agents-v2 { padding: 40px 0 72px; min-width: 0; }
 .agents-v2 .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .agents-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
-.agents-topbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: 20px; }
+.agents-topbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: 20px; max-width: 560px; }
 .agents-topbar .agents-url { flex: 1; min-width: 260px; }
+.agents-topbar .input { text-overflow: ellipsis; }
 .agents-v2 .hint { margin: 10px 0 0; }
 .agents-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; }
 .step-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px; display: flex; gap: 12px; align-items: flex-start; }

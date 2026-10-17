@@ -232,6 +232,7 @@ async def developers(request: Request):
         "doc_desc": desc,
         "doc_body": body,
         "doc_share_url": f"{BASE_URL}/developers",
+        "doc_share_path": "/developers",
         "og_title": title,
         "og_desc": desc,
     })
