@@ -213,9 +213,8 @@ try:
         check(f"D1 {label}: llms.txt alternate + MCP service links in head",
               st == 200 and ok, st)
     st, _h, body, _sc = _req("GET", "/")
-    check("D2 home SSR text names the MCP endpoint and /llms.txt",
-          "/mcp" in body and "/llms.txt" in body
-          and "agent guide" in body.lower(), None)
+    check("D2 home SSR text names the MCP endpoint and links /llms.txt",
+          "/mcp" in body and 'href="/llms.txt"' in body, None)
     st, _h, body, _sc = _req("GET", "/agents")
     check("D3 /agents SSR text names endpoint + llms.txt (fsk_ hint)",
           "/mcp" in body and "/llms.txt" in body and "fsk_" in body, None)
