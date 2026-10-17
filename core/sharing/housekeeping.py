@@ -35,6 +35,11 @@ def housekeeping_once() -> dict:
     # than 30 minutes (fresh claims are left alone)
     from sharing.ingress_receipt import recover_abandoned_ingress_requests
     receipts = recover_abandoned_ingress_requests(older_than_s=1800)
+    # OAuth channel hygiene: expired authorization codes and tokens
+    # past their refresh lifetime (revoked included) leave the tables
+    with db() as con:
+        from repo import oauth_provider as _oauth_repo
+        _oauth_repo.delete_expired(con, ts)
 
     reconciled = 0
     # Order matters: read the local row set FIRST, snapshot Gokapi SECOND.

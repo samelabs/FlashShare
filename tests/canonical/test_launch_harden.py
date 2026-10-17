@@ -320,12 +320,8 @@ try:
                  f'"name":"{_u}a__numtool","arguments":{{"params":{{"n":NaN}},'
                  f'"client_ref":"lh6a-{_u}"}}}}}}').encode()
     _st30, _d30 = _mcp_raw(_nan_body, TOK)
-    _t30 = {}
-    try:
-        _t30 = _json.loads((((_d30 or {}).get("result") or {}).get("content")
-                            or [{}])[0].get("text") or "{}")
-    except Exception:
-        pass
+    _t30 = (((_d30 or {}).get("result") or {}).get("structuredContent")
+            or {})
     check("H6a MCP NaN param → isError param_invalid naming the field",
           (_d30 or {}).get("result", {}).get("isError") is True
           and _t30.get("error") == "param_invalid"

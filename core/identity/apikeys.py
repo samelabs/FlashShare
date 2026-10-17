@@ -32,7 +32,7 @@ def _generate_key() -> tuple:
     return f"{KEY_PREFIX}{body}", body[:8]
 
 
-def create_key(user_id: int, name: str) -> dict:
+def create_key(user_id: int, name: str, scopes: str | None = None) -> dict:
     """Create an API key. Returns the row with the plaintext included
     (the only moment the caller sees it outside reveal).
 
@@ -41,7 +41,9 @@ def create_key(user_id: int, name: str) -> dict:
     concurrent creates cannot exceed it) and ValueError('err_vault')
     when the encryption vault is unavailable (a key is never created
     without its encrypted copy)."""
+    from identity.capabilities import FULL_SCOPES, normalize_scope
     from secrets_vault import VaultUnavailable, seal
+    scope_str = normalize_scope(scopes) if scopes else FULL_SCOPES
     plaintext, prefix = _generate_key()
     ts = now()
     try:
@@ -55,7 +57,7 @@ def create_key(user_id: int, name: str) -> dict:
             raise ValueError("err_key_limit")
         row = keys_repo.insert_key(
             con, user_id, name.strip()[:64] or "key",
-            token_hash(plaintext), sealed, prefix, ts)
+            token_hash(plaintext), sealed, prefix, ts, scope_str)
     out = dict(row)
     out["key"] = plaintext
     return out
@@ -107,4 +109,4 @@ def authenticate_key(plaintext: str) -> dict | None:
             pass  # last_used is telemetry, not auth state
     d = dict(key)
     d.pop("key_id", None)
-    return d
+    return d  # users row + key_scopes (capability source for /mcp)

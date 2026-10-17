@@ -172,10 +172,10 @@ def _err_sentence(d):
 
 
 def _tool_text(d):
-    try:
-        return json.loads(((d.get("result") or {}).get("content") or [{}])[0].get("text") or "{}")
-    except Exception:
-        return {}
+    """Machine channel of a tools/call result: structuredContent (the
+    content text block is the readable summary — error/message/etc.
+    ride both)."""
+    return ((d.get("result") or {}).get("structuredContent") or {})
 
 
 def _b64(b):
@@ -219,6 +219,40 @@ for label, expected in (
           and "整理文件" in _summary["description"],
           _summary)
 
+# ══════════ 1b. strict arguments: an undeclared key is -32602, named ══════════
+# A wrong parameter name must never run as a successful default/unfiltered
+# call — the agent cannot tell the mistake from the result. Allowed keys
+# come from each tool's inputSchema (platform tools: files/params/
+# delivery/client_ref).
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 91, "method": "tools/call",
+                   "params": {"name": "catalog_search",
+                              "arguments": {"query": "pdf"}}}, token=TOKEN)
+_err = (d or {}).get("error") or {}
+check("V4a meta tool unknown key → -32602 naming it",
+      _err.get("code") == -32602 and "query" in (_err.get("message") or ""),
+      d)
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 92, "method": "tools/call",
+                   "params": {"name": "share",
+                              "arguments": {"client_ref": "v4b",
+                                            "queries": ["a"]}}}, token=TOKEN)
+_err = (d or {}).get("error") or {}
+check("V4b platform tool unknown key → -32602 naming it",
+      _err.get("code") == -32602 and "queries" in (_err.get("message") or ""),
+      d)
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 93, "method": "tools/call",
+                   "params": {"name": "register",
+                              "arguments": {"username": f"{_u}v4c",
+                                            "role": "agent"}}})
+_err = (d or {}).get("error") or {}
+check("V4c anonymous register unknown key → -32602 naming it",
+      _err.get("code") == -32602 and "role" in (_err.get("message") or ""),
+      d)
+_st, _h, d = _mcp({"jsonrpc": "2.0", "id": 94, "method": "tools/call",
+                   "params": {"name": "catalog_search",
+                              "arguments": {"q": "pdf", "page": 1}}},
+                  token=TOKEN)
+check("V4d declared keys still pass", "result" in (d or {}), d)
+
 # ══════════ 2. MCP-Protocol-Version header ══════════
 _ping = {"jsonrpc": "2.0", "id": 5, "method": "ping"}
 st, _h, d = _mcp(_ping, extra={"MCP-Protocol-Version": "2031-01-01"})
@@ -258,8 +292,8 @@ st, h, _d = _mcp(_ping, token=None)
 check("O8 anonymous ping → 200 (discovery needs no key)",
       st == 200 and (_d or {}).get("result") == {}, f"{st} {_d}")
 st, h, _d = _mcp(_ping, token="fsk_invalid_key")
-check("O8b invalid key → 401 WWW-Authenticate: Bearer realm=\"518\"",
-      st == 401 and h.get("www-authenticate") == 'Bearer realm="518"', f"{st} {h.get('www-authenticate')}")
+check("O8b invalid key → 401 WWW-Authenticate resource_metadata",
+      st == 401 and "oauth-protected-resource" in (h.get("www-authenticate") or ""), f"{st} {h.get('www-authenticate')}")
 
 # ══════════ 4. JSON-RPC batches ══════════
 _batch = [{"jsonrpc": "2.0", "id": 1, "method": "ping"},

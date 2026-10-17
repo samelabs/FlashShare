@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Listing canonical — browse vs search, list paging bounds, text-only tools.
 
-  L*  Browse lists (home grid, /tools, /api/tools/search and MCP
-      catalog_search with an empty query, /llms.txt) carry only
+  L*  Web browse lists (home grid, /tools, /api/tools/search) carry only
       featured tools; search finds every public tool; featuring a tool
       puts it on the browse lists. First-party seed rows start featured.
+      MCP catalog_search with an EMPTY query enumerates the FULL public
+      catalog (featured or not) — the agent-side browse; /llms.txt keeps
+      listing recommended tools only.
   P*  Paging inputs never reach SQL out of range: negative / huge
       offsets and pages answer 200 (web) or -32602 (MCP explicit
       illegal values); catalog_search pages with page/total_pages.
@@ -192,8 +194,10 @@ try:
     check("L6 home grid omits it", f'data-tool-id="{key}"' not in (page or ""))
     mname = key.replace("/", "__")
     _d, sc = _search("", A_TOK)
-    check("L7 catalog_search empty query omits it",
-          mname not in [t["name"] for t in sc.get("tools", [])], sc.get("tools"))
+    _page_names = [t["name"] for t in sc.get("tools", [])]
+    check("L7 catalog_search empty query enumerates the full public catalog",
+          mname in _page_names and "share" in _page_names
+          and sc.get("total", 0) >= len(_page_names), sc)
     _d, sc = _search(_u, A_TOK)
     check("L8 catalog_search finds it",
           mname in [t["name"] for t in sc.get("tools", [])], sc)

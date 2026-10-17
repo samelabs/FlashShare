@@ -136,10 +136,57 @@ def _cors_headers(request: Request):
     return headers
 
 
+def _auth_challenge_json(mid):
+    """401 for an authenticated-only tools/call: JSON-RPC error body +
+    the spec challenge header (connectors start OAuth from it)."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        _rpc_err(mid, -32001, "unauthorized: a bearer credential is "
+                 "required (fsk_ API key via the free 'register' tool, "
+                 "or OAuth — see /.well-known/oauth-authorization-server)",
+                 {"register": "call the register tool without an "
+                  "Authorization header"}),
+        status_code=401,
+        headers={"WWW-Authenticate": _challenge_header()})
+
+
 def _bearer_user(request: Request):
+    """The /mcp caller when authenticated by a bearer credential:
+    an fsk_ API key (token) or a consent-granted OAuth access token
+    (oauth). Both carry their capability set on request.state."""
     user = getattr(request.state, "user", None)
     via = getattr(request.state, "auth_via", "")
-    return user if (user and via == "token") else None
+    return user if (user and via in ("token", "oauth")) else None
+
+
+def _challenge_header(error: str | None = None) -> str:
+    """THE WWW-Authenticate builder: RFC 9728 resource_metadata (how
+    connectors auto-start OAuth); RFC 6750 error code only when a token
+    was presented and rejected."""
+    from config import BASE_URL as _base
+    ch = f'Bearer resource_metadata="{_base}' \
+         '/.well-known/oauth-protected-resource"'
+    if error:
+        ch = f'Bearer error="{error}", ' + ch[len("Bearer "):]
+    return ch
+
+
+def _auth_challenge(cors: dict) -> JSONResponse:
+    """Presented-but-invalid bearer → spec-canonical 401: the challenge
+    names invalid_token; the body still names the register path."""
+    from config import BASE_URL as _base
+    return JSONResponse(
+        {"error": "unauthorized",
+         "message": (
+             "A bearer credential is required: an fsk_ API key (get one "
+             "from the free MCP tool 'register', call it without an "
+             "Authorization header; humans can create keys at "
+             f"{_base}/account/keys) or an OAuth access token "
+             f"({_base}/.well-known/oauth-authorization-server). "
+             f"Guide: {_base}/llms.txt")},
+        status_code=401,
+        headers={**cors,
+                 "WWW-Authenticate": _challenge_header("invalid_token")})
 
 
 @router.options("/mcp")
@@ -170,17 +217,7 @@ async def mcp_post(request: Request):
     # A presented-but-invalid key is still a hard 401 (a real error the
     # caller must see, never silently downgraded to anonymous).
     if not user and request.headers.get("authorization"):
-        from config import BASE_URL as _base
-        return JSONResponse(
-            {"error": "unauthorized",
-             "message": (
-                 "Invalid API key. Get a new one with the MCP tool "
-                 f"'register' (call it without an Authorization header), "
-                 f"POST {_base}/auth/mcp/register, or {_base}/account/keys. "
-                 f"Guide: {_base}/llms.txt")},
-            status_code=401,
-            headers={**cors, "WWW-Authenticate": 'Bearer realm="518"'},
-        )
+        return _auth_challenge(cors)
     version = request.headers.get("mcp-protocol-version")
     version = HEADER_DEFAULT_VERSION if version is None else version.strip()
     if version not in SUPPORTED_VERSIONS:
@@ -206,10 +243,18 @@ async def mcp_post(request: Request):
             return JSONResponse(_rpc_err(None, -32600, "invalid request: empty batch"),
                                 status_code=400, headers=cors)
         out = []
+        passthrough = None
         for m in msg:
             r = await _dispatch_safe(request, user, m)
+            if isinstance(r, Response):
+                # batch + HTTP-level answer: the challenge stands for the
+                # whole request (batching is MCP-2025-11-removed anyway)
+                passthrough = r
+                break
             if r is not None:
                 out.append(r)
+        if passthrough is not None:
+            return passthrough
         if not out:
             # only notifications / responses: accepted, nothing to answer
             return Response(status_code=202, headers=cors)
@@ -217,6 +262,9 @@ async def mcp_post(request: Request):
     resp = await _dispatch_safe(request, user, msg)
     if resp is None:
         return Response(status_code=202, headers=cors)
+    if isinstance(resp, Response):
+        # an HTTP-level answer (the 401 challenge) passes through as-is
+        return resp
     return JSONResponse(resp, headers=cors)
 
 
@@ -290,10 +338,11 @@ async def _dispatch(request: Request, user: dict, msg):
                 "To give a person a link to a file: call "
                 "share; hand them result_url (one page for all files) "
                 "— page_url is per file, download_url is a direct "
-                "download. tools/list is your working set: the "
-                "first-party tools, your own tools and your favorites "
-                "(我的收藏). Find any other tool with catalog_search and "
-                "call it by name; pin_tool adds one to your favorites. "
+                "download. tools/list is the master list: every "
+                "public tool plus your own, favorites flagged "
+                "(我的收藏); list_favorites lists just your pins. "
+                "catalog_search filters by keyword (empty query = "
+                "full catalog, paged); call any tool by name. "
                 "Pass "
                 "files inline (base64 — one request body is capped at "
                 f"{MCP_MAX_BODY_BYTES // (1024 * 1024)} MB; larger files "
@@ -350,7 +399,14 @@ async def _dispatch(request: Request, user: dict, msg):
         return _rpc(mid, out)
     if method == "tools/call":
         if not user:
-            return await _anon_call(request, mid, params)
+            # register stays anonymously callable (the zero-friction
+            # onboarding path); every other tool needs a credential —
+            # spec-canonical 401 + WWW-Authenticate so platform
+            # connectors auto-start OAuth
+            name = params.get("name") if isinstance(params, dict) else None
+            if name == "register":
+                return await _anon_call(request, mid, params)
+            return _auth_challenge_json(mid)
         return await _call_tool(request, user, mid, params)
     return _rpc_err(mid, -32601, f"method not found: {method}")
 
@@ -555,13 +611,79 @@ def _pin_spec(name: str, title: str, description: str) -> dict:
 
 _PIN_TOOL_SPEC = _pin_spec(
     "pin_tool", "Add to My Favorites",
-    "Add a tool to your favorites (我的收藏). tools/list carries the "
-    "first-party tools, your own tools and your favorites; any other "
-    "tool stays callable by name after catalog_search. Pin the tools you "
-    "reuse, then call tools/list again to see them. Free.")
+    "Add a tool to your favorites (我的收藏) — your shortlist for "
+    "reuse. tools/list marks favorites with a flag; list_favorites "
+    "lists just the pins. Free.")
 _UNPIN_TOOL_SPEC = _pin_spec(
     "unpin_tool", "Remove from My Favorites",
     "Remove a tool from your favorites. It stays callable by name. Free.")
+
+# The favorites list, independent of the master tools/list: exactly the
+# pinned tools, pin order — the agent's shortlist.
+_LIST_FAVORITES_SPEC = {
+    "name": "list_favorites",
+    "title": "List Favorites",
+    "description":
+        "List exactly YOUR favorite tools (pin order) — the shortlist "
+        "you manage with pin_tool / unpin_tool. tools/list carries "
+        "every callable tool with a favorite flag; this one carries "
+        "just the pins. Free.",
+    "inputSchema": {"type": "object", "properties": {}},
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "tools": {"type": "array", "items": {"type": "object"}},
+        },
+        "required": ["tools"],
+    },
+}
+
+
+def _list_favorites(user: dict, mid) -> dict:
+    from governance.favorites import favorite_keys
+    ent = _entitlements(user)
+    catalog = list_catalog(user["id"])
+    by_id = {t["id"]: t for t in catalog}
+    favs = favorite_keys(user["id"], catalog)
+    _names = mcp_names()
+    tools = []
+    for k in favs:
+        spec = _catalog_spec(by_id[k], _names, ent)
+        spec["favorite"] = True
+        tools.append(spec)
+    lines = ([f"{len(tools)} favorite(s):"]
+             + [f"- {t['name']} — {t['title']}" for t in tools]
+             if tools else ["No favorites yet — pin one with pin_tool."])
+    return _meta_result(mid, {"tools": tools}, text="\n".join(lines))
+
+
+# ── Strict arguments: an undeclared key is REJECTED, never silently
+# dropped. A wrong parameter name would otherwise run as a successful
+# unfiltered/default call — the worst failure mode for an agent (it
+# cannot tell the mistake from the result). Allowed keys come from each
+# tool's own inputSchema (single source); platform tools take the four
+# argument forms of the canonical invocation (files / params / delivery
+# / client_ref). Aligns the adapter with the frozen rule: only what is
+# ABSENT gets a default; anything explicitly present but not declared
+# is a -32602 naming the unknown key.
+_CALL_ARG_KEYS = frozenset({"files", "params", "delivery", "client_ref"})
+
+
+def _reject_unknown_args(mid, name: str, args: dict):
+    spec = _META_SPECS_BY_NAME.get(name)
+    if spec is not None:
+        allowed = set(spec["inputSchema"]["properties"])
+    elif name == "catalog_search":
+        allowed = {"q", "page"}
+    else:
+        allowed = set(_CALL_ARG_KEYS)
+    unknown = sorted(set(args) - allowed)
+    if unknown:
+        return _rpc_err(
+            mid, -32602,
+            "unknown argument key: %s (allowed: %s)"
+            % (", ".join(unknown), ", ".join(sorted(allowed))))
+    return None
 
 
 def _spec_summary(t: dict, names: dict | None = None) -> dict:
@@ -756,16 +878,22 @@ _REGISTER_SPEC = {
     },
 }
 
+# built after every meta spec exists (module order): the strict-args
+# allowed-key map — see _reject_unknown_args above for the rationale
+_META_SPECS_BY_NAME = {s["name"]: s for s in (
+    _REGISTER_SPEC, _CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
+    _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC,
+    _LIST_FAVORITES_SPEC)}
+
 
 def _anon_tool_specs() -> list:
-    """tools/list without a key: register + the first-party tools
-    (Free-plan delivery enums). Calling any of them needs a key; the
-    descriptions are the same text a registered agent sees."""
-    from governance.favorites import working_set
+    """tools/list without a key: register + the FULL public catalog
+    (calling any of them needs a key; the descriptions are the same
+    text a registered agent sees, without favorite flags)."""
     ent = _entitlements(None)
     names = mcp_names()
     return [_REGISTER_SPEC] + [_catalog_spec(t, names, ent)
-                               for t in working_set(None, list_catalog(None))]
+                               for t in list_catalog(None)]
 
 
 async def _anon_call(request: Request, mid, params: dict):
@@ -778,6 +906,9 @@ async def _anon_call(request: Request, mid, params: dict):
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602,
                         "invalid params: arguments must be an object")
+    bad_args = _reject_unknown_args(mid, name, args)
+    if bad_args:
+        return bad_args
     from config import BASE_URL as _base
     if name == "register":
         from app.routes.auth_route import headless_register
@@ -799,9 +930,15 @@ async def _anon_call(request: Request, mid, params: dict):
                      "logs in with this username/password and tops up "
                      "at pricing_url."),
         }
+        # readable text first (the agent's surface); JSON rides in
+        # structuredContent only
+        text = ("Account ready.\n"
+                f"API key: {out['api_key']}\n"
+                f"Username: {out['username']}  Password: {out['password']}\n"
+                f"Log in: {out['login_url']}\n"
+                f"{out['next']}")
         return _rpc(mid, {
-            "content": [{"type": "text",
-                         "text": json.dumps(out, ensure_ascii=False)}],
+            "content": [{"type": "text", "text": text}],
             "structuredContent": out, "isError": False})
     return _iserror(mid, {"error": "err_auth_required"})
 
@@ -813,25 +950,35 @@ def _tool_specs(user: dict) -> list:
     # authoritative chain regardless of what the schema advertised.
     ent = _entitlements(user)
     specs = [_CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
-             _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC]
+             _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC,
+             _LIST_FAVORITES_SPEC]
     _names = mcp_names()
-    # Working set, not an access boundary: first-party + own + favorites;
-    # everything else is found via catalog_search and called by name.
-    from governance.favorites import working_set
-    for t in working_set(user, list_catalog(user["id"])):
-        specs.append(_catalog_spec(t, _names, ent))
+    # THE master list, not an access boundary: every public tool plus
+    # the bearer's own tools; the favorite flag marks their pins
+    # (list_favorites lists just the pins). tools/call runs the full
+    # authoritative chain regardless of what the list advertised.
+    from governance.favorites import favorite_keys
+    catalog = list_catalog(user["id"])
+    favs = set(favorite_keys(user["id"], catalog))
+    for t in catalog:
+        spec = _catalog_spec(t, _names, ent)
+        spec["favorite"] = t["id"] in favs
+        specs.append(spec)
     specs.append({
         "name": "catalog_search",
         "title": "Catalog Search",
-        "description": "Find public tools by keyword: every whitespace-"
-                       "separated term must match the tool's id, name or "
-                       "description (all AND; % and _ match literally). An "
-                       "empty query lists the recommended tools. Results "
-                       "are paged (page starts at 1; total_pages tells "
-                       "when to stop). Each result carries the exact spec "
+        "description": "Discover public tools. An EMPTY query lists "
+                       "EVERY public tool page by page (total + "
+                       "total_pages tell the full depth) — read the "
+                       "list when you'd rather browse than guess "
+                       "keywords. A non-empty query filters: every "
+                       "whitespace-separated term must match the tool's "
+                       "id, name or description (all AND; % and _ match "
+                       "literally). Results are paged (page starts at "
+                       "1). Each result carries the exact spec "
                        "tools/list shows (inputSchema included) plus "
                        "favorite — call it by name right away; pin_tool "
-                       "adds it to your working set.",
+                       "adds it to your favorites.",
         "inputSchema": {
             "type": "object",
             "properties": {"q": {"type": "string"},
@@ -868,16 +1015,19 @@ def _tool_specs(user: dict) -> list:
 
 def _catalog_search_result(user: dict, q: str, page: int) -> dict:
     """catalog_search result payload: one page of the public market
-    (governance.market_page — the same predicate, order, page size and
-    page clamp as the web /tools market) projected to the exact callable
-    spec tools/list carries (shared _catalog_spec constructor) plus the
+    (governance.market_page — the same predicate, order and page clamp
+    as the web /tools market) projected to the exact callable spec
+    tools/list carries (shared _catalog_spec constructor) plus the
     caller's favorite flag — one projection read for this bearer's
     delivery enums, kept OUT of the _call_tool dispatch path (the call
-    path reads no projection)."""
+    path reads no projection). An EMPTY query enumerates the FULL
+    public catalog (curated=False — the featured-only browse stays a
+    web-page behavior): for an agent, reading the whole list paged is
+    the primary discovery path, search the accelerator."""
     from governance.catalog import market_page
     from database import db
     from repo import favorites as fav_repo
-    data = market_page(q or None, page)
+    data = market_page(q or None, page, curated=False)
     # hits are public by construction — the raw pin set flags them
     # (no visibility-filtered catalog read needed)
     with db() as con:
@@ -912,6 +1062,9 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         args = {}
     elif not isinstance(args, dict):
         return _rpc_err(mid, -32602, "invalid params: arguments must be an object")
+    bad_args = _reject_unknown_args(mid, name, args)
+    if bad_args:
+        return bad_args
     # Entry-wide rate limit, BEFORE any branch (meta tools, catalog
     # search and URL-source fetching all count): a runaway agent is
     # stopped at the entry, not per-branch. The execution gate keeps
@@ -919,6 +1072,21 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from economy.antibuse import mcp_call_throttled
     if mcp_call_throttled(user["id"]):
         return _iserror(mid, {"error": "err_rate_limited"})
+    # Capability chokepoint — the ONE authorization comparison for every
+    # bearer (fsk_ key scopes and OAuth consent grants alike)
+    from identity.capabilities import op_allowed
+    granted = getattr(getattr(request, "state", None), "auth_scopes", None)
+    if granted is not None and not op_allowed(name, granted):
+        from identity.capabilities import required_scope
+        need = required_scope(name)
+        return _iserror(mid, {
+            "error": "err_insufficient_scope",
+            "required_scope": need,
+            "granted_scopes": sorted(granted),
+            "message": (
+                f"This credential is not allowed to do this (needs "
+                f"{need}; granted: {', '.join(sorted(granted)) or 'none'})."),
+        })
     if name == "catalog_search":
         # Search IS the public market (same predicate/order/projection/
         # paging as /tools); empty q lists the recommended tools. See
@@ -928,7 +1096,18 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         if isinstance(page, bool) or not isinstance(page, int) or page < 1:
             return _rpc_err(mid, -32602, "invalid params: page must be an "
                                          "integer >= 1")
-        return _meta_result(mid, _catalog_search_result(user, q, page))
+        sc = _catalog_search_result(user, q, page)
+        lines = []
+        if q:
+            lines.append(f"{sc['total']} tool(s) match \"{q}\""
+                         f" — page {sc['page']}/{sc['total_pages']}:")
+        else:
+            lines.append(f"{sc['total']} public tool(s)"
+                         f" — page {sc['page']}/{sc['total_pages']}:")
+        for t in sc["tools"]:
+            fav = " · favorite" if t.get("favorite") else ""
+            lines.append(f"- {t['name']} — {t['title']}{fav}")
+        return _meta_result(mid, sc, text="\n".join(lines))
 
     if name == "create_upload":
         return _create_upload(user, mid, args, request)
@@ -938,6 +1117,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         return await _delete_upload(user, mid, args)
     if name in ("pin_tool", "unpin_tool"):
         return _pin_tool(user, mid, args, on=(name == "pin_tool"))
+    if name == "list_favorites":
+        return _list_favorites(user, mid)
 
     # client_ref is REQUIRED and validated BEFORE any base64 decode,
     # quota check, or Gokapi upload — a missing/invalid ref must never
@@ -978,7 +1159,12 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                     f"fields expiry_days (one of {list(EXPIRY_DAYS)}) "
                     "and allowed_downloads (one of "
                     f"{list(DOWNLOAD_LIMITS)})."),
-            }, isError=True)
+            }, text=(
+                "Error invalid_delivery: delivery must be an object with"
+                f" optional integer fields expiry_days (one of {list(EXPIRY_DAYS)})"
+                " and allowed_downloads (one of"
+                f" {list(DOWNLOAD_LIMITS)})."),
+                isError=True)
         # entitlement denial (valid values, above the plan tier) keeps
         # the existing structured denial → isError path below via
         # _preflight; nothing to do here.
@@ -1018,10 +1204,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from governance.ingress import validate_batch as _vbatch
     _cdenial = _vbatch([0] * len(items))
     if _cdenial:
-        return _rpc(mid, {
-            "content": [{"type": "text", "text": json.dumps(_cdenial)}],
-            "isError": True,
-        })
+        return _iserror(mid, _cdenial, client_ref)
 
     # Tool + delivery entitlement + stored contract + params — the SAME
     # pre-gate validators dispatch runs, here BEFORE any fetch, quota
@@ -1050,10 +1233,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from execution.affordability import check_affordability
     _denial = check_affordability(user["id"], tool)
     if _denial:
-        return _rpc(mid, {
-            "content": [{"type": "text", "text": json.dumps(_denial)}],
-            "isError": True,
-        })
+        return _iserror(mid, _denial, client_ref)
 
     # References: ownership (DB owner or signed source token) resolved by
     # the execution-boundary resolver, before anything is ingested.
@@ -1276,6 +1456,19 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     result = payload.get("result") or {}
     _input_digests = frozenset(
         _hl.sha256(_b).hexdigest() for _, _, _b in _canon)
+    # OAuth plugin attribution — an MCP-layer post-hook on the settled
+    # call (the execution chain stays untouched): stamp the consented
+    # client on the tool_calls row.
+    _client_id = getattr(getattr(request, "state", None), "oauth_client_id", None)
+    if _client_id and payload.get("call_id"):
+        try:
+            from database import db as _db
+            with _db() as _con:
+                _con.execute(
+                    "update tool_calls set oauth_client_id=%s where id=%s",
+                    (_client_id, payload["call_id"]))
+        except Exception:
+            pass  # attribution is telemetry, never blocks the result
     return _rpc(mid, await _mcp_success(result, payload, _input_digests))
 
 
@@ -1352,20 +1545,28 @@ def _error_message(code, tool: dict | None = None) -> str:
 
 def _iserror(mid, payload: dict, client_ref: str | None = None,
              tool: dict | None = None) -> dict:
-    """The ONE isError tools/call envelope: a single text block whose
-    text is JSON — {"error": code, "message": one English sentence
-    (from _error_message, the single human-text map), "client_ref": ...,
-    ...every structured field the denial already carried}. Existing
-    fields are never dropped."""
+    """The ONE isError tools/call envelope: content = one READABLE text
+    block (error code, the one-sentence reason from _error_message,
+    client_ref, then every structured field the denial carried, one
+    per line); structuredContent = the same fields as the machine
+    channel (parity with the success envelope). Existing fields are
+    never dropped."""
     code = payload.get("error") or "tool_failed"
     body = {"error": code, "message": _error_message(code, tool)}
     if client_ref is not None:
         body["client_ref"] = client_ref
     body.update({k: v for k, v in payload.items()
                  if k not in ("error", "message", "client_ref", "ok")})
+    lines = [f"Error {code}: {body['message']}"]
+    if client_ref is not None:
+        lines.append(f"client_ref: {client_ref}")
+    for k, v in body.items():
+        if k in ("error", "message", "client_ref"):
+            continue
+        lines.append(f"{k}: {json.dumps(v, ensure_ascii=False)}")
     return _rpc(mid, {
-        "content": [{"type": "text",
-                     "text": json.dumps(body, ensure_ascii=False)}],
+        "content": [{"type": "text", "text": "\n".join(lines)}],
+        "structuredContent": body,
         "isError": True,
     })
 
@@ -1377,20 +1578,44 @@ def _pin_tool(user: dict, mid, args: dict, on: bool) -> dict:
     err = set_favorite(user["id"], tool_key or "", on) if tool_key else "tool_not_found"
     if err:
         return _iserror(mid, {"error": err, "name": name})
-    return _meta_result(mid, {"name": name, "favorite": on})
+    return _meta_result(mid, {"name": name, "favorite": on},
+                        text=(f"{name} added to favorites."
+                              if on else
+                              f"{name} removed from favorites. "
+                              "It stays callable by name."))
 
 
-def _meta_result(mid, payload: dict, isError: bool = False) -> dict:
+def _fmt_bytes(n) -> str:
+    v = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB"):
+        if v < 1024 or unit == "GB":
+            return f"{int(v)} {unit}" if unit == "B" else f"{v:.1f} {unit}"
+        v /= 1024
+    return f"{v:.1f} GB"
+
+
+def _fmt_ts(epoch) -> str:
+    import datetime as _dt
+    if epoch is None:
+        return "—"
+    return _dt.datetime.fromtimestamp(
+        int(epoch), _dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _meta_result(mid, payload: dict, text: str | None = None,
+                 isError: bool = False) -> dict:
     """The ONE envelope builder for meta tools (and any response that
-    carries structuredContent without running the execution chain):
-    content always carries a text block with the JSON serialization of
-    structuredContent — the MCP-spec backward-compat form every
-    tools/call response now shares (create_upload, catalog_search,
-    list_uploads, delete_upload and _mcp_success all route through
-    this shape)."""
+    carries structuredContent without running the execution chain).
+
+    content = a READABLE text block (the agent's primary surface —
+    labels and values, not a JSON dump); structuredContent = the
+    machine channel mirroring the API fields. `text` should be
+    provided by every caller; the JSON-dump fallback only guards
+    against a missed one and is not part of the contract."""
     return _rpc(mid, {
         "content": [{"type": "text",
-                     "text": json.dumps(payload, ensure_ascii=False)}],
+                     "text": text if text is not None
+                     else json.dumps(payload, ensure_ascii=False)}],
         "structuredContent": payload,
         "isError": isError,
     })
@@ -1403,9 +1628,10 @@ async def _mcp_success(result: dict, payload: dict,
     every tool's outputSchema).
 
     content = text items as plain text, a preview image block for each
-    new image result (≤1 MB), and one text block with the JSON of
-    structuredContent (MCP backward compatibility) — file links live
-    there once, not repeated as extra link blocks.
+    new image result (≤1 MB), and one closing text block with a
+    READABLE summary (result link, expiry, file list) — the JSON
+    fields live once in structuredContent, not repeated as extra
+    link blocks.
 
     input_digests = sha256 set of THIS call's input file bodies. An
     image result byte-identical to an input (a pass-through tool echoing
@@ -1475,11 +1701,25 @@ async def _mcp_success(result: dict, payload: dict,
         "expires_at": expires_at,
         "items": sc_items,
     }
-    # MCP-spec backward-compat: a text block carrying the JSON
-    # serialization of structuredContent rides along with the item
-    # blocks (text items / image previews).
-    content.append({"type": "text",
-                    "text": json.dumps(structured, ensure_ascii=False)})
+    # The closing text block is a READABLE summary (the agent's
+    # surface); the JSON fields live in structuredContent only.
+    # text/json items already rode as their own blocks above.
+    lines = []
+    if structured["replay"]:
+        lines.append("Replay: returning the original result of this "
+                     "client_ref — nothing was charged or run again.")
+    lines.append(f"Result page: {result_url or '—'}")
+    lines.append(f"Expires: {_fmt_ts(expires_at)}")
+    files = [i for i in sc_items if i.get("kind") == "file"]
+    if files:
+        lines.append("Files:")
+        for f in files:
+            lines.append(
+                f"- {f['filename']} — {f['content_type']}, "
+                f"{_fmt_bytes(f['size'])}"
+                f" · download: {f['download_url']}"
+                f" · page: {f['page_url']}")
+    content.append({"type": "text", "text": "\n".join(lines)})
     return {"content": content, "structuredContent": structured,
             "isError": False}
 
@@ -1581,7 +1821,14 @@ def _create_upload(user: dict, mid, args: dict, request: Request):
                  "source_token} — use them as the files[] reference "
                  "form in tools/call.",
     }
-    return _meta_result(mid, _payload)
+    text = ("One-time upload URL (expires "
+            f"{_fmt_ts(_payload['expires_at'])}, max "
+            f"{_fmt_bytes(_payload['max_bytes'])}):\n"
+            f"{_payload['upload_url']}\n"
+            "PUT the raw bytes — NO Authorization header. The answer "
+            "gives {public_id, source_token}; pass them as the "
+            "files[] reference form in tools/call.")
+    return _meta_result(mid, _payload, text=text)
 
 
 def _list_uploads(user: dict, mid, args: dict) -> dict:
@@ -1608,8 +1855,25 @@ def _list_uploads(user: dict, mid, args: dict) -> dict:
         "page_url": f"{BASE_URL}/f/{r['public_id']}",
         "download_url": f"{BASE_URL}/f/{r['public_id']}?download=1",
     } for r in rows]
+    lines = []
+    if uploads:
+        lines.append(f"{len(uploads)} live file(s)" +
+                     ("" if len(rows) < 20 else " (more: offset="
+                      + str(offset + len(rows)) + ")") + ":")
+        for u in uploads:
+            left = (f"{u['downloads_remaining']} downloads left"
+                    if u["downloads_remaining"] is not None
+                    else "downloads unlimited")
+            lines.append(
+                f"- {u['filename']} — {u['content_type']}, "
+                f"{_fmt_bytes(u['size'])}"
+                f" · expires {_fmt_ts(u['expires_at'])} · {left}"
+                f" · page: {u['page_url']}")
+    else:
+        lines.append("No live files.")
     return _meta_result(mid, {"uploads": uploads,
-                              "has_more": len(rows) == 20})
+                              "has_more": len(rows) == 20},
+                        text="\n".join(lines))
 
 
 async def _delete_upload(user: dict, mid, args: dict) -> dict:
@@ -1632,7 +1896,10 @@ async def _delete_upload(user: dict, mid, args: dict) -> dict:
             "deleted": False, "public_id": public_id,
             "error": "not_found"})
     await asyncio.to_thread(_web_delete, upload["id"], user["id"])
-    return _meta_result(mid, {"deleted": True, "public_id": public_id})
+    return _meta_result(mid, {"deleted": True, "public_id": public_id},
+                        text=f"Deleted {public_id}. The /f/ page 404s "
+                             "immediately; bytes and mapping went "
+                             "together.")
 
 
 def _fetch_url_source(url: str) -> bytes:

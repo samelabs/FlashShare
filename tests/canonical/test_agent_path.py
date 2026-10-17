@@ -112,13 +112,10 @@ def _b64(b):
 
 
 def _tool_text(d):
-    """content[0].text parsed as JSON (the unified isError shape)."""
-    try:
-        return _json.loads(
-            (((d or {}).get("result") or {}).get("content")
-             or [{}])[0].get("text") or "{}")
-    except Exception:
-        return {}
+    """structuredContent — the machine channel of an isError result
+    (content text is the readable summary)."""
+    return (((d or {}).get("result") or {}).get("structuredContent")
+            or {})
 
 
 from database import db
@@ -142,8 +139,8 @@ try:
           isinstance(d, dict) and d.get("error") == "unauthorized"
           and "register" in str(d.get("message", ""))
           and "/account/keys" in str(d.get("message", "")), d)
-    check("A3 WWW-Authenticate kept",
-          h.get("www-authenticate") == 'Bearer realm="518"',
+    check("A3 WWW-Authenticate kept (resource metadata)",
+          "oauth-protected-resource" in (h.get("www-authenticate") or ""),
           h.get("www-authenticate"))
     st, _h, d = (lambda r: (r[0], r[1], r[2]))(_req(
         "POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "ping"},

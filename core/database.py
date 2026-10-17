@@ -158,6 +158,44 @@ _SCHEMA_SQL = (
       bind_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE
     )
     """,
+    # ── OAuth 2.1 authorization server (main /mcp; CIMD clients) ──
+    """
+    CREATE TABLE IF NOT EXISTS oauth_mcp_codes (
+      code_hash      TEXT PRIMARY KEY,
+      user_id        BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      client_id      TEXT NOT NULL,
+      redirect_uri   TEXT NOT NULL,
+      code_challenge TEXT NOT NULL,
+      scope           TEXT NOT NULL,
+      resource        TEXT NOT NULL,
+      expires_at     BIGINT NOT NULL,
+      created_at     BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS oauth_mcp_codes_expiry_idx
+      ON oauth_mcp_codes(expires_at)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS oauth_mcp_tokens (
+      id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      access_token_hash   TEXT NOT NULL UNIQUE,
+      refresh_token_hash  TEXT NOT NULL UNIQUE,
+      user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      client_id           TEXT NOT NULL,
+      scope               TEXT NOT NULL,
+      resource            TEXT NOT NULL,
+      access_expires_at   BIGINT NOT NULL,
+      refresh_expires_at  BIGINT NOT NULL,
+      revoked_at          BIGINT,
+      last_used_at        BIGINT,
+      created_at          BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS oauth_mcp_tokens_expiry_idx
+      ON oauth_mcp_tokens(refresh_expires_at)
+    """,
     # ── uploads ──
     """
     CREATE TABLE IF NOT EXISTS uploads (
@@ -222,6 +260,7 @@ _SCHEMA_SQL = (
       result_json      TEXT,
       started_at       BIGINT NOT NULL,
       finished_at      BIGINT,
+      oauth_client_id  TEXT,
 
       CONSTRAINT ingress_requests_status_ck
         CHECK (status IN ('running','ok','failed')),
@@ -255,7 +294,8 @@ _SCHEMA_SQL = (
       key_sealed   TEXT,
       prefix       TEXT NOT NULL,
       last_used_at BIGINT,
-      created_at   BIGINT NOT NULL
+      created_at   BIGINT NOT NULL,
+      scopes       TEXT NOT NULL DEFAULT 'tools:call files:read files:delete'
     )
     """,
     """
@@ -298,6 +338,7 @@ _SCHEMA_SQL = (
       result_json      TEXT,
       started_at       BIGINT NOT NULL,
       finished_at      BIGINT,
+      oauth_client_id  TEXT,
       commission_rate_snapshot INTEGER,
       invocation_hash    TEXT,
       CONSTRAINT tool_calls_live_invocation_hash_ck

@@ -33,13 +33,29 @@ def build_llms_txt() -> str:
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
     a(f"- Protocol versions: {versions} (latest: {latest})")
-    a("- Auth: Bearer API key, prefix fsk_. Connect without a key first: "
+    a("- Auth: one of two bearer credentials —")
+    a("  1. API key, prefix fsk_ (for agents that hold their own secret): "
       "initialize and tools/list work anonymously, and the tool "
       "`register` (optional username) creates an account and returns "
-      "its key — then send Authorization: "
-      "Bearer <key>. Same over plain HTTP: POST /auth/mcp/register with "
-      'an optional {"username": "..."} JSON body. Humans can also '
-      "create keys in the web UI at /account/keys (Account → API keys)")
+      "its key — then send Authorization: Bearer <key>. Same over plain "
+      'HTTP: POST /auth/mcp/register with an optional {"username": "..."} '
+      "JSON body. Humans can also create keys in the web UI at "
+      "/account/keys (Account → API keys).")
+    a("  2. OAuth 2.1 (for packaged plugins and platform connectors): "
+      "PKCE S256 public clients, client identity by CIMD — the "
+      "client_id IS an HTTPS URL to a JSON metadata document "
+      '(client_name, redirect_uris, token_endpoint_auth_method "none") '
+
+      "that this server fetches and verifies. Start at "
+      "/.well-known/oauth-authorization-server; tokens are bound to "
+      "this /mcp resource. Scopes (granted at consent, enforced per "
+      "operation): tools:call (execute tools; paid tools spend the "
+      "account's credits), files:read (list your live files), "
+      "files:delete (delete your files).")
+    a("- Anonymous tools/call answers 401 with a WWW-Authenticate "
+      "challenge pointing at /.well-known/oauth-protected-resource "
+      "(except the free `register` tool, which is how agents "
+      "self-onboard in one call).")
     a("- Agent guide (this file): /llms.txt")
     a("")
     a("## No-install usage (curl)")
@@ -56,10 +72,12 @@ def build_llms_txt() -> str:
     a('  -H "Content-Type: application/json" \\')
     a('  -d \'{"jsonrpc":"2.0","id":2,"method":"tools/list"}\'')
     a("")
-    a("# tools/list is your working set: first-party tools, your own tools "
-      "and your favorites (paginate with params {\"cursor\":\"<nextCursor>\"}). "
-      "The meta tool catalog_search finds any other tool by keyword; call it "
-      "by name, and pin_tool / unpin_tool manage your favorites.")
+    a("# tools/list is the master list: every public tool plus your own, "
+      "with a favorite flag marking your pins (paginate with params "
+      "{\"cursor\":\"<nextCursor>\"}). list_favorites lists exactly your "
+      "pins; pin_tool / unpin_tool manage them. catalog_search filters "
+      "by keyword — an EMPTY query walks the FULL public catalog page "
+      "by page (total + total_pages carry the full depth).")
     a("")
     a(f'curl -s {mcp_url} \\')
     a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
@@ -69,9 +87,20 @@ def build_llms_txt() -> str:
     a('       "arguments":{"files":[{"filename":"a.png","b64":"..."}],')
     a('                    "client_ref":"my-stable-op-1"}}}\'')
     a("")
-    a("client_ref is REQUIRED on every tools/call: a stable identity for "
-      "one logical operation — reuse the same value to retry safely "
-      "(replays return the original result, no double charge).")
+    a("client_ref is REQUIRED on every executing/staging tools/call "
+      "(platform tools and create_upload): a stable identity for one "
+      "logical operation — reuse the same value to retry safely "
+      "(replays return the original result, no double charge). The "
+      "discovery/lifecycle meta tools take exactly the arguments their "
+      "inputSchema declares (catalog_search: q, page; list_uploads: "
+      "offset; delete_upload: public_id; pin_tool/unpin_tool: name; "
+      "list_favorites/register: none).")
+    a("")
+    a("Arguments are strict: each tool accepts exactly the keys its "
+      "inputSchema declares (plus files/params/delivery/client_ref for "
+      "platform tools). An unknown key is rejected with -32602 naming "
+      "it — never silently dropped — so a typo'd parameter cannot look "
+      "like a successful call.")
     a("")
     a("## Inputs (tools/call)")
     a("files[] items — 0..20 files per the tool's declared window "
@@ -101,9 +130,9 @@ def build_llms_txt() -> str:
       "carries them with a download_url per file; small images also "
       "appear as image content blocks — unless the image bytes are "
       "identical to this call's input (a pass-through share never "
-      "echoes your own bytes back). Every structuredContent response "
-      "additionally carries a content text block holding the JSON "
-      "serialization of that structuredContent (backward-compat form). "
+      "echoes your own bytes back). The content text block is a "
+      "READABLE summary (result link, expiry, file list); the machine "
+      "fields live in structuredContent. "
       "result_url is a human-viewable page (/r/{id}).")
     a("")
     a("## Delivery (result retention)")
@@ -112,13 +141,15 @@ def build_llms_txt() -> str:
       "governs how long the result (and its file items) stays "
       "available and how many times files may be downloaded:")
     a('  {"delivery": {"expiry_days": 1, "allowed_downloads": 50}}')
-    a(f"- expiry_days: how long the result lives (default 1). Legal "
-      f"values: {list(EXPIRY_DAYS)}.")
+    a(f"- expiry_days: how long the result lives (default 1). The "
+      f"FULL legal range is {list(EXPIRY_DAYS)}; your plan's subset is "
+      "what each tool's inputSchema enum shows.")
     a(f"- allowed_downloads: total downloads allowed across the file "
-      f"items (default 50). Legal values: {list(DOWNLOAD_LIMITS)}.")
-    a("- Values outside your plan's allowance need a higher plan; an "
-      "invalid value is returned as an isError result listing the "
-      "legal values.")
+      f"items (default 50). FULL range {list(DOWNLOAD_LIMITS)}; your "
+      "plan's subset is in the schema enum.")
+    a("- Free-plan enums are the smaller sets; membership raises them. "
+      "A value outside YOUR plan answers as an isError listing your "
+      "legal values — the schema enum and the error always agree.")
     a("structuredContent.expires_at is the epoch second at which the "
       "result expires; after it, result_url and every file link 404.")
     a("")
