@@ -250,11 +250,12 @@
 /* ── Doc Pages ───────────────────────────────────────────── */
 /* 静态页 (page.html): 与 agents/market 同一页头节奏 — 切页零漂移 */
 .page { padding: 40px 0 72px; min-width: 0; }
-.doc { line-height: 1.7; width: 100%; max-width: 760px; background: transparent; border: 0; border-radius: 0; padding: var(--s5) 0 0; }
+.doc { line-height: 1.7; width: 100%; background: transparent; border: 0; border-radius: 0; padding: var(--s5) 0 0; }
+.doc p { max-width: none; }
 .doc h1 { font-size: var(--fs-xl); }
 .doc .share-bar.sb-compact { margin: 10px 0 30px; }
 .doc h2 { margin: 2em 0 0.6em; font-size: 19px; line-height: 1.35; letter-spacing: -0.01em; }
-.doc p { margin: 0 0 1em; max-width: 72ch; }
+.doc p { margin: 0 0 1em; }
 .doc ul, .doc ol { margin: 0 0 1.2em; padding-inline-start: 1.4em; }
 .doc li { margin: 0.35em 0; }
 .doc li::marker { color: var(--ink-3); }
