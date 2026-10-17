@@ -182,7 +182,7 @@ try:
     _xh = _uq(_x.group(1).replace("&amp;", "&")) if _x else ""
     check("B1 /f share bar X link shares this file page",
           'class="share-bar sb-compact"' in (page or "")
-          and _xh.startswith("https://x.com/intent/tweet?text=doc.pdf&url=")
+          and _xh.startswith("https://x.com/intent/tweet?text=518.PLUS&url=")
           and _xh.endswith(_page_url), _xh)
     check("B2 /f non-image → small card; image → large card",
           'name="twitter:card" content="summary"' in (page or ""), "")

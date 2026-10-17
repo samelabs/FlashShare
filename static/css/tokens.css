@@ -16,7 +16,7 @@
   src: url("/static/fonts/InterVariable.woff2") format("woff2-variations");
   font-weight: 100 900;
   font-style: normal;
-  font-display: swap;
+  font-display: optional;
 }
 
 :root {
@@ -73,7 +73,7 @@
   /* ── Typography ── */
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Noto Sans SC", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "Inter", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font: var(--font-sans);
   /* display-grade tracking: headings tighten, body stays natural */
   --tracking-tight: -0.02em;
