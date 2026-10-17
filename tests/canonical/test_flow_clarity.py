@@ -263,8 +263,12 @@ try:
                              "arguments": {"q": ""}}}, R_TOK)
     mcp_browse = [tool_key_for_mcp_name(t.get("name"))
                   for t in _sc_tools(d)]
-    check("S11 MCP empty query browses the same top list",
-          mcp_browse == browse, f"{mcp_browse[:5]} vs {browse[:5]}")
+    # 2026-10 contract: the MCP empty query enumerates the FULL public
+    # catalog (featured first) — a superset of the web featured browse;
+    # the web browse stays curated.
+    check("S11 MCP empty query = full catalog: featured head preserved, superset of the web browse",
+          mcp_browse[:len(browse)] == browse and set(browse) < set(mcp_browse),
+          f"{mcp_browse[:5]} vs {browse[:5]}")
 
     # ══════════ M: catalog_search returns callable specs ══════════
     key_call = f"{_u}dev/callme"
