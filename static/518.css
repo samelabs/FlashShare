@@ -804,15 +804,17 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .glow { position: absolute; inset: 0 0 auto 0; height: 560px; pointer-events: none; z-index: -1;
   background: radial-gradient(52% 46% at 50% 0%, rgba(217, 45, 58, 0.055), transparent 72%); }
 .grid-bg { display: none; }
-.hero { padding: 56px 0 24px; text-align: center; position: relative; }
-.hero h1 { margin-top: 12px; font-size: var(--fs-2xl); line-height: 1.12; letter-spacing: var(--tracking-tighter); font-weight: 800; color: var(--ink); }
-.hero h1 .grad { background: linear-gradient(92deg, rgba(255, 90, 77, 1) 10%, rgba(255, 45, 85, 1) 60%, rgba(255, 122, 69, 1)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* R2b: hero 左对齐排版 (居中悬挂是上一版廉价感主源)。标题两段
+   同行自然续接 — 无 <br> 劈句、无渐变断字。 */
+.hero { padding: 48px 0 24px; text-align: start; position: relative; }
+.hero h1 { margin-top: 10px; font-size: clamp(30px, 4.2vw, 44px); line-height: 1.14; letter-spacing: var(--tracking-tighter); font-weight: 800; color: var(--ink); }
+.hero h1 .grad { color: var(--brand-deep); }   /* 同色系强调, 不再渐变劈句 */
 .hero p { margin-top: 10px; color: var(--ink-2); font-size: var(--fs-lg); }
 /* hero 背景大字: MCP (装饰, 读屏隐藏) — 位于 glow/grid 之上、正文之下 */
-.home .hero-mark { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 0;
-  font-size: clamp(88px, 16vw, 190px); font-weight: 900; line-height: 1; letter-spacing: -0.06em;
+.home .hero-mark { position: absolute; right: -2%; top: 4px; z-index: 0;
+  font-size: clamp(88px, 15vw, 180px); font-weight: 900; line-height: 1; letter-spacing: -0.06em;
   white-space: nowrap; pointer-events: none; user-select: none;
-  background: linear-gradient(180deg, rgba(217, 45, 58, 0.045), rgba(217, 45, 58, 0.004) 85%);
+  background: linear-gradient(180deg, rgba(217, 45, 58, 0.035), rgba(217, 45, 58, 0.003) 85%);
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .home .hero > .wrap { position: relative; z-index: 1; }
 .home .hero-sub { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
@@ -874,6 +876,17 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .dark .btn-s { background: var(--card); color: var(--ink); border: 0; }
 .dark .btn-q { color: rgba(255, 255, 255, 0.84); }
 .term { background: var(--term-bg); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--r); padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--term-ink); position: relative; overflow-x: auto; }
+/* 活终端 (hero): macOS 窗控点 + 打字机回放体; 光标闪烁 */
+.term-live { padding-top: 40px; min-height: 168px; }
+.term-dots { position: absolute; top: 14px; left: 14px; display: flex; gap: 6px; }
+.term-dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.14); }
+.term-dots i:first-child { background: rgba(255, 95, 86, 0.75); }
+.term-dots i:nth-child(2) { background: rgba(255, 189, 46, 0.7); }
+.term-dots i:nth-child(3) { background: rgba(39, 201, 63, 0.7); }
+.term-body { margin: 0; font: inherit; line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+.term-body::after { content: "▋"; margin-inline-start: 2px; color: var(--term-ok); animation: termCaret 1s steps(1) infinite; }
+@keyframes termCaret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .term-body::after { animation: none; } }
 .term .c { color: var(--term-dim); }
 .term .k { color: var(--term-warm); }
 .term .g { color: var(--term-ok); }

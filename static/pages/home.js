@@ -174,3 +174,38 @@
       .catch(() => {});
   }
 })();
+
+// ── R2: hero 活终端 — 真实调用序列打字机回放 (纯展示, aria-hidden;
+//   尊重 prefers-reduced-motion: 直接呈现终态) ──
+(function () {
+  "use strict";
+  const body = document.getElementById("heroTermBody");
+  if (!body) return;
+  const base = (window.__BASE_URL__ || location.origin);
+  const SEQ = [
+    { text: "# 一次真实的调用", cls: "c", pause: 500 },
+    { text: "claude mcp add --transport http 518 " + base + "/mcp", cls: "k", pause: 900 },
+    { text: "→ tools/call  share", cls: "", pause: 1100 },
+    { text: "result_url: " + base + "/r/qDNuKPEM", cls: "g", pause: 0 },
+  ];
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) {
+    body.innerHTML = SEQ.map((l) => `<span class="${l.cls}">${l.text}</span>`).join("<br>");
+    return;
+  }
+  let line = 0, ch = 0;
+  let spans = [];
+  function tick() {
+    if (line >= SEQ.length) {
+      setTimeout(() => { body.innerHTML = ""; spans = []; line = 0; ch = 0; tick(); }, 5200);
+      return;
+    }
+    const cur = SEQ[line];
+    if (ch === 0) { spans[line] = document.createElement("span"); spans[line].className = cur.cls; body.appendChild(spans[line]); }
+    ch += 1;
+    spans[line].textContent = cur.text.slice(0, ch);
+    if (ch >= cur.text.length) { line += 1; ch = 0; setTimeout(tick, Math.max(cur.pause, 120)); }
+    else setTimeout(tick, 24 + Math.random() * 40);
+  }
+  tick();
+})();
