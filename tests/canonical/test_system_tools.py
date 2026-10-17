@@ -192,6 +192,9 @@ def psnr_rgb(a, b):
 # EVERY registered first-party tool must appear here at least once.
 
 FIXTURES = {
+    "demo_shout": [
+        {"files": [], "params": {"text": "hello 518"}},
+    ],
     "share": [
         {"files": [(b"alpha-bytes-1", "a.txt", "text/plain"),
                    (b"beta-bytes-22", "b.txt", "text/plain")], "params": {}},

@@ -537,10 +537,14 @@ pre.rs-text, pre.rs-json {
   .tc:hover { box-shadow: var(--sh-2); transform: translateY(-2px); border-color: var(--line-2); }
 }
 .tc-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* 图标块: 暖底 + 细线 + 卡 hover 时同拍微升 */
 .tc .ic {
   width: 40px; height: 40px; border-radius: 12px; flex: none;
-  display: grid; place-items: center; background: var(--sunk); color: var(--ink);
+  display: grid; place-items: center; background: var(--sunk);
+  border: 1px solid var(--line); color: var(--ink);
+  transition: transform var(--ease-in);
 }
+@media (hover:hover) and (pointer:fine) { .tc:hover .ic { transform: translateY(-1px); } }
 .tc .ic svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tc-h h4 {
   margin: 0; font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.01em;
