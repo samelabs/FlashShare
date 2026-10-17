@@ -3,10 +3,12 @@
 {% block desc %}{{ doc_desc }}{% endblock %}
 {% block content %}
 {% from "partials/share_bar.html" import share_bar with context %}
+<div class="wrap">
 <section class="panel doc">
   <h1>{{ doc_title }}</h1>
   {% if doc_share_url %}{{ share_bar(doc_share_url, doc_title, qr_src="/qr.svg?p=" ~ (doc_share_path | urlencode), compact=true) }}{% endif %}
   {{ doc_body|safe }}
-  <p><a href="/">← {{ texts.home if texts.home else 'Home' }}</a></p>
+  {% if not doc_hide_home_link %}<p><a href="/">{{ texts.home if texts.home else 'Home' }}</a></p>{% endif %}
 </section>
+</div>
 {% endblock %}
