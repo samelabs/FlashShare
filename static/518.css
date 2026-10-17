@@ -749,7 +749,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tp-h { display: flex; gap: 18px; align-items: center; }
 .tp-h .ic { width: 60px; height: 60px; border-radius: 18px; background: var(--card); border: var(--border-w) solid var(--line); box-shadow: var(--sh-2); display: grid; place-items: center; flex: none; }
 .tp-h .ic svg { width: 28px; height: 28px; stroke: var(--ink); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.tp-h h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; }
+.tp-h h1 { font-size: 32px; font-weight: 800; letter-spacing: var(--tracking-tighter); line-height: 1.15; }
 .tp-h .meta { display: flex; gap: 6px; margin-block-start: 10px; flex-wrap: wrap; align-items: center; }
 .tp-h .auth { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); margin-inline-end: 6px; }
 .tp-h .auth i { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, rgba(255, 107, 91, 1), rgba(255, 59, 79, 1)); display: inline-block; }
@@ -799,21 +799,20 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 
 /* ═══ 首页 (v2): hero / bento / dark / feat ═══ */
 .home { position: relative; }
-.glow { position: absolute; inset: 0 0 auto 0; height: 620px; pointer-events: none; z-index: -1;
-  background: radial-gradient(60% 50% at 50% 0%, rgba(255, 77, 77, 0.13), transparent 70%),
-    radial-gradient(30% 30% at 85% 10%, rgba(255, 160, 90, 0.10), transparent 70%); }
-.grid-bg { position: absolute; inset: 0 0 auto 0; height: 620px; z-index: -1; pointer-events: none;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 48px 48px; mask-image: radial-gradient(70% 60% at 50% 0%, var(--ink) 30%, transparent 80%); opacity: 0.6; }
+/* hero 背景: 单一极淡品牌色晕 (Stripe 式"一处光", 不做双色晕+网格
+   的模板堆叠)。网格退场。 */
+.glow { position: absolute; inset: 0 0 auto 0; height: 560px; pointer-events: none; z-index: -1;
+  background: radial-gradient(52% 46% at 50% 0%, rgba(217, 45, 58, 0.055), transparent 72%); }
+.grid-bg { display: none; }
 .hero { padding: 56px 0 24px; text-align: center; position: relative; }
-.hero h1 { margin-top: 12px; font-size: var(--fs-2xl); line-height: 1.14; letter-spacing: -0.03em; font-weight: 800; color: var(--ink); }
+.hero h1 { margin-top: 12px; font-size: var(--fs-2xl); line-height: 1.12; letter-spacing: var(--tracking-tighter); font-weight: 800; color: var(--ink); }
 .hero h1 .grad { background: linear-gradient(92deg, rgba(255, 90, 77, 1) 10%, rgba(255, 45, 85, 1) 60%, rgba(255, 122, 69, 1)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero p { margin-top: 10px; color: var(--ink-2); font-size: var(--fs-lg); }
 /* hero 背景大字: MCP (装饰, 读屏隐藏) — 位于 glow/grid 之上、正文之下 */
 .home .hero-mark { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 0;
   font-size: clamp(88px, 16vw, 190px); font-weight: 900; line-height: 1; letter-spacing: -0.06em;
   white-space: nowrap; pointer-events: none; user-select: none;
-  background: linear-gradient(180deg, rgba(255, 77, 77, 0.10), rgba(255, 77, 77, 0.01) 85%);
+  background: linear-gradient(180deg, rgba(217, 45, 58, 0.045), rgba(217, 45, 58, 0.004) 85%);
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .home .hero > .wrap { position: relative; z-index: 1; }
 .home .hero-sub { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
@@ -863,7 +862,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* sections */
 .sec { padding: 48px 0; }
 .sec-h { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.sec-h h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.sec-h h2 { font-size: 22px; font-weight: 700; letter-spacing: var(--tracking-tight); }
 .sec-h p { color: var(--ink-3); font-size: 14px; margin-top: 4px; }
 .bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 /* .tc 卡本体 = components.css (home/market/user/favorites 单源四行卡) */
@@ -973,7 +972,7 @@ body { overflow-x: clip; }
 .pricing-page .pr-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); }
 .pricing-page .pr-card.on { border-color: var(--brand); }
 .pricing-page .pr-name { font-size: var(--fs-md); font-weight: 700; color: var(--ink); }
-.pricing-page .pr-price { font-size: 32px; font-weight: 750; letter-spacing: -0.03em; color: var(--ink); line-height: 1.1; }
+.pricing-page .pr-price { font-size: 32px; font-weight: 750; letter-spacing: var(--tracking-tighter); font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1.1; }
 .pricing-page .pr-per { font-size: var(--fs-sm); font-weight: 500; color: var(--ink-3); margin-left: 4px; letter-spacing: 0; }
 .pricing-page .pr-desc { margin: 0; font-size: var(--fs-sm); color: var(--ink-2); }
 .pricing-page .pr-credits { font-size: var(--fs-sm); font-weight: 700; color: var(--brand-600); }

@@ -1,37 +1,54 @@
 /* ══════════════════════════════════════════════════════════════
-   518.PLUS design tokens — the ONLY place raw design values live
-   (values per the approved v2 prototype :root).
+   518.PLUS design tokens — the ONLY place raw design values live.
    components.css consumes tokens; page CSS consumes both.
    Guarded by tools/guard_css_tokens.py: no :root anywhere else,
    every variable reference must resolve here, no raw hex outside
    this file.
+
+   Type direction (Stripe-warm, 2026-10): Inter variable self-hosted
+   for latin glyphs and DIGITS (one file, full weight axis); CJK
+   rides the system stack — the hierarchy is carried by weight,
+   tracking and size discipline, not by a CJK webfont.
    ══════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: "Inter";
+  src: url("/static/fonts/InterVariable.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   color-scheme: light;
 
-  /* ── Color: brand ── */
-  --brand: #ff4d4d;
+  /* ── Color: brand ──
+     Strategy (Stripe-warm): the PRIMARY fill is a deep, expensive
+     crimson; the neon #ff4d4d survives only as accent (marks,
+     highlights, gradient ends) — a brand color used everywhere reads
+     as a template, used once per view it reads as a brand. */
+  --brand: #ff4d4d;                   /* accent only */
   --brand-600: #e5383b;
   --brand-50: #fff3f3;
   --brand-100: #ffe2e2;
-  --brand-strong: #ff2442;            /* hover on brand fills */
-  --brand-deep: #e63b3b;
-  --brand-soft: #fff1f2;              /* legacy soft name, same role */
-  --brand-ink: #ffffff;               /* text on brand fills */
-  --ink-hover: #262a31;               /* hover on ink (dark) fills */
+  --brand-strong: #ff2442;            /* hover on accent fills */
+  --brand-deep: #d92d3a;              /* PRIMARY fill (buttons, links) */
+  --brand-deep-strong: #b92231;       /* hover on primary fills */
+  --brand-soft: #fff1f2;
+  --brand-ink: #ffffff;
+  --ink-hover: #262a31;
 
   /* ── Color: neutral surfaces & ink ── */
-  --ink: #0b0d10;
-  --ink-2: #454b54;
-  --ink-3: #5f6670;
-  --ink-4: #b4b9c1;
-  --line: rgba(11, 13, 16, 0.08);
-  --line-2: rgba(11, 13, 16, 0.14);
-  --bg: #fbfbfc;
+  --ink: #16130f;                     /* warm near-black */
+  --ink-2: #4d4a45;
+  --ink-3: #6b6660;
+  --ink-4: #b6b0a8;
+  --line: rgba(22, 19, 15, 0.08);
+  --line-2: rgba(22, 19, 15, 0.14);
+  --bg: #faf9f7;                      /* warm paper */
   --card: #ffffff;
-  --sunk: #f4f5f7;                    /* wells, code, chips */
-  --overlay: rgba(11, 13, 16, 0.5);
+  --sunk: #f4f2ef;                    /* wells, code, chips */
+  --overlay: rgba(22, 19, 15, 0.5);
 
   /* ── Color: semantic ── */
   --ok: #12a150;
@@ -46,18 +63,22 @@
   --info-50: #eff6ff;
 
   /* ── Color: raw ramp (rare, direct use) ── */
-  --gray-100: #f2f4f5;
-  --gray-200: #e8ecee;
-  --gray-300: #d4dcdf;
-  --gray-400: #b3bfc4;
-  --gray-700: #38444c;
-  --gray-900: #0f1419;
+  --gray-100: #f4f2ef;
+  --gray-200: #eae7e2;
+  --gray-300: #d8d3cb;
+  --gray-400: #b8b1a6;
+  --gray-700: #4a443c;
+  --gray-900: #1c1813;
 
   /* ── Typography ── */
-  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC",
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Noto Sans SC", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "Inter", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font: var(--font-sans);
+  /* display-grade tracking: headings tighten, body stays natural */
+  --tracking-tight: -0.02em;
+  --tracking-tighter: -0.03em;
+  --num: "tnum" 1, "lnum" 1;   /* tabular lining figures for data */
 
   --fs-xs: 12px;
   --fs-sm: 12.5px;
@@ -94,10 +115,10 @@
   --r-full: 999px;
 
   /* ── Shadows ── */
-  --sh-1: 0 1px 2px rgba(11, 13, 16, 0.04), 0 1px 1px rgba(11, 13, 16, 0.03);
-  --sh-2: 0 1px 2px rgba(11, 13, 16, 0.04), 0 8px 24px -8px rgba(11, 13, 16, 0.10);
-  --sh-3: 0 2px 4px rgba(11, 13, 16, 0.04), 0 24px 48px -16px rgba(11, 13, 16, 0.18);
-  --sh-4: 0 2px 4px rgba(11, 13, 16, 0.04), 0 32px 64px -20px rgba(11, 13, 16, 0.24);
+  --sh-1: 0 1px 2px rgba(28, 24, 19, 0.05), 0 1px 3px rgba(28, 24, 19, 0.04);
+  --sh-2: 0 1px 2px rgba(28, 24, 19, 0.05), 0 4px 12px -2px rgba(28, 24, 19, 0.06), 0 12px 28px -8px rgba(28, 24, 19, 0.10);
+  --sh-3: 0 1px 2px rgba(28, 24, 19, 0.05), 0 8px 20px -4px rgba(28, 24, 19, 0.08), 0 28px 56px -12px rgba(28, 24, 19, 0.16);
+  --sh-4: 0 2px 4px rgba(28, 24, 19, 0.05), 0 12px 28px -6px rgba(28, 24, 19, 0.10), 0 40px 80px -16px rgba(28, 24, 19, 0.22);
 
   /* ── Borders ── */
   --border-w: 1px;
