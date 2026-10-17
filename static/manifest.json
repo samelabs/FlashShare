@@ -15,25 +15,25 @@
   ],
   "icons": [
     {
-      "src": ""/brand/web/icon-192.png",
+      "src": "/brand/web/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": ""/brand/web/icon-512.png",
+      "src": "/brand/web/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": ""/brand/web/icon-192-maskable.png",
+      "src": "/brand/web/icon-192-maskable.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": ""/brand/web/icon-512-maskable.png",
+      "src": "/brand/web/icon-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -44,19 +44,19 @@
       "name": "Share a file",
       "short_name": "Share",
       "url": "/?source=pwa",
-      "icons": [{ "src": ""/brand/web/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/brand/web/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Tools",
       "short_name": "Tools",
       "url": "/tools?source=pwa",
-      "icons": [{ "src": ""/brand/web/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/brand/web/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Connect AI (MCP)",
       "short_name": "AI",
       "url": "/agents?source=pwa",
-      "icons": [{ "src": ""/brand/web/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/brand/web/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
