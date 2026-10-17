@@ -637,8 +637,10 @@ check("S5 tool MCP page: Claude Code snippet + copy targets + page script",
       st3 == 200 and 'id="mcpAdd"' in html_tm and 'data-copy-target="mcpCall"' in html_tm
       and "/static/pages/agents.js" in html_tm and "MCP Quick start" not in html_tm)
 _ajs = open(_os.path.join(_REPO, "static", "pages", "agents.js"), encoding="utf-8").read()
-check("S6 copy feedback text from i18n (no hardcoded Chinese)",
-      'window.t("copied")' in _ajs and "已复制" not in _ajs)
+_be = open(_os.path.join(_REPO, "static", "pages", "base-engine.js"), encoding="utf-8").read()
+check("S6 copy feedback: agents.js delegates to the one authority; no hardcoded Chinese",
+      "window.copyFeedback" in _ajs and 'window.t("copied")' in _be
+      and "已复制" not in _ajs and "已复制" not in _be)
 
 # ══════════ cleanup ══════════
 _uids = [uid, uid2, _ownA, _ownB]

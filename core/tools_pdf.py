@@ -12,7 +12,7 @@ import io
 
 from pypdf import PdfReader, PdfWriter
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 MAX_PAGES = 500
 MAX_SOURCES = 20
@@ -77,7 +77,7 @@ def pdf_merge_handler(tool_input, params):
         "items": [{
             "kind": "file",
             "stream": out_buf,
-            "filename": "merged.pdf",
+            "filename": out_filename(None, "pdf", default_stem="merged"),
             "content_type": "application/pdf",
             "size": len(raw),
         }],

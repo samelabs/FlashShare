@@ -750,7 +750,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tp-h .ic { width: 60px; height: 60px; border-radius: 18px; background: var(--card); border: var(--border-w) solid var(--line); box-shadow: var(--sh-2); display: grid; place-items: center; flex: none; }
 .tp-h .ic svg { width: 28px; height: 28px; stroke: var(--ink); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tp-h h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; }
-.tp-h .tp-desc { color: var(--ink-2); margin-block-start: 2px; }
 .tp-h .meta { display: flex; gap: 6px; margin-block-start: 10px; flex-wrap: wrap; align-items: center; }
 .tp-h .auth { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); margin-inline-end: 6px; }
 .tp-h .auth i { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, rgba(255, 107, 91, 1), rgba(255, 59, 79, 1)); display: inline-block; }

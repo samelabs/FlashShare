@@ -28,7 +28,7 @@ import random
 
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 MAX_DIM = 1400
 SHADOW_ALPHA = 120
@@ -361,7 +361,7 @@ def beautify_handler(tool_input, params):
 
     orig_name = tool_input.get("filename", "image")
     stem = orig_name.rsplit(".", 1)[0] if "." in orig_name else orig_name
-    out_name = f"beautify_{stem}.png"
+    out_name = out_filename(orig_name, "png")
 
     return {
         "items": [{

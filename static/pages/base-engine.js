@@ -243,9 +243,9 @@ window.globalToast = function (message) {
 
 // ── Site-wide copy feedback (the ONE in-place confirmation for copy) ──
 // 交互规范: 复制属"就地确认"——触发钮图标翻对勾(图标钮)或文本变
-// "✓ 已复制"(文本钮), 1.4s 还原; busy 守卫防双击竞态(无守卫时第二击
-// 会把对勾当原样保存, 图标卡死)。全局 toast 留给事件通知(错误/成功
-// 类), 不打断的就地确认不弹 toast——两条通道分工, 不混用。
+// 确认文案(文本钮, 走 i18n 的 copied 键), 1.4s 还原; busy 守卫防双击
+// 竞态(无守卫时第二击会把对勾当原样保存, 图标卡死)。全局 toast 留给
+// 事件通知(错误/成功类), 不打断的就地确认不弹 toast——两条通道分工。
 window.copyFeedback = function (btn) {
   if (!btn || btn.dataset.cpBusy) return;
   btn.dataset.cpBusy = "1";

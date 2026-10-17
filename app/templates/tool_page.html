@@ -10,7 +10,6 @@
     <span class="ic" aria-hidden="true">{{ tool.icon_svg }}</span>
     <div>
       <h1>{{ tool_name }}</h1>
-      {% if tool.desc %}<p class="tp-desc">{{ tool.desc | lt(lang) }}</p>{% endif %}
       <div class="meta">
         {% if handle %}
         <a class="auth" href="/u/{{ handle }}"><i aria-hidden="true"></i>@{{ handle }}{% if tool.owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</a>

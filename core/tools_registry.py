@@ -20,7 +20,7 @@ import io
 
 from PIL import Image, ImageFilter, ImageChops, ImageOps
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 MAX_DIM = 4096  # same ceiling as compress — no extra shrink below it
 
@@ -164,8 +164,7 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
     out_buf.seek(0)
 
     orig_name = tool_input.get("filename", "image")
-    stem = orig_name.rsplit(".", 1)[0] if "." in orig_name else orig_name
-    out_name = f"{stem}_clean.{out_ext}"
+    out_name = out_filename(orig_name, out_ext)
 
     return {
         "items": [{

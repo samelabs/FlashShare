@@ -22,7 +22,7 @@ import io
 
 from PIL import Image, ImageOps
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 MAX_DIM = 4096  # don't upscale, but allow large scans
 
@@ -121,7 +121,7 @@ def compress_handler(tool_input, params):
             "items": [{
                 "kind": "file",
                 "stream": io.BytesIO(raw),
-                "filename": f"compressed_{stem}.{ext}",
+                "filename": out_filename(orig_name, ext),
                 "content_type": out_ct,
                 "size": len(raw),
             }],

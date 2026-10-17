@@ -24,6 +24,21 @@ VALID_ICONS = {
 }
 
 
+def out_filename(orig_name, ext=None, default_stem="file"):
+    """The ONE output-name convention for tool-produced files: original
+    stem + a short random suffix + extension. No tool word in the name
+    (the page already says which tool ran) and no long strings — the
+    filename is the user's display space. Composite outputs (zip/pdf)
+    pass their semantic stem via default_stem."""
+    import secrets as _secrets
+    name = str(orig_name or "").strip()
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    stem = (stem or default_stem)[:64].strip() or default_stem
+    if ext is None:
+        ext = (name.rsplit(".", 1)[1].lower() if "." in name else "bin")
+    return f"{stem}_{_secrets.token_hex(2)}.{ext}"
+
+
 class ToolError(Exception):
     """Raised by a handler when processing fails with a user-facing error key.
 

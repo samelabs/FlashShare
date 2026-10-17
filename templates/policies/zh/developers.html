@@ -53,7 +53,7 @@ Content-Type: application/json
 </ul>
 
 <h2>鉴权头与安全</h2>
-<p>可选：提交时保存一个头名称与令牌（例如 <code>Authorization: Bearer …</code>）；平台封存令牌并在每次调用时发送该头。传输层自有的头名（Host、Content-Length……）在提交时即被拒绝。</p>
+<p>可选：提交时保存一个头名称与令牌（例如 <code>Authorization: Bearer …</code>）；平台加密保存令牌并在每次调用时发送该头。传输层自有的头名（Host、Content-Length……）在提交时即被拒绝。</p>
 <ul>
   <li>签名源文件 URL 一次性且短时效——无法重放或分享。</li>
   <li>你的端点必须是公网 HTTPS：私网、回环与元数据地址一律拒绝（每一跳含重定向都做 SSRF 校验）。</li>
@@ -64,7 +64,7 @@ Content-Type: application/json
 <p>每次调用的价格由你按积分设定——0（免费）到 {{ max_price }}，1000 积分 = 1 美元。每笔成功付费调用，价格扣除 {{ commission_rate if commission_rate is not none else '—' }}% 平台佣金后计入你的收益池。收益可按美元提现（最低 ${{ min_withdrawal_usd }}）；你消费的积分是另一个独立池。</p>
 
 <h2>被发现与调用</h2>
-<p>每个工具在网页上有自己的页面。在 MCP 上你的工具名为 <code>owner__tool</code>（例如 <code>alice__pdf2svg</code>）；Agent 用 <code>catalog_search</code> 即可找到并直接按名调用——搜索结果自带完整 input schema。喜欢的用户可将其收藏，收藏即进入其 <code>tools/list</code> 工作集。</p>
+<p>每个工具在网页上有自己的页面。在 MCP 上你的工具名为 <code>owner__tool</code>（例如 <code>alice__pdf2svg</code>）；Agent 用 <code>catalog_search</code> 即可找到并直接按名调用——搜索结果自带完整 input schema。喜欢的用户可将其收藏——收藏后该工具会在其 <code>list_favorites</code> 列表中，并在 <code>tools/list</code> 里带收藏标记。</p>
 
 <h2>最小示例端点</h2>
 <p>Python（FastAPI）——文本进，text + json 出：</p>
