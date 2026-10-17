@@ -78,6 +78,17 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .btn-sm svg { width: 15px; height: 15px; }
 .btn-lg { height: 48px; padding-inline: var(--s5); font-size: var(--fs-md); }
 
+/* Small secondary (secondary surface at sm size): reads as a button on
+   light pages — market links, register CTA, inline copy/print actions.
+   The copy button floating on dark code blocks overrides via the scoped
+   .tab-panel .tab-copy rules below. */
+.btn-s { height: 34px; padding-inline: var(--s3); font-size: var(--fs-sm);
+         background: var(--card); border-color: var(--line-2); color: var(--ink); }
+.btn-s svg { width: 15px; height: 15px; }
+@media (hover:hover) and (pointer:fine) { .btn-s:hover { border-color: var(--ink-2); } }
+.tab-panel .tab-copy { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.85); }
+@media (hover:hover) and (pointer:fine) { .tab-panel .tab-copy:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); color: var(--card); } }
+
 .btn-icon { width: 40px; padding-inline: 0; }
 .btn-icon.btn-sm { width: 32px; }
 
@@ -572,13 +583,15 @@ pre.rs-text, pre.rs-json {
 .composer .c-err { margin: var(--s3) var(--s4) 0; }
 .c-files { display: flex; gap: var(--s2); flex-wrap: wrap; padding: 14px 16px 0; }
 .c-files:empty { display: none; }
-/* 空态上传区: 整块点击/拖入 (files_max>0 才渲染) */
+/* 空态上传区: 整块点击/拖入 (files_max>0 才渲染)。
+   静态 = 沉底浅实线的"槽"; 虚线只属于拖拽/悬停反馈 (composer.dragover
+   与下方 hover/focus/dragover 规则), 不再作为静态装饰。 */
 .ti-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; margin: 14px 16px 0; min-height: 132px; padding: var(--s3);
   width: calc(100% - 32px); box-sizing: border-box;
-  border: 1.5px dashed var(--line-2); border-radius: var(--r-lg);
-  background: none; font: inherit; cursor: pointer; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--sunk); font: inherit; cursor: pointer; text-align: center;
 }
 .ti-drop[hidden] { display: none; }
 .ti-drop .dz-ic svg { width: 26px; height: 26px; stroke: var(--ink-3); stroke-width: 1.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }

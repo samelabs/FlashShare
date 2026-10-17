@@ -191,8 +191,19 @@
 @media (hover:hover) and (pointer:fine) { .btn-danger:hover { background: var(--danger); color: var(--brand-ink); } }
 .form-hint { color: var(--danger); font-size: var(--fs-sm); margin: calc(-1 * var(--s1)) 0 var(--s1); }
 
-/* ── API keys 页 (/account/keys): 创建行 + 列表 ── */
-.key-create-row { display: flex; flex-direction: column; gap: var(--form-gap); margin-block-start: var(--s3); }
+/* ── API keys 页 (/account/keys): 创建行 + 列表 ──
+   创建行桌面横排 (输入框伸展 + 按钮自然宽); 窄屏堆叠, 按钮右对齐
+   自然宽 — 账户区动作按钮统一右对齐, 不再拉伸满宽。 */
+.key-create-row { display: flex; gap: var(--form-gap); margin-block-start: var(--s3); }
+.key-create-row .input { flex: 1; min-width: 0; }
+.key-create-row .btn { flex: none; }
+@media (max-width: 560px) {
+  .key-create-row { flex-direction: column; }
+  .key-create-row .btn { align-self: flex-end; }
+}
+/* 账户区复用 auth-form 布局的表单: 动作按钮右对齐自然宽
+   (auth 窄卡场景不受影响, 仍为全宽主按钮)。 */
+.acct-body .auth-form > .btn { align-self: flex-end; }
 .key-list { display: flex; flex-direction: column; margin-block-start: var(--form-gap); }
 .key-item { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding: var(--s2) 0; border-block-end: 1px solid var(--line); }
 .key-item:last-child { border-block-end: 0; }
@@ -435,7 +446,8 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .acct-body { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 1023px) {
   .acct-layout { display: block; }
-  .acct-nav { position: static; flex-direction: row; gap: 2px; overflow-x: auto; scrollbar-width: none; border-radius: var(--r-full); }
+  .acct-nav { position: static; flex-direction: row; gap: 2px; overflow-x: auto; scrollbar-width: none; border-radius: var(--r-full);
+              -webkit-mask-image: linear-gradient(90deg, var(--ink) calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, var(--ink) calc(100% - 28px), transparent); }
   .acct-nav::-webkit-scrollbar { display: none; }
   .acct-tab { flex: none; padding: 8px 12px; border-radius: var(--r-full); }
   .acct-tab.active { background: var(--ink); color: var(--brand-ink); }
@@ -1010,6 +1022,8 @@ body { overflow-x: clip; }
   .pub-aside { position: static; }
 }
 
+/* /account/credits: 余额 + 每日奖励同属一张钱包卡, 不再裸坐页面背景 */
+.acct-hero { display: flex; align-items: center; gap: var(--s4); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg, 16px); padding: 18px 20px; }
 .acct-bal-num { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--ink); }
 .acct-bal-label { font-size: var(--fs-sm); color: var(--ink-3); margin-top: 4px; }
 @media (max-width: 1100px) {
@@ -1034,6 +1048,8 @@ body { overflow-x: clip; }
 .acct-page .fav-remove { align-self: flex-start; }
 .acct-page .fav-remove svg { width: 14px; height: 14px; fill: currentColor; color: var(--warn); }
 .acct-page .fav-empty[hidden] { display: none; }
+/* 收藏空态与其他账户页同穿一张卡 (empty 基础样式自带 padding) */
+.acct-page .fav-empty { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg, 16px); }
 
 /* ═══ UI-polish: 触控目标 / 移动语言入口 / 市场卡等高 (作用域选择器) ═══ */
 /* 触控: 视觉不变, 伪元素扩展点击区 — 移动 ≥44, 桌面 ≥24 */
