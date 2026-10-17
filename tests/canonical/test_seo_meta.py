@@ -190,7 +190,7 @@ def main():
         check(f"M {p}: canonical + og:url = BASE_URL + path",
               canon == BASE_URL + p and _meta(html, "og:url") == canon, f"{canon!r}")
         check(f"M {p}: og:image + twitter:card large",
-              _meta(html, "og:image") == f"{BASE_URL}/static/images/og-image.png?v=3"
+              _meta(html, "og:image") == f"{BASE_URL}/brand/web/og-image.png"
               and _meta(html, "og:image:width") == "1200"
               and _meta(html, "og:image:height") == "630"
               and _meta(html, "og:image:alt") == og_t
