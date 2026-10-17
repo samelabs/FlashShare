@@ -115,7 +115,13 @@ def _validated(params: dict):
 
 
 @router.get("/.well-known/oauth-protected-resource")
+@router.get("/.well-known/oauth-protected-resource/mcp")
 async def protected_resource_metadata():
+    # Two discovery forms per RFC 9728: the root form and the
+    # path-inserted form. The protected resource IS /mcp (a path under
+    # this host), and some MCP clients derive the metadata URL by
+    # inserting the well-known prefix before the resource path — a 404
+    # there reads as "no OAuth" to them.
     return {
         "resource": MCP_RESOURCE,
         "authorization_servers": [ISSUER],

@@ -204,7 +204,7 @@ pre { margin: 0; font-family: var(--font-mono); }
 }
 
 /* ── Layout containers ─────────────────────────────────────── */
-.wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gut); }
+.wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gut); }
 .container-read { width: min(var(--container-read), 100% - var(--s6)); margin-inline: auto; }
 .container-work { width: min(var(--container-work), 100% - var(--s6)); margin-inline: auto; }
 @media (max-width: 767px) {

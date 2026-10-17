@@ -243,7 +243,7 @@
 .panel .d { font-size: 13px; color: var(--ink-2); margin-top: 5px; line-height: 1.5; }
 
 /* ── Doc Pages ───────────────────────────────────────────── */
-.doc { line-height: 1.7; width: 100%; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
+.doc { line-height: 1.7; width: 100%; max-width: 760px; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
 .doc h1 { font-size: var(--fs-xl); }
 .doc .share-bar.sb-compact { margin: 10px 0 30px; }
 .doc h2 { margin: 2em 0 0.6em; font-size: 19px; line-height: 1.35; letter-spacing: -0.01em; }
