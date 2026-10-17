@@ -280,7 +280,7 @@ register(
 register(
     "demo_shout", "Shout", "wand", demo_shout_handler,
     accept=None, files_min=0, files_max=0, outputs=("text",),
-    desc={"en": "Turns your text into UPPERCASE — the chat-form reference tool.",
+    desc={"en": "Turns your text into UPPERCASE — a demo of the chat-form input.",
           "zh": "把你的文本变成大写——对话式输入的参考工具。"},
     params=[
         {"key": "text", "type": "text", "label": {"en": "Text", "zh": "文本"},

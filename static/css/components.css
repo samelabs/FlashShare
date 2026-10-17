@@ -843,8 +843,12 @@ pre.rs-text, pre.rs-json {
   /* 添加文件: 移动端图标按钮; .ib 统一伪元素扩点击区到 ≥44 (视觉不变) */
   .tp-seg .tp-option { min-height: 44px; }
 }
-/* 输入区挂载预留高度 (CLS) */
+/* 输入区挂载预留高度 (CLS)。224 = 首页/纯文件工具的挂载高度;
+   工具页多出参数卡行 (实测 compress 381 / ico 433 @390), 按页加高
+   预留把挂载增长压到 ≈0, 挂载后回落只影响卡下方内容。 */
 .ti-mount { min-height: 224px; }
+@media (max-width: 767px) { .toolpage .ti-mount { min-height: 384px; } }
+@media (min-width: 768px) { .toolpage .ti-mount { min-height: 328px; } }
 
 /* Phone: file rows wrap — name keeps its line, meta + actions flow */
 @media (max-width: 599px) {
