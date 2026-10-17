@@ -1,0 +1,24 @@
+{# Static page (terms / privacy / developer guide): one column, one
+   .wrap, one share bar under the title. The name is generic because
+   a static page is a static page — nothing about "doc" made it
+   special. #}
+{% extends "base.html" %}
+{% block title %}{{ page_title }} - {{ APP_NAME }}{% endblock %}
+{% block desc %}{{ page_desc }}{% endblock %}
+
+{% block content %}
+{% from "partials/share_bar.html" import share_bar with context %}
+<section class="page">
+  <div class="wrap">
+    <div class="sec-h">
+      <div>
+        <h1>{{ page_title }}</h1>
+        {% if page_share %}{{ share_bar(page_share_url, page_title, qr_src="/qr.svg?p=" ~ (page_share_path | urlencode), compact=true) }}{% endif %}
+      </div>
+    </div>
+    <div class="doc">
+      {{ page_body|safe }}
+    </div>
+  </div>
+</section>
+{% endblock %}

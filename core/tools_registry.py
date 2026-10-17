@@ -20,7 +20,7 @@ import io
 
 from PIL import Image, ImageFilter, ImageChops, ImageOps
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 MAX_DIM = 4096  # same ceiling as compress — no extra shrink below it
 
@@ -164,8 +164,7 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
     out_buf.seek(0)
 
     orig_name = tool_input.get("filename", "image")
-    stem = orig_name.rsplit(".", 1)[0] if "." in orig_name else orig_name
-    out_name = f"{stem}_clean.{out_ext}"
+    out_name = out_filename(orig_name, out_ext)
 
     return {
         "items": [{
@@ -184,6 +183,12 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 # Registered first so it appears as the leftmost tool button.
 # When selected (or by default when no tool is selected), files upload
 # normally with no processing — identical to the pre-tool behavior.
+
+def demo_shout_handler(tool_input, params):
+    """Demo text-only tool (files 0..0): the chat-form reference shape."""
+    text = str((params or {}).get("text") or "")
+    return {"items": [{"kind": "text", "text": text.upper()}]}
+
 
 def share_handler(tool_input, params):
     """Identity handler — every input file comes back as one file item,
@@ -269,5 +274,16 @@ register(
              {"value": "max", "label": {"en": "Max", "zh": "强力", "ja": "最大", "ko": "최대", "es": "Máx", "ar": "أقصى", "de": "Max", "ru": "Макс", "pt": "Máx", "fr": "Max"}},
          ],
          "default": "standard"},
+    ],
+)
+
+register(
+    "demo_shout", "Shout", "wand", demo_shout_handler,
+    accept=None, files_min=0, files_max=0, outputs=("text",),
+    desc={"en": "Turns your text into UPPERCASE — a demo of the chat-form input.",
+          "zh": "把你的文本变成大写——对话式输入的参考工具。"},
+    params=[
+        {"key": "text", "type": "text", "label": {"en": "Text", "zh": "文本"},
+         "required": True},
     ],
 )

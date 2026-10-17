@@ -53,7 +53,7 @@ Content-Type: application/json
 </ul>
 
 <h2>Auth header and security</h2>
-<p>Optional: store a header name and token (for example <code>Authorization: Bearer …</code>) with your submission; the platform seals the token and sends the header on every call. Transport-owned header names (Host, Content-Length, …) are refused at submission.</p>
+<p>Optional: store a header name and token (for example <code>Authorization: Bearer …</code>) with your submission; the platform stores the token encrypted and sends the header on every call. Transport-owned header names (Host, Content-Length, …) are refused at submission.</p>
 <ul>
   <li>The signed source URLs are one-time and short-lived — they cannot be reused or shared.</li>
   <li>Your endpoint must be public HTTPS: private, loopback and metadata addresses are refused (SSRF guard on every hop, redirects included).</li>
@@ -64,7 +64,7 @@ Content-Type: application/json
 <p>You set the price per call in credits — 0 (free) up to {{ max_price }}, where 1000 credits = 1 USD. On every successful paid call your earnings pool is credited the price minus the {{ commission_rate if commission_rate is not none else '—' }}% platform commission. Earnings are withdrawable in USD (minimum ${{ min_withdrawal_usd }}); credits you spend are a separate pool.</p>
 
 <h2>Discovery and invocation</h2>
-<p>Every tool gets its own page on the web. On MCP your tool is named <code>owner__tool</code> (for example <code>alice__pdf2svg</code>); agents find it with <code>catalog_search</code> and can call it by name right away — the search result already carries the full input schema. Users who like it pin it to their favorites, which puts it in their <code>tools/list</code> working set.</p>
+<p>Every tool gets its own page on the web. On MCP your tool is named <code>owner__tool</code> (for example <code>alice__pdf2svg</code>); agents find it with <code>catalog_search</code> and can call it by name right away — the search result already carries the full input schema. Users who like it pin it to their favorites — pinned tools appear in their <code>list_favorites</code> list and carry a favorite flag in <code>tools/list</code>.</p>
 
 <h2>Minimal example endpoints</h2>
 <p>Python (FastAPI) — text in, text + json out:</p>

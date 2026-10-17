@@ -123,6 +123,10 @@ def _numfmt(value, lang: str):
 
 templates.env.filters["num"] = _numfmt
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+# Brand single source (brand/README.md): the site references the logo
+# kit through /brand/ directly — no copies live under /static.
+_BRAND_DIR = _BASE_DIR / "brand"
+app.mount("/brand", StaticFiles(directory=str(_BRAND_DIR)), name="brand")
 
 
 # ── Auth helpers ──

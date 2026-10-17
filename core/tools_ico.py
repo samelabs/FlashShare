@@ -7,7 +7,7 @@ Pure Pillow, zero I/O dependencies.
 import io
 import os
 from PIL import Image
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 ACCEPTED_EXTS = {".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -88,7 +88,7 @@ def ico_handler(tool_input, params):
     # Derive output filename
     original = tool_input.get("filename", "favicon")
     base = original.rsplit(".", 1)[0] if "." in original else original
-    out_name = f"{base}.ico"
+    out_name = out_filename(original, "ico", default_stem="favicon")
 
     return {
         "items": [{

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="static/images/icon-192.png" width="72" alt="518.PLUS">
+<img src="brand/web/icon-192.png" width="72" alt="518.PLUS">
 
 # 518.PLUS
 
@@ -48,6 +48,8 @@ claude mcp add --transport http 518 https://518.plus/mcp --header "Authorization
   }
 }
 ```
+
+打包插件或连接器？使用 OAuth 2.1——client id 即你的客户端元数据文档的 HTTPS 地址（CIMD）；发现入口：[518.plus/.well-known/oauth-authorization-server](https://518.plus/.well-known/oauth-authorization-server)。能力范围：`tools:call`、`files:read`、`files:delete`。
 
 文件可内联（base64）、给 HTTPS 链接，大文件走两段式上传。每次调用带 `client_ref`，重试不会重复扣费。完整的 Agent 指南见 [518.plus/llms.txt](https://518.plus/llms.txt)。
 

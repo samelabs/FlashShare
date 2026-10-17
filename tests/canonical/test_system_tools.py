@@ -192,6 +192,9 @@ def psnr_rgb(a, b):
 # EVERY registered first-party tool must appear here at least once.
 
 FIXTURES = {
+    "demo_shout": [
+        {"files": [], "params": {"text": "hello 518"}},
+    ],
     "share": [
         {"files": [(b"alpha-bytes-1", "a.txt", "text/plain"),
                    (b"beta-bytes-22", "b.txt", "text/plain")], "params": {}},
@@ -334,8 +337,11 @@ def spec_privacy():
         img = Image.open(io.BytesIO(it["data"]))
         check(f"privacy/{preset} JPEG→JPEG", it["content_type"] == "image/jpeg"
               and img.format == "JPEG", f"{img.format} {it['content_type']}")
-        check(f"privacy/{preset} filename photo_clean.jpg",
-              it["filename"] == "photo_clean.jpg", it["filename"])
+        # 产出名规范: 原名 + 4 位短随机 (tools.out_filename 单源)
+        import re as _re
+        check(f"privacy/{preset} filename = stem + short random",
+              bool(_re.fullmatch(r"photo_[0-9a-f]{4}\.jpg", it["filename"])),
+              it["filename"])
         no_exif = (b"Exif\x00\x00" not in it["data"]
                    and b"xpacket" not in it["data"]
                    and b"ICC_PROFILE" not in it["data"]
@@ -379,7 +385,8 @@ def spec_privacy():
     _, out = run_tool("privacy", {"files": [(bmp.getvalue(), "x.bmp", "image/bmp")],
                                   "params": {"preset": "standard"}})
     check("privacy BMP(no alpha)→JPEG", out["items"][0]["content_type"] == "image/jpeg"
-          and out["items"][0]["filename"] == "x_clean.jpg", out["items"][0]["filename"])
+          and bool(__import__("re").fullmatch(r"x_[0-9a-f]{4}\.jpg",
+                out["items"][0]["filename"])), out["items"][0]["filename"])
 
 
 def spec_compress():

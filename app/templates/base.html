@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="author" content="518.PLUS">
-  <link rel="icon" href="/static/images/favicon.ico?v=3" sizes="any">
+  <link rel="icon" href="/brand/web/favicon.ico" sizes="any">
   <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM guide">
   <link rel="service" type="application/json" href="/mcp" title="MCP endpoint">
-  <link rel="apple-touch-icon" href="/static/images/apple-touch-icon.png?v=3">
+  <link rel="apple-touch-icon" href="/brand/web/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   {% block head %}{% endblock %}
   {# ── SEO/social single point ────────────────────────────────────
@@ -53,6 +53,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="{{ APP_NAME }}">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/css/tokens.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/518.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/css/components.css?v={{ css_version }}">
@@ -83,6 +84,7 @@
 window.__USER__ = {{ user_json|tojson }};
 window.__LANG = "{{ lang }}";
 window.__X_LOGIN__ = {{ x_login_enabled|tojson }};
+window.__BASE_URL__ = "{{ BASE_URL }}";
 </script>
 <script src="/static/pages/icons.js?v={{ pages_version }}"></script>
 <script src="/static/pages/base-engine.js?v={{ pages_version }}"></script>

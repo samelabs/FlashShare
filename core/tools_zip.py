@@ -13,7 +13,7 @@ import io
 import os
 import zipfile
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 MAX_SOURCES = 20
 
@@ -77,7 +77,7 @@ def zip_pack_handler(tool_input, params):
         "items": [{
             "kind": "file",
             "stream": out_buf,
-            "filename": "files.zip",
+            "filename": out_filename(None, "zip", default_stem="files"),
             "content_type": "application/zip",
             "size": len(raw),
         }],

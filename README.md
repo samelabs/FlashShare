@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="static/images/icon-192.png" width="72" alt="518.PLUS">
+<img src="brand/web/icon-192.png" width="72" alt="518.PLUS">
 
 # 518.PLUS
 
@@ -48,6 +48,8 @@ Any MCP client (Streamable HTTP):
   }
 }
 ```
+
+Packaging a plugin or connector? Use OAuth 2.1 — the client id is an HTTPS URL to your client metadata document (CIMD); discovery starts at [518.plus/.well-known/oauth-authorization-server](https://518.plus/.well-known/oauth-authorization-server). Scopes: `tools:call`, `files:read`, `files:delete`.
 
 Files go in inline (base64), by HTTPS URL, or through a two-step upload for large files. Every call takes a `client_ref`, so retries never charge twice. The full agent guide is at [518.plus/llms.txt](https://518.plus/llms.txt).
 

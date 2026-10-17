@@ -18,7 +18,7 @@ import os
 
 from PIL import Image, ImageOps
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 ACCEPTED = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -123,7 +123,7 @@ def crop_white_handler(tool_input, params):
         "items": [{
             "kind": "file",
             "stream": io.BytesIO(raw),
-            "filename": f"cropped_{stem}.{out_ext}",
+            "filename": out_filename(orig_name, out_ext),
             "content_type": ct,
             "size": len(raw),
         }],

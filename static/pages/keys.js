@@ -3,14 +3,10 @@
 // (the server keeps an encrypted copy); Bearer access cannot read it.
 const _keyList = document.getElementById('keyList');
 
-async function _copyRaw(btn, text) {
-  // feedback applied synchronously; the clipboard write may await or
-  // fail (headless / denied permission) and must not delay it
-  const old = btn.innerHTML;
-  btn.textContent = '✓ ' + window.t('copied');
-  btn.classList.add('copied');
-  try { await navigator.clipboard.writeText(text); } catch (e) {}
-  setTimeout(() => { btn.innerHTML = old; btn.classList.remove('copied'); }, 1500);
+function _copyRaw(btn, text) {
+  // the one in-place confirmation (base-engine): busy-guarded, synced
+  window.copyFeedback(btn);
+  navigator.clipboard.writeText(text).catch(() => {});
 }
 
 async function loadKeys() {

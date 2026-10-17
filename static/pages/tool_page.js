@@ -29,17 +29,8 @@
       try {
         const payload = window.t("mcp_copy_text",
           { url: url.textContent.trim(), name: name.textContent.trim() });
+        window.copyFeedback(btn);
         await navigator.clipboard.writeText(payload);
-        const ic = btn.querySelector("svg");
-        if (!ic || btn.dataset.cpBusy) return;
-        btn.dataset.cpBusy = "1";
-        const orig = ic.outerHTML;
-        ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
-        setTimeout(() => {
-          const cur = btn.querySelector("svg") || btn.firstChild;
-          if (cur) cur.outerHTML = orig;
-          delete btn.dataset.cpBusy;
-        }, 1400);
       } catch (e) { /* clipboard blocked — the card text stays selectable */ }
     });
   }
@@ -52,17 +43,8 @@
   if (btn && code) {
     btn.addEventListener("click", async () => {
       try {
+        window.copyFeedback(btn);
         await navigator.clipboard.writeText(code.textContent);
-        const ic = btn.querySelector("svg");
-        if (!ic || btn.dataset.cpBusy) return;
-        btn.dataset.cpBusy = "1";
-        const orig = ic.outerHTML;
-        ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
-        setTimeout(() => {
-          const cur = btn.querySelector("svg") || btn.firstChild;
-          if (cur) cur.outerHTML = orig;
-          delete btn.dataset.cpBusy;
-        }, 1400);
       } catch (e) { /* clipboard blocked — the URL stays selectable */ }
     });
   }

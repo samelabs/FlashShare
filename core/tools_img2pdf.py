@@ -18,7 +18,7 @@ import os
 
 from PIL import Image, ImageOps
 
-from tools import register, ToolError
+from tools import out_filename, register, ToolError
 
 MAX_SOURCES = 20
 DPI = 150
@@ -107,7 +107,7 @@ def img2pdf_handler(tool_input, params):
         "items": [{
             "kind": "file",
             "stream": out_buf,
-            "filename": "images.pdf",
+            "filename": out_filename(None, "pdf", default_stem="images"),
             "content_type": "application/pdf",
             "size": len(raw),
         }],

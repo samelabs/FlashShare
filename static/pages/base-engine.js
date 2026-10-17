@@ -167,16 +167,13 @@ function _pwaSecondaryHandoff(downloadUrl) {
 // (AbortError) is a normal end.
 function _sbConfirm(btn) {
   if (!btn) return;
-  var ic = btn.querySelector("svg, .x-glyph");
-  if (!ic || btn.dataset.sbBusy) return;
-  btn.dataset.sbBusy = "1";
-  var orig = ic.outerHTML;
-  ic.outerHTML = window.iconSvg ? window.iconSvg("check") : "✓";
-  setTimeout(function () {
-    var now = btn.querySelector("svg") || btn.firstChild;
-    if (now) now.outerHTML = orig;
-    delete btn.dataset.sbBusy;
-  }, 1400);
+  var xGlyph = btn.querySelector(".x-glyph");
+  if (xGlyph) {
+    // X 分享钮: 𝕏 字形钮走文本形态
+    window.copyFeedback(btn);
+    return;
+  }
+  window.copyFeedback(btn);
 }
 window.shareLink = function (url, title, btn) {
   if (navigator.share) {
@@ -218,7 +215,10 @@ document.addEventListener("click", function (e) {
   var act = b.getAttribute("data-sb");
   if (act === "share") window.shareLink(url, bar.getAttribute("data-share-title"), b);
   else if (act === "copy" && navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(function () { _sbConfirm(b); }).catch(function () {});
+    // feedback FIRST (sync): a denied/delayed clipboard must never
+    // leave the click without response
+    window.copyFeedback(b);
+    navigator.clipboard.writeText(url).catch(function () {});
   } else if (act === "qr") _sbQr(b.getAttribute("data-qr-src"));
 });
 
@@ -239,6 +239,29 @@ window.globalToast = function (message) {
     el.classList.remove("on");
     setTimeout(function () { el.remove(); }, 260);
   }, 2600);
+};
+
+// ── Site-wide copy feedback (the ONE in-place confirmation for copy) ──
+// 交互规范: 复制属"就地确认"——触发钮图标翻对勾(图标钮)或文本变
+// 确认文案(文本钮, 走 i18n 的 copied 键), 1.4s 还原; busy 守卫防双击
+// 竞态(无守卫时第二击会把对勾当原样保存, 图标卡死)。全局 toast 留给
+// 事件通知(错误/成功类), 不打断的就地确认不弹 toast——两条通道分工。
+window.copyFeedback = function (btn) {
+  if (!btn || btn.dataset.cpBusy) return;
+  btn.dataset.cpBusy = "1";
+  var origHtml = btn.innerHTML;
+  var icon = btn.querySelector("svg");
+  if (icon && window.iconSvg) {
+    icon.outerHTML = window.iconSvg("check");
+  } else {
+    btn.textContent = "✓ " + (window.t ? window.t("copied") : "copied");
+  }
+  btn.classList.add("copied");
+  setTimeout(function () {
+    btn.innerHTML = origHtml;
+    btn.classList.remove("copied");
+    delete btn.dataset.cpBusy;
+  }, 1400);
 };
 
 // ── Site-wide async confirm authority (VIS-006 / RC-VIS-002) ──

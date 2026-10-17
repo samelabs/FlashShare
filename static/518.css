@@ -18,6 +18,9 @@
    item: 必须显式 width:100% — 只给 margin:auto 会关闭 stretch、
    收缩为 fit-content (各页随内容变宽)。 */
 .shell { width: 100%; max-width: var(--wrap); margin-inline: auto; padding: 0 var(--gut); flex: 1; display: flex; flex-direction: column; }
+/* 对齐铁律: shell 已有 24px 内边距, 页面内层的 .wrap 不再重复 —
+   否则正文 121 / 导航页脚 97, 三套左缘并存 (切页跳动的同族病) */
+.shell .wrap { padding-inline: 0; }
 
 /* ═══ 首页新结构样式 (STEP 2) ═══ */
 
@@ -49,9 +52,11 @@
 /* ── Header (v2 .hd) ─────────────────────────────────────── */
 .hd { position: sticky; top: 0; z-index: var(--z-dropdown); backdrop-filter: saturate(1.4) blur(14px); background: rgba(251, 251, 252, 0.72); border-bottom: 1px solid var(--line); }
 .hd .hd-in { height: 60px; display: flex; align-items: center; gap: 24px; }
-.logo { display: flex; align-items: center; gap: 9px; font-weight: 750; font-size: 17px; letter-spacing: -0.03em; flex-shrink: 0; white-space: nowrap; color: var(--ink); }
-.logo .logo-mark { width: 28px; height: 28px; display: block; flex-shrink: 0; }
-.logo b { color: var(--brand); }
+.logo { display: flex; align-items: center; flex-shrink: 0; white-space: nowrap; }
+/* 横版组合 (brand/svg/518-lockup.svg): 顶栏高 28, ≤640 高 24 — 尺寸由
+   brand/README 规定, 不外加 CSS 圆角/滤镜 */
+.logo .logo-lockup { height: 28px; width: auto; display: block; }
+@media (max-width: 640px) { .logo .logo-lockup { height: 24px; } }
 .nav { display: flex; gap: 2px; }
 .nav a { padding: 7px 12px; border-radius: var(--r-full); color: var(--ink-2); font-size: var(--fs-base); font-weight: 500; }
 .nav a:hover, .nav a.on { color: var(--ink); background: rgba(11, 13, 16, 0.05); }
@@ -65,8 +70,8 @@
 /* 语言入口 = 顶栏唯一挂载点: 菜单锚定到按钮自身 (所有视口可见),
    右对齐且永不超出视口 (RTL 由下方镜像规则翻转)。 */
 .lang-switch { position: relative; display: flex; align-items: center; }
-/* 顶栏菜单与锚定浮层家族同语言 (components.css popIn): 卡面 + line-2
-   描边 + 大圆角 + sh-3 投影 + 入场动画 */
+/* 顶栏菜单与锚定浮层家族同语言: 卡面 + line-2 描边 + 大圆角 + sh-3 投影;
+   @starting-style 入场 (与 tsel-pop 同机制, 无 display 切换首帧竞态) */
 .lang-menu, .user-dropdown {
   position: absolute; right: 0; top: calc(100% + var(--s1));
   z-index: var(--z-dropdown);
@@ -75,8 +80,9 @@
   border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--sh-3);
-  animation: popIn .14s var(--ease);
+  transition: opacity .14s var(--ease), transform .14s var(--ease);
 }
+@starting-style { .lang-menu, .user-dropdown { opacity: 0; transform: translateY(4px) scale(.98); } }
 .lang-menu { width: 144px; max-width: calc(100vw - 32px); }
 
 .user-dropdown.hidden, .lang-menu.hidden { display: none; }
@@ -169,7 +175,7 @@
 .file-page { width: min(560px,100%); margin: auto; padding: var(--s4) var(--s2); text-align: center; }
 .file-page h1 { margin: 0 0 var(--s2); font-size: clamp(17px,3vw,22px); line-height: 1.25; overflow-wrap: anywhere; font-weight: 800; }
 .qr-modal-panel { width: fit-content; padding: var(--s5); text-align: center; position: relative; }
-.qr-modal-panel img { border-radius: var(--r); border: 1px solid var(--line); }
+.qr-modal-panel img { width: min(240px, 62vw); height: auto; border-radius: var(--r); border: 1px solid var(--line); }
 
 /* ── Auth Pages ───────────────────────────────────────────── */
 .auth-page { max-width: 380px; margin: auto; padding: var(--s5) var(--s4) var(--s6); display: flex; flex-direction: column; gap: var(--s4); justify-content: center; }
@@ -242,17 +248,21 @@
 .panel .d { font-size: 13px; color: var(--ink-2); margin-top: 5px; line-height: 1.5; }
 
 /* ── Doc Pages ───────────────────────────────────────────── */
-.doc { line-height: 1.7; width: 100%; max-width: 760px; margin: 0 auto; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
+/* 静态页 (page.html): 与 agents/market 同一页头节奏 — 切页零漂移 */
+.page { padding: 40px 0 72px; min-width: 0; }
+.doc { line-height: 1.7; width: 100%; background: transparent; border: 0; border-radius: 0; padding: var(--s5) 0 0; }
+.doc p { max-width: none; }
 .doc h1 { font-size: var(--fs-xl); }
 .doc .share-bar.sb-compact { margin: 10px 0 30px; }
 .doc h2 { margin: 2em 0 0.6em; font-size: 19px; line-height: 1.35; letter-spacing: -0.01em; }
-.doc p { margin: 0 0 1em; max-width: 72ch; }
+.doc p { margin: 0 0 1em; }
 .doc ul, .doc ol { margin: 0 0 1.2em; padding-inline-start: 1.4em; }
 .doc li { margin: 0.35em 0; }
 .doc li::marker { color: var(--ink-3); }
 .doc .doc-pre { margin: 0 0 1.2em; }
 @media (max-width: 640px) {
-  .doc { padding: var(--s3) var(--s2) var(--s4); }
+  .page { padding: 24px 0 48px; }
+  .doc { padding: var(--s3) 0 0; }
   .doc h2 { font-size: 17px; margin: 1.6em 0 0.5em; }
   .doc p { max-width: none; }
 }
@@ -748,8 +758,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tp-h { display: flex; gap: 18px; align-items: center; }
 .tp-h .ic { width: 60px; height: 60px; border-radius: 18px; background: var(--card); border: var(--border-w) solid var(--line); box-shadow: var(--sh-2); display: grid; place-items: center; flex: none; }
 .tp-h .ic svg { width: 28px; height: 28px; stroke: var(--ink); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.tp-h h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; }
-.tp-h .tp-desc { color: var(--ink-2); margin-block-start: 2px; }
+.tp-h h1 { font-size: 32px; font-weight: 800; letter-spacing: var(--tracking-tighter); line-height: 1.15; }
 .tp-h .meta { display: flex; gap: 6px; margin-block-start: 10px; flex-wrap: wrap; align-items: center; }
 .tp-h .auth { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); margin-inline-end: 6px; }
 .tp-h .auth i { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, rgba(255, 107, 91, 1), rgba(255, 59, 79, 1)); display: inline-block; }
@@ -799,21 +808,25 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 
 /* ═══ 首页 (v2): hero / bento / dark / feat ═══ */
 .home { position: relative; }
-.glow { position: absolute; inset: 0 0 auto 0; height: 620px; pointer-events: none; z-index: -1;
-  background: radial-gradient(60% 50% at 50% 0%, rgba(255, 77, 77, 0.13), transparent 70%),
-    radial-gradient(30% 30% at 85% 10%, rgba(255, 160, 90, 0.10), transparent 70%); }
-.grid-bg { position: absolute; inset: 0 0 auto 0; height: 620px; z-index: -1; pointer-events: none;
-  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 48px 48px; mask-image: radial-gradient(70% 60% at 50% 0%, var(--ink) 30%, transparent 80%); opacity: 0.6; }
-.hero { padding: 56px 0 24px; text-align: center; position: relative; }
-.hero h1 { margin-top: 12px; font-size: var(--fs-2xl); line-height: 1.14; letter-spacing: -0.03em; font-weight: 800; color: var(--ink); }
-.hero h1 .grad { background: linear-gradient(92deg, rgba(255, 90, 77, 1) 10%, rgba(255, 45, 85, 1) 60%, rgba(255, 122, 69, 1)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* hero 背景: 单一极淡品牌色晕 (Stripe 式"一处光", 不做双色晕+网格
+   的模板堆叠)。网格退场。 */
+.glow { position: absolute; inset: 0 0 auto 0; height: 560px; pointer-events: none; z-index: -1;
+  background: radial-gradient(52% 46% at 50% 0%, rgba(217, 45, 58, 0.055), transparent 72%); }
+.grid-bg { display: none; }
+/* R2b: hero 左对齐排版 (居中悬挂是上一版廉价感主源)。标题两段
+   同行自然续接 — 无 <br> 劈句、无渐变断字。 */
+.hero { padding: 48px 0 24px; text-align: start; position: relative; }
+.hero h1 { margin-top: 10px; font-size: clamp(30px, 4.2vw, 44px); line-height: 1.14; letter-spacing: var(--tracking-tighter); font-weight: 800; color: var(--ink); }
+.hero h1 .grad { color: var(--brand-deep); }   /* 同色系强调, 不再渐变劈句 */
 .hero p { margin-top: 10px; color: var(--ink-2); font-size: var(--fs-lg); }
+.hero-join { margin-inline-start: var(--s3); color: var(--brand-deep); font-weight: 650; text-decoration: none; }
+.hero-join::after { content: "→"; margin-inline-start: 4px; transition: margin var(--ease-in); }
+@media (hover:hover) and (pointer:fine) { .hero-join:hover::after { margin-inline-start: 8px; } }
 /* hero 背景大字: MCP (装饰, 读屏隐藏) — 位于 glow/grid 之上、正文之下 */
-.home .hero-mark { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 0;
-  font-size: clamp(88px, 16vw, 190px); font-weight: 900; line-height: 1; letter-spacing: -0.06em;
+.home .hero-mark { position: absolute; right: -2%; top: 4px; z-index: 0;
+  font-size: clamp(88px, 15vw, 180px); font-weight: 900; line-height: 1; letter-spacing: -0.06em;
   white-space: nowrap; pointer-events: none; user-select: none;
-  background: linear-gradient(180deg, rgba(255, 77, 77, 0.10), rgba(255, 77, 77, 0.01) 85%);
+  background: linear-gradient(180deg, rgba(217, 45, 58, 0.035), rgba(217, 45, 58, 0.003) 85%);
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .home .hero > .wrap { position: relative; z-index: 1; }
 .home .hero-sub { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
@@ -844,8 +857,12 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
    点浮层外任意处关闭 (home.js document 级监听), Esc 关闭。
    入场动画自带 translate(-50%,-50%) — 复用 modalIn 的纯 scale
    会在动画期覆盖居中偏移导致跳位 */
-@keyframes tselIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
-.tsel-pop { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: var(--z-modal); width: min(360px, calc(100vw - 48px)); max-height: min(64vh, 460px); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--sh-3); padding: var(--s2); animation: tselIn .16s var(--ease); }
+/* 入场走 @starting-style + transition (W3C 为 display 切换首帧竞态设计的
+   标准机制): display:none→flex 时浏览器以 starting-style 为过渡起点,
+   不会先绘制终态再重播 — animation 方式存在"先闪现完整面板再淡入"的
+   首帧竞态 (呼出闪动)。关闭即 display:none, 瞬时退出 (同浮层家族)。 */
+.tsel-pop { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: var(--z-modal); width: min(360px, calc(100vw - 48px)); max-height: min(64vh, 460px); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--sh-3); padding: var(--s2); transition: opacity .16s var(--ease), transform .16s var(--ease); }
+@starting-style { .tsel-pop { opacity: 0; transform: translate(-50%, -48%) scale(.97); } }
 .tsel-filter { padding: 2px var(--s1) var(--s2); }
 .tsel-filter input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-size: var(--fs-base); color: var(--ink); background: var(--bg); }
 .tsel-filter input:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: var(--brand); }
@@ -859,18 +876,39 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* sections */
 .sec { padding: 48px 0; }
 .sec-h { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.sec-h h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+/* 页头 h1: 全站一份 (agents/market/pricing/page 同一排版, 消除切页漂移) */
+.sec-h h1 { margin: 0; font-size: 28px; font-weight: 750; letter-spacing: -0.03em; line-height: 1.2; }
+.sec-h h2 { font-size: 22px; font-weight: 700; letter-spacing: var(--tracking-tight); }
 .sec-h p { color: var(--ink-3); font-size: 14px; margin-top: 4px; }
 .bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 /* .tc 卡本体 = components.css (home/market/user/favorites 单源四行卡) */
 
-.dark { background: var(--ink); color: var(--card); border-radius: var(--r-xl); padding: 48px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; position: relative; overflow: hidden; }
-.dark:before { content: ""; position: absolute; inset: auto -10% -60% 40%; height: 120%; background: radial-gradient(closest-side, rgba(255, 77, 77, 0.35), transparent); pointer-events: none; }
-.dark h3 { font-size: 30px; font-weight: 750; letter-spacing: -0.03em; line-height: 1.15; }
-.dark p { color: rgba(255, 255, 255, 0.66); margin-top: 12px; }
+/* dark 区 (终端卡升走后): 单栏居中陈述 + 细品牌顶线; 霓虹光晕退场 */
+.dark {
+  background: linear-gradient(180deg, var(--gray-900), var(--ink));
+  color: var(--card); border-radius: var(--r-xl); padding: 44px 48px;
+  position: relative; overflow: hidden;
+}
+.dark::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand-deep), transparent); }
+.dark > div { max-width: 560px; margin-inline: auto; text-align: center;
+  display: flex; flex-direction: column; align-items: center; }
+.dark h3 { font-size: 28px; font-weight: 750; letter-spacing: var(--tracking-tight); line-height: 1.18; margin: 0; }
+.dark p { color: rgba(255, 255, 255, 0.62); margin-top: 10px; }
 .dark .btn-s { background: var(--card); color: var(--ink); border: 0; }
 .dark .btn-q { color: rgba(255, 255, 255, 0.84); }
 .term { background: var(--term-bg); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--r); padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--term-ink); position: relative; overflow-x: auto; }
+/* 活终端 (hero): macOS 窗控点 + 打字机回放体; 光标闪烁 */
+.term-live { padding-top: 40px; min-height: 168px; }
+.term-dots { position: absolute; top: 14px; left: 14px; display: flex; gap: 6px; }
+.term-dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.14); }
+.term-dots i:first-child { background: rgba(255, 95, 86, 0.75); }
+.term-dots i:nth-child(2) { background: rgba(255, 189, 46, 0.7); }
+.term-dots i:nth-child(3) { background: rgba(39, 201, 63, 0.7); }
+.term-body { margin: 0; font: inherit; line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+.term-body::after { content: "▋"; margin-inline-start: 2px; color: var(--term-ok); animation: termCaret 1s steps(1) infinite; }
+@keyframes termCaret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .term-body::after { animation: none; } }
 .term .c { color: var(--term-dim); }
 .term .k { color: var(--term-warm); }
 .term .g { color: var(--term-ok); }
@@ -895,7 +933,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .bento { grid-template-columns: 1fr 1fr; gap: 10px; }
   .sec { padding: 48px 0; }
   .sec-h h2 { font-size: 22px; }
-  .dark { grid-template-columns: 1fr; padding: 28px 22px; gap: 24px; }
+  .dark { padding: 30px 22px; }
   .dark h3 { font-size: 24px; }
 }
 
@@ -938,7 +976,18 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* ── acceptance fixes: result host is not a second card; left-aligned
    composer/result inside the centered hero; /r rows read left-to-right ── */
 .result:has(> .out) { padding: 0; background: none; border: 0; box-shadow: none; }
-.hero .home-composer, .hero .result { text-align: start; max-width: 760px; margin-inline: auto; }
+/* R2 hero 双栏: 输入框主位 (composer 收窄到工作宽度), 终端卡是
+   主视觉配角; <1024px 纵向堆叠 */
+.hero-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr); gap: var(--s8); align-items: center; margin-top: var(--s6); text-align: start; }
+.hero .home-composer, .hero .result { text-align: start; max-width: 640px; }
+.hero .hero-main { min-width: 0; } /* grid 子项缺 0 时长文件名撑破容器 (390px 溢出根因) */
+.hero .hero-share { margin-top: var(--s3); justify-content: flex-start; }
+.hero-term { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.hero-term .term { border-radius: var(--r-lg); box-shadow: var(--sh-3); font-size: 12.5px; }
+@media (max-width: 1023px) {
+  .hero-grid { grid-template-columns: 1fr; gap: var(--s5); }
+  .hero-term { order: 2; }
+}
 .hero .result { margin-top: var(--s5); }
 .r-page .rc-files, .r-page .item-file, .r-page .if-body { text-align: start; }
 .r-page .item-file { flex-wrap: nowrap; }
@@ -954,7 +1003,6 @@ body { overflow-x: clip; }
 
 /* ═══ 工具市场 (v2) ═══ */
 .market-v2 { padding: 40px 0 72px; min-width: 0; }
-.market-v2 .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .market-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
 .market-search { margin: 0 0 20px; max-width: 460px; }
 .market-bento { grid-template-columns: repeat(4, 1fr); }
@@ -963,13 +1011,13 @@ body { overflow-x: clip; }
 
 /* ═══ /pricing ═══ */
 .pricing-page { padding: 40px 0 72px; min-width: 0; }
-.pricing-page .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .pricing-page .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
-.pricing-page .pr-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; align-items: stretch; }
+/* 列宽上限 360: 一张卡(免费)不横跨整行, 多卡自然成排 */
+.pricing-page .pr-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 360px)); gap: 16px; align-items: stretch; justify-content: start; }
 .pricing-page .pr-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); }
 .pricing-page .pr-card.on { border-color: var(--brand); }
 .pricing-page .pr-name { font-size: var(--fs-md); font-weight: 700; color: var(--ink); }
-.pricing-page .pr-price { font-size: 32px; font-weight: 750; letter-spacing: -0.03em; color: var(--ink); line-height: 1.1; }
+.pricing-page .pr-price { font-size: 32px; font-weight: 750; letter-spacing: var(--tracking-tighter); font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1.1; }
 .pricing-page .pr-per { font-size: var(--fs-sm); font-weight: 500; color: var(--ink-3); margin-left: 4px; letter-spacing: 0; }
 .pricing-page .pr-desc { margin: 0; font-size: var(--fs-sm); color: var(--ink-2); }
 .pricing-page .pr-credits { font-size: var(--fs-sm); font-weight: 700; color: var(--brand-600); }
@@ -991,18 +1039,20 @@ body { overflow-x: clip; }
 
 /* ═══ /agents (v2) ═══ */
 .agents-v2 { padding: 40px 0 72px; min-width: 0; }
-.agents-v2 .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .agents-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
-.agents-topbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: 20px; }
+.agents-topbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: 20px; max-width: 560px; }
 .agents-topbar .agents-url { flex: 1; min-width: 260px; }
+.agents-topbar .input { text-overflow: ellipsis; }
 .agents-v2 .hint { margin: 10px 0 0; }
 .agents-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; }
-.step-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px; display: flex; gap: 12px; align-items: flex-start; }
+.step-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px; display: flex; gap: 12px; align-items: flex-start; transition: border-color var(--ease), box-shadow var(--ease); }
+@media (hover:hover) and (pointer:fine) { .step-card:hover { border-color: var(--line-2); box-shadow: var(--sh-1); } }
 .step-card .n { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--brand-ink); display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; }
 .step-card p { font-size: 13.5px; color: var(--ink-2); margin: 0; }
 .agents-tabs-wrap { margin-top: 28px; }
 .agents-tabs { margin-bottom: 12px; flex-wrap: wrap; }
 .tab-panel { position: relative; }
+@media (hover:hover) and (pointer:fine) { .agents-tabs [data-tab]:not(.on):hover { color: var(--ink); background: var(--gray-100); } }
 .tab-copy { position: absolute; top: 10px; right: 10px; z-index: 2; }
 .tab-term { margin: 0; padding-top: 56px; white-space: pre-wrap; word-break: break-word; }
 .agents-market-link { margin-top: 28px; }

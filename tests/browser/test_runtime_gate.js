@@ -793,9 +793,18 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       const ctx = await browser.newContext({ viewport: { width: 390, height: 844, hasTouch: true } });
       await ctx.addInitScript(() => {
         window.__cls = 0;
+        window.__clsSrcs = [];
         try {
           new PerformanceObserver((l) => {
-            for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
+            for (const e of l.getEntries()) if (!e.hadRecentInput) {
+              window.__cls += e.value;
+              for (const src of (e.sources || [])) {
+                const n = src.node;
+                window.__clsSrcs.push(Math.round(e.value * 1000) / 1000 + " " +
+                  (n ? (n.tagName + "." + String(n.className).slice(0, 34)) : "null") +
+                  " y" + Math.round(src.previousRect.y) + ">" + Math.round(src.currentRect.y));
+              }
+            }
           }).observe({ type: "layout-shift", buffered: true });
         } catch (e) { /* older engine */ }
       });
@@ -907,8 +916,12 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         fHome === fToolV && fHome === fPub && fHome !== "none", `${fHome} | ${fToolV} | ${fPub}`);
 
       // (e) CLS on tool page (same page), then home, then publish edit
-      const clsTool = await page.evaluate(() => +(window.__cls || 0).toFixed(3));
-      check("polish CLS tool page <= 0.1", clsTool <= 0.1, String(clsTool));
+      const clsTool = await page.evaluate(() => ({
+        v: +(window.__cls || 0).toFixed(3),
+        top: (window.__clsSrcs || []).slice(0, 5),
+      }));
+      check("polish CLS tool page <= 0.1", clsTool.v <= 0.1,
+        String(clsTool.v) + (clsTool.v > 0.1 ? " | " + clsTool.top.join(" ; ") : ""));
       const home = await ctx.newPage();
       await gotoReady(home, "/", "body");
       await home.waitForTimeout(1200);

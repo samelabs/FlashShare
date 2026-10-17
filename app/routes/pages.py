@@ -160,9 +160,11 @@ async def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
-    ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": "", "doc_title": ctx["texts"].get("terms_title", "Terms of Service"),
-        "doc_desc": ctx["texts"].get("terms_desc", ""), "doc_body": _load_doc("terms.html", lang) + _support_note()})
-    return templates.TemplateResponse(request, "doc.html", ctx)
+    ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": "",
+        "page_title": ctx["texts"].get("terms_title", "Terms of Service"),
+        "page_desc": ctx["texts"].get("terms_desc", ""),
+        "page_body": _load_doc("terms.html", lang) + _support_note()})
+    return templates.TemplateResponse(request, "page.html", ctx)
 
 
 @router.get("/privacy", response_class=HTMLResponse)
@@ -170,9 +172,9 @@ async def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
-    ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": "", "doc_title": ctx["texts"].get("privacy_title", "Privacy Policy"),
-        "doc_desc": ctx["texts"].get("privacy_desc", ""), "doc_body": _load_doc("privacy.html", lang) + _support_note()})
-    return templates.TemplateResponse(request, "doc.html", ctx)
+    ctx.update({"shell_class": "", "seo_robots": "index, follow", "share_url": "", "page_title": ctx["texts"].get("privacy_title", "Privacy Policy"),
+        "page_desc": ctx["texts"].get("privacy_desc", ""), "page_body": _load_doc("privacy.html", lang) + _support_note()})
+    return templates.TemplateResponse(request, "page.html", ctx)
 
 
 def _developer_facts() -> dict:
@@ -228,14 +230,16 @@ async def developers(request: Request):
         "shell_class": "",
         "seo_robots": "index, follow",
         "share_url": "",
-        "doc_title": title,
-        "doc_desc": desc,
-        "doc_body": body,
-        "doc_share_url": f"{BASE_URL}/developers",
+        "page_title": title,
+        "page_desc": desc,
+        "page_body": body,
+        "page_share": True,
+        "page_share_url": f"{BASE_URL}/developers",
+        "page_share_path": "/developers",
         "og_title": title,
         "og_desc": desc,
     })
-    return templates.TemplateResponse(request, "doc.html", ctx)
+    return templates.TemplateResponse(request, "page.html", ctx)
 
 
 @router.get("/agents", response_class=HTMLResponse)

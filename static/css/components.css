@@ -16,12 +16,15 @@ input, select, textarea {
 }
 select { width: auto; margin-top: 0; }
 
-/* Legacy element baseline (auth surfaces pre-date .btn): brand pill. */
-.x-login, button { border: 0; background: var(--brand); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; transition: opacity var(--ease), background var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
-@media (hover:hover) and (pointer:fine) { button:hover { background: var(--brand-strong); } }
+/* Legacy element baseline (auth surfaces pre-date .btn): brand pill.
+   Primary fill = deep crimson with a subtle vertical shade and inner
+   highlight (Stripe-style material); the neon --brand is an accent,
+   not a fill. */
+.x-login, button { border: 0; background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); transition: opacity var(--ease), box-shadow var(--ease), filter var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
+@media (hover:hover) and (pointer:fine) { button:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.16); } }
 .x-login:active, button:active { transform: scale(0.96); }
 .user-dropdown a:active, .user-dropdown button:active { transform: none; } /* menu rows must not wobble */
-@media (hover:hover) and (pointer:fine) { .x-login:hover, button:hover { opacity: .85; } }
+@media (hover:hover) and (pointer:fine) { .x-login:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); } }
 .x-login.loading { pointer-events: none; opacity: .7; }
 button:disabled { opacity: .4; cursor: not-allowed; }
 button svg { width: 18px; height: 18px; display: block; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; fill: none; }
@@ -56,15 +59,22 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
 }
 
+/* 主行动 = 深红材质 (同全局基样); ink 版主按钮不再使用——一个页面
+   一个红, 中性面交给 secondary */
 .btn.btn-primary, .btn.btn-p, a.btn-primary, a.btn-p {
-  background: var(--ink); border-color: var(--ink); color: var(--brand-ink);
+  background: linear-gradient(180deg, var(--brand-600), var(--brand-deep));
+  border-color: var(--brand-deep); color: var(--brand-ink);
+  box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
-@media (hover:hover) and (pointer:fine) { .btn-primary:hover, .btn-p:hover { background: var(--ink-hover); border-color: var(--ink-hover); } }
-.btn.btn-b, a.btn-b { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); box-shadow: 0 6px 16px -6px rgba(255, 77, 77, 0.6); }
-@media (hover:hover) and (pointer:fine) { .btn-primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); } }
+@media (hover:hover) and (pointer:fine) { .btn-primary:hover, .btn-p:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); border-color: var(--brand-deep-strong); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.16); } }
+.btn.btn-b, a.btn-b { background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); border-color: var(--brand-deep); color: var(--brand-ink); box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); }
 
-.btn-secondary { background: var(--card); border-color: var(--line-2); color: var(--ink); }
-@media (hover:hover) and (pointer:fine) { .btn-secondary:hover { border-color: var(--ink-2); } }
+.btn-secondary, .btn-s { background: var(--card); border-color: var(--line-2); color: var(--ink); }
+@media (hover:hover) and (pointer:fine) { .btn-secondary:hover, .btn-s:hover { border-color: var(--ink-2); } }
+
+/* quiet: 无面无框的低声动作 (历史类名 btn-q, 用于次要链接型钮) */
+.btn-q { background: none; border-color: transparent; color: var(--ink-2); }
+@media (hover:hover) and (pointer:fine) { .btn-q:hover { background: var(--gray-100); color: var(--ink); } }
 
 .btn-ghost { background: none; color: var(--ink-2); }
 @media (hover:hover) and (pointer:fine) { .btn-ghost:hover { background: var(--gray-100); color: var(--ink); } }
@@ -78,14 +88,10 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .btn-sm svg { width: 15px; height: 15px; }
 .btn-lg { height: 48px; padding-inline: var(--s5); font-size: var(--fs-md); }
 
-/* Small secondary (secondary surface at sm size): reads as a button on
-   light pages — market links, register CTA, inline copy/print actions.
-   The copy button floating on dark code blocks overrides via the scoped
-   .tab-panel .tab-copy rules below. */
-.btn-s { height: 34px; padding-inline: var(--s3); font-size: var(--fs-sm);
-         background: var(--card); border-color: var(--line-2); color: var(--ink); }
+/* Small secondary: surface + hover live in the .btn-secondary group
+   above (single source); only the sm sizing differs here. */
+.btn-s { height: 34px; padding-inline: var(--s3); font-size: var(--fs-sm); }
 .btn-s svg { width: 15px; height: 15px; }
-@media (hover:hover) and (pointer:fine) { .btn-s:hover { border-color: var(--ink-2); } }
 .tab-panel .tab-copy { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.85); }
 @media (hover:hover) and (pointer:fine) { .tab-panel .tab-copy:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); color: var(--card); } }
 
@@ -195,7 +201,8 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   color: var(--brand-ink); display: grid; place-items: center; flex: none;
 }
 .out-h .ok svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.out-h b { font-weight: 650; font-size: var(--fs-md); }
+.out-h b { font-weight: 650; font-size: var(--fs-md); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out-h .t { flex: none; }
 .out-h .t { font-size: var(--fs-xs); color: var(--ink-3); margin-inline-start: auto; display: inline-flex; gap: var(--s2); align-items: center; }
 .out-b { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 
@@ -220,8 +227,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .item-text {
   background: var(--sunk); border-radius: var(--r); padding: 14px 16px;
   font-size: var(--fs-base); position: relative;
-}
-.item-text pre.rs-text { padding: 0; background: none; border-radius: 0; font-family: var(--font-sans); font-size: var(--fs-base); }
+}.item-text pre.rs-text { padding: 0; background: none; border-radius: 0; font-family: var(--font-sans); font-size: var(--fs-base); }
 .item-text pre.rs-text a, .rs-link-card { color: var(--brand-600); }
 .rs-link-card {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
@@ -232,7 +238,8 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .rs-link-card small { flex-basis: 100%; order: 2; color: var(--ink-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rs-link-card .btn { margin-inline-start: auto; }
 .item-text .lbl {
-  font-size: var(--fs-xs); color: var(--ink-3); display: flex;
+  font-size: var(--fs-xs); font-weight: 650; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ink-3); display: flex;
   justify-content: space-between; align-items: center; margin-block-end: 6px;
 }
 .item-text .lbl .btn { background: none; border: 0; height: 28px; }
@@ -406,6 +413,7 @@ pre.rs-text, pre.rs-json {
 .empty .empty-sub { font-size: var(--fs-sm); max-width: 44ch; }
 .empty .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
 .empty .empty-actions > * { margin: 0; }
+.composer .error-note { margin: 0 16px 14px; }
 .error-note {
   padding: var(--s3); border-radius: var(--r-sm);
   background: var(--danger-50); color: var(--danger-strong);
@@ -473,6 +481,10 @@ pre.rs-text, pre.rs-json {
 .modal-close svg { stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
 @media (hover:hover) and (pointer:fine) { .modal-close:hover { background: var(--gray-100); color: var(--ink); } }
 
+/* 就地复制确认 (window.copyFeedback): 图标钮翻对勾; 文本钮变
+   "✓ 已复制" 并带确认色 */
+.copied { color: var(--ok, var(--brand)); }
+
 /* ── Toast ─────────────────────────────────────────────────── */
 /* Driven by window.globalToast (base-engine.js): enter (.on) fades in,
    dismiss removes .on and the node after the transition. */
@@ -527,10 +539,14 @@ pre.rs-text, pre.rs-json {
   .tc:hover { box-shadow: var(--sh-2); transform: translateY(-2px); border-color: var(--line-2); }
 }
 .tc-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* 图标块: 暖底 + 细线 + 卡 hover 时同拍微升 */
 .tc .ic {
   width: 40px; height: 40px; border-radius: 12px; flex: none;
-  display: grid; place-items: center; background: var(--sunk); color: var(--ink);
+  display: grid; place-items: center; background: var(--sunk);
+  border: 1px solid var(--line); color: var(--ink);
+  transition: transform var(--ease-in);
 }
+@media (hover:hover) and (pointer:fine) { .tc:hover .ic { transform: translateY(-1px); } }
 .tc .ic svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tc-h h4 {
   margin: 0; font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.01em;
@@ -567,7 +583,7 @@ pre.rs-text, pre.rs-json {
 
 /* ── Tool input — the composer (shared component: home + tool page).
    Structure lives in pages/tool-input.js; DOM per the v2 prototype:
-   .composer > .c-err + .c-files > .chipf + .c-text + .params >
+   .composer > .c-files + .ti-drop/.c-text/.params + .c-bar + .ti-error/.ti-quota (bottom):
    .prow (label + .seg/.input/.switch) + .c-bar (.ib clip + .opt
    delivery pill + .sp + .send). Legacy hooks kept for tests/JS:
    .ti-file-input (hidden file input), .ti-run (submit), .ti-error,
@@ -600,7 +616,7 @@ pre.rs-text, pre.rs-json {
 @media (hover:hover) and (pointer:fine) { .ti-drop:hover { border-color: var(--brand); background: var(--brand-50); } }
 .ti-drop:focus-visible, .ti-drop.dragover { border-color: var(--brand); background: var(--brand-50); outline: none; }
 /* 24h 额度低余量提示 (上传区下方一行; 数据 = limits 投影 dailyRemaining) */
-.ti-quota { margin: 8px 16px 0; font-size: var(--fs-xs); color: var(--warn); }
+.ti-quota { margin: 8px 16px 14px; font-size: var(--fs-xs); color: var(--warn); }
 .chipf {
   display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px;
   border: var(--border-w) solid var(--line); border-radius: 12px;
@@ -634,10 +650,10 @@ pre.rs-text, pre.rs-json {
   padding: 12px 60px 12px 16px; min-height: 48px;
   max-height: calc(8 * 1.55em + 24px);
   resize: none; overflow-y: auto;
-  background: var(--sunk); border-radius: var(--r-lg);
-  transition: box-shadow var(--ease);
+  background: var(--sunk); border: 1px solid transparent; border-radius: var(--r-lg);
+  transition: box-shadow var(--ease), border-color var(--ease), background var(--ease);
 }
-.ti-chat-wrap .c-text:focus { box-shadow: 0 0 0 3px var(--brand-100); }
+.ti-chat-wrap .c-text:focus { background: var(--card); border-color: var(--brand-deep); box-shadow: 0 0 0 3px var(--brand-100); }
 .ti-chat-wrap .send {
   position: absolute; inset-block-end: 8px; inset-inline-end: 8px;
   width: 36px; height: 36px;
@@ -758,10 +774,12 @@ pre.rs-text, pre.rs-json {
 }
 .opt b { color: var(--ink); font-weight: 600; }
 .opt svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* 运行钮: 深红材质 (霓虹光晕退场——光晕属于廉价 SaaS 时代) */
 .send {
-  width: 40px; height: 40px; border-radius: 50%; background: var(--brand);
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(180deg, var(--brand-600), var(--brand-deep));
   color: var(--brand-ink); border: 0; display: grid; place-items: center;
-  cursor: pointer; box-shadow: 0 6px 16px -6px rgba(255, 77, 77, 0.7);
+  cursor: pointer; box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 .send svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .send.wide { width: auto; padding: 0 18px; border-radius: var(--r-full); gap: 6px; display: inline-flex; align-items: center; font: inherit; font-weight: 650; font-size: var(--fs-base); }
@@ -770,8 +788,7 @@ pre.rs-text, pre.rs-json {
 
 /* delivery pill popover (existing values, existing entitlement logic) */
 /* ── 锚定浮层家族 (共享视觉语言): 卡面 + line-2 描边 + 大圆角 +
-   sh-3 投影 + popIn 入场; 锚定各自的触发者, 不随底栏换行漂移 ── */
-@keyframes popIn { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+   sh-3 投影; @starting-style 入场 (无首帧竞态); 锚定各自的触发者 ── */
 
 /* 有效期/次数浮层: 锚定"1 天 · 50 次"胶囊正上方 */
 .ti-del-wrap { position: relative; display: inline-flex; }
@@ -782,8 +799,9 @@ pre.rs-text, pre.rs-json {
   box-shadow: var(--sh-3); padding: var(--s4);
   display: flex; flex-direction: column; gap: var(--s3);
   width: min(280px, calc(100vw - 48px));
-  animation: popIn .16s var(--ease);
+  transition: opacity .16s var(--ease), transform .16s var(--ease);
 }
+@starting-style { .c-del-pop { opacity: 0; transform: translateY(4px) scale(.98); } }
 .c-del-pop .field { min-width: 0; }
 
 /* 浮层内滚动区: 细滚动条、透明轨道、浅色滑块 (替代系统深灰粗条) */
@@ -800,14 +818,14 @@ pre.rs-text, pre.rs-json {
 .history-panel::-webkit-scrollbar-thumb:hover, .modal-panel::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
 
 /* 手机端: 锚定空间不足, 有效期浮层与工具选择浮层同形 — 居中卡片
-   (常态 transform 负责居中; tselIn 动画帧含同一偏移避免入场跳位) */
+   (常态 transform 负责居中; starting-style 含同一偏移, 入场无跳位) */
 @media (max-width: 767px) {
   .c-del-pop {
     position: fixed; inset-block-end: auto; top: 50%; inset-inline-start: 50%;
     transform: translate(-50%, -50%);
     width: min(320px, calc(100vw - 48px));
-    animation: tselIn .16s var(--ease);
   }
+  @starting-style { .c-del-pop { opacity: 0; transform: translate(-50%, -48%) scale(.97); } }
 }
 
 @media (max-width: 767px) {
@@ -825,8 +843,12 @@ pre.rs-text, pre.rs-json {
   /* 添加文件: 移动端图标按钮; .ib 统一伪元素扩点击区到 ≥44 (视觉不变) */
   .tp-seg .tp-option { min-height: 44px; }
 }
-/* 输入区挂载预留高度 (CLS) */
+/* 输入区挂载预留高度 (CLS)。224 = 首页/纯文件工具的挂载高度;
+   工具页多出参数卡行 (实测 compress 381 / ico 433 @390), 按页加高
+   预留把挂载增长压到 ≈0, 挂载后回落只影响卡下方内容。 */
 .ti-mount { min-height: 224px; }
+@media (max-width: 767px) { .toolpage .ti-mount { min-height: 384px; } }
+@media (min-width: 768px) { .toolpage .ti-mount { min-height: 328px; } }
 
 /* Phone: file rows wrap — name keeps its line, meta + actions flow */
 @media (max-width: 599px) {
