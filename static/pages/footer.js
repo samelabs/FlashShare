@@ -31,7 +31,7 @@ return'<div class="item"><a class="item-link" href="'+_eh(s)+'"><span class="ite
 }
 function _bindActions(l){
 l.querySelectorAll("[data-dl]").forEach(function(b){b.addEventListener("click",async function(e){e.preventDefault();e.stopPropagation();if(window._dlLock)return;window._dlLock=true;var u=_uploads[+b.dataset.dl];var dl=u.url_download+"?download=1";var hm=document.getElementById("historyModal");if(_pwa()){if(hm)hm.dataset.locked="1";await(window.pwaDownload?pwaDownload(dl):Promise.resolve());if(hm)delete hm.dataset.locked}else window.location.href=dl;setTimeout(function(){window._dlLock=false},1000)})});
-l.querySelectorAll("[data-cp]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.cp];navigator.clipboard.writeText(u.url_download).then(function(){var o=b.innerHTML;b.innerHTML=_si("check");b.style.color="var(--accent)";setTimeout(function(){b.innerHTML=o;b.style.color=""},1400)})})});
+l.querySelectorAll("[data-cp]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.cp];b.style.color="var(--accent)";setTimeout(function(){b.style.color=""},1400);window.copyFeedback(b);navigator.clipboard.writeText(u.url_download).catch(function(){})})});
 l.querySelectorAll("[data-sh]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.sh];window.shareLink&&window.shareLink(u.url_download,u.file_name,b)})});
 l.querySelectorAll("[data-qr]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.qr];_qr(u.url_download+"/qr.svg")})});
 l.querySelectorAll("[data-rm]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.rm];_del(u.public_id,b)})})

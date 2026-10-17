@@ -65,8 +65,8 @@
 /* 语言入口 = 顶栏唯一挂载点: 菜单锚定到按钮自身 (所有视口可见),
    右对齐且永不超出视口 (RTL 由下方镜像规则翻转)。 */
 .lang-switch { position: relative; display: flex; align-items: center; }
-/* 顶栏菜单与锚定浮层家族同语言 (components.css popIn): 卡面 + line-2
-   描边 + 大圆角 + sh-3 投影 + 入场动画 */
+/* 顶栏菜单与锚定浮层家族同语言: 卡面 + line-2 描边 + 大圆角 + sh-3 投影;
+   @starting-style 入场 (与 tsel-pop 同机制, 无 display 切换首帧竞态) */
 .lang-menu, .user-dropdown {
   position: absolute; right: 0; top: calc(100% + var(--s1));
   z-index: var(--z-dropdown);
@@ -75,8 +75,9 @@
   border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--sh-3);
-  animation: popIn .14s var(--ease);
+  transition: opacity .14s var(--ease), transform .14s var(--ease);
 }
+@starting-style { .lang-menu, .user-dropdown { opacity: 0; transform: translateY(4px) scale(.98); } }
 .lang-menu { width: 144px; max-width: calc(100vw - 32px); }
 
 .user-dropdown.hidden, .lang-menu.hidden { display: none; }
@@ -169,7 +170,7 @@
 .file-page { width: min(560px,100%); margin: auto; padding: var(--s4) var(--s2); text-align: center; }
 .file-page h1 { margin: 0 0 var(--s2); font-size: clamp(17px,3vw,22px); line-height: 1.25; overflow-wrap: anywhere; font-weight: 800; }
 .qr-modal-panel { width: fit-content; padding: var(--s5); text-align: center; position: relative; }
-.qr-modal-panel img { border-radius: var(--r); border: 1px solid var(--line); }
+.qr-modal-panel img { width: min(240px, 62vw); height: auto; border-radius: var(--r); border: 1px solid var(--line); }
 
 /* ── Auth Pages ───────────────────────────────────────────── */
 .auth-page { max-width: 380px; margin: auto; padding: var(--s5) var(--s4) var(--s6); display: flex; flex-direction: column; gap: var(--s4); justify-content: center; }
@@ -844,8 +845,12 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
    点浮层外任意处关闭 (home.js document 级监听), Esc 关闭。
    入场动画自带 translate(-50%,-50%) — 复用 modalIn 的纯 scale
    会在动画期覆盖居中偏移导致跳位 */
-@keyframes tselIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
-.tsel-pop { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: var(--z-modal); width: min(360px, calc(100vw - 48px)); max-height: min(64vh, 460px); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--sh-3); padding: var(--s2); animation: tselIn .16s var(--ease); }
+/* 入场走 @starting-style + transition (W3C 为 display 切换首帧竞态设计的
+   标准机制): display:none→flex 时浏览器以 starting-style 为过渡起点,
+   不会先绘制终态再重播 — animation 方式存在"先闪现完整面板再淡入"的
+   首帧竞态 (呼出闪动)。关闭即 display:none, 瞬时退出 (同浮层家族)。 */
+.tsel-pop { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: var(--z-modal); width: min(360px, calc(100vw - 48px)); max-height: min(64vh, 460px); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: var(--sh-3); padding: var(--s2); transition: opacity .16s var(--ease), transform .16s var(--ease); }
+@starting-style { .tsel-pop { opacity: 0; transform: translate(-50%, -48%) scale(.97); } }
 .tsel-filter { padding: 2px var(--s1) var(--s2); }
 .tsel-filter input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-size: var(--fs-base); color: var(--ink); background: var(--bg); }
 .tsel-filter input:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: var(--brand); }

@@ -10,16 +10,11 @@
   const t = (k, p) => window.t(k, p);
 
   function flash(btn, icon) {
-    if (btn.dataset.flashBusy) return;
-    btn.dataset.flashBusy = "1";
-    const orig = btn.innerHTML;
-    btn.innerHTML = window.iconSvg(icon);
+    // the one in-place confirmation (base-engine); this wrapper only
+    // adds the success tint the result page uses
     btn.style.color = "var(--success)";
-    setTimeout(() => {
-      btn.innerHTML = orig;
-      btn.style.color = "";
-      delete btn.dataset.flashBusy;
-    }, 1400);
+    setTimeout(() => { btn.style.color = ""; }, 1400);
+    window.copyFeedback(btn);
   }
 
   async function copyText(value, btn) {
