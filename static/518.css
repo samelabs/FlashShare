@@ -243,7 +243,9 @@
 .panel .d { font-size: 13px; color: var(--ink-2); margin-top: 5px; line-height: 1.5; }
 
 /* ── Doc Pages ───────────────────────────────────────────── */
-.doc { line-height: 1.7; width: 100%; max-width: 760px; background: transparent; border: 0; border-radius: 0; padding: var(--s4) var(--s2) var(--s5); }
+/* 静态页 (page.html): 与 agents/market 同一页头节奏 — 切页零漂移 */
+.page { padding: 40px 0 72px; min-width: 0; }
+.doc { line-height: 1.7; width: 100%; max-width: 760px; background: transparent; border: 0; border-radius: 0; padding: var(--s5) 0 0; }
 .doc h1 { font-size: var(--fs-xl); }
 .doc .share-bar.sb-compact { margin: 10px 0 30px; }
 .doc h2 { margin: 2em 0 0.6em; font-size: 19px; line-height: 1.35; letter-spacing: -0.01em; }
@@ -253,7 +255,8 @@
 .doc li::marker { color: var(--ink-3); }
 .doc .doc-pre { margin: 0 0 1.2em; }
 @media (max-width: 640px) {
-  .doc { padding: var(--s3) var(--s2) var(--s4); }
+  .page { padding: 24px 0 48px; }
+  .doc { padding: var(--s3) 0 0; }
   .doc h2 { font-size: 17px; margin: 1.6em 0 0.5em; }
   .doc p { max-width: none; }
 }
@@ -867,6 +870,8 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* sections */
 .sec { padding: 48px 0; }
 .sec-h { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+/* 页头 h1: 全站一份 (agents/market/pricing/page 同一排版, 消除切页漂移) */
+.sec-h h1 { margin: 0; font-size: 28px; font-weight: 750; letter-spacing: -0.03em; line-height: 1.2; }
 .sec-h h2 { font-size: 22px; font-weight: 700; letter-spacing: var(--tracking-tight); }
 .sec-h p { color: var(--ink-3); font-size: 14px; margin-top: 4px; }
 .bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -991,7 +996,6 @@ body { overflow-x: clip; }
 
 /* ═══ 工具市场 (v2) ═══ */
 .market-v2 { padding: 40px 0 72px; min-width: 0; }
-.market-v2 .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .market-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
 .market-search { margin: 0 0 20px; max-width: 460px; }
 .market-bento { grid-template-columns: repeat(4, 1fr); }
@@ -1000,7 +1004,6 @@ body { overflow-x: clip; }
 
 /* ═══ /pricing ═══ */
 .pricing-page { padding: 40px 0 72px; min-width: 0; }
-.pricing-page .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .pricing-page .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
 /* 列宽上限 360: 一张卡(免费)不横跨整行, 多卡自然成排 */
 .pricing-page .pr-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 360px)); gap: 16px; align-items: stretch; justify-content: start; }
@@ -1029,7 +1032,6 @@ body { overflow-x: clip; }
 
 /* ═══ /agents (v2) ═══ */
 .agents-v2 { padding: 40px 0 72px; min-width: 0; }
-.agents-v2 .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .agents-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
 .agents-topbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: 20px; max-width: 560px; }
 .agents-topbar .agents-url { flex: 1; min-width: 260px; }
