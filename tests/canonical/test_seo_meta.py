@@ -348,7 +348,7 @@ def main():
     from PIL import Image
     import math
     for i in icons:
-        path = _os.path.join(_REPO, "static", "images",
+        path = _os.path.join(_REPO, "brand", "web",
                              i["src"].split("?")[0].rsplit("/", 1)[-1])
         exists = _os.path.isfile(path)
         w = h = 0
@@ -359,7 +359,7 @@ def main():
         check(f"P manifest: icon {i['src'].split('/')[-1]} exists, {i['sizes']} real",
               exists and (w, h) == (sw, sh), f"{(w, h)} vs {i['sizes']}")
     for i in mask512:
-        path = _os.path.join(_REPO, "static", "images",
+        path = _os.path.join(_REPO, "brand", "web",
                              i["src"].split("?")[0].rsplit("/", 1)[-1])
         with Image.open(path) as im:
             px = im.convert("RGBA").load()
