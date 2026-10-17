@@ -226,8 +226,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .item-text {
   background: var(--sunk); border-radius: var(--r); padding: 14px 16px;
   font-size: var(--fs-base); position: relative;
-}
-.item-text pre.rs-text { padding: 0; background: none; border-radius: 0; font-family: var(--font-sans); font-size: var(--fs-base); }
+}.item-text pre.rs-text { padding: 0; background: none; border-radius: 0; font-family: var(--font-sans); font-size: var(--fs-base); }
 .item-text pre.rs-text a, .rs-link-card { color: var(--brand-600); }
 .rs-link-card {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
@@ -238,7 +237,8 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .rs-link-card small { flex-basis: 100%; order: 2; color: var(--ink-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rs-link-card .btn { margin-inline-start: auto; }
 .item-text .lbl {
-  font-size: var(--fs-xs); color: var(--ink-3); display: flex;
+  font-size: var(--fs-xs); font-weight: 650; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ink-3); display: flex;
   justify-content: space-between; align-items: center; margin-block-end: 6px;
 }
 .item-text .lbl .btn { background: none; border: 0; height: 28px; }
@@ -644,10 +644,10 @@ pre.rs-text, pre.rs-json {
   padding: 12px 60px 12px 16px; min-height: 48px;
   max-height: calc(8 * 1.55em + 24px);
   resize: none; overflow-y: auto;
-  background: var(--sunk); border-radius: var(--r-lg);
-  transition: box-shadow var(--ease);
+  background: var(--sunk); border: 1px solid transparent; border-radius: var(--r-lg);
+  transition: box-shadow var(--ease), border-color var(--ease), background var(--ease);
 }
-.ti-chat-wrap .c-text:focus { box-shadow: 0 0 0 3px var(--brand-100); }
+.ti-chat-wrap .c-text:focus { background: var(--card); border-color: var(--brand-deep); box-shadow: 0 0 0 3px var(--brand-100); }
 .ti-chat-wrap .send {
   position: absolute; inset-block-end: 8px; inset-inline-end: 8px;
   width: 36px; height: 36px;

@@ -225,8 +225,9 @@
       // 正文: 主 text 参数 — 纯文本工具 (files_max=0) = 对话框形态
       // (自动增高 1..8 行 + 右下角内侧发送); 有文件位 = 常规多行输入
       if (main) {
+        // 纯文本工具的占位不提文件 (它不收文件)
         const ph = main.placeholder ? esc(resolveLabel(main.placeholder))
-          : esc(t("ti_composer_ph"));
+          : esc(t(chatForm ? "ti_text_ph" : "ti_composer_ph"));
         const val = saved[main.key] !== undefined ? saved[main.key] : (main.default || "");
         const text = esc(val === undefined || val === null ? "" : String(val));
         if (chatForm) {

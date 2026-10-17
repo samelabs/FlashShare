@@ -184,6 +184,12 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 # When selected (or by default when no tool is selected), files upload
 # normally with no processing — identical to the pre-tool behavior.
 
+def demo_shout_handler(tool_input, params):
+    """Demo text-only tool (files 0..0): the chat-form reference shape."""
+    text = str((params or {}).get("text") or "")
+    return {"items": [{"kind": "text", "text": text.upper()}]}
+
+
 def share_handler(tool_input, params):
     """Identity handler — every input file comes back as one file item,
     unchanged. Regular execute flow (no special-casing anywhere)."""
@@ -268,5 +274,16 @@ register(
              {"value": "max", "label": {"en": "Max", "zh": "强力", "ja": "最大", "ko": "최대", "es": "Máx", "ar": "أقصى", "de": "Max", "ru": "Макс", "pt": "Máx", "fr": "Max"}},
          ],
          "default": "standard"},
+    ],
+)
+
+register(
+    "demo_shout", "Shout", "wand", demo_shout_handler,
+    accept=None, files_min=0, files_max=0, outputs=("text",),
+    desc={"en": "Turns your text into UPPERCASE — the chat-form reference tool.",
+          "zh": "把你的文本变成大写——对话式输入的参考工具。"},
+    params=[
+        {"key": "text", "type": "text", "label": {"en": "Text", "zh": "文本"},
+         "required": True},
     ],
 )
