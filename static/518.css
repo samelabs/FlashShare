@@ -1002,7 +1002,8 @@ body { overflow-x: clip; }
 .pricing-page { padding: 40px 0 72px; min-width: 0; }
 .pricing-page .sec-h h1 { font-size: 28px; font-weight: 750; letter-spacing: -0.03em; margin: 0; }
 .pricing-page .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
-.pricing-page .pr-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; align-items: stretch; }
+/* 列宽上限 360: 一张卡(免费)不横跨整行, 多卡自然成排 */
+.pricing-page .pr-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 360px)); gap: 16px; align-items: stretch; justify-content: start; }
 .pricing-page .pr-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); }
 .pricing-page .pr-card.on { border-color: var(--brand); }
 .pricing-page .pr-name { font-size: var(--fs-md); font-weight: 700; color: var(--ink); }

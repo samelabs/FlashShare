@@ -69,8 +69,12 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 @media (hover:hover) and (pointer:fine) { .btn-primary:hover, .btn-p:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); border-color: var(--brand-deep-strong); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.16); } }
 .btn.btn-b, a.btn-b { background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); border-color: var(--brand-deep); color: var(--brand-ink); box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); }
 
-.btn-secondary { background: var(--card); border-color: var(--line-2); color: var(--ink); }
-@media (hover:hover) and (pointer:fine) { .btn-secondary:hover { border-color: var(--ink-2); } }
+.btn-secondary, .btn-s { background: var(--card); border-color: var(--line-2); color: var(--ink); }
+@media (hover:hover) and (pointer:fine) { .btn-secondary:hover, .btn-s:hover { border-color: var(--ink-2); } }
+
+/* quiet: 无面无框的低声动作 (历史类名 btn-q, 用于次要链接型钮) */
+.btn-q { background: none; border-color: transparent; color: var(--ink-2); }
+@media (hover:hover) and (pointer:fine) { .btn-q:hover { background: var(--gray-100); color: var(--ink); } }
 
 .btn-ghost { background: none; color: var(--ink-2); }
 @media (hover:hover) and (pointer:fine) { .btn-ghost:hover { background: var(--gray-100); color: var(--ink); } }
