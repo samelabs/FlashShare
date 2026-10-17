@@ -17,6 +17,34 @@ from identity.oauth_provider import (
 router = APIRouter()
 _CONSENT_COOKIE = "fs_oauth_consent"
 _CONSENT_TTL = 10 * 60
+_AUTHZ_LIMIT = 60
+_AUTHZ_WINDOW = 60 * 60
+_authz_hits: dict = {}
+
+
+def _authorize_throttled(request: Request) -> bool:
+    """Per-IP gate on /oauth/authorize: every request can trigger one
+    outbound CIMD fetch (on cache miss) and a codes-row write — an
+    unauthenticated amplifier otherwise."""
+    import time
+    from app.web_auth import client_ip
+    ts = int(time.time())
+    key = client_ip(request)
+    hits = [t for t in _authz_hits.get(key, []) if ts - t < _AUTHZ_WINDOW]
+    if len(hits) >= _AUTHZ_LIMIT:
+        _authz_hits[key] = hits
+        return True
+    hits.append(ts)
+    _authz_hits[key] = hits
+    if len(_authz_hits) > 10000:
+        cutoff = ts - _AUTHZ_WINDOW
+        for item in list(_authz_hits):
+            _authz_hits[item] = [t for t in _authz_hits[item] if t >= cutoff]
+            if not _authz_hits[item]:
+                del _authz_hits[item]
+    return False
+
+
 def _oauth_json(body: dict, status: int = 200) -> JSONResponse:
     return JSONResponse(
         body, status_code=status,
@@ -87,6 +115,11 @@ async def authorization_server_metadata():
 
 @router.get("/oauth/authorize")
 async def oauth_authorize(request: Request):
+    if _authorize_throttled(request):
+        return _oauth_json(
+            {"error": "temporarily_unavailable",
+             "error_description": "Too many authorization requests."},
+            429)
     params = _auth_params(request.query_params)
     try:
         client_row, scope = _validated(params)
@@ -130,6 +163,11 @@ async def oauth_authorize(request: Request):
 
 @router.post("/oauth/authorize")
 async def oauth_authorize_submit(request: Request):
+    if _authorize_throttled(request):
+        return _oauth_json(
+            {"error": "temporarily_unavailable",
+             "error_description": "Too many authorization requests."},
+            429)
     user = getattr(request.state, "user", None)
     if not user or getattr(request.state, "auth_via", "") != "session":
         return RedirectResponse("/auth/login", 302)

@@ -158,6 +158,36 @@ st, h, d = _mcp({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
 check("C3 presented-but-invalid bearer → 401 (never silent anonymous)",
       st == 401, st)
 
+# invalid-token challenge carries the RFC 6750 error code
+st, h, d = _mcp({"jsonrpc": "2.0", "id": 4, "method": "ping"},
+                token="fsot_not_a_real_token")
+_wa = (h or {}).get("www-authenticate") or ""
+check("C4 invalid bearer → 401 + error=\"invalid_token\" + resource_metadata",
+      st == 401 and 'error="invalid_token"' in _wa
+      and "resource_metadata" in _wa, (st, _wa))
+
+# authorize per-IP throttle (CIMD outbound + codes-write amplifier gate)
+import app.routes.oauth_provider as _rp  # noqa: E402
+from starlette.requests import Request as _SReq  # noqa: E402
+_rp._authz_hits.clear()
+def _fake_req(ip="9.9.9.9"):
+    scope = {"type": "http", "method": "GET", "path": "/oauth/authorize",
+             "query_string": b"", "headers": [],
+             "client": (ip, 1234), "server": ("test", 80)}
+    return _SReq(scope)
+_throttled = [_rp._authorize_throttled(_fake_req())
+              for _ in range(_rp._AUTHZ_LIMIT + 1)]
+check("C5 authorize per-IP throttle engages at the limit",
+      all(_throttled[:_rp._AUTHZ_LIMIT]) is False
+      and _throttled[-1] is True, (sum(_throttled), _rp._AUTHZ_LIMIT))
+_rp._authz_hits.clear()
+
+# full consent flow over the in-process ASGI app (TestClient): the
+# patched fetch IS the server's fetch — login, consent render, code
+# redirect with state echo, deny path, CSRF nonce enforcement
+from fastapi.testclient import TestClient as _TC  # noqa: E402
+from app.main import app as _app  # noqa: E402
+
 # ═══ A. CIMD validation (fetch patched to a served document) ═══
 import remote as _remote  # noqa: E402
 import identity.oauth_provider as _oa  # noqa: E402
@@ -298,6 +328,31 @@ try:
     check("S4 fsk_ key keeps the full capability set (no regression)",
           st == 200 and not ((d or {}).get("result") or {}).get("isError"), st)
 
+    # S6: the platform-tool path enforces tools:call too — mint a
+    # files:read-only token and try to execute (paid tools spend credits)
+    code_rd = _oa.create_authorization_code(
+        UID, CIMD_URL, REDIRECT, challenge, "files:read", RESOURCE)
+    toks_rd = _oa.exchange_authorization_code(
+        code_rd, CIMD_URL, REDIRECT, verifier, RESOURCE)
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 16, "method": "tools/call",
+                      "params": {"name": "share",
+                                 "arguments": {
+                                     "files": [{"filename": "c.png", "b64": PNG_B64}],
+                                     "client_ref": f"s6-{_u}"}}},
+                     token=toks_rd["access_token"])
+    _sc = ((d or {}).get("result") or {}).get("structuredContent") or {}
+    check("S6 files:read-only token refused a PLATFORM tool (tools:call)",
+          ((d or {}).get("result") or {}).get("isError") is True
+          and _sc.get("error") == "err_insufficient_scope"
+          and _sc.get("required_scope") == "tools:call", _sc)
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 17, "method": "tools/call",
+                      "params": {"name": "list_uploads",
+                                 "arguments": {}}},
+                     token=toks_rd["access_token"])
+    check("S6b the same files:read token DOES list uploads",
+          st == 200 and not ((d or {}).get("result") or {}).get("isError"),
+          st)
+
     with db() as con:
         row = con.execute(
             "select oauth_client_id from tool_calls where user_id=%s"
@@ -334,6 +389,92 @@ try:
         ok = str(e) == "invalid_grant"
     check("F10 wrong PKCE verifier rejected", ok)
 
+finally:
+    _remote.pinned_request = _orig_pinned
+    _oa._cimd_cache.clear()
+
+# ═══ consent flow (TestClient, in-process server + patched CIMD) ═══
+try:
+    _remote.pinned_request = lambda url, **k: _serve_cimd(CIMD_DOC)
+    _oa._cimd_cache.clear()
+    with db() as con:
+        _set_pw = con.execute(
+            "update users set password_hash=%s where id=%s",
+            (__import__("bcrypt").hashpw(b"Test12345", __import__("bcrypt").gensalt()).decode(), UID)).rowcount
+    with _TC(_app, base_url="https://testserver") as _tc:
+        _lr = _tc.post("/auth/login",
+                       data={"login": _u, "password": "Test12345"},
+                       follow_redirects=False)
+        check("P1 web login for the consent flow", _lr.status_code in (302, 303),
+              _lr.status_code)
+        authz_url = ("/oauth/authorize?" + _up.urlencode({
+            "response_type": "code", "client_id": CIMD_URL,
+            "redirect_uri": REDIRECT, "scope": "tools:call files:read",
+            "state": f"st-{_u}", "code_challenge": challenge,
+            "code_challenge_method": "S256", "resource": RESOURCE}))
+        page = _tc.get(authz_url)
+        _html = page.text
+        check("P2 consent page renders the CIMD-verified name + both scopes",
+              page.status_code == 200 and "Suite Plugin" in _html
+              and "oauth_scope_tools_call" in _html
+              and "oauth_scope_files_read" in _html
+              and "oauth_scope_files_delete" not in _html,
+              page.status_code)
+        # CSRF: posting without the nonce cookie fails
+        bad = _tc.post("/oauth/authorize", data={
+            "response_type": "code", "client_id": CIMD_URL,
+            "redirect_uri": REDIRECT, "scope": "tools:call",
+            "state": "x", "code_challenge": challenge,
+            "code_challenge_method": "S256", "resource": RESOURCE,
+            "consent_nonce": "forged", "action": "allow"})
+        check("P3 consent submit without the nonce cookie rejected",
+              bad.status_code == 400, bad.status_code)
+        # deny → error redirect with state echo
+        deny = _tc.post("/oauth/authorize", data={
+            "response_type": "code", "client_id": CIMD_URL,
+            "redirect_uri": REDIRECT, "scope": "tools:call",
+            "state": f"st-{_u}", "code_challenge": challenge,
+            "code_challenge_method": "S256", "resource": RESOURCE,
+            "consent_nonce": _tc.cookies.get("fs_oauth_consent"),
+            "action": "deny"}, follow_redirects=False)
+        _loc = deny.headers.get("location") or ""
+        check("P4 deny → redirect error=access_denied + state echoed",
+              deny.status_code == 302 and "error=access_denied" in _loc
+              and f"state=st-{_u}" in _loc, _loc[:100])
+        # allow → code redirect with state echo + iss (a fresh render
+        # first — the deny above consumed the one-shot nonce cookie)
+        _tc.get(authz_url)
+        allow = _tc.post("/oauth/authorize", data={
+            "response_type": "code", "client_id": CIMD_URL,
+            "redirect_uri": REDIRECT, "scope": "tools:call",
+            "state": f"st-{_u}", "code_challenge": challenge,
+            "code_challenge_method": "S256", "resource": RESOURCE,
+            "consent_nonce": _tc.cookies.get("fs_oauth_consent"),
+            "action": "allow"}, follow_redirects=False)
+        _loc = allow.headers.get("location") or ""
+        _q = dict(_up.parse_qsl(_up.urlsplit(_loc).query))
+        check("P5 allow → 302 with code + state + iss",
+              allow.status_code == 302 and _q.get("code", "").startswith("fsoa_")
+              and _q.get("state") == f"st-{_u}" and _q.get("iss") == BASE,
+              _loc[:120])
+        # the consent-minted code exchanges at the real token endpoint
+        _tokr = _tc.post("/oauth/token", data={
+            "grant_type": "authorization_code", "client_id": CIMD_URL,
+            "code": _q.get("code"), "redirect_uri": REDIRECT,
+            "code_verifier": verifier, "resource": RESOURCE})
+        _td = _tokr.json() if _tokr.status_code == 200 else {}
+        check("P6 consent code exchanges at /oauth/token over HTTP",
+              _tokr.status_code == 200 and _td.get("access_token", "").startswith("fsot_")
+              and _td.get("scope") == "tools:call", _tokr.status_code)
+        if _td.get("access_token"):
+            _st2, _h2, d2 = _mcp({"jsonrpc": "2.0", "id": 20,
+                                  "method": "tools/call",
+                                  "params": {"name": "catalog_search",
+                                             "arguments": {"q": ""}}},
+                                 token=_td["access_token"])
+            check("P7 consent-flow token works end-to-end on /mcp",
+                  _st2 == 200 and not ((d2 or {}).get("result") or {}).get("isError"),
+                  _st2)
 finally:
     _remote.pinned_request = _orig_pinned
     _oa._cimd_cache.clear()

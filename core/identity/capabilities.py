@@ -35,11 +35,12 @@ def scope_set(raw) -> frozenset:
     return frozenset(p for p in str(raw or "").split() if p)
 
 
-# Operation → required capability (the dispatch chokepoint reads this).
+# Meta-tool → required capability (the dispatch chokepoint reads this).
 # Discovery and favorites ride tools:call: they are part of the
-# tool-usage workflow, not a separate trust tier.
+# tool-usage workflow, not a separate trust tier. Every name NOT in
+# this map is a platform tool (share, compress, any published tool) —
+# execution always requires tools:call; there is no default-open path.
 OP_SCOPES = {
-    "tool": "tools:call",        # any platform tool execution
     "create_upload": "tools:call",
     "catalog_search": "tools:call",
     "pin_tool": "tools:call",
@@ -50,6 +51,11 @@ OP_SCOPES = {
 }
 
 
+def required_scope(op: str) -> str:
+    """The capability an operation needs. Unknown callable names are
+    platform tools — execution class, tools:call."""
+    return OP_SCOPES.get(op, "tools:call")
+
+
 def op_allowed(op: str, granted) -> bool:
-    need = OP_SCOPES.get(op)
-    return need is None or need in granted
+    return required_scope(op) in granted

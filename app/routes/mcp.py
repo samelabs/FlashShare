@@ -139,7 +139,6 @@ def _cors_headers(request: Request):
 def _auth_challenge_json(mid):
     """401 for an authenticated-only tools/call: JSON-RPC error body +
     the spec challenge header (connectors start OAuth from it)."""
-    from config import BASE_URL as _base
     from fastapi.responses import JSONResponse
     return JSONResponse(
         _rpc_err(mid, -32001, "unauthorized: a bearer credential is "
@@ -148,9 +147,7 @@ def _auth_challenge_json(mid):
                  {"register": "call the register tool without an "
                   "Authorization header"}),
         status_code=401,
-        headers={"WWW-Authenticate":
-                 f'Bearer resource_metadata="{_base}'
-                 '/.well-known/oauth-protected-resource"'})
+        headers={"WWW-Authenticate": _challenge_header()})
 
 
 def _bearer_user(request: Request):
@@ -162,10 +159,21 @@ def _bearer_user(request: Request):
     return user if (user and via in ("token", "oauth")) else None
 
 
+def _challenge_header(error: str | None = None) -> str:
+    """THE WWW-Authenticate builder: RFC 9728 resource_metadata (how
+    connectors auto-start OAuth); RFC 6750 error code only when a token
+    was presented and rejected."""
+    from config import BASE_URL as _base
+    ch = f'Bearer resource_metadata="{_base}' \
+         '/.well-known/oauth-protected-resource"'
+    if error:
+        ch = f'Bearer error="{error}", ' + ch[len("Bearer "):]
+    return ch
+
+
 def _auth_challenge(cors: dict) -> JSONResponse:
-    """Spec-canonical 401: WWW-Authenticate points at the RFC 9728
-    protected-resource metadata so platform connectors auto-start the
-    OAuth flow; the body still names the zero-friction register path."""
+    """Presented-but-invalid bearer → spec-canonical 401: the challenge
+    names invalid_token; the body still names the register path."""
     from config import BASE_URL as _base
     return JSONResponse(
         {"error": "unauthorized",
@@ -177,9 +185,8 @@ def _auth_challenge(cors: dict) -> JSONResponse:
              f"({_base}/.well-known/oauth-authorization-server). "
              f"Guide: {_base}/llms.txt")},
         status_code=401,
-        headers={**cors, "WWW-Authenticate":
-                 f'Bearer resource_metadata="{_base}'
-                 '/.well-known/oauth-protected-resource"'})
+        headers={**cors,
+                 "WWW-Authenticate": _challenge_header("invalid_token")})
 
 
 @router.options("/mcp")
@@ -1070,8 +1077,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from identity.capabilities import op_allowed
     granted = getattr(getattr(request, "state", None), "auth_scopes", None)
     if granted is not None and not op_allowed(name, granted):
-        from identity.capabilities import OP_SCOPES
-        need = OP_SCOPES.get(name)
+        from identity.capabilities import required_scope
+        need = required_scope(name)
         return _iserror(mid, {
             "error": "err_insufficient_scope",
             "required_scope": need,
