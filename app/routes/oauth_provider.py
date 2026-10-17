@@ -1,5 +1,6 @@
 """OAuth 2.1 authorization server for the main /mcp surface (CIMD)."""
 
+import asyncio
 import secrets
 import urllib.parse
 
@@ -49,6 +50,34 @@ def _oauth_json(body: dict, status: int = 200) -> JSONResponse:
     return JSONResponse(
         body, status_code=status,
         headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
+# /oauth/token is anonymous and every request may trigger one outbound
+# CIMD fetch (on cache miss) — its own per-IP gate, separate store from
+# the authorize throttle.
+_TOKEN_LIMIT = 120
+_TOKEN_WINDOW = 60 * 60
+_token_hits: dict = {}
+
+
+def _token_throttled(request: Request) -> bool:
+    import time
+    from app.web_auth import client_ip
+    ts = int(time.time())
+    key = client_ip(request)
+    hits = [t for t in _token_hits.get(key, []) if ts - t < _TOKEN_WINDOW]
+    if len(hits) >= _TOKEN_LIMIT:
+        _token_hits[key] = hits
+        return True
+    hits.append(ts)
+    _token_hits[key] = hits
+    if len(_token_hits) > 10000:
+        cutoff = ts - _TOKEN_WINDOW
+        for item in list(_token_hits):
+            _token_hits[item] = [t for t in _token_hits[item] if t >= cutoff]
+            if not _token_hits[item]:
+                del _token_hits[item]
+    return False
 
 
 def _redirect_uri_with(uri: str, **params) -> str:
@@ -122,7 +151,7 @@ async def oauth_authorize(request: Request):
             429)
     params = _auth_params(request.query_params)
     try:
-        client_row, scope = _validated(params)
+        client_row, scope = await asyncio.to_thread(_validated, params)
     except ValueError as exc:
         return _oauth_json(
             {
@@ -143,9 +172,17 @@ async def oauth_authorize(request: Request):
     from app.main import templates
     ctx = ctx_base(request)
     requested = set(scope.split())
+    # Anti-impersonation context: a client may CLAIM any display name —
+    # the consent page must also show where the client document lives
+    # and where the browser returns after consenting.
+    client_host = urllib.parse.urlsplit(params["client_id"]).hostname or ""
+    redirect_host = urllib.parse.urlsplit(
+        params["redirect_uri"]).hostname or ""
     ctx.update({
         "shell_class": "",
         "client_name": client_row["client_name"],
+        "client_host": client_host,
+        "redirect_host": redirect_host,
         "oauth_params": {**params, "scope": scope},
         "oauth_nonce": nonce,
         "oauth_call": "tools:call" in requested,
@@ -175,7 +212,7 @@ async def oauth_authorize_submit(request: Request):
     form = await request.form()
     params = _auth_params(form)
     try:
-        _client_row, scope = _validated(params)
+        _client_row, scope = await asyncio.to_thread(_validated, params)
     except ValueError as exc:
         return _oauth_json(
             {
@@ -223,6 +260,11 @@ async def oauth_authorize_submit(request: Request):
 
 @router.post("/oauth/token")
 async def oauth_token(request: Request):
+    if _token_throttled(request):
+        return _oauth_json(
+            {"error": "temporarily_unavailable",
+             "error_description": "Too many token requests."},
+            429)
     form = await request.form()
     if request.headers.get("authorization"):
         return _oauth_json(
@@ -236,7 +278,7 @@ async def oauth_token(request: Request):
     grant_type = str(form.get("grant_type") or "")
     client_id = str(form.get("client_id") or "")
     resource = str(form.get("resource") or "")
-    if not cimd_fetch(client_id):
+    if not await asyncio.to_thread(cimd_fetch, client_id):
         return _oauth_json({"error": "invalid_client"}, 401)
 
     try:

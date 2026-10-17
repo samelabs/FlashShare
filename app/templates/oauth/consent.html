@@ -8,6 +8,8 @@
     <h1 data-i18n="oauth_consent_title">{{ texts.oauth_consent_title }}</h1>
     <p class="auth-sub" data-i18n="oauth_consent_intro">{{ texts.oauth_consent_intro }}</p>
     <p><strong>{{ client_name }}</strong></p>
+    <p class="auth-hint"><span data-i18n="oauth_client_from">{{ texts.oauth_client_from }}</span> {{ client_host }}</p>
+    <p class="auth-hint"><span data-i18n="oauth_redirect_to">{{ texts.oauth_redirect_to }}</span> {{ redirect_host }}</p>
     <p class="auth-hint"><span data-i18n="oauth_connected_as">{{ texts.oauth_connected_as }}</span> {{ oauth_user }}</p>
     <div class="field">
       <span class="field-label" data-i18n="oauth_consent_scopes">{{ texts.oauth_consent_scopes }}</span>

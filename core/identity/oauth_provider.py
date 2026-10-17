@@ -40,12 +40,22 @@ _REFRESH_PREFIX = "fsor_"
 _CODE_PREFIX = "fsoa_"
 _PKCE_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 
-# CIMD fetch policy: small docs, short timeout, brief cache.
+# CIMD fetch policy: small docs, short timeout, brief cache. Failures
+# (fetch error / rejected document) are cached too, on a shorter TTL —
+# /oauth endpoints are anonymous, an unreachable or invalid client must
+# not be re-fetched on every request.
 CIMD_MAX_BYTES = 64 * 1024
 CIMD_TIMEOUT_S = 8
 CIMD_CACHE_TTL = 300
+CIMD_NEGATIVE_TTL = 60
 
 _cimd_cache: dict = {}
+
+
+def _cimd_negative(client_id: str) -> None:
+    """Cache a failed fetch/validation briefly and report absence."""
+    _cimd_cache[client_id] = (now() + CIMD_NEGATIVE_TTL, None)
+    return None
 
 
 def _opaque(prefix: str) -> str:
@@ -81,10 +91,11 @@ def _valid_redirect_uri(value) -> bool:
 
 def cimd_fetch(client_id: str) -> dict | None:
     """Fetch + validate a Client ID Metadata Document. Returns
-    {client_id, client_name, redirect_uris, logo_uri?} or None. The
-    fetch goes through the pinned SSRF-guarded transport (https only,
-    every resolved address public, connect pinned, redirects
-    re-validated) — CIMD's headline risk is the outbound request."""
+    {client_id, client_name, redirect_uris, logo_uri?} or None (None is
+    cached for CIMD_NEGATIVE_TTL). The fetch goes through the pinned
+    SSRF-guarded transport (https only, every resolved address public,
+    connect pinned, redirects re-validated) — CIMD's headline risk is
+    the outbound request."""
     if not _valid_cimd_url(client_id):
         return None
     hit = _cimd_cache.get(client_id)
@@ -96,29 +107,29 @@ def cimd_fetch(client_id: str) -> dict | None:
                                       timeout_s=CIMD_TIMEOUT_S,
                                       max_bytes=CIMD_MAX_BYTES)
     except Exception:
-        return None
+        return _cimd_negative(client_id)
     if status != 200 or not body:
-        return None
+        return _cimd_negative(client_id)
     import json as _json
     try:
         doc = _json.loads(body)
     except Exception:
-        return None
+        return _cimd_negative(client_id)
     if not isinstance(doc, dict):
-        return None
+        return _cimd_negative(client_id)
     # self-reference: the document MUST claim the exact URL it was
     # fetched from (the anti-impersonation rule)
     if doc.get("client_id") != client_id:
-        return None
+        return _cimd_negative(client_id)
     uris = doc.get("redirect_uris")
     if (not isinstance(uris, list) or not uris or len(uris) > 10
             or any(not _valid_redirect_uri(u) for u in uris)):
-        return None
+        return _cimd_negative(client_id)
     name = str(doc.get("client_name") or "").strip()[:80]
     if not name:
-        return None
+        return _cimd_negative(client_id)
     if doc.get("token_endpoint_auth_method", "none") != "none":
-        return None  # public clients only in this MVP
+        return _cimd_negative(client_id)  # public clients only in this MVP
     logo = doc.get("logo_uri")
     out = {
         "client_id": client_id,
@@ -242,3 +253,41 @@ def authenticate_access_token(plaintext: str, resource: str):
     scopes = set(str(user.pop("oauth_scope", "")).split())
     client_id = user.pop("oauth_client_id", None)
     return {"user": user, "scopes": scopes, "client_id": client_id}
+
+
+def list_grants(user_id: int) -> list:
+    """The user's live grants for the account page. Each item carries
+    the client's hostname for display and the merged scope union of its
+    live tokens (canonical order); the raw client_id travels only in
+    the revoke request and is never rendered."""
+    ts = now()
+    with db() as con:
+        rows = repo.active_grants(con, user_id, ts)
+    out = []
+    for row in rows:
+        client_id = row["client_id"]
+        try:
+            host = urllib.parse.urlsplit(client_id).hostname or ""
+        except ValueError:
+            host = ""
+        scopes = set()
+        for granted in row["scopes"] or []:
+            scopes.update(str(granted).split())
+        ordered = [s for s in SCOPES if s in scopes]
+        ordered += sorted(scopes.difference(SCOPES))
+        out.append({
+            "client_id": client_id,
+            "client_host": host,
+            "scope": " ".join(ordered),
+            "last_used_at": row["last_used_at"],
+            "created_at": row["created_at"],
+        })
+    return out
+
+
+def revoke_grant(user_id: int, client_id: str) -> bool:
+    """Revoke the user's grant for one client. False when the user held
+    no live grant from that client."""
+    ts = now()
+    with db() as con:
+        return repo.revoke_client(con, user_id, client_id, ts) > 0

@@ -330,20 +330,36 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         return None, {"ok": False, "error": "err_rate_limited"}, 429
     started = now()
 
-    # Local-pool backpressure: cap in-flight local executions BEFORE the
-    # claim (no tool_call row, no charge). Remote tools are not bound by
-    # the local worker pool and stay unthrottled here.
+    # Execution backpressure BEFORE the claim (no tool_call row, no
+    # charge). Local: worker-pool in-flight cap. Remote (http): global +
+    # per-user in-flight caps — a slow third-party endpoint must never
+    # eat the whole request budget (the remote global cap sits below the
+    # app-level heavy-path gate, so other surfaces always retain slots).
     from .pool import (try_acquire as _pool_acquire,
                        release as _pool_release,
                        inflight_count as _pool_inflight,
-                       LOCAL_MAX_INFLIGHT as _POOL_CAP)
+                       LOCAL_MAX_INFLIGHT as _POOL_CAP,
+                       remote_try_acquire as _remote_acquire,
+                       remote_release as _remote_release,
+                       remote_inflight_count as _remote_inflight,
+                       REMOTE_MAX_INFLIGHT as _REMOTE_CAP)
     local_slot = False
+    remote_slot = False
     if tool.get("execution") == "local":
         if not _pool_acquire():
             logger.warning("local execution pool saturated: in_flight=%d "
                            "limit=%d", _pool_inflight(), _POOL_CAP)
             return None, {"ok": False, "error": "err_busy"}, 503
         local_slot = True
+    elif tool.get("execution") == "http":
+        denial = _remote_acquire(user["id"])
+        if denial == "user":
+            return None, {"ok": False, "error": "err_rate_limited"}, 429
+        if denial == "global":
+            logger.warning("remote execution saturated: in_flight=%d "
+                           "limit=%d", _remote_inflight(), _REMOTE_CAP)
+            return None, {"ok": False, "error": "err_busy"}, 503
+        remote_slot = True
 
     try:
 
@@ -486,3 +502,5 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
     finally:
         if local_slot:
             _pool_release()
+        if remote_slot:
+            _remote_release(user["id"])
