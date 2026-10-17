@@ -18,6 +18,9 @@
    item: 必须显式 width:100% — 只给 margin:auto 会关闭 stretch、
    收缩为 fit-content (各页随内容变宽)。 */
 .shell { width: 100%; max-width: var(--wrap); margin-inline: auto; padding: 0 var(--gut); flex: 1; display: flex; flex-direction: column; }
+/* 对齐铁律: shell 已有 24px 内边距, 页面内层的 .wrap 不再重复 —
+   否则正文 121 / 导航页脚 97, 三套左缘并存 (切页跳动的同族病) */
+.shell .wrap { padding-inline: 0; }
 
 /* ═══ 首页新结构样式 (STEP 2) ═══ */
 
