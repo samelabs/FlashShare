@@ -773,16 +773,17 @@ def _catalog_spec(t: dict, names: dict, ent: dict) -> dict:
     summary = _spec_summary(t, names)
     props = {}
     mn, mx = int(t["files_min"]), int(t["files_max"])
-    if mx > 0:
-        # text-only tools (files_max = 0) expose no files argument
-        props["files"] = {
-            "type": "array",
-            "description": "Input files: each item is inline base64, an "
-                           "https URL, or a reference to an existing upload",
-            "minItems": mn,
-            "maxItems": mx,
-            "items": _FILE_ITEM_SCHEMA,
-        }
+    # The declaration contract carries inputs.files on EVERY tool —
+    # files_max = 0 (text-only) still declares the bound: maxItems 0
+    # tells agents this tool takes no files.
+    props["files"] = {
+        "type": "array",
+        "description": "Input files: each item is inline base64, an "
+                       "https URL, or a reference to an existing upload",
+        "minItems": mn,
+        "maxItems": mx,
+        "items": _FILE_ITEM_SCHEMA,
+    }
     required = ["client_ref"]
     if mn >= 1:
         required.append("files")

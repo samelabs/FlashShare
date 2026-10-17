@@ -980,6 +980,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
    主视觉配角; <1024px 纵向堆叠 */
 .hero-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr); gap: var(--s8); align-items: center; margin-top: var(--s6); text-align: start; }
 .hero .home-composer, .hero .result { text-align: start; max-width: 640px; }
+.hero .hero-main { min-width: 0; } /* grid 子项缺 0 时长文件名撑破容器 (390px 溢出根因) */
 .hero .hero-share { margin-top: var(--s3); justify-content: flex-start; }
 .hero-term { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
 .hero-term .term { border-radius: var(--r-lg); box-shadow: var(--sh-3); font-size: 12.5px; }

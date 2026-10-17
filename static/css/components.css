@@ -201,7 +201,8 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   color: var(--brand-ink); display: grid; place-items: center; flex: none;
 }
 .out-h .ok svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.out-h b { font-weight: 650; font-size: var(--fs-md); }
+.out-h b { font-weight: 650; font-size: var(--fs-md); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out-h .t { flex: none; }
 .out-h .t { font-size: var(--fs-xs); color: var(--ink-3); margin-inline-start: auto; display: inline-flex; gap: var(--s2); align-items: center; }
 .out-b { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 
@@ -412,6 +413,7 @@ pre.rs-text, pre.rs-json {
 .empty .empty-sub { font-size: var(--fs-sm); max-width: 44ch; }
 .empty .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
 .empty .empty-actions > * { margin: 0; }
+.composer .error-note { margin: 0 16px 14px; }
 .error-note {
   padding: var(--s3); border-radius: var(--r-sm);
   background: var(--danger-50); color: var(--danger-strong);
@@ -581,7 +583,7 @@ pre.rs-text, pre.rs-json {
 
 /* ── Tool input — the composer (shared component: home + tool page).
    Structure lives in pages/tool-input.js; DOM per the v2 prototype:
-   .composer > .c-err + .c-files > .chipf + .c-text + .params >
+   .composer > .c-files + .ti-drop/.c-text/.params + .c-bar + .ti-error/.ti-quota (bottom):
    .prow (label + .seg/.input/.switch) + .c-bar (.ib clip + .opt
    delivery pill + .sp + .send). Legacy hooks kept for tests/JS:
    .ti-file-input (hidden file input), .ti-run (submit), .ti-error,
@@ -614,7 +616,7 @@ pre.rs-text, pre.rs-json {
 @media (hover:hover) and (pointer:fine) { .ti-drop:hover { border-color: var(--brand); background: var(--brand-50); } }
 .ti-drop:focus-visible, .ti-drop.dragover { border-color: var(--brand); background: var(--brand-50); outline: none; }
 /* 24h 额度低余量提示 (上传区下方一行; 数据 = limits 投影 dailyRemaining) */
-.ti-quota { margin: 8px 16px 0; font-size: var(--fs-xs); color: var(--warn); }
+.ti-quota { margin: 8px 16px 14px; font-size: var(--fs-xs); color: var(--warn); }
 .chipf {
   display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px;
   border: var(--border-w) solid var(--line); border-radius: 12px;

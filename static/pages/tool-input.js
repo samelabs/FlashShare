@@ -199,17 +199,16 @@
       const chatForm = !hasFilesSlot() && !!main;
       const paramRow = (prm) => paramRowHtml(prm, saved);
 
-      let html = '<div class="composer ti-card" data-tool="' + esc(tool ? tool.id : "") + '">'
-        + '<p class="error-note ti-error" hidden></p>';
+      let html = '<div class="composer ti-card" data-tool="' + esc(tool ? tool.id : "") + '">';
 
       // 文件位 (files_max>0): 空态 = 整块上传区 (点击/拖入), 有文件 = chip 列表
+      let quota = "";
       if (hasFilesSlot()) {
         const lim = window.__LIMITS__ || {};
         const segs = [acceptFamilyText(accept)];
         if (lim.maxFileMb) segs.push(t("ti_zone_file_max", { mb: lim.maxFileMb }));
         if (filesMax() > 1) segs.push(t("ti_max_files", { n: filesMax() }));
         // 24h 额度低余量提示 (同一 limits 投影的 dailyRemaining; ≥20% 不打扰)
-        let quota = "";
         if (Number.isFinite(lim.dailyRemaining) && Number.isFinite(lim.dailyFiles)
             && lim.dailyFiles > 0 && lim.dailyRemaining / lim.dailyFiles < 0.2) {
           quota = '<p class="ti-quota">' + esc(t("quota_low_hint", { n: lim.dailyRemaining })) + "</p>";
@@ -219,7 +218,7 @@
           + '<span class="dz-ic" aria-hidden="true">' + icon("upload") + "</span>"
           + "<b>" + esc(t("ti_zone_main")) + "</b>"
           + "<small>" + esc(segs.join(" · ")) + "</small>"
-          + "</button>" + quota;
+          + "</button>";
       }
 
       // 正文: 主 text 参数 — 纯文本工具 (files_max=0) = 对话框形态
@@ -287,6 +286,10 @@
         + '<span class="sp"></span>'
         + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + "</button>")
         + "</div>";
+
+      // 错误行与额度提示挂卡片底部 (c-bar 之后): 出现/消失只影响卡外
+      // 少量内容, 不推移上传区与参数区 — CLS 门禁的结构性保证。
+      html += '<p class="error-note ti-error" hidden></p>' + quota;
 
       // 隐藏文件输入 (测试与无 JS 场景的稳定钩子)
       html += '<input type="file" class="visually-hidden ti-file-input"'
