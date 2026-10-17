@@ -87,9 +87,14 @@ def build_llms_txt() -> str:
     a('       "arguments":{"files":[{"filename":"a.png","b64":"..."}],')
     a('                    "client_ref":"my-stable-op-1"}}}\'')
     a("")
-    a("client_ref is REQUIRED on every tools/call: a stable identity for "
-      "one logical operation — reuse the same value to retry safely "
-      "(replays return the original result, no double charge).")
+    a("client_ref is REQUIRED on every executing/staging tools/call "
+      "(platform tools and create_upload): a stable identity for one "
+      "logical operation — reuse the same value to retry safely "
+      "(replays return the original result, no double charge). The "
+      "discovery/lifecycle meta tools take exactly the arguments their "
+      "inputSchema declares (catalog_search: q, page; list_uploads: "
+      "offset; delete_upload: public_id; pin_tool/unpin_tool: name; "
+      "list_favorites/register: none).")
     a("")
     a("Arguments are strict: each tool accepts exactly the keys its "
       "inputSchema declares (plus files/params/delivery/client_ref for "
@@ -136,13 +141,15 @@ def build_llms_txt() -> str:
       "governs how long the result (and its file items) stays "
       "available and how many times files may be downloaded:")
     a('  {"delivery": {"expiry_days": 1, "allowed_downloads": 50}}')
-    a(f"- expiry_days: how long the result lives (default 1). Legal "
-      f"values: {list(EXPIRY_DAYS)}.")
+    a(f"- expiry_days: how long the result lives (default 1). The "
+      f"FULL legal range is {list(EXPIRY_DAYS)}; your plan's subset is "
+      "what each tool's inputSchema enum shows.")
     a(f"- allowed_downloads: total downloads allowed across the file "
-      f"items (default 50). Legal values: {list(DOWNLOAD_LIMITS)}.")
-    a("- Values outside your plan's allowance need a higher plan; an "
-      "invalid value is returned as an isError result listing the "
-      "legal values.")
+      f"items (default 50). FULL range {list(DOWNLOAD_LIMITS)}; your "
+      "plan's subset is in the schema enum.")
+    a("- Free-plan enums are the smaller sets; membership raises them. "
+      "A value outside YOUR plan answers as an isError listing your "
+      "legal values — the schema enum and the error always agree.")
     a("structuredContent.expires_at is the epoch second at which the "
       "result expires; after it, result_url and every file link 404.")
     a("")
