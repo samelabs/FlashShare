@@ -52,9 +52,11 @@
 /* ── Header (v2 .hd) ─────────────────────────────────────── */
 .hd { position: sticky; top: 0; z-index: var(--z-dropdown); backdrop-filter: saturate(1.4) blur(14px); background: rgba(251, 251, 252, 0.72); border-bottom: 1px solid var(--line); }
 .hd .hd-in { height: 60px; display: flex; align-items: center; gap: 24px; }
-.logo { display: flex; align-items: center; gap: 9px; font-weight: 750; font-size: 17px; letter-spacing: -0.03em; flex-shrink: 0; white-space: nowrap; color: var(--ink); }
-.logo .logo-mark { width: 28px; height: 28px; display: block; flex-shrink: 0; }
-.logo b { color: var(--brand); }
+.logo { display: flex; align-items: center; flex-shrink: 0; white-space: nowrap; }
+/* 横版组合 (brand/svg/518-lockup.svg): 顶栏高 28, ≤640 高 24 — 尺寸由
+   brand/README 规定, 不外加 CSS 圆角/滤镜 */
+.logo .logo-lockup { height: 28px; width: auto; display: block; }
+@media (max-width: 640px) { .logo .logo-lockup { height: 24px; } }
 .nav { display: flex; gap: 2px; }
 .nav a { padding: 7px 12px; border-radius: var(--r-full); color: var(--ink-2); font-size: var(--fs-base); font-weight: 500; }
 .nav a:hover, .nav a.on { color: var(--ink); background: rgba(11, 13, 16, 0.05); }

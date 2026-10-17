@@ -1,5 +1,5 @@
-const CACHE_NAME = "flashshare-pwa-v92";
-const CORE_ASSETS = ["/offline", "/site.webmanifest", "/static/images/og-image.png?v=3", "/static/images/favicon.ico?v=3", "/static/images/apple-touch-icon.png?v=3"];
+const CACHE_NAME = "flashshare-pwa-v93";
+const CORE_ASSETS = ["/offline", "/site.webmanifest", "/brand/web/og-image.png", "/brand/web/favicon.ico", "/brand/web/apple-touch-icon.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS)).then(() => self.skipWaiting()));
@@ -23,7 +23,7 @@ self.addEventListener("fetch", event => {
   }
 
   // Static assets only: cache-first
-  if (["/static/images/og-image.png", "/static/images/favicon.ico", "/static/images/apple-touch-icon.png", "/static/images/icon-192.png", "/static/images/icon-512.png", "/site.webmanifest"].includes(url.pathname)) {
+  if (["/brand/web/og-image.png", "/brand/web/favicon.ico", "/brand/web/apple-touch-icon.png", "/brand/web/icon-192.png", "/brand/web/icon-512.png", "/site.webmanifest"].includes(url.pathname)) {
     event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
