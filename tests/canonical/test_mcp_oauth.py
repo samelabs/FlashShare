@@ -19,6 +19,11 @@
   C*  Challenge: anonymous tools/call → 401 + WWW-Authenticate pointing
       at the protected-resource metadata; `register` stays anonymously
       callable (the one-call onboarding path).
+  R*  Revocation: grants are viewable and revocable from the
+      session-authenticated account surface — a revoked token is 401 on
+      /mcp and its refresh is invalid_grant; another user's grant is
+      untouchable (404); a password change revokes the user's OAuth
+      tokens while the fsk_ key survives.
 
 Fail-closed env guard; per-run unique names; fixtures cleaned at end.
 """
@@ -116,6 +121,7 @@ def _mkuser(name):
 
 
 UID = _mkuser(_u)
+UID2 = None  # second user, created by the R* revocation section
 FSK = create_key(UID, "oa-suite")["key"]
 
 PNG_HEX = ("89504e470d0a1a0a0000000d4948445200000001000000010806"
@@ -181,6 +187,15 @@ check("C5 authorize per-IP throttle engages at the limit",
       all(_throttled[:_rp._AUTHZ_LIMIT]) is False
       and _throttled[-1] is True, (sum(_throttled), _rp._AUTHZ_LIMIT))
 _rp._authz_hits.clear()
+
+# /oauth/token per-IP throttle: separate store, its own limit
+_rp._token_hits.clear()
+_throttled_t = [_rp._token_throttled(_fake_req())
+                for _ in range(_rp._TOKEN_LIMIT + 1)]
+check("C6 token per-IP throttle engages at the limit",
+      all(_throttled_t[:_rp._TOKEN_LIMIT]) is False
+      and _throttled_t[-1] is True, (sum(_throttled_t), _rp._TOKEN_LIMIT))
+_rp._token_hits.clear()
 
 # full consent flow over the in-process ASGI app (TestClient): the
 # patched fetch IS the server's fetch — login, consent render, code
@@ -420,6 +435,22 @@ try:
               and "oauth_scope_files_read" in _html
               and "oauth_scope_files_delete" not in _html,
               page.status_code)
+        # anti-impersonation lines: where the client lives + where the
+        # browser returns (loopback redirect distinguishes the two hosts)
+        _page_lb = _tc.get("/oauth/authorize?" + _up.urlencode({
+            "response_type": "code", "client_id": CIMD_URL,
+            "redirect_uri": "http://localhost:8943/callback",
+            "scope": "tools:call", "state": f"st-{_u}",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256", "resource": RESOURCE}))
+        _html_lb = _page_lb.text
+        check("P2b consent page shows client host + redirect host lines",
+              _page_lb.status_code == 200
+              and 'data-i18n="oauth_client_from"' in _html_lb
+              and 'data-i18n="oauth_redirect_to"' in _html_lb
+              and f"plugin-{_u}.example" in _html_lb
+              and "localhost" in _html_lb,
+              _page_lb.status_code)
         # CSRF: posting without the nonce cookie fails
         bad = _tc.post("/oauth/authorize", data={
             "response_type": "code", "client_id": CIMD_URL,
@@ -475,6 +506,103 @@ try:
             check("P7 consent-flow token works end-to-end on /mcp",
                   _st2 == 200 and not ((d2 or {}).get("result") or {}).get("isError"),
                   _st2)
+
+        # ═══ R. grants: view + revoke + credential rotation ═══
+        _gl = _tc.get("/api/oauth/grants")
+        _gd = _gl.json() if _gl.status_code == 200 else {}
+        _entry = next((g for g in _gd.get("grants", [])
+                       if g.get("client_id") == CIMD_URL), None)
+        check("R1 grants list shows the consented client (host + merged scopes)",
+              _gl.status_code == 200 and _gd.get("ok") is True and _entry
+              and _entry["client_host"] == f"plugin-{_u}.example"
+              and _entry["scope"] == "tools:call files:read",
+              str(_gd)[:140])
+
+        _rv = _tc.post("/api/oauth/grants/revoke",
+                       json={"client_id": CIMD_URL})
+        check("R2 revoking the client's grant → ok",
+              _rv.status_code == 200 and _rv.json().get("ok") is True,
+              _rv.status_code)
+        _st3, _h3, d3 = _mcp({"jsonrpc": "2.0", "id": 21,
+                              "method": "tools/call",
+                              "params": {"name": "catalog_search",
+                                         "arguments": {"q": ""}}},
+                             token=_td["access_token"])
+        check("R3 revoked access token → 401 on /mcp", _st3 == 401, _st3)
+        try:
+            _oa.refresh_access_token(_td["refresh_token"], CIMD_URL, RESOURCE)
+            _r3b = False
+        except ValueError as _e3b:
+            _r3b = str(_e3b) == "invalid_grant"
+        check("R3b revoked refresh token → invalid_grant", _r3b)
+
+        _rv2 = _tc.post("/api/oauth/grants/revoke",
+                        json={"client_id": CIMD_URL})
+        check("R4 re-revoke with no live rows → 404 not_found",
+              _rv2.status_code == 404
+              and _rv2.json().get("error") == "not_found", _rv2.status_code)
+
+        # another user's grant is untouchable from this session
+        UID2 = _mkuser(_u + "b")
+        CIMD_URL2 = f"https://other-{_u}.example/oauth.json"
+        REDIRECT2 = f"https://other-{_u}.example/callback"
+        _code_b = _oa.create_authorization_code(
+            UID2, CIMD_URL2, REDIRECT2, challenge, "tools:call", RESOURCE)
+        _toks_b = _oa.exchange_authorization_code(
+            _code_b, CIMD_URL2, REDIRECT2, verifier, RESOURCE)
+        _rv3 = _tc.post("/api/oauth/grants/revoke",
+                        json={"client_id": CIMD_URL2})
+        check("R5 revoking another user's client grant → 404",
+              _rv3.status_code == 404, _rv3.status_code)
+        check("R5b the other user's token still authenticates",
+              _oa.authenticate_access_token(
+                  _toks_b["access_token"], RESOURCE) is not None)
+
+        # /oauth/token honors its per-IP gate over HTTP (burn the budget
+        # for the TestClient peer address, then one real POST)
+        _rp._token_hits.clear()
+        for _ in range(_rp._TOKEN_LIMIT):
+            _rp._token_throttled(_fake_req(ip="testclient"))
+        _t429 = _tc.post("/oauth/token", data={
+            "grant_type": "authorization_code", "client_id": CIMD_URL,
+            "code": "fsoa_x", "redirect_uri": REDIRECT,
+            "code_verifier": verifier, "resource": RESOURCE})
+        check("C7 real /oauth/token over the limit → 429 temporarily_unavailable",
+              _t429.status_code == 429
+              and _t429.json().get("error") == "temporarily_unavailable",
+              _t429.status_code)
+        _rp._token_hits.clear()
+
+        # credential rotation: a fresh grant for UID dies with the
+        # password change; the fsk_ key survives
+        _code_c = _oa.create_authorization_code(
+            UID, CIMD_URL, REDIRECT, challenge, "tools:call", RESOURCE)
+        _toks_c = _oa.exchange_authorization_code(
+            _code_c, CIMD_URL, REDIRECT, verifier, RESOURCE)
+        from identity.auth import change_password as _chg_pw
+        _chg_pw(UID, "Test12345", "NewPass1234")
+        _st4, _h4, d4 = _mcp({"jsonrpc": "2.0", "id": 22,
+                              "method": "tools/call",
+                              "params": {"name": "catalog_search",
+                                         "arguments": {"q": ""}}},
+                             token=_toks_c["access_token"])
+        check("R6 password change revokes the user's OAuth tokens → 401",
+              _st4 == 401, _st4)
+        try:
+            _oa.refresh_access_token(_toks_c["refresh_token"],
+                                     CIMD_URL, RESOURCE)
+            _r6b = False
+        except ValueError:
+            _r6b = True
+        check("R6b refresh after password change → invalid_grant", _r6b)
+        st, _h, d = _mcp({"jsonrpc": "2.0", "id": 23,
+                          "method": "tools/call",
+                          "params": {"name": "catalog_search",
+                                     "arguments": {"q": ""}}},
+                         token=FSK)
+        check("R7 the same user's fsk_ key still works after the change",
+              st == 200 and not ((d or {}).get("result") or {}).get("isError"),
+              st)
 finally:
     _remote.pinned_request = _orig_pinned
     _oa._cimd_cache.clear()
@@ -497,13 +625,16 @@ check("T1 token endpoint: unresolvable CIMD client → 401 invalid_client",
 
 # ═══ cleanup ═══
 with db() as con:
-    con.execute("delete from oauth_mcp_codes where user_id=%s", (UID,))
-    con.execute("delete from oauth_mcp_tokens where user_id=%s", (UID,))
-    con.execute("delete from tool_calls where user_id=%s", (UID,))
-    con.execute("delete from uploads where user_id=%s", (UID,))
-    con.execute("delete from api_keys where user_id=%s", (UID,))
-    con.execute("delete from ledger where user_id=%s", (UID,))
-    purge_users(con, [UID])
+    for _uid_c in (UID, UID2):
+        if _uid_c is None:
+            continue
+        con.execute("delete from oauth_mcp_codes where user_id=%s", (_uid_c,))
+        con.execute("delete from oauth_mcp_tokens where user_id=%s", (_uid_c,))
+        con.execute("delete from tool_calls where user_id=%s", (_uid_c,))
+        con.execute("delete from uploads where user_id=%s", (_uid_c,))
+        con.execute("delete from api_keys where user_id=%s", (_uid_c,))
+        con.execute("delete from ledger where user_id=%s", (_uid_c,))
+    purge_users(con, [u for u in (UID, UID2) if u is not None])
 print("cleanup: oauth fixtures removed")
 
 print()

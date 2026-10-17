@@ -8,7 +8,9 @@ incrementally; BrokenProcessPool maps to a typed execution failure that
 converges through the existing gate refund path; pool reset under
 concurrency adopts exactly one replacement; a worker-death failure
 converges through the REAL gate (exact charge refund, terminal failed,
-no duplicate refund, no running call, balance restored).
+no duplicate refund, no running call, balance restored); remote (http)
+executions are capped globally and per user BEFORE the claim (429 /
+503, zero tool_call rows, zero charge) and release on settle.
 """
 
 import os as _os
@@ -520,6 +522,122 @@ with db() as con:
     con.execute("delete from platform_tools where tool_key like 'eb58/%%'")
     purge_users(con, [r["id"] for r in con.execute(
         "select id from users where username like 'eb58_%%'").fetchall()])
+
+# ══════════ H. remote (http) execution backpressure ══════════
+# Global + per-user in-flight caps reject BEFORE the claim (no
+# tool_call row, no charge) and release when the call settles.
+_h_users = []
+_h_tool = f"ebhttp_{_u}"
+try:
+    from economy.billing import grant as _grant_h, spendable_balance as _bal_h
+    with db() as con:
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+            " label_json, icon, visibility,"
+            " enabled, created_at, updated_at)"
+            " values (%s, NULL, %s, 'http', %s,"
+            " 'wand', 'public', TRUE, %s, %s)",
+            (_h_tool, _h_tool, _json.dumps({"en": "EBH"}), ts, ts))
+        con.execute(
+            "insert into pricing (tool_id, cost, enabled, updated_at)"
+            " values (%s, 25, TRUE, %s)", (_h_tool, ts))
+    _hu1 = _mkuser(_u + "h1")
+    _hu2 = _mkuser(_u + "h2")
+    _hu3 = _mkuser(_u + "h3")
+    _h_users = [_hu1, _hu2, _hu3]
+    for _uid_h in _h_users:
+        _grant_h(_uid_h, 1000, "manual_topup", note="ebh fixture")
+
+    from execution.invocation import ToolInvocation, SourceFile
+    from execution import gate as _gate_mod
+    from execution.pool import (REMOTE_MAX_INFLIGHT, REMOTE_PER_USER_MAX,
+                                remote_inflight_count as _r_inflight)
+
+    check("H0 不变量: 远程全局上限低于重路径闸门 (8), 每用户 ≤ 全局",
+          0 < REMOTE_MAX_INFLIGHT < 8
+          and REMOTE_PER_USER_MAX <= REMOTE_MAX_INFLIGHT,
+          (REMOTE_MAX_INFLIGHT, REMOTE_PER_USER_MAX))
+
+    _H_TOOL = {"id": _h_tool, "tool_key": _h_tool,
+               "owner_id": None, "execution": "http"}
+
+    async def _http_call(uid, ref, hold):
+        async def _orch():
+            await hold.wait()
+            raise RuntimeError("tool_failed")
+        inv = ToolInvocation(
+            tool_id=_h_tool,
+            files=[SourceFile("pub_h", "tok_h")],
+            params={}, delivery={"expiry_days": 1, "allowed_downloads": 1},
+            client_ref=ref)
+        return await _gate_mod.run({"id": uid}, _H_TOOL, inv, _orch)
+
+    async def _scenario():
+        hold = asyncio.Event()
+        # per-user budget: two held calls occupy user h1's whole quota
+        t1 = asyncio.create_task(_http_call(_hu1, f"hh1-{_u}", hold))
+        t2 = asyncio.create_task(_http_call(_hu1, f"hh2-{_u}", hold))
+        await asyncio.sleep(0.5)
+        bal_a = _bal_h(_hu1)
+        r_reject_user = await _http_call(_hu1, f"hh3-{_u}", hold)
+        bal_b = _bal_h(_hu1)
+        # global budget: two other users fill the remaining slots
+        t4 = asyncio.create_task(_http_call(_hu2, f"hh4-{_u}", hold))
+        t5 = asyncio.create_task(_http_call(_hu2, f"hh5-{_u}", hold))
+        await asyncio.sleep(0.5)
+        r_reject_global = await _http_call(_hu3, f"hh6-{_u}", hold)
+        hold.set()
+        held = await asyncio.gather(t1, t2, t4, t5)
+        # everything settled → slots released → a new call passes through
+        r_after = await _http_call(_hu3, f"hh7-{_u}", hold)
+        return r_reject_user, r_reject_global, r_after, held, bal_a, bal_b
+
+    (r_reject_user, r_reject_global, r_after, _held,
+     bal_a, bal_b) = asyncio.run(_scenario())
+
+    check("H1 同一用户第 3 个并发 http 调用 → 429 err_rate_limited",
+          r_reject_user[0] is None
+          and r_reject_user[1] == {"ok": False, "error": "err_rate_limited"}
+          and r_reject_user[2] == 429, str(r_reject_user)[:100])
+    check("H2 全局第 5 个并发 http 调用 → 503 err_busy",
+          r_reject_global[0] is None
+          and r_reject_global[1] == {"ok": False, "error": "err_busy"}
+          and r_reject_global[2] == 503, str(r_reject_global)[:100])
+    check("H3 两种拒绝都不扣费 (拒绝前后余额一致)",
+          bal_a == bal_b, f"{bal_a} vs {bal_b}")
+    with db() as con:
+        for _ref_h, _expect_h in ((f"hh3-{_u}", 0), (f"hh6-{_u}", 0),
+                                  (f"hh7-{_u}", 1)):
+            _n_h = int(con.execute(
+                "select count(*) c from tool_calls where client_ref=%s",
+                (_ref_h,)).fetchone()["c"])
+            check(f"H4 client_ref …{_ref_h[-3:]} tool_call 行数 = {_expect_h}",
+                  _n_h == _expect_h, _n_h)
+    check("H5 占住的 4 个调用正常走完失败结算 (tool_failed/500), 名额释放后新调用可进场",
+          all(o[0] is None and o[1].get("error") == "tool_failed"
+              and o[2] == 500 for o in _held)
+          and r_after[0] is None and r_after[1].get("error") == "tool_failed"
+          and r_after[2] == 500,
+          str([o[2] for o in _held]) + str(r_after[2]))
+    check("H6 场景结束在途归零, 余额恢复",
+          _r_inflight() == 0
+          and all(_bal_h(u) == 1000 for u in _h_users),
+          (_r_inflight(), [_bal_h(u) for u in _h_users]))
+
+finally:
+    # FK-safe fixture cleanup: 只删本测试的实体 (随机前缀)
+    for _uid_h in _h_users:
+        with db() as con:
+            con.execute("delete from tool_calls where user_id=%s", (_uid_h,))
+            con.execute("delete from ledger where user_id=%s", (_uid_h,))
+    if _h_tool:
+        with db() as con:
+            con.execute("delete from pricing where tool_id=%s", (_h_tool,))
+            con.execute("delete from platform_tools where tool_key=%s", (_h_tool,))
+    if _h_users:
+        with db() as con:
+            purge_users(con, _h_users)
+    print("cleanup: remote backpressure fixtures removed")
 
 print()
 print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")

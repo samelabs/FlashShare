@@ -116,3 +116,107 @@ document.getElementById('createKey')?.addEventListener('click', async () => {
 });
 
 if (_keyList) loadKeys();
+
+// ── Authorized applications (OAuth grants) — list / revoke ──
+// Rows render the client hostname only; the raw client_id travels in
+// the revoke request and never reaches the visible surface.
+const _grantList = document.getElementById('grantList');
+
+const _GRANT_SCOPE_KEYS = {
+  'tools:call': 'oauth_scope_tools_call',
+  'files:read': 'oauth_scope_files_read',
+  'files:delete': 'oauth_scope_files_delete',
+};
+
+function _grantTime(ts) {
+  if (!ts) return '';
+  try { return new Date(ts * 1000).toLocaleString(); } catch (e) { return ''; }
+}
+
+function _grantMeta(g) {
+  // one full-width line: scope descriptions + last use; pure-copy
+  // fragments are data-i18n spans, dynamic values are plain text nodes
+  const meta = document.createElement('div');
+  meta.className = 'key-value';
+  let first = true;
+  for (const s of String(g.scope || '').split(/\s+/)) {
+    const key = _GRANT_SCOPE_KEYS[s];
+    if (!key) continue;
+    if (!first) meta.appendChild(document.createTextNode(' · '));
+    first = false;
+    const item = document.createElement('span');
+    item.setAttribute('data-i18n', key);
+    item.textContent = window.t(key);
+    meta.appendChild(item);
+  }
+  const used = _grantTime(g.last_used_at);
+  if (used) {
+    if (!first) meta.appendChild(document.createTextNode(' · '));
+    const label = document.createElement('span');
+    label.setAttribute('data-i18n', 'oauth_last_used');
+    label.textContent = window.t('oauth_last_used');
+    meta.appendChild(label);
+    meta.appendChild(document.createTextNode(' ' + used));
+  }
+  return meta;
+}
+
+async function loadGrants() {
+  if (!_grantList) return;
+  const r = await fetch('/api/oauth/grants');
+  const d = await r.json();
+  if (!d.ok) return;
+  _grantList.innerHTML = '';
+  if (!d.grants.length) {
+    const empty = document.createElement('p');
+    empty.className = 'profile-note';
+    const span = document.createElement('span');
+    span.setAttribute('data-i18n', 'oauth_grants_empty');
+    span.textContent = window.t('oauth_grants_empty');
+    empty.appendChild(span);
+    _grantList.appendChild(empty);
+    return;
+  }
+  for (const g of d.grants) {
+    const row = document.createElement('div');
+    row.className = 'key-item';
+
+    const label = document.createElement('span');
+    label.className = 'key-name';
+    label.textContent = g.client_host;
+
+    const actions = document.createElement('span');
+    actions.className = 'key-actions';
+
+    const revokeBtn = document.createElement('button');
+    revokeBtn.type = 'button';
+    revokeBtn.className = 'btn btn-secondary btn-grant-revoke';
+    const revokeSpan = document.createElement('span');
+    revokeSpan.setAttribute('data-i18n', 'oauth_revoke_btn');
+    revokeSpan.textContent = window.t('oauth_revoke_btn');
+    revokeBtn.appendChild(revokeSpan);
+    revokeBtn.addEventListener('click', async () => {
+      // Site-wide confirm authority — no native confirm() (VIS-006).
+      const ok = await window.confirmAction({
+        title: window.t('oauth_revoke_btn'),
+        message: window.t('confirmGrantRevoke'),
+        confirmLabel: window.t('oauth_revoke_btn'),
+        cancelLabel: window.t('cancel'),
+      });
+      if (!ok) return;
+      const rr = await fetch('/api/oauth/grants/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: g.client_id })
+      });
+      if (rr.ok) loadGrants();
+      else { const dd = await rr.json(); alert(_errm(dd.error)); }
+    });
+    actions.appendChild(revokeBtn);
+
+    row.append(label, actions, _grantMeta(g));
+    _grantList.appendChild(row);
+  }
+}
+
+if (_grantList) loadGrants();

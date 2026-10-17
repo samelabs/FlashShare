@@ -192,9 +192,12 @@ def detect_lang(request: Request) -> str:
 import asyncio
 
 _concurrency = asyncio.Semaphore(8)
-# Heavy surface gate.
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp",
-                "/auth/login", "/auth/register")
+# Heavy surface gate. /auth/login and /auth/register stay OUT: they are
+# small-form (64KB) + rate-limited + bcrypt-in-thread surfaces and must
+# never queue behind slow tool calls; remote (http) executions carry
+# their own in-flight cap sized below this gate (execution/pool
+# REMOTE_MAX_INFLIGHT), so a slow user tool can never occupy every slot.
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp")
 # Mutating account identity/credentials is a browser-session surface. Capability
 # tokens may run the machine surface (MCP), but cannot use themselves to
 # mint/alter account credentials. Token CRUD and X bind/unbind also enforce
@@ -259,9 +262,10 @@ async def auth_middleware(request: Request, call_next):
     if path.startswith("/f/") or path == "/mcp" or path.startswith("/mcp/"):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
-    # change_password/set_password delete every old browser session (API
-    # keys are independent program credentials and survive). A successful
-    # browser password POST gets exactly one fresh current session.
+    # change_password/set_password delete every old browser session AND
+    # revoke every OAuth grant (API keys are independent program
+    # credentials and survive). A successful browser password POST gets
+    # exactly one fresh current session.
     if (request.method == "POST" and path == "/account/password"
             and user_id and getattr(request.state, "auth_via", "") == "session"
             and 300 <= response.status_code < 400):

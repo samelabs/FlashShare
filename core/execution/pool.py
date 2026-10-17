@@ -56,6 +56,53 @@ def inflight_count() -> int:
         return _inflight
 
 
+# 远程执行背压: http 工具的进程内在途计数上限 (全局 + 每用户)。全局上限
+# 必须小于全局重路径闸门并发 (app/main.py Semaphore(8)) — 慢的第三方端点
+# 永远占不满全局闸门, 其余表面始终留有名额; 每用户上限防止单账号独占。
+REMOTE_MAX_INFLIGHT = 4
+REMOTE_PER_USER_MAX = 2
+
+_remote_lock = threading.Lock()
+_remote_inflight = 0
+_remote_per_user: dict = {}
+
+
+def remote_try_acquire(user_id) -> str | None:
+    """占一个远程执行在途名额 (全局 + 每用户); 成功返回 None, 满额返回
+    "user" 或 "global" (调用方在 claim 之前拒绝, 不排队)。"""
+    global _remote_inflight
+    uid = int(user_id)
+    with _remote_lock:
+        if _remote_per_user.get(uid, 0) >= REMOTE_PER_USER_MAX:
+            return "user"
+        if _remote_inflight >= REMOTE_MAX_INFLIGHT:
+            return "global"
+        _remote_inflight += 1
+        _remote_per_user[uid] = _remote_per_user.get(uid, 0) + 1
+        return None
+
+
+def remote_release(user_id) -> None:
+    """释放一个远程在途名额 (与 remote_try_acquire 成对; 计数下限 0,
+    每用户计数归零即删除键, 防御性钳位 + 防字典膨胀)。"""
+    global _remote_inflight
+    uid = int(user_id)
+    with _remote_lock:
+        if _remote_inflight > 0:
+            _remote_inflight -= 1
+        held = _remote_per_user.get(uid, 0)
+        if held > 1:
+            _remote_per_user[uid] = held - 1
+        else:
+            _remote_per_user.pop(uid, None)
+
+
+def remote_inflight_count() -> int:
+    """当前远程在途数 (观测/日志用)。"""
+    with _remote_lock:
+        return _remote_inflight
+
+
 def _new_pool() -> ProcessPoolExecutor:
     return ProcessPoolExecutor(max_workers=WORKERS)
 

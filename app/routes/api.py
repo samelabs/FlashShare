@@ -551,3 +551,37 @@ async def delete_key_route(key_id: int, request: Request):
     if not delete_key(user["id"], key_id):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True}
+
+
+# ── OAuth grants: account-control surface, session only (same guard
+# as the key routes above — Bearer access never manages grants) ──
+
+@router.get("/oauth/grants")
+async def list_oauth_grants_route(request: Request):
+    """The user's live OAuth grants (per client). The raw client_id is
+    the revoke key — it travels in requests only, the UI renders the
+    client hostname."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    from identity.oauth_provider import list_grants
+    return {"ok": True, "grants": list_grants(user["id"])}
+
+
+@router.post("/oauth/grants/revoke")
+async def revoke_oauth_grant_route(request: Request):
+    user, err = _require_auth(request)
+    if err:
+        return err
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    client_id = raw.get("client_id") if isinstance(raw, dict) else None
+    if (not isinstance(client_id, str) or not client_id
+            or len(client_id) > 2048):
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    from identity.oauth_provider import revoke_grant
+    if not revoke_grant(user["id"], client_id):
+        return JSONResponse({"ok": False, "error": "not_found"}, 404)
+    return {"ok": True}
