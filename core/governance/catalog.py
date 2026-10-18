@@ -32,24 +32,19 @@ VIS_PRIVATE = "private"    # owner only
 VIS_UNLISTED = "unlisted"  # callable when the key is known, never listed
 VIS_PUBLIC = "public"      # grid + every caller's tools/list
 
-# share = 类型空态的唯一持有者 (免费分享 = 全站上传基础能力, cloud 呼应输入框)。
-_SHARE_TOOL_KEY = "share"
-
 
 def _display_icon(tool_key: str, files_max, accept) -> str:
     """图标完全依赖类型 — 单一策略点。
 
-    share → cloud (空态); 第一方注册声明的 family (accept 无法归并时,
-    如 zip_pack 全格式入食) → 该道字形; 其余由声明派生。DB icon 列的
-    装饰值一概不读。"""
-    if tool_key == _SHARE_TOOL_KEY:
-        return "cloud"
+    第一方注册声明的 family (accept 无法归并出车道时, 如 zip_pack
+    全格式入食但属归档道) → 该道字形; 其余由声明派生 (纯文本→text /
+    accept 未声明=all→cloud / 单族→族字形)。DB icon 列的装饰值一概不读。"""
     if is_official_id(tool_key):
         from tools import _registry
         fam = next((t.get("family") for t in _registry
                     if t["id"] == tool_key and t.get("family")), None)
         if fam:
-            return _FAMILY_GLYPH.get(fam, "wand")
+            return _FAMILY_GLYPH[fam]
     return derived_tool_icon(files_max, accept)
 
 

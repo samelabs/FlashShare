@@ -17,13 +17,6 @@ Tool lifecycle:
 
 from pathlib import Path
 
-# Icon identifiers (matched in frontend SVG sprite)
-VALID_ICONS = {
-    "shield", "image", "archive", "edit", "crop",
-    "compress", "convert", "print", "favicon", "merge", "info", "hash", "upload", "wand",
-    "share",
-}
-
 
 def out_filename(orig_name, ext=None, default_stem="file"):
     """The ONE output-name convention for tool-produced files: original

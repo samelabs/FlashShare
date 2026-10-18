@@ -301,10 +301,10 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " label_json, icon, visibility,"
-            " enabled, created_at, updated_at)"
+            " label_json, visibility,"
+            " enabled, created_at, updated_at, accept_json)"
             " values (%s, NULL, %s, 'local', %s,"
-            " 'wand', 'public', TRUE, %s, %s)",
+            " 'public', TRUE, %s, %s, '[\".png\"]')",
             (f"ebtool_{_u}", f"ebtool_{_u}",
              _json.dumps({"en": "EB"}), ts, ts))
         con.execute(
@@ -421,8 +421,8 @@ def _mkrow58(execution):
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json, visibility, enabled,"
-            " created_at, updated_at) values (%s, NULL, %s, %s,"
-            " '{}', 'public', TRUE, %s, %s)"
+            " created_at, updated_at, accept_json) values (%s, NULL, %s, %s,"
+            " '{}', 'public', TRUE, %s, %s, '[\".png\"]')"
             " on conflict (tool_key) do update set execution=excluded.execution",
             (f"eb58/{execution}", execution, execution, _ts58, _ts58))
     return uid
@@ -533,10 +533,10 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " label_json, icon, visibility,"
-            " enabled, created_at, updated_at)"
+            " label_json, visibility,"
+            " enabled, created_at, updated_at, accept_json)"
             " values (%s, NULL, %s, 'http', %s,"
-            " 'wand', 'public', TRUE, %s, %s)",
+            " 'public', TRUE, %s, %s, '[\".png\"]')",
             (_h_tool, _h_tool, _json.dumps({"en": "EBH"}), ts, ts))
         con.execute(
             "insert into pricing (tool_id, cost, enabled, updated_at)"

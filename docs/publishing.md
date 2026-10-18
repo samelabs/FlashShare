@@ -43,7 +43,7 @@ The declaration and execution contract for tools published on 518.PLUS.
 | `files_min` | 输入文件数下限，int ≥ 0（0 = 可不带文件调用）；缺省 1 |
 | `files_max` | 输入文件数上限，int 0..20；须 ≥ files_min；缺省 1。0 = 纯文本工具：无文件位，不带 format_families/accept，第一个 text 参数作为输入框 |
 | `outputs` | 产出类型非空子集 `["text","json","file"]`（声明工具可能返回哪些结果项）；缺省 `["file"]` |
-| `icon` | **发布不可声明**（见「图标语义」）。工具图标不是工具作者的字段——表达的是"这工具吃什么" |
+| `icon` | **不存在此字段**（见「图标语义」）。工具图标完全由类型派生——表达的是"这工具吃什么"，声明键与 DB 列均已删除 |
 | `param.key` | `^[a-z][a-z0-9_]{0,31}$`，同工具内唯一 |
 | `param.type` | `enum` / `text` / `number` / `boolean` |
 | `param.required` | bool |
@@ -99,11 +99,11 @@ The declaration and execution contract for tools published on 518.PLUS.
 
 ## 图标语义（icon = 类型，链路唯一）
 
-图标**完全依赖工具类型**，不存在装饰性 icon 声明（icon 链路已退役，DB 列不再被读取）：
+图标**完全依赖工具类型**——不存在装饰性 icon 声明（声明键与 DB 列均已删除，无任何 fallback 机制）：
 
-- `share`（免费分享）→ `cloud`，**类型空态的唯一持有者**（呼应上传输入，全站基础能力）；
+- accept 未声明 = **all**（全部平台格式）→ `cloud`；内置工具中仅 `share`（免费分享，全站上传基础能力）以此形态发布；
 - 第一方工具可声明 `family`（accept 无法归并出车道时，如 zip_pack 全格式入食但属归档道——类型≠accept 边界）；
-- 其余由声明派生（`core/icons.py derived_tool_icon`）：纯文本输入（files_max=0）→ `text`；单一族 → 该道字形；多族 → `convert`；无声明 → `wand` 兜底。
+- 其余由声明派生（`core/icons.py derived_tool_icon`）：纯文本输入（files_max=0）→ `text`；accept 落入哪一族 → 该道字形（机制内 accept 必落单族）。
 
 发布表单没有、也不应有图标项；类型（输入方式 + 格式道）就是图标的全部语义来源。
 

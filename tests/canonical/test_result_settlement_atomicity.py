@@ -89,10 +89,10 @@ def _mktool(tool_id, owner_id=None, cost=25):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, label_json, icon,"
-            " visibility, enabled, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', %s, 'wand',"
-            " 'public', TRUE, %s, %s)",
+            " execution, label_json,"
+            " visibility, enabled, created_at, updated_at, accept_json)"
+            " values (%s, %s, %s, 'local', %s,"
+            " 'public', TRUE, %s, %s, '[\".png\"]')",
             (tool_id, owner_id, tool_id,
              _json.dumps({"en": "RS"}), ts, ts))
         con.execute(

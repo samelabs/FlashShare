@@ -579,7 +579,7 @@ init();
     var params = collectParams(true);
     var tool = {
       id: "preview", label: label || (_msg("mytools_ph_label")),
-      icon: "wand", files_min: fminOk, files_max: fmaxOk,
+      files_min: fminOk, files_max: fmaxOk,
       accept: accept.length ? accept : null,
       outputs: outs.length ? outs : ["file"],
       params: params, cost: parseInt(document.getElementById("fCost").value, 10) || 0,

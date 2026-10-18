@@ -78,10 +78,10 @@ def _mktool(tool_key, owner_id, params_json=None):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, label_json, icon, visibility, enabled,"
-            " params_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'http', %s, 'wand', 'public',"
-            " TRUE, %s, %s, %s)",
+            " execution, label_json, visibility, enabled,"
+            " params_json, created_at, updated_at, accept_json)"
+            " values (%s, %s, %s, 'http', %s, 'public',"
+            " TRUE, %s, %s, %s, '[\".png\"]')",
             (tool_key, owner_id, tool_key.split("/")[-1],
              _json.dumps({"en": "I2"}), params_json, ts, ts))
         con.execute(
@@ -143,6 +143,8 @@ else:
 
 # ══════════ 2. provider suspension — every surface ══════════
 from economy.billing import grant as _grant
+from tools import load_all as _load_all
+_load_all()
 from governance.catalog import list_catalog, search_catalog, resolve
 from repo import keys as keys_repo
 

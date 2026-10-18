@@ -151,9 +151,9 @@ with db() as con:
     con.execute(
         """
         INSERT INTO platform_tools (tool_key, tool_id, execution,
-          visibility, label_json, enabled, created_at, updated_at)
+          visibility, label_json, enabled, created_at, updated_at, accept_json)
         VALUES ('c2boff', 'c2boff', 'local', 'public',
-          '{"zh":"官方工具","en":"Official"}', TRUE, %s, %s)
+          '{"zh":"官方工具","en":"Official"}', TRUE, %s, %s, '[".png"]')
         """, (ts, ts))
     con.execute(
         "INSERT INTO pricing (tool_id, cost, enabled, updated_at)"

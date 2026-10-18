@@ -91,10 +91,10 @@ def _mktool(tool_id, owner_id=None, cost=100, outputs_json='["file"]'):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, label_json, icon, visibility, enabled,"
-            " outputs_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'local', %s, 'wand',"
-            " 'public', TRUE, %s, %s, %s)",
+            " execution, label_json, visibility, enabled,"
+            " outputs_json, created_at, updated_at, accept_json)"
+            " values (%s, %s, %s, 'local', %s,"
+            " 'public', TRUE, %s, %s, %s, '[\".png\"]')",
             (tool_id, owner_id, tool_id, _json.dumps({"en": "B2"}),
              outputs_json, ts, ts))
         con.execute(
@@ -633,10 +633,10 @@ trt = f"b2rt_{_u}"
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id,"
-        " execution, label_json, icon, visibility, enabled,"
-        " outputs_json, endpoint_json, created_at, updated_at)"
-        " values (%s, %s, %s, 'http', %s, 'wand', 'public',"
-        " TRUE, '[\"text\"]', %s, %s, %s)",
+        " execution, label_json, visibility, enabled,"
+        " outputs_json, endpoint_json, created_at, updated_at, accept_json)"
+        " values (%s, %s, %s, 'http', %s, 'public',"
+        " TRUE, '[\"text\"]', %s, %s, %s, '[\".png\"]')",
         (trt, owner, trt, _json.dumps({"en": "B2R"}),
          _json.dumps({"url": "http://127.0.0.1:9/none"}), ts, ts))
     con.execute(

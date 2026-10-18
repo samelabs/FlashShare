@@ -171,13 +171,6 @@ def validate_tool_declaration(decl: dict) -> dict:
     if decl.get("visibility") not in _VISIBILITIES:
         raise DeclarationError("bad_visibility")
 
-    # icon 声明已退役 (图标完全依赖类型): 缺省=None 合法;
-    # 提供值仍校验 — 兼容既有 canonical 声明与存量行
-    from tools import VALID_ICONS
-    icon = decl.get("icon")
-    if icon is not None and icon not in VALID_ICONS:
-        raise DeclarationError("bad_icon")
-
     label = _check_localized(decl.get("label"), _MAX_LABEL, required=True)
     desc = _check_localized(decl.get("desc"), _MAX_DESC, required=False)
 
@@ -215,7 +208,6 @@ def validate_tool_declaration(decl: dict) -> dict:
         "execution": decl["execution"],
         "label": label,
         "desc": desc,
-        "icon": icon,
         "inputs": inputs,
         "outputs": outputs,
         "params": params,
@@ -319,7 +311,6 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "label_json": json.dumps(decl["label"], ensure_ascii=False),
         "desc_json": (json.dumps(decl["desc"], ensure_ascii=False)
                       if decl.get("desc") else None),
-        **({} if decl.get("icon") is None else {"icon": decl["icon"]}),
         "accept_json": (json.dumps(decl["inputs"]["files"]["accept"],
                                    ensure_ascii=False)
                         if decl["inputs"]["files"]["accept"] else None),

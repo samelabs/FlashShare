@@ -260,7 +260,7 @@ try:
     create_tool({
         "tool_key": f"{_u}a/{USER_TOOL}", "tool_id": USER_TOOL,
         "owner_id": uid, "execution": "http",
-        "label": {"en": "FX User Tool"}, "icon": "wand",
+        "label": {"en": "FX User Tool"},
         "inputs": {"files": {"min": 0, "max": 3, "accept": None}},
         "outputs": ["text"],
         "params": [{"key": "note", "type": "text", "required": True,

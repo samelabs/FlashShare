@@ -83,9 +83,7 @@ _ICONS = {
     "shield": '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path>',
     "crop": '<path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path>',
     "compress": '<path d="M4 9V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"></path><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path><path d="M9 9l3-3 3 3"></path><path d="M9 15l3 3 3-3"></path>',
-    "convert": '<path d="M16 3l4 4-4 4"></path><path d="M20 7H4"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h16"></path>',
     "print": '<path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="7"></rect>',
-    "favicon": '<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M12 8l1.5 3 3 .5-2 2 .5 3-3-1.5-3 1.5.5-3-2-2 3-.5z"></path>',
     "merge": '<rect x="3" y="3" width="8" height="8" rx="1.5"></rect><rect x="13" y="3" width="8" height="8" rx="1.5"></rect><path d="M7 11v4a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-4"></path><path d="M12 15v6"></path>',
     "translate": '<path d="M4 5h9"></path><path d="M8.5 3v2"></path><path d="M11 5c-.6 3.8-3 6.9-6.5 8.6"></path><path d="M6.5 8.5c1 1.9 2.7 3.5 4.8 4.5"></path><path d="M13 21l4-9 4 9"></path><path d="M14.4 18h5.2"></path>',
     "history": '<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path>',
@@ -116,17 +114,14 @@ def icon_path(name):
     return Markup(_ICONS.get(name, ""))
 
 
-# Tool identity icon 的 canonical fallback key — 全站唯一 fallback 定义
-TOOL_ICON_FALLBACK = "wand"
-
-
 def tool_icon_svg(name):
     """THE server-side Tool icon renderer (single visual contract).
 
-    tool icon key → canonical SVG; unknown/missing key → canonical
-    fallback (TOOL_ICON_FALLBACK)。模板/视图一律消费本函数, 禁止
-    surface 自建 fallback SVG。Returns Markup (platform-owned SVG)."""
-    return icon_svg(name if name in _ICONS else TOOL_ICON_FALLBACK)
+    tool icon key → canonical SVG (icon_svg 直通)。图标 = 输入类型的
+    硬编码映射, 无 fallback 机制; 未知键渲染为空。模板/视图一律消费
+    本函数, 禁止 surface 自建 fallback SVG。Returns Markup
+    (platform-owned SVG)."""
+    return icon_svg(name)
 
 
 # 派生图标与格式族键的映射: 键即字形名 (输入族字形以族键命名),
@@ -140,26 +135,21 @@ _FAMILY_GLYPH = {
 
 
 def derived_tool_icon(files_max, accept):
-    """无策展图标时的契约自述: 表达"这工具吃什么"。
+    """工具图标的契约自述: 表达"这工具吃什么"。
 
     与上传区格式汇总文案 (acceptFamilyText) 同一聚合的可视投影 —
     accept 窗口按 governance.formats 的族词表归并, 结果:
-      files_max=0 (纯文本输入)  → text
-      accept 未声明 (全族兼容)  → wand
-      命中单一族                → 该族字形 (FAMILY_GLYPH)
-      命中多族                  → convert
-    未命中任何族 (声明早于族词表) → wand。纯函数, 不读库。"""
-    try:
-        if not files_max or int(files_max) <= 0:
-            return "text"
-        if not accept:
-            return "wand"
-        from governance.formats import FAMILIES, FAMILY_ORDER
-        toks = {str(a).lstrip(".").lower() for a in accept}
-        hit = [k for k in FAMILY_ORDER
-               if toks & {e.lstrip(".").lower() for e in FAMILIES[k].exts}]
-        if len(hit) == 1:
-            return _FAMILY_GLYPH[hit[0]]
-        return "convert" if len(hit) > 1 else "wand"
-    except Exception:
-        return TOOL_ICON_FALLBACK
+      files_max=0 (纯文本输入)          → text
+      accept 未声明 (=all, 全部平台格式) → cloud
+      命中单一族                        → 该族字形 (FAMILY_GLYPH)
+    纯函数, 不读库。机制内显式 accept 必落单一族 (发布校验保证),
+    域外输入无定义行为。"""
+    if not files_max or int(files_max) <= 0:
+        return "text"
+    if not accept:
+        return "cloud"
+    from governance.formats import FAMILIES, FAMILY_ORDER
+    toks = {str(a).lstrip(".").lower() for a in accept}
+    hit = [k for k in FAMILY_ORDER
+           if toks & {e.lstrip(".").lower() for e in FAMILIES[k].exts}]
+    return _FAMILY_GLYPH[hit[0]]

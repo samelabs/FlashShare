@@ -592,7 +592,6 @@ _SCHEMA_SQL = (
       desc_json      TEXT,                   -- 简介 {lang: str} | str (可空)
       sort_order     INT NOT NULL DEFAULT 0, -- 后台遴选排序 (首页/市场呈现序)
       featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
-      icon           TEXT NOT NULL DEFAULT 'wand',
       accept_json    TEXT,                   -- JSON array or NULL = any
       files_min      INT NOT NULL DEFAULT 1, -- input files lower bound (0 = text-only tools)
       files_max      INT NOT NULL DEFAULT 1, -- input files upper bound (<= 20)

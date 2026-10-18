@@ -495,10 +495,10 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, label_json, icon, visibility, enabled,"
-            " created_at, updated_at)"
-            " values (%s, NULL, %s, 'local', %s, 'wand',"
-            " 'public', TRUE, %s, %s)",
+            " execution, label_json, visibility, enabled,"
+            " created_at, updated_at, accept_json)"
+            " values (%s, NULL, %s, 'local', %s,"
+            " 'public', TRUE, %s, %s, '[\".png\"]')",
             (tool5, tool5, _json.dumps({"en": "MC"}), ts, ts))
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 25, TRUE, %s)", (tool5, ts))
@@ -611,10 +611,10 @@ try:
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, label_json, icon,"
-            " visibility, enabled, endpoint_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'http', %s, 'wand',"
-            " 'unlisted', TRUE, %s, %s, %s)",
+            " execution, label_json,"
+            " visibility, enabled, endpoint_json, created_at, updated_at, accept_json)"
+            " values (%s, %s, %s, 'http', %s,"
+            " 'unlisted', TRUE, %s, %s, %s, '[\".png\"]')",
             (tkey6, owner, tid6, _json.dumps({"en": "T6"}),
              _json.dumps({"url": "https://example.com/x", "timeout_s": 10}),
              ts, ts))

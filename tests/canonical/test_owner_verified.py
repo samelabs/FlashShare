@@ -48,6 +48,8 @@ ts = int(time.time())
 _sfx = _os.urandom(3).hex()
 from database import db
 from economy.subscription import plan_of, effective_member_ids
+from tools import load_all as _load_all
+_load_all()
 from governance.catalog import list_catalog, search_catalog, market_page
 
 

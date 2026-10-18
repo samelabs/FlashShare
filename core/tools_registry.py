@@ -229,7 +229,8 @@ register(
                   'delivery 1 day / 50 downloads, adjustable via the '
                   'delivery object.',
         },
-    # share = 类型空态唯一持有者 (图标=cloud 由投影授予), 不声明 family
+    # share = all 类型的唯一内置工具 (accept 未声明 = 全部平台格式,
+    # 图标 cloud 由类型映射授予), 不声明 family
     accept=None,  # accepts all formats
     handler=share_handler,
     files_min=1, files_max=20,

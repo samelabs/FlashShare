@@ -155,7 +155,7 @@ try:
     good = validate_tool_declaration({
         "tool_key": f"{_u}t", "tool_id": f"{_u}t", "owner_id": None,
         "execution": "local",
-        "label": {"en": "T"}, "icon": "wand",
+        "label": {"en": "T"},
         "inputs": {"files": {"min": 0, "max": 20, "accept": None}},
         "outputs": ["text", "json"], "params": None,
         "visibility": "public", "enabled": True})
@@ -164,7 +164,7 @@ try:
     text_only = validate_tool_declaration({
         "tool_key": f"{_u}t3", "tool_id": f"{_u}t3", "owner_id": None,
         "execution": "local",
-        "label": {"en": "T"}, "icon": "wand",
+        "label": {"en": "T"},
         "inputs": {"files": {"min": 0, "max": 0, "accept": None}},
         "outputs": ["text"], "params": None,
         "visibility": "public", "enabled": True})
@@ -178,7 +178,7 @@ try:
     ):
         decl = {"tool_key": f"{_u}t2", "tool_id": f"{_u}t2", "owner_id": None,
                 "execution": "local",
-                "label": {"en": "T"}, "icon": "wand",
+                "label": {"en": "T"},
                 "inputs": {"files": bad},
                 "outputs": ["file"], "params": None,
                 "visibility": "public", "enabled": True}
