@@ -1,5 +1,10 @@
 # Release migration: DROP platform_tools.icon
 
+**执行顺序（强制）：先部署并重启新代码，确认服务健康后再执行本迁移。**
+不可先删列——v1.5 代码的 seed upsert 与建工具 insert 仍写 `icon`
+（`EXCLUDED.icon` / NOT NULL DEFAULT），列先消失会让 seeding 与工具创建
+直接报 UndefinedColumn。新代码对列零引用，列先在 posterior 无害。
+
 存量 production 库在 1.6 图标机制剥离批部署时执行**一次**；执行后删除本资产
 （仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。
 
