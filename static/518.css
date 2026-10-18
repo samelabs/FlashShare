@@ -340,12 +340,12 @@
 .pub-grid .fam-chip { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--line-2); border-radius: 99px; padding: 5px 13px 5px 6px; font-size: 13px; font-weight: 600; color: var(--ink-3); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
 .fam-chip input { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .fam-chip span { white-space: nowrap; }
-.fam-chip:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.fam-chip:has(input:checked) { border-color: var(--ink-3); background: var(--sunk); color: var(--ink); }
 /* 族字形 = logo 式圆角矩形瓦片 (与工具卡/picker 的图标瓦片同一语言)。
    svg 特异度须 ≥ tokens 的全局兜底 svg:not([width]):not([height]) (0,2,1),
    否则瓦片内字形被顶成 20px 贴边 */
-.fam-glyph { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-50); display: grid; place-items: center; flex: none; }
-.fam-chip .fam-glyph svg { width: 13px; height: 13px; stroke: var(--brand); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.fam-glyph { width: 22px; height: 22px; border-radius: 7px; background: var(--sunk); display: grid; place-items: center; flex: none; }
+.fam-chip .fam-glyph svg { width: 13px; height: 13px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .fam-chip:has(input:checked) .fam-glyph { background: var(--card); }
 /* 精确格式小胶囊无瓦片, 左右 padding 对称 (不吃族胶囊的 6px 左垫) */
 .fam-chip.ext-chip { padding-left: 13px; }
@@ -730,9 +730,9 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-grid .pub-mode { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 9px; cursor: pointer; padding: 6px 16px 6px 7px; border-radius: 9px; font-size: 14px; font-weight: 650; color: var(--ink-3); background: none; border: 0; transition: background var(--ease), color var(--ease), box-shadow var(--ease); }
 .pub-mode input { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .pub-mode span { white-space: nowrap; }
-.pub-mode:has(input:checked) { background: var(--card); color: var(--brand); box-shadow: var(--sh-1); }
-.pm-glyph { width: 28px; height: 28px; border-radius: 8px; background: var(--brand-50); display: grid; place-items: center; flex: none; }
-.pub-mode .pm-glyph svg { width: 16px; height: 16px; stroke: var(--brand); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.pub-mode:has(input:checked) { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
+.pm-glyph { width: 28px; height: 28px; border-radius: 8px; background: var(--sunk); display: grid; place-items: center; flex: none; }
+.pub-mode .pm-glyph svg { width: 16px; height: 16px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .pub-page .pub-outputs { display: flex; flex-direction: column; gap: 8px; }
 .pub-outputs-label { font-size: 13px; font-weight: 650; color: var(--ink); }
 .pub-outputs-checks { display: flex; gap: 10px; flex-wrap: wrap; }
