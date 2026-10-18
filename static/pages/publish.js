@@ -351,7 +351,6 @@ function applyInputMode() {
   injectModeGlyphs();
   const text = inputMode() === "text";
   document.querySelectorAll(".pub-files-only").forEach(el => el.classList.toggle("hidden", text));
-  document.getElementById("pubTextHint").classList.toggle("hidden", !text);
 }
 
 // ── 行内错误 (服务端码 → 字段定位) ──

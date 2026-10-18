@@ -21,7 +21,7 @@ joins the two: DB row = contract, _registry = implementation for local class.
 import json
 
 from database import db
-from icons import derived_tool_icon
+from icons import _FAMILY_GLYPH, derived_tool_icon
 from repo import catalog as catalog_repo
 from utils import now
 
@@ -31,6 +31,26 @@ from utils import now
 VIS_PRIVATE = "private"    # owner only
 VIS_UNLISTED = "unlisted"  # callable when the key is known, never listed
 VIS_PUBLIC = "public"      # grid + every caller's tools/list
+
+# share = 类型空态的唯一持有者 (免费分享 = 全站上传基础能力, cloud 呼应输入框)。
+_SHARE_TOOL_KEY = "share"
+
+
+def _display_icon(tool_key: str, files_max, accept) -> str:
+    """图标完全依赖类型 — 单一策略点。
+
+    share → cloud (空态); 第一方注册声明的 family (accept 无法归并时,
+    如 zip_pack 全格式入食) → 该道字形; 其余由声明派生。DB icon 列的
+    装饰值一概不读。"""
+    if tool_key == _SHARE_TOOL_KEY:
+        return "cloud"
+    if is_official_id(tool_key):
+        from tools import _registry
+        fam = next((t.get("family") for t in _registry
+                    if t["id"] == tool_key and t.get("family")), None)
+        if fam:
+            return _FAMILY_GLYPH.get(fam, "wand")
+    return derived_tool_icon(files_max, accept)
 
 
 # ── Seeding: register() declarations → platform_tools rows ──
@@ -62,7 +82,6 @@ def seed_from_registry() -> dict:
             "execution": "local",
             "label": t["label"],
             "desc": t.get("desc"),
-            "icon": t["icon"],
             "inputs": {"files": {
                 "min": int(t.get("files_min", 1)),
                 "max": int(t.get("files_max", 1)),
@@ -147,10 +166,11 @@ def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
         "id": row["tool_key"],  # namespaced key is THE identity from now on
         "origin": "official" if is_official_id(row["tool_key"]) else "community",
         "label": json.loads(row["label_json"]),
-        # 图标 = 策展 ∥ 契约自述: platform_tools.icon 是 operator 策展位
-        # (发布表单无图标字段, 未策展的 wand 行由声明派生 "吃什么")。
-        "icon": (row["icon"] if row["icon"] and row["icon"] != "wand"
-                 else derived_tool_icon(row["files_max"], accept)),
+        # 图标完全依赖类型 (装饰性 icon 链路已退役, 列值不再读):
+        #   share      → cloud (类型空态唯一持有者, 呼应上传输入)
+        #   第一方声明 family (accept 无法归并时, 如 zip_pack) → 该道字形
+        #   其余       → 由声明派生 (纯文本→text / 单族→族字形 / 多族→convert)
+        "icon": _display_icon(row["tool_key"], row["files_max"], accept),
         "accept": accept,
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),

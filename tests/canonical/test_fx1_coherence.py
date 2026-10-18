@@ -330,7 +330,7 @@ try:
         ]}
     _tools.register(
         tool_id=f"fxlocal{_u}",
-        label={"en": "FX Local Two"}, icon="wand",
+        label={"en": "FX Local Two"},
         handler=_two_files_handler,
         files_min=0, files_max=1, outputs=("file",))
     with db() as con:

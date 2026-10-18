@@ -277,7 +277,6 @@ register(
             "es": 'Reduce el tamano de la imagen controlando la calidad.',
             "en": 'Reduce image file size with quality control.',
         },
-    icon="compress",
     accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
     handler=compress_handler,
     params=[

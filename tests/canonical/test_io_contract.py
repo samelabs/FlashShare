@@ -271,7 +271,7 @@ try:
     check("R4b /r media: filename + size captions, alt is the tool name",
           st == 200
           and page.count('<figcaption><b class="if-name"') == 3
-          and page.count('alt="Lossless Share"') == 3, st)
+          and page.count('alt="Free Share"') == 3, st)
     _rp = _call("share", {"files": files3, "client_ref": f"r3-{_u}"},
                 TOK, 21)[1]
     check("R5 replay returns the same items (idempotent)",
@@ -383,7 +383,7 @@ try:
     st, _h_r, page_r, _sc_r = _req(
         "GET", f"/r/{sc['result_url'].rsplit('/', 1)[1]}")
     check("E4 /r page: tool name + expiry + downloads facts + items",
-          st == 200 and "Lossless Share" in page_r
+          st == 200 and "Free Share" in page_r
           and page_r.count('class="rs-cell"') == 3
           and page_r.count("rs-dl") >= 3
           and "?download=1" in page_r, st)
@@ -392,7 +392,7 @@ try:
     check("E4b /r page: h1 = content count, tool in meta, share bar, no qrrow",
           st == 200
           and "<h1>3 files</h1>" in page_r
-          and "「Lossless Share」" in page_r
+          and "「Free Share」" in page_r
           and "qrrow" not in page_r
           and 'class="share-bar sb-compact"' in page_r
           and 'data-sb="copy"' in page_r and "x.com/intent/tweet" in page_r, st)
@@ -408,7 +408,7 @@ try:
     tools = {t["name"]: t for t in d["result"]["tools"]}
     check("M1 every tool has outputSchema + English title",
           all("outputSchema" in t and t.get("title") for t in tools.values())
-          and tools["share"]["title"] == "Lossless Share",
+          and tools["share"]["title"] == "Free Share",
           [t.get("title") for t in tools.values()][:3])
     check("M2 description states inputs+outputs+price, English only",
           "Outputs: file" in tools["share"]["description"]

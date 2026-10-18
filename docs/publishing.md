@@ -97,12 +97,15 @@ The declaration and execution contract for tools published on 518.PLUS.
 
 `option.value`（`fast`/`best`）是稳定机器值；`option.label` 才是 LocalizedText。禁止把译文当作 value。
 
-## 图标语义（tool diet → icon）
+## 图标语义（icon = 类型，链路唯一）
 
-工具图标表达**"这工具吃什么"**，与上传区的格式汇总文案同一聚合（`governance/formats.py` 族词表）的两个投影：文本投影是汇总行，可视投影是图标。因此图标不是工具作者的字段——发布表单没有、也不应有图标项。目录展示值为：
+图标**完全依赖工具类型**，不存在装饰性 icon 声明（icon 链路已退役，DB 列不再被读取）：
 
-- **operator 策展优先**：`platform_tools.icon` 是运营策展位（系统工具的 shield / convert / merge 等动词语义靠它）；
-- **未策展行由声明派生**（`core/icons.py derived_tool_icon`）：纯文本输入（files_max=0）→ `text`；accept 未声明（全族兼容）→ `wand`；命中单一族 → 该族字形；命中多族 → `convert`。改声明图标自动跟随，语义上不可能与工具实际吃的内容不符。
+- `share`（免费分享）→ `cloud`，**类型空态的唯一持有者**（呼应上传输入，全站基础能力）；
+- 第一方工具可声明 `family`（accept 无法归并出车道时，如 zip_pack 全格式入食但属归档道——类型≠accept 边界）；
+- 其余由声明派生（`core/icons.py derived_tool_icon`）：纯文本输入（files_max=0）→ `text`；单一族 → 该道字形；多族 → `convert`；无声明 → `wand` 兜底。
+
+发布表单没有、也不应有图标项；类型（输入方式 + 格式道）就是图标的全部语义来源。
 
 ## 读取规则（canonical fallback）
 
