@@ -21,6 +21,7 @@ joins the two: DB row = contract, _registry = implementation for local class.
 import json
 
 from database import db
+from icons import derived_tool_icon
 from repo import catalog as catalog_repo
 from utils import now
 
@@ -139,14 +140,18 @@ def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
     (the batch predicate shared with the access projection). First-party
     rows (owner NULL) always project False.
     """
+    # 4C-2: 公开 accept 一律投影成 canonical extension tokens
+    # (stored parser 单点解释, 非法行 startup fail)。
+    accept = _canonical_accept(row["accept_json"])
     item = {
         "id": row["tool_key"],  # namespaced key is THE identity from now on
         "origin": "official" if is_official_id(row["tool_key"]) else "community",
         "label": json.loads(row["label_json"]),
-        "icon": row["icon"],
-        # 4C-2: 公开 accept 一律投影成 canonical extension tokens
-        # (stored parser 单点解释, 非法行 startup fail)。
-        "accept": _canonical_accept(row["accept_json"]),
+        # 图标 = 策展 ∥ 契约自述: platform_tools.icon 是 operator 策展位
+        # (发布表单无图标字段, 未策展的 wand 行由声明派生 "吃什么")。
+        "icon": (row["icon"] if row["icon"] and row["icon"] != "wand"
+                 else derived_tool_icon(row["files_max"], accept)),
+        "accept": accept,
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),
         "outputs": json.loads(row["outputs_json"]),
