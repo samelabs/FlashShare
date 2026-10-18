@@ -122,11 +122,27 @@ def _numfmt(value, lang: str):
 
 
 templates.env.filters["num"] = _numfmt
-app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+
+class _VersionedStaticFiles(StaticFiles):
+    """带 ?v= 版本戳的静态请求按内容寻址: 戳 = 文件内容摘要, 内容一变
+    URL 即变, 可安全 immutable 一年 (CF 与浏览器都不再回源)。无版本参数
+    的引用 (字体 / manifest 图标 / brand 素材, CSS 内部引用无法携带戳)
+    保持默认协商缓存, 换字体或图标时不会被长缓存钉死。"""
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        resp = super().file_response(full_path, stat_result, scope, status_code)
+        qs = (scope.get("query_string") or b"").decode("latin-1", "ignore")
+        if "v=" in qs:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
+
+app.mount("/static", _VersionedStaticFiles(directory=str(_STATIC_DIR)), name="static")
 # Brand single source (brand/README.md): the site references the logo
 # kit through /brand/ directly — no copies live under /static.
 _BRAND_DIR = _BASE_DIR / "brand"
-app.mount("/brand", StaticFiles(directory=str(_BRAND_DIR)), name="brand")
+app.mount("/brand", _VersionedStaticFiles(directory=str(_BRAND_DIR)), name="brand")
 
 
 # ── Auth helpers ──
