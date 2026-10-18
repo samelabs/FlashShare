@@ -379,7 +379,7 @@ try:
     check("D4 nav + footer + mobile drawer link /developers",
           page.count('href="/developers"') >= 3,
           page.count('href="/developers"'))
-    check("D5 zh locale renders the zh doc", "发布步骤" in _req(
+    check("D5 zh locale renders the zh doc", "发布流程" in _req(
         "GET", "/developers?lang=zh")[2], )
     # example request built by the REAL constructor
     m = _re.search(r'<pre class="doc-pre" id="ex-req">(.*?)</pre>',

@@ -465,7 +465,7 @@ for t in _reg:
     try:
         _vtd({"tool_key": t["id"], "tool_id": t["id"], "owner_id": None,
               "execution": "local",
-              "label": t["label"], "desc": t["desc"], "icon": t["icon"],
+              "label": t["label"], "desc": t["desc"],
               "inputs": {"files": {"min": t["files_min"], "max": t["files_max"],
                                    "accept": sorted(t["accept"]) if t["accept"] else None}},
               "outputs": t["outputs"], "params": t["params"],
