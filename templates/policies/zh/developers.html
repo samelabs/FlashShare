@@ -1,15 +1,16 @@
-<p>在 518.PLUS 上，人和 Agent 用同一种方式发布工具：包装一个由你控制的 HTTPS 端点，提交一次，两个表面同时可用——给人用的网页界面，和给 AI Agent 用的 MCP 服务器，走同一条调用管线、同一套结算。本页是你的端点需要实现的完整契约。</p>
+<p>518.PLUS 上的工具是一个由你托管的 HTTPS 端点：平台将用户的调用转发至端点，并把端点返回的结果交付给用户。一次发布，网页与 MCP（Model Context Protocol）两个消费面同时生效，共用同一条调用管线与同一套结算。本页是端点需要实现的完整契约。</p>
 
-<h2>发布步骤</h2>
+<h2>发布流程</h2>
 <ol>
-  <li>准备一个 HTTPS 端点，按下面的返回格式应答 POST（页尾有 Python 与 Node 最小示例）。</li>
-  <li>在发布表单填写——每个账号最多 {{ max_tools }} 个工具，包括名称、简介、格式与参数声明。新工具默认不公开。</li>
-  <li>在工具自己的页面，由你自己成功运行一次。</li>
-  <li>在「我的工具」里将其公开。公开后进入市场，也能被 Agent 的 <code>catalog_search</code> 搜到；平台不做其它审核，但可下架违规工具。</li>
+  <li>实现一个符合本页契约的 HTTPS 端点。文末提供两个可运行的最小实现。</li>
+  <li>在发布表单提交工具声明。每个账号最多 {{ max_tools }} 个工具；工具标识（tool_id）为 2–41 个字符，以小写字母开头，只能包含小写字母、数字与下划线。新工具默认不公开。</li>
+  <li>在工具页面完成一次成功运行。</li>
+  <li>在「我的工具」中将工具公开。公开后进入市场，并可通过 MCP 的 <code>catalog_search</code> 被检索。</li>
 </ol>
 <p><a class="btn btn-p" href="/account/tools/publish">开始发布</a></p>
 
 <h2>请求格式</h2>
+<p>平台以 JSON 正文向你的端点发起 POST：</p>
 <pre class="doc-pre" id="ex-req">POST https://your-endpoint.example/your-path
 Content-Type: application/json
 
@@ -20,9 +21,14 @@ Content-Type: application/json
   ],
   "params": { "mode": "fast" }
 }</pre>
-<p>平台绝不推送文件内容。每个文件以一次性签名 URL 到达，同时附带文件名、类型与大小——由你的端点自行拉取（或忽略）。该 URL 恰好可用一次且很快过期，请在请求期间取回。<code>params</code> 只包含你声明的参数，别无其它。你的端点有 {{ timeout_min_s }}–{{ timeout_max_s }} 秒（你自己的设置）作答时间。</p>
+<ul>
+  <li><strong>files</strong>：调用方提供的输入文件。文件内容不随请求传输；每个文件以一次性签名 URL 交付，同时附带文件名、类型与大小，由端点在处理请求期间自行下载（或按需忽略）。签名 URL 仅可使用一次，且很快失效。</li>
+  <li><strong>params</strong>：仅包含你在声明中定义的参数及其取值。</li>
+  <li>端点须在 {{ timeout_min_s }}–{{ timeout_max_s }} 秒内应答，具体时限在发布表单中设定。</li>
+</ul>
 
 <h2>返回格式</h2>
+<p>端点以 JSON 返回一个 <code>items</code> 数组，按顺序列出结果项：</p>
 <pre class="doc-pre" id="ex-res">{
   "items": [
     { "kind": "text", "text": "Done — result at {{ base_url }}/f/abc123" },
@@ -31,43 +37,53 @@ Content-Type: application/json
       "data_b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" }
   ]
 }</pre>
+<p>三种结果项：</p>
 <ul>
-  <li><strong>text</strong> 与 <strong>json</strong> 项原样存储与展示；text 中的链接按原样显示。</li>
-  <li><strong>file</strong> 项用 <code>data_b64</code>（base64 字节）或 <code>url</code>——url 由平台服务端拉取并转存为临时分享链接。</li>
-  <li>每次调用最多 {{ max_items }} 项；text+json 合计最多 {{ inline_max_bytes }} 字节；每一项的类型必须在你声明的输出集合内。</li>
+  <li><code>text</code>——字符串，原样存储与展示。其中的 URL 自动转为链接；当结果仅含一个 https 链接时，结果卡以该链接为主呈现。</li>
+  <li><code>json</code>——任意 JSON 值，网页以格式化形式展示，MCP 端作为结构化内容返回。</li>
+  <li><code>file</code>——文件项，通过 <code>data_b64</code>（base64 编码的字节）或 <code>url</code>（由平台服务端拉取并存储）交付，落档后获得下载页与直链，图片类文件在结果页直接显示。</li>
 </ul>
+<p>约束：</p>
+<ul>
+  <li>每次调用最多 {{ max_items }} 项。</li>
+  <li>text 与 json 项合计不超过 {{ inline_max_bytes }} 字节。</li>
+  <li>文件单件不超过 {{ max_upload_mb }} MB，输入与输出同限。</li>
+  <li>每项的 kind 须属于发布时声明的输出类型集合。</li>
+  <li>输出文件的分享参数（有效期与下载次数）由调用方在调用时选择。</li>
+</ul>
+<p>端点返回非 2xx 状态，或响应不符合上述格式时，本次调用判定失败，调用方获得全额退款。</p>
 
 <h2>参数声明</h2>
-<p>最多 {{ max_params }} 个参数，四种类型：<code>enum</code>（固定选项）、<code>number</code>（可选最小/最大值）、<code>boolean</code>、<code>text</code>。text 取值最多 {{ text_param_chars }} 字符。必填参数由平台在校验后才会调用你的端点。</p>
+<p>最多 {{ max_params }} 个参数，类型为 <code>enum</code>（固定选项）、<code>number</code>（可选上下界）、<code>boolean</code>、<code>text</code> 四种。text 参数取值上限 {{ text_param_chars }} 字符。必填参数由平台先行校验，通过后才调用端点。</p>
 
 <h2>文件声明</h2>
-<p>接受格式声明为扩展名列表（<code>.png</code>、<code>.pdf</code>……），并声明数量窗口：0 到 {{ files_max }} 个。纯文本工具（最多 0 个文件）不声明格式，第一个文本参数即输入框。超出声明格式的文件在调用你的端点之前就会被拒绝。单个文件最大 {{ max_upload_mb }} MB。</p>
+<p>接受格式以扩展名列表声明（<code>.png</code>、<code>.pdf</code>…），数量窗口为 0 到 {{ files_max }} 个。纯文本工具（文件上限为 0）不声明格式，其第一个 text 参数即为输入框。不符合声明的文件在调用端点之前即被拒绝。</p>
 
-<h2>限制</h2>
+<h2>限额汇总</h2>
 <ul>
-  <li>端点超时：{{ timeout_min_s }}–{{ timeout_max_s }} 秒（每个工具自选）。</li>
-  <li>结果项：每次调用最多 {{ max_items }} 项。</li>
-  <li>text+json 合计载荷：每次调用最多 {{ inline_max_bytes }} 字节。</li>
-  <li>单文件（输入与输出）：最大 {{ max_upload_mb }} MB。</li>
+  <li>端点应答时限：{{ timeout_min_s }}–{{ timeout_max_s }} 秒。</li>
+  <li>结果项数：每次调用最多 {{ max_items }} 项。</li>
+  <li>text 与 json 合计载荷：每次调用最多 {{ inline_max_bytes }} 字节。</li>
+  <li>单文件体积（输入与输出）：最大 {{ max_upload_mb }} MB。</li>
   <li>text 参数取值：最多 {{ text_param_chars }} 字符。</li>
 </ul>
 
-<h2>鉴权头与安全</h2>
-<p>可选：提交时保存一个头名称与令牌（例如 <code>Authorization: Bearer …</code>）；平台加密保存令牌并在每次调用时发送该头。传输层自有的头名（Host、Content-Length……）在提交时即被拒绝。</p>
+<h2>安全</h2>
 <ul>
-  <li>签名源文件 URL 一次性且短时效——无法重放或分享。</li>
-  <li>你的端点必须是公网 HTTPS：私网、回环与元数据地址一律拒绝（每一跳含重定向都做 SSRF 校验）。</li>
-  <li>端点返回的一切都会按平台格式白名单做字节校验后再存储；不匹配即失败。</li>
+  <li>端点必须是公网 HTTPS 地址：私网、回环与云元数据地址一律拒绝，重定向的每一跳同样校验。</li>
+  <li>输入文件的签名 URL 一次性且短时效，不可重放。</li>
+  <li>可选鉴权头：提交时保存头名称与令牌（例如 <code>Authorization: Bearer …</code>），平台加密存储令牌并在每次调用时发送该头；传输层保留的头名（Host、Content-Length 等）不可使用。</li>
+  <li>端点返回的文件在存储前经过格式白名单的字节校验，不匹配即失败。</li>
 </ul>
 
-<h2>定价、佣金、收益与提现</h2>
-<p>每次调用的价格由你按积分设定——0（免费）到 {{ max_price }}，1000 积分 = 1 美元。每笔成功付费调用，价格扣除 {{ commission_rate if commission_rate is not none else '—' }}% 平台佣金后计入你的收益池。收益可按美元提现（最低 ${{ min_withdrawal_usd }}）；你消费的积分是另一个独立池。</p>
+<h2>计费与收益</h2>
+<p>每次调用的价格由你按积分设定，范围为 0（免费）到 {{ max_price }}，1000 积分 = 1 美元。每笔成功付费调用，价格扣除 {{ commission_rate if commission_rate is not none else '—' }}% 平台佣金后计入你的收益池；收益可按美元提现，最低 {{ min_withdrawal_usd }} 美元。你消费的积分与你的收益分属两个独立账户。</p>
 
-<h2>被发现与调用</h2>
-<p>每个工具在网页上有自己的页面。在 MCP 上你的工具名为 <code>owner__tool</code>（例如 <code>alice__pdf2svg</code>）；Agent 用 <code>catalog_search</code> 即可找到并直接按名调用——搜索结果自带完整 input schema。喜欢的用户可将其收藏——收藏后该工具会在其 <code>list_favorites</code> 列表中，并在 <code>tools/list</code> 里带收藏标记。</p>
+<h2>MCP 检索与调用</h2>
+<p>网页端每个工具拥有独立页面。MCP 端工具名为 <code>owner__tool</code>（例如 <code>alice__pdf2svg</code>）；Agent 通过 <code>catalog_search</code> 检索并按名调用，检索结果自带完整 input schema。用户可将工具加入收藏：收藏工具出现在其 <code>list_favorites</code> 列表中，并在 <code>tools/list</code> 里带有收藏标记。</p>
 
-<h2>最小示例端点</h2>
-<p>Python（FastAPI）——文本进，text + json 出：</p>
+<h2>参考实现</h2>
+<p>示例一（Python，FastAPI）：文本输入，返回 text 与 json 项。配套声明：一个名为 <code>text</code> 的可选 text 参数，文件上限 0。</p>
 <pre class="doc-pre">from fastapi import FastAPI, Request
 
 app = FastAPI()
@@ -80,7 +96,7 @@ async def shout(req: Request):
         {"kind": "text", "text": text.upper()},
         {"kind": "json", "data": {"length": len(text)}},
     ]}</pre>
-<p>Node（零依赖）——拉取签名 URL，把文件原样回传：</p>
+<p>示例二（Node，零依赖）：下载签名 URL 中的文件并原样返回。配套声明：接受 <code>.png</code> 文件（0–1 个），无参数。</p>
 <pre class="doc-pre">const http = require("http"), https = require("https");
 http.createServer((req, res) => {
   let body = "";
