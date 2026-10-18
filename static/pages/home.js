@@ -183,10 +183,11 @@
   if (!body) return;
   const base = (window.__BASE_URL__ || location.origin);
   const SEQ = [
-    { text: "# 一次真实的调用", cls: "c", pause: 500 },
-    { text: "claude mcp add --transport http 518 " + base + "/mcp", cls: "k", pause: 900 },
-    { text: "→ tools/call  share", cls: "", pause: 1100 },
-    { text: "result_url: " + base + "/r/qDNuKPEM", cls: "g", pause: 0 },
+    { text: "# " + window.t("hero_term_note"), cls: "c", pause: 500 },
+    { text: "$ claude mcp add --transport http 518 " + base + "/mcp", cls: "k", pause: 900 },
+    { text: "❯ " + window.t("hero_term_prompt"), cls: "", pause: 1100 },
+    { text: "● share(photo.png)", cls: "", pause: 800 },
+    { text: "✓ " + base + "/r/qDNuKPEM", cls: "g", pause: 0 },
   ];
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduce) {
@@ -204,7 +205,11 @@
     if (ch === 0) { spans[line] = document.createElement("span"); spans[line].className = cur.cls; body.appendChild(spans[line]); }
     ch += 1;
     spans[line].textContent = cur.text.slice(0, ch);
-    if (ch >= cur.text.length) { line += 1; ch = 0; setTimeout(tick, Math.max(cur.pause, 120)); }
+    if (ch >= cur.text.length) {
+      line += 1; ch = 0;
+      if (line < SEQ.length) body.appendChild(document.createElement("br"));
+      setTimeout(tick, Math.max(cur.pause, 120));
+    }
     else setTimeout(tick, 24 + Math.random() * 40);
   }
   tick();
