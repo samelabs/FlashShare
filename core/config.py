@@ -73,27 +73,33 @@ OAUTH_TTL = 10 * 60
 PUBLIC_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,48}$")
 
 ALLOWED_EXT = {
-    # Images (SVG 属图像格式, 含于 image 族)
+    # Images (SVG 属图像格式, 含于 image 族; 含设计源文件与主流 RAW)
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".ico", ".heic", ".heif", ".tiff", ".tif", ".avif", ".svg",
-    # Documents
-    ".pdf", ".txt", ".csv", ".md", ".rtf",
-    ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    ".odt", ".ods", ".odp",
-    ".log", ".diff", ".patch",
-    # Archives
-    ".zip", ".rar", ".7z", ".gz", ".tar", ".bz2", ".xz", ".tgz",
-    # Data
+    ".psd", ".eps", ".dng", ".cr2", ".cr3", ".nef", ".arw",
+    # Documents (页面文档 + 电子书)
+    ".pdf", ".txt", ".md", ".rtf",
+    ".doc", ".docx", ".ppt", ".pptx",
+    ".odt", ".fodt",
+    ".epub", ".mobi", ".azw3", ".fb2",
+    # Data & tables (结构化数据与表格)
+    ".csv", ".tsv", ".xls", ".xlsx", ".ods",
     ".json", ".xml", ".yaml", ".yml", ".toml", ".ini",
-    # Code (收缩到高价值文本子集 — 平台是处理+分享, 非 IDE)
+    ".parquet", ".sqlite",
+    # Text & code (处理+分享向文本与源码, 非 IDE 全集)
+    ".log", ".diff", ".patch",
     ".py", ".js", ".ts", ".html", ".htm", ".css", ".sql",
     ".sh", ".tsx", ".jsx", ".go", ".rs", ".java", ".ipynb",
+    ".c", ".h", ".cpp", ".php", ".rb", ".swift", ".kt", ".lua", ".r", ".tex",
     # CAD / 3D (设计·工程场景)
     ".dwg", ".dxf", ".step", ".stp", ".iges", ".igs",
     ".stl", ".obj", ".fbx", ".glb", ".gltf", ".3ds", ".skp", ".blend",
-    ".sldprt", ".iam", ".catpart",
-    # Audio / Video (媒体场景)
-    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a",
-    ".mp4", ".mov", ".webm", ".avi", ".mkv",
+    ".sldprt", ".iam", ".catpart", ".usdz", ".3mf", ".ply",
+    # Audio / Video (媒体场景; 字幕随视频消费链)
+    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".opus",
+    ".mp4", ".mov", ".webm", ".avi", ".mkv", ".wmv",
+    ".srt", ".vtt", ".ass",
+    # Archives
+    ".zip", ".rar", ".7z", ".gz", ".tar", ".bz2", ".xz", ".tgz", ".zst",
 }
 
 BLOCKED_EXT = {

@@ -229,7 +229,7 @@ register(
                   'delivery 1 day / 50 downloads, adjustable via the '
                   'delivery object.',
         },
-    icon="upload",
+    icon="share",  # share = 无类型底座工具, 独立图标 (节点分享形, 非 upload 动作形)
     accept=None,  # accepts all formats
     handler=share_handler,
     files_min=1, files_max=20,

@@ -65,7 +65,8 @@ _ICONS = {
     # ── Input format families (formats.py FAMILY_ORDER 的可视投影;
     #     键 = 族键, 派生图标与上传区格式汇总文案同源) ──
     "code": '<path d="M8.5 6.5L3.5 12l5 5.5"></path><path d="M15.5 6.5l5 5.5-5 5.5"></path><path d="M13.5 4.5l-3 15"></path>',
-    "media": '<rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="M10.2 9.4l4.6 2.6-4.6 2.6z"></path>',
+    "video": '<rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="M10.2 9.4l4.6 2.6-4.6 2.6z"></path>',
+    "audio": '<path d="M9 18V6l10-2v11.5"></path><circle cx="6.5" cy="18" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle>',
     "data": '<ellipse cx="12" cy="5.5" rx="7" ry="2.8"></ellipse><path d="M5 5.5v13c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-13"></path><path d="M5 12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8"></path>',
     "cad3d": '<path d="M12 2.8l7.8 4.4v9.6L12 21.2l-7.8-4.4V7.2z"></path><path d="M12 12l7.8-4.8"></path><path d="M12 12L4.2 7.2"></path><path d="M12 12v9.2"></path>',
 
@@ -127,10 +128,12 @@ def tool_icon_svg(name):
 
 
 # 派生图标与格式族键的映射: 键即字形名 (输入族字形以族键命名),
-# 唯一例外 document → doc (palette 历史名)。
+# 例外: document → doc (palette 历史名), text → code (文本与代码道的
+# 字形用 code 尖括号 — text 字形是"文本文件"形, 车道层用 code 更具区分度)。
 _FAMILY_GLYPH = {
-    "image": "image", "document": "doc", "archive": "archive",
-    "cad3d": "cad3d", "media": "media", "data": "data", "code": "code",
+    "image": "image", "document": "doc", "data": "data",
+    "text": "code", "audio": "audio", "video": "video",
+    "cad3d": "cad3d", "archive": "archive",
 }
 
 

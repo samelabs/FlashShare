@@ -50,9 +50,11 @@ check("undeclared accept → wand", derived_tool_icon(5, None) == "wand")
 check("empty accept list → wand", derived_tool_icon(2, []) == "wand")
 check("single family image → image", derived_tool_icon(3, [ext_of("image")]) == "image")
 check("single family document → doc", derived_tool_icon(1, [ext_of("document")]) == "doc")
-check("single family code → code", derived_tool_icon(1, [ext_of("code")]) == "code")
+check("single family text → code glyph", derived_tool_icon(1, [ext_of("text")]) == "code")
+check("single family audio → audio", derived_tool_icon(1, [ext_of("audio")]) == "audio")
+check("single family video → video", derived_tool_icon(1, [ext_of("video")]) == "video")
 check("multi family → convert",
-      derived_tool_icon(2, [ext_of("image"), ext_of("code")]) == "convert")
+      derived_tool_icon(2, [ext_of("image"), ext_of("text")]) == "convert")
 
 # 3) 任意输入 (含脏值) 永不离开 palette
 for args in [(1, ["zzz"]), (None, None), ("x", 7), (1, None), (3, [".jpg", 42])]:

@@ -35,8 +35,10 @@ function renderFamGrid(selFam, selExts, isCreate) {
   const grid = document.getElementById("famGrid");
   // 族 chip = 词形一体: 族字形与族名同源 (formats manifest 的两处投影,
   // 与 catalog 派生图标同一词表) — 输入语直接告诉作者"工具吃什么"。
+  // 键→字形例外与 core/icons._FAMILY_GLYPH 保持一致 (document→doc, text→code)。
+  const FAM_GLYPH = { document: "doc", text: "code" };
   const glyph = (k) => window.iconSvg
-    ? '<i class="fam-glyph" aria-hidden="true">' + window.iconSvg(k === "document" ? "doc" : k) + "</i>" : "";
+    ? '<i class="fam-glyph" aria-hidden="true">' + window.iconSvg(FAM_GLYPH[k] || k) + "</i>" : "";
   grid.innerHTML = FAM_KEYS.map(k =>
     '<label class="fam-chip" title="' + _famDetail(k) + '"><input type="radio" name="fam" value="' + k + '"' +
     (k === selectedFam ? " checked" : "") + ">" +

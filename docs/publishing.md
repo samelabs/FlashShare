@@ -39,7 +39,7 @@ The declaration and execution contract for tools published on 518.PLUS.
 |---|---|
 | `tool_id` / `tool_key` | 唯一身份，`^[a-z][a-z0-9_]{1,40}$` |
 | `execution` | 当前用户工具固定为 `http` |
-| `format_families` | 七族准入词表单选（image/document/archive/cad3d/media/data/code），accept 由族派生；纯文本工具不带 |
+| `format_families` | 八道准入词表单选（image/document/data/text/audio/video/cad3d/archive），accept 由族派生；纯文本工具不带 |
 | `files_min` | 输入文件数下限，int ≥ 0（0 = 可不带文件调用）；缺省 1 |
 | `files_max` | 输入文件数上限，int 0..20；须 ≥ files_min；缺省 1。0 = 纯文本工具：无文件位，不带 format_families/accept，第一个 text 参数作为输入框 |
 | `outputs` | 产出类型非空子集 `["text","json","file"]`（声明工具可能返回哪些结果项）；缺省 `["file"]` |

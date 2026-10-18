@@ -21,6 +21,7 @@ from pathlib import Path
 VALID_ICONS = {
     "shield", "image", "archive", "edit", "crop",
     "compress", "convert", "print", "favicon", "merge", "info", "hash", "upload", "wand",
+    "share",
 }
 
 
