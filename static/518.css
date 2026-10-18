@@ -337,7 +337,9 @@
 .fam-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .fam-chip { position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid var(--line-2); border-radius: 99px; padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--ink-3); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
 .fam-glyph { display: inline-flex; flex: none; }
-.fam-glyph svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* 特异度对齐 tokens 的全局兜底 svg:not([width]):not([height]) (0,2,1),
+   518.css 晚于 tokens 加载, 同级后者胜 — 族字形 15px 不吃全局 20px */
+.fam-chip .fam-glyph svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .fam-chip input { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .fam-chip:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
 .fam-hint { flex-basis: 100%; font-size: 12px; color: var(--ink-2); line-height: 1.5; letter-spacing: .01em; }
