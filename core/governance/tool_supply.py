@@ -171,9 +171,11 @@ def validate_tool_declaration(decl: dict) -> dict:
     if decl.get("visibility") not in _VISIBILITIES:
         raise DeclarationError("bad_visibility")
 
+    # icon 声明已退役 (图标完全依赖类型): 缺省=None 合法;
+    # 提供值仍校验 — 兼容既有 canonical 声明与存量行
     from tools import VALID_ICONS
     icon = decl.get("icon")
-    if icon not in VALID_ICONS:
+    if icon is not None and icon not in VALID_ICONS:
         raise DeclarationError("bad_icon")
 
     label = _check_localized(decl.get("label"), _MAX_LABEL, required=True)
@@ -237,11 +239,6 @@ def validate_tool_patch(patch: dict) -> dict:
         out["label"] = _check_localized(patch["label"], _MAX_LABEL, required=True)
     if "desc" in patch:
         out["desc"] = _check_localized(patch["desc"], _MAX_DESC, required=False)
-    if "icon" in patch:
-        from tools import VALID_ICONS
-        if patch["icon"] not in VALID_ICONS:
-            raise DeclarationError("bad_icon")
-        out["icon"] = patch["icon"]
     if "inputs" in patch:
         out["inputs"] = _normalize_inputs(patch["inputs"])
     if "outputs" in patch:
@@ -322,7 +319,7 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "label_json": json.dumps(decl["label"], ensure_ascii=False),
         "desc_json": (json.dumps(decl["desc"], ensure_ascii=False)
                       if decl.get("desc") else None),
-        "icon": decl["icon"],
+        **({} if decl.get("icon") is None else {"icon": decl["icon"]}),
         "accept_json": (json.dumps(decl["inputs"]["files"]["accept"],
                                    ensure_ascii=False)
                         if decl["inputs"]["files"]["accept"] else None),
@@ -376,8 +373,6 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
     if "desc" in patch:
         sets["desc_json"] = (json.dumps(patch["desc"], ensure_ascii=False)
                              if patch["desc"] else None)
-    if "icon" in patch:
-        sets["icon"] = patch["icon"]
     if "inputs" in patch:
         files = patch["inputs"]["files"]
         sets["accept_json"] = (json.dumps(files["accept"],

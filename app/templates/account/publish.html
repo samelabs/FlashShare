@@ -42,9 +42,8 @@
       <div class="acct-card-head"><h2 data-i18n="pub_sec_input">{{ texts.pub_sec_input }}</h2></div>
       <div class="pub-grid">
         <div class="pub-wide pub-input-mode" role="radiogroup" aria-label="{{ texts.pub_sec_input }}">
-          <label class="fam-chip"><input type="radio" name="fInputMode" value="files" checked><span data-i18n="pub_input_files">{{ texts.pub_input_files }}</span></label>
-          <label class="fam-chip"><input type="radio" name="fInputMode" value="text"><span data-i18n="pub_input_text">{{ texts.pub_input_text }}</span></label>
-          <em class="pub-hint hidden" id="pubTextHint" data-i18n="pub_input_text_hint">{{ texts.pub_input_text_hint }}</em>
+          <label class="pub-mode"><input type="radio" name="fInputMode" value="files" checked><i class="pm-glyph" data-mode="files" aria-hidden="true"></i><span data-i18n="pub_input_files">{{ texts.pub_input_files }}</span></label>
+          <label class="pub-mode"><input type="radio" name="fInputMode" value="text"><i class="pm-glyph" data-mode="text" aria-hidden="true"></i><span data-i18n="pub_input_text">{{ texts.pub_input_text }}</span></label>
         </div>
         <div class="pub-wide fam-block pub-files-only">
           <span class="fam-grid" id="famGrid"></span>

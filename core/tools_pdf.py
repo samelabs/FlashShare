@@ -106,7 +106,6 @@ register(
             "es": 'Combina varios archivos PDF en un solo documento.',
             "en": 'Combine multiple PDF files into one document.',
         },
-    icon="merge",
     accept={".pdf"},
     handler=pdf_merge_handler,
     files_min=1, files_max=20,

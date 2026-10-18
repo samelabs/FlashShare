@@ -106,7 +106,7 @@ register(
             "es": 'Agrupa varios archivos en un archivo ZIP.',
             "en": 'Pack multiple files into one ZIP archive.',
         },
-    icon="archive",
+    family="archive",  # 全格式入食但属归档道 (类型≠accept 边界)
     accept=None,
     handler=zip_pack_handler,
     files_min=1, files_max=20,

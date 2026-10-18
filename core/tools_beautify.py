@@ -411,7 +411,6 @@ register(
             "es": 'Envuelve capturas en contenedores con estilo.',
             "en": 'Wrap screenshots in beautiful styled containers.',
         },
-    icon="wand",
     accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
     handler=beautify_handler,
     params=[

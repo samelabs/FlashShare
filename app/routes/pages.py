@@ -206,7 +206,8 @@ def _developer_facts() -> dict:
         "max_tools": MAX_TOOLS_PER_USER,
         "max_price": MAX_PRICE,
         "commission_rate": rate,
-        "min_withdrawal_usd": MIN_WITHDRAWAL_MILLIS // 1000,
+        # 提现下限与收益页/提现浮层同一两位小数口径 ("$10.00", 非 "$10")
+        "min_withdrawal_usd": "{:.2f}".format(MIN_WITHDRAWAL_MILLIS / 1000),
     }
 
 

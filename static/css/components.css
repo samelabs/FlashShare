@@ -542,8 +542,8 @@ pre.rs-text, pre.rs-json {
 /* 图标块: 暖底 + 细线 + 卡 hover 时同拍微升 */
 .tc .ic {
   width: 40px; height: 40px; border-radius: 12px; flex: none;
-  display: grid; place-items: center; background: var(--sunk);
-  border: 1px solid var(--line); color: var(--ink);
+  display: grid; place-items: center; background: var(--brand-50);
+  color: var(--brand);
   transition: transform var(--ease-in);
 }
 @media (hover:hover) and (pointer:fine) { .tc:hover .ic { transform: translateY(-1px); } }
@@ -660,15 +660,15 @@ pre.rs-text, pre.rs-json {
 }
 .ti-chat-wrap .send svg { width: 16px; height: 16px; }
 
-/* 行尾"+ 添加"小块: 已有文件且未达上限时出现在文件列表末尾
-   (chipf 底形 + 虚线描边区分真实文件行; plus 图标 = 添加语义) */
+/* 行尾"+ 添加"文件槽: 已有文件且未达上限时出现在文件列表末尾。
+   外形与 chipf 文件行一致 (同实线边框 / 同底色 / 同缩略位, 无第二行
+   与无移除钮是仅有的差异) — 读作"流的下一个空槽"而非另一个按钮;
+   plus 图标与 hover 品牌反馈承载添加语义。 */
 .ti-add-block {
-  border: 1.5px dashed var(--line-2); background: none;
-  color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 550;
+  border: var(--border-w) solid var(--line); background: var(--sunk);
+  color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 600;
 }
-.ti-add-block .th.d { background: var(--brand-50); border-color: transparent; }
 .ti-add-block .th.d svg { stroke: var(--brand); }
-.ti-add-block b { color: var(--brand); }
 @media (hover:hover) and (pointer:fine) { .ti-add-block:hover { border-color: var(--brand); background: var(--brand-50); color: var(--ink); } }
 .ti-add-block:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
@@ -759,6 +759,8 @@ pre.rs-text, pre.rs-json {
 .ti-more-body[hidden] { display: none; }
 
 .c-bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px 12px; flex-wrap: wrap; position: relative; }
+/* 底栏尾部 (有效期+进度+运行) 桌面透明展开; 移动端成组整体换行 */
+.bar-tail { display: contents; }
 .c-bar .sp { flex: 1; }
 .ib {
   width: 36px; height: 36px; border-radius: var(--r-full); border: 0;
@@ -836,6 +838,7 @@ pre.rs-text, pre.rs-json {
      有效期/运行 自然换行到第二行 — .sp 退场, 运行吃
      margin-inline-start:auto, 进度文本可收缩。 */
   .c-bar .tsel { flex: 0 1 auto; max-width: min(320px, 100%); }
+  .c-bar .bar-tail { display: flex; align-items: center; gap: 4px; flex-basis: 100%; }
   .c-bar .sp { display: none; }
   .c-bar .ti-run { margin-inline-start: auto; }
   .ti-progress { flex-shrink: 1; min-width: 0; overflow: hidden; white-space: nowrap; }

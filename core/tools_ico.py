@@ -127,7 +127,6 @@ register(
             "es": 'Generar iconos ICO de varios tamaños desde una imagen.',
             "en": 'Generate ICO icons in various sizes from an image.',
         },
-    icon="favicon",
     accept=ACCEPTED_EXTS,
     params=[
         {"key": "preset", "type": "enum", "label": {"en": "Icon size", "zh": "图标尺寸"},

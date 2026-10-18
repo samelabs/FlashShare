@@ -136,7 +136,6 @@ register(
             "es": 'Combina varias imágenes en un documento PDF.',
             "en": 'Combine multiple images into one PDF document.',
         },
-    icon="convert",
     accept=ACCEPTED,
     handler=img2pdf_handler,
     files_min=1, files_max=20,

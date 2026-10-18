@@ -9,10 +9,14 @@ document.getElementById('unbindX')?.addEventListener('click', async () => {
     cancelLabel: window.t("cancel"),
   });
   if (!ok) return;
-  const r = await fetch('/auth/x/unbind', { method: 'POST' });
-  if (r.ok) location.reload();
-  else {
-    const d = await r.json().catch(() => ({}));
-    alert(_errm(d.error));
+  try {
+    const r = await fetch('/auth/x/unbind', { method: 'POST' });
+    if (r.ok) location.reload();
+    else {
+      const d = await r.json().catch(() => ({}));
+      alert(_errm(d.error));
+    }
+  } catch (e) {
+    alert(_errm());
   }
 });

@@ -62,6 +62,16 @@ _ICONS = {
     "text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8M8 17h6"></path>',
     "file_size": '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path>',
 
+    # ── Input format families (formats.py FAMILY_ORDER 的可视投影;
+    #     键 = 族键, 派生图标与上传区格式汇总文案同源) ──
+    "code": '<path d="M8.5 6.5L3.5 12l5 5.5"></path><path d="M15.5 6.5l5 5.5-5 5.5"></path><path d="M13.5 4.5l-3 15"></path>',
+    "video": '<rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="M10.2 9.4l4.6 2.6-4.6 2.6z"></path>',
+    "audio": '<path d="M9 18V6l10-2v11.5"></path><circle cx="6.5" cy="18" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle>',
+    "cloud": '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>',
+    "chat": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
+    "data": '<ellipse cx="12" cy="5.5" rx="7" ry="2.8"></ellipse><path d="M5 5.5v13c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-13"></path><path d="M5 12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8"></path>',
+    "cad3d": '<path d="M12 2.8l7.8 4.4v9.6L12 21.2l-7.8-4.4V7.2z"></path><path d="M12 12l7.8-4.8"></path><path d="M12 12L4.2 7.2"></path><path d="M12 12v9.2"></path>',
+
     # ── Meta / info ──
     "info": '<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path>',
     "expiry": '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
@@ -117,3 +127,39 @@ def tool_icon_svg(name):
     fallback (TOOL_ICON_FALLBACK)。模板/视图一律消费本函数, 禁止
     surface 自建 fallback SVG。Returns Markup (platform-owned SVG)."""
     return icon_svg(name if name in _ICONS else TOOL_ICON_FALLBACK)
+
+
+# 派生图标与格式族键的映射: 键即字形名 (输入族字形以族键命名),
+# 例外: document → doc (palette 历史名), text → code (文本与代码道的
+# 字形用 code 尖括号 — text 字形是"文本文件"形, 车道层用 code 更具区分度)。
+_FAMILY_GLYPH = {
+    "image": "image", "document": "doc", "data": "data",
+    "text": "code", "audio": "audio", "video": "video",
+    "cad3d": "cad3d", "archive": "archive",
+}
+
+
+def derived_tool_icon(files_max, accept):
+    """无策展图标时的契约自述: 表达"这工具吃什么"。
+
+    与上传区格式汇总文案 (acceptFamilyText) 同一聚合的可视投影 —
+    accept 窗口按 governance.formats 的族词表归并, 结果:
+      files_max=0 (纯文本输入)  → text
+      accept 未声明 (全族兼容)  → wand
+      命中单一族                → 该族字形 (FAMILY_GLYPH)
+      命中多族                  → convert
+    未命中任何族 (声明早于族词表) → wand。纯函数, 不读库。"""
+    try:
+        if not files_max or int(files_max) <= 0:
+            return "text"
+        if not accept:
+            return "wand"
+        from governance.formats import FAMILIES, FAMILY_ORDER
+        toks = {str(a).lstrip(".").lower() for a in accept}
+        hit = [k for k in FAMILY_ORDER
+               if toks & {e.lstrip(".").lower() for e in FAMILIES[k].exts}]
+        if len(hit) == 1:
+            return _FAMILY_GLYPH[hit[0]]
+        return "convert" if len(hit) > 1 else "wand"
+    except Exception:
+        return TOOL_ICON_FALLBACK

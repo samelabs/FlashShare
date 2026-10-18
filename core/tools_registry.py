@@ -209,10 +209,10 @@ def share_handler(tool_input, params):
 register(
     tool_id="share",
     label={
-        "en": "Lossless Share", "zh": "无损分享", "ja": "ロスレス共有",
-        "ko": "무손실 공유", "es": "Compartir sin pérdida", "ar": "مشاركة بدون فقدان",
-        "de": "Verlustfreies Teilen", "ru": "Поделиться без потерь",
-        "pt": "Compartilhar sem perda", "fr": "Partage sans perte",
+        "en": "Free Share", "zh": "免费分享", "ja": "無料共有",
+        "ko": "무료 공유", "es": "Compartir gratis", "ar": "مشاركة مجانية",
+        "de": "Kostenlos teilen", "ru": "Бесплатный обмен",
+        "pt": "Compartilhar grátis", "fr": "Partage gratuit",
     },
     desc={
             "fr": 'Partagez des fichiers sans perte.',
@@ -222,14 +222,14 @@ register(
             "de": 'Dateien verlustfrei teilen.',
             "pt": 'Compartilhe arquivos sem perdas.',
             "ja": 'ファイルをロスレスで共有。',
-            "zh": '无损分享文件，生成链接。',
+            "zh": '免费分享文件，生成链接。',
             "es": 'Comparte archivos sin perdida.',
             "en": 'Share files losslessly and hand people a link: give '
                   'humans result_url (one page for all files); default '
                   'delivery 1 day / 50 downloads, adjustable via the '
                   'delivery object.',
         },
-    icon="upload",
+    # share = 类型空态唯一持有者 (图标=cloud 由投影授予), 不声明 family
     accept=None,  # accepts all formats
     handler=share_handler,
     files_min=1, files_max=20,
@@ -262,7 +262,6 @@ register(
         "es": "Elimina metadatos y marcas de agua de IA. La salida se recodifica: los píxeles cambian ligeramente en todos los niveles (por diseño).",
         "en": "Strips metadata and disrupts AI watermarks from your images. The output is re-encoded — pixels shift slightly at every level (by design; watermark disruption is whole-image).",
     },
-    icon="shield",
     accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
     handler=privacy_handler,
     params=[
@@ -278,7 +277,7 @@ register(
 )
 
 register(
-    "demo_shout", "Shout", "wand", demo_shout_handler,
+    "demo_shout", "Shout", demo_shout_handler,
     accept=None, files_min=0, files_max=0, outputs=("text",),
     desc={"en": "Turns your text into UPPERCASE — a demo of the chat-form input.",
           "zh": "把你的文本变成大写——对话式输入的参考工具。"},

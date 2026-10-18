@@ -17,9 +17,13 @@ function _pager(el, base, pageKey, page, total, per) {
 }
 
 async function loadEarnings() {
-  const r = await fetch('/api/earnings');
-  if (!r.ok) return;
-  const d = await r.json();
+  let d;
+  try {
+    const r = await fetch('/api/earnings');
+    if (!r.ok) return;
+    d = await r.json();
+  } catch (e) { return; }
+  if (!d || !d.ok || !d.summary) return;
   const s = d.summary;
   // C1: Earnings 的资产单位就是现金 USD — 主值直接 USD, 不再以
   // credits 数字为主 + USD 小字 (消费积分属于 /account/credits)。
@@ -136,24 +140,30 @@ document.getElementById('submitWithdraw')?.addEventListener('click', async () =>
   const amountUsd = document.getElementById('wAmount').value.trim();
   const note = document.getElementById('wNote').value.trim();
   btn.disabled = true;
-  const r = await fetch('/api/earnings/withdraw', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount_usd: amountUsd, note })
-  });
-  const d = await r.json();
-  btn.disabled = false;
-  if (d.ok) {
-    _wModal.classList.add('hidden');
-    const fb = document.getElementById('wdFeedback');
-    if (fb) {
-      fb.textContent = _msg('earn_wd_ok') + ' (#' + d.id + ')';
-      fb.classList.remove('hidden');
-      setTimeout(() => fb.classList.add('hidden'), 6000);
+  try {
+    const r = await fetch('/api/earnings/withdraw', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount_usd: amountUsd, note })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      _wModal.classList.add('hidden');
+      const fb = document.getElementById('wdFeedback');
+      if (fb) {
+        fb.textContent = _msg('earn_wd_ok') + ' (#' + d.id + ')';
+        fb.classList.remove('hidden');
+        setTimeout(() => fb.classList.add('hidden'), 6000);
+      }
+      loadEarnings();
+      return;
     }
-    loadEarnings();
-    return;
+    alert(_errm(d.error));
+  } catch (e) {
+    // 网络/解析失败也要把资金操作入口解禁, 否则按钮永久锁死
+    alert(_errm());
+  } finally {
+    if (_curChannel) btn.disabled = false;
   }
-  alert(_errm(d.error));
 });
 
 loadEarnings();

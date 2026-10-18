@@ -5,7 +5,6 @@ _ctx_base 原实现从 pages.py 上收; pages 保留同名薄壳 (模板侧零�
 
 import datetime
 import hashlib
-import json
 import os as _os
 import sys
 from pathlib import Path
@@ -21,7 +20,7 @@ _STATIC = _BASE / "static"
 # (tokens + components + the 518.css page file): any file change bumps
 # every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v81"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+_CSS_VERSION = "v82"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
 for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
@@ -56,7 +55,7 @@ sys.path.insert(0, str(_CORE))
 from config import (APP_NAME, BASE_URL, SOCIAL_IMAGE_URL,
                     SUPPORT_EMAIL, X_CLIENT_ID, X_CLIENT_SECRET)
 from i18n import LOCALE_TAGS, language_from_code, server_text
-from icons import _ICONS, icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
+from icons import icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
 from identity.auth import public_user
 from economy.billing import spendable_balance
 from governance.access_projection import project
@@ -141,7 +140,6 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         # Header credit chip (None for anonymous)
         "credits": get_balance(user["id"]) if user else None,
         "access": access,
-        "icons_json": json.dumps(_ICONS, ensure_ascii=False),
         "APP_NAME": APP_NAME,
         "support_email": SUPPORT_EMAIL,
         "page_id": page_id,

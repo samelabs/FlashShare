@@ -33,10 +33,17 @@ function renderFamGrid(selFam, selExts, isCreate) {
   selectedFam = selFam || null;
   selectedExts = new Set(selExts || []);
   const grid = document.getElementById("famGrid");
+  // 族 chip = 词形一体: 族字形与族名同源 (formats manifest 的两处投影,
+  // 与 catalog 派生图标同一词表) — 输入语直接告诉作者"工具吃什么"。
+  // 键→字形例外与 core/icons._FAMILY_GLYPH 保持一致 (document→doc, text→code)。
+  // 字形是 span 的兄弟节点 (pub-mode 同构) — 塞进 span 内会在窄胶囊里换行堆叠。
+  const FAM_GLYPH = { document: "doc", text: "code" };
+  const glyph = (k) => window.iconSvg
+    ? '<i class="fam-glyph" aria-hidden="true">' + window.iconSvg(FAM_GLYPH[k] || k) + "</i>" : "";
   grid.innerHTML = FAM_KEYS.map(k =>
     '<label class="fam-chip" title="' + _famDetail(k) + '"><input type="radio" name="fam" value="' + k + '"' +
     (k === selectedFam ? " checked" : "") + ">" +
-    "<span>" + _msg(_famI18n(k)) + "</span></label>").join("");
+    glyph(k) + "<span>" + _msg(_famI18n(k)) + "</span></label>").join("");
   renderExtGrid();
   updateFamSummary();
 }
@@ -327,15 +334,23 @@ function collectParams(preview) {
   return (ok || preview) ? out : null;
 }
 
-// ── 输入方式: 文件 / 纯文本 (files_max = 0, 无文件位, 无格式声明) ──
+// ── 输入方式: 文件(云朵) / 文本(对话) — 大类别分段选择, 与族胶囊分层 ──
 function inputMode() {
   const el = document.querySelector('input[name="fInputMode"]:checked');
   return el ? el.value : "files";
 }
+function injectModeGlyphs() {
+  const glyphs = { files: "cloud", text: "chat" };
+  document.querySelectorAll(".pm-glyph").forEach((g) => {
+    if (g.firstChild) return;
+    const name = glyphs[g.dataset.mode];
+    if (name && window.iconSvg) g.innerHTML = window.iconSvg(name);
+  });
+}
 function applyInputMode() {
+  injectModeGlyphs();
   const text = inputMode() === "text";
   document.querySelectorAll(".pub-files-only").forEach(el => el.classList.toggle("hidden", text));
-  document.getElementById("pubTextHint").classList.toggle("hidden", !text);
 }
 
 // ── 行内错误 (服务端码 → 字段定位) ──
@@ -353,7 +368,9 @@ function showErrors(errMap) {
 }
 
 // ── 提交 ──
+let _submitBusy = false;   // 防双击重复 POST (创建靠服务端 tool_id_taken 兜底, 但会弹出报错)
 async function submit() {
+  if (_submitBusy) return;
   const params = collectParams();
   if (params === null) return;   // 行内已标错
   const extra = collectLangDict();
@@ -423,32 +440,40 @@ async function submit() {
   const editing = !!_editId;
   // 编辑态 tool_id immutable: 去掉 body.tool_id, 走 URL 路径定位
   if (editing) delete body.tool_id;
-  const r = await fetch("/api/usertools" + (editing ? "/" + _editId : ""), {
-    method: editing ? "PATCH" : "POST",
-    headers: Object.assign({ "Content-Type": "application/json" },
-      editing ? { "X-518-Edit-Locale": _curLang() } : null),
-    body: JSON.stringify(body),
-  });
-  const d = await r.json();
-  if (d.ok) {
-    if (editing) location.href = "/account/tools";
-    // 新发布默认不公开: 直接落到工具页 (作者可运行一次, 顶部提示如何公开)
-    else location.href = "/tool/" + encodeURIComponent(d.tool_key);
-    return;
+  _submitBusy = true;
+  try {
+    const r = await fetch("/api/usertools" + (editing ? "/" + _editId : ""), {
+      method: editing ? "PATCH" : "POST",
+      headers: Object.assign({ "Content-Type": "application/json" },
+        editing ? { "X-518-Edit-Locale": _curLang() } : null),
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      if (editing) location.href = "/account/tools";
+      // 新发布默认不公开: 直接落到工具页 (作者可运行一次, 顶部提示如何公开)
+      else location.href = "/tool/" + encodeURIComponent(d.tool_key);
+      return;
+    }
+    // 服务端错误码 → 字段定位
+    const map = {
+      bad_url: "url", https_required: "url", url_taken: "url",
+      bad_tool_id: "tool_id", tool_id_taken: "tool_id",
+      bad_label: "label", bad_desc: "desc",
+      bad_accept: "accept", bad_format_family: "accept",
+      bad_files_min: "files_min", bad_files_max: "files_max",
+      bad_files_range: "files_max", bad_outputs: "outputs",
+      bad_cost: "cost", too_many_tools: "tool_id",
+    };
+    if (map[d.error]) { showErrors({ [map[d.error]]: d.error }); return; }
+    if (String(d.error).startsWith("bad_param")) { alert(_errm(d.error)); return; }
+    alert(_errm(d.error));
+  } catch (e) {
+    // 网络/解析失败: 不静默, 也不让 _submitBusy 卡死
+    alert(_errm());
+  } finally {
+    _submitBusy = false;
   }
-  // 服务端错误码 → 字段定位
-  const map = {
-    bad_url: "url", https_required: "url", url_taken: "url",
-    bad_tool_id: "tool_id", tool_id_taken: "tool_id",
-    bad_label: "label", bad_desc: "desc",
-    bad_accept: "accept", bad_format_family: "accept",
-    bad_files_min: "files_min", bad_files_max: "files_max",
-    bad_files_range: "files_max", bad_outputs: "outputs",
-    bad_cost: "cost", too_many_tools: "tool_id",
-  };
-  if (map[d.error]) { showErrors({ [map[d.error]]: d.error }); return; }
-  if (String(d.error).startsWith("bad_param")) { alert(_errm(d.error)); return; }
-  alert(_errm(d.error));
 }
 
 // ── 编辑回填 ──

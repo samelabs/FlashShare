@@ -265,7 +265,12 @@
       const runLabel = cost > 0
         ? esc(t("ti_run")) + " · " + cost + " " + esc(t("credits_short"))
         : esc(t("ti_run"));
+      // bar-tail: 有效期+进度+运行 组成不可分尾部 — 桌面 display:contents
+      // (布局零变化), 移动端成为整体换行的 flex 组, 保证"有效期与运行同
+      // 行"对工具名宽/字体度量确定 (工具名宽度只影响选择器占位, 不再
+      // 把有效期拉上第一行而把运行单独留下)。
       html += '<div class="c-bar">'
+        + '<span class="bar-tail">'
         + '<span class="ti-del-wrap">'
         + '<button type="button" class="opt ti-del" aria-haspopup="true" aria-expanded="false">'
         + icon("expiry") + '<span class="ti-del-label">' + dLabel + "</span></button>"
@@ -285,6 +290,7 @@
         + '<span class="ti-progress" aria-live="polite"></span>'
         + '<span class="sp"></span>'
         + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + "</button>")
+        + "</span>"
         + "</div>";
 
       // 错误行与额度提示挂卡片底部 (c-bar 之后): 出现/消失只影响卡外
@@ -298,6 +304,7 @@
 
       html += "</div>";
       container.innerHTML = html;
+      wireOnce();
       bindParams();
       bindFiles();
       bindDelivery();
@@ -305,6 +312,45 @@
       bindMoreParams();
       bindChatGrow();
       renderRows();
+    }
+
+    // 持久宿主 (container / document) 上的委托监听只挂一次: render() 会重建
+    // 内部节点, 但 bind* 每 render 重跑, 向持久宿主叠加监听 — 叠加后的
+    // paste 处理器会让一次粘贴 addFiles N 次。节点级监听挂在新节点上,
+    // 仍留在各 bind* 内。
+    let wired = false;
+    function wireOnce() {
+      if (wired) return;
+      wired = true;
+      container.addEventListener("change", (e) => {
+        if (e.target.matches(".tp-bool, .tp-number")) {
+          collectAndPersist();
+          clearError();
+          window.invalidateToolOperation && window.invalidateToolOperation();
+        }
+      });
+      container.addEventListener("input", (e) => {
+        if (e.target.matches(".tp-text")) {
+          collectAndPersist();
+          clearError();
+          window.invalidateToolOperation && window.invalidateToolOperation();
+        }
+      });
+      document.addEventListener("paste", (e) => {
+        if (!container.isConnected) return;
+        const items = e.clipboardData && e.clipboardData.files;
+        if (items && items.length) {
+          const focused = document.activeElement;
+          if (focused && focused.matches && focused.matches("input, textarea")) return; // 输入中不劫持
+          addFiles(items);
+        }
+      });
+      document.addEventListener("click", () => {
+        const pop = container.querySelector(".c-del-pop");
+        const del = container.querySelector(".ti-del");
+        if (pop) pop.classList.add("hidden");
+        if (del) del.setAttribute("aria-expanded", "false");
+      });
     }
 
     // ── "更多参数"折叠: 前 3 直显, 其余收进展开区 ──
@@ -339,20 +385,6 @@
           clearError();
           window.invalidateToolOperation && window.invalidateToolOperation();
         });
-      });
-      container.addEventListener("change", (e) => {
-        if (e.target.matches(".tp-bool, .tp-number")) {
-          collectAndPersist();
-          clearError();
-          window.invalidateToolOperation && window.invalidateToolOperation();
-        }
-      });
-      container.addEventListener("input", (e) => {
-        if (e.target.matches(".tp-text")) {
-          collectAndPersist();
-          clearError();
-          window.invalidateToolOperation && window.invalidateToolOperation();
-        }
       });
     }
     function collectParams() {
@@ -444,7 +476,7 @@
         }
         return '<span class="chipf">' + thumb
           + "<span><b>" + esc(f.name) + "</b><small>"
-          + (filesMin() === 0 ? esc(t("ti_files_optional")) + " · " : "")
+          + (filesMin() === 0 ? esc(t("ti_files_optional", { max: filesMax() })) + " · " : "")
           + esc(fmtSize(f.size)) + "</small></span>"
           + '<button type="button" class="x ti-row-remove" data-rm="' + i
           + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
@@ -494,16 +526,6 @@
         card.addEventListener("focusin", () => card.classList.add("focus"));
         card.addEventListener("focusout", () => card.classList.remove("focus"));
       }
-      // 粘贴: 剪贴板里的文件 (截图等) 直接进附件
-      document.addEventListener("paste", (e) => {
-        if (!container.isConnected) return;
-        const items = e.clipboardData && e.clipboardData.files;
-        if (items && items.length) {
-          const focused = document.activeElement;
-          if (focused && focused.matches && focused.matches("input, textarea")) return; // 输入中不劫持
-          addFiles(items);
-        }
-      });
     }
 
     // ── delivery 胶囊与浮层 ──
@@ -519,7 +541,6 @@
         else close();
       });
       pop.addEventListener("click", (e) => e.stopPropagation());
-      document.addEventListener("click", close);
       const upd = () => {
         const d = parseInt((container.querySelector(".ti-expiry") || {}).value, 10) || 1;
         const n = parseInt((container.querySelector(".ti-downloads") || {}).value, 10) || 50;

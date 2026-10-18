@@ -21,6 +21,7 @@ from pathlib import Path
 VALID_ICONS = {
     "shield", "image", "archive", "edit", "crop",
     "compress", "convert", "print", "favicon", "merge", "info", "hash", "upload", "wand",
+    "share",
 }
 
 
@@ -51,15 +52,14 @@ class ToolError(Exception):
 _registry = []
 
 
-def register(tool_id, label, icon, handler,
+def register(tool_id, label, handler,
              accept=None, desc=None, files_min=1, files_max=1,
-             outputs=("file",), params=None):
+             outputs=("file",), params=None, family=None):
     """Register a tool.
 
     Args:
         tool_id: unique string identifier (lowercase + underscores).
         label: dict of {lang_code: display_name}. Must contain "en".
-        icon: icon identifier from VALID_ICONS.
         handler: callable(tool_input: dict, params: dict) -> dict.
                  Receives source file stream + metadata, returns result.
                  Must NOT touch gokapi, database, or HTTP.
@@ -74,11 +74,15 @@ def register(tool_id, label, icon, handler,
                receives a "sources" array; exactly 1 → a single
                "stream"; 0 → "sources" is an empty list.
         outputs: item kinds this tool may produce ("text"/"json"/"file").
-               Handlers return {"items": [...]} (IO-1 result model).
+                 Handlers return {"items": [...]} (IO-1 result model).
         params: canonical parameter declaration (tool modes spec v3) — same
-               shape as user tools' params_json. Validated with the SAME
-               validator as user tools (governance.tool_params). This is the
-               ONLY parameter declaration channel for first-party tools.
+                shape as user tools' params_json. Validated with the SAME
+                validator as user tools (governance.tool_params). This is the
+                ONLY parameter declaration channel for first-party tools.
+        family: 工具类型道声明 (仅第一方需要): accept 无法归并出车道时的
+                显式归属 (如 zip_pack 全格式入食但属归档道)。None = 由
+                accept 派生; share 不声明且不接受派生 = 唯一类型空态。
+                图标完全依赖类型 — 装饰性 icon 声明已退役。
     """
     # local runtime binding 专属检查 (duplicate registration)
     if any(t["id"] == tool_id for t in _registry):
@@ -96,7 +100,6 @@ def register(tool_id, label, icon, handler,
         "execution": "local",
         "label": label,
         "desc": desc,
-        "icon": icon,
         "inputs": {"files": {"min": files_min, "max": files_max,
                              "accept": sorted(accept) if accept else None}},
         "outputs": list(outputs),
@@ -112,7 +115,7 @@ def register(tool_id, label, icon, handler,
         "id": tool_id,
         "label": decl["label"],
         "desc": decl["desc"],
-        "icon": icon,
+        "family": family,
         "handler": handler,
         "accept": set(decl["inputs"]["files"]["accept"])
         if decl["inputs"]["files"]["accept"] else None,

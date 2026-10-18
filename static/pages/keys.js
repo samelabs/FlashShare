@@ -39,13 +39,17 @@ async function loadKeys() {
     showBtn.appendChild(showSpan);
     showBtn.addEventListener('click', async () => {
       if (!value.hidden) { value.hidden = true; return; }
-      const rr = await fetch(`/api/keys/${k.id}/reveal`);
-      if (!rr.ok) { const dd = await rr.json(); alert(_errm(dd.error)); return; }
-      const dd = await rr.json();
-      value.textContent = dd.key;
-      value.hidden = false;
-      const copyBtn = actions.querySelector('.btn-key-copy');
-      if (copyBtn) copyBtn.classList.remove('hidden');
+      try {
+        const rr = await fetch(`/api/keys/${k.id}/reveal`);
+        if (!rr.ok) { const dd = await rr.json(); alert(_errm(dd.error)); return; }
+        const dd = await rr.json();
+        value.textContent = dd.key;
+        value.hidden = false;
+        const copyBtn = actions.querySelector('.btn-key-copy');
+        if (copyBtn) copyBtn.classList.remove('hidden');
+      } catch (e) {
+        alert(_errm());
+      }
     });
     actions.appendChild(showBtn);
 

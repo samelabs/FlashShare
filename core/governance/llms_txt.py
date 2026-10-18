@@ -242,7 +242,8 @@ def build_llms_txt() -> str:
       f"{BASE_URL}/account/tools/publish.")
     a("A new tool starts unlisted; after one successful run from its "
       "page it can go public, and then the web interface and every MCP "
-      "agent can call it, earning you credits on each paid call.")
+      "agent can call it, earning you USD on each paid call "
+      "(1000 credits = 1 USD at settlement).")
     a("")
     a("## Recommended tools (generated live; catalog_search finds every "
       "other public tool)")

@@ -43,6 +43,8 @@ jobs:
         run: python tools/guard_samelabs_classes.py
       - name: CSS token guard
         run: python tools/guard_css_tokens.py
+      - name: Tool diet icon contract
+        run: python tests/ci/test_tool_diet_icons.py
       - name: Source-of-truth guards
         shell: bash
         run: |

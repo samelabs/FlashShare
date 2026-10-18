@@ -34,6 +34,14 @@ MIME_EXTS: dict[str, set[str]] = {
     "image/x-icon": {".ico"},
     "image/vnd.microsoft.icon": {".ico"},
     "image/svg+xml": {".svg"},
+    # image: 设计源文件 + 主流 RAW
+    "image/vnd.adobe.photoshop": {".psd"},
+    "application/postscript": {".eps"},
+    "image/x-adobe-dng": {".dng"},
+    "image/x-canon-cr2": {".cr2"},
+    "image/x-canon-cr3": {".cr3"},
+    "image/x-nikon-nef": {".nef"},
+    "image/x-sony-arw": {".arw"},
     # document
     "application/pdf": {".pdf"},
     "text/plain": {".txt"},
@@ -51,6 +59,27 @@ MIME_EXTS: dict[str, set[str]] = {
     "application/vnd.oasis.opendocument.presentation": {".odp"},
     "text/x-log": {".log"},
     "text/x-diff": {".diff", ".patch"},
+    # document: 电子书 + flat ODF
+    "application/epub+zip": {".epub"},
+    "application/x-mobipocket-ebook": {".mobi"},
+    "application/vnd.amazon.ebook": {".azw3"},
+    "application/x-fictionbook+xml": {".fb2"},
+    "application/vnd.oasis.opendocument.flat.text": {".fodt"},
+    # data: 表格与列式/库文件
+    "text/tab-separated-values": {".tsv"},
+    "application/vnd.apache.parquet": {".parquet"},
+    "application/vnd.sqlite3": {".sqlite"},
+    # text/code: 主流语言
+    "text/x-c": {".c"},
+    "text/x-chdr": {".h"},
+    "text/x-c++src": {".cpp"},
+    "application/x-php": {".php"},
+    "text/x-ruby": {".rb"},
+    "text/x-swift": {".swift"},
+    "text/x-kotlin": {".kt"},
+    "text/x-lua": {".lua"},
+    "text/x-r-source": {".r"},
+    "text/x-tex": {".tex"},
     # archive
     "application/zip": {".zip"},
     "application/vnd.rar": {".rar"},
@@ -59,6 +88,7 @@ MIME_EXTS: dict[str, set[str]] = {
     "application/x-tar": {".tar"},
     "application/x-bzip2": {".bz2"},
     "application/x-xz": {".xz"},
+    "application/zstd": {".zst"},
     # cad3d (application/octet-stream 是这些 ext 的泛型回退 MIME)
     "application/acad": {".dwg"},
     "image/vnd.dwg": {".dwg"},
@@ -69,8 +99,10 @@ MIME_EXTS: dict[str, set[str]] = {
     "model/obj": {".obj"},
     "model/gltf-binary": {".glb"},
     "model/gltf+json": {".gltf"},
+    "model/vnd.usdz+zip": {".usdz"},
+    "model/3mf": {".3mf"},
     "application/octet-stream": {
-        ".dxf", ".fbx", ".3ds", ".skp", ".blend", ".sldprt", ".iam", ".catpart"},
+        ".dxf", ".fbx", ".3ds", ".skp", ".blend", ".sldprt", ".iam", ".catpart", ".ply"},
     # media
     "audio/mpeg": {".mp3"},
     "audio/wav": {".wav"},
@@ -79,11 +111,17 @@ MIME_EXTS: dict[str, set[str]] = {
     "audio/aac": {".aac"},
     "audio/ogg": {".ogg"},
     "audio/mp4": {".m4a"},
+    "audio/opus": {".opus"},
     "video/mp4": {".mp4"},
     "video/quicktime": {".mov"},
     "video/webm": {".webm"},
     "video/x-msvideo": {".avi"},
     "video/x-matroska": {".mkv"},
+    "video/x-ms-wmv": {".wmv"},
+    # video: 字幕 (随视频消费链)
+    "application/x-subrip": {".srt"},
+    "text/vtt": {".vtt"},
+    "text/x-ssa": {".ass"},
     # data
     "application/json": {".json"},
     "application/xml": {".xml"},
@@ -129,61 +167,77 @@ class FormatFamily:
         self.chip = chip
 
 
-# ── 场景格式族 (用户格式语言, 平台词表) ──
-# 4C-1: family 的 exts 从 MIME_EXTS 派生 (∪ 各 MIME 具体扩展) + FAMILY_EXTRA_EXTS,
+# ── 场景格式族 (用户格式语言, 平台词表; 八道 = 行业证据 + agent 场景) ──
+# 4C-1: family 的 exts 从 MIME_EXTS 派生 (∪ 各 MIME 具体扩展),
 # mimes 保持原声明集合 — 单一事实源在 MIME_EXTS, 族与精确契约不再各自漂移。
+# 2026-10 类型方案: 音视频分立、电子书入文档、表格入数据、纯文本与源码合流
+# (CloudConvert/Online-Convert 双源交叉 + agent 差异化线)。
 _FAMILY_DEFS: dict[str, tuple[set[str], str]] = {
     "image": (
         {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
          "image/heic", "image/heif", "image/tiff", "image/avif",
-         "image/x-icon", "image/vnd.microsoft.icon", "image/svg+xml"},
+         "image/x-icon", "image/vnd.microsoft.icon", "image/svg+xml",
+         "image/vnd.adobe.photoshop", "application/postscript",
+         "image/x-adobe-dng", "image/x-canon-cr2", "image/x-canon-cr3",
+         "image/x-nikon-nef", "image/x-sony-arw"},
         "Images",
     ),
     "document": (
-        {"application/pdf", "text/plain", "text/csv", "text/markdown",
-         "application/rtf", "application/msword",
+        {"application/pdf", "application/rtf", "application/msword",
          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-         "application/vnd.ms-excel",
-         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
          "application/vnd.ms-powerpoint",
          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
          "application/vnd.oasis.opendocument.text",
-         "application/vnd.oasis.opendocument.spreadsheet",
-         "application/vnd.oasis.opendocument.presentation",
-         "text/x-log", "text/x-diff"},
+         "application/vnd.oasis.opendocument.flat.text",
+         "application/epub+zip", "application/x-mobipocket-ebook",
+         "application/vnd.amazon.ebook", "application/x-fictionbook+xml"},
         "Documents",
-    ),
-    "archive": (
-        {"application/zip", "application/vnd.rar", "application/x-7z-compressed",
-         "application/gzip", "application/x-tar", "application/x-bzip2",
-         "application/x-xz"},
-        "Archives",
-    ),
-    "cad3d": (
-        {"application/acad", "image/vnd.dwg", "image/x-dwg", "model/step",
-         "model/iges", "model/stl", "model/obj", "model/gltf-binary",
-         "model/gltf+json", "application/octet-stream"},
-        "CAD & 3D",
-    ),
-    "media": (
-        {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac",
-         "audio/aac", "audio/ogg", "audio/mp4",
-         "video/mp4", "video/quicktime", "video/webm", "video/x-msvideo",
-         "video/x-matroska"},
-        "Audio & Video",
     ),
     "data": (
         {"application/json", "application/xml", "text/xml",
          "application/yaml", "text/yaml",
-         "application/toml", "text/ini"},
-        "Data",
+         "application/toml", "text/ini",
+         "text/csv", "text/tab-separated-values",
+         "application/vnd.ms-excel",
+         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+         "application/vnd.oasis.opendocument.spreadsheet",
+         "application/vnd.apache.parquet", "application/vnd.sqlite3"},
+        "Data & Tables",
     ),
-    "code": (
+    "text": (
         {"text/x-python", "text/javascript", "application/javascript",
          "text/typescript", "text/html", "text/css", "application/x-sql",
          "text/x-shellscript", "text/x-go", "text/rust",
-         "text/x-java-source", "application/x-ipynb+json"},
-        "Code",
+         "text/x-java-source", "application/x-ipynb+json",
+         "text/plain", "text/markdown", "text/x-log", "text/x-diff",
+         "text/x-c", "text/x-chdr", "text/x-c++src", "application/x-php",
+         "text/x-ruby", "text/x-swift", "text/x-kotlin", "text/x-lua",
+         "text/x-r-source", "text/x-tex"},
+        "Text Files & Code",
+    ),
+    "audio": (
+        {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac",
+         "audio/aac", "audio/ogg", "audio/mp4", "audio/opus"},
+        "Audio",
+    ),
+    "video": (
+        {"video/mp4", "video/quicktime", "video/webm", "video/x-msvideo",
+         "video/x-matroska", "video/x-ms-wmv",
+         "application/x-subrip", "text/vtt", "text/x-ssa"},
+        "Video",
+    ),
+    "cad3d": (
+        {"application/acad", "image/vnd.dwg", "image/x-dwg", "model/step",
+         "model/iges", "model/stl", "model/obj", "model/gltf-binary",
+         "model/gltf+json", "model/vnd.usdz+zip", "model/3mf",
+         "application/octet-stream"},
+        "CAD & 3D",
+    ),
+    "archive": (
+        {"application/zip", "application/vnd.rar", "application/x-7z-compressed",
+         "application/gzip", "application/x-tar", "application/x-bzip2",
+         "application/x-xz", "application/zstd"},
+        "Archives",
     ),
 }
 
@@ -197,7 +251,8 @@ FAMILIES: dict[str, FormatFamily] = {
     for key, (mimes, chip) in _FAMILY_DEFS.items()
 }
 
-FAMILY_ORDER = ["image", "document", "archive", "cad3d", "media", "data", "code"]
+FAMILY_ORDER = ["image", "document", "data", "text", "audio", "video",
+                "cad3d", "archive"]
 
 # chip 标签 (族内逐格式展示用): ext → 短名, 从派生族生成
 CHIP_BY_EXT: dict[str, str] = {}

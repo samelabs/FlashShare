@@ -152,7 +152,6 @@ register(
             "es": 'Elimina los márgenes blancos alrededor del contenido.',
             "en": 'Removes white margins around the content.',
         },
-    icon="crop",
     accept=ACCEPTED,
     handler=crop_white_handler,
 )
