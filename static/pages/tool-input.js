@@ -265,7 +265,12 @@
       const runLabel = cost > 0
         ? esc(t("ti_run")) + " · " + cost + " " + esc(t("credits_short"))
         : esc(t("ti_run"));
+      // bar-tail: 有效期+进度+运行 组成不可分尾部 — 桌面 display:contents
+      // (布局零变化), 移动端成为整体换行的 flex 组, 保证"有效期与运行同
+      // 行"对工具名宽/字体度量确定 (工具名宽度只影响选择器占位, 不再
+      // 把有效期拉上第一行而把运行单独留下)。
       html += '<div class="c-bar">'
+        + '<span class="bar-tail">'
         + '<span class="ti-del-wrap">'
         + '<button type="button" class="opt ti-del" aria-haspopup="true" aria-expanded="false">'
         + icon("expiry") + '<span class="ti-del-label">' + dLabel + "</span></button>"
@@ -285,6 +290,7 @@
         + '<span class="ti-progress" aria-live="polite"></span>'
         + '<span class="sp"></span>'
         + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + "</button>")
+        + "</span>"
         + "</div>";
 
       // 错误行与额度提示挂卡片底部 (c-bar 之后): 出现/消失只影响卡外
