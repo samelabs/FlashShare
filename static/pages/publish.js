@@ -36,13 +36,14 @@ function renderFamGrid(selFam, selExts, isCreate) {
   // 族 chip = 词形一体: 族字形与族名同源 (formats manifest 的两处投影,
   // 与 catalog 派生图标同一词表) — 输入语直接告诉作者"工具吃什么"。
   // 键→字形例外与 core/icons._FAMILY_GLYPH 保持一致 (document→doc, text→code)。
+  // 字形是 span 的兄弟节点 (pub-mode 同构) — 塞进 span 内会在窄胶囊里换行堆叠。
   const FAM_GLYPH = { document: "doc", text: "code" };
   const glyph = (k) => window.iconSvg
     ? '<i class="fam-glyph" aria-hidden="true">' + window.iconSvg(FAM_GLYPH[k] || k) + "</i>" : "";
   grid.innerHTML = FAM_KEYS.map(k =>
     '<label class="fam-chip" title="' + _famDetail(k) + '"><input type="radio" name="fam" value="' + k + '"' +
     (k === selectedFam ? " checked" : "") + ">" +
-    "<span>" + glyph(k) + _msg(_famI18n(k)) + "</span></label>").join("");
+    glyph(k) + "<span>" + _msg(_famI18n(k)) + "</span></label>").join("");
   renderExtGrid();
   updateFamSummary();
 }
@@ -333,12 +334,21 @@ function collectParams(preview) {
   return (ok || preview) ? out : null;
 }
 
-// ── 输入方式: 文件 / 纯文本 (files_max = 0, 无文件位, 无格式声明) ──
+// ── 输入方式: 文件(云朵) / 文本(对话) — 大类别分段选择, 与族胶囊分层 ──
 function inputMode() {
   const el = document.querySelector('input[name="fInputMode"]:checked');
   return el ? el.value : "files";
 }
+function injectModeGlyphs() {
+  const glyphs = { files: "cloud", text: "chat" };
+  document.querySelectorAll(".pm-glyph").forEach((g) => {
+    if (g.firstChild) return;
+    const name = glyphs[g.dataset.mode];
+    if (name && window.iconSvg) g.innerHTML = window.iconSvg(name);
+  });
+}
 function applyInputMode() {
+  injectModeGlyphs();
   const text = inputMode() === "text";
   document.querySelectorAll(".pub-files-only").forEach(el => el.classList.toggle("hidden", text));
   document.getElementById("pubTextHint").classList.toggle("hidden", !text);

@@ -542,8 +542,8 @@ pre.rs-text, pre.rs-json {
 /* 图标块: 暖底 + 细线 + 卡 hover 时同拍微升 */
 .tc .ic {
   width: 40px; height: 40px; border-radius: 12px; flex: none;
-  display: grid; place-items: center; background: var(--sunk);
-  border: 1px solid var(--line); color: var(--ink);
+  display: grid; place-items: center; background: var(--brand-50);
+  color: var(--brand);
   transition: transform var(--ease-in);
 }
 @media (hover:hover) and (pointer:fine) { .tc:hover .ic { transform: translateY(-1px); } }
