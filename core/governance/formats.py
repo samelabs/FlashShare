@@ -213,7 +213,7 @@ _FAMILY_DEFS: dict[str, tuple[set[str], str]] = {
          "text/x-c", "text/x-chdr", "text/x-c++src", "application/x-php",
          "text/x-ruby", "text/x-swift", "text/x-kotlin", "text/x-lua",
          "text/x-r-source", "text/x-tex"},
-        "Text & Code",
+        "Text Files & Code",
     ),
     "audio": (
         {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac",
