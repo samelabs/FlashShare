@@ -43,7 +43,7 @@ function _showCalls(btn, t) {
       });
     }
     btn.closest('.usertools-item').appendChild(drawer);
-  });
+  }).catch(() => { btn.disabled = false; });
 }
 
 function _delBtn(toolId, toolKey) {
@@ -59,9 +59,13 @@ function _delBtn(toolId, toolKey) {
       return;
     }
     clearTimeout(timer); b.disabled = true;
-    const r = await fetch('/api/usertools/' + toolId, { method: 'DELETE' });
-    const d = await r.json();
-    if (d.ok) loadTools(); else { b.disabled = false; alert(_errm(d.error)); }
+    try {
+      const r = await fetch('/api/usertools/' + toolId, { method: 'DELETE' });
+      const d = await r.json();
+      if (d.ok) loadTools(); else { b.disabled = false; alert(_errm(d.error)); }
+    } catch (e) {
+      b.disabled = false;
+    }
   });
   return b;
 }
@@ -104,15 +108,20 @@ async function loadTools() {
     visBtn.textContent = t.visibility === 'public' ? _msg('mytools_unpublish_btn') : _msg('mytools_publish_btn');
     visBtn.addEventListener('click', async () => {
       visBtn.disabled = true;
-      const next = t.visibility === 'public' ? 'unlisted' : 'public';
-      const r2 = await fetch('/api/usertools/' + t.tool_id, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visibility: next }),
-      });
-      const d2 = await r2.json();
-      visBtn.disabled = false;
-      if (d2.ok) loadTools();
-      else alert(_errm(d2.error));
+      try {
+        const next = t.visibility === 'public' ? 'unlisted' : 'public';
+        const r2 = await fetch('/api/usertools/' + t.tool_id, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visibility: next }),
+        });
+        const d2 = await r2.json();
+        if (d2.ok) loadTools();
+        else alert(_errm(d2.error));
+      } catch (e) {
+        alert(_errm());
+      } finally {
+        visBtn.disabled = false;
+      }
     });
     const stBtn = document.createElement('button');
     stBtn.type = 'button'; stBtn.className = 'btn btn-secondary';
@@ -141,13 +150,18 @@ async function loadTools() {
     }
     enBtn.addEventListener('click', async () => {
       enBtn.disabled = true;
-      const r3 = await fetch('/api/usertools/' + t.tool_id, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !t.enabled }),
-      });
-      const d3 = await r3.json();
-      enBtn.disabled = false;
-      if (d3.ok) loadTools(); else alert(_errm(d3.error));
+      try {
+        const r3 = await fetch('/api/usertools/' + t.tool_id, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: !t.enabled }),
+        });
+        const d3 = await r3.json();
+        if (d3.ok) loadTools(); else alert(_errm(d3.error));
+      } catch (e) {
+        alert(_errm());
+      } finally {
+        enBtn.disabled = false;
+      }
     });
     actions.append(stBtn, logBtn, edBtn, enBtn, visBtn, _delBtn(t.tool_id, t.tool_key));
 
