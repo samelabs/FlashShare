@@ -36,7 +36,7 @@
       {% for pl in plans %}
       <div class="pr-card{% if pl.action == 'current' %} on{% endif %}">
         <div class="pr-name">{{ pl.name }}</div>
-        <div class="pr-price">${{ '%.2f'|format(pl.price_cents / 100) }}<span class="pr-per">/ {{ texts.pricing_days.replace('{n}', pl.period_days|string) }}</span></div>
+        <div class="pr-price">${{ '{:,.2f}'.format(pl.price_cents / 100) }}<span class="pr-per">/ {{ texts.pricing_days.replace('{n}', pl.period_days|string) }}</span></div>
         <div class="pr-credits">{{ texts.pricing_credits_period.replace('{n}', pl.monthly_credits|num(lang)).replace('{d}', pl.period_days|string) }}</div>
         <div class="pr-filemax">{{ texts.pricing_file_max|replace('{mb}', max_file_mb|string) }}</div>
         {{ perks(pl.benefits) }}
@@ -64,7 +64,7 @@
       {% for p in packages %}
       <div class="pr-pack">
         <strong class="pr-pack-credits">+{{ p.credits|num(lang) }}</strong>
-        <span class="pr-pack-price">${{ '%.2f'|format(p.price_cents / 100) }}</span>
+        <span class="pr-pack-price">${{ '{:,.2f}'.format(p.price_cents / 100) }}</span>
         <button type="button" class="btn btn-s btn-sm topup-buy" data-pkg="{{ p.id }}" data-i18n="topup_buy">{{ texts.topup_buy }}</button>
       </div>
       {% endfor %}

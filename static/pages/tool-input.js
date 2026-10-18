@@ -470,7 +470,7 @@
         }
         return '<span class="chipf">' + thumb
           + "<span><b>" + esc(f.name) + "</b><small>"
-          + (filesMin() === 0 ? esc(t("ti_files_optional")) + " · " : "")
+          + (filesMin() === 0 ? esc(t("ti_files_optional", { max: filesMax() })) + " · " : "")
           + esc(fmtSize(f.size)) + "</small></span>"
           + '<button type="button" class="x ti-row-remove" data-rm="' + i
           + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
