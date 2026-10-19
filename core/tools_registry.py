@@ -179,10 +179,11 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 
 # ---- Registration ----
 
-from governance.formats import VOCAB_EXTS
+from governance import formats
 
-# share = 吃一切: accept 物化平台格式边界全清单 (单形状, 无 NULL=any 哨兵)
-_SHARE_ACCEPT = set(VOCAB_EXTS)
+# share = 吃一切: accept 物化平台格式边界全清单 (单形状, 无 NULL=any 哨兵)。
+# 属性读取 (register 调用时刻): app 运行序 init_db 表装载在 load_all 之前,
+# 故取到参考表内容; 无库环境回落字面量种子 — 与 S2 装载语义一致
 
 # ── Default tool: Share (plain upload, no processing) ──
 # Registered first so it appears as the leftmost tool button.
@@ -236,7 +237,7 @@ register(
         },
     # share = all 类型内置工具: accept 物化平台格式边界全清单 (单形状,
     # 无 NULL=any 哨兵); 图标 cloud 由 tag 查表授予
-    accept=_SHARE_ACCEPT,
+    accept=set(formats.VOCAB_EXTS),
     tag="all",  # 免费分享 = 全站上传基础能力
     handler=share_handler,
     files_min=1, files_max=20,

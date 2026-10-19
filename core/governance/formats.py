@@ -348,14 +348,14 @@ def format_manifest() -> dict:
 
     直接从 FAMILY_ORDER / FAMILIES 派生 (排序稳定), 客户端禁止再维护
     第二份 ext/MIME 镜像。只含公开格式声明数据, 不含任何平台内部字段。
+    发布选择器投影: 尾部追加 all (= 平台格式边界全清单, 恒末位非默认),
+    与 tags 表/发布校验同一词表。
     """
-    return {
-        "order": list(FAMILY_ORDER),
-        "families": {
-            key: {"exts": sorted(FAMILIES[key].exts)}
-            for key in FAMILY_ORDER
-        },
-    }
+    order = list(FAMILY_ORDER) + ["all"]
+    families = {key: {"exts": sorted(FAMILIES[key].exts)}
+                for key in FAMILY_ORDER}
+    families["all"] = {"exts": sorted(VOCAB_EXTS)}
+    return {"order": order, "families": families}
 
 
 def sniff_ext_to_families(ext: str) -> set[str]:

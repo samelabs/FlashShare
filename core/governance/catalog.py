@@ -51,10 +51,20 @@ def seed_from_registry() -> dict:
     # 本函数不再解释 declaration 字段 (无 MIME shim / 手工 json.dumps)。
     from tools import _registry
     from governance.tool_supply import upsert_seed_tool
+    from repo.catalog import by_tool_key
     ts = now()
     added = 0
     updated = 0
     for t in _registry:
+        # 系统命名空间保护: 内置 key 撞上社区行 (username_toolid 形态下
+        # 用户可组装出裸词形 key) = 身份占用, fail loud 绝不静默覆写
+        with db() as con:
+            existing = by_tool_key(con, t["id"])
+        if existing is not None and existing["owner_id"] is not None:
+            raise RuntimeError(
+                f"seed collision: first-party key '{t['id']}' is held by a "
+                f"community row (owner_id={existing['owner_id']}) — refusing "
+                f"to overwrite; resolve the key conflict first")
         decl = {
             "tool_key": t["id"],
             "tool_id": t["id"],
@@ -128,6 +138,16 @@ def validate_catalog_rows() -> None:
             raise RuntimeError(
                 f"catalog invariant: tool {r['tool_key']} accept_json "
                 f"violates the stored contract ({exc})") from None
+        # tag 不变量: 文件工具必带; 纯文本工具必不带
+        # (与供给点同口径 — 启动即拦, 不等请求期 tool_glyph KeyError 500)
+        tag = r["format_family"]
+        if text_only and tag is not None:
+            raise RuntimeError(
+                f"catalog invariant: text-only tool {r['tool_key']} "
+                f"carries a tag (no file slot)")
+        if not text_only and tag is None:
+            raise RuntimeError(
+                f"catalog invariant: file tool {r['tool_key']} has no tag")
 
 
 def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:

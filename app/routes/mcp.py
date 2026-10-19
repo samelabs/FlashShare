@@ -1209,8 +1209,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # pre-gate validators dispatch runs, here BEFORE any fetch, quota
     # claim or Gokapi upload.
     tool_key = name
-    if tool_key is None:
-        return _rpc_err(mid, -32602, f"unknown tool: {name}")
     from execution.dispatch import (preflight as _preflight,
                                     source_count_error as _count_err,
                                     source_accept_error as _accept_err)

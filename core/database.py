@@ -587,7 +587,7 @@ _SCHEMA_SQL = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS formats_tag_idx ON formats(tag)",
-        # ── platform: platform_tools (tool registry — data-state rows) ──
+    # ── platform: platform_tools (tool registry — data-state rows) ──
     # The runtime source of truth for the tool catalog. First-party tools are
     # seeded here at startup from register() declarations (code = creation
     # format, DB = runtime truth). Remote (http) execution and namespaced

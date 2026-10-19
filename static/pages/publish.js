@@ -35,9 +35,9 @@ function renderFamGrid(selFam, selExts, isCreate) {
   const grid = document.getElementById("famGrid");
   // 族 chip = 词形一体: 族字形与族名同源 (formats manifest 的两处投影,
   // 与 catalog 派生图标同一词表) — 输入语直接告诉作者"工具吃什么"。
-  // 键→字形例外与 core/icons._FAMILY_GLYPH 保持一致 (document→doc, text→code)。
+  // 键→字形例外与 core/icons._TAG_GLYPH 保持一致 (document→doc, text→code)。
   // 字形是 span 的兄弟节点 (pub-mode 同构) — 塞进 span 内会在窄胶囊里换行堆叠。
-  const FAM_GLYPH = { document: "doc", text: "code" };
+  const FAM_GLYPH = { document: "doc", text: "code", all: "cloud" };
   const glyph = (k) => window.iconSvg
     ? '<i class="fam-glyph" aria-hidden="true">' + window.iconSvg(FAM_GLYPH[k] || k) + "</i>" : "";
   grid.innerHTML = FAM_KEYS.map(k =>
