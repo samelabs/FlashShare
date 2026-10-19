@@ -1015,6 +1015,13 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .hero-term { order: 2; }
 }
 .hero .result { margin-top: var(--s5); }
+/* 结果复用 demo 卡占位 (输入在左/输出在右): 与 demo 卡同一锁定足迹,
+   内容超出在卡内滚; 清空/换工具时 demo 回位 */
+.hero-term .result { max-width: none; margin-top: 0; height: 190px; overflow-y: auto;
+  overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.hero-term .result::-webkit-scrollbar { width: 6px; }
+.hero-term .result::-webkit-scrollbar-track { background: transparent; }
+.hero-term .result::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: var(--r-full); }
 .r-page .rc-files, .r-page .item-file, .r-page .if-body { text-align: start; }
 .r-page .item-file { flex-wrap: nowrap; }
 .r-page .item-file .if-body { flex: 1; min-width: 0; }

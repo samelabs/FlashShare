@@ -46,7 +46,6 @@
           <div class="home-composer" id="homeComposer">
             <div id="toolInput" class="ti-mount"></div>
           </div>
-          <div id="result" class="result hidden" aria-live="polite"></div>
           {# 四件套分享条: 输入框之下 (本页地址) #}
           <div class="hero-share">
             {{ share_bar(canonical_url, APP_NAME, qr_src="/qr.svg?p=%2F", compact=true) }}
@@ -61,10 +60,11 @@
               <span class="k">claude</span> mcp add --transport http 518 {{ BASE_URL }}/mcp
             </noscript>
           </div>
+          {# 结果复用 demo 卡占位 (尺寸锁定): 结果出现 demo 让位, 清空/换工具回位 #}
+          <div id="result" class="result hidden" aria-live="polite"></div>
           <a class="btn btn-q" href="/llms.txt"><span data-i18n="home_agent_guide">{{ texts.home_agent_guide }}</span></a>
         </aside>
       </div>
-      <div id="result" class="result hidden" aria-live="polite"></div>
     </div>
   </section>
 

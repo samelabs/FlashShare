@@ -82,6 +82,10 @@ function escapeHtml(s) {
 
 let lastErrorKey = null;
 function showResult(html, isError=false) {
+  // 首页: 结果复用右侧 demo 卡占位 (输入在左/输出在右, 尺寸锁定) —
+  // demo 让位; 工具页无 demo, 此行空转
+  const demo = document.getElementById("heroTerm");
+  if (demo) demo.classList.add("hidden");
   result.className = "result" + (isError ? " error" : "");
   result.innerHTML = html;
 }

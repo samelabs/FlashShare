@@ -29,6 +29,8 @@
     document.body.dataset.tool = tool.id;
     const res = document.getElementById("result");
     if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }
+    const demo = document.getElementById("heroTerm");
+    if (demo) demo.classList.remove("hidden");
     window.invalidateToolOperation && window.invalidateToolOperation();
   }
 
