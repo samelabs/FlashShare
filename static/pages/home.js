@@ -183,9 +183,9 @@
   if (!body) return;
   const base = (window.__BASE_URL__ || location.origin);
   const SEQ = [
-    { text: "# " + window.t("hero_term_note"), cls: "c", pause: 500 },
+    { text: "# A real invocation", cls: "c", pause: 500 },
     { text: "$ claude mcp add --transport http 518 " + base + "/mcp", cls: "k", pause: 900 },
-    { text: "❯ " + window.t("hero_term_prompt"), cls: "", pause: 1100 },
+    { text: "❯ Share this image", cls: "", pause: 1100 },
     { text: "● share(photo.png)", cls: "", pause: 800 },
     { text: "✓ " + base + "/r/qDNuKPEM", cls: "g", pause: 0 },
   ];
