@@ -24,7 +24,8 @@
           <input id="fLabel" maxlength="40" data-i18n-placeholder="mytools_ph_label" placeholder="{{ texts.mytools_ph_label }}" required>
           <em class="pub-err" data-err="label"></em></label>
         <label><span data-i18n="mytools_f_id">{{ texts.mytools_f_id }}</span>
-          <input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41">
+          <span class="id-group"><span class="id-prefix" id="fToolIdPrefix" aria-hidden="true"></span>
+          <input id="fToolId" pattern="[a-z][a-z0-9_]{1,40}" placeholder="super_resolve" maxlength="41"></span>
           <em class="pub-err" data-err="tool_id"></em></label>
         <label class="pub-wide"><span data-i18n="mytools_f_desc">{{ texts.mytools_f_desc }}</span>
           <input id="fDesc" maxlength="200" data-i18n-placeholder="mytools_ph_desc" placeholder="{{ texts.mytools_ph_desc }}">
