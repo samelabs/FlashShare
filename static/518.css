@@ -1006,8 +1006,8 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
    输入之下自然增长 (双栏并排会让静态 demo 与动态输入永远高低不平);
    终端 demo 退回下方 dark 区带做装饰, 不与动态内容争位 */
 .hero .home-composer { margin-top: var(--s6); }
-.hero .home-composer, .hero .result { text-align: start; max-width: 640px; }
-.hero .hero-share { margin-top: var(--s3); justify-content: flex-start; }
+.hero .home-composer, .hero .result { text-align: start; max-width: 640px; margin-inline: auto; }
+.hero .hero-share { margin-top: var(--s3); justify-content: center; }
 .hero .result { margin-top: var(--s5); }
 /* dark 区带里的终端 demo: 栏宽居中, 内容左读, 尺寸锁定 (循环回放不撑页) */
 .dark .term { width: 100%; margin-top: var(--s5); text-align: start; border-radius: var(--r-lg); font-size: 12.5px; }
