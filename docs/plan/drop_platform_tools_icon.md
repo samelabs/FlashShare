@@ -20,4 +20,3 @@ ALTER TABLE platform_tools DROP COLUMN icon;
 无需其他前置检查：accept 未声明（=all，全部平台格式）的文件工具由类型映射
 渲染 `cloud`（内置仅 share 以此形态发布；operator 表单留空的"全部兼容"工具
 同属 all），不存在会让目录失败的存储形态。
-

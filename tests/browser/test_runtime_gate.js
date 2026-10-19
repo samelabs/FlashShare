@@ -1239,11 +1239,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         && atMax.inputDisabled === true && atMax.stillSized,
         JSON.stringify(atMax));
       // clicking the full dropzone must NOT open the file chooser
-      const chooser = await tp.$(".ti-file-input");
+      const zone = await tp.$(".ti-drop");
       let pickerOpened = false;
       const watch = tp.waitForEvent("filechooser", { timeout: 1500 })
         .then(() => { pickerOpened = true; }).catch(() => {});
-      await chooser.click({ force: true }).catch(() => {});
+      await zone.click().catch(() => {});
       await watch;
       check("composer: clicking the full dropzone does not open the picker",
         pickerOpened === false, String(pickerOpened));

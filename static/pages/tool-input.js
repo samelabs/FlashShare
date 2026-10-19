@@ -514,7 +514,11 @@
         ["dragenter", "dragover"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();
           card.classList.add("dragover", "focus");
-          if (zone && !zone.hidden) zone.classList.add("dragover");
+          // 已满态不给拖放区 dragover 反馈 (不是入口)
+          if (zone && !zone.hidden
+              && !zone.classList.contains("ti-drop-full")) {
+            zone.classList.add("dragover");
+          }
         }));
         ["dragleave", "drop"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();
