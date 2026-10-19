@@ -306,7 +306,9 @@
   font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
 .id-group input { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0;
   flex: 1; min-width: 0; font-family: var(--font-mono); }
-.id-group input:focus { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+/* 聚焦整组一体红: addon 边框随组内 focus 同步变品牌色, 不再右红左灰断裂 */
+.id-group:focus-within .id-prefix { border-color: var(--brand); }
+.id-group:focus-within input { border-color: var(--brand); box-shadow: none; }
 .pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .pub-grid .pub-wide { grid-column: 1 / -1; }
 .pub-err { font-size: 12px; color: var(--danger); min-height: 0; font-style: normal; }
