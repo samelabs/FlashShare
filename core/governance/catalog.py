@@ -33,13 +33,14 @@ VIS_UNLISTED = "unlisted"  # callable when the key is known, never listed
 VIS_PUBLIC = "public"      # grid + every caller's tools/list
 
 
-def _display_icon(tool_key: str, files_max, accept) -> str:
+def _display_icon(tool_key: str, owner_id, files_max, accept) -> str:
     """图标完全依赖类型 — 单一策略点。
 
-    第一方注册声明的 family (accept 无法归并出车道时, 如 zip_pack
-    全格式入食但属归档道) → 该道字形; 其余由声明派生 (纯文本→text /
-    accept 未声明=all→cloud / 单族→族字形)。DB icon 列的装饰值一概不读。"""
-    if is_official_id(tool_key):
+    系统工具 (owner 为空) 走第一方注册声明的 family (accept 无法归并出
+    车道时, 如 zip_pack 全格式入食) → 该道字形; 其余由声明派生 (纯文本→
+    text / accept 未声明=all→cloud / 单族→族字形)。DB icon 列的装饰值
+    一概不读。"""
+    if owner_id is None:
         from tools import _registry
         fam = next((t.get("family") for t in _registry
                     if t["id"] == tool_key and t.get("family")), None)
@@ -135,13 +136,6 @@ def validate_catalog_rows() -> None:
                 f"{_EXECUTIONS}")
 
 
-def is_official_id(tool_id: str) -> bool:
-    """Official/Community origin 单源判定: bare id = official (self-operated),
-    namespaced 'owner/tool' = community。三面 (home/market/tool-page) 一律
-    消费本判定, 禁止各自写字符串判断。"""
-    return "/" not in (tool_id or "")
-
-
 def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
     """platform_tools row + pricing row → canonical catalog item shape.
 
@@ -159,13 +153,14 @@ def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
     accept = _canonical_accept(row["accept_json"])
     item = {
         "id": row["tool_key"],  # namespaced key is THE identity from now on
-        "origin": "official" if is_official_id(row["tool_key"]) else "community",
+        # 系统工具判定 = owner 为空 (契约字段), 无字符串形状判定
+        "origin": "official" if row["owner_id"] is None else "community",
         "label": json.loads(row["label_json"]),
         # 图标完全依赖类型 (装饰性 icon 链路已退役, 列值不再读):
-        #   share      → cloud (类型空态唯一持有者, 呼应上传输入)
-        #   第一方声明 family (accept 无法归并时, 如 zip_pack) → 该道字形
-        #   其余       → 由声明派生 (纯文本→text / 单族→族字形 / 多族→convert)
-        "icon": _display_icon(row["tool_key"], row["files_max"], accept),
+        #   系统工具声明 family (如 zip_pack) → 该道字形
+        #   其余由声明派生 (纯文本→text / accept 未声明=all→cloud / 单族→族字形)
+        "icon": _display_icon(row["tool_key"], row["owner_id"],
+                              row["files_max"], accept),
         "accept": accept,
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),

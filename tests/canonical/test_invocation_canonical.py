@@ -424,9 +424,9 @@ for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):
           "tool_card(t, lang, texts)" in src5 or "icon_tool_svg(" in src5)
 # G6 origin 语义单源:
 cat_src = _rd("core", "governance", "catalog.py")
-check("G6 Official/Community origin 单源 (is_official_id)",
-      "def is_official_id" in cat_src
-      and '"origin":' in cat_src)
+check("G6 Official/Community origin 单源 (owner 字段判定, 无形状判定)",
+      "is_official_id" not in cat_src
+      and '"origin": "official" if row["owner_id"] is None' in cat_src)
 for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html",
              "app/templates/home.html"):
     src = _rd(*tmpl.split("/"))

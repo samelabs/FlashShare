@@ -62,13 +62,24 @@ def earnings_summary(user_id: int) -> dict:
 def per_tool_revenue(user_id: int) -> list:
     """Revenue breakdown per published tool. Tool identity is relation-
     derived: ledger(kind=provider_earn, ref_type='tool_call', ref_id=
-    tool_calls.id) → tc.tool_id. note is never parsed for identity."""
+    tool_calls.id) → tc.tool_id. note is never parsed for identity;
+    the display label is the tool row's label (batch join), never
+    split out of the key."""
+    import json as _json
+    from governance.tool_params import resolve_label
     with db() as con:
         rows = ledger_repo.earn_by_tool(con, user_id, limit=100)
+        labels: dict = {}
+        keys = [r["tool_key"] for r in rows if r["tool_key"]]
+        if keys:
+            for r in con.execute(
+                "select tool_key, label_json from platform_tools"
+                " where tool_key = any(%s)", (keys,)).fetchall():
+                labels[r["tool_key"]] = _json.loads(r["label_json"])
     out = []
     for r in rows:
         key = r["tool_key"] or ""
-        label = key.split("/")[-1] if key else "?"
+        label = resolve_label(labels.get(key), "en") or key or "?"
         out.append({"tool": label, "tool_key": key,
                     "earned": int(r["earned"]), "payouts": r["payouts"]})
     return out
