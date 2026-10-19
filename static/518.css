@@ -918,8 +918,14 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .dark .btn-s { background: var(--card); color: var(--ink); border: 0; }
 .dark .btn-q { color: rgba(255, 255, 255, 0.84); }
 .term { background: var(--term-bg); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--r); padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--term-ink); position: relative; overflow-x: auto; }
-/* 活终端 (hero): macOS 窗控点 + 打字机回放体; 光标闪烁 */
-.term-live { padding-top: 40px; min-height: 168px; }
+/* 活终端 (hero): macOS 窗控点 + 打字机回放体; 光标闪烁。
+   窗口尺寸锁定 (循环清空重打时不随内容涨缩), 超出部分在回放体内部滚动 */
+.term-live { padding-top: 40px; height: 190px; }
+.term-live .term-body { max-height: 134px; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.22) transparent; }
+.term-live .term-body::-webkit-scrollbar { width: 6px; }
+.term-live .term-body::-webkit-scrollbar-track { background: transparent; }
+.term-live .term-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: var(--r-full); }
 .term-dots { position: absolute; top: 14px; left: 14px; display: flex; gap: 6px; }
 .term-dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.14); }
 .term-dots i:first-child { background: rgba(255, 95, 86, 0.75); }

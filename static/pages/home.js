@@ -182,16 +182,18 @@
   const body = document.getElementById("heroTermBody");
   if (!body) return;
   const base = (window.__BASE_URL__ || location.origin);
+  // agent 使用 518 MCP 的真实过程: ① shell 注册服务 ② 你对 agent 提请求
+  // ③ agent 经 518 调工具 ④ 拿到分享链接。$=shell ❯=你的输入 ●=工具调用 ✓=完成
   const SEQ = [
-    { text: "# A real invocation", cls: "c", pause: 500 },
     { text: "$ claude mcp add --transport http 518 " + base + "/mcp", cls: "k", pause: 900 },
-    { text: "❯ Share this image", cls: "", pause: 1100 },
+    { text: "❯ share photo.png with my team", cls: "", pause: 1100 },
     { text: "● share(photo.png)", cls: "", pause: 800 },
     { text: "✓ " + base + "/r/qDNuKPEM", cls: "g", pause: 0 },
   ];
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduce) {
     body.innerHTML = SEQ.map((l) => `<span class="${l.cls}">${l.text}</span>`).join("<br>");
+    body.scrollTop = body.scrollHeight;
     return;
   }
   let line = 0, ch = 0;
@@ -208,6 +210,7 @@
     if (ch >= cur.text.length) {
       line += 1; ch = 0;
       if (line < SEQ.length) body.appendChild(document.createElement("br"));
+      body.scrollTop = body.scrollHeight;
       setTimeout(tick, Math.max(cur.pause, 120));
     }
     else setTimeout(tick, 24 + Math.random() * 40);
