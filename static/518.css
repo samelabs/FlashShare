@@ -1002,26 +1002,15 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* ── acceptance fixes: result host is not a second card; left-aligned
    composer/result inside the centered hero; /r rows read left-to-right ── */
 .result:has(> .out) { padding: 0; background: none; border: 0; box-shadow: none; }
-/* R2 hero 双栏: 输入框主位 (composer 收窄到工作宽度), 终端卡是
-   主视觉配角; <1024px 纵向堆叠 */
-.hero-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr); gap: var(--s8); align-items: start; margin-top: var(--s6); text-align: start; }
+/* hero 单栏自然流: composer 高度是动态的, 输入/结果不定位 — 结果就位在
+   输入之下自然增长 (双栏并排会让静态 demo 与动态输入永远高低不平);
+   终端 demo 退回下方 dark 区带做装饰, 不与动态内容争位 */
+.hero .home-composer { margin-top: var(--s6); }
 .hero .home-composer, .hero .result { text-align: start; max-width: 640px; }
-.hero .hero-main { min-width: 0; } /* grid 子项缺 0 时长文件名撑破容器 (390px 溢出根因) */
 .hero .hero-share { margin-top: var(--s3); justify-content: flex-start; }
-.hero-term { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
-.hero-term .term { border-radius: var(--r-lg); box-shadow: var(--sh-3); font-size: 12.5px; }
-@media (max-width: 1023px) {
-  .hero-grid { grid-template-columns: 1fr; gap: var(--s5); }
-  .hero-term { order: 2; }
-}
 .hero .result { margin-top: var(--s5); }
-/* 结果复用 demo 卡占位 (输入在左/输出在右): 自然高度, 上限兜底 —
-   常规结果 (1-3 项) 完整可见无滚动条, 超大结果才在卡内滚 */
-.hero-term .result { max-width: none; margin-top: 0; max-height: 480px; overflow-y: auto;
-  overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
-.hero-term .result::-webkit-scrollbar { width: 6px; }
-.hero-term .result::-webkit-scrollbar-track { background: transparent; }
-.hero-term .result::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: var(--r-full); }
+/* dark 区带里的终端 demo: 栏宽居中, 内容左读, 尺寸锁定 (循环回放不撑页) */
+.dark .term { width: 100%; margin-top: var(--s5); text-align: start; border-radius: var(--r-lg); font-size: 12.5px; }
 .r-page .rc-files, .r-page .item-file, .r-page .if-body { text-align: start; }
 .r-page .item-file { flex-wrap: nowrap; }
 .r-page .item-file .if-body { flex: 1; min-width: 0; }

@@ -40,30 +40,15 @@
       <h1><span data-i18n="hero_title_1">{{ texts.hero_title_1 }}</span> <span class="grad" data-i18n="hero_title_2">{{ texts.hero_title_2 }}</span></h1>
       <p class="hero-sub"><span data-i18n="hero_sub_v2">{{ texts.hero_sub_v2 }}</span><a class="hero-join" href="/developers" data-i18n="hero_join">{{ texts.hero_join }}</a></p>
 
-      {# R2: hero 双栏 — 输入框主位, 终端卡 (真实 MCP 调用) 升为主视觉 #}
-      <div class="hero-grid">
-        <div class="hero-main">
-          <div class="home-composer" id="homeComposer">
-            <div id="toolInput" class="ti-mount"></div>
-          </div>
-          {# 四件套分享条: 输入框之下 (本页地址) #}
-          <div class="hero-share">
-            {{ share_bar(canonical_url, APP_NAME, qr_src="/qr.svg?p=%2F", compact=true) }}
-          </div>
-        </div>
-        <aside class="hero-term" aria-label="MCP call example">
-          <div class="term term-live" id="heroTerm">
-            <span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            <pre class="term-body" id="heroTermBody" aria-hidden="true"></pre>
-            <noscript>
-              <span class="c"># Claude Code</span><br>
-              <span class="k">claude</span> mcp add --transport http 518 {{ BASE_URL }}/mcp
-            </noscript>
-          </div>
-          {# 结果复用 demo 卡占位 (尺寸锁定): 结果出现 demo 让位, 清空/换工具回位 #}
-          <div id="result" class="result hidden" aria-live="polite"></div>
-          <a class="btn btn-q" href="/llms.txt"><span data-i18n="home_agent_guide">{{ texts.home_agent_guide }}</span></a>
-        </aside>
+      {# hero 单栏自然流: composer 动态高度, 输入/结果不定位 — 结果就位在
+         输入之下自然增长; 终端 demo 在下方 dark 区带 (装饰, 不与动态内容争位) #}
+      <div class="home-composer" id="homeComposer">
+        <div id="toolInput" class="ti-mount"></div>
+      </div>
+      <div id="result" class="result hidden" aria-live="polite"></div>
+      {# 四件套分享条: 输入框之下 (本页地址) #}
+      <div class="hero-share">
+        {{ share_bar(canonical_url, APP_NAME, qr_src="/qr.svg?p=%2F", compact=true) }}
       </div>
     </div>
   </section>
@@ -90,6 +75,14 @@
         <div>
           <h3 data-i18n="home_dark_title">{{ texts.home_dark_title }}</h3>
           <p data-i18n="home_dark_sub">{{ texts.home_dark_sub }}</p>
+          <div class="term term-live" id="heroTerm">
+            <span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <pre class="term-body" id="heroTermBody" aria-hidden="true"></pre>
+            <noscript>
+              <span class="c"># Claude Code</span><br>
+              <span class="k">claude</span> mcp add --transport http 518 {{ BASE_URL }}/mcp
+            </noscript>
+          </div>
           <div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap">
             <a class="btn btn-q" href="/llms.txt"><span data-i18n="home_agent_guide">{{ texts.home_agent_guide }}</span></a>
           </div>
