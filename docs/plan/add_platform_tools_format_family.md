@@ -1,21 +1,51 @@
 # Release migration: platform_tools.format_family（tag 列）
 
-**执行顺序（强制）：先执行本迁移、后部署新代码。** 与 icon 列 DROP 资产
-（先部署后 DROP）方向相反——新代码的 seed 启动即写 `format_family`，
-列不存在则 `UndefinedColumn` 起不来（PM 升级探针已复现此失败）。
-旧代码（v1.5）不读此列，列先加上对运行中的旧服务零影响。
+**执行顺序（强制，一条线）：**
+**预检 → ① 加列 → ② 内置回填 → ③ 社区/运营回填（含 accept 物化）→
+tag 预检 → 部署首启 → ④ 加 FK → 首启后复查。**
+
+先迁移后部署（与 icon 列 DROP 资产方向相反）：新代码的 seed 启动即写
+`format_family`，列不存在则 `UndefinedColumn` 起不来（PM 升级探针已
+复现）。旧代码（v1.5）不读此列，列先加上对运行中的旧服务零影响。
 
 生产库在 1.6 工具链批部署**前**执行**一次**；执行后删除本资产
 （仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。
+
+所有脚本在**仓库主检出根目录**执行，`PYTHONPATH=core`（脚本内已自带
+`sys.path` 处理的除外——统一用下面的调用形态）：
+
+```bash
+cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python <脚本>
+```
 
 ## 语义
 
 - `format_family` = 作者声明的 tag（九键之一），文件工具必带、纯文本
   工具不带；图标 = tag 查表（`icons.tool_glyph`）。
-- FK→tags 仅新建库自带（CREATE TABLE 内）；存量库本迁移不补 FK 约束
-  （tags 表由新代码 init_db 首启创建+播种，存量库在迁移时刻尚无该表；
-  值域合法性由 startup 不变量 `validate_catalog_rows` 承担，与
-  execution 检查同口径 fail-loud）。
+- **回填归并规则**（数据修复，非新机制）：accept 单一场景 → 该场景
+  tag；**多场景或无法归并 → `all`**（宽声明，作者可后续自行改）；
+  accept 缺失的文件工具（仅运营表单可产生）→ **物化全边界清单 +
+  `all`**（与 share/zip_pack 同口径：运营建的是"全部兼容"工具）。
+  accept_json **解析失败必须报错**并打印 tool_key，不准吞。
+- FK→tags：存量库在首启（tags 表由新代码 init_db 创建+播种）之后由
+  本资产步骤④幂等补齐，保证与新建库 schema 一致。
+
+## 预检（部署前，全部须为空；口径见各条注释）
+
+```sql
+-- S5「零存量」依据: 任何含 / 的 key 都属未裁定存量
+SELECT tool_key FROM platform_tools WHERE tool_key LIKE '%/%';
+SELECT user_id FROM tool_favorites WHERE tool_key LIKE '%/%';
+SELECT tool_id FROM pricing WHERE tool_id LIKE '%/%';
+SELECT id FROM tool_calls WHERE tool_id LIKE '%/%';
+-- accept 单形状违反 (排除内置: share/zip_pack 由新代码首启 seed
+-- 物化为全清单, 部署前它们合法地是 NULL — 这是本预检的判定口径)
+SELECT tool_key FROM platform_tools
+ WHERE files_max > 0 AND accept_json IS NULL
+   AND tool_key NOT IN ('share', 'zip_pack', 'demo_shout',
+     'beautify', 'compress', 'crop_white', 'ico', 'img2pdf', 'pdf_merge');
+SELECT tool_key FROM platform_tools WHERE files_max = 0 AND accept_json IS NOT NULL;
+```
 
 ## 步骤
 
@@ -23,31 +53,18 @@
 -- ① 加列（幂等）
 ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS format_family TEXT;
 
--- ② 回填：内置工具（两个 all 型）
+-- ② 内置回填（v1.5 库上 share/zip_pack 即在; 其余内置由新代码 seed 落 tag）
 UPDATE platform_tools SET format_family = 'all'
  WHERE tool_key IN ('share', 'zip_pack') AND files_max > 0;
-
--- ③ 回填：社区文件工具 —— 按 accept 单族归并（旧派生规则做数据修复）；
---    多族/无法归并 → 'all'（宽声明，作者可后续自行改声明）；
---    纯文本工具 (files_max=0) 保持 NULL
-UPDATE platform_tools t SET format_family = sub.tag
-FROM (
-  SELECT tool_key,
-         CASE WHEN jsonb_array_length(accept_json::jsonb) >= 119 THEN 'all'
-              ELSE (SELECT f.tag FROM formats_probe(f) LIMIT 1) END AS tag
-  FROM platform_tools
-) sub
-WHERE false;  -- 占位说明：③ 见下方脚本（PG 无内嵌词表，走部署侧脚本）
 ```
 
-③ 的精确回填由**部署侧脚本**执行（词表在代码/新表里，SQL 内不可内联）：
-
 ```bash
-# 在新代码 checkout 上、部署前跑（只读库 + 写 format_family，不启动服务）:
-venv/bin/python - <<'PY'
+# ③ 社区/运营回填（部署侧脚本, 在旧代码仍在跑的库上执行亦可 — 只写新列）
+cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python - <<'PY'
+import json, sys
 from database import db
 from governance.formats import FAMILIES, VOCAB_EXTS
-import json
+
 FULL = len(VOCAB_EXTS)
 with db() as con:
     rows = con.execute(
@@ -56,32 +73,53 @@ with db() as con:
     for r in rows:
         if int(r["files_max"]) == 0:
             continue  # 纯文本工具不带 tag
-        tag = "all"
+        if r["accept_json"] is None:
+            # 运营表单 accept 选填产生的空清单文件工具:
+            # 物化全边界 + all (与 share/zip_pack 同口径)
+            con.execute(
+                "update platform_tools set accept_json=%s, format_family='all'"
+                " where tool_key=%s",
+                (json.dumps(sorted(VOCAB_EXTS)), r["tool_key"]))
+            print(f"materialized all-boundary: {r['tool_key']}")
+            continue
         try:
-            toks = set(json.loads(r["accept_json"] or "[]"))
-        except Exception:
-            toks = set()
+            toks = set(json.loads(r["accept_json"]))
+        except (TypeError, ValueError) as exc:
+            raise SystemExit(
+                f"accept_json unparsable for {r['tool_key']!r}: {exc}") from None
         hits = [k for k, f in FAMILIES.items() if toks & set(f.exts)]
-        if toks and len(toks) < FULL and len(hits) == 1:
-            tag = hits[0]
+        tag = hits[0] if (toks and len(toks) < FULL and len(hits) == 1) else "all"
         con.execute("update platform_tools set format_family=%s"
                     " where tool_key=%s", (tag, r["tool_key"]))
     print("backfill done")
 PY
 ```
 
-（脚本的 FAMILIES 来自 formats.py 字面量种子——迁移时刻 tags 表尚未
-由新代码播种，字面量与表内容在首装语义下一致。）
-
-## 部署前只读预检（PM 指定清单，全部须为空）
-
 ```sql
-SELECT tool_key FROM platform_tools WHERE files_max > 0 AND accept_json IS NULL;
-SELECT tool_key FROM platform_tools WHERE files_max = 0 AND accept_json IS NOT NULL;
-SELECT tool_key FROM platform_tools WHERE tool_key LIKE '%/%';   -- S5 零存量依据
-SELECT user_id FROM tool_favorites WHERE tool_key LIKE '%/%';
-SELECT tool_id FROM pricing WHERE tool_id LIKE '%/%';
-SELECT id FROM tool_calls WHERE tool_id LIKE '%/%';
+-- tag 预检（③ 之后、部署之前; 须为空）
+SELECT tool_key FROM platform_tools
+ WHERE files_max > 0 AND format_family IS NULL;
+SELECT tool_key FROM platform_tools
+ WHERE files_max = 0 AND format_family IS NOT NULL;
 ```
 
-（tag 相关预检在本迁移②③之后跑：`files_max>0 AND format_family IS NULL` 须为空。）
+**→ 部署新代码并首启**（init_db 创建+播种 tags/formats；seed 落全部
+内置 tag；`validate_catalog_rows` 启动校验全部行）。
+
+```sql
+-- ④ 补 FK（首启之后; 幂等 — 先查后加）
+SELECT count(*) FROM pg_constraint
+ WHERE conname = 'platform_tools_format_family_fkey';   -- 0 才执行下一条
+ALTER TABLE platform_tools
+  ADD CONSTRAINT platform_tools_format_family_fkey
+  FOREIGN KEY (format_family) REFERENCES tags(key);
+```
+
+```sql
+-- 首启后复查: FK 存在 + 行数一致 + 违反单形状/记录数为零
+SELECT count(*) FROM pg_constraint
+ WHERE conname = 'platform_tools_format_family_fkey';   -- 1
+SELECT count(*) FROM platform_tools
+ WHERE (files_max > 0) <> (format_family IS NOT NULL)
+    OR (files_max > 0 AND accept_json IS NULL);         -- 0
+```

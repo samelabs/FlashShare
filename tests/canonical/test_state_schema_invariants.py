@@ -480,6 +480,79 @@ check("F5e paid + real canonical provider id 仍合法",
 with db() as con:
     for uid in (tu, wu, ou, ou2, op):
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))
+# ══════════ D. 工具链不变量 (S3/S4 契约: tag 单形状 + seed 命名空间) ══════════
+from governance.catalog import validate_catalog_rows as _vcr
+from governance.catalog import seed_from_registry as _seed
+
+# D1: 文件工具缺 tag → 启动不变量 fail loud
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " files_min, files_max, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
+        " '[\".png\"]', NULL, 1, 1, %s, %s)",
+        (f"ssnotag_{_u}", f"ssnotag_{_u}", _json.dumps({"en": "NT"}), ts, ts))
+try:
+    _vcr(); _d1 = False
+except RuntimeError as _e:
+    _d1 = "has no tag" in str(_e)
+check("D1 文件工具缺 tag → 启动不变量报错", _d1)
+with db() as con:
+    con.execute("delete from platform_tools where tool_key=%s", (f"ssnotag_{_u}",))
+
+# D2: 纯文本工具带 tag → 启动不变量 fail loud
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " files_min, files_max, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
+        " NULL, 'image', 0, 0, %s, %s)",
+        (f"sstexttag_{_u}", f"sstexttag_{_u}", _json.dumps({"en": "TT"}), ts, ts))
+try:
+    _vcr(); _d2 = False
+except RuntimeError as _e:
+    _d2 = "carries a tag" in str(_e)
+check("D2 纯文本工具带 tag → 启动不变量报错", _d2)
+with db() as con:
+    con.execute("delete from platform_tools where tool_key=%s", (f"sstexttag_{_u}",))
+
+# D3: seed 撞上同 key 社区行 → RuntimeError, 社区行不被改写
+_mkey = f"sscollide_{_u}"
+_morig = '{"en": "COMMUNITY"}'
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " files_min, files_max, created_at, updated_at)"
+        " values (%s, %s, %s, 'http', %s, 'public', TRUE,"
+        " '[\".png\"]', 'image', 1, 1, %s, %s)",
+        (_mkey, op, _mkey, _morig, ts, ts))
+# 临时把注册表里的裸词 key 换成碰撞 key 模拟内置撞名 (不动真实注册表:
+# 直接调 seed_from_registry 前无法注入 — 改为断言守卫逻辑: 注册一个
+# 与社区行同名的本地工具再 seed)
+import tools as _tools_mod
+_tools_mod.register(
+    tool_id=_mkey, label={"en": "SYSTEM"}, handler=lambda a, b: {"items": []},
+    accept={".png"}, tag="image")
+try:
+    _seed(); _d3 = False
+except RuntimeError as _e:
+    _d3 = "seed collision" in str(_e)
+check("D3 seed 撞社区行 → RuntimeError (fail loud)", _d3)
+with db() as con:
+    row = con.execute(
+        "select label_json, owner_id from platform_tools where tool_key=%s",
+        (_mkey,)).fetchone()
+check("D3b 碰撞后社区行未被改写",
+      row is not None and row["label_json"] == _morig and row["owner_id"] == op,
+      str(dict(row)) if row else "row gone")
+_tools_mod._registry[:] = [t for t in _tools_mod._registry if t["id"] != _mkey]
+with db() as con:
+    con.execute("delete from platform_tools where tool_key=%s", (_mkey,))
+_vcr()  # 收尾态干净
+
 with db() as con:
     con.execute("delete from tool_calls where user_id=%s", (tu,))
 with db() as con:

@@ -18,8 +18,8 @@ def _like_token(tok: str) -> str:
 
 def _market_base(visibility_public: str, q: Optional[str],
                  curated: bool = True) -> tuple:
-    """公开市场查询基座 (selection/search/pricing visibility): the ONE
-    public-visibility predicate (enabled ∧ ¬delisted ∧ owner-alive) +
+    """公开市场查询基座 (selection/search/pricing visibility): 公开可见
+    谓词内联于此 (enabled ∧ ¬delisted ∧ owner-alive) +
     public visibility, INNER JOIN pricing (缺行=未完成商业创建, 不上面;
     pricing.enabled=false 排除)。搜索 = 空白分词 AND: 每个词都须命中
     tool_key+label+desc(各语言) 之一, LIKE 通配符按字面匹配 (THE one

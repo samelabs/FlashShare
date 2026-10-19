@@ -182,8 +182,10 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 from governance import formats
 
 # share = 吃一切: accept 物化平台格式边界全清单 (单形状, 无 NULL=any 哨兵)。
-# 属性读取 (register 调用时刻): app 运行序 init_db 表装载在 load_all 之前,
-# 故取到参考表内容; 无库环境回落字面量种子 — 与 S2 装载语义一致
+# 本模块在 app.main import 时即被 load_all() 导入 — 早于 startup 的
+# init_db() 表装载, 故此处取到的是字面量种子 (当前与表内容一致)。
+# 已知 DEBT: 表与种子分叉时 share/zip 的 accept 不跟随表 (登记于批次
+# PR 的 DEBT 栏); 修正属加载顺序调整, 不在本批范围。
 
 # ── Default tool: Share (plain upload, no processing) ──
 # Registered first so it appears as the leftmost tool button.
