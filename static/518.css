@@ -132,6 +132,7 @@
 .history-panel { width: min(540px,100%); min-height: 280px; max-height: 70vh; overflow-y: auto; }
 .history-panel h2 { display: inline; margin: 0; font-size: var(--fs-lg); font-weight: 800; }
 .history-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; font-size: var(--fs-xs); font-weight: 700; color: var(--brand); background: var(--brand-soft); border-radius: var(--r-full); margin-left: var(--s2); vertical-align: middle; }
+.history-count:empty { display: none; }
 .history-list { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s3); }
 .history-list:empty::after { content: attr(data-empty); display: block; text-align: center; padding: var(--s6) 0; color: var(--ink-2); font-size: var(--fs-sm); }
 .history-list.loading { flex: 1; justify-content: center; align-items: center; margin-top: 0; }

@@ -170,7 +170,7 @@
 
 /* ── Reset ─────────────────────────────────────────────────── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; scrollbar-gutter: stable; }
 
 /* Any unsized inline svg must not blow up to the 300×150 default */
 svg:not([width]):not([height]) { width: 20px; height: 20px; }
