@@ -457,9 +457,18 @@
       if (!rows) return;
       thumbUrls.forEach((u) => URL.revokeObjectURL(u));
       thumbUrls.length = 0;
-      // 拖放区常驻 (初始尺寸稳住: 加文件不缩卡), 它同时是"继续添加"的入口
+      // 拖放区常驻 (初始尺寸稳住: 加文件不缩卡), 未满时是"继续添加"入口;
+      // 到 files_max 后进入已满态: 尺寸不变, 但不再响应 (input disabled +
+      // aria-disabled + 视觉已满), 加文件由上游闸门报 err_file_count
       const zone = container.querySelector(".ti-drop");
-      if (zone) zone.hidden = false;
+      if (zone) {
+        zone.hidden = false;
+        const full = files.length >= filesMax();
+        zone.classList.toggle("ti-drop-full", full);
+        zone.setAttribute("aria-disabled", full ? "true" : "false");
+        const input = fileInput();
+        if (input) input.disabled = full;
+      }
       if (!files.length) { rows.innerHTML = ""; return; }
       rows.innerHTML = files.map((f, i) => {
         const isImg = /^image\//.test(f.type || "") && (f.type || "").toLowerCase() !== "image/svg+xml";
@@ -491,7 +500,10 @@
     function bindFiles() {
       const input = fileInput();
       const zone = container.querySelector(".ti-drop");
-      if (zone) zone.addEventListener("click", () => input && input.click());
+      if (zone) zone.addEventListener("click", () => {
+        if (zone.classList.contains("ti-drop-full")) return;  // 已满: 不开选择器
+        input && input.click();
+      });
       if (input) input.addEventListener("change", () => {
         addFiles(input.files);
         input.value = "";

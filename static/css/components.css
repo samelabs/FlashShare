@@ -617,6 +617,10 @@ pre.rs-text, pre.rs-json {
 .ti-drop small { font-size: var(--fs-xs); color: var(--ink-3); }
 @media (hover:hover) and (pointer:fine) { .ti-drop:hover { border-color: var(--brand); background: var(--brand-50); } }
 .ti-drop:focus-visible, .ti-drop.dragover { border-color: var(--brand); background: var(--brand-50); outline: none; }
+/* 已满态 (files_max 上限): 尺寸不变, 不再是入口 — 降透明度、去手型与悬停反馈 */
+.ti-drop.ti-drop-full { cursor: default; opacity: 0.55; }
+.ti-drop.ti-drop-full .dz-ic svg { stroke: var(--line-2); }
+@media (hover:hover) and (pointer:fine) { .ti-drop.ti-drop-full:hover { border-color: var(--line); background: var(--sunk); } }
 /* 24h 额度低余量提示 (上传区下方一行; 数据 = limits 投影 dailyRemaining) */
 .ti-quota { margin: 8px 16px 14px; font-size: var(--fs-xs); color: var(--warn); }
 .chipf {

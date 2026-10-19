@@ -56,17 +56,20 @@ ts = now()
 def one(sql, params):
     with db() as con:
         return con.execute(sql, params).fetchone()
+_run = secrets.token_hex(4)
+def runuser(base):
+    return f"{base}_{_run}"
 op = int(one("insert into users (username, display_name, status, password_hash,"
-             " created_at, last_login_at) values ('s4rt_op', 'S4 Op', 'samelabs', %s, %s, %s)"
-             " returning id", (hash_password("op-pass-1"), ts, ts))["id"])
+             " created_at, last_login_at) values (%s, 'S4 Op', 'samelabs', %s, %s, %s)"
+             " returning id", (runuser("s4rt_op"), hash_password("op-pass-1"), ts, ts))["id"])
 prov = int(one("insert into users (username, display_name, status, password_hash,"
                " payout_channel, created_at, last_login_at) values"
-               " ('s4rt_prov', 'S4 Prov', 'active', %s, 'USDT-TRC20:rt', %s, %s)"
-               " returning id", (hash_password("prov-pass-1"), ts, ts))["id"])
+               " (%s, 'S4 Prov', 'active', %s, 'USDT-TRC20:rt', %s, %s)"
+               " returning id", (runuser("s4rt_prov"), hash_password("prov-pass-1"), ts, ts))["id"])
 noch = int(one("insert into users (username, display_name, status, password_hash,"
-               " created_at, last_login_at) values ('s4rt_noch', 'No Channel',"
+               " created_at, last_login_at) values (%s, 'No Channel',"
                " 'active', %s, %s, %s) returning id",
-               (hash_password("noch-pass-1"), ts, ts))["id"])
+               (runuser("s4rt_noch"), hash_password("noch-pass-1"), ts, ts))["id"])
 with db() as con:
     con.execute("insert into ledger (user_id, delta, balance_after, kind, created_at)"
                 " values (%s, 90000, 90000, 'provider_earn', %s)", (prov, ts))
