@@ -21,7 +21,7 @@ joins the two: DB row = contract, _registry = implementation for local class.
 import json
 
 from database import db
-from icons import _FAMILY_GLYPH, derived_tool_icon
+from icons import tool_glyph
 from repo import catalog as catalog_repo
 from utils import now
 
@@ -31,22 +31,6 @@ from utils import now
 VIS_PRIVATE = "private"    # owner only
 VIS_UNLISTED = "unlisted"  # callable when the key is known, never listed
 VIS_PUBLIC = "public"      # grid + every caller's tools/list
-
-
-def _display_icon(tool_key: str, owner_id, files_max, accept) -> str:
-    """图标完全依赖类型 — 单一策略点。
-
-    系统工具 (owner 为空) 走第一方注册声明的 family (accept 无法归并出
-    车道时, 如 zip_pack 全格式入食) → 该道字形; 其余由声明派生 (纯文本→
-    text / accept 未声明=all→cloud / 单族→族字形)。DB icon 列的装饰值
-    一概不读。"""
-    if owner_id is None:
-        from tools import _registry
-        fam = next((t.get("family") for t in _registry
-                    if t["id"] == tool_key and t.get("family")), None)
-        if fam:
-            return _FAMILY_GLYPH[fam]
-    return derived_tool_icon(files_max, accept)
 
 
 # ── Seeding: register() declarations → platform_tools rows ──
@@ -78,6 +62,7 @@ def seed_from_registry() -> dict:
             "execution": "local",
             "label": t["label"],
             "desc": t.get("desc"),
+            "format_family": t.get("tag"),
             "inputs": {"files": {
                 "min": int(t.get("files_min", 1)),
                 "max": int(t.get("files_max", 1)),
@@ -156,11 +141,9 @@ def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
         # 系统工具判定 = owner 为空 (契约字段), 无字符串形状判定
         "origin": "official" if row["owner_id"] is None else "community",
         "label": json.loads(row["label_json"]),
-        # 图标完全依赖类型 (装饰性 icon 链路已退役, 列值不再读):
-        #   系统工具声明 family (如 zip_pack) → 该道字形
-        #   其余由声明派生 (纯文本→text / accept 未声明=all→cloud / 单族→族字形)
-        "icon": _display_icon(row["tool_key"], row["owner_id"],
-                              row["files_max"], accept),
+        # 图标 = 声明 tag 的查表 (icons.tool_glyph 单点): 纯文本输入→text,
+        # 九 tag 各一字形, all→cloud。无派生、无兜底。
+        "icon": tool_glyph(row["files_max"], row["format_family"]),
         "accept": accept,
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),

@@ -50,11 +50,13 @@ async def tools(request: Request, q: str = "", cls: str = "",
             int(d["provider_earn_millis"]))
             if d["owner_id"] is not None else "")
         items.append(d)
+    from governance.formats import tags_manifest
     return templates.TemplateResponse(
         request, "samelabs/tools.html",
         ctx(request, user, tools=items, fmt_num=fmt_num, total=total,
             q=q, f_class=cls,
             f_delisted=(delisted == "1"), f_featured=(featured == "1"),
+            tags=tags_manifest(),
             page=page, pages=max(1, -(-total // _PAGE)),
             page_id="tools"))
 
@@ -255,6 +257,12 @@ async def create_http_tool(request: Request):
             return JSONResponse({"ok": False, "error": "bad_files_range"}, 422)
         if files_max == 0 and accept_raw:
             return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
+        # tag 声明 (契约字段): 文件工具必带九键之一; 纯文本工具不带
+        tag_raw = raw.get("format_families")
+        if files_max > 0 and not tag_raw:
+            return JSONResponse({"ok": False, "error": "bad_format_family"}, 422)
+        if files_max == 0 and tag_raw:
+            return JSONResponse({"ok": False, "error": "bad_format_family"}, 422)
         outputs = raw.get("outputs", ["file"])
         if not isinstance(outputs, list) or not outputs \
                 or any(k not in ("text", "json", "file") for k in outputs):
@@ -303,6 +311,7 @@ async def create_http_tool(request: Request):
             {"tool_id": tool_id, "label": label, "url": url,
              "timeout_s": timeout_s, "auth_header": auth_header,
              "auth_token": auth_token, "accept": accept,
+             "format_families": tag_raw,
              "files_min": files_min, "files_max": files_max,
              "outputs": [k for k in ("text", "json", "file")
                          if k in set(outputs)],

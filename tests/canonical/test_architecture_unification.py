@@ -258,18 +258,18 @@ _cur.execute("delete from pricing where tool_id='badaccept'")
 _cur.execute("delete from platform_tools where tool_key='badaccept'")
 _cur.execute(
     "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-    " label_json, accept_json, visibility, enabled, trusted,"
+    " label_json, accept_json, format_family, visibility, enabled, trusted,"
     " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-    " '[\"application/pdf\"]', 'public', true, false, %s, %s)",
+    " '[\"application/pdf\"]', 'image', 'public', true, false, %s, %s)",
     ("badaccept", "badaccept", ts, ts))
 for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
     _cur.execute("delete from pricing where tool_id=%s", (_bk,))
     _cur.execute("delete from platform_tools where tool_key=%s", (_bk,))
     _cur.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, accept_json, visibility, enabled, trusted,"
+        " label_json, accept_json, format_family, visibility, enabled, trusted,"
         " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-        " %s, 'public', true, false, %s, %s)",
+        " %s, 'image', 'public', true, false, %s, %s)",
         (_bk, _bk, _bj, ts, ts))
 _cur.execute(
     "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",

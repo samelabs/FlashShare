@@ -123,7 +123,7 @@ if admin_cookie:
         st, r = req("POST", "/samelabs/tools/create", {
             "tool_id": f"mtest{uuid.uuid4().hex[:6]}", "label": "MT",
             "url": "https://93.184.216.34/anything", "timeout_s": 30,
-            "accept": ".png,.jpg", "files_max": val}, admin_cookie)
+            "format_families": "image", "accept": ".png,.jpg", "files_max": val}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
         check(f"C files_max={val!r} → {want}", got == want, f"{st} {r}")
     # C2: text-only window (files 0..0) is legal only without accept
@@ -139,7 +139,7 @@ if admin_cookie:
     tid = "dbcheck" + uuid.uuid4().hex[:5]
     st, r = req("POST", "/samelabs/tools/create", {
         "tool_id": tid, "label": "DB", "url": "https://93.184.216.34/anything",
-        "timeout_s": 30, "accept": ".png,.jpg", "files_max": 20}, admin_cookie)
+        "timeout_s": 30, "format_families": "image", "accept": ".png,.jpg", "files_max": 20}, admin_cookie)
     check("D operator create ok", r.get("ok"), str(r))
     import psycopg2 as _pg2, json as _js
     _c2 = _pg2.connect(TEST_DB); _c2.autocommit = True

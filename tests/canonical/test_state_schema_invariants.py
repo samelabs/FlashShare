@@ -233,9 +233,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility,"
-        " enabled, created_at, updated_at, accept_json)"
+        " enabled, created_at, updated_at, accept_json, format_family)"
         " values (%s, NULL, %s, 'local', %s,"
-        " 'public', TRUE, %s, %s, '[\".png\"]')",
+        " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
         (f"sstool_{_u}", f"sstool_{_u}", _json.dumps({"en": "SS"}), ts, ts))
 try:
     set_pricing(f"sstool_{_u}", -5, True)

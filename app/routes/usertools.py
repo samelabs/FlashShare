@@ -161,25 +161,27 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
     eff_max = fields.get("files_max",
                          int(row["files_max"]) if row else 1)
     if eff_max == 0:
-        # text-only: no file slot, so no format family / accept
+        # text-only: no file slot, so no tag / accept
         if raw.get("accept") is not None \
                 or raw.get("format_families") is not None:
             return None, "bad_accept"
         if not partial or "files_max" in fields:
             fields["accept"] = None
+            fields["format_family"] = None
     elif ("accept" in raw or "format_families" in raw or not partial
           or (row is not None and int(row["files_max"]) == 0)):
-        # 4C-2 Tool Input Contract: format_families 保留为 authoring taxonomy;
-        # accept 是 exact executable contract — 存库永远写 sorted canonical
-        # extension tokens。accept 必须显式声明 (见下)。
+        # tag = 作者声明的应用场景 (九键之一, 入库列 format_family,
+        # 图标查表来源); accept 是 exact executable contract — 存库
+        # 永远写 sorted canonical extension tokens, 必须显式声明。
         fam, ferr = validate_family_key(raw.get("format_families"))
         if ferr:
             return None, ferr
-        fam_exts = set(FAMILIES[fam].exts)
+        from governance.formats import VOCAB_EXTS
+        # 所声明 tag 的格式分组 (all 分组 = 平台格式边界)
+        fam_exts = set(VOCAB_EXTS) if fam == "all" else set(FAMILIES[fam].exts)
         # accept 是唯一 executable input contract, 必须显式声明:
         #   缺失 / None / 非 list / 空 list / 空 token 结果 → bad_accept
-        #   (不猜测, 不从 family 扩面)。format_families 只是 authoring
-        #   taxonomy, 不再替 accept 生成 contract。
+        #   (不猜测, 不从 tag 扩面)。
         raw_accept = raw.get("accept")
         if "accept" not in raw or raw_accept is None:
             return None, "bad_accept"
@@ -190,10 +192,11 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
             canon = extensions_for_accept(raw_accept)
         except (KeyError, TypeError, ValueError):
             return None, "bad_accept"
-        # 声明的 accept token 必须落在所选 family 的 canonical ext 内
+        # 声明的 accept token 必须落在所选 tag 分组的 canonical ext 内
         if not canon <= fam_exts:
             return None, "bad_accept"
         fields["accept"] = sorted(canon)
+        fields["format_family"] = fam
 
     if "outputs" in raw or not partial:
         outputs = raw.get("outputs", ["file"])
@@ -334,6 +337,7 @@ async def create_user_tool(request: Request):
         "execution": execution,
         "label": label if isinstance(label, dict) else {"en": label},
         "desc": desc if isinstance(desc, dict) else ({"en": desc} if desc else None),
+        "format_family": fields.get("format_family"),
         "inputs": {"files": {
             "min": int(fields.get("files_min", 1)),
             "max": int(fields.get("files_max", 1)),
@@ -538,11 +542,14 @@ async def update_user_tool(tool_id: str, request: Request):
                     return JSONResponse(
                         {"ok": False, "error": "needs_successful_run"}, 422)
             sets["visibility"] = fields["visibility"]
-        # Window/accept ride the canonical inputs patch — the supply
+        # Window/accept/tag ride the canonical inputs patch — the supply
         # patch vocabulary has no flat files_min/files_max/accept keys
         # (flat keys were silently dropped). Unprovided sides keep the
         # STORED bound/accept so a half PATCH never resets the other.
-        if "files_min" in fields or "files_max" in fields or "accept" in fields:
+        if "files_min" in fields or "files_max" in fields \
+                or "accept" in fields or "format_family" in fields:
+            if "format_family" in fields:
+                sets["format_family"] = fields["format_family"]
             try:
                 _stored_acc = json.loads(row["accept_json"]) \
                     if row.get("accept_json") else None

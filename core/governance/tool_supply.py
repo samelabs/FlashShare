@@ -177,6 +177,19 @@ def validate_tool_declaration(decl: dict) -> dict:
     inputs = _normalize_inputs(decl.get("inputs"))
     outputs = _normalize_outputs(decl.get("outputs"))
 
+    # tag 声明 (契约字段): 文件工具必带九键之一; 纯文本工具 (files_max=0)
+    # 不带。图标 = tag 查表, 不存在无声明的文件工具。
+    tag = decl.get("format_family")
+    from governance.formats import validate_family_key as _vfk
+    if tag is not None:
+        tag, _ferr = _vfk(tag)
+        if _ferr:
+            raise DeclarationError("bad_format_family")
+    if tag is None and inputs["files"]["max"] > 0:
+        raise DeclarationError("bad_format_family")
+    if tag is not None and inputs["files"]["max"] == 0:
+        raise DeclarationError("bad_format_family")
+
     if not isinstance(decl.get("enabled", True), bool):
         raise DeclarationError("bad_enabled")
 
@@ -208,6 +221,7 @@ def validate_tool_declaration(decl: dict) -> dict:
         "execution": decl["execution"],
         "label": label,
         "desc": desc,
+        "format_family": tag,
         "inputs": inputs,
         "outputs": outputs,
         "params": params,
@@ -227,6 +241,13 @@ def validate_tool_patch(patch: dict) -> dict:
     if not isinstance(patch, dict):
         raise DeclarationError("bad_patch")
     out = {}
+    if "format_family" in patch:
+        from governance.formats import validate_family_key as _vfk
+        tag, ferr = _vfk(patch["format_family"]) \
+            if patch["format_family"] is not None else (None, None)
+        if ferr:
+            raise DeclarationError("bad_format_family")
+        out["format_family"] = tag
     if "label" in patch:
         out["label"] = _check_localized(patch["label"], _MAX_LABEL, required=True)
     if "desc" in patch:
@@ -311,6 +332,7 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "label_json": json.dumps(decl["label"], ensure_ascii=False),
         "desc_json": (json.dumps(decl["desc"], ensure_ascii=False)
                       if decl.get("desc") else None),
+        "format_family": decl.get("format_family"),
         "accept_json": (json.dumps(decl["inputs"]["files"]["accept"],
                                    ensure_ascii=False)
                         if decl["inputs"]["files"]["accept"] else None),
@@ -359,6 +381,8 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
     from repo.catalog import update_tool_row
     from utils import now
     sets = {}
+    if "format_family" in patch:
+        sets["format_family"] = patch["format_family"]
     if "label" in patch:
         sets["label_json"] = json.dumps(patch["label"], ensure_ascii=False)
     if "desc" in patch:

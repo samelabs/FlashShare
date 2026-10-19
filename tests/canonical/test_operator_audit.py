@@ -200,9 +200,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility,"
-        " enabled, created_at, updated_at, accept_json)"
+        " enabled, created_at, updated_at, accept_json, format_family)"
         " values (%s, NULL, %s, 'local', '{\"en\":\"OA\"}',"
-        " 'public', TRUE, %s, %s, '[\".png\"]')",
+        " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
         (f"oatool_{_u}", f"oatool_{_u}", ts, ts))
 r = _post(f"/samelabs/tools/oatool_{_u}/pricing",
                 json={"cost": 150, "enabled": True},
@@ -496,13 +496,13 @@ rt = f"oart_{_u}"
 # the unavailable case via a subprocess probe (vault removed).
 r = _post("/samelabs/tools/create", json={
     "tool_id": rt, "label": "OA Remote", "url": "https://ops.example/hook",
-    "timeout_s": 30, "cost": 50,
+    "timeout_s": 30, "format_families": "image", "cost": 50,
 }, cookies={COOKIE_NAME: op_sess})
 from secrets_vault import vault_enabled as _vault_on
 _tok_expect = 200 if _vault_on() else 503
 r_tok = _post("/samelabs/tools/create", json={
     "tool_id": rt + "t", "label": "OA Tok", "url": "https://ops.example/t",
-    "timeout_s": 30, "auth_token": "SUPERSECRET123", "cost": 10,
+    "timeout_s": 30, "format_families": "image", "auth_token": "SUPERSECRET123", "cost": 10,
 }, cookies={COOKIE_NAME: op_sess})
 with db() as con:
     tok_row = con.execute(
@@ -522,7 +522,7 @@ check("F1 remote create → tool + pricing + audit (credential shape per vault)"
 _aud.record = _audit_fail_on("remote.create")[1]
 r = _post("/samelabs/tools/create", json={
     "tool_id": rt + "x", "label": "X", "url": "https://ops.example/x",
-    "timeout_s": 30, "cost": 10,
+    "timeout_s": 30, "format_families": "image", "cost": 10,
 }, cookies={COOKIE_NAME: op_sess})
 _aud.record = _orig_rec
 with db() as con:
@@ -561,9 +561,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility,"
-        " enabled, created_at, updated_at, accept_json)"
+        " enabled, created_at, updated_at, accept_json, format_family)"
         " values (%s, NULL, %s, 'http', %s,"
-        " 'public', TRUE, %s, %s, '[\".png\"]')",
+        " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
         (rt + "2", rt + "2", _json3.dumps({"en": "OA2"}), ts, ts))
     con.execute(
         "insert into pricing (tool_id, cost, enabled, updated_at)"
@@ -669,7 +669,7 @@ import threading
 rt3 = f"oart3_{_u}"
 r = _post("/samelabs/tools/create", json={
     "tool_id": rt3, "label": "CC", "url": "https://ops.example/cc",
-    "timeout_s": 30, "cost": 20,
+    "timeout_s": 30, "format_families": "image", "cost": 20,
 }, cookies={COOKIE_NAME: op_sess})
 check("H1pre concurrent-delete fixture created", r.status_code == 200,
       str(r.status_code))
@@ -706,9 +706,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility,"
-        " enabled, created_at, updated_at, accept_json)"
+        " enabled, created_at, updated_at, accept_json, format_family)"
         " values (%s, NULL, %s, 'local', %s,"
-        " 'public', TRUE, %s, %s, '[\".png\"]')",
+        " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
         (rt4, rt4, _json3.dumps({"en": "CC4"}), ts, ts))
     con.execute(
         "insert into pricing (tool_id, cost, enabled, updated_at)"
@@ -851,9 +851,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility,"
-        " enabled, created_at, updated_at, accept_json)"
+        " enabled, created_at, updated_at, accept_json, format_family)"
         " values (%s, NULL, %s, 'local', %s,"
-        " 'public', TRUE, %s, %s, '[\".png\"]')",
+        " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
         (rt4 + "z", rt4 + "z", _json3.dumps({"en": "ZZ"}), ts, ts))
     con.execute(
         "insert into pricing (tool_id, cost, enabled, updated_at)"
@@ -934,9 +934,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility,"
-        " enabled, created_at, updated_at, accept_json)"
+        " enabled, created_at, updated_at, accept_json, format_family)"
         " values (%s, NULL, %s, 'local', %s,"
-        " 'public', TRUE, %s, %s, '[\".png\"]')",
+        " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
         (rt5, rt5, _json3.dumps({"en": "R5"}), ts, ts))
 r = _post(f"/samelabs/tools/{rt5}/pricing",
           json={"cost": 42, "enabled": True},

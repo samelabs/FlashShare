@@ -438,6 +438,7 @@ def _decl(**kw):
     d = {"tool_key": f"cf_{_u}", "tool_id": f"cf_{_u}", "owner_id": None,
          "execution": "local",
          "label": {"en": "CF"}, "desc": None,
+         "format_family": "image",
          "inputs": {"files": {"min": 0, "max": 1, "accept": None}},
          "outputs": ["text"], "params": None, "visibility": "unlisted",
          "enabled": True}
@@ -466,6 +467,7 @@ for t in _reg:
         _vtd({"tool_key": t["id"], "tool_id": t["id"], "owner_id": None,
               "execution": "local",
               "label": t["label"], "desc": t["desc"],
+              "format_family": t.get("tag"),
               "inputs": {"files": {"min": t["files_min"], "max": t["files_max"],
                                    "accept": sorted(t["accept"]) if t["accept"] else None}},
               "outputs": t["outputs"], "params": t["params"],
@@ -537,9 +539,9 @@ def _mk_local_tool(tool_id, owner_id, cost):
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json, visibility, enabled,"
-            " created_at, updated_at, accept_json)"
+            " created_at, updated_at, accept_json, format_family)"
             " values (%s, %s, %s, 'local', %s,"
-            " 'public', TRUE, %s, %s, '[\".png\"]')",
+            " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
             (tool_id, owner_id, tool_id,
              _json.dumps({"en": "AX"}), ts, ts))
         con.execute(

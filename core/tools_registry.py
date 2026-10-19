@@ -232,6 +232,7 @@ register(
     # share = all 类型的唯一内置工具 (accept 未声明 = 全部平台格式,
     # 图标 cloud 由类型映射授予), 不声明 family
     accept=None,  # accepts all formats
+    tag="all",  # 免费分享 = 全站上传基础能力
     handler=share_handler,
     files_min=1, files_max=20,
     outputs=("file",),
@@ -264,6 +265,7 @@ register(
         "en": "Strips metadata and disrupts AI watermarks from your images. The output is re-encoded — pixels shift slightly at every level (by design; watermark disruption is whole-image).",
     },
     accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
+    tag="image",
     handler=privacy_handler,
     params=[
         {"key": "preset", "type": "enum", "label": {"en": "Clean level", "zh": "净化强度"},

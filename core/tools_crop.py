@@ -153,5 +153,6 @@ register(
             "en": 'Removes white margins around the content.',
         },
     accept=ACCEPTED,
+    tag="image",
     handler=crop_white_handler,
 )

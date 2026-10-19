@@ -171,6 +171,7 @@ def create_http_tool(operator_id: int, payload: dict) -> str:
 
     tool_id = payload["tool_id"]
     accept = payload.get("accept")
+    tag = payload.get("format_families")
     auth_header = payload.get("auth_header", "")
     auth_token = payload.get("auth_token", "")
     with db() as con:
@@ -183,6 +184,7 @@ def create_http_tool(operator_id: int, payload: dict) -> str:
         "execution": "http",
         "label": {"en": payload["label"], "zh": payload["label"]},
         "desc": None,
+        "format_family": tag,
         "inputs": {"files": {
             "min": int(payload.get("files_min", 1)),
             "max": int(payload.get("files_max", 1)),

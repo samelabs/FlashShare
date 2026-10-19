@@ -496,9 +496,9 @@ try:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json, visibility, enabled,"
-            " created_at, updated_at, accept_json)"
+            " created_at, updated_at, accept_json, format_family)"
             " values (%s, NULL, %s, 'local', %s,"
-            " 'public', TRUE, %s, %s, '[\".png\"]')",
+            " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
             (tool5, tool5, _json.dumps({"en": "MC"}), ts, ts))
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 25, TRUE, %s)", (tool5, ts))
@@ -612,9 +612,9 @@ try:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json,"
-            " visibility, enabled, endpoint_json, created_at, updated_at, accept_json)"
+            " visibility, enabled, endpoint_json, created_at, updated_at, accept_json, format_family)"
             " values (%s, %s, %s, 'http', %s,"
-            " 'unlisted', TRUE, %s, %s, %s, '[\".png\"]')",
+            " 'unlisted', TRUE, %s, %s, %s, '[\".png\"]', 'image')",
             (tkey6, owner, tid6, _json.dumps({"en": "T6"}),
              _json.dumps({"url": "https://example.com/x", "timeout_s": 10}),
              ts, ts))

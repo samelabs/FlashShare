@@ -79,9 +79,9 @@ def _mktool(tool_key, owner_id, params_json=None):
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json, visibility, enabled,"
-            " params_json, created_at, updated_at, accept_json)"
+            " params_json, created_at, updated_at, accept_json, format_family)"
             " values (%s, %s, %s, 'http', %s, 'public',"
-            " TRUE, %s, %s, %s, '[\".png\"]')",
+            " TRUE, %s, %s, %s, '[\".png\"]', 'image')",
             (tool_key, owner_id, tool_key.split("/")[-1],
              _json.dumps({"en": "I2"}), params_json, ts, ts))
         con.execute(
@@ -397,6 +397,7 @@ good_params = [{"key": "mode", "type": "enum", "label": {"en": "Mode"},
                 "required": True, "default": "fast"}]
 tool_key = tools_cmd.create_http_tool(op["id"], {
     "tool_id": f"i2op{_u}"[:24].replace("-", ""), "label": "I2 Op Tool",
+        "format_families": "image",
     "url": "https://op.example.com/api", "timeout_s": 30,
     "accept": None, "files_min": 0, "files_max": 1,
     "outputs": ["text"], "params": good_params, "cost": 0})
@@ -411,6 +412,7 @@ check("P1 operator tool with params → stored canonical declaration",
 try:
     tools_cmd.create_http_tool(op["id"], {
         "tool_id": f"i2bad{_u}"[:24].replace("-", ""), "label": "Bad",
+        "format_families": "image",
         "url": "https://op.example.com/api", "timeout_s": 30,
         "accept": None, "files_min": 0, "files_max": 1,
         "outputs": ["text"],
@@ -422,6 +424,7 @@ except DeclarationError:
 r = client.post("/samelabs/tools/create",
                 json={"tool_id": f"i2rt{_u}"[:24].replace("-", ""),
                       "label": "Route", "url": "https://op.example.com/api",
+                      "format_families": "image",
                       "params": {"key": "not-a-list"}},
                 headers=OP_H)
 check("P3 route refuses non-array params (bad_params 422)",

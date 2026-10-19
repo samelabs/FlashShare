@@ -562,7 +562,32 @@ _SCHEMA_SQL = (
     """INSERT INTO settings (key, value, updated_at)
        VALUES ('commission_rate', '30', EXTRACT(EPOCH FROM now())::BIGINT)
        ON CONFLICT (key) DO NOTHING""",
-    # ── platform: platform_tools (tool registry — data-state rows) ──
+    # ── 格式与 tag 参考表 (表驱动, 2026-10-19 工具链理顺) ──
+    # formats = 平台格式边界 (每扩展名一行, 归属唯一场景 tag);
+    # tags = 应用场景的格式组合 (八场景 + all; all = 全边界并集视图,
+    # 无直属 formats 行, 恒 sort 末位)。首装种子来自
+    # governance/formats.py 字面量; 运行态内存结构由表装载 (见
+    # formats.sync_reference_tables — 装载点在本 init_db 内)。
+    """
+    CREATE TABLE IF NOT EXISTS tags (
+      key        TEXT PRIMARY KEY,
+      chip       TEXT NOT NULL,
+      sort_order INT  NOT NULL,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS formats (
+      ext        TEXT PRIMARY KEY,
+      mime       TEXT NOT NULL,
+      tag        TEXT NOT NULL REFERENCES tags(key),
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS formats_tag_idx ON formats(tag)",
+        # ── platform: platform_tools (tool registry — data-state rows) ──
     # The runtime source of truth for the tool catalog. First-party tools are
     # seeded here at startup from register() declarations (code = creation
     # format, DB = runtime truth). Remote (http) execution and namespaced
@@ -593,6 +618,9 @@ _SCHEMA_SQL = (
       sort_order     INT NOT NULL DEFAULT 0, -- 后台遴选排序 (首页/市场呈现序)
       featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
       accept_json    TEXT,                   -- JSON array or NULL = any
+      format_family  TEXT REFERENCES tags(key),
+                                           -- 声明的 tag (作者表达 + 图标来源);
+                                           -- 纯文本工具 (files_max=0) 不带
       files_min      INT NOT NULL DEFAULT 1, -- input files lower bound (0 = text-only tools)
       files_max      INT NOT NULL DEFAULT 1, -- input files upper bound (<= 20)
       outputs_json   TEXT NOT NULL DEFAULT '["file"]',
@@ -824,32 +852,7 @@ _SCHEMA_SQL = (
       PRIMARY KEY (user_id, tool_key)
     )
     """,
-    # ── 格式与 tag 参考表 (表驱动, 2026-10-19 工具链理顺) ──
-    # formats = 平台格式边界 (每扩展名一行, 归属唯一场景 tag);
-    # tags = 应用场景的格式组合 (八场景 + all; all = 全边界并集视图,
-    # 无直属 formats 行, 恒 sort 末位)。首装种子来自
-    # governance/formats.py 字面量; 运行态内存结构由表装载 (见
-    # formats.sync_reference_tables — 装载点在本 init_db 内)。
-    """
-    CREATE TABLE IF NOT EXISTS tags (
-      key        TEXT PRIMARY KEY,
-      chip       TEXT NOT NULL,
-      sort_order INT  NOT NULL,
-      created_at BIGINT NOT NULL,
-      updated_at BIGINT NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS formats (
-      ext        TEXT PRIMARY KEY,
-      mime       TEXT NOT NULL,
-      tag        TEXT NOT NULL REFERENCES tags(key),
-      created_at BIGINT NOT NULL,
-      updated_at BIGINT NOT NULL
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS formats_tag_idx ON formats(tag)",
-    )
+)
 
 
 def init_db() -> None:

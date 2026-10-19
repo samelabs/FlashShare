@@ -197,10 +197,10 @@ try:
             """
             INSERT INTO platform_tools (tool_key, tool_id, execution,
               visibility, label_json, enabled, owner_id,
-              files_min, files_max, outputs_json, created_at, updated_at, accept_json)
+              files_min, files_max, outputs_json, created_at, updated_at, accept_json, format_family)
             VALUES (%s, 'g', 'http', 'public',
               '{"en": "Community G"}', TRUE, %s,
-              1, 1, '["file"]', %s, %s, '[".png"]')
+              1, 1, '["file"]', %s, %s, '[\".png\"]', 'image')
             """,
             (f"{com}/g", uid_com, int(_time.time()), int(_time.time())))
         con.execute(

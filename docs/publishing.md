@@ -39,7 +39,7 @@ The declaration and execution contract for tools published on 518.PLUS.
 |---|---|
 | `tool_id` / `tool_key` | 唯一身份，`^[a-z][a-z0-9_]{1,40}$` |
 | `execution` | 当前用户工具固定为 `http` |
-| `format_families` | 八道准入词表单选（image/document/data/text/audio/video/cad3d/archive），accept 由族派生；纯文本工具不带 |
+| `format_families` | **声明的 tag**（九键之一：image/document/data/text/audio/video/cad3d/archive/all），入库列 `format_family`；作用 = 前端图标表达 + 开发者自述，不约束不派生；accept 在所声明 tag 的格式分组里勾选（all 分组 = 平台格式边界）；纯文本工具不带 |
 | `files_min` | 输入文件数下限，int ≥ 0（0 = 可不带文件调用）；缺省 1 |
 | `files_max` | 输入文件数上限，int 0..20；须 ≥ files_min；缺省 1。0 = 纯文本工具：无文件位，不带 format_families/accept，第一个 text 参数作为输入框 |
 | `outputs` | 产出类型非空子集 `["text","json","file"]`（声明工具可能返回哪些结果项）；缺省 `["file"]` |
@@ -97,15 +97,11 @@ The declaration and execution contract for tools published on 518.PLUS.
 
 `option.value`（`fast`/`best`）是稳定机器值；`option.label` 才是 LocalizedText。禁止把译文当作 value。
 
-## 图标语义（icon = 类型，链路唯一）
+## 图标语义（icon = 声明 tag 的查表，链路唯一）
 
-图标**完全依赖工具类型**——不存在装饰性 icon 声明（声明键与 DB 列均已删除，无任何 fallback 机制）：
+图标 = 入库 tag 的**查表**（`core/icons.py tool_glyph` 单点）：纯文本输入（files_max=0）→ `text`；九 tag 各一字形，`all` → `cloud`（全部平台格式，内置工具中 share 与 zip_pack 以此形态发布）。无派生、无兜底——文件工具缺 tag 即数据违约，fail loud。
 
-- accept 未声明 = **all**（全部平台格式）→ `cloud`；内置工具中仅 `share`（免费分享，全站上传基础能力）以此形态发布；
-- 第一方工具可声明 `family`（accept 无法归并出车道时，如 zip_pack 全格式入食但属归档道——类型≠accept 边界）；
-- 其余由声明派生（`core/icons.py derived_tool_icon`）：纯文本输入（files_max=0）→ `text`；accept 落入哪一族 → 该道字形（机制内 accept 必落单族）。
-
-发布表单没有、也不应有图标项；类型（输入方式 + 格式道）就是图标的全部语义来源。
+发布表单没有、也不应有图标项；声明的 tag 就是图标的全部语义来源。
 
 ## 读取规则（canonical fallback）
 

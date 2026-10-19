@@ -156,6 +156,7 @@ try:
         "tool_key": f"{_u}t", "tool_id": f"{_u}t", "owner_id": None,
         "execution": "local",
         "label": {"en": "T"},
+        "format_family": "image",
         "inputs": {"files": {"min": 0, "max": 20, "accept": None}},
         "outputs": ["text", "json"], "params": None,
         "visibility": "public", "enabled": True})

@@ -76,9 +76,9 @@ def _mktool(tk, owner, cost):
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
             " label_json, visibility, enabled,"
-            " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+            " params_json, endpoint_json, created_at, updated_at, accept_json, format_family) values"
             " (%s, %s, %s, 'http', %s, 'public',"
-            " true, '[]', %s, %s, %s, '[\".png\"]')",
+            " true, '[]', %s, %s, %s, '[\".png\"]', 'image')",
             (tk, owner, tk.split("/")[-1], _json.dumps({"en": "KC"}),
              _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
         con.execute(
@@ -97,9 +97,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility, enabled,"
-        " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+        " params_json, endpoint_json, created_at, updated_at, accept_json, format_family) values"
         " (%s, NULL, %s, 'http', %s, 'public',"
-        " true, '[]', %s, %s, %s, '[\".png\"]')",
+        " true, '[]', %s, %s, %s, '[\".png\"]', 'image')",
         (tool_fp, tool_fp.split("/")[-1], _json.dumps({"en": "KC"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
     con.execute(
@@ -137,6 +137,7 @@ decl = {
     "tool_key": f"{_u2}o/atomic", "tool_id": "atomic",
     "owner_id": owner_id, "execution": "http",
     "label": {"en": "AT"}, "desc": None,
+    "format_family": "image",
     "inputs": {"files": {"min": 1, "max": 1, "accept": [".png"]}},
     "outputs": ["file"],
     "params": None,
@@ -480,9 +481,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility, enabled,"
-        " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+        " params_json, endpoint_json, created_at, updated_at, accept_json, format_family) values"
         " (%s, NULL, %s, 'http', %s, 'public',"
-        " true, '[]', %s, %s, %s, '[\".png\"]')",
+        " true, '[]', %s, %s, %s, '[\".png\"]', 'image')",
         (f"{_u3}noprice", "noprice", _json.dumps({"en": "NP"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
 row_np, _e = _resolve(f"{_u3}noprice", None)
@@ -494,9 +495,9 @@ with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility, enabled,"
-        " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+        " params_json, endpoint_json, created_at, updated_at, accept_json, format_family) values"
         " (%s, NULL, %s, 'http', %s, 'public',"
-        " true, '[]', %s, %s, %s, '[\".png\"]')",
+        " true, '[]', %s, %s, %s, '[\".png\"]', 'image')",
         (f"{_u3}offprice", "offprice", _json.dumps({"en": "OP"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
     con.execute(

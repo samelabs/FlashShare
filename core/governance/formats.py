@@ -335,11 +335,11 @@ def parse_stored_accept(raw: str | None) -> set[str] | None:
 
 
 def validate_family_key(key) -> tuple[str | None, str | None]:
-    """发布提交校验: 单个族键 (单选范式) → (family_key|None, err)。
+    """tag 键校验: 九键之一 (八场景 + all) → (key|None, err)。
 
-    non-string / unknown family → (None, 'bad_format_family') —
-    单选必填, 无空语义。"""
-    if not key or not isinstance(key, str) or key not in FAMILIES:
+    单选必填, 无空语义; all = 平台格式边界 (发布选择器恒末位)。"""
+    if not key or not isinstance(key, str) or not (
+            key == "all" or key in FAMILIES):
         return None, "bad_format_family"
     return key, None
 
@@ -362,6 +362,13 @@ def format_manifest() -> dict:
 def sniff_ext_to_families(ext: str) -> set[str]:
     """扩展名 → 族集合 (执行闸门: 上传 sniff 后的 ext 反查)。未知 ext → 空集。"""
     return {k for k, f in FAMILIES.items() if ext in f.exts}
+
+
+def tags_manifest() -> list:
+    """九 tag 的选择器投影 (发布/运营表单单源): [{key, chip}, …],
+    all 恒末位。读当前运行态 (表驱动装载后即表内容)。"""
+    out = [{"key": k, "chip": FAMILIES[k].chip} for k in FAMILY_ORDER]
+    return out + [{"key": "all", "chip": "All"}]
 
 
 # ── 表驱动 (2026-10-19 工具链理顺): tags/formats 参考表 ──

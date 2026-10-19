@@ -400,9 +400,9 @@ def _mk_tool(key, owner, pkey):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " label_json, accept_json,"
+            " label_json, accept_json, format_family,"
             " visibility, enabled, params_json, endpoint_json, created_at, updated_at)"
-            " values (%s, %s, %s, 'http', %s, %s, "
+            " values (%s, %s, %s, 'http', %s, %s, 'image',"
             " 'public', true, %s, %s, %s, %s)",
             (key, owner, key.split("/")[-1], json.dumps({"en": key}),
              json.dumps([".pdf"]), json.dumps(decl),

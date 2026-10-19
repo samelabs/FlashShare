@@ -159,7 +159,7 @@ try:
         created_uids.append(op_uid)
     ck = f"{COOKIE_NAME}={create_browser_session(op_uid)}"
     st, _h, d, _sc = _req("POST", "/samelabs/tools/create", {
-        "tool_id": OP_TOOL, "label": "FX Http Echo",
+        "tool_id": OP_TOOL, "label": "FX Http Echo", "format_families": "image",
         "url": TOOL_URL, "timeout_s": 30,
         "files_min": 1, "files_max": 5, "outputs": ["file"],
         "cost": 2}, {"Content-Type": "application/json", "Cookie": ck})
@@ -261,6 +261,7 @@ try:
         "tool_key": f"{_u}a/{USER_TOOL}", "tool_id": USER_TOOL,
         "owner_id": uid, "execution": "http",
         "label": {"en": "FX User Tool"},
+        "format_family": "image",
         "inputs": {"files": {"min": 0, "max": 3, "accept": None}},
         "outputs": ["text"],
         "params": [{"key": "note", "type": "text", "required": True,
@@ -332,7 +333,7 @@ try:
         tool_id=f"fxlocal{_u}",
         label={"en": "FX Local Two"},
         handler=_two_files_handler,
-        files_min=0, files_max=1, outputs=("file",))
+        files_min=0, files_max=1, outputs=("file",), tag="image")
     with db() as con:
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 0, TRUE, %s)", (f"fxlocal{_u}", ts))
