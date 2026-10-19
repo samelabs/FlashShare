@@ -824,6 +824,31 @@ _SCHEMA_SQL = (
       PRIMARY KEY (user_id, tool_key)
     )
     """,
+    # ── 格式与 tag 参考表 (表驱动, 2026-10-19 工具链理顺) ──
+    # formats = 平台格式边界 (每扩展名一行, 归属唯一场景 tag);
+    # tags = 应用场景的格式组合 (八场景 + all; all = 全边界并集视图,
+    # 无直属 formats 行, 恒 sort 末位)。首装种子来自
+    # governance/formats.py 字面量; 运行态内存结构由表装载 (见
+    # formats.sync_reference_tables — 装载点在本 init_db 内)。
+    """
+    CREATE TABLE IF NOT EXISTS tags (
+      key        TEXT PRIMARY KEY,
+      chip       TEXT NOT NULL,
+      sort_order INT  NOT NULL,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS formats (
+      ext        TEXT PRIMARY KEY,
+      mime       TEXT NOT NULL,
+      tag        TEXT NOT NULL REFERENCES tags(key),
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS formats_tag_idx ON formats(tag)",
     )
 
 
@@ -834,6 +859,10 @@ def init_db() -> None:
     with db() as con:
         for stmt in _SCHEMA_SQL:
             con.execute(stmt)
+        # ── 格式/tag 参考表装载 (表驱动): 首装种子补齐 + 运行态回装 ──
+        # (幂等; 计数仅供测试断言, 静默)
+        from governance.formats import sync_reference_tables
+        sync_reference_tables(con, ts)
         # ── Free Tier authority bootstrap ──
         # env (DAILY_UPLOADS/DAILY_BYTES) 只是首次迁移输入: free 行不存在
         # 时按当前 env 值创建; 行一旦存在, plans row 即唯一事实源, 后续

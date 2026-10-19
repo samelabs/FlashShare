@@ -110,6 +110,24 @@ ok, miss = _cols("platform_tools", ["desc_json", "sort_order", "featured"])
 check("U2c platform_tools declaration 列齐", ok, miss)
 check("U2c fresh 库无 icon 列", not _cols("platform_tools", ["icon"])[0])
 check("U2c fresh 库无 presets_json 列", not _cols("platform_tools", ["presets_json"])[0])
+# U2d 格式/tag 参考表 (表驱动): 九 tag (all 恒末位) / 每格式一行归属唯一
+# tag / all 无直属行 / 运行态内存结构与表一致
+_cur.execute("select key from tags order by sort_order")
+_tag_keys = [r[0] for r in _cur.fetchall()]
+check("U2d tags = 八场景 + all (all 末位)",
+      _tag_keys == ["image", "document", "data", "text", "audio",
+                    "video", "cad3d", "archive", "all"], _tag_keys)
+_cur.execute("select count(*), count(distinct ext),"
+             " count(*) filter (where tag = 'all'),"
+             " count(*) filter (where tag not in (select key from tags))"
+             " from formats")
+_nf, _nd, _n_all, _n_orphan = _cur.fetchone()
+from governance.formats import FAMILIES, FAMILY_ORDER, VOCAB_EXTS  # noqa: E402
+check("U2d formats 每扩展名一行 = VOCAB 全边界, all 无直属行, 无孤儿",
+      _nf == _nd == len(VOCAB_EXTS) == 119 and _n_all == 0 and _n_orphan == 0,
+      (_nf, _nd, len(VOCAB_EXTS), _n_all, _n_orphan))
+check("U2d 运行态 FAMILIES 由表装载 (八场景, all 不入)",
+      list(FAMILIES) == FAMILY_ORDER == _tag_keys[:-1])
 _cur.execute("select indexname from pg_indexes where tablename='tool_calls'")
 _idx = {r[0] for r in _cur.fetchall()}
 check("U2c tool_calls 当前 unique live idx 存在", "tool_calls_client_ref_live_idx" in _idx)
