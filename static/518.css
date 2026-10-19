@@ -839,9 +839,13 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .hero h1 { margin-top: 10px; font-size: clamp(30px, 4.2vw, 44px); line-height: 1.14; letter-spacing: var(--tracking-tighter); font-weight: 800; color: var(--ink); text-align: center; }
 .hero h1 .grad { color: var(--brand-deep); }   /* 同色系强调, 不再渐变劈句 */
 .hero p { margin-top: 10px; color: var(--ink-2); font-size: var(--fs-lg); }
-.hero-join { margin-inline-start: var(--s3); color: var(--brand-deep); font-weight: 650; text-decoration: none; }
-.hero-join::after { content: "→"; margin-inline-start: 4px; transition: margin var(--ease-in); }
-@media (hover:hover) and (pointer:fine) { .hero-join:hover::after { margin-inline-start: 8px; } }
+.hero-join { display: inline-flex; align-items: center; margin-inline-start: var(--s3);
+  padding: 7px 16px; border-radius: var(--r-full); background: var(--card);
+  border: var(--border-w) solid var(--line-2); color: var(--brand-deep);
+  font-weight: 650; text-decoration: none;
+  transition: background var(--ease), color var(--ease), border-color var(--ease); }
+@media (hover:hover) and (pointer:fine) { .hero-join:hover { background: var(--brand-deep);
+  border-color: var(--brand-deep); color: var(--card); } }
 /* hero 背景大字: MCP (装饰, 读屏隐藏) — 位于 glow/grid 之上、正文之下 */
 .home .hero-mark { position: absolute; right: -2%; top: 4px; z-index: 0;
   font-size: clamp(88px, 15vw, 180px); font-weight: 900; line-height: 1; letter-spacing: -0.06em;
@@ -849,7 +853,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   background: linear-gradient(180deg, rgba(217, 45, 58, 0.035), rgba(217, 45, 58, 0.003) 85%);
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .home .hero > .wrap { position: relative; z-index: 1; }
-.home .hero-sub { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.home .hero-sub { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 /* hero 与输入框之间的四件套分享条 (居中) */
 .hero-share { display: flex; justify-content: center; margin-block-start: 18px; }
 /* 区块标题下的四件套分享条 (agents / market / pricing) */
@@ -1004,9 +1008,10 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .result:has(> .out) { padding: 0; background: none; border: 0; box-shadow: none; }
 /* hero 单栏自然流: composer 高度是动态的, 输入/结果不定位 — 结果就位在
    输入之下自然增长 (双栏并排会让静态 demo 与动态输入永远高低不平);
-   终端 demo 退回下方 dark 区带做装饰, 不与动态内容争位 */
-.hero .home-composer { margin-top: var(--s6); }
-.hero .home-composer, .hero .result { text-align: start; max-width: 640px; margin-inline: auto; }
+   终端 demo 退回下方 dark 区带做装饰, 不与动态内容争位。
+   composer 尺寸/间距唯一属主 = .home .composer (760px 自居中), 包装层不重复设。
+   结果区与输入卡同轴 (640px 自居中) */
+.hero .result { text-align: start; max-width: 640px; margin: var(--s5) auto 0; }
 .hero .hero-share { margin-top: var(--s3); justify-content: center; }
 .hero .result { margin-top: var(--s5); }
 /* dark 区带里的终端 demo: 栏宽居中, 内容左读, 尺寸锁定 (循环回放不撑页) */
