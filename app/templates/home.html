@@ -45,11 +45,11 @@
       <div class="home-composer" id="homeComposer">
         <div id="toolInput" class="ti-mount"></div>
       </div>
-      <div id="result" class="result hidden" aria-live="polite"></div>
-      {# 四件套分享条: 输入框之下 (本页地址) #}
+      {# 四件套分享条: 输入单元的一部分, 紧贴输入卡 — 不随结果下移 (避免误读为结果的分享) #}
       <div class="hero-share">
         {{ share_bar(canonical_url, APP_NAME, qr_src="/qr.svg?p=%2F", compact=true) }}
       </div>
+      <div id="result" class="result hidden" aria-live="polite"></div>
     </div>
   </section>
 

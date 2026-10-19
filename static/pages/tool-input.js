@@ -457,8 +457,9 @@
       if (!rows) return;
       thumbUrls.forEach((u) => URL.revokeObjectURL(u));
       thumbUrls.length = 0;
+      // 拖放区常驻 (初始尺寸稳住: 加文件不缩卡), 它同时是"继续添加"的入口
       const zone = container.querySelector(".ti-drop");
-      if (zone) zone.hidden = files.length > 0;
+      if (zone) zone.hidden = false;
       if (!files.length) { rows.innerHTML = ""; return; }
       rows.innerHTML = files.map((f, i) => {
         const isImg = /^image\//.test(f.type || "") && (f.type || "").toLowerCase() !== "image/svg+xml";
@@ -482,21 +483,9 @@
           + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
           + icon("close") + "</button></span>";
       }).join("");
-      // 行尾"+ 添加"小块: 已有文件且未达上限才显示 (点击选择, 拖入走整卡落点)
-      if (files.length < filesMax()) {
-        rows.innerHTML += '<button type="button" class="chipf ti-add-block" aria-label="'
-          + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">'
-          + '<span class="th d" aria-hidden="true">' + icon("plus") + "</span>"
-          + "<span><b>" + esc(t("ti_add_files")) + "</b></span></button>";
-      }
       rows.querySelectorAll("[data-rm]").forEach((b) => {
         b.addEventListener("click", () => removeFile(+b.dataset.rm));
       });
-      const addBtn = rows.querySelector(".ti-add-block");
-      if (addBtn) {
-        const input = fileInput();
-        addBtn.addEventListener("click", () => input && input.click());
-      }
     }
 
     function bindFiles() {
