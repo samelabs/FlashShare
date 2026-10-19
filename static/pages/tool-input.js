@@ -65,6 +65,10 @@
     if (!mf || !Array.isArray(mf.order) || !mf.families) {
       return accept.map((a) => a.toUpperCase()).join(" · ");
     }
+    // 全边界摘要: accept 覆盖词表全部格式时不逐项铺墙
+    let total = 0;
+    mf.order.forEach((k) => { total += ((mf.families[k] || {}).exts || []).length; });
+    if (accept.length >= total) return t("ti_accept_all");
     const set = new Set(accept);
     const names = mf.order
       .filter((k) => ((mf.families[k] || {}).exts || [])

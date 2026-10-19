@@ -479,9 +479,9 @@ with db() as con:
     con.execute("ALTER TABLE platform_tools DROP CONSTRAINT IF EXISTS platform_tools_execution_ck")
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, visibility, enabled, created_at, updated_at)"
+        " label_json, visibility, enabled, accept_json, format_family, created_at, updated_at)"
         " values ('eb58/bad_exec_inv', NULL, 'bad_exec_inv', 'mcp',"
-        " '{}', 'private', FALSE, %s, %s)", (_ts58, _ts58))
+        " '{}', 'private', FALSE, '[\".png\"]', 'image', %s, %s)", (_ts58, _ts58))
 try:
     _vcr()
     check("G-startup stored execution='mcp' → invariant fail", False, "no raise")
@@ -493,11 +493,9 @@ with db() as con:
     con.execute("ALTER TABLE platform_tools DROP CONSTRAINT IF EXISTS platform_tools_execution_ck")
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, visibility, enabled, created_at, updated_at)"
-        " values ('eb58/bad_exinsert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, visibility, enabled, created_at, updated_at)"
+        " label_json, visibility, enabled, accept_json, format_family, created_at, updated_at)"
         " values ('eb58/bad_exec_inv2', NULL, 'bad_exec_inv2', 'quantum',"
-        " '{}', 'unlisted', TRUE, %s, %s)", (_ts58, _ts58))
+        " '{}', 'unlisted', TRUE, '[\".png\"]', 'image', %s, %s)", (_ts58, _ts58))
 try:
     _vcr()
     check("G-startup arbitrary execution='quantum' → invariant fail", False, "no raise")

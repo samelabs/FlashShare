@@ -87,8 +87,8 @@ def _canonical_accept(raw: str | None) -> list | None:
     """accept_json column → canonical extension token list (4C-2).
 
     Stored contract is parsed by THE single stored parser
-    (formats.parse_stored_accept): SQL NULL = any / valid JSON non-empty
-    canonical ext list. Anything else raises — never silently
+    (formats.parse_stored_accept): 非空 canonical ext 列表; NULL 仅 =
+    无文件位 (files_max=0)。Anything else raises — never silently
     projected."""
     from governance.formats import parse_stored_accept
     canon = parse_stored_accept(raw)  # typed raise on invalid
@@ -96,29 +96,38 @@ def _canonical_accept(raw: str | None) -> list | None:
 
 
 def validate_catalog_rows() -> None:
-    """Startup invariant: every platform_tools row's stored accept AND
-    execution must be the current contract (accept: NULL = any, or
-    non-empty canonical ext list; execution: the canonical supply
-    vocabulary local|http — no second vocabulary here). Violation aborts
-    startup regardless of enabled/visibility — the catalog projection
-    never guesses."""
+    """Startup invariant: every platform_tools row's stored accept, tag and
+    execution must be the current contract. accept 单形状: 文件工具
+    (files_max>0) 必为非空 canonical ext 列表; 纯文本工具 (files_max=0)
+    无文件位 → NULL。tag: 文件工具必带, 纯文本工具必不带。execution:
+    canonical supply 词表 local|http。Violation aborts startup regardless
+    of enabled/visibility — the catalog projection never guesses."""
     from governance.formats import parse_stored_accept
     from governance.tool_supply import _EXECUTIONS
     from repo.catalog import catalog_contract_rows
     with db() as con:
         rows = catalog_contract_rows(con)
     for r in rows:
-        try:
-            parse_stored_accept(r["accept_json"])  # SQL NULL = valid any
-        except (KeyError, TypeError, ValueError) as exc:
-            raise RuntimeError(
-                f"catalog invariant: tool {r['tool_key']} accept_json "
-                f"violates the stored contract ({exc})") from None
         if r["execution"] not in _EXECUTIONS:
             raise RuntimeError(
                 f"catalog invariant: tool {r['tool_key']} execution "
                 f"'{r['execution']}' outside the canonical vocabulary "
                 f"{_EXECUTIONS}")
+        text_only = int(r["files_max"]) == 0
+        if text_only and r["accept_json"] is not None:
+            raise RuntimeError(
+                f"catalog invariant: text-only tool {r['tool_key']} carries "
+                f"an accept list (no file slot)")
+        if not text_only and r["accept_json"] is None:
+            raise RuntimeError(
+                f"catalog invariant: file tool {r['tool_key']} has no accept "
+                f"list (single shape - no NULL=any sentinel)")
+        try:
+            parse_stored_accept(r["accept_json"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"catalog invariant: tool {r['tool_key']} accept_json "
+                f"violates the stored contract ({exc})") from None
 
 
 def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:

@@ -76,11 +76,8 @@ def _check_localized(value, max_len: int, required: bool) -> str | dict | None:
 
 
 def _normalize_accept(accept) -> Optional[list]:
-    """Stored accept contract, single shape pair:
-      None  → any platform-whitelisted format (explicit "any"; used by
-              current pass-through tools like share / zip_pack)
-      list  → non-empty canonical lowercase ext tokens ∈ VOCAB_EXTS,
-              normalized to a sorted unique list
+    """accept 单形状: 文件工具 = 非空 canonical ext 列表 (sorted unique);
+    None 仅在无文件位 (files_max=0) 合法 — 无 any 语义、无哨兵。
     Empty list / MIME token / unknown token / bare string → bad_accept."""
     from governance.formats import VOCAB_EXTS
     if accept is None:
@@ -133,6 +130,9 @@ def _normalize_inputs(inputs) -> dict:
         raise DeclarationError("bad_inputs")
     if mx == 0 and files.get("accept") is not None:
         raise DeclarationError("bad_inputs")
+    # 单形状不变量: 有文件位必有显式 accept (无 NULL=any 哨兵)
+    if mx > 0 and files.get("accept") is None:
+        raise DeclarationError("bad_accept")
     return {"files": {"min": mn, "max": mx,
                       "accept": _normalize_accept(files.get("accept"))}}
 

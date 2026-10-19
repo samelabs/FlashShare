@@ -399,7 +399,7 @@ tool_key = tools_cmd.create_http_tool(op["id"], {
     "tool_id": f"i2op{_u}"[:24].replace("-", ""), "label": "I2 Op Tool",
         "format_families": "image",
     "url": "https://op.example.com/api", "timeout_s": 30,
-    "accept": None, "files_min": 0, "files_max": 1,
+    "accept": [".png"], "files_min": 0, "files_max": 1,
     "outputs": ["text"], "params": good_params, "cost": 0})
 with db() as con:
     row = con.execute(
@@ -414,7 +414,7 @@ try:
         "tool_id": f"i2bad{_u}"[:24].replace("-", ""), "label": "Bad",
         "format_families": "image",
         "url": "https://op.example.com/api", "timeout_s": 30,
-        "accept": None, "files_min": 0, "files_max": 1,
+        "accept": [".png"], "files_min": 0, "files_max": 1,
         "outputs": ["text"],
         "params": [{"key": "x", "type": "nope"}], "cost": 0})
     check("P2 invalid params refused by the SAME validator", False)

@@ -289,6 +289,9 @@ async def create_http_tool(request: Request):
         return JSONResponse({"ok": False, "error": "bad_url"}, 422)
     if not (5 <= timeout_s <= 300):
         return JSONResponse({"ok": False, "error": "bad_timeout"}, 422)
+    # accept 单形状: 文件工具必带显式扩展名 (无 NULL=any 哨兵)
+    if files_max > 0 and not accept_raw:
+        return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
     accept = None
     if accept_raw:
         tokens = [x.strip() for x in accept_raw.split(",") if x.strip()]

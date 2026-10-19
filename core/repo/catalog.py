@@ -317,12 +317,12 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
 
 
 def catalog_contract_rows(con) -> list:
-    """全量 (tool_key, execution, accept_json) rows — 不过滤任何行
+    """全量 (tool_key, execution, accept_json, files_max) rows — 不过滤任何行
     (enabled/disabled、public/private/unlisted 全包含)。startup stored
-    contract invariant (accept + execution) 校验目标是全部存储行;
+    contract invariant (accept 单形状 + execution) 校验目标是全部存储行;
     解析/判定属于 governance 层。"""
     return con.execute(
-        "SELECT tool_key, execution, accept_json"
+        "SELECT tool_key, execution, accept_json, files_max"
         " FROM platform_tools").fetchall()
 
 

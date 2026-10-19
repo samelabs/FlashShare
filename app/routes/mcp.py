@@ -702,7 +702,12 @@ def _spec_summary(t: dict, names: dict | None = None) -> dict:
     else:
         files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
         if accept:
-            files_txt += f", formats: {', '.join(accept)}"
+            # 全边界摘要 (投影层, 存储仍是单形状全清单): 逐项铺 119 格式对 agent 是噪音
+            from governance.formats import VOCAB_EXTS as _vocab
+            if len(accept) >= len(_vocab):
+                files_txt += ", formats: all platform formats"
+            else:
+                files_txt += f", formats: {', '.join(accept)}"
     outs = ", ".join(t.get("outputs") or ["file"])
     desc = (resolve_label(t.get("desc"), "en") or title).rstrip(".")
     price = (f" Price: {int(t['cost'])} credits per call."

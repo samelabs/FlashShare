@@ -617,7 +617,7 @@ _SCHEMA_SQL = (
       desc_json      TEXT,                   -- 简介 {lang: str} | str (可空)
       sort_order     INT NOT NULL DEFAULT 0, -- 后台遴选排序 (首页/市场呈现序)
       featured       BOOLEAN NOT NULL DEFAULT FALSE, -- 推荐标记
-      accept_json    TEXT,                   -- JSON array or NULL = any
+      accept_json    TEXT,                   -- 非空 JSON 列表; NULL 仅 = 无文件位 (files_max=0)
       format_family  TEXT REFERENCES tags(key),
                                            -- 声明的 tag (作者表达 + 图标来源);
                                            -- 纯文本工具 (files_max=0) 不带

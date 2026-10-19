@@ -274,12 +274,11 @@ VOCAB_EXTS: frozenset[str] = frozenset().union(
 def extensions_for_accept(tokens) -> set[str] | None:
     """Stored-accept → canonical extension set (Tool Input Contract 单点).
 
-    Stored contract has exactly two shapes:
-      - None → any platform-whitelisted format (explicit "any" semantics;
-        used by current pass-through tools, e.g. share / zip_pack)
+    Stored contract 单形状:
       - non-empty list of canonical lowercase extension tokens → set(ext)
+      - None 仅 = 无文件位 (files_max=0 的纯文本工具), 无 any 语义
 
-    Everything else is INVALID — no second name for "any":
+    Everything else is INVALID — 无哨兵无第二形态:
       - [] (empty list) → ValueError
       - bare string (not a list) → TypeError
       - MIME token / unknown token / empty token → KeyError(token)
@@ -312,7 +311,7 @@ def parse_stored_accept(raw: str | None) -> set[str] | None:
     """THE single stored-accept parser (platform_tools.accept_json column).
 
     Exactly two physical shapes are valid:
-      SQL NULL           → None (explicit "any platform-whitelisted format")
+      SQL NULL           → None (= 无文件位, files_max=0 的纯文本工具)
       JSON text decoding to a NON-EMPTY list of canonical lowercase ext
                          → set(ext)
 

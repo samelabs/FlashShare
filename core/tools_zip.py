@@ -11,6 +11,8 @@ Architecture:
 
 import io
 import os
+
+from governance.formats import VOCAB_EXTS
 import zipfile
 
 from tools import out_filename, register, ToolError
@@ -106,8 +108,8 @@ register(
             "es": 'Agrupa varios archivos en un archivo ZIP.',
             "en": 'Pack multiple files into one ZIP archive.',
         },
-    tag="all",  # 吃一切 = all (accept 物化全边界见 S4)
-    accept=None,
+    tag="all",  # 吃一切 = all; accept 物化全边界 (单形状)
+    accept=set(VOCAB_EXTS),
     handler=zip_pack_handler,
     files_min=1, files_max=20,
 )

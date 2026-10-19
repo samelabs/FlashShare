@@ -179,6 +179,11 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 
 # ---- Registration ----
 
+from governance.formats import VOCAB_EXTS
+
+# share = 吃一切: accept 物化平台格式边界全清单 (单形状, 无 NULL=any 哨兵)
+_SHARE_ACCEPT = set(VOCAB_EXTS)
+
 # ── Default tool: Share (plain upload, no processing) ──
 # Registered first so it appears as the leftmost tool button.
 # When selected (or by default when no tool is selected), files upload
@@ -229,9 +234,9 @@ register(
                   'delivery 1 day / 50 downloads, adjustable via the '
                   'delivery object.',
         },
-    # share = all 类型的唯一内置工具 (accept 未声明 = 全部平台格式,
-    # 图标 cloud 由类型映射授予), 不声明 family
-    accept=None,  # accepts all formats
+    # share = all 类型内置工具: accept 物化平台格式边界全清单 (单形状,
+    # 无 NULL=any 哨兵); 图标 cloud 由 tag 查表授予
+    accept=_SHARE_ACCEPT,
     tag="all",  # 免费分享 = 全站上传基础能力
     handler=share_handler,
     files_min=1, files_max=20,

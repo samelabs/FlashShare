@@ -157,7 +157,7 @@ try:
         "execution": "local",
         "label": {"en": "T"},
         "format_family": "image",
-        "inputs": {"files": {"min": 0, "max": 20, "accept": None}},
+        "inputs": {"files": {"min": 0, "max": 20, "accept": [".png"]}},
         "outputs": ["text", "json"], "params": None,
         "visibility": "public", "enabled": True})
     check("D1 min=0 declaration valid",

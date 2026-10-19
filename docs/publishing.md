@@ -40,6 +40,7 @@ The declaration and execution contract for tools published on 518.PLUS.
 | `tool_id` / `tool_key` | 唯一身份，`^[a-z][a-z0-9_]{1,40}$` |
 | `execution` | 当前用户工具固定为 `http` |
 | `format_families` | **声明的 tag**（九键之一：image/document/data/text/audio/video/cad3d/archive/all），入库列 `format_family`；作用 = 前端图标表达 + 开发者自述，不约束不派生；accept 在所声明 tag 的格式分组里勾选（all 分组 = 平台格式边界）；纯文本工具不带 |
+| `accept` | **唯一执行契约，单形状**：文件工具必为非空 canonical 扩展名列表（在所选 tag 分组内勾选落库）；无 NULL=any 哨兵——"吃一切"的工具（如 share/zip_pack）物化全边界清单，展示层摘要为「全部格式」 |
 | `files_min` | 输入文件数下限，int ≥ 0（0 = 可不带文件调用）；缺省 1 |
 | `files_max` | 输入文件数上限，int 0..20；须 ≥ files_min；缺省 1。0 = 纯文本工具：无文件位，不带 format_families/accept，第一个 text 参数作为输入框 |
 | `outputs` | 产出类型非空子集 `["text","json","file"]`（声明工具可能返回哪些结果项）；缺省 `["file"]` |

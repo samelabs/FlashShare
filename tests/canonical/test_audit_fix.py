@@ -439,7 +439,7 @@ def _decl(**kw):
          "execution": "local",
          "label": {"en": "CF"}, "desc": None,
          "format_family": "image",
-         "inputs": {"files": {"min": 0, "max": 1, "accept": None}},
+         "inputs": {"files": {"min": 0, "max": 1, "accept": [".png"]}},
          "outputs": ["text"], "params": None, "visibility": "unlisted",
          "enabled": True}
     d.update(kw)
