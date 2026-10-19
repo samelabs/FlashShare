@@ -119,7 +119,7 @@ dev_ck_user = _u + "dev"
 uid, CK = _register(dev_ck_user)
 
 # ═══ A. publish gate: unlisted until the owner runs it once ═══
-tk = f"{dev_ck_user}/aaa"
+tk = f"{dev_ck_user}_aaa"
 st, _h, d = _publish(CK, "aaa", "Alpha Tool")
 check("A1 create accepted", st == 200 and d.get("ok"), f"{st} {d}")
 with db() as con:
@@ -159,7 +159,7 @@ check("A3b searchable on market + selector once public",
 st, _h, d = _publish(CK, "bbb", "Beta", {"visibility": "private"})
 with db() as con:
     row = con.execute("select visibility from platform_tools where"
-                      " tool_key=%s", (f"{dev_ck_user}/bbb",)).fetchone()
+                      " tool_key=%s", (f"{dev_ck_user}_bbb",)).fetchone()
 check("A5 explicit private honored", row["visibility"] == "private",
       str(row and dict(row)))
 
@@ -220,7 +220,7 @@ check("B7 developer enable/disable audited (actor=owner)",
       f"{st} {au}")
 
 # ═══ C. suspended provider leaves the market ═══
-tk3 = f"{dev_ck_user}/ccc"
+tk3 = f"{dev_ck_user}_ccc"
 _publish(CK, "ccc", "Gamma ZZZ")
 # publish gate: C/D need this tool PUBLIC — unlock with one successful
 # owner call (the A-section pattern), same as any real author would
@@ -264,7 +264,7 @@ with db() as con:
         "insert into tool_calls (client_ref, user_id, tool_id, status,"
         " cost_snapshot, started_at, finished_at, commission_rate_snapshot,"
         " invocation_hash) values (%s, %s, %s, 'ok', 0, %s, %s, 0, %s)",
-        (f"c2a-run4-{_u}", uid, f"{dev_ck_user}/ddd",
+        (f"c2a-run4-{_u}", uid, f"{dev_ck_user}_ddd",
          int(time.time()), int(time.time()), "c" * 64))
 _req("PATCH", "/api/usertools/ddd", {"visibility": "public"},
      {"Content-Type": "application/json", "Cookie": CK})
@@ -274,7 +274,7 @@ with db() as con:
 st, _h, d3 = _req("GET", "/api/tools/search?q=tool")
 ids3 = [t["id"] for t in (d3.get("tools") or [])]
 check("D3 featured tool ranks first (list ordering parity)",
-      ids3 and ids3[0] == tk and f"{dev_ck_user}/ddd" in ids3,
+      ids3 and ids3[0] == tk and f"{dev_ck_user}_ddd" in ids3,
       str(ids3[:5]))
 with db() as con:
     con.execute("update platform_tools set featured=false, desc_json=null"

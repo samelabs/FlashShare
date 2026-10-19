@@ -1020,9 +1020,9 @@ check("U11 guard 文案 = retired-field 语义 (非 filename-required/ext/MIME �
       and "Output extension not allowed" not in _i18n_src
       and "Invalid output type" not in _i18n_src)
 
-_cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}/%",))
-_cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}/%",))
-_cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))
+_cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}_%",))
+_cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}_%",))
+_cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}_%",))
 _cur.execute("delete from api_keys where user_id=%s", (_uid,))
 _cur.execute("delete from sessions where user_id=%s", (_uid,))
 purge_users(_cur, [_uid])

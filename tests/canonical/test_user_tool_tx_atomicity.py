@@ -102,7 +102,7 @@ for _ in range(100):
 # ── setup: one user + one tool on the in-process app ──
 _uname, cookie = new_user(_HOST2)
 _tool = "txtx" + uuid.uuid4().hex[:4]
-_tool_key = f"{_uname}/{_tool}"
+_tool_key = f"{_uname}_{_tool}"
 st, r = req("POST", "/api/usertools", {
     "tool_id": _tool, "label": {"en": "Tx Tool"}, "execution": "http",
     "url": "https://93.184.216.34/anything", "timeout_s": 30,
@@ -147,7 +147,7 @@ check("T3 DELETE → tool row deleted + pricing disabled",
 
 # ── 4. DELETE pricing write fail → tool row survives, pricing untouched ──
 _tool2 = "txdl" + uuid.uuid4().hex[:4]
-_tool2_key = f"{_uname}/{_tool2}"
+_tool2_key = f"{_uname}_{_tool2}"
 st, r = req("POST", "/api/usertools", {
     "tool_id": _tool2, "label": {"en": "Del Fail"}, "execution": "http",
     "url": "https://93.184.216.34/anything", "timeout_s": 30,

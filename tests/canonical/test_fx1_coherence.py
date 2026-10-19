@@ -259,7 +259,7 @@ try:
     # ═══ X2/X3: window read-back + half PATCH (real PATCH/GET) ═══
     from governance.tool_supply import create_tool
     create_tool({
-        "tool_key": f"{_u}a/{USER_TOOL}", "tool_id": USER_TOOL,
+        "tool_key": f"{_u}a_{USER_TOOL}", "tool_id": USER_TOOL,
         "owner_id": uid, "execution": "http",
         "label": {"en": "FX User Tool"},
         "format_family": "image",
@@ -272,7 +272,7 @@ try:
     with db() as con:
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 1, TRUE, %s)",
-                    (f"{_u}a/{USER_TOOL}", ts))
+                    (f"{_u}a_{USER_TOOL}", ts))
     st, _h, d_list, _sc = _req("GET", "/api/usertools", {}, {"Cookie": CK})
     entry = next((t for t in (d_list or {}).get("tools", [])
                   if t.get("tool_id") == USER_TOOL), None)
@@ -534,9 +534,8 @@ try:
     st, d = _mcp({"jsonrpc": "2.0", "id": 30, "method": "tools/list",
                   "params": {}}, TOK)
     _tools_l = {t["name"]: t for t in (d.get("result") or {}).get("tools", [])}
-    # MCP name projection: '/' → '__' (governance.catalog.mcp_names)
-    from governance.catalog import mcp_name as _mname
-    _spec = _tools_l.get(_mname(f"{_u}a/{USER_TOOL}")) or {}
+    # MCP 名 = tool_key 原文 (无投影)
+    _spec = _tools_l.get(f"{_u}a_{USER_TOOL}") or {}
     _schema = _spec.get("inputSchema") or {}
     # the fixture tool is 0..3 files → files optional; only params is
     # required at top level. Schema validity is driven per-tool.
@@ -552,7 +551,6 @@ try:
           f"top={_top_req} params={_preq}")
     try:
         import jsonschema as _jsv
-        from governance.catalog import mcp_names as _mname2
         _comp = _tools_l.get("compress") or {}
         _comp_schema = _comp.get("inputSchema") or {}
         _comp_ok = {"files": [{"filename": "a.png", "b64": A64}],

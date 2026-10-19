@@ -163,7 +163,7 @@ try:
     r_uid, r_ck, R_TOK = _register(_u + "usr")
     uids = [a_uid, r_uid]
     tid = "favtool"
-    key = f"{_u}dev/{tid}"
+    key = f"{_u}dev_{tid}"
     st, _h, d, _sc = _req("POST", "/api/usertools", {
         "tool_id": tid, "label": "Fav Tool", "url": "https://93.184.216.34/x",
         "timeout_s": 30, "files_min": 0, "files_max": 1,
@@ -172,7 +172,7 @@ try:
     with db() as con:
         con.execute("update platform_tools set visibility='public'"
                     " where tool_key=%s", (key,))
-    mname = key.replace("/", "__")
+    mname = key
     check("M0 setup: public community tool exists", st == 200, f"{st} {d}")
 
     # ═══ M: MCP master list + independent favorites ═══

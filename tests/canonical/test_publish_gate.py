@@ -166,7 +166,7 @@ reader_uid = None
 try:
     author_uid, a_ck, A_TOK = _register(_u + "dev")
     reader_uid, _rck, R_TOK = _register(_u + "reader")
-    tk = f"{_u}dev/gate1"
+    tk = f"{_u}dev_gate1"
 
     def _publish(cookie, tool_id, extra=None):
         body = {"tool_id": tool_id, "label": "Gate Tool",
@@ -190,7 +190,7 @@ try:
     st, _h, market, _sc = _req("GET", "/tools")
     check("G1c not on /tools", tk not in (market or ""))
     check("G1d not in a non-owner's MCP tools/list",
-          tk.replace("/", "__") not in _tools_list(R_TOK))
+          tk not in _tools_list(R_TOK))
     st, _h, page, _sc = _req("GET", f"/tool/{tk}", None,
                              {"Cookie": a_ck, "Accept": "text/html"})
     check("G1e author's own tool page renders with the gate hint",
@@ -228,7 +228,7 @@ try:
 
     # ═══ G4: another user's successful call does not unlock ══════════
     st, _h, _d, _sc = _set_url(LOCAL_URL)
-    st, d = _call(f"{_u}dev__gate1", {"client_ref": f"b9r-{_u}"}, R_TOK)
+    st, d = _call(tk, {"client_ref": f"b9r-{_u}"}, R_TOK)
     with db() as con:
         row = con.execute(
             "select status from tool_calls where tool_id=%s"
@@ -243,7 +243,7 @@ try:
 
     # ═══ G5: the author's failed call does not unlock ════════════════
     _set_url(LOCAL_FAIL_URL)
-    st, d = _call(f"{_u}dev__gate1", {"client_ref": f"b9f-{_u}"}, A_TOK)
+    st, d = _call(tk, {"client_ref": f"b9f-{_u}"}, A_TOK)
     with db() as con:
         row = con.execute(
             "select status from tool_calls where tool_id=%s"
@@ -258,7 +258,7 @@ try:
 
     # ═══ G6: the author's successful call unlocks ════════════════════
     _set_url(LOCAL_URL)
-    st, d = _call(f"{_u}dev__gate1", {"client_ref": f"b9o-{_u}"}, A_TOK)
+    st, d = _call(tk, {"client_ref": f"b9o-{_u}"}, A_TOK)
     check("G6a author's call succeeded", (d.get("result") or {})
           .get("isError") is False, str(d)[:100])
     st, _h, d, _sc = _patch_vis(a_ck, "gate1", "public")
@@ -266,11 +266,11 @@ try:
           st == 200 and (d or {}).get("ok"), f"{st} {d}")
     st, _h, market, _sc = _req("GET", "/tools?q=" + _u)
     check("G6c searchable on /tools", tk in (market or ""))
-    st, d = _call("pin_tool", {"name": tk.replace("/", "__")}, R_TOK)
+    st, d = _call("pin_tool", {"name": tk}, R_TOK)
     check("G6d a non-owner can pin it into their MCP tools/list",
           ((d.get("result") or {}).get("structuredContent") or {})
           .get("favorite") is True
-          and tk.replace("/", "__") in _tools_list(R_TOK), str(d)[:200])
+          and tk in _tools_list(R_TOK), str(d)[:200])
 
     # ═══ G7: un-publishing stays free ════════════════════════════════
     st, _h, d, _sc = _patch_vis(a_ck, "gate1", "unlisted")
@@ -286,7 +286,7 @@ finally:
     with db() as con:
         purge_users(con, uids)
         con.execute("delete from pricing where tool_id LIKE %s",
-                    (f"{_u}dev/%",))
+                    (f"{_u}dev_%",))
 
 print(f"\n{COUNT - len(FAIL)}/{COUNT} checks passed")
 _sys.exit(1 if FAIL else 0)

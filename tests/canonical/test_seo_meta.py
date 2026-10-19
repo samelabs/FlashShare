@@ -211,7 +211,7 @@ def main():
     # author page (public supply comes from the community fixture below)
     tid, created = _community_tool_fixture()
     check("fixture: community tool created", created)
-    pub_id = "seop" + _uuid.uuid4().hex[:5]
+    pub_id = f"{_u}_" + "seop" + _uuid.uuid4().hex[:5]  # key = username_toolid
     if created:
         from database import db
         from utils import now

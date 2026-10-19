@@ -573,7 +573,7 @@ check("CP4b no runtime reference to /samelabs/ledger",
 
 # ═══ CP5: Tool Supply facts ═══
 _T_LOCAL, _T_HTTP = tkey("local"), tkey("http")
-_T_PROV = f"{uname('prov')}/s4prov"      # provider key: owner/tool
+_T_PROV = f"{uname('prov')}_s4prov"      # provider key: owner/tool
 with db() as con:
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"

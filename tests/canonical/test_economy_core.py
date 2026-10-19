@@ -87,9 +87,9 @@ def _mktool(tk, owner, cost):
             (tk, cost, ts))
 
 # tools for each commission scenario
-tool_0 = f"{_u}o/kc0"     # cost 100 → provider 100 / platform 0
-tool_30 = f"{_u}o/kc30"   # cost 100 → provider 70 / platform 30
-tool_100 = f"{_u}o/kc100" # cost 100 → provider 0 / platform 100
+tool_0 = f"{_u}o_kc0"     # cost 100 → provider 100 / platform 0
+tool_30 = f"{_u}o_kc30"   # cost 100 → provider 70 / platform 30
+tool_100 = f"{_u}o_kc100" # cost 100 → provider 0 / platform 100
 tool_fp = f"{_u}fp"       # first-party cost 100 → platform 100
 for t, cost in ((tool_0, 100), (tool_30, 100), (tool_100, 100)):
     _mktool(t, owner_id, cost)
@@ -124,8 +124,8 @@ from governance.pricing import get_pricing
 miss = get_pricing(f"{_u}x/never")
 check("K1 missing pricing → enabled=False (fail closed)",
       miss["enabled"] is False, str(miss))
-_mktool(f"{_u}o/kcfree", owner_id, 0)
-free = get_pricing(f"{_u}o/kcfree")
+_mktool(f"{_u}o_kcfree", owner_id, 0)
+free = get_pricing(f"{_u}o_kcfree")
 check("K2 explicit free pricing row → enabled + cost 0",
       free["enabled"] is True and free["cost"] == 0, str(free))
 
@@ -134,7 +134,7 @@ from governance.pricing import create_tool_with_pricing
 from repo.catalog import by_tool_key as _bt
 _u2 = "ka" + _os.urandom(3).hex()
 decl = {
-    "tool_key": f"{_u2}o/atomic", "tool_id": "atomic",
+    "tool_key": f"{_u2}o_atomic", "tool_id": "atomic",
     "owner_id": owner_id, "execution": "http",
     "label": {"en": "AT"}, "desc": None,
     "format_family": "image",
@@ -517,12 +517,12 @@ r = client.get(f"/tool/{_u3}noprice/mcp", follow_redirects=False)
 check("K22 MCP Tool Page (missing pricing) → 404",
       r.status_code == 404, f"{r.status_code}")
 # (d) explicit free (cost=0, enabled) still renders normally
-_mktool(f"{_u3}o/freeok", owner_id, 0)
-row_fr, _e3 = _resolve(f"{_u3}o/freeok", None)
+_mktool(f"{_u3}o_freeok", owner_id, 0)
+row_fr, _e3 = _resolve(f"{_u3}o_freeok", None)
 item_fr = catalog_item(row_fr)
 check("K23 explicit free 工具页照常投影 (cost=0, enabled)",
       item_fr is not None and item_fr["cost"] == 0, str(item_fr))
-r = client.get(f"/tool/{_u3}o/freeok", follow_redirects=False)
+r = client.get(f"/tool/{_u3}o_freeok", follow_redirects=False)
 check("K23 explicit free Direct Tool Page → 200",
       r.status_code == 200, f"{r.status_code}")
 

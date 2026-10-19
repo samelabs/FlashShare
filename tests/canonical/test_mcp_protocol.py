@@ -201,7 +201,7 @@ check("V2 capabilities.tools.listChanged is false",
 # The same summary builder feeds tools/list and catalog_search.
 from app.routes.mcp import _spec_summary
 _label_base = {
-    "id": "labelprobe/demo", "files_min": 0, "files_max": 0,
+    "id": "labelprobe_demo", "files_min": 0, "files_max": 0,
     "outputs": ["text"], "cost": 0,
     "desc": {"zh": "整理文件"},
 }
@@ -209,13 +209,10 @@ for label, expected in (
     ("Plain Label", "Plain Label"),
     ({"zh": "工具名称"}, "工具名称"),
 ):
-    _summary = _spec_summary(
-        {**_label_base, "label": label},
-        {"labelprobe/demo": "labelprobe__demo"},
-    )
+    _summary = _spec_summary({**_label_base, "label": label})
     check(f"V3 MCP discovery title handles {type(label).__name__}",
           _summary["title"] == expected
-          and _summary["name"] == "labelprobe__demo"
+          and _summary["name"] == "labelprobe_demo"
           and "整理文件" in _summary["description"],
           _summary)
 
@@ -389,11 +386,11 @@ check("P5 two files to single-file tool → isError + window sentence",
       (d.get("result") or {}).get("isError") is True
       and "err_file_count" in _p5 and "1 to 1" in _p5, _p5[:110])
 
-# ══════════ 7. reversible tool names ('__' in usernames / tool ids) ══════════
+# ══════ 7. tool names = key 原文 (username_toolname, 无投影无撞名机器) ══════
 _ownA = _mkuser(f"{_u}o")            # owner 'mpXXXXXXo'
 _ownB = _mkuser(f"{_u}o__ab")        # owner 'mpXXXXXXo__ab'
-keyA = f"{_u}o/ab__tl"               # natural name mpXXXXXXo__ab__tl
-keyB = f"{_u}o__ab/tl"               # natural name mpXXXXXXo__ab__tl (collision)
+keyA = f"{_u}o_ab__tl"               # 与 keyB 字符串不同 — key 唯一索引即名单射
+keyB = f"{_u}o__ab_tl"
 def _mk_tool(key, owner, pkey):
     decl = [{"key": pkey, "type": "enum", "label": {"en": pkey},
              "options": [{"value": "v", "label": {"en": "v"}}], "required": True}]
@@ -404,26 +401,17 @@ def _mk_tool(key, owner, pkey):
             " visibility, enabled, params_json, endpoint_json, created_at, updated_at)"
             " values (%s, %s, %s, 'http', %s, %s, 'image',"
             " 'public', true, %s, %s, %s, %s)",
-            (key, owner, key.split("/")[-1], json.dumps({"en": key}),
+            (key, owner, key.rsplit("_", 1)[-1], json.dumps({"en": key}),
              json.dumps([".pdf"]), json.dumps(decl),
              json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 0, true, %s)", (key, ts))
 _mk_tool(keyA, _ownA, "alpha")
 _mk_tool(keyB, _ownB, "beta")
-from governance.catalog import mcp_names, tool_key_for_mcp_name
-_names = mcp_names()
-nameA, nameB = _names.get(keyA), _names.get(keyB)
-check("T1 colliding keys project to distinct names",
+nameA, nameB = keyA, keyB            # MCP 名 = key 原文
+check("T1 distinct keys carry distinct names (key uniqueness = name injectivity)",
       nameA and nameB and nameA != nameB, f"{nameA} {nameB}")
-check("T2 older row keeps the natural name",
-      nameA == keyA.replace("/", "__"), nameA)
-check("T3 names reverse to their exact keys",
-      tool_key_for_mcp_name(nameA) == keyA and tool_key_for_mcp_name(nameB) == keyB,
-      f"{tool_key_for_mcp_name(nameA)} {tool_key_for_mcp_name(nameB)}")
-check("T4 projection injective over the whole catalog",
-      len(set(_names.values())) == len(_names))
-check("T5 first-party names unchanged", _names.get("compress") == "compress")
+check("T2 name is the key verbatim", nameA == keyA and nameB == keyB)
 for _nm in (nameA, nameB):
     _call("pin_tool", {"name": _nm})
 _listed, _cur = [], None

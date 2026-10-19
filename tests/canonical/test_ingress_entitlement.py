@@ -713,7 +713,7 @@ from governance.catalog import resolve as _catalog_resolve
 def _seed_priced_tool(owner_id, tool_id, cost):
     import json as _jsonx
     ts = int(time.time())
-    tk = f"pf{owner_id}/{tool_id}"
+    tk = f"pf{owner_id}_{tool_id}"
     _cur.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution, label_json, visibility, enabled, params_json, endpoint_json, created_at, updated_at, accept_json, format_family)"
         " values (%s, %s, %s, 'http', %s, 'public', true, '[]', '{\"url\": \"https://example.org/x\", \"timeout_s\": 30}', %s, %s, '[\".png\"]', 'image')"

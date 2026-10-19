@@ -577,10 +577,10 @@ check("AUTH-H1 create auth_header=Host → 422 bad_auth_header",
       r.status_code == 422 and r.json().get("error") == "bad_auth_header",
       f"{r.status_code} {r.text[:80]}")
 _cur.execute("select count(*) from platform_tools where tool_key = %s",
-             (f"{_au}/sectoolh",))
+             (f"{_au}_sectoolh",))
 check("AUTH-H1 zero platform_tools write", _cur.fetchone()[0] == 0)
 _cur.execute("select count(*) from pricing where tool_id = %s",
-             (f"{_au}/sectoolh",))
+             (f"{_au}_sectoolh",))
 check("AUTH-H1 zero pricing write", _cur.fetchone()[0] == 0)
 secrets_vault._f = None
 
@@ -592,7 +592,7 @@ check("AUTH-H2 update auth_header=Content-Length → 422 bad_auth_header",
       r.status_code == 422 and r.json().get("error") == "bad_auth_header",
       f"{r.status_code} {r.text[:80]}")
 _cur.execute("select endpoint_json from platform_tools where tool_key = %s",
-             (f"{_au}/sectool2",))
+             (f"{_au}_sectool2",))
 row = _cur.fetchone()
 check("AUTH-H2 endpoint_json unchanged", row is not None and "sekrit" not in (row[0] or ""))
 
@@ -695,7 +695,7 @@ check("PORT-3 submission malformed port → 422 bad_url",
       r.status_code == 422 and r.json().get("error") == "bad_url",
       f"{r.status_code} {r.text[:80]}")
 _cur.execute("select count(*) from platform_tools where tool_key = %s",
-             (f"{_au}/sectoolp",))
+             (f"{_au}_sectoolp",))
 check("PORT-3 zero row written", _cur.fetchone()[0] == 0)
 
 #
@@ -724,13 +724,13 @@ r = client.post("/api/usertools", json={
 check("ROUTE user create + auth_token + no key → 503",
       r.status_code == 503 and r.json().get("error") == "credential_vault_unavailable",
       f"{r.status_code} {r.text[:80]}")
-_cur.execute("select count(*) from platform_tools where tool_key = %s", (f"{_au}/sectool1",))
+_cur.execute("select count(*) from platform_tools where tool_key = %s", (f"{_au}_sectool1",))
 check("ROUTE zero platform_tools row", _cur.fetchone()[0] == 0)
-_cur.execute("select count(*) from pricing where tool_id = %s", (f"{_au}/sectool1",))
+_cur.execute("select count(*) from pricing where tool_id = %s", (f"{_au}_sectool1",))
 check("ROUTE zero pricing row", _cur.fetchone()[0] == 0)
 
-_cur.execute("delete from pricing where tool_id = %s", (f"{_au}/sectool3",))
-_cur.execute("delete from platform_tools where tool_key = %s", (f"{_au}/sectool3",))
+_cur.execute("delete from pricing where tool_id = %s", (f"{_au}_sectool3",))
+_cur.execute("delete from platform_tools where tool_key = %s", (f"{_au}_sectool3",))
 r = client.post("/api/usertools", json={
     "tool_id": "sectool3", "label": "Sec3", "url": "https://pub.example/x",
     "format_families": "image", "accept": [".png"]},
@@ -744,7 +744,7 @@ r = client.patch("/api/usertools/sectool3", json={
 check("ROUTE user update + new auth_token + no key → 503",
       r.status_code == 503, f"{r.status_code} {r.text[:80]}")
 _cur.execute("select endpoint_json from platform_tools where tool_key = %s",
-             (f"{_au}/sectool3",))
+             (f"{_au}_sectool3",))
 row = _cur.fetchone()
 check("ROUTE endpoint_json unchanged",
       row is not None and "newsecret" not in (row[0] or ""), str(row)[:80])
@@ -754,6 +754,7 @@ _cur.execute("update users set status='samelabs' where id=%s", (uid2,))
 sess2 = create_browser_session(uid2)
 r = client.post("/samelabs/tools/create", json={
     "tool_id": "secop1", "url": "https://pub.example/y",
+    "format_families": "image", "accept": ".png",
     "auth_header": "X-Key", "auth_token": "opsecret"},
     cookies={COOKIE_NAME: sess2})
 check("ROUTE operator create + auth_token + no key → 503 (非409)",
@@ -942,12 +943,14 @@ check("OUT-5 merge kept canonical fields",
 # OUT-6: operator route rejects explicit legacy fields (typed 422)
 r = client.post("/samelabs/tools/create", json={
     "tool_id": "secopout", "url": "https://pub.example/o",
+    "format_families": "image", "accept": ".png",
     "output_filename": "x.png"}, cookies={COOKIE_NAME: sess2})
 check("OUT-6 operator create output_filename → 422 bad_output_filename",
       r.status_code == 422 and r.json().get("error") == "bad_output_filename",
       f"{r.status_code} {r.text[:80]}")
 r = client.post("/samelabs/tools/create", json={
     "tool_id": "secopout", "url": "https://pub.example/o",
+    "format_families": "image", "accept": ".png",
     "output_content_type": "image/png"}, cookies={COOKIE_NAME: sess2})
 check("OUT-6 operator create output_content_type → 422",
       r.status_code == 422 and r.json().get("error") == "bad_output_content_type",

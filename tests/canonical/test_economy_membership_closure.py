@@ -607,7 +607,7 @@ try:
         oname = con.execute("select username from users where id=%s",
                             (owner,)).fetchone()["username"]
     tid6 = f"t6{_u}"
-    tkey6 = f"{oname}/{tid6}"
+    tkey6 = f"{oname}_{tid6}"
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"

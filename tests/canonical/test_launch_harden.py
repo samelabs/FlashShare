@@ -317,7 +317,7 @@ try:
         {"Content-Type": "application/json", "Cookie": ck})
     check("H6a fixture: number-param tool created", _st == 200, (_st, _d))
     _nan_body = (f'{{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{{'
-                 f'"name":"{_u}a__numtool","arguments":{{"params":{{"n":NaN}},'
+                 f'"name":"{_u}a_numtool","arguments":{{"params":{{"n":NaN}},'
                  f'"client_ref":"lh6a-{_u}"}}}}}}').encode()
     _st30, _d30 = _mcp_raw(_nan_body, TOK)
     _t30 = (((_d30 or {}).get("result") or {}).get("structuredContent")

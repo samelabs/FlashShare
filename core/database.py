@@ -591,7 +591,7 @@ _SCHEMA_SQL = (
     # The runtime source of truth for the tool catalog. First-party tools are
     # seeded here at startup from register() declarations (code = creation
     # format, DB = runtime truth). Remote (http) execution and namespaced
-    # user tools (owner/tool_id) are current data rows —
+    # user tools (key = username_toolid) are current data rows —
     # resolve() is execution-class-agnostic and origin-agnostic.
     # trusted: operator-adoption flag. User rows default FALSE (SSRF guard
     # enforces https + public IPs); TRUE only via /samelabs (institutional

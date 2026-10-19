@@ -650,7 +650,7 @@ _g9u = _mkuser(_u + "g9u")
 _uids.append(_g9u)
 _g9_sess = create_browser_session(_g9u)
 _tid = f"g9_{_u}"
-_key = f"{_u}g9u/{_tid}"
+_key = f"{_u}g9u_{_tid}"
 r = client.post("/api/usertools", json={
     "tool_id": _tid, "label": "G9", "url": "https://93.184.216.34/x",
     "timeout_s": 30, "files_min": 0, "files_max": 1,
@@ -744,7 +744,7 @@ _g13o = _mkuser(_u + "g13o")
 _uids.append(_g13o)
 _g13_sess = create_browser_session(_g13o)
 _tid13 = f"g13_{_u}"
-_key13 = f"{_u}g13o/{_tid13}"
+_key13 = f"{_u}g13o_{_tid13}"
 r = client.post("/api/usertools", json={
     "tool_id": _tid13, "label": "AX Thirdparty", "desc": "community probe",
     "url": "https://93.184.216.34/x", "timeout_s": 30,
@@ -758,7 +758,7 @@ with db() as con:
 r = client.post("/api/keys", json={"name": "ax"},
                 cookies={COOKIE_NAME: _g13_sess})
 _tok13 = r.json()["key"]["key"]
-mname13 = _key13.replace("/", "__")
+mname13 = _key13  # 名 = key 原文
 
 def _mcp(body, token):
     r = client.post("/mcp", json=body, headers={

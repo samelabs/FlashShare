@@ -253,7 +253,7 @@ _hook_port = _hook_srv.server_address[1]
 _th.Thread(target=_hook_srv.serve_forever, daemon=True).start()
 
 _tid = f"authclr{_u}"
-_tkey = f"{_uname}/{_tid}"
+_tkey = f"{_uname}_{_tid}"
 _secret = "ph-secret-" + _os.urandom(4).hex()
 st, d, _sc = _req("POST", "/api/usertools", {
     "tool_id": _tid, "label": "PH AuthClear", "url": "https://93.184.216.34/x",
@@ -295,7 +295,7 @@ with db() as con:
     con.execute("update platform_tools set trusted=TRUE, endpoint_json=%s"
                 " where tool_key=%s", (_json.dumps(_decl2), _tkey))
 
-_mcp_name = _tkey.replace("/", "__")
+_mcp_name = _tkey  # 名 = key 原文
 
 
 def _call_hook(ref):

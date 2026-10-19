@@ -1,7 +1,7 @@
 """User-submitted tools (C2C supply side, phase 3).
 
 Self-service manifest submission: a user registers their OWN http
-endpoint as a namespaced tool (`{username}/{tool_id}`). No human gate —
+endpoint as a namespaced tool (key = `username_toolid`). No human gate —
 visibility is an owner-set field. The platform thesis: new capabilities
 enter as DATA rows.
 
@@ -328,7 +328,7 @@ async def create_user_tool(request: Request):
     # user policy → canonical declaration → tool_supply 单点 (阶段 B)
     from repo.catalog import tool_key_exists, count_by_owner, lock_user_row
     from governance.tool_supply import create_tool, build_http_binding, DeclarationError
-    tool_key = f"{user['username']}/{tool_id}"
+    tool_key = f"{user['username']}_{tool_id}"
     label = fields["label"]
     declaration = {
         "tool_key": tool_key,
@@ -380,7 +380,7 @@ async def tool_call_log(tool_id: str, request: Request):
         return err
     from repo.catalog import owner_row_by_key
     from repo.ledger import calls_by_tool_excluding_owner
-    tool_key = f"{user['username']}/{tool_id}"
+    tool_key = f"{user['username']}_{tool_id}"
     with db() as con:
         row = owner_row_by_key(con, tool_key, user["id"])
         if not row:
@@ -442,7 +442,7 @@ async def update_user_tool(tool_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "bad_edit_locale"}, 422)
 
     from repo.catalog import owner_row_for_update
-    tool_key = f"{user['username']}/{tool_id}"
+    tool_key = f"{user['username']}_{tool_id}"
     # Snapshot + declaration + pricing mutations share ONE transaction:
     # the row lock keeps the snapshot the mutation actually applies to.
     # (declaration update 与 pricing 同 commit / 同 rollback。)
@@ -662,7 +662,7 @@ async def delete_user_tool(tool_id: str, request: Request):
     if err:
         return err
     from repo.catalog import owner_row_for_update, delete_tool_row
-    tool_key = f"{user['username']}/{tool_id}"
+    tool_key = f"{user['username']}_{tool_id}"
     # Tool row deletion and pricing disable share ONE transaction —
     # a pricing write failure rolls the deletion back with it.
     with db() as con:

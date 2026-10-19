@@ -142,7 +142,7 @@ admin = 1
 from economy.billing import grant as _grant
 _grant(caller, 100000, "grant_package", note="s3 fixture")
 
-T3, T1P = f"{_u}o/s3third", f"s3first{_u}"   # third-party owner ns; first-party bare id
+T3, T1P = f"{_u}o_s3third", f"s3first{_u}"   # third-party owner ns; first-party bare id
 def _mktool(tk, own, cost):
     with db() as con:
         con.execute(

@@ -164,7 +164,7 @@ try:
     a_uid, a_ck, A_TOK = _register(_u + "dev")
     uids = [a_uid]
     label = f"Listing {_u}"
-    key = f"{_u}dev/lstool"
+    key = f"{_u}dev_lstool"
     st, _h, d, _sc = _usertool(a_ck, {
         "tool_id": "lstool", "label": label, "url": "https://93.184.216.34/x",
         "timeout_s": 30, "files_min": 1, "files_max": 1,
@@ -245,7 +245,7 @@ try:
         "cost": 0})
     check("T2 accept with files_max 0 → bad_accept",
           st == 422 and (d or {}).get("error") == "bad_accept", f"{st} {d}")
-    spec = _names(A_TOK).get(f"{_u}dev__lstxt") or {}
+    spec = _names(A_TOK).get(f"{_u}dev_lstxt") or {}
     props = (spec.get("inputSchema") or {}).get("properties") or {}
     check("T3 MCP spec has no files argument",
           spec and "files" not in props and "params" in props, spec)

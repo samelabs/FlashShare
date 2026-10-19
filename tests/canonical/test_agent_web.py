@@ -160,16 +160,15 @@ try:
     check("L5 share link semantics + billing documented",
           "?download=1" in body and "1000 credits = 1 USD" in body, None)
     # catalog parity: llms.txt lists the recommended (featured) tools
-    from governance.catalog import search_catalog, mcp_names
+    from governance.catalog import search_catalog
     from tools import load_all as _load_all
     _load_all()
     from governance.llms_txt import LLMS_TOOLS_MAX
     from governance.tool_params import resolve_label
-    _names = mcp_names()
     _pub = search_catalog("", limit=LLMS_TOOLS_MAX)
     parity = True
     for t in _pub:
-        nm = _names.get(t["id"], t["id"].replace("/", "__"))
+        nm = t["id"]  # MCP 名 = key 原文
         line = f"- {nm}: "
         if line not in body:
             parity = False
@@ -198,9 +197,8 @@ try:
     catalog_block = body.split("## Recommended tools")[1].split("(server:")[0]
     llms_names = {ln[2:].split(":")[0] for ln in catalog_block.splitlines()
                   if ln.startswith("- ")}
-    expect_names = {_names.get(t["id"], t["id"].replace("/", "__"))
-                    for t in _pub}
-    first_party = {n for n in expect_names if "__" not in n}
+    expect_names = {t["id"] for t in _pub}  # MCP 名 = key 原文
+    first_party = {n for n in expect_names if "_" not in n}
     check("L7 llms.txt tool names == recommended catalog names",
           llms_names == expect_names
           and first_party <= listed,

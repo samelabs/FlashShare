@@ -122,7 +122,7 @@ prov, PROV_CK = _register(prov_name)
 caller_name = _u + "caller"
 caller, CALLER_CK = _register(caller_name)
 
-TOOL = f"{prov_name}/paytool"
+TOOL = f"{prov_name}_paytool"
 AUTH_TOKEN_SECRET = "sk-c2b-secret-token-value"
 
 # one provider tool (metered, params, auth) + one official local row

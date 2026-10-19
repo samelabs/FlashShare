@@ -169,7 +169,7 @@ from execution.results import (MAX_RESULT_ITEMS,  # noqa: E402
                                MAX_INLINE_RESULT_BYTES)
 from governance.access_projection import project  # noqa: E402
 from governance.entitlements import resolve_from_membership  # noqa: E402
-from governance.catalog import mcp_names, tool_key_for_mcp_name  # noqa: E402
+# (MCP 名 = key 原文: 投影机已退役)
 
 a_uid = r_uid = None
 try:
@@ -182,10 +182,10 @@ try:
                                 (_u + "usr",)).fetchone()["id"])
 
     # ══════════ S: search single point ══════════
-    key_multi = f"{_u}dev/multialpha"
-    key_one = f"{_u}dev/onlyalpha"
-    key_pct = f"{_u}dev/pcthalf"
-    key_und = f"{_u}dev/underscore"
+    key_multi = f"{_u}dev_multialpha"
+    key_one = f"{_u}dev_onlyalpha"
+    key_pct = f"{_u}dev_pcthalf"
+    key_und = f"{_u}dev_underscore"
     st, _h, d, _sc = _publish(a_ck, "multialpha",
                               {"label": "Multi Alpha Beta"})
     st, _h, d, _sc = _publish(a_ck, "onlyalpha", {"label": "Alpha only"})
@@ -239,8 +239,7 @@ try:
     st, d = _mcp({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
                   "params": {"name": "catalog_search",
                              "arguments": {"q": q}}}, R_TOK)
-    mcp_keys = [tool_key_for_mcp_name(t.get("name"))
-                for t in _sc_tools(d)]
+    mcp_keys = [t.get("name") for t in _sc_tools(d)]  # 名 = key 原文
     check("S7 api/tools/search == /tools market order (first page)",
           api_ids == seen[:len(api_ids)], f"{api_ids} vs {seen}")
     check("S8 MCP catalog_search == api/tools/search order",
@@ -261,8 +260,7 @@ try:
     st, d = _mcp({"jsonrpc": "2.0", "id": 6, "method": "tools/call",
                   "params": {"name": "catalog_search",
                              "arguments": {"q": ""}}}, R_TOK)
-    mcp_browse = [tool_key_for_mcp_name(t.get("name"))
-                  for t in _sc_tools(d)]
+    mcp_browse = [t.get("name") for t in _sc_tools(d)]
     # 2026-10 contract: the MCP empty query enumerates the FULL public
     # catalog (featured first) — a superset of the web featured browse;
     # the web browse stays curated.
@@ -271,7 +269,7 @@ try:
           f"{mcp_browse[:5]} vs {browse[:5]}")
 
     # ══════════ M: catalog_search returns callable specs ══════════
-    key_call = f"{_u}dev/callme"
+    key_call = f"{_u}dev_callme"
     st, _h, d, _sc = _publish(a_ck, "callme", {
         "label": "Callable Now",
         "params": [{"key": "mode", "type": "enum",
@@ -427,7 +425,7 @@ finally:
     with db() as con:
         purge_users(con, uids)
         con.execute("delete from pricing where tool_id LIKE %s",
-                    (f"{_u}dev/%",))
+                    (f"{_u}dev_%",))
 
 print(f"\n{COUNT - len(FAIL)}/{COUNT} checks passed")
 _sys.exit(1 if FAIL else 0)
