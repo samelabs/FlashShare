@@ -1146,25 +1146,16 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             except ValueError:
                 _bad = True
         if _bad:
-            # Input contract violation → isError tool result (never a
-            # JSON-RPC protocol error); legal values come from the one
-            # delivery authority, never re-copied.
-            return _meta_result(mid, {
-                "ok": False, "error": "invalid_delivery",
-                "legal_values": {
-                    "expiry_days": list(EXPIRY_DAYS),
-                    "allowed_downloads": list(DOWNLOAD_LIMITS)},
-                "message": (
-                    "delivery must be an object with optional integer "
-                    f"fields expiry_days (one of {list(EXPIRY_DAYS)}) "
-                    "and allowed_downloads (one of "
-                    f"{list(DOWNLOAD_LIMITS)})."),
-            }, text=(
-                "Error invalid_delivery: delivery must be an object with"
-                f" optional integer fields expiry_days (one of {list(EXPIRY_DAYS)})"
-                " and allowed_downloads (one of"
-                f" {list(DOWNLOAD_LIMITS)})."),
-                isError=True)
+            # Frozen adapter contract: defaults fill MISSING values only;
+            # an explicitly illegal value is a protocol-level invalid
+            # params error (-32602), never an isError tool result.
+            # Legal values come from the one delivery authority.
+            return _rpc_err(
+                mid, -32602,
+                "invalid delivery: must be an object with optional "
+                f"integer fields expiry_days (one of {list(EXPIRY_DAYS)}) "
+                "and allowed_downloads (one of "
+                f"{list(DOWNLOAD_LIMITS)})")
         # entitlement denial (valid values, above the plan tier) keeps
         # the existing structured denial → isError path below via
         # _preflight; nothing to do here.
