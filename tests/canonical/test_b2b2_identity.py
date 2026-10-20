@@ -179,7 +179,7 @@ check("S4b even the owner cannot resolve while suspended",
 # direct invocation through the REAL dispatch preflight (no claim/charge)
 from execution.dispatch import preflight
 payer = _mkuser(_u + "payer")
-tool, declared, err_body, err_status = preflight(
+tool, declared, _canon_body, err_body, err_status = preflight(
     {"id": payer["id"]}, tool_a,
     {"expiry_days": 7, "allowed_downloads": 10}, {})
 check("S5 dispatch preflight refuses before any charge",
