@@ -38,12 +38,12 @@ SELECT tool_key FROM platform_tools WHERE tool_key LIKE '%/%';
 SELECT user_id FROM tool_favorites WHERE tool_key LIKE '%/%';
 SELECT tool_id FROM pricing WHERE tool_id LIKE '%/%';
 SELECT id FROM tool_calls WHERE tool_id LIKE '%/%';
--- accept 单形状违反 (排除内置: share/zip_pack 由新代码首启 seed
--- 物化为全清单, 部署前它们合法地是 NULL — 这是本预检的判定口径)
+-- accept 单形状违反 (排除 share/zip_pack — ③ 将物化的清单, 不阻断;
+-- 其余内置的 NULL 也属 seed 待落, 同理不阻断此预检)
 SELECT tool_key FROM platform_tools
  WHERE files_max > 0 AND accept_json IS NULL
-   AND tool_key NOT IN ('share', 'zip_pack', 'demo_shout',
-     'beautify', 'compress', 'crop_white', 'ico', 'img2pdf', 'pdf_merge');
+   AND tool_key NOT IN ('share', 'zip_pack')
+   AND owner_id IS NOT NULL;
 SELECT tool_key FROM platform_tools WHERE files_max = 0 AND accept_json IS NOT NULL;
 ```
 
@@ -52,14 +52,11 @@ SELECT tool_key FROM platform_tools WHERE files_max = 0 AND accept_json IS NOT N
 ```sql
 -- ① 加列（幂等）
 ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS format_family TEXT;
-
--- ② 内置回填（v1.5 库上 share/zip_pack 即在; 其余内置由新代码 seed 落 tag）
-UPDATE platform_tools SET format_family = 'all'
- WHERE tool_key IN ('share', 'zip_pack') AND files_max > 0;
 ```
 
 ```bash
-# ③ 社区/运营回填（部署侧脚本, 在旧代码仍在跑的库上执行亦可 — 只写新列）
+# ③ 全量回填（内置 + 社区 + 运营; 在旧代码仍在跑的库上执行亦可 — 只写新列）
+# 内置 share/zip_pack (accept=NULL → 物化全边界+all) 与社区/运营行一并处理
 cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python - <<'PY'
 import json, sys
 from database import db
@@ -107,12 +104,17 @@ SELECT tool_key FROM platform_tools
 内置 tag；`validate_catalog_rows` 启动校验全部行）。
 
 ```sql
--- ④ 补 FK（首启之后; 幂等 — 先查后加）
-SELECT count(*) FROM pg_constraint
- WHERE conname = 'platform_tools_format_family_fkey';   -- 0 才执行下一条
-ALTER TABLE platform_tools
-  ADD CONSTRAINT platform_tools_format_family_fkey
-  FOREIGN KEY (format_family) REFERENCES tags(key);
+-- ④ 补 FK（首启之后; DO 块幂等 — 重复执行不报错）
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'platform_tools_format_family_fkey') THEN
+    ALTER TABLE platform_tools
+      ADD CONSTRAINT platform_tools_format_family_fkey
+      FOREIGN KEY (format_family) REFERENCES tags(key);
+  END IF;
+END $$;
 ```
 
 ```sql
