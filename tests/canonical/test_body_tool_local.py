@@ -49,8 +49,13 @@ from database import db  # noqa: E402
 
 
 def _req(method, path, body=None, headers=None):
-    conn = _hc.HTTPConnection(*_HOST, timeout=30)
-    payload = json.dumps(body) if body is not None else None
+    conn = _hc.HTTPConnection(*_HOST, timeout=60)
+    if body is None:
+        payload = None
+    elif isinstance(body, bytes):
+        payload = body
+    else:
+        payload = json.dumps(body).encode()
     conn.request(method, path, payload, headers or {})
     r = conn.getresponse()
     raw = r.read()
@@ -61,14 +66,22 @@ def _req(method, path, body=None, headers=None):
         return r.status, {}
 
 
+def _form(fields):
+    out = b""
+    for k, v in fields.items():
+        out += (f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n'
+                f'\r\n{v}\r\n').encode()
+    return out + b"--B--\r\n", "multipart/form-data; boundary=B"
+
+
 def _register_login(name):
-    _req("POST", "/auth/register",
-         {"username": name, "password": "Test12345",
-          "password_confirm": "Test12345", "email": f"{name}@t.co"},
-         {"Content-Type": "application/json"})
+    b, ct = _form({"username": name, "password": "Test12345",
+                   "password_confirm": "Test12345",
+                   "email": f"{name}@t.co"})
+    _req("POST", "/auth/register", b, {"Content-Type": ct})
+    b, ct = _form({"login": name, "password": "Test12345"})
     conn = _hc.HTTPConnection(*_HOST, timeout=30)
-    b = json.dumps({"login": name, "password": "Test12345"})
-    conn.request("POST", "/auth/login", b, {"Content-Type": "application/json"})
+    conn.request("POST", "/auth/login", b, {"Content-Type": ct})
     r = conn.getresponse(); r.read()
     ck = (r.getheader("Set-Cookie") or "").split(";")[0]
     conn.close()
@@ -153,7 +166,7 @@ check("A6 PATCH switch body→file clears body columns",
       and row["accept_json"] is not None and row["format_family"] == "image",
       f"{st} {str(dict(row)) if row else ''}")
 st, r = _req("PATCH", f"/api/usertools/{key}",
-             {"files_max": 0, "body_format": "text"},
+             {"files_min": 0, "files_max": 0, "body_format": "text"},
              {"Content-Type": "application/json", "Cookie": ck})
 with db() as con:
     row = con.execute(
