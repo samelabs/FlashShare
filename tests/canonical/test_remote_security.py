@@ -111,7 +111,9 @@ class _RespDouble:
         base = dict(self.ITEMS_CT)
         base.update({k.lower(): v for k, v in (headers or {}).items()})
         self._h = base
-    def read(self, n=-1): return self._body
+    def read(self, n=-1):
+        # 尊重读取上限 (与真实 resp.read(n) 同语义 — 截断断言依赖它)
+        return self._body if n < 0 else self._body[:n]
     def getheader(self, k): return self._h.get(k.lower())
     def getheaders(self): return list(self._h.items())
 
@@ -1134,6 +1136,78 @@ _proj = _owner_rows(uid2)
 check("OUT-7 owner projection has no output_filename/output_content_type",
       all("output_filename" not in p and "output_content_type" not in p
           for p in _proj), [sorted(p) for p in _proj][:1])
+
+# ═══ F1: 非 2xx 大错误体 — 截断读取, 不因 Content-Length 中止 ═══
+# 提供者 500 且 Content-Length 20KB: pinned 传输读前 4097 字节并携带
+# status 返回 (错误详情素材), 不抛 too_large; drive_http 把它组装成
+# http_status 错误 (orchestrator 再映射为平台 502 + detail)。
+_err20k = b"E" * 20480
+rec = _install_stack(
+    resolve_map={"errbig.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(500, _err20k,
+                             headers={"content-length": "20480"})])
+status, data, _ct, _cd = remote.pinned_request(
+    "https://errbig.example/f", timeout_s=5)
+check("F1 non-2xx 20KB CL → status carried, body truncated at 4096",
+      status == 500 and len(data) == 4097 and data[:64] == b"E" * 64,
+      (status, len(data)))
+_restore_stack()
+rec = _install_stack(
+    resolve_map={"errbig.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(500, _err20k,
+                             headers={"content-length": "20480"})])
+try:
+    remote.drive_http({"url": "https://errbig.example/f", "timeout_s": 5},
+                      [], {}, {}, False)
+    check("F1 provider 500 → http_status with status + first 4096 bytes",
+          False, "accepted")
+except RemoteError as exc:
+    check("F1 provider 500 → http_status with status + first 4096 bytes",
+          exc.code == "http_status"
+          and exc.detail.startswith("500 ")
+          and len(exc.detail) == len("500 ") + 4096
+          and set(exc.detail[len("500 "):]) == {"E"},
+          (exc.code, len(exc.detail)))
+finally:
+    _restore_stack()
+
+# ═══ F3: parse_response_items — +json 媒体类型与 text charset ═══
+_items = remote.parse_response_items(
+    200, b'{"type":"about:blank","title":"nope"}',
+    "application/problem+json", None, None)
+check("F3 application/problem+json → single json item",
+      len(_items) == 1 and _items[0]["kind"] == "json"
+      and _items[0]["data"]["title"] == "nope", str(_items)[:100])
+_items = remote.parse_response_items(
+    200, b'[1,2,3]', "application/ld+json; charset=utf-8", None, None)
+check("F3 application/ld+json → single json item (array root)",
+      len(_items) == 1 and _items[0]["kind"] == "json"
+      and _items[0]["data"] == [1, 2, 3], str(_items)[:100])
+_items = remote.parse_response_items(
+    200, "中文正文".encode("gbk"), "text/plain; charset=gbk", None, None)
+check("F3 text charset param honoured (gbk decode)",
+      len(_items) == 1 and _items[0]["kind"] == "text"
+      and _items[0]["text"] == "中文正文", str(_items)[:100])
+_items = remote.parse_response_items(
+    200, "plain default".encode("utf-8"), "text/plain", None, None)
+check("F3 text without charset defaults to UTF-8",
+      len(_items) == 1 and _items[0]["text"] == "plain default", str(_items)[:80])
+try:
+    remote.parse_response_items(
+        200, "中文正文".encode("gbk"), "text/plain; charset=utf-8", None, None)
+    check("F3 undecodable text (gbk bytes as utf-8) → invalid_response",
+          False, "accepted")
+except RemoteError as exc:
+    check("F3 undecodable text (gbk bytes as utf-8) → invalid_response",
+          exc.code == "invalid_response", exc.code)
+try:
+    remote.parse_response_items(
+        200, b"x", "text/plain; charset=no-such-charset", None, None)
+    check("F3 unknown charset name → invalid_response", False, "accepted")
+except RemoteError as exc:
+    check("F3 unknown charset name → invalid_response",
+          exc.code == "invalid_response", exc.code)
+
 
 # 清场
 # uid2 被升为 samelabs operator 并驱动过 /samelabs/tools/create → 留下

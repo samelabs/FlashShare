@@ -203,7 +203,9 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
                 stored_ph = json.loads(row["body_placeholder_json"]) \
                     if row.get("body_placeholder_json") else None
             except (TypeError, ValueError):
-                stored_ph = None
+                # 存储契约破损: 禁止 except→None 兜底 (会把破损行静默
+                # 改写成"无 placeholder"); 直接报错, 不写库。
+                return None, "tool_unavailable"
             try:
                 fields["body_placeholder"] = _check_body_placeholder(stored_ph)
             except _DErr:
@@ -340,7 +342,9 @@ async def create_user_tool(request: Request):
 
     fields, ferr = _validate_submission(raw)
     if ferr:
-        return JSONResponse({"ok": False, "error": ferr}, 422)
+        # tool_unavailable = 存储契约破损 (503), 其余为声明校验 422
+        return JSONResponse({"ok": False, "error": ferr},
+                            503 if ferr == "tool_unavailable" else 422)
 
     # SSRF pre-check (typed failure at submission time)
     from remote import guard_endpoint, RemoteError
@@ -503,7 +507,9 @@ async def update_user_tool(tool_key: str, request: Request):
                                         trusted_ok=bool(row["trusted"]),
                                         edit_locale=edit_locale, row=row)
         if ferr:
-            return JSONResponse({"ok": False, "error": ferr}, 422)
+            # tool_unavailable = 存储契约破损 (503), 其余为声明校验 422
+            return JSONResponse({"ok": False, "error": ferr},
+                                503 if ferr == "tool_unavailable" else 422)
 
         existing_decl = {}
         try:
@@ -616,7 +622,9 @@ async def update_user_tool(tool_key: str, request: Request):
                         old_ph = json.loads(row["body_placeholder_json"]) \
                             if row.get("body_placeholder_json") else None
                     except (TypeError, ValueError):
-                        old_ph = None
+                        # 存储契约破损 — 直接报错, 禁止兜底成 None
+                        return JSONResponse(
+                            {"ok": False, "error": "tool_unavailable"}, 503)
                     new_ph = fields["body_placeholder"]
                     old_dict = old_ph if isinstance(old_ph, dict) else (
                         {edit_locale: old_ph}
@@ -724,8 +732,10 @@ async def update_user_tool(tool_key: str, request: Request):
             if edit_locale and decl:
                 try:
                     old_decl = json.loads(row["params_json"] or "[]")
-                except Exception:
-                    old_decl = []
+                except (TypeError, ValueError):
+                    # 存储契约破损 — 直接报错, 禁止兜底成 []
+                    return JSONResponse(
+                        {"ok": False, "error": "tool_unavailable"}, 503)
                 decl = merge_params_decl(old_decl, decl, edit_locale)
             sets["params"] = decl or None
         # 阶段 B: canonical patch → tool_supply 单点序列化/写库
@@ -743,7 +753,9 @@ async def update_user_tool(tool_key: str, request: Request):
                     try:
                         _final_params = json.loads(row["params_json"] or "[]")
                     except (TypeError, ValueError):
-                        _final_params = []
+                        # 存储契约破损 — 直接报错, 禁止兜底成 []
+                        return JSONResponse(
+                            {"ok": False, "error": "tool_unavailable"}, 503)
                 if _final_params:
                     from remote import endpoint_param_query_conflict
                     if endpoint_param_query_conflict(

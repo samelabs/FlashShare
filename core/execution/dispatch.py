@@ -81,17 +81,25 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict,
     if tool_body_format:
         if body is BODY_ABSENT:
             return None, None, None, {"ok": False,
-                                      "error": "invalid_request"}, 422
+                                      "error": "err_input_mode"}, 422
         from governance.body import validate_body_value, BodyValueError
         try:
             canonical_body = validate_body_value(tool_body_format, body)
         except BodyValueError as exc:
             return None, None, None, {"ok": False,
                                       "error": str(exc)}, 422
+        # 正文工具的 params 南向编码为查询参数 — 值只允许标量
+        # (str / number / bool); dict / list / None 无法编码, claim
+        # 之前 422 (带 field)。
+        for k, v in (params or {}).items():
+            if not isinstance(v, (str, int, float)):
+                return None, None, None, {"ok": False,
+                                          "error": "param_invalid",
+                                          "field": str(k)}, 422
     else:
         if body is not BODY_ABSENT:
             return None, None, None, {"ok": False,
-                                      "error": "invalid_request"}, 422
+                                      "error": "err_input_mode"}, 422
         canonical_body = None
 
     # Stored-contract validation BEFORE the metering gate, via THE

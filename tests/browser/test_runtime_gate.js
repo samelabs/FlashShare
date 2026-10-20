@@ -1563,6 +1563,49 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
           keys.runs === 1 && keys.newline, JSON.stringify(keys));
         await page.close();
       }
+
+      // F8: execution errors show the provider `detail` via textContent —
+      // real process-flow chain (real runToolFlow + showToolError), with
+      // the execute fetch intercepted to answer a typed failure whose
+      // detail carries inert HTML markup.
+      {
+        const page = await ctx.newPage();
+        await page.route("**/api/tools/execute", (route) => route.fulfill({
+          status: 200, contentType: "application/json",
+          body: JSON.stringify({
+            ok: false, error: "err_endpoint_failed",
+            detail: "provider 500 said boom <img src=x onerror=\"window.__pwn=1\">",
+          }),
+        }));
+        await gotoReady(page, "/", ".composer");
+        await page.evaluate(() => {
+          const host = document.createElement("div");
+          host.id = "errProbe";
+          document.getElementById("toolInput").after(host);
+          window.__pwn = undefined;
+          window.ToolInput.mount(host, { tool: {
+            id: "probe/errbody", label: "ErrProbe", files_min: 0,
+            files_max: 0, body_format: "text", params: [],
+          } });
+        });
+        await page.fill("#errProbe .ti-chat-text", "trigger failure");
+        await page.click("#errProbe .ti-run");
+        await page.waitForTimeout(400);
+        const err = await page.evaluate(() => {
+          const note = document.querySelector("#result .result-card .error-note");
+          return {
+            text: note ? note.textContent : "",
+            pwn: window.__pwn,
+            hasImg: note ? !!note.querySelector("img") : null,
+          };
+        });
+        check("error card shows the provider detail (textContent)",
+          /boom/.test(err.text) && err.text.indexOf("provider 500") !== -1,
+          JSON.stringify(err));
+        check("error detail markup stays inert (no img element, no script run)",
+          err.pwn === undefined && err.hasImg === false, JSON.stringify(err));
+        await page.close();
+      }
       await ctx.close();
     }
 

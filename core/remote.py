@@ -262,18 +262,24 @@ def _pinned_request(url: str, method: str, body: bytes | None,
             try:
                 conn.request(method, path, body=body, headers=hop_headers)
                 resp = conn.getresponse()
-                read_cap = MAX_ERROR_DETAIL_BYTES \
-                    if not (200 <= resp.status < 300) else (
-                        max_bytes if max_bytes is not None else MAX_OUTPUT_BYTES)
-                cl = resp.getheader("Content-Length")
-                if cl is not None:
-                    try:
-                        if int(cl) > read_cap:
-                            raise RemoteError(
-                                "too_large",
-                                f"content-length {cl} over {read_cap}")
-                    except ValueError:
-                        pass  # malformed CL — the read cap still guards
+                if 200 <= resp.status < 300:
+                    read_cap = (max_bytes if max_bytes is not None
+                                else MAX_OUTPUT_BYTES)
+                    cl = resp.getheader("Content-Length")
+                    if cl is not None:
+                        try:
+                            if int(cl) > read_cap:
+                                raise RemoteError(
+                                    "too_large",
+                                    f"content-length {cl} over {read_cap}")
+                        except ValueError:
+                            pass  # malformed CL — the read cap still guards
+                else:
+                    # error-detail material: a big error page is truncated,
+                    # never aborted — the caller reports status + first
+                    # MAX_ERROR_DETAIL_BYTES bytes (same cap as the trusted
+                    # path's error-body read).
+                    read_cap = MAX_ERROR_DETAIL_BYTES
                 data = resp.read(read_cap + 1)
                 return (resp.status, data, resp.getheader("Location"),
                         resp.getheader("Content-Type"),
@@ -601,13 +607,32 @@ def _filename_from_content_disposition(cd: str | None) -> str | None:
     return None
 
 
+def _charset_of(ctype: str | None) -> str:
+    """Content-Type 参数里的 charset (带引号形态容忍); 未指定 = UTF-8。"""
+    for part in (ctype or "").split(";")[1:]:
+        part = part.strip()
+        if part.lower().startswith("charset="):
+            value = part[len("charset="):].strip().strip('"')
+            if value:
+                return value
+    return "utf-8"
+
+
+def _is_json_media_type(base: str) -> bool:
+    """application/json 及一切 application/*+json (问题报告、超媒体、
+    自定义词汇) 都是结构化 JSON — 按单 json 项解释; 信封专属
+    Content-Type 除外 (调用方先判)。"""
+    return base == "application/json" or (
+        base.startswith("application/") and base.endswith("+json"))
+
+
 def parse_response_items(status: int, body: bytes, resp_ctype: str | None,
                          resp_cd: str | None, url_fetch) -> list:
     """按响应 Content-Type 解释南向响应 (两种工具同一规则):
 
       application/vnd.518.items+json → items 信封 (parse_endpoint_items)
-      application/json               → 一个 json 项
-      text/*                         → 一个 text 项
+      application/json 及 application/*+json → 一个 json 项
+      text/*  (按 charset 参数解码, 缺省 UTF-8) → 一个 text 项
       其余                            → 一个文件项 (Content-Disposition
                                        文件名 > 嗅探扩展名; 识别不出
                                        判失败)
@@ -625,7 +650,7 @@ def parse_response_items(status: int, body: bytes, resp_ctype: str | None,
             raise RemoteError("invalid_response",
                               "items envelope is not JSON") from exc
         return parse_endpoint_items(out, url_fetch)
-    if base == "application/json":
+    if _is_json_media_type(base):
         try:
             data = json.loads(body)
         except Exception as exc:
@@ -636,11 +661,13 @@ def parse_response_items(status: int, body: bytes, resp_ctype: str | None,
             raise RemoteError("invalid_response", "inline payload too large")
         return [{"kind": "json", "data": data}]
     if base.startswith("text/"):
+        charset = _charset_of(resp_ctype)
         try:
-            text = body.decode("utf-8")
-        except UnicodeDecodeError as exc:
+            text = body.decode(charset)
+        except (UnicodeDecodeError, LookupError) as exc:
             raise RemoteError("invalid_response",
-                              "text response is not UTF-8") from exc
+                              f"text response is not decodable"
+                              f" ({charset})") from exc
         if len(text.encode("utf-8")) > MAX_INLINE_RESULT_BYTES:
             raise RemoteError("invalid_response", "inline payload too large")
         return [{"kind": "text", "text": text}]

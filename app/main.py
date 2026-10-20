@@ -155,8 +155,9 @@ def get_user_from_request(request: Request):
     machine surfaces (it would bypass the /mcp key scope checks)."""
     from database import db
     path = request.url.path
-    machine_surface = path == "/mcp" or path.startswith("/mcp/") \
-        or path.startswith("/v1")
+    mcp_surface = path == "/mcp" or path.startswith("/mcp/")
+    machine_surface = mcp_surface \
+        or path == "/v1" or path.startswith("/v1/")
     if not machine_surface:
         token = request.cookies.get(COOKIE_NAME)
         if token:
@@ -176,7 +177,11 @@ def get_user_from_request(request: Request):
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip()
         if token.startswith("fsot_"):
-            # OAuth access token (consent-granted, resource-bound)
+            # OAuth access token (consent-granted, resource-bound): a
+            # /mcp-surface credential ONLY — the /v1 API is key (fsk_)
+            # only, an fsot_ there authenticates nothing.
+            if not mcp_surface:
+                return None
             from identity.oauth_provider import (
                 MCP_RESOURCE, authenticate_access_token)
             identity = authenticate_access_token(

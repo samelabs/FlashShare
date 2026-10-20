@@ -69,7 +69,10 @@ def validate_body_value(body_format: str, value) -> str:
 
     text: 返回原字符串; json: 返回 canonical_json 结果。"""
     if body_format == "text":
-        if not isinstance(value, str) or not value:
+        if not isinstance(value, str):
+            # 类型错位是非法取值, 不是缺失 — 两个码语义分开
+            raise BodyValueError("err_body_invalid")
+        if not value:
             raise BodyValueError("err_body_required")
         if len(value) > BODY_MAX_CHARS:
             raise BodyValueError("err_body_too_long")

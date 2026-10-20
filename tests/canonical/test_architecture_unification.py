@@ -707,7 +707,8 @@ check("C38 validate_catalog_rows 消费 repo.catalog.catalog_contract_rows",
       and "catalog_contract_rows(con)" in _val38.group(0))
 check("C38 startup invariant 校验 execution ∈ canonical supply vocabulary",
       _val38 is not None
-      and "from governance.tool_supply import _EXECUTIONS" in _val38.group(0)
+      and "from governance.tool_supply import" in _val38.group(0)
+      and "_EXECUTIONS" in _val38.group(0)
       and 'r["execution"] not in _EXECUTIONS' in _val38.group(0))
 _disp58 = open(_os2.path.join(_REPO, "core", "execution", "dispatch.py"),
                encoding="utf-8").read()

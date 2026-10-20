@@ -177,6 +177,26 @@ check("A7 PATCH switch file→body clears file columns",
       and row["accept_json"] is None and row["format_family"] is None,
       f"{st} {str(dict(row)) if row else ''}")
 
+# F4: update_tool PATCH 终态防御 — 对正文工具只带 body_format:None 的
+# PATCH 会留下 files_max=0 + body_format NULL 的互斥违例终态; 单点在
+# 写库前拒绝, 库内无变化 (route 层的输入方式切换组装不触发此路径 —
+# 这是 supply 单点的防御层)。
+from governance.tool_supply import update_tool, DeclarationError
+_f4 = False
+try:
+    update_tool(key, {"body_format": None})
+except DeclarationError as exc:
+    _f4 = str(exc) == "bad_body_format"
+except Exception as exc:  # noqa: BLE001
+    _f4 = f"unexpected {type(exc).__name__}: {exc}"
+with db() as con:
+    row = con.execute(
+        "select files_max, body_format from platform_tools where tool_key=%s",
+        (key,)).fetchone()
+check("F4 inconsistent final state (files 0..0, body_format NULL) → rejected, row unchanged",
+      _f4 is True and row["files_max"] == 0 and row["body_format"] == "text",
+      f"{_f4} {dict(row) if row else ''}")
+
 # ═══ B. invocation-level contract through the app ═══
 def _exec(source, ref):
     return _req("POST", "/api/tools/execute", {
@@ -188,8 +208,8 @@ def _exec(source, ref):
         {"Content-Type": "application/json", "Cookie": ck})
 
 st, r = _exec({"body": "hello"}, f"bt-filetool-body-{_u}")
-check("B1 body source to a file tool → 422 invalid_request",
-      st == 422 and r.get("error") == "invalid_request", f"{st} {str(r)[:70]}")
+check("B1 body source to a file tool → 422 err_input_mode",
+      st == 422 and r.get("error") == "err_input_mode", f"{st} {str(r)[:70]}")
 
 def _exec_body(tool, source, ref):
     return _req("POST", "/api/tools/execute", {
@@ -201,8 +221,29 @@ def _exec_body(tool, source, ref):
         {"Content-Type": "application/json", "Cookie": ck})
 
 st, r = _exec_body(key, {"files": []}, f"bt-emptyfiles-{_u}")
-check("B2 files[] source to a body tool → 422 invalid_request",
-      st == 422 and r.get("error") == "invalid_request", f"{st} {str(r)[:70]}")
+check("B2 files[] source to a body tool → 422 err_input_mode",
+      st == 422 and r.get("error") == "err_input_mode", f"{st} {str(r)[:70]}")
+
+def _exec_body_params(params, ref):
+    return _req("POST", "/api/tools/execute", {
+        "tool_id": key,
+        "source": {"body": "x"},
+        "params": params,
+        "delivery": {"expiry_days": 1, "allowed_downloads": 50},
+        "client_ref": ref},
+        {"Content-Type": "application/json", "Cookie": ck})
+
+st, r = _exec_body_params({"opt": {"a": 1}}, f"bt-pdict-{_u}")
+check("B2b body tool param dict value → 422 param_invalid (field)",
+      st == 422 and r.get("error") == "param_invalid"
+      and r.get("field") == "opt", f"{st} {str(r)[:80]}")
+st, r = _exec_body_params({"opt": None}, f"bt-pnull-{_u}")
+check("B2c body tool param null value → 422 param_invalid (field)",
+      st == 422 and r.get("error") == "param_invalid"
+      and r.get("field") == "opt", f"{st} {str(r)[:80]}")
+st, r = _exec_body_params({"opt": [1, 2]}, f"bt-plist-{_u}")
+check("B2d body tool param list value → 422 param_invalid (field)",
+      st == 422 and r.get("error") == "param_invalid", f"{st} {str(r)[:80]}")
 st, r = _exec_body(key, {"body": ""}, f"bt-emptybody-{_u}")
 check("B3 empty text body → 422 err_body_required",
       st == 422 and r.get("error") == "err_body_required", f"{st} {str(r)[:70]}")
@@ -262,6 +303,16 @@ check("C7 body vs files fingerprint differ",
       invocation_fingerprint(_mkbody("abc", "text"))
       != invocation_fingerprint(ToolInvocation(
           "x", [], {}, {"expiry_days": 1, "allowed_downloads": 50}, "r")))
+
+# F5: canonical_body_payload 严格化 — body_format 未注入即抛错, 不按
+# 值形态推断、无 repr 兜底 (调用方契约缺口必须显性失败)。
+from execution.invocation import canonical_body_payload
+try:
+    canonical_body_payload(_mkbody("abc", None))
+    check("F5 canonical_body_payload without body_format raises", False,
+          "accepted")
+except RuntimeError:
+    check("F5 canonical_body_payload without body_format raises", True)
 
 # ═══ D. real worker subprocess: temp body tool via load_all ═══
 _tag = _os.urandom(4).hex()

@@ -24,19 +24,30 @@
   // and its real format. Same-family admission already fixed the
   // renamable cases upstream, so no rename suggestion remains. Falls
   // back to the unified error boundary for every other payload (or
-  // when i18n is absent).
+  // when i18n is absent). Execution failures may additionally carry a
+  // provider `detail` (server-truncated) — appended verbatim; the
+  // rendering layer must show it via textContent, never innerHTML.
   function payloadErrText(data) {
     const code = data && typeof data === "object" ? data.error : null;
+    let text;
     if (code && typeof data.filename === "string" && window.t
         && String(code).indexOf("err_content_mismatch") === 0) {
       if (data.detected) {
-        return window.t("err_content_mismatch_named", {
+        text = window.t("err_content_mismatch_named", {
           name: data.filename, ext: data.detected,
         });
+      } else {
+        text = window.t("err_content_mismatch_named_unknown", { name: data.filename });
       }
-      return window.t("err_content_mismatch_named_unknown", { name: data.filename });
+    } else {
+      text = errText(code);
     }
-    return errText(code);
+    const detail = data && typeof data === "object"
+        && typeof data.detail === "string" ? data.detail.trim() : "";
+    if (detail) {
+      text = text + " · " + detail.slice(0, 4096);
+    }
+    return text;
   }
 
   // ── Logical operation state (module-private) ──

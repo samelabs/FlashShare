@@ -117,7 +117,8 @@ def validate_catalog_rows() -> None:
     canonical supply 词表 local|http。Violation aborts startup regardless
     of enabled/visibility — the catalog projection never guesses."""
     from governance.formats import parse_stored_accept
-    from governance.tool_supply import _EXECUTIONS
+    from governance.tool_supply import (_EXECUTIONS,
+                                        input_mode_violation)
     from repo.catalog import catalog_contract_rows
     with db() as con:
         rows = catalog_contract_rows(con)
@@ -127,47 +128,20 @@ def validate_catalog_rows() -> None:
                 f"catalog invariant: tool {r['tool_key']} execution "
                 f"'{r['execution']}' outside the canonical vocabulary "
                 f"{_EXECUTIONS}")
-        body_tool = int(r["files_max"]) == 0
-        if body_tool and r["accept_json"] is not None:
-            raise RuntimeError(
-                f"catalog invariant: body tool {r['tool_key']} carries "
-                f"an accept list (no file slot)")
-        if not body_tool and r["accept_json"] is None:
-            raise RuntimeError(
-                f"catalog invariant: file tool {r['tool_key']} has no accept "
-                f"list (single shape - no NULL=any sentinel)")
+        # 输入方式列互斥/搭配: 与 update_tool PATCH 终态校验共用同一
+        # 判定函数 (supply 单点), 启动级语义 = RuntimeError。
+        _code, _desc = input_mode_violation(
+            r["tool_key"], r["files_max"], r["accept_json"],
+            r["format_family"], r["body_format"],
+            r["body_placeholder_json"])
+        if _code:
+            raise RuntimeError(f"catalog invariant: {_desc}")
         try:
             parse_stored_accept(r["accept_json"])
         except (KeyError, TypeError, ValueError) as exc:
             raise RuntimeError(
                 f"catalog invariant: tool {r['tool_key']} accept_json "
                 f"violates the stored contract ({exc})") from None
-        # tag 不变量: 文件工具必带; 正文工具必不带
-        # (与供给点同口径 — 启动即拦, 不等请求期 tool_glyph KeyError 500)
-        tag = r["format_family"]
-        if body_tool and tag is not None:
-            raise RuntimeError(
-                f"catalog invariant: body tool {r['tool_key']} "
-                f"carries a tag (no file slot)")
-        if not body_tool and tag is None:
-            raise RuntimeError(
-                f"catalog invariant: file tool {r['tool_key']} has no tag")
-        # 输入方式互斥: body_format / body_placeholder_json
-        bf = r["body_format"]
-        if body_tool:
-            if bf not in ("text", "json"):
-                raise RuntimeError(
-                    f"catalog invariant: body tool {r['tool_key']} has no "
-                    f"body_format ('text'|'json' required)")
-        else:
-            if bf is not None:
-                raise RuntimeError(
-                    f"catalog invariant: file tool {r['tool_key']} carries "
-                    f"body_format (no body input)")
-            if r["body_placeholder_json"] is not None:
-                raise RuntimeError(
-                    f"catalog invariant: file tool {r['tool_key']} carries "
-                    f"body_placeholder (no body input)")
 
 
 def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:

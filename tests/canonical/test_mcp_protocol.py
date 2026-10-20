@@ -602,7 +602,106 @@ check("R7 same ref + different reference → conflict sentence, zero new call",
       and "idempotency_conflict" in _r7 and _calls_n(uid) == c0,
       _r7[:120])
 
-# ══════════ 11. setup pages ══════════
+# ══════════ 11. F6: body-tool adapter error layering ══════════
+# 正文工具的输入方式/口径违规是调用方参数错误: preflight 的 err_input_mode
+# 只有这一个码翻译成 "invalid input mode"; err_body_* 同为 -32602。
+# 工具行 = trusted http 正文工具 (owner NULL, endpoint 不可达也无妨 —
+# 全部用例在 preflight 期拒绝, 零网络零扣费)。
+_btkey = f"mpbody{_os.urandom(4).hex()}"
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " body_format, files_min, files_max, outputs_json, endpoint_json,"
+        " created_at, updated_at)"
+        " values (%s, NULL, %s, 'http', %s, 'public', TRUE, NULL, NULL,"
+        " 'text', 0, 0, '[\"text\"]', %s, %s, %s)",
+        (_btkey, _btkey, json.dumps({"en": "MP Body Probe"}),
+         json.dumps({"url": "http://127.0.0.1:1/never", "timeout_s": 5}),
+         ts, ts))
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 0, TRUE, %s)", (_btkey, ts))
+
+def _ipn(name, args, mid=10):
+    return asyncio.run(_M._call_tool(_Req(), {"id": uid}, mid,
+                                     {"name": name, "arguments": args}))
+
+try:
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 99, "method": "tools/list"})
+    _bt_spec = next((t for t in ((d.get("result") or {}).get("tools") or [])
+                     if t.get("name") == _btkey), {})
+    _bt_props = (_bt_spec.get("inputSchema") or {}).get("properties") or {}
+    _bt_req = (_bt_spec.get("inputSchema") or {}).get("required") or []
+    check("F6a body tool inputSchema exposes input (string), no files",
+          _bt_props.get("input", {}).get("type") == "string"
+          and "files" not in _bt_props
+          and "input" in _bt_req and "client_ref" in _bt_req,
+          str(_bt_spec)[:140])
+    r = _ipn(_btkey, {"client_ref": f"f6b-{_u}"})  # input MISSING
+    check("F6b body tool without input → -32602 invalid input mode",
+          (r.get("error") or {}).get("code") == -32602
+          and "invalid input mode" in r["error"].get("message", ""),
+          str(r)[:130])
+    r = _ipn(_btkey, {"client_ref": f"f6c-{_u}", "input": ""})
+    check("F6c empty text input → -32602 err_body_required",
+          (r.get("error") or {}).get("code") == -32602
+          and "err_body_required" in r["error"].get("message", ""),
+          str(r)[:130])
+    r = _ipn(_btkey, {"client_ref": f"f6d-{_u}", "input": "x" * 100001})
+    check("F6d text input over 100k → -32602 err_body_too_long",
+          (r.get("error") or {}).get("code") == -32602
+          and "err_body_too_long" in r["error"].get("message", ""),
+          str(r)[:130])
+    r = _ipn(_btkey, {"client_ref": f"f6e-{_u}", "input": 123})
+    check("F6e non-string text input → -32602 err_body_invalid",
+          (r.get("error") or {}).get("code") == -32602
+          and "err_body_invalid" in r["error"].get("message", ""),
+          str(r)[:130])
+    r = _ipn("compress", {"client_ref": f"f6f-{_u}", "input": "x"})
+    check("F6f input on a file tool → -32602 invalid input mode",
+          (r.get("error") or {}).get("code") == -32602
+          and "invalid input mode" in r["error"].get("message", "")
+          and "files[]" in r["error"].get("message", ""),
+          str(r)[:130])
+finally:
+    with db() as con:
+        con.execute("delete from pricing where tool_id=%s", (_btkey,))
+        con.execute("delete from platform_tools where tool_key=%s", (_btkey,))
+
+# ══════════ 12. F7: machine-surface auth scoping (unit) ══════════
+# /v1 精确前缀 (path == /v1 or /v1/...); fsot_ 只在 /mcp 解析;
+# /v1 上 fsot_ + 有效 cookie 一律不认证。
+import types as _types
+from config import COOKIE_NAME as _CK
+from app import main as _appmain
+
+class _AuthReq:
+    def __init__(self, path, headers=None, cookies=None):
+        self.url = _types.SimpleNamespace(path=path)
+        self.headers = {k.lower(): v for k, v in (headers or {}).items()}
+        self.cookies = dict(cookies or {})
+        self.state = _types.SimpleNamespace()
+
+_u1 = _appmain.get_user_from_request(_AuthReq(
+    "/v1/tools", headers={"authorization": "Bearer fsot_not-a-token"},
+    cookies={_CK: ck.split("=", 1)[1]}))
+check("F7a /v1 + fsot_ + valid session cookie → NOT authenticated",
+      _u1 is None, str(_u1)[:80])
+_r2 = _AuthReq("/v1/tools", headers={"authorization": f"Bearer {TOKEN}"})
+_u2 = _appmain.get_user_from_request(_r2)
+check("F7b /v1 + valid fsk_ key → authenticated (auth_via token)",
+      _u2 is not None and _u2["id"] == uid
+      and getattr(_r2.state, "auth_via", None) == "token",
+      f"{_u2 and _u2.get('id')} {getattr(_r2.state, 'auth_via', None)}")
+_u3 = _appmain.get_user_from_request(_AuthReq(
+    "/v1page", cookies={_CK: ck.split("=", 1)[1]}))
+check("F7c /v1page is NOT a machine surface (prefix tightened) → session works",
+      _u3 is not None and _u3["id"] == uid, str(_u3)[:80])
+_u4 = _appmain.get_user_from_request(_AuthReq("/v1"))
+check("F7d exact /v1 without credentials → anonymous", _u4 is None)
+
+# ══════════ 13. setup pages ══════════
 st, _h, html_en = _req("GET", "/agents?lang=en")
 st2, _h, html_ja = _req("GET", "/agents?lang=ja")
 st3, _h, html_tm = _req("GET", "/tool/compress/mcp?lang=en")

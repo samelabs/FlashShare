@@ -1234,14 +1234,22 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         if _pbody.get("error") == "tool_not_found":
             return _rpc_err(mid, -32602, f"unknown tool: {name}")
         # a mode mismatch (files vs input) is protocol-level: the schema
-        # never declared the argument the caller sent
-        if _pbody.get("error") == "invalid_request":
+        # never declared the argument the caller sent. ONLY this code
+        # translates to "invalid input mode"; plain invalid_request keeps
+        # its generic isError path below.
+        if _pbody.get("error") == "err_input_mode":
             sent_input = "input" in args
             return _rpc_err(
                 mid, -32602,
                 "invalid input mode: this tool takes "
                 + ("files[] (`files`)" if sent_input
                    else "a body input (`input`)"))
+        # body 口径违规 (缺失/超长/非法) 同为调用方参数错误 — 协议级
+        # -32602, 不是工具执行失败 (isError)。
+        if _pbody.get("error") in ("err_body_required", "err_body_too_long",
+                                   "err_body_invalid"):
+            return _rpc_err(
+                mid, -32602, f"invalid input: {_pbody['error']}")
         return _tool_result_error(mid, _pbody, client_ref, tool)
     # input-mode argument discipline (frozen rule: explicitly present but
     # not declared → -32602): body tools never declare files[], file tools

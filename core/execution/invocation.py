@@ -165,18 +165,16 @@ def parse_tool_invocation(raw) -> ToolInvocation:
 
 def canonical_body_payload(invocation: ToolInvocation) -> str:
     """正文取值的规范串 (指纹身份)。text = 原字符串; json = 规范序列化。
-    dispatch 在 preflight 后注入 body_format; 未注入 (纯 parser 单测)
-    时按值形态兜底 — 同一工具口径恒定, 不影响线上判定。"""
-    from governance.body import canonical_json, BodyValueError
-    value = invocation.body
-    if invocation.body_format == "text" or (
-            invocation.body_format is None and isinstance(value, str)):
-        return str(value)
-    try:
-        return canonical_json(value)
-    except BodyValueError:
-        # 未过 preflight 的非规范值 (仅可达于单测直调): 确定性回落
-        return repr(value)
+    dispatch 在 preflight 后注入 body_format — 未注入即调用方契约缺口,
+    直接抛错 (禁止按值形态推断兜底: 推断出来的口径不属于这条调用链)。"""
+    from governance.body import canonical_json
+    if invocation.body_format == "text":
+        return str(invocation.body)
+    if invocation.body_format == "json":
+        return canonical_json(invocation.body)
+    raise RuntimeError(
+        "canonical_body_payload: body_format not injected"
+        f" (tool {invocation.tool_id!r})")
 
 
 def invocation_fingerprint(invocation: ToolInvocation) -> str:

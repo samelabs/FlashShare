@@ -273,6 +273,49 @@ def validate_tool_declaration(decl: dict) -> dict:
     }
 
 
+def input_mode_violation(tool_key: str, files_max, accept_json,
+                         format_family, body_format,
+                         body_placeholder_json):
+    """输入方式列互斥判定 (存储行形状, 单点): files_max / accept / tag /
+    body 两列的搭配不变量。
+
+    两个消费方共用本判定: update_tool 的 PATCH 终态校验 (→
+    DeclarationError) 与启动 validate_catalog_rows (→ RuntimeError) —
+    同一规则, 两级语义。返回 (error_code, description) 或 (None, None)。
+    """
+    body_tool = int(files_max) == 0
+    if body_tool and accept_json is not None:
+        return ("bad_accept",
+                f"body tool {tool_key} carries an accept list "
+                f"(no file slot)")
+    if not body_tool and accept_json is None:
+        return ("bad_accept",
+                f"file tool {tool_key} has no accept list "
+                f"(single shape - no NULL=any sentinel)")
+    if body_tool and format_family is not None:
+        return ("bad_format_family",
+                f"body tool {tool_key} carries a tag (no file slot)")
+    if not body_tool and format_family is None:
+        return ("bad_format_family",
+                f"file tool {tool_key} has no tag")
+    if body_tool:
+        from governance.body import BODY_FORMATS
+        if body_format not in BODY_FORMATS:
+            return ("bad_body_format",
+                    f"body tool {tool_key} has no body_format "
+                    f"('text'|'json' required)")
+    else:
+        if body_format is not None:
+            return ("bad_body_format",
+                    f"file tool {tool_key} carries body_format "
+                    f"(no body input)")
+        if body_placeholder_json is not None:
+            return ("bad_body_placeholder",
+                    f"file tool {tool_key} carries body_placeholder "
+                    f"(no body input)")
+    return None, None
+
+
 def validate_tool_patch(patch: dict) -> dict:
     """update patch 字段级 canonical 校验/归一化 (规则复用 full
     declaration 的 field validators, 不复制第二份 contract 表)。
@@ -470,6 +513,12 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
     LocalizedText locale patch / params locale merge 等由 source
     adapter 先算完 final canonical value。DB 列序列化/updated_at 单点。
 
+    PATCH 终态防御 (单事务): 写库前在同一事务内读出当前行, 与本次
+    sets 合并出终态, 用 input_mode_violation (与启动 validate_catalog_rows
+    同一判定) 校验输入方式列 — 违反抛 DeclarationError, 不写库。
+    只出现一侧键的 PATCH (如 files_max→0 而不带 body_format) 由这里
+    兜住, 不再依赖 source adapter 自觉清列。
+
     con 未传: 自开事务; con 已传: 参与 caller 事务 (declaration 与
     pricing 等同一次用户操作的商业 mutation 必须同一事务提交/回滚)。
     """
@@ -512,11 +561,30 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
     if not sets:
         return
     sets["updated_at"] = now()
+
+    def _apply(cn):
+        from repo.catalog import tool_contract_row
+        row = tool_contract_row(cn, tool_key)
+        if row is not None:
+            code, _desc = input_mode_violation(
+                tool_key,
+                files_max=sets.get("files_max", row["files_max"]),
+                accept_json=sets.get("accept_json", row["accept_json"]),
+                format_family=sets.get("format_family",
+                                       row["format_family"]),
+                body_format=sets.get("body_format", row["body_format"]),
+                body_placeholder_json=sets.get(
+                    "body_placeholder_json",
+                    row["body_placeholder_json"]))
+            if code:
+                raise DeclarationError(code)
+        update_tool_row(cn, tool_key, sets)
+
     if con is not None:
-        update_tool_row(con, tool_key, sets)
+        _apply(con)
         return
     with _db() as own:
-        update_tool_row(own, tool_key, sets)
+        _apply(own)
 
 
 def upsert_seed_tool(decl: dict) -> bool:
