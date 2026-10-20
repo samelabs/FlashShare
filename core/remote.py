@@ -607,6 +607,13 @@ def _filename_from_content_disposition(cd: str | None) -> str | None:
     return None
 
 
+def _reject_json_constant(name):
+    """json.loads parse_constant: NaN / Infinity / -Infinity are NOT
+    legal JSON — a provider sending them is an invalid response (fail +
+    refund), never silently parsed into float('nan')."""
+    raise ValueError(f"non-finite JSON constant: {name}")
+
+
 def _charset_of(ctype: str | None) -> str:
     """Content-Type 参数里的 charset (带引号形态容忍); 未指定 = UTF-8。"""
     for part in (ctype or "").split(";")[1:]:
@@ -645,14 +652,14 @@ def parse_response_items(status: int, body: bytes, resp_ctype: str | None,
     base = (resp_ctype or "").split(";")[0].strip().lower()
     if base == ITEMS_ENVELOPE_CT:
         try:
-            out = json.loads(body)
+            out = json.loads(body, parse_constant=_reject_json_constant)
         except Exception as exc:
             raise RemoteError("invalid_response",
                               "items envelope is not JSON") from exc
         return parse_endpoint_items(out, url_fetch)
     if _is_json_media_type(base):
         try:
-            data = json.loads(body)
+            data = json.loads(body, parse_constant=_reject_json_constant)
         except Exception as exc:
             raise RemoteError("invalid_response",
                               "json response body is not valid JSON") from exc

@@ -39,7 +39,6 @@ HEADER_DEFAULT_VERSION = "2025-03-26"
 BATCH_REMOVED_IN = "2025-06-18"
 MAX_B64_BYTES = MAX_UPLOAD_BYTES * 2
 MAX_SOURCE_URL_LEN = 2048
-URL_FETCH_TIMEOUT_S = 30
 # Application-layer cap on one /mcp request body (inline base64 sources
 # are the only payload that can grow unbounded). Larger files must go
 # through the create_upload two-stage path — the rejection message says so.
@@ -1283,138 +1282,39 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if _denial:
         return _iserror(mid, _denial, client_ref)
 
-    # References: ownership (DB owner or signed source token) resolved by
-    # the execution-boundary resolver, before anything is ingested.
-    from execution.source import resolve_upload
-    from config import PUBLIC_ID_RE
-    ref_names = {}
-    for i, (kind, val) in enumerate(items):
-        if kind != "ref":
-            continue
-        _pid, _tok = val
-        if not PUBLIC_ID_RE.match(_pid):
-            return _tool_result_error(mid, {"error": "invalid_id"},
-                                      client_ref, tool)
-        _up, _rerr = await resolve_upload(_pid, user, _tok)
-        if _rerr or not _up:
-            return _tool_result_error(
-                mid, {"error": _rerr or "not_found"}, client_ref, tool)
-        ref_names[i] = _up.get("file_name", "")
-
-    # URL sources: fetched through the pinned SSRF-guarded transport.
-    from remote import RemoteError
-    uploads = {}
-    for i, (kind, val) in enumerate(items):
-        if kind == "inline":
-            uploads[i] = val
-        elif kind == "url":
-            _url, _fname = val
-            try:
-                _body = await asyncio.to_thread(_fetch_url_source, _url)
-            except RemoteError as exc:
-                return _tool_result_error(mid, {"error": exc.code},
-                                          client_ref, tool)
-            uploads[i] = _url_upload(_url, _fname, _body)
-
-    ip = client_ip(request)
-
-    # Ingress receipt: client_ref IS the request_ref. Same ref + same
-    # validated content replays the stored source handles (zero new
-    # Gokapi, zero new usage) so a response-loss retry flows into the
-    # SAME ToolInvocation fingerprint → gate replay.
-    import hashlib as _hl
-    from sharing.ingress_identity import ingress_request_hash
+    # 文件来源准备 + 暂存单点 (A4): 引用权限解析 → URL 钉扎拉取 →
+    # sniff 收容 → accept 闸门 → 批量上限 → ingress 哈希 → stage_sources,
+    # 与 /v1 同一实现 (sharing.staging.ingest_sources)。
+    from sharing.staging import (ingest_sources as _ingest_sources,
+                                 SourceError as _SourceError,
+                                 StagingError as _StagingError)
     from sharing.ingress_receipt import (
         IngressConflict as _IngressConflict,
         IngressInProgress as _IngressInProgress,
         IngressQuotaDenied as _IngressQuotaDenied,
         IngressUnresolved as _IngressUnresolved)
-    from sharing.staging import stage_sources as _stage_sources
-    from sharing.staging import StagingError as _StagingError
-    from utils import sanitize_filename as _san
-    from security import (sniff_allowed as _sniff, mismatch_detail as _mismatch)
-    _ingest_idx = sorted(uploads)
-    _canon = []
-    for i in _ingest_idx:
-        _fn, _ct, _body = uploads[i]
-        _ok_t, _final_t, _final_fn = _sniff(_fn, _ct, _body[:512])
-        if not _ok_t:
-            # Pre-execution input errors are isError tool results — the
-            # SAME expression as the accept gate below (IO-1 rule: a
-            # well-formed request carrying a bad file is domain-level
-            # and agent-fixable; -32602 stays for malformed request
-            # shape only). Content/extension mismatches keep their
-            # typed code and carry the detected format (the same shape
-            # the web upload and ticket PUT entries return).
-            code = ("err_format_not_supported"
-                    if _final_t == "err_file_type_blocked" else _final_t)
-            return _tool_result_error(
-                mid, {"error": code,
-                      **_mismatch(_san(_fn), _body[:512])},
-                client_ref, tool)
-        # _final_fn: same-family admission may re-identify the file —
-        # accept gate, ingress hash, staging and result naming all use it
-        _canon.append((_san(_final_fn), _final_t, _body))
-    _names = {**ref_names,
-              **{i: c[0] for i, c in zip(_ingest_idx, _canon)}}
-    _aerr = _accept_err(tool, [_names[i] for i in range(len(items))])
-    if _aerr:
-        return _tool_result_error(mid, {"error": _aerr},
+    try:
+        source_files, _canon = await _ingest_sources(
+            user, tool, items, client_ip(request), client_ref, tool_key)
+    except _SourceError as exc:
+        # 调用方可修复的输入拒绝 — isError 工具结果 (IO-1 规则: 形态
+        # 合法但内容非法是域级错误; -32602 只留给请求形态错误)
+        return _tool_result_error(mid, {"error": exc.code, **exc.extra},
                                   client_ref, tool)
-    # Authoritative platform batch boundary (single validator for
-    # Web/MCP) — BEFORE the receipt claim / quota / Gokapi.
-    _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
-    if _bdenial:
-        return _iserror(mid, _bdenial, client_ref, tool)
-
-    infos = []
-    if _canon:
-        _ctx = {"tool_id": tool_key}
-        if any(kind != "inline" for kind, _ in items):
-            # URL / reference forms are part of the operation identity:
-            # same client_ref + a different source list → conflict.
-            _ctx["sources"] = [
-                {"kind": "url", "url": val[0]} if kind == "url"
-                else {"kind": "ref", "public_id": val[0]} if kind == "ref"
-                else {"kind": "inline"}
-                for kind, val in items]
-        _req_hash = ingress_request_hash(
-            "mcp_tool_source",
-            [{"filename": _fn, "content_type": _ct, "size": len(_b),
-              "sha256": _hl.sha256(_b).hexdigest()}
-             for _fn, _ct, _b in _canon],
-            _ctx)
-        # 文件暂存单点 (P4): claim → 暂存 → finalize 三态核验全在
-        # stage_sources; 本面只保留身份语义与错误映射。
-        try:
-            _staged = await _stage_sources(
-                user["id"], ip, client_ref, tool_key, _req_hash, _canon)
-        except _IngressConflict:
-            return _rpc_err(mid, ERR_IDEMPOTENCY, "idempotency_conflict")
-        except _IngressInProgress:
-            return _rpc_err(mid, ERR_IDEMPOTENCY, "err_upload_in_progress")
-        except _IngressQuotaDenied as exc:
-            return _iserror(mid, exc.denial, client_ref)
-        except _IngressUnresolved:
-            # unresolvable durable replay — server-side error, zero side
-            # effects; never leaks out of _call_tool
-            return _rpc_err(mid, -32000, "err_ingress_unresolved")
-        except _StagingError:
-            # known rollback (staging failed or finalize proven rolled
-            # back — staged objects cleaned, quota released exactly)
-            return _rpc_err(mid, -32603, "err_upload_failed")
-        infos = _staged if isinstance(_staged, list) else [_staged]
-
-    # canonical source order = request order (ingested handles + references)
-    _ingested = iter(infos)
-    source_files = []
-    for kind, val in items:
-        if kind == "ref":
-            source_files.append({"public_id": val[0], "source_token": val[1]})
-        else:
-            info = next(_ingested)
-            source_files.append({"public_id": info["stagingId"],
-                                 "source_token": info.get("sourceToken", "")})
+    except _IngressConflict:
+        return _rpc_err(mid, ERR_IDEMPOTENCY, "idempotency_conflict")
+    except _IngressInProgress:
+        return _rpc_err(mid, ERR_IDEMPOTENCY, "err_upload_in_progress")
+    except _IngressQuotaDenied as exc:
+        return _iserror(mid, exc.denial, client_ref)
+    except _IngressUnresolved:
+        # unresolvable durable replay — server-side error, zero side
+        # effects; never leaks out of _call_tool
+        return _rpc_err(mid, -32000, "err_ingress_unresolved")
+    except _StagingError:
+        # known rollback (staging failed or finalize proven rolled back —
+        # staged objects cleaned, quota released exactly)
+        return _rpc_err(mid, -32603, "err_upload_failed")
 
     raw = {
         "tool_id": tool_key,
@@ -1432,6 +1332,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if not payload.get("ok"):
         return _iserror(mid, payload, client_ref, tool)
     result = payload.get("result") or {}
+    import hashlib as _hl
     _input_digests = frozenset(
         _hl.sha256(_b).hexdigest() for _, _, _b in _canon)
     # OAuth plugin attribution — an MCP-layer post-hook on the settled
@@ -1880,36 +1781,10 @@ async def _delete_upload(user: dict, mid, args: dict) -> dict:
                              "together.")
 
 
-def _fetch_url_source(url: str) -> bytes:
-    """GET one https source over the pinned SSRF-guarded transport
-    (every hop: https only, all resolved addresses public, connect pinned
-    to a validated address; redirects re-validated). Body cap = the
-    per-file ingress cap."""
-    from remote import RemoteError, pinned_request
-    status, data = pinned_request(url, method="GET",
-                                  timeout_s=URL_FETCH_TIMEOUT_S,
-                                  max_bytes=MAX_UPLOAD_BYTES)
-    if status != 200:
-        raise RemoteError("http_status", str(status))
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise RemoteError("too_large", f"over {MAX_UPLOAD_BYTES} bytes")
-    if not data:
-        raise RemoteError("empty", "empty body")
-    return data
-
-
-def _url_upload(url: str, filename, body: bytes) -> tuple:
-    """(filename, ctype, body) for a fetched URL source — same shape as an
-    inline file; the name comes from the caller or the URL path."""
-    import os
-    if not filename:
-        path = urllib.parse.urlsplit(url).path
-        filename = urllib.parse.unquote(path.rsplit("/", 1)[-1])
-    fn = sanitize_filename(str(filename or "download"))
-    if not os.path.splitext(fn)[1]:
-        from security import detect_ext
-        fn += detect_ext(body[:64]) or ""
-    return fn, _guess_ctype(fn), body
+# URL-source helpers live in the staging single point (A4); these names
+# stay as thin aliases for the remaining in-module consumers.
+from sharing.staging import fetch_url_source as _fetch_url_source  # noqa: E402
+from sharing.staging import url_source_upload as _url_upload  # noqa: E402
 
 
 def _decode_file(b64, filename) -> tuple:
@@ -1927,7 +1802,4 @@ def _decode_file(b64, filename) -> tuple:
     return fn, ctype, body
 
 
-def _guess_ctype(filename: str) -> str:
-    import mimetypes
-    ct, _ = mimetypes.guess_type(filename)
-    return ct or "application/octet-stream"
+from sharing.staging import _guess_ctype  # noqa: E402,_decode_file consumer

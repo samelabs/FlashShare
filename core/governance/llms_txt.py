@@ -125,34 +125,6 @@ def build_llms_txt() -> str:
       "the `input` argument (a string for text tools; any JSON value, "
       "null included, for json tools; up to 100,000 characters).")
     a("")
-    a("## REST API (/v1) — same tools, plain HTTP")
-    a("Prefer REST over JSON-RPC? Every public tool is callable at "
-      "/v1/tools/{key} with an fsk_ API key (session cookies and OAuth "
-      "tokens are NOT accepted):")
-    a(f'curl -s -X POST {BASE_URL}/v1/tools/compress \\')
-    a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
-    a('  -F "file=@input.png"')
-    a("- GET /v1/tools (catalog), /v1/tools/{key} (declaration), "
-      "/v1/balance.")
-    a("- Idempotency-Key header (optional, 1-128 chars): doubles as the "
-      "staging + call identity — same key + same input replays the "
-      "stored result (a running call answers 409 err_call_in_progress), "
-      "same key + different input answers 409 idempotency_conflict.")
-    a("- Tool parameters ride the query string (duplicates are a 400); "
-      "delivery options ride X-518-Expiry-Days / X-518-Allowed-Downloads "
-      "headers.")
-    a("- Body tools: the REQUEST BODY IS the input — Content-Type must "
-      "match the declaration (text/plain or application/json, 512KB "
-      "read cap). Success returns the single result item verbatim "
-      "(json/text as the body; a file streams through the non-counting "
-      "internal channel — X-518-Call-Id and X-518-Cost headers carry the "
-      "call id and the charged cost; a dead/expired file mapping answers "
-      "410 result_expired without re-running).")
-    a("- File tools: multipart file parts, or JSON "
-      '{"files":[{"url":"https://..."} | {"public_id":"...",'
-      '"source_token":"..."}], "params":{}} — answered with '
-      '{"ok":true,"call_id":...,"cost":...,"items":[...]}.')
-    a("")
     a("## Results (items)")
     a("Every call returns an ORDERED list of items (at most 20):")
     a('  {"kind":"text","text":"..."}')

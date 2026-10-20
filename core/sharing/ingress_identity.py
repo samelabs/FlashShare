@@ -15,7 +15,7 @@ def ingress_request_hash(kind: str, files: list[dict], context: dict) -> str:
     """SHA-256 hex of the canonical ingress payload.
 
     kind:   surface discriminator ('web_tool_source' | 'web_direct_share'
-            | 'v1_source' | 'mcp_tool_source').
+            | 'tool_source').
     files:  [{filename, content_type, size, sha256}, ...] — validated,
             sanitized, sniffed canonical content per file (body digest).
     context: surface-specific semantic context (e.g. tool_id for tool

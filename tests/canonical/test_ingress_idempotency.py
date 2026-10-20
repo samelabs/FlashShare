@@ -659,7 +659,7 @@ check("F8 v1 scalar replay → 500 err_ingress_unresolved + 零副作用",
       f"{stV} {str(rV)[:80]} gk={_gkV0}->{_gk_count()} usage={_uuV0}->{_usage_n(uidW)}")
 
 # F9: MCP JSON-RPC (同 receipt 形态, client_ref)
-hMCP = ingress_request_hash("mcp_tool_source",
+hMCP = ingress_request_hash("tool_source",
                              [{"filename": "s.png", "content_type": "image/png",
                                "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
                              {"tool_id": "compress"})

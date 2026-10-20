@@ -1171,6 +1171,27 @@ except RemoteError as exc:
 finally:
     _restore_stack()
 
+# ═══ A1: NaN/Infinity 响应体 → invalid_response (调用失败+退款, 非 500) ═══
+for _nan_body in (b'{"x": NaN}', b'{"x": Infinity}', b'{"x": -Infinity}'):
+    try:
+        remote.parse_response_items(200, _nan_body, "application/json",
+                                    None, None)
+        check("A1 non-finite JSON constant → invalid_response", False,
+              "accepted")
+        break
+    except RemoteError as exc:
+        check("A1 non-finite JSON constant → invalid_response",
+              exc.code == "invalid_response", f"{exc.code} {_nan_body}")
+try:
+    remote.parse_response_items(
+        200, b'{"items":[{"kind":"json","data":{"x":NaN}}]}',
+        remote.ITEMS_ENVELOPE_CT, None, None)
+    check("A1 non-finite inside items envelope → invalid_response",
+          False, "accepted")
+except RemoteError as exc:
+    check("A1 non-finite inside items envelope → invalid_response",
+          exc.code == "invalid_response", exc.code)
+
 # ═══ F3: parse_response_items — +json 媒体类型与 text charset ═══
 _items = remote.parse_response_items(
     200, b'{"type":"about:blank","title":"nope"}',

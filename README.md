@@ -21,7 +21,8 @@ English · [简体中文](README.zh-CN.md)
 
 | | |
 |---|---|
-| **Agents & bots** | One MCP endpoint for every tool, or call any tool over the plain REST API at `/v1/tools/{key}`. Results come back directly, or as share links with an expiry and a download limit. |
+| **Agents & bots** | One MCP endpoint for every tool. Results come back directly, or as share links with an expiry and a download limit. |
+| **Apps & services** | Call any tool over the plain REST API at `/v1/tools/{key}` with the same API key. |
 | **People** | The same tools on the web and on mobile, with a result page to view and share. |
 | **Tool developers** | Publish an HTTPS endpoint as a tool. New tools start unlisted; run yours successfully once and it can go public. No review. Earnings on every paid call. |
 

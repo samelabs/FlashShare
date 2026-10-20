@@ -976,7 +976,7 @@ check("G10 MCP 不自建 batch byte sum 规则 (业务限制→isError)",
 check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字面/无逐文件 sum 拒)",
       "len(uploads) > 20" not in _apir and "total_incoming" not in _apir
       and "validate_batch" in _apir)
-_mcp_up = _mcp_src.split("_stage_sources(")[1].split("source_files = [")[0] if "_stage_sources(" in _mcp_src else ""
+_mcp_up = _mcp_src.split("_ingest_sources(")[1].split("raw = {")[0] if "_ingest_sources(" in _mcp_src else ""
 check("G12 MCP upload 区保留 boundary/quota 专门分支 + 回滚分支",
       "IngressQuotaDenied" in _mcp_src and "_iserror(" in _mcp_up
       and "_StagingError" in _mcp_up, "")

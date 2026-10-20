@@ -163,40 +163,17 @@ async def tool_detail(key: str, request: Request):
     denial = _entry_gates(request, user, need=None)
     if denial:
         return denial
+    # resolve() 是唯一权限判断 (forbidden/not_found/disabled 同答 404,
+    # 与工具页一致 — 无存在性预言); 条目投影与 /v1/tools 列表同一
+    # canonical 投影 (governance.catalog.catalog_item)。
+    from governance.catalog import catalog_item
     tool, terr = _resolve(key, int(user["id"]))
     if terr == "forbidden":
-        return _err(403, "forbidden")
-    if tool is None:
         return _err(404, "tool_not_found")
-    from database import db
-    from repo.catalog import pricing_row
-    with db() as con:
-        price = pricing_row(con, tool["tool_key"])
-    return {"ok": True, "tool": _tool_projection(tool, price)}
-
-
-def _tool_projection(tool: dict, price: dict | None) -> dict:
-    """The API-visible declaration: the same stored columns the usage
-    area and the MCP inputSchema derive from."""
-    def _jload(raw, fallback):
-        try:
-            return json.loads(raw) if raw else fallback
-        except (TypeError, ValueError):
-            return fallback
-    return {
-        "id": tool["tool_key"],
-        "label": _jload(tool.get("label_json"), {}),
-        "desc": _jload(tool.get("desc_json"), None),
-        "execution": tool["execution"],
-        "files_min": int(tool["files_min"]),
-        "files_max": int(tool["files_max"]),
-        "accept": _jload(tool.get("accept_json"), None),
-        "body_format": tool.get("body_format"),
-        "body_placeholder": _jload(tool.get("body_placeholder_json"), None),
-        "params": _jload(tool.get("params_json"), []),
-        "outputs": _jload(tool.get("outputs_json"), []),
-        "cost": int(price["cost"]) if price else None,
-    }
+    item = catalog_item(tool) if tool is not None else None
+    if item is None:
+        return _err(404, "tool_not_found")
+    return {"ok": True, "tool": item}
 
 
 @router.get("/balance")
@@ -231,10 +208,9 @@ async def call_tool(key: str, request: Request):
     if perr:
         return perr
 
-    # tool resolve BEFORE any body read / fetch / staging
+    # tool resolve BEFORE any body read / fetch / staging (forbidden
+    # answers 404 tool_not_found — same as the tool page)
     tool, terr = _resolve(key, int(user["id"]))
-    if terr == "forbidden":
-        return _err(403, "forbidden")
     if tool is None:
         return _err(404, "tool_not_found")
 
@@ -423,111 +399,30 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
     if declared is not None:
         params = declared
 
-    from config import PUBLIC_ID_RE
-    from execution.source import resolve_upload
-    ref_names = {}
-    for i, (kind, val) in enumerate(items):
-        if kind != "ref":
-            continue
-        pid, tok = val
-        if not PUBLIC_ID_RE.match(pid):
-            return _err(400, "invalid_id")
-        upload, rerr = await resolve_upload(pid, user, tok)
-        if rerr or not upload:
-            status = {"not_found": 404, "forbidden": 403}.get(rerr, 400)
-            return _err(status, rerr or "not_found")
-        ref_names[i] = upload.get("file_name", "")
-
-    # URL fetch (pinned transport) — AFTER the prechecks above
-    from remote import RemoteError
-    from app.routes.mcp import _fetch_url_source, _url_upload
-    staged_specs = {}   # index → (filename, ctype, body)
-    for i, (kind, val) in enumerate(items):
-        if kind == "new":
-            staged_specs[i] = val
-        elif kind == "url":
-            url, fname = val
-            try:
-                data = await asyncio.to_thread(_fetch_url_source, url)
-            except RemoteError as exc:
-                return _err(400, exc.code,
-                            message=str(exc.detail)[:200])
-            staged_specs[i] = _url_upload(url, fname, data)
-
-    # sniff 收容 + accept 闸门 + batch 上限 (与 MCP 同一规则)
-    from governance.ingress import validate_batch
-    from security import mismatch_detail, sniff_allowed
-    from execution.dispatch import source_accept_error
-    from utils import sanitize_filename
-    canon = []
-    for i in sorted(staged_specs):
-        fn, ct, data = staged_specs[i]
-        ok, final_t, final_fn = sniff_allowed(fn, ct, data[:512])
-        if not ok:
-            return _err(400, final_t,
-                        **mismatch_detail(sanitize_filename(fn), data[:512]))
-        canon.append((sanitize_filename(final_fn), final_t, data))
-    names = {**ref_names,
-             **{i: c[0] for i, c in zip(sorted(staged_specs), canon)}}
-    aerr = source_accept_error(tool, [names.get(i, "")
-                                      for i in range(len(items))])
-    if aerr:
-        return _err(400, aerr)
-    bdenial = validate_batch([len(b) for _, _, b in canon])
-    if bdenial:
-        status = 400 if bdenial.get("error") == "err_too_many_files" else 413
-        return JSONResponse({"ok": False, **bdenial}, status)
-
-    # 暂存单点 (P4): idem key = staging client_ref
-    infos = []
-    if canon:
-        import hashlib as _hl
-        from sharing.ingress_identity import ingress_request_hash
-        from sharing.ingress_receipt import (IngressConflict,
-                                             IngressInProgress,
-                                             IngressQuotaDenied,
-                                             IngressUnresolved)
-        from sharing.staging import stage_sources, StagingError
-        ctx = {"tool_id": tool["tool_key"]}
-        if any(kind != "new" for kind, _ in items):
-            ctx["sources"] = [
-                {"kind": "url", "url": val[0]} if kind == "url"
-                else {"kind": "ref", "public_id": val[0]} if kind == "ref"
-                else {"kind": "new"}
-                for kind, val in items]
-        req_hash = ingress_request_hash(
-            "v1_tool_source",
-            [{"filename": fn, "content_type": ct, "size": len(b),
-              "sha256": _hl.sha256(b).hexdigest()} for fn, ct, b in canon],
-            ctx)
-        try:
-            staged = await stage_sources(
-                int(user["id"]), client_ip(request), idem,
-                tool["tool_key"], req_hash, canon)
-        except IngressConflict:
-            return _err(409, "idempotency_conflict")
-        except IngressInProgress:
-            return _err(409, "err_upload_in_progress")
-        except IngressQuotaDenied as exc:
-            return JSONResponse({"ok": False, **exc.denial}, 429)
-        except IngressUnresolved:
-            return _err(500, "err_ingress_unresolved")
-        except StagingError:
-            logger.exception("v1 source staging failed")
-            return _err(500, "err_upload_failed")
-        infos = staged if isinstance(staged, list) else [staged]
-
-    # canonical source order = request order (staged handles + references)
-    ingested = iter(infos)
-    source_files = []
-    for kind, val in items:
-        if kind == "ref":
-            source_files.append({"public_id": val[0],
-                                 "source_token": val[1]})
-        else:
-            info = next(ingested)
-            source_files.append({"public_id": info["stagingId"],
-                                 "source_token": info.get("sourceToken", "")})
+    # 文件来源准备 + 暂存单点 (A4): 与 MCP 同一实现; idem key 即暂存
+    # client_ref。
+    from sharing.staging import (ingest_sources, SourceError,
+                                 StagingError)
+    from sharing.ingress_receipt import (IngressConflict,
+                                         IngressInProgress,
+                                         IngressQuotaDenied,
+                                         IngressUnresolved)
+    try:
+        source_files, _canon = await ingest_sources(
+            user, tool, items, client_ip(request), idem, tool["tool_key"])
+    except SourceError as exc:
+        return _err(exc.status, exc.code, **exc.extra)
+    except IngressConflict:
+        return _err(409, "idempotency_conflict")
+    except IngressInProgress:
+        return _err(409, "err_upload_in_progress")
+    except IngressQuotaDenied as exc:
+        return JSONResponse({"ok": False, **exc.denial}, 429)
+    except IngressUnresolved:
+        return _err(500, "err_ingress_unresolved")
+    except StagingError:
+        logger.exception("v1 source staging failed")
+        return _err(500, "err_upload_failed")
 
     payload, ebody, estatus = await _dispatch(request, user, {
         "tool_id": tool["tool_key"],

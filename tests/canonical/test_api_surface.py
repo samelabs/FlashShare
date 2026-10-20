@@ -79,6 +79,8 @@ class _Endpoint(BaseHTTPRequestHandler):
                         "text/plain; charset=utf-8")
         elif path == "/echo-json":
             self._reply(200, body, "application/json")
+        elif path == "/nanjson":
+            self._reply(200, b'{"x": NaN}', "application/json")
         elif path == "/boom":
             HITS["boom"] += 1
             self._reply(500, b"E" * 20480, "text/plain")
@@ -230,6 +232,8 @@ _tool(TOOL_FILE, accept='[".png"]', tag="image", files_min=1, files_max=2,
       url=f"{EP}/items", outputs=["text"], cost=0)
 _tool(TOOL_RAWF, body_format="text", url=f"{EP}/rawfile", outputs=["file"], cost=0)
 _tool(TOOL_BAD, body_format="text", url=f"{EP}/boom", outputs=["text"], cost=0)
+TOOL_NAN = f"v1nan{_u2}"
+_tool(TOOL_NAN, body_format="json", url=f"{EP}/nanjson", outputs=["json"], cost=2)
 _tool(TOOL_SLOW, body_format="text", url=f"{EP}/slowtext", outputs=["text"], cost=0)
 
 
@@ -274,10 +278,16 @@ check("B1 GET /v1/tools lists the body tool (projection carries body_format)",
       st == 200 and _bt.get("body_format") == "text"
       and _cors_free(h), f"{st} {str(_bt)[:90]}")
 st, h, d, raw = _req("GET", f"/v1/tools/{TOOL_TEXT}", headers=AH)
-check("B2 GET /v1/tools/{key} detail (cost from pricing)",
-      st == 200 and d["tool"]["body_format"] == "text"
+st_l, _hl2, d_l, _ = _req("GET", "/v1/tools", headers=AH)
+_bt_list = next((t for t in (d_l.get("tools") or [])
+                 if t.get("id") == TOOL_TEXT), {})
+check("B2 GET /v1/tools/{key} = the canonical catalog entry (same projection as the list)",
+      st == 200 and d["tool"] == _bt_list
+      and d["tool"]["body_format"] == "text"
       and d["tool"]["cost"] == 3 and d["tool"]["files_max"] == 0,
-      f"{st} {str(d)[:100]}")
+      f"{st} detail={str(d.get('tool'))[:90]} list={str(_bt_list)[:90]}")
+check("B2b the catalog entry exposes no execution field",
+      "execution" not in (d.get("tool") or {}), str(d.get("tool"))[:80])
 st, h, d, raw = _req("GET", f"/v1/tools/no_such_{_u}", headers=AH)
 check("B3 unknown key → 404 JSON tool_not_found, no CORS",
       st == 404 and d == {"ok": False, "error": "tool_not_found"}
@@ -522,6 +532,41 @@ st, h, d, raw = _req("POST", "/account/password", _b,
 st, h, d, raw = _req("GET", "/v1/balance", headers=AH)
 check("H1 key still authenticates after the password change",
       st == 200 and d.get("ok"), f"{st} {d}")
+
+# ═══ A1. provider NaN JSON → typed failure + refund, never a 500 ═══
+_bal_gn0 = _sb(uidG)
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAN}", b'{"q": 1}', {
+    "Authorization": f"Bearer {KEY_G}", "Content-Type": "application/json"})
+check("A1 provider NaN JSON → typed failure (not 500)",
+      st == 400 and d.get("error") == "err_endpoint_failed", f"{st} {d}")
+check("A1b refunded (balance unchanged)", _sb(uidG) == _bal_gn0,
+      f"{_bal_gn0} -> {_sb(uidG)}")
+
+# ═══ A2. private tool → 404 tool_not_found (same as the tool page) ═══
+st, _hp, r, _ = _req("POST", "/api/usertools", {
+    "label": "V1 Private", "url": "https://93.184.216.34/x",
+    "timeout_s": 30,
+    "files_min": 0, "files_max": 0, "body_format": "text",
+    "outputs": ["text"], "cost": 0},
+    {"Content-Type": "application/json", "Cookie": ckT})
+_priv_key = (r or {}).get("tool_key") or ""
+st, _hp2, r, _ = _req("PATCH", f"/api/usertools/{_priv_key}",
+             {"visibility": "private"},
+             {"Content-Type": "application/json", "Cookie": ckT})
+st, h, d, raw = _req("GET", f"/v1/tools/{_priv_key}", headers=AH)
+check("A2 private tool GET → 404 tool_not_found",
+      st == 404 and d == {"ok": False, "error": "tool_not_found"},
+      f"{st} {d}")
+st, h, d, raw = _req("POST", f"/v1/tools/{_priv_key}", "x", {
+    "Authorization": f"Bearer {KEY_A}", "Content-Type": "text/plain"})
+check("A2b private tool POST → 404 tool_not_found",
+      st == 404 and d.get("error") == "tool_not_found", f"{st} {d}")
+
+# ═══ A4. v1 never imports from the MCP route module ═══
+_v1_src = open(_os.path.join(_REPO, "app", "routes", "v1.py"),
+               encoding="utf-8").read()
+check("A4 v1.py imports nothing from app.routes.mcp",
+      "app.routes.mcp" not in _v1_src, "grep app.routes.mcp")
 
 # ═══ L. ledger → call link (P6 pages, funded user) ═══
 # T 的付费成功调用 (C2) 产生 consume 行; /account/calls 行锚 + 净支出 +
