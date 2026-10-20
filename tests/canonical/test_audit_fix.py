@@ -482,7 +482,7 @@ _g4u = _mkuser(_u + "g4u")
 _uids.append(_g4u)
 _g4_sess = create_browser_session(_g4u)
 r = client.post("/api/usertools", json={
-    "tool_id": f"g4_{_u}", "label": "G4", "desc": "line1\nline2",
+    "label": "G4", "desc": "line1\nline2",
     "url": "https://93.184.216.34/x", "timeout_s": 30,
     "files_min": 0, "files_max": 1, "format_families": "image",
     "accept": [".png"], "outputs": ["text"], "cost": 0,
@@ -649,27 +649,26 @@ check("G8b concurrent takedowns: one delete, one audit",
 _g9u = _mkuser(_u + "g9u")
 _uids.append(_g9u)
 _g9_sess = create_browser_session(_g9u)
-_tid = f"g9_{_u}"
-_key = f"{_u}g9u_{_tid}"
 r = client.post("/api/usertools", json={
-    "tool_id": _tid, "label": "G9", "url": "https://93.184.216.34/x",
+    "label": "G9", "url": "https://93.184.216.34/x",
     "timeout_s": 30, "files_min": 0, "files_max": 1,
     "format_families": "image", "accept": [".png"], "outputs": ["text"],
     "cost": 5}, cookies={COOKIE_NAME: _g9_sess})
 assert r.status_code == 200, r.text[:200]
+_key = r.json().get("tool_key")
 r = client.post(f"/samelabs/tools/{_key}/pricing",
                 json={"cost": 5, "enabled": False},
                 cookies={COOKIE_NAME: _op_sess})
 check("G9a operator pricing takedown applied",
       r.status_code == 200 and r.json()["pricing"]["enabled"] is False, r.text[:120])
-r = client.patch(f"/api/usertools/{_tid}", json={"cost": 9},
+r = client.patch(f"/api/usertools/{_key}", json={"cost": 9},
                  cookies={COOKIE_NAME: _g9_sess})
 from governance.pricing import get_pricing as _get_pricing
 _pr = _get_pricing(_key)
 check("G9b owner price PATCH keeps the operator takedown",
       r.status_code == 200 and _pr["enabled"] is False and _pr["cost"] == 9,
       f"{r.status_code} {dict(_pr)}")
-r = client.patch(f"/api/usertools/{_tid}", json={"enabled": "yes"},
+r = client.patch(f"/api/usertools/{_key}", json={"enabled": "yes"},
                  cookies={COOKIE_NAME: _g9_sess})
 check("G10 PATCH enabled non-bool → 422 bad_enabled",
       r.status_code == 422 and r.json().get("error") == "bad_enabled",
@@ -743,14 +742,13 @@ check("G12c rejected before charge (balance untouched)",
 _g13o = _mkuser(_u + "g13o")
 _uids.append(_g13o)
 _g13_sess = create_browser_session(_g13o)
-_tid13 = f"g13_{_u}"
-_key13 = f"{_u}g13o_{_tid13}"
 r = client.post("/api/usertools", json={
-    "tool_id": _tid13, "label": "AX Thirdparty", "desc": "community probe",
+    "label": "AX Thirdparty", "desc": "community probe",
     "url": "https://93.184.216.34/x", "timeout_s": 30,
     "files_min": 0, "files_max": 1, "format_families": "image",
     "accept": [".png"], "outputs": ["text"], "cost": 0,
 }, cookies={COOKIE_NAME: _g13_sess})
+_key13 = r.json().get("tool_key")
 assert r.status_code == 200, r.text[:200]
 with db() as con:
     con.execute("update platform_tools set visibility='public'"

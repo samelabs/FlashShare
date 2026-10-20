@@ -162,14 +162,15 @@ def _usertool(ck, body):
 uids = []
 try:
     a_uid, a_ck, A_TOK = _register(_u + "dev")
+    _b_uid, _other_ck, _ = _register(_u + "oth")
     uids = [a_uid]
     label = f"Listing {_u}"
-    key = f"{_u}dev_lstool"
     st, _h, d, _sc = _usertool(a_ck, {
-        "tool_id": "lstool", "label": label, "url": "https://93.184.216.34/x",
+        "label": label, "url": "https://93.184.216.34/x",
         "timeout_s": 30, "files_min": 1, "files_max": 1,
         "format_families": "image", "accept": [".png"], "outputs": ["file"],
         "cost": 0})
+    key = (d or {}).get("tool_key")
     with db() as con:
         con.execute("update platform_tools set visibility='public'"
                     " where tool_key=%s", (key,))
@@ -234,26 +235,51 @@ try:
 
     # ═══ T: text-only tools ═══
     st, _h, d, _sc = _usertool(a_ck, {
-        "tool_id": "lstxt", "label": "Txt", "url": "https://93.184.216.34/t",
+        "label": "Txt", "url": "https://93.184.216.34/t",
         "timeout_s": 30, "files_min": 0, "files_max": 0, "outputs": ["text"],
         "params": [{"key": "q", "type": "text", "label": "Q"}], "cost": 0})
-    check("T1 text-only create without format family/accept", st == 200, f"{st} {d}")
+    _txt_key = (d or {}).get("tool_key")
+    check("T1 text-only create without format family/accept", st == 200 and _txt_key,
+          f"{st} {d}")
     st, _h, d, _sc = _usertool(a_ck, {
-        "tool_id": "lstxt2", "label": "Txt", "url": "https://93.184.216.34/u",
+        "label": "Txt", "url": "https://93.184.216.34/u",
         "timeout_s": 30, "files_min": 0, "files_max": 0,
         "format_families": "image", "accept": [".png"], "outputs": ["text"],
         "cost": 0})
     check("T2 accept with files_max 0 → bad_accept",
           st == 422 and (d or {}).get("error") == "bad_accept", f"{st} {d}")
-    spec = _names(A_TOK).get(f"{_u}dev_lstxt") or {}
+    spec = _names(A_TOK).get(_txt_key) or {}
     props = (spec.get("inputSchema") or {}).get("properties") or {}
     check("T3 MCP spec has no files argument",
           spec and "files" not in props and "params" in props, spec)
-    st, _h, d, _sc = _req("PATCH", "/api/usertools/lstxt",
+    st, _h, d, _sc = _req("PATCH", f"/api/usertools/{_txt_key}",
                           {"files_min": 1, "files_max": 1},
                           {"Content-Type": "application/json", "Cookie": a_ck})
     check("T4 switching to files requires a format family",
           st == 422 and (d or {}).get("error") == "bad_format_family", f"{st} {d}")
+
+    # ═══ S: system slug = key (D6 行为测试) ═══
+    import re as _re6
+    check("S1 create returns a system slug matching ^[a-z]{5}$",
+          bool(_re6.match(r"^[a-z]{5}$", key)), key)
+    with db() as con:
+        n = con.execute("select count(*) c from platform_tools"
+                        " where tool_key = %s", (key,)).fetchone()["c"]
+    check("S2 slug is unique (exactly one row)", n == 1, n)
+    st, _h, d, _sc = _req("POST", "/api/usertools", {
+        "label": "With ID", "url": "https://93.184.216.34/x",
+        "timeout_s": 30, "files_min": 1, "files_max": 1,
+        "format_families": "image", "accept": [".png"], "outputs": ["file"],
+        "cost": 0, "tool_id": "rejected"}, {"Content-Type": "application/json", "Cookie": a_ck})
+    check("S3 request carrying tool_id → 422 invalid_request",
+          st == 422 and (d or {}).get("error") == "invalid_request", f"{st} {d}")
+    st, _h, d, _sc = _req("PATCH", f"/api/usertools/{key}",
+                          {"label": "Not Mine"}, {"Content-Type": "application/json",
+                                                  "Cookie": _other_ck})
+    check("S4 PATCH by another user's key → 404", st == 404, st)
+    st, _h, d, _sc = _req("DELETE", f"/api/usertools/{key}", None,
+                          {"Cookie": _other_ck})
+    check("S5 DELETE by another user's key → 404", st == 404, st)
 finally:
     if uids:
         with db() as con:

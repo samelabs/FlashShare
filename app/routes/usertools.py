@@ -44,7 +44,6 @@ from utils import now
 router = APIRouter()
 
 MAX_PRICE = 100000
-TOOL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 ACCEPT_MIME_RE = re.compile(r"^[\w.+-]+/[\w.+-]+$")
 
 
@@ -56,11 +55,6 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
     only one side is provided (a half-update must never reset the other
     side to the create default)."""
     fields = {}
-
-    if "tool_id" in raw and not partial:
-        tid = str(raw.get("tool_id") or "").strip()
-        if not TOOL_ID_RE.match(tid):
-            return None, "bad_tool_id"
 
     if "label" in raw or not partial:
         label = raw.get("label")
@@ -272,9 +266,9 @@ async def create_user_tool(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
 
-    tool_id = str(raw.get("tool_id") or "").strip()
-    if not TOOL_ID_RE.match(tool_id):
-        return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
+    # 社区工具 key = 系统 slug: 请求体不得携带 tool_id
+    if "tool_id" in raw:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
 
     # Credential boundary: a NEW non-empty secret cannot be persisted
     # when the vault has no working key — refuse before any write.
@@ -326,13 +320,12 @@ async def create_user_tool(request: Request):
     params_decl = raw.get("params") or None
 
     # user policy → canonical declaration → tool_supply 单点 (阶段 B)
-    from repo.catalog import tool_key_exists, count_by_owner, lock_user_row
-    from governance.tool_supply import create_tool, build_http_binding, DeclarationError
-    tool_key = f"{user['username']}_{tool_id}"
+    from repo.catalog import count_by_owner, lock_user_row
+    from governance.tool_supply import build_http_binding, DeclarationError
     label = fields["label"]
     declaration = {
-        "tool_key": tool_key,
-        "tool_id": tool_id,
+        "tool_key": "",      # supply 的 slug 生成覆盖 (owner 非空)
+        "tool_id": "",
         "owner_id": user["id"],
         "execution": execution,
         "label": label if isinstance(label, dict) else {"en": label},
@@ -358,12 +351,11 @@ async def create_user_tool(request: Request):
         from governance.pricing import create_tool_with_pricing
         with db() as con:
             lock_user_row(con, user["id"])
-            if tool_key_exists(con, tool_key):
-                return JSONResponse({"ok": False, "error": "duplicate_tool"}, 409)
             if count_by_owner(con, user["id"]) >= MAX_TOOLS_PER_USER:
                 return JSONResponse({"ok": False, "error": "too_many_tools"}, 429)
-            create_tool_with_pricing(declaration, fields["cost"],
-                                     admin_user_id=user["id"], con=con)
+            tool_key = create_tool_with_pricing(
+                declaration, fields["cost"],
+                admin_user_id=user["id"], con=con)
     except DeclarationError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 422)
     except ValueError:
@@ -371,8 +363,8 @@ async def create_user_tool(request: Request):
     return {"ok": True, "tool_key": tool_key}
 
 
-@router.get("/api/usertools/{tool_id}/calls")
-async def tool_call_log(tool_id: str, request: Request):
+@router.get("/api/usertools/{tool_key}/calls")
+async def tool_call_log(tool_key: str, request: Request):
     """B3: provider-visible call log for THEIR tool (last 20).
     Owner-scoped; no caller identity beyond status/latency — privacy."""
     user, err = _require_auth(request)
@@ -380,7 +372,6 @@ async def tool_call_log(tool_id: str, request: Request):
         return err
     from repo.catalog import owner_row_by_key
     from repo.ledger import calls_by_tool_excluding_owner
-    tool_key = f"{user['username']}_{tool_id}"
     with db() as con:
         row = owner_row_by_key(con, tool_key, user["id"])
         if not row:
@@ -408,8 +399,8 @@ async def tool_call_log(tool_id: str, request: Request):
     return {"ok": True, "calls": out}
 
 
-@router.patch("/api/usertools/{tool_id}")
-async def update_user_tool(tool_id: str, request: Request):
+@router.patch("/api/usertools/{tool_key}")
+async def update_user_tool(tool_key: str, request: Request):
     """Partial update: label/url/timeout/auth/accept/output identity/
     visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check.
 
@@ -442,7 +433,6 @@ async def update_user_tool(tool_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "bad_edit_locale"}, 422)
 
     from repo.catalog import owner_row_for_update
-    tool_key = f"{user['username']}_{tool_id}"
     # Snapshot + declaration + pricing mutations share ONE transaction:
     # the row lock keeps the snapshot the mutation actually applies to.
     # (declaration update 与 pricing 同 commit / 同 rollback。)
@@ -450,8 +440,6 @@ async def update_user_tool(tool_id: str, request: Request):
         row = owner_row_for_update(con, tool_key, user["id"])
         if not row:
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
-        if not TOOL_ID_RE.match(tool_id or ""):
-            return JSONResponse({"ok": False, "error": "bad_tool_id"}, 422)
 
         fields, ferr = _validate_submission(raw, partial=True,
                                         trusted_ok=bool(row["trusted"]),
@@ -655,14 +643,13 @@ async def update_user_tool(tool_id: str, request: Request):
     return {"ok": True}
 
 
-@router.delete("/api/usertools/{tool_id}")
-async def delete_user_tool(tool_id: str, request: Request):
+@router.delete("/api/usertools/{tool_key}")
+async def delete_user_tool(tool_key: str, request: Request):
     """Remove a tool row. pricing flips disabled (history interpretable)."""
     user, err = _require_auth(request)
     if err:
         return err
     from repo.catalog import owner_row_for_update, delete_tool_row
-    tool_key = f"{user['username']}_{tool_id}"
     # Tool row deletion and pricing disable share ONE transaction —
     # a pricing write failure rolls the deletion back with it.
     with db() as con:

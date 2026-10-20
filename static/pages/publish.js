@@ -368,7 +368,7 @@ function showErrors(errMap) {
 }
 
 // ── 提交 ──
-let _submitBusy = false;   // 防双击重复 POST (创建靠服务端 tool_id_taken 兜底, 但会弹出报错)
+let _submitBusy = false;   // 防双击重复 POST
 async function submit() {
   if (_submitBusy) return;
   const params = collectParams();
@@ -417,7 +417,6 @@ async function submit() {
     return;
   }
   const body = {
-    tool_id: document.getElementById("fToolId").value.trim(),
     label,
     desc: (desc || (!isEditPatch ? undefined : "")),
     url: document.getElementById("fUrl").value.trim(),
@@ -438,8 +437,6 @@ async function submit() {
   // 新工具默认 unlisted (作者成功运行一次后才能公开); 编辑态不动可见性
   // (防公开工具被编辑静默降级)
   const editing = !!_editId;
-  // 编辑态 tool_id immutable: 去掉 body.tool_id, 走 URL 路径定位
-  if (editing) delete body.tool_id;
   _submitBusy = true;
   try {
     const r = await fetch("/api/usertools" + (editing ? "/" + _editId : ""), {
@@ -458,12 +455,10 @@ async function submit() {
     // 服务端错误码 → 字段定位
     const map = {
       bad_url: "url", https_required: "url", url_taken: "url",
-      bad_tool_id: "tool_id", tool_id_taken: "tool_id",
       bad_label: "label", bad_desc: "desc",
       bad_accept: "accept", bad_format_family: "accept",
       bad_files_min: "files_min", bad_files_max: "files_max",
       bad_files_range: "files_max", bad_outputs: "outputs",
-      bad_cost: "cost", too_many_tools: "tool_id",
     };
     if (map[d.error]) { showErrors({ [map[d.error]]: d.error }); return; }
     if (String(d.error).startsWith("bad_param")) { alert(_errm(d.error)); return; }
@@ -485,8 +480,6 @@ function refill(t) {
   // 视为未修改, 不并入提交 dict (服务端 guard 的前端对应)
   _initLabel = document.getElementById("fLabel").value;
   _initDesc = document.getElementById("fDesc").value = _ltBack(t.desc);
-  document.getElementById("fToolId").value = t.tool_id;
-  document.getElementById("fToolId").readOnly = true;      // id immutable
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
   // 4C-2 编辑回填:
@@ -526,7 +519,7 @@ function refill(t) {
   // 参数回填
   (t.params || []).forEach(p => addParamRow(p));
   refreshParamNone();
-  document.getElementById("pubTitle").textContent = _msg("pub_edit_title").replace("{id}", t.tool_id);
+  document.getElementById("pubTitle").textContent = _msg("pub_edit_title").replace("{id}", t.label || t.tool_id);
   document.getElementById("pubSubmit").textContent = _msg("pub_save");
   // 编辑态已有凭证: 显示"移除认证凭证"勾选项 (新建态保持隐藏)
   document.getElementById("pubRemoveAuthRow").classList.toggle("hidden", !t.has_auth);
@@ -543,10 +536,6 @@ function initLangRowDel() {
 
 function init() {
   initLangRowDel();
-  // 身份前缀 addon: 作者所见即真实键 (tool_key = username/tool_id)
-  var prefix = document.getElementById("fToolIdPrefix");
-  if (prefix) prefix.textContent = (window.__USER__ && window.__USER__.username
-    ? window.__USER__.username : "") + "/";
   bindFormatPickers();
   renderFamGrid(null, null, true);   // 新建态: 默认首族 + 全选
   document.querySelectorAll('input[name="fInputMode"]').forEach(r =>

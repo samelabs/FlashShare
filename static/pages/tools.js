@@ -4,8 +4,8 @@
 
 const _toolList = document.getElementById('toolList');
 
-// 4A-fix4: 自测入口收口到真实工具页 — /tool/{owner}/{tool_id}
-// (t.tool_key 即 owner/tool_id)。作者以与真实用户完全相同的路径自测:
+// 4A-fix4: 自测入口收口到真实工具页 — /tool/{tool_key}
+// (t.tool_key 即社区 slug 或裸词)。作者以与真实用户完全相同的路径自测:
 // canonical params → 选文件 → runToolFlow → /api/tools/execute →
 // dispatch → gate → real endpoint。此处不复制 params renderer,
 // 不再维护 upload→selftest 重复消费链。

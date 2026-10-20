@@ -105,7 +105,7 @@ def _register(name):
 
 
 def _publish(ck, tool_id, label, extra=None):
-    body = {"tool_id": tool_id, "label": label,
+    body = {"label": label,
             "url": "https://93.184.216.34/x", "timeout_s": 30,
             "files_min": 1, "files_max": 1,
             "format_families": "image", "accept": [".png"],
@@ -119,9 +119,9 @@ dev_ck_user = _u + "dev"
 uid, CK = _register(dev_ck_user)
 
 # ═══ A. publish gate: unlisted until the owner runs it once ═══
-tk = f"{dev_ck_user}_aaa"
 st, _h, d = _publish(CK, "aaa", "Alpha Tool")
-check("A1 create accepted", st == 200 and d.get("ok"), f"{st} {d}")
+tk = (d or {}).get("tool_key")
+check("A1 create accepted", st == 200 and d.get("ok") and tk, f"{st} {d}")
 with db() as con:
     row = con.execute("select visibility, enabled, delisted from"
                       " platform_tools where tool_key=%s", (tk,)).fetchone()
@@ -133,7 +133,7 @@ st, _h, market = _req("GET", "/tools")
 check("A3 not on home/market before the owner's successful run",
       tk not in (home or "") and tk not in (market or ""))
 # publish gate: unlisted→public requires ONE successful owner call
-st, _h, d = _req("PATCH", "/api/usertools/aaa", {"visibility": "public"},
+st, _h, d = _req("PATCH", f"/api/usertools/{tk}", {"visibility": "public"},
                  {"Content-Type": "application/json", "Cookie": CK})
 check("A4 public without a successful run → 422 needs_successful_run",
       st == 422 and d.get("error") == "needs_successful_run",
@@ -145,7 +145,7 @@ with db() as con:
         " invocation_hash) values (%s, %s, %s, 'ok', 0, %s, %s, 0, %s)",
         (f"c2a-run-{_u}", uid, tk, int(time.time()), int(time.time()),
          "a" * 64))
-st, _h, d = _req("PATCH", "/api/usertools/aaa", {"visibility": "public"},
+st, _h, d = _req("PATCH", f"/api/usertools/{tk}", {"visibility": "public"},
                  {"Content-Type": "application/json", "Cookie": CK})
 check("A4b public after the owner's successful run", st == 200 and d.get("ok"),
       f"{st} {d}")
@@ -157,9 +157,10 @@ check("A3b searchable on market + selector once public",
       and any(t["id"] == tk for t in (d.get("tools") or [])))
 # explicit private still honored
 st, _h, d = _publish(CK, "bbb", "Beta", {"visibility": "private"})
+_bbb_key = (d or {}).get("tool_key")
 with db() as con:
     row = con.execute("select visibility from platform_tools where"
-                      " tool_key=%s", (f"{dev_ck_user}_bbb",)).fetchone()
+                      " tool_key=%s", (_bbb_key,)).fetchone()
 check("A5 explicit private honored", row["visibility"] == "private",
       str(row and dict(row)))
 
@@ -193,7 +194,7 @@ t2, err2 = resolve(tk, uid)
 check("B3 resolve: public refuses, owner still resolves",
       t is None and err == "not_found" and t2 is not None,
       f"{err} {err2}")
-st, _h, d = _req("PATCH", "/api/usertools/aaa", {"enabled": False},
+st, _h, d = _req("PATCH", f"/api/usertools/{tk}", {"enabled": False},
                  {"Content-Type": "application/json", "Cookie": CK})
 check("B4 dev enable PATCH refused while delisted (typed)",
       st == 403 and d.get("error") == "err_tool_delisted", f"{st} {d}")
@@ -207,7 +208,7 @@ set_tool_delisted(op, tk, False)
 st, _h, market = _req("GET", "/tools?q=Alpha")
 check("B6 restore revives listing", tk in (market or ""))
 # dev enable writes audit
-st, _h, d = _req("PATCH", "/api/usertools/aaa", {"enabled": False},
+st, _h, d = _req("PATCH", f"/api/usertools/{tk}", {"enabled": False},
                  {"Content-Type": "application/json", "Cookie": CK})
 with db() as con:
     au = con.execute(
@@ -220,8 +221,8 @@ check("B7 developer enable/disable audited (actor=owner)",
       f"{st} {au}")
 
 # ═══ C. suspended provider leaves the market ═══
-tk3 = f"{dev_ck_user}_ccc"
-_publish(CK, "ccc", "Gamma ZZZ")
+_r3 = _publish(CK, "ccc", "Gamma ZZZ")
+tk3 = (_r3[2] or {}).get("tool_key")
 # publish gate: C/D need this tool PUBLIC — unlock with one successful
 # owner call (the A-section pattern), same as any real author would
 with db() as con:
@@ -231,7 +232,7 @@ with db() as con:
         " invocation_hash) values (%s, %s, %s, 'ok', 0, %s, %s, 0, %s)",
         (f"c2a-run3-{_u}", uid, tk3, int(time.time()), int(time.time()),
          "b" * 64))
-_req("PATCH", "/api/usertools/ccc", {"visibility": "public"},
+_req("PATCH", f"/api/usertools/{tk3}", {"visibility": "public"},
      {"Content-Type": "application/json", "Cookie": CK})
 with db() as con:
     con.execute("update users set status='suspended' where id=%s", (uid,))
@@ -256,25 +257,26 @@ st, _h, d2 = _req("GET", "/api/tools/search?q=gamma")
 hits2 = [t["id"] for t in (d2.get("tools") or [])]
 check("D2 label still matches", tk3 in hits2, str(hits2)[:100])
 # ordering parity: two label matches, the featured one ranks first
-st, _h, d = _req("PATCH", "/api/usertools/aaa", {"enabled": True},
+st, _h, d = _req("PATCH", f"/api/usertools/{tk}", {"enabled": True},
                  {"Content-Type": "application/json", "Cookie": CK})
-_publish(CK, "ddd", "Delta Tool")
+_r4 = _publish(CK, "ddd", "Delta Tool")
+_ddd = (_r4[2] or {}).get("tool_key")
 with db() as con:
     con.execute(
         "insert into tool_calls (client_ref, user_id, tool_id, status,"
         " cost_snapshot, started_at, finished_at, commission_rate_snapshot,"
         " invocation_hash) values (%s, %s, %s, 'ok', 0, %s, %s, 0, %s)",
-        (f"c2a-run4-{_u}", uid, f"{dev_ck_user}_ddd",
+        (f"c2a-run4-{_u}", uid, _ddd,
          int(time.time()), int(time.time()), "c" * 64))
-_req("PATCH", "/api/usertools/ddd", {"visibility": "public"},
+_req("PATCH", f"/api/usertools/{_ddd}", {"visibility": "public"},
      {"Content-Type": "application/json", "Cookie": CK})
 with db() as con:
     con.execute("update platform_tools set featured=true, sort_order=99"
                 " where tool_key=%s", (tk,))
-st, _h, d3 = _req("GET", "/api/tools/search?q=tool")
+st, _h, d3 = _req("GET", "/api/tools/search?q=Tool")
 ids3 = [t["id"] for t in (d3.get("tools") or [])]
 check("D3 featured tool ranks first (list ordering parity)",
-      ids3 and ids3[0] == tk and f"{dev_ck_user}_ddd" in ids3,
+      ids3 and ids3[0] == tk and _ddd in ids3,
       str(ids3[:5]))
 with db() as con:
     con.execute("update platform_tools set featured=false, desc_json=null"
@@ -299,7 +301,7 @@ H = {"Content-Type": "application/json",
 st, _h, d = _req("POST", "/mcp", {"jsonrpc": "2.0", "id": 1,
                                    "method": "tools/list"}, H)
 summaries = (d.get("result") or {}).get("tools") or []
-mine = [t for t in summaries if "ccc" in t["name"] or "aaa" in t["name"]]
+mine = [t for t in summaries if t["name"] in (tk, tk3)]
 check("E3 MCP summary notes the author",
       mine and all(f"by @{dev_ck_user}" in t["description"] for t in mine),
       str([t["description"][:60] for t in mine])[:120])

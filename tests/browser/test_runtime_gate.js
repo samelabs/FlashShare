@@ -558,15 +558,13 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // ── 13. publish edit refill escapes stored declaration data ──
       // A malicious enum option value stored in a declaration must
       // refill as TEXT on the author's edit page, never execute.
-      const xssTool = "gxp" + Math.random().toString(36).slice(2, 7);
-      createdToolId = xssTool;
       const xssPayload = '"><img src=x onerror="window.__xssAudit=1">';
-      const created = await page.evaluate(async ({ tid, payload }) => {
+      const created = await page.evaluate(async ({ payload }) => {
         const r = await fetch("/api/usertools", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            tool_id: tid, label: "Gate XSS", url: "https://93.184.216.34/x",
+            label: "Gate XSS", url: "https://93.184.216.34/x",
             timeout_s: 30, files_min: 0, files_max: 1,
             format_families: "image", accept: [".png"],
             outputs: ["text"], cost: 0,
@@ -574,8 +572,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
                        options: [{ value: payload, label: payload }] }],
           }),
         });
-        return { ok: r.ok, status: r.status, body: (await r.text()).slice(0, 160) };
-      }, { tid: xssTool, payload: xssPayload });
+        const txt = await r.text();
+          return { ok: r.ok, status: r.status, body: txt.slice(0, 160), key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, { payload: xssPayload });
+      createdToolId = created.key || "";
       check("publish-xss: tool with malicious option value created",
         created.ok, created.status + " " + created.body);
       await gotoReady(page, `/account/tools/publish?id=${xssTool}`, "#pubForm");
@@ -595,15 +595,14 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // layout gate: >3 params fold into "more", both surfaces, both
       // widths. Created as a real unlisted user tool (owner sees it in
       // the home picker + its own /tool/{owner}/{slug} page). ──
-      const paramToolId = "gparam" + Math.random().toString(36).slice(2, 7);
       const LONG_OPTS = Array.from({ length: 8 }, (_, i) =>
         ({ value: "opt" + i, label: "Extraordinarily Long Option Label " + (i + 1) }));
-      const createdParams = await page.evaluate(async ({ tid, opts }) => {
+      const createdParams = await page.evaluate(async ({ opts }) => {
         const r = await fetch("/api/usertools", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            tool_id: tid, label: "Gate Params Six", url: "https://93.184.216.34/x",
+            label: "Gate Params Six", url: "https://93.184.216.34/x",
             timeout_s: 30, files_min: 0, files_max: 1,
             format_families: "image", accept: [".png"],
             outputs: ["text"], cost: 0,
@@ -619,10 +618,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             ],
           }),
         });
-        return { ok: r.ok, status: r.status, body: (await r.text()).slice(0, 160) };
-      }, { tid: paramToolId, opts: LONG_OPTS });
-      createdParamToolKey = createdParams.ok
-        ? `${username}/${paramToolId}` : "";
+        const txt = await r.text();
+          return { ok: r.ok, status: r.status, body: txt.slice(0, 160), key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, { opts: LONG_OPTS });
+      createdParamToolKey = createdParams.key || "";
       check("params-tool: six-param tool created", createdParams.ok,
         createdParams.status + " " + createdParams.body);
     }

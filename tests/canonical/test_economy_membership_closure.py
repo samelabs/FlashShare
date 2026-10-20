@@ -627,7 +627,7 @@ try:
             " ('r2', %s, %s, 'running', 25, NULL, %s, NULL, 20, %s)",
             (caller, tkey6, ts - 100, ts - 97, h, caller, tkey6, ts - 50, h))
     ck6 = create_browser_session(owner)
-    r = client.get(f"/api/usertools/{tid6}/calls", cookies={COOKIE_NAME: ck6})
+    r = client.get(f"/api/usertools/{tkey6}/calls", cookies={COOKIE_NAME: ck6})
     d = r.json()
     calls6 = d.get("calls") or []
     shape_ok = all(set(c) == {"at", "status", "duration_s", "cost_snapshot"}

@@ -37,7 +37,6 @@ The declaration and execution contract for tools published on 518.PLUS.
 
 | 字段 | 说明 |
 |---|---|
-| `tool_id` / `tool_key` | 唯一身份：`tool_id` 裸词 `^[a-z][a-z0-9_]{1,40}$`；**`tool_key = username_toolid`（下划线，社区工具）或裸词（系统工具，owner 为空）**——web URL 与 MCP 工具名均使用 key 原文，无第二形态 |
 | `execution` | 当前用户工具固定为 `http` |
 | `format_families` | **声明的 tag**（九键之一：image/document/data/text/audio/video/cad3d/archive/all），入库列 `format_family`；作用 = 前端图标表达 + 开发者自述，不约束不派生；accept 在所声明 tag 的格式分组里勾选（all 分组 = 平台格式边界）；纯文本工具不带 |
 | `accept` | **唯一执行契约，单形状**：文件工具必为非空 canonical 扩展名列表（在所选 tag 分组内勾选落库）；无 NULL=any 哨兵——"吃一切"的工具（如 share/zip_pack）物化全边界清单，展示层摘要为「全部格式」 |
@@ -67,7 +66,6 @@ The declaration and execution contract for tools published on 518.PLUS.
 
 ```json
 {
-  "tool_id": "image_compress",
   "label": { "en": "Image Compression", "zh": "图片压缩", "ja": "画像圧縮" },
   "desc": { "en": "Reduce image file size", "zh": "减小图片文件大小" },
   "url": "https://example.com/compress",

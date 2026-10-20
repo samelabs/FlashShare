@@ -309,15 +309,16 @@ try:
     # called with a raw NaN literal (python json accepts it) — the
     # stored-contract enforcement must reject it as param_invalid
     _st, _h, _d, _sc = _req("POST", "/api/usertools", {
-        "tool_id": "numtool", "label": f"Num {_u}",
+        "label": f"Num {_u}",
         "url": "https://93.184.216.34/x", "timeout_s": 30,
         "files_min": 0, "files_max": 0, "outputs": ["text"],
         "params": [{"key": "n", "type": "number", "label": "N",
                     "min": 0, "max": 10}], "cost": 0},
         {"Content-Type": "application/json", "Cookie": ck})
-    check("H6a fixture: number-param tool created", _st == 200, (_st, _d))
+    _numkey = (_d or {}).get("tool_key")
+    check("H6a fixture: number-param tool created", _st == 200 and _numkey, (_st, _d))
     _nan_body = (f'{{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{{'
-                 f'"name":"{_u}a_numtool","arguments":{{"params":{{"n":NaN}},'
+                 f'"name":"{_numkey}","arguments":{{"params":{{"n":NaN}},'
                  f'"client_ref":"lh6a-{_u}"}}}}}}').encode()
     _st30, _d30 = _mcp_raw(_nan_body, TOK)
     _t30 = (((_d30 or {}).get("result") or {}).get("structuredContent")

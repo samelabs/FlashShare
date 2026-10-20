@@ -297,18 +297,6 @@
 .pub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s2) var(--s3); }
 .pub-grid label, .pub-grid .pub-wide { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--ink-3); }
 .pub-grid input, .pub-grid select { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
-/* 工具 id 输入组: 固定 username/ 前缀 addon — 作者所见即真实身份键
-   (tool_key = username/tool_id, 服务端命名空间不变), 输入只补裸 id */
-.id-group { display: flex; align-items: stretch; }
-.id-group .id-prefix { display: inline-flex; align-items: center; padding: 0 10px;
-  background: var(--sunk); border: 1px solid var(--line-2); border-right: 0;
-  border-radius: var(--r-sm) 0 0 var(--r-sm); color: var(--ink-2);
-  font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
-.id-group input { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0;
-  flex: 1; min-width: 0; font-family: var(--font-mono); }
-/* 聚焦整组一体红: addon 边框随组内 focus 同步变品牌色, 不再右红左灰断裂 */
-.id-group:focus-within .id-prefix { border-color: var(--brand); }
-.id-group:focus-within input { border-color: var(--brand); box-shadow: none; }
 .pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .pub-grid .pub-wide { grid-column: 1 / -1; }
 .pub-err { font-size: 12px; color: var(--danger); min-height: 0; font-style: normal; }

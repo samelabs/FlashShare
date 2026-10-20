@@ -350,18 +350,47 @@ def _serialize_row(decl: dict, ts: int) -> dict:
 
 # ── persistence service (供给侧单点) ──
 
+def generate_slug(con) -> str:
+    """社区工具 key = 系统生成的 5 位小写字母 slug (a-z)。
+
+    在创建事务内查重, 重复重抽; 超过上限直接报错 (不加兜底)。
+    唯一索引是最终防线。secrets 保证不可预测。"""
+    import secrets as _secrets
+    from repo.catalog import tool_key_exists
+    for _ in range(20):
+        slug = "".join(_secrets.choice("abcdefghijklmnopqrstuvwxyz")
+                       for _ in range(5))
+        if not tool_key_exists(con, slug):
+            return slug
+    raise DeclarationError("slug_exhausted")
+
+
 def create_tool(decl: dict, con=None) -> str:
     """校验 + 持久化一个新工具声明 (user / operator 共用)。
 
-    con 未传: 自开事务; con 已传: 参与 caller 的事务 (policy check 与
-    persistence 同事务)。返回 tool_key。
-    """
-    decl = validate_tool_declaration(decl)
+    社区工具 (owner_id 非空): tool_key = tool_id = 系统 slug, 调用方
+    不传 key (传了也覆盖)。运营/系统: 沿用声明 key 不变。
+    con 未传: 自开事务; con 已传: 参与 caller 的事务。
+    返回 tool_key。"""
     from repo.catalog import insert_tool_row
     from utils import now
     if con is not None:
+        if decl.get("owner_id") is not None:
+            slug = generate_slug(con)
+            decl["tool_key"] = slug
+            decl["tool_id"] = slug
+        decl = validate_tool_declaration(decl)
         insert_tool_row(con, _serialize_row(decl, now()))
         return decl["tool_key"]
+    if decl.get("owner_id") is not None:
+        with _db() as own:
+            slug = generate_slug(own)
+            decl["tool_key"] = slug
+            decl["tool_id"] = slug
+            decl = validate_tool_declaration(decl)
+            insert_tool_row(own, _serialize_row(decl, now()))
+        return decl["tool_key"]
+    decl = validate_tool_declaration(decl)
     with _db() as own:
         insert_tool_row(own, _serialize_row(decl, now()))
     return decl["tool_key"]

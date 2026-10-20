@@ -78,8 +78,6 @@
   tag（九键之一，文件工具必带、纯文本工具不带；图标=tag 查表，不派生）；
   outputs = ("text","json","file")
   非空子集；label = LocalizedText。
-  tool_key = `username_toolid`（社区）| 裸词（系统，owner 为空）；web URL
-  与 MCP 工具名均用 key 原文，无投影无第二形态。
 - **Catalog**：canonical projection 形状；official 判定 = owner 关系（`owner_id IS NULL`，契约字段，无字符串形状判定）三面等价。
 - **ToolInvocation（IO-1）**：精确五键 `{tool_id, source:{files:[...]}（0..N，按工具声明 [files_min, files_max]）, params（text 参数上限 100,000 字符）, delivery, client_ref}`；结果 = 有序 items（text/json/file，≤20 项，text+json ≤1MB，file 沿用单文件上限），文件项同事务各自落地，结果页 /r/{id}；开发者 http 契约唯一形态：请求 `{files:[{filename,content_type,size,url}], params}`、响应 `{items:[...]}`（file 项 data_b64|url）。
   root/source/delivery 精确键集；params 显式 dict；client_ref 必填 non-empty string（≤128），作为 client-generated stable operation identity；null / missing 均拒绝。

@@ -159,27 +159,27 @@ def _fake_resolve(host, port):
 _remote_mod._resolve_host = _fake_resolve
 
 def _post(body):
-    base = {"tool_id": body.pop("tool_id"), "label": "AU", "url": "https://pub.example/x",
+    base = {"label": "AU", "url": "https://pub.example/x",
             "format_families": "image"}
     base.update(body)
     return client.post("/api/usertools", json=base, cookies={COOKIE_NAME: sess})
 
-r = _post({"tool_id": f"au1{_u}"})  # 无 accept
+r = _post({})  # 无 accept
 check("U3 missing accept → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au2{_u}", "accept": None})
+r = _post({"accept": None})
 check("U3 accept=None → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au3{_u}", "accept": []})
+r = _post({"accept": []})
 check("U3 accept=[] → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au4{_u}", "accept": [".png"]})
+r = _post({"accept": [".png"]})
 check("U3 explicit valid accept → 200",
       r.status_code == 200 and r.json().get("ok"), f"{r.status_code} {r.text[:160]}")
-r = _post({"tool_id": f"au5{_u}", "accept": ["application/pdf"]})  # MIME 不再解释
+r = _post({"accept": ["application/pdf"]})  # MIME 不再解释
 check("U3 MIME token (非 canonical ext) → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au6{_u}", "accept": [".exe"]})  # 出族
+r = _post({"accept": [".exe"]})  # 出族
 check("U3 out-of-family ext → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
 

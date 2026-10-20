@@ -151,7 +151,7 @@ def _community_tool_fixture():
     visibility predicate is under test)."""
     tid = "seot" + _uuid.uuid4().hex[:5]
     st, data, _, _ = _req("POST", "/api/usertools", {
-        "tool_id": tid, "label": "SEO fixture", "url": "https://93.184.216.34/x",
+        "label": "SEO fixture", "url": "https://93.184.216.34/x",
         "timeout_s": 30, "files_min": 0, "files_max": 1,
         "format_families": "image", "accept": [".png"],
         "outputs": ["text"], "cost": 0, "params": []},

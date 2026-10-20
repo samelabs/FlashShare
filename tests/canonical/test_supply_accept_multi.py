@@ -65,7 +65,7 @@ def req(method, path, body, cookie=None):
 
 # ── A: user accept 语义 ──
 cookie = new_user()
-base = {"tool_id": "acctest", "label": {"en": "Acc"}, "execution": "http",
+base = {"label": {"en": "Acc"}, "execution": "http",
         "url": "https://93.184.216.34/anything", "timeout_s": 30,
         "visibility": "private", "format_families": "document", "params": []}
 
@@ -75,20 +75,20 @@ check("A1 缺失 accept → 422 bad_accept",
       st == 422 and r.get("error") == "bad_accept", f"{st} {r}")
 
 # A2: accept=[] → bad_accept
-st, r = req("POST", "/api/usertools", dict(base, tool_id="acc2", accept=[]), cookie)
+st, r = req("POST", "/api/usertools", dict(base, accept=[]), cookie)
 check("A2 accept=[] → 422 bad_accept", st == 422 and r.get("error") == "bad_accept", f"{st} {r}")
 
 # A2b: accept=None → bad_accept (同缺失, 不兼容)
-st, r = req("POST", "/api/usertools", dict(base, tool_id="acc3", accept=None), cookie)
+st, r = req("POST", "/api/usertools", dict(base, accept=None), cookie)
 check("A2b accept=None → 422 bad_accept",
       st == 422 and r.get("error") == "bad_accept", f"{st} {r}")
 
 # A3: accept=[".pdf"] → [".pdf"]
-st, r = req("POST", "/api/usertools", dict(base, tool_id="acc4", accept=[".pdf"]), cookie)
+st, r = req("POST", "/api/usertools", dict(base, accept=[".pdf"]), cookie)
 check("A3 accept=['.pdf'] → 创建 ok", st == 200 and r.get("ok"), f"{st} {r}")
 conn = http.client.HTTPConnection(*_HOST, timeout=30)
 conn.request("GET", "/api/usertools", None, {"Cookie": cookie})
-t4 = [x for x in json.loads(conn.getresponse().read())["tools"] if x["tool_id"] == "acc4"][0]
+t4 = [x for x in json.loads(conn.getresponse().read())["tools"] if x["tool_id"] == r.get("tool_key")][0]
 conn.close()
 check("A3b 存库精确 ['.pdf']", t4["accept"] == [".pdf"], str(t4["accept"]))
 
@@ -121,7 +121,7 @@ if admin_cookie:
                       (True, "bad_files_max"), (21, "bad_files_max"),
                       (0, "bad_files_range"), (-1, "bad_files_max")]:
         st, r = req("POST", "/samelabs/tools/create", {
-            "tool_id": f"mtest{uuid.uuid4().hex[:6]}", "label": "MT",
+            "tool_id": f"mt{uuid.uuid4().hex[:6]}", "label": "MT",
             "url": "https://93.184.216.34/anything", "timeout_s": 30,
             "format_families": "image", "accept": ".png,.jpg", "files_max": val}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
@@ -129,7 +129,7 @@ if admin_cookie:
     # C2: text-only window (files 0..0) is legal only without accept
     for acc, want in [("", "ok"), (".png", "bad_accept")]:
         st, r = req("POST", "/samelabs/tools/create", {
-            "tool_id": f"mtxt{uuid.uuid4().hex[:6]}", "label": "MT",
+            "tool_id": f"mt{uuid.uuid4().hex[:6]}", "label": "MT",
             "url": "https://93.184.216.34/anything", "timeout_s": 30,
             "accept": acc, "files_min": 0, "files_max": 0}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
