@@ -18,7 +18,7 @@ from sharing.uploads import get_live_upload_by_public_id as _live_upload
 from storage import info as storage_info
 from utils import file_glyph
 from utils import (
-    public_file_url, format_bytes, format_ts, file_format_icon,
+    public_file_url, format_bytes, format_ts, file_format_icon, mime_base,
 )
 from i18n import LOCALE_TAGS, server_text
 from icons import icon_svg
@@ -140,6 +140,7 @@ async def file_route(public_id: str, request: Request):
 
     from app.web_ctx import ctx_base as _ctx_base
     ctx = _ctx_base(request)
+    _ct_base = mime_base(upload["content_type"] or "")
     ctx.update({
         "shell_class": "file-shell",
         # share page stays follow-able but never indexed; the share card
@@ -151,11 +152,11 @@ async def file_route(public_id: str, request: Request):
         "public_id": pid,
         "file_name": upload["file_name"],
         "content_type": upload["content_type"] or "",
-        "is_image": ((upload["content_type"] or "").startswith("image/")
-                      and (upload["content_type"] or "").lower() != "image/svg+xml"),
-        "is_pdf": (upload["content_type"] or "").lower() == "application/pdf",
-        "is_zip": ((upload["content_type"] or "") in ("application/zip", "application/x-zip-compressed"))
-                   or (upload["file_name"] or "").lower().endswith(".zip"),
+        "is_image": (_ct_base.startswith("image/")
+                      and _ct_base != "image/svg+xml"),
+        "is_pdf": _ct_base == "application/pdf",
+        "is_zip": (_ct_base in ("application/zip", "application/x-zip-compressed")
+                   or (upload["file_name"] or "").lower().endswith(".zip")),
         "card_date": format_ts(expire_at),
         "size_text": format_bytes(upload["size_bytes"]),
         "expire_text": format_ts(expire_at),
@@ -280,7 +281,7 @@ async def file_inline(public_id: str, request: Request):
     upload = _live_upload(public_id)
     if not upload:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
-    ct = (upload["content_type"] or "").lower()
+    ct = mime_base(upload["content_type"])
     is_pdf = ct == "application/pdf"
     is_image = ct.startswith("image/") and ct != "image/svg+xml"
     if not (is_pdf or is_image):

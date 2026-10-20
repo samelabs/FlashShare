@@ -102,6 +102,16 @@ def remaining_downloads(total: int, live: dict | None) -> int | None:
     return None
 
 
+def mime_base(content_type: str) -> str:
+    """Lowercase base media type with parameters stripped.
+
+    Stored MIME strings are client-declared and may carry '; param'
+    suffixes; full-string equality against a bare type then misses and
+    the same upload is classified differently at upload vs preview.
+    Every admission/classification comparison uses this base form."""
+    return (content_type or "").split(";", 1)[0].strip().lower()
+
+
 def file_glyph(content_type: str, filename: str) -> str:
     """File-row glyph icon name by type family (one mapping; the result
     page and the file page share it)."""
