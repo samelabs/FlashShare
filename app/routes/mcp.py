@@ -1325,18 +1325,14 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     import hashlib as _hl
     from sharing.ingress_identity import ingress_request_hash
     from sharing.ingress_receipt import (
-        claim_ingress_quota as _claim_receipt,
-        finalize_ok as _receipt_ok,
-        settle_failure as _receipt_fail,
-        resolve_outcome as _resolve_outcome,
         IngressConflict as _IngressConflict,
         IngressInProgress as _IngressInProgress,
         IngressQuotaDenied as _IngressQuotaDenied,
-        IngressUnresolved as _IngressUnresolved,
-        OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
+        IngressUnresolved as _IngressUnresolved)
+    from sharing.staging import stage_sources as _stage_sources
+    from sharing.staging import StagingError as _StagingError
     from utils import sanitize_filename as _san
-    from security import (sniff_allowed as _sniff, sign_source_token,
-                          mismatch_detail as _mismatch)
+    from security import (sniff_allowed as _sniff, mismatch_detail as _mismatch)
     _ingest_idx = sorted(uploads)
     _canon = []
     for i in _ingest_idx:
@@ -1364,7 +1360,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     _aerr = _accept_err(tool, [_names[i] for i in range(len(items))])
     if _aerr:
         return _tool_result_error(mid, {"error": _aerr},
-                                   client_ref, tool)
+                                  client_ref, tool)
     # Authoritative platform batch boundary (single validator for
     # Web/MCP) — BEFORE the receipt claim / quota / Gokapi.
     _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
@@ -1388,10 +1384,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
               "sha256": _hl.sha256(_b).hexdigest()}
              for _fn, _ct, _b in _canon],
             _ctx)
+        # 文件暂存单点 (P4): claim → 暂存 → finalize 三态核验全在
+        # stage_sources; 本面只保留身份语义与错误映射。
         try:
-            _receipt, _usage_ids, _replay = _claim_receipt(
-                user["id"], ip, client_ref, _req_hash,
-                [len(_b) for _, _, _b in _canon], scope=tool_key)
+            _staged = await _stage_sources(
+                user["id"], ip, client_ref, tool_key, _req_hash, _canon)
         except _IngressConflict:
             return _rpc_err(mid, ERR_IDEMPOTENCY, "idempotency_conflict")
         except _IngressInProgress:
@@ -1402,79 +1399,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             # unresolvable durable replay — server-side error, zero side
             # effects; never leaks out of _call_tool
             return _rpc_err(mid, -32000, "err_ingress_unresolved")
-
-        if _replay is not None:
-            infos = _replay if isinstance(_replay, list) else [_replay]
-        else:
-            from storage import write as _gk_up
-            from governance.delivery import (INTERMEDIATE_TTL_DAYS as _ITTL,
-                                            INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
-            import io as _io
-            _gids = []
-            # Phase 1 — Gokapi staging. A staging failure is a KNOWN
-            # rollback (objects half-uploaded, receipt still running) and
-            # takes the generic cleanup below.
-            try:
-                for _fn, _ct, _body in _canon:
-                    _gk = await asyncio.to_thread(
-                        _gk_up, _io.BytesIO(_body), _fn, _ct, _ITTL, _IDL,
-                        len(_body))
-                    _fid = (_gk.get("FileInfo", {}) or {}).get("Id", "")
-                    if not _fid:
-                        raise RuntimeError("gokapi_missing_id")
-                    _gids.append(_fid)
-                    infos.append({
-                        "name": _fn, "filename": _fn, "contentType": _ct,
-                        "size": len(_body),
-                        "stagingId": _fid,
-                        "sourceToken": sign_source_token(user["id"], _fid),
-                        "expireAt": _gk["FileInfo"].get("ExpireAt"),
-                        "expiryDays": _ITTL, "allowedDownloads": _IDL,
-                    })
-            except Exception:
-                _log.exception("mcp source staging failed")
-                from storage import delete as _gk_del
-                for _gid in _gids:
-                    try:
-                        await asyncio.to_thread(_gk_del, _gid)
-                    except Exception:
-                        pass
-                try:
-                    _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
-                except Exception:
-                    pass
-                # server-side storage failure — not invalid arguments
-                return _rpc_err(mid, -32603, "err_upload_failed")
-
-            # Phase 2 — finalize with an EXPLICIT three-way outcome. The
-            # unresolved branch must NEVER fall into generic cleanup: zero
-            # Gokapi delete, zero quota release, zero receipt mutation.
-            from database import db as _db
-            try:
-                with _db() as con:
-                    _receipt_ok(con, int(_receipt["id"]), infos)
-            except Exception:
-                _out = _resolve_outcome(int(_receipt["id"]))
-                if _out["outcome"] == OUTCOME_DURABLE_OK:
-                    infos = (_out["result"] if isinstance(_out["result"], list)
-                             else [_out["result"]])
-                elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-                    # the ONLY finalize-driven cleanup path: receipt still
-                    # running proves the success transaction never landed.
-                    from storage import delete as _gk_del
-                    for _gid in _gids:
-                        try:
-                            await asyncio.to_thread(_gk_del, _gid)
-                        except Exception:
-                            pass
-                    try:
-                        _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
-                    except Exception:
-                        pass
-                    return _rpc_err(mid, -32603, "err_upload_failed")
-                else:
-                    # UNRESOLVED — server-side error, not invalid arguments
-                    return _rpc_err(mid, -32000, "err_ingress_unresolved")
+        except _StagingError:
+            # known rollback (staging failed or finalize proven rolled
+            # back — staged objects cleaned, quota released exactly)
+            return _rpc_err(mid, -32603, "err_upload_failed")
+        infos = _staged if isinstance(_staged, list) else [_staged]
 
     # canonical source order = request order (ingested handles + references)
     _ingested = iter(infos)

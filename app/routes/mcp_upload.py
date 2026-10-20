@@ -7,20 +7,20 @@ claim in repo.upload_tickets.
 
 Success runs the SAME ingress path as an inline-base64 source on
 tools/call: ingress receipt (quota usage) → Gokapi staging → receipt
-finalize; the response carries {public_id, source_token} for the
+finalize — through the ONE staging entry (sharing.staging.stage_sources,
+P4 单点) whose finalize loss is reconciled by the strict tri-state
+(ACK 丢失先核验: 已落地 → 按成功作答; 确认回滚 → 立即清理暂存对象 +
+精确释放配额). The response carries {public_id, source_token} for the
 files[] reference form. Idempotency is client_ref + file identity
 (NOT the ticket): a failed/expired ticket can be re-issued and the
 PUT retried; an already-successful upload replays the same handles.
 """
-import asyncio
-import io
 import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from config import BASE_URL, MAX_UPLOAD_BYTES
-from database import db
+from config import MAX_UPLOAD_BYTES
 from app.web_auth import client_ip
 
 router = APIRouter()
@@ -98,27 +98,27 @@ async def mcp_upload_put(ticket: str, request: Request):
 
     ip = client_ip(request)
 
-    # ── ingress path identical to the inline-base64 MCP source ──
-    from sharing.ingress_identity import ingress_request_hash
-    from sharing.ingress_receipt import (
-        claim_ingress_quota, finalize_ok as receipt_ok,
-        settle_failure as receipt_fail,
-        IngressConflict, IngressInProgress, IngressQuotaDenied,
-        IngressUnresolved)
-    import hashlib
+    # ── 文件暂存单点 (P4): claim → 暂存 → finalize 三态核验 ──
     # Idempotency identity = client_ref + the FILE (name/type/size/digest)
     # — deliberately NOT the ticket id: a re-issued ticket after a failed
     # or expired one must hash identically so the ingress binding treats
     # it as the same logical upload (re-claim after failure, replay after
     # success) instead of a conflicting one.
+    from sharing.ingress_identity import ingress_request_hash
+    from sharing.ingress_receipt import (
+        IngressConflict, IngressInProgress, IngressQuotaDenied,
+        IngressUnresolved)
+    from sharing.staging import stage_sources, StagingError
+    import hashlib
     req_hash = ingress_request_hash(
         "mcp_upload_ticket",
         [{"filename": filename, "content_type": final_type,
           "size": len(body), "sha256": hashlib.sha256(body).hexdigest()}],
         {})  # staging is tool-agnostic: scope stays '' (ref unique per user)
     try:
-        receipt, usage_ids, replay = claim_ingress_quota(
-            user_id, ip, row["client_ref"], req_hash, [len(body)], scope="")
+        staged = await stage_sources(
+            user_id, ip, row["client_ref"], "", req_hash,
+            [(filename, final_type, body)])
     except IngressQuotaDenied as exc:
         return JSONResponse({"ok": False, **exc.denial}, 429)
     except IngressConflict:
@@ -127,65 +127,13 @@ async def mcp_upload_put(ticket: str, request: Request):
         return _err(409, "err_upload_in_progress")
     except IngressUnresolved:
         return _err(500, "err_ingress_unresolved")
-
-    if replay is not None:
-        info = replay if isinstance(replay, dict) else (
-            replay[0] if isinstance(replay, list) and replay else None)
-        if isinstance(info, dict) and info.get("stagingId"):
-            return {"public_id": info["stagingId"],
-                    "source_token": info.get("sourceToken", ""),
-                    "expires_at": info.get("expireAt")}
-
-    from governance.delivery import (INTERMEDIATE_TTL_DAYS,
-                                     INTERMEDIATE_DOWNLOAD_LIMIT)
-    from storage import write as storage_write, delete as storage_delete
-    from security import sign_source_token
-    gid = ""
-    try:
-        gokapi = await asyncio.to_thread(
-            storage_write, io.BytesIO(body), filename, final_type,
-            INTERMEDIATE_TTL_DAYS,
-            INTERMEDIATE_DOWNLOAD_LIMIT, len(body))
-        info = gokapi.get("FileInfo", {})
-        gid = info.get("Id", "")
-        if not gid:
-            raise RuntimeError("gokapi_missing_id")
-        file_info = {
-            "name": filename, "filename": filename,
-            "contentType": final_type, "size": len(body),
-            "stagingId": gid,
-            "sourceToken": sign_source_token(user_id, gid),
-            "expireAt": info.get("ExpireAt"),
-            "expiryDays": INTERMEDIATE_TTL_DAYS,
-            "allowedDownloads": INTERMEDIATE_DOWNLOAD_LIMIT,
-        }
-    except Exception:
+    except StagingError:
+        # 已知回滚: 暂存对象已清理、配额已精确释放、receipt 已落
+        # failed — 同 client_ref 换新 ticket 重试是干净重申。
         logger.exception("mcp ticket staging failed ticket_id=%s", row["id"])
-        if gid:
-            try:
-                await asyncio.to_thread(storage_delete, gid)
-            except Exception:
-                pass
-        try:
-            receipt_fail(int(receipt["id"]), usage_ids, user_id)
-        except Exception:
-            pass
         return _err(500, "err_upload_failed")
 
-    try:
-        with db() as con:
-            receipt_ok(con, int(receipt["id"]), [file_info])
-    except Exception:
-        # Finalize loss settles the receipt FAILED (the staged object is
-        # already durable but unreferenced): a retry with the same
-        # client_ref — via a NEW ticket, which now hashes identically —
-        # re-claims cleanly instead of conflicting.
-        logger.exception("mcp ticket finalize failed ticket_id=%s", row["id"])
-        try:
-            receipt_fail(int(receipt["id"]), usage_ids, user_id)
-        except Exception:
-            pass
-        return _err(500, "err_upload_failed")
-
-    return {"public_id": gid, "source_token": file_info["sourceToken"],
-            "expires_at": info.get("ExpireAt")}
+    file_info = staged[0] if isinstance(staged, list) else staged
+    return {"public_id": file_info["stagingId"],
+            "source_token": file_info.get("sourceToken", ""),
+            "expires_at": file_info.get("expireAt")}

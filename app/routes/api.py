@@ -8,7 +8,6 @@ Response format (all endpoints):
     Error:   {"ok": false, "error": "error_code"}
 """
 
-import io
 import os
 import sys
 import json
@@ -31,13 +30,10 @@ from database import db
 from sharing.uploads import (reserve_ingress, release_ingress,
                              get_upload_by_public_id, list_uploads, delete_upload)
 from sharing.ingress_receipt import (
-    claim_ingress_quota, finalize_ok as ingress_finalize_ok,
-    settle_failure as ingress_settle_failure, resolve_outcome,
-    IngressConflict, IngressInProgress, IngressQuotaDenied,
-    IngressUnresolved, OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
+    IngressConflict, IngressInProgress, IngressQuotaDenied, IngressUnresolved)
 from sharing.ingress_identity import ingress_request_hash
-from security import sniff_allowed, sign_source_token, verify_source_token
-from storage import (read as storage_read, write as storage_write,
+from security import sniff_allowed, verify_source_token
+from storage import (read as storage_read,
                      info as storage_info, delete as storage_delete)
 from tools import ToolError
 from execution.source import resolve_upload
@@ -201,56 +197,6 @@ async def client_error(request: Request):
     return {"ok": True}
 
 
-async def _staged_cleanup(gokapi_ids, user_id, ingress_id, usage_ids):
-    """Known-rollback settlement: best-effort delete staged objects, then
-    EXACT quota release + receipt failed in one transaction. If the DB
-    settlement itself fails, the receipt stays running — startup
-    recovery owns it; quota is never speculatively released."""
-    for gid in gokapi_ids:
-        try:
-            await asyncio.to_thread(storage_delete, gid)
-        except Exception:
-            logger.warning("rollback: gokapi cleanup failed for %s", gid)
-    try:
-        ingress_settle_failure(ingress_id, usage_ids, user_id)
-    except Exception:
-        logger.exception("ingress failure settlement failed id=%s "
-                         "(receipt stays running for recovery)", ingress_id)
-
-
-async def _finalize_or_reconcile(ingress_id, gokapi_ids, user_id, usage_ids,
-                                 canonical_result):
-    """Success finalize with STRICT commit-outcome reconciliation.
-
-    Try the running→ok finalize. If the finalize transaction's commit
-    ack is lost (or it fails for any reason), resolve the durable
-    outcome BEFORE touching anything:
-      DURABLE_OK      → return the stored result (zero Gokapi delete,
-                        zero quota release) — the commit landed;
-      PROVEN_ROLLBACK → receipt still running → staged cleanup + exact
-                        release + failed (the ONLY cleanup path);
-      UNRESOLVED      → zero cleanup, zero release, zero terminal
-                        rewrite — raise for err_ingress_unresolved.
-    Returns the durable canonical result on success."""
-    import json as _j
-    try:
-        from database import db as _db
-        with _db() as con:
-            ingress_finalize_ok(con, ingress_id, canonical_result)
-    except Exception:
-        logger.exception("ingress finalize failed id=%s — reconciling", ingress_id)
-        out = resolve_outcome(ingress_id)
-        if out["outcome"] == OUTCOME_DURABLE_OK:
-            return out["result"]
-        if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-            await _staged_cleanup(gokapi_ids, user_id, ingress_id,
-                                   usage_ids)
-            raise RuntimeError("err_upload_failed")
-        # UNRESOLVED — no cleanup, no release, no rewrite
-        raise IngressUnresolved("err_ingress_unresolved")
-    return canonical_result
-
-
 @router.post("/uploads")
 async def create_upload(request: Request):
     """Upload one or more source files for a selected tool.
@@ -279,8 +225,6 @@ async def create_upload(request: Request):
     client_ref = client_ref.strip()
 
     ip = _client_ip(request)
-    from governance.delivery import (INTERMEDIATE_TTL_DAYS,
-                                     INTERMEDIATE_DOWNLOAD_LIMIT)
     # the upload surface ONLY stages tool sources. Sharing is the
     # share tool (files 1..20 → one file item per input); result delivery
     # entitlement is enforced at the canonical execute preflight, not here.
@@ -346,11 +290,13 @@ async def create_upload(request: Request):
           "sha256": _hl.sha256(content).hexdigest()}
          for content, size, fn, ct in pending],
         context)
+    # 文件暂存单点 (P4): claim → 暂存 → finalize 三态核验全在
+    # stage_sources; 本面只保留身份语义与错误映射。
+    from sharing.staging import stage_sources, StagingError
     try:
-        receipt, usage_ids, replay_result = claim_ingress_quota(
-            user["id"], ip, client_ref, req_hash,
-            [size for _, size, _, _ in pending],
-            scope=has_tool)
+        staged = await stage_sources(
+            user["id"], ip, client_ref, has_tool, req_hash,
+            [(fn, ct, content) for content, size, fn, ct in pending])
     except IngressQuotaDenied as exc:
         # Authoritative denial — the web layer never recomputes
         # used/remaining, it only relays the full contract.
@@ -365,63 +311,14 @@ async def create_upload(request: Request):
         # zero Gokapi, the receipt stays exactly as it is.
         return JSONResponse({"ok": False, "error": "err_ingress_unresolved"},
                             500)
-    if replay_result is not None:
-        # same ref + same content, previously ok → exact stored response
-        if isinstance(replay_result, dict) and "file" in replay_result:
-            return replay_result
-        if isinstance(replay_result, list):
-            return {"ok": True, "files": replay_result} \
-                if len(replay_result) > 1 else {"ok": True, "file": replay_result[0]}
-        return replay_result
-
-    source_expiry = INTERMEDIATE_TTL_DAYS
-    source_downloads = INTERMEDIATE_DOWNLOAD_LIMIT
-
-    files_result = []
-    uploaded_gokapi_ids = []
-    try:
-        for content, size, filename, final_type in pending:
-            gokapi = await asyncio.to_thread(
-                storage_write, io.BytesIO(content), filename, final_type,
-                source_expiry, source_downloads, size)
-            info = gokapi.get("FileInfo", {})
-            gid = info.get("Id", "")
-            if not gid:
-                raise RuntimeError("gokapi_missing_id")
-            uploaded_gokapi_ids.append(gid)
-            files_result.append({
-                "name": filename,
-                "filename": filename,
-                "contentType": final_type,
-                "size": size,
-                # staging identity of a tool-source intermediate (the
-                # Gokapi id IS the staging handle here); storage ids
-                # beyond this handle never leave
-                "stagingId": gid,
-                "sourceToken": sign_source_token(user["id"], gid),
-                "expireAt": info.get("ExpireAt"),
-                "expiryDays": source_expiry,
-                "allowedDownloads": source_downloads,
-            })
-    except Exception:
-        await _staged_cleanup(uploaded_gokapi_ids, user["id"],
-                              int(receipt["id"]), usage_ids)
-        logger.exception("multi-upload failed, %d files rolled back",
-                         len(uploaded_gokapi_ids))
+    except StagingError:
+        logger.exception("multi-upload failed, rolled back")
         return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
-
-    stored = ({"ok": True, "file": files_result[0]}
-              if len(files_result) == 1
-              else {"ok": True, "files": files_result})
-    try:
-        await _finalize_or_reconcile(int(receipt["id"]), uploaded_gokapi_ids,
-                                      user["id"], usage_ids, files_result)
-    except IngressUnresolved:
-        return JSONResponse(
-            {"ok": False, "error": "err_ingress_unresolved"}, 500)
-    except Exception:
-        return JSONResponse({"ok": False, "error": "err_upload_failed"}, 500)
-    return stored
+    if not isinstance(staged, list):
+        # legacy dict receipt — the stored response replays verbatim
+        return staged
+    return ({"ok": True, "file": staged[0]} if len(staged) == 1
+            else {"ok": True, "files": staged})
 
 
 @router.delete("/uploads/{public_id}")
