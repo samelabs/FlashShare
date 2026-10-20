@@ -670,6 +670,109 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("publish-edit-refill: stored tag=all is the selected family",
         tagState.checkedFam === "all", JSON.stringify(tagState));
 
+      // ── 13e. locale mechanism: main language selector ──
+      // dict label WITHOUT the interface language → main language =
+      // the dict's first key (the original language); the main field
+      // refills that language's own text (no fallback impostor), other
+      // languages ride extra rows, and both selectors are mutually
+      // exclusive. Saving must carry X-518-Edit-Locale = main language.
+      const localeLabel = { ja: "ゲート原名", zh: "门户原名" };
+      const createdLocale = await page.evaluate(async (label) => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label, desc: { ja: "元の説明", zh: "原说明" },
+            url: "https://93.184.216.34/locale", timeout_s: 30,
+            files_min: 0, files_max: 1, format_families: "image",
+            accept: [".png"], outputs: ["text"], cost: 0,
+          }),
+        });
+        const txt = await r.text();
+        return { ok: r.ok, body: txt.slice(0, 120),
+                 key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, localeLabel);
+      check("publish-locale: tool with ja-first dict label created",
+        createdLocale.ok, createdLocale.body);
+      await gotoReady(page, `/account/tools/publish?id=${createdLocale.key}`, "#pubForm");
+      const localeState = await page.evaluate(() => ({
+        mainLang: (document.getElementById("fMainLang") || {}).value,
+        labelVal: document.getElementById("fLabel").value,
+        descVal: document.getElementById("fDesc").value,
+        rowLangs: [...document.querySelectorAll("#langRows .lang-pick")].map(s => s.value),
+        rowHasMain: [...document.querySelectorAll("#langRows .lang-pick")]
+          .some(s => [...s.options].some(o => o.value ===
+            ((document.getElementById("fMainLang") || {}).value))),
+        mainJaDisabled: ((document.querySelector('#fMainLang option[value="ja"]') || {}).disabled === true),
+        mainZhDisabled: ((document.querySelector('#fMainLang option[value="zh"]') || {}).disabled === true),
+      }));
+      check("publish-locale: main language defaults to the dict first key (ja)",
+        localeState.mainLang === "ja", JSON.stringify(localeState));
+      check("publish-locale: main label field refills the ja text itself",
+        localeState.labelVal === localeLabel.ja, localeState.labelVal);
+      check("publish-locale: main desc field refills the ja text itself",
+        localeState.descVal === "元の説明", localeState.descVal);
+      check("publish-locale: zh (non-main locale) rides an extra row",
+        localeState.rowLangs.length === 1 && localeState.rowLangs[0] === "zh",
+        JSON.stringify(localeState.rowLangs));
+      check("publish-locale: extra rows never offer the main language",
+        localeState.rowHasMain === false, JSON.stringify(localeState));
+      check("publish-locale: main selector disables the row-occupied language only",
+        localeState.mainZhDisabled === true && localeState.mainJaDisabled === false,
+        JSON.stringify(localeState));
+      // save → the PATCH must carry the main language, not the UI language.
+      // Wait for the PATCH response BEFORE navigating away: submit() sets
+      // location.href on success and a late navigation would clobber the
+      // next goto's document mid-load.
+      let editLocaleHeader = null;
+      let patchSettled = new Promise((resolve) => {
+        page.on("response", function sink(res) {
+          if (res.url().includes("/api/usertools/") && res.request().method() === "PATCH") {
+            page.off("response", sink);
+            resolve(res.status());
+          }
+        });
+      });
+      const reqSink = (req) => {
+        if (req.method() === "PATCH" && req.url().includes("/api/usertools/")) {
+          editLocaleHeader = req.headers()["x-518-edit-locale"] || "";
+        }
+      };
+      page.on("request", reqSink);
+      await page.click("#pubSubmit");
+      await patchSettled;
+      await page.waitForURL(/\/account\/tools/, { timeout: 20000 }).catch(() => {});
+      page.off("request", reqSink);
+      check("publish-locale: X-518-Edit-Locale equals the main language (ja)",
+        editLocaleHeader === "ja", editLocaleHeader);
+
+      // create page: main defaults to the interface language; occupying
+      // a language with an extra row disables it on the main selector
+      await gotoReady(page, "/account/tools/publish", "#pubForm");
+      const createMain = await page.evaluate(() => ({
+        main: (document.getElementById("fMainLang") || {}).value,
+        iface: (document.documentElement.lang || "en").slice(0, 2),
+      }));
+      check("publish-locale: create defaults main language to the interface language",
+        createMain.main === createMain.iface, JSON.stringify(createMain));
+      await page.evaluate(() => { document.getElementById("langMore").open = true; });
+      await page.click("#addLangRow");
+      await page.selectOption("#langRows .lang-row:last-child .lang-pick", "zh");
+      const mutexState = await page.evaluate(() => {
+        const main = document.getElementById("fMainLang").value;
+        return {
+          zhDisabled: ((document.querySelector('#fMainLang option[value="zh"]') || {}).disabled === true),
+          mainDisabled: ((document.querySelector(`#fMainLang option[value="${main}"]`) || {}).disabled === true),
+          rowHasMain: [...document.querySelectorAll("#langRows .lang-pick")]
+            .some(s => [...s.options].some(o => o.value === main)),
+        };
+      });
+      check("publish-locale: create — main selector disables the taken language",
+        mutexState.zhDisabled === true && mutexState.mainDisabled === false,
+        JSON.stringify(mutexState));
+      check("publish-locale: create — extra row options exclude the main language",
+        mutexState.rowHasMain === false, JSON.stringify(mutexState));
+
       // ── 14. six-parameter tool (8 long enum labels) for the params
       // layout gate: >3 params fold into "more", both surfaces, both
       // widths. Created as a real unlisted user tool (owner sees it in

@@ -492,7 +492,11 @@ async def update_user_tool(tool_key: str, request: Request):
                 if isinstance(new_label, dict):
                     # fallback no-change 判定永远基于 old_snapshot (原始旧 dict),
                     # 与 merged 累积状态无关 — locale 间互不顺序依赖 (the billing fixc)
-                    merged = dict(old_label) if isinstance(old_label, dict) else {}
+                    # 旧值 str → 合并基底 {edit_locale: 旧 str} (locale 机制:
+                    # dict 第一键 = 原文语言; 旧 str 的语言未知, 按编辑 locale 落位)
+                    merged = dict(old_label) if isinstance(old_label, dict) else (
+                        {edit_locale: old_label}
+                        if isinstance(old_label, str) and old_label else {})
                     for lg, txt in new_label.items():
                         if lg not in _SUPPORTED_LANGS:
                             continue
@@ -578,7 +582,11 @@ async def update_user_tool(tool_key: str, request: Request):
                     old_desc = json.loads(row["desc_json"] or "{}")
                 except Exception:
                     old_desc = {}
-                old_dict = old_desc if isinstance(old_desc, dict) else {}
+                # 旧值 str → 合并基底 {edit_locale: 旧 str} (同 label 分支:
+                # 否则 str 原文在 dict merge 中被丢弃)
+                old_dict = old_desc if isinstance(old_desc, dict) else (
+                    {edit_locale: old_desc}
+                    if isinstance(old_desc, str) and old_desc else {})
                 cur = resolve_label(old_desc, edit_locale) if old_desc else ""
                 if isinstance(d, dict):
                     # 同 label: no-change 基于 old_snapshot, 顺序无关

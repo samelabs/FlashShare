@@ -1,19 +1,19 @@
 # Release migration: platform_tools.format_family（tag 列）
 
 **执行顺序（强制，一条线）：**
-**预检 → ① 加列 → ② 内置回填 → 停写窗口 → ③ 社区/运营回填（含 accept
-物化）→ tag 预检 → 部署首启 → ④ 加 FK → 首启后复查。**
+**预检 → ① 加列 → 停写窗口 → ② 全量回填（内置 + 社区 + 运营，含 accept
+物化）→ tag 预检 → 部署首启 → ③ 加 FK → 首启后复查。**
 
 先迁移后部署（与 icon 列 DROP 资产方向相反）：新代码的 seed 启动即写
 `format_family`，列不存在则 `UndefinedColumn` 起不来（PM 升级探针已
 复现）。旧代码（v1.5）不读此列，列先加上对运行中的旧服务零影响。
 
-**停写窗口（强制）**：③ 同时写 `format_family` **和** `accept_json`
-（accept=NULL 的行物化全边界清单）——不是"只写新列"。因此 ③ 执行前
+**停写窗口（强制）**：② 同时写 `format_family` **和** `accept_json`
+（accept=NULL 的行物化全边界清单）——不是"只写新列"。因此 ② 执行前
 必须停掉旧服务对 `platform_tools` 的写入（社区发布/编辑、运营建改），
-否则：预检之后旧服务新建的无 tag 行不会进 ③ 的回填集，新代码启动
-校验将拒绝它们。窗口从 ③ 开始到新代码首启为止；窗口内若确需运维写
-入，写入后必须重跑 ③（幂等）与下述终检。
+否则：预检之后旧服务新建的无 tag 行不会进 ② 的回填集，新代码启动
+校验将拒绝它们。窗口从 ② 开始到新代码首启为止；窗口内若确需运维写
+入，写入后必须重跑 ②（幂等）与下述终检。
 
 **切换前终检（部署首启前，须为空）**：
 ```sql
@@ -41,7 +41,7 @@ cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python <脚本>
   `all`**（与 share/zip_pack 同口径：运营建的是"全部兼容"工具）。
   accept_json **解析失败必须报错**并打印 tool_key，不准吞。
 - FK→tags：存量库在首启（tags 表由新代码 init_db 创建+播种）之后由
-  本资产步骤④幂等补齐，保证与新建库 schema 一致。
+  本资产步骤③幂等补齐，保证与新建库 schema 一致。
 
 ## 预检（部署前；须为空 / 信息性见各条注释）
 
@@ -51,8 +51,8 @@ SELECT tool_key FROM platform_tools WHERE tool_key LIKE '%/%';
 SELECT user_id FROM tool_favorites WHERE tool_key LIKE '%/%';
 SELECT tool_id FROM pricing WHERE tool_id LIKE '%/%';
 SELECT id FROM tool_calls WHERE tool_id LIKE '%/%';
--- ③ 将物化的清单（信息性，不阻断）: share / zip_pack / 运营行
--- accept=NULL 的文件工具全部在 ③ 物化全边界清单 + all，逐行核对即可
+-- ② 将物化的清单（信息性，不阻断）: share / zip_pack / 运营行
+-- accept=NULL 的文件工具全部在 ② 物化全边界清单 + all，逐行核对即可
 SELECT tool_key FROM platform_tools WHERE files_max > 0 AND accept_json IS NULL;
 -- 纯文本工具不得带 accept（须为空）
 SELECT tool_key FROM platform_tools WHERE files_max = 0 AND accept_json IS NOT NULL;
@@ -66,7 +66,7 @@ ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS format_family TEXT;
 ```
 
 ```bash
-# ③ 全量回填（内置 + 社区 + 运营; 停写窗口内执行 — 同时写 format_family 与 accept_json）
+# ② 全量回填（内置 + 社区 + 运营; 停写窗口内执行 — 同时写 format_family 与 accept_json）
 # 内置 share/zip_pack (accept=NULL → 物化全边界+all) 与社区/运营行一并处理
 cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python - <<'PY'
 import json, sys
@@ -104,7 +104,7 @@ PY
 ```
 
 ```sql
--- tag 预检（③ 之后、部署之前; 须为空）
+-- tag 预检（② 之后、部署之前; 须为空）
 SELECT tool_key FROM platform_tools
  WHERE files_max > 0 AND format_family IS NULL;
 SELECT tool_key FROM platform_tools
@@ -115,7 +115,7 @@ SELECT tool_key FROM platform_tools
 内置 tag；`validate_catalog_rows` 启动校验全部行）。
 
 ```sql
--- ④ 补 FK（首启之后; DO 块幂等 — 重复执行不报错）
+-- ③ 补 FK（首启之后; DO 块幂等 — 重复执行不报错）
 DO $$
 BEGIN
   IF NOT EXISTS (

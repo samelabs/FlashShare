@@ -299,6 +299,8 @@
 .pub-grid input, .pub-grid select { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
 .pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .pub-grid .pub-wide { grid-column: 1 / -1; }
+/* 主语言选择器 (主字段文本自己的语言标签): 无可见字段名, 与同排输入框底对齐 */
+.pub-grid .pub-mainlang { display: flex; flex-direction: column; justify-content: flex-end; }
 .pub-err { font-size: 12px; color: var(--danger); min-height: 0; font-style: normal; }
 .pub-err:empty { display: none; }
 .pub-submit-row { display: flex; justify-content: flex-end; gap: 10px; }

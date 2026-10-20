@@ -72,20 +72,6 @@ function collectFamilies() {
 function collectAccept() {
   return [...selectedExts].sort();
 }
-// family inference: token 是 ".pdf" 这类 canonical extension → family.exts
-// 匹配。stored accept 只有 ext token 一种格式。
-function famKeyFromAccept(tokens) {
-  const fams = new Set();
-  (tokens || []).forEach(tok => {
-    const t = String(tok || "").toLowerCase();
-    if (!t.startsWith(".")) return;
-    for (const k of FAM_KEYS) {
-      const f = FORMAT_MANIFEST.families[k];
-      if (f && f.exts.includes(t)) fams.add(k);
-    }
-  });
-  return [...fams];
-}
 // accept tokens → canonical ext 集合 (编辑回填)。
 function extsFromAccept(tokens) {
   const out = new Set();
@@ -112,11 +98,15 @@ function bindFormatPickers() {
   });
 }
 
-// ── 多语言行 (label/desc 附加语言) ──
+// ── 多语言 (locale 机制) ──
+// locale = 文本自己的语言标签。主字段 (工具名/简介) 只写一种语言 = 主语言,
+// 以 {主语言: 文本} 提交且主语言键放第一位 (dict 第一键 = 原文语言);
+// 附加语言行补充其他语言。主语言与附加行互斥: 附加行选项排除主语言,
+// 主语言选择器禁用已被附加行占用的语言。
 const SITE_LANGS = [["en","English"],["zh","中文"],["ja","日本語"],["ko","한국어"],["es","Español"],["pt","Português"],["ru","Русский"],["ar","العربية"],["de","Deutsch"],["fr","Français"]];
+let _mainLang = _curLang();   // 新建默认 = 界面语言; 编辑回填按 L3 规则定
 function langRowHtml() {
-  const cur = _curLang();
-  const opts = SITE_LANGS.filter(([c]) => c !== cur)
+  const opts = SITE_LANGS.filter(([c]) => c !== _mainLang)
     .map(([c, n]) => '<option value="' + c + '">' + n + "</option>").join("");
   return '<div class="lang-row">' +
     '<select class="lang-pick">' + opts + "</select>" +
@@ -124,13 +114,30 @@ function langRowHtml() {
     '<input class="lang-desc" maxlength="200" placeholder="' + _msg("mytools_ph_desc") + '">' +
     '<button type="button" class="lang-del" aria-label="✕">✕</button></div>';
 }
+// 主语言选择器: 语言自称做选项; 被附加行占用的语言禁用
+function renderMainLangSelect() {
+  const taken = new Set([...document.querySelectorAll("#langRows .lang-pick")]
+    .map(s => s.value).filter(Boolean));
+  document.getElementById("fMainLang").innerHTML = SITE_LANGS.map(([c, n]) =>
+    '<option value="' + c + '"' + (c === _mainLang ? " selected" : "") +
+    (taken.has(c) ? " disabled" : "") + ">" + n + "</option>").join("");
+}
+// 主语言切换后: 附加行选项同步排除新主语言 (保留各行已选值)
+function refreshRowLangOptions() {
+  document.querySelectorAll("#langRows .lang-pick").forEach(sel => {
+    const keep = sel.value;
+    sel.innerHTML = SITE_LANGS.filter(([c]) => c !== _mainLang)
+      .map(([c, n]) => '<option value="' + c + '"' + (c === keep ? " selected" : "") +
+        ">" + n + "</option>").join("");
+  });
+}
 function collectLangDict() {
-  const out = {}; const cur = _curLang();
+  const out = {};
   document.querySelectorAll("#langRows .lang-row").forEach(row => {
     const lang = row.querySelector(".lang-pick").value;
     const name = row.querySelector(".lang-name").value.trim();
     const desc = row.querySelector(".lang-desc").value.trim();
-    if (lang === cur) return;
+    if (lang === _mainLang) return;
     // the billing fixc 删除送达: 行存在即"提及"—— 空值显式删除该 locale (tombstone ""),
     // 未提及 = 行不存在。服务端 patch_locale 空值=删键, 与本协议闭环。
     if (lang) {
@@ -141,7 +148,7 @@ function collectLangDict() {
   });
   // 行被移除的附加语言 = 显式删除 (tombstone 空串送达, 与"从未提及"可区分)
   _deletedLangs.forEach(lg => {
-    if (lg !== cur) { out[lg] = ""; out[lg + "__desc"] = ""; }
+    if (lg !== _mainLang) { out[lg] = ""; out[lg + "__desc"] = ""; }
   });
   return out;
 }
@@ -156,13 +163,12 @@ const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
 // app.js 之后加载) — 回填的 key/label/placeholder/default/option value
 // 与文本全部经它, 禁止只转引号的局部写法。
 const _esc = s => window.escapeHtml(String(s == null ? "" : s));
-// LocalizedText 编辑回填 (the billing fix): 只经 canonical resolveLabel 读 dict —
-// 禁止 Object.values()[0] / 把 dict 当 string。服务端 merge 负责 patch 语义。
+// LocalizedText 回填: 主字段回填主语言自己的值 (L3); 参数叶子回填 resolver
+// 结果 (非空保证 — 空串过不了声明校验, 未修改时服务端 guard 判 no-op 不物化)。
 const _ltBack = v => window.resolveLabel ? window.resolveLabel(v) : (typeof v === "string" ? v : "");
 // 显式删除的附加语言 (the billing fixc): 用户移除 lang-row 或清空输入 → 记 locale,
 // 提交时以空串 tombstone 送达服务端 (与"从未提及"可区分)。
 const _deletedLangs = new Set();
-let _initLabel = "", _initDesc = "";
 // 语言行删除单点 (the billing fixd): refill 回填行 / addLangRow 新增行共用 —
 // 记 locale 进 _deletedLangs (tombstone) 后移除行
 function bindLangRowDelete(row) {
@@ -171,6 +177,7 @@ function bindLangRowDelete(row) {
       const lg = row.querySelector(".lang-pick").value;
       if (lg) _deletedLangs.add(lg);   // 行删除 = 显式删除该语言
       row.remove();
+      renderMainLangSelect();
     });
 }
 let _paramSeq = 0;
@@ -292,9 +299,11 @@ function collectParams(preview) {
     if (seen.has(key)) { err("bad_param_key"); continue; }
     seen.add(key);
     const type = row.querySelector(".pr-type").value;
+    // L: 参数文本叶子一律以 {主语言: 文本} 提交 (主语言键第一位)
+    const _lt = txt => ({ [_mainLang]: txt });
     const label = row.querySelector(".pr-label").value.trim() || key;
     const required = row.querySelector(".pr-required").checked;
-    const item = { key, type, label, required };
+    const item = { key, type, label: _lt(label), required };
     if (type === "enum") {
       const options = [];
       const vals = new Set();
@@ -304,7 +313,7 @@ function collectParams(preview) {
         if (!v || vals.has(v)) { bad = true; return; }
         vals.add(v);
         const l = o.querySelector(".pr-opt-label").value.trim();
-        options.push({ value: v, label: l || v });
+        options.push({ value: v, label: _lt(l || v) });
       });
       if (bad || !options.length) { err("bad_param_options"); continue; }
       item.options = options;
@@ -325,7 +334,7 @@ function collectParams(preview) {
       else if (dv === "false") item.default = false;
     } else {
       const ph = row.querySelector(".pr-ph").value.trim();
-      if (ph) item.placeholder = ph;
+      if (ph) item.placeholder = _lt(ph);
       const df = row.querySelector(".pr-default-t").value.trim();
       if (df) item.default = df;
     }
@@ -376,24 +385,20 @@ async function submit() {
   const extra = collectLangDict();
   let label = document.getElementById("fLabel").value.trim();
   let desc = document.getElementById("fDesc").value.trim();
-  if (Object.keys(extra).length) {
-    const labelDict = {}; const descDict = {};
-    for (const [k, v] of Object.entries(extra)) {
-      if (k.endsWith("__desc")) descDict[k.slice(0, -6)] = v;
-      else labelDict[k] = v;
-    }
-    // cur locale 三态 (the billing fixd):
-    //   值 == 回填初值 → 未修改, 不并入 (旧 dict 该 locale 原样保留)
-    //   值 != 初值非空 → {cur: 新值}
-    //   值 != 初值空串 → {cur: ""} tombstone (显式删除该 locale)
-    if (label !== _initLabel) labelDict[_curLang()] = label;
-    if (desc !== _initDesc) descDict[_curLang()] = desc;
-    if (Object.keys(labelDict).length > 1 || Object.keys(descDict).length) {
-      label = Object.keys(labelDict).length ? labelDict : label;
-      desc = Object.keys(descDict).length ? descDict : desc;
-    }
+  const isEditPatch = !!_editId;   // Web PATCH: 空 desc = 显式删除主语言 locale
+  // L: 主字段一律以 {主语言: 文本} 提交, 主语言键第一位 (= 原文语言);
+  // 附加行补其他语言。未修改探测交服务端 patch_locale_guard (与回填值一致
+  // → no-op, 不物化新 locale 键)。
+  const labelDict = {};
+  const descDict = {};
+  if (label || isEditPatch) labelDict[_mainLang] = label;
+  if (desc || isEditPatch) descDict[_mainLang] = desc;
+  for (const [k, v] of Object.entries(extra)) {
+    if (k.endsWith("__desc")) descDict[k.slice(0, -6)] = v;
+    else labelDict[k] = v;
   }
-  const isEditPatch = !!_editId;   // Web PATCH: 空 desc = 显式删除当前 locale
+  label = Object.keys(labelDict).length ? labelDict : "";
+  desc = Object.keys(descDict).length ? descDict : (!isEditPatch ? undefined : "");
   // 已存凭证的编辑态: 勾选"移除认证凭证" = 提交两个空串 (服务端
   // build_http_binding 单点解释为清除); 未勾选且输入框为空 = 不提及, 保留旧凭证
   const removeAuth = isEditPatch
@@ -418,7 +423,7 @@ async function submit() {
   }
   const body = {
     label,
-    desc: (desc || (!isEditPatch ? undefined : "")),
+    desc,
     url: document.getElementById("fUrl").value.trim(),
     timeout_s: parseInt(document.getElementById("fTimeout").value, 10) || 60,
     format_families: textOnly ? undefined : collectFamilies(),
@@ -443,7 +448,7 @@ async function submit() {
     const r = await fetch("/api/usertools" + (editing ? "/" + _editId : ""), {
       method: editing ? "PATCH" : "POST",
       headers: Object.assign({ "Content-Type": "application/json" },
-        editing ? { "X-518-Edit-Locale": _curLang() } : null),
+        editing ? { "X-518-Edit-Locale": _mainLang } : null),
       body: JSON.stringify(body),
     });
     const d = await r.json();
@@ -474,23 +479,32 @@ async function submit() {
 }
 
 // ── 编辑回填 ──
+// L3 主语言规则: 存储是 dict → 含界面语言用界面语言, 否则第一个键;
+// 存储是 str → 界面语言 (str 无语言标签, 编辑视角按界面语言处理)。
+function editMainLang(labelVal) {
+  if (labelVal && typeof labelVal === "object") {
+    const keys = Object.keys(labelVal).filter(k => labelVal[k]);
+    if (keys.length && !keys.includes(_curLang())) return keys[0];
+    return _curLang();
+  }
+  return _curLang();
+}
+const _ownText = (v, lang) => (v && typeof v === "object") ? (v[lang] || "") : (typeof v === "string" ? v : "");
 function refill(t) {
   _deletedLangs.clear();
   document.getElementById("fUrl").value = t.url || "";
-  document.getElementById("fLabel").value = _ltBack(t.label);
-  // the billing fixc: 记录主框回填初值 (= resolver fallback) — 提交时值未变 → cur locale
-  // 视为未修改, 不并入提交 dict (服务端 guard 的前端对应)
-  _initLabel = document.getElementById("fLabel").value;
-  _initDesc = document.getElementById("fDesc").value = _ltBack(t.desc);
+  _mainLang = editMainLang(t.label);
+  renderMainLangSelect();
+  // 主字段回填主语言自己的值 (不拿 fallback 文本冒充; 该语言缺失 = 空)
+  document.getElementById("fLabel").value = _ownText(t.label, _mainLang);
+  document.getElementById("fDesc").value = _ownText(t.desc, _mainLang);
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
-  // 4C-2 编辑回填: 声明的 tag 是契约字段, 回填直接消费存储值;
-  // 完全缺失 (迁移前存量) 才回落到 accept 推断, 且未知 accept → 受控
-  // 空态 (不默认 image, 不覆盖原声明)。
+  // 4C-2 编辑回填: 声明的 tag 是契约字段, 启动不变量保证存储行必有,
+  // 回填直接消费存储值; 缺失 → 受控空态 (不默认 image, 不覆盖原声明)。
   const accExts = extsFromAccept(t.accept);
   const textOnly = t.files_max === 0;
-  const fam = textOnly ? null
-    : (t.format_family || famKeyFromAccept(t.accept)[0] || null);
+  const fam = textOnly ? null : (t.format_family || null);
   const fams = fam ? [fam] : [];
   document.querySelector('input[name="fInputMode"][value="' + (textOnly ? "text" : "files") + '"]').checked = true;
   // 纯文本工具切回文件输入时: 族网格按新建态默认, 窗口回到 1..1
@@ -502,12 +516,12 @@ function refill(t) {
     const el = document.getElementById("fOut" + k.charAt(0).toUpperCase() + k.slice(1));
     if (el) el.checked = (t.outputs || ["file"]).indexOf(k) !== -1;
   });
-  // 多语言回填
+  // 多语言回填: 附加行排除主语言, 只补其他语言
   const rows = {};
   const eat = (d, key) => {
     if (!d || typeof d !== "object") return;
     Object.entries(d).forEach(([lg, v]) => {
-      if (lg === _curLang() || !v) return;
+      if (lg === _mainLang || !v) return;
       if (key === "fLabel") (rows[lg] = rows[lg] || {}).name = v;
       else (rows[lg] = rows[lg] || {}).desc = v;
     });
@@ -521,6 +535,7 @@ function refill(t) {
     if (kv.desc) row.querySelector(".lang-desc").value = kv.desc;
   });
   document.querySelectorAll("#langRows .lang-row").forEach(bindLangRowDelete);
+  renderMainLangSelect();   // 行就位后再算禁用态 (此前渲染早于行插入)
   // 参数回填
   (t.params || []).forEach(p => addParamRow(p));
   refreshParamNone();
@@ -536,11 +551,22 @@ function initLangRowDel() {
     const box = document.getElementById("langRows");
     box.insertAdjacentHTML("beforeend", langRowHtml());
     bindLangRowDelete(box.lastElementChild);
+    renderMainLangSelect();   // 新行占用的语言 → 主选择器禁用
+  });
+  // 附加行换语言 → 主选择器禁用态同步 (委托, 行动态增删免重绑)
+  document.getElementById("langRows").addEventListener("change", e => {
+    if (e.target.classList.contains("lang-pick")) renderMainLangSelect();
   });
 }
 
 function init() {
   initLangRowDel();
+  renderMainLangSelect();
+  const mainSel = document.getElementById("fMainLang");
+  mainSel.addEventListener("change", () => {
+    _mainLang = mainSel.value || _curLang();
+    refreshRowLangOptions();  // 附加行选项同步排除新主语言
+  });
   bindFormatPickers();
   renderFamGrid(null, null, true);   // 新建态: 默认首族 + 全选
   document.querySelectorAll('input[name="fInputMode"]').forEach(r =>
