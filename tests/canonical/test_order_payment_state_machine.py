@@ -406,9 +406,9 @@ with db() as con:
         (uidZ, _plz["id"], ts, ts)).fetchone())
     con.execute(
         "insert into memberships (user_id, plan_id,"
-        " provider_subscription_id, status, started_at, created_at,"
-        " updated_at) values (%s, %s, 'sub_z', 'active', %s, %s, %s)",
-        (uidZ, _plz["id"], ts, ts, ts))
+        " provider_subscription_id, status, started_at, updated_at)"
+        " values (%s, %s, 'sub:sub_z', 'active', %s, %s)",
+        (uidZ, _plz["id"], ts, ts))
 _psz = ts - 3600
 _subz = {"subscription": {"id": "sub_z", "status": "active",
          "current_period_start_date": _psz,

@@ -172,13 +172,9 @@ def to_input_schema_properties(decl: list, lang: str = "en") -> tuple[dict, list
                       "enum": [o["value"] for o in p.get("options", [])]}
         elif t == "number":
             schema = {"type": "number"}
-            # Defense for rows that predate the finite check: a non-finite
-            # bound/default is dropped from the projection instead of
-            # poisoning JSON serialization (anonymous tools/list must
-            # never 500 on one tool's junk declaration).
-            if p.get("min") is not None and math.isfinite(p["min"]):
+            if p.get("min") is not None:
                 schema["minimum"] = p["min"]
-            if p.get("max") is not None and math.isfinite(p["max"]):
+            if p.get("max") is not None:
                 schema["maximum"] = p["max"]
         elif t == "boolean":
             schema = {"type": "boolean"}
@@ -186,7 +182,7 @@ def to_input_schema_properties(decl: list, lang: str = "en") -> tuple[dict, list
             schema = {"type": "string"}
         desc = resolve_label(p.get("label"), lang) or p["key"]
         default = p.get("default")
-        if default is not None and (t != "number" or math.isfinite(default)):
+        if default is not None:
             schema["default"] = default
             desc = f"{desc} (default: {default})"
         schema["description"] = desc

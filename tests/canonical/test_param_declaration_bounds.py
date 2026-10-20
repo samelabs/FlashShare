@@ -4,8 +4,8 @@ float() accepts inf/nan, and the declaration validator historically
 didn't reject them — a public tool with a non-finite bound poisoned
 JSON serialization and took the anonymous MCP tools/list down with a
 500. The validator now rejects non-finite min/max/default and defaults
-outside their own bounds; the inputSchema projection additionally drops
-non-finite values so legacy rows can never break the catalog.
+outside their own bounds. Stored junk declarations are excluded by a
+deploy-time read-only precheck, not by a runtime projection channel.
 """
 import os as _os
 import sys as _sys
@@ -129,39 +129,9 @@ st, r = _mktool(ck, "ok", [{"key": "a", "type": "number", "min": 1,
 check("3 legal bounded declaration accepted", st == 200 and r.get("ok"),
       f"{st} {str(r)[:70]}")
 
-# ── 4. projection defense: a legacy non-finite row must not break
-#      the anonymous MCP tools/list ──
-legacy_key = "pb" + uuid.uuid4().hex[:8]
-with db() as con:
-    con.execute(
-        "insert into platform_tools (tool_key, owner_id, tool_id,"
-        " label_json, accept_json, files_min, files_max, endpoint_json,"
-        " params_json, featured, created_at, updated_at)"
-        " values (%s, %s, %s, %s, %s, 0, 1, %s, %s, TRUE, %s, %s)",
-        (legacy_key, uid, legacy_key, '{"en": "PB Legacy"}', '[".png"]',
-         json.dumps({"url": "https://93.184.216.34/legacy", "timeout_s": 30}),
-         json.dumps([{"key": "x", "type": "number",
-                      "min": float("inf"), "max": float("nan"),
-                      "default": float("inf")}]),
-         ts, ts))
-    con.execute(
-        "insert into pricing (tool_id, cost, enabled, updated_at)"
-        " values (%s, 0, TRUE, %s)", (legacy_key, ts))
-st, r = _req("POST", "/mcp",
-             {"jsonrpc": "2.0", "id": 7, "method": "tools/list"},
-             {"Content-Type": "application/json"})
-tools = ((r.get("result") or {}).get("tools") or []) if isinstance(r, dict) else []
-legacy = next((t for t in tools
-               if str(t.get("name", "")).endswith(legacy_key)), None)
-schema = ((legacy or {}).get("inputSchema") or {}).get("properties", {}).get("x", {})
-check("4 anonymous tools/list survives a legacy non-finite declaration",
-      st == 200 and legacy is not None,
-      f"{st} names={[t.get('name') for t in tools][:8]}")
-check("4b non-finite bound/default dropped from the projected schema",
-      legacy is not None
-      and "minimum" not in schema and "maximum" not in schema
-      and "default" not in schema,
-      json.dumps(schema)[:100])
+# No legacy-row projection defense exists by design: non-finite values in
+# stored declarations are a deploy-time read-only precheck concern
+# (params_json ~* '(infinity|nan)' must be empty), not a runtime channel.
 
 with db() as con:
     con.execute("delete from platform_tools where owner_id=%s", (uid,))
