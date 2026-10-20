@@ -133,8 +133,10 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
             from remote import auth_header_allowed
             if not auth_header_allowed(fields["auth_header"]):
                 return None, "bad_auth_header"
-        elif has_h and has_t:
-            # both keys present, both empty → explicit credential clear
+        elif has_h and has_t and not header and not token:
+            # both keys present AND both empty → explicit credential
+            # clear. A half-empty pair must be rejected here: accepting
+            # it would silently discard the stored credential.
             fields["auth_header"] = ""
             fields["auth_token"] = ""
         elif has_h or has_t:
