@@ -911,7 +911,48 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       callsShape.rows >= 2 && callsShape.ok >= 2 && callsShape.resultLinks >= 1
         && callsShape.nav,
       JSON.stringify(callsShape));
-    await gotoReady(page, "/account/credits", ".acct-table");
+    // a PAID failed call gives the ledger a consume+refund pair with the
+    // tool relation (net cost 0, refunded chip) — publish a 3-credit body
+    // tool and drive it through /v1 (unreachable public endpoint → refund).
+    const paidKey = await page.evaluate(async () => {
+      const r = await fetch("/api/usertools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "Gate Ledger", url: "https://93.184.216.34/never",
+          timeout_s: 5, files_min: 0, files_max: 0,
+          body_format: "text", outputs: ["text"], cost: 3,
+        }),
+      });
+      try { return JSON.parse(await r.text()).tool_key || ""; } catch (e) { return ""; }
+    });
+    if (paidKey) {
+      const paidCall = await page.evaluate(async ({ key, apiKey }) => {
+        const r = await fetch(`/v1/tools/${key}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "text/plain" },
+          body: "charge me",
+        });
+        return { status: r.status, body: await r.text() };
+      }, { key: paidKey, apiKey });
+      check("v1 paid failed call → typed failure (charged then refunded)",
+        paidCall.status >= 500 && /err_endpoint_(failed|timeout)/.test(paidCall.body),
+        `${paidCall.status} ${paidCall.body.slice(0, 80)}`);
+      await gotoReady(page, "/account/calls", ".acct-table");
+      const netShape = await page.evaluate(() => ({
+        failed: document.querySelectorAll(".calls-st-failed").length,
+        refunded: document.querySelectorAll(".calls-refunded").length,
+        zeroNet: [...document.querySelectorAll("td.ta-r.mono")].some(
+          (td) => td.textContent.trim().startsWith("0")),
+      }));
+      check("calls page: failed paid call shows net cost 0 + refunded",
+        netShape.failed >= 1 && netShape.refunded >= 1 && netShape.zeroNet,
+        JSON.stringify(netShape));
+    } else {
+      check("v1 paid failed call → 502 + detail (charged then refunded)",
+        false, "paid body tool fixture not created");
+    }
+    await gotoReady(page, "/account/credits", ".acct-card");
     const ledgerLink = await page.evaluate(() => {
       const a = document.querySelector("a.credit-note-link");
       return a ? a.getAttribute("href") : null;
