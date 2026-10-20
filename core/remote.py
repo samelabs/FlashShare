@@ -572,7 +572,7 @@ def url_with_params(url: str, params: dict) -> str:
     if not extra:
         return url
     parts = urllib.parse.urlsplit(url)
-    query = parts.query + ("&" + extra if parts.query else "")
+    query = f"{parts.query}&{extra}" if parts.query else extra
     return urllib.parse.urlunsplit(
         (parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 

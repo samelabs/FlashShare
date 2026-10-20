@@ -226,7 +226,7 @@ _concurrency = asyncio.Semaphore(8)
 # never queue behind slow tool calls; remote (http) executions carry
 # their own in-flight cap sized below this gate (execution/pool
 # REMOTE_MAX_INFLIGHT), so a slow user tool can never occupy every slot.
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp")
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp", "/v1")
 # Mutating account identity/credentials is a browser-session surface. Capability
 # tokens may run the machine surface (MCP), but cannot use themselves to
 # mint/alter account credentials. Token CRUD and X bind/unbind also enforce
@@ -336,6 +336,8 @@ app.include_router(samelabs.router)
 app.include_router(mcp.router)
 app.include_router(oauth_provider.router)
 app.include_router(mcp_upload.router)
+from app.routes import v1  # noqa: E402
+app.include_router(v1.router, prefix="/v1")
 from app.routes import topup  # noqa: E402
 app.include_router(topup.router)
 app.include_router(usertools.router)
@@ -348,6 +350,9 @@ app.include_router(proxy.router)
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: Exception):
     path = request.url.path
+    if path == "/v1" or path.startswith("/v1/"):
+        return JSONResponse({"ok": False, "error": "not_found"},
+                            status_code=404)
     if path.startswith("/api/"):
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
     # real 404 for humans and agents: a rendered page carrying the way
@@ -358,6 +363,41 @@ async def not_found_handler(request: Request, exc: Exception):
     ctx["shell_class"] = ""
     return templates.TemplateResponse(request, "not_found.html", ctx,
                                       status_code=404)
+
+
+def _is_v1(path: str) -> bool:
+    return path == "/v1" or path.startswith("/v1/")
+
+
+# /v1 machine surface: EVERY error (404 above, 405 and other HTTP
+# statuses here, unhandled 500 below) is JSON {"ok": false, ...} — no
+# CORS headers anywhere. Other surfaces keep the framework defaults.
+from starlette.exceptions import HTTPException as _StarletteHTTPException  # noqa: E402
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def http_exception_handler(request: Request,
+                                 exc: _StarletteHTTPException):
+    if _is_v1(request.url.path):
+        code = {404: "not_found", 405: "method_not_allowed",
+                401: "unauthorized", 403: "forbidden",
+                413: "too_large", 429: "rate_limited"}.get(
+                    exc.status_code, "error")
+        return JSONResponse({"ok": False, "error": code},
+                            status_code=exc.status_code,
+                            headers=getattr(exc, "headers", None))
+    from fastapi.responses import JSONResponse as _JR
+    return _JR({"detail": exc.detail}, status_code=exc.status_code,
+               headers=getattr(exc, "headers", None))
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    if _is_v1(request.url.path):
+        logger.exception("v1 unhandled error: %s", exc)
+        return JSONResponse({"ok": False, "error": "internal_error"},
+                            status_code=500)
+    raise exc
 
 
 _housekeeping_task = None

@@ -688,6 +688,9 @@ jobs:
       - name: Body tool contract canonical
         run: python tests/canonical/test_body_tool_local.py
 
+      - name: API surface canonical
+        run: python tests/canonical/test_api_surface.py
+
       - name: Failure diagnostics
         if: failure()
         shell: bash

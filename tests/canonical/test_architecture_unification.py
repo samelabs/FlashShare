@@ -465,8 +465,9 @@ check("U27 routes/api.py 不直接 import repo.ingress_requests",
       "repo.ingress_requests" not in _api_src
       and "repo import ingress_requests" not in _api_src)
 check("U27 routes/api.py receipt finalize 走 canonical sharing finalize",
-      "ingress_finalize_ok(con," in _api_src
-      and "_receipt_ok(con," not in _api_src)
+      "ingress_finalize_ok(con," not in _api_src
+      and "_receipt_ok(con," not in _api_src
+      and "stage_sources(" in _api_src)
 check("U27 sharing finalize_ok 是 caller-transaction 形式 (con, ingress_id)",
       "def finalize_ok(con, ingress_id" in _ig_src)
 
