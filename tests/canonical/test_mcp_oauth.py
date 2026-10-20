@@ -22,8 +22,8 @@
   R*  Revocation: grants are viewable and revocable from the
       session-authenticated account surface — a revoked token is 401 on
       /mcp and its refresh is invalid_grant; another user's grant is
-      untouchable (404); a password change revokes the user's OAuth
-      tokens while the fsk_ key survives.
+      untouchable (404); a password change clears browser sessions only
+      while the OAuth tokens and the fsk_ key both survive.
 
 Fail-closed env guard; per-run unique names; fixtures cleaned at end.
 """
@@ -573,8 +573,8 @@ try:
               _t429.status_code)
         _rp._token_hits.clear()
 
-        # credential rotation: a fresh grant for UID dies with the
-        # password change; the fsk_ key survives
+        # credential independence: a password change clears browser
+        # sessions only — the OAuth grant and the fsk_ key both survive
         _code_c = _oa.create_authorization_code(
             UID, CIMD_URL, REDIRECT, challenge, "tools:call", RESOURCE)
         _toks_c = _oa.exchange_authorization_code(
@@ -586,15 +586,12 @@ try:
                               "params": {"name": "catalog_search",
                                          "arguments": {"q": ""}}},
                              token=_toks_c["access_token"])
-        check("R6 password change revokes the user's OAuth tokens → 401",
-              _st4 == 401, _st4)
-        try:
-            _oa.refresh_access_token(_toks_c["refresh_token"],
-                                     CIMD_URL, RESOURCE)
-            _r6b = False
-        except ValueError:
-            _r6b = True
-        check("R6b refresh after password change → invalid_grant", _r6b)
+        check("R6 password change keeps the user's OAuth tokens working",
+              _st4 == 200 and not ((d4 or {}).get("result") or {}).get("isError"),
+              _st4)
+        _toks_c2 = _oa.refresh_access_token(_toks_c["refresh_token"],
+                                            CIMD_URL, RESOURCE)
+        check("R6b refresh after password change still grants", bool(_toks_c2))
         st, _h, d = _mcp({"jsonrpc": "2.0", "id": 23,
                           "method": "tools/call",
                           "params": {"name": "catalog_search",

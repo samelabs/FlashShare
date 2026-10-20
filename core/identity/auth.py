@@ -14,7 +14,6 @@ _UniqueViolation = _pgerr.UniqueViolation
 
 from repo import users as users_repo
 from repo import sessions as sessions_repo
-from repo import oauth_provider as oauth_repo
 from security import hash_password, verify_password
 from utils import now
 
@@ -307,9 +306,9 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
     """Rotate the password under a compare-and-set: the UPDATE only lands
     while the stored hash is still the one this call verified, so two
     concurrent changes from the same old password cannot overwrite each
-    other — the loser gets the typed old-password error. Sessions and
-    OAuth grants are cleared only when the write actually happened (API
-    keys are independent program credentials and survive)."""
+    other — the loser gets the typed old-password error. Browser sessions
+    are cleared only when the write actually happened; API keys and OAuth
+    grants are independent credentials and survive."""
     with db() as con:
         row = users_repo.by_id(con, user_id)
     if not row or not row["password_hash"]:
@@ -325,7 +324,6 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
         if users_repo.update_password_hash_if_current(
                 con, user_id, new_hash, old_hash, now()):
             sessions_repo.delete_user_sessions(con, user_id)
-            oauth_repo.revoke_all_for_user(con, user_id, now())
         else:
             # lost the race: the hash moved after this call verified it
             raise ValueError("err_old_password_wrong")
@@ -334,9 +332,9 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
 def set_password(user_id: int, new_password: str) -> None:
     """First-ever password set (OAuth-only account) under a compare-and-
     set: only the first concurrent setter wins; the loser gets the typed
-    already-set error instead of silently overwriting. Sessions and
-    OAuth grants are cleared only when the write actually happened (API
-    keys are independent program credentials and survive)."""
+    already-set error instead of silently overwriting. Browser sessions
+    are cleared only when the write actually happened; API keys and OAuth
+    grants are independent credentials and survive."""
     err = validate_password(new_password)
     if err:
         raise ValueError(err)
@@ -344,7 +342,6 @@ def set_password(user_id: int, new_password: str) -> None:
         if users_repo.update_password_hash_if_unset(
                 con, user_id, hash_password(new_password), now()):
             sessions_repo.delete_user_sessions(con, user_id)
-            oauth_repo.revoke_all_for_user(con, user_id, now())
         else:
             raise ValueError("err_password_already_set")
 

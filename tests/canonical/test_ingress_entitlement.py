@@ -715,8 +715,8 @@ def _seed_priced_tool(owner_id, tool_id, cost):
     ts = int(time.time())
     tk = f"pf{owner_id}/{tool_id}"
     _cur.execute(
-        "insert into platform_tools (tool_key, owner_id, tool_id, execution, label_json, icon, visibility, enabled, params_json, endpoint_json, created_at, updated_at)"
-        " values (%s, %s, %s, 'http', %s, 'wand', 'public', true, '[]', '{\"url\": \"https://example.org/x\", \"timeout_s\": 30}', %s, %s)"
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution, label_json, visibility, enabled, params_json, endpoint_json, created_at, updated_at, accept_json)"
+        " values (%s, %s, %s, 'http', %s, 'public', true, '[]', '{\"url\": \"https://example.org/x\", \"timeout_s\": 30}', %s, %s, '[\".png\"]')"
         " on conflict do nothing",
         (tk, owner_id, tool_id, _jsonx.dumps({"en": f"PF {tool_id}"}), ts, ts))
     _cur.execute(

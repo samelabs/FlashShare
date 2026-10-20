@@ -597,7 +597,9 @@ pre.rs-text, pre.rs-json {
 .composer.focus { border-color: rgba(255, 77, 77, 0.5); box-shadow: 0 0 0 4px rgba(255, 77, 77, 0.10), var(--sh-3); }
 .composer.dragover { border-color: var(--brand); border-style: dashed; }
 .composer .c-err { margin: var(--s3) var(--s4) 0; }
-.c-files { display: flex; gap: var(--s2); flex-wrap: wrap; padding: 14px 16px 0; }
+/* 文件列表: 等宽网格 — 多文件整齐排列, 长名省略号; 拖放区常驻其下 */
+.c-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--s2); padding: 14px 16px 0; }
 .c-files:empty { display: none; }
 /* 空态上传区: 整块点击/拖入 (files_max>0 才渲染)。
    静态 = 沉底浅实线的"槽"; 虚线只属于拖拽/悬停反馈 (composer.dragover
@@ -615,13 +617,19 @@ pre.rs-text, pre.rs-json {
 .ti-drop small { font-size: var(--fs-xs); color: var(--ink-3); }
 @media (hover:hover) and (pointer:fine) { .ti-drop:hover { border-color: var(--brand); background: var(--brand-50); } }
 .ti-drop:focus-visible, .ti-drop.dragover { border-color: var(--brand); background: var(--brand-50); outline: none; }
+/* 已满态 (files_max 上限): 尺寸不变, 不再是入口 — 降透明度、去手型与悬停反馈 */
+.ti-drop.ti-drop-full { cursor: default; opacity: 0.55; }
+.ti-drop.ti-drop-full .dz-ic svg { stroke: var(--line-2); }
+@media (hover:hover) and (pointer:fine) { .ti-drop.ti-drop-full:hover { border-color: var(--line); background: var(--sunk); } }
 /* 24h 额度低余量提示 (上传区下方一行; 数据 = limits 投影 dailyRemaining) */
 .ti-quota { margin: 8px 16px 14px; font-size: var(--fs-xs); color: var(--warn); }
 .chipf {
   display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px;
   border: var(--border-w) solid var(--line); border-radius: 12px;
-  background: var(--sunk); font-size: 13px; max-width: 260px;
+  background: var(--sunk); font-size: 13px; min-width: 0;
 }
+.chipf > span { min-width: 0; display: flex; flex-direction: column; }
+.chipf > span b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chipf .th { width: 36px; height: 36px; border-radius: 8px; flex: none; object-fit: cover; background: var(--brand-100); }
 .chipf .th.d { background: var(--card); border: var(--border-w) solid var(--line); display: grid; place-items: center; }
 .chipf .th.d svg { width: 17px; height: 17px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -659,18 +667,6 @@ pre.rs-text, pre.rs-json {
   width: 36px; height: 36px;
 }
 .ti-chat-wrap .send svg { width: 16px; height: 16px; }
-
-/* 行尾"+ 添加"文件槽: 已有文件且未达上限时出现在文件列表末尾。
-   外形与 chipf 文件行一致 (同实线边框 / 同底色 / 同缩略位, 无第二行
-   与无移除钮是仅有的差异) — 读作"流的下一个空槽"而非另一个按钮;
-   plus 图标与 hover 品牌反馈承载添加语义。 */
-.ti-add-block {
-  border: var(--border-w) solid var(--line); background: var(--sunk);
-  color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 600;
-}
-.ti-add-block .th.d svg { stroke: var(--brand); }
-@media (hover:hover) and (pointer:fine) { .ti-add-block:hover { border-color: var(--brand); background: var(--brand-50); color: var(--ink); } }
-.ti-add-block:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 .params { display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 6px; }
 .params:empty { display: none; }

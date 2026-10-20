@@ -183,7 +183,6 @@ def create_http_tool(operator_id: int, payload: dict) -> str:
         "execution": "http",
         "label": {"en": payload["label"], "zh": payload["label"]},
         "desc": None,
-        "icon": "wand",
         "inputs": {"files": {
             "min": int(payload.get("files_min", 1)),
             "max": int(payload.get("files_max", 1)),

@@ -812,7 +812,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await gotoReady(page, "/tool/compress", ".composer");
       await page.waitForTimeout(900);
       const touch = await page.evaluate(() => {
-        const sels = [".ti-drop", ".ti-add-block", "button.send", "#mobileNavBtn", ".ft a"];
+        const sels = [".ti-drop", "button.send", "#mobileNavBtn", ".ft a"];
         const bad = [];
         for (const sel of sels) {
           for (const el of Array.from(document.querySelectorAll(sel)).slice(0, 3)) {
@@ -1206,26 +1206,50 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("hello gate") },
       ]);
       await page.waitForTimeout(200);
+      // 拖放区常驻 = 继续添加入口 (e08401a): 未满时可见且可用
       const addState = await page.evaluate(() => {
-        const block = document.querySelector(".ti-add-block");
-        const rows = document.querySelector(".c-files");
-        if (!block || !rows) return { present: false };
-        const siblings = Array.from(rows.children);
-        return { present: true, last: siblings[siblings.length - 1] === block,
-          visible: !!block.offsetParent };
+        const zone = document.querySelector(".ti-drop");
+        if (!zone) return { present: false };
+        const input = document.querySelector(".ti-file-input");
+        return { present: true, visible: !!zone.offsetParent,
+          usable: input ? !input.disabled : false,
+          full: zone.classList.contains("ti-drop-full") };
       });
-      check("composer: + add block appears at the end of the file list",
-        addState.present && addState.last && addState.visible, JSON.stringify(addState));
-      // compress is 1..1: at max the block must vanish
+      check("composer: persistent dropzone is a usable add entry below the cap",
+        addState.present && addState.visible && addState.usable && !addState.full,
+        JSON.stringify(addState));
+      // compress is 1..1: at max the dropzone keeps its size but enters the
+      // full state — no picker on click, input disabled
       const tp = await ctx.newPage();
       await gotoReady(tp, "/tool/compress", ".composer");
       await setInputFiles(tp, ".ti-file-input", [
         { name: "one.png", mimeType: "image/png", buffer: IMG },
       ]);
       await tp.waitForTimeout(200);
-      const atMax = await tp.evaluate(() =>
-        document.querySelector(".ti-add-block") !== null);
-      check("composer: + add block hidden at the files_max cap", atMax === false);
+      const atMax = await tp.evaluate(() => {
+        const zone = document.querySelector(".ti-drop");
+        const input = document.querySelector(".ti-file-input");
+        return { full: zone ? zone.classList.contains("ti-drop-full") : null,
+          ariaDisabled: zone ? zone.getAttribute("aria-disabled") : null,
+          inputDisabled: input ? input.disabled : null,
+          stillSized: zone ? zone.getBoundingClientRect().height > 100 : false };
+      });
+      check("composer: dropzone enters full state at the files_max cap (sized, no picker)",
+        atMax.full === true && atMax.ariaDisabled === "true"
+        && atMax.inputDisabled === true && atMax.stillSized,
+        JSON.stringify(atMax));
+      // clicking the full dropzone must NOT open the file chooser
+      const zone = await tp.$(".ti-drop");
+      let pickerOpened = false;
+      const watch = tp.waitForEvent("filechooser", { timeout: 1500 })
+        .then(() => { pickerOpened = true; }).catch(() => {});
+      // zone is aria-disabled at the cap: locator click() would stall 30s on
+      // actionability and the .catch swallowed it, so the guard never ran.
+      // dispatchEvent bypasses actionability and actually fires the handler.
+      await zone.dispatchEvent("click");
+      await watch;
+      check("composer: clicking the full dropzone does not open the picker",
+        pickerOpened === false, String(pickerOpened));
       await ctx.close();
     }
 

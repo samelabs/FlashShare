@@ -437,7 +437,7 @@ from governance.tool_supply import (validate_tool_declaration as _vtd,
 def _decl(**kw):
     d = {"tool_key": f"cf_{_u}", "tool_id": f"cf_{_u}", "owner_id": None,
          "execution": "local",
-         "label": {"en": "CF"}, "desc": None, "icon": "wand",
+         "label": {"en": "CF"}, "desc": None,
          "inputs": {"files": {"min": 0, "max": 1, "accept": None}},
          "outputs": ["text"], "params": None, "visibility": "unlisted",
          "enabled": True}
@@ -536,10 +536,10 @@ def _mk_local_tool(tool_id, owner_id, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
-            " execution, label_json, icon, visibility, enabled,"
-            " created_at, updated_at)"
-            " values (%s, %s, %s, 'local', %s, 'wand',"
-            " 'public', TRUE, %s, %s)",
+            " execution, label_json, visibility, enabled,"
+            " created_at, updated_at, accept_json)"
+            " values (%s, %s, %s, 'local', %s,"
+            " 'public', TRUE, %s, %s, '[\".png\"]')",
             (tool_id, owner_id, tool_id,
              _json.dumps({"en": "AX"}), ts, ts))
         con.execute(

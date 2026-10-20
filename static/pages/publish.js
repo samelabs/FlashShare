@@ -543,6 +543,10 @@ function initLangRowDel() {
 
 function init() {
   initLangRowDel();
+  // 身份前缀 addon: 作者所见即真实键 (tool_key = username/tool_id)
+  var prefix = document.getElementById("fToolIdPrefix");
+  if (prefix) prefix.textContent = (window.__USER__ && window.__USER__.username
+    ? window.__USER__.username : "") + "/";
   bindFormatPickers();
   renderFamGrid(null, null, true);   // 新建态: 默认首族 + 全选
   document.querySelectorAll('input[name="fInputMode"]').forEach(r =>
@@ -579,7 +583,7 @@ init();
     var params = collectParams(true);
     var tool = {
       id: "preview", label: label || (_msg("mytools_ph_label")),
-      icon: "wand", files_min: fminOk, files_max: fmaxOk,
+      files_min: fminOk, files_max: fmaxOk,
       accept: accept.length ? accept : null,
       outputs: outs.length ? outs : ["file"],
       params: params, cost: parseInt(document.getElementById("fCost").value, 10) || 0,

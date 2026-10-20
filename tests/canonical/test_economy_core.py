@@ -75,10 +75,10 @@ def _mktool(tk, owner, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " label_json, icon, visibility, enabled,"
-            " params_json, endpoint_json, created_at, updated_at) values"
-            " (%s, %s, %s, 'http', %s, 'wand', 'public',"
-            " true, '[]', %s, %s, %s)",
+            " label_json, visibility, enabled,"
+            " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+            " (%s, %s, %s, 'http', %s, 'public',"
+            " true, '[]', %s, %s, %s, '[\".png\"]')",
             (tk, owner, tk.split("/")[-1], _json.dumps({"en": "KC"}),
              _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
         con.execute(
@@ -96,10 +96,10 @@ for t, cost in ((tool_0, 100), (tool_30, 100), (tool_100, 100)):
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, icon, visibility, enabled,"
-        " params_json, endpoint_json, created_at, updated_at) values"
-        " (%s, NULL, %s, 'http', %s, 'wand', 'public',"
-        " true, '[]', %s, %s, %s)",
+        " label_json, visibility, enabled,"
+        " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+        " (%s, NULL, %s, 'http', %s, 'public',"
+        " true, '[]', %s, %s, %s, '[\".png\"]')",
         (tool_fp, tool_fp.split("/")[-1], _json.dumps({"en": "KC"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
     con.execute(
@@ -136,7 +136,7 @@ _u2 = "ka" + _os.urandom(3).hex()
 decl = {
     "tool_key": f"{_u2}o/atomic", "tool_id": "atomic",
     "owner_id": owner_id, "execution": "http",
-    "label": {"en": "AT"}, "desc": None, "icon": "wand",
+    "label": {"en": "AT"}, "desc": None,
     "inputs": {"files": {"min": 1, "max": 1, "accept": [".png"]}},
     "outputs": ["file"],
     "params": None,
@@ -471,16 +471,18 @@ check("K19 K16 的手工请求形状 == 真实 JS 形状",
       {"amount", "action_id"} == {"amount", "action_id"})
 
 # K20-K23: direct tool page / catalog projection fail-closed
+from tools import load_all as _load_all
+_load_all()
 from governance.catalog import catalog_item, resolve as _resolve
 _u3 = "kp" + _os.urandom(3).hex()
 # (a) tool row WITHOUT pricing row
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, icon, visibility, enabled,"
-        " params_json, endpoint_json, created_at, updated_at) values"
-        " (%s, NULL, %s, 'http', %s, 'wand', 'public',"
-        " true, '[]', %s, %s, %s)",
+        " label_json, visibility, enabled,"
+        " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+        " (%s, NULL, %s, 'http', %s, 'public',"
+        " true, '[]', %s, %s, %s, '[\".png\"]')",
         (f"{_u3}noprice", "noprice", _json.dumps({"en": "NP"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
 row_np, _e = _resolve(f"{_u3}noprice", None)
@@ -491,10 +493,10 @@ check("K20 resolve ok 但 catalog_item(missing pricing) → None",
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, icon, visibility, enabled,"
-        " params_json, endpoint_json, created_at, updated_at) values"
-        " (%s, NULL, %s, 'http', %s, 'wand', 'public',"
-        " true, '[]', %s, %s, %s)",
+        " label_json, visibility, enabled,"
+        " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+        " (%s, NULL, %s, 'http', %s, 'public',"
+        " true, '[]', %s, %s, %s, '[\".png\"]')",
         (f"{_u3}offprice", "offprice", _json.dumps({"en": "OP"}),
          _json.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
     con.execute(

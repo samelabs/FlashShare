@@ -20,7 +20,7 @@ sys.path.insert(0, str(_BASE))
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES
 from utils import file_glyph, page_number
 from i18n import LOCALE_TAGS, server_text
-from icons import _ICONS, icon_svg, icon_path
+from icons import icon_svg
 from tools import load_all
 from governance.catalog import list_catalog
 from governance.catalog import seed_from_registry
@@ -438,8 +438,8 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         # (判定在 governance.catalog 单点, 此处不重复实现)
         return None
     ctx = _ctx_base(request)
-    from icons import icon_svg
-    tool_public["icon_svg"] = icon_svg(tool_public.get("icon") or "wand")
+    from icons import tool_icon_svg
+    tool_public["icon_svg"] = tool_icon_svg(tool_public.get("icon"))
     tool_name = resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id
     handle = _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None
     # meta description = 工具说明 (LocalizedText 协议解析);

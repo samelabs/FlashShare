@@ -147,10 +147,10 @@ def _mktool(tk, own, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-            " label_json, icon, visibility, enabled,"
-            " params_json, endpoint_json, created_at, updated_at) values"
-            " (%s, %s, %s, 'http', %s, 'wand', 'public',"
-            " true, '[]', %s, %s, %s)",
+            " label_json, visibility, enabled,"
+            " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+            " (%s, %s, %s, 'http', %s, 'public',"
+            " true, '[]', %s, %s, %s, '[\".png\"]')",
             (tk, own, tk.split("/")[-1], _json2.dumps({"en": "S3"}),
              _json2.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
         con.execute(

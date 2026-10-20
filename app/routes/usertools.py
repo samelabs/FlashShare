@@ -334,7 +334,6 @@ async def create_user_tool(request: Request):
         "execution": execution,
         "label": label if isinstance(label, dict) else {"en": label},
         "desc": desc if isinstance(desc, dict) else ({"en": desc} if desc else None),
-        "icon": "wand",
         "inputs": {"files": {
             "min": int(fields.get("files_min", 1)),
             "max": int(fields.get("files_max", 1)),

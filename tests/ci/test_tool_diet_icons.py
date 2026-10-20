@@ -2,10 +2,9 @@
 
 表达准则: 工具图标 = "这工具吃什么"。派生与格式族词表同源
 (governance/formats.py), 字形单源 core/icons.py。本契约锁定:
-  1. 七族字形齐备且属 palette;
-  2. 派生四档 (text / wand / 族字形 / convert);
-  3. 派生任意输入永不离开 palette;
-  4. FAMILY_GLYPH 与 FAMILY_ORDER 一一对应 (映射单点)。
+  1. 八族字形齐备且属 palette;
+  2. 派生三档 (text / all→cloud / 族字形) — 无 fallback, 域外输入无定义行为;
+  3. FAMILY_GLYPH 与 FAMILY_ORDER 一一对应 (映射单点)。
 """
 import os
 import sys
@@ -43,23 +42,14 @@ def ext_of(fam):
     return "." + sorted(FAMILIES[fam].exts)[0]
 
 
-# 2) 派生四档
+# 2) 派生三档: text / all→cloud / 族字形 (显式 accept 必落单族 — 发布校验保证)
 check("text-mode (files_max=0) → text", derived_tool_icon(0, None) == "text")
 check("files_max=0 with stray accept still text", derived_tool_icon(0, ["jpg"]) == "text")
-check("undeclared accept → wand", derived_tool_icon(5, None) == "wand")
-check("empty accept list → wand", derived_tool_icon(2, []) == "wand")
-check("single family image → image", derived_tool_icon(3, [ext_of("image")]) == "image")
-check("single family document → doc", derived_tool_icon(1, [ext_of("document")]) == "doc")
-check("single family text → code glyph", derived_tool_icon(1, [ext_of("text")]) == "code")
-check("single family audio → audio", derived_tool_icon(1, [ext_of("audio")]) == "audio")
-check("single family video → video", derived_tool_icon(1, [ext_of("video")]) == "video")
-check("multi family → convert",
-      derived_tool_icon(2, [ext_of("image"), ext_of("text")]) == "convert")
-
-# 3) 任意输入 (含脏值) 永不离开 palette
-for args in [(1, ["zzz"]), (None, None), ("x", 7), (1, None), (3, [".jpg", 42])]:
-    out = derived_tool_icon(*args)
-    check(f"derivation({args!r}) stays in palette", out in _ICONS, f"got {out!r}")
+check("accept undeclared (=all) → cloud", derived_tool_icon(5, None) == "cloud")
+for fam in FAMILY_ORDER:
+    key = _FAMILY_GLYPH[fam]
+    check(f"single family {fam} → {key}",
+          derived_tool_icon(2, [ext_of(fam)]) == key)
 
 print(f"\n{'FAIL' if FAILED else 'PASS'}: tool diet icon contract"
       + (f" — {len(FAILED)} failed: {FAILED}" if FAILED else ""))

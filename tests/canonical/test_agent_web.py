@@ -161,6 +161,8 @@ try:
           "?download=1" in body and "1000 credits = 1 USD" in body, None)
     # catalog parity: llms.txt lists the recommended (featured) tools
     from governance.catalog import search_catalog, mcp_names
+    from tools import load_all as _load_all
+    _load_all()
     from governance.llms_txt import LLMS_TOOLS_MAX
     from governance.tool_params import resolve_label
     _names = mcp_names()

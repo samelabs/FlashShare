@@ -222,9 +222,9 @@ def main():
             con.execute(
                 "INSERT INTO platform_tools (tool_key, tool_id, owner_id, visibility,"
                 " enabled, label_json, files_min, files_max, outputs_json,"
-                " created_at, updated_at)"
+                " created_at, updated_at, accept_json)"
                 " VALUES (%s, %s, %s, 'public', TRUE, '{\"en\": \"SEO twin\"}',"
-                " 0, 1, '[\"text\"]', %s, %s)",
+                " 0, 1, '[\"text\"]', %s, %s, '[\".png\"]')",
                 (pub_id, pub_id, uid, now(), now()))
             con.execute(
                 "INSERT INTO pricing (tool_id, cost, enabled, updated_at)"

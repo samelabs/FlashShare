@@ -457,8 +457,18 @@
       if (!rows) return;
       thumbUrls.forEach((u) => URL.revokeObjectURL(u));
       thumbUrls.length = 0;
+      // 拖放区常驻 (初始尺寸稳住: 加文件不缩卡), 未满时是"继续添加"入口;
+      // 到 files_max 后进入已满态: 尺寸不变, 但不再响应 (input disabled +
+      // aria-disabled + 视觉已满), 加文件由上游闸门报 err_file_count
       const zone = container.querySelector(".ti-drop");
-      if (zone) zone.hidden = files.length > 0;
+      if (zone) {
+        zone.hidden = false;
+        const full = files.length >= filesMax();
+        zone.classList.toggle("ti-drop-full", full);
+        zone.setAttribute("aria-disabled", full ? "true" : "false");
+        const input = fileInput();
+        if (input) input.disabled = full;
+      }
       if (!files.length) { rows.innerHTML = ""; return; }
       rows.innerHTML = files.map((f, i) => {
         const isImg = /^image\//.test(f.type || "") && (f.type || "").toLowerCase() !== "image/svg+xml";
@@ -482,27 +492,18 @@
           + '" aria-label="' + esc(t("ti_remove")) + '" title="' + esc(t("ti_remove")) + '">'
           + icon("close") + "</button></span>";
       }).join("");
-      // 行尾"+ 添加"小块: 已有文件且未达上限才显示 (点击选择, 拖入走整卡落点)
-      if (files.length < filesMax()) {
-        rows.innerHTML += '<button type="button" class="chipf ti-add-block" aria-label="'
-          + esc(t("ti_add_files")) + '" title="' + esc(t("ti_add_files")) + '">'
-          + '<span class="th d" aria-hidden="true">' + icon("plus") + "</span>"
-          + "<span><b>" + esc(t("ti_add_files")) + "</b></span></button>";
-      }
       rows.querySelectorAll("[data-rm]").forEach((b) => {
         b.addEventListener("click", () => removeFile(+b.dataset.rm));
       });
-      const addBtn = rows.querySelector(".ti-add-block");
-      if (addBtn) {
-        const input = fileInput();
-        addBtn.addEventListener("click", () => input && input.click());
-      }
     }
 
     function bindFiles() {
       const input = fileInput();
       const zone = container.querySelector(".ti-drop");
-      if (zone) zone.addEventListener("click", () => input && input.click());
+      if (zone) zone.addEventListener("click", () => {
+        if (zone.classList.contains("ti-drop-full")) return;  // 已满: 不开选择器
+        input && input.click();
+      });
       if (input) input.addEventListener("change", () => {
         addFiles(input.files);
         input.value = "";
@@ -513,7 +514,11 @@
         ["dragenter", "dragover"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();
           card.classList.add("dragover", "focus");
-          if (zone && !zone.hidden) zone.classList.add("dragover");
+          // 已满态不给拖放区 dragover 反馈 (不是入口)
+          if (zone && !zone.hidden
+              && !zone.classList.contains("ti-drop-full")) {
+            zone.classList.add("dragover");
+          }
         }));
         ["dragleave", "drop"].forEach((n) => card.addEventListener(n, (e) => {
           e.preventDefault();

@@ -383,11 +383,12 @@ def _rd(*p):
     return open(_os.path.join(_REPO2, *p), encoding="utf-8").read()
 
 icons_src = _rd("core", "icons.py")
-# G1 Tool icon fallback 只有一个定义 (canonical fallback key 单点):
+# G1 Tool icon 无 fallback 机制 (图标 = 输入类型硬编码映射, 全链无兜底):
 import re as _re
-fb_defs = len(_re.findall(r'TOOL_ICON_FALLBACK\s*=\s*"wand"', icons_src))
-check("G1 tool icon fallback 单一定义", fb_defs == 1
-      and icons_src.count('or "wand"') == 0)
+check("G1 tool icon 无 fallback 定义/无 wand 兜底",
+      "TOOL_ICON_FALLBACK" not in icons_src
+      and icons_src.count('or "wand"') == 0
+      and _re.search(r'return "wand"', icons_src) is None)
 # G2 Market/User Page 卡片循环不各自 inline Tool SVG fallback (empty-state
 # 装饰 svg 不属于 tool identity — 只查 tool 卡/macro 调用形态):
 for tmpl in ("app/templates/tools_market.html", "app/templates/user_page.html"):

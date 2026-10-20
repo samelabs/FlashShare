@@ -12,7 +12,7 @@ function _pager(el, base, pageKey, page, total, per) {
   const mid = document.createElement('span'); mid.className = 'grow'; mid.textContent = page + ' / ' + pages;
   const next = document.createElement(page < pages ? 'a' : 'span');
   if (page < pages) next.href = q(page + 1); next.className = page < pages ? '' : 'off';
-  next.textContent = _msg('next_page') + ' →';
+  next.textContent = _msg('next_page');
   el.append(prev, mid, next);
 }
 
@@ -126,7 +126,7 @@ function refreshWithdrawModal() {
     hint.textContent = '';
     const a = document.createElement('a');
     a.href = '/account/profile';
-    a.textContent = _msg('earn_no_channel') + ' →';
+    a.textContent = _msg('earn_no_channel');
     hint.appendChild(a);
   } else {
     btn.disabled = false;
