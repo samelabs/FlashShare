@@ -737,6 +737,8 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-page .pub-outputs { display: flex; flex-direction: column; gap: 8px; }
 .pub-outputs-label { font-size: 13px; font-weight: 650; color: var(--ink); }
 .pub-outputs-checks { display: flex; gap: 10px; flex-wrap: wrap; }
+/* 输出类型胶囊无 glyph 瓦片 — 左右 padding 对称 (不吃族胶囊的 6px 左垫) */
+.pub-outputs-checks .fam-chip { padding-left: 13px; }
 .pub-hint { font-style: normal; font-size: 12px; color: var(--ink-2); }
 
 /* ═══ IO-3a: 首页 — 选工具 → 输入 → 结果 ═══ */
