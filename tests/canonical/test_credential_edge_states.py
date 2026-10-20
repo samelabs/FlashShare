@@ -141,9 +141,7 @@ check("2 race loser converges to the winner after savepoint recovery",
 ck = _register_login(_u)
 with db() as con:
     uid = con.execute("select id from users where username=%s", (_u,)).fetchone()["id"]
-tid = "cetool" + uuid.uuid4().hex[:6]
 st, r = _req("POST", "/api/usertools", {
-    "tool_id": tid,
     "label": "CE Tool", "url": "https://93.184.216.34/ce",
     "timeout_s": 30, "files_min": 1, "files_max": 1,
     "format_families": "image", "accept": [".png"], "cost": 0,
@@ -155,7 +153,7 @@ check("3 tool with credential created", st == 200 and r.get("ok") and key,
       f"{st} {str(r)[:80]}")
 
 # 3a: half-empty pair → 422, credential intact
-st, r = _req("PATCH", f"/api/usertools/{tid}",
+st, r = _req("PATCH", f"/api/usertools/{key}",
              {"auth_header": "", "auth_token": "second-secret"},
              {"Content-Type": "application/json", "Cookie": ck})
 with db() as con:
@@ -169,7 +167,7 @@ check("3b stored credential survives the rejected half-empty PATCH",
       stored[:90] if stored else "none")
 
 # 3c: both-empty → explicit clear
-st, r = _req("PATCH", f"/api/usertools/{tid}",
+st, r = _req("PATCH", f"/api/usertools/{key}",
              {"auth_header": "", "auth_token": ""},
              {"Content-Type": "application/json", "Cookie": ck})
 with db() as con:

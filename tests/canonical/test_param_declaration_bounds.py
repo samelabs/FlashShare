@@ -40,7 +40,6 @@ def check(name, ok, detail=""):
 import http.client as _hc
 import json
 import time
-import uuid
 ts = int(time.time())
 _u = "pb" + _os.urandom(3).hex()
 _HOST = ("127.0.0.1", int(_TEST_PORT))
@@ -94,7 +93,6 @@ def _register_login(name):
 
 def _mktool(ck, name_suffix, params):
     return _req("POST", "/api/usertools", {
-        "tool_id": "pb" + uuid.uuid4().hex[:8],
         "label": f"PB {name_suffix}", "url": "https://93.184.216.34/pb",
         "timeout_s": 30, "files_min": 0, "files_max": 1,
         "format_families": "image",
