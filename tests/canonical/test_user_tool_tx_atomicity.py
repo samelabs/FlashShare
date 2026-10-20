@@ -102,16 +102,18 @@ for _ in range(100):
 # ── setup: one user + one tool on the in-process app ──
 _uname, cookie = new_user(_HOST2)
 _tool = "txtx" + uuid.uuid4().hex[:4]
-_tool_key = f"{_uname}/{_tool}"
+_tool_key = None  # 从 POST 响应取 (系统 slug)
 st, r = req("POST", "/api/usertools", {
-    "tool_id": _tool, "label": {"en": "Tx Tool"}, "execution": "http",
+    "label": {"en": "Tx Tool"}, "execution": "http",
     "url": "https://93.184.216.34/anything", "timeout_s": 30,
     "visibility": "private", "format_families": "document",
     "accept": [".pdf"], "cost": 5}, cookie=cookie, host=_HOST2)
-check("T0 create ok (cost=5)", st == 200 and r.get("ok"), f"{st} {r}")
+_tool_key = (r or {}).get("tool_key")
+check("T0 create ok (cost=5)", st == 200 and r.get("ok") and _tool_key,
+      f"{st} {r}")
 
 # ── 1. PATCH declaration + cost normal → both land together ──
-st, r = req("PATCH", f"/api/usertools/{_tool}",
+st, r = req("PATCH", f"/api/usertools/{_tool_key}",
             {"label": {"en": "Tx v2"}, "cost": 9}, cookie=cookie, host=_HOST2)
 row_pt = db_row("select label_json from platform_tools where tool_key=%s", (_tool_key,))
 row_pr = db_row("select cost, enabled from pricing where tool_id=%s", (_tool_key,))
@@ -124,7 +126,7 @@ check("T1 PATCH decl+cost → both committed",
 # ── 2. PATCH pricing write fail → declaration rollback ──
 _fault["boom"] = True
 try:
-    st, r = req("PATCH", f"/api/usertools/{_tool}",
+    st, r = req("PATCH", f"/api/usertools/{_tool_key}",
                 {"label": {"en": "Should Not Land"}, "cost": 77},
                 cookie=cookie, host=_HOST2)
 except Exception:
@@ -137,7 +139,7 @@ check("T2 pricing fail → declaration rolled back (label/cost unchanged)",
       f"label={row_pt} pricing={row_pr}")
 
 # ── 3. DELETE normal → row gone + pricing disabled ──
-st, r = req("DELETE", f"/api/usertools/{_tool}", None, cookie=cookie, host=_HOST2)
+st, r = req("DELETE", f"/api/usertools/{_tool_key}", None, cookie=cookie, host=_HOST2)
 row_pt = db_row("select count(*) from platform_tools where tool_key=%s", (_tool_key,))
 row_pr = db_row("select cost, enabled from pricing where tool_id=%s", (_tool_key,))
 check("T3 DELETE → tool row deleted + pricing disabled",
@@ -147,16 +149,18 @@ check("T3 DELETE → tool row deleted + pricing disabled",
 
 # ── 4. DELETE pricing write fail → tool row survives, pricing untouched ──
 _tool2 = "txdl" + uuid.uuid4().hex[:4]
-_tool2_key = f"{_uname}/{_tool2}"
+_tool2_key = None  # 从 POST 响应取
 st, r = req("POST", "/api/usertools", {
-    "tool_id": _tool2, "label": {"en": "Del Fail"}, "execution": "http",
+    "label": {"en": "Del Fail"}, "execution": "http",
     "url": "https://93.184.216.34/anything", "timeout_s": 30,
     "visibility": "private", "format_families": "document",
     "accept": [".pdf"], "cost": 3}, cookie=cookie, host=_HOST2)
-check("T4a second tool created (cost=3)", st == 200 and r.get("ok"), f"{st} {r}")
+_tool2_key = (r or {}).get("tool_key")
+check("T4a second tool created (cost=3)", st == 200 and r.get("ok") and _tool2_key,
+      f"{st} {r}")
 _fault["boom"] = True
 try:
-    st, r = req("DELETE", f"/api/usertools/{_tool2}", None, cookie=cookie, host=_HOST2)
+    st, r = req("DELETE", f"/api/usertools/{_tool2_key}", None, cookie=cookie, host=_HOST2)
 except Exception:
     st = 500
 _fault["boom"] = False

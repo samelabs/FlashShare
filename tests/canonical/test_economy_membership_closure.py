@@ -496,9 +496,9 @@ try:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json, visibility, enabled,"
-            " created_at, updated_at, accept_json)"
+            " created_at, updated_at, accept_json, format_family)"
             " values (%s, NULL, %s, 'local', %s,"
-            " 'public', TRUE, %s, %s, '[\".png\"]')",
+            " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
             (tool5, tool5, _json.dumps({"en": "MC"}), ts, ts))
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 25, TRUE, %s)", (tool5, ts))
@@ -607,14 +607,14 @@ try:
         oname = con.execute("select username from users where id=%s",
                             (owner,)).fetchone()["username"]
     tid6 = f"t6{_u}"
-    tkey6 = f"{oname}/{tid6}"
+    tkey6 = f"{oname}_{tid6}"
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json,"
-            " visibility, enabled, endpoint_json, created_at, updated_at, accept_json)"
+            " visibility, enabled, endpoint_json, created_at, updated_at, accept_json, format_family)"
             " values (%s, %s, %s, 'http', %s,"
-            " 'unlisted', TRUE, %s, %s, %s, '[\".png\"]')",
+            " 'unlisted', TRUE, %s, %s, %s, '[\".png\"]', 'image')",
             (tkey6, owner, tid6, _json.dumps({"en": "T6"}),
              _json.dumps({"url": "https://example.com/x", "timeout_s": 10}),
              ts, ts))
@@ -627,7 +627,7 @@ try:
             " ('r2', %s, %s, 'running', 25, NULL, %s, NULL, 20, %s)",
             (caller, tkey6, ts - 100, ts - 97, h, caller, tkey6, ts - 50, h))
     ck6 = create_browser_session(owner)
-    r = client.get(f"/api/usertools/{tid6}/calls", cookies={COOKIE_NAME: ck6})
+    r = client.get(f"/api/usertools/{tkey6}/calls", cookies={COOKIE_NAME: ck6})
     d = r.json()
     calls6 = d.get("calls") or []
     shape_ok = all(set(c) == {"at", "status", "duration_s", "cost_snapshot"}

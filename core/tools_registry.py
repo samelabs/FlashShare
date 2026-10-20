@@ -179,6 +179,14 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
 
 # ---- Registration ----
 
+from governance import formats
+
+# share = 吃一切: accept 物化平台格式边界全清单 (单形状, 无 NULL=any 哨兵)。
+# 本模块在 app.main import 时即被 load_all() 导入 — 早于 startup 的
+# init_db() 表装载, 故此处取到的是字面量种子 (当前与表内容一致)。
+# 已知 DEBT: 表与种子分叉时 share/zip 的 accept 不跟随表 (登记于批次
+# PR 的 DEBT 栏); 修正属加载顺序调整, 不在本批范围。
+
 # ── Default tool: Share (plain upload, no processing) ──
 # Registered first so it appears as the leftmost tool button.
 # When selected (or by default when no tool is selected), files upload
@@ -229,9 +237,10 @@ register(
                   'delivery 1 day / 50 downloads, adjustable via the '
                   'delivery object.',
         },
-    # share = all 类型的唯一内置工具 (accept 未声明 = 全部平台格式,
-    # 图标 cloud 由类型映射授予), 不声明 family
-    accept=None,  # accepts all formats
+    # share = all 类型内置工具: accept 物化平台格式边界全清单 (单形状,
+    # 无 NULL=any 哨兵); 图标 cloud 由 tag 查表授予
+    accept=set(formats.VOCAB_EXTS),
+    tag="all",  # 免费分享 = 全站上传基础能力
     handler=share_handler,
     files_min=1, files_max=20,
     outputs=("file",),
@@ -264,6 +273,7 @@ register(
         "en": "Strips metadata and disrupts AI watermarks from your images. The output is re-encoded — pixels shift slightly at every level (by design; watermark disruption is whole-image).",
     },
     accept={".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"},
+    tag="image",
     handler=privacy_handler,
     params=[
         {"key": "preset", "type": "enum", "label": {"en": "Clean level", "zh": "净化强度"},

@@ -142,15 +142,15 @@ admin = 1
 from economy.billing import grant as _grant
 _grant(caller, 100000, "grant_package", note="s3 fixture")
 
-T3, T1P = f"{_u}o/s3third", f"s3first{_u}"   # third-party owner ns; first-party bare id
+T3, T1P = f"{_u}o_s3third", f"s3first{_u}"   # third-party owner ns; first-party bare id
 def _mktool(tk, own, cost):
     with db() as con:
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
             " label_json, visibility, enabled,"
-            " params_json, endpoint_json, created_at, updated_at, accept_json) values"
+            " params_json, endpoint_json, created_at, updated_at, accept_json, format_family) values"
             " (%s, %s, %s, 'http', %s, 'public',"
-            " true, '[]', %s, %s, %s, '[\".png\"]')",
+            " true, '[]', %s, %s, %s, '[\".png\"]', 'image')",
             (tk, own, tk.split("/")[-1], _json2.dumps({"en": "S3"}),
              _json2.dumps({"url": "https://example.org/x", "timeout_s": 30}), ts, ts))
         con.execute(

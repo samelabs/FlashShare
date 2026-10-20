@@ -416,14 +416,14 @@ def _delivery_projection(ctx: dict) -> str:
     })
 
 
-def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool):
+def _tool_page_ctx(request: Request, key: str, mcp: bool):
     """Shared builder for tool page + MCP page. resolve() 是唯一权限判断
     (public/unlisted → everyone when key known; private → owner only)。
 
-    owner=None → first-party bare-id tool (官方工具, 无作者命名空间)."""
-    from governance.catalog import resolve, catalog_item, mcp_name
+    key = username_toolname (社区) | 裸词 (系统工具, owner 为空)。"""
+    from governance.catalog import resolve, catalog_item
     user = request.state.user
-    tool_key = f"{owner}/{tool_id}" if owner else tool_id
+    tool_key = key
     tool, err = resolve(tool_key, user["id"] if user else None)
     if err:
         return None
@@ -440,7 +440,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     ctx = _ctx_base(request)
     from icons import tool_icon_svg
     tool_public["icon_svg"] = tool_icon_svg(tool_public.get("icon"))
-    tool_name = resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_id
+    tool_name = resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_key
     handle = _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None
     # meta description = 工具说明 (LocalizedText 协议解析);
     # 无说明的工具退回 "工具名 · @作者", 不输出空 description
@@ -454,7 +454,7 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
         "delivery_json": _delivery_projection(ctx),
         "tool_name": tool_name,
         "handle": handle,
-        "mcp_name": mcp_name(tool_key),
+        "mcp_name": tool_key,  # MCP 名 = key 原文 (无投影)
         "tool_key": tool_key,
         "is_favorite": bool(user) and tool_key in _favorite_keys_for(user),
         "is_mcp": mcp,
@@ -475,18 +475,18 @@ def _tool_page_ctx(request: Request, owner: str | None, tool_id: str, mcp: bool)
     return ctx
 
 
-def _tool_qr_response(owner, tool_id):
+def _tool_qr_response(key: str):
     """QR SVG of a tool page URL — the page's own resolve() permission
     (public/unlisted answer everyone; private/unknown → 404, same as the
     page itself, so the QR never leaks an unresolvable link's existence
     beyond what the page already exposes)."""
     from governance.catalog import resolve
     from utils import QR_MAX_PAYLOAD, qr_svg
-    tool_key = f"{owner}/{tool_id}" if owner else tool_id
+    tool_key = key
     tool, err = resolve(tool_key, None)
     if err:
         return Response(status_code=404)
-    # 41-char tool_id + 32-char owner can exceed the fixed V4-L capacity
+    # 74-char username_toolname key can exceed the fixed V4-L capacity
     # (BASE_URL + 80-char path > 78 bytes) — out-of-capacity is the page's
     # 404 surface too, never a 500 from qr_svg's ValueError.
     if len(f"{BASE_URL}/tool/{tool_key}".encode()) > QR_MAX_PAYLOAD:
@@ -496,70 +496,35 @@ def _tool_qr_response(owner, tool_id):
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
-# ── First-party bare-id routes (官方工具, 无作者命名空间) ──
-# /tool/{x}/mcp 必须注册在 /tool/{owner}/{tool_id} 之前, 否则
-# /tool/compress/mcp 被两段式错吞 (owner=compress, tool_id=mcp)。
-# FastAPI 按注册序匹配。
+# ── 工具页路由族 (平化): key = username_toolname | 裸词 — 单段路径,
+# 无两段式 owner/tool 解析, 无 'mcp'-slug 兜底 (那个场景随形状消亡)。
 
-@router.get("/tool/{tool_id}/qr.svg")
-async def tool_first_party_qr(tool_id: str):
-    """官方工具页 QR (/tool/compress/qr.svg) — 与工具页同一 resolve
-    权限 (public/unlisted 对所有人)。两段路径, 必须先于
-    /tool/{owner}/{tool_id} 注册, 否则被当作 owner/tool_id 吞掉。"""
-    return _tool_qr_response(None, tool_id)
+@router.get("/tool/{key}/qr.svg")
+async def tool_qr(key: str):
+    """工具页 QR (/tool/compress/qr.svg) — 与工具页同一 resolve 权限
+    (public/unlisted 对所有人)。"""
+    return _tool_qr_response(key)
 
 
-@router.get("/tool/{tool_id}/mcp", response_class=HTMLResponse)
-async def tool_first_party_mcp_page(request: Request, tool_id: str):
-    """官方工具 MCP 页 (/tool/compress/mcp)。
-
-    兜底: 社区工具 slug 恰为 'mcp' 时, /tool/{owner}/mcp 是其 UI 页
-    (被本路由遮蔽), 回退两段式解析。"""
+@router.get("/tool/{key}/mcp", response_class=HTMLResponse)
+async def tool_mcp_page(request: Request, key: str):
+    """工具 MCP 页 (/tool/compress/mcp)。"""
     from app.main import templates
     from fastapi.responses import HTMLResponse as _H
-    ctx = _tool_page_ctx(request, None, tool_id, mcp=True)
-    if ctx is not None:
-        return templates.TemplateResponse(request, "tool_mcp.html", ctx)
-    ctx = _tool_page_ctx(request, tool_id, "mcp", mcp=False)
-    if ctx is not None:
-        return templates.TemplateResponse(request, "tool_page.html", ctx)
-    return _H("", status_code=404)
-
-
-@router.get("/tool/{tool_id}", response_class=HTMLResponse)
-async def tool_first_party_page(request: Request, tool_id: str):
-    from app.main import templates
-    from fastapi.responses import HTMLResponse as _H
-    ctx = _tool_page_ctx(request, None, tool_id, mcp=False)
-    if ctx is None:
-        return _H("", status_code=404)
-    return templates.TemplateResponse(request, "tool_page.html", ctx)
-
-
-@router.get("/tool/{owner}/{tool_id}", response_class=HTMLResponse)
-async def tool_page(request: Request, owner: str, tool_id: str):
-    from app.main import templates
-    from fastapi.responses import HTMLResponse as _H
-    ctx = _tool_page_ctx(request, owner, tool_id, mcp=False)
-    if ctx is None:
-        return _H("", status_code=404)
-    return templates.TemplateResponse(request, "tool_page.html", ctx)
-
-
-@router.get("/tool/{owner}/{tool_id}/qr.svg")
-async def tool_qr(owner: str, tool_id: str):
-    """社区工具页 QR — 权限同工具页 (见 _tool_qr_response)。"""
-    return _tool_qr_response(owner, tool_id)
-
-
-@router.get("/tool/{owner}/{tool_id}/mcp", response_class=HTMLResponse)
-async def tool_mcp_page(request: Request, owner: str, tool_id: str):
-    from app.main import templates
-    from fastapi.responses import HTMLResponse as _H
-    ctx = _tool_page_ctx(request, owner, tool_id, mcp=True)
+    ctx = _tool_page_ctx(request, key, mcp=True)
     if ctx is None:
         return _H("", status_code=404)
     return templates.TemplateResponse(request, "tool_mcp.html", ctx)
+
+
+@router.get("/tool/{key}", response_class=HTMLResponse)
+async def tool_page(request: Request, key: str):
+    from app.main import templates
+    from fastapi.responses import HTMLResponse as _H
+    ctx = _tool_page_ctx(request, key, mcp=False)
+    if ctx is None:
+        return _H("", status_code=404)
+    return templates.TemplateResponse(request, "tool_page.html", ctx)
 
 
 _DOCS_DIR = _BASE / "templates"
@@ -1181,18 +1146,17 @@ async def account_favorites(request: Request):
     """我的收藏: the user's pinned tools (same set MCP tools/list carries
     besides first-party and own tools)."""
     from app.main import templates
-    from governance.catalog import list_catalog, mcp_names
+    from governance.catalog import list_catalog
     from governance.favorites import favorite_keys
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login?next=/account/favorites"})
     catalog = list_catalog(user["id"])
     by_id = {t["id"]: t for t in catalog}
-    names = mcp_names()
     favs = []
     for k in favorite_keys(user["id"], catalog):
         t = dict(by_id[k])
-        t["mcp_name"] = names.get(k, k.replace("/", "__"))
+        t["mcp_name"] = k  # MCP 名 = key 原文 (无投影)
         favs.append(t)
     ctx = _account_ctx(request, "favorites", favorites=favs)
     return templates.TemplateResponse(request, "account/favorites.html", ctx)

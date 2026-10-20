@@ -119,7 +119,7 @@ def _register(name):
 
 
 def _publish(cookie, tool_id, extra=None):
-    body = {"tool_id": tool_id, "label": tool_id,
+    body = {"label": tool_id,
             "url": "https://93.184.216.34/x", "timeout_s": 30,
             "files_min": 0, "files_max": 1,
             "format_families": "image", "accept": [".png"],
@@ -169,7 +169,7 @@ from execution.results import (MAX_RESULT_ITEMS,  # noqa: E402
                                MAX_INLINE_RESULT_BYTES)
 from governance.access_projection import project  # noqa: E402
 from governance.entitlements import resolve_from_membership  # noqa: E402
-from governance.catalog import mcp_names, tool_key_for_mcp_name  # noqa: E402
+# (MCP 名 = key 原文: 投影机已退役)
 
 a_uid = r_uid = None
 try:
@@ -182,17 +182,14 @@ try:
                                 (_u + "usr",)).fetchone()["id"])
 
     # ══════════ S: search single point ══════════
-    key_multi = f"{_u}dev/multialpha"
-    key_one = f"{_u}dev/onlyalpha"
-    key_pct = f"{_u}dev/pcthalf"
-    key_und = f"{_u}dev/underscore"
-    st, _h, d, _sc = _publish(a_ck, "multialpha",
-                              {"label": "Multi Alpha Beta"})
-    st, _h, d, _sc = _publish(a_ck, "onlyalpha", {"label": "Alpha only"})
-    st, _h, d, _sc = _publish(a_ck, "pcthalf",
-                              {"label": "Pct 50% off"})
-    st, _h, d, _sc = _publish(a_ck, "underscore",
-                              {"label": "fl_ow special"})
+    keys = []
+    for tid, extra in [("multialpha", {"label": "Multi Alpha Beta"}),
+                       ("onlyalpha", {"label": "Alpha only"}),
+                       ("pcthalf", {"label": "Pct 50% off"}),
+                       ("underscore", {"label": "fl_ow special"})]:
+        st, _h, d, _sc = _publish(a_ck, tid, extra)
+        keys.append(d.get("tool_key") if d else None)
+    key_multi, key_one, key_pct, key_und = keys
     check("S0 setup: four unlisted tools created",
           all(_req("GET", f"/tool/{k}", None,
                    {"Cookie": a_ck, "Accept": "text/html"})[0] == 200
@@ -239,8 +236,7 @@ try:
     st, d = _mcp({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
                   "params": {"name": "catalog_search",
                              "arguments": {"q": q}}}, R_TOK)
-    mcp_keys = [tool_key_for_mcp_name(t.get("name"))
-                for t in _sc_tools(d)]
+    mcp_keys = [t.get("name") for t in _sc_tools(d)]  # 名 = key 原文
     check("S7 api/tools/search == /tools market order (first page)",
           api_ids == seen[:len(api_ids)], f"{api_ids} vs {seen}")
     check("S8 MCP catalog_search == api/tools/search order",
@@ -261,8 +257,7 @@ try:
     st, d = _mcp({"jsonrpc": "2.0", "id": 6, "method": "tools/call",
                   "params": {"name": "catalog_search",
                              "arguments": {"q": ""}}}, R_TOK)
-    mcp_browse = [tool_key_for_mcp_name(t.get("name"))
-                  for t in _sc_tools(d)]
+    mcp_browse = [t.get("name") for t in _sc_tools(d)]
     # 2026-10 contract: the MCP empty query enumerates the FULL public
     # catalog (featured first) — a superset of the web featured browse;
     # the web browse stays curated.
@@ -271,26 +266,26 @@ try:
           f"{mcp_browse[:5]} vs {browse[:5]}")
 
     # ══════════ M: catalog_search returns callable specs ══════════
-    key_call = f"{_u}dev/callme"
-    st, _h, d, _sc = _publish(a_ck, "callme", {
+    st, _h, d_call, _sc = _publish(a_ck, "callme", {
         "label": "Callable Now",
         "params": [{"key": "mode", "type": "enum",
                     "label": "Mode", "required": False,
                     "options": [{"value": "fast"}, {"value": "slow"}],
                     "default": "fast"}]})
-    check("M0 setup: callable tool created", st == 200 and (d or {}).get("ok"),
-          f"{st} {d}")
+    key_call = (d_call or {}).get("tool_key")
+    check("M0 setup: callable tool created", st == 200 and key_call,
+          f"{st} {d_call}")
     # test plumbing: trusted row so the driver may reach 127.0.0.1
     with db() as con:
         con.execute("update platform_tools set trusted = TRUE"
                     " where tool_key=%s", (key_call,))
-    st, _h, d, _sc = _req("PATCH", "/api/usertools/callme",
+    st, _h, d, _sc = _req("PATCH", f"/api/usertools/{key_call}",
                           {"url": LOCAL_URL, "timeout_s": 30},
                           {"Content-Type": "application/json", "Cookie": a_ck})
     check("M0b endpoint pointed at the local listener",
           st == 200 and (d or {}).get("ok"), f"{st} {d}")
     _go_public(key_call)
-    mname = key_call.replace("/", "__")
+    mname = key_call
 
     st, d = _call("catalog_search", {"q": "Callable"}, R_TOK)
     hits = [t for t in _sc_tools(d) if t.get("name") == mname]
@@ -426,8 +421,6 @@ finally:
     uids = [u for u in (a_uid, r_uid) if u]
     with db() as con:
         purge_users(con, uids)
-        con.execute("delete from pricing where tool_id LIKE %s",
-                    (f"{_u}dev/%",))
 
 print(f"\n{COUNT - len(FAIL)}/{COUNT} checks passed")
 _sys.exit(1 if FAIL else 0)

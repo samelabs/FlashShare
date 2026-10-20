@@ -72,10 +72,13 @@
 以下契约已冻结，除 concrete regression 外不主动重开、不重新设计：
 
 - **ToolDeclaration**：canonical 三源（system/operator/user）同一 schema；
-  inputs.files = {min(≥0), max(≤20), accept}（accept = canonical lowercase
-  extension tokens，缺失=全族兼容、显式 `[]`=拒绝）；outputs = ("text","json","file")
+  inputs.files = {min(≥0), max(≤20), accept}（accept 单形状：文件工具 =
+  非空 canonical lowercase extension tokens 列表，"吃一切"物化全边界清单；
+  NULL 仅 = 无文件位 files_max=0，显式 `[]` 拒绝）；format_family = 声明的
+  tag（九键之一，文件工具必带、纯文本工具不带；图标=tag 查表，不派生）；
+  outputs = ("text","json","file")
   非空子集；label = LocalizedText。
-- **Catalog**：canonical projection 形状；official 判定 = owner 关系（bare id ↔ `/` in id）三面等价。
+- **Catalog**：canonical projection 形状；official 判定 = owner 关系（`owner_id IS NULL`，契约字段，无字符串形状判定）三面等价。
 - **ToolInvocation（IO-1）**：精确五键 `{tool_id, source:{files:[...]}（0..N，按工具声明 [files_min, files_max]）, params（text 参数上限 100,000 字符）, delivery, client_ref}`；结果 = 有序 items（text/json/file，≤20 项，text+json ≤1MB，file 沿用单文件上限），文件项同事务各自落地，结果页 /r/{id}；开发者 http 契约唯一形态：请求 `{files:[{filename,content_type,size,url}], params}`、响应 `{items:[...]}`（file 项 data_b64|url）。
   root/source/delivery 精确键集；params 显式 dict；client_ref 必填 non-empty string（≤128），作为 client-generated stable operation identity；null / missing 均拒绝。
   MCP adapter 只对"缺失"填默认，显式非法值 → -32602。
@@ -173,7 +176,9 @@
 3. Jinja dict 下标用 `texts['copy']`（`texts.copy` 命中方法）。
 4. 删除代码块警惕隐性保护随块被删；删完必跑回归。
 5. 生产代码禁边写边猜：改前完整读现有逻辑 → 定案 → 一次写对。
-6. 格式族单源 `core/governance/formats.py`；禁从系统工具反推词表。
+6. 格式与 tag 表驱动：`tags`/`formats` 参考表为维护源（首装种子 =
+   `core/governance/formats.py` 字面量，启动装载回装内存结构）；禁从系统
+   工具反推词表。
 7. 输出元数据归端点：发布表单无 output 字段；文件名端点说了算。
 8. 注释/commit 只写技术事实：禁内部会话编号、禁"用户裁定/拍板"过程措辞。
 9. Web Share AbortError：用户取消返回 true 不触发 fallback。

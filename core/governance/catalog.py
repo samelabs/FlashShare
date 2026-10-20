@@ -21,7 +21,7 @@ joins the two: DB row = contract, _registry = implementation for local class.
 import json
 
 from database import db
-from icons import _FAMILY_GLYPH, derived_tool_icon
+from icons import tool_glyph
 from repo import catalog as catalog_repo
 from utils import now
 
@@ -31,21 +31,6 @@ from utils import now
 VIS_PRIVATE = "private"    # owner only
 VIS_UNLISTED = "unlisted"  # callable when the key is known, never listed
 VIS_PUBLIC = "public"      # grid + every caller's tools/list
-
-
-def _display_icon(tool_key: str, files_max, accept) -> str:
-    """图标完全依赖类型 — 单一策略点。
-
-    第一方注册声明的 family (accept 无法归并出车道时, 如 zip_pack
-    全格式入食但属归档道) → 该道字形; 其余由声明派生 (纯文本→text /
-    accept 未声明=all→cloud / 单族→族字形)。DB icon 列的装饰值一概不读。"""
-    if is_official_id(tool_key):
-        from tools import _registry
-        fam = next((t.get("family") for t in _registry
-                    if t["id"] == tool_key and t.get("family")), None)
-        if fam:
-            return _FAMILY_GLYPH[fam]
-    return derived_tool_icon(files_max, accept)
 
 
 # ── Seeding: register() declarations → platform_tools rows ──
@@ -66,10 +51,20 @@ def seed_from_registry() -> dict:
     # 本函数不再解释 declaration 字段 (无 MIME shim / 手工 json.dumps)。
     from tools import _registry
     from governance.tool_supply import upsert_seed_tool
+    from repo.catalog import by_tool_key
     ts = now()
     added = 0
     updated = 0
     for t in _registry:
+        # 系统命名空间保护: 内置 key 撞上社区行 (username_toolid 形态下
+        # 用户可组装出裸词形 key) = 身份占用, fail loud 绝不静默覆写
+        with db() as con:
+            existing = by_tool_key(con, t["id"])
+        if existing is not None and existing["owner_id"] is not None:
+            raise RuntimeError(
+                f"seed collision: first-party key '{t['id']}' is held by a "
+                f"community row (owner_id={existing['owner_id']}) — refusing "
+                f"to overwrite; resolve the key conflict first")
         decl = {
             "tool_key": t["id"],
             "tool_id": t["id"],
@@ -77,6 +72,7 @@ def seed_from_registry() -> dict:
             "execution": "local",
             "label": t["label"],
             "desc": t.get("desc"),
+            "format_family": t.get("tag"),
             "inputs": {"files": {
                 "min": int(t.get("files_min", 1)),
                 "max": int(t.get("files_max", 1)),
@@ -101,8 +97,8 @@ def _canonical_accept(raw: str | None) -> list | None:
     """accept_json column → canonical extension token list (4C-2).
 
     Stored contract is parsed by THE single stored parser
-    (formats.parse_stored_accept): SQL NULL = any / valid JSON non-empty
-    canonical ext list. Anything else raises — never silently
+    (formats.parse_stored_accept): 非空 canonical ext 列表; NULL 仅 =
+    无文件位 (files_max=0)。Anything else raises — never silently
     projected."""
     from governance.formats import parse_stored_accept
     canon = parse_stored_accept(raw)  # typed raise on invalid
@@ -110,36 +106,48 @@ def _canonical_accept(raw: str | None) -> list | None:
 
 
 def validate_catalog_rows() -> None:
-    """Startup invariant: every platform_tools row's stored accept AND
-    execution must be the current contract (accept: NULL = any, or
-    non-empty canonical ext list; execution: the canonical supply
-    vocabulary local|http — no second vocabulary here). Violation aborts
-    startup regardless of enabled/visibility — the catalog projection
-    never guesses."""
+    """Startup invariant: every platform_tools row's stored accept, tag and
+    execution must be the current contract. accept 单形状: 文件工具
+    (files_max>0) 必为非空 canonical ext 列表; 纯文本工具 (files_max=0)
+    无文件位 → NULL。tag: 文件工具必带, 纯文本工具必不带。execution:
+    canonical supply 词表 local|http。Violation aborts startup regardless
+    of enabled/visibility — the catalog projection never guesses."""
     from governance.formats import parse_stored_accept
     from governance.tool_supply import _EXECUTIONS
     from repo.catalog import catalog_contract_rows
     with db() as con:
         rows = catalog_contract_rows(con)
     for r in rows:
-        try:
-            parse_stored_accept(r["accept_json"])  # SQL NULL = valid any
-        except (KeyError, TypeError, ValueError) as exc:
-            raise RuntimeError(
-                f"catalog invariant: tool {r['tool_key']} accept_json "
-                f"violates the stored contract ({exc})") from None
         if r["execution"] not in _EXECUTIONS:
             raise RuntimeError(
                 f"catalog invariant: tool {r['tool_key']} execution "
                 f"'{r['execution']}' outside the canonical vocabulary "
                 f"{_EXECUTIONS}")
-
-
-def is_official_id(tool_id: str) -> bool:
-    """Official/Community origin 单源判定: bare id = official (self-operated),
-    namespaced 'owner/tool' = community。三面 (home/market/tool-page) 一律
-    消费本判定, 禁止各自写字符串判断。"""
-    return "/" not in (tool_id or "")
+        text_only = int(r["files_max"]) == 0
+        if text_only and r["accept_json"] is not None:
+            raise RuntimeError(
+                f"catalog invariant: text-only tool {r['tool_key']} carries "
+                f"an accept list (no file slot)")
+        if not text_only and r["accept_json"] is None:
+            raise RuntimeError(
+                f"catalog invariant: file tool {r['tool_key']} has no accept "
+                f"list (single shape - no NULL=any sentinel)")
+        try:
+            parse_stored_accept(r["accept_json"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"catalog invariant: tool {r['tool_key']} accept_json "
+                f"violates the stored contract ({exc})") from None
+        # tag 不变量: 文件工具必带; 纯文本工具必不带
+        # (与供给点同口径 — 启动即拦, 不等请求期 tool_glyph KeyError 500)
+        tag = r["format_family"]
+        if text_only and tag is not None:
+            raise RuntimeError(
+                f"catalog invariant: text-only tool {r['tool_key']} "
+                f"carries a tag (no file slot)")
+        if not text_only and tag is None:
+            raise RuntimeError(
+                f"catalog invariant: file tool {r['tool_key']} has no tag")
 
 
 def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
@@ -158,14 +166,13 @@ def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
     # (stored parser 单点解释, 非法行 startup fail)。
     accept = _canonical_accept(row["accept_json"])
     item = {
-        "id": row["tool_key"],  # namespaced key is THE identity from now on
-        "origin": "official" if is_official_id(row["tool_key"]) else "community",
+        "id": row["tool_key"],  # key 是唯一身份 (username_toolid | 裸词)
+        # 系统工具判定 = owner 为空 (契约字段), 无字符串形状判定
+        "origin": "official" if row["owner_id"] is None else "community",
         "label": json.loads(row["label_json"]),
-        # 图标完全依赖类型 (装饰性 icon 链路已退役, 列值不再读):
-        #   share      → cloud (类型空态唯一持有者, 呼应上传输入)
-        #   第一方声明 family (accept 无法归并时, 如 zip_pack) → 该道字形
-        #   其余       → 由声明派生 (纯文本→text / 单族→族字形 / 多族→convert)
-        "icon": _display_icon(row["tool_key"], row["files_max"], accept),
+        # 图标 = 声明 tag 的查表 (icons.tool_glyph 单点): 纯文本输入→text,
+        # 九 tag 各一字形, all→cloud。无派生、无兜底。
+        "icon": tool_glyph(row["files_max"], row["format_family"]),
         "accept": accept,
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),
@@ -347,9 +354,8 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
             (the callable from tools._registry; worker dispatch needs it).
       error: 'not_found' | 'disabled' | 'forbidden'
 
-    Key grammar: bare id ('beautify') = first-party; 'owner/tool' = user
-    namespace (user tools are current data rows — resolve() speaks the
-    grammar today).
+    Key grammar: 'username_toolid' (社区, owner 非空) | 裸词 (系统工具,
+    owner 为空)。key 是唯一身份, 不解析不拆分 — owner 关系走 owner_id 列.
 
     Visibility is enforced HERE so the three surfaces cannot diverge:
       public    → everyone
@@ -397,51 +403,6 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
     return tool, None
 
 
-def mcp_names() -> dict:
-    """MCP tool-name projection over EVERY stored tool_key → name (injective).
-
-    MCP clients reject '/' in tool names, so the natural name replaces it
-    with '__' ('sun/super_resolve' → 'sun__super_resolve'; bare
-    first-party ids pass through). Usernames and tool ids may themselves
-    contain '__', so two keys can share a natural name ('ab__cd/x' and
-    'ab/cd__x'). Rows are assigned in creation order: the oldest row keeps
-    the natural name, a later colliding row gets '<natural>-<sha256 hex>'.
-    The suffix form never equals a natural name (the segment after a
-    natural name's last '__' is a tool id, which has no '-'), and a taken
-    name is never reassigned, so the map is reversible by construction.
-    Resolution goes through this map (tool_key_for_mcp_name), never by
-    string replacement."""
-    import hashlib
-    with db() as con:
-        keys = catalog_repo.all_tool_keys_by_age(con)
-    names: dict = {}
-    taken: set = set()
-    for key in keys:
-        natural = key.replace("/", "__")
-        name = natural
-        if name in taken:
-            digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
-            n = 8
-            name = f"{natural}-{digest[:n]}"
-            while name in taken:
-                n += 4
-                name = f"{natural}-{digest[:n]}"
-        taken.add(name)
-        names[key] = name
-    return names
-
-
-def mcp_name(tool_key: str, names: dict | None = None) -> str:
-    """MCP tool name of one tool_key (see mcp_names)."""
-    names = mcp_names() if names is None else names
-    return names.get(tool_key, tool_key.replace("/", "__"))
-
-
-def tool_key_for_mcp_name(name: str) -> str | None:
-    """Inverse of mcp_names(): the stored tool_key an MCP name denotes, or
-    None when no row projects to it. Visibility/enabled adjudication stays
-    in resolve()."""
-    for key, projected in mcp_names().items():
-        if projected == name:
-            return key
-    return None
+# MCP 工具名 = tool_key 原文 (username_toolname / 裸词, 均为 MCP 合法
+# 字符集)。无投影、无撞名分配 — key 唯一索引即名单射。名字解析 =
+# by_tool_key 直查 (resolve() 内), 无逆映射函数。

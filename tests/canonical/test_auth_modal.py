@@ -197,15 +197,15 @@ try:
             """
             INSERT INTO platform_tools (tool_key, tool_id, execution,
               visibility, label_json, enabled, owner_id,
-              files_min, files_max, outputs_json, created_at, updated_at, accept_json)
+              files_min, files_max, outputs_json, created_at, updated_at, accept_json, format_family)
             VALUES (%s, 'g', 'http', 'public',
               '{"en": "Community G"}', TRUE, %s,
-              1, 1, '["file"]', %s, %s, '[".png"]')
+              1, 1, '["file"]', %s, %s, '[\".png\"]', 'image')
             """,
-            (f"{com}/g", uid_com, int(_time.time()), int(_time.time())))
+            (f"{com}_g", uid_com, int(_time.time()), int(_time.time())))
         con.execute(
             "insert into pricing (tool_id, cost, enabled, updated_at)"
-            " values (%s, 0, TRUE, %s)", (f"{com}/g", int(_time.time())))
+            " values (%s, 0, TRUE, %s)", (f"{com}_g", int(_time.time())))
     st, _h, body, _sc = _req("GET", "/tools", None, {"Accept": "text/html"})
     body = body if isinstance(body, str) else ""
     check("G1 market lists first-party compress",
@@ -213,7 +213,7 @@ try:
     st, _h, body, _sc = _req("GET", "/tools?q=Community", None, {"Accept": "text/html"})
     body = body if isinstance(body, str) else ""
     check("G2 market search finds the public community tool",
-          f"href=\"/tool/{com}/g\"" in body, com)
+          f"href=\"/tool/{com}_g\"" in body, com)
 
 finally:
     with db() as con:

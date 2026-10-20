@@ -343,6 +343,15 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
       check("home: input component rendered (run + file picker)",
         (await page.$(".ti-run")) !== null && (await page.$(".ti-file-input")) !== null);
+      // format summary: a single-family tool must NOT read as "All formats"
+      // (the union view double-counted the all group and every family hit it)
+      const sumText = await page.evaluate(() => {
+        const el = document.querySelector(".ti-drop small");
+        return el ? el.textContent : "";
+      });
+      check("home: compress summary names its family, never 'All formats'",
+        sumText.indexOf("Images") !== -1 && sumText.indexOf("All formats") === -1,
+        sumText);
 
       // track network legs for retry assertions
       const legs = { uploads: [], executes: [] };
@@ -558,15 +567,13 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       // ── 13. publish edit refill escapes stored declaration data ──
       // A malicious enum option value stored in a declaration must
       // refill as TEXT on the author's edit page, never execute.
-      const xssTool = "gxp" + Math.random().toString(36).slice(2, 7);
-      createdToolId = xssTool;
       const xssPayload = '"><img src=x onerror="window.__xssAudit=1">';
-      const created = await page.evaluate(async ({ tid, payload }) => {
+      const created = await page.evaluate(async ({ payload }) => {
         const r = await fetch("/api/usertools", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            tool_id: tid, label: "Gate XSS", url: "https://93.184.216.34/x",
+            label: "Gate XSS", url: "https://93.184.216.34/x",
             timeout_s: 30, files_min: 0, files_max: 1,
             format_families: "image", accept: [".png"],
             outputs: ["text"], cost: 0,
@@ -574,11 +581,13 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
                        options: [{ value: payload, label: payload }] }],
           }),
         });
-        return { ok: r.ok, status: r.status, body: (await r.text()).slice(0, 160) };
-      }, { tid: xssTool, payload: xssPayload });
+        const txt = await r.text();
+          return { ok: r.ok, status: r.status, body: txt.slice(0, 160), key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, { payload: xssPayload });
+      createdToolId = created.key || "";
       check("publish-xss: tool with malicious option value created",
         created.ok, created.status + " " + created.body);
-      await gotoReady(page, `/account/tools/publish?id=${xssTool}`, "#pubForm");
+      await gotoReady(page, `/account/tools/publish?id=${createdToolId}`, "#pubForm");
       const xssState = await page.evaluate(() => ({
         fired: window.__xssAudit === 1,
         optVal: (document.querySelector(".pr-opt-val") || {}).value,
@@ -591,19 +600,191 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         xssState.optText === xssPayload, xssState.optText);
       await visualAudit("desktop", page, "publish-edit-xss-refill", true);
 
-      // ── 14. six-parameter tool (8 long enum labels) for the params
-      // layout gate: >3 params fold into "more", both surfaces, both
-      // widths. Created as a real unlisted user tool (owner sees it in
-      // the home picker + its own /tool/{owner}/{slug} page). ──
-      const paramToolId = "gparam" + Math.random().toString(36).slice(2, 7);
-      const LONG_OPTS = Array.from({ length: 8 }, (_, i) =>
-        ({ value: "opt" + i, label: "Extraordinarily Long Option Label " + (i + 1) }));
-      const createdParams = await page.evaluate(async ({ tid, opts }) => {
+      // ── 13b. bad_cost maps onto the cost field slot ──
+      await gotoReady(page, "/account/tools/publish", "#pubForm");
+      await page.fill("#fUrl", "https://93.184.216.34/badcost");
+      await page.fill("#fLabel", "Bad Cost Probe");
+      await page.fill("#fCost", "100001");
+      await page.click("#pubSubmit");
+      await page.waitForFunction(() =>
+        document.querySelector('.pub-err[data-err="cost"]') &&
+        document.querySelector('.pub-err[data-err="cost"]').textContent !== "",
+        null, { timeout: 5000, polling: 200 });
+      const costErr = await page.evaluate(() =>
+        document.querySelector('.pub-err[data-err="cost"]').textContent);
+      check("publish-bad-cost: server error lands on the cost field slot",
+        costErr !== "", costErr);
+
+      // ── 13c. edit title shows the resolved dict label ──
+      const dictLabel = { en: "Gate Dict Label EN", zh: "Gate 字典标签" };
+      const createdDict = await page.evaluate(async (label) => {
         const r = await fetch("/api/usertools", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            tool_id: tid, label: "Gate Params Six", url: "https://93.184.216.34/x",
+            label, url: "https://93.184.216.34/dict", timeout_s: 30,
+            files_min: 0, files_max: 1, format_families: "image",
+            accept: [".png"], outputs: ["text"], cost: 0,
+          }),
+        });
+        const txt = await r.text();
+        return { ok: r.ok, body: txt.slice(0, 120),
+                 key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, dictLabel);
+      check("publish-dict-label: tool with dict label created",
+        createdDict.ok, createdDict.body);
+      await gotoReady(page, `/account/tools/publish?id=${createdDict.key}`, "#pubForm");
+      const titleState = await page.evaluate((label) => ({
+        text: document.getElementById("pubTitle").textContent,
+        expected: window.resolveLabel(label),
+      }), dictLabel);
+      check("publish-edit-title: title shows resolved dict label, never [object Object]",
+        titleState.text.indexOf(titleState.expected) !== -1 &&
+        titleState.text.indexOf("[object Object]") === -1,
+        titleState.text);
+
+      // ── 13d. edit refill consumes the stored tag, never re-derives it ──
+      // declared tag=all with a cross-family accept (png+pdf) must refill
+      // as "all"; inferring from accept used to pick the first matching
+      // family and silently rewrite the declaration on save.
+      const createdAll = await page.evaluate(async () => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: "Gate Tag All", url: "https://93.184.216.34/all", timeout_s: 30,
+            files_min: 1, files_max: 2, format_families: "all",
+            accept: [".png", ".pdf"], outputs: ["text"], cost: 0,
+          }),
+        });
+        const txt = await r.text();
+        return { ok: r.ok, body: txt.slice(0, 120),
+                 key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, {});
+      check("publish-tag-all: cross-family tool created",
+        createdAll.ok, createdAll.body);
+      await gotoReady(page, `/account/tools/publish?id=${createdAll.key}`, "#pubForm");
+      const tagState = await page.evaluate(() => ({
+        checkedFam: (document.querySelector('#famGrid input[name="fam"]:checked') || {}).value,
+      }));
+      check("publish-edit-refill: stored tag=all is the selected family",
+        tagState.checkedFam === "all", JSON.stringify(tagState));
+
+      // ── 13e. locale mechanism: main language selector ──
+      // dict label WITHOUT the interface language → main language =
+      // the dict's first key (the original language); the main field
+      // refills that language's own text (no fallback impostor), other
+      // languages ride extra rows, and both selectors are mutually
+      // exclusive. Saving must carry X-518-Edit-Locale = main language.
+      const localeLabel = { ja: "ゲート原名", zh: "门户原名" };
+      const createdLocale = await page.evaluate(async (label) => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label, desc: { ja: "元の説明", zh: "原说明" },
+            url: "https://93.184.216.34/locale", timeout_s: 30,
+            files_min: 0, files_max: 1, format_families: "image",
+            accept: [".png"], outputs: ["text"], cost: 0,
+          }),
+        });
+        const txt = await r.text();
+        return { ok: r.ok, body: txt.slice(0, 120),
+                 key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, localeLabel);
+      check("publish-locale: tool with ja-first dict label created",
+        createdLocale.ok, createdLocale.body);
+      await gotoReady(page, `/account/tools/publish?id=${createdLocale.key}`, "#pubForm");
+      const localeState = await page.evaluate(() => ({
+        mainLang: (document.getElementById("fMainLang") || {}).value,
+        labelVal: document.getElementById("fLabel").value,
+        descVal: document.getElementById("fDesc").value,
+        rowLangs: [...document.querySelectorAll("#langRows .lang-pick")].map(s => s.value),
+        rowHasMain: [...document.querySelectorAll("#langRows .lang-pick")]
+          .some(s => [...s.options].some(o => o.value ===
+            ((document.getElementById("fMainLang") || {}).value))),
+        mainJaDisabled: ((document.querySelector('#fMainLang option[value="ja"]') || {}).disabled === true),
+        mainZhDisabled: ((document.querySelector('#fMainLang option[value="zh"]') || {}).disabled === true),
+      }));
+      check("publish-locale: main language defaults to the dict first key (ja)",
+        localeState.mainLang === "ja", JSON.stringify(localeState));
+      check("publish-locale: main label field refills the ja text itself",
+        localeState.labelVal === localeLabel.ja, localeState.labelVal);
+      check("publish-locale: main desc field refills the ja text itself",
+        localeState.descVal === "元の説明", localeState.descVal);
+      check("publish-locale: zh (non-main locale) rides an extra row",
+        localeState.rowLangs.length === 1 && localeState.rowLangs[0] === "zh",
+        JSON.stringify(localeState.rowLangs));
+      check("publish-locale: extra rows never offer the main language",
+        localeState.rowHasMain === false, JSON.stringify(localeState));
+      check("publish-locale: main selector disables the row-occupied language only",
+        localeState.mainZhDisabled === true && localeState.mainJaDisabled === false,
+        JSON.stringify(localeState));
+      // save → the PATCH must carry the main language, not the UI language.
+      // Wait for the PATCH response BEFORE navigating away: submit() sets
+      // location.href on success and a late navigation would clobber the
+      // next goto's document mid-load.
+      let editLocaleHeader = null;
+      let patchSettled = new Promise((resolve) => {
+        page.on("response", function sink(res) {
+          if (res.url().includes("/api/usertools/") && res.request().method() === "PATCH") {
+            page.off("response", sink);
+            resolve(res.status());
+          }
+        });
+      });
+      const reqSink = (req) => {
+        if (req.method() === "PATCH" && req.url().includes("/api/usertools/")) {
+          editLocaleHeader = req.headers()["x-518-edit-locale"] || "";
+        }
+      };
+      page.on("request", reqSink);
+      await page.click("#pubSubmit");
+      await patchSettled;
+      await page.waitForURL(/\/account\/tools/, { timeout: 20000 }).catch(() => {});
+      page.off("request", reqSink);
+      check("publish-locale: X-518-Edit-Locale equals the main language (ja)",
+        editLocaleHeader === "ja", editLocaleHeader);
+
+      // create page: main defaults to the interface language; occupying
+      // a language with an extra row disables it on the main selector
+      await gotoReady(page, "/account/tools/publish", "#pubForm");
+      const createMain = await page.evaluate(() => ({
+        main: (document.getElementById("fMainLang") || {}).value,
+        iface: (document.documentElement.lang || "en").slice(0, 2),
+      }));
+      check("publish-locale: create defaults main language to the interface language",
+        createMain.main === createMain.iface, JSON.stringify(createMain));
+      await page.evaluate(() => { document.getElementById("langMore").open = true; });
+      await page.click("#addLangRow");
+      await page.selectOption("#langRows .lang-row:last-child .lang-pick", "zh");
+      const mutexState = await page.evaluate(() => {
+        const main = document.getElementById("fMainLang").value;
+        return {
+          zhDisabled: ((document.querySelector('#fMainLang option[value="zh"]') || {}).disabled === true),
+          mainDisabled: ((document.querySelector(`#fMainLang option[value="${main}"]`) || {}).disabled === true),
+          rowHasMain: [...document.querySelectorAll("#langRows .lang-pick")]
+            .some(s => [...s.options].some(o => o.value === main)),
+        };
+      });
+      check("publish-locale: create — main selector disables the taken language",
+        mutexState.zhDisabled === true && mutexState.mainDisabled === false,
+        JSON.stringify(mutexState));
+      check("publish-locale: create — extra row options exclude the main language",
+        mutexState.rowHasMain === false, JSON.stringify(mutexState));
+
+      // ── 14. six-parameter tool (8 long enum labels) for the params
+      // layout gate: >3 params fold into "more", both surfaces, both
+      // widths. Created as a real unlisted user tool (owner sees it in
+      // the home picker + its own /tool/{owner}/{slug} page). ──
+      const LONG_OPTS = Array.from({ length: 8 }, (_, i) =>
+        ({ value: "opt" + i, label: "Extraordinarily Long Option Label " + (i + 1) }));
+      const createdParams = await page.evaluate(async ({ opts }) => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: "Gate Params Six", url: "https://93.184.216.34/x",
             timeout_s: 30, files_min: 0, files_max: 1,
             format_families: "image", accept: [".png"],
             outputs: ["text"], cost: 0,
@@ -619,10 +800,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             ],
           }),
         });
-        return { ok: r.ok, status: r.status, body: (await r.text()).slice(0, 160) };
-      }, { tid: paramToolId, opts: LONG_OPTS });
-      createdParamToolKey = createdParams.ok
-        ? `${username}/${paramToolId}` : "";
+        const txt = await r.text();
+          return { ok: r.ok, status: r.status, body: txt.slice(0, 160), key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, { opts: LONG_OPTS });
+      createdParamToolKey = createdParams.key || "";
       check("params-tool: six-param tool created", createdParams.ok,
         createdParams.status + " " + createdParams.body);
     }
@@ -760,7 +941,12 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         const b = burger.getBoundingClientRect();
         return {
           ok: true,
-          visible: !!lang.offsetParent && r.width > 0 && r.height >= 40,
+          // designed .ib size = 36px visual; the touch target is the
+          // ::after inset extension, asserted separately below. (The old
+          // >= 40 threshold was calibrated on the CTA-bleed rendering —
+          // the (0,3,1) element baseline forcing 11px/22px padding onto
+          // this icon button — not on the component's own metrics.)
+          visible: !!lang.offsetParent && r.width > 0 && r.height >= 36,
           beforeMenu: r.right <= b.left + 1,
           drawerEntryGone: !sheetLang && !menu,
         };

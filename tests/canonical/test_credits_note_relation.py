@@ -106,9 +106,9 @@ try:
                          (tool_keys[1], "Beta Tool 62")):
             con.execute(
                 """INSERT INTO platform_tools (tool_key, owner_id, tool_id,
-                   execution, label_json, accept_json,
+                   execution, label_json, accept_json, format_family,
                    visibility, enabled, created_at, updated_at)
-                   VALUES (%s, NULL, %s, 'local', %s, '[".png"]',
+                   VALUES (%s, NULL, %s, 'local', %s, '[".png"]', 'image',
                    'unlisted', TRUE, %s, %s)""",
                 (k, k, _json.dumps({"en": label}), ts, ts))
         # two tool_calls, one per tool

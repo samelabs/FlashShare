@@ -159,7 +159,8 @@ try:
         created_uids.append(op_uid)
     ck = f"{COOKIE_NAME}={create_browser_session(op_uid)}"
     st, _h, d, _sc = _req("POST", "/samelabs/tools/create", {
-        "tool_id": OP_TOOL, "label": "FX Http Echo",
+        "tool_id": OP_TOOL, "label": "FX Http Echo", "format_families": "image",
+        "accept": ".png",
         "url": TOOL_URL, "timeout_s": 30,
         "files_min": 1, "files_max": 5, "outputs": ["file"],
         "cost": 2}, {"Content-Type": "application/json", "Cookie": ck})
@@ -257,11 +258,12 @@ try:
 
     # ═══ X2/X3: window read-back + half PATCH (real PATCH/GET) ═══
     from governance.tool_supply import create_tool
-    create_tool({
-        "tool_key": f"{_u}a/{USER_TOOL}", "tool_id": USER_TOOL,
+    _xkey = create_tool({
+        "tool_key": f"{_u}a_{USER_TOOL}", "tool_id": USER_TOOL,
         "owner_id": uid, "execution": "http",
         "label": {"en": "FX User Tool"},
-        "inputs": {"files": {"min": 0, "max": 3, "accept": None}},
+        "format_family": "image",
+        "inputs": {"files": {"min": 0, "max": 3, "accept": [".png"]}},
         "outputs": ["text"],
         "params": [{"key": "note", "type": "text", "required": True,
                     "label": {"en": "Note"}}],
@@ -270,44 +272,44 @@ try:
     with db() as con:
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 1, TRUE, %s)",
-                    (f"{_u}a/{USER_TOOL}", ts))
+                    (_xkey, ts))
     st, _h, d_list, _sc = _req("GET", "/api/usertools", {}, {"Cookie": CK})
     entry = next((t for t in (d_list or {}).get("tools", [])
-                  if t.get("tool_id") == USER_TOOL), None)
+                  if t.get("tool_id") == _xkey), None)
     check("X2 files_min 0 survives read-back (not coerced to 1)",
           entry and entry.get("files_min") == 0 and entry.get("files_max") == 3,
           str(entry and {k: entry.get(k) for k in ('files_min', 'files_max')}))
-    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{USER_TOOL}",
+    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{_xkey}",
                             {"label": {"en": "FX v2"}},
                             {"Content-Type": "application/json", "Cookie": CK})
     st, _h, d_list, _sc = _req("GET", "/api/usertools", {}, {"Cookie": CK})
     entry = next((t for t in (d_list or {}).get("tools", [])
-                  if t.get("tool_id") == USER_TOOL), None)
+                  if t.get("tool_id") == _xkey), None)
     check("X3a PATCH without window keeps stored bounds (0/3)",
           st == 200 and entry and entry.get("files_min") == 0
           and entry.get("files_max") == 3,
           str(entry and {k: entry.get(k) for k in ('files_min', 'files_max')}))
-    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{USER_TOOL}",
+    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{_xkey}",
                             {"files_min": 2},
                             {"Content-Type": "application/json", "Cookie": CK})
     st, _h, d_list, _sc = _req("GET", "/api/usertools", {}, {"Cookie": CK})
     entry = next((t for t in (d_list or {}).get("tools", [])
-                  if t.get("tool_id") == USER_TOOL), None)
+                  if t.get("tool_id") == _xkey), None)
     check("X3b PATCH files_min only keeps stored max (2/3)",
           st == 200 and entry and entry.get("files_min") == 2
           and entry.get("files_max") == 3,
           str(entry and {k: entry.get(k) for k in ('files_min', 'files_max')}))
-    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{USER_TOOL}",
+    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{_xkey}",
                             {"files_max": 5},
                             {"Content-Type": "application/json", "Cookie": CK})
     st, _h, d_list, _sc = _req("GET", "/api/usertools", {}, {"Cookie": CK})
     entry = next((t for t in (d_list or {}).get("tools", [])
-                  if t.get("tool_id") == USER_TOOL), None)
+                  if t.get("tool_id") == _xkey), None)
     check("X3c PATCH files_max only keeps stored min (2/5)",
           st == 200 and entry and entry.get("files_min") == 2
           and entry.get("files_max") == 5,
           str(entry and {k: entry.get(k) for k in ('files_min', 'files_max')}))
-    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{USER_TOOL}",
+    st, _h, d_p, _sc = _req("PATCH", f"/api/usertools/{_xkey}",
                             {"files_max": 1},
                             {"Content-Type": "application/json", "Cookie": CK})
     check("X3d min>max rejected (bad_files_range)",
@@ -332,7 +334,8 @@ try:
         tool_id=f"fxlocal{_u}",
         label={"en": "FX Local Two"},
         handler=_two_files_handler,
-        files_min=0, files_max=1, outputs=("file",))
+        accept={".png"},
+        files_min=0, files_max=1, outputs=("file",), tag="image")
     with db() as con:
         con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
                     " values (%s, 0, TRUE, %s)", (f"fxlocal{_u}", ts))
@@ -531,9 +534,8 @@ try:
     st, d = _mcp({"jsonrpc": "2.0", "id": 30, "method": "tools/list",
                   "params": {}}, TOK)
     _tools_l = {t["name"]: t for t in (d.get("result") or {}).get("tools", [])}
-    # MCP name projection: '/' → '__' (governance.catalog.mcp_names)
-    from governance.catalog import mcp_name as _mname
-    _spec = _tools_l.get(_mname(f"{_u}a/{USER_TOOL}")) or {}
+    # MCP 名 = tool_key 原文 (无投影)
+    _spec = _tools_l.get(_xkey) or {}
     _schema = _spec.get("inputSchema") or {}
     # the fixture tool is 0..3 files → files optional; only params is
     # required at top level. Schema validity is driven per-tool.
@@ -549,7 +551,6 @@ try:
           f"top={_top_req} params={_preq}")
     try:
         import jsonschema as _jsv
-        from governance.catalog import mcp_names as _mname2
         _comp = _tools_l.get("compress") or {}
         _comp_schema = _comp.get("inputSchema") or {}
         _comp_ok = {"files": [{"filename": "a.png", "b64": A64}],

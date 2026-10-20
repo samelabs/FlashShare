@@ -438,7 +438,8 @@ def _decl(**kw):
     d = {"tool_key": f"cf_{_u}", "tool_id": f"cf_{_u}", "owner_id": None,
          "execution": "local",
          "label": {"en": "CF"}, "desc": None,
-         "inputs": {"files": {"min": 0, "max": 1, "accept": None}},
+         "format_family": "image",
+         "inputs": {"files": {"min": 0, "max": 1, "accept": [".png"]}},
          "outputs": ["text"], "params": None, "visibility": "unlisted",
          "enabled": True}
     d.update(kw)
@@ -466,6 +467,7 @@ for t in _reg:
         _vtd({"tool_key": t["id"], "tool_id": t["id"], "owner_id": None,
               "execution": "local",
               "label": t["label"], "desc": t["desc"],
+              "format_family": t.get("tag"),
               "inputs": {"files": {"min": t["files_min"], "max": t["files_max"],
                                    "accept": sorted(t["accept"]) if t["accept"] else None}},
               "outputs": t["outputs"], "params": t["params"],
@@ -480,7 +482,7 @@ _g4u = _mkuser(_u + "g4u")
 _uids.append(_g4u)
 _g4_sess = create_browser_session(_g4u)
 r = client.post("/api/usertools", json={
-    "tool_id": f"g4_{_u}", "label": "G4", "desc": "line1\nline2",
+    "label": "G4", "desc": "line1\nline2",
     "url": "https://93.184.216.34/x", "timeout_s": 30,
     "files_min": 0, "files_max": 1, "format_families": "image",
     "accept": [".png"], "outputs": ["text"], "cost": 0,
@@ -537,9 +539,9 @@ def _mk_local_tool(tool_id, owner_id, cost):
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json, visibility, enabled,"
-            " created_at, updated_at, accept_json)"
+            " created_at, updated_at, accept_json, format_family)"
             " values (%s, %s, %s, 'local', %s,"
-            " 'public', TRUE, %s, %s, '[\".png\"]')",
+            " 'public', TRUE, %s, %s, '[\".png\"]', 'image')",
             (tool_id, owner_id, tool_id,
              _json.dumps({"en": "AX"}), ts, ts))
         con.execute(
@@ -647,27 +649,26 @@ check("G8b concurrent takedowns: one delete, one audit",
 _g9u = _mkuser(_u + "g9u")
 _uids.append(_g9u)
 _g9_sess = create_browser_session(_g9u)
-_tid = f"g9_{_u}"
-_key = f"{_u}g9u/{_tid}"
 r = client.post("/api/usertools", json={
-    "tool_id": _tid, "label": "G9", "url": "https://93.184.216.34/x",
+    "label": "G9", "url": "https://93.184.216.34/x",
     "timeout_s": 30, "files_min": 0, "files_max": 1,
     "format_families": "image", "accept": [".png"], "outputs": ["text"],
     "cost": 5}, cookies={COOKIE_NAME: _g9_sess})
 assert r.status_code == 200, r.text[:200]
+_key = r.json().get("tool_key")
 r = client.post(f"/samelabs/tools/{_key}/pricing",
                 json={"cost": 5, "enabled": False},
                 cookies={COOKIE_NAME: _op_sess})
 check("G9a operator pricing takedown applied",
       r.status_code == 200 and r.json()["pricing"]["enabled"] is False, r.text[:120])
-r = client.patch(f"/api/usertools/{_tid}", json={"cost": 9},
+r = client.patch(f"/api/usertools/{_key}", json={"cost": 9},
                  cookies={COOKIE_NAME: _g9_sess})
 from governance.pricing import get_pricing as _get_pricing
 _pr = _get_pricing(_key)
 check("G9b owner price PATCH keeps the operator takedown",
       r.status_code == 200 and _pr["enabled"] is False and _pr["cost"] == 9,
       f"{r.status_code} {dict(_pr)}")
-r = client.patch(f"/api/usertools/{_tid}", json={"enabled": "yes"},
+r = client.patch(f"/api/usertools/{_key}", json={"enabled": "yes"},
                  cookies={COOKIE_NAME: _g9_sess})
 check("G10 PATCH enabled non-bool → 422 bad_enabled",
       r.status_code == 422 and r.json().get("error") == "bad_enabled",
@@ -741,14 +742,13 @@ check("G12c rejected before charge (balance untouched)",
 _g13o = _mkuser(_u + "g13o")
 _uids.append(_g13o)
 _g13_sess = create_browser_session(_g13o)
-_tid13 = f"g13_{_u}"
-_key13 = f"{_u}g13o/{_tid13}"
 r = client.post("/api/usertools", json={
-    "tool_id": _tid13, "label": "AX Thirdparty", "desc": "community probe",
+    "label": "AX Thirdparty", "desc": "community probe",
     "url": "https://93.184.216.34/x", "timeout_s": 30,
     "files_min": 0, "files_max": 1, "format_families": "image",
     "accept": [".png"], "outputs": ["text"], "cost": 0,
 }, cookies={COOKIE_NAME: _g13_sess})
+_key13 = r.json().get("tool_key")
 assert r.status_code == 200, r.text[:200]
 with db() as con:
     con.execute("update platform_tools set visibility='public'"
@@ -756,7 +756,7 @@ with db() as con:
 r = client.post("/api/keys", json={"name": "ax"},
                 cookies={COOKIE_NAME: _g13_sess})
 _tok13 = r.json()["key"]["key"]
-mname13 = _key13.replace("/", "__")
+mname13 = _key13  # 名 = key 原文
 
 def _mcp(body, token):
     r = client.post("/mcp", json=body, headers={

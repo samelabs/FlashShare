@@ -51,6 +51,8 @@ def _public_item(row: dict) -> dict:
         "timeout_s": decl.get("timeout_s", 60),
         "has_auth": bool(decl.get("auth_token")),
         "accept": json.loads(row["accept_json"]) if row.get("accept_json") else None,
+        # 声明的 tag 原文 (契约字段): 编辑回填直接消费它, 不从 accept 重推
+        "format_family": row.get("format_family"),
         # stored window verbatim — files_min 0 (text-only tools) is legal
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),

@@ -11,7 +11,7 @@ LLMS_TOOLS_MAX = 50
 
 
 def build_llms_txt() -> str:
-    from governance.catalog import mcp_names, search_catalog
+    from governance.catalog import search_catalog
     from governance.tool_params import resolve_label
 
     mcp_url = f"{BASE_URL}/mcp"
@@ -248,9 +248,8 @@ def build_llms_txt() -> str:
     a("## Recommended tools (generated live; catalog_search finds every "
       "other public tool)")
     a("")
-    names = mcp_names()
     for t in search_catalog("", limit=LLMS_TOOLS_MAX):
-        name = names.get(t["id"], t["id"].replace("/", "__"))
+        name = t["id"]  # MCP 名 = key 原文
         label = t.get("label") or {}
         desc = resolve_label(label, "en") or t["id"]
         cost = int(t.get("cost") or 0)

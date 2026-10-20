@@ -573,30 +573,30 @@ check("CP4b no runtime reference to /samelabs/ledger",
 
 # ═══ CP5: Tool Supply facts ═══
 _T_LOCAL, _T_HTTP = tkey("local"), tkey("http")
-_T_PROV = f"{uname('prov')}/s4prov"      # provider key: owner/tool
+_T_PROV = f"{uname('prov')}_s4prov"      # provider key: owner/tool
 with db() as con:
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
         " visibility, enabled, featured, sort_order, created_at, updated_at,"
-        " label_json, endpoint_json, accept_json)"
+        " label_json, endpoint_json, accept_json, format_family)"
         " VALUES (%s, %s, 'local', 'public', TRUE, FALSE,"
-        " 0, %s, 0, '{\"zh\":\"S4L\",\"en\":\"S4L\"}', '{}', '[\".png\"]')",
+        " 0, %s, 0, '{\"zh\":\"S4L\",\"en\":\"S4L\"}', '{}', '[\".png\"]', 'image')",
         (_T_LOCAL, _T_LOCAL, ts))
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
         " visibility, enabled, featured, sort_order, owner_id, created_at,"
-        " updated_at, label_json, endpoint_json, accept_json)"
+        " updated_at, label_json, endpoint_json, accept_json, format_family)"
         " VALUES (%s, %s, 'http', 'public', TRUE, FALSE, 0,"
         " NULL, %s, 0, '{\"zh\":\"S4H\",\"en\":\"S4H\"}',"
-        " '{\"url\":\"https://x.test\"}', '[\".png\"]')",
+        " '{\"url\":\"https://x.test\"}', '[\".png\"]', 'image')",
         (_T_HTTP, _T_HTTP, ts))
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
         " visibility, enabled, featured, sort_order, owner_id, created_at,"
-        " updated_at, label_json, endpoint_json, accept_json)"
+        " updated_at, label_json, endpoint_json, accept_json, format_family)"
         " VALUES (%s, 's4prov', 'http', 'public', TRUE, FALSE, 0,"
         " %s, %s, 0, '{\"zh\":\"S4P\",\"en\":\"S4P\"}',"
-        " '{\"url\":\"https://y.test\"}', '[\".png\"]')",
+        " '{\"url\":\"https://y.test\"}', '[\".png\"]', 'image')",
         (_T_PROV, provider, ts))
     for k in (_T_LOCAL, _T_HTTP, _T_PROV):
         con.execute("INSERT INTO pricing (tool_id, cost, enabled, updated_at)"
@@ -760,8 +760,8 @@ _pt = tkey("strict")
 with db() as con:
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
-        " visibility, label_json, enabled, trusted, created_at, updated_at, accept_json)"
-        " VALUES (%s, %s, 'local', 'public', %s, TRUE, FALSE, %s, %s, '[\".png\"]')",
+        " visibility, label_json, enabled, trusted, created_at, updated_at, accept_json, format_family)"
+        " VALUES (%s, %s, 'local', 'public', %s, TRUE, FALSE, %s, %s, '[\".png\"]', 'image')",
         (_pt, _pt, _json.dumps({"en": "PM"}), now(), now()))
 for _bad in (True, 100.9, "100"):
     _r = _post_json(f"/samelabs/tools/{_pt}/pricing", {"cost": _bad})
@@ -833,14 +833,14 @@ with db() as con:
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
         " visibility, label_json, enabled, trusted, owner_id, created_at,"
-        " updated_at, accept_json) VALUES (%s, 'untrusted',"
-        " 'http', 'public', %s, TRUE, FALSE, %s, %s, %s, '[\".png\"]')",
+        " updated_at, accept_json, format_family) VALUES (%s, 'untrusted',"
+        " 'http', 'public', %s, TRUE, FALSE, %s, %s, %s, '[\".png\"]', 'image')",
         (_PU, _json.dumps({"en": "P1"}), provider, now(), now()))
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
-        " visibility, label_json, accept_json, enabled, trusted, owner_id, created_at,"
+        " visibility, label_json, accept_json, format_family, enabled, trusted, owner_id, created_at,"
         " updated_at) VALUES (%s, 'trusted',"
-        " 'http', 'public', %s, '[\".png\"]', TRUE, TRUE, %s, %s, %s)",
+        " 'http', 'public', %s, '[\".png\"]', 'image', TRUE, TRUE, %s, %s, %s)",
         (_PT, _json.dumps({"en": "P2"}), provider, now(), now()))
 with db() as con:
     _rows = {r_["tool_key"]: r_["trusted"]
@@ -1344,8 +1344,8 @@ with db() as con:
         (_xu, pid, _IMG, ts, ts + 86400))
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
-        " visibility, label_json, accept_json, enabled, trusted, owner_id, created_at,"
-        " updated_at) VALUES (%s, 'xt', 'http', 'public', %s, '[\".png\"]', TRUE, FALSE,"
+        " visibility, label_json, accept_json, format_family, enabled, trusted, owner_id, created_at,"
+        " updated_at) VALUES (%s, 'xt', 'http', 'public', %s, '[\".png\"]', 'image', TRUE, FALSE,"
         " %s, %s, %s)",
         (f'{_X}/"><b>{_X}', _json.dumps({"en": "X"}), _xu, ts, ts))
     con.execute(

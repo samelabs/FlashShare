@@ -18,8 +18,8 @@ def _like_token(tok: str) -> str:
 
 def _market_base(visibility_public: str, q: Optional[str],
                  curated: bool = True) -> tuple:
-    """公开市场查询基座 (selection/search/pricing visibility): the ONE
-    public-visibility predicate (enabled ∧ ¬delisted ∧ owner-alive) +
+    """公开市场查询基座 (selection/search/pricing visibility): 公开可见
+    谓词内联于此 (enabled ∧ ¬delisted ∧ owner-alive) +
     public visibility, INNER JOIN pricing (缺行=未完成商业创建, 不上面;
     pricing.enabled=false 排除)。搜索 = 空白分词 AND: 每个词都须命中
     tool_key+label+desc(各语言) 之一, LIKE 通配符按字面匹配 (THE one
@@ -96,35 +96,6 @@ def tool_key_exists(con, tool_key: str) -> bool:
     return con.execute(
         "SELECT 1 FROM platform_tools WHERE tool_key = %s",
         (tool_key,)).fetchone() is not None
-
-
-def all_tool_keys_by_age(con, include_suspended_owners: bool = False) -> list:
-    """Every stored tool_key (all states), oldest row first — the input of
-    the MCP tool-name projection (earlier rows keep their natural name).
-    Suspended owners drop out unless the operator surface asks for all."""
-    # NOTE: this feeds the MCP name map — naming, not visibility. A
-    # delisted/suspended tool KEEPS its name slot so the map stays
-    # stable (names are never reassigned); tools/list and resolve()
-    # enforce visibility via the public predicate.
-    join = "" if include_suspended_owners else (
-        " LEFT JOIN users o ON o.id = platform_tools.owner_id"
-        " WHERE (owner_id IS NULL OR o.status <> 'suspended')")
-    # qualified: the join brings users.id into scope
-    q = ("SELECT tool_key FROM platform_tools" + join
-         + " ORDER BY platform_tools.id")
-    return [r["tool_key"] for r in con.execute(q).fetchall()]
-
-
-# ── THE public-visibility predicate (one source, every surface) ──
-# A tool is publicly visible iff: developer enabled ∧ NOT operator
-# delisted ∧ owner not suspended (first-party rows have no owner).
-# resolve(), home/market lists, search, author page and MCP all build
-# their SQL on this fragment — no surface may re-derive the rule.
-_PUBLIC_VISIBLE = (" LEFT JOIN users o ON o.id = platform_tools.owner_id "
-                   "WHERE platform_tools.enabled"
-                   " AND NOT platform_tools.delisted"
-                   " AND (platform_tools.owner_id IS NULL"
-                   " OR o.status <> 'suspended') AND ")
 
 
 
@@ -269,7 +240,7 @@ def set_tool_presentation(con, tool_key: str, featured: bool,
 # ── 通用 tool row writers (阶段 B: 消费 tool_supply 序列化 row, 无业务验证) ──
 
 _TOOL_COLUMNS = ("tool_key", "owner_id", "tool_id", "execution",
-                 "label_json", "desc_json", "accept_json",
+                 "label_json", "desc_json", "accept_json", "format_family",
                  "params_json", "files_min", "files_max",
                  "outputs_json",
                  "visibility", "endpoint_json", "enabled")
@@ -303,6 +274,7 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
           label_json   = EXCLUDED.label_json,
           desc_json    = COALESCE(EXCLUDED.desc_json, platform_tools.desc_json),
           accept_json  = EXCLUDED.accept_json,
+          format_family = EXCLUDED.format_family,
           params_json  = EXCLUDED.params_json,
           files_min = EXCLUDED.files_min,
           files_max = EXCLUDED.files_max,
@@ -316,12 +288,12 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
 
 
 def catalog_contract_rows(con) -> list:
-    """全量 (tool_key, execution, accept_json) rows — 不过滤任何行
-    (enabled/disabled、public/private/unlisted 全包含)。startup stored
-    contract invariant (accept + execution) 校验目标是全部存储行;
-    解析/判定属于 governance 层。"""
+    """全量 (tool_key, execution, accept_json, files_max, format_family)
+    rows — 不过滤任何行 (enabled/disabled、public/private/unlisted 全包含)。
+    startup stored contract invariant (accept 单形状 + tag + execution)
+    校验目标是全部存储行; 解析/判定属于 governance 层。"""
     return con.execute(
-        "SELECT tool_key, execution, accept_json"
+        "SELECT tool_key, execution, accept_json, files_max, format_family"
         " FROM platform_tools").fetchall()
 
 

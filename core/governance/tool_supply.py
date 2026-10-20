@@ -76,11 +76,8 @@ def _check_localized(value, max_len: int, required: bool) -> str | dict | None:
 
 
 def _normalize_accept(accept) -> Optional[list]:
-    """Stored accept contract, single shape pair:
-      None  → any platform-whitelisted format (explicit "any"; used by
-              current pass-through tools like share / zip_pack)
-      list  → non-empty canonical lowercase ext tokens ∈ VOCAB_EXTS,
-              normalized to a sorted unique list
+    """accept 单形状: 文件工具 = 非空 canonical ext 列表 (sorted unique);
+    None 仅在无文件位 (files_max=0) 合法 — 无 any 语义、无哨兵。
     Empty list / MIME token / unknown token / bare string → bad_accept."""
     from governance.formats import VOCAB_EXTS
     if accept is None:
@@ -133,6 +130,9 @@ def _normalize_inputs(inputs) -> dict:
         raise DeclarationError("bad_inputs")
     if mx == 0 and files.get("accept") is not None:
         raise DeclarationError("bad_inputs")
+    # 单形状不变量: 有文件位必有显式 accept (无 NULL=any 哨兵)
+    if mx > 0 and files.get("accept") is None:
+        raise DeclarationError("bad_accept")
     return {"files": {"min": mn, "max": mx,
                       "accept": _normalize_accept(files.get("accept"))}}
 
@@ -177,6 +177,19 @@ def validate_tool_declaration(decl: dict) -> dict:
     inputs = _normalize_inputs(decl.get("inputs"))
     outputs = _normalize_outputs(decl.get("outputs"))
 
+    # tag 声明 (契约字段): 文件工具必带九键之一; 纯文本工具 (files_max=0)
+    # 不带。图标 = tag 查表, 不存在无声明的文件工具。
+    tag = decl.get("format_family")
+    from governance.formats import validate_family_key as _vfk
+    if tag is not None:
+        tag, _ferr = _vfk(tag)
+        if _ferr:
+            raise DeclarationError("bad_format_family")
+    if tag is None and inputs["files"]["max"] > 0:
+        raise DeclarationError("bad_format_family")
+    if tag is not None and inputs["files"]["max"] == 0:
+        raise DeclarationError("bad_format_family")
+
     if not isinstance(decl.get("enabled", True), bool):
         raise DeclarationError("bad_enabled")
 
@@ -208,6 +221,7 @@ def validate_tool_declaration(decl: dict) -> dict:
         "execution": decl["execution"],
         "label": label,
         "desc": desc,
+        "format_family": tag,
         "inputs": inputs,
         "outputs": outputs,
         "params": params,
@@ -227,6 +241,13 @@ def validate_tool_patch(patch: dict) -> dict:
     if not isinstance(patch, dict):
         raise DeclarationError("bad_patch")
     out = {}
+    if "format_family" in patch:
+        from governance.formats import validate_family_key as _vfk
+        tag, ferr = _vfk(patch["format_family"]) \
+            if patch["format_family"] is not None else (None, None)
+        if ferr:
+            raise DeclarationError("bad_format_family")
+        out["format_family"] = tag
     if "label" in patch:
         out["label"] = _check_localized(patch["label"], _MAX_LABEL, required=True)
     if "desc" in patch:
@@ -311,6 +332,7 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "label_json": json.dumps(decl["label"], ensure_ascii=False),
         "desc_json": (json.dumps(decl["desc"], ensure_ascii=False)
                       if decl.get("desc") else None),
+        "format_family": decl.get("format_family"),
         "accept_json": (json.dumps(decl["inputs"]["files"]["accept"],
                                    ensure_ascii=False)
                         if decl["inputs"]["files"]["accept"] else None),
@@ -328,18 +350,47 @@ def _serialize_row(decl: dict, ts: int) -> dict:
 
 # ── persistence service (供给侧单点) ──
 
+def generate_slug(con) -> str:
+    """社区工具 key = 系统生成的 5 位小写字母 slug。
+
+    在创建事务内查重, 重复重抽; 超过上限直接报错 (不加兜底)。
+    唯一索引是最终防线。secrets 保证不可预测。"""
+    import secrets as _secrets
+    from repo.catalog import tool_key_exists
+    for _ in range(20):
+        slug = "".join(_secrets.choice("bcdfghjklmnpqrstvwxz")
+                       for _ in range(5))
+        if not tool_key_exists(con, slug):
+            return slug
+    raise DeclarationError("slug_exhausted")
+
+
 def create_tool(decl: dict, con=None) -> str:
     """校验 + 持久化一个新工具声明 (user / operator 共用)。
 
-    con 未传: 自开事务; con 已传: 参与 caller 的事务 (policy check 与
-    persistence 同事务)。返回 tool_key。
-    """
-    decl = validate_tool_declaration(decl)
+    社区工具 (owner_id 非空): tool_key = tool_id = 系统 slug, 调用方
+    不传 key (传了也覆盖)。运营/系统: 沿用声明 key 不变。
+    con 未传: 自开事务; con 已传: 参与 caller 的事务。
+    返回 tool_key。"""
     from repo.catalog import insert_tool_row
     from utils import now
     if con is not None:
+        if decl.get("owner_id") is not None:
+            slug = generate_slug(con)
+            decl["tool_key"] = slug
+            decl["tool_id"] = slug
+        decl = validate_tool_declaration(decl)
         insert_tool_row(con, _serialize_row(decl, now()))
         return decl["tool_key"]
+    if decl.get("owner_id") is not None:
+        with _db() as own:
+            slug = generate_slug(own)
+            decl["tool_key"] = slug
+            decl["tool_id"] = slug
+            decl = validate_tool_declaration(decl)
+            insert_tool_row(own, _serialize_row(decl, now()))
+        return decl["tool_key"]
+    decl = validate_tool_declaration(decl)
     with _db() as own:
         insert_tool_row(own, _serialize_row(decl, now()))
     return decl["tool_key"]
@@ -359,6 +410,8 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
     from repo.catalog import update_tool_row
     from utils import now
     sets = {}
+    if "format_family" in patch:
+        sets["format_family"] = patch["format_family"]
     if "label" in patch:
         sets["label_json"] = json.dumps(patch["label"], ensure_ascii=False)
     if "desc" in patch:

@@ -122,7 +122,7 @@ prov, PROV_CK = _register(prov_name)
 caller_name = _u + "caller"
 caller, CALLER_CK = _register(caller_name)
 
-TOOL = f"{prov_name}/paytool"
+TOOL = f"{prov_name}_paytool"
 AUTH_TOKEN_SECRET = "sk-c2b-secret-token-value"
 
 # one provider tool (metered, params, auth) + one official local row
@@ -131,12 +131,12 @@ with db() as con:
         """
         INSERT INTO platform_tools (tool_key, tool_id, execution,
           visibility, label_json, desc_json, enabled, owner_id,
-          files_min, files_max, accept_json, outputs_json, params_json,
+          files_min, files_max, accept_json, format_family, outputs_json, params_json,
           endpoint_json, featured, sort_order, created_at, updated_at)
         VALUES (%s, 'paytool', 'http', 'public',
           '{"zh":"付费工具","en":"Paid Tool"}',
           '{"zh":"说明文字","en":"desc words"}', TRUE, %s,
-          1, 3, '[".png",".pdf"]', '["text","file"]',
+          1, 3, '[".png",".pdf"]', 'image', '["text","file"]',
           '[{"key":"mode","type":"enum","label":"Mode",
              "required":true,"options":[{"value":"fast"}]}]',
           %s, TRUE, 5, %s, %s)
@@ -151,9 +151,9 @@ with db() as con:
     con.execute(
         """
         INSERT INTO platform_tools (tool_key, tool_id, execution,
-          visibility, label_json, enabled, created_at, updated_at, accept_json)
+          visibility, label_json, enabled, created_at, updated_at, accept_json, format_family)
         VALUES ('c2boff', 'c2boff', 'local', 'public',
-          '{"zh":"官方工具","en":"Official"}', TRUE, %s, %s, '[".png"]')
+          '{"zh":"官方工具","en":"Official"}', TRUE, %s, %s, '[\".png\"]', 'image')
         """, (ts, ts))
     con.execute(
         "INSERT INTO pricing (tool_id, cost, enabled, updated_at)"

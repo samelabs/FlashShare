@@ -137,6 +137,7 @@ register(
             "en": 'Combine multiple images into one PDF document.',
         },
     accept=ACCEPTED,
+    tag="image",
     handler=img2pdf_handler,
     files_min=1, files_max=20,
 )
