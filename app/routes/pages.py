@@ -18,7 +18,7 @@ sys.path.insert(0, str(_CORE))
 sys.path.insert(0, str(_BASE))
 
 from config import APP_NAME, BASE_URL, SOCIAL_IMAGE_URL, MAX_UPLOAD_BYTES
-from utils import file_glyph, page_number
+from utils import file_glyph, page_number, mime_base
 from i18n import LOCALE_TAGS, server_text
 from icons import icon_svg
 from tools import load_all
@@ -1007,10 +1007,10 @@ async def result_page(result_id: str, request: Request):
                                         ensure_ascii=False)
         elif d.get("kind") == "file":
             file_count += 1
-            ct = d.get("content_type") or ""
+            ct = mime_base(d.get("content_type") or "")
             d["is_image"] = (ct.startswith("image/")
-                             and ct.lower() != "image/svg+xml")
-            d["is_pdf"] = ct.lower() == "application/pdf"
+                             and ct != "image/svg+xml")
+            d["is_pdf"] = ct == "application/pdf"
             d["size_text"] = format_bytes(int(d.get("size") or 0))
             d["glyph"] = file_glyph(ct, d.get("filename") or "")
             # Remaining downloads live in ONE place: the file row,
