@@ -1243,7 +1243,10 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       let pickerOpened = false;
       const watch = tp.waitForEvent("filechooser", { timeout: 1500 })
         .then(() => { pickerOpened = true; }).catch(() => {});
-      await zone.click().catch(() => {});
+      // zone is aria-disabled at the cap: locator click() would stall 30s on
+      // actionability and the .catch swallowed it, so the guard never ran.
+      // dispatchEvent bypasses actionability and actually fires the handler.
+      await zone.dispatchEvent("click");
       await watch;
       check("composer: clicking the full dropzone does not open the picker",
         pickerOpened === false, String(pickerOpened));
