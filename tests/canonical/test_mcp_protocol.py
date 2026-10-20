@@ -720,9 +720,10 @@ check("S4 localized prose, API key placeholder",
       st2 == 200 and "MCP クライアントにサーバー URL を追加します" in html_ja
       and "（fsk_ で始まる）" not in html_ja and "（fsk_ 开头）" not in html_ja
       and "&lt;fsk_…&gt;" in html_ja and "&lt;token&gt;" not in html_ja)
-check("S5 tool MCP page: Claude Code snippet + copy targets + page script",
-      st3 == 200 and 'id="mcpAdd"' in html_tm and 'data-copy-target="mcpCall"' in html_tm
-      and "/static/pages/agents.js" in html_tm and "MCP Quick start" not in html_tm)
+# P6: the /tool/{key}/mcp twin page is retired — the tool page's access
+# area (MCP card + declaration-generated API card) carries the surface.
+check("S5 tool MCP twin page retired (404), tool page carries MCP + API cards",
+      st3 == 404)
 _ajs = open(_os.path.join(_REPO, "static", "pages", "agents.js"), encoding="utf-8").read()
 _be = open(_os.path.join(_REPO, "static", "pages", "base-engine.js"), encoding="utf-8").read()
 check("S6 copy feedback: agents.js delegates to the one authority; no hardcoded Chinese",

@@ -494,12 +494,18 @@ check("U28 require_session_or_bearer_auth 已删 (browser 面 session-only)",
 check("U28 Bearer 解析仅限 /mcp",
       'path == "/mcp"' in _main28
       and 'path.startswith("/tool-endpoints/")' not in _main28)
-# production templates/JS 无 Public REST active expression
-_tpl28 = (open(_os2.path.join(_REPO, "app", "templates", "agents.html"),
-               encoding="utf-8").read()
-          + open(_os2.path.join(_REPO, "app", "templates", "tool_mcp.html"),
-                 encoding="utf-8").read())
+# production templates 无 Public REST active expression; the tool MCP
+# twin page (/tool/{key}/mcp) is retired — the tool page's access area
+# (MCP card + API card) carries the integration surface now.
+_tpl28 = open(_os2.path.join(_REPO, "app", "templates", "agents.html"),
+              encoding="utf-8").read()
 check("U28 templates 无 /api/v1 能力表达", "/api/v1" not in _tpl28)
+check("U28 tool MCP twin page retired (route/template gone)",
+      not _os2.path.exists(_os2.path.join(
+          _REPO, "app", "templates", "tool_mcp.html"))
+      and '"/tool/{key}/mcp"' not in open(
+          _os2.path.join(_REPO, "app", "routes", "pages.py"),
+          encoding="utf-8").read())
 _i18n28 = open(_os2.path.join(_REPO, "core", "i18n.py"), encoding="utf-8").read()
 check("U28 i18n 无 Public REST 文案键 (agents_ep_*/agents_api_*/tool_mcp_http_hint)",
       all(k not in _i18n28 for k in

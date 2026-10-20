@@ -88,8 +88,7 @@ const VIEWPORTS = {
 const PAGES = [
   { path: "/", name: "home", anonOk: true, need: ["#toolInput", "#homeBento .tc"], cards: "#homeBento .tc" },
   { path: "/tools", name: "tools", anonOk: true, need: [], cards: ".market-bento .tc" },
-  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"], noRuns: true },
-  { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
+  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer", "#toolApiCard"], noRuns: true },
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#cfgClaudeCode", "#cfgCurl"], copy: ["#copyMcp", '[data-copy-target="cfgClaudeCode"]'] },
   { path: "/pricing", name: "pricing", anonOk: true, need: [".pr-plans .pr-card", "#refund"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
@@ -890,6 +889,54 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
     ((mshare.json || {}).result || {}).isError === false
       && /\/r\//.test(mcpShareRUrl) && (msc.items || []).length === 2,
     JSON.stringify((mshare.json || {}).result || {}).slice(0, 160));
+
+  // ── 9-13. P6 pages: call history + ledger→call navigation + the
+  // retired MCP twin page. The MCP calls above ran as THIS user (the
+  // API key owner), so the calls page has real rows.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    await gotoReady(page, "/auth/login", "input[name=login]");
+    await page.fill("input[name=login]", username);
+    await page.fill("input[name=password]", password);
+    await Promise.all([page.waitForNavigation({ timeout: 15000 }), page.click("button[type=submit]")]);
+    await gotoReady(page, "/account/calls", ".acct-table");
+    const callsShape = await page.evaluate(() => ({
+      rows: document.querySelectorAll(".acct-table tbody tr").length,
+      ok: document.querySelectorAll(".calls-st-ok").length,
+      resultLinks: [...document.querySelectorAll('a[href^="/r/"]')].length,
+      nav: !!document.querySelector('.acct-tab[href="/account/calls"]'),
+    }));
+    check("calls page: real rows (from the MCP calls above), live result links",
+      callsShape.rows >= 2 && callsShape.ok >= 2 && callsShape.resultLinks >= 1
+        && callsShape.nav,
+      JSON.stringify(callsShape));
+    await gotoReady(page, "/account/credits", ".acct-table");
+    const ledgerLink = await page.evaluate(() => {
+      const a = document.querySelector("a.credit-note-link");
+      return a ? a.getAttribute("href") : null;
+    });
+    check("credits page: tool-bound rows link to the call row",
+      /^\/account\/calls#call-\d+$/.test(ledgerLink || ""), ledgerLink);
+    if (ledgerLink) {
+      // 真实点击: 流水行 → 调用记录行锚
+      await Promise.all([
+        page.waitForNavigation({ timeout: 15000 }),
+        page.click("a.credit-note-link"),
+      ]);
+      const landed = await page.evaluate(() => ({
+        path: location.pathname + location.hash,
+        anchored: [...document.querySelectorAll('tr[id^="call-"]')].some(
+          (r) => "#" + r.id === location.hash),
+      }));
+      check("ledger → call navigation lands on the anchored row",
+        landed.path.startsWith("/account/calls#call-") && landed.anchored,
+        JSON.stringify(landed));
+    }
+    const twin = await page.goto(BASE + "/tool/compress/mcp").then((r) => r.status()).catch(() => 0);
+    check("tool MCP twin page retired → 404", twin === 404, String(twin));
+    await ctx.close();
+  }
 
   // ── UI-polish permanent regression ─────────────────────────────
   // (a) horizontal-overflow sweep at 360px with long-word (de) and RTL (ar)

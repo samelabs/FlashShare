@@ -5,7 +5,7 @@
       twitter:* and canonical from base.html — og/twitter reuse the SAME
       values (no per-page hand-written og tags left anywhere); twitter:card
       is summary_large_image site-wide.
-  H*  hreflang: indexable routes (home /tools /tool/* /tool/*/mcp /agents
+  H*  hreflang: indexable routes (home /tools /tool/* /agents
       /pricing /developers /terms /privacy /u/*) carry 10 languages +
       x-default (11 links, ?lang=xx on the canonical path); noindex routes
       (auth/account//r) carry none. Query strings (tracking params, ?lang)
@@ -165,7 +165,7 @@ def main():
     check("fixture: user + API key + executed call", bool(_COOKIES) and bool(_API_KEY) and bool(_RESULT_ID))
 
     # ── M*/H*: indexable pages ─────────────────────────────────────────
-    indexable = ["/", "/tools", "/tool/compress", "/tool/compress/mcp",
+    indexable = ["/", "/tools", "/tool/compress",
                  "/agents", "/pricing", "/developers", "/terms", "/privacy"]
     for p in indexable:
         st, html = _page(p)
@@ -305,14 +305,15 @@ def main():
           and all(BASE_URL + p in locs for p in
                   ("/", "/tools", "/agents", "/pricing", "/developers", "/terms", "/privacy")),
           f"{st} {len(locs)}")
-    check("S sitemap: public tool pages + mcp twins with lastmod",
-          f"{BASE_URL}/tool/compress" in locs and f"{BASE_URL}/tool/compress/mcp" in locs
+    check("S sitemap: public tool pages with lastmod (mcp twins retired)",
+          f"{BASE_URL}/tool/compress" in locs
+          and f"{BASE_URL}/tool/compress/mcp" not in locs
           and bool(_re.search(r"<loc>%s/tool/compress</loc><lastmod>\d{4}-\d{2}-\d{2}</lastmod>"
                               % _re.escape(BASE_URL), xml)))
     check("S sitemap: community public tool + author page",
           f"{BASE_URL}/tool/{pub_id}" in locs and f"{BASE_URL}/u/{_u}" in locs)
     check("S sitemap: unlisted fixture tool excluded",
-          f"/tool/{tid}</loc>" not in xml and f"/tool/{tid}/mcp" not in xml
+          f"/tool/{tid}</loc>" not in xml
           and all(not l.startswith((BASE_URL + "/account", BASE_URL + "/auth",
                                    BASE_URL + "/r/", BASE_URL + "/samelabs")) for l in locs),
           str([l for l in locs if "/account" in l or "/auth" in l])[:120])

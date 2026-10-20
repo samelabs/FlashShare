@@ -50,14 +50,24 @@
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
-  {# MCP 名片: 两行 — 服务端地址 + 调用名; 一键复制 = 提示语 + URL #}
-  <div class="mcpline">
-    <span class="mcp-badge" aria-hidden="true">MCP</span>
-    <div class="mcp-body">
-      <div class="mcp-row"><span class="mcp-k">MCP server</span><code class="mcp-url" dir="ltr">{{ BASE_URL }}/mcp</code></div>
-      <code id="toolMcpName">{{ mcp_name }}</code>
+  {# 接入区: MCP 卡 (服务端地址 + 调用名, 一键复制) + API 卡 (按声明生成的示例) #}
+  <div class="tp-access">
+    <div class="mcpline">
+      <span class="mcp-badge" aria-hidden="true">MCP</span>
+      <div class="mcp-body">
+        <div class="mcp-row"><span class="mcp-k">MCP server</span><code class="mcp-url" dir="ltr">{{ BASE_URL }}/mcp</code></div>
+        <code id="toolMcpName">{{ mcp_name }}</code>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
     </div>
-    <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+    <div class="tp-api-card" id="toolApiCard">
+      <div class="mcp-row"><span class="mcp-k">API</span><code class="mcp-url" dir="ltr">{{ BASE_URL }}/v1/tools/{{ tool_key }}</code></div>
+      <pre class="tp-api-example" id="toolApiExample" dir="ltr">{{ api_call_example }}</pre>
+      <div class="tp-api-foot">
+        <span data-i18n="tool_api_note">{{ texts['tool_api_note'] }}</span>
+        <button class="btn btn-ghost btn-sm" id="toolApiCopy" type="button" aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+      </div>
+    </div>
   </div>
   </div>
 </section>

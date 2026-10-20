@@ -811,11 +811,15 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .mcpline { flex-wrap: wrap; }
 }
 
-/* tool_mcp.html panels (page rebuilt next batch — keeps its layout) */
-.toolpage .panel .code-block { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 10px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.toolpage .panel .d a { color: var(--brand); font-weight: 600; }
-.toolpage .panel .d { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.toolpage .panel .d .mono { font-size: 13px; }
+/* 工具页接入区 (P6): MCP 卡 + API 卡 (示例按声明生成) */
+.tp-access { display: flex; flex-direction: column; gap: var(--s3); margin-block-start: var(--s4); }
+.tp-api-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
+.tp-api-example { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; font-family: var(--font-mono); }
+.tp-api-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); color: var(--ink-2); font-size: 12px; }
+.credit-note-link { color: var(--brand); font-weight: 600; text-decoration: none; }
+.credit-note-link:hover { text-decoration: underline; }
+.calls-deleted { color: var(--ink-2); }
+.calls-refunded { color: var(--ok, var(--ink-3)); font-size: 11px; }
 
 /* ── Footer (v2 .ft) ─────────────────────────────────────── */
 .ft { padding: 32px 0 40px; color: var(--ink-3); font-size: 13px; border-top: 1px solid var(--line); margin-top: auto; }
