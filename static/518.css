@@ -309,8 +309,10 @@
 .param-row-head input, .param-row-head select { padding: 8px 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; min-width: 0; }
 .param-row-head .pr-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pr-req { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
-.pr-del, .pr-opt-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; padding: 6px 10px; font-size: 13px; }
-@media (hover:hover) and (pointer:fine) { .pr-del:hover, .pr-opt-del:hover { color: var(--danger); } }
+/* 微删除钮单源: 参数行与语言行同款 (✕ 小方块, hover 品红);
+   字重 600 显式声明, 不依赖元素基线 */
+.pr-del, .pr-opt-del, .lang-row .lang-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; padding: 6px 10px; font-size: 13px; font-weight: 600; transition: color var(--ease); }
+@media (hover:hover) and (pointer:fine) { .pr-del:hover, .pr-opt-del:hover, .lang-row .lang-del:hover { color: var(--danger); } }
 .param-row-body { margin-top: 10px; }
 .pr-opt { display: grid; grid-template-columns: 140px 1fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
 .pr-opt input { padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; min-width: 0; }
@@ -348,7 +350,7 @@
 /* 族字形 = logo 式圆角矩形瓦片 (与工具卡/picker 的图标瓦片同一语言)。
    svg 特异度须 ≥ tokens 的全局兜底 svg:not([width]):not([height]) (0,2,1),
    否则瓦片内字形被顶成 20px 贴边 */
-.fam-glyph { width: 22px; height: 22px; border-radius: 7px; background: var(--sunk); display: grid; place-items: center; flex: none; }
+.fam-glyph { width: 22px; height: 22px; border-radius: var(--r-xs); background: var(--sunk); display: grid; place-items: center; flex: none; }
 .fam-chip .fam-glyph svg { width: 13px; height: 13px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .fam-chip:has(input:checked) .fam-glyph { background: var(--card); }
 .fam-hint { flex-basis: 100%; font-size: 12px; color: var(--ink-2); line-height: 1.5; letter-spacing: .01em; }
@@ -364,8 +366,6 @@
   .pr-opt input, .pr-inline input { font-size: 13px; }
   .lang-row .lang-pick, .lang-row input { font-size: var(--fs-sm); }
 }
-.lang-row .lang-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; font-size: 14px; }
-@media (hover:hover) and (pointer:fine) { .lang-row .lang-del:hover { color: var(--danger); } }
 @media (max-width: 640px) { .lang-row { grid-template-columns: 96px 1fr 34px; } .lang-row .lang-desc { grid-column: 1 / 3; grid-row: 2; } .lang-row .lang-del { grid-row: 1; grid-column: 3; } }
 /* 模式徽标 (工具 tab 内 "· Aurora"): 附属信息, 主从层级低于工具名 (14px) */
 .tool-preset-badge { font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); }
@@ -729,11 +729,11 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-page .pub-input-mode .pub-hint { flex-basis: 100%; }
 /* pub-grid label 的 (0,1,1) 纵向规范会压过单类选择器 — 控件级方向
    声明须用同特异度 (.pub-grid 前缀) 才能落到横向 */
-.pub-grid .pub-mode { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 9px; cursor: pointer; padding: 6px 16px 6px 7px; border-radius: 9px; font-size: 14px; font-weight: 650; color: var(--ink-3); background: none; border: 0; transition: background var(--ease), color var(--ease), box-shadow var(--ease); }
+.pub-grid .pub-mode { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 9px; cursor: pointer; padding: 6px 16px 6px 7px; border-radius: var(--r-sm); font-size: 14px; font-weight: 650; color: var(--ink-3); background: none; border: 0; transition: background var(--ease), color var(--ease), box-shadow var(--ease); }
 .pub-mode input { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .pub-mode span { white-space: nowrap; }
 .pub-mode:has(input:checked) { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
-.pm-glyph { width: 28px; height: 28px; border-radius: 8px; background: var(--sunk); display: grid; place-items: center; flex: none; }
+.pm-glyph { width: 28px; height: 28px; border-radius: var(--r-xs); background: var(--sunk); display: grid; place-items: center; flex: none; }
 .pub-mode .pm-glyph svg { width: 16px; height: 16px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .pub-page .pub-outputs { display: flex; flex-direction: column; gap: 8px; }
 .pub-outputs-label { font-size: 13px; font-weight: 650; color: var(--ink); }
@@ -869,7 +869,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 
 /* 工具选择器胶囊 (home composer c-bar 内) */
 .tsel { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 8px; border-radius: var(--r-full); border: 1px solid var(--line-2); font: inherit; font-size: var(--fs-base); font-weight: 600; background: var(--card); color: var(--ink); cursor: pointer; position: relative; }
-.tsel .tic { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
+.tsel .tic { width: 22px; height: 22px; border-radius: var(--r-xs); background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
 .tsel .tic svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tsel > svg { width: 14px; height: 14px; color: var(--ink-3); stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
 /* 首页两枚选择胶囊 (工具选择 / 有效期次数): hover 反色 — 品牌红底 +

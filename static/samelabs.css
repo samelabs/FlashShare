@@ -203,10 +203,9 @@ body.sl-body {
   content: ''; position: absolute; inset: 0; margin: auto;
   width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, .35); border-top-color: var(--brand-ink);
-  animation: sl-spin .7s linear infinite;
+  animation: btn-spin .7s linear infinite;
 }
 .sl-btn-danger.loading::after { border-color: rgba(15, 20, 25, .15); border-top-color: var(--ink-2); }
-@keyframes sl-spin { to { transform: rotate(360deg); } }
 
 /* ── Toast ──────────────────────────────────────────────── */
 .sl-toast-zone { position: fixed; bottom: var(--s4); right: var(--s4); z-index: 100; display: flex; flex-direction: column; gap: var(--s2); }

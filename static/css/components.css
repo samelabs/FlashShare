@@ -16,12 +16,14 @@ input, select, textarea {
 }
 select { width: auto; margin-top: 0; }
 
-/* Legacy element baseline (auth surfaces pre-date .btn): brand pill.
-   Primary fill = deep crimson with a subtle vertical shade and inner
-   highlight (Stripe-style material); the neon --brand is an accent,
-   not a fill. */
-.x-login, button { border: 0; background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); transition: opacity var(--ease), box-shadow var(--ease), filter var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
-@media (hover:hover) and (pointer:fine) { button:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.16); } }
+/* Element baseline = STRUCTURAL ONLY: layout, cursor, tap, press feedback,
+   icon sizing. No fill, radius, shadow or weight lives here — a naked
+   button is neutral ink, never a crimson CTA; every visual is carried by
+   an explicit component class (.btn*, .x-login, .send, .seg button,
+   .sb-btn, ...). Raising this selector's specificity is forbidden: page
+   rules outrank it at (0,1,0)+ by design. */
+button { border: 0; background: none; color: var(--ink); padding: 0; font: inherit; font-size: var(--fs-base); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); transition: transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
+.x-login { border: 0; background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); transition: opacity var(--ease), box-shadow var(--ease), filter var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
 .x-login:active, button:active { transform: scale(0.96); }
 .user-dropdown a:active, .user-dropdown button:active { transform: none; } /* menu rows must not wobble */
 @media (hover:hover) and (pointer:fine) { .x-login:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); } }
@@ -702,6 +704,7 @@ pre.rs-text, pre.rs-json {
   font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-2); cursor: pointer;
 }
 .seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
+@media (hover:hover) and (pointer:fine) { .seg button:not(.on):hover { color: var(--ink); } }
 
 /* 参数卡片: 参数区每行 = 标签在上、控件在下 (各宽度一致); 枚举参数的
    每个选项是一张独立卡片, 网格自动换行, 选中 = 品牌色描边。开关行保持
@@ -765,7 +768,7 @@ pre.rs-text, pre.rs-json {
   display: grid; place-items: center; color: var(--ink-2); background: none; cursor: pointer;
 }
 .ib svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-@media (hover:hover) and (pointer:fine) { .ib:hover { background: rgba(11, 13, 16, 0.05); } }
+@media (hover:hover) and (pointer:fine) { .ib:hover { background: var(--gray-100); } }
 @media (max-width: 767px) { .ib { position: relative; } .ib::after { content: ""; position: absolute; inset: -5px; } }
 .opt {
   display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
@@ -915,6 +918,8 @@ pre.rs-text, pre.rs-json {
 .share-bar .sb-btn svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .share-bar .sb-btn .x-glyph { font-size: 17px; height: 18px; display: inline-flex; align-items: center; }
 @media (hover:hover) and (pointer:fine) { .share-bar .sb-btn:hover { border-color: var(--ink-4); color: var(--ink); } }
+/* X 是四件套里唯一的锚点, 补齐与三个 button 成员的按压反馈 */
+.share-bar a.sb-btn:active { transform: scale(0.96); }
 .share-bar .sb-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .share-bar.sb-compact { display: inline-flex; gap: 6px; vertical-align: middle; }
 .share-bar.sb-compact .sb-btn { flex-direction: row; min-height: 30px; width: 30px; padding: 0; border-radius: var(--r-full); }
