@@ -459,6 +459,7 @@ async function submit() {
       bad_accept: "accept", bad_format_family: "accept",
       bad_files_min: "files_min", bad_files_max: "files_max",
       bad_files_range: "files_max", bad_outputs: "outputs",
+      bad_cost: "cost",
     };
     if (map[d.error]) { showErrors({ [map[d.error]]: d.error }); return; }
     if (String(d.error).startsWith("bad_param")) { alert(_errm(d.error)); return; }
@@ -519,7 +520,7 @@ function refill(t) {
   // 参数回填
   (t.params || []).forEach(p => addParamRow(p));
   refreshParamNone();
-  document.getElementById("pubTitle").textContent = _msg("pub_edit_title").replace("{id}", t.label || t.tool_id);
+  document.getElementById("pubTitle").textContent = _msg("pub_edit_title").replace("{id}", window.resolveLabel(t.label));
   document.getElementById("pubSubmit").textContent = _msg("pub_save");
   // 编辑态已有凭证: 显示"移除认证凭证"勾选项 (新建态保持隐藏)
   document.getElementById("pubRemoveAuthRow").classList.toggle("hidden", !t.has_auth);

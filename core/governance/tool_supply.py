@@ -351,14 +351,14 @@ def _serialize_row(decl: dict, ts: int) -> dict:
 # ── persistence service (供给侧单点) ──
 
 def generate_slug(con) -> str:
-    """社区工具 key = 系统生成的 5 位小写字母 slug (a-z)。
+    """社区工具 key = 系统生成的 5 位小写字母 slug。
 
     在创建事务内查重, 重复重抽; 超过上限直接报错 (不加兜底)。
     唯一索引是最终防线。secrets 保证不可预测。"""
     import secrets as _secrets
     from repo.catalog import tool_key_exists
     for _ in range(20):
-        slug = "".join(_secrets.choice("abcdefghijklmnopqrstuvwxyz")
+        slug = "".join(_secrets.choice("bcdfghjklmnpqrstvwxz")
                        for _ in range(5))
         if not tool_key_exists(con, slug):
             return slug

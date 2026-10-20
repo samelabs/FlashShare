@@ -30,20 +30,18 @@ cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python <脚本>
 - FK→tags：存量库在首启（tags 表由新代码 init_db 创建+播种）之后由
   本资产步骤④幂等补齐，保证与新建库 schema 一致。
 
-## 预检（部署前，全部须为空；口径见各条注释）
+## 预检（部署前；须为空 / 信息性见各条注释）
 
 ```sql
--- S5「零存量」依据: 任何含 / 的 key 都属未裁定存量
+-- S5「零存量」依据: 任何含 / 的 key 都属未裁定存量（以下 4 条须为空）
 SELECT tool_key FROM platform_tools WHERE tool_key LIKE '%/%';
 SELECT user_id FROM tool_favorites WHERE tool_key LIKE '%/%';
 SELECT tool_id FROM pricing WHERE tool_id LIKE '%/%';
 SELECT id FROM tool_calls WHERE tool_id LIKE '%/%';
--- accept 单形状违反 (排除 share/zip_pack — ③ 将物化的清单, 不阻断;
--- 其余内置的 NULL 也属 seed 待落, 同理不阻断此预检)
-SELECT tool_key FROM platform_tools
- WHERE files_max > 0 AND accept_json IS NULL
-   AND tool_key NOT IN ('share', 'zip_pack')
-   AND owner_id IS NOT NULL;
+-- ③ 将物化的清单（信息性，不阻断）: share / zip_pack / 运营行
+-- accept=NULL 的文件工具全部在 ③ 物化全边界清单 + all，逐行核对即可
+SELECT tool_key FROM platform_tools WHERE files_max > 0 AND accept_json IS NULL;
+-- 纯文本工具不得带 accept（须为空）
 SELECT tool_key FROM platform_tools WHERE files_max = 0 AND accept_json IS NOT NULL;
 ```
 

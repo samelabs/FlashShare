@@ -578,7 +578,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       createdToolId = created.key || "";
       check("publish-xss: tool with malicious option value created",
         created.ok, created.status + " " + created.body);
-      await gotoReady(page, `/account/tools/publish?id=${xssTool}`, "#pubForm");
+      await gotoReady(page, `/account/tools/publish?id=${createdToolId}`, "#pubForm");
       const xssState = await page.evaluate(() => ({
         fired: window.__xssAudit === 1,
         optVal: (document.querySelector(".pr-opt-val") || {}).value,
@@ -590,6 +590,49 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("publish-xss: default <option> text escaped",
         xssState.optText === xssPayload, xssState.optText);
       await visualAudit("desktop", page, "publish-edit-xss-refill", true);
+
+      // ── 13b. bad_cost maps onto the cost field slot ──
+      await gotoReady(page, "/account/tools/publish", "#pubForm");
+      await page.fill("#fUrl", "https://93.184.216.34/badcost");
+      await page.fill("#fLabel", "Bad Cost Probe");
+      await page.fill("#fCost", "100001");
+      await page.click("#pubSubmit");
+      await page.waitForFunction(() =>
+        document.querySelector('.pub-err[data-err="cost"]') &&
+        document.querySelector('.pub-err[data-err="cost"]').textContent !== "",
+        null, { timeout: 5000, polling: 200 });
+      const costErr = await page.evaluate(() =>
+        document.querySelector('.pub-err[data-err="cost"]').textContent);
+      check("publish-bad-cost: server error lands on the cost field slot",
+        costErr !== "", costErr);
+
+      // ── 13c. edit title shows the resolved dict label ──
+      const dictLabel = { en: "Gate Dict Label EN", zh: "Gate 字典标签" };
+      const createdDict = await page.evaluate(async (label) => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label, url: "https://93.184.216.34/dict", timeout_s: 30,
+            files_min: 0, files_max: 1, format_families: "image",
+            accept: [".png"], outputs: ["text"], cost: 0,
+          }),
+        });
+        const txt = await r.text();
+        return { ok: r.ok, body: txt.slice(0, 120),
+                 key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, dictLabel);
+      check("publish-dict-label: tool with dict label created",
+        createdDict.ok, createdDict.body);
+      await gotoReady(page, `/account/tools/publish?id=${createdDict.key}`, "#pubForm");
+      const titleState = await page.evaluate((label) => ({
+        text: document.getElementById("pubTitle").textContent,
+        expected: window.resolveLabel(label),
+      }), dictLabel);
+      check("publish-edit-title: title shows resolved dict label, never [object Object]",
+        titleState.text.indexOf(titleState.expected) !== -1 &&
+        titleState.text.indexOf("[object Object]") === -1,
+        titleState.text);
 
       // ── 14. six-parameter tool (8 long enum labels) for the params
       // layout gate: >3 params fold into "more", both surfaces, both
