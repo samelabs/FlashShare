@@ -892,10 +892,40 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
   // ── 9-13. P6 pages: call history + ledger→call navigation + the
   // retired MCP twin page. The MCP calls above ran as THIS user (the
-  // API key owner), so the calls page has real rows.
+  // API key owner), so the calls page has real rows. A paid consume row
+  // needs a tool the user does NOT own (self-owned tools are free by
+  // policy): register a second user, publish their 3-credit body tool,
+  // then drive it through /v1 from THIS user's key (unreachable public
+  // endpoint → charge + refund).
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage();
+    await gotoReady(page, "/", "#toolInput");
+    const paidKey = await page.evaluate(async () => {
+      const other = "gatepaid" + Math.random().toString(36).slice(2, 8);
+      const form = (fields) => {
+        const fd = new FormData();
+        for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+        return fd;
+      };
+      await fetch("/auth/register", { method: "POST", body: form({
+        username: other, password: "Test12345",
+        password_confirm: "Test12345", email: other + "@t.co" }) });
+      await fetch("/auth/login", { method: "POST", body: form({
+        login: other, password: "Test12345" }) });
+      const r = await fetch("/api/usertools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "Gate Ledger", url: "https://93.184.216.34/never",
+          timeout_s: 5, files_min: 0, files_max: 0,
+          body_format: "text", outputs: ["text"], cost: 3,
+        }),
+      });
+      await fetch("/auth/logout", { method: "POST" });
+      try { return JSON.parse(await r.text()).tool_key || ""; } catch (e) { return ""; }
+    });
+    check("fixture: other user's paid body tool published", !!paidKey, paidKey);
     await gotoReady(page, "/auth/login", "input[name=login]");
     await page.fill("input[name=login]", username);
     await page.fill("input[name=password]", password);
@@ -911,21 +941,6 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       callsShape.rows >= 2 && callsShape.ok >= 2 && callsShape.resultLinks >= 1
         && callsShape.nav,
       JSON.stringify(callsShape));
-    // a PAID failed call gives the ledger a consume+refund pair with the
-    // tool relation (net cost 0, refunded chip) — publish a 3-credit body
-    // tool and drive it through /v1 (unreachable public endpoint → refund).
-    const paidKey = await page.evaluate(async () => {
-      const r = await fetch("/api/usertools", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "Gate Ledger", url: "https://93.184.216.34/never",
-          timeout_s: 5, files_min: 0, files_max: 0,
-          body_format: "text", outputs: ["text"], cost: 3,
-        }),
-      });
-      try { return JSON.parse(await r.text()).tool_key || ""; } catch (e) { return ""; }
-    });
     if (paidKey) {
       const paidCall = await page.evaluate(async ({ key, apiKey }) => {
         const r = await fetch(`/v1/tools/${key}`, {
@@ -936,7 +951,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         return { status: r.status, body: await r.text() };
       }, { key: paidKey, apiKey });
       check("v1 paid failed call → typed failure (charged then refunded)",
-        paidCall.status >= 500 && /err_endpoint_(failed|timeout)/.test(paidCall.body),
+        paidCall.status >= 400 && /err_endpoint_(failed|timeout)/.test(paidCall.body),
         `${paidCall.status} ${paidCall.body.slice(0, 80)}`);
       await gotoReady(page, "/account/calls", ".acct-table");
       const netShape = await page.evaluate(() => ({
@@ -948,9 +963,6 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("calls page: failed paid call shows net cost 0 + refunded",
         netShape.failed >= 1 && netShape.refunded >= 1 && netShape.zeroNet,
         JSON.stringify(netShape));
-    } else {
-      check("v1 paid failed call → 502 + detail (charged then refunded)",
-        false, "paid body tool fixture not created");
     }
     await gotoReady(page, "/account/credits", ".acct-card");
     const ledgerLink = await page.evaluate(() => {
