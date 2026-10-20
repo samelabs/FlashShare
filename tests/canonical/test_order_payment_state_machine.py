@@ -380,6 +380,62 @@ _hev("subscription.active", {"subscription": {"id": "sub_sm", "status": "active"
      "product": {"id": "prod_sm_plan"}}})
 check("PP-5 active status alone never grants", _bal(uidS) == _balA)
 
+# ═══ Paid period immutability — zero-credit plan ═══
+# a zero-monthly-credits plan mints no grant rows for the base cycle;
+# the paid fact lives in the period base-payment record. After an
+# operator raises the plan's credits, a replay of the SAME transaction
+# must still mint nothing.
+uidZ = _mkuser(_u + "z")
+_zsort = None
+with db() as con:
+    _zsort = con.execute(
+        "SELECT COALESCE(MAX(p.sort_order),0)+1 AS so FROM plans p"
+        " WHERE p.code <> 'free'", ()).fetchone()["so"]
+    _plz = dict(con.execute(
+        "insert into plans (code, name, monthly_credits, price_cents,"
+        " currency, active, creem_product_id, sort_order, period_days,"
+        " ingress_files_24h, ingress_bytes_24h, created_at, updated_at)"
+        " values (%s, 'SM Zero', 0, 999, 'USD', TRUE, 'prod_sm_zero',"
+        " %s, 30, 100, 104857600, %s, %s) returning *",
+        (f"smzero_{_u}", _zsort, ts, ts)).fetchone())
+    oZ = dict(con.execute(
+        "insert into orders (user_id, kind, item_id, provider,"
+        " provider_order_id, status, amount_cents, currency, paid_at,"
+        " created_at) values (%s, 'plan', %s, 'creem', 'sub:sub_z',"
+        " 'paid', 999, 'USD', %s, %s) returning *",
+        (uidZ, _plz["id"], ts, ts)).fetchone())
+    con.execute(
+        "insert into memberships (user_id, plan_id,"
+        " provider_subscription_id, status, started_at, created_at,"
+        " updated_at) values (%s, %s, 'sub_z', 'active', %s, %s, %s)",
+        (uidZ, _plz["id"], ts, ts, ts))
+_psz = ts - 3600
+_subz = {"subscription": {"id": "sub_z", "status": "active",
+         "current_period_start_date": _psz,
+         "current_period_end_date": _psz + 30 * 86400,
+         "last_transaction_id": "txn_z1",
+         "product": {"id": "prod_sm_zero"}}}
+rZ1 = apply_paid_period("sub_z", _subz)
+_balZ1 = _bal(uidZ)
+check("PPZ-1 zero-credit base payment grants nothing",
+      rZ1["credits"] == 0 and _balZ1 == _bal(uidZ), str(rZ1))
+with db() as con:
+    con.execute("update plans set monthly_credits=500 where id=%s",
+                (_plz["id"],))
+rZ2 = apply_paid_period("sub_z", _subz)
+check("PPZ-2 same-txn replay after credit raise → still zero",
+      rZ2["credits"] == 0 and _bal(uidZ) == _balZ1,
+      f"{_balZ1}→{_bal(uidZ)} {rZ2}")
+# the NEXT period's own transaction uses the live plan exactly once
+_subz2 = {"subscription": {"id": "sub_z", "status": "active",
+          "current_period_start_date": _psz + 30 * 86400,
+          "current_period_end_date": _psz + 60 * 86400,
+          "last_transaction_id": "txn_z2",
+          "product": {"id": "prod_sm_zero"}}}
+rZ3 = apply_paid_period("sub_z", _subz2)
+check("PPZ-3 next period txn → live 500 exactly once",
+      _bal(uidZ) == _balZ1 + 500, f"{_balZ1}→{_bal(uidZ)}")
+
 # ═══ Operator guards ═══
 _src_sml = open(_os.path.join(_REPO, "app", "routes", "samelabs",
                                "commerce.py"),

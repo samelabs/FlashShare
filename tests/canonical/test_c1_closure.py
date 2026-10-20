@@ -181,7 +181,9 @@ check("A4 single envelope builder in source",
       and _mcp_src.count('"structuredContent"') <= 4,
       str(_mcp_src.count('"structuredContent"')))
 
-# ══════════ B. invalid delivery → isError + legal values ══════════
+# ══════════ B. invalid delivery → -32602 invalid params ══════════
+# frozen adapter contract: defaults fill MISSING values only; an
+# explicitly illegal value is a protocol error, never an isError result
 from governance.delivery import EXPIRY_DAYS, DOWNLOAD_LIMITS
 for label, dv in (("bad expiry", {"expiry_days": 5}),
                   ("bad downloads", {"allowed_downloads": 7}),
@@ -191,14 +193,12 @@ for label, dv in (("bad expiry", {"expiry_days": 5}),
                        base64.b64encode(PNG).decode()}],
             "delivery": dv, "client_ref": f"b-{label[:3]}-{_u}"}
     st, d = _call("compress", args, TOKEN)
-    res = (d or {}).get("result") or {}
-    err = res.get("structuredContent") or {}
-    ok = (res.get("isError") is True
-          and (d.get("error") is None)
-          and err and err.get("error") == "invalid_delivery"
-          and err.get("legal_values", {}).get("expiry_days") == list(EXPIRY_DAYS)
-          and err.get("legal_values", {}).get("allowed_downloads") == list(DOWNLOAD_LIMITS))
-    check(f"B1 {label} → isError with authority legal values", ok,
+    err = (d or {}).get("error") or {}
+    ok = (err.get("code") == -32602
+          and "invalid delivery" in str(err.get("message") or "")
+          and str(list(EXPIRY_DAYS)[0]) in str(err.get("message"))
+          and (d.get("result") is None))
+    check(f"B1 {label} → -32602 invalid params", ok,
           f"{str(d)[:110]}")
 
 # ══════════ C. list_uploads / delete_upload meta tools ══════════

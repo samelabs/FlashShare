@@ -401,17 +401,25 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     #     (upgrade top-up path): the top-up to the new plan's total is
     #     legitimate and follows the existing grant_plan_upgrade shape.
     _is_replay = False
-    if already > 0 and target_plan_id is None:
+    if target_plan_id is None:
         # Same-transaction replay lookup is EXACT: grants carry
         # ref_type='creem_transaction' — a row under any other ref_type
         # sharing this ref_id must never be mistaken for this paid
         # transaction's grant. 判定 = repo primitive rows 非空与否
         # (存在性/business decision 留 economy 层)。
+        # ZERO-CREDIT PLANS have no grant rows for the base cycle —
+        # "this transaction was already processed" then lives in the
+        # durable period base-payment record (base_txn_id), NOT in a
+        # positive-grant precondition: a later operator credit raise
+        # must not let an old payment replay mint the difference.
         from repo import ledger as ledger_repo
         with db() as con:
             _seen_rows = ledger_repo.subscription_grants_by_transaction(
                 con, order["user_id"], txn_ref)
-        _is_replay = bool(_seen_rows)
+            _base = orders_repo.period_base_payment(
+                con, sub_id, period_start)
+        _is_replay = bool(_seen_rows) or (
+            _base is not None and str(_base["base_txn_id"]) == txn_ref)
     if _is_replay:
         plan_total = already
     else:
