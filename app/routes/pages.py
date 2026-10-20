@@ -904,7 +904,7 @@ async def account_calls(request: Request):
                    tc.result_json, tc.error,
                    pt.label_json,
                    COALESCE((
-                     SELECT SUM(r.amount) FROM ledger r
+                     SELECT SUM(r.delta) FROM ledger r
                      JOIN ledger c
                        ON r.kind = 'refund' AND r.ref_type = 'ledger'
                       AND r.ref_id = c.id::text
