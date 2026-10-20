@@ -727,7 +727,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-page .pub-files-limit { display: flex; flex-direction: column; gap: 6px; }
 .pub-page .pub-files-limit input { width: 100%; }
 /* 输入方式 = 大类别: 分段选择条 (与族胶囊分层, 云朵=文件 / 对话=文本) */
-.pub-page .pub-input-mode { display: inline-flex; flex-direction: row; gap: 4px; align-items: center; background: var(--sunk); padding: 4px; border-radius: 12px; }
+.pub-page .pub-input-mode { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px; align-items: center; background: var(--sunk); padding: 4px; border-radius: 12px; }
 .pub-page .pub-input-mode .pub-hint { flex-basis: 100%; }
 /* pub-grid label 的 (0,1,1) 纵向规范会压过单类选择器 — 控件级方向
    声明须用同特异度 (.pub-grid 前缀) 才能落到横向 */

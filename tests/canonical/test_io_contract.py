@@ -574,26 +574,28 @@ try:
     # invalid shapes via a local listener would need TLS; drive the
     # response-parsing path directly with a stubbed _http_call
     orig_call = _remote._http_call
-    def _fake_call(url, payload, headers, timeout_s, trusted):
+    def _fake_call(url, req_body, req_ct, headers, timeout_s, trusted):
         body = _fake_call.body
-        return _fake_call.status, body, "application/json"
+        return _fake_call.status, body, _fake_call.ctype, None
+    _fake_call.ctype = "application/vnd.518.items+json"
     _remote._http_call = _fake_call
     try:
         _fake_call.status = 200
         _fake_call.body = _json.dumps({"legacy": "shape"}).encode()
         try:
             _remote.drive_http(decl_ep, sources, {}, {}, True)
-            check("X1 non-items JSON → invalid_response", False, "accepted")
+            check("X1 non-items JSON envelope → invalid_response", False,
+                  "accepted")
         except _remote.RemoteError as exc:
-            check("X1 non-items JSON → invalid_response",
+            check("X1 non-items JSON envelope → invalid_response",
                   exc.code == "invalid_response", exc.code)
         _fake_call.body = b"raw bytes not json"
         try:
             _remote.drive_http(decl_ep, sources, {}, {}, True)
-            check("X2 raw-byte body rejected (no legacy mode)",
+            check("X2 raw-byte envelope rejected (no legacy mode)",
                   False, "accepted")
         except _remote.RemoteError as exc:
-            check("X2 raw-byte body rejected (no legacy mode)",
+            check("X2 raw-byte envelope rejected (no legacy mode)",
                   exc.code == "invalid_response", exc.code)
         _fake_call.body = _json.dumps({"items": [
             {"kind": "text", "text": "ok"},

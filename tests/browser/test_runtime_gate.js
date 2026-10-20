@@ -1481,7 +1481,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             aria: document.querySelector(".ti-more-btn").getAttribute("aria-expanded"),
           }));
           check(`params ${w} tool page: fold expands to the extra rows`,
-            !unfolded.hidden && unfolded.rows === 2 && unfolded.aria === "true", JSON.stringify(unfolded));
+            !unfolded.hidden && unfolded.rows === 3 && unfolded.aria === "true", JSON.stringify(unfolded));
           // home surface: same tool through the picker
           const home = await vp.newPage();
           await gotoReady(home, "/", ".composer");
@@ -1510,8 +1510,9 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
           window.runToolFlow = () => { window.__chatRuns++; return Promise.resolve({}); };
           window.ToolInput.mount(host, { tool: {
             id: "probe/chat", label: "Probe", files_min: 0, files_max: 0,
-            params: [{ key: "q", type: "text", required: true, label: "Prompt",
-              placeholder: "Ask anything" }],
+            body_format: "text",
+            body_placeholder: { en: "Ask anything" },
+            params: [],
           } });
         });
         const shape = await page.evaluate(() => {
@@ -1535,7 +1536,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         check("chat form: one auto-grow input, send button inside its corner, no bar run",
           shape.ok && shape.sendInsideCorner && shape.singleLineHeight && shape.noBarRun,
           JSON.stringify(shape));
-        check("chat form: placeholder from the main text param", shape.ok && shape.ph,
+        check("chat form: placeholder from the declared body placeholder", shape.ok && shape.ph,
           JSON.stringify(shape));
         await page.focus("#chatProbe .ti-chat-text");
         await page.keyboard.type("line 1");
