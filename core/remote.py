@@ -46,6 +46,12 @@ DEFAULT_TIMEOUT_S = 60
 MAX_TIMEOUT_S = 300
 MAX_OUTPUT_BYTES = MAX_UPLOAD_BYTES
 MAX_REDIRECTS = 5
+# 提供者错误体读取上限: 非 2xx 的响应体是错误详情素材, 按这个上限读,
+# 不按大文件上限读 (拒绝把 50MB 错误页拖进平台)。
+MAX_ERROR_DETAIL_BYTES = 4096
+# 南向 items 信封的专属 Content-Type (与 application/json 的"单 json 项"
+# 语义区分)
+ITEMS_ENVELOPE_CT = "application/vnd.518.items+json"
 
 
 class RemoteError(Exception):
@@ -213,7 +219,12 @@ def _pinned_request(url: str, method: str, body: bytes | None,
                     headers: dict, timeout_s: int,
                     max_bytes: int | None = None) -> tuple:
     """Single hop over the pinned transport. Returns (status, body,
-    new_url_if_redirect). Never follows redirects itself.
+    new_url_if_redirect, response_content_type, response_content_disposition).
+    Never follows redirects itself.
+
+    Body read cap is status-dependent: 2xx reads to max_bytes (default
+    the platform file cap); a non-2xx body is error-detail material and
+    reads to MAX_ERROR_DETAIL_BYTES only.
 
     Connect semantics: raw socket from the resolver's (family, socktype,
     proto), connect() receives the EXACT validated sockaddr — never the
@@ -251,22 +262,22 @@ def _pinned_request(url: str, method: str, body: bytes | None,
             try:
                 conn.request(method, path, body=body, headers=hop_headers)
                 resp = conn.getresponse()
-                if max_bytes is not None:
-                    # early abort: a Content-Length already over the cap
-                    # is rejected BEFORE the body is downloaded
-                    cl = resp.getheader("Content-Length")
-                    if cl is not None:
-                        try:
-                            if int(cl) > max_bytes:
-                                raise RemoteError(
-                                    "too_large",
-                                    f"content-length {cl} over {max_bytes}")
-                        except ValueError:
-                            pass  # malformed CL — the read cap still guards
-                    data = resp.read(max_bytes + 1)
-                else:
-                    data = resp.read(MAX_OUTPUT_BYTES + 1)
-                return resp.status, data, resp.getheader("Location")
+                read_cap = MAX_ERROR_DETAIL_BYTES \
+                    if not (200 <= resp.status < 300) else (
+                        max_bytes if max_bytes is not None else MAX_OUTPUT_BYTES)
+                cl = resp.getheader("Content-Length")
+                if cl is not None:
+                    try:
+                        if int(cl) > read_cap:
+                            raise RemoteError(
+                                "too_large",
+                                f"content-length {cl} over {read_cap}")
+                    except ValueError:
+                        pass  # malformed CL — the read cap still guards
+                data = resp.read(read_cap + 1)
+                return (resp.status, data, resp.getheader("Location"),
+                        resp.getheader("Content-Type"),
+                        resp.getheader("Content-Disposition"))
             finally:
                 conn.close()
         except RemoteError:
@@ -322,10 +333,10 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
     POST→GET downgrade on 301/302/303 drops the body AND the entity
     headers (Content-Type/Content-Length never leak the old POST size).
 
-    max_bytes: optional response-body cap — when set, a Content-Length
-    header already above the cap aborts the transfer BEFORE the body is
-    downloaded, and the read itself never exceeds the cap by more than
-    one byte ( callers detect the overflow by len(data) > max_bytes).
+    Returns (status, body, response_content_type,
+    response_content_disposition) — the response identity travels with
+    the bytes (non-2xx bodies read to the error detail cap, not the
+    file cap).
 
     Credential boundary: with has_credential=True a cross-origin redirect
     (scheme/host/effective-port) is REJECTED — auth material must never
@@ -338,11 +349,11 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
     cur_headers = dict(headers)
     seen = {url}
     for _hop in range(MAX_REDIRECTS + 1):
-        status, data, new_url = _pinned_request(
+        status, data, new_url, _ctype, _cd = _pinned_request(
             cur_url, cur_method, cur_body, cur_headers, timeout_s,
             max_bytes=max_bytes)
         if status not in _REDIRECT_STATUSES:
-            return status, data
+            return status, data, _ctype, _cd
         if not new_url:
             raise RemoteError("redirect_blocked", "redirect without Location")
         new_url = urllib.parse.urljoin(cur_url, new_url)
@@ -380,31 +391,28 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
 
 # ── HTTP driver (plain file-processing API) ──
 
-def _http_call(endpoint: str, payload: dict, headers: dict,
-               timeout_s: int, trusted: bool) -> tuple:
-    """Returns (status, body, endpoint_response_content_type|None)."""
-    body = json.dumps(payload).encode()
+def _http_call(endpoint: str, req_body: bytes, req_ct: str,
+               headers: dict, timeout_s: int, trusted: bool) -> tuple:
+    """Send one southbound request. Returns (status, body,
+    response_content_type, response_content_disposition).
+
+    2xx bodies read to the platform file cap; non-2xx bodies read to the
+    error-detail cap (they are diagnostic material, never products)."""
     if not trusted:
         # Stored-row defense: a reserved credential header (Host, framing,
         # ...) must fail typed BEFORE any network request.
         _reject_reserved_auth_headers(headers)
         # Untrusted: pinned transport with redirect + credential policy.
         # Transport forces Host/UA; credential headers ride along.
-        hdrs = {"Content-Type": "application/json",
+        hdrs = {"Content-Type": req_ct,
                 "User-Agent": "518.PLUS-Dispatcher/1.0 (tool dispatch)",
                 **headers}
-        status, data = pinned_request(
-            endpoint, method="POST", body=body, headers=hdrs,
+        return pinned_request(
+            endpoint, method="POST", body=req_body, headers=hdrs,
             timeout_s=timeout_s, has_credential=bool(headers))
-        if status != 200:
-            raise RemoteError("http_status", f"{status}")
-        # Pinned transport returns the body only — no response identity.
-        # Raw-byte products on this path carry no endpoint content_type;
-        # landing MIME is derived from the canonical filename + bytes.
-        return status, data, None
     req = urllib.request.Request(
-        endpoint, data=body, method="POST",
-        headers={"Content-Type": "application/json",
+        endpoint, data=req_body, method="POST",
+        headers={"Content-Type": req_ct,
                  # Self-describing UA: default Python-urllib is blocked by
                  # WAFs (e.g. Cloudflare browser-integrity 1010) on user
                  # endpoints that sit behind one.
@@ -412,11 +420,18 @@ def _http_call(endpoint: str, payload: dict, headers: dict,
                  **headers})
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            ctype = resp.headers.get("Content-Type")
-            return resp.status, resp.read(MAX_OUTPUT_BYTES + 1), ctype
+            return (resp.status, resp.read(MAX_OUTPUT_BYTES + 1),
+                    resp.headers.get("Content-Type"),
+                    resp.headers.get("Content-Disposition"))
     except urllib.error.HTTPError as exc:
-        detail = exc.read(500).decode("utf-8", "replace")
-        raise RemoteError("http_status", f"{exc.code} {detail}") from exc
+        # error bodies read to the SAME diagnostic cap as the pinned path
+        try:
+            err_body = exc.read(MAX_ERROR_DETAIL_BYTES + 1)
+        except Exception:
+            err_body = b""
+        return (exc.code, err_body,
+                exc.headers.get("Content-Type") if exc.headers else None,
+                exc.headers.get("Content-Disposition") if exc.headers else None)
     except urllib.error.URLError as exc:
         if isinstance(getattr(exc, "reason", None), socket.timeout):
             raise RemoteError("timeout", str(exc.reason)) from exc
@@ -525,39 +540,159 @@ def parse_endpoint_items(out, url_fetch) -> list:
     return results
 
 
+def encode_query_params(params: dict) -> str:
+    """正文工具的 params → 查询参数串 (值编码单点)。
+
+    数字取十进制文本, 整数值不带 .0 (5.0 → "5"); 布尔 true/false;
+    enum / text 原样 (百分号编码)。"""
+    parts = []
+    for k, v in (params or {}).items():
+        if isinstance(v, bool):
+            sv = "true" if v else "false"
+        elif isinstance(v, float):
+            sv = str(int(v)) if v.is_integer() else str(v)
+        elif isinstance(v, int):
+            sv = str(v)
+        else:
+            sv = str(v)
+        parts.append(f"{urllib.parse.quote(str(k), safe='')}"
+                     f"={urllib.parse.quote(sv, safe='')}")
+    return "&".join(parts)
+
+
+def url_with_params(url: str, params: dict) -> str:
+    """端点 URL 自带的查询参数保留; params 追加在其后。"""
+    extra = encode_query_params(params)
+    if not extra:
+        return url
+    parts = urllib.parse.urlsplit(url)
+    query = parts.query + ("&" + extra if parts.query else "")
+    return urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def endpoint_param_query_conflict(url: str, params_decl) -> bool:
+    """声明期冲突判定: 端点 URL 自带查询参数键与 params 声明键撞名。
+    文件工具 (params 进 JSON 请求体) 不适用 — 仅正文工具 (params 进
+    查询参数) 需要此检查; 供给校验按 execution 分流。"""
+    try:
+        parts = urllib.parse.urlsplit(url or "")
+        url_keys = {k for k, _v in urllib.parse.parse_qsl(parts.query or "",
+                                                          keep_blank_values=True)}
+    except ValueError:
+        return False
+    decl_keys = {str(p.get("key")) for p in (params_decl or [])
+                 if isinstance(p, dict) and p.get("key")}
+    return bool(url_keys & decl_keys)
+
+
+def _filename_from_content_disposition(cd: str | None) -> str | None:
+    """Content-Disposition → filename (带引号与裸值两形态); 无 filename
+    段返回 None。"""
+    if not cd:
+        return None
+    for part in cd.split(";"):
+        part = part.strip()
+        if part.lower().startswith("filename="):
+            value = part[len("filename="):].strip()
+            if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+                value = value[1:-1]
+            return value or None
+    return None
+
+
+def parse_response_items(status: int, body: bytes, resp_ctype: str | None,
+                         resp_cd: str | None, url_fetch) -> list:
+    """按响应 Content-Type 解释南向响应 (两种工具同一规则):
+
+      application/vnd.518.items+json → items 信封 (parse_endpoint_items)
+      application/json               → 一个 json 项
+      text/*                         → 一个 text 项
+      其余                            → 一个文件项 (Content-Disposition
+                                       文件名 > 嗅探扩展名; 识别不出
+                                       判失败)
+
+    非 2xx 一律 RemoteError("http_status") — 提供者状态与响应体片段
+    由调用方组装进错误详情。"""
+    if not (200 <= status < 300):
+        snippet = body[:MAX_ERROR_DETAIL_BYTES].decode("utf-8", "replace")
+        raise RemoteError("http_status", f"{status} {snippet}")
+    base = (resp_ctype or "").split(";")[0].strip().lower()
+    if base == ITEMS_ENVELOPE_CT:
+        try:
+            out = json.loads(body)
+        except Exception as exc:
+            raise RemoteError("invalid_response",
+                              "items envelope is not JSON") from exc
+        return parse_endpoint_items(out, url_fetch)
+    if base == "application/json":
+        try:
+            data = json.loads(body)
+        except Exception as exc:
+            raise RemoteError("invalid_response",
+                              "json response body is not valid JSON") from exc
+        blob = json.dumps(data, ensure_ascii=False)
+        if len(blob.encode("utf-8")) > MAX_INLINE_RESULT_BYTES:
+            raise RemoteError("invalid_response", "inline payload too large")
+        return [{"kind": "json", "data": data}]
+    if base.startswith("text/"):
+        try:
+            text = body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RemoteError("invalid_response",
+                              "text response is not UTF-8") from exc
+        if len(text.encode("utf-8")) > MAX_INLINE_RESULT_BYTES:
+            raise RemoteError("invalid_response", "inline payload too large")
+        return [{"kind": "text", "text": text}]
+    # 文件项: 响应就是产物字节
+    filename = _filename_from_content_disposition(resp_cd)
+    wrapped = _wrap_raw(body, filename, base or None)
+    return [{"kind": "file",
+             "filename": wrapped["filename"],
+             "content_type": wrapped["content_type"],
+             "size": len(wrapped["bytes"]),
+             "bytes": wrapped["bytes"]}]
+
+
 def drive_http(endpoint_decl: dict, sources: list, params: dict,
                auth_headers: dict, trusted: bool,
-               body=None, canonical_body=None) -> dict:
+               body=None, canonical_body=None,
+               body_format: str | None = None) -> dict:
     """The ONE southbound developer contract (IO-1) — see
-    dispatch_payload (request) and parse_endpoint_items (response).
-    A response that does not match the items shape raises RemoteError
-    ("invalid_response") — the call fails and the caller refunds.
+    dispatch_payload (file request) and parse_response_items (response).
+    A response that does not match the contract raises RemoteError —
+    the call fails and the caller refunds.
+
+    文件工具: JSON 信封 (dispatch_payload); 正文工具: 取值原样 POST
+    (text → text/plain; charset=utf-8, json → application/json,
+    规范序列化字节), params 编码进查询参数 (端点自带查询保留)。
 
     Trusted rows: guard_endpoint (operator policy) then the classic
     urllib driver. Untrusted rows: the pinned transport itself is the
-    runtime security authority (single DNS resolution per hop).
-
-    body/canonical_body: 正文工具取值及其规范串 (P2 实现南向正文传输)。
-    """
+    runtime security authority (single DNS resolution per hop)."""
     timeout_s = min(int(endpoint_decl.get("timeout_s") or DEFAULT_TIMEOUT_S),
                     MAX_TIMEOUT_S)
     url = (guard_endpoint(endpoint_decl["url"], trusted) if trusted
            else endpoint_decl["url"])
-    if canonical_body is not None:
-        # P1 契约占位: 正文工具的南向传输 (POST 正文 + params 查询编码 +
-        # Content-Type 结果解释) 在 P2 落地; 到位前带正文的调用受控失败。
-        raise RemoteError("bad_endpoint", "body transport not wired yet")
-    payload = dispatch_payload(sources, params)
-    status, body_data, resp_ctype = _http_call(url, payload, auth_headers, timeout_s, trusted)
-    if status != 200:
-        raise RemoteError("http_status", f"{status}")
-    try:
-        out = json.loads(body_data)
-    except Exception as exc:
-        raise RemoteError("invalid_response",
-                          "response must be JSON with an items array") from exc
-    return {"items": parse_endpoint_items(
-        out, lambda u: _pull_item_file_url(u, timeout_s, trusted))}
+    if body_format:
+        if canonical_body is None:
+            raise RemoteError("bad_endpoint", "body transport requires a"
+                              " validated canonical body")
+        req_body = canonical_body.encode("utf-8")
+        req_ct = ("application/json" if body_format == "json"
+                  else "text/plain; charset=utf-8")
+        final_url = url_with_params(url, params)
+    else:
+        payload = dispatch_payload(sources, params)
+        req_body = json.dumps(payload).encode()
+        req_ct = "application/json"
+        final_url = url
+    status, resp_body, resp_ctype, resp_cd = _http_call(
+        final_url, req_body, req_ct, auth_headers, timeout_s, trusted)
+    items = parse_response_items(
+        status, resp_body, resp_ctype, resp_cd,
+        lambda u: _pull_item_file_url(u, timeout_s, trusted))
+    return {"items": items}
 
 
 def _pull_item_file_url(item_url: str, timeout_s: int, trusted: bool) -> bytes:
@@ -577,8 +712,8 @@ def _pull_item_file_url(item_url: str, timeout_s: int, trusted: bool) -> bytes:
                 return resp.read(MAX_OUTPUT_BYTES + 1)
         except Exception as exc:
             raise RemoteError("bad_output", f"output fetch failed: {exc}") from exc
-    status, data = pinned_request(str(item_url), method="GET",
-                                  timeout_s=timeout_s)
+    status, data, _ctype, _cd = pinned_request(str(item_url), method="GET",
+                                               timeout_s=timeout_s)
     if status != 200:
         raise RemoteError("bad_output", f"output fetch status {status}")
     return data

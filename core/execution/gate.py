@@ -449,9 +449,14 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         except ExecutionError as exc:
             # Durable settlement: refund the exact charge before finalizing; if
             # either leg fails the row stays running (recovery settles it) and
-            # the client must not be told the economy is closed.
+            # the client must not be told the economy is closed. Refund failure
+            # (err_metering_failed / 500) outranks the original error status
+            # (e.g. a provider 502) — the economy fact wins.
             if _settle_failure(user, tool_id, call_id, charge, exc.code):
-                return None, {"ok": False, "error": exc.code}, 400
+                body = {"ok": False, "error": exc.code}
+                if exc.detail:
+                    body["detail"] = exc.detail[:4096]
+                return None, body, exc.http_status
             return None, {"ok": False, "error": "err_metering_failed"}, 500
         except Exception:
             logger.exception("tool execution failed call_id=%s", call_id)

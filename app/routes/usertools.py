@@ -690,6 +690,23 @@ async def update_user_tool(tool_key: str, request: Request):
         if sets or fields:
             if row["execution"] == "http":
                 sets["binding"] = merged_decl
+            # 正文 http 工具: params 编码进查询参数 — 最终 URL 的自带查询
+            # 键不得与最终 params 声明键撞名 (写库前判定, PATCH 合并态,
+            # 含切换输入方式后的最终 body_format)。
+            _final_bf = fields.get("body_format", row.get("body_format"))
+            if row["execution"] == "http" and _final_bf:
+                _final_params = sets.get("params")
+                if _final_params is None:
+                    try:
+                        _final_params = json.loads(row["params_json"] or "[]")
+                    except (TypeError, ValueError):
+                        _final_params = []
+                if _final_params:
+                    from remote import endpoint_param_query_conflict
+                    if endpoint_param_query_conflict(
+                            merged_decl.get("url"), _final_params):
+                        return JSONResponse(
+                            {"ok": False, "error": "bad_binding"}, 422)
             from governance.tool_supply import update_tool, DeclarationError
             try:
                 update_tool(tool_key, sets, con=con)

@@ -50,6 +50,10 @@ def _enforce_outputs(tool: dict, items: list) -> None:
         enforce_output_kinds(items, declared)
     except OutputsError as exc:
         raise ExecutionError(str(exc)) from exc
+    # 正文工具的输入是单个取值 — 结果也必须恰好一项 (远程/本地同规则),
+    # 落盘与结算之前校验。
+    if tool.get("body_format") and len(items) != 1:
+        raise ExecutionError("err_items_count")
 
 
 def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
@@ -212,17 +216,17 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery,
     """remote (http) execution — the ONE southbound contract (IO-1):
 
       request  {"files": [{"filename", "content_type", "size", "url"}],
-                "params": {...}}           (文件工具)
+                "params": {...}}           (文件工具, JSON 信封)
       request  <正文取值> (Content-Type 按声明; params 编码进查询参数)
                                            (正文工具)
-      response {"items": [{"kind":"text","text"} | {"kind":"json","data"}
-                | {"kind":"file","filename","content_type",
-                   "data_b64" | "url"}]}
+      response 按 Content-Type 解释 (items 信封 / 单 json 项 / 单 text
+      项 / 文件项) — 单点 remote.parse_response_items
 
     File items are fetched (url) or decoded (data_b64) through the same
     SSRF-guarded pinned transport + per-file cap; a response that does
     not match the shape fails the call (refund path unchanged).
     delivery is a platform fact — the endpoint never sees it.
+    提供者非 2xx → 平台 502, detail 带提供者状态码 + 响应体片段。
     """
     import remote as _remote
     from security import sign_fetch_token
@@ -261,12 +265,20 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery,
     try:
         out = await loop.run_in_executor(
             None, _remote.drive_http, decl, sources, params, auth_headers,
-            trusted, body, canonical_body)
+            trusted, body, canonical_body, tool.get("body_format"))
     except _remote.RemoteError as exc:
         logger.warning("remote tool %s failed: %s", tool["id"], exc)
-        code = {"ssrf_blocked": "err_endpoint_blocked",
-                "timeout": "err_endpoint_timeout"}.get(exc.code, "err_endpoint_failed")
-        raise ExecutionError(code) from exc
+        if exc.code == "ssrf_blocked":
+            raise ExecutionError("err_endpoint_blocked") from exc
+        if exc.code == "timeout":
+            raise ExecutionError("err_endpoint_timeout") from exc
+        if exc.code == "http_status":
+            # 提供者非 2xx: 平台对外表达 502, detail 带提供者状态码与
+            # 响应体前 4096 字节 (传输层已按该上限读取)
+            detail = str(exc.detail or "")[:4096]
+            raise ExecutionError("err_endpoint_failed",
+                                 http_status=502, detail=detail) from exc
+        raise ExecutionError("err_endpoint_failed") from exc
 
     _enforce_outputs(tool, out["items"])
 

@@ -247,6 +247,13 @@ def validate_tool_declaration(decl: dict) -> dict:
     else:
         binding = None  # local: handler 属 runtime, binding 不持久化
 
+    # 正文工具 (http): params 编码进查询参数 — 端点 URL 自带查询键与
+    # params 键撞名在声明期即拒绝 (文件工具 params 走 JSON 请求体, 无此约束)。
+    if decl["execution"] == "http" and body_format is not None and params:
+        from remote import endpoint_param_query_conflict
+        if endpoint_param_query_conflict(binding["url"], params):
+            raise DeclarationError("bad_binding")
+
     return {
         "tool_key": tool_key,
         "tool_id": tool_id,

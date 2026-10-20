@@ -183,7 +183,9 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 
 ## 执行契约
 
-用户工具当前执行类型为 `http`：平台在调用时向开发者端点发起 `POST`，请求体：
+用户工具当前执行类型为 `http`：平台在调用时向开发者端点发起 `POST`。
+
+**文件工具**（files_max > 0）的请求体是 JSON 信封：
 
 ```json
 {
@@ -194,9 +196,23 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 }
 ```
 
-- `params` 只含声明内的键值（声明外键在入口剥离），已按声明校验；纯文本输入
-  经 text 参数传入（上限 100,000 字符），0 文件调用合法。
-- 响应必须是 JSON 的 items 数组（唯一形态）：
+**正文工具**（files 0..0 + body_format）的请求体就是输入本身，params 编码为查询参数：
+
+- `body_format: "text"`：输入字符串原样 POST，`Content-Type: text/plain; charset=utf-8`。
+- `body_format: "json"`：输入的规范序列化（键排序、紧凑分隔）POST，`Content-Type: application/json`。
+- params 逐键追加到端点 URL 查询串（端点自带查询参数保留）：数字取十进制文本（整数值不带 `.0`），布尔 `true`/`false`，enum 与 text 原样（百分号编码）。**参数键与端点 URL 自带查询参数撞名在声明期即拒绝**（`bad_binding`）。
+- 调用侧输入走 `source.body`（text：非空 UTF-8 ≤ 100,000 字符；json：任意合法 JSON 值含 null，禁 NaN/Infinity，规范序列化后 ≤ 100,000 字符）。
+
+**响应按 Content-Type 解释**（两种工具同一规则）：
+
+| 响应 Content-Type | 解释 |
+|---|---|
+| `application/vnd.518.items+json` | items 信封（见下） |
+| `application/json` | 一个 json 项（响应体本身是产物） |
+| `text/*` | 一个 text 项（UTF-8） |
+| 其余 | 一个文件项：文件名取 `Content-Disposition`，没有则靠字节嗅探；识别不出判失败 |
+
+items 信封形态：
 
 ```json
 {
@@ -209,10 +225,11 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 }
 ```
 
-  file 项用 `data_b64` 或 `url`（平台拉取，走同一 SSRF 守卫与大小上限）交
-  付字节；`items` ≤ 20、text+json 合计 ≤ 1MB、单文件沿用上传上限。响应不符
-  合形态 → 调用失败并全额退款。
-- `output_filename` / `output_content_type` 已不可声明：提交会被拒绝（`bad_output_filename` / `bad_output_content_type`），产物名与类型由 items 声明或平台嗅探决定。
+- `params` 只含声明内的键值（声明外键在入口剥离），已按声明校验。
+- file 项用 `data_b64` 或 `url`（平台拉取，走同一 SSRF 守卫与大小上限）交付字节；`items` ≤ 20、text+json 合计 ≤ 1MB、单文件沿用上传上限。响应不符合形态 → 调用失败并全额退款。
+- **正文工具必须恰好产出一个结果项**（远程与本地相同），不满足判失败并退款。
+- 端点返回非 2xx 时，平台对调用方表达 `502`，错误详情携带提供者状态码与响应体前 4096 字节。
+- `output_filename` / `output_content_type` 已不可声明：提交会被拒绝（`bad_output_filename` / `bad_output_content_type`），产物名与类型由 items 声明、Content-Disposition 或平台嗅探决定。
 - 端点必须 https 且解析到公网地址（SSRF 守卫；运营方采纳的 trusted 行豁免）。
 
 ## 协议原则
