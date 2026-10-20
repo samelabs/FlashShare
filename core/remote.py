@@ -526,7 +526,8 @@ def parse_endpoint_items(out, url_fetch) -> list:
 
 
 def drive_http(endpoint_decl: dict, sources: list, params: dict,
-               auth_headers: dict, trusted: bool) -> dict:
+               auth_headers: dict, trusted: bool,
+               body=None, canonical_body=None) -> dict:
     """The ONE southbound developer contract (IO-1) — see
     dispatch_payload (request) and parse_endpoint_items (response).
     A response that does not match the items shape raises RemoteError
@@ -534,17 +535,24 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
 
     Trusted rows: guard_endpoint (operator policy) then the classic
     urllib driver. Untrusted rows: the pinned transport itself is the
-    runtime security authority (single DNS resolution per hop)."""
+    runtime security authority (single DNS resolution per hop).
+
+    body/canonical_body: 正文工具取值及其规范串 (P2 实现南向正文传输)。
+    """
     timeout_s = min(int(endpoint_decl.get("timeout_s") or DEFAULT_TIMEOUT_S),
                     MAX_TIMEOUT_S)
     url = (guard_endpoint(endpoint_decl["url"], trusted) if trusted
            else endpoint_decl["url"])
+    if canonical_body is not None:
+        # P1 契约占位: 正文工具的南向传输 (POST 正文 + params 查询编码 +
+        # Content-Type 结果解释) 在 P2 落地; 到位前带正文的调用受控失败。
+        raise RemoteError("bad_endpoint", "body transport not wired yet")
     payload = dispatch_payload(sources, params)
-    status, body, resp_ctype = _http_call(url, payload, auth_headers, timeout_s, trusted)
+    status, body_data, resp_ctype = _http_call(url, payload, auth_headers, timeout_s, trusted)
     if status != 200:
         raise RemoteError("http_status", f"{status}")
     try:
-        out = json.loads(body)
+        out = json.loads(body_data)
     except Exception as exc:
         raise RemoteError("invalid_response",
                           "response must be JSON with an items array") from exc

@@ -102,6 +102,25 @@ def _normalize_params(params):
         raise DeclarationError(str(exc)) from exc
 
 
+def _check_body_placeholder(value):
+    """body_placeholder: 可选 LocalizedText, 每语言 <= 64 字符, 无控制
+    字符 (与 params 文本叶子同限同形)。返回归一化值或 None。"""
+    from governance.body import PLACEHOLDER_MAX_CHARS as _MAX
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if not (0 < len(value) <= _MAX) or _CTRL_CHARS.search(value):
+            raise DeclarationError("bad_body_placeholder")
+        return value
+    if isinstance(value, dict) and value:
+        for v in value.values():
+            if not isinstance(v, str) or not (0 < len(v) <= _MAX) \
+                    or _CTRL_CHARS.search(v):
+                raise DeclarationError("bad_body_placeholder")
+        return value
+    raise DeclarationError("bad_body_placeholder")
+
+
 _BINDING_KEYS = ("url", "timeout_s", "auth_header", "auth_token")
 
 # IO-1 input/output contract vocabulary
@@ -177,7 +196,7 @@ def validate_tool_declaration(decl: dict) -> dict:
     inputs = _normalize_inputs(decl.get("inputs"))
     outputs = _normalize_outputs(decl.get("outputs"))
 
-    # tag 声明 (契约字段): 文件工具必带九键之一; 纯文本工具 (files_max=0)
+    # tag 声明 (契约字段): 文件工具必带九键之一; 正文工具 (files_max=0)
     # 不带。图标 = tag 查表, 不存在无声明的文件工具。
     tag = decl.get("format_family")
     from governance.formats import validate_family_key as _vfk
@@ -189,6 +208,20 @@ def validate_tool_declaration(decl: dict) -> dict:
         raise DeclarationError("bad_format_family")
     if tag is not None and inputs["files"]["max"] == 0:
         raise DeclarationError("bad_format_family")
+
+    # 输入方式互斥: 文件工具 (files_max>0) 两列必空; 正文工具
+    # (files_max=0) body_format 必填 ('text'|'json'), placeholder 可选。
+    from governance.body import BODY_FORMATS
+    body_format = decl.get("body_format")
+    body_placeholder = _check_body_placeholder(decl.get("body_placeholder"))
+    if inputs["files"]["max"] == 0:
+        if body_format not in BODY_FORMATS:
+            raise DeclarationError("bad_body_format")
+    else:
+        if body_format is not None:
+            raise DeclarationError("bad_body_format")
+        if body_placeholder is not None:
+            raise DeclarationError("bad_body_placeholder")
 
     if not isinstance(decl.get("enabled", True), bool):
         raise DeclarationError("bad_enabled")
@@ -222,6 +255,8 @@ def validate_tool_declaration(decl: dict) -> dict:
         "label": label,
         "desc": desc,
         "format_family": tag,
+        "body_format": body_format,
+        "body_placeholder": body_placeholder,
         "inputs": inputs,
         "outputs": outputs,
         "params": params,
@@ -248,6 +283,15 @@ def validate_tool_patch(patch: dict) -> dict:
         if ferr:
             raise DeclarationError("bad_format_family")
         out["format_family"] = tag
+    if "body_format" in patch:
+        from governance.body import BODY_FORMATS as _BF
+        if patch["body_format"] is not None \
+                and patch["body_format"] not in _BF:
+            raise DeclarationError("bad_body_format")
+        out["body_format"] = patch["body_format"]
+    if "body_placeholder" in patch:
+        out["body_placeholder"] = _check_body_placeholder(
+            patch["body_placeholder"])
     if "label" in patch:
         out["label"] = _check_localized(patch["label"], _MAX_LABEL, required=True)
     if "desc" in patch:
@@ -258,6 +302,18 @@ def validate_tool_patch(patch: dict) -> dict:
         out["outputs"] = _normalize_outputs(patch["outputs"])
     if "params" in patch:
         out["params"] = _normalize_params(patch["params"])
+    # 输入方式互斥 (patch 内同时出现时校验终态一致; 只出现一侧时与
+    # 存储行的合并是 source adapter 的职责 — 切换输入方式必须同事务
+    # 清掉互斥列)。placeholder 只属于正文工具。
+    if "inputs" in out and "body_format" in out:
+        _mx = out["inputs"]["files"]["max"]
+        if _mx == 0 and out["body_format"] is None:
+            raise DeclarationError("bad_body_format")
+        if _mx > 0 and out["body_format"] is not None:
+            raise DeclarationError("bad_body_format")
+    if out.get("body_placeholder") is not None \
+            and "body_format" in out and out["body_format"] is None:
+        raise DeclarationError("bad_body_placeholder")
     if "enabled" in patch:
         if not isinstance(patch["enabled"], bool):
             raise DeclarationError("bad_enabled")
@@ -333,6 +389,10 @@ def _serialize_row(decl: dict, ts: int) -> dict:
         "desc_json": (json.dumps(decl["desc"], ensure_ascii=False)
                       if decl.get("desc") else None),
         "format_family": decl.get("format_family"),
+        "body_format": decl.get("body_format"),
+        "body_placeholder_json": (
+            json.dumps(decl["body_placeholder"], ensure_ascii=False)
+            if decl.get("body_placeholder") else None),
         "accept_json": (json.dumps(decl["inputs"]["files"]["accept"],
                                    ensure_ascii=False)
                         if decl["inputs"]["files"]["accept"] else None),
@@ -412,6 +472,12 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
     sets = {}
     if "format_family" in patch:
         sets["format_family"] = patch["format_family"]
+    if "body_format" in patch:
+        sets["body_format"] = patch["body_format"]
+    if "body_placeholder" in patch:
+        sets["body_placeholder_json"] = (
+            json.dumps(patch["body_placeholder"], ensure_ascii=False)
+            if patch["body_placeholder"] else None)
     if "label" in patch:
         sets["label_json"] = json.dumps(patch["label"], ensure_ascii=False)
     if "desc" in patch:

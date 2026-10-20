@@ -236,7 +236,8 @@ try:
     # ═══ T: text-only tools ═══
     st, _h, d, _sc = _usertool(a_ck, {
         "label": "Txt", "url": "https://93.184.216.34/t",
-        "timeout_s": 30, "files_min": 0, "files_max": 0, "outputs": ["text"],
+        "timeout_s": 30, "files_min": 0, "files_max": 0,
+        "body_format": "text", "outputs": ["text"],
         "params": [{"key": "q", "type": "text", "label": "Q"}], "cost": 0})
     _txt_key = (d or {}).get("tool_key")
     check("T1 text-only create without format family/accept", st == 200 and _txt_key,
@@ -244,6 +245,7 @@ try:
     st, _h, d, _sc = _usertool(a_ck, {
         "label": "Txt", "url": "https://93.184.216.34/u",
         "timeout_s": 30, "files_min": 0, "files_max": 0,
+        "body_format": "text",
         "format_families": "image", "accept": [".png"], "outputs": ["text"],
         "cost": 0})
     check("T2 accept with files_max 0 → bad_accept",

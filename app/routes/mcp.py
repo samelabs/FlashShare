@@ -1203,8 +1203,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from execution.dispatch import (preflight as _preflight,
                                     source_count_error as _count_err,
                                     source_accept_error as _accept_err)
-    tool, _declared, _pbody, _pstatus = _preflight(user, tool_key, delivery,
-                                                   tool_params)
+    tool, _declared, _canon_body, _pbody, _pstatus = _preflight(
+        user, tool_key, delivery, tool_params)
     if _pbody is not None:
         if _pbody.get("error") == "tool_not_found":
             return _rpc_err(mid, -32602, f"unknown tool: {name}")

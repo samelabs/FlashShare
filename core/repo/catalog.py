@@ -241,6 +241,7 @@ def set_tool_presentation(con, tool_key: str, featured: bool,
 
 _TOOL_COLUMNS = ("tool_key", "owner_id", "tool_id", "execution",
                  "label_json", "desc_json", "accept_json", "format_family",
+                 "body_format", "body_placeholder_json",
                  "params_json", "files_min", "files_max",
                  "outputs_json",
                  "visibility", "endpoint_json", "enabled")
@@ -275,6 +276,8 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
           desc_json    = COALESCE(EXCLUDED.desc_json, platform_tools.desc_json),
           accept_json  = EXCLUDED.accept_json,
           format_family = EXCLUDED.format_family,
+          body_format  = EXCLUDED.body_format,
+          body_placeholder_json = EXCLUDED.body_placeholder_json,
           params_json  = EXCLUDED.params_json,
           files_min = EXCLUDED.files_min,
           files_max = EXCLUDED.files_max,
@@ -288,12 +291,14 @@ def upsert_seed_tool_row(con, row: dict) -> dict:
 
 
 def catalog_contract_rows(con) -> list:
-    """全量 (tool_key, execution, accept_json, files_max, format_family)
-    rows — 不过滤任何行 (enabled/disabled、public/private/unlisted 全包含)。
-    startup stored contract invariant (accept 单形状 + tag + execution)
-    校验目标是全部存储行; 解析/判定属于 governance 层。"""
+    """全量 (tool_key, execution, accept_json, files_max, format_family,
+    body_format, body_placeholder_json) rows — 不过滤任何行 (enabled/
+    disabled、public/private/unlisted 全包含)。startup stored contract
+    invariant (accept 单形状 + tag + body 互斥 + execution) 校验目标是
+    全部存储行; 解析/判定属于 governance 层。"""
     return con.execute(
-        "SELECT tool_key, execution, accept_json, files_max, format_family"
+        "SELECT tool_key, execution, accept_json, files_max, format_family,"
+        " body_format, body_placeholder_json"
         " FROM platform_tools").fetchall()
 
 

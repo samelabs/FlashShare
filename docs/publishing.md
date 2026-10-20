@@ -38,10 +38,12 @@ The declaration and execution contract for tools published on 518.PLUS.
 | 字段 | 说明 |
 |---|---|
 | `execution` | 当前用户工具固定为 `http` |
-| `format_families` | **声明的 tag**（九键之一：image/document/data/text/audio/video/cad3d/archive/all），入库列 `format_family`；作用 = 前端图标表达 + 开发者自述，不约束不派生；accept 在所声明 tag 的格式分组里勾选（all 分组 = 平台格式边界）；纯文本工具不带 |
-| `accept` | **唯一执行契约，单形状**：文件工具必为非空 canonical 扩展名列表（在所选 tag 分组内勾选落库）；无 NULL=any 哨兵——"吃一切"的工具（如 share/zip_pack）物化全边界清单，展示层摘要为「全部格式」 |
+| `format_families` | **声明的 tag**（九键之一：image/document/data/text/audio/video/cad3d/archive/all），入库列 `format_family`；作用 = 前端图标表达 + 开发者自述，不约束不派生；accept 在所声明 tag 的格式分组里勾选（all 分组 = 平台格式边界）；正文工具不带 |
+| `accept` | **唯一执行契约，单形状**：文件工具必为非空 canonical 扩展名列表（在所选 tag 分组里勾选落库）；无 NULL=any 哨兵——"吃一切"的工具（如 share/zip_pack）物化全边界清单，展示层摘要为「全部格式」 |
 | `files_min` | 输入文件数下限，int ≥ 0（0 = 可不带文件调用）；缺省 1 |
-| `files_max` | 输入文件数上限，int 0..20；须 ≥ files_min；缺省 1。0 = 纯文本工具：无文件位，不带 format_families/accept，第一个 text 参数作为输入框 |
+| `files_max` | 输入文件数上限，int 0..20；须 ≥ files_min；缺省 1。0 = 正文工具：无文件位，不带 format_families/accept，必带 `body_format` |
+| `body_format` | 正文工具输入方式：`text`（非空 UTF-8 字符串，≤ 100,000 字符）或 `json`（任意合法 JSON 值含 null，禁 NaN/Infinity；规范序列化后 ≤ 100,000 字符）；调用时输入走 `source.body`。文件工具禁带此字段 |
+| `body_placeholder` | 正文输入占位（LocalizedText，每语言 ≤ 64 字符），可选；仅正文工具可携带 |
 | `outputs` | 产出类型非空子集 `["text","json","file"]`（声明工具可能返回哪些结果项）；缺省 `["file"]` |
 | `icon` | **不存在此字段**（见「图标语义」）。工具图标完全由类型派生——表达的是"这工具吃什么"，声明键与 DB 列均已删除 |
 | `param.key` | `^[a-z][a-z0-9_]{0,31}$`，同工具内唯一 |

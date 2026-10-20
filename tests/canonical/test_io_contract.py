@@ -162,15 +162,18 @@ try:
         "visibility": "public", "enabled": True})
     check("D1 min=0 declaration valid",
           good["inputs"]["files"]["min"] == 0, good)
-    text_only = validate_tool_declaration({
+    body_tool = validate_tool_declaration({
         "tool_key": f"{_u}t3", "tool_id": f"{_u}t3", "owner_id": None,
         "execution": "local",
         "label": {"en": "T"},
         "inputs": {"files": {"min": 0, "max": 0, "accept": None}},
+        "body_format": "text",
+        "body_placeholder": {"en": "Paste text"},
         "outputs": ["text"], "params": None,
         "visibility": "public", "enabled": True})
-    check("D1b text-only declaration (files 0..0) valid",
-          text_only["inputs"]["files"]["max"] == 0, text_only)
+    check("D1b body-tool declaration (files 0..0 + body_format) valid",
+          body_tool["inputs"]["files"]["max"] == 0
+          and body_tool["body_format"] == "text", body_tool)
     for bad, why in (
         ({"min": -1, "max": 1, "accept": None}, "min<0"),
         ({"min": 2, "max": 1, "accept": None}, "min>max"),
@@ -188,6 +191,78 @@ try:
             check(f"D2 {why} rejected", False, "accepted")
         except DeclarationError as exc:
             check(f"D2 {why} rejected", str(exc) == "bad_inputs", str(exc))
+    # 输入方式互斥 (body_format ↔ files window)
+    for extra, why in (
+        ({"body_format": None}, "files 0..0 without body_format"),
+        ({"body_format": "bogus"}, "body_format outside vocabulary"),
+        ({"body_format": "text", "format_family": "image"},
+         "body tool with tag"),
+    ):
+        decl = {"tool_key": f"{_u}t4", "tool_id": f"{_u}t4", "owner_id": None,
+                "execution": "local",
+                "label": {"en": "T"},
+                "inputs": {"files": {"min": 0, "max": 0, "accept": None}},
+                "outputs": ["text"], "params": None,
+                "visibility": "public", "enabled": True, **extra}
+        try:
+            validate_tool_declaration(decl)
+            check(f"D2b {why} rejected", False, "accepted")
+        except DeclarationError as exc:
+            check(f"D2b {why} rejected",
+                  str(exc) in ("bad_body_format", "bad_format_family"), str(exc))
+    for extra, why in (
+        ({"body_format": "text"}, "file tool with body_format"),
+        ({"body_placeholder": {"en": "x"}}, "file tool with placeholder"),
+    ):
+        decl = {"tool_key": f"{_u}t5", "tool_id": f"{_u}t5", "owner_id": None,
+                "execution": "local",
+                "label": {"en": "T"},
+                "format_family": "image",
+                "inputs": {"files": {"min": 1, "max": 1,
+                                     "accept": [".png"]}},
+                "outputs": ["file"], "params": None,
+                "visibility": "public", "enabled": True, **extra}
+        try:
+            validate_tool_declaration(decl)
+            check(f"D2c {why} rejected", False, "accepted")
+        except DeclarationError as exc:
+            check(f"D2c {why} rejected",
+                  str(exc) in ("bad_body_format", "bad_body_placeholder"),
+                  str(exc))
+    # 正文取值口径 (governance.body 单点)
+    from governance.body import (validate_body_value, canonical_json,
+                                 BodyValueError, BODY_MAX_CHARS)
+    check("D6a text body accepted verbatim",
+          validate_body_value("text", "hello") == "hello")
+    try:
+        validate_body_value("text", "")
+        check("D6b empty text body rejected", False, "accepted")
+    except BodyValueError as exc:
+        check("D6b empty text body rejected",
+              str(exc) == "err_body_required", str(exc))
+    try:
+        validate_body_value("text", "x" * (BODY_MAX_CHARS + 1))
+        check("D6c text body over limit rejected", False, "accepted")
+    except BodyValueError as exc:
+        check("D6c text body over limit rejected",
+              str(exc) == "err_body_too_long", str(exc))
+    check("D6d json null body is legal (key-presence semantics)",
+          validate_body_value("json", None) == "null")
+    check("D6e json canonical serialization (sorted/compact)",
+          canonical_json({"b": 2, "a": 1}) == '{"a":1,"b":2}')
+    check("D6f json str root canonical",
+          canonical_json("abc") == '"abc"')
+    try:
+        canonical_json(float("nan"))
+        check("D6g NaN body rejected", False, "accepted")
+    except BodyValueError as exc:
+        check("D6g NaN body rejected", str(exc) == "err_body_invalid",
+              str(exc))
+    try:
+        canonical_json([1, float("inf")])
+        check("D6h Infinity nested rejected", False, "accepted")
+    except BodyValueError:
+        check("D6h Infinity nested rejected", True)
     patch = validate_tool_patch({"multi": True})
     check("D3 multi is no longer declaration vocabulary (ignored key,"
           " never persisted)", "multi" not in patch, patch)

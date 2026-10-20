@@ -73,6 +73,8 @@ def seed_from_registry() -> dict:
             "label": t["label"],
             "desc": t.get("desc"),
             "format_family": t.get("tag"),
+            "body_format": t.get("body_format"),
+            "body_placeholder": t.get("body_placeholder"),
             "inputs": {"files": {
                 "min": int(t.get("files_min", 1)),
                 "max": int(t.get("files_max", 1)),
@@ -106,10 +108,12 @@ def _canonical_accept(raw: str | None) -> list | None:
 
 
 def validate_catalog_rows() -> None:
-    """Startup invariant: every platform_tools row's stored accept, tag and
-    execution must be the current contract. accept 单形状: 文件工具
-    (files_max>0) 必为非空 canonical ext 列表; 纯文本工具 (files_max=0)
-    无文件位 → NULL。tag: 文件工具必带, 纯文本工具必不带。execution:
+    """Startup invariant: every platform_tools row's stored accept, tag,
+    body columns and execution must be the current contract. accept 单形状:
+    文件工具 (files_max>0) 必为非空 canonical ext 列表; 正文工具
+    (files_max=0) 无文件位 → NULL。tag: 文件工具必带, 正文工具必不带。
+    输入方式互斥: 正文工具 body_format 必为 'text'|'json' 且不带
+    placeholder 之外的 body 列; 文件工具 body 两列恒 NULL。execution:
     canonical supply 词表 local|http。Violation aborts startup regardless
     of enabled/visibility — the catalog projection never guesses."""
     from governance.formats import parse_stored_accept
@@ -123,12 +127,12 @@ def validate_catalog_rows() -> None:
                 f"catalog invariant: tool {r['tool_key']} execution "
                 f"'{r['execution']}' outside the canonical vocabulary "
                 f"{_EXECUTIONS}")
-        text_only = int(r["files_max"]) == 0
-        if text_only and r["accept_json"] is not None:
+        body_tool = int(r["files_max"]) == 0
+        if body_tool and r["accept_json"] is not None:
             raise RuntimeError(
-                f"catalog invariant: text-only tool {r['tool_key']} carries "
+                f"catalog invariant: body tool {r['tool_key']} carries "
                 f"an accept list (no file slot)")
-        if not text_only and r["accept_json"] is None:
+        if not body_tool and r["accept_json"] is None:
             raise RuntimeError(
                 f"catalog invariant: file tool {r['tool_key']} has no accept "
                 f"list (single shape - no NULL=any sentinel)")
@@ -138,16 +142,32 @@ def validate_catalog_rows() -> None:
             raise RuntimeError(
                 f"catalog invariant: tool {r['tool_key']} accept_json "
                 f"violates the stored contract ({exc})") from None
-        # tag 不变量: 文件工具必带; 纯文本工具必不带
+        # tag 不变量: 文件工具必带; 正文工具必不带
         # (与供给点同口径 — 启动即拦, 不等请求期 tool_glyph KeyError 500)
         tag = r["format_family"]
-        if text_only and tag is not None:
+        if body_tool and tag is not None:
             raise RuntimeError(
-                f"catalog invariant: text-only tool {r['tool_key']} "
+                f"catalog invariant: body tool {r['tool_key']} "
                 f"carries a tag (no file slot)")
-        if not text_only and tag is None:
+        if not body_tool and tag is None:
             raise RuntimeError(
                 f"catalog invariant: file tool {r['tool_key']} has no tag")
+        # 输入方式互斥: body_format / body_placeholder_json
+        bf = r["body_format"]
+        if body_tool:
+            if bf not in ("text", "json"):
+                raise RuntimeError(
+                    f"catalog invariant: body tool {r['tool_key']} has no "
+                    f"body_format ('text'|'json' required)")
+        else:
+            if bf is not None:
+                raise RuntimeError(
+                    f"catalog invariant: file tool {r['tool_key']} carries "
+                    f"body_format (no body input)")
+            if r["body_placeholder_json"] is not None:
+                raise RuntimeError(
+                    f"catalog invariant: file tool {r['tool_key']} carries "
+                    f"body_placeholder (no body input)")
 
 
 def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
@@ -176,6 +196,10 @@ def row_to_item(row: dict, price: dict, owner_verified: bool = False) -> dict:
         "accept": accept,
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),
+        # 正文工具输入方式 + 占位 (契约字段; 文件工具恒 None)
+        "body_format": row.get("body_format"),
+        "body_placeholder": (json.loads(row["body_placeholder_json"])
+                             if row.get("body_placeholder_json") else None),
         "outputs": json.loads(row["outputs_json"]),
         "cost": int(price.get("cost") or 0),
     }

@@ -89,10 +89,12 @@ def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
 LOCAL_EXEC_TIMEOUT_S = 120
 
 
-async def _run_handler(pool, process_tool, tool_id, sources, params):
-    """worker 调用 (sources list, possibly empty); BrokenProcessPool
-    (worker 进程死亡) → 池重建 + 本 invocation 走 gate 失败收敛
-    (exact refund, terminal failed, 不自动重跑)。
+async def _run_handler(pool, process_tool, tool_id, sources, params,
+                       body=None):
+    """worker 调用 (sources list, possibly empty; body = 正文工具取值,
+    文件工具恒 None); BrokenProcessPool (worker 进程死亡) → 池重建 +
+    本 invocation 走 gate 失败收敛 (exact refund, terminal failed,
+    不自动重跑)。
     超时 (LOCAL_EXEC_TIMEOUT_S) → 池重建 + 旧池仍存活的 worker 显式
     terminate (shutdown 不杀在跑进程), 重抛 err_endpoint_timeout →
     既有超时码的退款收敛路径。"""
@@ -101,7 +103,7 @@ async def _run_handler(pool, process_tool, tool_id, sources, params):
     loop = asyncio.get_event_loop()
     try:
         fut = loop.run_in_executor(
-            pool, process_tool, tool_id, sources, params)
+            pool, process_tool, tool_id, sources, params, body)
         return await asyncio.wait_for(fut, LOCAL_EXEC_TIMEOUT_S)
     except BrokenProcessPool as exc:
         # worker 进程死亡 (submit 或 await 阶段): CAS 重建池 (同一 broken
@@ -124,10 +126,11 @@ async def _run_handler(pool, process_tool, tool_id, sources, params):
 
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,
-                        delivery):
+                        delivery, body=None):
     """local execution: read 0..N sources (bounded), run the handler in
     the worker (items protocol), stage every file item to Gokapi, and
-    return StagedItems — settlement belongs to gate._finish."""
+    return StagedItems — settlement belongs to gate._finish.
+    body = 正文工具取值 (文件工具 None): 直接随参数进 worker。"""
     expiry_days = delivery["expiry_days"]
     allowed_downloads = delivery["allowed_downloads"]
 
@@ -155,7 +158,7 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
                         len(data)))
 
     out = await _run_handler(pool, process_tool, tool["id"],
-                             sources, params)
+                             sources, params, body)
     if not isinstance(out, dict) or not isinstance(out.get("items"), list):
         raise ToolError("tool_failed")
     _enforce_outputs(tool, out["items"])
@@ -204,11 +207,14 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         orig_size=len(sources[0][0]) if len(sources) == 1 else None)
 
 
-async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
+async def execute_remote(request_ctx, tool, uploads, params, user, delivery,
+                         body=None, canonical_body=None):
     """remote (http) execution — the ONE southbound contract (IO-1):
 
       request  {"files": [{"filename", "content_type", "size", "url"}],
-                "params": {...}}
+                "params": {...}}           (文件工具)
+      request  <正文取值> (Content-Type 按声明; params 编码进查询参数)
+                                           (正文工具)
       response {"items": [{"kind":"text","text"} | {"kind":"json","data"}
                 | {"kind":"file","filename","content_type",
                    "data_b64" | "url"}]}
@@ -254,7 +260,8 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
     loop = asyncio.get_event_loop()
     try:
         out = await loop.run_in_executor(
-            None, _remote.drive_http, decl, sources, params, auth_headers, trusted)
+            None, _remote.drive_http, decl, sources, params, auth_headers,
+            trusted, body, canonical_body)
     except _remote.RemoteError as exc:
         logger.warning("remote tool %s failed: %s", tool["id"], exc)
         code = {"ssrf_blocked": "err_endpoint_blocked",

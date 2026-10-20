@@ -36,38 +36,63 @@ from app.web_auth import client_ip  # single read point (trusted proxy chain)
 
 from . import ExecutionError
 from .gate import run as gate_run
-from .invocation import parse_tool_invocation, InvocationError
+from .invocation import (parse_tool_invocation, InvocationError,
+                         BODY_ABSENT)
 from .source import resolve_upload
 
 
-def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
+def preflight(user: dict, tool_id: str, delivery: dict, params: dict,
+              body=BODY_ABSENT):
     """Pre-gate validation of one canonical invocation's non-source parts:
-    delivery entitlement → tool resolve → stored contract → params decl.
+    delivery entitlement → tool resolve → stored contract → params decl →
+    body 取值口径.
 
     Single authority for dispatch_execute AND the MCP adapter (which runs
     it BEFORE any source ingress, so a request this rejects never uploads
     or claims quota). Pure: no claim, no charge, no network.
 
-    Returns (tool, declared_params | None, None, None) on success, where
-    declared_params is the enforce_params_decl result (None = the tool
-    declares no params, params pass through); or (None, None, error_body,
-    status) on denial."""
+    body: BODY_ABSENT (文件输入 / MCP 无 files 的文件工具调用) 或正文
+    取值本身 (含 None = json null)。返回 canonical 串 (正文) 或 None。
+
+    Returns (tool, declared_params | None, canonical_body | None, None,
+    None) on success, where declared_params is the enforce_params_decl
+    result (None = the tool declares no params, params pass through);
+    or (None, None, None, error_body, status) on denial."""
     # delivery entitlement authorization — 在 protocol validity 之后、
     # tool resolve/params/gate 之前。entitlement denial 是 403 语义,
     # 与 protocol invalid (422) 分开, 不合并回 validate_delivery。
     from governance.entitlements import check_delivery
     denial = check_delivery(user["id"], delivery)
     if denial:
-        body = {"ok": False}
-        body.update(denial)
-        return None, None, body, 403
+        body_ = {"ok": False}
+        body_.update(denial)
+        return None, None, None, body_, 403
 
     tool, terr = resolve_tool(tool_id, user["id"])
     if terr:
         if terr == "disabled":
-            return None, None, {"ok": False, "error": "tool_disabled"}, 403
-        return None, None, {"ok": False, "error": "tool_not_found"}, 404
+            return None, None, None, {"ok": False, "error": "tool_disabled"}, 403
+        return None, None, None, {"ok": False, "error": "tool_not_found"}, 404
     tool["id"] = tool["tool_key"]
+
+    # 输入方式互斥 (声明 vs 调用形态): 正文工具必须带 body, 文件工具
+    # 不得带 — claim 之前受控 422, 不落 tool_call。
+    tool_body_format = tool.get("body_format")
+    if tool_body_format:
+        if body is BODY_ABSENT:
+            return None, None, None, {"ok": False,
+                                      "error": "invalid_request"}, 422
+        from governance.body import validate_body_value, BodyValueError
+        try:
+            canonical_body = validate_body_value(tool_body_format, body)
+        except BodyValueError as exc:
+            return None, None, None, {"ok": False,
+                                      "error": str(exc)}, 422
+    else:
+        if body is not BODY_ABSENT:
+            return None, None, None, {"ok": False,
+                                      "error": "invalid_request"}, 422
+        canonical_body = None
 
     # Stored-contract validation BEFORE the metering gate, via THE
     # single stored parser (formats.parse_stored_accept): SQL NULL = any;
@@ -82,7 +107,8 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
         try:
             parse_stored_accept(tool["accept_json"])
         except (KeyError, TypeError, ValueError):
-            return None, None, {"ok": False, "error": "tool_unavailable"}, 503
+            return None, None, None, {"ok": False,
+                                      "error": "tool_unavailable"}, 503
 
     # Stored execution class: exactly the canonical supply vocabulary
     # (local | http). Anything else — including the retired 'mcp' notion —
@@ -91,7 +117,7 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
     # local fallback. Mirrors the startup catalog invariant.
     from governance.tool_supply import _EXECUTIONS
     if tool.get("execution") not in _EXECUTIONS:
-        return None, None, {"ok": False, "error": "tool_unavailable"}, 503
+        return None, None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
     # Stored outputs declaration : the runtime enforcement point
     # (orchestrator) parses the same stored JSON — a corrupt declaration
@@ -101,7 +127,7 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
     try:
         declared_outputs(tool)
     except OutputsError:
-        return None, None, {"ok": False, "error": "tool_unavailable"}, 503
+        return None, None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
     # canonical params 是唯一参数事实源 — default 由 enforce_params_decl
     # 注入。delivery 属 invocation 边界字段, 永不出现在 params。
@@ -112,7 +138,7 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
         # stored-contract corruption: a broken declaration must NEVER be
         # silently treated as "no declaration" (free passthrough) — the
         # call is refused before any claim/charge/network
-        return None, None, {"ok": False, "error": "tool_unavailable"}, 503
+        return None, None, None, {"ok": False, "error": "tool_unavailable"}, 503
 
     # tool modes v3 M4: 按 params_json 声明校验+剥离 (来源无关, 单点在此)。
     # params 声明是可选能力: 无声明的工具 params 自由直传 — 但序列化
@@ -120,18 +146,19 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict):
     if decl:
         from governance.tool_params import enforce_params_decl, ParamsValueError
         try:
-            return tool, enforce_params_decl(decl, params), None, None
+            return (tool, enforce_params_decl(decl, params),
+                    canonical_body, None, None)
         except ParamsValueError as exc:
-            return None, None, {"ok": False, "error": str(exc),
-                                "field": exc.field}, 422
+            return None, None, None, {"ok": False, "error": str(exc),
+                                      "field": exc.field}, 422
     from governance.tool_params import TEXT_PARAM_MAX_CHARS
     try:
         params_len = len(_json.dumps(params, ensure_ascii=False))
     except (TypeError, ValueError):
-        return None, None, {"ok": False, "error": "invalid_request"}, 422
+        return None, None, None, {"ok": False, "error": "invalid_request"}, 422
     if params_len > TEXT_PARAM_MAX_CHARS:
-        return None, None, {"ok": False, "error": "param_too_long"}, 422
-    return tool, None, None, None
+        return None, None, None, {"ok": False, "error": "param_too_long"}, 422
+    return tool, None, canonical_body, None, None
 
 
 def source_count_error(tool: dict, n: int) -> str | None:
@@ -180,8 +207,9 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     except InvocationError:
         return None, {"ok": False, "error": "invalid_request"}, 422
 
-    tool, declared, err_body, err_status = preflight(
-        user, inv.tool_id, inv.delivery, inv.params)
+    body = inv.body if inv.has_body() else BODY_ABSENT
+    tool, declared, canonical_body, err_body, err_status = preflight(
+        user, inv.tool_id, inv.delivery, inv.params, body)
     if err_body is not None:
         return None, err_body, err_status
 
@@ -189,12 +217,37 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     if declared is not None:
         params.clear()
         params.update(declared)
+    # 正文口径注入: 指纹 (gate) 与南向传输 (P2) 用同一规范串
+    inv.body_format = tool.get("body_format")
 
     request_ctx = {"ip": client_ip(request)}
 
     async def orchestrate():
-        # ── source resolve: 只认 source.files[] ──
-        # multi=false: len(files) 必须 == 1; multi=true: parser 已保证 1..20。
+        # ── source resolve: 只认 source.files[] / source.body ──
+        # 正文工具: parser 已保证 files 空且 body 在 preflight 过口径。
+        if inv.has_body():
+            from .orchestrator import execute_local, execute_remote
+            from tools import ToolError as _TE
+            _exec = tool.get("execution")
+            if _exec == "http":
+                try:
+                    return await execute_remote(
+                        request_ctx, tool, [], params, user, inv.delivery,
+                        body=inv.body, canonical_body=canonical_body)
+                except _TE as exc:
+                    raise ExecutionError(str(exc)) from exc
+            if process_tool is None or pool is None:
+                from .pool import get_pool, default_process_tool
+                _pt, _pl = default_process_tool(), get_pool()
+            else:
+                _pt, _pl = process_tool, pool
+            try:
+                return await execute_local(
+                    request_ctx, tool, [], params, user, _pt, _pl,
+                    inv.delivery, body=inv.body)
+            except _TE as exc:
+                raise ExecutionError(str(exc)) from exc
+
         uploads = []
         count_err = source_count_error(tool, len(inv.files))
         if count_err:

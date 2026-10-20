@@ -311,7 +311,8 @@ try:
     _st, _h, _d, _sc = _req("POST", "/api/usertools", {
         "label": f"Num {_u}",
         "url": "https://93.184.216.34/x", "timeout_s": 30,
-        "files_min": 0, "files_max": 0, "outputs": ["text"],
+        "format_families": "image", "accept": [".png"],
+        "files_min": 1, "files_max": 1, "outputs": ["text"],
         "params": [{"key": "n", "type": "number", "label": "N",
                     "min": 0, "max": 10}], "cost": 0},
         {"Content-Type": "application/json", "Cookie": ck})

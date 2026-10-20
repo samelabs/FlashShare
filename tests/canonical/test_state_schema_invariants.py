@@ -501,22 +501,102 @@ check("D1 文件工具缺 tag → 启动不变量报错", _d1)
 with db() as con:
     con.execute("delete from platform_tools where tool_key=%s", (f"ssnotag_{_u}",))
 
-# D2: 纯文本工具带 tag → 启动不变量 fail loud
+# D2: 正文工具带 tag → 启动不变量 fail loud
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " body_format, files_min, files_max, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
+        " NULL, 'image', 'text', 0, 0, %s, %s)",
+        (f"sstexttag_{_u}", f"sstexttag_{_u}", _json.dumps({"en": "TT"}), ts, ts))
+try:
+    _vcr(); _d2 = False
+except RuntimeError as _e:
+    _d2 = "carries a tag" in str(_e)
+check("D2 正文工具带 tag → 启动不变量报错", _d2)
+with db() as con:
+    con.execute("delete from platform_tools where tool_key=%s", (f"sstexttag_{_u}",))
+
+# D2b: 正文工具缺 body_format → fail loud
 with db() as con:
     con.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
         " label_json, visibility, enabled, accept_json, format_family,"
         " files_min, files_max, created_at, updated_at)"
         " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
-        " NULL, 'image', 0, 0, %s, %s)",
-        (f"sstexttag_{_u}", f"sstexttag_{_u}", _json.dumps({"en": "TT"}), ts, ts))
+        " NULL, NULL, 0, 0, %s, %s)",
+        (f"ssnobody_{_u}", f"ssnobody_{_u}", _json.dumps({"en": "NB"}), ts, ts))
 try:
-    _vcr(); _d2 = False
+    _vcr(); _d2b = False
 except RuntimeError as _e:
-    _d2 = "carries a tag" in str(_e)
-check("D2 纯文本工具带 tag → 启动不变量报错", _d2)
+    _d2b = "body_format" in str(_e)
+check("D2b 正文工具缺 body_format → 启动不变量报错", _d2b)
 with db() as con:
-    con.execute("delete from platform_tools where tool_key=%s", (f"sstexttag_{_u}",))
+    con.execute("delete from platform_tools where tool_key=%s", (f"ssnobody_{_u}",))
+
+# D2c: 文件工具带 body_format → fail loud
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " body_format, files_min, files_max, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
+        " '[\".png\"]', 'image', 'json', 1, 1, %s, %s)",
+        (f"ssfilebody_{_u}", f"ssfilebody_{_u}", _json.dumps({"en": "FB"}), ts, ts))
+try:
+    _vcr(); _d2c = False
+except RuntimeError as _e:
+    _d2c = "body_format" in str(_e)
+check("D2c 文件工具带 body_format → 启动不变量报错", _d2c)
+with db() as con:
+    con.execute("delete from platform_tools where tool_key=%s", (f"ssfilebody_{_u}",))
+
+# D2d: 文件工具带 body_placeholder → fail loud
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " body_placeholder_json, files_min, files_max, created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
+        " '[\".png\"]', 'image', %s, 1, 1, %s, %s)",
+        (f"ssfileph_{_u}", f"ssfileph_{_u}", _json.dumps({"en": "FP"}),
+         _json.dumps({"en": "hint"}), ts, ts))
+try:
+    _vcr(); _d2d = False
+except RuntimeError as _e:
+    _d2d = "body_placeholder" in str(_e)
+check("D2d 文件工具带 body_placeholder → 启动不变量报错", _d2d)
+with db() as con:
+    con.execute("delete from platform_tools where tool_key=%s", (f"ssfileph_{_u}",))
+
+# D2e: 合法正文行 (files 0..0 + body_format + placeholder) → 通过;
+# 同一行非法 body_format 值被 DB CHECK 拒绝
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " body_format, body_placeholder_json, files_min, files_max,"
+        " created_at, updated_at)"
+        " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
+        " NULL, NULL, 'text', %s, 0, 0, %s, %s)",
+        (f"ssbody_{_u}", f"ssbody_{_u}", _json.dumps({"en": "BD"}),
+         _json.dumps({"en": "Paste text"}), ts, ts))
+try:
+    _vcr(); _d2e = True
+except RuntimeError as _e:
+    _d2e = False
+check("D2e 合法正文行 (text + placeholder) → 启动不变量通过", _d2e)
+check("D2f body_format 词表外 → DB CHECK reject",
+      _db_rejects(
+          "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+          " label_json, visibility, enabled, files_min, files_max,"
+          " body_format, created_at, updated_at)"
+          " values (%s, NULL, %s, 'local', %s, 'public', TRUE, 0, 0,"
+          " 'xml', %s, %s)",
+          (f"ssbadbf_{_u}", f"ssbadbf_{_u}", _json.dumps({"en": "BX"}), ts, ts)))
+with db() as con:
+    con.execute("delete from platform_tools where tool_key=%s", (f"ssbody_{_u}",))
 
 # D3: seed 撞上同 key 社区行 → RuntimeError, 社区行不被改写
 _mkey = f"sscollide_{_u}"

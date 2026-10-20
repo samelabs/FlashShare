@@ -621,6 +621,10 @@ _SCHEMA_SQL = (
       format_family  TEXT REFERENCES tags(key),
                                            -- 声明的 tag (作者表达 + 图标来源);
                                            -- 纯文本工具 (files_max=0) 不带
+      body_format    TEXT,                   -- 正文工具输入方式 'text'|'json';
+                                           -- 文件工具 (files_max>0) 恒 NULL
+      body_placeholder_json TEXT,            -- 正文输入占位 (LocalizedText);
+                                           -- 仅正文工具可携带
       files_min      INT NOT NULL DEFAULT 1, -- input files lower bound (0 = text-only tools)
       files_max      INT NOT NULL DEFAULT 1, -- input files upper bound (<= 20)
       outputs_json   TEXT NOT NULL DEFAULT '["file"]',
@@ -630,6 +634,8 @@ _SCHEMA_SQL = (
       endpoint_json  TEXT,                   -- http execution binding (url/timeout/auth)
       params_json    TEXT,                   -- typed params declaration
       CONSTRAINT platform_tools_execution_ck CHECK (execution IN ('local','http')),
+      CONSTRAINT platform_tools_body_format_ck
+        CHECK (body_format IS NULL OR body_format IN ('text','json')),
       enabled        BOOLEAN NOT NULL DEFAULT TRUE,
       trusted        BOOLEAN NOT NULL DEFAULT FALSE,
       created_at     BIGINT NOT NULL,

@@ -53,6 +53,10 @@ def _public_item(row: dict) -> dict:
         "accept": json.loads(row["accept_json"]) if row.get("accept_json") else None,
         # 声明的 tag 原文 (契约字段): 编辑回填直接消费它, 不从 accept 重推
         "format_family": row.get("format_family"),
+        # 正文工具输入方式 + 占位 (编辑回填; 文件工具恒 None)
+        "body_format": row.get("body_format"),
+        "body_placeholder": (json.loads(row["body_placeholder_json"])
+                             if row.get("body_placeholder_json") else None),
         # stored window verbatim — files_min 0 (text-only tools) is legal
         "files_min": int(row["files_min"]),
         "files_max": int(row["files_max"]),
