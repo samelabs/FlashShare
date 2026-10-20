@@ -309,7 +309,7 @@
 .param-row-head input, .param-row-head select { padding: 8px 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; min-width: 0; }
 .param-row-head .pr-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pr-req { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
-.pr-del, .pr-opt-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; }
+.pr-del, .pr-opt-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; padding: 6px 10px; font-size: 13px; }
 @media (hover:hover) and (pointer:fine) { .pr-del:hover, .pr-opt-del:hover { color: var(--danger); } }
 .param-row-body { margin-top: 10px; }
 .pr-opt { display: grid; grid-template-columns: 140px 1fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
@@ -338,7 +338,10 @@
 .fam-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 /* 族胶囊在 pub-grid 内, 须压过 .pub-grid label (0,1,1) 的纵向规范:
    两段选择器 (0,2,0) 按类通道胜出 */
-.pub-grid .fam-chip { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--line-2); border-radius: 99px; padding: 5px 13px 5px 6px; font-size: 13px; font-weight: 600; color: var(--ink-3); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
+.pub-grid .fam-chip { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--line-2); border-radius: var(--r-full); padding: 5px 13px 5px 6px; font-size: 13px; font-weight: 600; color: var(--ink-3); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
+/* 无 glyph 瓦片的族胶囊 (扩展名/输出类型): 左右对称垫, 不吃基类的 6px 左垫。
+   单一机制覆盖一切无瓦片族胶囊, 禁再按容器逐处补 13px */
+.pub-grid .fam-chip:not(:has(.fam-glyph)) { padding: 5px 13px; }
 .fam-chip input { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .fam-chip span { white-space: nowrap; }
 .fam-chip:has(input:checked) { border-color: var(--ink-3); background: var(--sunk); color: var(--ink); }
@@ -348,8 +351,6 @@
 .fam-glyph { width: 22px; height: 22px; border-radius: 7px; background: var(--sunk); display: grid; place-items: center; flex: none; }
 .fam-chip .fam-glyph svg { width: 13px; height: 13px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .fam-chip:has(input:checked) .fam-glyph { background: var(--card); }
-/* 精确格式小胶囊无瓦片, 左右 padding 对称 (不吃族胶囊的 6px 左垫) */
-.fam-chip.ext-chip { padding-left: 13px; }
 .fam-hint { flex-basis: 100%; font-size: 12px; color: var(--ink-2); line-height: 1.5; letter-spacing: .01em; }
 /* 4C-2: exact formats 行与族行留间距; multi 标准声明控件全宽 */
 .ext-grid { margin-top: 8px; }
@@ -737,8 +738,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-page .pub-outputs { display: flex; flex-direction: column; gap: 8px; }
 .pub-outputs-label { font-size: 13px; font-weight: 650; color: var(--ink); }
 .pub-outputs-checks { display: flex; gap: 10px; flex-wrap: wrap; }
-/* 输出类型胶囊无 glyph 瓦片 — 左右 padding 对称 (不吃族胶囊的 6px 左垫) */
-.pub-outputs-checks .fam-chip { padding-left: 13px; }
 .pub-hint { font-style: normal; font-size: 12px; color: var(--ink-2); }
 
 /* ═══ IO-3a: 首页 — 选工具 → 输入 → 结果 ═══ */

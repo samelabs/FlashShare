@@ -20,13 +20,8 @@ select { width: auto; margin-top: 0; }
    Primary fill = deep crimson with a subtle vertical shade and inner
    highlight (Stripe-style material); the neon --brand is an accent,
    not a fill. */
-/* button 元素基线 = 结构性 baseline (cursor/布局/tap), 不携带 CTA 视觉。
-   CTA 红渐变/阴影/全圆角只经 .btn-primary / .btn-b / .x-login 显式获取。
-   裸 button 无 .btn 类时 = primary 缺省(站内 legacy 单一入口按钮), 但任何
-   .btn-secondary / .btn-q / .btn-s 都不残留 primary 阴影或圆角。 */
-.x-login { border: 0; background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); transition: opacity var(--ease), box-shadow var(--ease), filter var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
-button:not(.btn):not(.lang-option):not(.lang-button) { border: 0; background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); transition: opacity var(--ease), box-shadow var(--ease), filter var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
-@media (hover:hover) and (pointer:fine) { button:not(.btn):hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.16); } }
+.x-login, button { border: 0; background: linear-gradient(180deg, var(--brand-600), var(--brand-deep)); color: var(--brand-ink); border-radius: var(--r-full); padding: 11px 22px; font-size: var(--fs-base); font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 40px; box-shadow: var(--sh-1), inset 0 1px 0 rgba(255, 255, 255, 0.16); transition: opacity var(--ease), box-shadow var(--ease), filter var(--ease), transform var(--ease-in); -webkit-tap-highlight-color: transparent; }
+@media (hover:hover) and (pointer:fine) { button:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.16); } }
 .x-login:active, button:active { transform: scale(0.96); }
 .user-dropdown a:active, .user-dropdown button:active { transform: none; } /* menu rows must not wobble */
 @media (hover:hover) and (pointer:fine) { .x-login:hover { background: linear-gradient(180deg, var(--brand-deep), var(--brand-deep-strong)); } }
@@ -56,6 +51,8 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   transition: background var(--ease), border-color var(--ease),
     color var(--ease), transform var(--ease-in), opacity var(--ease);
   background: none; color: var(--ink);
+  /* 元素基线带 CTA 阴影; 非主行动变体在此显式归零, 主行动自带阴影声明 */
+  box-shadow: none;
 }
 .btn:active { transform: scale(0.97); }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.55; cursor: default; pointer-events: none; }

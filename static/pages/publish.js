@@ -52,7 +52,7 @@ function renderExtGrid() {
   const box = document.getElementById("extGrid");
   if (!selectedFam) { box.innerHTML = ""; return; }
   box.innerHTML = _famExts(selectedFam).map(e =>
-    '<label class="fam-chip ext-chip"><input type="checkbox" value="' + e + '"' +
+    '<label class="fam-chip"><input type="checkbox" value="' + e + '"' +
     (selectedExts.has(e) ? " checked" : "") + "><span>" + _extLabel(e) +
     "</span></label>").join("");
 }
