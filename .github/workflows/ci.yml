@@ -45,6 +45,21 @@ jobs:
         run: python tools/guard_css_tokens.py
       - name: Tool diet icon contract
         run: python tests/ci/test_tool_diet_icons.py
+      - name: Canonical suite wiring guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=""
+          while IFS= read -r path; do
+            suite="$(basename "$path")"
+            if ! grep -qF "run: python tests/canonical/${suite}" .github/workflows/ci.yml; then
+              missing="${missing} ${suite}"
+            fi
+          done < <(git ls-files 'tests/canonical/test_*.py')
+          if [ -n "$missing" ]; then
+            echo "canonical suites without a run step in .github/workflows/ci.yml:${missing}"
+            exit 1
+          fi
       - name: Source-of-truth guards
         shell: bash
         run: |
@@ -371,6 +386,22 @@ jobs:
             python tests/canonical/test_system_tools.py
           expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
             python tests/canonical/test_system_tools.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_user_tool_tx_atomicity.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_user_tool_tx_atomicity.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_preview_mime_admission.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_preview_mime_admission.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_param_declaration_bounds.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_param_declaration_bounds.py
+          expect_exit_2 env -u TEST_DB_URL FLASHSHARE_TEST_PORT=8100 \
+            python tests/canonical/test_credential_edge_states.py
+          expect_exit_2 env FLASHSHARE_TEST_PORT=8000 TEST_DB_URL="$TEST_DB_URL" \
+            python tests/canonical/test_credential_edge_states.py
           # semantic guards (do not replace behavior tests):
           # orchestrator is staging-only and holds no source-deletion
           # authority; finalize_call_ok is the single tool_calls.upload_id
@@ -552,6 +583,8 @@ jobs:
 
       - name: B2b-2 identity closure canonical
         run: python tests/canonical/test_b2b2_identity.py
+      - name: B2b-1 economy canonical
+        run: python tests/canonical/test_b2b1_economy.py
       - name: C1 mechanism closure canonical
         run: python tests/canonical/test_c1_closure.py
       - name: C2a governance closure canonical
@@ -635,6 +668,18 @@ jobs:
 
       - name: SEO meta / share cards / sitemap / PWA canonical
         run: python tests/canonical/test_seo_meta.py
+
+      - name: User tool tx atomicity canonical
+        run: python tests/canonical/test_user_tool_tx_atomicity.py
+
+      - name: Preview MIME admission canonical
+        run: python tests/canonical/test_preview_mime_admission.py
+
+      - name: Param declaration bounds canonical
+        run: python tests/canonical/test_param_declaration_bounds.py
+
+      - name: Credential edge states canonical
+        run: python tests/canonical/test_credential_edge_states.py
 
       - name: Failure diagnostics
         if: failure()

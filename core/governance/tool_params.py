@@ -98,9 +98,23 @@ def validate_params_decl(raw) -> list:
                     item["default"] = float(p["default"])
             except (TypeError, ValueError):
                 raise ParamsDeclError("bad_param_default")
+            # float() happily accepts inf/nan — those are not numbers a
+            # schema can carry: JSON serialization of the declaration
+            # would fail downstream (catalog projections, MCP tools/list)
+            if not all(math.isfinite(item[k]) for k in ("min", "max", "default")
+                       if item.get(k) is not None):
+                raise ParamsDeclError("bad_param_default")
             if (item.get("min") is not None and item.get("max") is not None
                     and item["min"] > item["max"]):
                 raise ParamsDeclError("bad_param_default")
+            # default must satisfy its own bounds: execution injects the
+            # default verbatim (no re-validation there), so an
+            # out-of-range default would sail straight into the handler
+            if item.get("default") is not None:
+                if item.get("min") is not None and item["default"] < item["min"]:
+                    raise ParamsDeclError("bad_param_default")
+                if item.get("max") is not None and item["default"] > item["max"]:
+                    raise ParamsDeclError("bad_param_default")
         elif ptype == "boolean":
             if p.get("default") is not None:
                 item["default"] = bool(p["default"])

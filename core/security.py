@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 
 import bcrypt
 
@@ -171,14 +172,19 @@ def now_ts() -> int:
     return int(_time.time())
 
 
-def _fetch_sig(user_id: int, gokapi_id: str, expires_at: int) -> str:
-    msg = f"fetch:{user_id}:{gokapi_id}:{expires_at}".encode()
+def _fetch_sig(user_id: int, gokapi_id: str, expires_at: int, nonce: str) -> str:
+    msg = f"fetch:{user_id}:{gokapi_id}:{expires_at}:{nonce}".encode()
     return hmac.new(SESSION_SECRET.encode(), msg, hashlib.sha256).hexdigest()[:40]
 
 
 def sign_fetch_token(user_id: int, gokapi_id: str, expires_in: int = 600) -> str:
     expires_at = now_ts() + int(expires_in)
-    return f"{expires_at}.{_fetch_sig(user_id, gokapi_id, expires_at)}"
+    # per-signing nonce: identity must be (operation, source), not
+    # (user, file, second) — two signings of the same file within one
+    # second used to mint the SAME token and consume each other's
+    # one-time redemption (same-call repeats, same-second retries).
+    nonce = secrets.token_hex(8)
+    return f"{expires_at}.{nonce}.{_fetch_sig(user_id, gokapi_id, expires_at, nonce)}"
 
 
 # token -> expires_at. Single-worker state is sufficient for this short-lived
@@ -189,14 +195,14 @@ _REDEEMED_FETCH: dict[str, int] = {}
 def verify_fetch_token(token: str, user_id: int, gokapi_id: str) -> bool:
     """True exactly once while this process is alive and the token is valid."""
     try:
-        expires_at_str, sig = token.split(".", 1)
+        expires_at_str, nonce, sig = token.split(".", 2)
         expires_at = int(expires_at_str)
     except (ValueError, AttributeError):
         return False
     ts = now_ts()
     if expires_at < ts:
         return False
-    if not hmac.compare_digest(sig, _fetch_sig(user_id, gokapi_id, expires_at)):
+    if not hmac.compare_digest(sig, _fetch_sig(user_id, gokapi_id, expires_at, nonce)):
         return False
 
     # Purge only markers whose token validity has ended. Removing a still-live

@@ -203,13 +203,18 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             if row.get("status") == "suspended":
                 raise ValueError("err_user_suspended")
             try:
+                con.execute("SAVEPOINT x_bind_race")
                 users_repo.bind_x(con, bind_user_id, x_id, x_username,
                                   x_display_name, avatar_url,
                                   x_profile_url, ts)
             except _UniqueViolation:
                 # two users raced to bind the same X identity: the loser
                 # hits the x_user_id UNIQUE constraint — same typed
-                # contract as the sequential check, never a 500.
+                # contract as the sequential check, never a 500. The
+                # failed statement aborted the transaction: recover to
+                # the savepoint BEFORE querying, or the lookup itself
+                # dies with InFailedSqlTransaction.
+                con.execute("ROLLBACK TO SAVEPOINT x_bind_race")
                 winner = users_repo.by_x_user_id(con, x_id)
                 if winner is not None and winner["id"] != bind_user_id:
                     raise ValueError("err_x_bound_other")
@@ -230,6 +235,7 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             suffix += 1
 
         try:
+            con.execute("SAVEPOINT x_login_race")
             row = users_repo.insert_x_user(
                 con, username, x_display_name or username, avatar_url,
                 x_id, x_username, x_display_name, x_profile_url, ts)
@@ -238,6 +244,9 @@ def upsert_x_user(x_user: dict, bind_user_id: int | None = None) -> int:
             # two concurrent first logins of the SAME X identity: the
             # second INSERT loses the x_user_id UNIQUE race — converge
             # to the existing account instead of failing the login.
+            # The aborted transaction must be recovered before the
+            # convergence lookup, or it raises InFailedSqlTransaction.
+            con.execute("ROLLBACK TO SAVEPOINT x_login_race")
             existing = users_repo.by_x_user_id(con, x_id)
             if existing is not None:
                 return existing["id"]
