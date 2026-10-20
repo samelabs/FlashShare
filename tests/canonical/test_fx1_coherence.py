@@ -121,7 +121,8 @@ class _ToolHandler(http.server.BaseHTTPRequestHandler):
                  for f in files] or [{"kind": "text", "text": "no files"}]
         out = _json.dumps({"items": items}).encode()
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type",
+                         "application/vnd.518.items+json")
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self.wfile.write(out)
@@ -365,7 +366,11 @@ try:
         delivery = {"expiry_days": 1, "allowed_downloads": 5}
         client_ref = f"x4-{_u}"
 
-    def _ptool(tool_id, sources, params):
+        @staticmethod
+        def has_body():
+            return False
+
+    def _ptool(tool_id, sources, params, body=None):
         # in-process worker equivalent: this process owns the registered
         # handler (the process pool worker cannot see test registrations)
         return _two_files_handler({"sources": [

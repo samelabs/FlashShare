@@ -91,9 +91,16 @@
     <label>最少文件数（0 = 可不带文件）
       <input class="sl-input" type="number" name="files_min" value="1" min="0" max="20">
     </label>
-    <label>最多文件数（0-20，0 = 纯文本工具）
+    <label>最多文件数（0-20，0 = 正文工具）
       <input class="sl-input" type="number" name="files_max" value="1" min="0" max="20">
     </label>
+    <label>正文输入方式（最多文件数 = 0 时必填）
+      <select class="sl-input" name="body_format">
+        <option value="text">text（纯文本）</option>
+        <option value="json">json（任意 JSON 值）</option>
+      </select>
+    </label>
+    <label>正文占位（可选，仅正文工具） <input class="sl-input" type="text" name="body_placeholder" maxlength="64"></label>
     <div class="sl-modal-checks">
       <label class="check"><input type="checkbox" name="out_text"> 文本输出</label>
       <label class="check"><input type="checkbox" name="out_json"> JSON 输出</label>

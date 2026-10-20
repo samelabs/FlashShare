@@ -1,17 +1,19 @@
 // ── tool-input: the composer (首页 / 工具页同一组件, v2 视觉) ────
-// 按所选工具的声明呈现: 主 text 参数 = 输入框正文, 其余参数进参数区
-// (enum→分段按钮 / number→数字输入 / boolean→开关 / text→文本域);
-// 文件位 (files_max>0): 空态整块上传区, 有文件时行尾"+ 添加"小块
-// (达上限即隐), 拖放 / 粘贴恒可入; 纯文本工具 (files_max=0) 呈对话
-// 框形态: 单个自动增高输入框 (1..8 行, 封顶后内部滚动), 发送按钮在
-// 输入框右下角内侧。参数超过 3 个: 前 3 个直显, 其余收进"更多参数"。
+// 按所选工具的声明呈现: 输入方式 = 声明字段 — 文件工具 (files_max>0)
+// 空态整块上传区 + 参数区; 正文工具 (files_max=0 + body_format) 按声明
+// 呈输入框: text = 对话框形态 (1..8 行自动增高, 发送按钮右下角内侧),
+// json = 带校验的编辑框 (运行前 JSON.parse, 失败内联报错)。参数
+// (enum→分段按钮 / number→数字输入 / boolean→开关 / text→文本域)
+// 全部进参数区 — 不再有"第一个 text 参数 = 输入框"的位置约定。
+// (files_max>0): 有文件时行尾"+ 添加"小块 (达上限即隐), 拖放 / 粘贴
+// 恒可入。参数超过 3 个: 前 3 个直显, 其余收进"更多参数"。
 // 校验走与后端同一报错边界 (统一内联提示, 不用 alert):
 //   文件数越窗 → err_file_count {min}{max}; 格式 → err_format_not_supported
 //   (中性文案, 全局 toast 提醒); 超单文件上限 → err_file_too_large {mb}
 //   (选择时前端预检, 超限不发请求);
-//   必填参数 → param_required。
+//   必填参数 → param_required; 正文 → err_body_required / JSON 语法错误。
 // Ctrl/Cmd+Enter 提交 (Enter 换行)。执行走全局单源 window.runToolFlow
-// (process-flow.js): files / params / delivery / client_ref 的字段、
+// (process-flow.js): files / body / params / delivery / client_ref 的字段、
 // 校验与请求形状完全不变 — 本组件只管输入呈现与即时校验。
 (function () {
   "use strict";
@@ -119,11 +121,9 @@
         : null;
     }
     function hasFilesSlot() { return tool ? filesMax() > 0 : true; }
-    // 主 text 参数 = 第一个 text 型参数 (输入框正文); 其余进参数区
-    function mainTextParam() {
-      const p = tool && Array.isArray(tool.params) ? tool.params : [];
-      for (const prm of p) if (prm.type === "text") return prm;
-      return null;
+    // 正文工具 = 声明字段 (body_format), 不是从参数位置推导
+    function bodyFormat() {
+      return tool && !hasFilesSlot() ? (tool.body_format || "text") : null;
     }
 
     // ── 参数行 HTML (单源: 直显区与"更多参数"折叠区同一渲染) ──
@@ -196,13 +196,12 @@
     // ── 渲染 ──
     function render() {
       const all = tool ? (Array.isArray(tool.params) ? tool.params : []) : [];
-      const main = mainTextParam();
-      const rest = main ? all.filter((p) => p !== main) : all.slice();
+      const bf = bodyFormat();
+      const rest = all.slice();
       const accept = acceptTokens();
       const saved = savedParams(tool ? tool.id : "");
       const cost = tool ? Math.max(0, parseInt(tool.cost || 0, 10) || 0) : 0;
-      // 纯文本工具 (files_max=0) = 对话框形态
-      const chatForm = !hasFilesSlot() && !!main;
+      const chatForm = bf === "text";
       const paramRow = (prm) => paramRowHtml(prm, saved);
 
       let html = '<div class="composer ti-card" data-tool="' + esc(tool ? tool.id : "") + '">';
@@ -227,23 +226,23 @@
           + "</button>";
       }
 
-      // 正文: 主 text 参数 — 纯文本工具 (files_max=0) = 对话框形态
-      // (自动增高 1..8 行 + 右下角内侧发送); 有文件位 = 常规多行输入
-      if (main) {
-        // 纯文本工具的占位不提文件 (它不收文件)
-        const ph = main.placeholder ? esc(resolveLabel(main.placeholder))
-          : esc(t(chatForm ? "ti_text_ph" : "ti_composer_ph"));
-        const val = saved[main.key] !== undefined ? saved[main.key] : (main.default || "");
-        const text = esc(val === undefined || val === null ? "" : String(val));
+      // 正文输入: 按声明渲染 — text = 对话框形态 (自动增高 1..8 行 +
+      // 右下角内侧发送); json = 带校验的编辑框 (等宽字体, 运行前解析)
+      if (bf) {
+        const phSrc = tool.body_placeholder
+          ? esc(resolveLabel(tool.body_placeholder)) : "";
+        const ph = phSrc || esc(t(bf === "text" ? "ti_text_ph" : "ti_json_ph"));
+        const val = saved.__body !== undefined ? saved.__body : "";
         if (chatForm) {
           html += '<div class="ti-chat-wrap">'
-            + '<textarea class="c-text tp-text ti-chat-text" data-param="' + esc(main.key)
-            + '" rows="1" placeholder="' + ph + '">' + text + "</textarea>"
+            + '<textarea class="c-text ti-body ti-chat-text" data-body="1"'
+            + ' rows="1" placeholder="' + ph + '">' + esc(val) + "</textarea>"
             + '<button type="button" class="send ti-run" aria-label="' + esc(t("ti_run"))
             + '" title="' + esc(t("ti_run")) + '">' + icon("send") + "</button></div>";
         } else {
-          html += '<textarea class="c-text tp-text" data-param="' + esc(main.key)
-            + '" rows="3" placeholder="' + ph + '">' + text + "</textarea>";
+          html += '<textarea class="c-text ti-body ti-body-json" data-body="1"'
+            + ' rows="6" spellcheck="false" placeholder="' + ph + '">'
+            + esc(val) + "</textarea>";
         }
       }
 
@@ -336,7 +335,7 @@
         }
       });
       container.addEventListener("input", (e) => {
-        if (e.target.matches(".tp-text")) {
+        if (e.target.matches(".tp-text, .ti-body")) {
           collectAndPersist();
           clearError();
           window.invalidateToolOperation && window.invalidateToolOperation();
@@ -412,7 +411,17 @@
       return out;
     }
     function collectAndPersist() {
-      if (tool) persistParams(tool.id, collectParams());
+      if (tool) {
+        const vals = collectParams();
+        if (bodyFormat()) vals.__body = bodyValue() || "";
+        persistParams(tool.id, vals);
+      }
+    }
+
+    // ── 正文取值 (声明驱动): text = 字符串原文; json = 编辑框解析结果 ──
+    function bodyValue() {
+      const el = container.querySelector(".ti-body");
+      return el ? el.value : "";
     }
 
     // ── 文件 ──
@@ -578,6 +587,14 @@
           return t("param_required");
         }
       }
+      const bf = bodyFormat();
+      if (bf) {
+        const v = (bodyValue() || "").trim();
+        if (!v) return t("err_body_required");
+        if (bf === "json") {
+          try { JSON.parse(v); } catch (e) { return t("ti_json_invalid"); }
+        }
+      }
       if (hasFilesSlot() && (files.length < filesMin() || files.length > filesMax())) {
         return t("err_file_count", { min: filesMin(), max: filesMax() });
       }
@@ -598,6 +615,11 @@
       const err = validateBeforeRun();
       if (err) { showError(err); return; }
       const params = collectParams();
+      // 正文取值: text 原文; json 解析结果 (validateBeforeRun 已保证合法)
+      let body;
+      const bf = bodyFormat();
+      if (bf === "json") body = JSON.parse(bodyValue());
+      else if (bf === "text") body = bodyValue();
       const expSel = container.querySelector(".ti-expiry");
       const dlSel = container.querySelector(".ti-downloads");
       // 体积对比信号 (仅呈现层): 本次输入文件大小, app.js 结果区消费
@@ -607,6 +629,7 @@
       try {
         await window.runToolFlow(tool, files.slice(), {
           params: params,
+          body: body,
           expiryDays: expSel ? parseInt(expSel.value, 10) : 1,
           allowedDownloads: dlSel ? parseInt(dlSel.value, 10) : 50,
           onProgress: (pct) => {

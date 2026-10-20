@@ -112,6 +112,7 @@ function langRowHtml() {
     '<select class="lang-pick">' + opts + "</select>" +
     '<input class="lang-name" maxlength="40" placeholder="' + _msg("mytools_ph_label") + '">' +
     '<input class="lang-desc" maxlength="200" placeholder="' + _msg("mytools_ph_desc") + '">' +
+    '<input class="lang-ph" maxlength="64" placeholder="' + _msg("pub_body_ph_ph") + '">' +
     '<button type="button" class="lang-del" aria-label="✕">✕</button></div>';
 }
 // 主语言选择器: 语言自称做选项; 被附加行占用的语言禁用
@@ -137,18 +138,22 @@ function collectLangDict() {
     const lang = row.querySelector(".lang-pick").value;
     const name = row.querySelector(".lang-name").value.trim();
     const desc = row.querySelector(".lang-desc").value.trim();
+    const ph = row.querySelector(".lang-ph").value.trim();
     if (lang === _mainLang) return;
     // the billing fixc 删除送达: 行存在即"提及"—— 空值显式删除该 locale (tombstone ""),
     // 未提及 = 行不存在。服务端 patch_locale 空值=删键, 与本协议闭环。
     if (lang) {
       out[lang] = name;                      // 空 name = 删除该 label locale
       out[lang + "__desc"] = desc;           // 空 desc = 删除该 desc locale
+      out[lang + "__ph"] = ph;               // 空 ph = 删除该 placeholder locale
       _deletedLangs.delete(lang);
     }
   });
   // 行被移除的附加语言 = 显式删除 (tombstone 空串送达, 与"从未提及"可区分)
   _deletedLangs.forEach(lg => {
-    if (lg !== _mainLang) { out[lg] = ""; out[lg + "__desc"] = ""; }
+    if (lg !== _mainLang) {
+      out[lg] = ""; out[lg + "__desc"] = ""; out[lg + "__ph"] = "";
+    }
   });
   return out;
 }
@@ -343,13 +348,16 @@ function collectParams(preview) {
   return (ok || preview) ? out : null;
 }
 
-// ── 输入方式: 文件(云朵) / 文本(对话) — 大类别分段选择, 与族胶囊分层 ──
+// ── 输入方式: 文件(云朵) / 正文 text(对话) / 正文 json(代码) — 大类别
+// 分段选择, 与族胶囊分层 ──
 function inputMode() {
   const el = document.querySelector('input[name="fInputMode"]:checked');
   return el ? el.value : "files";
 }
+function isBodyMode() { return inputMode() !== "files"; }
+function bodyFormatOf(mode) { return String(mode || "").split("_")[1] || "text"; }
 function injectModeGlyphs() {
-  const glyphs = { files: "cloud", text: "chat" };
+  const glyphs = { files: "cloud", body_text: "chat", body_json: "code" };
   document.querySelectorAll(".pm-glyph").forEach((g) => {
     if (g.firstChild) return;
     const name = glyphs[g.dataset.mode];
@@ -358,8 +366,9 @@ function injectModeGlyphs() {
 }
 function applyInputMode() {
   injectModeGlyphs();
-  const text = inputMode() === "text";
-  document.querySelectorAll(".pub-files-only").forEach(el => el.classList.toggle("hidden", text));
+  const body = isBodyMode();
+  document.querySelectorAll(".pub-files-only").forEach(el => el.classList.toggle("hidden", body));
+  document.querySelectorAll(".pub-body-only").forEach(el => el.classList.toggle("hidden", !body));
 }
 
 // ── 行内错误 (服务端码 → 字段定位) ──
@@ -391,14 +400,22 @@ async function submit() {
   // → no-op, 不物化新 locale 键)。
   const labelDict = {};
   const descDict = {};
+  const phDict = {};
   if (label || isEditPatch) labelDict[_mainLang] = label;
   if (desc || isEditPatch) descDict[_mainLang] = desc;
+  const bodyMode = isBodyMode();
+  const fBodyPh = document.getElementById("fBodyPh").value.trim();
+  if (bodyMode && (fBodyPh || isEditPatch)) phDict[_mainLang] = fBodyPh;
   for (const [k, v] of Object.entries(extra)) {
     if (k.endsWith("__desc")) descDict[k.slice(0, -6)] = v;
+    else if (k.endsWith("__ph")) phDict[k.slice(0, -4)] = v;
     else labelDict[k] = v;
   }
   label = Object.keys(labelDict).length ? labelDict : "";
   desc = Object.keys(descDict).length ? descDict : (!isEditPatch ? undefined : "");
+  const bodyPh = bodyMode
+    ? (Object.keys(phDict).length ? phDict : (!isEditPatch ? undefined : ""))
+    : undefined;
   // 已存凭证的编辑态: 勾选"移除认证凭证" = 提交两个空串 (服务端
   // build_http_binding 单点解释为清除); 未勾选且输入框为空 = 不提及, 保留旧凭证
   const removeAuth = isEditPatch
@@ -406,14 +423,13 @@ async function submit() {
     && document.getElementById("fRemoveAuth").checked;
   // 4C-2: 受控空态 (族外 accept token) / 取消到 0 个 exact format → 拦截,
   // 禁止在未明确选择时保存覆盖原 contract。
-  const textOnly = inputMode() === "text";
-  if (!textOnly && (!selectedFam || collectAccept().length === 0)) {
+  if (!bodyMode && (!selectedFam || collectAccept().length === 0)) {
     showErrors({ accept: "bad_format_family" });
     return;
   }
-  const fmin = textOnly ? 0 : parseInt(document.getElementById("fFilesMin").value, 10);
-  const fmax = textOnly ? 0 : parseInt(document.getElementById("fFilesMax").value, 10);
-  if (!textOnly && !(fmin >= 0 && fmax >= 1 && fmin <= fmax && fmax <= 20)) {
+  const fmin = bodyMode ? 0 : parseInt(document.getElementById("fFilesMin").value, 10);
+  const fmax = bodyMode ? 0 : parseInt(document.getElementById("fFilesMax").value, 10);
+  if (!bodyMode && !(fmin >= 0 && fmax >= 1 && fmin <= fmax && fmax <= 20)) {
     showErrors({ files_max: "bad_files_range" });
     return;
   }
@@ -426,8 +442,10 @@ async function submit() {
     desc,
     url: document.getElementById("fUrl").value.trim(),
     timeout_s: parseInt(document.getElementById("fTimeout").value, 10) || 60,
-    format_families: textOnly ? undefined : collectFamilies(),
-    accept: textOnly ? undefined : collectAccept(),
+    format_families: bodyMode ? undefined : collectFamilies(),
+    accept: bodyMode ? undefined : collectAccept(),
+    body_format: bodyMode ? bodyFormatOf(inputMode()) : undefined,
+    body_placeholder: bodyPh,
     files_min: fmin,
     files_max: fmax,
     outputs: ["text", "json", "file"].filter((k) => {
@@ -463,6 +481,8 @@ async function submit() {
       bad_url: "url", https_required: "url", url_taken: "url",
       bad_label: "label", bad_desc: "desc",
       bad_accept: "accept", bad_format_family: "accept",
+      bad_binding: "url",
+      bad_body_format: "body_placeholder", bad_body_placeholder: "body_placeholder",
       bad_files_min: "files_min", bad_files_max: "files_max",
       bad_files_range: "files_max", bad_outputs: "outputs",
       bad_cost: "cost",
@@ -503,14 +523,16 @@ function refill(t) {
   // 4C-2 编辑回填: 声明的 tag 是契约字段, 启动不变量保证存储行必有,
   // 回填直接消费存储值; 缺失 → 受控空态 (不默认 image, 不覆盖原声明)。
   const accExts = extsFromAccept(t.accept);
-  const textOnly = t.files_max === 0;
-  const fam = textOnly ? null : (t.format_family || null);
+  const bodyTool = t.files_max === 0 && !!t.body_format;
+  const fam = bodyTool ? null : (t.format_family || null);
   const fams = fam ? [fam] : [];
-  document.querySelector('input[name="fInputMode"][value="' + (textOnly ? "text" : "files") + '"]').checked = true;
-  // 纯文本工具切回文件输入时: 族网格按新建态默认, 窗口回到 1..1
-  renderFamGrid(fams[0] || null, accExts, textOnly);
-  document.getElementById("fFilesMin").value = textOnly ? 1 : t.files_min;
-  document.getElementById("fFilesMax").value = textOnly ? 1 : t.files_max;
+  const mode = bodyTool ? ("body_" + t.body_format) : "files";
+  document.querySelector('input[name="fInputMode"][value="' + mode + '"]').checked = true;
+  // 正文工具切回文件输入时: 族网格按新建态默认, 窗口回到 1..1
+  renderFamGrid(fams[0] || null, accExts, bodyTool);
+  document.getElementById("fFilesMin").value = bodyTool ? 1 : t.files_min;
+  document.getElementById("fFilesMax").value = bodyTool ? 1 : t.files_max;
+  document.getElementById("fBodyPh").value = _ownText(t.body_placeholder, _mainLang);
   applyInputMode();
   ["text", "json", "file"].forEach((k) => {
     const el = document.getElementById("fOut" + k.charAt(0).toUpperCase() + k.slice(1));
@@ -523,16 +545,18 @@ function refill(t) {
     Object.entries(d).forEach(([lg, v]) => {
       if (lg === _mainLang || !v) return;
       if (key === "fLabel") (rows[lg] = rows[lg] || {}).name = v;
+      else if (key === "fPh") (rows[lg] = rows[lg] || {}).ph = v;
       else (rows[lg] = rows[lg] || {}).desc = v;
     });
   };
-  eat(t.label, "fLabel"); eat(t.desc, "fDesc");
+  eat(t.label, "fLabel"); eat(t.desc, "fDesc"); eat(t.body_placeholder, "fPh");
   Object.entries(rows).forEach(([lg, kv]) => {
     document.getElementById("langRows").insertAdjacentHTML("beforeend", langRowHtml());
     const row = document.querySelector("#langRows .lang-row:last-child");
     row.querySelector(".lang-pick").value = lg;
     if (kv.name) row.querySelector(".lang-name").value = kv.name;
     if (kv.desc) row.querySelector(".lang-desc").value = kv.desc;
+    if (kv.ph) row.querySelector(".lang-ph").value = kv.ph;
   });
   document.querySelectorAll("#langRows .lang-row").forEach(bindLangRowDelete);
   renderMainLangSelect();   // 行就位后再算禁用态 (此前渲染早于行插入)
@@ -589,21 +613,25 @@ init();
   var ctrl = null;
   var refresh = function () {
     var label = document.getElementById("fLabel").value.trim();
-    var textOnly = inputMode() === "text";
+    var bodyMode = isBodyMode();
     var fmin = parseInt(document.getElementById("fFilesMin").value, 10);
     var fmax = parseInt(document.getElementById("fFilesMax").value, 10);
-    var fminOk = textOnly ? 0 : (Number.isFinite(fmin) && fmin >= 0 ? fmin : 1);
-    var fmaxOk = textOnly ? 0 : (Number.isFinite(fmax) && fmax >= 1 ? fmax : 1);
+    var fminOk = bodyMode ? 0 : (Number.isFinite(fmin) && fmin >= 0 ? fmin : 1);
+    var fmaxOk = bodyMode ? 0 : (Number.isFinite(fmax) && fmax >= 1 ? fmax : 1);
     var outs = [];
     if (document.getElementById("fOutText").checked) outs.push("text");
     if (document.getElementById("fOutJson").checked) outs.push("json");
     if (document.getElementById("fOutFile").checked) outs.push("file");
-    var accept = textOnly ? [] : [...selectedExts].sort();
+    var accept = bodyMode ? [] : [...selectedExts].sort();
     // 预览与提交同一参数组装 (真实 options/default/min/max/placeholder)
     var params = collectParams(true);
+    var phMain = document.getElementById("fBodyPh").value.trim();
     var tool = {
       id: "preview", label: label || (_msg("mytools_ph_label")),
       files_min: fminOk, files_max: fmaxOk,
+      body_format: bodyMode ? bodyFormatOf(inputMode()) : null,
+      body_placeholder: (bodyMode && phMain)
+        ? (function () { var d = {}; d[_mainLang] = phMain; return d; })() : null,
       accept: accept.length ? accept : null,
       outputs: outs.length ? outs : ["file"],
       params: params, cost: parseInt(document.getElementById("fCost").value, 10) || 0,

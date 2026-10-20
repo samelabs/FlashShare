@@ -41,8 +41,14 @@
       <div class="pub-grid">
         <div class="pub-wide pub-input-mode" role="radiogroup" aria-label="{{ texts.pub_sec_input }}">
           <label class="pub-mode"><input type="radio" name="fInputMode" value="files" checked><i class="pm-glyph" data-mode="files" aria-hidden="true"></i><span data-i18n="pub_input_files">{{ texts.pub_input_files }}</span></label>
-          <label class="pub-mode"><input type="radio" name="fInputMode" value="text"><i class="pm-glyph" data-mode="text" aria-hidden="true"></i><span data-i18n="pub_input_text">{{ texts.pub_input_text }}</span></label>
+          <label class="pub-mode"><input type="radio" name="fInputMode" value="body_text"><i class="pm-glyph" data-mode="body_text" aria-hidden="true"></i><span data-i18n="pub_input_body_text">{{ texts.pub_input_body_text }}</span></label>
+          <label class="pub-mode"><input type="radio" name="fInputMode" value="body_json"><i class="pm-glyph" data-mode="body_json" aria-hidden="true"></i><span data-i18n="pub_input_body_json">{{ texts.pub_input_body_json }}</span></label>
         </div>
+        <label class="pub-wide pub-body-only hidden">
+          <span data-i18n="pub_body_ph">{{ texts.pub_body_ph }}</span>
+          <input id="fBodyPh" maxlength="64" data-i18n-placeholder="pub_body_ph_ph" placeholder="{{ texts.pub_body_ph_ph }}">
+          <em class="pub-err" data-err="body_placeholder"></em>
+        </label>
         <div class="pub-wide fam-block pub-files-only">
           <span class="fam-grid" id="famGrid"></span>
           <span class="fam-grid ext-grid" id="extGrid"></span>

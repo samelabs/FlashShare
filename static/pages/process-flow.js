@@ -70,12 +70,14 @@
 
   // Input change → invalidate the retained operation. A changed input set
   // is a NEW user action; the next run mints a fresh ref.
-  function fingerprintChanged(tool, files, params, delivery) {
+  function fingerprintChanged(tool, files, params, delivery, body) {
     if (!op) return false;
     if ((tool ? tool.id : null) !== (op.tool ? op.tool.id : null)) return true;
     if (!sameFiles(files, op.files)) return true;
     if (JSON.stringify(params || {}) !== JSON.stringify(op.params || {})) return true;
     if (!sameDelivery(delivery, op.delivery)) return true;
+    if (JSON.stringify(body === undefined ? null : body)
+        !== JSON.stringify(op.body === undefined ? null : op.body)) return true;
     return false;
   }
 
@@ -125,9 +127,14 @@
     // Execute the FROZEN invocation (handles from the first successful
     // upload) with the SAME ref. Retry after execute response loss or
     // tool_failed replays this leg — zero second upload.
+    // source: 文件工具 = files[] 句柄; 正文工具 = body 取值 (json 语义
+    // 等价的编辑框文本解析结果 — 与服务端指纹的规范序列化同归一)。
+    const source = op.hasBody
+      ? { body: op.body }
+      : { files: op.sources.map(f => ({ public_id: f.stagingId, source_token: f.sourceToken || "" })) };
     const body = {
       tool_id: op.tool.id,
-      source: { files: op.sources.map(f => ({ public_id: f.stagingId, source_token: f.sourceToken || "" })) },
+      source: source,
       params: op.params,
       delivery: op.delivery,
       client_ref: op.ref,
@@ -141,10 +148,11 @@
 
   /**
    * runToolFlow(tool, files, opts) → Promise<result|null>
-   * tool: catalog item 形状 {id,label,params,files_min,files_max,outputs,cost,…}
-   * files: FileList | File[] (空数组 = 0-file 工具的纯文字/参数调用)
-   * opts: {params, expiryDays, allowedDownloads,
+   * tool: catalog item 形状 {id,label,params,files_min,files_max,body_format,outputs,cost,…}
+   * files: FileList | File[] (空数组 = 正文工具 / 0-file 调用)
+   * opts: {params, body, expiryDays, allowedDownloads,
    *        onProgress(pct, bps), onError(message, ref)}
+   * body: 正文工具输入取值 (text = 字符串; json = 解析结果)。
    */
   async function runToolFlow(tool, files, opts) {
     opts = opts || {};
@@ -154,12 +162,13 @@
     if (blockConcurrentRun()) return null;
     const fileList = Array.from(files || []);
     if (!tool) return null;
-    // declared window (catalog item contract; files_max 0 = text-only)
+    // declared window (catalog item contract; files_max 0 = body tool)
     const filesMin = tool.files_min;
     const filesMax = tool.files_max;
-    // 0-file tools (files_min === 0) run without any file; every other
-    // tool needs at least one input file.
-    if (!fileList.length && filesMin > 0) return null;
+    const hasBody = !!tool.body_format;
+    // body tools run on the body value; file tools need their window.
+    if (!hasBody && !fileList.length && filesMin > 0) return null;
+    if (hasBody && opts.body === undefined) return null;
     if (!window.__USER__) {
       // login modal instead of a page jump: the picked files/params stay
       // in this invocation's closure and the run resumes on success
@@ -185,12 +194,12 @@
     // with the frozen inputs, keep the retained ref and delivery verbatim.
     const isRetry = !!op && op.phase !== "running"
         && (op.phase === "upload-retry" || op.phase === "execute-retry")
-        && !fingerprintChanged(tool, fileList, params, delivery);
+        && !fingerprintChanged(tool, fileList, params, delivery, opts.body);
     if (isRetry) {
-      // retry carries the FROZEN params/delivery, not the re-entry opts
+      // retry carries the FROZEN params/delivery/body, not the re-entry opts
       params = op.params;
       delivery = op.delivery;
-    } else if (fingerprintChanged(tool, fileList, params, delivery)) {
+    } else if (fingerprintChanged(tool, fileList, params, delivery, opts.body)) {
       invalidateOperation();
     }
 
@@ -214,6 +223,8 @@
         tool: tool || null,
         params: params,
         delivery: delivery,
+        body: hasBody ? opts.body : undefined,
+        hasBody: hasBody,
         sources: null,
         onProgress: opts.onProgress || null,
         phase: "running",
@@ -313,9 +324,11 @@
     if (!op) return null;
     if (op.phase === "running") return null;
     const frozen = op;
-    op.phase = frozen.sources ? "execute-retry" : "upload-retry";
+    op.phase = frozen.sources || frozen.hasBody
+      ? "execute-retry" : "upload-retry";
     return runToolFlow(frozen.tool, frozen.files, {
       params: frozen.params,
+      body: frozen.body,
       expiryDays: frozen.delivery.expiry_days,
       allowedDownloads: frozen.delivery.allowed_downloads,
       onProgress: frozen.onProgress,

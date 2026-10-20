@@ -359,7 +359,7 @@
 /* 4C-2: exact formats 行与族行留间距; multi 标准声明控件全宽 */
 .ext-grid { margin-top: 8px; }
 /* 多语言行: 全宽 grid = 语言(原生名) | 名称 | 简介 | 删除 */
-.lang-row { display: grid; grid-template-columns: 108px 1fr 2fr 34px; gap: 8px; margin-bottom: 8px; }
+.lang-row { display: grid; grid-template-columns: 108px 1fr 2fr 1.5fr 34px; gap: 8px; margin-bottom: 8px; }
 .lang-row .lang-pick, .lang-row input { padding: var(--s2) var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
 /* 桌面紧凑输入字号 (≤767 回落 components.css 输入地板 16px, 防聚焦放大) */
 @media (min-width: 768px) {
@@ -368,7 +368,7 @@
   .pr-opt input, .pr-inline input { font-size: 13px; }
   .lang-row .lang-pick, .lang-row input { font-size: var(--fs-sm); }
 }
-@media (max-width: 640px) { .lang-row { grid-template-columns: 96px 1fr 34px; } .lang-row .lang-desc { grid-column: 1 / 3; grid-row: 2; } .lang-row .lang-del { grid-row: 1; grid-column: 3; } }
+@media (max-width: 640px) { .lang-row { grid-template-columns: 96px 1fr 34px; } .lang-row .lang-desc { grid-column: 1 / 3; grid-row: 2; } .lang-row .lang-ph { grid-column: 1 / 3; grid-row: 3; } .lang-row .lang-del { grid-row: 1; grid-column: 3; } }
 /* 模式徽标 (工具 tab 内 "· Aurora"): 附属信息, 主从层级低于工具名 (14px) */
 .tool-preset-badge { font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); }
 

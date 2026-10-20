@@ -145,7 +145,9 @@ class _DevHandler(http.server.BaseHTTPRequestHandler):
         items = [{"kind": "text", "text": "gate ok"}]
         out = _json.dumps({"items": items}).encode()
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        # items 信封走专属 Content-Type (P2 契约: application/json = 单 json 项)
+        self.send_header("Content-Type",
+                         "application/vnd.518.items+json")
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self.wfile.write(out)

@@ -181,15 +181,21 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
             if fields["body_format"] not in BODY_FORMATS:
                 return None, "bad_body_format"
         # body_placeholder: 可选 LocalizedText (每语言 <= 64); PATCH 未
-        # 提时沿用存储值
+        # 提时沿用存储值。Web locale patch (edit_locale) 下 str/dict 均为
+        # locale patch 原文 (允许空串 = 显式删除), 终态合并由路由做。
         from governance.tool_supply import (_check_body_placeholder,
                                              DeclarationError as _DErr)
         if "body_placeholder" in raw:
-            try:
-                fields["body_placeholder"] = _check_body_placeholder(
-                    raw.get("body_placeholder"))
-            except _DErr:
-                return None, "bad_body_placeholder"
+            if partial and edit_locale:
+                if not isinstance(raw.get("body_placeholder"), (str, dict)):
+                    return None, "bad_body_placeholder"
+                fields["body_placeholder"] = raw.get("body_placeholder")
+            else:
+                try:
+                    fields["body_placeholder"] = _check_body_placeholder(
+                        raw.get("body_placeholder"))
+                except _DErr:
+                    return None, "bad_body_placeholder"
         elif not partial:
             fields["body_placeholder"] = None
         else:
@@ -599,7 +605,44 @@ async def update_user_tool(tool_key: str, request: Request):
             if "body_format" in fields:
                 sets["body_format"] = fields["body_format"]
             if "body_placeholder" in fields:
-                sets["body_placeholder"] = fields["body_placeholder"]
+                # Web locale patch (edit_locale): str = 当前 locale 单值,
+                # dict = 逐 locale patch; 空值 = 显式删除该 locale — 与
+                # label/desc 同协议, 未提及语言保留 (旧翻译不丢失)。
+                if edit_locale:
+                    from governance.tool_supply import (
+                        _check_body_placeholder,
+                        DeclarationError as _PHDeclErr)
+                    try:
+                        old_ph = json.loads(row["body_placeholder_json"]) \
+                            if row.get("body_placeholder_json") else None
+                    except (TypeError, ValueError):
+                        old_ph = None
+                    new_ph = fields["body_placeholder"]
+                    old_dict = old_ph if isinstance(old_ph, dict) else (
+                        {edit_locale: old_ph}
+                        if isinstance(old_ph, str) and old_ph else {})
+                    if isinstance(new_ph, dict):
+                        merged = dict(old_dict)
+                        for lg, txt in new_ph.items():
+                            if lg not in _SUPPORTED_LANGS:
+                                continue
+                            merged = patch_locale_guard(
+                                old_ph, merged, lg, str(txt or "")[:64])
+                    else:
+                        cur = resolve_label(old_ph, edit_locale) if old_ph else ""
+                        txt = str(new_ph or "")[:64]
+                        if cur and txt == cur:
+                            merged = old_dict           # 未修改 — 保留原值
+                        else:
+                            merged = patch_locale(old_dict, edit_locale, txt)
+                    try:
+                        sets["body_placeholder"] = _check_body_placeholder(
+                            merged or None)
+                    except _PHDeclErr:
+                        return JSONResponse(
+                            {"ok": False, "error": "bad_body_placeholder"}, 422)
+                else:
+                    sets["body_placeholder"] = fields["body_placeholder"]
             try:
                 _stored_acc = json.loads(row["accept_json"]) \
                     if row.get("accept_json") else None

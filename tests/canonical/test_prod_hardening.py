@@ -239,7 +239,8 @@ class _HookHandler(_hs.BaseHTTPRequestHandler):
         type(self).seen.append({k.lower(): v for k, v in self.headers.items()})
         out = _json.dumps({"items": [{"kind": "text", "text": "ok"}]}).encode()
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type",
+                         "application/vnd.518.items+json")
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self.wfile.write(out)

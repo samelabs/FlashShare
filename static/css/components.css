@@ -672,6 +672,18 @@ pre.rs-text, pre.rs-json {
 }
 .ti-chat-wrap .send svg { width: 16px; height: 16px; }
 
+/* 正文 json 工具的编辑框: 等宽字体 + 语法校验前的可编辑原文 */
+.composer .c-text.ti-body-json {
+  margin: 14px 16px 0; padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 14px; min-height: 132px;
+  background: var(--sunk); border: 1px solid transparent; border-radius: var(--r-lg);
+}
+.composer .c-text.ti-body-json:focus {
+  background: var(--card); border-color: var(--brand-deep);
+  box-shadow: 0 0 0 3px var(--brand-100);
+}
+
 .params { display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 6px; }
 .params:empty { display: none; }
 .params .divider { height: 1px; background: var(--line); margin: 4px 0 0; }

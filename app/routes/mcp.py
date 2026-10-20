@@ -661,11 +661,13 @@ def _list_favorites(user: dict, mid) -> dict:
 # unfiltered/default call — the worst failure mode for an agent (it
 # cannot tell the mistake from the result). Allowed keys come from each
 # tool's own inputSchema (single source); platform tools take the four
-# argument forms of the canonical invocation (files / params / delivery
-# / client_ref). Aligns the adapter with the frozen rule: only what is
-# ABSENT gets a default; anything explicitly present but not declared
-# is a -32602 naming the unknown key.
-_CALL_ARG_KEYS = frozenset({"files", "params", "delivery", "client_ref"})
+# canonical invocation argument forms (files / params / delivery /
+# client_ref) plus `input` (正文工具的 source.body 取值 — 文件工具不
+# 声明它, 显式携带 → -32602)。Aligns the adapter with the frozen rule:
+# only what is ABSENT gets a default; anything explicitly present but not
+# declared is a -32602 naming the unknown key.
+_CALL_ARG_KEYS = frozenset({"files", "params", "delivery", "client_ref",
+                            "input"})
 
 
 def _reject_unknown_args(mid, name: str, args: dict):
@@ -695,7 +697,9 @@ def _spec_summary(t: dict) -> dict:
     mx = int(t["files_max"])
     accept = t.get("accept")
     if mx == 0:
-        files_txt = "text only, no files"
+        files_txt = ("text body input (source.body)"
+                     if t.get("body_format") == "text"
+                     else "json body input (source.body)")
     else:
         files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
         if accept:
@@ -775,8 +779,11 @@ def _catalog_spec(t: dict, ent: dict) -> dict:
     summary = _spec_summary(t)
     props = {}
     mn, mx = int(t["files_min"]), int(t["files_max"])
+    required = ["client_ref"]
     if mx > 0:
-        # text-only tools (files_max = 0) expose no files argument
+        # file tools expose files[]; body tools (files_max=0) expose the
+        # input value itself instead — text maps to string, json to any
+        # legal JSON value (null included)
         props["files"] = {
             "type": "array",
             "description": "Input files: each item is inline base64, an "
@@ -785,9 +792,22 @@ def _catalog_spec(t: dict, ent: dict) -> dict:
             "maxItems": mx,
             "items": _FILE_ITEM_SCHEMA,
         }
-    required = ["client_ref"]
-    if mn >= 1:
-        required.append("files")
+        if mn >= 1:
+            required.append("files")
+    elif t.get("body_format") == "text":
+        props["input"] = {
+            "type": "string",
+            "description": "The tool's text body input (non-empty UTF-8, "
+                           "max 100000 chars)",
+        }
+        required.append("input")
+    else:
+        props["input"] = {
+            "description": "The tool's JSON body input: any legal JSON "
+                           "value (null, string, number, boolean, array, "
+                           "object)",
+        }
+        required.append("input")
     decl = t.get("params") or []
     if decl:
         from governance.tool_params import to_input_schema_properties
@@ -1169,6 +1189,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     else:
         tool_params = {}
 
+    # 正文工具的输入值 (→ source.body)。缺失 = -32602 (inputSchema 将
+    # input 标记 required); 显式 null 在 json 工具下是合法根值。
+    from execution.invocation import BODY_ABSENT as _BODY_ABSENT
+    body_arg = args["input"] if "input" in args else _BODY_ABSENT
+
     # Source items: ("inline", (filename, ctype, body)) | ("url", (url,
     # filename|None)) | ("ref", (public_id, source_token)). Shape only —
     # no network, no storage.
@@ -1204,11 +1229,38 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
                                     source_count_error as _count_err,
                                     source_accept_error as _accept_err)
     tool, _declared, _canon_body, _pbody, _pstatus = _preflight(
-        user, tool_key, delivery, tool_params)
+        user, tool_key, delivery, tool_params, body_arg)
     if _pbody is not None:
         if _pbody.get("error") == "tool_not_found":
             return _rpc_err(mid, -32602, f"unknown tool: {name}")
+        # a mode mismatch (files vs input) is protocol-level: the schema
+        # never declared the argument the caller sent
+        if _pbody.get("error") == "invalid_request":
+            sent_input = "input" in args
+            return _rpc_err(
+                mid, -32602,
+                "invalid input mode: this tool takes "
+                + ("files[] (`files`)" if sent_input
+                   else "a body input (`input`)"))
         return _tool_result_error(mid, _pbody, client_ref, tool)
+    # input-mode argument discipline (frozen rule: explicitly present but
+    # not declared → -32602): body tools never declare files[], file tools
+    # never declare input.
+    if tool.get("body_format"):
+        if "files" in args:
+            return _rpc_err(mid, -32602,
+                            "unknown argument key: files (this tool takes "
+                            "a body `input`, not files[])")
+        if "input" not in args:
+            return _rpc_err(mid, -32602, "input required")
+        if tool["body_format"] == "text" and not isinstance(body_arg, str):
+            return _rpc_err(mid, -32602,
+                            "invalid input: text body must be a non-empty "
+                            "string")
+    elif "input" in args:
+        return _rpc_err(mid, -32602,
+                        "unknown argument key: input (this tool takes "
+                        "files[], not a body input)")
     _cerr = _count_err(tool, len(items))
     if _cerr:
         return _tool_result_error(mid, {"error": _cerr},
@@ -1429,7 +1481,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
 
     raw = {
         "tool_id": tool_key,
-        "source": {"files": source_files},
+        "source": ({"body": body_arg} if tool.get("body_format")
+                   else {"files": source_files}),
         "params": tool_params,
         "delivery": delivery,
         "client_ref": client_ref,

@@ -149,48 +149,52 @@ app.mount("/brand", _VersionedStaticFiles(directory=str(_BRAND_DIR)), name="bran
 
 def get_user_from_request(request: Request):
     """Browser session identity for the web surface; Bearer tokens are
-    resolved only for the /mcp machine surface that authenticates with
-    them. A Bearer header never turns its holder into a logged-in
-    web user."""
+    resolved only for the machine surfaces (/mcp, /v1) that authenticate
+    with them. A Bearer header never turns its holder into a logged-in
+    web user; conversely a valid session cookie NEVER authenticates the
+    machine surfaces (it would bypass the /mcp key scope checks)."""
     from database import db
-    token = request.cookies.get(COOKIE_NAME)
-    if token:
-        try:
-            from repo.sessions import user_by_session_token
-            with db() as con:
-                row = user_by_session_token(con, token_hash(token), now())
-        except Exception:
-            return None
-        if row:
-            request.state.auth_via = "session"
-            return dict(row)
-        # A stale/invalid cookie is no identity: /mcp still resolves its
-        # Bearer below; every other path stays anonymous.
     path = request.url.path
-    if path == "/mcp":
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            token = auth[7:].strip()
-            if token.startswith("fsot_"):
-                # OAuth access token (consent-granted, resource-bound)
-                from identity.oauth_provider import (
-                    MCP_RESOURCE, authenticate_access_token)
-                identity = authenticate_access_token(
-                    token, resource=MCP_RESOURCE)
-                if identity:
-                    request.state.auth_via = "oauth"
-                    request.state.auth_scopes = identity["scopes"]
-                    request.state.oauth_client_id = identity["client_id"]
-                return identity["user"] if identity else None
-            from identity.apikeys import authenticate_key
-            from identity.capabilities import scope_set
-            user = authenticate_key(token)
-            if user:
-                request.state.auth_via = "token"
-                request.state.auth_scopes = scope_set(
-                    user.pop("key_scopes", None))
-                request.state.oauth_client_id = None
-            return user
+    machine_surface = path == "/mcp" or path.startswith("/mcp/") \
+        or path.startswith("/v1")
+    if not machine_surface:
+        token = request.cookies.get(COOKIE_NAME)
+        if token:
+            try:
+                from repo.sessions import user_by_session_token
+                with db() as con:
+                    row = user_by_session_token(con, token_hash(token), now())
+            except Exception:
+                return None
+            if row:
+                request.state.auth_via = "session"
+                return dict(row)
+            # A stale/invalid cookie is no identity: every non-machine path
+            # stays anonymous.
+        return None
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+        if token.startswith("fsot_"):
+            # OAuth access token (consent-granted, resource-bound)
+            from identity.oauth_provider import (
+                MCP_RESOURCE, authenticate_access_token)
+            identity = authenticate_access_token(
+                token, resource=MCP_RESOURCE)
+            if identity:
+                request.state.auth_via = "oauth"
+                request.state.auth_scopes = identity["scopes"]
+                request.state.oauth_client_id = identity["client_id"]
+            return identity["user"] if identity else None
+        from identity.apikeys import authenticate_key
+        from identity.capabilities import scope_set
+        user = authenticate_key(token)
+        if user:
+            request.state.auth_via = "token"
+            request.state.auth_scopes = scope_set(
+                user.pop("key_scopes", None))
+            request.state.oauth_client_id = None
+        return user
     return None
 
 

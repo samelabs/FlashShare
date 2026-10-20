@@ -292,7 +292,7 @@ def run_tool(tool_id, fx):
     tool = get_tool(tool_id)
     params = enforce_params_decl(tool.get("params") or [], fx.get("params") or {})
     sources = [(data, name, ct, len(data)) for data, name, ct in fx["files"]]
-    return tool, process_tool(tool_id, sources, params)
+    return tool, process_tool(tool_id, sources, params, None)
 
 
 def run_generic(tool_id):
