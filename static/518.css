@@ -297,20 +297,10 @@
 .pub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s2) var(--s3); }
 .pub-grid label, .pub-grid .pub-wide { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--ink-3); }
 .pub-grid input, .pub-grid select { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
-/* 工具 id 输入组: 固定 username/ 前缀 addon — 作者所见即真实身份键
-   (tool_key = username/tool_id, 服务端命名空间不变), 输入只补裸 id */
-.id-group { display: flex; align-items: stretch; }
-.id-group .id-prefix { display: inline-flex; align-items: center; padding: 0 10px;
-  background: var(--sunk); border: 1px solid var(--line-2); border-right: 0;
-  border-radius: var(--r-sm) 0 0 var(--r-sm); color: var(--ink-2);
-  font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
-.id-group input { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0;
-  flex: 1; min-width: 0; font-family: var(--font-mono); }
-/* 聚焦整组一体红: addon 边框随组内 focus 同步变品牌色, 不再右红左灰断裂 */
-.id-group:focus-within .id-prefix { border-color: var(--brand); }
-.id-group:focus-within input { border-color: var(--brand); box-shadow: none; }
 .pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .pub-grid .pub-wide { grid-column: 1 / -1; }
+/* 主语言选择器 (主字段文本自己的语言标签): 无可见字段名, 与同排输入框底对齐 */
+.pub-grid .pub-mainlang { display: flex; flex-direction: column; justify-content: flex-end; }
 .pub-err { font-size: 12px; color: var(--danger); min-height: 0; font-style: normal; }
 .pub-err:empty { display: none; }
 .pub-submit-row { display: flex; justify-content: flex-end; gap: 10px; }
@@ -321,8 +311,10 @@
 .param-row-head input, .param-row-head select { padding: 8px 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; min-width: 0; }
 .param-row-head .pr-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pr-req { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
-.pr-del, .pr-opt-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: 8px; cursor: pointer; padding: 6px 10px; font-size: 13px; }
-@media (hover:hover) and (pointer:fine) { .pr-del:hover, .pr-opt-del:hover { color: var(--danger); } }
+/* 微删除钮单源: 参数行与语言行同款 (✕ 小方块, hover 品红);
+   字重 600 显式声明, 不依赖元素基线 */
+.pr-del, .pr-opt-del, .lang-row .lang-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; padding: 6px 10px; font-size: 13px; font-weight: 600; transition: color var(--ease); }
+@media (hover:hover) and (pointer:fine) { .pr-del:hover, .pr-opt-del:hover, .lang-row .lang-del:hover { color: var(--danger); } }
 .param-row-body { margin-top: 10px; }
 .pr-opt { display: grid; grid-template-columns: 140px 1fr auto; gap: 8px; margin-bottom: 6px; align-items: center; }
 .pr-opt input { padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font-family: inherit; min-width: 0; }
@@ -350,18 +342,19 @@
 .fam-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 /* 族胶囊在 pub-grid 内, 须压过 .pub-grid label (0,1,1) 的纵向规范:
    两段选择器 (0,2,0) 按类通道胜出 */
-.pub-grid .fam-chip { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--line-2); border-radius: 99px; padding: 5px 13px 5px 6px; font-size: 13px; font-weight: 600; color: var(--ink-3); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
+.pub-grid .fam-chip { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--line-2); border-radius: var(--r-full); padding: 5px 13px 5px 6px; font-size: 13px; font-weight: 600; color: var(--ink-3); background: var(--card); transition: border-color var(--ease), color var(--ease), background var(--ease); }
+/* 无 glyph 瓦片的族胶囊 (扩展名/输出类型): 左右对称垫, 不吃基类的 6px 左垫。
+   单一机制覆盖一切无瓦片族胶囊, 禁再按容器逐处补 13px */
+.pub-grid .fam-chip:not(:has(.fam-glyph)) { padding: 5px 13px; }
 .fam-chip input { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .fam-chip span { white-space: nowrap; }
 .fam-chip:has(input:checked) { border-color: var(--ink-3); background: var(--sunk); color: var(--ink); }
 /* 族字形 = logo 式圆角矩形瓦片 (与工具卡/picker 的图标瓦片同一语言)。
    svg 特异度须 ≥ tokens 的全局兜底 svg:not([width]):not([height]) (0,2,1),
    否则瓦片内字形被顶成 20px 贴边 */
-.fam-glyph { width: 22px; height: 22px; border-radius: 7px; background: var(--sunk); display: grid; place-items: center; flex: none; }
+.fam-glyph { width: 22px; height: 22px; border-radius: var(--r-xs); background: var(--sunk); display: grid; place-items: center; flex: none; }
 .fam-chip .fam-glyph svg { width: 13px; height: 13px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .fam-chip:has(input:checked) .fam-glyph { background: var(--card); }
-/* 精确格式小胶囊无瓦片, 左右 padding 对称 (不吃族胶囊的 6px 左垫) */
-.fam-chip.ext-chip { padding-left: 13px; }
 .fam-hint { flex-basis: 100%; font-size: 12px; color: var(--ink-2); line-height: 1.5; letter-spacing: .01em; }
 /* 4C-2: exact formats 行与族行留间距; multi 标准声明控件全宽 */
 .ext-grid { margin-top: 8px; }
@@ -375,8 +368,6 @@
   .pr-opt input, .pr-inline input { font-size: 13px; }
   .lang-row .lang-pick, .lang-row input { font-size: var(--fs-sm); }
 }
-.lang-row .lang-del { border: 0; background: var(--sunk); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; font-size: 14px; }
-@media (hover:hover) and (pointer:fine) { .lang-row .lang-del:hover { color: var(--danger); } }
 @media (max-width: 640px) { .lang-row { grid-template-columns: 96px 1fr 34px; } .lang-row .lang-desc { grid-column: 1 / 3; grid-row: 2; } .lang-row .lang-del { grid-row: 1; grid-column: 3; } }
 /* 模式徽标 (工具 tab 内 "· Aurora"): 附属信息, 主从层级低于工具名 (14px) */
 .tool-preset-badge { font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); }
@@ -740,11 +731,11 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-page .pub-input-mode .pub-hint { flex-basis: 100%; }
 /* pub-grid label 的 (0,1,1) 纵向规范会压过单类选择器 — 控件级方向
    声明须用同特异度 (.pub-grid 前缀) 才能落到横向 */
-.pub-grid .pub-mode { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 9px; cursor: pointer; padding: 6px 16px 6px 7px; border-radius: 9px; font-size: 14px; font-weight: 650; color: var(--ink-3); background: none; border: 0; transition: background var(--ease), color var(--ease), box-shadow var(--ease); }
+.pub-grid .pub-mode { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 9px; cursor: pointer; padding: 6px 16px 6px 7px; border-radius: var(--r-sm); font-size: 14px; font-weight: 650; color: var(--ink-3); background: none; border: 0; transition: background var(--ease), color var(--ease), box-shadow var(--ease); }
 .pub-mode input { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .pub-mode span { white-space: nowrap; }
 .pub-mode:has(input:checked) { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
-.pm-glyph { width: 28px; height: 28px; border-radius: 8px; background: var(--sunk); display: grid; place-items: center; flex: none; }
+.pm-glyph { width: 28px; height: 28px; border-radius: var(--r-xs); background: var(--sunk); display: grid; place-items: center; flex: none; }
 .pub-mode .pm-glyph svg { width: 16px; height: 16px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .pub-page .pub-outputs { display: flex; flex-direction: column; gap: 8px; }
 .pub-outputs-label { font-size: 13px; font-weight: 650; color: var(--ink); }
@@ -880,7 +871,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 
 /* 工具选择器胶囊 (home composer c-bar 内) */
 .tsel { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 8px; border-radius: var(--r-full); border: 1px solid var(--line-2); font: inherit; font-size: var(--fs-base); font-weight: 600; background: var(--card); color: var(--ink); cursor: pointer; position: relative; }
-.tsel .tic { width: 22px; height: 22px; border-radius: 7px; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
+.tsel .tic { width: 22px; height: 22px; border-radius: var(--r-xs); background: var(--brand-50); color: var(--brand); display: grid; place-items: center; }
 .tsel .tic svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tsel > svg { width: 14px; height: 14px; color: var(--ink-3); stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
 /* 首页两枚选择胶囊 (工具选择 / 有效期次数): hover 反色 — 品牌红底 +

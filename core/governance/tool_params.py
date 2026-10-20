@@ -215,13 +215,23 @@ def patch_locale(value, lang: str, new_text: str):
     return ""
 
 
-def _leaf_merge(old_value, new_text, lang: str):
+def _leaf_merge(old_value, new_value, lang: str):
     """params 叶子 (label/placeholder/options[].label) 的 locale merge:
     no-change 判定基于 old_value (该参数的原始声明, 不可变), 真写走 patch_locale。
+    new 为 str = 该 locale 单值提交; 为 dict = 逐 locale patch (web 主语言
+    {主语言: 文本} 形态), 未提及语言一律保留。
+    旧值 str → 基底 {lang: 旧 str} (locale 机制: dict 第一键 = 原文语言)。
     返回合并后的叶子值 (str | dict)。"""
-    if not isinstance(new_text, str):
-        return new_text
-    return patch_locale_guard(old_value, old_value, lang, new_text)
+    if isinstance(new_value, str):
+        return patch_locale_guard(old_value, old_value, lang, new_value)
+    if isinstance(new_value, dict):
+        base = old_value if isinstance(old_value, dict) else (
+            {lang: old_value} if isinstance(old_value, str) and old_value else {})
+        merged = dict(base)
+        for lg, txt in new_value.items():
+            merged = patch_locale_guard(old_value, merged, lg, str(txt or ""))
+        return merged
+    return new_value
 
 
 def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
@@ -231,7 +241,8 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
     表示结构删除, 其旧翻译随结构一起删除。
     三个 LocalizedText 叶子 (param.label / param.placeholder /
     options[].label) 按身份对齐合并: parameter 按 key, option 按 value,
-    禁止按数组 index。旧值在该 locale 下缺失时, new_decl 的 str 直接落
+    禁止按数组 index。str 与 dict ({主语言: 文本}) 提交形态均为 locale
+    patch — 未提及语言保留。旧值在该 locale 下缺失时, new_decl 的 str 直接落
     {lang: str} (首次翻译); 若 str 等于旧值的 resolver fallback (发布者
     没改 fallback 文本), 视为未修改, 不物化新 locale 键。
     """
@@ -243,13 +254,13 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
         if not old:
             merged.append(p)
             continue
-        # param.label
+        # param.label (str 与 dict 提交形态都走 locale merge — dict 直替会丢翻译)
         if "label" in p:
             old_label = old.get("label")
-            if isinstance(p["label"], str):
+            if isinstance(p["label"], (str, dict)):
                 p["label"] = _leaf_merge(old_label, p["label"], lang)
         # param.placeholder
-        if p.get("placeholder") is not None and isinstance(p["placeholder"], str):
+        if p.get("placeholder") is not None and isinstance(p["placeholder"], (str, dict)):
             old_ph = old.get("placeholder")
             if old_ph is not None:
                 p["placeholder"] = _leaf_merge(old_ph, p["placeholder"], lang)
@@ -260,7 +271,7 @@ def merge_params_decl(old_decl: list, new_decl: list, lang: str) -> list:
             new_opts = []
             for o in p["options"]:
                 old_o = old_opts.get(o.get("value"))
-                if old_o and isinstance(o.get("label"), str):
+                if old_o and isinstance(o.get("label"), (str, dict)):
                     o["label"] = _leaf_merge(old_o.get("label"), o["label"], lang)
                 new_opts.append(o)
             p["options"] = new_opts

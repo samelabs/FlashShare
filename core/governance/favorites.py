@@ -46,13 +46,12 @@ def working_set(user: dict | None, catalog: list) -> list:
     tool picker carry: first-party tools, the user's own tools, then
     their favorites (pin order). Anonymous = first-party tools. Any
     other public tool is found through search."""
-    from governance.catalog import is_official_id
     if not user:
-        return [t for t in catalog if is_official_id(t["id"])]
+        return [t for t in catalog if t.get("origin") == "official"]
     favs = favorite_keys(user["id"], catalog)
     handle = user.get("username")
     base = [t for t in catalog
-            if is_official_id(t["id"])
+            if t.get("origin") == "official"
             or (handle and t.get("owner_handle") == handle)]
     base_ids = {t["id"] for t in base}
     by_id = {t["id"]: t for t in catalog}

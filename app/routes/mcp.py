@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from config import BASE_URL, MAX_UPLOAD_BYTES, MCP_ALLOWED_ORIGINS, PRODUCT_VERSION
-from governance.catalog import list_catalog, mcp_name, mcp_names, tool_key_for_mcp_name
+from governance.catalog import list_catalog, resolve as _catalog_resolve
 from governance.tool_params import resolve_label
 from utils import MAX_LIST_OFFSET, format_bytes, sanitize_filename
 from app.web_auth import client_ip
@@ -645,10 +645,9 @@ def _list_favorites(user: dict, mid) -> dict:
     catalog = list_catalog(user["id"])
     by_id = {t["id"]: t for t in catalog}
     favs = favorite_keys(user["id"], catalog)
-    _names = mcp_names()
     tools = []
     for k in favs:
-        spec = _catalog_spec(by_id[k], _names, ent)
+        spec = _catalog_spec(by_id[k], ent)
         spec["favorite"] = True
         tools.append(spec)
     lines = ([f"{len(tools)} favorite(s):"]
@@ -686,12 +685,10 @@ def _reject_unknown_args(mid, name: str, args: dict):
     return None
 
 
-def _spec_summary(t: dict, names: dict | None = None) -> dict:
+def _spec_summary(t: dict) -> dict:
     """name/title/description summary (tools/list + catalog_search share
     the exact same shape). English only — MCP is a machine surface.
-    `names` = a precomputed mcp_names() map — computing it per tool made
-    tools/list O(tools²) DB+CPU; every caller passes one shared map."""
-    names = names if names is not None else mcp_names()
+    name = tool_key 原文 (无投影, 无撞名分配)。"""
     label = t["label"]
     title = resolve_label(label, "en") or t["id"]
     mn = int(t["files_min"])
@@ -702,7 +699,12 @@ def _spec_summary(t: dict, names: dict | None = None) -> dict:
     else:
         files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
         if accept:
-            files_txt += f", formats: {', '.join(accept)}"
+            # 全边界摘要 (投影层, 存储仍是单形状全清单): 逐项铺 119 格式对 agent 是噪音
+            from governance.formats import VOCAB_EXTS as _vocab
+            if len(accept) >= len(_vocab):
+                files_txt += ", formats: all platform formats"
+            else:
+                files_txt += f", formats: {', '.join(accept)}"
     outs = ", ".join(t.get("outputs") or ["file"])
     desc = (resolve_label(t.get("desc"), "en") or title).rstrip(".")
     price = (f" Price: {int(t['cost'])} credits per call."
@@ -713,7 +715,7 @@ def _spec_summary(t: dict, names: dict | None = None) -> dict:
     author = (f" Third-party tool by @{t['owner_handle']}."
               if t.get("owner_handle") else "")
     return {
-        "name": mcp_name(t["id"], names),
+        "name": t["id"],
         "title": title,
         "description": f"{desc}.{author} Inputs: {files_txt}."
                        f" Outputs: {outs}.{price}",
@@ -760,17 +762,17 @@ _RESULT_SCHEMA = {
 }
 
 
-def _catalog_spec(t: dict, names: dict, ent: dict) -> dict:
+def _catalog_spec(t: dict, ent: dict) -> dict:
     """One catalog item → THE tool spec. tools/list and catalog_search
     share this exact constructor (name/title/description/inputSchema/
     outputSchema/annotations), so a search hit is directly callable
     without listing the tool first.
 
-    `names` = a shared mcp_names() map; `ent` = the calling bearer's
+    `ent` = the calling bearer's
     entitlements projection (delivery enums) — the discovery layer
     advertises THIS caller's real values; tools/call still runs the
     authoritative chain regardless of what the schema advertised."""
-    summary = _spec_summary(t, names)
+    summary = _spec_summary(t)
     props = {}
     mn, mx = int(t["files_min"]), int(t["files_max"])
     if mx > 0:
@@ -891,8 +893,7 @@ def _anon_tool_specs() -> list:
     (calling any of them needs a key; the descriptions are the same
     text a registered agent sees, without favorite flags)."""
     ent = _entitlements(None)
-    names = mcp_names()
-    return [_REGISTER_SPEC] + [_catalog_spec(t, names, ent)
+    return [_REGISTER_SPEC] + [_catalog_spec(t, ent)
                                for t in list_catalog(None)]
 
 
@@ -952,7 +953,6 @@ def _tool_specs(user: dict) -> list:
     specs = [_CREATE_UPLOAD_SPEC, _LIST_UPLOADS_SPEC,
              _DELETE_UPLOAD_SPEC, _PIN_TOOL_SPEC, _UNPIN_TOOL_SPEC,
              _LIST_FAVORITES_SPEC]
-    _names = mcp_names()
     # THE master list, not an access boundary: every public tool plus
     # the bearer's own tools; the favorite flag marks their pins
     # (list_favorites lists just the pins). tools/call runs the full
@@ -961,7 +961,7 @@ def _tool_specs(user: dict) -> list:
     catalog = list_catalog(user["id"])
     favs = set(favorite_keys(user["id"], catalog))
     for t in catalog:
-        spec = _catalog_spec(t, _names, ent)
+        spec = _catalog_spec(t, ent)
         spec["favorite"] = t["id"] in favs
         specs.append(spec)
     specs.append({
@@ -1032,11 +1032,10 @@ def _catalog_search_result(user: dict, q: str, page: int) -> dict:
     # (no visibility-filtered catalog read needed)
     with db() as con:
         favs = set(fav_repo.list_keys(con, user["id"]))
-    _names = mcp_names()
     ent = _entitlements(user)
     tools = []
     for h in data["items"]:
-        spec = _catalog_spec(h, _names, ent)
+        spec = _catalog_spec(h, ent)
         spec["favorite"] = h["id"] in favs
         tools.append(spec)
     return {"query": q, "page": data["page"],
@@ -1200,9 +1199,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # Tool + delivery entitlement + stored contract + params — the SAME
     # pre-gate validators dispatch runs, here BEFORE any fetch, quota
     # claim or Gokapi upload.
-    tool_key = tool_key_for_mcp_name(name)
-    if tool_key is None:
-        return _rpc_err(mid, -32602, f"unknown tool: {name}")
+    tool_key = name
     from execution.dispatch import (preflight as _preflight,
                                     source_count_error as _count_err,
                                     source_accept_error as _accept_err)
@@ -1565,7 +1562,7 @@ def _iserror(mid, payload: dict, client_ref: str | None = None,
 def _pin_tool(user: dict, mid, args: dict, on: bool) -> dict:
     from governance.favorites import set_favorite
     name = str(args.get("name") or "").strip()
-    tool_key = tool_key_for_mcp_name(name) if name else None
+    tool_key = name or None
     err = set_favorite(user["id"], tool_key or "", on) if tool_key else "tool_not_found"
     if err:
         return _iserror(mid, {"error": err, "name": name})

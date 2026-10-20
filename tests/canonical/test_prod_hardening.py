@@ -253,16 +253,16 @@ _hook_port = _hook_srv.server_address[1]
 _th.Thread(target=_hook_srv.serve_forever, daemon=True).start()
 
 _tid = f"authclr{_u}"
-_tkey = f"{_uname}/{_tid}"
 _secret = "ph-secret-" + _os.urandom(4).hex()
 st, d, _sc = _req("POST", "/api/usertools", {
-    "tool_id": _tid, "label": "PH AuthClear", "url": "https://93.184.216.34/x",
+    "label": "PH AuthClear", "url": "https://93.184.216.34/x",
     "timeout_s": 30, "files_min": 0, "files_max": 1,
     "format_families": "image", "accept": [".png"], "outputs": ["text"],
     "cost": 0, "auth_header": "X-Api-Key", "auth_token": _secret,
 }, {"Content-Type": "application/json", "Cookie": CK})
+_tkey = (d or {}).get("tool_key")
 check("H3a tool created WITH credentials",
-      st == 200 and (d or {}).get("ok"), f"{st} {str(d)[:120]}")
+      st == 200 and (d or {}).get("ok") and _tkey, f"{st} {str(d)[:120]}")
 
 
 def _decl():
@@ -273,7 +273,7 @@ def _decl():
 
 
 def _patch(body):
-    return _req("PATCH", f"/api/usertools/{_tid}", body,
+    return _req("PATCH", f"/api/usertools/{_tkey}", body,
                 {"Content-Type": "application/json", "Cookie": CK})
 
 
@@ -295,7 +295,7 @@ with db() as con:
     con.execute("update platform_tools set trusted=TRUE, endpoint_json=%s"
                 " where tool_key=%s", (_json.dumps(_decl2), _tkey))
 
-_mcp_name = _tkey.replace("/", "__")
+_mcp_name = _tkey  # 名 = key 原文
 
 
 def _call_hook(ref):

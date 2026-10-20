@@ -84,6 +84,9 @@
     <label>超时（秒） <input class="sl-input" type="number" name="timeout_s" value="60" min="5" max="300"></label>
     <label>鉴权头（可选） <input class="sl-input" type="text" name="auth_header"></label>
     <label>鉴权令牌（可选，加密存储） <input class="sl-input" type="password" name="auth_token"></label>
+    <label>类型（tag） <select class="sl-input" name="format_families">
+      {% for t in tags %}<option value="{{ t.key }}">{{ t.chip }}</option>{% endfor %}
+    </select></label>
     <label>接受扩展名（逗号分隔，可选） <input class="sl-input" type="text" name="accept" placeholder=".png,.pdf"></label>
     <label>最少文件数（0 = 可不带文件）
       <input class="sl-input" type="number" name="files_min" value="1" min="0" max="20">

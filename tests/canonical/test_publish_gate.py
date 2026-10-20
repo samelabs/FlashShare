@@ -166,10 +166,9 @@ reader_uid = None
 try:
     author_uid, a_ck, A_TOK = _register(_u + "dev")
     reader_uid, _rck, R_TOK = _register(_u + "reader")
-    tk = f"{_u}dev/gate1"
 
     def _publish(cookie, tool_id, extra=None):
-        body = {"tool_id": tool_id, "label": "Gate Tool",
+        body = {"label": "Gate Tool",
                 "url": "https://93.184.216.34/x", "timeout_s": 30,
                 "files_min": 0, "files_max": 3,
                 "format_families": "image", "accept": [".png"],
@@ -180,6 +179,7 @@ try:
 
     # ═══ G1: default unlisted, invisible to others, author page works ═══
     st, _h, d, _sc = _publish(a_ck, "gate1")
+    tk = (d or {}).get("tool_key")
     check("G1a create accepted (no visibility field)",
           st == 200 and (d or {}).get("ok"), f"{st} {d}")
     with db() as con:
@@ -190,7 +190,7 @@ try:
     st, _h, market, _sc = _req("GET", "/tools")
     check("G1c not on /tools", tk not in (market or ""))
     check("G1d not in a non-owner's MCP tools/list",
-          tk.replace("/", "__") not in _tools_list(R_TOK))
+          tk not in _tools_list(R_TOK))
     st, _h, page, _sc = _req("GET", f"/tool/{tk}", None,
                              {"Cookie": a_ck, "Accept": "text/html"})
     check("G1e author's own tool page renders with the gate hint",
@@ -206,12 +206,12 @@ try:
           f"{st} {d}")
 
     # ═══ G3: PATCH public without any successful call ════════════════
-    def _patch_vis(cookie, tool_id, vis):
-        return _req("PATCH", f"/api/usertools/{tool_id}",
+    def _patch_vis(cookie, vis):
+        return _req("PATCH", f"/api/usertools/{tk}",
                     {"visibility": vis},
                     {"Content-Type": "application/json", "Cookie": cookie})
 
-    st, _h, d, _sc = _patch_vis(a_ck, "gate1", "public")
+    st, _h, d, _sc = _patch_vis(a_ck, "public")
     check("G3 PATCH public with zero calls → 422",
           st == 422 and (d or {}).get("error") == "needs_successful_run",
           f"{st} {d}")
@@ -223,12 +223,12 @@ try:
                     " where tool_key=%s", (tk,))
 
     def _set_url(url):
-        return _req("PATCH", "/api/usertools/gate1", {"url": url, "timeout_s": 30},
+        return _req("PATCH", f"/api/usertools/{tk}", {"url": url, "timeout_s": 30},
                     {"Content-Type": "application/json", "Cookie": a_ck})
 
     # ═══ G4: another user's successful call does not unlock ══════════
     st, _h, _d, _sc = _set_url(LOCAL_URL)
-    st, d = _call(f"{_u}dev__gate1", {"client_ref": f"b9r-{_u}"}, R_TOK)
+    st, d = _call(tk, {"client_ref": f"b9r-{_u}"}, R_TOK)
     with db() as con:
         row = con.execute(
             "select status from tool_calls where tool_id=%s"
@@ -236,14 +236,14 @@ try:
     check("G4a reader's call succeeded", (d.get("result") or {})
           .get("isError") is False and row["status"] == "ok",
           f"{str(d)[:80]} {row and dict(row)}")
-    st, _h, d, _sc = _patch_vis(a_ck, "gate1", "public")
+    st, _h, d, _sc = _patch_vis(a_ck, "public")
     check("G4b someone else's ok does not unlock → 422",
           st == 422 and (d or {}).get("error") == "needs_successful_run",
           f"{st} {d}")
 
     # ═══ G5: the author's failed call does not unlock ════════════════
     _set_url(LOCAL_FAIL_URL)
-    st, d = _call(f"{_u}dev__gate1", {"client_ref": f"b9f-{_u}"}, A_TOK)
+    st, d = _call(tk, {"client_ref": f"b9f-{_u}"}, A_TOK)
     with db() as con:
         row = con.execute(
             "select status from tool_calls where tool_id=%s"
@@ -251,29 +251,29 @@ try:
     check("G5a author's call failed", (d.get("result") or {})
           .get("isError") is True and row["status"] == "failed",
           f"{str(d)[:80]} {row and dict(row)}")
-    st, _h, d, _sc = _patch_vis(a_ck, "gate1", "public")
+    st, _h, d, _sc = _patch_vis(a_ck, "public")
     check("G5b a failed author run does not unlock → 422",
           st == 422 and (d or {}).get("error") == "needs_successful_run",
           f"{st} {d}")
 
     # ═══ G6: the author's successful call unlocks ════════════════════
     _set_url(LOCAL_URL)
-    st, d = _call(f"{_u}dev__gate1", {"client_ref": f"b9o-{_u}"}, A_TOK)
+    st, d = _call(tk, {"client_ref": f"b9o-{_u}"}, A_TOK)
     check("G6a author's call succeeded", (d.get("result") or {})
           .get("isError") is False, str(d)[:100])
-    st, _h, d, _sc = _patch_vis(a_ck, "gate1", "public")
+    st, _h, d, _sc = _patch_vis(a_ck, "public")
     check("G6b PATCH public after the owner's ok run → 200",
           st == 200 and (d or {}).get("ok"), f"{st} {d}")
-    st, _h, market, _sc = _req("GET", "/tools?q=" + _u)
+    st, _h, market, _sc = _req("GET", "/tools?q=Gate+Tool")
     check("G6c searchable on /tools", tk in (market or ""))
-    st, d = _call("pin_tool", {"name": tk.replace("/", "__")}, R_TOK)
+    st, d = _call("pin_tool", {"name": tk}, R_TOK)
     check("G6d a non-owner can pin it into their MCP tools/list",
           ((d.get("result") or {}).get("structuredContent") or {})
           .get("favorite") is True
-          and tk.replace("/", "__") in _tools_list(R_TOK), str(d)[:200])
+          and tk in _tools_list(R_TOK), str(d)[:200])
 
     # ═══ G7: un-publishing stays free ════════════════════════════════
-    st, _h, d, _sc = _patch_vis(a_ck, "gate1", "unlisted")
+    st, _h, d, _sc = _patch_vis(a_ck, "unlisted")
     check("G7 public → unlisted unrestricted", st == 200 and (d or {}).get("ok"),
           f"{st} {d}")
 
@@ -285,8 +285,6 @@ finally:
     uids = [u for u in (author_uid, reader_uid) if u]
     with db() as con:
         purge_users(con, uids)
-        con.execute("delete from pricing where tool_id LIKE %s",
-                    (f"{_u}dev/%",))
 
 print(f"\n{COUNT - len(FAIL)}/{COUNT} checks passed")
 _sys.exit(1 if FAIL else 0)

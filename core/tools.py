@@ -47,7 +47,7 @@ _registry = []
 
 def register(tool_id, label, handler,
              accept=None, desc=None, files_min=1, files_max=1,
-             outputs=("file",), params=None, family=None):
+             outputs=("file",), params=None, tag=None):
     """Register a tool.
 
     Args:
@@ -72,10 +72,9 @@ def register(tool_id, label, handler,
                 shape as user tools' params_json. Validated with the SAME
                 validator as user tools (governance.tool_params). This is the
                 ONLY parameter declaration channel for first-party tools.
-        family: 工具类型道声明 (仅第一方需要): accept 无法归并出车道时的
-                显式归属 (如 zip_pack 全格式入食但属归档道)。None = 由
-                accept 派生; share 不声明且不接受派生 = 唯一类型空态。
-                图标完全依赖类型 — 装饰性 icon 声明已退役。
+        tag: 工具类型声明 (仅第一方需要): 作者声明的应用场景 tag
+                (九键之一, 见 governance.formats)。纯文本工具
+                (files_max=0) 不声明。图标 = tag 查表, 无派生。
     """
     # local runtime binding 专属检查 (duplicate registration)
     if any(t["id"] == tool_id for t in _registry):
@@ -95,6 +94,7 @@ def register(tool_id, label, handler,
         "desc": desc,
         "inputs": {"files": {"min": files_min, "max": files_max,
                              "accept": sorted(accept) if accept else None}},
+        "format_family": tag,
         "outputs": list(outputs),
         "params": params,
         "visibility": "public",
@@ -108,7 +108,7 @@ def register(tool_id, label, handler,
         "id": tool_id,
         "label": decl["label"],
         "desc": decl["desc"],
-        "family": family,
+        "tag": decl["format_family"],
         "handler": handler,
         "accept": set(decl["inputs"]["files"]["accept"])
         if decl["inputs"]["files"]["accept"] else None,

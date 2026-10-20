@@ -141,5 +141,6 @@ register(
          ],
          "default": "multi"},
     ],
+    tag="image",
     handler=ico_handler,
 )

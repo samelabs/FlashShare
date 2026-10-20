@@ -151,7 +151,7 @@ def _community_tool_fixture():
     visibility predicate is under test)."""
     tid = "seot" + _uuid.uuid4().hex[:5]
     st, data, _, _ = _req("POST", "/api/usertools", {
-        "tool_id": tid, "label": "SEO fixture", "url": "https://93.184.216.34/x",
+        "label": "SEO fixture", "url": "https://93.184.216.34/x",
         "timeout_s": 30, "files_min": 0, "files_max": 1,
         "format_families": "image", "accept": [".png"],
         "outputs": ["text"], "cost": 0, "params": []},
@@ -211,7 +211,7 @@ def main():
     # author page (public supply comes from the community fixture below)
     tid, created = _community_tool_fixture()
     check("fixture: community tool created", created)
-    pub_id = "seop" + _uuid.uuid4().hex[:5]
+    pub_id = f"{_u}_" + "seop" + _uuid.uuid4().hex[:5]  # key = username_toolid
     if created:
         from database import db
         from utils import now
@@ -222,9 +222,9 @@ def main():
             con.execute(
                 "INSERT INTO platform_tools (tool_key, tool_id, owner_id, visibility,"
                 " enabled, label_json, files_min, files_max, outputs_json,"
-                " created_at, updated_at, accept_json)"
+                " created_at, updated_at, accept_json, format_family)"
                 " VALUES (%s, %s, %s, 'public', TRUE, '{\"en\": \"SEO twin\"}',"
-                " 0, 1, '[\"text\"]', %s, %s, '[\".png\"]')",
+                " 0, 1, '[\"text\"]', %s, %s, '[\".png\"]', 'image')",
                 (pub_id, pub_id, uid, now(), now()))
             con.execute(
                 "INSERT INTO pricing (tool_id, cost, enabled, updated_at)"

@@ -79,9 +79,9 @@ def _mktool(tool_key, owner_id, params_json=None):
         con.execute(
             "insert into platform_tools (tool_key, owner_id, tool_id,"
             " execution, label_json, visibility, enabled,"
-            " params_json, created_at, updated_at, accept_json)"
+            " params_json, created_at, updated_at, accept_json, format_family)"
             " values (%s, %s, %s, 'http', %s, 'public',"
-            " TRUE, %s, %s, %s, '[\".png\"]')",
+            " TRUE, %s, %s, %s, '[\".png\"]', 'image')",
             (tool_key, owner_id, tool_key.split("/")[-1],
              _json.dumps({"en": "I2"}), params_json, ts, ts))
         con.execute(
@@ -149,12 +149,12 @@ from governance.catalog import list_catalog, search_catalog, resolve
 from repo import keys as keys_repo
 
 prov = _mkuser(_u + "prov")
-tool_a = f"{prov['username']}/zzp_{_u}"
-tool_b = f"{prov['username']}/zzc_{_u}"
+tool_a = f"{prov['username']}_zzp_{_u}"
+tool_b = f"{prov['username']}_zzc_{_u}"
 _mktool(tool_a, prov["id"])
 _mktool(tool_b, prov["id"])
 first_party_before = len([t for t in list_catalog(None)])
-community_before = {t["id"] for t in list_catalog(None) if "/" in t["id"]}
+community_before = {t["id"] for t in list_catalog(None) if t["origin"] == "community"}
 check("S0a provider tools listed pre-suspension",
       {tool_a, tool_b} <= community_before, str(community_before))
 
@@ -164,7 +164,7 @@ with db() as con:
                      (prov["id"],)).fetchone()["status"]
 check("S1 suspend: status + audit",
       st == "suspended", st)
-community_after = {t["id"] for t in list_catalog(None) if "/" in t["id"]}
+community_after = {t["id"] for t in list_catalog(None) if t["origin"] == "community"}
 check("S2 catalog hides suspended provider's tools",
       tool_a not in community_after and tool_b not in community_after)
 check("S3 search hides them too",
@@ -201,7 +201,7 @@ check("S7 login refused",
       _auth.authenticate_local(prov["username"], "whatever") is None)
 # restore
 users_cmd.set_user_suspended(op["id"], prov["id"], suspended=False)
-community_restored = {t["id"] for t in list_catalog(None) if "/" in t["id"]}
+community_restored = {t["id"] for t in list_catalog(None) if t["origin"] == "community"}
 t2, err2 = resolve(tool_a, None)
 r2 = client.get(f"/u/{prov['username']}")
 check("S8 restore revives catalog/resolve/author page",
@@ -223,7 +223,7 @@ restrict_tables = ["ledger", "tool_calls", "orders", "withdrawals",
                    "memberships", "payment_reviews",
                    "subscription_period_payments", "operator_audit"]
 _victim = _mkuser(_u + "vic")
-_mktool(f"{_victim['username']}/v_{_u}", _victim["id"])
+_mktool(f"{_victim['username']}_v_{_u}", _victim["id"])
 from economy.billing import grant as grant_ledger
 grant_ledger(_victim["id"], 10, "grant", note="fk")
 for tbl in restrict_tables:
@@ -397,8 +397,9 @@ good_params = [{"key": "mode", "type": "enum", "label": {"en": "Mode"},
                 "required": True, "default": "fast"}]
 tool_key = tools_cmd.create_http_tool(op["id"], {
     "tool_id": f"i2op{_u}"[:24].replace("-", ""), "label": "I2 Op Tool",
+        "format_families": "image",
     "url": "https://op.example.com/api", "timeout_s": 30,
-    "accept": None, "files_min": 0, "files_max": 1,
+    "accept": [".png"], "files_min": 0, "files_max": 1,
     "outputs": ["text"], "params": good_params, "cost": 0})
 with db() as con:
     row = con.execute(
@@ -411,8 +412,9 @@ check("P1 operator tool with params → stored canonical declaration",
 try:
     tools_cmd.create_http_tool(op["id"], {
         "tool_id": f"i2bad{_u}"[:24].replace("-", ""), "label": "Bad",
+        "format_families": "image",
         "url": "https://op.example.com/api", "timeout_s": 30,
-        "accept": None, "files_min": 0, "files_max": 1,
+        "accept": [".png"], "files_min": 0, "files_max": 1,
         "outputs": ["text"],
         "params": [{"key": "x", "type": "nope"}], "cost": 0})
     check("P2 invalid params refused by the SAME validator", False)
@@ -422,6 +424,7 @@ except DeclarationError:
 r = client.post("/samelabs/tools/create",
                 json={"tool_id": f"i2rt{_u}"[:24].replace("-", ""),
                       "label": "Route", "url": "https://op.example.com/api",
+                      "format_families": "image",
                       "params": {"key": "not-a-list"}},
                 headers=OP_H)
 check("P3 route refuses non-array params (bad_params 422)",

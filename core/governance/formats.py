@@ -274,12 +274,11 @@ VOCAB_EXTS: frozenset[str] = frozenset().union(
 def extensions_for_accept(tokens) -> set[str] | None:
     """Stored-accept → canonical extension set (Tool Input Contract 单点).
 
-    Stored contract has exactly two shapes:
-      - None → any platform-whitelisted format (explicit "any" semantics;
-        used by current pass-through tools, e.g. share / zip_pack)
+    Stored contract 单形状:
       - non-empty list of canonical lowercase extension tokens → set(ext)
+      - None 仅 = 无文件位 (files_max=0 的纯文本工具), 无 any 语义
 
-    Everything else is INVALID — no second name for "any":
+    Everything else is INVALID — 无哨兵无第二形态:
       - [] (empty list) → ValueError
       - bare string (not a list) → TypeError
       - MIME token / unknown token / empty token → KeyError(token)
@@ -312,7 +311,7 @@ def parse_stored_accept(raw: str | None) -> set[str] | None:
     """THE single stored-accept parser (platform_tools.accept_json column).
 
     Exactly two physical shapes are valid:
-      SQL NULL           → None (explicit "any platform-whitelisted format")
+      SQL NULL           → None (= 无文件位, files_max=0 的纯文本工具)
       JSON text decoding to a NON-EMPTY list of canonical lowercase ext
                          → set(ext)
 
@@ -335,11 +334,11 @@ def parse_stored_accept(raw: str | None) -> set[str] | None:
 
 
 def validate_family_key(key) -> tuple[str | None, str | None]:
-    """发布提交校验: 单个族键 (单选范式) → (family_key|None, err)。
+    """tag 键校验: 九键之一 (八场景 + all) → (key|None, err)。
 
-    non-string / unknown family → (None, 'bad_format_family') —
-    单选必填, 无空语义。"""
-    if not key or not isinstance(key, str) or key not in FAMILIES:
+    单选必填, 无空语义; all = 平台格式边界 (发布选择器恒末位)。"""
+    if not key or not isinstance(key, str) or not (
+            key == "all" or key in FAMILIES):
         return None, "bad_format_family"
     return key, None
 
@@ -349,19 +348,108 @@ def format_manifest() -> dict:
 
     直接从 FAMILY_ORDER / FAMILIES 派生 (排序稳定), 客户端禁止再维护
     第二份 ext/MIME 镜像。只含公开格式声明数据, 不含任何平台内部字段。
+    发布选择器投影: 尾部追加 all (= 平台格式边界全清单, 恒末位非默认),
+    与 tags 表/发布校验同一词表。
     """
-    return {
-        "order": list(FAMILY_ORDER),
-        "families": {
-            key: {"exts": sorted(FAMILIES[key].exts)}
-            for key in FAMILY_ORDER
-        },
-    }
+    order = list(FAMILY_ORDER) + ["all"]
+    families = {key: {"exts": sorted(FAMILIES[key].exts)}
+                for key in FAMILY_ORDER}
+    families["all"] = {"exts": sorted(VOCAB_EXTS)}
+    return {"order": order, "families": families}
 
 
 def sniff_ext_to_families(ext: str) -> set[str]:
     """扩展名 → 族集合 (执行闸门: 上传 sniff 后的 ext 反查)。未知 ext → 空集。"""
     return {k for k, f in FAMILIES.items() if ext in f.exts}
+
+
+def tags_manifest() -> list:
+    """九 tag 的选择器投影 (发布/运营表单单源): [{key, chip}, …],
+    all 恒末位。读当前运行态 (表驱动装载后即表内容)。"""
+    out = [{"key": k, "chip": FAMILIES[k].chip} for k in FAMILY_ORDER]
+    return out + [{"key": "all", "chip": "All"}]
+
+
+# ── 表驱动 (2026-10-19 工具链理顺): tags/formats 参考表 ──
+# 本模块字面量 (MIME_EXTS/_FAMILY_DEFS) 退位为首装种子与无库环境的
+# 纯函数回退; 运行态以两张参考表为源 — init_db 首装补齐后由
+# _reload_from_tables 原地重建内存结构 (FAMILIES 等被消费方以
+# `from formats import FAMILIES` 模块级快照, 故必须原地变异保对象身份)。
+# 种子只补不删: 词表收敛属治理动作, 不在启动机制内。
+
+
+def sync_reference_tables(con, ts) -> dict:
+    """参考表装载单点 (init_db 内调用): 首装种子幂等补齐 + 表回装。
+
+    tags: 八场景 + all (all = 全边界的并集视图, 无直属 formats 行,
+    恒 sort 末位); formats: 每扩展名一行, 归属唯一场景 tag (同 ext
+    多 MIME 时取首见为 canonical — mime 是信息位, 执行闸门只认 ext)。"""
+    added_tags = added_formats = 0
+    seed_tags = [(k, v[1]) for k, v in _FAMILY_DEFS.items()] + [("all", "All")]
+    for i, (key, chip) in enumerate(seed_tags):
+        cur = con.execute(
+            "INSERT INTO tags (key, chip, sort_order, created_at, updated_at)"
+            " VALUES (%s, %s, %s, %s, %s) ON CONFLICT (key) DO NOTHING",
+            (key, chip, i, ts, ts))
+        added_tags += cur.rowcount or 0
+    for fam, (mimes, _chip) in _FAMILY_DEFS.items():
+        for m in mimes:
+            for ext in MIME_EXTS[m]:
+                cur = con.execute(
+                    "INSERT INTO formats (ext, mime, tag, created_at, updated_at)"
+                    " VALUES (%s, %s, %s, %s, %s) ON CONFLICT (ext) DO NOTHING",
+                    (ext, m, fam, ts, ts))
+                added_formats += cur.rowcount or 0
+    _reload_from_tables(con)
+    return {"tags_added": added_tags, "formats_added": added_formats}
+
+
+def _reload_from_tables(con) -> None:
+    """以参考表重建运行态内存结构 (原地变异)。
+
+    装载域: FAMILIES/FAMILY_ORDER 只装八个场景 tag (all 不入 — 它是
+    并集视图, 入列会使每个 ext 双计数); VOCAB_EXTS = formats 全表并集。
+    装载后 invariant 与模块加载期同口径: 表内 ext 不得越 ALLOWED_EXT
+    硬天花板, formats.tag 必须存在于 tags。"""
+    tag_rows = con.execute(
+        "select key, chip from tags where key <> 'all' order by sort_order"
+    ).fetchall()
+    fmt_rows = con.execute("select ext, mime, tag from formats").fetchall()
+    chips = {r["key"]: r["chip"] for r in
+             con.execute("select key, chip from tags").fetchall()}
+    by_tag: dict[str, list] = {}
+    mimes_by_tag: dict[str, set] = {}
+    unknown_ext = set()
+    for r in fmt_rows:
+        ext, mime, tag = r["ext"], r["mime"], r["tag"]
+        if ext not in ALLOWED_EXT:
+            unknown_ext.add(ext)
+            continue
+        by_tag.setdefault(tag, []).append(ext)
+        mimes_by_tag.setdefault(tag, set()).add(mime)
+    assert not unknown_ext, (
+        f"formats 表越平台准入边界 (ALLOWED_EXT): {sorted(unknown_ext)}")
+    new_fams = {}
+    for r in tag_rows:
+        key = r["key"]
+        assert key in by_tag, f"tag '{key}' 在 formats 表无任何格式行"
+        new_fams[key] = FormatFamily(key, set(by_tag[key]), mimes_by_tag[key],
+                                     chips[key])
+    # 原地变异: 保持消费方模块级快照 (`from formats import FAMILIES`)
+    # 的对象身份 — 重绑会令其停留在首装词表
+    FAMILIES.clear()
+    FAMILIES.update(new_fams)
+    FAMILY_ORDER[:] = list(new_fams)
+    CHIP_BY_EXT.clear()
+    for _fam in FAMILIES.values():
+        for _ext in sorted(_fam.exts):
+            CHIP_BY_EXT[_ext] = _ext.lstrip(".").upper()
+    MIME_TO_FAMILIES.clear()
+    for _key, _fam in FAMILIES.items():
+        for _mime in _fam.mimes:
+            MIME_TO_FAMILIES.setdefault(_mime, set()).add(_key)
+    global VOCAB_EXTS  # frozenset 不可原地; 无模块级快照消费方, 重绑安全
+    VOCAB_EXTS = frozenset().union(*(_fam.exts for _fam in FAMILIES.values()))
 
 
 # 4C-1a 决定性 invariant: family 声明的 MIME 集合按 MIME_EXTS 展开, 必须

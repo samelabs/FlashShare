@@ -124,32 +124,22 @@ def tool_icon_svg(name):
     return icon_svg(name)
 
 
-# 派生图标与格式族键的映射: 键即字形名 (输入族字形以族键命名),
-# 例外: document → doc (palette 历史名), text → code (文本与代码道的
-# 字形用 code 尖括号 — text 字形是"文本文件"形, 车道层用 code 更具区分度)。
-_FAMILY_GLYPH = {
+# tag → 字形: 图标 = 声明 tag 的查表 (输入类型映射的唯一来源)。
+# 例外沿用历史字形名: document → doc, text → code (文本文件与代码道);
+# all = 全部平台格式 → cloud。
+_TAG_GLYPH = {
     "image": "image", "document": "doc", "data": "data",
     "text": "code", "audio": "audio", "video": "video",
-    "cad3d": "cad3d", "archive": "archive",
+    "cad3d": "cad3d", "archive": "archive", "all": "cloud",
 }
 
 
-def derived_tool_icon(files_max, accept):
-    """工具图标的契约自述: 表达"这工具吃什么"。
+def tool_glyph(files_max, tag):
+    """工具图标 = 声明 tag 的查表。
 
-    与上传区格式汇总文案 (acceptFamilyText) 同一聚合的可视投影 —
-    accept 窗口按 governance.formats 的族词表归并, 结果:
-      files_max=0 (纯文本输入)          → text
-      accept 未声明 (=all, 全部平台格式) → cloud
-      命中单一族                        → 该族字形 (FAMILY_GLYPH)
-    纯函数, 不读库。机制内显式 accept 必落单一族 (发布校验保证),
-    域外输入无定义行为。"""
+    files_max=0 (纯文本输入) → text (输入方式维度, 先于 tag);
+    其余 = 声明 tag 的字形。契约: 文件工具必有 tag — 缺失即数据
+    违约, KeyError fail loud, 无兜底无派生。纯函数, 不读库。"""
     if not files_max or int(files_max) <= 0:
         return "text"
-    if not accept:
-        return "cloud"
-    from governance.formats import FAMILIES, FAMILY_ORDER
-    toks = {str(a).lstrip(".").lower() for a in accept}
-    hit = [k for k in FAMILY_ORDER
-           if toks & {e.lstrip(".").lower() for e in FAMILIES[k].exts}]
-    return _FAMILY_GLYPH[hit[0]]
+    return _TAG_GLYPH[tag]

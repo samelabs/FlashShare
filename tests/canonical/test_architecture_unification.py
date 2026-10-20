@@ -110,6 +110,24 @@ ok, miss = _cols("platform_tools", ["desc_json", "sort_order", "featured"])
 check("U2c platform_tools declaration 列齐", ok, miss)
 check("U2c fresh 库无 icon 列", not _cols("platform_tools", ["icon"])[0])
 check("U2c fresh 库无 presets_json 列", not _cols("platform_tools", ["presets_json"])[0])
+# U2d 格式/tag 参考表 (表驱动): 九 tag (all 恒末位) / 每格式一行归属唯一
+# tag / all 无直属行 / 运行态内存结构与表一致
+_cur.execute("select key from tags order by sort_order")
+_tag_keys = [r[0] for r in _cur.fetchall()]
+check("U2d tags = 八场景 + all (all 末位)",
+      _tag_keys == ["image", "document", "data", "text", "audio",
+                    "video", "cad3d", "archive", "all"], _tag_keys)
+_cur.execute("select count(*), count(distinct ext),"
+             " count(*) filter (where tag = 'all'),"
+             " count(*) filter (where tag not in (select key from tags))"
+             " from formats")
+_nf, _nd, _n_all, _n_orphan = _cur.fetchone()
+from governance.formats import FAMILIES, FAMILY_ORDER, VOCAB_EXTS  # noqa: E402
+check("U2d formats 每扩展名一行 = VOCAB 全边界, all 无直属行, 无孤儿",
+      _nf == _nd == len(VOCAB_EXTS) == 119 and _n_all == 0 and _n_orphan == 0,
+      (_nf, _nd, len(VOCAB_EXTS), _n_all, _n_orphan))
+check("U2d 运行态 FAMILIES 由表装载 (八场景, all 不入)",
+      list(FAMILIES) == FAMILY_ORDER == _tag_keys[:-1])
 _cur.execute("select indexname from pg_indexes where tablename='tool_calls'")
 _idx = {r[0] for r in _cur.fetchall()}
 check("U2c tool_calls 当前 unique live idx 存在", "tool_calls_client_ref_live_idx" in _idx)
@@ -141,27 +159,27 @@ def _fake_resolve(host, port):
 _remote_mod._resolve_host = _fake_resolve
 
 def _post(body):
-    base = {"tool_id": body.pop("tool_id"), "label": "AU", "url": "https://pub.example/x",
+    base = {"label": "AU", "url": "https://pub.example/x",
             "format_families": "image"}
     base.update(body)
     return client.post("/api/usertools", json=base, cookies={COOKIE_NAME: sess})
 
-r = _post({"tool_id": f"au1{_u}"})  # 无 accept
+r = _post({})  # 无 accept
 check("U3 missing accept → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au2{_u}", "accept": None})
+r = _post({"accept": None})
 check("U3 accept=None → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au3{_u}", "accept": []})
+r = _post({"accept": []})
 check("U3 accept=[] → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au4{_u}", "accept": [".png"]})
+r = _post({"accept": [".png"]})
 check("U3 explicit valid accept → 200",
       r.status_code == 200 and r.json().get("ok"), f"{r.status_code} {r.text[:160]}")
-r = _post({"tool_id": f"au5{_u}", "accept": ["application/pdf"]})  # MIME 不再解释
+r = _post({"accept": ["application/pdf"]})  # MIME 不再解释
 check("U3 MIME token (非 canonical ext) → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
-r = _post({"tool_id": f"au6{_u}", "accept": [".exe"]})  # 出族
+r = _post({"accept": [".exe"]})  # 出族
 check("U3 out-of-family ext → 422 bad_accept",
       r.status_code == 422 and r.json().get("error") == "bad_accept", f"{r.status_code} {r.text[:80]}")
 
@@ -240,18 +258,18 @@ _cur.execute("delete from pricing where tool_id='badaccept'")
 _cur.execute("delete from platform_tools where tool_key='badaccept'")
 _cur.execute(
     "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-    " label_json, accept_json, visibility, enabled, trusted,"
+    " label_json, accept_json, format_family, visibility, enabled, trusted,"
     " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-    " '[\"application/pdf\"]', 'public', true, false, %s, %s)",
+    " '[\"application/pdf\"]', 'image', 'public', true, false, %s, %s)",
     ("badaccept", "badaccept", ts, ts))
 for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
     _cur.execute("delete from pricing where tool_id=%s", (_bk,))
     _cur.execute("delete from platform_tools where tool_key=%s", (_bk,))
     _cur.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, accept_json, visibility, enabled, trusted,"
+        " label_json, accept_json, format_family, visibility, enabled, trusted,"
         " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-        " %s, 'public', true, false, %s, %s)",
+        " %s, 'image', 'public', true, false, %s, %s)",
         (_bk, _bk, _bj, ts, ts))
 _cur.execute(
     "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",
@@ -1002,9 +1020,9 @@ check("U11 guard 文案 = retired-field 语义 (非 filename-required/ext/MIME �
       and "Output extension not allowed" not in _i18n_src
       and "Invalid output type" not in _i18n_src)
 
-_cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}/%",))
-_cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}/%",))
-_cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}/%",))
+_cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u}_%",))
+_cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u}_%",))
+_cur.execute("delete from platform_tools where tool_key like %s", (f"{_u}_%",))
 _cur.execute("delete from api_keys where user_id=%s", (_uid,))
 _cur.execute("delete from sessions where user_id=%s", (_uid,))
 purge_users(_cur, [_uid])

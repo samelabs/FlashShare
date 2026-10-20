@@ -83,6 +83,7 @@
         return;
       }
     }
+    var filesMax = parseInt(form.files_max.value, 10) || 0;
     var payload = {
       tool_id: form.tool_id.value.trim(),
       label: form.label.value.trim(),
@@ -90,9 +91,10 @@
       timeout_s: parseInt(form.timeout_s.value, 10) || 60,
       auth_header: form.auth_header.value.trim(),
       auth_token: form.auth_token.value,
-      accept: form.accept.value.trim(),
+      // tag 是文件工具的契约字段 (九键之一); 纯文本工具不带 tag/accept
+      accept: filesMax > 0 ? form.accept.value.trim() : "",
       files_min: parseInt(form.files_min.value, 10) || 0,
-      files_max: parseInt(form.files_max.value, 10),
+      files_max: filesMax,
       outputs: ["text", "json", "file"].filter(function (k) {
         var el = form["out_" + k];
         return el && el.checked;
@@ -100,6 +102,7 @@
       params: paramsDecl,
       cost: parseInt(form.cost.value, 10) || 0
     };
+    if (filesMax > 0) payload.format_families = form.format_families.value;
     var btn = this;
     slBusy(btn, slPost('/samelabs/tools/create', payload)).then(function (r) {
       if (r.ok && r.data.ok) {
