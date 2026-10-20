@@ -941,7 +941,12 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         const b = burger.getBoundingClientRect();
         return {
           ok: true,
-          visible: !!lang.offsetParent && r.width > 0 && r.height >= 40,
+          // designed .ib size = 36px visual; the touch target is the
+          // ::after inset extension, asserted separately below. (The old
+          // >= 40 threshold was calibrated on the CTA-bleed rendering —
+          // the (0,3,1) element baseline forcing 11px/22px padding onto
+          // this icon button — not on the component's own metrics.)
+          visible: !!lang.offsetParent && r.width > 0 && r.height >= 36,
           beforeMenu: r.right <= b.left + 1,
           drawerEntryGone: !sheetLang && !menu,
         };
