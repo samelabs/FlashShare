@@ -523,6 +523,31 @@ st, h, d, raw = _req("GET", "/v1/balance", headers=AH)
 check("H1 key still authenticates after the password change",
       st == 200 and d.get("ok"), f"{st} {d}")
 
+# ═══ L. ledger → call link (P6 pages, funded user) ═══
+# T 的付费成功调用 (C2) 产生 consume 行; /account/calls 行锚 + 净支出 +
+# /account/credits 的流水→调用链接 (浏览器用户在 CI 无积分, 此断言在
+# 服务端做)。
+st, h, _p, raw_html = _req("GET", "/account/calls?page=1",
+                            headers={"Cookie": ckT})
+_html = raw_html.decode(errors="replace") if isinstance(raw_html, bytes) else ""
+_check_rows = __import__("re").findall(r'<tr id="call-(\d+)">', _html)
+st_c, h_c, _p_c, raw_c = _req("GET", "/account/credits",
+                               headers={"Cookie": ckT})
+_credits = raw_c.decode(errors="replace") if isinstance(raw_c, bytes) else ""
+_m = __import__("re").search(r'href="(/account/calls#call-(\d+))"', _credits)
+check("L1 credits rows link to the anchored call row",
+      st == 200 and st_c == 200 and _m is not None
+      and _m.group(2) in _check_rows,
+      f"calls={st} credits={st_c} link={_m and _m.group(1)}"
+      f" rows={_check_rows[:4]}")
+if _m:
+    st_l, _h_l, _p_l, raw_l = _req("GET", _m.group(1),
+                                    headers={"Cookie": ckT})
+    _landed = raw_l.decode(errors="replace") if isinstance(raw_l, bytes) else ""
+    check("L2 the link target renders the anchored call row",
+          st_l == 200 and f'id="call-{_m.group(2)}"' in _landed,
+          f"{st_l}")
+
 # ═══ cleanup ═══
 _drop_tools()
 _ep_srv.shutdown()
