@@ -138,8 +138,10 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
 
     # IO-1 input/output contract: files count window + output kinds.
     # create defaults to 1..1 / ["file"]; PATCH updates only on presence.
-    # The window comes first: files_max = 0 (text-only tool, no file
-    # slot) decides whether the accept contract applies at all.
+    # The window comes first: files_max = 0 (正文工具, 无文件位) decides
+    # the input mode — accept/tag 属文件侧, body_format/body_placeholder
+    # 属正文侧, 两侧互斥; 切换输入方式时另一侧互斥列在此清空 (同一
+    # PATCH 事务里落库)。
     if "files_min" in raw or "files_max" in raw or not partial:
         _cur_min = int(row["files_min"]) if row else 1
         _cur_max = int(row["files_max"]) if row else 1
@@ -157,42 +159,96 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
     eff_max = fields.get("files_max",
                          int(row["files_max"]) if row else 1)
     if eff_max == 0:
-        # text-only: no file slot, so no tag / accept
+        # 正文工具: 无文件位, 文件侧互斥列 (accept/tag) 必空
         if raw.get("accept") is not None \
                 or raw.get("format_families") is not None:
             return None, "bad_accept"
         if not partial or "files_max" in fields:
             fields["accept"] = None
             fields["format_family"] = None
-    elif ("accept" in raw or "format_families" in raw or not partial
-          or (row is not None and int(row["files_max"]) == 0)):
-        # tag = 作者声明的应用场景 (九键之一, 入库列 format_family,
-        # 图标查表来源); accept 是 exact executable contract — 存库
-        # 永远写 sorted canonical extension tokens, 必须显式声明。
-        fam, ferr = validate_family_key(raw.get("format_families"))
-        if ferr:
-            return None, ferr
-        from governance.formats import VOCAB_EXTS
-        # 所声明 tag 的格式分组 (all 分组 = 平台格式边界)
-        fam_exts = set(VOCAB_EXTS) if fam == "all" else set(FAMILIES[fam].exts)
-        # accept 是唯一 executable input contract, 必须显式声明:
-        #   缺失 / None / 非 list / 空 list / 空 token 结果 → bad_accept
-        #   (不猜测, 不从 tag 扩面)。
-        raw_accept = raw.get("accept")
-        if "accept" not in raw or raw_accept is None:
-            return None, "bad_accept"
-        if not isinstance(raw_accept, list):
-            return None, "bad_accept"
-        from governance.formats import extensions_for_accept
-        try:
-            canon = extensions_for_accept(raw_accept)
-        except (KeyError, TypeError, ValueError):
-            return None, "bad_accept"
-        # 声明的 accept token 必须落在所选 tag 分组的 canonical ext 内
-        if not canon <= fam_exts:
-            return None, "bad_accept"
-        fields["accept"] = sorted(canon)
-        fields["format_family"] = fam
+        # body_format: create 必填; PATCH 未提时沿用存储值
+        from governance.body import BODY_FORMATS
+        if "body_format" in raw:
+            bf = raw.get("body_format")
+            if bf not in BODY_FORMATS:
+                return None, "bad_body_format"
+            fields["body_format"] = bf
+        elif not partial:
+            return None, "bad_body_format"
+        else:
+            fields["body_format"] = row.get("body_format") \
+                if row else None
+            if fields["body_format"] not in BODY_FORMATS:
+                return None, "bad_body_format"
+        # body_placeholder: 可选 LocalizedText (每语言 <= 64); PATCH 未
+        # 提时沿用存储值。Web locale patch (edit_locale) 下 str/dict 均为
+        # locale patch 原文 (允许空串 = 显式删除), 终态合并由路由做。
+        from governance.tool_supply import (_check_body_placeholder,
+                                             DeclarationError as _DErr)
+        if "body_placeholder" in raw:
+            if partial and edit_locale:
+                if not isinstance(raw.get("body_placeholder"), (str, dict)):
+                    return None, "bad_body_placeholder"
+                fields["body_placeholder"] = raw.get("body_placeholder")
+            else:
+                try:
+                    fields["body_placeholder"] = _check_body_placeholder(
+                        raw.get("body_placeholder"))
+                except _DErr:
+                    return None, "bad_body_placeholder"
+        elif not partial:
+            fields["body_placeholder"] = None
+        else:
+            try:
+                stored_ph = json.loads(row["body_placeholder_json"]) \
+                    if row.get("body_placeholder_json") else None
+            except (TypeError, ValueError):
+                # 存储契约破损: 禁止 except→None 兜底 (会把破损行静默
+                # 改写成"无 placeholder"); 直接报错, 不写库。
+                return None, "tool_unavailable"
+            try:
+                fields["body_placeholder"] = _check_body_placeholder(stored_ph)
+            except _DErr:
+                return None, "bad_body_placeholder"
+    else:
+        # 文件工具: 正文侧互斥列必空; 显式提交即拒 (不静默丢)
+        if raw.get("body_format") is not None:
+            return None, "bad_body_format"
+        if raw.get("body_placeholder") is not None:
+            return None, "bad_body_placeholder"
+        if not partial or "files_max" in fields \
+                or (row is not None and int(row["files_max"]) == 0):
+            fields["body_format"] = None
+            fields["body_placeholder"] = None
+        if ("accept" in raw or "format_families" in raw or not partial
+              or (row is not None and int(row["files_max"]) == 0)):
+            # tag = 作者声明的应用场景 (九键之一, 入库列 format_family,
+            # 图标查表来源); accept 是 exact executable contract — 存库
+            # 永远写 sorted canonical extension tokens, 必须显式声明。
+            fam, ferr = validate_family_key(raw.get("format_families"))
+            if ferr:
+                return None, ferr
+            from governance.formats import VOCAB_EXTS
+            # 所声明 tag 的格式分组 (all 分组 = 平台格式边界)
+            fam_exts = set(VOCAB_EXTS) if fam == "all" else set(FAMILIES[fam].exts)
+            # accept 是唯一 executable input contract, 必须显式声明:
+            #   缺失 / None / 非 list / 空 list / 空 token 结果 → bad_accept
+            #   (不猜测, 不从 tag 扩面)。
+            raw_accept = raw.get("accept")
+            if "accept" not in raw or raw_accept is None:
+                return None, "bad_accept"
+            if not isinstance(raw_accept, list):
+                return None, "bad_accept"
+            from governance.formats import extensions_for_accept
+            try:
+                canon = extensions_for_accept(raw_accept)
+            except (KeyError, TypeError, ValueError):
+                return None, "bad_accept"
+            # 声明的 accept token 必须落在所选 tag 分组的 canonical ext 内
+            if not canon <= fam_exts:
+                return None, "bad_accept"
+            fields["accept"] = sorted(canon)
+            fields["format_family"] = fam
 
     if "outputs" in raw or not partial:
         outputs = raw.get("outputs", ["file"])
@@ -286,7 +342,9 @@ async def create_user_tool(request: Request):
 
     fields, ferr = _validate_submission(raw)
     if ferr:
-        return JSONResponse({"ok": False, "error": ferr}, 422)
+        # tool_unavailable = 存储契约破损 (503), 其余为声明校验 422
+        return JSONResponse({"ok": False, "error": ferr},
+                            503 if ferr == "tool_unavailable" else 422)
 
     # SSRF pre-check (typed failure at submission time)
     from remote import guard_endpoint, RemoteError
@@ -333,6 +391,8 @@ async def create_user_tool(request: Request):
         "label": label if isinstance(label, dict) else {"en": label},
         "desc": desc if isinstance(desc, dict) else ({"en": desc} if desc else None),
         "format_family": fields.get("format_family"),
+        "body_format": fields.get("body_format"),
+        "body_placeholder": fields.get("body_placeholder"),
         "inputs": {"files": {
             "min": int(fields.get("files_min", 1)),
             "max": int(fields.get("files_max", 1)),
@@ -447,7 +507,9 @@ async def update_user_tool(tool_key: str, request: Request):
                                         trusted_ok=bool(row["trusted"]),
                                         edit_locale=edit_locale, row=row)
         if ferr:
-            return JSONResponse({"ok": False, "error": ferr}, 422)
+            # tool_unavailable = 存储契约破损 (503), 其余为声明校验 422
+            return JSONResponse({"ok": False, "error": ferr},
+                                503 if ferr == "tool_unavailable" else 422)
 
         existing_decl = {}
         try:
@@ -536,14 +598,59 @@ async def update_user_tool(tool_key: str, request: Request):
                     return JSONResponse(
                         {"ok": False, "error": "needs_successful_run"}, 422)
             sets["visibility"] = fields["visibility"]
-        # Window/accept/tag ride the canonical inputs patch — the supply
+        # Window/accept/tag/body ride the canonical inputs patch — the supply
         # patch vocabulary has no flat files_min/files_max/accept keys
         # (flat keys were silently dropped). Unprovided sides keep the
-        # STORED bound/accept so a half PATCH never resets the other.
+        # STORED bound/accept so a half PATCH never resets the other;
+        # 输入方式切换时另一侧互斥列已在 _validate_submission 清空。
         if "files_min" in fields or "files_max" in fields \
-                or "accept" in fields or "format_family" in fields:
+                or "accept" in fields or "format_family" in fields \
+                or "body_format" in fields or "body_placeholder" in fields:
             if "format_family" in fields:
                 sets["format_family"] = fields["format_family"]
+            if "body_format" in fields:
+                sets["body_format"] = fields["body_format"]
+            if "body_placeholder" in fields:
+                # Web locale patch (edit_locale): str = 当前 locale 单值,
+                # dict = 逐 locale patch; 空值 = 显式删除该 locale — 与
+                # label/desc 同协议, 未提及语言保留 (旧翻译不丢失)。
+                if edit_locale:
+                    from governance.tool_supply import (
+                        _check_body_placeholder,
+                        DeclarationError as _PHDeclErr)
+                    try:
+                        old_ph = json.loads(row["body_placeholder_json"]) \
+                            if row.get("body_placeholder_json") else None
+                    except (TypeError, ValueError):
+                        # 存储契约破损 — 直接报错, 禁止兜底成 None
+                        return JSONResponse(
+                            {"ok": False, "error": "tool_unavailable"}, 503)
+                    new_ph = fields["body_placeholder"]
+                    old_dict = old_ph if isinstance(old_ph, dict) else (
+                        {edit_locale: old_ph}
+                        if isinstance(old_ph, str) and old_ph else {})
+                    if isinstance(new_ph, dict):
+                        merged = dict(old_dict)
+                        for lg, txt in new_ph.items():
+                            if lg not in _SUPPORTED_LANGS:
+                                continue
+                            merged = patch_locale_guard(
+                                old_ph, merged, lg, str(txt or "")[:64])
+                    else:
+                        cur = resolve_label(old_ph, edit_locale) if old_ph else ""
+                        txt = str(new_ph or "")[:64]
+                        if cur and txt == cur:
+                            merged = old_dict           # 未修改 — 保留原值
+                        else:
+                            merged = patch_locale(old_dict, edit_locale, txt)
+                    try:
+                        sets["body_placeholder"] = _check_body_placeholder(
+                            merged or None)
+                    except _PHDeclErr:
+                        return JSONResponse(
+                            {"ok": False, "error": "bad_body_placeholder"}, 422)
+                else:
+                    sets["body_placeholder"] = fields["body_placeholder"]
             try:
                 _stored_acc = json.loads(row["accept_json"]) \
                     if row.get("accept_json") else None
@@ -625,8 +732,10 @@ async def update_user_tool(tool_key: str, request: Request):
             if edit_locale and decl:
                 try:
                     old_decl = json.loads(row["params_json"] or "[]")
-                except Exception:
-                    old_decl = []
+                except (TypeError, ValueError):
+                    # 存储契约破损 — 直接报错, 禁止兜底成 []
+                    return JSONResponse(
+                        {"ok": False, "error": "tool_unavailable"}, 503)
                 decl = merge_params_decl(old_decl, decl, edit_locale)
             sets["params"] = decl or None
         # 阶段 B: canonical patch → tool_supply 单点序列化/写库
@@ -634,6 +743,25 @@ async def update_user_tool(tool_key: str, request: Request):
         if sets or fields:
             if row["execution"] == "http":
                 sets["binding"] = merged_decl
+            # 正文 http 工具: params 编码进查询参数 — 最终 URL 的自带查询
+            # 键不得与最终 params 声明键撞名 (写库前判定, PATCH 合并态,
+            # 含切换输入方式后的最终 body_format)。
+            _final_bf = fields.get("body_format", row.get("body_format"))
+            if row["execution"] == "http" and _final_bf:
+                _final_params = sets.get("params")
+                if _final_params is None:
+                    try:
+                        _final_params = json.loads(row["params_json"] or "[]")
+                    except (TypeError, ValueError):
+                        # 存储契约破损 — 直接报错, 禁止兜底成 []
+                        return JSONResponse(
+                            {"ok": False, "error": "tool_unavailable"}, 503)
+                if _final_params:
+                    from remote import endpoint_param_query_conflict
+                    if endpoint_param_query_conflict(
+                            merged_decl.get("url"), _final_params):
+                        return JSONResponse(
+                            {"ok": False, "error": "bad_binding"}, 422)
             from governance.tool_supply import update_tool, DeclarationError
             try:
                 update_tool(tool_key, sets, con=con)

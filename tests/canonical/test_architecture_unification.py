@@ -465,8 +465,9 @@ check("U27 routes/api.py 不直接 import repo.ingress_requests",
       "repo.ingress_requests" not in _api_src
       and "repo import ingress_requests" not in _api_src)
 check("U27 routes/api.py receipt finalize 走 canonical sharing finalize",
-      "ingress_finalize_ok(con," in _api_src
-      and "_receipt_ok(con," not in _api_src)
+      "ingress_finalize_ok(con," not in _api_src
+      and "_receipt_ok(con," not in _api_src
+      and "stage_sources(" in _api_src)
 check("U27 sharing finalize_ok 是 caller-transaction 形式 (con, ingress_id)",
       "def finalize_ok(con, ingress_id" in _ig_src)
 
@@ -493,12 +494,18 @@ check("U28 require_session_or_bearer_auth 已删 (browser 面 session-only)",
 check("U28 Bearer 解析仅限 /mcp",
       'path == "/mcp"' in _main28
       and 'path.startswith("/tool-endpoints/")' not in _main28)
-# production templates/JS 无 Public REST active expression
-_tpl28 = (open(_os2.path.join(_REPO, "app", "templates", "agents.html"),
-               encoding="utf-8").read()
-          + open(_os2.path.join(_REPO, "app", "templates", "tool_mcp.html"),
-                 encoding="utf-8").read())
+# production templates 无 Public REST active expression; the tool MCP
+# twin page (/tool/{key}/mcp) is retired — the tool page's access area
+# (MCP card + API card) carries the integration surface now.
+_tpl28 = open(_os2.path.join(_REPO, "app", "templates", "agents.html"),
+              encoding="utf-8").read()
 check("U28 templates 无 /api/v1 能力表达", "/api/v1" not in _tpl28)
+check("U28 tool MCP twin page retired (route/template gone)",
+      not _os2.path.exists(_os2.path.join(
+          _REPO, "app", "templates", "tool_mcp.html"))
+      and '"/tool/{key}/mcp"' not in open(
+          _os2.path.join(_REPO, "app", "routes", "pages.py"),
+          encoding="utf-8").read())
 _i18n28 = open(_os2.path.join(_REPO, "core", "i18n.py"), encoding="utf-8").read()
 check("U28 i18n 无 Public REST 文案键 (agents_ep_*/agents_api_*/tool_mcp_http_hint)",
       all(k not in _i18n28 for k in
@@ -707,7 +714,8 @@ check("C38 validate_catalog_rows 消费 repo.catalog.catalog_contract_rows",
       and "catalog_contract_rows(con)" in _val38.group(0))
 check("C38 startup invariant 校验 execution ∈ canonical supply vocabulary",
       _val38 is not None
-      and "from governance.tool_supply import _EXECUTIONS" in _val38.group(0)
+      and "from governance.tool_supply import" in _val38.group(0)
+      and "_EXECUTIONS" in _val38.group(0)
       and 'r["execution"] not in _EXECUTIONS' in _val38.group(0))
 _disp58 = open(_os2.path.join(_REPO, "core", "execution", "dispatch.py"),
                encoding="utf-8").read()

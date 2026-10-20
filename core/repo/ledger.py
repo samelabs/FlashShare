@@ -111,14 +111,17 @@ def history_tool_refs(con, ledger_ids: list) -> dict:
     refund:  ref_type='ledger', ref_id → the consume row → same chain.
     note is human/audit text and is never parsed here (same rule as
     earn_by_tool). One query covers the whole page; returns
-    {ledger_id: {"tool_key": str, "label_json": str|None}} for rows whose
-    relation resolves to a stored tool row; rows without a resolvable
-    relation are absent from the map."""
+    {ledger_id: {"tool_key": str, "label_json": str|None,
+                 "call_id": int}} for rows whose relation resolves to a
+    stored tool row (call_id rides the same relation: the credits page
+    links the row to the call); rows without a resolvable relation are
+    absent from the map."""
     if not ledger_ids:
         return {}
     rows = con.execute(
         """
-        SELECT l.id AS ledger_id, pt.tool_key, pt.label_json
+        SELECT l.id AS ledger_id, pt.tool_key, pt.label_json,
+               COALESCE(tc.id, tc2.id) AS call_id
         FROM ledger l
         LEFT JOIN tool_calls tc
           ON l.kind = 'consume' AND l.ref_type = 'tool_call'
@@ -134,7 +137,10 @@ def history_tool_refs(con, ledger_ids: list) -> dict:
         """,
         (list(ledger_ids),)).fetchall()
     return {int(r["ledger_id"]): {"tool_key": r["tool_key"],
-                                  "label_json": r["label_json"]}
+                                  "label_json": r["label_json"],
+                                  "call_id": (int(r["call_id"])
+                                              if r["call_id"] is not None
+                                              else None)}
             for r in rows if r["tool_key"]}
 
 

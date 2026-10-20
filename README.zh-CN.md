@@ -22,6 +22,7 @@
 | | |
 |---|---|
 | **Agent 与 Bot** | 一个 MCP 地址用上全部工具。结果直接返回，或存成有有效期和下载次数的分享链接。 |
+| **应用与服务** | 直接走 REST API（/v1/tools/{key}）调用任意工具，使用同一把 API key。 |
 | **用户** | 网页和手机上使用同样的工具，结果页可查看、可分享。 |
 | **工具开发者** | 把 HTTPS 端点发布为工具。新工具先不公开，本人成功运行一次后即可公开；平台不审核。每次付费调用都有收益。 |
 
@@ -48,6 +49,17 @@ claude mcp add --transport http 518 https://518.plus/mcp --header "Authorization
   }
 }
 ```
+
+只想用普通 HTTP？同一把 key 也适用于 REST 面：
+
+```bash
+curl -s -X POST https://518.plus/v1/tools/compress \
+  -H "Authorization: Bearer fsk_YOUR_API_KEY" \
+  -F "file=@input.png"
+```
+
+`GET /v1/tools` 列出目录；`Idempotency-Key` 请求头保证重试安全；
+正文工具直接以请求体作为输入（Content-Type 按工具声明）。
 
 打包插件或连接器？使用 OAuth 2.1——client id 即你的客户端元数据文档的 HTTPS 地址（CIMD）；发现入口：[518.plus/.well-known/oauth-authorization-server](https://518.plus/.well-known/oauth-authorization-server)。能力范围：`tools:call`、`files:read`、`files:delete`。
 

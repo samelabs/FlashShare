@@ -88,8 +88,7 @@ const VIEWPORTS = {
 const PAGES = [
   { path: "/", name: "home", anonOk: true, need: ["#toolInput", "#homeBento .tc"], cards: "#homeBento .tc" },
   { path: "/tools", name: "tools", anonOk: true, need: [], cards: ".market-bento .tc" },
-  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer"], noRuns: true },
-  { path: "/tool/compress/mcp", name: "tool-compress-mcp", anonOk: true, need: [".code-block", "#copyMcp", "#mcpAdd"], copy: ["#copyMcp", "#copyMcpAdd"] },
+  { path: "/tool/compress", name: "tool-compress", anonOk: true, need: [".ti-file-input", ".composer", "#toolApiCard"], noRuns: true },
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#cfgClaudeCode", "#cfgCurl"], copy: ["#copyMcp", '[data-copy-target="cfgClaudeCode"]'] },
   { path: "/pricing", name: "pricing", anonOk: true, need: [".pr-plans .pr-card", "#refund"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
@@ -891,6 +890,62 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       && /\/r\//.test(mcpShareRUrl) && (msc.items || []).length === 2,
     JSON.stringify((mshare.json || {}).result || {}).slice(0, 160));
 
+  // ── 9-13. P6 pages: call history + result navigation + the retired
+  // MCP twin page. The MCP calls above ran as THIS user (the API key
+  // owner), so the calls page has real rows. (The paid ledger→call link
+  // flow is asserted in test_api_surface — browser users hold no
+  // credits in CI, so no consume row can exist here.)
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    await gotoReady(page, "/auth/login", "input[name=login]");
+    await page.fill("input[name=login]", username);
+    await page.fill("input[name=password]", password);
+    await Promise.all([page.waitForNavigation({ timeout: 15000 }), page.click("button[type=submit]")]);
+    await gotoReady(page, "/account/calls", ".acct-table");
+    const callsShape = await page.evaluate(() => ({
+      rows: document.querySelectorAll(".acct-table tbody tr").length,
+      ok: document.querySelectorAll(".calls-st-ok").length,
+      resultLinks: [...document.querySelectorAll('a[href^="/r/"]')].length,
+      nav: !!document.querySelector('.acct-tab[href="/account/calls"]'),
+      firstResult: (document.querySelector('a[href^="/r/"]') || {}).getAttribute
+        ? document.querySelector('a[href^="/r/"]').getAttribute("href")
+        : null,
+      firstCallId: (document.querySelector('tr[id^="call-"]') || {}).id || null,
+    }));
+    check("calls page: real rows (from the MCP calls above), live result links",
+      callsShape.rows >= 2 && callsShape.ok >= 2 && callsShape.resultLinks >= 1
+        && callsShape.nav,
+      JSON.stringify(callsShape));
+    if (callsShape.firstResult) {
+      // real click: the call's result link → the /r result page
+      await Promise.all([
+        page.waitForNavigation({ timeout: 15000 }),
+        page.click(`a[href="${callsShape.firstResult}"]`),
+      ]);
+      const landed = await page.evaluate(() => ({
+        path: location.pathname,
+        hasItems: !!document.querySelector(".rs-grid, .item-file, .item-text"),
+      }));
+      check("calls page → result page (real click)", /\/r\//.test(landed.path),
+        JSON.stringify(landed));
+    }
+    if (callsShape.firstCallId) {
+      // anchored navigation: the shape the ledger rows link to resolves
+      // to the highlighted call row
+      await gotoReady(page, `/account/calls#${callsShape.firstCallId}`, ".acct-table");
+      const anchored = await page.evaluate((want) =>
+        [...document.querySelectorAll('tr[id^="call-"]')].some(
+          (r) => "#" + r.id === location.hash) && want === location.hash,
+        `#${callsShape.firstCallId}`);
+      check("anchored call row navigation (ledger link target)", anchored,
+        callsShape.firstCallId);
+    }
+    const twin = await page.goto(BASE + "/tool/compress/mcp").then((r) => r.status()).catch(() => 0);
+    check("tool MCP twin page retired → 404", twin === 404, String(twin));
+    await ctx.close();
+  }
+
   // ── UI-polish permanent regression ─────────────────────────────
   // (a) horizontal-overflow sweep at 360px with long-word (de) and RTL (ar)
   //     locales on the core surfaces;
@@ -1481,7 +1536,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             aria: document.querySelector(".ti-more-btn").getAttribute("aria-expanded"),
           }));
           check(`params ${w} tool page: fold expands to the extra rows`,
-            !unfolded.hidden && unfolded.rows === 2 && unfolded.aria === "true", JSON.stringify(unfolded));
+            !unfolded.hidden && unfolded.rows === 3 && unfolded.aria === "true", JSON.stringify(unfolded));
           // home surface: same tool through the picker
           const home = await vp.newPage();
           await gotoReady(home, "/", ".composer");
@@ -1510,8 +1565,9 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
           window.runToolFlow = () => { window.__chatRuns++; return Promise.resolve({}); };
           window.ToolInput.mount(host, { tool: {
             id: "probe/chat", label: "Probe", files_min: 0, files_max: 0,
-            params: [{ key: "q", type: "text", required: true, label: "Prompt",
-              placeholder: "Ask anything" }],
+            body_format: "text",
+            body_placeholder: { en: "Ask anything" },
+            params: [],
           } });
         });
         const shape = await page.evaluate(() => {
@@ -1535,7 +1591,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         check("chat form: one auto-grow input, send button inside its corner, no bar run",
           shape.ok && shape.sendInsideCorner && shape.singleLineHeight && shape.noBarRun,
           JSON.stringify(shape));
-        check("chat form: placeholder from the main text param", shape.ok && shape.ph,
+        check("chat form: placeholder from the declared body placeholder", shape.ok && shape.ph,
           JSON.stringify(shape));
         await page.focus("#chatProbe .ti-chat-text");
         await page.keyboard.type("line 1");
@@ -1560,6 +1616,49 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         }));
         check("chat form: Enter inserts a newline, Ctrl+Enter runs",
           keys.runs === 1 && keys.newline, JSON.stringify(keys));
+        await page.close();
+      }
+
+      // F8: execution errors show the provider `detail` via textContent —
+      // real process-flow chain (real runToolFlow + showToolError), with
+      // the execute fetch intercepted to answer a typed failure whose
+      // detail carries inert HTML markup.
+      {
+        const page = await ctx.newPage();
+        await page.route("**/api/tools/execute", (route) => route.fulfill({
+          status: 200, contentType: "application/json",
+          body: JSON.stringify({
+            ok: false, error: "err_endpoint_failed",
+            detail: "provider 500 said boom <img src=x onerror=\"window.__pwn=1\">",
+          }),
+        }));
+        await gotoReady(page, "/", ".composer");
+        await page.evaluate(() => {
+          const host = document.createElement("div");
+          host.id = "errProbe";
+          document.getElementById("toolInput").after(host);
+          window.__pwn = undefined;
+          window.ToolInput.mount(host, { tool: {
+            id: "probe/errbody", label: "ErrProbe", files_min: 0,
+            files_max: 0, body_format: "text", params: [],
+          } });
+        });
+        await page.fill("#errProbe .ti-chat-text", "trigger failure");
+        await page.click("#errProbe .ti-run");
+        await page.waitForTimeout(400);
+        const err = await page.evaluate(() => {
+          const note = document.querySelector("#result .result-card .error-note");
+          return {
+            text: note ? note.textContent : "",
+            pwn: window.__pwn,
+            hasImg: note ? !!note.querySelector("img") : null,
+          };
+        });
+        check("error card shows the provider detail (textContent)",
+          /boom/.test(err.text) && err.text.indexOf("provider 500") !== -1,
+          JSON.stringify(err));
+        check("error detail markup stays inert (no img element, no script run)",
+          err.pwn === undefined && err.hasImg === false, JSON.stringify(err));
         await page.close();
       }
       await ctx.close();

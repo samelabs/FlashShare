@@ -101,11 +101,19 @@ class _TLSWrap:
     def close(self): self.closed = True
 
 class _RespDouble:
+    # 默认响应身份 = 南向 items 信封 (P2 契约: 信封走专属 Content-Type;
+    # 其余用例显式覆盖 headers)。
+    ITEMS_CT = {"content-type": "application/vnd.518.items+json"}
+
     def __init__(self, status=200, body=b"ok", headers=None):
         self.status = status
         self._body = body
-        self._h = {k.lower(): v for k, v in (headers or {}).items()}
-    def read(self, n=-1): return self._body
+        base = dict(self.ITEMS_CT)
+        base.update({k.lower(): v for k, v in (headers or {}).items()})
+        self._h = base
+    def read(self, n=-1):
+        # 尊重读取上限 (与真实 resp.read(n) 同语义 — 截断断言依赖它)
+        return self._body if n < 0 else self._body[:n]
     def getheader(self, k): return self._h.get(k.lower())
     def getheaders(self): return list(self._h.items())
 
@@ -251,7 +259,7 @@ except RemoteError:
 rec = _install_stack(
     resolve_map={"pin.example": [(_socket.AF_INET, PUBLIC4)]},
     resp_script=[_RespDouble(200, b"ok")])
-status, data = remote.pinned_request("https://pin.example/f?q=1", timeout_s=7)
+status, data, _ct, _cd = remote.pinned_request("https://pin.example/f?q=1", timeout_s=7)
 check("PIN-P1 status/body", status == 200 and data == b"ok", (status, data))
 check("PIN-P1 resolver called exactly once", len(rec.resolve_calls) == 1, rec.resolve_calls)
 s = rec.socks[0] if rec.socks else None
@@ -274,7 +282,7 @@ _restore_stack()
 rec = _install_stack(
     resolve_map={"v6.example": [(_socket.AF_INET6, PUBLIC6)]},
     resp_script=[_RespDouble(200, b"v6")])
-status, data = remote.pinned_request("https://v6.example/f", timeout_s=5)
+status, data, _ct, _cd = remote.pinned_request("https://v6.example/f", timeout_s=5)
 check("PIN-P2 IPv6 request succeeds (no tuple unpack crash)",
       status == 200, status)
 s = rec.socks[0]
@@ -288,7 +296,7 @@ _restore_stack()
 rec = _install_stack(
     resolve_map={"pin.example": [(_socket.AF_INET, PUBLIC4)]},
     resp_script=[_RespDouble(200, b"p8443")])
-status, data = remote.pinned_request("https://pin.example:8443/f", timeout_s=5)
+status, data, _ct, _cd = remote.pinned_request("https://pin.example:8443/f", timeout_s=5)
 check("PIN-P3 request ok", status == 200, status)
 check("PIN-P3 connect sockaddr port = 8443",
       rec.socks[0].connected == (PUBLIC4, 8443), rec.socks[0].connected)
@@ -323,7 +331,7 @@ except RemoteError as e:
 # outward mapping (orchestrator table)
 _src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"), encoding="utf-8").read()
 check("PIN-P5 orchestrator maps timeout → err_endpoint_timeout",
-      '"timeout": "err_endpoint_timeout"' in _src, "mapping missing")
+      'raise ExecutionError("err_endpoint_timeout")' in _src, "mapping missing")
 _restore_stack()
 
 # read-phase timeout (getresponse hangs → http.client socket.timeout)
@@ -351,7 +359,7 @@ for status in (301, 302, 303):
     rec = _install_stack(
         resolve_map={"a.example": [(_socket.AF_INET, PUBLIC4)]},
         resp_script=_redirect_script(status, "https://a.example/hop2"))
-    st, data = remote.pinned_request(
+    st, data, _ct, _cd = remote.pinned_request(
         "https://a.example/f", method="POST", body=b"payload",
         headers={"Content-Type": "application/json", "Content-Length": "7"},
         timeout_s=5)
@@ -368,7 +376,7 @@ for status in (307, 308):
     rec = _install_stack(
         resolve_map={"a.example": [(_socket.AF_INET, PUBLIC4)]},
         resp_script=_redirect_script(status, "https://a.example/hop2"))
-    st, data = remote.pinned_request(
+    st, data, _ct, _cd = remote.pinned_request(
         "https://a.example/f", method="POST", body=b"payload",
         headers={"Content-Type": "application/json"},
         timeout_s=5)
@@ -434,7 +442,7 @@ rec = _install_stack(
     resolve_map={"same.example": [(_socket.AF_INET, PUBLIC4)]},
     resp_script=[_RespDouble(302, b"", {"location": "https://same.example/hop2"}),
                  _RespDouble(200, b"ok")])
-st, data = remote.pinned_request("https://same.example/f", method="POST", body=b"x",
+st, data, _ct, _cd = remote.pinned_request("https://same.example/f", method="POST", body=b"x",
                                  headers={"Authorization": "Bearer sekrit"},
                                  timeout_s=5, has_credential=True)
 h2 = rec.conns[1].requests[0][3] if len(rec.conns) > 1 else {}
@@ -464,7 +472,7 @@ rec = _install_stack(
                  "other.example": [(_socket.AF_INET, PUBLIC4)]},
     resp_script=[_RespDouble(302, b"", {"location": "https://other.example/hop2"}),
                  _RespDouble(200, b"ok")])
-st, data = remote.pinned_request("https://same.example/f", timeout_s=5, has_credential=False)
+st, data, _ct, _cd = remote.pinned_request("https://same.example/f", timeout_s=5, has_credential=False)
 check("CRED cross-origin without credential allowed (2 hops)", len(rec.conns) == 2, len(rec.conns))
 _restore_stack()
 
@@ -645,7 +653,7 @@ finally:
 rec = _install_stack(
     resolve_map={"pin.example": [(_socket.AF_INET, PUBLIC4)]},
     resp_script=[_RespDouble(200, b"ok")])
-st, data = remote.pinned_request("https://pin.example/f", timeout_s=5,
+st, data, _ct, _cd = remote.pinned_request("https://pin.example/f", timeout_s=5,
                                  headers={"Host": "attacker.example",
                                           "Content-Length": "999"})
 _h = rec.conns[0].requests[0][3].get("Host") if rec.conns else None
@@ -843,13 +851,13 @@ def _patch_urllib_open(resp):
     remote.urllib.request.urlopen = lambda req, timeout=None: resp
     return _saved_open
 
-# ENV-1: envelope application/json + PNG data_b64, NO JSON content_type
-# → canonical image/png (from filename + byte validation)
+# ENV-1: items envelope (专属 Content-Type) + PNG data_b64, 无 product
+# content_type → canonical image/png (from filename + byte validation)
 _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200,
     json.dumps({"items": [{"kind": "file", "filename": "result.png",
                 "data_b64": _b64.b64encode(_png_bytes()).decode()}]}).encode(),
-    "application/json"))
+    "application/vnd.518.items+json"))
 try:
     out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
                             [], {}, {}, trusted=True)
@@ -863,13 +871,13 @@ except Exception as exc:
 finally:
     remote.urllib.request.urlopen = _saved_open
 
-# ENV-2: JSON explicit content_type=image/png → image/png
+# ENV-2: envelope 显式 content_type=image/png → image/png
 _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200,
     json.dumps({"items": [{"kind": "file", "filename": "result.png",
                 "content_type": "image/png",
                 "data_b64": _b64.b64encode(_png_bytes()).decode()}]}).encode(),
-    "application/json"))
+    "application/vnd.518.items+json"))
 try:
     out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
                             [], {}, {}, trusted=True)
@@ -881,18 +889,20 @@ except Exception as exc:
 finally:
     remote.urllib.request.urlopen = _saved_open
 
-# ENV-3: raw PNG response, HTTP Content-Type=image/png → image/png
-# (raw-bytes mode legitimately keeps the response Content-Type)
+# ENV-3 (P2): raw PNG response, HTTP Content-Type=image/png → 一个文件项
+# (raw 模式合法保留响应 Content-Type; 无 Content-Disposition → 嗅探名)
 _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200, _png_bytes(), "image/png"))
 try:
-    remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
-                      [], {}, {}, trusted=True)
-    check("ENV-3 raw-bytes body rejected (items-only contract)", False,
-          "no raise")
-except remote.RemoteError as exc:
-    check("ENV-3 raw-bytes body rejected (items-only contract)",
-          exc.code == "invalid_response", exc.code)
+    out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                            [], {}, {}, trusted=True)
+    _e3 = out["items"][0]
+    check("ENV-3 raw bytes + image/png → file item (sniffed name)",
+          _e3["kind"] == "file" and _e3["filename"] == "result.png"
+          and _e3["content_type"] == "image/png" and _e3["bytes"] == _png_bytes(),
+          out)
+except Exception as exc:
+    check("ENV-3 raw bytes + image/png → file item", False, exc)
 finally:
     remote.urllib.request.urlopen = _saved_open
 
@@ -902,7 +912,7 @@ _saved_open = _patch_urllib_open(_UrllibRespDouble(
     200,
     json.dumps({"items": [{"kind": "file", "filename": "pulled.png",
                 "url": "https://pub.example/fetch.png"}]}).encode(),
-    "application/json"))
+    "application/vnd.518.items+json"))
 _pulled_saved = remote._pull_item_file_url
 try:
     remote._pull_item_file_url = lambda url, t, tr: _png_bytes()
@@ -917,6 +927,167 @@ except Exception as exc:
 finally:
     remote._pull_item_file_url = _pulled_saved
     remote.urllib.request.urlopen = _saved_open
+
+# ═══ P2-CT: response interpretation by Content-Type (one rule for both
+# tool kinds) — single json item / single text item / file naming ═══
+def _drive_trusted(resp):
+    _saved = _patch_urllib_open(resp)
+    try:
+        return remote.drive_http({"url": "https://trusted.example/api",
+                                  "timeout_s": 30}, [], {}, {}, trusted=True)
+    finally:
+        remote.urllib.request.urlopen = _saved
+
+# CT-1: application/json → ONE json item (the body itself is the product)
+try:
+    out = _drive_trusted(_UrllibRespDouble(200, b'{"ok": true, "n": 1}',
+                                           "application/json"))
+    check("CT-1 application/json → one json item",
+          len(out["items"]) == 1 and out["items"][0]["kind"] == "json"
+          and out["items"][0]["data"] == {"ok": True, "n": 1}, out)
+except Exception as exc:
+    check("CT-1 application/json → one json item", False, exc)
+
+# CT-2: text/* → ONE text item (UTF-8)
+try:
+    out = _drive_trusted(_UrllibRespDouble(200, "café résumé".encode("utf-8"),
+                                           "text/plain; charset=utf-8"))
+    check("CT-2 text/* → one text item",
+          len(out["items"]) == 1 and out["items"][0]["kind"] == "text"
+          and out["items"][0]["text"] == "café résumé", out)
+except Exception as exc:
+    check("CT-2 text/* → one text item", False, exc)
+
+# CT-3: other Content-Type + Content-Disposition → file item named from CD
+class _CDResp(_UrllibRespDouble):
+    def __init__(self, status, body, ctype, cd):
+        super().__init__(status, body, ctype)
+        self.headers["Content-Disposition"] = cd
+_saved_open = _patch_urllib_open(_CDResp(200, _png_bytes(), "image/png",
+                                         'attachment; filename="photo.png"'))
+try:
+    out = remote.drive_http({"url": "https://trusted.example/api",
+                             "timeout_s": 30}, [], {}, {}, trusted=True)
+    _ct3 = out["items"][0]
+    check("CT-3 CD filename wins for file items",
+          _ct3["kind"] == "file" and _ct3["filename"] == "photo.png"
+          and _ct3["content_type"] == "image/png", out)
+except Exception as exc:
+    check("CT-3 CD filename wins for file items", False, exc)
+finally:
+    remote.urllib.request.urlopen = _saved_open
+
+# CT-4: other Content-Type, no CD, unidentifiable bytes → fail typed
+_saved_open = _patch_urllib_open(_UrllibRespDouble(200, b"\x01\x02\x03not-a-format",
+                                                   "application/x-custom"))
+try:
+    remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                      [], {}, {}, trusted=True)
+    check("CT-4 unidentifiable raw product → bad_output", False, "no raise")
+except remote.RemoteError as exc:
+    check("CT-4 unidentifiable raw product → bad_output",
+          exc.code == "bad_output", exc.code)
+finally:
+    remote.urllib.request.urlopen = _saved_open
+
+# CT-5: non-2xx → RemoteError http_status carrying status + body snippet
+_saved_open = _patch_urllib_open(_UrllibRespDouble(
+    503, b'{"error": "overloaded"}', "application/json"))
+try:
+    remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
+                      [], {}, {}, trusted=True)
+    check("CT-5 provider non-2xx → RemoteError http_status", False,
+          "no raise")
+except remote.RemoteError as exc:
+    check("CT-5 provider non-2xx carries status + body snippet",
+          exc.code == "http_status" and "503" in str(exc)
+          and "overloaded" in str(exc), str(exc))
+finally:
+    remote.urllib.request.urlopen = _saved_open
+_orch_src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
+                 encoding="utf-8").read()
+check("CT-5b orchestrator maps http_status → 502 + detail",
+      'http_status=502' in _orch_src and "exc.detail" in _orch_src,
+      "mapping missing")
+
+# ═══ P2-BODY: body-tool southbound transport (pinned recorder) ═══
+rec_b = _install_stack(
+    resolve_map={"body.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(200, b'"HELLO"',
+                             headers={"Content-Type": "application/json"})])
+try:
+    decl_b = {"url": "https://body.example/api?src=keep", "timeout_s": 30}
+    out = remote.drive_http(
+        decl_b, [], {"num": 5.0, "fl": 2.5, "flag": True, "mode": "fast"},
+        {}, trusted=False, body="hello", canonical_body='"hello"',
+        body_format="json")
+    check("BODY-1 json body tool round-trips a json item",
+          out["items"][0]["kind"] == "json"
+          and out["items"][0]["data"] == "HELLO", out)
+    _m, _p, _rb, _rh = rec_b.conns[0].requests[0]
+    check("BODY-2 request body is the canonical JSON, not an envelope",
+          _rb == b'"hello"', _rb)
+    check("BODY-3 Content-Type application/json for json bodies",
+          _rh.get("Content-Type") == "application/json", _rh.get("Content-Type"))
+    check("BODY-4 params ride the query string, endpoint query preserved",
+          _p.startswith("/api?src=keep&")
+          and "num=5" in _p and "num=5.0" not in _p
+          and "fl=2.5" in _p and "flag=true" in _p and "mode=fast" in _p, _p)
+finally:
+    _restore_stack()
+
+rec_t = _install_stack(
+    resolve_map={"body.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(200, b"done",
+                             headers={"Content-Type": "text/plain"})])
+try:
+    out = remote.drive_http(
+        {"url": "https://body.example/api", "timeout_s": 30}, [], {}, {},
+        trusted=False, body="plain text", canonical_body="plain text",
+        body_format="text")
+    check("BODY-5 text body tool → one text item",
+          out["items"][0]["kind"] == "text"
+          and out["items"][0]["text"] == "done", out)
+    _m, _p, _rb, _rh = rec_t.conns[0].requests[0]
+    check("BODY-6 text body posted verbatim with text/plain; charset=utf-8",
+          _rb == b"plain text"
+          and _rh.get("Content-Type") == "text/plain; charset=utf-8",
+          (_rb, _rh.get("Content-Type")))
+finally:
+    _restore_stack()
+
+# BODY-7: query param encoding unit rules
+check("BODY-7 encode_query_params (int no .0 / bool / text)",
+      remote.encode_query_params({"i": 5.0, "b": False, "s": "a b&c"})
+      == "i=5&b=false&s=a%20b%26c",
+      remote.encode_query_params({"i": 5.0, "b": False, "s": "a b&c"}))
+
+# BODY-8: declaration-time endpoint-query/param-key conflict
+from governance.tool_supply import (validate_tool_declaration,
+                                     DeclarationError as _DeclErr)
+try:
+    validate_tool_declaration({
+        "tool_key": "bq", "tool_id": "bq", "owner_id": 7,
+        "execution": "http",
+        "label": {"en": "B"},
+        "inputs": {"files": {"min": 0, "max": 0, "accept": None}},
+        "body_format": "text",
+        "outputs": ["text"],
+        "params": [{"key": "src", "type": "text"}],
+        "visibility": "unlisted", "enabled": True,
+        "binding": {"url": "https://body.example/api?src=keep",
+                    "timeout_s": 30}})
+    check("BODY-8 endpoint query key vs param key → bad_binding", False,
+          "accepted")
+except _DeclErr as exc:
+    check("BODY-8 endpoint query key vs param key → bad_binding",
+          str(exc) == "bad_binding", str(exc))
+
+# BODY-9: 正文工具恰好一项 (orchestrator, 落盘/结算之前)
+check("BODY-9 orchestrator enforces exactly one item for body tools",
+      'tool.get("body_format") and len(items) != 1' in _orch_src,
+      "check missing")
+
 
 # OUT-5: binding composition is a closed vocabulary — legacy/unknown keys
 # are rejected fail-closed (DeclarationError), never carried or persisted
@@ -965,6 +1136,99 @@ _proj = _owner_rows(uid2)
 check("OUT-7 owner projection has no output_filename/output_content_type",
       all("output_filename" not in p and "output_content_type" not in p
           for p in _proj), [sorted(p) for p in _proj][:1])
+
+# ═══ F1: 非 2xx 大错误体 — 截断读取, 不因 Content-Length 中止 ═══
+# 提供者 500 且 Content-Length 20KB: pinned 传输读前 4097 字节并携带
+# status 返回 (错误详情素材), 不抛 too_large; drive_http 把它组装成
+# http_status 错误 (orchestrator 再映射为平台 502 + detail)。
+_err20k = b"E" * 20480
+rec = _install_stack(
+    resolve_map={"errbig.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(500, _err20k,
+                             headers={"content-length": "20480"})])
+status, data, _ct, _cd = remote.pinned_request(
+    "https://errbig.example/f", timeout_s=5)
+check("F1 non-2xx 20KB CL → status carried, body truncated at 4096",
+      status == 500 and len(data) == 4097 and data[:64] == b"E" * 64,
+      (status, len(data)))
+_restore_stack()
+rec = _install_stack(
+    resolve_map={"errbig.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(500, _err20k,
+                             headers={"content-length": "20480"})])
+try:
+    remote.drive_http({"url": "https://errbig.example/f", "timeout_s": 5},
+                      [], {}, {}, False)
+    check("F1 provider 500 → http_status with status + first 4096 bytes",
+          False, "accepted")
+except RemoteError as exc:
+    check("F1 provider 500 → http_status with status + first 4096 bytes",
+          exc.code == "http_status"
+          and exc.detail.startswith("500 ")
+          and len(exc.detail) == len("500 ") + 4096
+          and set(exc.detail[len("500 "):]) == {"E"},
+          (exc.code, len(exc.detail)))
+finally:
+    _restore_stack()
+
+# ═══ A1: NaN/Infinity 响应体 → invalid_response (调用失败+退款, 非 500) ═══
+for _nan_body in (b'{"x": NaN}', b'{"x": Infinity}', b'{"x": -Infinity}'):
+    try:
+        remote.parse_response_items(200, _nan_body, "application/json",
+                                    None, None)
+        check("A1 non-finite JSON constant → invalid_response", False,
+              "accepted")
+        break
+    except RemoteError as exc:
+        check("A1 non-finite JSON constant → invalid_response",
+              exc.code == "invalid_response", f"{exc.code} {_nan_body}")
+try:
+    remote.parse_response_items(
+        200, b'{"items":[{"kind":"json","data":{"x":NaN}}]}',
+        remote.ITEMS_ENVELOPE_CT, None, None)
+    check("A1 non-finite inside items envelope → invalid_response",
+          False, "accepted")
+except RemoteError as exc:
+    check("A1 non-finite inside items envelope → invalid_response",
+          exc.code == "invalid_response", exc.code)
+
+# ═══ F3: parse_response_items — +json 媒体类型与 text charset ═══
+_items = remote.parse_response_items(
+    200, b'{"type":"about:blank","title":"nope"}',
+    "application/problem+json", None, None)
+check("F3 application/problem+json → single json item",
+      len(_items) == 1 and _items[0]["kind"] == "json"
+      and _items[0]["data"]["title"] == "nope", str(_items)[:100])
+_items = remote.parse_response_items(
+    200, b'[1,2,3]', "application/ld+json; charset=utf-8", None, None)
+check("F3 application/ld+json → single json item (array root)",
+      len(_items) == 1 and _items[0]["kind"] == "json"
+      and _items[0]["data"] == [1, 2, 3], str(_items)[:100])
+_items = remote.parse_response_items(
+    200, "中文正文".encode("gbk"), "text/plain; charset=gbk", None, None)
+check("F3 text charset param honoured (gbk decode)",
+      len(_items) == 1 and _items[0]["kind"] == "text"
+      and _items[0]["text"] == "中文正文", str(_items)[:100])
+_items = remote.parse_response_items(
+    200, "plain default".encode("utf-8"), "text/plain", None, None)
+check("F3 text without charset defaults to UTF-8",
+      len(_items) == 1 and _items[0]["text"] == "plain default", str(_items)[:80])
+try:
+    remote.parse_response_items(
+        200, "中文正文".encode("gbk"), "text/plain; charset=utf-8", None, None)
+    check("F3 undecodable text (gbk bytes as utf-8) → invalid_response",
+          False, "accepted")
+except RemoteError as exc:
+    check("F3 undecodable text (gbk bytes as utf-8) → invalid_response",
+          exc.code == "invalid_response", exc.code)
+try:
+    remote.parse_response_items(
+        200, b"x", "text/plain; charset=no-such-charset", None, None)
+    check("F3 unknown charset name → invalid_response", False, "accepted")
+except RemoteError as exc:
+    check("F3 unknown charset name → invalid_response",
+          exc.code == "invalid_response", exc.code)
+
 
 # 清场
 # uid2 被升为 samelabs operator 并驱动过 /samelabs/tools/create → 留下

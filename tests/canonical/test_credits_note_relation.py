@@ -160,8 +160,11 @@ try:
 
     st, html, _sc = _req("GET", "/account/credits?lang=en",
                          headers={"Cookie": ck.split(";")[0]})
-    notes = [m.strip() for m in _re.findall(
-        r'<td class="credit-note-cell">(.*?)</td>', html or "", _re.S)]
+    _cells = _re.findall(
+        r'<td class="credit-note-cell">(.*?)</td>', html or "", _re.S)
+    # P6: tool-bound notes wrap in a link to the anchored call row — the
+    # label comparison works on the inner text
+    notes = [_re.sub(r"<[^>]+>", "", c).strip() for c in _cells]
     n_top = notes[:5]  # newest first: refund, no-rel, beta, alpha, adjust
     check("F2 credits page renders", st == 200 and len(notes) >= 5,
           (st, len(notes)))
@@ -171,6 +174,8 @@ try:
     check("N2 refund row resolves its consume row's tool (Beta)",
           len(notes) >= 5 and notes[2] == "Tool: Beta Tool 62"
           and notes[3] == "Tool: Beta Tool 62", str(n_top))
+    check("N2b tool-bound cells link to the anchored call row (P6)",
+          any('href="/account/calls#call-' in c for c in _cells), str(_cells)[:120])
     check("N3 forged notes never win (no evil_tool, no cross-label)",
           not any("evil_tool" in n for n in n_top)
           and not any("Alpha" in n and notes.index(n) != n_top.index(n)

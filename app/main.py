@@ -149,48 +149,57 @@ app.mount("/brand", _VersionedStaticFiles(directory=str(_BRAND_DIR)), name="bran
 
 def get_user_from_request(request: Request):
     """Browser session identity for the web surface; Bearer tokens are
-    resolved only for the /mcp machine surface that authenticates with
-    them. A Bearer header never turns its holder into a logged-in
-    web user."""
+    resolved only for the machine surfaces (/mcp, /v1) that authenticate
+    with them. A Bearer header never turns its holder into a logged-in
+    web user; conversely a valid session cookie NEVER authenticates the
+    machine surfaces (it would bypass the /mcp key scope checks)."""
     from database import db
-    token = request.cookies.get(COOKIE_NAME)
-    if token:
-        try:
-            from repo.sessions import user_by_session_token
-            with db() as con:
-                row = user_by_session_token(con, token_hash(token), now())
-        except Exception:
-            return None
-        if row:
-            request.state.auth_via = "session"
-            return dict(row)
-        # A stale/invalid cookie is no identity: /mcp still resolves its
-        # Bearer below; every other path stays anonymous.
     path = request.url.path
-    if path == "/mcp":
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            token = auth[7:].strip()
-            if token.startswith("fsot_"):
-                # OAuth access token (consent-granted, resource-bound)
-                from identity.oauth_provider import (
-                    MCP_RESOURCE, authenticate_access_token)
-                identity = authenticate_access_token(
-                    token, resource=MCP_RESOURCE)
-                if identity:
-                    request.state.auth_via = "oauth"
-                    request.state.auth_scopes = identity["scopes"]
-                    request.state.oauth_client_id = identity["client_id"]
-                return identity["user"] if identity else None
-            from identity.apikeys import authenticate_key
-            from identity.capabilities import scope_set
-            user = authenticate_key(token)
-            if user:
-                request.state.auth_via = "token"
-                request.state.auth_scopes = scope_set(
-                    user.pop("key_scopes", None))
-                request.state.oauth_client_id = None
-            return user
+    mcp_surface = path == "/mcp" or path.startswith("/mcp/")
+    machine_surface = mcp_surface \
+        or path == "/v1" or path.startswith("/v1/")
+    if not machine_surface:
+        token = request.cookies.get(COOKIE_NAME)
+        if token:
+            try:
+                from repo.sessions import user_by_session_token
+                with db() as con:
+                    row = user_by_session_token(con, token_hash(token), now())
+            except Exception:
+                return None
+            if row:
+                request.state.auth_via = "session"
+                return dict(row)
+            # A stale/invalid cookie is no identity: every non-machine path
+            # stays anonymous.
+        return None
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+        if token.startswith("fsot_"):
+            # OAuth access token (consent-granted, resource-bound): a
+            # /mcp-surface credential ONLY — the /v1 API is key (fsk_)
+            # only, an fsot_ there authenticates nothing.
+            if not mcp_surface:
+                return None
+            from identity.oauth_provider import (
+                MCP_RESOURCE, authenticate_access_token)
+            identity = authenticate_access_token(
+                token, resource=MCP_RESOURCE)
+            if identity:
+                request.state.auth_via = "oauth"
+                request.state.auth_scopes = identity["scopes"]
+                request.state.oauth_client_id = identity["client_id"]
+            return identity["user"] if identity else None
+        from identity.apikeys import authenticate_key
+        from identity.capabilities import scope_set
+        user = authenticate_key(token)
+        if user:
+            request.state.auth_via = "token"
+            request.state.auth_scopes = scope_set(
+                user.pop("key_scopes", None))
+            request.state.oauth_client_id = None
+        return user
     return None
 
 
@@ -217,7 +226,7 @@ _concurrency = asyncio.Semaphore(8)
 # never queue behind slow tool calls; remote (http) executions carry
 # their own in-flight cap sized below this gate (execution/pool
 # REMOTE_MAX_INFLIGHT), so a slow user tool can never occupy every slot.
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp")
+_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp", "/v1")
 # Mutating account identity/credentials is a browser-session surface. Capability
 # tokens may run the machine surface (MCP), but cannot use themselves to
 # mint/alter account credentials. Token CRUD and X bind/unbind also enforce
@@ -327,6 +336,8 @@ app.include_router(samelabs.router)
 app.include_router(mcp.router)
 app.include_router(oauth_provider.router)
 app.include_router(mcp_upload.router)
+from app.routes import v1  # noqa: E402
+app.include_router(v1.router, prefix="/v1")
 from app.routes import topup  # noqa: E402
 app.include_router(topup.router)
 app.include_router(usertools.router)
@@ -339,6 +350,9 @@ app.include_router(proxy.router)
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: Exception):
     path = request.url.path
+    if path == "/v1" or path.startswith("/v1/"):
+        return JSONResponse({"ok": False, "error": "not_found"},
+                            status_code=404)
     if path.startswith("/api/"):
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
     # real 404 for humans and agents: a rendered page carrying the way
@@ -349,6 +363,41 @@ async def not_found_handler(request: Request, exc: Exception):
     ctx["shell_class"] = ""
     return templates.TemplateResponse(request, "not_found.html", ctx,
                                       status_code=404)
+
+
+def _is_v1(path: str) -> bool:
+    return path == "/v1" or path.startswith("/v1/")
+
+
+# /v1 machine surface: EVERY error (404 above, 405 and other HTTP
+# statuses here, unhandled 500 below) is JSON {"ok": false, ...} — no
+# CORS headers anywhere. Other surfaces keep the framework defaults.
+from starlette.exceptions import HTTPException as _StarletteHTTPException  # noqa: E402
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def http_exception_handler(request: Request,
+                                 exc: _StarletteHTTPException):
+    if _is_v1(request.url.path):
+        code = {404: "not_found", 405: "method_not_allowed",
+                401: "unauthorized", 403: "forbidden",
+                413: "too_large", 429: "rate_limited"}.get(
+                    exc.status_code, "error")
+        return JSONResponse({"ok": False, "error": code},
+                            status_code=exc.status_code,
+                            headers=getattr(exc, "headers", None))
+    from fastapi.responses import JSONResponse as _JR
+    return _JR({"detail": exc.detail}, status_code=exc.status_code,
+               headers=getattr(exc, "headers", None))
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    if _is_v1(request.url.path):
+        logger.exception("v1 unhandled error: %s", exc)
+        return JSONResponse({"ok": False, "error": "internal_error"},
+                            status_code=500)
+    raise exc
 
 
 _housekeeping_task = None

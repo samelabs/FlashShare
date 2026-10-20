@@ -79,9 +79,12 @@
   outputs = ("text","json","file")
   非空子集；label = LocalizedText。
 - **Catalog**：canonical projection 形状；official 判定 = owner 关系（`owner_id IS NULL`，契约字段，无字符串形状判定）三面等价。
-- **ToolInvocation（IO-1）**：精确五键 `{tool_id, source:{files:[...]}（0..N，按工具声明 [files_min, files_max]）, params（text 参数上限 100,000 字符）, delivery, client_ref}`；结果 = 有序 items（text/json/file，≤20 项，text+json ≤1MB，file 沿用单文件上限），文件项同事务各自落地，结果页 /r/{id}；开发者 http 契约唯一形态：请求 `{files:[{filename,content_type,size,url}], params}`、响应 `{items:[...]}`（file 项 data_b64|url）。
+- **ToolInvocation（IO-1）**：精确五键 `{tool_id, source, params（正文工具参数值只允许标量）, delivery, client_ref}`；source 键集二选一 = `{files:[{public_id,source_token}]}`（文件工具，0..N 按 [files_min, files_max]）XOR `{body:<取值>}`（正文工具，text=非空 UTF-8 ≤100k 字符 / json=任意合法 JSON 含 null，规范序列化 ≤100k，禁 NaN/Infinity；键存在判定，禁真假值判定）。结果 = 有序 items（text/json/file，≤20 项，text+json ≤1MB，file 沿用单文件上限；正文工具恰一项），文件项同事务各自落地，结果页 /r/{id}。
   root/source/delivery 精确键集；params 显式 dict；client_ref 必填 non-empty string（≤128），作为 client-generated stable operation identity；null / missing 均拒绝。
   MCP adapter 只对"缺失"填默认，显式非法值 → -32602。
+- **南向 http 契约（IO-1）**：文件工具请求 `{files:[{filename,content_type,size,url}], params}`；正文工具请求体=取值原样（text→`text/plain; charset=utf-8`，json→`application/json` 规范字节），params 编码进查询参数（端点自带查询保留）。响应按 Content-Type 解释：`application/vnd.518.items+json`→items 信封（file 项 data_b64|url）；`application/json` 及 `application/*+json`→单 json 项；`text/*`（按 charset，缺省 UTF-8）→单 text 项；其余→单文件项（Content-Disposition 文件名>嗅探）。提供者非 2xx→平台 502 + detail（提供者状态+响应体前 4096 字节）。
+- **文件暂存单点**：web 上传 / MCP ticket PUT / MCP 与 /v1 的内联、URL、引用来源统一走 `sharing.staging`（ingest_sources = 引用解析→URL 钉扎拉取→sniff→accept→批量上限→哈希；stage_sources = claim→暂存→finalize 三态核验 resolve_outcome，确认回滚立即清理暂存对象+精确释放配额）。引用已有 public_id 只做权限解析，不暂存不计入站配额。
+- **公开 API 面（/v1）**：fsk_-only（cookie/fsot_ 永不认证；fsk_ 与 cookie 并存以 fsk_ 为准）；GET /v1/tools、/v1/tools/{key}、/v1/balance，POST /v1/tools/{key}；入口限流与 MCP 共用同一按用户计数；平台选项走请求头（Idempotency-Key 同时充当暂存+调用 client_ref；X-518-Expiry-Days / X-518-Allowed-Downloads），查询参数只承载工具参数（重复键 400）；错误统一 JSON、无 CORS 头；正文工具=请求体即输入（Content-Type 须与声明一致，512KB 读取上限），成功把唯一结果项原样作答（file 走站内不计数通道；映射失效→410 result_expired）；文件工具收 multipart 或 JSON `{files:[{url}|{public_id,source_token}],params}`，答 `{ok,call_id,cost,items}`。
 - **Execution / Settlement**：claim running → consume（idem=`call:{call_id}`）→ execute →
   成功同事务 finalize ok + payout/commission/revenue；失败 refund 先于 finalize failed
   （refund idem=`refund:ledger:{consume ledger id}`）；refund 失败 → call 保持 running + 500
@@ -138,7 +141,6 @@
 - **平台第三记账主体**：users 行 `username='platform'`。两条收入：用户工具抽佣（platform_commission）+ 系统工具直销（platform_revenue）。
 - **双池账本**：消费池（spendable_balance 派生）与收益池（provider_earn，仅可提现）物理隔离；ledger 唯一事实源。
 - **operator 权限**：users.status ∈ BACKOFFICE（如 'samelabs'），实时查库。
-- **MCP** 是唯一正式 northbound machine surface（streamable-http）；Web 是人类消费面；两者同构 canonical invocation。开发者 HTTP 工具端点是 southbound execution contract，不是公开 API。
 - **/mcp 双凭证与能力词表**：fsk_ API key（`api_keys.scopes`，默认全能力）与 OAuth 2.1 令牌（CIMD 客户端、PKCE S256、资源绑定 /mcp）共用唯一能力词表 `tools:call / files:read / files:delete`，在 /mcp 分发咽喉单点比对；OAuth 调用按 client 归因落 `tool_calls.oauth_client_id`。匿名 tools/call 回 401+WWW-Authenticate（register 例外）。
 - **文件生命周期**：Gokapi 是物理文件权威；518 是 public mapping/页面可见性权威；startup + hourly housekeeping，无 cron/scheduler 子系统。
 - **站内预览语义**（已实现）：internal preview 走 `/api/files/download/{id}`（`increaseCounter:false`）authenticated non-counting 通道，不消耗 allowed_downloads；service API key 必须拥有 DOWNLOAD permission（v2.2.4 `ApiPermDownload`），startup capability probe fail-closed 验证。**禁止穿透 Gokapi 私有存储（sqlite/schema/content 目录）实现预览**。见 DEVELOPMENT.md 的 Gokapi 约束（含 disposable 真实 v2.2.4 实测证据）。

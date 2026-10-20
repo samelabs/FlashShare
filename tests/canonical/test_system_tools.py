@@ -192,9 +192,6 @@ def psnr_rgb(a, b):
 # EVERY registered first-party tool must appear here at least once.
 
 FIXTURES = {
-    "demo_shout": [
-        {"files": [], "params": {"text": "hello 518"}},
-    ],
     "share": [
         {"files": [(b"alpha-bytes-1", "a.txt", "text/plain"),
                    (b"beta-bytes-22", "b.txt", "text/plain")], "params": {}},
@@ -295,7 +292,7 @@ def run_tool(tool_id, fx):
     tool = get_tool(tool_id)
     params = enforce_params_decl(tool.get("params") or [], fx.get("params") or {})
     sources = [(data, name, ct, len(data)) for data, name, ct in fx["files"]]
-    return tool, process_tool(tool_id, sources, params)
+    return tool, process_tool(tool_id, sources, params, None)
 
 
 def run_generic(tool_id):

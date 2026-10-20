@@ -556,7 +556,7 @@ check("U7 no period record → 500 fail loud, zero mutation",
 from execution import orchestrator as _orch
 
 def _fake_process(return_items):
-    def _pt(tool_id, sources, params):
+    def _pt(tool_id, sources, params, body=None):
         return {"items": return_items}
     return _pt
 
@@ -627,7 +627,7 @@ check("O3 declared text+file → same output set succeeds",
 # remote path: drive_http returning an undeclared kind fails BEFORE staging
 import remote as _remote_mod
 _orig_drive = _remote_mod.drive_http
-_remote_mod.drive_http = lambda decl, sources, params, headers, trusted: {
+_remote_mod.drive_http = lambda decl, sources, params, headers, trusted, body=None, canonical_body=None, body_format=None: {
     "items": [{"kind": "json", "data": {"x": 1}}]}
 trt = f"b2rt_{_u}"
 with db() as con:

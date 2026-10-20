@@ -257,12 +257,22 @@ async def create_http_tool(request: Request):
             return JSONResponse({"ok": False, "error": "bad_files_range"}, 422)
         if files_max == 0 and accept_raw:
             return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
-        # tag 声明 (契约字段): 文件工具必带九键之一; 纯文本工具不带
+        # tag 声明 (契约字段): 文件工具必带九键之一; 正文工具不带
         tag_raw = raw.get("format_families")
         if files_max > 0 and not tag_raw:
             return JSONResponse({"ok": False, "error": "bad_format_family"}, 422)
         if files_max == 0 and tag_raw:
             return JSONResponse({"ok": False, "error": "bad_format_family"}, 422)
+        # 正文工具输入方式: files_max=0 必填 'text'|'json'; 文件工具禁带
+        from governance.body import BODY_FORMATS as _BF
+        body_format = raw.get("body_format")
+        if files_max == 0 and body_format not in _BF:
+            return JSONResponse({"ok": False, "error": "bad_body_format"}, 422)
+        if files_max > 0 and body_format is not None:
+            return JSONResponse({"ok": False, "error": "bad_body_format"}, 422)
+        body_placeholder = raw.get("body_placeholder")
+        if files_max > 0 and body_placeholder is not None:
+            return JSONResponse({"ok": False, "error": "bad_body_placeholder"}, 422)
         outputs = raw.get("outputs", ["file"])
         if not isinstance(outputs, list) or not outputs \
                 or any(k not in ("text", "json", "file") for k in outputs):
@@ -315,6 +325,8 @@ async def create_http_tool(request: Request):
              "timeout_s": timeout_s, "auth_header": auth_header,
              "auth_token": auth_token, "accept": accept,
              "format_families": tag_raw,
+             "body_format": body_format,
+             "body_placeholder": body_placeholder,
              "files_min": files_min, "files_max": files_max,
              "outputs": [k for k in ("text", "json", "file")
                          if k in set(outputs)],

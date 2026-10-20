@@ -359,7 +359,7 @@
 /* 4C-2: exact formats 行与族行留间距; multi 标准声明控件全宽 */
 .ext-grid { margin-top: 8px; }
 /* 多语言行: 全宽 grid = 语言(原生名) | 名称 | 简介 | 删除 */
-.lang-row { display: grid; grid-template-columns: 108px 1fr 2fr 34px; gap: 8px; margin-bottom: 8px; }
+.lang-row { display: grid; grid-template-columns: 108px 1fr 2fr 1.5fr 34px; gap: 8px; margin-bottom: 8px; }
 .lang-row .lang-pick, .lang-row input { padding: var(--s2) var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
 /* 桌面紧凑输入字号 (≤767 回落 components.css 输入地板 16px, 防聚焦放大) */
 @media (min-width: 768px) {
@@ -368,7 +368,7 @@
   .pr-opt input, .pr-inline input { font-size: 13px; }
   .lang-row .lang-pick, .lang-row input { font-size: var(--fs-sm); }
 }
-@media (max-width: 640px) { .lang-row { grid-template-columns: 96px 1fr 34px; } .lang-row .lang-desc { grid-column: 1 / 3; grid-row: 2; } .lang-row .lang-del { grid-row: 1; grid-column: 3; } }
+@media (max-width: 640px) { .lang-row { grid-template-columns: 96px 1fr 34px; } .lang-row .lang-desc { grid-column: 1 / 3; grid-row: 2; } .lang-row .lang-ph { grid-column: 1 / 3; grid-row: 3; } .lang-row .lang-del { grid-row: 1; grid-column: 3; } }
 /* 模式徽标 (工具 tab 内 "· Aurora"): 附属信息, 主从层级低于工具名 (14px) */
 .tool-preset-badge { font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2); }
 
@@ -727,7 +727,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-page .pub-files-limit { display: flex; flex-direction: column; gap: 6px; }
 .pub-page .pub-files-limit input { width: 100%; }
 /* 输入方式 = 大类别: 分段选择条 (与族胶囊分层, 云朵=文件 / 对话=文本) */
-.pub-page .pub-input-mode { display: inline-flex; flex-direction: row; gap: 4px; align-items: center; background: var(--sunk); padding: 4px; border-radius: 12px; }
+.pub-page .pub-input-mode { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px; align-items: center; background: var(--sunk); padding: 4px; border-radius: 12px; }
 .pub-page .pub-input-mode .pub-hint { flex-basis: 100%; }
 /* pub-grid label 的 (0,1,1) 纵向规范会压过单类选择器 — 控件级方向
    声明须用同特异度 (.pub-grid 前缀) 才能落到横向 */
@@ -811,11 +811,16 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .mcpline { flex-wrap: wrap; }
 }
 
-/* tool_mcp.html panels (page rebuilt next batch — keeps its layout) */
-.toolpage .panel .code-block { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 10px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.toolpage .panel .d a { color: var(--brand); font-weight: 600; }
-.toolpage .panel .d { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.toolpage .panel .d .mono { font-size: 13px; }
+/* 工具页接入区 (P6): MCP 卡 + API 卡 (示例按声明生成) */
+.tp-access { display: flex; flex-direction: column; gap: var(--s3); margin-block-start: var(--s4); }
+.tp-api-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.tp-api-card .mcp-url { overflow-wrap: anywhere; }
+.tp-api-example { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; font-family: var(--font-mono); }
+.tp-api-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); color: var(--ink-2); font-size: 12px; }
+.credit-note-link { color: var(--brand); font-weight: 600; text-decoration: none; }
+.credit-note-link:hover { text-decoration: underline; }
+.calls-deleted { color: var(--ink-2); }
+.calls-refunded { color: var(--ok, var(--ink-3)); font-size: 11px; }
 
 /* ── Footer (v2 .ft) ─────────────────────────────────────── */
 .ft { padding: 32px 0 40px; color: var(--ink-3); font-size: 13px; border-top: 1px solid var(--line); margin-top: auto; }

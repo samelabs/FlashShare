@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ texts.acct_calls }} - {{ APP_NAME }}{% endblock %}
+
+{% block content %}
+<section class="acct-page">
+  {% include "account/_nav.html" %}
+  <div class="acct-main">
+  <div class="acct-card">
+    <div class="acct-card-head">
+      <h1 data-i18n="acct_calls">{{ texts.acct_calls }}</h1>
+      <span class="acct-card-sub">{{ texts.credit_detail_count|replace('{n}', total|num(lang)) }}</span>
+    </div>
+    {% if calls %}
+    <div class="acct-tablewrap">
+      <table class="acct-table">
+        <thead>
+          <tr><th data-i18n="credit_time">{{ texts.credit_time }}</th><th data-i18n="calls_tool">{{ texts.calls_tool }}</th><th data-i18n="credit_type">{{ texts.credit_type }}</th><th class="ta-r" data-i18n="calls_net">{{ texts.calls_net }}</th><th data-i18n="calls_result">{{ texts.calls_result }}</th></tr>
+        </thead>
+        <tbody>
+          {% for c in calls %}
+          <tr id="call-{{ c.id }}">
+            <td class="mono">{{ fmt_ts(c.started_at) }}</td>
+            <td>{% if c.deleted %}<span class="calls-deleted" data-i18n="calls_deleted">{{ texts.calls_deleted }}</span>{% else %}{{ c.tool_name }}{% endif %}</td>
+            <td><span class="ledger-kind calls-st calls-st-{{ c.status }}" data-i18n="mytools_call_st_{{ c.status }}">{{ texts['mytools_call_st_' ~ c.status] if texts.get('mytools_call_st_' ~ c.status) else c.status }}</span></td>
+            <td class="ta-r mono">{{ c.net_cost|num(lang) }}{% if c.refunded > 0 %} <span class="calls-refunded" data-i18n="calls_refunded">{{ texts.calls_refunded }}</span>{% endif %}</td>
+            <td>{% if c.result_live %}<a class="btn btn-ghost btn-sm" href="/r/{{ c.result_public_id }}" data-i18n="calls_view">{{ texts.calls_view }}</a>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pages > 1 %}
+    <div class="acct-pager">
+      {% if pg > 1 %}<a href="/account/calls?page={{ pg - 1 }}">← {{ texts.prev_page }}</a>{% else %}<span class="off">← {{ texts.prev_page }}</span>{% endif %}
+      <span class="grow">{{ pg }} / {{ pages }}</span>
+      {% if pg < pages %}<a href="/account/calls?page={{ pg + 1 }}">{{ texts.next_page }} →</a>{% else %}<span class="off">{{ texts.next_page }} →</span>{% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="acct-empty" data-i18n="calls_empty">{{ texts.calls_empty }}</p>
+    {% endif %}
+  </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block script %}
+  <script src="/static/pages/common.js?v={{ pages_version }}"></script>
+{% endblock %}

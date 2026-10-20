@@ -139,7 +139,6 @@ async def sitemap():
         loc = _xml_escape(f"{BASE_URL}/tool/{r['tool_key']}")
         lastmod = _w3c_date(r["updated_at"])
         lines.append(f"<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod></url>")
-        lines.append(f"<url><loc>{loc}/mcp</loc><lastmod>{lastmod}</lastmod></url>")
         if r["owner_handle"]:
             owners.append(r["owner_handle"])
     for handle in sorted(set(owners)):
@@ -416,8 +415,8 @@ def _delivery_projection(ctx: dict) -> str:
     })
 
 
-def _tool_page_ctx(request: Request, key: str, mcp: bool):
-    """Shared builder for tool page + MCP page. resolve() 是唯一权限判断
+def _tool_page_ctx(request: Request, key: str):
+    """工具页上下文 builder. resolve() 是唯一权限判断
     (public/unlisted → everyone when key known; private → owner only)。
 
     key = username_toolname (社区) | 裸词 (系统工具, owner 为空)。"""
@@ -457,7 +456,6 @@ def _tool_page_ctx(request: Request, key: str, mcp: bool):
         "mcp_name": tool_key,  # MCP 名 = key 原文 (无投影)
         "tool_key": tool_key,
         "is_favorite": bool(user) and tool_key in _favorite_keys_for(user),
-        "is_mcp": mcp,
         # publish gate guidance: the author viewing their own not-yet-public
         # tool sees the run-once hint (server-rendered, one sentence)
         "owner_gate_notice": bool(
@@ -467,12 +465,39 @@ def _tool_page_ctx(request: Request, key: str, mcp: bool):
         "tools_json": json.dumps([tool_public], ensure_ascii=False),
         "limits_json": _limits_json(ctx),
         "formats_json": json.dumps(format_manifest(), ensure_ascii=False),
-        # share-bar QR src + the tool's own MCP setup page (path-relative,
-        # same shapes as detail.html's /f/{id}/qr.svg)
+        # share-bar QR src (path-relative, same shapes as detail.html's
+        # /f/{id}/qr.svg)
         "qr_src": request.url.path + "/qr.svg",
-        "mcp_page_url": request.url.path + "/mcp",
+        # 接入区 API 卡示例按声明生成: 文件工具 = multipart; 正文工具 =
+        # 按口径的请求体。密钥占位 <fsk_…> 指向 /account/keys。
+        "api_call_example": _api_call_example(tool_key, tool_public),
     })
     return ctx
+
+
+def _api_call_example(tool_key: str, tool_public: dict) -> str:
+    """The tool page API card's curl example, generated from the stored
+    declaration (file window vs body format decides the shape)."""
+    url = f"{BASE_URL}/v1/tools/{tool_key}"
+    auth = '-H "Authorization: Bearer <fsk_…>"'
+    if tool_public.get("body_format") == "json":
+        body = "--data '{\"key\": \"value\"}'"
+        ct = '-H "Content-Type: application/json"'
+    elif tool_public.get("body_format") == "text":
+        body = '--data "your text"'
+        ct = '-H "Content-Type: text/plain"'
+    else:
+        body = '-F "file=@input.png"'
+        ct = None
+    parts = [f"curl -X POST {url} \\", f"  {auth}"]
+    if ct:
+        parts[-1] += " \\"
+        parts.append(f"  {ct} \\")
+        parts.append(f"  {body}")
+    else:
+        parts[-1] += " \\"
+        parts.append(f"  {body}")
+    return "\n".join(parts)
 
 
 def _tool_qr_response(key: str):
@@ -506,22 +531,11 @@ async def tool_qr(key: str):
     return _tool_qr_response(key)
 
 
-@router.get("/tool/{key}/mcp", response_class=HTMLResponse)
-async def tool_mcp_page(request: Request, key: str):
-    """工具 MCP 页 (/tool/compress/mcp)。"""
-    from app.main import templates
-    from fastapi.responses import HTMLResponse as _H
-    ctx = _tool_page_ctx(request, key, mcp=True)
-    if ctx is None:
-        return _H("", status_code=404)
-    return templates.TemplateResponse(request, "tool_mcp.html", ctx)
-
-
 @router.get("/tool/{key}", response_class=HTMLResponse)
 async def tool_page(request: Request, key: str):
     from app.main import templates
     from fastapi.responses import HTMLResponse as _H
-    ctx = _tool_page_ctx(request, key, mcp=False)
+    ctx = _tool_page_ctx(request, key)
     if ctx is None:
         return _H("", status_code=404)
     return templates.TemplateResponse(request, "tool_page.html", ctx)
@@ -798,6 +812,10 @@ async def account_credits(request: Request):
             tpl = server_text(_lang).get("ledger_note_tool")
             r["note_display"] = (
                 (tpl or "Tool: {name}").replace("{name}", name) if name else None)
+            # 流水 → 调用 链接: 同一关系 (consume → tool_call / refund →
+            # 原消费 → tool_call) 带出的 call id, 指向调用记录页行锚点
+            _ref_row = _tool_refs.get(int(r["id"])) or {}
+            r["call_id"] = _ref_row.get("call_id")
         elif r["kind"] in _MACHINE_NOTE_KINDS:
             r["note_display"] = None
         elif note and not note.startswith(("activity:", "grant_", "payout:")):
@@ -855,6 +873,80 @@ async def account_credits_claim(request: Request):
     except Exception:
         _logging.getLogger("flashshare").exception("daily claim failed")
     return RedirectResponse("/account/credits", 303)
+
+
+@router.get("/account/calls", response_class=HTMLResponse)
+async def account_calls(request: Request):
+    """调用记录页 — 当前用户自己的全部 tool_calls (ok / failed /
+    insufficient / running); gate 之前被拒绝的请求不产生 tool_call,
+    天然不在列。
+
+    净支出 = 扣费 − 退款 (退款经 refund → 原消费 → 调用 关系聚合,
+    不解析 note)。结果链接仅在 ok 且结果未过期时显示; 工具已删除 →
+    统一 "已删除" 标签, 不出机器 id。"""
+    from app.main import templates
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from utils import now as _now_ts
+    pg = page_number(request.query_params.get("page", "1"))
+    size = 20
+    with db() as con:
+        total = int(con.execute(
+            "select count(*) c from tool_calls where user_id=%s",
+            (user["id"],)).fetchone()["c"])
+        pages = (total + size - 1) // size
+        pg = min(pg, max(pages, 1))
+        rows = con.execute(
+            """
+            SELECT tc.id, tc.tool_id, tc.status, tc.cost_snapshot,
+                   tc.started_at, tc.finished_at, tc.result_public_id,
+                   tc.result_json, tc.error,
+                   pt.label_json,
+                   COALESCE((
+                     SELECT SUM(r.delta) FROM ledger r
+                     JOIN ledger c
+                       ON r.kind = 'refund' AND r.ref_type = 'ledger'
+                      AND r.ref_id = c.id::text
+                     WHERE c.kind = 'consume' AND c.ref_type = 'tool_call'
+                       AND c.ref_id = tc.id::text
+                   ), 0) AS refunded
+            FROM tool_calls tc
+            LEFT JOIN platform_tools pt ON pt.tool_key = tc.tool_id
+            WHERE tc.user_id = %s
+            ORDER BY tc.id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (user["id"], size, (pg - 1) * size)).fetchall()
+    _lang = getattr(request.state, "lang", "en")
+    now_ts = _now_ts()
+    calls = []
+    for r in rows:
+        r = dict(r)
+        # 工具身份: label 解析; 已删除 (行不在) → 统一标签, 无机器 id
+        r["tool_name"] = None
+        if r.get("label_json"):
+            try:
+                label = json.loads(r["label_json"])
+            except ValueError:
+                label = None
+            if label:
+                r["tool_name"] = resolve_label(label, _lang) or None
+        r["deleted"] = r["tool_name"] is None
+        r["net_cost"] = int(r["cost_snapshot"] or 0) - int(r["refunded"] or 0)
+        # 结果链接: ok + 有结果 + 未过期
+        r["result_live"] = False
+        if r["status"] == "ok" and r.get("result_public_id"):
+            try:
+                expires = int((json.loads(r["result_json"]) or {})
+                              .get("expires_at") or 0)
+            except (TypeError, ValueError):
+                expires = 0
+            r["result_live"] = expires > now_ts
+        calls.append(r)
+    ctx = _account_ctx(request, "calls", calls=calls, total=total,
+                       pg=pg, pages=pages)
+    return templates.TemplateResponse(request, "account/calls.html", ctx)
 
 
 @router.get("/account/earnings", response_class=HTMLResponse)

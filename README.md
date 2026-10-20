@@ -22,6 +22,7 @@ English · [简体中文](README.zh-CN.md)
 | | |
 |---|---|
 | **Agents & bots** | One MCP endpoint for every tool. Results come back directly, or as share links with an expiry and a download limit. |
+| **Apps & services** | Call any tool over the plain REST API at `/v1/tools/{key}` with the same API key. |
 | **People** | The same tools on the web and on mobile, with a result page to view and share. |
 | **Tool developers** | Publish an HTTPS endpoint as a tool. New tools start unlisted; run yours successfully once and it can go public. No review. Earnings on every paid call. |
 
@@ -48,6 +49,18 @@ Any MCP client (Streamable HTTP):
   }
 }
 ```
+
+Prefer plain HTTP? The same key works on the REST surface:
+
+```bash
+curl -s -X POST https://518.plus/v1/tools/compress \
+  -H "Authorization: Bearer fsk_YOUR_API_KEY" \
+  -F "file=@input.png"
+```
+
+`GET /v1/tools` lists the catalog; `Idempotency-Key` makes retries safe;
+body-input tools take the request body itself as input (Content-Type per
+the declaration).
 
 Packaging a plugin or connector? Use OAuth 2.1 — the client id is an HTTPS URL to your client metadata document (CIMD); discovery starts at [518.plus/.well-known/oauth-authorization-server](https://518.plus/.well-known/oauth-authorization-server). Scopes: `tools:call`, `files:read`, `files:delete`.
 

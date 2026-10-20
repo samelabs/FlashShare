@@ -121,6 +121,10 @@ def build_llms_txt() -> str:
     a("Plain-text input goes through the tool's params (text parameters "
       "accept up to 100,000 characters).")
     a("")
+    a("Body tools (files window 0..0) take NO files[] — their input is "
+      "the `input` argument (a string for text tools; any JSON value, "
+      "null included, for json tools; up to 100,000 characters).")
+    a("")
     a("## Results (items)")
     a("Every call returns an ORDERED list of items (at most 20):")
     a('  {"kind":"text","text":"..."}')

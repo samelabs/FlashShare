@@ -228,7 +228,7 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
                     f"{tool['id']} commission", now())
 
     out = {"ok": True, "result": public_result,
-           "call_id": call_id}
+           "call_id": call_id, "cost": cost}
     if cost > 0:
         try:
             out["balance"] = spendable_balance(user["id"])
@@ -411,7 +411,8 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
                     return None, {"ok": False, "error": "err_metering_failed"}, 500
                 return ({"ok": True,
                          "result": replay_result, "replay": True,
-                         "call_id": anchor["id"]}, None, None)
+                         "call_id": anchor["id"],
+                         "cost": anchor.get("cost_snapshot", 0)}, None, None)
             # A concurrent request already owns this logical invocation. Do not run
             # the tool twice; caller can retry the same ref and receive the result.
             return None, {"ok": False, "error": "err_call_in_progress"}, 409
@@ -449,9 +450,14 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         except ExecutionError as exc:
             # Durable settlement: refund the exact charge before finalizing; if
             # either leg fails the row stays running (recovery settles it) and
-            # the client must not be told the economy is closed.
+            # the client must not be told the economy is closed. Refund failure
+            # (err_metering_failed / 500) outranks the original error status
+            # (e.g. a provider 502) — the economy fact wins.
             if _settle_failure(user, tool_id, call_id, charge, exc.code):
-                return None, {"ok": False, "error": exc.code}, 400
+                body = {"ok": False, "error": exc.code}
+                if exc.detail:
+                    body["detail"] = exc.detail[:4096]
+                return None, body, exc.http_status
             return None, {"ok": False, "error": "err_metering_failed"}, 500
         except Exception:
             logger.exception("tool execution failed call_id=%s", call_id)
@@ -472,7 +478,8 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
                 # settlement IS durable: report the stored success, no refund,
                 # no staged delete, no duplicate earning (already committed).
                 out = {"ok": True, "result": outcome["result"],
-                       "call_id": call_id, "replay": True}
+                       "call_id": call_id, "replay": True,
+                       "cost": cost}
                 if cost > 0:
                     try:
                         out["balance"] = spendable_balance(user["id"])

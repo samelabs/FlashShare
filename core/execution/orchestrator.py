@@ -50,6 +50,10 @@ def _enforce_outputs(tool: dict, items: list) -> None:
         enforce_output_kinds(items, declared)
     except OutputsError as exc:
         raise ExecutionError(str(exc)) from exc
+    # 正文工具的输入是单个取值 — 结果也必须恰好一项 (远程/本地同规则),
+    # 落盘与结算之前校验。
+    if tool.get("body_format") and len(items) != 1:
+        raise ExecutionError("err_items_count")
 
 
 def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
@@ -89,10 +93,12 @@ def _read_source_bounded(stream, declared_size: int, budget: int) -> bytes:
 LOCAL_EXEC_TIMEOUT_S = 120
 
 
-async def _run_handler(pool, process_tool, tool_id, sources, params):
-    """worker 调用 (sources list, possibly empty); BrokenProcessPool
-    (worker 进程死亡) → 池重建 + 本 invocation 走 gate 失败收敛
-    (exact refund, terminal failed, 不自动重跑)。
+async def _run_handler(pool, process_tool, tool_id, sources, params,
+                       body=None):
+    """worker 调用 (sources list, possibly empty; body = 正文工具取值,
+    文件工具恒 None); BrokenProcessPool (worker 进程死亡) → 池重建 +
+    本 invocation 走 gate 失败收敛 (exact refund, terminal failed,
+    不自动重跑)。
     超时 (LOCAL_EXEC_TIMEOUT_S) → 池重建 + 旧池仍存活的 worker 显式
     terminate (shutdown 不杀在跑进程), 重抛 err_endpoint_timeout →
     既有超时码的退款收敛路径。"""
@@ -101,7 +107,7 @@ async def _run_handler(pool, process_tool, tool_id, sources, params):
     loop = asyncio.get_event_loop()
     try:
         fut = loop.run_in_executor(
-            pool, process_tool, tool_id, sources, params)
+            pool, process_tool, tool_id, sources, params, body)
         return await asyncio.wait_for(fut, LOCAL_EXEC_TIMEOUT_S)
     except BrokenProcessPool as exc:
         # worker 进程死亡 (submit 或 await 阶段): CAS 重建池 (同一 broken
@@ -124,10 +130,11 @@ async def _run_handler(pool, process_tool, tool_id, sources, params):
 
 
 async def execute_local(request_ctx, tool, uploads, params, user, process_tool, pool,
-                        delivery):
+                        delivery, body=None):
     """local execution: read 0..N sources (bounded), run the handler in
     the worker (items protocol), stage every file item to Gokapi, and
-    return StagedItems — settlement belongs to gate._finish."""
+    return StagedItems — settlement belongs to gate._finish.
+    body = 正文工具取值 (文件工具 None): 直接随参数进 worker。"""
     expiry_days = delivery["expiry_days"]
     allowed_downloads = delivery["allowed_downloads"]
 
@@ -155,7 +162,7 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
                         len(data)))
 
     out = await _run_handler(pool, process_tool, tool["id"],
-                             sources, params)
+                             sources, params, body)
     if not isinstance(out, dict) or not isinstance(out.get("items"), list):
         raise ToolError("tool_failed")
     _enforce_outputs(tool, out["items"])
@@ -204,19 +211,22 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
         orig_size=len(sources[0][0]) if len(sources) == 1 else None)
 
 
-async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
+async def execute_remote(request_ctx, tool, uploads, params, user, delivery,
+                         body=None, canonical_body=None):
     """remote (http) execution — the ONE southbound contract (IO-1):
 
       request  {"files": [{"filename", "content_type", "size", "url"}],
-                "params": {...}}
-      response {"items": [{"kind":"text","text"} | {"kind":"json","data"}
-                | {"kind":"file","filename","content_type",
-                   "data_b64" | "url"}]}
+                "params": {...}}           (文件工具, JSON 信封)
+      request  <正文取值> (Content-Type 按声明; params 编码进查询参数)
+                                           (正文工具)
+      response 按 Content-Type 解释 (items 信封 / 单 json 项 / 单 text
+      项 / 文件项) — 单点 remote.parse_response_items
 
     File items are fetched (url) or decoded (data_b64) through the same
     SSRF-guarded pinned transport + per-file cap; a response that does
     not match the shape fails the call (refund path unchanged).
     delivery is a platform fact — the endpoint never sees it.
+    提供者非 2xx → 平台 502, detail 带提供者状态码 + 响应体片段。
     """
     import remote as _remote
     from security import sign_fetch_token
@@ -254,12 +264,21 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery):
     loop = asyncio.get_event_loop()
     try:
         out = await loop.run_in_executor(
-            None, _remote.drive_http, decl, sources, params, auth_headers, trusted)
+            None, _remote.drive_http, decl, sources, params, auth_headers,
+            trusted, body, canonical_body, tool.get("body_format"))
     except _remote.RemoteError as exc:
         logger.warning("remote tool %s failed: %s", tool["id"], exc)
-        code = {"ssrf_blocked": "err_endpoint_blocked",
-                "timeout": "err_endpoint_timeout"}.get(exc.code, "err_endpoint_failed")
-        raise ExecutionError(code) from exc
+        if exc.code == "ssrf_blocked":
+            raise ExecutionError("err_endpoint_blocked") from exc
+        if exc.code == "timeout":
+            raise ExecutionError("err_endpoint_timeout") from exc
+        if exc.code == "http_status":
+            # 提供者非 2xx: 平台对外表达 502, detail 带提供者状态码与
+            # 响应体前 4096 字节 (传输层已按该上限读取)
+            detail = str(exc.detail or "")[:4096]
+            raise ExecutionError("err_endpoint_failed",
+                                 http_status=502, detail=detail) from exc
+        raise ExecutionError("err_endpoint_failed") from exc
 
     _enforce_outputs(tool, out["items"])
 

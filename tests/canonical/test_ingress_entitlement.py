@@ -266,14 +266,18 @@ left = _cur.fetchone()[0]
 check("S3 upload 行删除不退款 24h usage (usage 仍 5)", left == 5, str(left))
 
 # generated output 不新增 ingress usage: canonical 契约 = reserve 只挂在 source
-# 接受路径 (api/pipeline 调用点), output 落盘不产生新 upload_usage。静态守卫:
+# 接受路径, output 落盘不产生新 upload_usage。静态守卫:
 _pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
 _api = open(_os.path.join(_REPO, "app", "routes", "api.py"), encoding="utf-8").read()
+_staging = open(_os.path.join(_REPO, "core", "sharing", "staging.py"),
+                encoding="utf-8").read()
 # the coherence pass: the dead upload_sources pipeline (the sole reserve_ingress
-# caller) is deleted — quota accounting rides ingress receipts only.
-check("S4 quota 入口收敛: receipts 唯一 (全仓零直接 reserve)",
+# caller) is deleted — quota accounting rides ingress receipts only, claimed
+# in ONE place: the P4 staging single point (api/mcp/ticket routes delegate).
+check("S4 quota 入口收敛: receipts 唯一 (零直接 reserve, 暂存单点 claim)",
       _pipe_src.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
-      and _api.count("claim_ingress_quota(") >= 1,
+      and _api.count("stage_sources(") >= 1
+      and _staging.count("claim_ingress_quota(") >= 1,
       f"pipe={_pipe_src.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
 # 引用既有 the canonical-invocation unification E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
@@ -972,10 +976,10 @@ check("G10 MCP 不自建 batch byte sum 规则 (业务限制→isError)",
 check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字面/无逐文件 sum 拒)",
       "len(uploads) > 20" not in _apir and "total_incoming" not in _apir
       and "validate_batch" in _apir)
-_mcp_up = _mcp_src.split("_receipt, _usage_ids, _replay = _claim_receipt(")[1].split("source_files = [")[0] if "_claim_receipt(" in _mcp_src else ""
-check("G12 MCP upload 区保留 boundary/quota 专门分支 + generic Exception fallback",
+_mcp_up = _mcp_src.split("_ingest_sources(")[1].split("raw = {")[0] if "_ingest_sources(" in _mcp_src else ""
+check("G12 MCP upload 区保留 boundary/quota 专门分支 + 回滚分支",
       "IngressQuotaDenied" in _mcp_src and "_iserror(" in _mcp_up
-      and _mcp_up.count("except Exception") >= 1, "")
+      and "_StagingError" in _mcp_up, "")
 # G13: Web transport early-reject 与 authoritative validate_batch 输出同构
 # (ok/error/limit/incoming 四键; incoming=declared transport bytes)
 _er = _apir.split("Transport safety only")[1].split("pending = []")[0] if "Transport safety only" in _apir else ""
@@ -1019,9 +1023,9 @@ for _root_name in ("app", "core", "static", "templates", "tests"):
                 _hits.append(_os.path.relpath(_fp, _REPO))
 check("G16 旧 quota key repo-wide 零 active hit (app/core/static/templates/tests)",
       not _hits, str(_hits[:6]))
-check("G17 MCP quota denial → isError 分支存在 + generic fallback 仍在",
+check("G17 MCP quota denial → isError 分支存在 + 已知回滚分支仍在",
       "IngressQuotaDenied as exc" in _mcp_src
-      and _mcp_up.count("except Exception") >= 1)
+      and "_StagingError" in _mcp_up)
 check("G18 upload_sources 死管线已删 (quota 单路 = claim_ingress_quota)",
       "upload_sources" not in _pipe_src
       and "IngressQuotaDenied" in open(_os.path.join(_REPO, "app", "routes", "mcp_upload.py"), encoding="utf-8").read())

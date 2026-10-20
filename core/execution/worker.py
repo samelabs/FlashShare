@@ -40,14 +40,16 @@ def _read_bounded(stream, cap: int) -> bytes:
                 pass
 
 
-def process_tool(tool_id: str, sources: list, params: dict) -> dict:
+def process_tool(tool_id: str, sources: list, params: dict,
+                 body=None) -> dict:
     """Execute a tool handler in this subprocess.
 
     Args:
         tool_id: registered tool identifier
         sources: list of (bytes, filename, content_type, size) input
-                 tuples — may be EMPTY for text-only tools
+                 tuples — may be EMPTY for body tools
         params: canonical tool parameters
+        body: 正文工具取值 (JSON 值或字符串; 文件工具 None)
 
     Returns:
         {"items": [...]} where file items carry raw "data" bytes; the
@@ -69,7 +71,10 @@ def process_tool(tool_id: str, sources: list, params: dict) -> dict:
 
     handler = tool["handler"]
 
-    if len(sources) == 1 and tool.get("files_max", 1) == 1:
+    if tool.get("body_format"):
+        # 正文工具: 输入就是取值本身 (已过口径校验), 无文件位
+        tool_input = {"body": body}
+    elif len(sources) == 1 and tool.get("files_max", 1) == 1:
         src_bytes, filename, ctype, size = sources[0]
         tool_input = {
             "stream": io.BytesIO(src_bytes),

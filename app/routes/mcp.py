@@ -39,7 +39,6 @@ HEADER_DEFAULT_VERSION = "2025-03-26"
 BATCH_REMOVED_IN = "2025-06-18"
 MAX_B64_BYTES = MAX_UPLOAD_BYTES * 2
 MAX_SOURCE_URL_LEN = 2048
-URL_FETCH_TIMEOUT_S = 30
 # Application-layer cap on one /mcp request body (inline base64 sources
 # are the only payload that can grow unbounded). Larger files must go
 # through the create_upload two-stage path — the rejection message says so.
@@ -661,11 +660,13 @@ def _list_favorites(user: dict, mid) -> dict:
 # unfiltered/default call — the worst failure mode for an agent (it
 # cannot tell the mistake from the result). Allowed keys come from each
 # tool's own inputSchema (single source); platform tools take the four
-# argument forms of the canonical invocation (files / params / delivery
-# / client_ref). Aligns the adapter with the frozen rule: only what is
-# ABSENT gets a default; anything explicitly present but not declared
-# is a -32602 naming the unknown key.
-_CALL_ARG_KEYS = frozenset({"files", "params", "delivery", "client_ref"})
+# canonical invocation argument forms (files / params / delivery /
+# client_ref) plus `input` (正文工具的 source.body 取值 — 文件工具不
+# 声明它, 显式携带 → -32602)。Aligns the adapter with the frozen rule:
+# only what is ABSENT gets a default; anything explicitly present but not
+# declared is a -32602 naming the unknown key.
+_CALL_ARG_KEYS = frozenset({"files", "params", "delivery", "client_ref",
+                            "input"})
 
 
 def _reject_unknown_args(mid, name: str, args: dict):
@@ -695,7 +696,9 @@ def _spec_summary(t: dict) -> dict:
     mx = int(t["files_max"])
     accept = t.get("accept")
     if mx == 0:
-        files_txt = "text only, no files"
+        files_txt = ("text body input (source.body)"
+                     if t.get("body_format") == "text"
+                     else "json body input (source.body)")
     else:
         files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
         if accept:
@@ -775,8 +778,11 @@ def _catalog_spec(t: dict, ent: dict) -> dict:
     summary = _spec_summary(t)
     props = {}
     mn, mx = int(t["files_min"]), int(t["files_max"])
+    required = ["client_ref"]
     if mx > 0:
-        # text-only tools (files_max = 0) expose no files argument
+        # file tools expose files[]; body tools (files_max=0) expose the
+        # input value itself instead — text maps to string, json to any
+        # legal JSON value (null included)
         props["files"] = {
             "type": "array",
             "description": "Input files: each item is inline base64, an "
@@ -785,9 +791,22 @@ def _catalog_spec(t: dict, ent: dict) -> dict:
             "maxItems": mx,
             "items": _FILE_ITEM_SCHEMA,
         }
-    required = ["client_ref"]
-    if mn >= 1:
-        required.append("files")
+        if mn >= 1:
+            required.append("files")
+    elif t.get("body_format") == "text":
+        props["input"] = {
+            "type": "string",
+            "description": "The tool's text body input (non-empty UTF-8, "
+                           "max 100000 chars)",
+        }
+        required.append("input")
+    else:
+        props["input"] = {
+            "description": "The tool's JSON body input: any legal JSON "
+                           "value (null, string, number, boolean, array, "
+                           "object)",
+        }
+        required.append("input")
     decl = t.get("params") or []
     if decl:
         from governance.tool_params import to_input_schema_properties
@@ -1169,6 +1188,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     else:
         tool_params = {}
 
+    # 正文工具的输入值 (→ source.body)。缺失 = -32602 (inputSchema 将
+    # input 标记 required); 显式 null 在 json 工具下是合法根值。
+    from execution.invocation import BODY_ABSENT as _BODY_ABSENT
+    body_arg = args["input"] if "input" in args else _BODY_ABSENT
+
     # Source items: ("inline", (filename, ctype, body)) | ("url", (url,
     # filename|None)) | ("ref", (public_id, source_token)). Shape only —
     # no network, no storage.
@@ -1203,12 +1227,47 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     from execution.dispatch import (preflight as _preflight,
                                     source_count_error as _count_err,
                                     source_accept_error as _accept_err)
-    tool, _declared, _pbody, _pstatus = _preflight(user, tool_key, delivery,
-                                                   tool_params)
+    tool, _declared, _canon_body, _pbody, _pstatus = _preflight(
+        user, tool_key, delivery, tool_params, body_arg)
     if _pbody is not None:
         if _pbody.get("error") == "tool_not_found":
             return _rpc_err(mid, -32602, f"unknown tool: {name}")
+        # a mode mismatch (files vs input) is protocol-level: the schema
+        # never declared the argument the caller sent. ONLY this code
+        # translates to "invalid input mode"; plain invalid_request keeps
+        # its generic isError path below.
+        if _pbody.get("error") == "err_input_mode":
+            sent_input = "input" in args
+            return _rpc_err(
+                mid, -32602,
+                "invalid input mode: this tool takes "
+                + ("files[] (`files`)" if sent_input
+                   else "a body input (`input`)"))
+        # body 口径违规 (缺失/超长/非法) 同为调用方参数错误 — 协议级
+        # -32602, 不是工具执行失败 (isError)。
+        if _pbody.get("error") in ("err_body_required", "err_body_too_long",
+                                   "err_body_invalid"):
+            return _rpc_err(
+                mid, -32602, f"invalid input: {_pbody['error']}")
         return _tool_result_error(mid, _pbody, client_ref, tool)
+    # input-mode argument discipline (frozen rule: explicitly present but
+    # not declared → -32602): body tools never declare files[], file tools
+    # never declare input.
+    if tool.get("body_format"):
+        if "files" in args:
+            return _rpc_err(mid, -32602,
+                            "unknown argument key: files (this tool takes "
+                            "a body `input`, not files[])")
+        if "input" not in args:
+            return _rpc_err(mid, -32602, "input required")
+        if tool["body_format"] == "text" and not isinstance(body_arg, str):
+            return _rpc_err(mid, -32602,
+                            "invalid input: text body must be a non-empty "
+                            "string")
+    elif "input" in args:
+        return _rpc_err(mid, -32602,
+                        "unknown argument key: input (this tool takes "
+                        "files[], not a body input)")
     _cerr = _count_err(tool, len(items))
     if _cerr:
         return _tool_result_error(mid, {"error": _cerr},
@@ -1223,213 +1282,44 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if _denial:
         return _iserror(mid, _denial, client_ref)
 
-    # References: ownership (DB owner or signed source token) resolved by
-    # the execution-boundary resolver, before anything is ingested.
-    from execution.source import resolve_upload
-    from config import PUBLIC_ID_RE
-    ref_names = {}
-    for i, (kind, val) in enumerate(items):
-        if kind != "ref":
-            continue
-        _pid, _tok = val
-        if not PUBLIC_ID_RE.match(_pid):
-            return _tool_result_error(mid, {"error": "invalid_id"},
-                                      client_ref, tool)
-        _up, _rerr = await resolve_upload(_pid, user, _tok)
-        if _rerr or not _up:
-            return _tool_result_error(
-                mid, {"error": _rerr or "not_found"}, client_ref, tool)
-        ref_names[i] = _up.get("file_name", "")
-
-    # URL sources: fetched through the pinned SSRF-guarded transport.
-    from remote import RemoteError
-    uploads = {}
-    for i, (kind, val) in enumerate(items):
-        if kind == "inline":
-            uploads[i] = val
-        elif kind == "url":
-            _url, _fname = val
-            try:
-                _body = await asyncio.to_thread(_fetch_url_source, _url)
-            except RemoteError as exc:
-                return _tool_result_error(mid, {"error": exc.code},
-                                          client_ref, tool)
-            uploads[i] = _url_upload(_url, _fname, _body)
-
-    ip = client_ip(request)
-
-    # Ingress receipt: client_ref IS the request_ref. Same ref + same
-    # validated content replays the stored source handles (zero new
-    # Gokapi, zero new usage) so a response-loss retry flows into the
-    # SAME ToolInvocation fingerprint → gate replay.
-    import hashlib as _hl
-    from sharing.ingress_identity import ingress_request_hash
+    # 文件来源准备 + 暂存单点 (A4): 引用权限解析 → URL 钉扎拉取 →
+    # sniff 收容 → accept 闸门 → 批量上限 → ingress 哈希 → stage_sources,
+    # 与 /v1 同一实现 (sharing.staging.ingest_sources)。
+    from sharing.staging import (ingest_sources as _ingest_sources,
+                                 SourceError as _SourceError,
+                                 StagingError as _StagingError)
     from sharing.ingress_receipt import (
-        claim_ingress_quota as _claim_receipt,
-        finalize_ok as _receipt_ok,
-        settle_failure as _receipt_fail,
-        resolve_outcome as _resolve_outcome,
         IngressConflict as _IngressConflict,
         IngressInProgress as _IngressInProgress,
         IngressQuotaDenied as _IngressQuotaDenied,
-        IngressUnresolved as _IngressUnresolved,
-        OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
-    from utils import sanitize_filename as _san
-    from security import (sniff_allowed as _sniff, sign_source_token,
-                          mismatch_detail as _mismatch)
-    _ingest_idx = sorted(uploads)
-    _canon = []
-    for i in _ingest_idx:
-        _fn, _ct, _body = uploads[i]
-        _ok_t, _final_t, _final_fn = _sniff(_fn, _ct, _body[:512])
-        if not _ok_t:
-            # Pre-execution input errors are isError tool results — the
-            # SAME expression as the accept gate below (IO-1 rule: a
-            # well-formed request carrying a bad file is domain-level
-            # and agent-fixable; -32602 stays for malformed request
-            # shape only). Content/extension mismatches keep their
-            # typed code and carry the detected format (the same shape
-            # the web upload and ticket PUT entries return).
-            code = ("err_format_not_supported"
-                    if _final_t == "err_file_type_blocked" else _final_t)
-            return _tool_result_error(
-                mid, {"error": code,
-                      **_mismatch(_san(_fn), _body[:512])},
-                client_ref, tool)
-        # _final_fn: same-family admission may re-identify the file —
-        # accept gate, ingress hash, staging and result naming all use it
-        _canon.append((_san(_final_fn), _final_t, _body))
-    _names = {**ref_names,
-              **{i: c[0] for i, c in zip(_ingest_idx, _canon)}}
-    _aerr = _accept_err(tool, [_names[i] for i in range(len(items))])
-    if _aerr:
-        return _tool_result_error(mid, {"error": _aerr},
-                                   client_ref, tool)
-    # Authoritative platform batch boundary (single validator for
-    # Web/MCP) — BEFORE the receipt claim / quota / Gokapi.
-    _bdenial = _vbatch([len(_b) for _, _, _b in _canon])
-    if _bdenial:
-        return _iserror(mid, _bdenial, client_ref, tool)
-
-    infos = []
-    if _canon:
-        _ctx = {"tool_id": tool_key}
-        if any(kind != "inline" for kind, _ in items):
-            # URL / reference forms are part of the operation identity:
-            # same client_ref + a different source list → conflict.
-            _ctx["sources"] = [
-                {"kind": "url", "url": val[0]} if kind == "url"
-                else {"kind": "ref", "public_id": val[0]} if kind == "ref"
-                else {"kind": "inline"}
-                for kind, val in items]
-        _req_hash = ingress_request_hash(
-            "mcp_tool_source",
-            [{"filename": _fn, "content_type": _ct, "size": len(_b),
-              "sha256": _hl.sha256(_b).hexdigest()}
-             for _fn, _ct, _b in _canon],
-            _ctx)
-        try:
-            _receipt, _usage_ids, _replay = _claim_receipt(
-                user["id"], ip, client_ref, _req_hash,
-                [len(_b) for _, _, _b in _canon], scope=tool_key)
-        except _IngressConflict:
-            return _rpc_err(mid, ERR_IDEMPOTENCY, "idempotency_conflict")
-        except _IngressInProgress:
-            return _rpc_err(mid, ERR_IDEMPOTENCY, "err_upload_in_progress")
-        except _IngressQuotaDenied as exc:
-            return _iserror(mid, exc.denial, client_ref)
-        except _IngressUnresolved:
-            # unresolvable durable replay — server-side error, zero side
-            # effects; never leaks out of _call_tool
-            return _rpc_err(mid, -32000, "err_ingress_unresolved")
-
-        if _replay is not None:
-            infos = _replay if isinstance(_replay, list) else [_replay]
-        else:
-            from storage import write as _gk_up
-            from governance.delivery import (INTERMEDIATE_TTL_DAYS as _ITTL,
-                                            INTERMEDIATE_DOWNLOAD_LIMIT as _IDL)
-            import io as _io
-            _gids = []
-            # Phase 1 — Gokapi staging. A staging failure is a KNOWN
-            # rollback (objects half-uploaded, receipt still running) and
-            # takes the generic cleanup below.
-            try:
-                for _fn, _ct, _body in _canon:
-                    _gk = await asyncio.to_thread(
-                        _gk_up, _io.BytesIO(_body), _fn, _ct, _ITTL, _IDL,
-                        len(_body))
-                    _fid = (_gk.get("FileInfo", {}) or {}).get("Id", "")
-                    if not _fid:
-                        raise RuntimeError("gokapi_missing_id")
-                    _gids.append(_fid)
-                    infos.append({
-                        "name": _fn, "filename": _fn, "contentType": _ct,
-                        "size": len(_body),
-                        "stagingId": _fid,
-                        "sourceToken": sign_source_token(user["id"], _fid),
-                        "expireAt": _gk["FileInfo"].get("ExpireAt"),
-                        "expiryDays": _ITTL, "allowedDownloads": _IDL,
-                    })
-            except Exception:
-                _log.exception("mcp source staging failed")
-                from storage import delete as _gk_del
-                for _gid in _gids:
-                    try:
-                        await asyncio.to_thread(_gk_del, _gid)
-                    except Exception:
-                        pass
-                try:
-                    _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
-                except Exception:
-                    pass
-                # server-side storage failure — not invalid arguments
-                return _rpc_err(mid, -32603, "err_upload_failed")
-
-            # Phase 2 — finalize with an EXPLICIT three-way outcome. The
-            # unresolved branch must NEVER fall into generic cleanup: zero
-            # Gokapi delete, zero quota release, zero receipt mutation.
-            from database import db as _db
-            try:
-                with _db() as con:
-                    _receipt_ok(con, int(_receipt["id"]), infos)
-            except Exception:
-                _out = _resolve_outcome(int(_receipt["id"]))
-                if _out["outcome"] == OUTCOME_DURABLE_OK:
-                    infos = (_out["result"] if isinstance(_out["result"], list)
-                             else [_out["result"]])
-                elif _out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-                    # the ONLY finalize-driven cleanup path: receipt still
-                    # running proves the success transaction never landed.
-                    from storage import delete as _gk_del
-                    for _gid in _gids:
-                        try:
-                            await asyncio.to_thread(_gk_del, _gid)
-                        except Exception:
-                            pass
-                    try:
-                        _receipt_fail(int(_receipt["id"]), _usage_ids, user["id"])
-                    except Exception:
-                        pass
-                    return _rpc_err(mid, -32603, "err_upload_failed")
-                else:
-                    # UNRESOLVED — server-side error, not invalid arguments
-                    return _rpc_err(mid, -32000, "err_ingress_unresolved")
-
-    # canonical source order = request order (ingested handles + references)
-    _ingested = iter(infos)
-    source_files = []
-    for kind, val in items:
-        if kind == "ref":
-            source_files.append({"public_id": val[0], "source_token": val[1]})
-        else:
-            info = next(_ingested)
-            source_files.append({"public_id": info["stagingId"],
-                                 "source_token": info.get("sourceToken", "")})
+        IngressUnresolved as _IngressUnresolved)
+    try:
+        source_files, _canon = await _ingest_sources(
+            user, tool, items, client_ip(request), client_ref, tool_key)
+    except _SourceError as exc:
+        # 调用方可修复的输入拒绝 — isError 工具结果 (IO-1 规则: 形态
+        # 合法但内容非法是域级错误; -32602 只留给请求形态错误)
+        return _tool_result_error(mid, {"error": exc.code, **exc.extra},
+                                  client_ref, tool)
+    except _IngressConflict:
+        return _rpc_err(mid, ERR_IDEMPOTENCY, "idempotency_conflict")
+    except _IngressInProgress:
+        return _rpc_err(mid, ERR_IDEMPOTENCY, "err_upload_in_progress")
+    except _IngressQuotaDenied as exc:
+        return _iserror(mid, exc.denial, client_ref)
+    except _IngressUnresolved:
+        # unresolvable durable replay — server-side error, zero side
+        # effects; never leaks out of _call_tool
+        return _rpc_err(mid, -32000, "err_ingress_unresolved")
+    except _StagingError:
+        # known rollback (staging failed or finalize proven rolled back —
+        # staged objects cleaned, quota released exactly)
+        return _rpc_err(mid, -32603, "err_upload_failed")
 
     raw = {
         "tool_id": tool_key,
-        "source": {"files": source_files},
+        "source": ({"body": body_arg} if tool.get("body_format")
+                   else {"files": source_files}),
         "params": tool_params,
         "delivery": delivery,
         "client_ref": client_ref,
@@ -1442,6 +1332,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if not payload.get("ok"):
         return _iserror(mid, payload, client_ref, tool)
     result = payload.get("result") or {}
+    import hashlib as _hl
     _input_digests = frozenset(
         _hl.sha256(_b).hexdigest() for _, _, _b in _canon)
     # OAuth plugin attribution — an MCP-layer post-hook on the settled
@@ -1890,36 +1781,10 @@ async def _delete_upload(user: dict, mid, args: dict) -> dict:
                              "together.")
 
 
-def _fetch_url_source(url: str) -> bytes:
-    """GET one https source over the pinned SSRF-guarded transport
-    (every hop: https only, all resolved addresses public, connect pinned
-    to a validated address; redirects re-validated). Body cap = the
-    per-file ingress cap."""
-    from remote import RemoteError, pinned_request
-    status, data = pinned_request(url, method="GET",
-                                  timeout_s=URL_FETCH_TIMEOUT_S,
-                                  max_bytes=MAX_UPLOAD_BYTES)
-    if status != 200:
-        raise RemoteError("http_status", str(status))
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise RemoteError("too_large", f"over {MAX_UPLOAD_BYTES} bytes")
-    if not data:
-        raise RemoteError("empty", "empty body")
-    return data
-
-
-def _url_upload(url: str, filename, body: bytes) -> tuple:
-    """(filename, ctype, body) for a fetched URL source — same shape as an
-    inline file; the name comes from the caller or the URL path."""
-    import os
-    if not filename:
-        path = urllib.parse.urlsplit(url).path
-        filename = urllib.parse.unquote(path.rsplit("/", 1)[-1])
-    fn = sanitize_filename(str(filename or "download"))
-    if not os.path.splitext(fn)[1]:
-        from security import detect_ext
-        fn += detect_ext(body[:64]) or ""
-    return fn, _guess_ctype(fn), body
+# URL-source helpers live in the staging single point (A4); these names
+# stay as thin aliases for the remaining in-module consumers.
+from sharing.staging import fetch_url_source as _fetch_url_source  # noqa: E402
+from sharing.staging import url_source_upload as _url_upload  # noqa: E402
 
 
 def _decode_file(b64, filename) -> tuple:
@@ -1937,7 +1802,4 @@ def _decode_file(b64, filename) -> tuple:
     return fn, ctype, body
 
 
-def _guess_ctype(filename: str) -> str:
-    import mimetypes
-    ct, _ = mimetypes.guess_type(filename)
-    return ct or "application/octet-stream"
+from sharing.staging import _guess_ctype  # noqa: E402,_decode_file consumer

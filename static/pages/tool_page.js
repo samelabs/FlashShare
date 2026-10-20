@@ -49,3 +49,17 @@
     });
   }
 })();
+
+// API card copy: the declaration-generated curl example, verbatim
+(function () {
+  const btn = document.getElementById("toolApiCopy");
+  const example = document.getElementById("toolApiExample");
+  if (btn && example) {
+    btn.addEventListener("click", async () => {
+      try {
+        window.copyFeedback(btn);
+        await navigator.clipboard.writeText(example.textContent);
+      } catch (e) { /* clipboard blocked — the example stays selectable */ }
+    });
+  }
+})();

@@ -168,6 +168,9 @@ class _Inv:
         self.files = [_SF("kc-in", "")]        # fingerprint 需要真实 shape
         self.delivery = {"expiry_days": 7, "allowed_downloads": 5}
 
+    def has_body(self):
+        return False
+
 import asyncio
 def _run(coro):
     loop = asyncio.new_event_loop()

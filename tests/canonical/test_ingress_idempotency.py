@@ -659,7 +659,7 @@ check("F8 v1 scalar replay → 500 err_ingress_unresolved + 零副作用",
       f"{stV} {str(rV)[:80]} gk={_gkV0}->{_gk_count()} usage={_uuV0}->{_usage_n(uidW)}")
 
 # F9: MCP JSON-RPC (同 receipt 形态, client_ref)
-hMCP = ingress_request_hash("mcp_tool_source",
+hMCP = ingress_request_hash("tool_source",
                              [{"filename": "s.png", "content_type": "image/png",
                                "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
                              {"tool_id": "compress"})
@@ -905,6 +905,166 @@ with db() as con:
 check("A2 tool ref permanent binding: A failed 后 B different hash → 仍 conflict",
       b_claimed is False and distinct_hashes == 1,
       f"claimed={b_claimed} distinct={distinct_hashes}")
+
+# ══════════ P4: 文件暂存单点故障注入 + 引用/新文件混合顺序 ══════════
+# 三入口 (web 上传 / MCP ticket PUT / MCP 内联) 共用 sharing.staging.
+# stage_sources — 在单点上注入三类故障; ticket 路由即该函数的薄映射,
+# 行为由这里的注入用例覆盖。
+import asyncio as _aio
+from sharing import staging as _staging_mod
+from sharing.staging import StagingError as _StagingError
+
+uidP4 = _mkuser(_u + "p4st")
+
+def _p4_hash(tag):
+    return ingress_request_hash(
+        "mcp_upload_ticket",
+        [{"filename": f"{tag}.png", "content_type": "image/png",
+          "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}], {})
+
+# (a) finalize ACK 丢失: 真实提交在独立事务落地后调用方收到异常
+#     → 三态核验 DURABLE_OK → 按成功作答, 返回存储结果
+#     (receipt 原语按调用期导入 — 注入打在 ingress_receipt 模块属性上)
+import sharing.ingress_receipt as _irmod_p4
+_orig_fin_p4 = _irmod_p4.finalize_ok
+def _fin_ack_loss(con, ingress_id, result):
+    with db() as own:
+        _orig_fin_p4(own, ingress_id, result)
+    raise RuntimeError("ack lost")
+_irmod_p4.finalize_ok = _fin_ack_loss
+try:
+    _r_a = _aio.run(_staging_mod.stage_sources(
+        uidP4, "127.0.0.1", f"p4ack-{_u}", "", _p4_hash("ack"),
+        [("ack.png", "image/png", PNG)]))
+    _ok_a = isinstance(_r_a, list) and bool(
+        _r_a[0].get("stagingId") and _r_a[0].get("sourceToken"))
+except Exception as exc:  # noqa: BLE001
+    _ok_a, _r_a = f"raised {type(exc).__name__}", None
+finally:
+    _irmod_p4.finalize_ok = _orig_fin_p4
+with db() as con:
+    _st_a = con.execute(
+        "select status from ingress_requests where user_id=%s and"
+        " request_ref=%s", (uidP4, f"p4ack-{_u}")).fetchone()
+check("P4a finalize ACK loss → DURABLE_OK answered as success (stored handles)",
+      _ok_a is True and _st_a is not None and _st_a["status"] == "ok"
+      and _usage_n(uidP4) == 1,
+      f"{_ok_a} {_st_a and _st_a['status']} usage={_usage_n(uidP4)}")
+
+# (b) 确认回滚: finalize 失败且 receipt 仍 running → 立即清理暂存对象
+#     + 精确释放配额 + 落 failed, 抛 StagingError
+def _fin_pure_fail(con, ingress_id, result):
+    raise RuntimeError("commit never happened")
+_irmod_p4.finalize_ok = _fin_pure_fail
+_gk_p4_0 = _gk_count()
+try:
+    _aio.run(_staging_mod.stage_sources(
+        uidP4, "127.0.0.1", f"p4rb-{_u}", "", _p4_hash("rb"),
+        [("rb.png", "image/png", PNG)]))
+    _ok_b = "no raise"
+except _StagingError:
+    _ok_b = True
+except Exception as exc:  # noqa: BLE001
+    _ok_b = f"raised {type(exc).__name__}"
+finally:
+    _irmod_p4.finalize_ok = _orig_fin_p4
+with db() as con:
+    _st_b = con.execute(
+        "select status from ingress_requests where user_id=%s and"
+        " request_ref=%s", (uidP4, f"p4rb-{_u}")).fetchone()
+check("P4b proven rollback → StagingError, staged file deleted, quota released, receipt failed",
+      _ok_b is True and _st_b is not None and _st_b["status"] == "failed"
+      and _gk_count() == _gk_p4_0 and _usage_n(uidP4) == 1,
+      f"{_ok_b} {_st_b and _st_b['status']} gk={_gk_count()}/{_gk_p4_0}"
+      f" usage={_usage_n(uidP4)}")
+
+# (c) 暂存写入失败 (半暂存回滚): 第二个文件写入抛错 → 已暂存的第一
+#     个对象被清理, 配额释放, 抛 StagingError
+import storage as _storage_mod
+_orig_write_p4 = _storage_mod.write
+_write_n = {"n": 0}
+def _flaky_write(stream, filename, ct, ed, ad, size):
+    _write_n["n"] += 1
+    if _write_n["n"] == 2:
+        raise RuntimeError("injected second-file staging failure")
+    return _orig_write_p4(stream, filename, ct, ed, ad, size)
+_storage_mod.write = _flaky_write
+try:
+    _aio.run(_staging_mod.stage_sources(
+        uidP4, "127.0.0.1", f"p4wf-{_u}", "", _p4_hash("wf"),
+        [("wf1.png", "image/png", PNG), ("wf2.png", "image/png", PNG)]))
+    _ok_c = "no raise"
+except _StagingError:
+    _ok_c = True
+except Exception as exc:  # noqa: BLE001
+    _ok_c = f"raised {type(exc).__name__}"
+finally:
+    _storage_mod.write = _orig_write_p4
+with db() as con:
+    _st_c = con.execute(
+        "select status from ingress_requests where user_id=%s and"
+        " request_ref=%s", (uidP4, f"p4wf-{_u}")).fetchone()
+check("P4c mid-batch staging failure → first staged object cleaned, receipt failed",
+      _ok_c is True and _write_n["n"] == 2
+      and _st_c is not None and _st_c["status"] == "failed"
+      and _gk_count() == _gk_p4_0 and _usage_n(uidP4) == 1,
+      f"{_ok_c} writes={_write_n['n']} {_st_c and _st_c['status']}"
+      f" gk={_gk_count()}/{_gk_p4_0} usage={_usage_n(uidP4)}")
+
+# ══════════ P4d: 引用文件 + 新文件混合 → 顺序保持, 引用不暂存不计配额 ══════════
+ckM = _register(_u + "mixrf")
+with db() as con:
+    uidM = con.execute("select id from users where username=%s",
+                       (_u + "mixrf",)).fetchone()["id"]
+_grant(int(uidM), 100000, "manual_topup", note="ig-p4mix")
+_body_mp, _ct_mp = _multipart(
+    [("a.png", PNG, "image/png")],
+    {"tool": "compress", "client_ref": f"mixsrc-{_u}"})
+st, r = _req("POST", "/api/uploads", _body_mp,
+             {"Content-Type": _ct_mp, "Cookie": ckM})
+src_a = (r or {}).get("file") or {}
+check("P4d0 fixture: web-staged source has stagingId+sourceToken",
+      st == 200 and src_a.get("stagingId") and src_a.get("sourceToken"),
+      f"{st} {str(r)[:80]}")
+
+import execution.dispatch as _dx_mod
+from app.routes import mcp as _M
+class _ReqMix:
+    class client:
+        host = "127.0.0.1"
+    headers = {}
+_captured_mix = []
+async def _fake_dx_mix(request, user, raw, *a, **k):
+    _captured_mix.append(raw)
+    return {"ok": True, "call_id": 424242, "result": {}}, None, None
+_orig_dx_mix = _dx_mod.dispatch_execute
+_dx_mod.dispatch_execute = _fake_dx_mix
+try:
+    _mix_r = _aio.run(_M._call_tool(_ReqMix(), {"id": int(uidM)}, 7, {
+        "name": "share",
+        "arguments": {
+            "files": [
+                {"public_id": src_a.get("stagingId"),
+                 "source_token": src_a.get("sourceToken")},
+                {"filename": "b.png",
+                 "b64": base64.b64encode(PNG).decode()},
+            ],
+            "client_ref": f"mix-{_u}",
+        }}))
+finally:
+    _dx_mod.dispatch_execute = _orig_dx_mix
+_files_mix = (_captured_mix[-1]["source"]["files"]
+              if _captured_mix else [])
+check("P4d mixed [reference, new file] → canonical order preserved, ref not re-staged",
+      len(_files_mix) == 2
+      and _files_mix[0]["public_id"] == src_a.get("stagingId")
+      and _files_mix[1]["public_id"] not in (
+          None, src_a.get("stagingId")),
+      f"files={str(_files_mix)[:100]} rpc={str(_mix_r)[:120]}")
+check("P4d reference claims no ingress/quota (one receipt, one usage row for the new file only)",
+      _ingress_n(int(uidM), f"mix-{_u}") == 1 and _usage_n(int(uidM)) == 2,
+      f"ingress={_ingress_n(int(uidM), f'mix-{_u}')} usage={_usage_n(int(uidM))}"
+      " (1 = web fixture, 2 = + the single new file; the reference added none)")
 
 # ══════════ cleanup ══════════
 with db() as con:

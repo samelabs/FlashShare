@@ -107,13 +107,17 @@ function showToolProcessing(toolName) {
 // Task-2 error contract: explicit retry callback decides whether a Retry
 // button exists at all — no dead buttons. The message is already
 // user-facing (process-flow maps unknown codes to t("failed")); machine
-// error codes are never rendered raw.
+// error codes are never rendered raw. The message (which may embed a
+// provider-supplied detail) is written via textContent — external text
+// never travels through innerHTML.
 function showToolError(message, originalFile, retryCallback) {
   const origUrl = originalFile && (originalFile.page_url || originalFile.url) ? (originalFile.page_url || originalFile.url) : "";
   const origLink = origUrl ? `<a class="btn btn-primary" href="${escapeHtml(origUrl)}" target="_blank">${t("useOriginal")}</a>` : "";
   const retryBtn = typeof retryCallback === "function"
     ? `<button class="btn btn-secondary" id="toolRetry" type="button">${t("retry")}</button>` : "";
-  showResult(`<div class="card card-pad result-card"><div class="error-note">${escapeHtml(message)}</div><div class="row row-wrap" style="margin-block-start:var(--s3)">${retryBtn}${origLink}</div></div>`, true);
+  showResult(`<div class="card card-pad result-card"><div class="error-note"></div><div class="row row-wrap" style="margin-block-start:var(--s3)">${retryBtn}${origLink}</div></div>`, true);
+  const note = document.querySelector(".result .result-card .error-note");
+  if (note) note.textContent = message;
   const btn = document.getElementById("toolRetry");
   if (btn && typeof retryCallback === "function") {
     btn.addEventListener("click", retryCallback);

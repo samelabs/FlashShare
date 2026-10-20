@@ -148,7 +148,7 @@ st, r = _req("POST", "/api/usertools", {
     "auth_header": "X-Key", "auth_token": "secret-one"},
     {"Content-Type": "application/json", "Cookie": ck})
 key = (r or {}).get("tool_key") or ""
-# PATCH routes by the bare tool id (namespace-free segment)
+# PATCH routes by the system-generated tool_key
 check("3 tool with credential created", st == 200 and r.get("ok") and key,
       f"{st} {str(r)[:80]}")
 

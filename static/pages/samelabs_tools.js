@@ -103,6 +103,12 @@
       cost: parseInt(form.cost.value, 10) || 0
     };
     if (filesMax > 0) payload.format_families = form.format_families.value;
+    else {
+      // 正文工具 (files 0..0): 输入方式必选; 占位可选单串
+      payload.body_format = form.body_format.value || 'text';
+      var _ph = (form.body_placeholder.value || '').trim();
+      if (_ph) payload.body_placeholder = _ph;
+    }
     var btn = this;
     slBusy(btn, slPost('/samelabs/tools/create', payload)).then(function (r) {
       if (r.ok && r.data.ok) {

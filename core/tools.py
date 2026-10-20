@@ -47,7 +47,8 @@ _registry = []
 
 def register(tool_id, label, handler,
              accept=None, desc=None, files_min=1, files_max=1,
-             outputs=("file",), params=None, tag=None):
+             outputs=("file",), params=None, tag=None,
+             body_format=None, body_placeholder=None):
     """Register a tool.
 
     Args:
@@ -73,8 +74,12 @@ def register(tool_id, label, handler,
                 validator as user tools (governance.tool_params). This is the
                 ONLY parameter declaration channel for first-party tools.
         tag: 工具类型声明 (仅第一方需要): 作者声明的应用场景 tag
-                (九键之一, 见 governance.formats)。纯文本工具
+                (九键之一, 见 governance.formats)。正文工具
                 (files_max=0) 不声明。图标 = tag 查表, 无派生。
+        body_format / body_placeholder: 正文工具输入方式 ('text'|
+                'json') 与可选占位 (LocalizedText)。文件工具
+                (files_max>0) 两者恒 None; 正文工具 body_format 必填,
+                handler 收到 {"body": <取值>} 形态的 tool_input。
     """
     # local runtime binding 专属检查 (duplicate registration)
     if any(t["id"] == tool_id for t in _registry):
@@ -95,6 +100,8 @@ def register(tool_id, label, handler,
         "inputs": {"files": {"min": files_min, "max": files_max,
                              "accept": sorted(accept) if accept else None}},
         "format_family": tag,
+        "body_format": body_format,
+        "body_placeholder": body_placeholder,
         "outputs": list(outputs),
         "params": params,
         "visibility": "public",
@@ -109,6 +116,8 @@ def register(tool_id, label, handler,
         "label": decl["label"],
         "desc": decl["desc"],
         "tag": decl["format_family"],
+        "body_format": decl["body_format"],
+        "body_placeholder": decl["body_placeholder"],
         "handler": handler,
         "accept": set(decl["inputs"]["files"]["accept"])
         if decl["inputs"]["files"]["accept"] else None,

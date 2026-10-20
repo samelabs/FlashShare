@@ -126,12 +126,14 @@ if admin_cookie:
             "format_families": "image", "accept": ".png,.jpg", "files_max": val}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
         check(f"C files_max={val!r} → {want}", got == want, f"{st} {r}")
-    # C2: text-only window (files 0..0) is legal only without accept
+    # C2: body-tool window (files 0..0) is legal only with body_format,
+    # without accept
     for acc, want in [("", "ok"), (".png", "bad_accept")]:
         st, r = req("POST", "/samelabs/tools/create", {
             "tool_id": f"mt{uuid.uuid4().hex[:6]}", "label": "MT",
             "url": "https://93.184.216.34/anything", "timeout_s": 30,
-            "accept": acc, "files_min": 0, "files_max": 0}, admin_cookie)
+            "accept": acc, "files_min": 0, "files_max": 0,
+            "body_format": "text"}, admin_cookie)
         got = "ok" if r.get("ok") else r.get("error")
         check(f"C2 text-only accept={acc!r} → {want}", got == want,
               f"{st} {r}")

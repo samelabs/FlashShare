@@ -13,8 +13,14 @@
 """
 
 class ExecutionError(Exception):
-    """编排层错误: code = i18n error key。"""
+    """编排层错误: code = i18n error key。
 
-    def __init__(self, code: str):
+    http_status: 平台对调用方表达的 HTTP 状态 (缺省 400); 提供者非 2xx
+    的南向失败表达为 502。detail: 安全错误详情 (有界, 提供者状态码 +
+    响应体片段), 三个表达面 (Web/MCP/API) 原样携带。"""
+
+    def __init__(self, code: str, http_status: int = 400, detail: str = ""):
         super().__init__(code)
         self.code = code
+        self.http_status = int(http_status)
+        self.detail = str(detail or "")
