@@ -184,6 +184,8 @@ tombstone 语义以 LocalizedText map 表示（`locale` 是 dict 的 key，不�
 ## 执行契约
 
 用户工具当前执行类型为 `http`：平台在调用时向开发者端点发起 `POST`。
+调用入口（网页、MCP、`/v1` REST）同构同一执行契约——开发者只实现
+这一份南向契约。
 
 **文件工具**（files_max > 0）的请求体是 JSON 信封：
 
