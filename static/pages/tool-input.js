@@ -65,14 +65,16 @@
     if (!mf || !Array.isArray(mf.order) || !mf.families) {
       return accept.map((a) => a.toUpperCase()).join(" · ");
     }
-    // 全边界摘要: accept 覆盖词表全部格式时不逐项铺墙
-    let total = 0;
-    mf.order.forEach((k) => { total += ((mf.families[k] || {}).exts || []).length; });
-    if (accept.length >= total) return t("ti_accept_all");
-    const set = new Set(accept);
+    // 全边界摘要: accept 覆盖词表全部格式时不逐项铺墙。覆盖 = 扩展名
+    // 并集 (all 分组的 exts 就是全词表, 逐分组累加会把它双计成 238)。
+    const norm = (a) => String(a).replace(/^\./, "").toLowerCase();
+    const vocab = new Set();
+    mf.order.forEach((k) => ((mf.families[k] || {}).exts || []).forEach((e) => vocab.add(norm(e))));
+    if (accept.length >= vocab.size) return t("ti_accept_all");
+    const set = new Set(accept.map(norm));
     const names = mf.order
-      .filter((k) => ((mf.families[k] || {}).exts || [])
-        .some((e) => set.has(String(e).replace(/^\./, "").toLowerCase())))
+      .filter((k) => k !== "all")
+      .filter((k) => ((mf.families[k] || {}).exts || []).some((e) => set.has(norm(e))))
       .map((k) => t("family_" + k));
     return names.length ? names.join(" · ")
                         : accept.map((a) => a.toUpperCase()).join(" · ");

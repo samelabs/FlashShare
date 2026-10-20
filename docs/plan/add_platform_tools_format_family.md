@@ -1,12 +1,25 @@
 # Release migration: platform_tools.format_family（tag 列）
 
 **执行顺序（强制，一条线）：**
-**预检 → ① 加列 → ② 内置回填 → ③ 社区/运营回填（含 accept 物化）→
-tag 预检 → 部署首启 → ④ 加 FK → 首启后复查。**
+**预检 → ① 加列 → ② 内置回填 → 停写窗口 → ③ 社区/运营回填（含 accept
+物化）→ tag 预检 → 部署首启 → ④ 加 FK → 首启后复查。**
 
 先迁移后部署（与 icon 列 DROP 资产方向相反）：新代码的 seed 启动即写
 `format_family`，列不存在则 `UndefinedColumn` 起不来（PM 升级探针已
 复现）。旧代码（v1.5）不读此列，列先加上对运行中的旧服务零影响。
+
+**停写窗口（强制）**：③ 同时写 `format_family` **和** `accept_json`
+（accept=NULL 的行物化全边界清单）——不是"只写新列"。因此 ③ 执行前
+必须停掉旧服务对 `platform_tools` 的写入（社区发布/编辑、运营建改），
+否则：预检之后旧服务新建的无 tag 行不会进 ③ 的回填集，新代码启动
+校验将拒绝它们。窗口从 ③ 开始到新代码首启为止；窗口内若确需运维写
+入，写入后必须重跑 ③（幂等）与下述终检。
+
+**切换前终检（部署首启前，须为空）**：
+```sql
+SELECT tool_key FROM platform_tools
+ WHERE files_max > 0 AND (format_family IS NULL OR accept_json IS NULL);
+```
 
 生产库在 1.6 工具链批部署**前**执行**一次**；执行后删除本资产
 （仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。
@@ -53,7 +66,7 @@ ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS format_family TEXT;
 ```
 
 ```bash
-# ③ 全量回填（内置 + 社区 + 运营; 在旧代码仍在跑的库上执行亦可 — 只写新列）
+# ③ 全量回填（内置 + 社区 + 运营; 停写窗口内执行 — 同时写 format_family 与 accept_json）
 # 内置 share/zip_pack (accept=NULL → 物化全边界+all) 与社区/运营行一并处理
 cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python - <<'PY'
 import json, sys

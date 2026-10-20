@@ -432,7 +432,8 @@ async function submit() {
     auth_header: removeAuth ? "" : (document.getElementById("fAuthHeader").value.trim() || undefined),
     auth_token: removeAuth ? "" : (document.getElementById("fAuthToken").value.trim() || undefined),
     cost: parseInt(document.getElementById("fCost").value, 10) || 0,
-    params: params.length ? params : undefined,
+    // PATCH 缺省 = 保留旧值; 删除全部参数必须显式发空数组 (编辑态恒发)
+    params: (_editId || params.length) ? params : undefined,
   };
   // 新工具默认 unlisted (作者成功运行一次后才能公开); 编辑态不动可见性
   // (防公开工具被编辑静默降级)
@@ -483,11 +484,14 @@ function refill(t) {
   _initDesc = document.getElementById("fDesc").value = _ltBack(t.desc);
   document.getElementById("fCost").value = t.cost != null ? t.cost : 0;
   document.getElementById("fTimeout").value = t.timeout_s || 60;
-  // 4C-2 编辑回填:
-  // 完全未知 accept → famKey 为空 → 受控空态 (不默认 image, 不覆盖原声明)。
+  // 4C-2 编辑回填: 声明的 tag 是契约字段, 回填直接消费存储值;
+  // 完全缺失 (迁移前存量) 才回落到 accept 推断, 且未知 accept → 受控
+  // 空态 (不默认 image, 不覆盖原声明)。
   const accExts = extsFromAccept(t.accept);
-  const fams = famKeyFromAccept(t.accept);
   const textOnly = t.files_max === 0;
+  const fam = textOnly ? null
+    : (t.format_family || famKeyFromAccept(t.accept)[0] || null);
+  const fams = fam ? [fam] : [];
   document.querySelector('input[name="fInputMode"][value="' + (textOnly ? "text" : "files") + '"]').checked = true;
   // 纯文本工具切回文件输入时: 族网格按新建态默认, 窗口回到 1..1
   renderFamGrid(fams[0] || null, accExts, textOnly);

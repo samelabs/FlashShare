@@ -343,6 +343,15 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("home: compress selected", await page.evaluate(() => document.body.dataset.tool === "compress"));
       check("home: input component rendered (run + file picker)",
         (await page.$(".ti-run")) !== null && (await page.$(".ti-file-input")) !== null);
+      // format summary: a single-family tool must NOT read as "All formats"
+      // (the union view double-counted the all group and every family hit it)
+      const sumText = await page.evaluate(() => {
+        const el = document.querySelector(".ti-drop small");
+        return el ? el.textContent : "";
+      });
+      check("home: compress summary names its family, never 'All formats'",
+        sumText.indexOf("Images") !== -1 && sumText.indexOf("All formats") === -1,
+        sumText);
 
       // track network legs for retry assertions
       const legs = { uploads: [], executes: [] };
@@ -633,6 +642,33 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         titleState.text.indexOf(titleState.expected) !== -1 &&
         titleState.text.indexOf("[object Object]") === -1,
         titleState.text);
+
+      // ── 13d. edit refill consumes the stored tag, never re-derives it ──
+      // declared tag=all with a cross-family accept (png+pdf) must refill
+      // as "all"; inferring from accept used to pick the first matching
+      // family and silently rewrite the declaration on save.
+      const createdAll = await page.evaluate(async () => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: "Gate Tag All", url: "https://93.184.216.34/all", timeout_s: 30,
+            files_min: 1, files_max: 2, format_families: "all",
+            accept: [".png", ".pdf"], outputs: ["text"], cost: 0,
+          }),
+        });
+        const txt = await r.text();
+        return { ok: r.ok, body: txt.slice(0, 120),
+                 key: (function(){try{return JSON.parse(txt).tool_key}catch(e){return ""}})() };
+      }, {});
+      check("publish-tag-all: cross-family tool created",
+        createdAll.ok, createdAll.body);
+      await gotoReady(page, `/account/tools/publish?id=${createdAll.key}`, "#pubForm");
+      const tagState = await page.evaluate(() => ({
+        checkedFam: (document.querySelector('#famGrid input[name="fam"]:checked') || {}).value,
+      }));
+      check("publish-edit-refill: stored tag=all is the selected family",
+        tagState.checkedFam === "all", JSON.stringify(tagState));
 
       // ── 14. six-parameter tool (8 long enum labels) for the params
       // layout gate: >3 params fold into "more", both surfaces, both
