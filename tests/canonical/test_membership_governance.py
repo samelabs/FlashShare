@@ -135,13 +135,16 @@ def _seed_order(uid, plan_id, sub_id, ch_id=None):
         (uid, plan_id, f"ch:{ch_id or sub_id}", _ts))
     return _cur.fetchone()[0]
 
-def _sub_snap(status, p_start, p_end, product=None, sub_id="mgsub1"):
+def _sub_snap(status, p_start, p_end, product=None, sub_id="mgsub1", txn=None):
     d = {"object": "subscription", "id": sub_id, "status": status,
          "current_period_start_date": p_start, "current_period_end_date": p_end,
          # paid-proof contract: product + last_transaction_id must be present
-         # AND the product must match the locally bound plan product
+         # AND the product must match the locally bound plan product.
+         # Transaction ids are unique per payment (Creem contract; the
+         # replay gate matches them exactly) — a renewal is a NEW payment
+         # and must carry its own id, never the base cycle's.
          "product": product or {"id": "price_plus"},
-         "last_transaction_id": f"txn_{sub_id}"}
+         "last_transaction_id": txn or f"txn_{sub_id}"}
     return d
 
 def _iso(epoch):
@@ -253,8 +256,10 @@ except KeyError:
 # ═══ 链6: paid renewal → idem once ═══
 PS2, PE2 = _ts + 86400, _ts + 31 * 86400
 _bal = spendable_balance(uidP); _g = _grants(uidP)
-_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS2), _iso(PE2)))
-_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS2), _iso(PE2)))  # replay
+# renewal = distinct payment → distinct transaction id; the second,
+# identical event is the replay and keeps the same id
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS2), _iso(PE2), txn="txn_mgsub1_renew"))
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS2), _iso(PE2), txn="txn_mgsub1_renew"))  # replay
 check("G6 renewal grant once + replay 幂等 (idem plan:{uid}:{period})",
       _grants(uidP) == _g + 1 and spendable_balance(uidP) == _bal + 100
       and _m_row(uidP)[4] == PS2)

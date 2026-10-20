@@ -341,9 +341,10 @@ check("T12b 同周期 paid 重放 → period total 仍 500 / spendable 不重复
       and spendable_balance(uid10) == _bal_after_upgrade,
       f"total={_plan_credits_total(uid10, PS)} spendable={spendable_balance(uid10)}")
 # 下一正常 renewal (新 period, Pro product): 新周期 grant 500; 旧周期仍 500:
+# renewal = 新支付 = 独立交易号 (重放门按交易号精确匹配)
 PS3, PE3 = _ts + 61 * 86400, _ts + 91 * 86400
 _bal12 = spendable_balance(uid10)
-_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS3), _iso(PE3), product={"id": "prod_pro"}, sub_id="ptsub10"))
+_sub.handle_event("subscription.paid", _sub_snap("active", _iso(PS3), _iso(PE3), product={"id": "prod_pro"}, sub_id="ptsub10", txn="txn_ptsub10_renew"))
 check("T12c 下一 renewal: 新 period total = 500 (全额), 旧 period 仍 500 / spendable +500",
       _plan_credits_total(uid10, PS3) == 500 and _plan_credits_total(uid10, PS) == 500
       and spendable_balance(uid10) == _bal12 + 500,
