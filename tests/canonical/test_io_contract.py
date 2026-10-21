@@ -574,7 +574,8 @@ try:
     # invalid shapes via a local listener would need TLS; drive the
     # response-parsing path directly with a stubbed _http_call
     orig_call = _remote._http_call
-    def _fake_call(url, req_body, req_ct, headers, timeout_s, trusted):
+    def _fake_call(url, req_body, req_ct, headers, timeout_s, trusted,
+                   deadline=None):
         body = _fake_call.body
         return _fake_call.status, body, _fake_call.ctype, None
     _fake_call.ctype = "application/vnd.518.items+json"
