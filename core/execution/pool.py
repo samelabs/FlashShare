@@ -115,17 +115,24 @@ def get_pool() -> ProcessPoolExecutor:
         return _pool
 
 
-def reset_pool(expected_pool, reason: str = "unspecified") -> ProcessPoolExecutor:
+def reset_pool(expected_pool, reason: str = "unspecified",
+               terminate_workers: bool = False) -> ProcessPoolExecutor:
     """CAS-style 重建: 以调用者观察到的 broken pool identity 为准。
     同一个 broken pool 被 N 个 caller 同时观察到时, 只有第一个完成
     replacement (reset_count +1); 后续 caller 发现 _pool 已不是其
     observed identity → 直接复用既有 replacement。旧池 shutdown 释放。
+    terminate_workers=True (超时回收): shutdown 之后对旧池仍存活的
+    worker 进程 terminate → join(2) → 仍存活 kill + join(1) —
+    shutdown(wait=False) 不杀在跑进程, 卡死 worker 必须显式回收。
     不创建 generation table / worker state machine。"""
     global _pool, _reset_count
+    procs = []
     with _pool_lock:
         if _pool is not expected_pool:
             return _pool
         old = _pool
+        # snapshot BEFORE shutdown: shutdown clears _processes
+        procs = list((getattr(old, "_processes", None) or {}).values())
         replacement = _new_pool()
         _pool = replacement
         _reset_count += 1
@@ -134,6 +141,17 @@ def reset_pool(expected_pool, reason: str = "unspecified") -> ProcessPoolExecuto
             old.shutdown(wait=False, cancel_futures=True)
         except Exception:
             logger.warning("old pool shutdown error during reset")
+    if terminate_workers:
+        for proc in procs:
+            try:
+                if proc.is_alive():
+                    proc.terminate()
+                    proc.join(timeout=2)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join(timeout=1)
+            except Exception:
+                logger.warning("worker termination error during pool reset")
     logger.warning("execution pool reset #%d (%s)", _reset_count, reason)
     return replacement
 
