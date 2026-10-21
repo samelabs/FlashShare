@@ -232,7 +232,14 @@ def parse_plan_fields(raw: dict, *, creating: bool = False) -> dict | None:
                     return None
                 fields[k] = v
     if "creem_product_id" in raw or creating:
-        fields["creem_product_id"] = str(raw.get("creem_product_id", "")).strip()[:64] or None
+        _cpid = raw.get("creem_product_id", "")
+        if _cpid is None or (isinstance(_cpid, str)
+                             and not _cpid.strip()):
+            fields["creem_product_id"] = None
+        elif isinstance(_cpid, str):
+            fields["creem_product_id"] = _cpid.strip()[:64] or None
+        else:
+            return None  # non-string product id = parse failure
     if "active" in raw or creating:
         if not isinstance(raw.get("active", True), bool):
             return None
@@ -278,7 +285,7 @@ def create_plan(operator_id: int, fields: dict) -> dict:
         with db() as con:
             row = insert_plan(
                 con, fields["code"], fields["name"], fields["monthly_credits"],
-                fields["price_cents"], now(),
+                fields["price_cents"], now(), active=fields["active"],
                 period_days=fields["period_days"],
                 sort_order=fields["sort_order"],
                 creem_product_id=fields["creem_product_id"],
@@ -563,10 +570,11 @@ def parse_package_fields(raw: dict, *, creating: bool = False) -> dict | None:
                 return None
             fields["active"] = raw["active"]
     if creating:
+        # create 缺省 active=True (与 plan 字段解析同语义; 调用方显式
+        # 传给 insert_package)
         if "active" in raw and not isinstance(raw["active"], bool):
             return None
-        if "active" in raw:
-            fields["active"] = raw["active"]
+        fields["active"] = bool(raw.get("active", True))
     return fields or None
 
 
@@ -578,7 +586,7 @@ def create_package(operator_id: int, fields: dict) -> dict:
         with db() as con:
             row = insert_package(con, fields["code"], fields["name"],
                                  fields["credits"], fields["price_cents"],
-                                 now())
+                                 now(), active=fields["active"])
             check_usd(row["currency"])
             operator_audit.record(con, operator_id, "package.create",
                                   "package", str(row["id"]), None,

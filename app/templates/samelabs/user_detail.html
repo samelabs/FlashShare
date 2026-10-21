@@ -84,7 +84,7 @@
       <tr>
         <td>{{ c.id }}</td><td class="sl-mono">{{ c.tool_id }}</td>
         <td><span class="tag {{ 'tag-success' if c.status == 'ok' else 'tag-danger' }}">{{ c.status }}</span></td>
-        <td class="sl-num">{{ fmt_num(c.cost_snapshot) }}</td>
+        <td class="sl-num">{{ fmt_num(c.net_charge) }}</td>
         <td class="sl-dim">{{ (c.error or '—') }}</td>
         <td>{{ fmt_ts(c.started_at) }}</td>
         <td>{{ fmt_ts(c.finished_at) if c.finished_at else '—' }}</td>

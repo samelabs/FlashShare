@@ -898,11 +898,12 @@ async def account_calls(request: Request):
         pages = (total + size - 1) // size
         pg = min(pg, max(pages, 1))
         rows = con.execute(
-            """
-            SELECT tc.id, tc.tool_id, tc.status, tc.cost_snapshot,
+            f"""
+            SELECT tc.id, tc.tool_id, tc.status,
                    tc.started_at, tc.finished_at, tc.result_public_id,
                    tc.result_json, tc.error,
                    pt.label_json,
+                   ({CALL_NET_CHARGE_SQL}) AS net_charge,
                    COALESCE((
                      SELECT SUM(r.delta) FROM ledger r
                      JOIN ledger c
@@ -933,7 +934,7 @@ async def account_calls(request: Request):
             if label:
                 r["tool_name"] = resolve_label(label, _lang) or None
         r["deleted"] = r["tool_name"] is None
-        r["net_cost"] = int(r["cost_snapshot"] or 0) - int(r["refunded"] or 0)
+        r["net_cost"] = int(r["net_charge"] or 0)
         # 结果链接: ok + 有结果 + 未过期
         r["result_live"] = False
         if r["status"] == "ok" and r.get("result_public_id"):

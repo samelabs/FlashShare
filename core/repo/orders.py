@@ -228,12 +228,14 @@ def all_plans(con) -> list:
 
 
 def insert_plan(con, code: str, name: str, monthly_credits: int,
-                price_cents: int, ts: int, *, period_days: int = 30,
+                price_cents: int, ts: int, *, active: bool,
+                period_days: int = 30,
                 sort_order: int = 0, creem_product_id: str | None = None,
                 ingress_files_24h: int = 0, ingress_bytes_24h: int = 0,
                 expiry_days=(), download_limits=()) -> dict:
-    """operator 创建新 paid tier 行。权益未配 (空数组) = 诚实不可售,
-    由 benefits_configured 门挡在 sellable 外, 直到运营补齐。"""
+    """operator 创建新 paid tier 行。active 由调用方显式声明 (运营可
+    直接建为不可售草稿)。权益未配 (空数组) = 诚实不可售, 由
+    benefits_configured 门挡在 sellable 外, 直到运营补齐。"""
     return con.execute(
         """
         INSERT INTO plans (code, name, monthly_credits, period_days, period,
@@ -241,11 +243,12 @@ def insert_plan(con, code: str, name: str, monthly_credits: int,
                            ingress_files_24h, ingress_bytes_24h,
                            expiry_days, download_limits,
                            created_at, updated_at)
-        VALUES (%s, %s, %s, %s, 'monthly', %s, %s, %s, TRUE,
+        VALUES (%s, %s, %s, %s, 'monthly', %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s) RETURNING *
         """,
         (code, name, monthly_credits, period_days, price_cents,
-         creem_product_id, sort_order, ingress_files_24h, ingress_bytes_24h,
+         creem_product_id, sort_order, active, ingress_files_24h,
+         ingress_bytes_24h,
          list(expiry_days), list(download_limits), ts, ts)).fetchone()
 
 
@@ -306,14 +309,14 @@ def all_packages(con) -> list:
 
 
 def insert_package(con, code: str, name: str, credits: int,
-                   price_cents: int, ts: int) -> dict:
+                   price_cents: int, ts: int, *, active: bool) -> dict:
     return con.execute(
         """
         INSERT INTO packages (code, name, credits, price_cents,
                               active, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, TRUE, %s, %s) RETURNING *
+        VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *
         """,
-        (code, name, credits, price_cents, ts, ts)).fetchone()
+        (code, name, credits, price_cents, active, ts, ts)).fetchone()
 
 
 # ── plans (subscription tiers) ──

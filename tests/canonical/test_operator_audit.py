@@ -260,6 +260,59 @@ check("C1 plan create → audit before=NULL / after=safe plan snapshot",
       and rows[0]["target_id"] == str(plan_id),
       f"{r.status_code} {rows[:1]}")
 
+# ── F11/F12: active 显式声明 + creem_product_id 类型口径 ──
+_PATCH_LOG.clear()
+# active:false 创建 → 行 active=false, 不入可售投影; 切换后恢复
+r = _post("/samelabs/commerce/products/plans", json={
+    "code": f"oadraft_{_u}", "name": "OA Draft", "monthly_credits": 100,
+    "price_cents": 999, "creem_product_id": None, "sort_order": _so + 2,
+    "active": False,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+_draft_id = r.json().get("plan", {}).get("id")
+with db() as con:
+    _draft_row = con.execute(
+        "select active, creem_product_id from plans where id=%s",
+        (_draft_id,)).fetchone()
+from governance import plan_catalog as _pc
+_pc.catalog(refresh=True)
+_sellable = [t_.code for t_ in _pc.sellable_catalog()]
+_dr_log = list(_PATCH_LOG)
+check("C-draft active:false create → stored false, NULL binding, not sellable",
+      r.status_code == 200 and _draft_row is not None
+      and _draft_row["active"] is False
+      and _draft_row["creem_product_id"] is None
+      and f"oadraft_{_u}" not in _sellable,
+      f"{r.status_code} {dict(_draft_row) if _draft_row else None}")
+_MIRROR[f"prod_oad_{_u}"] = {"price": 999, "currency": "USD",
+                             "billing_type": "recurring",
+                             "billing_period": "every-month"}
+r = _patch(f"/samelabs/commerce/products/plans/{_draft_id}",
+           json={"active": True, "creem_product_id": f"prod_oad_{_u}"},
+           cookies={COOKIE_NAME: op_sess})
+_pc.catalog(refresh=True)
+_sellable = [t_.code for t_ in _pc.sellable_catalog()]
+check("C-draft switch (active+binding) → sellable",
+      r.status_code == 200 and f"oadraft_{_u}" in _sellable,
+      f"{r.status_code} {_sellable[:3]}")
+# F12: 空绑定 (null) 创建零 provider I/O — 上面的 draft 创建即无镜像写
+check("C-draft null-binding create made zero provider mirror calls",
+      not _dr_log, str(_dr_log))
+# creem_product_id 非字符串 → 解析失败 (422/400), 零写入
+r = _post("/samelabs/commerce/products/plans", json={
+    "code": f"oabad_{_u}", "name": "OA Bad", "monthly_credits": 100,
+    "price_cents": 999, "creem_product_id": 12345, "sort_order": _so + 3,
+    "ingress_files_24h": 500, "ingress_bytes_24h": 524288000,
+    "expiry_days": [7], "download_limits": [50],
+}, cookies={COOKIE_NAME: op_sess})
+with db() as con:
+    _bad_n = con.execute("select count(*) n from plans where code=%s",
+                         (f"oabad_{_u}",)).fetchone()["n"]
+check("C-bad non-string creem_product_id → rejected, zero rows",
+      r.status_code in (400, 404, 422) and int(_bad_n) == 0,
+      f"{r.status_code} rows={_bad_n}")
+
 # audit insert failure on create → ZERO Creem call + rollback
 _PATCH_LOG.clear()
 _aud.record = _audit_fail_on("plan.create")[1]
