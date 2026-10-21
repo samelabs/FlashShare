@@ -56,6 +56,17 @@ def sanitize_filename(name: str) -> str:
     return clean[:120] or "upload.bin"
 
 
+def content_disposition(disposition: str, name: str, fallback: str) -> str:
+    """Content-Disposition header value carrying a Unicode-safe filename:
+    backslash and quote neutralized, ASCII fallback (or `fallback` when the
+    name has no ASCII left) plus the RFC 5987 filename* form — one formula
+    for every serving surface (proxy download/preview, /v1 file items)."""
+    safe = str(name).replace("\\", "_").replace('"', "_")
+    ascii_name = safe.encode("ascii", "ignore").decode("ascii") or fallback
+    return (f'{disposition}; filename="{ascii_name}"; '
+            f"filename*=UTF-8''{urllib.parse.quote(safe)}")
+
+
 def generate_public_id(con) -> str:
     from repo.uploads import public_id_exists
     for _ in range(20):

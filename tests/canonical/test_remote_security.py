@@ -1197,9 +1197,21 @@ for _nan_body in (b'{"x": NaN}', b'{"x": Infinity}', b'{"x": -Infinity}'):
     except RemoteError as exc:
         check("A1 non-finite JSON constant → invalid_response",
               exc.code == "invalid_response", f"{exc.code} {_nan_body}")
+# 1e400 数值溢出: parse_constant 拦不住 (json.loads 解析为 inf) — 溢出值
+# 必须在 dumps 边界 (allow_nan=False) 被拒
+for _ovf_body in (b'{"x": 1e400}', b'[-1e400]'):
+    try:
+        remote.parse_response_items(200, _ovf_body, "application/json",
+                                    None, None)
+        check("A1b numeric overflow (1e400) → invalid_response", False,
+              "accepted")
+        break
+    except RemoteError as exc:
+        check("A1b numeric overflow (1e400) → invalid_response",
+              exc.code == "invalid_response", f"{exc.code} {_ovf_body}")
 try:
     remote.parse_response_items(
-        200, b'{"items":[{"kind":"json","data":{"x":NaN}}]}',
+        200, b'{"items":[{"kind":"json","data":{"deep":[1e400]}}]}',
         remote.ITEMS_ENVELOPE_CT, None, None)
     check("A1 non-finite inside items envelope → invalid_response",
           False, "accepted")

@@ -391,15 +391,6 @@ async def http_exception_handler(request: Request,
                headers=getattr(exc, "headers", None))
 
 
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    if _is_v1(request.url.path):
-        logger.exception("v1 unhandled error: %s", exc)
-        return JSONResponse({"ok": False, "error": "internal_error"},
-                            status_code=500)
-    raise exc
-
-
 _housekeeping_task = None
 _HOUSEKEEPING_INTERVAL = 3600
 

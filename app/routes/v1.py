@@ -306,8 +306,9 @@ async def _body_tool_response(user, payload) -> Response:
 
 async def _file_item_bytes(user, item, headers) -> Response:
     """File item → bytes through the internal NON-counting channel (no
-    allowed_downloads consumption). Dead/expired mapping → 410
-    result_expired (never re-executes, never re-charges)."""
+    allowed_downloads consumption). Mapping missing/not-owned and storage
+    404/410 → 410 result_expired (never re-executes, never re-charges);
+    storage faults (exception, ≥500) → 503 result_unavailable."""
     from sharing.uploads import get_live_upload_by_public_id
     from storage import read as storage_read
     up = get_live_upload_by_public_id(item.get("public_id") or "")
@@ -316,20 +317,28 @@ async def _file_item_bytes(user, item, headers) -> Response:
     try:
         status, _rh, stream = await asyncio.to_thread(
             storage_read, up["gokapi_id"])
-    except Exception:
-        return _err(410, "result_expired", headers=headers)
+    except Exception as exc:
+        # The internal non-counting primitive raises typed errors carrying
+        # the Gokapi status (gokapi_api_404 / gokapi_api_410): a gone
+        # object is expiry; anything else is a channel fault.
+        _msg = str(exc)
+        if "gokapi_api_404" in _msg or "gokapi_api_410" in _msg:
+            return _err(410, "result_expired", headers=headers)
+        logger.warning("v1 result file read failed (public_id=%s): %s",
+                       item.get("public_id"), _msg)
+        return _err(503, "result_unavailable", headers=headers)
     if status >= 400:
-        return _err(410, "result_expired", headers=headers)
+        return _err(503, "result_unavailable", headers=headers)
     from config import MAX_UPLOAD_BYTES
     data = stream.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         return _err(500, "internal_error", headers=headers)
-    fn = (item.get("filename") or "result").replace('"', "")
+    from utils import content_disposition
     return Response(data, media_type=item.get("content_type")
                     or "application/octet-stream",
                     headers={**headers,
-                             "Content-Disposition":
-                                 f'attachment; filename="{fn}"'})
+                             "Content-Disposition": content_disposition(
+                                 "attachment", up["file_name"], "result")})
 
 
 # ── file tools: multipart bytes | JSON {files:[url|ref], params} ──

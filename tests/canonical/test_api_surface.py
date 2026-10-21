@@ -51,7 +51,7 @@ from database import db  # noqa: E402
 # ── local trusted endpoint (trusted rows may be plain http) ──
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
-HITS = {"boom": 0, "slow": 0, "rawfile": 0, "drip": 0}
+HITS = {"boom": 0, "slow": 0, "rawfile": 0, "drip": 0, "itemsfile": 0}
 
 class _Endpoint(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -103,6 +103,16 @@ class _Endpoint(BaseHTTPRequestHandler):
                     time.sleep(0.05)
             except Exception:
                 pass  # client aborted at its deadline
+        elif path == "/itemsfile":
+            # items 信封文件项: 文件名来自请求正文 (JSON 信封承载任意
+            # Unicode 文件名 — 非 ASCII 结果文件名的自然来源)
+            HITS["itemsfile"] += 1
+            _fn = body.decode("utf-8", "replace").strip() or "result.png"
+            self._reply(200, json.dumps({"items": [
+                {"kind": "file", "filename": _fn,
+                 "content_type": "image/png",
+                 "data_b64": base64.b64encode(PNG).decode()}]}).encode(),
+                "application/vnd.518.items+json")
         elif path == "/rawfile":
             HITS["rawfile"] += 1
             self._reply(200, PNG, "image/png",
@@ -247,6 +257,9 @@ _tool(TOOL_JSON, body_format="json", url=f"{EP}/echo-json", outputs=["json"], co
 _tool(TOOL_FILE, accept='[".png"]', tag="image", files_min=1, files_max=2,
       url=f"{EP}/items", outputs=["text"], cost=0)
 _tool(TOOL_RAWF, body_format="text", url=f"{EP}/rawfile", outputs=["file"], cost=0)
+TOOL_NAMES = f"v1nm{_u2}"
+_tool(TOOL_NAMES, body_format="text", url=f"{EP}/itemsfile", outputs=["file"],
+      cost=2)
 _tool(TOOL_BAD, body_format="text", url=f"{EP}/boom", outputs=["text"], cost=0)
 TOOL_NAN = f"v1nan{_u2}"
 _tool(TOOL_NAN, body_format="json", url=f"{EP}/nanjson", outputs=["json"], cost=2)
@@ -568,6 +581,121 @@ check("E3 replay after the file mapping died → 410 result_expired (no re-run)"
       st == 410 and d.get("error") == "result_expired"
       and h.get("x-518-call-id") == _e2_call and HITS["rawfile"] == 1,
       f"{st} {d} hits={HITS['rawfile']}")
+
+# E4: 非 ASCII 结果文件名 (中文/日文/emoji/空格引号) — Content-Disposition
+# 带 ASCII 回退 + RFC 5987 filename*, 字节正确, 内部通道不计数, 重放不
+# 二次扣费
+import urllib.parse as _up
+from utils import sanitize_filename as _sfn_t
+import os as _osmod
+_GK = _up.urlparse(_osmod.environ["FLASHSHARE_GOKAPI_URL"])
+_GK_KEY = _osmod.environ["FLASHSHARE_GOKAPI_KEY"]
+def _gk_call(method, path, payload=None):
+    c = _hc.HTTPConnection(_GK.hostname, _GK.port, timeout=10)
+    body = json.dumps(payload).encode() if payload is not None else None
+    c.request(method, path, body,
+              {"apikey": _GK_KEY, **({"Content-Type": "application/json"}
+                                     if body else {})})
+    r = c.getresponse()
+    data = json.loads(r.read() or b"{}")
+    c.close()
+    return r.status, data
+def _gk_remaining(gid):
+    _st, _row = _gk_call("GET", f"/api/files/list/{gid}")
+    return (_row or {}).get("DownloadsRemaining")
+
+_E4_NAMES = ["结果文件.png", "結果ファイル.png", "结果😀.png",
+             '带 空格"引号".png']
+_bal_e4 = _sb(uidI)
+for _i, _nm in enumerate(_E4_NAMES):
+    st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                         _nm.encode("utf-8"),
+                         {**IH, "Content-Type": "text/plain",
+                          "Idempotency-Key": f"e4-{_u}-{_i}"})
+    _cd = h.get("content-disposition", "")
+    _exp = _up.quote(_sfn_t(_nm))
+    _call4 = h.get("x-518-call-id")
+    with db() as con:
+        _row4 = con.execute(
+            "select result_json from tool_calls where id=%s",
+            (int(_call4),)).fetchone() if (_call4 or "").isdigit() else None
+    _pid4 = (((json.loads(_row4["result_json"]).get("items") or [{}])[0]
+              ).get("public_id")) if _row4 else ""
+    with db() as con:
+        _up4 = con.execute(
+            "select gokapi_id, allowed_downloads from uploads"
+            " where public_id=%s", (_pid4,)).fetchone()
+    check(f"E4[{_i}] non-ASCII result filename → 200, bytes + RFC5987 name",
+          st == 200 and raw == PNG and _pid4 and _up4 is not None
+          and f"filename*=UTF-8''{_exp}" in _cd
+          and _cd.startswith("attachment; filename=\""),
+          f"{st} {_cd}")
+    check(f"E4[{_i}]b internal channel is non-counting",
+          _up4 and _gk_remaining(_up4["gokapi_id"])
+          == _up4["allowed_downloads"],
+          (_gk_remaining(_up4["gokapi_id"]) if _up4 else None,
+           _up4 and _up4["allowed_downloads"]))
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                     _E4_NAMES[0].encode("utf-8"),
+                     {**IH, "Content-Type": "text/plain",
+                      "Idempotency-Key": f"e4-{_u}-0"})
+check("E4c replay → same bytes, no second charge",
+      st == 200 and raw == PNG and _sb(uidI) == _bal_e4 - 2 * len(_E4_NAMES),
+      (st, _sb(uidI), _bal_e4))
+
+# E5: 存储通道故障语义 — ≥500 → 503 result_unavailable (瞬时故障 ≠ 过期);
+# 404 → 410; 故障清除后重放恢复 200
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                     b"fault-probe.png",
+                     {**IH, "Content-Type": "text/plain",
+                      "Idempotency-Key": f"e5-{_u}"})
+_call5 = h.get("x-518-call-id")
+with db() as con:
+    _row5 = con.execute("select result_json from tool_calls where id=%s",
+                        (int(_call5),)).fetchone()
+_pid5 = (((json.loads(_row5["result_json"]).get("items") or [{}])[0])
+         .get("public_id"))
+with db() as con:
+    _gid5 = con.execute("select gokapi_id from uploads where public_id=%s",
+                        (_pid5,)).fetchone()["gokapi_id"]
+for _mode, _est, _ecode in (("500", 503, "result_unavailable"),
+                            ("404", 410, "result_expired")):
+    _gk_call("POST", "/ci/fail-internal", {"mode": _mode})
+    st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                         b"fault-probe.png",
+                         {**IH, "Content-Type": "text/plain",
+                          "Idempotency-Key": f"e5-{_u}"})
+    check(f"E5 storage {_mode} → {_est} {_ecode}",
+          st == _est and d.get("error") == _ecode
+          and h.get("x-518-call-id") == _call5,
+          f"{st} {d}")
+_gk_call("POST", "/ci/fail-internal", {"mode": None})
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                     b"fault-probe.png",
+                     {**IH, "Content-Type": "text/plain",
+                      "Idempotency-Key": f"e5-{_u}"})
+check("E5b fault cleared → replay serves 200 bytes again",
+      st == 200 and raw == PNG, st)
+
+# E6: 非 /v1 面未处理异常 → 500 + JSON {"ok":false,"error":"internal_error"}
+# (单一全局 Exception handler; /v1 面同体 — A1/B 系已覆盖)
+from app.main import app as _app6
+from fastapi import Request as _Req6
+@_app6.get("/ci-boom-e6")
+async def _boom6(request: _Req6):
+    raise RuntimeError("boom-e6")
+try:
+    from fastapi.testclient import TestClient as _TC6
+    with _TC6(_app6, raise_server_exceptions=False,
+              base_url="https://testserver") as _tc6:
+        _r6 = _tc6.get("/ci-boom-e6")
+    check("E6 non-v1 unhandled exception → 500 JSON internal_error",
+          _r6.status_code == 500
+          and _r6.json() == {"ok": False, "error": "internal_error"},
+          f"{_r6.status_code} {_r6.text[:80]}")
+finally:
+    _app6.router.routes = [r for r in _app6.router.routes
+                           if getattr(r, "path", "") != "/ci-boom-e6"]
 
 # ═══ F. provider failure → 502 with detail ═══
 GH = {"Authorization": f"Bearer {KEY_G}", "Content-Type": "text/plain"}

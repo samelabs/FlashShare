@@ -87,12 +87,11 @@ async def file_route(public_id: str, request: Request):
                 dl_path = None
 
             if dl_path is not None:
-                safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
-                from urllib.parse import quote
                 from fastapi.responses import RedirectResponse
+                from utils import content_disposition
                 resp = RedirectResponse(url=dl_path, status_code=302)
-                ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "download"
-                resp.headers["Content-Disposition"] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
+                resp.headers["Content-Disposition"] = content_disposition(
+                    "attachment", upload["file_name"], "download")
                 for k, v in _share_link_headers(
                         upload["public_id"],
                         upload["content_type"] or "").items():
@@ -287,7 +286,6 @@ async def file_inline(public_id: str, request: Request):
     if not (is_pdf or is_image):
         return JSONResponse({"ok": False, "error": "not_embeddable"}, 400)
 
-    from urllib.parse import quote
     from gokapi import open_gokapi_internal_download, InternalDownloadUnavailable
     # In-site preview must NOT consume allowed_downloads (decided product
     # semantics). Preview reads ride the authenticated non-counting
@@ -306,9 +304,9 @@ async def file_inline(public_id: str, request: Request):
         stream.close()
         return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
 
-    safe_name = upload["file_name"].replace("\\", "_").replace('"', "_")
-    ascii_name = safe_name.encode("ascii", "ignore").decode("ascii") or "document"
-    disposition = f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(safe_name)}"
+    from utils import content_disposition
+    disposition = content_disposition(
+        "inline", upload["file_name"], "document")
 
     def generate():
         # Body chunks read on the loop's default executor — a stalled

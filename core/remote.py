@@ -606,7 +606,7 @@ def parse_endpoint_items(out, url_fetch) -> list:
         elif kind == "json":
             data = it.get("data")
             try:
-                blob = json.dumps(data, ensure_ascii=False)
+                blob = json.dumps(data, ensure_ascii=False, allow_nan=False)
             except (TypeError, ValueError) as exc:
                 raise RemoteError("invalid_response",
                                   "json item data not serializable") from exc
@@ -760,10 +760,12 @@ def parse_response_items(status: int, body: bytes, resp_ctype: str | None,
     if _is_json_media_type(base):
         try:
             data = json.loads(body, parse_constant=_reject_json_constant)
+            # allow_nan=False: a numeric overflow (1e400 → inf) parses as
+            # a float and must fail typed here, never enter a result
+            blob = json.dumps(data, ensure_ascii=False, allow_nan=False)
         except Exception as exc:
             raise RemoteError("invalid_response",
                               "json response body is not valid JSON") from exc
-        blob = json.dumps(data, ensure_ascii=False)
         if len(blob.encode("utf-8")) > MAX_INLINE_RESULT_BYTES:
             raise RemoteError("invalid_response", "inline payload too large")
         return [{"kind": "json", "data": data}]
