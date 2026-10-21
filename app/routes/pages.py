@@ -28,9 +28,13 @@ from governance.formats import format_manifest
 from governance.tool_params import resolve_label
 
 from database import db
+from repo.ledger import CALL_NET_CHARGE_SQL
 
 
 from app.web_ctx import fmt_ts as _fmt_ts  # 单点 (治理4, UTC)
+
+# 账户调用记录页分页大小 (credits → calls 行锚链接按它计算所在页)
+CALLS_PAGE_SIZE = 20
 
 load_all()  # auto-discover every tools_*.py
 from identity.auth import public_user
@@ -816,12 +820,28 @@ async def account_credits(request: Request):
             # 原消费 → tool_call) 带出的 call id, 指向调用记录页行锚点
             _ref_row = _tool_refs.get(int(r["id"])) or {}
             r["call_id"] = _ref_row.get("call_id")
+            # 行锚必须带所在页: 调用页按 id DESC 分页 (页码在行组装后
+            # 批量计算, 一次查询)
         elif r["kind"] in _MACHINE_NOTE_KINDS:
             r["note_display"] = None
         elif note and not note.startswith(("activity:", "grant_", "payout:")):
             r["note_display"] = note
         else:
             r["note_display"] = None
+    _call_ids = [int(r["call_id"]) for r in rows if r.get("call_id")]
+    _call_pages = {}
+    if _call_ids:
+        with db() as con:
+            for _row in con.execute(
+                    "select id, (select count(*) from tool_calls t2"
+                    " where t2.user_id = %s and t2.id > t.id) as later"
+                    " from tool_calls t where t.id = ANY(%s)",
+                    (user["id"], _call_ids)):
+                _call_pages[int(_row["id"])] = \
+                    1 + int(_row["later"]) // CALLS_PAGE_SIZE
+    for r in rows:
+        if r.get("call_id"):
+            r["call_page"] = _call_pages.get(int(r["call_id"]))
     _base = _ctx_base(request)  # access projection 单次读
     _membership = (_base.get("access") or {}).get("membership")
     shop = _shop_offers(user, _membership)
@@ -890,7 +910,7 @@ async def account_calls(request: Request):
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
     from utils import now as _now_ts
     pg = page_number(request.query_params.get("page", "1"))
-    size = 20
+    size = CALLS_PAGE_SIZE
     with db() as con:
         total = int(con.execute(
             "select count(*) c from tool_calls where user_id=%s",

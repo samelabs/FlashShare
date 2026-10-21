@@ -250,7 +250,11 @@
       if (execTool && !isRetry && window.preflightToolAffordability) {
         const pf = await window.preflightToolAffordability(execTool);
         if (!pf.ok) {
-          invalidateOperation();
+          // A determined rejection voids this call's own operation identity
+          // (created above): unlike a dropped connection, the running-call
+          // guard must not block a fresh attempt, and the original
+          // client_ref stays reusable for a network retry.
+          op = null;
           throw new Error(errText(pf.error));
         }
       }

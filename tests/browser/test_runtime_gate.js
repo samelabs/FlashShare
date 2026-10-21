@@ -563,6 +563,50 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("keys: key appears in list", (await page.$$(".key-item")).length >= 1);
       await visualAudit("desktop", page, "account-keys-created", true);
 
+      // ── 12f. F14: preflight rejection voids the operation identity ──
+      // A paid foreign tool cannot be minted through the public API
+      // (publishing needs a successful run), so the 402 is injected at
+      // the network layer on a real free tool and the REAL composer flow
+      // runs: no retry operation survives, zero uploads fire.
+      await gotoReady(page, "/tool/compress", ".composer");
+      await page.route("**/api/tools/preflight", (route) =>
+        route.fulfill({ status: 402,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false,
+            error: "err_insufficient_credits", balance: 0, cost: 7 }) }));
+      let uploads14 = 0;
+      const onReq14 = (r) => { if (r.url().includes("/api/uploads")) uploads14 += 1; };
+      page.on("request", onReq14);
+      await setInputFiles(page, ".ti-file-input",
+        [{ name: "gate-14.png", mimeType: "image/png", buffer: IMG }]);
+      await page.click(".ti-run");
+      await page.waitForTimeout(2000);
+      const st14 = await page.evaluate(() => ({
+        canRetry: window.canRetryToolOperation ? window.canRetryToolOperation() : null,
+        err: (document.querySelector(".result .result-card .error-note") || {}).textContent || "",
+      }));
+      page.removeListener("request", onReq14);
+      await page.unroute("**/api/tools/preflight");
+      check("preflight-402: rejection voids the operation (no retry op)",
+        st14.canRetry === false, JSON.stringify(st14));
+      check("preflight-402: zero upload requests fired",
+        uploads14 === 0, uploads14);
+      check("preflight-402: typed error surfaced to the user",
+        st14.err.length > 0, st14.err.slice(0, 80));
+
+      // ── 12g. F15: earnings pagination params ride the API request ──
+      await gotoReady(page, "/account/earnings?rev_page=2&wd_page=2", "#eTotal");
+      const earnCalls = [];
+      const onEarn = (r) => { if (r.url().includes("/api/earnings")) earnCalls.push(r.url()); };
+      page.on("request", onEarn);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1500);
+      page.removeListener("request", onEarn);
+      check("earnings-page: rev_page/wd_page from the URL reach the API",
+        earnCalls.length > 0
+        && earnCalls.every(u => u.includes("rev_page=2") && u.includes("wd_page=2")),
+        earnCalls[0] || "no api call");
+
       // ── 13. publish edit refill escapes stored declaration data ──
       // A malicious enum option value stored in a declaration must
       // refill as TEXT on the author's edit page, never execute.
@@ -590,14 +634,119 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       const xssState = await page.evaluate(() => ({
         fired: window.__xssAudit === 1,
         optVal: (document.querySelector(".pr-opt-val") || {}).value,
-        optText: (document.querySelector(".pr-default option") || {}).textContent,
+        optTexts: [...document.querySelectorAll(".pr-default option")]
+          .map(o => o.textContent),
       }));
       check("publish-xss: malicious option value did NOT execute", xssState.fired === false);
       check("publish-xss: option value refilled as editable text",
         xssState.optVal === xssPayload, xssState.optVal);
       check("publish-xss: default <option> text escaped",
-        xssState.optText === xssPayload, xssState.optText);
+        xssState.optTexts.includes(xssPayload), xssState.optTexts.join("|"));
       await visualAudit("desktop", page, "publish-edit-xss-refill", true);
+
+      // ── 13b. enum default select: unset leading option + live tracking ──
+      await gotoReady(page, "/account/tools/publish", "#pubForm");
+      await page.evaluate(() => {
+        document.getElementById("addParam").click();
+      });
+      await page.waitForSelector(".param-row", { timeout: 10000 });
+      const enumDefault = await page.evaluate(() => {
+        const row = document.querySelector(".param-row");
+        const sel = row.querySelector(".pr-default");
+        const first = sel.options[0];
+        return { firstValue: first.value, firstText: first.textContent,
+                 count: sel.options.length };
+      });
+      check("publish-enum: default select leads with the unset option",
+        enumDefault.firstValue === "" && enumDefault.firstText === "—"
+        && enumDefault.count === 1, JSON.stringify(enumDefault));
+      // type an option value → it appears in the default select
+      await page.evaluate(() => {
+        const row = document.querySelector(".param-row");
+        row.querySelector(".pr-key").value = "style";
+        // a fresh enum row has NO option inputs — create the first one
+        row.querySelector(".pr-opt-add").click();
+        const v = row.querySelector(".pr-opt-val");
+        v.value = "warm";
+        v.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      let selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return [...sel.options].map(o => o.value);
+      });
+      check("publish-enum: typed option becomes selectable default",
+        selState.join(",") === ",warm", selState.join(","));
+      await page.evaluate(() => {
+        document.querySelector(".param-row .pr-default").value = "warm";
+        const add = document.querySelector(".param-row .pr-opt-add");
+        add.click();
+        const rows = document.querySelectorAll(".param-row .pr-opt");
+        const v2 = rows[rows.length - 1].querySelector(".pr-opt-val");
+        v2.value = "cool";
+        v2.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: adding options keeps the chosen default",
+        selState.value === "warm" && selState.opts === ",warm,cool",
+        JSON.stringify(selState));
+      // renaming the selected option's value → default falls back to unset
+      await page.evaluate(() => {
+        const v = document.querySelector(".param-row .pr-opt-val");
+        v.value = "hot";
+        v.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: renaming the selected option resets default to unset",
+        selState.value === "" && selState.opts === ",hot,cool",
+        JSON.stringify(selState));
+      // deleting the selected option → default falls back to unset
+      await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        sel.value = "hot";
+        document.querySelector(".param-row .pr-opt-del").click();
+      });
+      selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: deleting the selected option resets default to unset",
+        selState.value === "" && selState.opts === ",cool",
+        JSON.stringify(selState));
+      // editing a tool that has NO default → stays unset
+      const noDef = await page.evaluate(async () => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: "Gate NoDef", url: "https://93.184.216.34/x",
+            timeout_s: 30, files_min: 0, files_max: 1,
+            format_families: "image", accept: [".png"],
+            outputs: ["text"], cost: 0,
+            params: [{ key: "style", type: "enum", required: false,
+                       default: null,
+                       options: [{ value: "warm", label: "warm" }] }],
+          }),
+        });
+        try { return (await r.json()).tool_key; } catch (e) { return ""; }
+      });
+      await gotoReady(page, `/account/tools/publish?id=${noDef}`, "#pubForm");
+      const noDefState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: edit of a no-default tool keeps default unset",
+        noDefState.value === "" && noDefState.opts === ",warm",
+        JSON.stringify(noDefState));
 
       // ── 13b. bad_cost maps onto the cost field slot ──
       await gotoReady(page, "/account/tools/publish", "#pubForm");

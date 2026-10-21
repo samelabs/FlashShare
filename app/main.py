@@ -10,6 +10,7 @@ Architecture:
 """
 
 import sys
+import urllib.parse
 from pathlib import Path
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
@@ -132,8 +133,11 @@ class _VersionedStaticFiles(StaticFiles):
 
     def file_response(self, full_path, stat_result, scope, status_code=200):
         resp = super().file_response(full_path, stat_result, scope, status_code)
-        qs = (scope.get("query_string") or b"").decode("latin-1", "ignore")
-        if "v=" in qs:
+        qs = urllib.parse.parse_qs(
+            (scope.get("query_string") or b"").decode("latin-1", "ignore"))
+        # only a NON-EMPTY stamp is content-addressed; a bare "?v=" (a
+        # caller missing its stamp) must never pin the file for a year
+        if qs.get("v", [""])[0].strip():
             resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return resp
 

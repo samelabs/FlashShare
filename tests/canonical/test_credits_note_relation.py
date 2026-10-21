@@ -175,7 +175,8 @@ try:
           len(notes) >= 5 and notes[2] == "Tool: Beta Tool 62"
           and notes[3] == "Tool: Beta Tool 62", str(n_top))
     check("N2b tool-bound cells link to the anchored call row (P6)",
-          any('href="/account/calls#call-' in c for c in _cells), str(_cells)[:120])
+          any('/account/calls?page=' in c and '#call-' in c
+              for c in _cells), str(_cells)[:120])
     check("N3 forged notes never win (no evil_tool, no cross-label)",
           not any("evil_tool" in n for n in n_top)
           and not any("Alpha" in n and notes.index(n) != n_top.index(n)
@@ -188,6 +189,27 @@ try:
           not any("no relation" in n for n in n_top), str(n_top))
     check("H1 human note (adjust) still renders verbatim",
           any(n == "goodwill credit" for n in n_top), str(n_top))
+
+    # P6b (锚链接分页): 追加 30 个更新的调用 → 既有 consume 链接落在
+    # 正确页 (id DESC 每页 20; alpha 调用是第 31 新 → page=2) 并带锚点
+    with db() as con:
+        for i in range(30):
+            con.execute(
+                """INSERT INTO tool_calls (tool_id, user_id, status,
+                   client_ref, invocation_hash, cost_snapshot,
+                   commission_rate_snapshot, started_at, finished_at)
+                   VALUES (%s, %s, 'ok', %s, %s, 5, 0, %s, %s)""",
+                (tool_keys[0], uid, f"cn-p6b-{i}", "b" * 64, ts, ts))
+    st, html2, _sc = _req("GET", "/account/credits?lang=en",
+                          headers={"Cookie": ck.split(";")[0]})
+    _a = _re.findall(r'href="/account/calls\?page=([0-9]+)#call-([0-9]+)"',
+                     html2 or "")
+    _alpha_hit = [(_pg, _cid) for _pg, _cid in _a
+                  if int(_cid) == call_ids[tool_keys[0]]]
+    check("P6b calls link carries the computed page + anchor (row 31 → page 2)",
+          st == 200 and _alpha_hit
+          and int(_alpha_hit[0][0]) == 2,
+          f"{_alpha_hit} all={_a[:4]}")
 finally:
     with db() as con:
         if uid is not None:

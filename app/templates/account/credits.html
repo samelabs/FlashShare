@@ -81,7 +81,7 @@
           <tr>
             <td class="mono">{{ fmt_ts(r.created_at) }}</td>
             <td><span class="ledger-kind ledger-{{ r.kind }}" data-i18n="ledger_{{ r.kind }}">{{ texts['ledger_' ~ r.kind] if texts.get('ledger_' ~ r.kind) else r.kind }}</span></td>
-            <td class="credit-note-cell">{% if r.note_display %}{% if r.call_id %}<a class="credit-note-link" href="/account/calls#call-{{ r.call_id }}">{{ r.note_display }}</a>{% else %}{{ r.note_display }}{% endif %}{% else %}—{% endif %}</td>
+            <td class="credit-note-cell">{% if r.note_display %}{% if r.call_id %}<a class="credit-note-link" href="/account/calls?page={{ r.call_page }}#call-{{ r.call_id }}">{{ r.note_display }}</a>{% else %}{{ r.note_display }}{% endif %}{% else %}—{% endif %}</td>
             <td class="ta-r mono {% if r.delta > 0 %}pos{% elif r.delta < 0 %}neg{% endif %}">{% if r.delta > 0 %}+{% endif %}{{ r.delta|num(lang) }}</td>
             <td class="ta-r mono">{{ r.balance_after|num(lang) }}</td>
           </tr>

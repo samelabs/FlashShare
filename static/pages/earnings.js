@@ -19,7 +19,13 @@ function _pager(el, base, pageKey, page, total, per) {
 async function loadEarnings() {
   let d;
   try {
-    const r = await fetch('/api/earnings');
+    // deep-linkable pagination: carry the page's own rev/wd page params
+    // so a shared or reloaded URL lands on the same data window
+    const _qs = new URLSearchParams(window.location.search);
+    const _pg = [];
+    if (_qs.get('rev_page')) _pg.push('rev_page=' + encodeURIComponent(_qs.get('rev_page')));
+    if (_qs.get('wd_page')) _pg.push('wd_page=' + encodeURIComponent(_qs.get('wd_page')));
+    const r = await fetch('/api/earnings' + (_pg.length ? '?' + _pg.join('&') : ''));
     if (!r.ok) return;
     d = await r.json();
   } catch (e) { return; }

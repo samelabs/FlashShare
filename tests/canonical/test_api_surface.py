@@ -831,10 +831,11 @@ _check_rows = __import__("re").findall(r'<tr id="call-(\d+)">', _html)
 st_c, h_c, _p_c, raw_c = _req("GET", "/account/credits",
                                headers={"Cookie": ckT})
 _credits = raw_c.decode(errors="replace") if isinstance(raw_c, bytes) else ""
-_m = __import__("re").search(r'href="(/account/calls#call-(\d+))"', _credits)
-check("L1 credits rows link to the anchored call row",
+_m = __import__("re").search(
+    r'href="(/account/calls\?page=([0-9]+)#call-(\d+))"', _credits)
+check("L1 credits rows link to the paged anchored call row",
       st == 200 and st_c == 200 and _m is not None
-      and _m.group(2) in _check_rows,
+      and _m.group(3) in _check_rows,
       f"calls={st} credits={st_c} link={_m and _m.group(1)}"
       f" rows={_check_rows[:4]}")
 if _m:
@@ -842,7 +843,7 @@ if _m:
                                     headers={"Cookie": ckT})
     _landed = raw_l.decode(errors="replace") if isinstance(raw_l, bytes) else ""
     check("L2 the link target renders the anchored call row",
-          st_l == 200 and f'id="call-{_m.group(2)}"' in _landed,
+          st_l == 200 and f'id="call-{_m.group(3)}"' in _landed,
           f"{st_l}")
 
 # ═══ cleanup ═══

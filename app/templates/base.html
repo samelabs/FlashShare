@@ -41,8 +41,8 @@
   {% if seo_robots == "index, follow" %}
   {# indexable pages carry the 10-language hreflang set (?lang=xx on the
      same canonical path) + x-default; noindex pages emit none #}
-  {% for h in hreflang %}<link rel="alternate" hreflang="{{ h.tag }}" href="{{ canonical_url }}?lang={{ h.lang }}">
-  {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ canonical_url }}">
+  {% for h in hreflang %}<link rel="alternate" hreflang="{{ h.tag }}" href="{{ canonical_path_url }}?lang={{ h.lang }}">
+  {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ canonical_path_url }}">
   {% endif %}
   {% block meta %}{% endblock %}
   {# ── PWA chrome ── theme_color mirrors the manifest (light = page

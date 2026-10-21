@@ -1444,12 +1444,21 @@ with db() as con:
 
 def _nc_call(status):
     with db() as con:
+        if status == "running":
+            return con.execute(
+                "insert into tool_calls (tool_id, user_id, status,"
+                " client_ref, invocation_hash, cost_snapshot,"
+                " commission_rate_snapshot, started_at)"
+                " values (%s, %s, 'running', %s, %s, 40, 30, %s)"
+                " returning id",
+                (_nc_tool, _nc_user, f"nc-{status}-{_nc_tag}",
+                 "e" * 64, ts)).fetchone()["id"]
         return con.execute(
             "insert into tool_calls (tool_id, user_id, status, client_ref,"
             " invocation_hash, cost_snapshot, started_at, finished_at)"
             " values (%s, %s, %s, %s, %s, 40, %s, %s) returning id",
             (_nc_tool, _nc_user, status, f"nc-{status}-{_nc_tag}",
-             "e" * 64, ts, None if status == "running" else ts)).fetchone()["id"]
+             "e" * 64, ts, ts)).fetchone()["id"]
 
 def _nc_ledger(kind, delta, ref_type, ref_id):
     with db() as con:
@@ -1515,7 +1524,7 @@ _nc_sess = create_browser_session(_nc_user)
 _nc_page = client.get("/account/calls", cookies={COOKIE_NAME: _nc_sess})
 import re as _re_nc
 _nc_cells = [int(x.replace(",", ""))
-             for x in _re_nc.findall(r'ta-r mono">([\d,]+)<',
+             for x in _re_nc.findall(r'ta-r mono">([\d,]+)',
                                      _nc_page.text or "")]
 check("NC3 account calls page renders the same net values (desc order)",
       _nc_page.status_code == 200

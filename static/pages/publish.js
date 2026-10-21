@@ -215,7 +215,7 @@ function paramBodyHtml(type, p) {
       <div class="pr-enum-foot">
         <button type="button" class="btn btn-secondary pr-opt-add">+ ${_msg("pub_add_param_option")}</button>
         <label class="pr-default-wrap"><span>${_msg("pub_param_default")}</span>
-        <select class="pr-default">${(p.options || [{ value: "" }]).map(o => `<option value="${_esc(o.value)}"${p.default === o.value ? " selected" : ""}>${_esc(o.value)}</option>`).join("")}</select></label>
+        <select class="pr-default"><option value="">—</option>${(p.options || []).map(o => `<option value="${_esc(o.value)}"${p.default === o.value ? " selected" : ""}>${_esc(o.value)}</option>`).join("")}</select></label>
       </div>`;
   }
   if (type === "number") {
@@ -249,25 +249,48 @@ function bindParamRow(row) {
   bindParamBody(row);
 }
 
+function syncDefaultOptions(row) {
+  // the enum default select tracks the live option set: the current
+  // selection survives while its value still exists, otherwise it falls
+  // back to unset ("—")
+  const sel = row.querySelector(".pr-default");
+  if (!sel) return;
+  const cur = sel.value;
+  const vals = [...row.querySelectorAll(".pr-opt-val")]
+    .map(i => i.value.trim()).filter(Boolean);
+  sel.innerHTML = '<option value="">—</option>' +
+    vals.map(v => `<option value="${_esc(v)}">${_esc(v)}</option>`).join("");
+  sel.value = vals.includes(cur) ? cur : "";
+}
+
 function bindParamBody(row) {
   const body = row.querySelector(".param-row-body");
   const typeSel = row.querySelector(".pr-type");
   const type = typeSel.value;
   if (type === "enum") {
     const optsBox = body.querySelector(".pr-opts");
-    const defSel = body.querySelector(".pr-default");
     const addOpt = () => {
       const div = document.createElement("div");
       div.className = "pr-opt";
       div.innerHTML = `<input class="pr-opt-val" placeholder="warm" maxlength="32">` +
         `<input class="pr-opt-label" maxlength="40" placeholder="${_msg("pub_param_optlabel_ph")}">` +
         `<button type="button" class="pr-opt-del">✕</button>`;
-      div.querySelector(".pr-opt-del").addEventListener("click", () => div.remove());
+      div.querySelector(".pr-opt-del").addEventListener("click", () => {
+        div.remove();
+        syncDefaultOptions(row);
+      });
       optsBox.appendChild(div);
+      syncDefaultOptions(row);
     };
     body.querySelector(".pr-opt-add").addEventListener("click", addOpt);
+    optsBox.addEventListener("input", e => {
+      if (e.target.classList.contains("pr-opt-val")) syncDefaultOptions(row);
+    });
     optsBox.querySelectorAll(".pr-opt-del").forEach(b =>
-      b.addEventListener("click", e => e.target.closest(".pr-opt").remove()));
+      b.addEventListener("click", () => {
+        b.closest(".pr-opt").remove();
+        syncDefaultOptions(row);
+      }));
   }
 }
 
