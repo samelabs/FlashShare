@@ -22,7 +22,7 @@
             <td class="mono">{{ fmt_ts(c.started_at) }}</td>
             <td>{% if c.deleted %}<span class="calls-deleted" data-i18n="calls_deleted">{{ texts.calls_deleted }}</span>{% else %}{{ c.tool_name }}{% endif %}</td>
             <td><span class="ledger-kind calls-st calls-st-{{ c.status }}" data-i18n="mytools_call_st_{{ c.status }}">{{ texts['mytools_call_st_' ~ c.status] if texts.get('mytools_call_st_' ~ c.status) else c.status }}</span></td>
-            <td class="ta-r mono">{{ c.net_cost|num(lang) }}{% if c.refunded > 0 %} <span class="calls-refunded" data-i18n="calls_refunded">{{ texts.calls_refunded }}</span>{% endif %}</td>
+            <td class="ta-r mono">{{ c.net_charge|num(lang) }}{% if c.refunded > 0 %} <span class="calls-refunded" data-i18n="calls_refunded">{{ texts.calls_refunded }}</span>{% endif %}</td>
             <td>{% if c.result_live %}<a class="btn btn-ghost btn-sm" href="/r/{{ c.result_public_id }}" data-i18n="calls_view">{{ texts.calls_view }}</a>{% else %}—{% endif %}</td>
           </tr>
           {% endfor %}

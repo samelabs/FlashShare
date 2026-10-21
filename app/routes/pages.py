@@ -901,7 +901,7 @@ async def account_calls(request: Request):
     insufficient / running); gate 之前被拒绝的请求不产生 tool_call,
     天然不在列。
 
-    净支出 = 扣费 − 退款 (退款经 refund → 原消费 → 调用 关系聚合,
+    净扣费 = CALL_NET_CHARGE_SQL 投影 (退款经 refund → 原消费 → 调用 关系聚合,
     不解析 note)。结果链接仅在 ok 且结果未过期时显示; 工具已删除 →
     统一 "已删除" 标签, 不出机器 id。"""
     from app.main import templates
@@ -954,7 +954,7 @@ async def account_calls(request: Request):
             if label:
                 r["tool_name"] = resolve_label(label, _lang) or None
         r["deleted"] = r["tool_name"] is None
-        r["net_cost"] = int(r["net_charge"] or 0)
+        r["net_charge"] = int(r["net_charge"] or 0)
         # 结果链接: ok + 有结果 + 未过期
         r["result_live"] = False
         if r["status"] == "ok" and r.get("result_public_id"):
