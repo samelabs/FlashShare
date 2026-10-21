@@ -591,11 +591,14 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
 
 
 def _stale_lifecycle(m: dict, obj: dict) -> bool:
-    """payload 的周期 end 早于库中已付费 renews_at → 迟到的旧周期事件
-    (新周期 paid 已推进后的旧 canceled/expired/...)。命中即弃: 不写库。"""
-    event_end = _period_end_of(obj, "")
-    renews = m["renews_at"]
-    return event_end is not None and renews is not None and int(event_end) < int(renews)
+    """payload 的周期 start 早于库中 last_grant_period_start → 迟到的
+    旧周期事件 (与 apply_paid_period 按 period_start 判单调性同一口径)。
+    同一周期内 end 更早的事件 (当前周期被提前终止) 不在此列, 照常生效。"""
+    sub = obj.get("subscription") or obj
+    event_start = _parse_ts(sub.get("current_period_start_date"))
+    last = m["last_grant_period_start"]
+    return (event_start is not None and last is not None
+            and int(event_start) < int(last))
 
 
 def _ev_scheduled_cancel(sub_id: str, obj: dict) -> dict:

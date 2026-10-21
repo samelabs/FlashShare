@@ -273,13 +273,10 @@ check("G7 scheduled_cancel: 当期 member 有效 + marker 非空",
       and pp["entitlements"]["plan_code"] == "plus", str(m))
 
 # ═══ 链8: period end → Free ═══
-# 提前 expired (event_end < 已付费 renews_at) 按因果顺序忽略 (stale);
-# period end 的事实由 renews_at 到期表达
+# 同一周期内 end 更早的 expired (当前周期被提前终止) → 照常生效
 _sub.handle_event("subscription.expired", _sub_snap("expired", _iso(PS2), _iso(_ts - 10)))
-_cur.execute("update memberships set renews_at=%s where user_id=%s",
-             (_ts - 10, uidP))
 pp = project(uidP)
-check("G8 stale early-expired ignored; period end (renews_at passed) → Free",
+check("G8 period end → Free (membership fact 保留, entitlements free)",
       pp["membership"]["member"] is False and pp["entitlements"]["plan_code"] == "free")
 
 # ═══ 链9: reconcile 跟 current Membership sub ═══

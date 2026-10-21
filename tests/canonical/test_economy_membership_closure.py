@@ -256,15 +256,10 @@ try:
                 "insert into pending_downgrades (user_id, target_plan_id,"
                 " effective_at) values (%s, %s, %s)", (ua, plus_id, PE1))
         if variant == "expired":
-            # 提前 expired (event_end < 已付费 renews_at) 按因果顺序忽略;
-            # 会籍死亡由 renews_at 到期事实表达 (与 lapsed 变体同构)
+            # 同一周期内 end 更早 (当前周期被提前终止) → 照常生效
             sc, d = _hook("subscription.expired",
                           _sub(sa, PS1, ts - 60, P_PLUS, status="expired"))
-            ok_lapse = sc == 200 and d.get("stale") is True \
-                and _membership(ua)["status"] == "active"
-            with db() as con:
-                con.execute("update memberships set renews_at=%s"
-                            " where user_id=%s", (ts - 60, ua))
+            ok_lapse = sc == 200 and _membership(ua)["status"] == "expired"
         else:
             # canceled, and the paid-through date has passed (no event)
             sc, d = _hook("subscription.canceled",
@@ -819,8 +814,57 @@ try:
     check("M10e updated_at = write time (not started_at)",
           _t10a - 2 <= int(m["updated_at"]) <= _t10a + 5
           and int(m["updated_at"]) != ts - 3600, str(m))
+    # M10f: 同一周期、payload end 早于 renews_at 的 expired → 照常立即生效
+    s10f = f"sub_{_u}_curf"
+    u10f = _seed_member("curf", plus_id, P_PLUS, s10f, f"txn_{_u}_curf1")
+    _hev("subscription.paid", _sub(s10f, PE1, PE1 + 30 * 86400, P_PLUS,
+                                   f"txn_{_u}_curf2"))
+    r10f = _hev("subscription.expired",
+                _sub(s10f, PE1, PE1 - 5 * 86400, P_PLUS, status="expired"))
+    m = _membership(u10f)
+    check("M10f same-period early-end expired → applies immediately",
+          m["status"] == "expired"
+          and int(m["renews_at"]) == PE1 - 5 * 86400
+          and str(r10f.get("status")) == "expired", f"{r10f} {m}")
+
+    # M10g: plans 行锁 (后台 FOR UPDATE) 不阻塞 lifecycle 事件
+    # (membership_by_sub 只锁 memberships 行)
+    s10g = f"sub_{_u}_ga"
+    u10g = _seed_member("g10a", plus_id, P_PLUS, s10g, f"txn_{_u}_ga1")
+    s10h = f"sub_{_u}_gb"
+    u10h = _seed_member("g10b", pro_id, P_PRO, s10h, f"txn_{_u}_gb1")
+    _lock_err = []
+
+    def _hold_plans_lock():
+        try:
+            with db() as con:
+                con.execute("SELECT id FROM plans WHERE id = %s FOR UPDATE",
+                            (plus_id,))
+                _time.sleep(3)
+        except Exception as exc:  # rollback on close is expected
+            if "rollback" not in str(exc).lower():
+                _lock_err.append(str(exc))
+
+    _t_lock = _th10.Thread(target=_hold_plans_lock)
+    _t_lock.start()
+    _time.sleep(0.3)  # lock acquired
+    _tg0 = _time.time()
+    _hev("subscription.canceled", _sub(s10g, PS1, PE1, P_PLUS,
+                                       status="canceled"))
+    _hev("subscription.canceled", _sub(s10h, PS1, PE1, P_PRO,
+                                       status="canceled"))
+    _tg_dt = _time.time() - _tg0
+    _t_lock.join(10)
+    check("M10g plans row lock never blocks lifecycle events (<1s while held 3s)",
+          _tg_dt < 1.0 and not _lock_err
+          and _membership(u10g)["status"] == "canceled"
+          and _membership(u10h)["status"] == "canceled",
+          f"{_tg_dt:.2f}s err={_lock_err}")
+
+
 finally:
     _cleanup()
+
 
 with db() as con:
     left = con.execute(
@@ -831,7 +875,3 @@ with db() as con:
 check("CLEANUP all suite rows removed",
       int(left["u"]) == 0 and int(left["p"]) == 0 and int(left["t"]) == 0,
       str(dict(left)))
-
-print()
-print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")
-_sys.exit(1 if FAIL else 0)

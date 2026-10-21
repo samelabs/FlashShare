@@ -360,14 +360,15 @@ def membership_effective_rows(con, user_ids: list) -> list:
 
 def membership_by_sub(con, sub_id: str, lock: bool = False) -> Optional[dict]:
     """provider subscription → current Membership 定位 (事件/reconcile 绑定)。
-    lock=True 时行读带 FOR UPDATE — 事件处理器读到与本事务内后续
-    upsert 同一快照 (迟到旧周期事件与并发新周期事件串行化)。"""
+    lock=True 时行读带 FOR UPDATE OF m (只锁 memberships 行, 不波及
+    join 的 plans 行) — 事件处理器读到与本事务内后续 upsert 同一快照
+    (迟到旧周期事件与并发新周期事件串行化)。"""
     return con.execute(
         """
         SELECT m.*, p.code, p.name FROM memberships m
         JOIN plans p ON p.id = m.plan_id
         WHERE m.provider_subscription_id = %s
-        """ + (" FOR UPDATE" if lock else ""),
+        """ + (" FOR UPDATE OF m" if lock else ""),
         (f"sub:{sub_id}",)).fetchone()
 
 
