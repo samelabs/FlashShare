@@ -256,9 +256,15 @@ try:
                 "insert into pending_downgrades (user_id, target_plan_id,"
                 " effective_at) values (%s, %s, %s)", (ua, plus_id, PE1))
         if variant == "expired":
+            # 提前 expired (event_end < 已付费 renews_at) 按因果顺序忽略;
+            # 会籍死亡由 renews_at 到期事实表达 (与 lapsed 变体同构)
             sc, d = _hook("subscription.expired",
                           _sub(sa, PS1, ts - 60, P_PLUS, status="expired"))
-            ok_lapse = sc == 200 and _membership(ua)["status"] == "expired"
+            ok_lapse = sc == 200 and d.get("stale") is True \
+                and _membership(ua)["status"] == "active"
+            with db() as con:
+                con.execute("update memberships set renews_at=%s"
+                            " where user_id=%s", (ts - 60, ua))
         else:
             # canceled, and the paid-through date has passed (no event)
             sc, d = _hook("subscription.canceled",
@@ -748,6 +754,71 @@ try:
     _time.sleep(1.0)
     check("M9.3 live (not lapsed) membership → no provider fetch",
           s9b not in _fetched, str(_fetched))
+
+    # ══════════ M10. 迟到的旧周期 lifecycle 事件不回退已付费新周期 ══════════
+    for st_evt, st_name in (("subscription.canceled", "canceled"),
+                            ("subscription.expired", "expired"),
+                            ("subscription.scheduled_cancel",
+                             "scheduled_cancel"),
+                            ("subscription.past_due", "past_due")):
+        s10 = f"sub_{_u}_st{st_name[:3]}"
+        u10 = _seed_member("st" + st_name[:3], plus_id, P_PLUS, s10,
+                           f"txn_{_u}_st{st_name}1")
+        _hev("subscription.paid", _sub(s10, PE1, PE1 + 30 * 86400, P_PLUS,
+                                       f"txn_{_u}_st{st_name}2"))
+        # 迟到的旧周期事件 (payload period end = 旧周期 PE1)
+        r10 = _hev(st_evt, _sub(s10, PS1, PE1, P_PLUS))
+        m = _membership(u10)
+        check(f"M10 stale {st_name} (old period) → ignored, paid period kept",
+              m["status"] == "active"
+              and int(m["renews_at"]) == PE1 + 30 * 86400,
+              f"{r10} {m}")
+
+    # 当前周期事件照常生效
+    s10c = f"sub_{_u}_curc"
+    u10c = _seed_member("curc", plus_id, P_PLUS, s10c, f"txn_{_u}_curc1")
+    _hev("subscription.canceled", _sub(s10c, PS1, PE1, P_PLUS,
+                                       status="canceled"))
+    m = _membership(u10c)
+    check("M10b current-period canceled → rights kept till period end",
+          m["status"] == "canceled" and int(m["renews_at"]) == PE1, str(m))
+    s10e = f"sub_{_u}_cure"
+    u10e = _seed_member("cure", plus_id, P_PLUS, s10e, f"txn_{_u}_cure1")
+    _hev("subscription.expired", _sub(s10e, PS1, PE1, P_PLUS,
+                                      status="expired"))
+    m = _membership(u10e)
+    check("M10c current-period expired → status expired",
+          m["status"] == "expired", str(m))
+
+    # paid 与迟到的旧 canceled 并发 → 最终仍为新周期
+    import threading as _th10
+    s10r = f"sub_{_u}_race"
+    u10r = _seed_member("rac", plus_id, P_PLUS, s10r, f"txn_{_u}_race1")
+    def _fire_paid():
+        _hev("subscription.paid", _sub(s10r, PE1, PE1 + 30 * 86400, P_PLUS,
+                                       f"txn_{_u}_race2"))
+    def _fire_old_cancel():
+        _hev("subscription.canceled", _sub(s10r, PS1, PE1, P_PLUS))
+    t1 = _th10.Thread(target=_fire_paid)
+    t2 = _th10.Thread(target=_fire_old_cancel)
+    t1.start(); t2.start(); t1.join(30); t2.join(30)
+    m = _membership(u10r)
+    check("M10d concurrent new paid + stale canceled → new period wins",
+          int(m["renews_at"]) == PE1 + 30 * 86400, str(m))
+
+    # updated_at = 写入时刻 (不再是 started_at)
+    s10u = f"sub_{_u}_upd"
+    u10u = _seed_member("upd", plus_id, P_PLUS, s10u, f"txn_{_u}_upd1")
+    with db() as con:
+        con.execute("update memberships set started_at=%s, updated_at=%s"
+                    " where user_id=%s", (ts - 3600, ts - 3600, u10u))
+    _t10a = int(_time.time())
+    _hev("subscription.past_due", _sub(s10u, PS1, PE1, P_PLUS,
+                                       status="past_due"))
+    m = _membership(u10u)
+    check("M10e updated_at = write time (not started_at)",
+          _t10a - 2 <= int(m["updated_at"]) <= _t10a + 5
+          and int(m["updated_at"]) != ts - 3600, str(m))
 finally:
     _cleanup()
 

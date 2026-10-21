@@ -355,14 +355,17 @@ def membership_effective_rows(con, user_ids: list) -> list:
         """, (list(user_ids),)).fetchall()
 
 
-def membership_by_sub(con, sub_id: str) -> Optional[dict]:
-    """provider subscription → current Membership 定位 (事件/reconcile 绑定)。"""
+def membership_by_sub(con, sub_id: str, lock: bool = False) -> Optional[dict]:
+    """provider subscription → current Membership 定位 (事件/reconcile 绑定)。
+    lock=True 时行读带 FOR UPDATE — 事件处理器读到与本事务内后续
+    upsert 同一快照 (迟到旧周期事件与并发新周期事件串行化)。"""
     return con.execute(
         """
         SELECT m.*, p.code, p.name FROM memberships m
         JOIN plans p ON p.id = m.plan_id
         WHERE m.provider_subscription_id = %s
-        """, (f"sub:{sub_id}",)).fetchone()
+        """ + (" FOR UPDATE" if lock else ""),
+        (f"sub:{sub_id}",)).fetchone()
 
 
 class MembershipBindingError(RuntimeError):
@@ -416,14 +419,16 @@ def bind_membership(con, user_id: int, plan_id: int, sub_id: str,
 
 
 def upsert_membership_state(con, sub_id: str, status: str,
-                            started_at: int, renews_at: int | None,
+                            renews_at: int | None,
                             plan_id: int | None = None,
                             period_start: int | None = None,
                             cancel_scheduled_at: int | None = None) -> dict:
     """同一 provider subscription 的状态/plan/period 幂等更新。
+    updated_at = 写入时刻。
 
     绝不换绑: 目标行必须已绑定 sub:{sub_id}; 否则 MembershipBindingError。
     plan change (subscription.update) 走本函数的 plan_id 参数 — 同 sub。"""
+    from utils import now as _now
     cur = con.execute(
         "SELECT user_id, plan_id FROM memberships"
         " WHERE provider_subscription_id = %s FOR UPDATE", (f"sub:{sub_id}",)).fetchone()
@@ -443,7 +448,7 @@ def upsert_membership_state(con, sub_id: str, status: str,
         RETURNING *
         """,
         (plan_id, status, renews_at, period_start, cancel_scheduled_at,
-         started_at, f"sub:{sub_id}")).fetchone()
+         _now(), f"sub:{sub_id}")).fetchone()
 
 
 def lock_user_for_checkout(con, user_id: int) -> None:

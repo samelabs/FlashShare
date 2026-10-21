@@ -272,7 +272,7 @@ def _expire_if_current_period(user_id: int, sub_id: str,
         # economic validity of the current paid period is gone
         orders_repo.upsert_membership_state(
             con, sub_id, "expired",
-            started_at=m["started_at"], renews_at=now(),
+            renews_at=now(),
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
     log.info("reverse: current-period payment reversed → membership "

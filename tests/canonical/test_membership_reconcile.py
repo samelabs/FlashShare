@@ -192,7 +192,7 @@ u3, uid3 = _new_user("rc3")
 pid3, _, sub3 = _seed_plan_order(uid3)
 with db() as con:
     orders_repo.upsert_membership_state(con, sub3, "past_due",
-                                        started_at=_ts, renews_at=PE)
+                                        renews_at=PE)
 _bal6 = spendable_balance(uid3)
 _snap = _sub_snapshot("past_due", _iso(PS), _iso(PE), sub_id=sub3, product=f"prod_rc_{uid3}")
 _rec.fetch_subscription = _fake_fetch(_snap)

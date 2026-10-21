@@ -476,7 +476,7 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     with db() as con:
         orders_repo.upsert_membership_state(
             con, sub_id, status,
-            started_at=started, renews_at=renews_write,
+            renews_at=renews_write,
             plan_id=plan["id"],
             period_start=ps_write, cancel_scheduled_at=cancel_ts)
         # durable base-payment record for THIS period — the FIRST
@@ -555,7 +555,7 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
                 orders_repo.clear_pending_downgrade(con, m["user_id"])
                 orders_repo.upsert_membership_state(
                     con, sub_id, m["status"],
-                    started_at=m["started_at"], renews_at=m["renews_at"],
+                    renews_at=m["renews_at"],
                     plan_id=plan["id"],
                     period_start=m["last_grant_period_start"],
                     cancel_scheduled_at=m["cancel_scheduled_at"])
@@ -590,18 +590,29 @@ def _ev_update(sub_id: str, obj: dict) -> dict:
     return {"updated": True, "plan": plan["code"]}
 
 
+def _stale_lifecycle(m: dict, obj: dict) -> bool:
+    """payload 的周期 end 早于库中已付费 renews_at → 迟到的旧周期事件
+    (新周期 paid 已推进后的旧 canceled/expired/...)。命中即弃: 不写库。"""
+    event_end = _period_end_of(obj, "")
+    renews = m["renews_at"]
+    return event_end is not None and renews is not None and int(event_end) < int(renews)
+
+
 def _ev_scheduled_cancel(sub_id: str, obj: dict) -> dict:
     """End-of-period cancellation booked — membership stays active till renews_at."""
     sub = obj.get("subscription") or obj
     with db() as con:
-        m = orders_repo.membership_by_sub(con, sub_id)
+        m = orders_repo.membership_by_sub(con, sub_id, lock=True)
         if m is None:
             raise KeyError("membership_not_found")
-        started = m["started_at"]
+        if _stale_lifecycle(m, obj):
+            log.info("stale lifecycle event sub:%s (event period end before"
+                     " renews_at %s) — ignored", sub_id, m["renews_at"])
+            return {"stale": True}
         renews = _parse_ts(sub.get("current_period_end_date")) or m["renews_at"]
         orders_repo.upsert_membership_state(
             con, sub_id, m["status"],
-            started_at=started, renews_at=renews,
+            renews_at=renews,
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=now())
     return {"scheduled_cancel": True}
@@ -616,13 +627,17 @@ def _period_end_of(obj: dict, sub_id: str) -> int | None:
 def _ev_canceled(sub_id: str, obj: dict) -> dict:
     """当期权益保留至 period_end (规范四) — 不抹 renews_at。"""
     with db() as con:
-        m = orders_repo.membership_by_sub(con, sub_id)
+        m = orders_repo.membership_by_sub(con, sub_id, lock=True)
         if m is None:
             raise KeyError("membership_not_found")
+        if _stale_lifecycle(m, obj):
+            log.info("stale lifecycle event sub:%s (event period end before"
+                     " renews_at %s) — ignored", sub_id, m["renews_at"])
+            return {"stale": True}
         renews = _period_end_of(obj, sub_id) or m["renews_at"]
         orders_repo.upsert_membership_state(
             con, sub_id, "canceled",
-            started_at=m["started_at"], renews_at=renews,
+            renews_at=renews,
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
     return {"status": "canceled"}
@@ -630,13 +645,17 @@ def _ev_canceled(sub_id: str, obj: dict) -> dict:
 
 def _ev_past_due(sub_id: str, obj: dict) -> dict:
     with db() as con:
-        m = orders_repo.membership_by_sub(con, sub_id)
+        m = orders_repo.membership_by_sub(con, sub_id, lock=True)
         if m is None:
             raise KeyError("membership_not_found")
+        if _stale_lifecycle(m, obj):
+            log.info("stale lifecycle event sub:%s (event period end before"
+                     " renews_at %s) — ignored", sub_id, m["renews_at"])
+            return {"stale": True}
         # 宽限: 权益保留至原 renews_at (不抹) — 补扣成功由 paid 推进周期
         orders_repo.upsert_membership_state(
             con, sub_id, "past_due",
-            started_at=m["started_at"], renews_at=m["renews_at"],
+            renews_at=m["renews_at"],
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
     return {"status": "past_due"}
@@ -644,13 +663,17 @@ def _ev_past_due(sub_id: str, obj: dict) -> dict:
 
 def _ev_expired(sub_id: str, obj: dict) -> dict:
     with db() as con:
-        m = orders_repo.membership_by_sub(con, sub_id)
+        m = orders_repo.membership_by_sub(con, sub_id, lock=True)
         if m is None:
             raise KeyError("membership_not_found")
+        if _stale_lifecycle(m, obj):
+            log.info("stale lifecycle event sub:%s (event period end before"
+                     " renews_at %s) — ignored", sub_id, m["renews_at"])
+            return {"stale": True}
         renews = _period_end_of(obj, sub_id) or m["renews_at"]
         orders_repo.upsert_membership_state(
             con, sub_id, "expired",
-            started_at=m["started_at"], renews_at=renews,
+            renews_at=renews,
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
     return {"status": "expired"}
