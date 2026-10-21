@@ -98,6 +98,8 @@ class _TLSWrap:
         self.sni = server_hostname
         self.closed = False
         raw._tls_wrap = self
+    def settimeout(self, t):
+        self.raw.settimeout(t)  # the underlying socket owns the timeout
     def close(self): self.closed = True
 
 class _RespDouble:
@@ -112,8 +114,13 @@ class _RespDouble:
         base.update({k.lower(): v for k, v in (headers or {}).items()})
         self._h = base
     def read(self, n=-1):
-        # 尊重读取上限 (与真实 resp.read(n) 同语义 — 截断断言依赖它)
-        return self._body if n < 0 else self._body[:n]
+        # 消费式读取 (与真实 resp.read(n) 同语义 — 生产传输按 64KiB 分块
+        # 读取, 非消费式替身会把同一响应体重复累积)
+        if n < 0:
+            r, self._body = self._body, b""
+        else:
+            r, self._body = self._body[:n], self._body[n:]
+        return r
     def getheader(self, k): return self._h.get(k.lower())
     def getheaders(self): return list(self._h.items())
 
@@ -268,7 +275,8 @@ check("PIN-P1 socket(family,socktype,proto) = resolver record",
       and s.proto == 6, s and (s.family, s.type, s.proto))
 check("PIN-P1 socket.connect == validated exact sockaddr",
       s is not None and s.connected == (PUBLIC4, 443), s and s.connected)
-check("PIN-P1 socket.settimeout honoured", s is not None and s.timeout == 7, s and s.timeout)
+check("PIN-P1 socket.settimeout honoured (bounded by the total budget)",
+      s is not None and 6 < s.timeout <= 7, s and s.timeout)
 check("PIN-P1 TLS SNI = original hostname",
       rec.snis == ["pin.example"], rec.snis)
 method, path, body, hdrs = rec.conns[0].requests[0]
@@ -842,7 +850,13 @@ class _UrllibRespDouble:
         self._body = body
         self.headers = {"Content-Type": ctype} if ctype else {}
         self._read = False
-    def read(self, n=-1): return self._body
+    def read(self, n=-1):
+        # 消费式 (真实 urllib 响应语义 — 生产读取已改分块)
+        if n < 0:
+            r, self._body = self._body, b""
+        else:
+            r, self._body = self._body[:n], self._body[n:]
+        return r
     def __enter__(self): return self
     def __exit__(self, *a): return False
 
@@ -915,7 +929,8 @@ _saved_open = _patch_urllib_open(_UrllibRespDouble(
     "application/vnd.518.items+json"))
 _pulled_saved = remote._pull_item_file_url
 try:
-    remote._pull_item_file_url = lambda url, t, tr: _png_bytes()
+    remote._pull_item_file_url = \
+        lambda url, t, tr, deadline=None: _png_bytes()
     out = remote.drive_http({"url": "https://trusted.example/api", "timeout_s": 30},
                             [], {}, {}, trusted=True)
     _e4 = out["items"][0]
@@ -1228,6 +1243,74 @@ try:
 except RemoteError as exc:
     check("F3 unknown charset name → invalid_response",
           exc.code == "invalid_response", exc.code)
+
+
+# ═══ DL: 单次调用总时限 — 慢滴流、重定向链与结果文件拉取共享预算 ═══
+class _DripResp:
+    """慢滴流 2xx 响应: 每次 read 都远在 socket 超时内返回 1 字节且永不
+    EOF — 只有总时期能终止它。"""
+    status = 200
+    def __init__(self, delay=0.005):
+        self._delay = delay
+    def read(self, n=-1):
+        time.sleep(self._delay)
+        return b"x"
+    def getheader(self, k):
+        return {"content-type": "application/vnd.518.items+json"}.get(k.lower())
+
+rec = _install_stack(
+    resolve_map={"drip.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_DripResp()])
+try:
+    _t0 = time.monotonic()
+    remote.pinned_request("https://drip.example/f", timeout_s=1)
+    check("DL-1 slow drip → RemoteError('timeout')", False, "no raise")
+except RemoteError as e:
+    _dt = time.monotonic() - _t0
+    check("DL-1 slow drip → RemoteError('timeout')", e.code == "timeout", e)
+    check("DL-1b drip stopped by the total deadline (1s budget + margin)",
+          _dt < 1.6, _dt)
+finally:
+    _restore_stack()
+
+# 重定向链共享同一预算: 第一跳 302 (瞬时), 第二跳滴流 — 若每跳各有
+# 独立预算, 总耗时会接近 2×timeout_s
+rec = _install_stack(
+    resolve_map={"r1.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[
+        _RespDouble(302, b"", headers={"location": "https://r1.example/next"}),
+        _DripResp()])
+try:
+    _t0 = time.monotonic()
+    remote.drive_http({"url": "https://r1.example/api", "timeout_s": 1},
+                      [], {}, {}, trusted=False)
+    check("DL-2 redirect chain shares one deadline", False, "no raise")
+except RemoteError as e:
+    _dt = time.monotonic() - _t0
+    check("DL-2 redirect chain shares one deadline (timeout within one budget)",
+          e.code == "timeout" and _dt < 1.6, (e.code, _dt))
+finally:
+    _restore_stack()
+
+# 结果文件 URL 拉取共享同一预算: 端点响应瞬时 (items 信封带 url),
+# 文件拉取滴流
+_dl3_doc = json.dumps({"items": [{"kind": "file", "filename": "r.png",
+                                  "url": "https://rf.example/out.png"}]}).encode()
+rec = _install_stack(
+    resolve_map={"ep.example": [(_socket.AF_INET, PUBLIC4)],
+                 "rf.example": [(_socket.AF_INET, PUBLIC4)]},
+    resp_script=[_RespDouble(200, _dl3_doc), _DripResp()])
+try:
+    _t0 = time.monotonic()
+    remote.drive_http({"url": "https://ep.example/api", "timeout_s": 1},
+                      [], {}, {}, trusted=False)
+    check("DL-3 result-file fetch shares one deadline", False, "no raise")
+except RemoteError as e:
+    _dt = time.monotonic() - _t0
+    check("DL-3 result-file fetch shares one deadline",
+          e.code == "timeout" and _dt < 1.6, (e.code, _dt))
+finally:
+    _restore_stack()
 
 
 # 清场

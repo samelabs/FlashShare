@@ -103,9 +103,9 @@ def cimd_fetch(client_id: str) -> dict | None:
         return hit[1]
     from remote import pinned_request
     try:
-        status, body = pinned_request(client_id, method="GET",
-                                      timeout_s=CIMD_TIMEOUT_S,
-                                      max_bytes=CIMD_MAX_BYTES)
+        status, body, _ctype, _cd = pinned_request(client_id, method="GET",
+                                                   timeout_s=CIMD_TIMEOUT_S,
+                                                   max_bytes=CIMD_MAX_BYTES)
     except Exception:
         return _cimd_negative(client_id)
     if status != 200 or not body:

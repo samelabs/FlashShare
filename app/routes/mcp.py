@@ -1781,9 +1781,7 @@ async def _delete_upload(user: dict, mid, args: dict) -> dict:
                              "together.")
 
 
-# URL-source helpers live in the staging single point (A4); these names
-# stay as thin aliases for the remaining in-module consumers.
-from sharing.staging import fetch_url_source as _fetch_url_source  # noqa: E402
+# URL-source helper lives in the staging single point (A4).
 from sharing.staging import url_source_upload as _url_upload  # noqa: E402
 
 

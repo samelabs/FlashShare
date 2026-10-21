@@ -483,11 +483,20 @@ async def _fake_dispatch(request, user, raw, *a, **k):
 
 _served = {}
 def _fake_pinned(url, method="GET", body=None, headers=None, timeout_s=60,
-                 has_credential=False, max_bytes=None):
-    return 200, _served[url]
+                 max_bytes=None, deadline=None):
+    return 200, _served[url], None, "image/png", None
 
-_orig_pinned, _orig_dx = _remote.pinned_request, _dispatch_mod.dispatch_execute
-_remote.pinned_request = _fake_pinned
+# Single-hop stub: the REAL redirect loop (pinned_request) runs in the
+# middle — the resolver is stubbed so no real DNS happens (files.example
+# does not resolve).
+_rs = _remote.socket
+_orig_pinned, _orig_dx = _remote._pinned_request, _dispatch_mod.dispatch_execute
+_orig_resolve = _remote._resolve_host
+def _fake_resolve(host, port):
+    return [(_rs.AF_INET, _rs.SOCK_STREAM, _rs.IPPROTO_TCP, "",
+             ("93.184.216.34", port))]
+_remote._pinned_request = _fake_pinned
+_remote._resolve_host = _fake_resolve
 _dispatch_mod.dispatch_execute = _fake_dispatch
 try:
     _user = {"id": uid}
@@ -532,9 +541,10 @@ try:
           _u7.get("isError") is True and "too_large" in _u7t
           and _ingress_n(uid) == i1 and _gk_count() == g1, str(r)[:120])
     del _served[big]
-    def _blocked(url, **k):
+    def _blocked(url, method="GET", body=None, headers=None, timeout_s=60,
+                 max_bytes=None, deadline=None):
         raise _remote.RemoteError("redirect_blocked", "redirect to non-https rejected")
-    _remote.pinned_request = _blocked
+    _remote._pinned_request = _blocked
     r = _ip({"files": [{"url": urlA}], "client_ref": f"rb-{_u}"}, mid=6)
     _u8 = (r.get("result") or {})
     _u8t = ((_u8.get("content") or [{}])[0].get("text") or "")
@@ -543,7 +553,8 @@ try:
           and _ingress_n(uid) == i1,
           str(r)[:120])
 finally:
-    _remote.pinned_request = _orig_pinned
+    _remote._pinned_request = _orig_pinned
+    _remote._resolve_host = _orig_resolve
     _dispatch_mod.dispatch_execute = _orig_dx
 
 # ══════════ 10. reference to an existing upload ══════════

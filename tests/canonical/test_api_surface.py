@@ -51,7 +51,7 @@ from database import db  # noqa: E402
 # ── local trusted endpoint (trusted rows may be plain http) ──
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
-HITS = {"boom": 0, "slow": 0, "rawfile": 0}
+HITS = {"boom": 0, "slow": 0, "rawfile": 0, "drip": 0}
 
 class _Endpoint(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -88,6 +88,21 @@ class _Endpoint(BaseHTTPRequestHandler):
             HITS["slow"] += 1
             time.sleep(4)
             self._reply(200, b"slow done", "text/plain; charset=utf-8")
+        elif path == "/drip":
+            # 慢滴流: 每次 recv 都远在 socket 超时内返回 1 字节 — 只有
+            # 调用方的总时限能终止它
+            HITS["drip"] += 1
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", "100000")
+            self.end_headers()
+            try:
+                for _ in range(2000):
+                    self.wfile.write(b"x")
+                    self.wfile.flush()
+                    time.sleep(0.05)
+            except Exception:
+                pass  # client aborted at its deadline
         elif path == "/rawfile":
             HITS["rawfile"] += 1
             self._reply(200, PNG, "image/png",
@@ -199,7 +214,8 @@ def _tool(key, **cols):
             "files_min": cols.get("files_min", 0),
             "files_max": cols.get("files_max", 0),
             "outputs_json": json.dumps(cols.get("outputs", ["text"])),
-            "endpoint_json": json.dumps({"url": cols["url"], "timeout_s": 30}),
+            "endpoint_json": json.dumps({"url": cols["url"],
+                                         "timeout_s": cols.get("timeout_s", 30)}),
             "created_at": ts, "updated_at": ts,
         }
         keys = ", ".join(sets)
@@ -235,6 +251,9 @@ _tool(TOOL_BAD, body_format="text", url=f"{EP}/boom", outputs=["text"], cost=0)
 TOOL_NAN = f"v1nan{_u2}"
 _tool(TOOL_NAN, body_format="json", url=f"{EP}/nanjson", outputs=["json"], cost=2)
 _tool(TOOL_SLOW, body_format="text", url=f"{EP}/slowtext", outputs=["text"], cost=0)
+TOOL_DRIP = f"v1dp{_u2}"
+_tool(TOOL_DRIP, body_format="text", url=f"{EP}/drip", outputs=["text"],
+      cost=2, timeout_s=5)
 
 
 def _cors_free(hdrs):
@@ -411,8 +430,15 @@ def _sreq(path, headers, body_bytes, method="POST"):
                 "more_body": False}
     return _SReq(scope, receive)
 
-_orig_pinned_v1 = _remote_mod.pinned_request
-_remote_mod.pinned_request = lambda url, **k: (200, PNG)
+_orig_pinned_v1 = _remote_mod._pinned_request
+_orig_resolve_v1 = _remote_mod._resolve_host
+_rs_v1 = _remote_mod.socket
+_remote_mod._resolve_host = lambda host, port: [
+    (_rs_v1.AF_INET, _rs_v1.SOCK_STREAM, _rs_v1.IPPROTO_TCP, "",
+     ("93.184.216.34", port))]
+_remote_mod._pinned_request = \
+    lambda url, method="GET", body=None, headers=None, timeout_s=60, \
+           max_bytes=None, deadline=None: (200, PNG, None, "image/png", None)
 try:
     import asyncio as _aio
     _url_body = json.dumps({
@@ -432,12 +458,63 @@ try:
           _r.status_code == 200 and _d3.get("ok")
           and len(_d3.get("items") or []) == 1, str(_d3)[:110])
 finally:
-    _remote_mod.pinned_request = _orig_pinned_v1
+    _remote_mod._pinned_request = _orig_pinned_v1
+    _remote_mod._resolve_host = _orig_resolve_v1
 
 st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_FILE}", "plain text",
                      {**FH, "Content-Type": "text/plain"})
 check("D4 file tool with a non-multipart/json body → 415",
       st == 415 and d.get("error") == "err_content_type", f"{st} {d}")
+
+# D5: 慢滴流端点 (每次 recv 都在 socket 超时内返回 1 字节) — timeout_s
+# 是单次调用总时限: err_endpoint_timeout 收敛、退款恰好一次、远程在途
+# 归零。in-process 调用 (与 D3 同模式) 使执行域计数器与测试同进程。
+import execution.pool as _pool_mod
+with db() as con:
+    _lid0 = con.execute("select coalesce(max(id), 0) as m from ledger"
+                        " where user_id = %s", (uidA,)).fetchone()["m"]
+_b5 = _sb(uidA)
+_t5 = time.monotonic()
+try:
+    _r5 = _aio.run(_v1mod.call_tool(
+        TOOL_DRIP,
+        _sreq(f"/v1/tools/{TOOL_DRIP}",
+              {"Authorization": f"Bearer {KEY_A}",
+               "Content-Type": "text/plain",
+               "Idempotency-Key": f"d5-{_u}"},
+              b"drip-input")))
+    _d5 = json.loads(_r5.body)
+    check("D5 slow-drip → 400 err_endpoint_timeout",
+          _r5.status_code == 400 and _d5.get("error") == "err_endpoint_timeout",
+          f"{_r5.status_code} {_d5}")
+except Exception as _exc:
+    _r5 = None
+    check("D5 slow-drip → 400 err_endpoint_timeout", False, repr(_exc))
+_dt5 = time.monotonic() - _t5
+check("D5b total budget honoured (5s + margin)",
+      4.5 <= _dt5 < 7.0, _dt5)
+with db() as con:
+    _l5 = con.execute(
+        "select kind, delta, ref_type, ref_id from ledger"
+        " where user_id = %s and id > %s order by id",
+        (uidA, _lid0)).fetchall()
+    _c5 = con.execute(
+        "select id from ledger where user_id = %s and id > %s"
+        " and kind = 'consume'", (uidA, _lid0)).fetchone()
+    _r5c = con.execute(
+        "select count(*) as c from ledger where user_id = %s and id > %s"
+        " and kind = 'refund' and ref_type = 'ledger'"
+        " and ref_id = %s",
+        (uidA, _lid0, str(_c5["id"]) if _c5 else "-1")).fetchone()["c"]
+check("D5c refund exactly once (consume −2 then refund +2, linked)",
+      [r["kind"] for r in _l5] == ["consume", "refund"]
+      and [r["delta"] for r in _l5] == [-2, 2]
+      and _c5 is not None and _r5c == 1, str(_l5))
+check("D5d balance unchanged (full refund)",
+      _sb(uidA) == _b5, (_sb(uidA), _b5))
+check("D5e remote in-flight released",
+      _pool_mod.remote_inflight_count() == 0,
+      _pool_mod.remote_inflight_count())
 
 # ═══ E. deep idempotency ═══
 IH = {"Authorization": f"Bearer {KEY_I}", "Content-Type": "text/plain"}

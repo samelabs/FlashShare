@@ -219,14 +219,30 @@ CIMD_DOC = {
 
 
 def _serve_cimd(doc):
-    return (200, _json.dumps(doc).encode())
+    return 200, _json.dumps(doc).encode(), None, "application/json", None
 
 
-_orig_pinned = _remote.pinned_request
+def _cimd_hop(doc):
+    def _hop(url, method="GET", body=None, headers=None, timeout_s=60,
+             max_bytes=None, deadline=None):
+        return _serve_cimd(doc)
+    return _hop
+
+
+# Single-hop stub: the REAL redirect loop (pinned_request) runs in the
+# middle — the resolver is stubbed so no real DNS happens (.example
+# hosts do not resolve).
+_rs = _remote.socket
+_orig_pinned = _remote._pinned_request
+_orig_resolve = _remote._resolve_host
+def _fake_resolve(host, port):
+    return [(_rs.AF_INET, _rs.SOCK_STREAM, _rs.IPPROTO_TCP, "",
+             ("93.184.216.34", port))]
+_remote._resolve_host = _fake_resolve
 
 _st, _h, _d = None, None, None
 try:
-    _remote.pinned_request = lambda url, **k: _serve_cimd(CIMD_DOC)
+    _remote._pinned_request = _cimd_hop(CIMD_DOC)
     _oa._cimd_cache.clear()
 
     doc = _oa.cimd_fetch(CIMD_URL)
@@ -235,18 +251,18 @@ try:
           and set(doc["redirect_uris"]) == set(CIMD_DOC["redirect_uris"]), doc)
 
     bad = dict(CIMD_DOC, client_id="https://other.example/oauth.json")
-    _remote.pinned_request = lambda url, **k: _serve_cimd(bad)
+    _remote._pinned_request = _cimd_hop(bad)
     _oa._cimd_cache.clear()
     check("A2 non-self-referential document rejected (anti-impersonation)",
           _oa.cimd_fetch(CIMD_URL) is None)
 
-    _remote.pinned_request = lambda url, **k: _serve_cimd(
+    _remote._pinned_request = _cimd_hop(
         dict(CIMD_DOC, redirect_uris=["ftp://x/y"]))
     _oa._cimd_cache.clear()
     check("A3 non-https/loopback redirect entries rejected",
           _oa.cimd_fetch(CIMD_URL) is None)
 
-    _remote.pinned_request = lambda url, **k: _serve_cimd(
+    _remote._pinned_request = _cimd_hop(
         dict(CIMD_DOC, token_endpoint_auth_method="client_secret_basic"))
     _oa._cimd_cache.clear()
     check("A4 confidential-client auth method rejected (public-only MVP)",
@@ -256,7 +272,7 @@ try:
           _oa.cimd_fetch("http://plain.example/oauth.json") is None)
 
     # ═══ F. full flow (identity core; resource-server side over real HTTP) ═══
-    _remote.pinned_request = lambda url, **k: _serve_cimd(CIMD_DOC)
+    _remote._pinned_request = _cimd_hop(CIMD_DOC)
     _oa._cimd_cache.clear()
 
     verifier = secrets.token_urlsafe(48)
@@ -405,12 +421,14 @@ try:
     check("F10 wrong PKCE verifier rejected", ok)
 
 finally:
-    _remote.pinned_request = _orig_pinned
+    _remote._pinned_request = _orig_pinned
+    _remote._resolve_host = _orig_resolve
     _oa._cimd_cache.clear()
 
 # ═══ consent flow (TestClient, in-process server + patched CIMD) ═══
 try:
-    _remote.pinned_request = lambda url, **k: _serve_cimd(CIMD_DOC)
+    _remote._pinned_request = _cimd_hop(CIMD_DOC)
+    _remote._resolve_host = _fake_resolve
     _oa._cimd_cache.clear()
     with db() as con:
         _set_pw = con.execute(
@@ -601,7 +619,8 @@ try:
               st == 200 and not ((d or {}).get("result") or {}).get("isError"),
               st)
 finally:
-    _remote.pinned_request = _orig_pinned
+    _remote._pinned_request = _orig_pinned
+    _remote._resolve_host = _orig_resolve
     _oa._cimd_cache.clear()
 
 # token endpoint over HTTP: unknown client (fetch will fail for real)

@@ -52,7 +52,7 @@ The declaration and execution contract for tools published on 518.PLUS.
 | `param.default` | 与 type 同型；enum 必须 ∈ options[].value |
 | `min` / `max` | number 边界 |
 | `option.value` | 稳定机器值，唯一，非空 |
-| `endpoint url` / `timeout_s` | 用户端点必须 https |
+| `endpoint url` / `timeout_s` | 用户端点必须 https；`timeout_s`（5–300 秒）是单次调用的总时限，覆盖连接、响应与结果文件 URL 拉取 |
 
 上限（服务端 validator 强制）：
 

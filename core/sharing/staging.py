@@ -56,9 +56,9 @@ def fetch_url_source(url: str) -> bytes:
     from config import MAX_UPLOAD_BYTES
     from remote import RemoteError, pinned_request
     URL_FETCH_TIMEOUT_S = 30
-    status, data = pinned_request(url, method="GET",
-                                  timeout_s=URL_FETCH_TIMEOUT_S,
-                                  max_bytes=MAX_UPLOAD_BYTES)
+    status, data, _ctype, _cd = pinned_request(url, method="GET",
+                                               timeout_s=URL_FETCH_TIMEOUT_S,
+                                               max_bytes=MAX_UPLOAD_BYTES)
     if status != 200:
         raise RemoteError("http_status", str(status))
     if len(data) > MAX_UPLOAD_BYTES:

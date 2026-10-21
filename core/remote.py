@@ -34,6 +34,8 @@ import ipaddress
 import json
 import socket
 import ssl
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -52,6 +54,8 @@ MAX_ERROR_DETAIL_BYTES = 4096
 # 南向 items 信封的专属 Content-Type (与 application/json 的"单 json 项"
 # 语义区分)
 ITEMS_ENVELOPE_CT = "application/vnd.518.items+json"
+# 响应体分块读取的块大小; 每块之间复核总时限
+CHUNK_BYTES = 64 * 1024
 
 
 class RemoteError(Exception):
@@ -217,19 +221,30 @@ def _validated_addresses(url: str) -> tuple:
 
 def _pinned_request(url: str, method: str, body: bytes | None,
                     headers: dict, timeout_s: int,
-                    max_bytes: int | None = None) -> tuple:
+                    max_bytes: int | None = None,
+                    deadline: float | None = None) -> tuple:
     """Single hop over the pinned transport. Returns (status, body,
     new_url_if_redirect, response_content_type, response_content_disposition).
     Never follows redirects itself.
 
     Body read cap is status-dependent: 2xx reads to max_bytes (default
     the platform file cap); a non-2xx body is error-detail material and
-    reads to MAX_ERROR_DETAIL_BYTES only.
+    reads to MAX_ERROR_DETAIL_BYTES only. The body is read in chunks with
+    the total deadline re-checked before every chunk.
 
     Connect semantics: raw socket from the resolver's (family, socktype,
     proto), connect() receives the EXACT validated sockaddr — never the
     hostname — so no second DNS resolution can occur. Timeout failures
-    stay typed as RemoteError('timeout')."""
+    stay typed as RemoteError('timeout').
+
+    Total-time semantics: deadline is an absolute time.monotonic()
+    moment bounding the whole hop (None → now + timeout_s). A
+    threading.Timer shuts the raw socket down at the deadline so a
+    slow-dripping peer cannot hold the slot past the budget; any
+    exception at or past the deadline classifies as RemoteError('timeout')
+    and stops address iteration."""
+    if deadline is None:
+        deadline = time.monotonic() + timeout_s
     hostname, port, authority, addrs = _validated_addresses(url)
     parts = urllib.parse.urlsplit(url)
     path = parts.path or "/"
@@ -250,14 +265,30 @@ def _pinned_request(url: str, method: str, body: bytes | None,
     timed_out = False
     for family, socktype, proto, sa in addrs:
         raw = tls_sock = None
+        timer = None
         try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RemoteError("timeout", "deadline exceeded")
             raw = socket.socket(family, socktype, proto)
-            raw.settimeout(timeout_s)
+            raw.settimeout(remaining)
             raw.connect(sa)  # exact validated sockaddr — never re-resolves
+
+            def _abort(_raw=raw):
+                # fires at the deadline: kill any in-flight recv on the
+                # raw socket (the TLS wrapper propagates the shutdown)
+                try:
+                    _raw.shutdown(socket.SHUT_RDWR)
+                except Exception:
+                    pass
+            timer = threading.Timer(remaining, _abort)
+            timer.daemon = True
+            timer.start()
+
             ctx = ssl.create_default_context()  # verify=REQUIRED, system CA
             tls_sock = ctx.wrap_socket(raw, server_hostname=hostname)
             conn = http.client.HTTPConnection(host=hostname, port=port,
-                                              timeout=timeout_s)
+                                              timeout=remaining)
             conn.sock = tls_sock  # pin: HTTP stack reuses OUR validated socket
             try:
                 conn.request(method, path, body=body, headers=hop_headers)
@@ -280,7 +311,20 @@ def _pinned_request(url: str, method: str, body: bytes | None,
                     # MAX_ERROR_DETAIL_BYTES bytes (same cap as the trusted
                     # path's error-body read).
                     read_cap = MAX_ERROR_DETAIL_BYTES
-                data = resp.read(read_cap + 1)
+                chunks = []
+                total = 0
+                while total <= read_cap:
+                    rem = deadline - time.monotonic()
+                    if rem <= 0:
+                        raise RemoteError("timeout",
+                                          "deadline exceeded during body read")
+                    conn.sock.settimeout(rem)
+                    chunk = resp.read(min(CHUNK_BYTES, read_cap + 1 - total))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    total += len(chunk)
+                data = b"".join(chunks)
                 return (resp.status, data, resp.getheader("Location"),
                         resp.getheader("Content-Type"),
                         resp.getheader("Content-Disposition"))
@@ -289,15 +333,25 @@ def _pinned_request(url: str, method: str, body: bytes | None,
         except RemoteError:
             raise
         except (socket.timeout, TimeoutError) as exc:
+            if time.monotonic() >= deadline:
+                raise RemoteError("timeout", str(exc)) from exc
             last_exc, timed_out = exc, True
         except ssl.SSLCertVerificationError as exc:
             # certificate/hostname verification against the ORIGINAL host
             # failed — never downgraded for IP pinning
             raise RemoteError("http_status",
                               f"tls verify failed: {exc.verify_message}") from exc
+        except http.client.HTTPException as exc:
+            if time.monotonic() >= deadline:
+                raise RemoteError("timeout", str(exc)) from exc
+            last_exc = exc
         except OSError as exc:
+            if time.monotonic() >= deadline:
+                raise RemoteError("timeout", str(exc)) from exc
             last_exc = exc
         finally:
+            if timer is not None:
+                timer.cancel()
             for s in (tls_sock, raw):
                 if s is not None:
                     try:
@@ -331,13 +385,18 @@ def _origin_of(url: str) -> tuple | None:
 def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
                    headers: dict | None = None, timeout_s: int = 60,
                    has_credential: bool = False,
-                   max_bytes: int | None = None) -> tuple:
+                   max_bytes: int | None = None,
+                   deadline: float | None = None) -> tuple:
     """Untrusted-safe request with manual redirect handling.
 
     Every hop re-validates: https-only, all resolved IPs public, connect
     pinned to a validated sockaddr. Redirects cap at MAX_REDIRECTS; the
     POST→GET downgrade on 301/302/303 drops the body AND the entity
     headers (Content-Type/Content-Length never leak the old POST size).
+
+    deadline is an absolute time.monotonic() moment shared by EVERY hop
+    (None → now + timeout_s): the whole redirect chain is one time
+    budget, so a chain of individually-fast hops cannot drip past it.
 
     Returns (status, body, response_content_type,
     response_content_disposition) — the response identity travels with
@@ -349,6 +408,8 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
     reach a second origin. Same-origin redirects keep it. Without a
     credential, cross-origin redirects proceed through full revalidation.
     """
+    if deadline is None:
+        deadline = time.monotonic() + timeout_s
     headers = dict(headers or {})
     cur_url = url
     cur_method, cur_body = method, body
@@ -357,7 +418,7 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
     for _hop in range(MAX_REDIRECTS + 1):
         status, data, new_url, _ctype, _cd = _pinned_request(
             cur_url, cur_method, cur_body, cur_headers, timeout_s,
-            max_bytes=max_bytes)
+            max_bytes=max_bytes, deadline=deadline)
         if status not in _REDIRECT_STATUSES:
             return status, data, _ctype, _cd
         if not new_url:
@@ -397,13 +458,43 @@ def pinned_request(url: str, method: str = "GET", body: bytes | None = None,
 
 # ── HTTP driver (plain file-processing API) ──
 
+def _read_deadline_bounded(stream, cap: int, deadline: float, what: str) -> bytes:
+    """Chunked read with a total deadline. read1 is preferred: it returns
+    after ONE underlying system call, so a slow-dripping body cannot pin a
+    single chunk read past the deadline (urllib responses expose no
+    per-read timeout API — the open-time timeout bounds each system call,
+    the deadline bounds the whole body). Reads at most cap+1 bytes so
+    overflow stays detectable by length."""
+    _read1 = getattr(stream, "read1", None) or stream.read
+    chunks = []
+    total = 0
+    while total <= cap:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RemoteError("timeout", f"{what} deadline exceeded")
+        try:
+            chunk = _read1(min(CHUNK_BYTES, cap + 1 - total))
+        except (socket.timeout, TimeoutError) as exc:
+            raise RemoteError("timeout", str(exc)) from exc
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+    return b"".join(chunks)
+
+
 def _http_call(endpoint: str, req_body: bytes, req_ct: str,
-               headers: dict, timeout_s: int, trusted: bool) -> tuple:
+               headers: dict, timeout_s: int, trusted: bool,
+               deadline: float | None = None) -> tuple:
     """Send one southbound request. Returns (status, body,
     response_content_type, response_content_disposition).
 
     2xx bodies read to the platform file cap; non-2xx bodies read to the
-    error-detail cap (they are diagnostic material, never products)."""
+    error-detail cap (they are diagnostic material, never products).
+    deadline (absolute time.monotonic(), None → now + timeout_s) is the
+    per-call total budget shared with the result-file URL fetch."""
+    if deadline is None:
+        deadline = time.monotonic() + timeout_s
     if not trusted:
         # Stored-row defense: a reserved credential header (Host, framing,
         # ...) must fail typed BEFORE any network request.
@@ -415,7 +506,11 @@ def _http_call(endpoint: str, req_body: bytes, req_ct: str,
                 **headers}
         return pinned_request(
             endpoint, method="POST", body=req_body, headers=hdrs,
-            timeout_s=timeout_s, has_credential=bool(headers))
+            timeout_s=timeout_s, has_credential=bool(headers),
+            deadline=deadline)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise RemoteError("timeout", "deadline exceeded")
     req = urllib.request.Request(
         endpoint, data=req_body, method="POST",
         headers={"Content-Type": req_ct,
@@ -425,14 +520,19 @@ def _http_call(endpoint: str, req_body: bytes, req_ct: str,
                  "User-Agent": "518.PLUS-Dispatcher/1.0 (tool dispatch)",
                  **headers})
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-            return (resp.status, resp.read(MAX_OUTPUT_BYTES + 1),
+        with urllib.request.urlopen(req, timeout=min(timeout_s, remaining)) as resp:
+            return (resp.status,
+                    _read_deadline_bounded(resp, MAX_OUTPUT_BYTES, deadline,
+                                           "response body"),
                     resp.headers.get("Content-Type"),
                     resp.headers.get("Content-Disposition"))
     except urllib.error.HTTPError as exc:
         # error bodies read to the SAME diagnostic cap as the pinned path
         try:
-            err_body = exc.read(MAX_ERROR_DETAIL_BYTES + 1)
+            err_body = _read_deadline_bounded(exc, MAX_ERROR_DETAIL_BYTES,
+                                              deadline, "error body")
+        except RemoteError:
+            raise
         except Exception:
             err_body = b""
         return (exc.code, err_body,
@@ -703,9 +803,13 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
 
     Trusted rows: guard_endpoint (operator policy) then the classic
     urllib driver. Untrusted rows: the pinned transport itself is the
-    runtime security authority (single DNS resolution per hop)."""
+    runtime security authority (single DNS resolution per hop).
+
+    timeout_s is the TOTAL per-call budget: one deadline covers the
+    request (all redirect hops) AND the result-file URL fetch."""
     timeout_s = min(int(endpoint_decl.get("timeout_s") or DEFAULT_TIMEOUT_S),
                     MAX_TIMEOUT_S)
+    deadline = time.monotonic() + timeout_s
     url = (guard_endpoint(endpoint_decl["url"], trusted) if trusted
            else endpoint_decl["url"])
     if body_format:
@@ -722,32 +826,48 @@ def drive_http(endpoint_decl: dict, sources: list, params: dict,
         req_ct = "application/json"
         final_url = url
     status, resp_body, resp_ctype, resp_cd = _http_call(
-        final_url, req_body, req_ct, auth_headers, timeout_s, trusted)
+        final_url, req_body, req_ct, auth_headers, timeout_s, trusted,
+        deadline=deadline)
     items = parse_response_items(
         status, resp_body, resp_ctype, resp_cd,
-        lambda u: _pull_item_file_url(u, timeout_s, trusted))
+        lambda u: _pull_item_file_url(u, timeout_s, trusted,
+                                      deadline=deadline))
     return {"items": items}
 
 
-def _pull_item_file_url(item_url: str, timeout_s: int, trusted: bool) -> bytes:
+def _pull_item_file_url(item_url: str, timeout_s: int, trusted: bool,
+                        deadline: float | None = None) -> bytes:
     """Platform fetches the produced file (delivery verb 3, URL variant).
 
     The URL is ENDPOINT-CONTROLLED — it goes through the SAME SSRF guard
     as the endpoint itself. Untrusted tools: https + public IP only, and
     the fetch itself rides the pinned transport (redirects re-validated
     per hop) — a malicious endpoint must not turn the platform into an
-    internal fetcher. Trusted (operator) rows keep the vouched exemption."""
+    internal fetcher. Trusted (operator) rows keep the vouched exemption.
+
+    Shares the caller's per-call deadline (None → now + timeout_s): the
+    endpoint response and its result-file fetch are one time budget."""
     if not str(item_url).startswith("https://"):
         raise RemoteError("bad_output", "item url must be https")
+    if deadline is None:
+        deadline = time.monotonic() + timeout_s
     if trusted:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RemoteError("timeout", "deadline exceeded")
         req = urllib.request.Request(item_url)
         try:
-            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-                return resp.read(MAX_OUTPUT_BYTES + 1)
+            with urllib.request.urlopen(
+                    req, timeout=min(timeout_s, remaining)) as resp:
+                return _read_deadline_bounded(resp, MAX_OUTPUT_BYTES,
+                                              deadline, "output fetch body")
+        except RemoteError:
+            raise
         except Exception as exc:
             raise RemoteError("bad_output", f"output fetch failed: {exc}") from exc
     status, data, _ctype, _cd = pinned_request(str(item_url), method="GET",
-                                               timeout_s=timeout_s)
+                                               timeout_s=timeout_s,
+                                               deadline=deadline)
     if status != 200:
         raise RemoteError("bad_output", f"output fetch status {status}")
     return data
