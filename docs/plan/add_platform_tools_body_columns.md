@@ -1,6 +1,6 @@
 # Release migration: platform_tools 正文输入两列（body_format / body_placeholder_json）
 
-**前置依赖**：`add_platform_tools_format_family.md`（tag 列资产）已先行执行。
+**前置依赖**：`add_platform_tools_format_family.md`（tag 列资产）须先行执行。
 本资产在其之后、同一部署窗口内执行。
 
 **执行顺序（强制，一条线）：**

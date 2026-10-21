@@ -295,9 +295,9 @@ async def auth_middleware(request: Request, call_next):
     if path.startswith("/f/") or path == "/mcp" or path.startswith("/mcp/"):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
-    # change_password/set_password delete every old browser session AND
-    # revoke every OAuth grant (API keys are independent program
-    # credentials and survive). A successful browser password POST gets
+    # change_password/set_password delete every old browser session;
+    # API keys and OAuth grants are independent program credentials and
+    # survive. A successful browser password POST gets
     # exactly one fresh current session.
     if (request.method == "POST" and path == "/account/password"
             and user_id and getattr(request.state, "auth_via", "") == "session"

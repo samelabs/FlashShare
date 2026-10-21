@@ -106,11 +106,16 @@ _fake("tar", 'touch "$2"')                  # argv: -czf FILE ...
 
 
 def _run(mode):
-    # mode "ok": rclone always succeeds; "weekly-fails": only the
-    # weekly destination fails — proving the SUNDAY branch's failure
-    # handling specifically (the daily legs still succeed).
-    _fake("rclone", "exit 0" if mode == "ok" else
-          'for a in "$@"; do case "$a" in *weekly*) exit 1;; esac; done\nexit 0')
+    # mode "ok": rclone always succeeds (recording what was uploaded);
+    # "weekly-fails": only the weekly destination fails — proving the
+    # SUNDAY branch's failure handling specifically; "sums-fails": only
+    # the checksum-manifest upload fails.
+    _fake("rclone", (
+        'echo "$*" >> "$PHB_RCLONE_LOG"\nexit 0' if mode == "ok" else
+        'for a in "$@"; do case "$a" in *weekly*) exit 1;; esac; done\nexit 0'
+        if mode == "weekly-fails" else
+        'for a in "$@"; do case "$a" in *SHA256SUMS*) exit 1;; esac; done\n'
+        'exit 0'))
     env = dict(os.environ)
     env.update({
         "PATH": _bin + os.pathsep + env["PATH"],
@@ -118,6 +123,7 @@ def _run(mode):
         "FLASHSHARE_ENV_FILE": _envf,
         "FLASHSHARE_GOKAPI_DATA": _gk_data,
         "FLASHSHARE_GOKAPI_CONFIG": _gk_cfg,
+        "PHB_RCLONE_LOG": os.path.join(_td, "rclone.log"),
     })
     env.pop("FLASHSHARE_BACKUP_REMOTE", None)
     p = subprocess.run(["bash", os.path.join(_REPO, "scripts", "backup.sh")],
@@ -125,14 +131,29 @@ def _run(mode):
     return p.returncode, p.stdout + p.stderr
 
 
+import shutil as _shutil
 _rc, _out = _run("ok")
 _pg = os.path.join(_root, "daily", "pg-20260927T043000Z.dump")
 check("C4a control run (rclone ok, Sunday) exits 0", _rc == 0, f"{_rc} {_out[-300:]}")
-check("C4b backup files created 0600 (umask 077)",
+check("C4b backup files created 0600 (umask 77)",
       os.path.exists(_pg) and stat.S_IMODE(os.stat(_pg).st_mode) == 0o600,
       oct(os.stat(_pg).st_mode & 0o777) if os.path.exists(_pg) else "missing")
+with open(os.path.join(_td, "rclone.log"), encoding="utf-8") as _f:
+    _up = _f.read()
+# each log line: rclone copy <src> <remote>/daily|weekly/ --log-file=...
+# log line: "copy <src> <remote>/<dir>/ --log-file=..." — src is token 1
+_up_d = sorted(os.path.basename(ln.split()[1])
+               for ln in _up.splitlines() if "/daily/" in ln)
+_up_w = sorted(os.path.basename(ln.split()[1])
+               for ln in _up.splitlines() if "/weekly/" in ln)
+_STAMP = "20260927T043000Z"
+check("C4e remote daily carries the full triple (pg + gokapi + SHA256SUMS)",
+      _up_d == [f"SHA256SUMS-{_STAMP}", f"gokapi-{_STAMP}.tar.gz",
+                f"pg-{_STAMP}.dump"], str(_up_d))
+check("C4f remote weekly carries the full triple too",
+      _up_w == [f"SHA256SUMS-{_STAMP}", f"gokapi-{_STAMP}.tar.gz",
+                f"pg-{_STAMP}.dump"], str(_up_w))
 
-import shutil as _shutil
 _shutil.rmtree(_root, ignore_errors=True)
 os.makedirs(_root, exist_ok=True)
 _rc, _out = _run("weekly-fails")
@@ -140,6 +161,14 @@ check("C4c Sunday run with weekly-destination rclone failure exits non-zero",
       _rc != 0, f"{_rc} {_out[-300:]}")
 check("C4d the failure names the weekly upload",
       "rclone weekly pg upload failed" in _out, _out[-300:])
+
+_shutil.rmtree(_root, ignore_errors=True)
+os.makedirs(_root, exist_ok=True)
+_rc, _out = _run("sums-fails")
+check("C4g checksum-manifest upload failure exits non-zero",
+      _rc != 0, f"{_rc} {_out[-300:]}")
+check("C4h the failure names the checksums upload",
+      "rclone daily checksums upload failed" in _out, _out[-300:])
 _shutil.rmtree(_td, ignore_errors=True)
 
 # ── C5. DEVELOPMENT.md nginx contracts ──
