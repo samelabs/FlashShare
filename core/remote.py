@@ -229,8 +229,11 @@ def _pinned_request(url: str, method: str, body: bytes | None,
 
     Body read cap is status-dependent: 2xx reads to max_bytes (default
     the platform file cap); a non-2xx body is error-detail material and
-    reads to MAX_ERROR_DETAIL_BYTES only. The body is read in chunks with
-    the total deadline re-checked before every chunk.
+    reads to MAX_ERROR_DETAIL_BYTES only. The body is read with read1
+    (ONE underlying receive per call, so a drip can never pin a single
+    read past the deadline) with the total deadline re-checked before
+    every chunk; a body that ends short of its declared length is
+    invalid_response ("truncated body"), never a partial success.
 
     Connect semantics: raw socket from the resolver's (family, socktype,
     proto), connect() receives the EXACT validated sockaddr — never the
@@ -239,10 +242,16 @@ def _pinned_request(url: str, method: str, body: bytes | None,
 
     Total-time semantics: deadline is an absolute time.monotonic()
     moment bounding the whole hop (None → now + timeout_s). A
-    threading.Timer shuts the raw socket down at the deadline so a
-    slow-dripping peer cannot hold the slot past the budget; any
-    exception at or past the deadline classifies as RemoteError('timeout')
-    and stops address iteration."""
+    threading.Timer drops the TLS socket's timeout to 1ms at the
+    deadline so an in-flight read aborts even against a peer that keeps
+    sending; any exception at or past the deadline classifies as
+    RemoteError('timeout').
+
+    Retry semantics: once conn.request() has returned (the request bytes
+    are on the wire — a POST may already have been executed by the
+    provider), NO further address is tried; failures past that point are
+    terminal (timeout past the deadline, http_status otherwise). Address
+    iteration happens only while connecting / handshaking / sending."""
     if deadline is None:
         deadline = time.monotonic() + timeout_s
     hostname, port, authority, addrs = _validated_addresses(url)
@@ -266,6 +275,7 @@ def _pinned_request(url: str, method: str, body: bytes | None,
     for family, socktype, proto, sa in addrs:
         raw = tls_sock = None
         timer = None
+        request_sent = False
         try:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -274,24 +284,28 @@ def _pinned_request(url: str, method: str, body: bytes | None,
             raw.settimeout(remaining)
             raw.connect(sa)  # exact validated sockaddr — never re-resolves
 
-            def _abort(_raw=raw):
-                # fires at the deadline: kill any in-flight recv on the
-                # raw socket (the TLS wrapper propagates the shutdown)
+            ctx = ssl.create_default_context()  # verify=REQUIRED, system CA
+            tls_sock = ctx.wrap_socket(raw, server_hostname=hostname)
+
+            def _abort(_tls=tls_sock):
+                # fires at the deadline: a near-zero timeout aborts any
+                # in-flight read on the TLS socket (shutdown of the raw
+                # socket does not stop a peer that keeps sending)
                 try:
-                    _raw.shutdown(socket.SHUT_RDWR)
+                    _tls.settimeout(0.001)
                 except Exception:
                     pass
-            timer = threading.Timer(remaining, _abort)
+            timer = threading.Timer(max(deadline - time.monotonic(), 0.0),
+                                    _abort)
             timer.daemon = True
             timer.start()
 
-            ctx = ssl.create_default_context()  # verify=REQUIRED, system CA
-            tls_sock = ctx.wrap_socket(raw, server_hostname=hostname)
             conn = http.client.HTTPConnection(host=hostname, port=port,
                                               timeout=remaining)
             conn.sock = tls_sock  # pin: HTTP stack reuses OUR validated socket
             try:
                 conn.request(method, path, body=body, headers=hop_headers)
+                request_sent = True
                 resp = conn.getresponse()
                 if 200 <= resp.status < 300:
                     read_cap = (max_bytes if max_bytes is not None
@@ -314,17 +328,33 @@ def _pinned_request(url: str, method: str, body: bytes | None,
                 chunks = []
                 total = 0
                 while total <= read_cap:
+                    if resp.isclosed():
+                        break
                     rem = deadline - time.monotonic()
                     if rem <= 0:
                         raise RemoteError("timeout",
                                           "deadline exceeded during body read")
-                    conn.sock.settimeout(rem)
-                    chunk = resp.read(min(CHUNK_BYTES, read_cap + 1 - total))
+                    tls_sock.settimeout(rem)
+                    try:
+                        chunk = resp.read1(min(CHUNK_BYTES,
+                                               read_cap + 1 - total))
+                    except http.client.IncompleteRead as exc:
+                        raise RemoteError("invalid_response",
+                                          "truncated body") from exc
                     if not chunk:
+                        if time.monotonic() >= deadline:
+                            raise RemoteError(
+                                "timeout",
+                                "deadline exceeded during body read")
                         break
                     chunks.append(chunk)
                     total += len(chunk)
                 data = b"".join(chunks)
+                if resp.length and total <= read_cap:
+                    # declared-but-unread bytes with the read NOT ended by
+                    # our own cap: the peer cut the body short (an error
+                    # page read to the diagnostic cap is intentional)
+                    raise RemoteError("invalid_response", "truncated body")
                 return (resp.status, data, resp.getheader("Location"),
                         resp.getheader("Content-Type"),
                         resp.getheader("Content-Disposition"))
@@ -332,8 +362,11 @@ def _pinned_request(url: str, method: str, body: bytes | None,
                 conn.close()
         except RemoteError:
             raise
+        except http.client.IncompleteRead as exc:
+            raise RemoteError("invalid_response",
+                              "truncated body") from exc
         except (socket.timeout, TimeoutError) as exc:
-            if time.monotonic() >= deadline:
+            if request_sent or time.monotonic() >= deadline:
                 raise RemoteError("timeout", str(exc)) from exc
             last_exc, timed_out = exc, True
         except ssl.SSLCertVerificationError as exc:
@@ -342,20 +375,26 @@ def _pinned_request(url: str, method: str, body: bytes | None,
             raise RemoteError("http_status",
                               f"tls verify failed: {exc.verify_message}") from exc
         except http.client.HTTPException as exc:
-            if time.monotonic() >= deadline:
-                raise RemoteError("timeout", str(exc)) from exc
+            if request_sent:
+                if time.monotonic() >= deadline:
+                    raise RemoteError("timeout", str(exc)) from exc
+                raise RemoteError("http_status",
+                                  f"aborted after send: {exc}") from exc
             last_exc = exc
         except OSError as exc:
-            if time.monotonic() >= deadline:
-                raise RemoteError("timeout", str(exc)) from exc
+            if request_sent:
+                if time.monotonic() >= deadline:
+                    raise RemoteError("timeout", str(exc)) from exc
+                raise RemoteError("http_status",
+                                  f"aborted after send: {exc}") from exc
             last_exc = exc
         finally:
             if timer is not None:
                 timer.cancel()
-            for s in (tls_sock, raw):
-                if s is not None:
+            for s_ in (tls_sock, raw):
+                if s_ is not None:
                     try:
-                        s.close()
+                        s_.close()
                     except Exception:
                         pass
     if timed_out:

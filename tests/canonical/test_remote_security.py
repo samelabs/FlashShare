@@ -110,6 +110,7 @@ class _RespDouble:
     def __init__(self, status=200, body=b"ok", headers=None):
         self.status = status
         self._body = body
+        self._closed = False
         base = dict(self.ITEMS_CT)
         base.update({k.lower(): v for k, v in (headers or {}).items()})
         self._h = base
@@ -120,7 +121,20 @@ class _RespDouble:
             r, self._body = self._body, b""
         else:
             r, self._body = self._body[:n], self._body[n:]
+        self._closed = self._closed or not self._body
         return r
+
+    def read1(self, n=-1):
+        # read1 = 一次底层接收; 替身等价于单次消费式 read
+        return self.read(n)
+
+    def isclosed(self):
+        return bool(self._closed)
+
+    @property
+    def length(self):
+        # remaining declared bytes (the doubles never truncate)
+        return len(self._body)
     def getheader(self, k): return self._h.get(k.lower())
     def getheaders(self): return list(self._h.items())
 
@@ -207,7 +221,9 @@ def _install_stack(resolve_map=None, resolve_fn=None, resp_script=None,
         c.script = shared_script  # global ordered queue across hops
         return c
     remote.http = types.SimpleNamespace(client=types.SimpleNamespace(
-        HTTPConnection=_make_http))
+        HTTPConnection=_make_http,
+        IncompleteRead=_httpclient.IncompleteRead,
+        HTTPException=_httpclient.HTTPException))
     return rec
 
 def _restore_stack():
@@ -351,7 +367,10 @@ rec = _install_stack(resolve_map={"rh.example": [(_socket.AF_INET, PUBLIC4)]})
 def _hang_http(host="", port=None, timeout=None):
     return _HangConn(host, port, timeout)
 
-remote.http = types.SimpleNamespace(client=types.SimpleNamespace(HTTPConnection=_hang_http))
+remote.http = types.SimpleNamespace(client=types.SimpleNamespace(
+    HTTPConnection=_hang_http,
+    IncompleteRead=_httpclient.IncompleteRead,
+    HTTPException=_httpclient.HTTPException))
 try:
     remote.pinned_request("https://rh.example/f", timeout_s=3)
     check("PIN-P5b read timeout → typed", False, "no raise")
@@ -1257,6 +1276,251 @@ except RemoteError as exc:
           exc.code == "invalid_response", exc.code)
 
 
+# ═══ RT: 真实回环 TLS — _pinned_request 的体读/中止/重试语义 ═══
+# 真实 http.client + 真实 ssl 跑在本地 TLS 服务器上 (cryptography 现场
+# 自签证书); 只替换 _validated_addresses (指向回环) 与
+# ssl.create_default_context (免验)。_install_stack 替身测试不作为本段
+# 验收依据。
+import datetime as _dt_rt
+import ipaddress as _ipa_rt
+import ssl as _ssl_rt
+import tempfile as _tf_rt
+import threading as _th_rt
+from cryptography import x509 as _x509_rt
+from cryptography.hazmat.primitives import hashes as _hashes_rt
+from cryptography.hazmat.primitives.asymmetric import rsa as _rsa_rt
+from cryptography.hazmat.primitives import serialization as _ser_rt
+from cryptography.x509.oid import NameOID as _NOID_rt
+
+_rt_key = _rsa_rt.generate_private_key(public_exponent=65537, key_size=2048)
+_rt_subject = _x509_rt.Name([
+    _x509_rt.NameAttribute(_NOID_rt.COMMON_NAME, "127.0.0.1")])
+_rt_cert = (
+    _x509_rt.CertificateBuilder()
+    .subject_name(_rt_subject).issuer_name(_rt_subject)
+    .public_key(_rt_key.public_key())
+    .serial_number(_x509_rt.random_serial_number())
+    .not_valid_before(_dt_rt.datetime.now(_dt_rt.timezone.utc)
+                      - _dt_rt.timedelta(days=1))
+    .not_valid_after(_dt_rt.datetime.now(_dt_rt.timezone.utc)
+                     + _dt_rt.timedelta(days=1))
+    .add_extension(_x509_rt.SubjectAlternativeName(
+        [_x509_rt.IPAddress(_ipa_rt.ip_address("127.0.0.1"))]),
+        critical=False)
+    .sign(_rt_key, _hashes_rt.SHA256()))
+_pem = (_rt_cert.public_bytes(_ser_rt.Encoding.PEM)
+        + _rt_key.private_bytes(_ser_rt.Encoding.PEM,
+                                _ser_rt.PrivateFormat.TraditionalOpenSSL,
+                                _ser_rt.NoEncryption()))
+_rt_certf = _tf_rt.NamedTemporaryFile(suffix=".pem", delete=False)
+_rt_certf.write(_pem); _rt_certf.close()
+_rt_srv_ctx = _ssl_rt.SSLContext(_ssl_rt.PROTOCOL_TLS_SERVER)
+_rt_srv_ctx.load_cert_chain(_rt_certf.name)
+_rt_client_ctx = _ssl_rt.create_default_context()
+_rt_client_ctx.check_hostname = False
+_rt_client_ctx.verify_mode = _ssl_rt.CERT_NONE
+
+
+class _RTServer:
+    """Real TLS server on 127.0.0.1; one scripted handler per connection;
+    counts completed HTTP requests (headers + declared body consumed)."""
+
+    def __init__(self, handler):
+        self.handler = handler
+        self.requests = 0
+        listener = _socket.socket()
+        listener.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(4)
+        self.port = listener.getsockname()[1]
+        self.tls = _rt_srv_ctx.wrap_socket(listener, server_side=True)
+        _th_rt.Thread(target=self._accept_loop, daemon=True).start()
+
+    def _accept_loop(self):
+        while True:
+            try:
+                conn, _addr = self.tls.accept()
+            except OSError:
+                return
+            _th_rt.Thread(target=self._serve, args=(conn,),
+                          daemon=True).start()
+
+    def _serve(self, conn):
+        try:
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                d = conn.recv(4096)
+                if not d:
+                    return
+                buf += d
+            head, rest = buf.split(b"\r\n\r\n", 1)
+            cl = 0
+            for line in head.decode("latin-1").split("\r\n"):
+                if line.lower().startswith("content-length:"):
+                    cl = int(line.split(":", 1)[1].strip())
+            while len(rest) < cl:
+                d = conn.recv(4096)
+                if not d:
+                    break
+                rest += d
+            self.requests += 1
+            self.handler(conn)
+        except Exception:
+            pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _rt_pinned(srv, path="/x", method="POST", body=b"q=1", timeout_s=5):
+    """Call the REAL _pinned_request against srv, with only the resolver
+    seam and the TLS trust seam replaced."""
+    _orig_va = remote._validated_addresses
+    _orig_cdc = remote.ssl.create_default_context
+    remote._validated_addresses = (
+        lambda url, _p=srv.port: ("127.0.0.1", _p, f"127.0.0.1:{_p}",
+                                  [(_socket.AF_INET, _socket.SOCK_STREAM,
+                                    6, ("127.0.0.1", _p))]))
+    remote.ssl.create_default_context = lambda: _rt_client_ctx
+    try:
+        return remote._pinned_request(
+            f"https://127.0.0.1:{srv.port}{path}", method, body, {},
+            timeout_s)
+    finally:
+        remote._validated_addresses = _orig_va
+        remote.ssl.create_default_context = _orig_cdc
+
+
+def _rt_check(name, handler, expect, method="POST", timeout_s=5):
+    """expect = ("ok", status, body) | ("err", code)"""
+    srv = _RTServer(handler)
+    try:
+        out = _rt_pinned(srv, method=method, timeout_s=timeout_s)
+        if expect[0] == "ok":
+            check(name, out[0] == expect[1] and out[1] == expect[2],
+                  f"{out[0]} {out[1][:40]!r}")
+        else:
+            check(name, False, f"no raise: {out[0]} {out[1][:40]!r}")
+    except RemoteError as exc:
+        if expect[0] == "err":
+            check(name, exc.code == expect[1], f"{exc.code} {exc}")
+        else:
+            check(name, False, f"{exc.code} {exc}")
+    return srv
+
+
+# RT-1: 正常响应形态 — keep-alive / Connection: close / 靠断开结束 /
+# HTTP/1.0 / chunked
+_rt_check("RT-1a keep-alive + Content-Length → 200, bytes intact",
+          lambda c: c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n"
+                              b"\r\nhello"),
+          ("ok", 200, b"hello"))
+_rt_check("RT-1b Connection: close + Content-Length → 200",
+          lambda c: (c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n"
+                               b"Connection: close\r\n\r\nhello"),
+                     c.close()),
+          ("ok", 200, b"hello"))
+_rt_check("RT-1c body terminated by close (no Content-Length) → 200",
+          lambda c: (c.sendall(b"HTTP/1.1 200 OK\r\nConnection: close\r\n"
+                               b"\r\nhello-close"), c.close()),
+          ("ok", 200, b"hello-close"))
+_rt_check("RT-1d HTTP/1.0 response → 200",
+          lambda c: (c.sendall(b"HTTP/1.0 200 OK\r\n\r\nold-body"),
+                     c.close()),
+          ("ok", 200, b"old-body"))
+_rt_check("RT-1e chunked → 200, decoded body",
+          lambda c: (c.sendall(b"HTTP/1.1 200 OK\r\n"
+                               b"Transfer-Encoding: chunked\r\n"
+                               b"Connection: close\r\n\r\n"
+                               b"5\r\nchunk\r\n0\r\n\r\n"), c.close()),
+          ("ok", 200, b"chunk"))
+
+# RT-2: 截断体 → invalid_response
+_rt_check("RT-2a chunked truncated → invalid_response",
+          lambda c: (c.sendall(b"HTTP/1.1 200 OK\r\n"
+                               b"Transfer-Encoding: chunked\r\n\r\n"
+                               b"5\r\nchun"), c.close()),
+          ("err", "invalid_response"))
+_rt_check("RT-2b Content-Length truncated → invalid_response",
+          lambda c: (c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n"
+                               b"\r\nfour"), c.close()),
+          ("err", "invalid_response"))
+
+# RT-3: 慢滴流 (每 0.2 秒 1 字节, timeout_s=1) → 1.6 秒内 timeout
+def _drip(c, data, delay=0.2):
+    for b_ in data:
+        try:
+            c.sendall(bytes([b_]))
+        except Exception:
+            return
+        time.sleep(delay)
+
+def _rt_drip_check(name, header, tail=b"", n_body=40):
+    srv = _RTServer(lambda c: (_drip(c, header),
+                               _drip(c, b"x" * n_body)))
+    _t0 = time.monotonic()
+    try:
+        _rt_pinned(srv, timeout_s=1)
+        check(name, False, "no raise")
+    except RemoteError as exc:
+        _dt = time.monotonic() - _t0
+        check(name, exc.code == "timeout" and _dt < 1.6,
+              f"{exc.code} {_dt:.2f}s")
+
+_rt_drip_check("RT-3a slow-drip response HEADERS → timeout within budget",
+               b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+_rt_drip_check("RT-3b slow-drip body WITH Content-Length → timeout",
+               b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n"
+               b"first-bytes")
+_rt_drip_check("RT-3c slow-drip close-terminated body → timeout",
+               b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n"
+               b"first-bytes")
+
+# RT-4: 请求已发出后体阶段出错 → 绝不向下一个地址重发
+def _rt_replay_guard():
+    srv_b = _RTServer(lambda c: c.sendall(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"))
+    _orig_va = remote._validated_addresses
+    _orig_cdc = remote.ssl.create_default_context
+    remote._validated_addresses = (
+        lambda url, _b=srv_b.port: (
+            "127.0.0.1", _b, f"127.0.0.1:{_b}",
+            [(_socket.AF_INET, _socket.SOCK_STREAM, 6, ("127.0.0.1", _b)),
+             (_socket.AF_INET, _socket.SOCK_STREAM, 6, ("127.0.0.1", _b))]))
+    remote.ssl.create_default_context = lambda: _rt_client_ctx
+
+    def _break_mid_body(c):
+        c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nfour")
+        c.close()  # truncated body on the FIRST address
+    srv_a = _RTServer(_break_mid_body)
+    # point the first address at srv_a, the second at srv_b
+    remote._validated_addresses = (
+        lambda url, _a=srv_a.port, _b=srv_b.port: (
+            "127.0.0.1", _b, f"127.0.0.1:{_b}",
+            [(_socket.AF_INET, _socket.SOCK_STREAM, 6, ("127.0.0.1", _a)),
+             (_socket.AF_INET, _socket.SOCK_STREAM, 6, ("127.0.0.1", _b))]))
+    try:
+        remote._pinned_request(f"https://127.0.0.1:{srv_b.port}/x",
+                               "POST", b"payload", {}, 5)
+        ok = False
+        detail = "no raise"
+    except RemoteError as exc:
+        ok = exc.code == "invalid_response"
+        detail = f"{exc.code}"
+    finally:
+        remote._validated_addresses = _orig_va
+        remote.ssl.create_default_context = _orig_cdc
+    check("RT-4 body-phase failure never replays the request", ok, detail)
+    time.sleep(0.3)
+    check("RT-4b second address received ZERO requests",
+          srv_b.requests == 0, srv_b.requests)
+
+_rt_replay_guard()
+_os.unlink(_rt_certf.name)
+
+
 # ═══ DL: 单次调用总时限 — 慢滴流、重定向链与结果文件拉取共享预算 ═══
 class _DripResp:
     """慢滴流 2xx 响应: 每次 read 都远在 socket 超时内返回 1 字节且永不
@@ -1267,6 +1531,11 @@ class _DripResp:
     def read(self, n=-1):
         time.sleep(self._delay)
         return b"x"
+    def read1(self, n=-1):
+        return self.read(n)
+    def isclosed(self):
+        return False
+    length = None  # no declared length → truncation check never fires
     def getheader(self, k):
         return {"content-type": "application/vnd.518.items+json"}.get(k.lower())
 
