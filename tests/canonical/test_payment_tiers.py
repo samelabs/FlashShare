@@ -493,7 +493,12 @@ _sub.handle_event("subscription.scheduled_cancel", _sub_snap("scheduled_cancel",
 _pp15 = project(uid15)
 check("T15a scheduled_cancel → 当期 member 保留 (Plus)",
       _pp15["membership"]["member"] is True and _pp15["entitlements"]["plan_code"] == "plus")
+# 提前 expired (event_end < 已付费 renews_at) 按因果顺序忽略; 到期事实
+# 由 renews_at 过期表达 (与 membership 套件同构)
 _sub.handle_event("subscription.expired", _sub_snap("expired", _iso(PS), _iso(_ts - 10), sub_id="ptsub15"))
+with db() as con:
+    con.execute("update memberships set renews_at=%s where user_id=%s",
+                (_ts - 10, uid15))
 _pp15b = project(uid15)
 check("T15b 到期 → Free / credits 不追回",
       _pp15b["membership"]["member"] is False and _pp15b["entitlements"]["plan_code"] == "free"

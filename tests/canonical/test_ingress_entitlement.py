@@ -610,9 +610,9 @@ _content = ((_res.get("content") or [{}])[0].get("text") or "")
 _cd = _res.get("structuredContent") or {}
 check("ME-A1 MCP E2E 21 files → HTTP 200, 无 top-level jsonrpc error",
       st == 200 and "error" not in d, f"{st} {str(d.get('error'))[:60]}")
-check("ME-A2 result.isError == true + err_too_many_files {limit:20, incoming:21}",
-      _res.get("isError") is True and _cd.get("error") == "err_too_many_files"
-      and _cd.get("limit") == 20 and _cd.get("incoming") == 21, _content[:90])
+check("ME-A2 result.isError == true + err_file_count (window is the count authority)",
+      _res.get("isError") is True and _cd.get("error") == "err_file_count",
+      _content[:90])
 check("ME-A3 非 -32602 (业务错误/协议错误分层)",
       not (d.get("error") or {}).get("code") == -32602)
 
@@ -971,8 +971,8 @@ _pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
 check("G9 pipeline 死代码已删 (无 ingress 遗留)",
       "validate_batch" not in _pipe_src and "upload_sources" not in _pipe_src)
 _mcp_src = open(_os.path.join(_REPO, "app", "routes", "mcp.py"), encoding="utf-8").read()
-check("G10 MCP 不自建 batch byte sum 规则 (业务限制→isError)",
-      "MAX_BATCH_BYTES" not in _mcp_src and "validate_batch" in _mcp_src)
+check("G10 MCP 不自建 batch 规则 (数量/字节权威都在 staging 单点)",
+      "MAX_BATCH_BYTES" not in _mcp_src and "validate_batch" not in _mcp_src)
 check("G11 Web api.py 不维护第二份 authoritative 判定 (无 files>20 字面/无逐文件 sum 拒)",
       "len(uploads) > 20" not in _apir and "total_incoming" not in _apir
       and "validate_batch" in _apir)
