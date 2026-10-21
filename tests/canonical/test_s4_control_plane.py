@@ -1391,35 +1391,6 @@ r = _get("/samelabs/audit")
 check("X1d audit JSON with hostile plan name is escaped",
       "plan.create" in r.text and f"&lt;script&gt;{_X}" in r.text, None)
 
-# ═══ H1: hygiene — every row this suite created is removed ═══
-_cleanup_own_rows()
-with db() as con:
-    _left = {
-        "users": int(con.execute(
-            "SELECT COUNT(*) n FROM users WHERE username ~ %s OR id = ANY(%s)",
-            (_USER_RE, list(_EXTRA_USERS))).fetchone()["n"]),
-        "tools": int(con.execute(
-            "SELECT COUNT(*) n FROM platform_tools WHERE tool_key ~ %s"
-            " OR tool_key LIKE %s", (_TOOL_RE, f"%{_RUN}%")).fetchone()["n"]),
-        "pricing": int(con.execute(
-            "SELECT COUNT(*) n FROM pricing WHERE tool_id LIKE %s",
-            (f"%{_RUN}%",)).fetchone()["n"]),
-        "plans": int(con.execute("SELECT COUNT(*) n FROM plans WHERE code ~ %s",
-                                 (_PLAN_RE,)).fetchone()["n"]),
-        "packages": int(con.execute(
-            "SELECT COUNT(*) n FROM packages WHERE code ~ %s",
-            (_PKG_RE,)).fetchone()["n"]),
-        "audit": int(con.execute(
-            "SELECT COUNT(*) n FROM operator_audit WHERE actor_user_id=%s",
-            (op,)).fetchone()["n"]),
-        "running": int(con.execute(
-            "SELECT COUNT(*) n FROM tool_calls WHERE user_id = ANY(%s)",
-            ([op, provider, caller, _u2, _xu],)).fetchone()["n"]),
-        "withdrawals": int(con.execute(
-            "SELECT COUNT(*) n FROM withdrawals WHERE user_id = ANY(%s)",
-            ([provider, p2, p3, _xu, caller],)).fetchone()["n"]),
-    }
-
 # ═══ NC1: 调用净扣费投影 (CALL_NET_CHARGE_SQL) — 五态语义 + 投影一致 ═══
 # 余额不足=0 / 扣款前失败=0 / 成功=价格 / 失败已退款=0 / running=价格;
 # 四个后台投影 + 账户调用页同一数值。
@@ -1539,24 +1510,40 @@ _gid_nc = (_gk_nc.get("FileInfo", {}) or {}).get("Id")
 with db() as con:
     from utils import generate_public_id as _gpid
     _pid_nc = _gpid(con)
+    _udl_nc = (_gk_nc.get("FileInfo", {}) or {}).get("UrlDownload") or ""
     con.execute(
         "insert into uploads (user_id, ip, public_id, gokapi_id, file_name,"
         " content_type, size_bytes, expiry_days, allowed_downloads,"
-        " expire_at, page_url, created_at) values (%s, '127.0.0.1', %s, %s,"
-        " 'nc.txt', 'text/plain', 7, 7, 50, %s, %s, %s)",
-        (_nc_user, _pid_nc, _gid_nc, ts + 7 * 86400,
-         f"/f/{_pid_nc}", ts))
+        " expire_at, url_download, created_at) values"
+        " (%s, '127.0.0.1', %s, %s, 'nc.txt', 'text/plain', 7, 7, 50, %s,"
+        " %s, %s)",
+        (_nc_user, _pid_nc, _gid_nc, ts + 7 * 86400, _udl_nc, ts))
+import sharing.uploads as _su_nc
 from sharing.uploads import live_status_map as _lsm_nc
-_pre_rem = _lsm_nc().get(_gid_nc)
-_dl = client.get(f"/f/{_pid_nc}?download=1",
-                 follow_redirects=False)
-_post_rem = _lsm_nc().get(_gid_nc)
+def _lsm_fresh_nc():
+    _su_nc._gokapi_cache["ts"] = 0  # bypass the 60s presentation cache
+    return _lsm_nc()
+_pre_rem = _lsm_fresh_nc().get(_gid_nc)
+# the counted channel is the storage's own /downloadFile (production
+# Nginx fronts it; the test stack hits the fake directly)
+import urllib.request as _ur_nc
+import os as _os_nc
+try:
+    _ur_nc.urlopen(
+        _os_nc.environ["FLASHSHARE_GOKAPI_URL"].rstrip("/")
+        + f"/downloadFile?id={_ur_nc.quote(_gid_nc)}", timeout=10).read()
+except Exception:
+    pass
+_post_rem = _lsm_fresh_nc().get(_gid_nc)
 _cp = client.get(f"/samelabs/content?q_share={_pid_nc}",
                  cookies={COOKIE_NAME: sess})
+def _rem_nc(m):
+    return int(m["DownloadsRemaining"]) if m else None
 check("NC4 content page remaining syncs with the live storage counter",
-      _pre_rem is not None and int(_pre_rem) == 50
-      and int(_post_rem) == 49 and "49" in (_cp.text or ""),
-      f"pre={_pre_rem} post={_post_rem} status={_cp.status_code}")
+      _rem_nc(_pre_rem) == 50 and _rem_nc(_post_rem) == 49
+      and "49" in (_cp.text or ""),
+      f"pre={_rem_nc(_pre_rem)} post={_rem_nc(_post_rem)}"
+      f" status={_cp.status_code}")
 
 # ═══ NC5 (S7): operator 工具创建的可选绑定字段类型口径 ═══
 def _op_tool_create(payload):
@@ -1604,6 +1591,36 @@ with db() as con:
     con.execute("delete from operator_audit where actor_user_id=%s"
                 " and target_id like %s", (op, _s7 + "%"))
     purge_users(con, [_nc_user])
+
+# ═══ H1: hygiene — every row this suite created is removed ═══
+_cleanup_own_rows()
+with db() as con:
+    _left = {
+        "users": int(con.execute(
+            "SELECT COUNT(*) n FROM users WHERE username ~ %s OR id = ANY(%s)",
+            (_USER_RE, list(_EXTRA_USERS))).fetchone()["n"]),
+        "tools": int(con.execute(
+            "SELECT COUNT(*) n FROM platform_tools WHERE tool_key ~ %s"
+            " OR tool_key LIKE %s", (_TOOL_RE, f"%{_RUN}%")).fetchone()["n"]),
+        "pricing": int(con.execute(
+            "SELECT COUNT(*) n FROM pricing WHERE tool_id LIKE %s",
+            (f"%{_RUN}%",)).fetchone()["n"]),
+        "plans": int(con.execute("SELECT COUNT(*) n FROM plans WHERE code ~ %s",
+                                 (_PLAN_RE,)).fetchone()["n"]),
+        "packages": int(con.execute(
+            "SELECT COUNT(*) n FROM packages WHERE code ~ %s",
+            (_PKG_RE,)).fetchone()["n"]),
+        "audit": int(con.execute(
+            "SELECT COUNT(*) n FROM operator_audit WHERE actor_user_id=%s",
+            (op,)).fetchone()["n"]),
+        "running": int(con.execute(
+            "SELECT COUNT(*) n FROM tool_calls WHERE user_id = ANY(%s)",
+            ([op, provider, caller, _u2, _xu],)).fetchone()["n"]),
+        "withdrawals": int(con.execute(
+            "SELECT COUNT(*) n FROM withdrawals WHERE user_id = ANY(%s)",
+            ([provider, p2, p3, _xu, caller],)).fetchone()["n"]),
+    }
+
 
 check("H1 cleanup leaves zero own rows", not any(_left.values()), _left)
 
