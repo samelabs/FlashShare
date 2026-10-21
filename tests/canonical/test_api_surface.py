@@ -529,6 +529,53 @@ check("D5e remote in-flight released",
       _pool_mod.remote_inflight_count() == 0,
       _pool_mod.remote_inflight_count())
 
+# D6: 数量窗口是 ingest 第 0 步 — 21 个 URL → err_file_count, 零拉取
+# (零拉取由 G3a 在 ingress 套件以计数替身钉死; 这里钉 REST 面错误码)
+st, h, d, raw = _req(
+    "POST", f"/v1/tools/{TOOL_FILE}",
+    json.dumps({"files": [
+        {"url": f"https://d6.example/{_u}/f{i}.png"} for i in range(21)],
+        "params": {}}).encode(),
+    {**FH, "Content-Type": "application/json",
+     "Idempotency-Key": f"d6-{_u}"})
+check("D6 21 URL sources → 400 err_file_count (count gate before any fetch)",
+      st == 400 and d.get("error") == "err_file_count", f"{st} {d}")
+
+# D7: params 双来源 (查询 + JSON body) → 400 duplicate_param
+st, h, d, raw = _req(
+    "POST", f"/v1/tools/{TOOL_FILE}?preset=fast",
+    json.dumps({"files": [{"public_id": "x", "source_token": ""}],
+                "params": {"preset": "fast"}}).encode(),
+    {**FH, "Content-Type": "application/json",
+     "Idempotency-Key": f"d7-{_u}"})
+check("D7 params in query AND JSON body → 400 duplicate_param",
+      st == 400 and d.get("error") == "duplicate_param", f"{st} {d}")
+
+# D8: 余额不足 → 402 (preflight → affordability → ingest 顺序), 零拉取
+# 零暂存零入站回执
+uidH, ckH = _register(_u + "h")
+KEY_H = create_key(uidH, "v1sh")["key"]
+TOOL_COST = f"v1cost{_u2}"
+_tool(TOOL_COST, accept='[".png"]', tag="image", files_min=1, files_max=2,
+      url=f"{EP}/items", outputs=["text"], cost=2)
+_mp8, _ct8 = _multipart_file({"tool": TOOL_COST, "client_ref": f"d8-{_u}"},
+                             [("solo.png", PNG, "image/png")])
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_COST}", _mp8,
+                     {"Content-Type": _ct8,
+                      "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"d8-{_u}"})
+with db() as con:
+    _no_rc = con.execute(
+        "select count(*) c from ingress_requests where user_id=%s",
+        (uidH,)).fetchone()["c"]
+    _no_up = con.execute(
+        "select count(*) c from uploads where user_id=%s",
+        (uidH,)).fetchone()["c"]
+check("D8 insufficient balance → 402 err_insufficient_credits, zero staging",
+      st == 402 and d.get("error") == "err_insufficient_credits"
+      and int(_no_rc) == 0 and int(_no_up) == 0,
+      f"{st} {d} rc={_no_rc} up={_no_up}")
+
 # ═══ E. deep idempotency ═══
 IH = {"Authorization": f"Bearer {KEY_I}", "Content-Type": "text/plain"}
 _result_box = {}

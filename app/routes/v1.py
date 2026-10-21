@@ -393,6 +393,13 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
         if "params" in body:
             if not isinstance(body["params"], dict):
                 return _err(400, "invalid_request")
+            if params:
+                # tool params have exactly one transport per request —
+                # the query string AND a JSON body params object is a
+                # duplicate, same code as a repeated query key
+                return _err(400, "duplicate_param",
+                            message="params appear in both the query "
+                                    "string and the JSON body")
             params = dict(body["params"])
     else:
         return _err(415, "err_content_type",
@@ -407,6 +414,15 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
         return JSONResponse(pbody, pstatus)
     if declared is not None:
         params = declared
+
+    # Advisory credits affordability BEFORE source ingress (same order
+    # as MCP: preflight → affordability → ingest) — a clear insufficiency
+    # answers 402 without fetching or staging anything; the authoritative
+    # consume stays in the gate.
+    from execution.affordability import check_affordability
+    _denial = check_affordability(user["id"], tool)
+    if _denial:
+        return JSONResponse(_denial, 402)
 
     # 文件来源准备 + 暂存单点 (A4): 与 MCP 同一实现; idem key 即暂存
     # client_ref。

@@ -1213,19 +1213,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         # validation stays first so a low balance can never mask it.
         return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
 
-    # Platform files/request boundary (the count part of the single batch
-    # validator; sizes are checked once the bytes are known).
-    from governance.ingress import validate_batch as _vbatch
-    _cdenial = _vbatch([0] * len(items))
-    if _cdenial:
-        return _iserror(mid, _cdenial, client_ref)
-
     # Tool + delivery entitlement + stored contract + params — the SAME
     # pre-gate validators dispatch runs, here BEFORE any fetch, quota
     # claim or Gokapi upload.
     tool_key = name
     from execution.dispatch import (preflight as _preflight,
-                                    source_count_error as _count_err,
                                     source_accept_error as _accept_err)
     tool, _declared, _canon_body, _pbody, _pstatus = _preflight(
         user, tool_key, delivery, tool_params, body_arg)
@@ -1268,10 +1260,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         return _rpc_err(mid, -32602,
                         "unknown argument key: input (this tool takes "
                         "files[], not a body input)")
-    _cerr = _count_err(tool, len(items))
-    if _cerr:
-        return _tool_result_error(mid, {"error": _cerr},
-                                   client_ref, tool)
 
     # Advisory credits affordability BEFORE source ingress: a clear
     # insufficiency answers as an application error (isError tool

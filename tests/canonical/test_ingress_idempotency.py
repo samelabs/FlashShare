@@ -1066,6 +1066,131 @@ check("P4d reference claims no ingress/quota (one receipt, one usage row for the
       f"ingress={_ingress_n(int(uidM), f'mix-{_u}')} usage={_usage_n(int(uidM))}"
       " (1 = web fixture, 2 = + the single new file; the reference added none)")
 
+# ══════════ G3: 暂存前置闸门与操作身份 ══════════
+# 数量窗口是 ingest_sources 的第 0 步 (唯一数量权威): 超窗/超上限 →
+# 零拉取零 claim; URL 拉取逐项累计批量上限, 越界即刻停止; 操作身份只
+# 锚定请求自带内容 (URL 项身份 = URL, 拉回内容不进哈希)。
+import remote as _rm_g3
+_g3_state = {"fetches": 0, "body": PNG}
+def _g3_hop(url, method="GET", body=None, headers=None, timeout_s=60,
+            max_bytes=None, deadline=None):
+    _g3_state["fetches"] += 1
+    return 200, _g3_state["body"], None, "image/png", None
+_rs_g3 = _rm_g3.socket
+_orig_pin_g3, _orig_res_g3 = _rm_g3._pinned_request, _rm_g3._resolve_host
+_rm_g3._resolve_host = lambda h, p: [
+    (_rs_g3.AF_INET, _rs_g3.SOCK_STREAM, _rs_g3.IPPROTO_TCP, "",
+     ("93.184.216.34", p))]
+_rm_g3._pinned_request = _g3_hop
+_orig_dx_g3 = _dx_mod.dispatch_execute
+_dx_mod.dispatch_execute = _fake_dx_mix
+ckG3 = _register(_u + "g3")
+with db() as con:
+    uidG3 = con.execute("select id from users where username=%s",
+                        (_u + "g3",)).fetchone()["id"]
+_grant(int(uidG3), 100000, "manual_topup", note="ig-g3")
+
+def _g3_call(ref, files, mid=30, name="compress"):
+    return _aio.run(_M._call_tool(
+        _ReqMix(), {"id": int(uidG3)}, mid,
+        {"name": name,
+         "arguments": {"files": files, "client_ref": ref}}))
+
+def _g3_text(r):
+    try:
+        return json.dumps(r.get("result") or {})
+    except Exception:
+        return str(r)
+
+try:
+    # (a) 21 个 URL 到 1..1 工具 → 数量窗口先拒, 零拉取
+    _gk_g3a, _use_g3a = _gk_count(), _usage_n(int(uidG3))
+    _g3_state["fetches"] = 0
+    _r_a = _g3_call(f"g3a-{_u}",
+                    [{"url": f"https://g3.example/{_u}/f{i}.png"}
+                     for i in range(21)], mid=31)
+    check("G3a 21 URLs to a 1..1 tool → isError err_file_count, ZERO fetches",
+          (_r_a.get("result") or {}).get("isError") is True
+          and "err_file_count" in _g3_text(_r_a)
+          and _g3_state["fetches"] == 0
+          and _ingress_n(int(uidG3), f"g3a-{_u}") == 0
+          and _gk_count() == _gk_g3a and _usage_n(int(uidG3)) == _use_g3a,
+          f"fetches={_g3_state['fetches']} {str(_r_a)[:100]}")
+
+    # (b) URL 逐项累计批量上限: 4 个 34MB URL 到 1..20 的 share 工具 →
+    #     第 3 个后越界, 第 4 个不再拉取; 零 claim/usage/Gokapi
+    from config import MAX_UPLOAD_BYTES as _G3_MAXUP, \
+        MAX_BATCH_BYTES as _G3_MAXBAT
+    _g3_state["body"] = b"\x89PNG\r\n\x1a\n" + b"\0" * (34 * 1024 * 1024)
+    _gk_g3b, _use_g3b = _gk_count(), _usage_n(int(uidG3))
+    _g3_state["fetches"] = 0
+    _r_b = _g3_call(f"g3b-{_u}",
+                    [{"url": f"https://g3.example/{_u}/big{i}.png"}
+                     for i in range(4)], mid=32, name="share")
+    check("G3b cumulative batch cap → abort at the boundary, no further fetch",
+          (_r_b.get("result") or {}).get("isError") is True
+          and "err_batch_too_large" in _g3_text(_r_b)
+          and 3 * 34 * 1024 * 1024 > _G3_MAXBAT
+          and _g3_state["fetches"] == 3
+          and _ingress_n(int(uidG3), f"g3b-{_u}") == 0
+          and _gk_count() == _gk_g3b and _usage_n(int(uidG3)) == _use_g3b,
+          f"fetches={_g3_state['fetches']} {str(_r_b)[:100]}")
+
+    # (c) 操作身份: 同 client_ref 同 URL 列表, 远端内容已变 → 重放;
+    #     换 URL 列表 → -32009 冲突
+    _g3_state["body"] = PNG
+    _urlA = f"https://g3.example/{_u}/same.png"
+    _urlB = f"https://g3.example/{_u}/other.png"
+    _gk_g3c = _gk_count()
+    _r_c1 = _g3_call(f"g3c-{_u}", [{"url": _urlA}], mid=33)
+    _src_c1 = (_captured_mix[-1]["source"]["files"][0]["public_id"]
+               if _captured_mix else None)
+    _g3_state["body"] = PNG + b"changed-bytes"  # remote content changed
+    _r_c2 = _g3_call(f"g3c-{_u}", [{"url": _urlA}], mid=34)
+    _src_c2 = (_captured_mix[-1]["source"]["files"][0]["public_id"]
+               if _captured_mix else None)
+    check("G3c same key + same URLs + changed remote content → REPLAY",
+          (_r_c2.get("result") or {}).get("isError") is False
+          and _src_c1 and _src_c2 == _src_c1
+          and _gk_count() == _gk_g3c + 1,
+          f"src={_src_c1}/{_src_c2} gk={_gk_count()}-{_gk_g3c}")
+    _gk_g3c2 = _gk_count()
+    _r_c3 = _g3_call(f"g3c-{_u}", [{"url": _urlB}], mid=35)
+    check("G3c2 same key + different URL list → -32009 idempotency_conflict",
+          (_r_c3.get("error") or {}).get("code") == -32009
+          and _gk_count() == _gk_g3c2, str(_r_c3)[:110])
+
+    # (d) 哈希构成: URL 请求 files 列表为空 (身份 = ctx.sources 的 URL);
+    #     纯 inline 请求哈希 = 既有公式 (inline 字节)
+    with db() as con:
+        _h_url = con.execute(
+            "select request_hash from ingress_requests"
+            " where user_id=%s and request_ref=%s",
+            (int(uidG3), f"g3c-{_u}")).fetchone()["request_hash"]
+    _exp_url = ingress_request_hash(
+        "tool_source", [],
+        {"tool_id": "compress", "sources": [{"kind": "url", "url": _urlA}]})
+    check("G3d URL-source identity = URL (fetched bytes excluded from hash)",
+          _h_url == _exp_url, f"{_h_url[:24]} vs {_exp_url[:24]}")
+    _r_e = _g3_call(f"g3e-{_u}", [{"filename": "e.png", "b64": base64.b64encode(PNG).decode()}], mid=36)
+    with db() as con:
+        _h_inl = con.execute(
+            "select request_hash from ingress_requests"
+            " where user_id=%s and request_ref=%s",
+            (int(uidG3), f"g3e-{_u}")).fetchone()["request_hash"]
+    _exp_inl = ingress_request_hash(
+        "tool_source",
+        [{"filename": "e.png", "content_type": "image/png",
+          "size": len(PNG), "sha256": hashlib.sha256(PNG).hexdigest()}],
+        {"tool_id": "compress"})
+    check("G3e pure-inline identity unchanged (inline bytes, no sources ctx)",
+          (_r_e.get("result") or {}).get("isError") is False
+          and _h_inl == _exp_inl, f"{_h_inl[:24]} vs {_exp_inl[:24]}")
+finally:
+    _rm_g3._pinned_request = _orig_pin_g3
+    _rm_g3._resolve_host = _orig_res_g3
+    _dx_mod.dispatch_execute = _orig_dx_g3
+
 # ══════════ cleanup ══════════
 with db() as con:
     _http_uids = [r["id"] for r in con.execute(
