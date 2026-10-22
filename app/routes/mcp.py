@@ -1130,7 +1130,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if name == "create_upload":
         return _create_upload(user, mid, args, request)
     if name == "list_uploads":
-        return _list_uploads(user, mid, args)
+        return await _list_uploads(user, mid, args)
     if name == "delete_upload":
         return await _delete_upload(user, mid, args)
     if name in ("pin_tool", "unpin_tool"):
@@ -1698,7 +1698,7 @@ def _create_upload(user: dict, mid, args: dict, request: Request):
     return _meta_result(mid, _payload, text=text)
 
 
-def _list_uploads(user: dict, mid, args: dict) -> dict:
+async def _list_uploads(user: dict, mid, args: dict) -> dict:
     """list_uploads meta tool: the SAME single point the web GET
     /api/uploads uses (sharing.list_uploads) — projection, live
     download counters and Gokapi mapping stay one implementation."""
@@ -1708,8 +1708,10 @@ def _list_uploads(user: dict, mid, args: dict) -> dict:
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         return _rpc_err(mid, -32602, "invalid params: offset must be an "
                                      "integer >= 0")
-    rows = _web_list(user["id"], offset=min(offset, MAX_LIST_OFFSET),
-                     limit=20)
+    import asyncio
+    rows = await asyncio.to_thread(
+        _web_list, user["id"], offset=min(offset, MAX_LIST_OFFSET),
+        limit=20)
     uploads = [{
         "public_id": r["public_id"],
         "filename": r["file_name"],

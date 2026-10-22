@@ -419,6 +419,39 @@ try:
                     if _grid[_yy][_xx] != int(_case["matrix"][_yy][_xx]))
         check(f'H7c qr_svg({_case["bytes"]}-byte payload) == reference sample cell by cell',
               _diff == 0, _diff)
+
+    # ═══ H8. Gokapi listing stays off the event loop ═══
+    # The uploads listing performs a slow HTTP call to Gokapi; run in the
+    # event loop it stalls every concurrent request (healthz included).
+    # The fake Gokapi accepts a list-latency injection (/ci/delay): with a
+    # 1s listing in flight, a concurrent /healthz must answer < 200ms.
+    _gk_base = _os.environ.get("FLASHSHARE_GOKAPI_URL",
+                               "http://127.0.0.1:53898").rstrip("/")
+    def _goki_delay(ms: int) -> int:
+        _c = _hc.HTTPConnection(_gk_base.replace("http://", ""), timeout=5)
+        _c.request("POST", "/ci/delay",
+                   body=_json.dumps({"ms": ms}).encode(),
+                   headers={"Content-Type": "application/json",
+                            "apikey": _os.environ.get("FLASHSHARE_GOKAPI_KEY", "")})
+        _r = _c.getresponse()
+        _r.read()
+        _c.close()
+        return _r.status
+    _uid8, _ck8, _key8 = _register(f"{_u}h8")
+    check("H8 fake list delay injected (1s)", _goki_delay(1000) == 200)
+    def _pull_uploads():
+        st_u, _hu, _du, _scu = _req("GET", "/api/uploads?offset=0",
+                                    headers={"Cookie": _ck8})
+        return st_u
+    _pull_fut = _cf.ThreadPoolExecutor(1).submit(_pull_uploads)
+    _t0 = _ts.time()
+    st_hz, _hh, _dh, _sch = _req("GET", "/healthz")
+    _hz_ms = int((_ts.time() - _t0) * 1000)
+    _st_up = _pull_fut.result()
+    check("H8 /healthz answers <200ms while a Gokapi listing is in flight",
+          st_hz == 200 and _st_up == 200 and _hz_ms < 200,
+          f"healthz={st_hz} uploads={_st_up} { _hz_ms }ms")
+    check("H8 delay reset to zero", _goki_delay(0) == 200)
 finally:
     if uid:
         from database import db

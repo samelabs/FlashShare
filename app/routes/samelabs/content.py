@@ -39,8 +39,9 @@ async def content(request: Request, share: str = "", result: str = "",
         results, res_total = operator_views.content_results(
             con, result or None, user or None, tool or None,
             _PAGE, (page - 1) * _PAGE)
+    import asyncio
     from sharing.uploads import live_status_map
-    live = live_status_map()
+    live = await asyncio.to_thread(live_status_map)
     files = []
     for r in uploads:
         d = dict(r)

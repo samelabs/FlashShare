@@ -25,6 +25,9 @@ class Store:
         self.fail_internal: str | None = None
         # test-only: fail the upload (files/add) endpoint with this status
         self.fail_upload: str | None = None
+        # test-only: artificial latency for the list endpoint (event-loop
+        # blocking probe) — set via /ci/delay
+        self.list_delay_ms: int = 0
 
     def add(self, name: str, content_type: str, data: bytes,
             expiry_days: int, allowed_downloads: int, base_url: str) -> dict:
@@ -172,6 +175,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorized():
                 self._json(401, {"ErrorMessage": "unauthorized"})
                 return
+            if STORE.list_delay_ms:
+                time.sleep(STORE.list_delay_ms / 1000.0)
             self._json(200, STORE.list())
             return
 
@@ -324,6 +329,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"Result": "ERROR", "ErrorMessage": str(exc)})
                 return
             self._json(200, {"Result": "OK", "FileInfo": meta})
+            return
+
+        if path == "/ci/delay":
+            if not self._authorized():
+                self._json(401, {"ErrorMessage": "unauthorized"})
+                return
+            size = int(self.headers.get("Content-Length", "0"))
+            try:
+                body = json.loads(self.rfile.read(size) or b"{}")
+            except Exception:
+                body = {}
+            try:
+                STORE.list_delay_ms = max(0, int(body.get("ms", 0)))
+            except (TypeError, ValueError):
+                STORE.list_delay_ms = 0
+            self._json(200, {"Result": "OK",
+                             "list_delay_ms": STORE.list_delay_ms})
             return
 
         if path == "/ci/fail-upload":

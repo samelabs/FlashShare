@@ -82,9 +82,10 @@ async def user_detail(user_id: int, request: Request):
                  operator_views.user_uploads(con, user_id, _RECENT)]
     from identity.apikeys import list_keys
     keys = [dict(r) for r in list_keys(user_id)]
+    import asyncio
     from sharing.uploads import live_status_map
     from utils import format_bytes, remaining_downloads
-    live = live_status_map()
+    live = await asyncio.to_thread(live_status_map)
     for f in files:
         gid = f.pop("gokapi_id", None)
         f["size_h"] = format_bytes(int(f["size_bytes"]))
