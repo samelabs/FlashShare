@@ -162,10 +162,16 @@ permission 的 API key（无固定默认 key），注入 `FLASHSHARE_GOKAPI_URL`
   归属与配套存储，再**只重载应用进程**（kill uvicorn 后按 `.tmp/dev-8123.env`
   重起；不动 53898），验证 `/healthz` 的 `source_sha`/`source_dirty` 与页面资源
   `?v=` 戳已更新。不得换端口。
-- **正文工具验看**：用真实发布流（/account/tools/publish）走当前供给契约发布一个
-  指向本地 echo 端点的 text/JSON 工具——`.tmp/dev-echo.py`（127.0.0.1:8139，仅开发
-  本机，gitignore 内，不进生产 seed）。不放宽任何发布/SSRF 校验，不用测试夹具充当
-  验看，不重新启用已移除实现的 demo_shout（fs_ui 中的僵尸行已清理）。
+- **正文工具验看（可运行）**：fs_ui 已通过运营真实发布流（POST /samelabs/tools/create）
+  提供两个 DEV 正文工具：`dev_text_echo`（text 正文 → http://127.0.0.1:8139/echo/text，
+  回 text/plain）与 `dev_json_echo`（JSON 正文 → /echo，回 application/json）——标签带
+  「DEV (8123 only)」，仅存在于 fs_ui，不进生产 seed。本地端点 `.tmp/dev-echo.py`
+  （gitignore 内；`venv/bin/python .tmp/dev-echo.py` 启动 127.0.0.1:8139）。
+  验看路径：登录 8123 → /tools 搜 "DEV echo" 或直达 /tool/dev_text_echo →
+  正文输入框输入 → Run → 结果区按 text/json 契约回显（/api/tools/execute ok）。
+  契约自证：端点若回错 Content-Type，执行链按 IO-1 返回 err_output_mismatch
+  （已实测）。不放宽任何发布/SSRF 校验（trusted 运营行本就允许 http+loopback），
+  不用测试夹具充当验看，不重新启用已移除实现的 demo_shout（僵尸行已清）。
 - 环境值与 secrets 不进仓库、不进报告。
 
 ## Run / test commands
