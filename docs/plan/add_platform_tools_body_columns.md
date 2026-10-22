@@ -24,6 +24,8 @@
 
 ## ⚠ 部署前只读预检（两项均须为空才可部署；非空 → STOP 交 PM 裁定）
 
+下列预检仅使用 v1.5 已有列，可在执行前置 tag 迁移之前提前检查；迁移窗口停写后仍须复查。
+
 本批 P2 更换全部 http 工具的南向响应契约（Content-Type 结果解释取代
 唯一 items 信封），存量 http 工具的行为会改变 —— 下列预检逐项给出裁定
 所需事实，**“已经报告”不等于可以部署**。
@@ -36,7 +38,7 @@ SELECT tool_key, label_json, params_json, endpoint_json
 
 -- (b) 全部 http 工具 — 非空即触发 PM 裁定（南向契约变更影响面）
 SELECT tool_key, owner_id, trusted, files_min, files_max,
-       accept_json, format_family, endpoint_json
+       accept_json, endpoint_json
   FROM platform_tools
  WHERE execution = 'http'
  ORDER BY owner_id NULLS FIRST, tool_key;
