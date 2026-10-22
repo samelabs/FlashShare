@@ -65,7 +65,7 @@ function openRename(pid) {
 }
 
 function openDelete(pid) {
-  openToolModal('<div class="tool-panel"><h3>' + window.t("delete") + '</h3><p class="tool-confirm-text">' + window.t("confirmDelete") + '</p><div class="tool-panel-actions"><button class="btn btn-secondary btn-sm" id="delCancel">' + (window.iconSvg ? window.iconSvg("close") : "✕") + '</button><button class="btn btn-primary btn-sm" id="delConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
+  openToolModal('<div class="tool-panel"><h3>' + window.t("delete") + '</h3><p class="tool-confirm-text">' + window.t("confirmDelete") + '</p><div class="tool-panel-actions"><button class="btn btn-secondary btn-sm" id="delCancel">' + window.iconSvg("close") + '</button><button class="btn btn-primary btn-sm" id="delConfirm">' + (window.iconSvg ? window.iconSvg("check") : "✓") + '</button></div></div>');
   document.getElementById("delCancel").addEventListener("click", closeToolModal);
   document.getElementById("delConfirm").addEventListener("click", async () => {
     openToolModal(toolLoading());

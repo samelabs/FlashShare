@@ -49,13 +49,9 @@ window.preflightToolAffordability = async function (tool) {
 
 const result = document.getElementById("result");
 
-const _IC = window.__ICONS__ || {};
-function svgIcon(name) {
-  const path = _IC[name] || _IC.info || "";
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
-}
-// Canonical icon renderer — site-wide single source.
-window.iconSvg = svgIcon;
+// Canonical icon renderer comes from icons.js (data + renderer, one
+// single-source projection) loaded by base.html before any page script.
+const svgIcon = window.iconSvg;
 
 // i18n: t(), applyI18n(), lang data — all provided by base.html global engine
 // Local alias — MUST stay arrow/const: a top-level `function t` declaration

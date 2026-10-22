@@ -71,7 +71,11 @@ sandbox.window.t = sandbox.t;
 sandbox.__USER__ = { id: 1 };
 sandbox.__TOOLS__ = [];
 sandbox.__LANG__ = "en";
-sandbox.window.__ICONS__ = { check: "<path d='check'/>", copy: "<path/>", info: "<path/>" };
+// icon registry + renderer: load the REAL single-source projection
+// (data and window.iconSvg ship together in icons.js — mirroring the
+// base.html chain: icons.js before any page script)
+const iconsProj = fs.readFileSync(path.join(REPO, "static", "pages", "icons.js"), "utf8");
+vm.runInContext(iconsProj, sandbox, { filename: "icons.js" });
 
 // i18n.js engine pieces app.js expects at load
 sandbox.applyI18n = () => {};
@@ -275,7 +279,8 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     shared.__TOOLS__ = [];
     shared.__LANG__ = "en";
     shared.__I18N__ = { en: {} };
-    shared.__ICONS__ = { check: "<path d='c'/>", copy: "<path/>", info: "<path/>", download: "<path/>", share: "<path/>", qr: "<path/>", print: "<path/>", eye: "<path/>" };
+    // real icon projection (data + renderer) — same chain as base.html
+    vm.runInContext(iconsProj, shared, { filename: "icons.js" });
     vm.runInContext(fs.readFileSync(path.join(REPO, "static", "pages", "common.js"), "utf8"), shared);
     let shareErr = null;
     try {
@@ -321,7 +326,8 @@ vm.runInContext(appSrc, sandbox, { filename: "app.js" });
     s2.t = sandbox.t; s2.window.t = s2.t;
     s2.applyI18n = () => {}; s2.window.applyI18n = s2.applyI18n;
     s2.__USER__ = { id: 1 }; s2.__TOOLS__ = []; s2.__LANG__ = "en"; s2.__I18N__ = { en: {} };
-    s2.__ICONS__ = { check: "<path d='c'/>", copy: "<path/>", info: "<path/>", download: "<path/>", share: "<path/>", qr: "<path/>", print: "<path/>", eye: "<path/>" };
+    // real icon projection (data + renderer) — same chain as base.html
+    vm.runInContext(iconsProj, s2, { filename: "icons.js" });
     vm.runInContext(fs.readFileSync(path.join(REPO, "static", "pages", "common.js"), "utf8"), s2);
     vm.runInContext(appSrc, s2, { filename: "app.js" });
     assert.strictEqual(typeof s2.pwaDownload, "function", "engine pwaDownload present");
