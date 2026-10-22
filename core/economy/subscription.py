@@ -453,36 +453,51 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
         _granted_now = True
     else:
         _granted_now = False
-    cancel_ts = None
-    if scheduled_cancel:
-        cancel_ts = ts
-    elif current and current.get("cancel_scheduled_at"):
-        cancel_ts = int(current["cancel_scheduled_at"])  # 保留既有 marker
+    # cancel marker 预设; 持锁重读后以 locked 行为准 (scheduled_cancel
+    # reconcile 语义 = 显式落 now, 否则保留既有 marker)。
+    cancel_ts = ts if scheduled_cancel else None
     started = (current or {}).get("started_at") or order["created_at"]
     # ── lifecycle monotonicity ──
     # A paid event for a period the Membership has ALREADY applied
     # (period_start <= last_grant_period_start: same-period replay,
     # late/out-of-order delivery, mid-period upgrade charge) proves
     # payment only; it is not a lifecycle event. Lifecycle state written
-    # after that period was applied (canceled / past_due / expired) and
-    # the newer period boundary are never regressed by it.
-    # 判定基准 = 最终写事务内的加锁行重读: 快照读 (current) 与最终写
-    # 之间可能有其它生命周期事件提交 (expired 等), 在旧快照上做单调
-    # 分支会把已写入的新周期回退 — FOR UPDATE 行与随后的 upsert 同
-    # 快照串行, 读到什么就基于什么写。
+    # after that period was applied (canceled / past_due / expired), the
+    # newer period boundary AND the newer plan/cancel facts are never
+    # regressed by it. 判定基准 = 最终写事务内的加锁行重读: 快照读
+    # (current) 与最终写之间可能有其它事件提交 (update / expired 等),
+    # 在旧快照上做分支会把已接受的新事实写回旧值 — FOR UPDATE 行与
+    # 随后的 upsert 同快照串行, 读到什么就基于什么写。
     with db() as con:
         locked = orders_repo.membership_by_sub(con, sub_id, lock=True)
         renews_write, ps_write = period_end, period_start
+        plan_write = plan["id"]
         _last = (locked or {}).get("last_grant_period_start")
-        if locked is not None and _last is not None and period_start <= int(_last):
-            status = locked["status"]
-            ps_write = int(_last)
-            if locked.get("renews_at") is not None:
-                renews_write = int(locked["renews_at"])
+        if locked is not None:
+            if _last is not None and period_start <= int(_last):
+                # already-applied period: the locked row IS the current
+                # fact set — plan, status, period and cancel marker all
+                # follow it (this payment proves payment only)
+                plan_write = int(locked["plan_id"])
+                status = locked["status"]
+                ps_write = int(_last)
+                if locked.get("renews_at") is not None:
+                    renews_write = int(locked["renews_at"])
+            elif int(locked["plan_id"]) != int(plan_write) \
+                    and int(locked["plan_id"]) != int(
+                        (current or {}).get("plan_id") or -1):
+                # advancing period, but subscription.update accepted a
+                # NEWER plan after this event's snapshot — never revert
+                # it (the plan this payment verified against is gone)
+                plan_write = int(locked["plan_id"])
+            if not scheduled_cancel:
+                # a marker booked after the snapshot must survive this
+                # write — the locked row is the marker authority
+                cancel_ts = locked.get("cancel_scheduled_at")
         orders_repo.upsert_membership_state(
             con, sub_id, status,
             renews_at=renews_write,
-            plan_id=plan["id"],
+            plan_id=plan_write,
             period_start=ps_write, cancel_scheduled_at=cancel_ts)
         # durable base-payment record for THIS period — the FIRST
         # subscription.paid to arrive for (sub, period) is its base cycle

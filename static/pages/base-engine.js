@@ -202,7 +202,7 @@ window.shareBarHtml = function (o) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   };
-  var ic = function (n) { return window.iconSvg ? window.iconSvg(n) : ""; };
+  var ic = window.iconSvg;
   var tx = function (k) { return window.t ? window.t(k) : k; };
   return '<div class="share-bar' + (o.compact ? " sb-compact" : "") + '"'
     + ' data-share-url="' + esc(url) + '" data-share-title="' + esc(title) + '">'
@@ -234,7 +234,7 @@ function _sbQr(src) {
     m.setAttribute("role", "dialog");
     m.setAttribute("aria-modal", "true");
     m.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">'
-      + (window.iconSvg ? window.iconSvg("close") : "×") + '</button><img alt="QR" width="200" height="200" class="qr-code"></div>';
+      + window.iconSvg("close") + '</button><img alt="QR" width="200" height="200" class="qr-code"></div>';
     document.body.appendChild(m);
     m.addEventListener("click", function (e) {
       if (e.target === m || (e.target.closest && e.target.closest(".modal-close"))) m.classList.add("hidden");
@@ -296,7 +296,7 @@ window.copyFeedback = function (btn) {
   btn.dataset.cpBusy = "1";
   var origHtml = btn.innerHTML;
   var icon = btn.querySelector("svg");
-  if (icon && window.iconSvg) {
+  if (icon) {
     icon.outerHTML = window.iconSvg("check");
   } else {
     btn.textContent = "✓ " + (window.t ? window.t("copied") : "copied");

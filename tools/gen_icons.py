@@ -17,9 +17,22 @@ from icons import _ICONS  # noqa: E402
 out = "window.__ICONS__ = " + json.dumps(
     {k: dict(_ICONS)[k] for k in _ICONS},
     ensure_ascii=False, separators=(",", ":")) + ";"
+# The client icon renderer rides the SAME single-source projection: data
+# and renderer ship together, so every page that loads icons.js gets
+# window.iconSvg — a page-level redefinition (the old app.js copy, with
+# its "×" fallbacks in consumers) is how the QR/auth modals forked.
+_RENDERER = (
+    "\nwindow.iconSvg = function (n) {\n"
+    "  var p = (window.__ICONS__ || {})[n] || (window.__ICONS__ || {}).info"
+    ' || "";\n'
+    "  return '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\""
+    " stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\""
+    " aria-hidden=\"true\">' + p + \"</svg>\";\n"
+    "};\n")
+out += _RENDERER
 
 path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                     "static", "pages", "icons.js")
 with open(path, "w", encoding="utf-8") as f:
-    f.write(out + "\n")
+    f.write(out)
 print("regenerated, icons:", len(_ICONS))

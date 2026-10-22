@@ -288,6 +288,21 @@ async def plan_upgrade(request: Request):
     sub_id = current["provider_subscription_id"]
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]
+    # commercial mirror fail-closed gate — the SAME single point as the
+    # first subscription checkout: before any provider product change,
+    # the target product must carry this plan's exact price/currency and
+    # the recurring/every-month contract. A mismatch or an unverifiable
+    # mirror never reaches the provider (thread boundary, like every
+    # provider call here); the local commercial state is untouched.
+    try:
+        _mirror_err = await asyncio.to_thread(
+            creem.verify_product_mirror, target["creem_product_id"],
+            int(target["price_cents"]), str(target["currency"] or "").upper())
+    except Exception:
+        _mirror_err = "verify_failed"
+    if _mirror_err:
+        return JSONResponse(
+            {"ok": False, "error": "price_mirror_mismatch"}, 502)
     try:
         # 升级域语义: proration-charge-immediately — product 立即 Pro,
         # prorated difference charged immediately, original billing date
@@ -346,6 +361,18 @@ async def plan_downgrade(request: Request):
     sub_id = current["provider_subscription_id"]
     if sub_id.startswith("sub:"):
         sub_id = sub_id[4:]
+    # commercial mirror fail-closed gate — same single point as upgrade
+    # and the first subscription checkout (see plan_upgrade); a mismatch
+    # or an unverifiable mirror never reaches the provider.
+    try:
+        _mirror_err = await asyncio.to_thread(
+            creem.verify_product_mirror, target["creem_product_id"],
+            int(target["price_cents"]), str(target["currency"] or "").upper())
+    except Exception:
+        _mirror_err = "verify_failed"
+    if _mirror_err:
+        return JSONResponse(
+            {"ok": False, "error": "price_mirror_mismatch"}, 502)
     try:
         await asyncio.to_thread(
             creem.upgrade_subscription, sub_id, target["creem_product_id"],

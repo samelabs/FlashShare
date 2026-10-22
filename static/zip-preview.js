@@ -134,7 +134,7 @@
       modal.setAttribute("role", "dialog");
       modal.setAttribute("aria-modal", "true");
       modal.innerHTML = '<div class="modal-panel zip-preview-panel">' +
-        '<button class="modal-close" type="button" aria-label="Close">×</button>' +
+        '<button class="modal-close" type="button" aria-label="Close">' + window.iconSvg("close") + '</button>' +
         '<h2 class="zip-preview-title"></h2>' +
         '<p class="zip-preview-meta"></p>' +
         '<ul class="zip-preview-list"></ul>' +

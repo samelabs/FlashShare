@@ -1387,6 +1387,20 @@ def _up13(sub, prod, update_behavior="x"):
         raise RuntimeError("provider down")
     return {"id": sub}
 _creem.upgrade_subscription = _up13
+# A02 之后 route 在 provider 变更前做镜像校验 — T13 配真实形状的匹配镜像:
+# 真实 verify_product_mirror + fake provider 产品表 (不 mock 校验本身)
+_orig_fetch13 = _creem._fetch_product
+_orig_key13 = _creem.CREEM_API_KEY
+_creem.CREEM_API_KEY = "t13-mirror-key"
+with db() as con:
+    _t13_plus = orders_repo.plan_by_code(con, "plus")
+def _fetch13(pid):
+    if pid != _t13_plus["creem_product_id"]:
+        return None
+    return {"id": pid, "price": int(_t13_plus["price_cents"]),
+            "currency": _t13_plus["currency"], "billing_type": "recurring",
+            "billing_period": "every-month"}
+_creem._fetch_product = _fetch13
 class _Req13:
     async def json(self):
         return {"plan": "plus"}
@@ -1449,6 +1463,8 @@ check("T14b boundary provider=Plus → Membership Plus / 新周期 grant 100 / p
       and _plan_credits_total(uid13, PS2) == 100 and _pend14 is None,
       f"code={_pp14['membership']['code']} bal_delta={spendable_balance(uid13)-_bal14}")
 _creem.upgrade_subscription = _orig_up13
+_creem._fetch_product = _orig_fetch13
+_creem.CREEM_API_KEY = _orig_key13
 _topup_mod._require_auth = _orig_auth13
 
 # ═══ T16: boundary recovery — pending 缺失 + 新周期 provider product 下行 ═══
@@ -1507,6 +1523,126 @@ _cur_ptr.execute("update plans set creem_product_id='prod_plus' where code='plus
 plan_catalog.catalog(refresh=True)
 _creem.upgrade_subscription = _orig_up13
 _topup_mod._require_auth = _orig_auth13
+
+# ═══ T19: plan-change mirror gate (A02) ═══
+# 升降级在 provider 商业变更前复用首购同源 verify_product_mirror:
+# 错价/错币种/错周期/校验不可用 → 502 price_mirror_mismatch,
+# provider 产品变更调用增量为 0, 会员/账本/pending 零变化;
+# 匹配镜像保留既有成功行为。真实 verifier + fake provider 产品表。
+# 每个错误场景从独立完整的合法基准快照重建, 只改该场景声明的
+# 一个字段 —— price/currency/billing 拒绝各自独立可证 (verify 按
+# price → currency → billing 顺序短路, 场景间携带脏字段会让后续
+# 场景永远命中 price, 币种/计费契约分支变成不可达)。
+_cur_ptr.execute("update plans set creem_product_id='pt_pro_price', price_cents=1500 where code='pro'")
+_cur_ptr.execute("update plans set creem_product_id='pt_plus_price', price_cents=500 where code='plus'")
+_pc.catalog(refresh=True)
+_u19a, uid19a, _ = _seed_sub_user("pt19a", "plus", "pt_plus_price", "ptsub19a")
+_u19b, uid19b, _ = _seed_sub_user("pt19b", "pro", "pt_pro_price", "ptsub19b")
+import json as _json19
+_orig_key19 = _creem.CREEM_API_KEY
+_orig_fetch19 = _creem._fetch_product
+_orig_up19 = _creem.upgrade_subscription
+# 合法基准快照 (与本地 plans 行一致: 价格/币种/recurring/every-month)
+_BASE19 = {"pt_pro_price": {"id": "pt_pro_price", "price": 1500, "currency": "USD",
+                            "billing_type": "recurring", "billing_period": "every-month"},
+           "pt_plus_price": {"id": "pt_plus_price", "price": 500, "currency": "USD",
+                             "billing_type": "recurring", "billing_period": "every-month"}}
+_PRO19 = {}
+_prov19 = []
+def _up19(sub, prod, update_behavior="x"):
+    _prov19.append((sub, prod, update_behavior))
+    return {"id": sub}
+try:
+    _creem.CREEM_API_KEY = "t19-mirror-key"
+    _creem._fetch_product = lambda pid: dict(_PRO19[pid]) if pid in _PRO19 else None
+    _creem.upgrade_subscription = _up19
+
+    def _facts19(uid):
+        _cur_ptr.execute(
+            "select m.status, m.renews_at, m.plan_id, m.cancel_scheduled_at"
+            " from memberships m where m.user_id=%s", (uid,))
+        _m = _cur_ptr.fetchone()
+        _cur_ptr.execute("select count(*) from ledger where user_id=%s", (uid,))
+        _l = _cur_ptr.fetchone()[0]
+        _cur_ptr.execute(
+            "select count(*) from pending_downgrades where user_id=%s", (uid,))
+        return (_m, _l, _cur_ptr.fetchone()[0])
+
+    def _req19(plan):
+        class _R:
+            async def json(self):
+                return {"plan": plan}
+        return _R()
+
+    # 单场景: 目标产品从合法基准重建, 只注入声明字段; None = 产品不可确认
+    def _load19(pid, mut):
+        if mut is None:
+            _PRO19.pop(pid, None)
+        else:
+            _PRO19[pid] = {**_BASE19[pid], **mut}
+
+    # ── 升级矩阵: target = pro (pt_pro_price) ──
+    _topup_mod._require_auth = lambda request: ({"id": uid19a, "email": "t@t.co",
+                                                 "username": _u19a}, None)
+    for _label, _mut in (
+            ("错价", {"price": 1499}),
+            ("错币种", {"currency": "EUR"}),
+            ("错周期", {"billing_period": "every-year"}),
+            ("校验不可用", None)):
+        _load19("pt_pro_price", _mut)
+        _f0 = _facts19(uid19a)
+        _before = len(_prov19)
+        _r = _aio.run(_topup_mod.plan_upgrade(_req19("pro")))
+        _d = _json19.loads(_r.body) if hasattr(_r, "body") else {}
+        check(f"T19-upgrade {_label} → 502 price_mirror_mismatch / provider 增量 0 / 零本地副作用",
+              getattr(_r, "status_code", 200) == 502
+              and _d.get("error") == "price_mirror_mismatch"
+              and len(_prov19) == _before and _facts19(uid19a) == _f0,
+              f"st={getattr(_r, 'status_code', None)} d={_d} prov={_prov19}")
+    _load19("pt_pro_price", {})
+    _r = _aio.run(_topup_mod.plan_upgrade(_req19("pro")))
+    check("T19-upgrade 匹配镜像 → provider 恰一次 (pt_pro_price / proration-charge-immediately)",
+          isinstance(_r, dict) and _r.get("ok") is True and _r.get("upgrade") == "initiated"
+          and len(_prov19) == 1 and _prov19[0][1] == "pt_pro_price"
+          and _prov19[0][2] == "proration-charge-immediately",
+          f"r={_r} prov={_prov19}")
+
+    # ── 降级矩阵: target = plus (pt_plus_price) ──
+    _topup_mod._require_auth = lambda request: ({"id": uid19b, "email": "t@t.co",
+                                                 "username": _u19b}, None)
+    for _label, _mut in (
+            ("错价", {"price": 499}),
+            ("错币种", {"currency": "EUR"}),
+            ("错周期", {"billing_type": "one-time"}),
+            ("校验不可用", None)):
+        _load19("pt_plus_price", _mut)
+        _f0 = _facts19(uid19b)
+        _before = len(_prov19)
+        _r = _aio.run(_topup_mod.plan_downgrade(_req19("plus")))
+        _d = _json19.loads(_r.body) if hasattr(_r, "body") else {}
+        check(f"T19-downgrade {_label} → 502 price_mirror_mismatch / provider 增量 0 / 零本地副作用",
+              getattr(_r, "status_code", 200) == 502
+              and _d.get("error") == "price_mirror_mismatch"
+              and len(_prov19) == _before and _facts19(uid19b) == _f0,
+              f"st={getattr(_r, 'status_code', None)} d={_d} prov={_prov19}")
+    _load19("pt_plus_price", {})
+    _r = _aio.run(_topup_mod.plan_downgrade(_req19("plus")))
+    with db() as con:
+        _pend19 = orders_repo.pending_downgrade(con, uid19b)
+    check("T19-downgrade 匹配镜像 → provider 恰一次 (pt_plus_price / proration-none) + pending 写入",
+          isinstance(_r, dict) and _r.get("ok") is True and _r.get("downgrade") == "scheduled"
+          and len(_prov19) == 2 and _prov19[1][1] == "pt_plus_price"
+          and _prov19[1][2] == "proration-none" and _pend19 is not None,
+          f"r={_r} prov={_prov19} pend={_pend19}")
+finally:
+    # 模块函数/配置/DB fixture 可靠恢复 (不依赖执行到 try 末尾)
+    _creem.CREEM_API_KEY = _orig_key19
+    _creem._fetch_product = _orig_fetch19
+    _creem.upgrade_subscription = _orig_up19
+    _topup_mod._require_auth = _orig_auth13
+    _cur_ptr.execute("update plans set creem_product_id='prod_plus' where code='plus'")
+    _pc.catalog(refresh=True)
+
 
 # ═══ T15: cancel → 当期保留 → 到期 Free ═══
 _u15, uid15, _ = _seed_sub_user("pt15", "plus", "prod_plus", "ptsub15")

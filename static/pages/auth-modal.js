@@ -90,7 +90,7 @@
     overlay.innerHTML =
       '<div class="modal-panel auth-modal">'
       + '<button class="modal-close" type="button" aria-label="' + esc(t("close") || "Close") + '">'
-      + (window.iconSvg ? window.iconSvg("close") : "×") + "</button>"
+      + window.iconSvg("close") + "</button>"
       + "<h2>" + esc(mode === "register" ? t("registerTitle") : t("loginTitle")) + "</h2>"
       + '<p class="auth-sub">' + esc(t("auth_modal_sub")) + "</p>"
       + '<div class="seg" role="tablist">'

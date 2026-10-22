@@ -13,7 +13,8 @@ function _sz(n){if(!n)return"0 B";var u=["B","KB","MB","GB"],i=0,x=n;while(x>=10
 function _dt(ts){if(!ts)return"-";try{return new Date(ts*1000).toLocaleString((window.__LOCALE_MAP||{})[window.__LANG]||"en",{hour12:false})}catch(e){return"-"}}
 function _eh(s){return String(s||"").replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 var _ic=window.__ICONS__||{};
-function _si(n){var p=_ic[n]||_ic.info||"";return'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+"</svg>"}
+// canonical renderer (icons.js) — _ic stays for the file-type badge shell
+var _si=window.iconSvg;
 var _et={jpg:"image",jpeg:"image",png:"image",gif:"image",webp:"image",bmp:"image",ico:"image",tiff:"image",svg:"image",pdf:"pdf",doc:"doc",docx:"doc",xls:"sheet",xlsx:"sheet",ppt:"slides",pptx:"slides",zip:"archive",rar:"archive","7z":"archive",txt:"text",csv:"text",md:"text",json:"text",xml:"text",html:"text",css:"text",js:"text",py:"text",go:"text"};
 function _fi(n){var m=(n||"").toLowerCase().match(/\.(\w+)$/);if(!m)return"";var tp=_et[m[1]]||"file";var p=_ic[tp]||_ic.doc||_ic.text||"";return'<span class="fmt-badge fmt-'+tp+'" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'+p+"</svg></span>"}
 function _dl(x){var t=x.allowed_downloads;if(Number.isFinite(x.download_count))return _tx("downloadsDetail",{used:x.download_count,total:t});if(Number.isFinite(x.downloads_remaining))return _tx("downloadsDetail",{used:Math.max(0,t-x.downloads_remaining),total:t});return _tx("downloadsUnknown",{total:t})}
