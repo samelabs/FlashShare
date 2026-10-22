@@ -229,6 +229,11 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     inv.body_format = tool.get("body_format")
 
     request_ctx = {"ip": client_ip(request)}
+    # call-creation source: the authenticated OAuth client behind
+    # THIS request, or None for every other credential — read on the
+    # event loop, passed by value into the claim transaction
+    _oauth_client = getattr(getattr(request, "state", None),
+                            "oauth_client_id", None)
 
     async def orchestrate():
         # ── source resolve: 只认 source.files[] / source.body ──
@@ -300,4 +305,5 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         except _TE as exc:
             raise ExecutionError(str(exc)) from exc
 
-    return await gate_run(user, tool, inv, orchestrate)
+    return await gate_run(user, tool, inv, orchestrate,
+                         oauth_client_id=_oauth_client)

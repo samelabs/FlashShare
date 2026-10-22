@@ -2052,15 +2052,11 @@ try:
     check("S5 OAuth plugin attribution stamped on tool_calls",
           row and row["oauth_client_id"] == CIMD_URL, row)
 
-    # ═══ S5b. attribution contract (R8 rework) ═══
-    # (1) B (a second OAuth client on a second user) replaying A's
-    #     client_ref must NOT re-attribute the settled call — first
-    #     writer wins (SQL guards oauth_client_id IS NULL).
-    # (2) A's FAILED call (provider unreachable, call row exists with
-    #     status failed) is attributed to A just like a success.
-    # (1) the SAME OAuth client replaying its ref (duplicate delivery)
-    # lands on the settled row — the guarded UPDATE (oauth_client_id IS
-    # NULL) must no-op, attribution stays the first writer's.
+    # ═══ S5b. attribution contract ═══
+    # oauth_client_id = the SERVER AUTHENTICATION CONTEXT that CREATED the
+    # call row (stamped in the claim INSERT's own transaction). Replays —
+    # same client or any other — answer the settled row and never
+    # re-attribute it; there is no post-hoc write path at all.
     _ref_a = f"oa-{_u}"
     st, _h, d = _mcp({"jsonrpc": "2.0", "id": 21, "method": "tools/call",
                       "params": {"name": "share",
@@ -2069,28 +2065,58 @@ try:
                                      "client_ref": _ref_a}}},
                      token=ACCESS)
     _sc_r = ((d or {}).get("result") or {}).get("structuredContent") or {}
+    # client B on the same user: mint + exchange (no CIMD fetch needed)
+    CIMD_B = f"https://plugin-b-{_u}.example/oauth.json"
+    REDIRECT_B = f"https://plugin-b-{_u}.example/cb"
+    _code_b = _oa.create_authorization_code(
+        UID, CIMD_B, REDIRECT_B, challenge, "tools:call", RESOURCE)
+    _toks_b = _oa.exchange_authorization_code(
+        _code_b, CIMD_B, REDIRECT_B, verifier, RESOURCE)
+    st_b, _h, d_b = _mcp({"jsonrpc": "2.0", "id": 24, "method": "tools/call",
+                          "params": {"name": "share",
+                                     "arguments": {
+                                         "files": [{"filename": "a.png", "b64": PNG_B64}],
+                                         "client_ref": _ref_a}}},
+                         token=_toks_b["access_token"])
+    _sc_rb = ((d_b or {}).get("result") or {}).get("structuredContent") or {}
     with db() as con:
         row_a = con.execute(
             "select oauth_client_id, status from tool_calls where user_id=%s"
             " and client_ref=%s", (UID, _ref_a)).fetchone()
-    # the guard itself, probed directly: a second client's attribution of
-    # the same settled row must not overwrite
-    CIMD_B = f"https://plugin-b-{_u}.example/oauth.json"
-    with db() as con:
-        con.execute(
-            "update tool_calls set oauth_client_id=%s where id=(select id"
-            " from tool_calls where user_id=%s and client_ref=%s)"
-            " and oauth_client_id IS NULL",
-            (CIMD_B, UID, _ref_a))
-        row_guard = con.execute(
-            "select oauth_client_id from tool_calls where user_id=%s"
-            " and client_ref=%s", (UID, _ref_a)).fetchone()
-    check("S5b replay of A's ref → replay answered, guarded attribution stays A",
+    check("S5b replay by A then client B → replay answered twice, attribution stays A",
           row_a and row_a["oauth_client_id"] == CIMD_URL
-          and _sc_r.get("replay") is True
-          and row_guard["oauth_client_id"] == CIMD_URL,
-          f"{_sc_r} {row_a} {row_guard}")
+          and _sc_r.get("replay") is True and _sc_rb.get("replay") is True,
+          f"{_sc_r} {_sc_rb} {row_a}")
 
+    # ═══ S5c. creation-source attribution ═══
+    # An fsk_ key CREATES the call row → attribution stays NULL forever;
+    # an OAuth token replaying that ref afterwards must not stamp itself
+    # on a row it did not create (the old post-hook did exactly that).
+    _ref_c = f"attr-fsk-{_u}"
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 25, "method": "tools/call",
+                      "params": {"name": "share",
+                                 "arguments": {
+                                     "files": [{"filename": "d.png", "b64": PNG_B64}],
+                                     "client_ref": _ref_c}}}, token=FSK)
+    _ok_c = st == 200 and not ((d or {}).get("result") or {}).get("isError")
+    st2, _h, d2 = _mcp({"jsonrpc": "2.0", "id": 26, "method": "tools/call",
+                        "params": {"name": "share",
+                                   "arguments": {
+                                       "files": [{"filename": "d.png", "b64": PNG_B64}],
+                                       "client_ref": _ref_c}}},
+                       token=ACCESS)
+    _replay_c = (((d2 or {}).get("result") or {})
+                 .get("structuredContent") or {}).get("replay") is True
+    with db() as con:
+        row_c = con.execute(
+            "select oauth_client_id, status from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, _ref_c)).fetchone()
+    check("S5c fsk_ creation stays NULL; OAuth replay of the ref never re-attributes",
+          _ok_c and _replay_c and row_c and row_c["oauth_client_id"] is None
+          and row_c["status"] == "ok",
+          f"ok={_ok_c} replay={_replay_c} row={row_c}")
+
+    
     # failed platform http tool (unreachable endpoint) for A
     _ftk = f"oaftk{_os.urandom(4).hex()}"
     with db() as con:

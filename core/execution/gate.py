@@ -306,7 +306,8 @@ def resolve_success_outcome(call_id: int) -> dict:
     return {"outcome": OUTCOME_DURABLE_SUCCESS, "result": durable_result}
 
 
-async def run(user: dict, tool: dict, invocation, orchestrate):
+async def run(user: dict, tool: dict, invocation, orchestrate,
+                oauth_client_id: str | None = None):
     """Claim → charge → execute → finalize; failures finalize + refund."""
     from . import ExecutionError
 
@@ -392,7 +393,8 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
                 con, client_ref, user["id"], tool["id"], cost,
                 json.dumps(params, ensure_ascii=False), started,
                 commission_rate_snapshot=rate_snapshot,
-                invocation_hash=invocation_hash)
+                invocation_hash=invocation_hash,
+                oauth_client_id=oauth_client_id)
 
         if not claimed:
             # The ref is bound to ONE canonical operation. A different

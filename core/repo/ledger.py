@@ -275,7 +275,8 @@ def _valid_invocation_hash(value) -> bool:
 def claim_call(con, client_ref: str, user_id: int, tool_id: str,
                cost: int, params_json: str, started_at: int,
                commission_rate_snapshot: int,
-               invocation_hash: str) -> tuple[dict, bool]:
+               invocation_hash: str,
+               oauth_client_id: str | None = None) -> tuple[dict, bool]:
     """Claim one logical invocation attempt before charging/executing.
 
     The partial unique index on (user_id, tool_id, client_ref) for
@@ -288,7 +289,12 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
     that to 409 idempotency_conflict.
 
     commission_rate_snapshot is frozen at claim time and written in the
-    SAME INSERT — the only snapshot writer. Settlement reads it from the
+    SAME INSERT — the only snapshot writer. oauth_client_id likewise:
+    the call-creation source (the server-side authentication context of
+    the request that CREATED the row — a consented OAuth client id, or
+    NULL for every other credential) is stamped here in the claim
+    transaction and has exactly ONE writer: this INSERT. A replay answers
+    the settled row and never re-attributes it. Settlement reads it from the
     persisted row, never from settings. invocation_hash likewise has
     exactly ONE writer: this claim INSERT (64-char lowercase SHA-256
     hex, runtime-validated). Historical pre-hash rows keep NULL.
@@ -328,15 +334,16 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
         """
         INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
            cost_snapshot, commission_rate_snapshot, invocation_hash,
-           params_json, started_at)
-        VALUES (%s, %s, %s, 'running', %s, %s, %s, %s, %s)
+           params_json, started_at, oauth_client_id)
+        VALUES (%s, %s, %s, 'running', %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id, tool_id, client_ref)
           WHERE status IN ('running','ok')
         DO NOTHING
         RETURNING *
         """,
         (client_ref, user_id, tool_id, cost, commission_rate_snapshot,
-         invocation_hash, params_json, started_at)).fetchone()
+         invocation_hash, params_json, started_at,
+         oauth_client_id)).fetchone()
     if row:
         return dict(row), True
     prior = con.execute(

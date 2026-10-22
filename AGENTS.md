@@ -154,7 +154,7 @@
 - **平台第三记账主体**：users 行 `username='platform'`。两条收入：用户工具抽佣（platform_commission）+ 系统工具直销（platform_revenue）。
 - **双池账本**：消费池（spendable_balance 派生）与收益池（provider_earn，仅可提现）物理隔离；ledger 唯一事实源。
 - **operator 权限**：users.status ∈ BACKOFFICE（如 'samelabs'），实时查库。
-- **/mcp 双凭证与能力词表**：fsk_ API key（`api_keys.scopes`，默认全能力）与 OAuth 2.1 令牌（CIMD 客户端、PKCE S256、资源绑定 /mcp）共用唯一能力词表 `tools:call / files:read / files:delete`，在 /mcp 分发咽喉单点比对；OAuth 调用按 client 归因落 `tool_calls.oauth_client_id`。匿名 tools/call 回 401+WWW-Authenticate（register 例外）。
+- **/mcp 双凭证与能力词表**：fsk_ API key（`api_keys.scopes`，默认全能力）与 OAuth 2.1 令牌（CIMD 客户端、PKCE S256、资源绑定 /mcp）共用唯一能力词表 `tools:call / files:read / files:delete`，在 /mcp 分发咽喉单点比对；OAuth 调用归因落 `tool_calls.oauth_client_id` = **调用创建来源**（claim INSERT 同事务写入、唯一写入者；fsk_/会话创建为 NULL，任何重放不改归因，无事后补写路径）。匿名 tools/call 回 401+WWW-Authenticate（register 例外）。
 - **文件生命周期**：Gokapi 是物理文件权威；518 是 public mapping/页面可见性权威；startup + hourly housekeeping，无 cron/scheduler 子系统。
 - **站内预览语义**（已实现）：internal preview 走 `/api/files/download/{id}`（`increaseCounter:false`）authenticated non-counting 通道，不消耗 allowed_downloads；service API key 必须拥有 DOWNLOAD permission（v2.2.4 `ApiPermDownload`），startup capability probe fail-closed 验证。**禁止穿透 Gokapi 私有存储（sqlite/schema/content 目录）实现预览**。见 DEVELOPMENT.md 的 Gokapi 约束（含 disposable 真实 v2.2.4 实测证据）。
 

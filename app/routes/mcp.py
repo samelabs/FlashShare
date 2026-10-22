@@ -1317,22 +1317,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     payload, error_body, status = await dispatch_execute(request, user, raw)
     if error_body is not None:
         payload = error_body
-    # OAuth plugin attribution — an MCP-layer post-hook on the settled
-    # call (the execution chain stays untouched): stamp the consented
-    # client on the tool_calls row. 只要拿到 call_id 就写, 失败结果同样
-    # 归因; SQL 带 AND oauth_client_id IS NULL —— 第一个写入者为准
-    # (同引用重放不覆盖先到归因)。
-    _client_id = getattr(getattr(request, "state", None), "oauth_client_id", None)
-    if _client_id and payload.get("call_id"):
-        try:
-            from database import db as _db
-            with _db() as _con:
-                _con.execute(
-                    "update tool_calls set oauth_client_id=%s where id=%s"
-                    " and oauth_client_id IS NULL",
-                    (_client_id, payload["call_id"]))
-        except Exception:
-            pass  # attribution is telemetry, never blocks the result
     if not payload.get("ok"):
         return _iserror(mid, payload, client_ref, tool)
     result = payload.get("result") or {}
