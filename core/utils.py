@@ -262,53 +262,159 @@ def _qr_function_modules(size: int) -> tuple:
     return modules, reserved
 
 
+# 掩码 0–7 的标准公式 (ISO/IEC 18004 §8.8.2)
+_QR_MASK_FORMULAS = (
+    lambda x, y: (x + y) % 2 == 0,
+    lambda x, y: y % 2 == 0,
+    lambda x, y: x % 3 == 0,
+    lambda x, y: (x + y) % 3 == 0,
+    lambda x, y: (x // 3 + y // 2) % 2 == 0,
+    lambda x, y: (x * y) % 2 + (x * y) % 3 == 0,
+    lambda x, y: ((x * y) % 2 + (x * y) % 3) % 2 == 0,
+    lambda x, y: ((x + y) % 2 + (x * y) % 3) % 2 == 0,
+)
+
+# ISO/IEC 18004 §8.8.3 惩罚分权重 (N1–N4)
+_QR_PENALTY_N1 = 3
+_QR_PENALTY_N2 = 3
+_QR_PENALTY_N3 = 40
+_QR_PENALTY_N4 = 10
+
+
+def _qr_mask_penalty(modules: list, size: int) -> int:
+    """整幅矩阵的 ISO N1–N4 惩罚总分: 行/列连续同色 (N1)、2×2 同色块
+    (N2)、1:1:3:1:1 finder 模拟 (N3)、明暗比例 (N4)。选掩码 = 全掩码
+    取最低分 (并列取编号最小)。run-history 形态与参考实现
+    (qrcodegen / Nayuki) 逐行等价, fixture 逐格比对背书。"""
+    import collections as _collections
+    result = 0
+
+    def _add_history(cur_len: int, history) -> None:
+        if history[0] == 0:
+            cur_len += size  # 首段吃掉边到 finder 的必然亮带
+        history.appendleft(cur_len)
+
+    def _count_patterns(history) -> int:
+        n = history[1]
+        core = n > 0 and (history[2] == history[4] == history[5] == n) \
+            and history[3] == n * 3
+        return (1 if core and history[0] >= n * 4 and history[6] >= n else 0) \
+             + (1 if core and history[6] >= n * 4 and history[0] >= n else 0)
+
+    def _terminate(current_color: bool, current_len: int, history) -> None:
+        if current_color:
+            _add_history(current_len, history)
+            current_len = 0
+        current_len += size  # final light border — absorbed unconditionally
+        _add_history(current_len, history)
+
+    # 行与列: 连续同色 (N1) + finder 模拟 (N3)
+    for y in range(size):
+        run_color = False
+        run_len = 0
+        history = _collections.deque([0] * 7, 7)
+        for x in range(size):
+            if modules[y][x] == run_color:
+                run_len += 1
+                if run_len == 5:
+                    result += _QR_PENALTY_N1
+                elif run_len > 5:
+                    result += 1
+            else:
+                _add_history(run_len, history)
+                if not run_color:
+                    result += _count_patterns(history) * _QR_PENALTY_N3
+                run_color = modules[y][x]
+                run_len = 1
+        _terminate(run_color, run_len, history)
+        result += _count_patterns(history) * _QR_PENALTY_N3
+    for x in range(size):
+        run_color = False
+        run_len = 0
+        history = _collections.deque([0] * 7, 7)
+        for y in range(size):
+            if modules[y][x] == run_color:
+                run_len += 1
+                if run_len == 5:
+                    result += _QR_PENALTY_N1
+                elif run_len > 5:
+                    result += 1
+            else:
+                _add_history(run_len, history)
+                if not run_color:
+                    result += _count_patterns(history) * _QR_PENALTY_N3
+                run_color = modules[y][x]
+                run_len = 1
+        _terminate(run_color, run_len, history)
+        result += _count_patterns(history) * _QR_PENALTY_N3
+    # 2×2 同色块 (N2)
+    for y in range(size - 1):
+        for x in range(size - 1):
+            if modules[y][x] == modules[y][x + 1] \
+                    == modules[y + 1][x] == modules[y + 1][x + 1]:
+                result += _QR_PENALTY_N2
+    # 明暗比例 (N4): 最小整数 k >= 0 使 (45-5k)% <= 占比 <= (55+5k)%
+    dark = sum(sum(1 for c in row if c) for row in modules)
+    total = size * size
+    k = (abs(dark * 20 - total * 10) + total - 1) // total - 1
+    result += k * _QR_PENALTY_N4
+    return result
+
+
 def qr_svg(value: str) -> str:
     codewords = _qr_codewords(value.encode("utf-8"))
     size = 33
-    modules, reserved = _qr_function_modules(size)
-
-    def place(x, y, dark):
-        modules[y][x] = bool(dark)
+    base_modules, reserved = _qr_function_modules(size)
 
     bits = []
     for b in codewords:
         bits.extend(((b >> i) & 1) == 1 for i in range(7, -1, -1))
     bits.extend([False] * 7)
-    bit_index = 0
-    direction = -1
-    x = size - 1
-    y = size - 1
-    while x > 0:
-        if x == 6:
-            x -= 1
-        while 0 <= y < size:
-            for xx in [x, x - 1]:
-                if not reserved[y][xx]:
-                    dark = bits[bit_index] if bit_index < len(bits) else False
-                    if (xx + y) % 2 == 0:
-                        dark = not dark
-                    place(xx, y, dark)
-                    bit_index += 1
-            y += direction
-        direction = -direction
-        y += direction
-        x -= 2
 
-    format_bits = _qr_format_bits(1, 0)
-    def bit(i):
-        return ((format_bits >> i) & 1) == 1
-    for i in range(6):
-        place(8, i, bit(i))
-    place(8, 7, bit(6))
-    place(8, 8, bit(7))
-    place(7, 8, bit(8))
-    for i in range(9, 15):
-        place(14 - i, 8, bit(i))
-    for i in range(8):
-        place(size - 1 - i, 8, bit(i))
-    for i in range(8, 15):
-        place(8, size - 15 + i, bit(i))
-    place(8, size - 8, True)
+    def _place_masked(mask: int) -> list:
+        modules = [row[:] for row in base_modules]
+        formula = _QR_MASK_FORMULAS[mask]
+        bit_index = 0
+        direction = -1
+        x = size - 1
+        y = size - 1
+        while x > 0:
+            if x == 6:
+                x -= 1
+            while 0 <= y < size:
+                for xx in [x, x - 1]:
+                    if not reserved[y][xx]:
+                        dark = bits[bit_index] if bit_index < len(bits) \
+                            else False
+                        if formula(xx, y):
+                            dark = not dark
+                        modules[y][xx] = dark
+                        bit_index += 1
+                y += direction
+            direction = -direction
+            y += direction
+            x -= 2
+        format_bits = _qr_format_bits(1, mask)
+        def bit(i):
+            return ((format_bits >> i) & 1) == 1
+        for i in range(6):
+            modules[i][8] = bit(i)
+        modules[7][8] = bit(6)
+        modules[8][8] = bit(7)
+        modules[8][7] = bit(8)
+        for i in range(9, 15):
+            modules[8][14 - i] = bit(i)
+        for i in range(8):
+            modules[8][size - 1 - i] = bit(i)
+        for i in range(8, 15):
+            modules[size - 15 + i][8] = bit(i)
+        modules[size - 8][8] = True
+        return modules
+
+    # 标准选掩码: 8 掩码各摆一遍, N1–N4 惩罚最低者 (并列取编号最小)
+    mask = min(range(8),
+               key=lambda k: (_qr_mask_penalty(_place_masked(k), size), k))
+    modules = _place_masked(mask)
 
     scale = 8
     pad = 4
