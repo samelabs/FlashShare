@@ -699,6 +699,43 @@ try:
     check("M8.new a NEW period's paid still recovers past_due → active",
           m["status"] == "active" and int(m["renews_at"]) == PEb, str(m))
 
+    # M8.race: an expired commit landing BETWEEN apply_paid_period's
+    # snapshot read and its final write must win — the monotonic branch
+    # is computed from the FOR UPDATE re-read inside the write
+    # transaction, so the expired state survives (renews_at and
+    # period_start never regress to the stale snapshot's values).
+    s8x = f"sub_{_u}_snaprace"
+    u8x = _seed_member("snaprace8", plus_id, P_PLUS, s8x, f"txn_{_u}_snaprace1")
+    b8x = spendable_balance(u8x)
+    from database import db as _db
+    from repo import orders as _orders_repo
+    _real_pbp = _orders_repo.period_base_payment
+    _race = {"fired": False}
+    def _pbp_then_expire(con, sub_id, period_start):
+        row = _real_pbp(con, sub_id, period_start)
+        if not _race["fired"]:
+            _race["fired"] = True
+            # 独立事务提交 expired —— 恰落在快照读之后、加锁重读之前
+            # (快照读无行锁, 此处提交畅通; 复刻 expired 事件的行效果)
+            with _db() as excon:
+                excon.execute(
+                    "update memberships set status='expired', renews_at=%s,"
+                    " updated_at=%s where provider_subscription_id=%s",
+                    (ts, ts, "sub:" + s8x))
+        return row
+    _orders_repo.period_base_payment = _pbp_then_expire
+    try:
+        r8x = _hev("subscription.paid",
+                   _sub(s8x, PS1, PE1, P_PLUS, f"txn_{_u}_snaprace1"))
+    finally:
+        _orders_repo.period_base_payment = _real_pbp
+    m = _membership(u8x)
+    check("M8.race expired committed mid-apply wins (status expired, no regress)",
+          _race["fired"] and m["status"] == "expired"
+          and spendable_balance(u8x) == b8x
+          and int(m["last_grant_period_start"]) == PS1,
+          f"{r8x} {m}")
+
     # ══════════ M9. access-triggered reconcile (throttled) ══════════
     _fetched = []
     _SUBS = {}

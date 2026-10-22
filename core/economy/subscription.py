@@ -466,14 +466,19 @@ def apply_paid_period(sub_id: str, provider_subscription: dict, *,
     # payment only; it is not a lifecycle event. Lifecycle state written
     # after that period was applied (canceled / past_due / expired) and
     # the newer period boundary are never regressed by it.
-    renews_write, ps_write = period_end, period_start
-    _last = (current or {}).get("last_grant_period_start")
-    if current is not None and _last is not None and period_start <= int(_last):
-        status = current["status"]
-        ps_write = int(_last)
-        if current.get("renews_at") is not None:
-            renews_write = int(current["renews_at"])
+    # 判定基准 = 最终写事务内的加锁行重读: 快照读 (current) 与最终写
+    # 之间可能有其它生命周期事件提交 (expired 等), 在旧快照上做单调
+    # 分支会把已写入的新周期回退 — FOR UPDATE 行与随后的 upsert 同
+    # 快照串行, 读到什么就基于什么写。
     with db() as con:
+        locked = orders_repo.membership_by_sub(con, sub_id, lock=True)
+        renews_write, ps_write = period_end, period_start
+        _last = (locked or {}).get("last_grant_period_start")
+        if locked is not None and _last is not None and period_start <= int(_last):
+            status = locked["status"]
+            ps_write = int(_last)
+            if locked.get("renews_at") is not None:
+                renews_write = int(locked["renews_at"])
         orders_repo.upsert_membership_state(
             con, sub_id, status,
             renews_at=renews_write,
