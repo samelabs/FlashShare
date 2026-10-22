@@ -652,25 +652,19 @@ pre.rs-text, pre.rs-json {
 .chipf .x svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
 @media (hover:hover) and (pointer:fine) { .chipf .x:hover { color: var(--danger); background: var(--danger-50); } }
 
-.c-text {
-  display: block; width: 100%; padding: 16px 20px 8px; min-height: 92px;
-  font: inherit; font-size: 16px; line-height: var(--lh-base); color: var(--ink);
-  background: none; border: 0; outline: none; resize: vertical;
-}
-.c-text::placeholder { color: var(--ink-3); }
-.c-text-hint { padding: 16px 20px 8px; min-height: 60px; font-size: 16px; color: var(--ink-3); }
-
-/* 正文工具 (files_max=0) 的正文编辑框: text/json 共用一条底座规则 —
+/* 正文工具 (files_max=0) 的正文编辑框: text/json 共用的唯一底座规则 —
    沉底槽面、透明边框、聚焦环、左右 16px 出血。text 在此之上 3..8 行
    自动增高 (封顶内部滚动, JS 即时贴合 scrollHeight); json 只加等宽
    字体与 min-height 132px。运行按钮一律在底栏 (.c-bar .ti-run)。 */
 .composer .c-text.ti-body {
-  margin: 14px 16px 0; width: calc(100% - 32px); box-sizing: border-box;
+  display: block; margin: 14px 16px 0; width: calc(100% - 32px); box-sizing: border-box;
   padding: 12px 16px;
-  resize: none; overflow-y: auto;
+  font: inherit; font-size: 16px; line-height: var(--lh-base); color: var(--ink);
   background: var(--sunk); border: 1px solid transparent; border-radius: var(--r-lg);
+  outline: none; resize: none; overflow-y: auto;
   transition: box-shadow var(--ease), border-color var(--ease), background var(--ease);
 }
+.composer .c-text.ti-body::placeholder { color: var(--ink-3); }
 .composer .c-text.ti-body:focus {
   background: var(--card); border-color: var(--brand-deep);
   box-shadow: 0 0 0 3px var(--brand-100);
@@ -847,7 +841,6 @@ pre.rs-text, pre.rs-json {
 
 @media (max-width: 767px) {
   .composer { border-radius: 22px; }
-  .c-text { min-height: 72px; }
   .c-bar { gap: 4px; }
   /* 手机底栏: 工具选择器内容自适应宽度 (不拉伸满宽, 最宽让出半行);
      有效期/运行 自然换行到第二行 — .sp 退场, 运行吃

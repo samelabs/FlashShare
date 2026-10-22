@@ -67,11 +67,10 @@
 
 
 /* ── Dropdowns (shared) ───────────────────────────────────── */
-/* 语言入口 = 顶栏唯一挂载点: 菜单锚定到按钮自身 (所有视口可见),
-   右对齐且永不超出视口 (RTL 由下方镜像规则翻转)。 */
-.lang-switch { position: relative; display: flex; align-items: center; }
-/* 顶栏菜单与锚定浮层家族同语言: 卡面 + line-2 描边 + 大圆角 + sh-3 投影;
-   @starting-style 入场 (与 tsel-pop 同机制, 无 display 切换首帧竞态) */
+/* 语言入口 = 顶栏唯一挂载点 (锚定按钮自身, 全视口可见), 菜单家族与
+   锚定浮层同语言: 卡面 + line-2 描边 + 大圆角 + sh-3 投影;
+   @starting-style 入场 (与 tsel-pop 同机制, 无 display 切换首帧竞态);
+   RTL 镜像由下方规则翻转; .lang-switch 本体 = components.css .user-menu 区 */
 .lang-menu, .user-dropdown {
   position: absolute; right: 0; top: calc(100% + var(--s1));
   z-index: var(--z-dropdown);
@@ -742,16 +741,15 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .pub-outputs-checks { display: flex; gap: 10px; flex-wrap: wrap; }
 .pub-hint { font-style: normal; font-size: 12px; color: var(--ink-2); }
 
-/* ═══ IO-3a: 首页 — 选工具 → 输入 → 结果 ═══ */
+/* ═══ 首页 — 选工具 → 输入 → 结果 ═══ */
 /* 工具卡本体 = components.css .tool-card (home/market/user 单源) */
 .workspace .result { margin-block-start: var(--s4); }
 
-/* ═══ IO-3a: 结果卡 (页内) 与 /r 结果页 ═══ */
-.rs-json-head { justify-content: flex-end; padding-block-start: 0; padding-block-end: var(--s2); }
+/* ═══ 结果卡 (页内) 与 /r 结果页 ═══ */
 
-/* ═══ IO-3a: 工具页页头 ═══ */
+/* ═══ 工具页页头 ═══ */
 
-/* ═══ IO-3a: 文件页 (/f) — 与结果页同语言 ═══ */
+/* ═══ 文件页 (/f) — 与结果页同语言 ═══ */
 .file-hero-row { margin-block-start: var(--s4); background: var(--sunk); }
 
 /* Download-all / action labels never wrap inside their button */
@@ -764,7 +762,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 @media (min-width: 600px) {
 }
 
-/* ═══ IO-3b: status pages (missing/offline/404) + mobile nav sheet ═══ */
+/* ═══ status pages (missing/offline/404) + mobile nav sheet ═══ */
 .status-page .empty { padding: var(--s8) var(--s4); }
 .status-glyph {
   display: inline-flex; align-items: center; justify-content: center;
@@ -870,9 +868,9 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .home .hero > .wrap { position: relative; z-index: 1; }
 .home .hero-sub { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-/* hero 与输入框之间的四件套分享条 (居中); 出结果卡后让位 (JS 写
-   hidden 属性 — flex 基样会盖过 UA 的 hidden, 需显式规则) */
-.hero-share { display: flex; justify-content: center; margin-block-start: 18px; }
+/* hero 与输入框之间的四件套分享条 (居中, 间距 = --s3); 出结果卡后
+   让位 (JS 写 hidden 属性 — flex 基样会盖过 UA 的 hidden, 需显式规则) */
+.hero-share { display: flex; justify-content: center; margin-block-start: var(--s3); }
 .hero-share[hidden] { display: none; }
 /* 区块标题下的四件套分享条 (agents / market / pricing) */
 .sec-h .share-bar.sb-compact { margin-block-start: 14px; }
@@ -1030,8 +1028,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
    composer 尺寸/间距唯一属主 = .home .composer (760px 自居中), 包装层不重复设。
    结果区与输入卡同轴 (640px 自居中) */
 .hero .result { text-align: start; max-width: 640px; margin: var(--s5) auto 0; }
-.hero .hero-share { margin-top: var(--s3); justify-content: center; }
-.hero .result { margin-top: var(--s5); }
 /* dark 区带里的终端 demo: 栏宽居中, 内容左读, 尺寸锁定 (循环回放不撑页) */
 .dark .term { width: 100%; margin-top: var(--s5); text-align: start; border-radius: var(--r-lg); font-size: 12.5px; }
 .r-page .rc-files, .r-page .item-file, .r-page .if-body { text-align: start; }
