@@ -193,6 +193,30 @@ def verify_oauth_callback(state: str, browser_state: str, row,
     return None
 
 
+def _x_callback_stage1(state: str, oauth_cookie: str, session_uid):
+    """Sync stage (thread): consume the one-shot state + verify."""
+    with db() as con:
+        row = pop_oauth_state(con, state, now())
+    err = verify_oauth_callback(state, oauth_cookie, row, session_uid)
+    return row, err
+
+
+def _x_callback_stage2(x_user: dict, bind_user_id):
+    """Sync stage (thread): converge the identity + login maintenance."""
+    try:
+        user_id = upsert_x_user(x_user, bind_user_id=bind_user_id)
+    except ValueError as exc:
+        logger.warning("x callback: upsert rejected: %s", exc)
+        code_ = str(exc)
+        if code_ not in ("err_user_suspended", "err_x_bound_other",
+                         "err_user_not_found"):
+            code_ = "err_x_bind_failed"
+        return None, code_
+    if not bind_user_id:
+        _login_maintenance(user_id)
+    return user_id, None
+
+
 @router.get("/x/callback")
 async def x_callback(request: Request):
     code = request.query_params.get("code", "")
@@ -200,12 +224,12 @@ async def x_callback(request: Request):
     if not code or not state:
         return RedirectResponse("/", 302)
 
+    session_user, _ = await asyncio.to_thread(
+        require_session_auth, request)
     # Single use: the state record is consumed by any callback attempt.
-    with db() as con:
-        row = pop_oauth_state(con, state, now())
-    session_user, _ = require_session_auth(request)
-    err = verify_oauth_callback(
-        state, request.cookies.get(_OAUTH_COOKIE, ""), row,
+    row, err = await asyncio.to_thread(
+        _x_callback_stage1, state,
+        request.cookies.get(_OAUTH_COOKIE, ""),
         session_user["id"] if session_user else None)
     if err:
         logger.warning("x callback rejected: %s (state_found=%s)", err, bool(row))
@@ -221,19 +245,14 @@ async def x_callback(request: Request):
         return _x_error(request, "err_x_login_incomplete")
 
     bind_user_id = row.get("bind_user_id")
-    try:
-        user_id = upsert_x_user(x_user, bind_user_id=bind_user_id)
-    except ValueError as exc:
-        logger.warning("x callback: upsert rejected: %s", exc)
-        code_ = str(exc)
-        if code_ not in ("err_user_suspended", "err_x_bound_other", "err_user_not_found"):
-            code_ = "err_x_bind_failed"
-        return _x_error(request, code_)
+    user_id, upsert_err = await asyncio.to_thread(
+        _x_callback_stage2, x_user, bind_user_id)
+    if upsert_err:
+        return _x_error(request, upsert_err)
 
     if bind_user_id:
         resp = RedirectResponse("/account/profile", 302)
     else:
-        await asyncio.to_thread(_login_maintenance, user_id)
         resp = redirect_with_session(
             _safe_next(request.cookies.get(_X_NEXT_COOKIE)), user_id)
     resp.delete_cookie(_OAUTH_COOKIE, path="/auth/x")

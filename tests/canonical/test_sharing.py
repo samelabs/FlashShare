@@ -897,7 +897,7 @@ _staging = open(_os.path.join(REPO, "core", "sharing", "staging.py"),
 check("S4 quota 入口收敛: receipts 唯一 (零直接 reserve, 暂存单点 claim)",
       _pipe_src.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
       and _api.count("stage_sources(") >= 1
-      and _staging.count("claim_ingress_quota(") >= 1,
+      and _staging.count("claim_ingress_quota") >= 1,
       f"pipe={_pipe_src.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
 # 引用既有 the canonical-invocation unification E2E: tests/canonical/test_invocation.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。

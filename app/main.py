@@ -165,12 +165,14 @@ def get_user_from_request(request: Request):
     if not machine_surface:
         token = request.cookies.get(COOKIE_NAME)
         if token:
-            try:
-                from repo.sessions import user_by_session_token
-                with db() as con:
-                    row = user_by_session_token(con, token_hash(token), now())
-            except Exception:
-                return None
+            # Only a resolved-but-unknown token means anonymous. A
+            # database/pool failure must surface as a service error —
+            # swallowing it here would silently turn a logged-in session
+            # into anonymous (login redirect / auth_required), i.e. lie
+            # about the caller's identity.
+            from repo.sessions import user_by_session_token
+            with db() as con:
+                row = user_by_session_token(con, token_hash(token), now())
             if row:
                 request.state.auth_via = "session"
                 return dict(row)

@@ -922,8 +922,10 @@ check("SG18 retrieve query-encoded 合同 (无 path 形式)",
       and "urlencode" in _checkouts_url
       and "/v1/checkouts/" not in _checkouts_url.split("def retrieve_checkout")[1].split("\ndef ")[0])
 import ast as _ast
+# the sync business block lives in _subscribe_checkout_impl (the async
+# shell offloads it to the default executor — same code, new home)
 _sub_fn = [n for n in _ast.parse(_topup_g).body
-           if isinstance(n, _ast.AsyncFunctionDef) and n.name == "subscribe_checkout"][0]
+           if isinstance(n, _ast.FunctionDef) and n.name == "_subscribe_checkout_impl"][0]
 _all_withs = [n for n in _ast.walk(_sub_fn) if isinstance(n, _ast.With)]
 _locked_bodies = [_ast.dump(n) for n in _all_withs
                   if "lock_user_for_checkout" in _ast.dump(n)]

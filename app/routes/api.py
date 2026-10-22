@@ -345,12 +345,8 @@ async def delete_upload_route(public_id: str, request: Request):
     return {"ok": True}
 
 
-@router.patch("/uploads/{public_id}")
-async def rename_upload_route(public_id: str, request: Request):
-    """Rename an upload (only stem, extension preserved)."""
-    user, err = _require_auth(request)
-    if err:
-        return err
+def _rename_upload_impl(public_id: str, user: dict, raw: dict):
+    """Sync business block (thread): lookup + ownership + rename write."""
     if not PUBLIC_ID_RE.match(public_id):
         return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
     upload = get_upload_by_public_id(public_id)
@@ -358,9 +354,7 @@ async def rename_upload_route(public_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if upload["user_id"] != user["id"]:
         return JSONResponse({"ok": False, "error": "forbidden"}, 403)
-
     try:
-        raw = await request.json()
         req = RenameRequest(**raw)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
@@ -375,6 +369,20 @@ async def rename_upload_route(public_id: str, request: Request):
     with db() as con:
         rename_upload_row(con, upload["id"], final_name)
     return {"ok": True, "name": final_name}
+
+
+@router.patch("/uploads/{public_id}")
+async def rename_upload_route(public_id: str, request: Request):
+    """Rename an upload (only stem, extension preserved)."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    import asyncio
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(_rename_upload_impl, public_id, user, raw)
 
 
 # ── User ──

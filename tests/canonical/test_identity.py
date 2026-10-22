@@ -2411,4 +2411,99 @@ with db() as con:
 print("cleanup: oauth fixtures removed")
 
 
+
+# ════════════════════════════════════════════════════════════════════════
+# Pool saturation under the SAME process/pool (identity semantics)
+#
+# I2 audit item: with every pool slot held, a request carrying a VALID
+# session must fail as a service error — never silently degrade to
+# anonymous (login redirect / auth_required). Evidence level: HTTP
+# semantics through the full middleware via an in-process TestClient —
+# the ASGI app and the slot holders below share the VERY SAME
+# database._pool (an out-of-process holder pool proves nothing here).
+# Release must fully drain (no leak).
+# ════════════════════════════════════════════════════════════════════════
+section('Pool saturation: identity never silently degrades')
+
+import threading as _thr
+_ps_u = "ps" + _uuid.uuid4().hex[:8]
+
+
+def _ps_form(fields):
+    out = b""
+    for k, v in fields.items():
+        out += (f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n'
+                f'\r\n{v}\r\n').encode()
+    return out + b"--B--\r\n", "multipart/form-data; boundary=B"
+
+
+from app.web_auth import create_browser_session as _mk_sess_ps
+from database import db as _db_ps
+with _db_ps() as con:
+    _row_ps = con.execute(
+        "insert into users (username, email, password_hash, display_name,"
+        " status, created_at, last_login_at) values (%s, %s, 'x', 'T',"
+        " 'active', %s, %s) returning id",
+        (_ps_u, f"{_ps_u}@t.co", ts_oau, ts_oau)).fetchone()
+    _ps_uid = int(_row_ps["id"])
+_valid_cookie = _mk_sess_ps(_ps_uid)
+check("PS0 seeded a real session", bool(_valid_cookie), "")
+
+import database as _dbmod
+from database import db as _dbhold
+from fastapi.testclient import TestClient as _TC_ps
+import warnings as _w_ps
+with _w_ps.catch_warnings():
+    _w_ps.simplefilter("ignore", DeprecationWarning)
+    _client_ps = _TC_ps(_app, raise_server_exceptions=False)
+
+_holders = []
+_release = _thr.Event()
+
+
+def _hold_slot():
+    with _dbhold() as con:
+        con.execute("select 1")
+        _release.wait(10)
+
+
+for _ in range(16):        # every slot the pool has
+    _t = _thr.Thread(target=_hold_slot, daemon=True)
+    _t.start(); _holders.append(_t)
+import time as _t_ps; _t_ps.sleep(0.8)  # let them all land in the pool
+
+# HTTP semantics (full middleware, in-process): valid session +
+# saturated pool -> service error, NOT a silent anonymous downgrade
+# (no 302 to login, no auth_required body)
+_r = _client_ps.get("/account/profile",
+                    cookies={"flashshare_session": _valid_cookie},
+                    headers={"Accept": "text/html"},
+                    follow_redirects=False)
+check("PS1 saturated pool + valid session → 5xx service failure (never anonymous)",
+      _r.status_code >= 500, _r.status_code)
+
+# light request keeps being served (healthz touches no DB)
+_r = _client_ps.get("/healthz")
+check("PS2 event loop still serves during saturation", _r.status_code == 200,
+      _r.status_code)
+
+_release.set()
+for _t in _holders:
+    _t.join(timeout=6)
+_pool = _dbmod._get_pool()
+check("PS3 all slots returned after release (no leak)",
+      len(_pool._used) == 0, len(_pool._used))
+
+# after the drain the same session is fully functional again
+_r = _client_ps.get("/account/profile",
+                    cookies={"flashshare_session": _valid_cookie},
+                    headers={"Accept": "text/html"},
+                    follow_redirects=False)
+check("PS4 session fully functional after drain", _r.status_code == 200,
+      _r.status_code)
+with _db_ps() as con:
+    con.execute("delete from sessions where user_id=%s", (_ps_uid,))
+    purge_users(con, [_ps_uid])
+
+
 finish()

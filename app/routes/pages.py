@@ -1038,13 +1038,8 @@ def account_tools_publish(request: Request):
     return templates.TemplateResponse(request, "account/publish.html", ctx)
 
 
-@router.get("/r/{result_id}", response_class=HTMLResponse)
-async def result_page(result_id: str, request: Request):
-    """Result page (IO-2): the /r/{id} authority. Delivery-owned expiry
-    (record expireAt — every result shape carries one) gates access;
-    expired or unknown ids get the 404 page. Server-rendered readable
-    without JS: ordered items (text/json shown, files linked), header
-    facts (tool, generated time, expiry, remaining downloads)."""
+def _result_page_impl(result_id: str, request: Request):
+    """Sync business block (thread): DB read + expiry + render."""
     from app.main import templates
     from repo.ledger import call_by_result_public_id
     from utils import format_bytes, format_ts, now, remaining_downloads
@@ -1105,7 +1100,7 @@ async def result_page(result_id: str, request: Request):
                 # download control (presentation only, no new fields)
                 d["deleted"] = True
             else:
-                live = await asyncio.to_thread(storage_info, u["gokapi_id"]) \
+                live = storage_info(u["gokapi_id"]) \
                     if u["gokapi_id"] else None
                 d["remaining"] = remaining_downloads(
                     int(u["allowed_downloads"] or 0), live)
@@ -1216,6 +1211,16 @@ async def result_page(result_id: str, request: Request):
     resp = templates.TemplateResponse(request, "result.html", ctx)
     resp.headers["Vary"] = "Accept"
     return resp
+
+@router.get("/r/{result_id}", response_class=HTMLResponse)
+async def result_page(result_id: str, request: Request):
+    """Result page (IO-2): the /r/{id} authority. Delivery-owned expiry
+    (record expireAt — every result shape carries one) gates access;
+    expired or unknown ids get the 404 page. Server-rendered readable
+    without JS: ordered items (text/json shown, files linked), header
+    facts (tool, generated time, expiry, remaining downloads)."""
+    import asyncio
+    return await asyncio.to_thread(_result_page_impl, result_id, request)
 
 
 @router.get("/qr.svg")

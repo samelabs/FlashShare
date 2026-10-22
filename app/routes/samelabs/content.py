@@ -20,12 +20,8 @@ router = APIRouter()
 _PAGE = 30
 
 
-@router.get("/samelabs/content")
-async def content(request: Request, share: str = "", result: str = "",
-                  user: str = "", tool: str = "", page: int = 1):
-    user_op, resp = gate(request)
-    if resp:
-        return resp
+def _content_impl(user_op: dict, request: Request, share: str, result: str,
+                  user: str, tool: str, page: int):
     from app.main import templates
     page = page_number(page)
     share = share.strip()[:64]
@@ -41,7 +37,7 @@ async def content(request: Request, share: str = "", result: str = "",
             _PAGE, (page - 1) * _PAGE)
     import asyncio
     from sharing.uploads import live_status_map
-    live = await asyncio.to_thread(live_status_map)
+    live = live_status_map()
     files = []
     for r in uploads:
         d = dict(r)
@@ -59,6 +55,15 @@ async def content(request: Request, share: str = "", result: str = "",
             page=page,
             pages=max(1, -(-max(up_total, res_total) // _PAGE)),
             fmt_num=fmt_num, page_id="content"))
+
+@router.get("/samelabs/content")
+async def content(request: Request, share: str = "", result: str = "",
+                  user: str = "", tool: str = "", page: int = 1):
+    user_op, resp = gate(request)
+    if resp:
+        return resp
+    import asyncio
+    return await asyncio.to_thread(_content_impl, user_op, request, share, result, user, tool, page)
 
 
 @router.post("/samelabs/content/uploads/{upload_id}/delete")

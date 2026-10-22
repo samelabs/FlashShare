@@ -242,7 +242,8 @@ async def stage_sources(user_id: int, ip: str, client_ref: str,
     from sharing.ingress_receipt import (
         claim_ingress_quota, finalize_ok, resolve_outcome,
         IngressUnresolved, OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
-    receipt, usage_ids, replay = claim_ingress_quota(
+    receipt, usage_ids, replay = await asyncio.to_thread(
+        claim_ingress_quota,
         user_id, ip, client_ref, req_hash,
         [len(body) for _, _, body in files], scope=scope)
     if replay is not None:
@@ -285,13 +286,16 @@ async def stage_sources(user_id: int, ip: str, client_ref: str,
     #                     暂存对象 + 精确释放 + 落 failed, 抛 StagingError;
     #   UNRESOLVED      → 零清理零释放零改写, 抛 IngressUnresolved。
     from database import db
-    try:
+
+    def _finalize_txn():
         with db() as con:
             finalize_ok(con, int(receipt["id"]), infos)
+    try:
+        await asyncio.to_thread(_finalize_txn)
     except Exception:
         logger.exception("ingress finalize failed id=%s — reconciling",
                          receipt["id"])
-        out = resolve_outcome(int(receipt["id"]))
+        out = await asyncio.to_thread(resolve_outcome, int(receipt["id"]))
         if out["outcome"] == OUTCOME_DURABLE_OK:
             return out["result"]
         if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
@@ -313,7 +317,8 @@ async def _rollback(gids, receipt, usage_ids, user_id):
         except Exception:
             logger.warning("rollback: gokapi cleanup failed for %s", gid)
     try:
-        settle_failure(int(receipt["id"]), usage_ids, user_id)
+        await asyncio.to_thread(
+            settle_failure, int(receipt["id"]), usage_ids, user_id)
     except Exception:
         logger.exception("ingress failure settlement failed id=%s "
                          "(receipt stays running for recovery)",

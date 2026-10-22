@@ -51,14 +51,7 @@ _USD_MILLIS_KINDS = ("provider_earn", "withdraw", "platform_commission",
                      "platform_revenue")
 
 
-@router.get("/samelabs/users/{user_id}")
-async def user_detail(user_id: int, request: Request):
-    """Read-only operator view of one user: profile, separated balances,
-    current membership (effective status), recent orders / tool calls /
-    withdrawals / ledger rows."""
-    user, resp = gate(request)
-    if resp:
-        return resp
+def _user_detail_impl(user: dict, user_id: int, request: Request):
     from app.main import templates
     if not (1 <= user_id <= _MAX_ID):
         return JSONResponse({"ok": False, "error": "user_not_found"}, 404)
@@ -85,7 +78,7 @@ async def user_detail(user_id: int, request: Request):
     import asyncio
     from sharing.uploads import live_status_map
     from utils import format_bytes, remaining_downloads
-    live = await asyncio.to_thread(live_status_map)
+    live = live_status_map()
     for f in files:
         gid = f.pop("gokapi_id", None)
         f["size_h"] = format_bytes(int(f["size_bytes"]))
@@ -117,6 +110,17 @@ async def user_detail(user_id: int, request: Request):
             withdrawals=wds, ledger=ledger, files=files, keys=keys,
             fmt_num=fmt_num,
             page_title=f"用户 #{user_id}", page_id="users"))
+
+@router.get("/samelabs/users/{user_id}")
+async def user_detail(user_id: int, request: Request):
+    """Read-only operator view of one user: profile, separated balances,
+    current membership (effective status), recent orders / tool calls /
+    withdrawals / ledger rows."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    import asyncio
+    return await asyncio.to_thread(_user_detail_impl, user, user_id, request)
 
 
 @router.post("/samelabs/users/{user_id}/reset-password")

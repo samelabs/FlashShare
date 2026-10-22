@@ -27,6 +27,7 @@ import json
 import re
 
 from fastapi import APIRouter, Request
+import asyncio
 from fastapi.responses import JSONResponse
 
 from app.web_auth import require_session_auth as _require_auth  # 单点 (治理)
@@ -309,20 +310,7 @@ async def list_user_tools(request: Request):
     return {"ok": True, "tools": [_public_item(r) for r in _owner_rows(user["id"])]}
 
 
-@router.post("/api/usertools")
-async def create_user_tool(request: Request):
-    """Submit a tool manifest. New tools land visibility=unlisted (not
-    in the public market): publishing publicly requires that the OWNER
-    has successfully run the tool at least once (the only gate — the
-    platform still does no review). The owner flips it public via PATCH
-    after a successful self-run; unlisted/private anytime."""
-    user, err = _require_auth(request)
-    if err:
-        return err
-    try:
-        raw = await request.json()
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+def _create_user_tool_impl(user: dict, raw: dict):
 
     # 社区工具 key = 系统 slug: 请求体不得携带 tool_id
     if "tool_id" in raw:
@@ -424,6 +412,22 @@ async def create_user_tool(request: Request):
         return JSONResponse({"ok": False, "error": "bad_cost"}, 422)
     return {"ok": True, "tool_key": tool_key}
 
+@router.post("/api/usertools")
+async def create_user_tool(request: Request):
+    """Submit a tool manifest. New tools land visibility=unlisted (not
+    in the public market): publishing publicly requires that the OWNER
+    has successfully run the tool at least once (the only gate — the
+    platform still does no review). The owner flips it public via PATCH
+    after a successful self-run; unlisted/private anytime."""
+    user, err = _require_auth(request)
+    if err:
+        return err
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(_create_user_tool_impl, user, raw)
+
 
 @router.get("/api/usertools/{tool_key}/calls")
 def tool_call_log(tool_key: str, request: Request):
@@ -461,38 +465,7 @@ def tool_call_log(tool_key: str, request: Request):
     return {"ok": True, "calls": out}
 
 
-@router.patch("/api/usertools/{tool_key}")
-async def update_user_tool(tool_key: str, request: Request):
-    """Partial update: label/url/timeout/auth/accept/output identity/
-    visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check.
-
-    LocalizedText 写入语义 (the billing fix 协议, 二选一无灰色地带):
-      携 X-518-Edit-Locale (Web 表单):
-        str 与 dict 均为 locale patch — 只写提及的 locale, 未提及语言不动;
-        空值 = 显式删除该 locale; 提交值 == resolver fallback → 未修改不写。
-      无头 (API/manifest):
-        dict = 显式全集替换 (未提及语言删除); str 归一为 {"en": str}。
-    params 机器结构 (key/type/default/min/max/options.value/required):
-      两种语义下均为全量 authoritative — 结构增删以提交为准。
-    params 的三文本叶子 (label/placeholder/options[].label):
-      Web Form (携 X-518-Edit-Locale): 对旧声明做 locale merge —
-        parameter 按 key 对齐, option 按 value 对齐, 禁止 index。
-      API / manifest (无头): 显式全集替换, 不启用 locale merge。
-    """
-    user, err = _require_auth(request)
-    if err:
-        return err
-    try:
-        raw = await request.json()
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-
-    # LocalizedText 编辑保护 (the billing fix): Web 表单显式携带当前编辑 locale 才启用
-    # patch 语义 (str 只更新该 locale, 保留其余语言)。无此头的 API PATCH
-    # 保持既有替换语义 — Web 语义不扩散到 API manifest。
-    edit_locale = (request.headers.get("X-518-Edit-Locale") or "").strip()
-    if edit_locale and edit_locale not in _SUPPORTED_LANGS:
-        return JSONResponse({"ok": False, "error": "bad_edit_locale"}, 422)
+def _update_user_tool_impl(tool_key: str, user: dict, raw: dict, edit_locale: str):
 
     from repo.catalog import owner_row_for_update
     # Snapshot + declaration + pricing mutations share ONE transaction:
@@ -770,6 +743,37 @@ async def update_user_tool(tool_key: str, request: Request):
             set_pricing(tool_key, fields["cost"], bool(pr.get("enabled")),
                         admin_user_id=user["id"], con=con)
     return {"ok": True}
+
+@router.patch("/api/usertools/{tool_key}")
+async def update_user_tool(tool_key: str, request: Request):
+    """Partial update: label/url/timeout/auth/accept/output identity/
+    visibility/enabled/cost. Endpoint changes re-run the SSRF pre-check.
+
+    LocalizedText 写入语义 (the billing fix 协议, 二选一无灰色地带):
+      携 X-518-Edit-Locale (Web 表单):
+        str 与 dict 均为 locale patch — 只写提及的 locale, 未提及语言不动;
+        空值 = 显式删除该 locale; 提交值 == resolver fallback → 未修改不写。
+      无头 (API/manifest):
+        dict = 显式全集替换 (未提及语言删除); str 归一为 {"en": str}。
+    params 机器结构 (key/type/default/min/max/options.value/required):
+      两种语义下均为全量 authoritative — 结构增删以提交为准。
+    params 的三文本叶子 (label/placeholder/options[].label):
+      Web Form (携 X-518-Edit-Locale): 对旧声明做 locale merge —
+        parameter 按 key 对齐, option 按 value 对齐, 禁止 index。
+      API / manifest (无头): 显式全集替换, 不启用 locale merge。
+    """
+    user, err = _require_auth(request)
+    if err:
+        return err
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    # LocalizedText 编辑保护: Web 表单显式携带编辑 locale 才启用 patch 语义
+    edit_locale = (request.headers.get("X-518-Edit-Locale") or "").strip()
+    if edit_locale and edit_locale not in _SUPPORTED_LANGS:
+        return JSONResponse({"ok": False, "error": "bad_edit_locale"}, 422)
+    return await asyncio.to_thread(_update_user_tool_impl, tool_key, user, raw, edit_locale)
 
 
 @router.delete("/api/usertools/{tool_key}")

@@ -1690,7 +1690,7 @@ check("PG4 POST /samelabs/plans 后台建档 + free 行保护 + 权益值域 fai
 check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       "def upgrade_subscription" in _creem_src
       and '"proration-charge-immediately", "proration-none"' in _creem_src
-      and "upgrade_subscription," in _topup_src)
+      and "creem.upgrade_subscription(" in _topup_src)
 _sub_blk2 = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
 _sub_blk_paid = _sub_src2.split("def apply_paid_period")[1].split("\ndef _ev_")[0]
 check("PG6 升级补差在 apply_paid_period (paid-proof) / kind=grant_plan_upgrade / 幂等键含 target",
