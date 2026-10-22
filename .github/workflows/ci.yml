@@ -110,13 +110,6 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
-      - name: Install LibreOffice document-conversion packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libreoffice-writer-nogui libreoffice-calc-nogui \
-            libreoffice-impress-nogui fonts-noto-cjk
-
       # the same runner as local: fail-closed gate for every canonical
       # suite, isolated stack (fresh DB + fake Gokapi + real app), then
       # every tests/ci and tests/canonical suite

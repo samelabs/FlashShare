@@ -1565,39 +1565,73 @@ try:
           all(k in _i18n_js for k in _new_keys))
 
     # ═══════════ F. rate limits ═══════════
+    # Local thresholds + a controllable clock: the loop sizes follow the
+    # patched module constants (a handful of requests), not the runner's
+    # env-raised limits (10000 — production defaults stay untouched), and
+    # window expiry advances the clock instead of sleeping. The aggregate
+    # per-IP limit stays above the per-(ip, login) limit so the two
+    # throttles remain separable, exactly as in production (50 vs 10).
     ip_a = "10.200.%d.%d" % (ts_idc % 250, _os.getpid() % 250)
     ip_b = "10.201.%d.%d" % (ts_idc % 250, _os.getpid() % 250)
-    bad = {"username": "x", "email": "a@b.co", "password": "p", "password_confirm": "p"}
-    codes = [_req_idc("POST", "/auth/register", headers={"X-Real-IP": ip_a}, data=bad).status_code
-             for _ in range(auth_route._REGISTER_IP_LIMIT)]
-    r = _req_idc("POST", "/auth/register", headers={"X-Real-IP": ip_a}, data=bad)
-    check("F1 register per-IP limiter: attempts beyond limit → 429 localized",
-          all(c == 200 for c in codes) and r.status_code == 429
-          and _form_error(r.text) == EN["err_too_many_attempts"], (codes[-1], r.status_code))
-    r = _req_idc("POST", "/auth/register", headers={"X-Real-IP": ip_b}, data=bad)
-    check("F1b other IP unaffected", r.status_code == 200, r.status_code)
-
     ip_c = "10.202.%d.%d" % (ts_idc % 250, _os.getpid() % 250)
     ip_d = "10.203.%d.%d" % (ts_idc % 250, _os.getpid() % 250)
-    for i in range(auth_route._LOGIN_IP_FAIL_LIMIT):
-        _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
-             data={"login": f"{_u}nouser{i}", "password": "whatever-1"})
-    r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
-             data={"login": _u + "b1", "password": "pw-b1-12345"})
-    check("F2 login per-IP aggregate limiter (distinct logins) → 429 even with valid creds",
-          r.status_code == 429 and _form_error(r.text) == EN["err_too_many_attempts"],
-          r.status_code)
-    r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_d},
-             data={"login": _u + "b1", "password": "pw-b1-12345"})
-    check("F2b other IP logs in normally", r.status_code == 302, r.status_code)
     ip_e = "10.204.%d.%d" % (ts_idc % 250, _os.getpid() % 250)
-    for i in range(auth_route._LOGIN_FAIL_LIMIT):
-        _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_e},
-             data={"login": _u + "b2", "password": "wrong-pass"})
-    r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_e},
-             data={"login": _u + "b2", "password": "pw-b2-12345"})
-    check("F3 per-(ip, login) throttle unchanged", r.status_code == 200
-          and _form_error(r.text) == EN["err_login_failed"], r.status_code)
+    _rl_ips = (ip_a, ip_b, ip_c, ip_d, ip_e)
+    bad = {"username": "x", "email": "a@b.co", "password": "p", "password_confirm": "p"}
+    _clock = [_time.time()]
+    _saved = (auth_route._REGISTER_IP_LIMIT, auth_route._LOGIN_IP_FAIL_LIMIT,
+              auth_route._LOGIN_FAIL_LIMIT, auth_route.now)
+    auth_route._REGISTER_IP_LIMIT = 3
+    auth_route._LOGIN_IP_FAIL_LIMIT = 5
+    auth_route._LOGIN_FAIL_LIMIT = 3
+    auth_route.now = lambda: int(_clock[0])
+    try:
+        codes = [_req_idc("POST", "/auth/register", headers={"X-Real-IP": ip_a}, data=bad).status_code
+                 for _ in range(auth_route._REGISTER_IP_LIMIT)]
+        r = _req_idc("POST", "/auth/register", headers={"X-Real-IP": ip_a}, data=bad)
+        check("F1 register per-IP limiter: attempts beyond limit → 429 localized",
+              all(c == 200 for c in codes) and r.status_code == 429
+              and _form_error(r.text) == EN["err_too_many_attempts"], (codes[-1], r.status_code))
+        r = _req_idc("POST", "/auth/register", headers={"X-Real-IP": ip_b}, data=bad)
+        check("F1b other IP unaffected", r.status_code == 200, r.status_code)
+        _clock[0] += auth_route._REGISTER_IP_WINDOW + 1
+        r = _req_idc("POST", "/auth/register", headers={"X-Real-IP": ip_a}, data=bad)
+        check("F1c register window slid (controlled clock) → passes again",
+              r.status_code == 200, r.status_code)
+
+        for i in range(auth_route._LOGIN_IP_FAIL_LIMIT):
+            _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
+                 data={"login": f"{_u}nouser{i}", "password": "whatever-1"})
+        r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
+                 data={"login": _u + "b1", "password": "pw-b1-12345"})
+        check("F2 login per-IP aggregate limiter (distinct logins) → 429 even with valid creds",
+              r.status_code == 429 and _form_error(r.text) == EN["err_too_many_attempts"],
+              r.status_code)
+        r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_d},
+                 data={"login": _u + "b1", "password": "pw-b1-12345"})
+        check("F2b other IP logs in normally", r.status_code == 302, r.status_code)
+        _clock[0] += auth_route._LOGIN_IP_FAIL_WINDOW + 1
+        r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
+                 data={"login": _u + "b1", "password": "pw-b1-12345"})
+        check("F2c login aggregate window slid (controlled clock) → 302 again",
+              r.status_code == 302, r.status_code)
+
+        for i in range(auth_route._LOGIN_FAIL_LIMIT):
+            _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_e},
+                 data={"login": _u + "b2", "password": "wrong-pass"})
+        r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_e},
+                 data={"login": _u + "b2", "password": "pw-b2-12345"})
+        check("F3 per-(ip, login) throttle unchanged", r.status_code == 200
+              and _form_error(r.text) == EN["err_login_failed"], r.status_code)
+    finally:
+        # config, clock and this run's limiter keys are all restored
+        (auth_route._REGISTER_IP_LIMIT, auth_route._LOGIN_IP_FAIL_LIMIT,
+         auth_route._LOGIN_FAIL_LIMIT, auth_route.now) = _saved
+        for store in (auth_route._register_attempts, auth_route._login_ip_failures):
+            for k in ((ip,) for ip in _rl_ips):
+                store.pop(k, None)
+        for k in [k for k in list(auth_route._login_failures) if k[0] in _rl_ips]:
+            auth_route._login_failures.pop(k, None)
 
     # ═══════════ G. /mcp stale cookie + Bearer ═══════════
     g = _mkuser(_u + "g", f"{_u}g@t.co", "pw-g-123456")

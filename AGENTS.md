@@ -107,9 +107,22 @@
 - 修点，不扩面：不把一个点扩成新系统/新框架。
 - 不因 AI 重构制造新 abstraction；已有单点（supply/gate/formats/i18n）不另起炉灶。
 - product semantics > implementation elegance。
-- tests assert behavior，不复制 implementation。
+- tests assert behavior，不复制 implementation；不断言文档文字；不加旧工具名称黑名单式守卫。
 - 没定位准问题不胡乱修改；按逻辑排查，不假定是环境问题。
 - 方案未锁定不动代码；讨论阶段零文件改动。
+
+测试形态与成本（长期规则）：
+
+- canonical 回归 = 16 个主链文件 + 共享 `_harness.py`；新用例写进所属链的文件。不恢复
+  归并前的旧测试文件，不新增平行的 regression/audit/legacy 套件，不另建测试治理文档。
+- 常规开发只跑受影响套件；批次交付与最终收口跑必要完整门禁；无新变更或失败原因，
+  不反复跑全量。
+- 新测试须说明保护的行为、归属文件、样本规模、依赖与耗时；用最小有区分力样本。
+  限流测试用局部小阈值，不循环上万次请求；时间窗用可控时钟，不长时间 sleep；
+  并发问题用受控交错。
+- 重型压测、规模数据、升级演练按需低频执行，不塞进普通回归。
+- 删除能力时同批核对实现、注册、fixture、测试、runner、CI 安装步骤与现行文档，
+  清理失去消费者的内容；核对当前测试文件与入口引用，删除过时引用。
 
 ## F. DB / runtime
 

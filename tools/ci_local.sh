@@ -7,8 +7,8 @@
 # tests/canonical suite), prints one exit-code table, stops.
 # Env: PG_ADMIN_URL (default postgresql://127.0.0.1:5432/postgres),
 #      PYTHON (default venv/bin/python), PLAYWRIGHT_CORE_PATH / CHROMIUM_PATH,
-#      APP_PORT (default 8100) / GOKAPI_PORT (default 53898) — parallel
-#      stacks (per-batch worktrees) each pick their own isolated ports.
+#      APP_PORT (default 8100) / GOKAPI_PORT (default 53898) — pick free
+#      isolated ports whenever a default is already taken.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 PY=${PYTHON:-venv/bin/python}
@@ -66,20 +66,30 @@ psql "$ADMIN" -qc "CREATE DATABASE $DB" >/dev/null || { echo "cannot create $DB"
   --key "$FLASHSHARE_GOKAPI_KEY" >"$OUT/gokapi.log" 2>&1 & PIDS+=($!)
 "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT" --workers 1 \
   >"$OUT/app.log" 2>&1 & PIDS+=($!)
+T0=$SECONDS; HEALTHY=0
 for _ in $(seq 60); do
-  curl -fsS "http://127.0.0.1:$APP_PORT/healthz" >/dev/null 2>&1 && break
+  curl -fsS "http://127.0.0.1:$APP_PORT/healthz" >/dev/null 2>&1 && { HEALTHY=1; break; }
   kill -0 "${PIDS[1]}" 2>/dev/null || { tail -30 "$OUT/app.log"; exit 2; }
   sleep 1
 done
+# a live app that never answers healthz within the budget is a startup
+# failure, not a stack to silently run the suites against
+if [ "$HEALTHY" -ne 1 ]; then
+  echo "app not healthy on :$APP_PORT after $((SECONDS - T0))s"
+  tail -30 "$OUT/app.log"; exit 2
+fi
+STARTUP=$((SECONDS - T0))
 
 FAIL=0
-printf '%-4s %s\n' EXIT SUITE
+printf '%-4s %-6s %s\n' EXIT TIME SUITE
 for s in "$@"; do
   case $s in *.js) cmd=(node "$s") ;; *) cmd=("$PY" "$s") ;; esac
   log="$OUT/$(basename "$s").log"
+  t0=$SECONDS
   "${cmd[@]}" >"$log" 2>&1; rc=$?
-  printf '%-4s %s\n' "$rc" "$s"
+  printf '%-4s %-6s %s\n' "$rc" "$((SECONDS - t0))s" "$s"
+  grep -o '[0-9]*/[0-9]* checks passed' "$log" | tail -1 | sed 's/^/     /'
   [ $rc -ne 0 ] && { FAIL=1; grep -m3 -E "✗|Error|FAIL" "$log" | sed 's/^/     /'; }
 done
-echo "logs: $OUT"
+echo "startup ${STARTUP}s + suites $((SECONDS - T0 - STARTUP))s · logs: $OUT"
 exit $FAIL

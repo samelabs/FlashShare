@@ -85,13 +85,21 @@ TEST_DB_URL 时直接退出（不发任何请求）。两种合法方式：
 
 唯一测试入口是 `tools/ci_local.sh`（本地与 CI canonical-integration job 同一脚本）：先验证每个 canonical
 套件在缺端口 / 端口 8000 / 非整数端口 / 缺 TEST_DB_URL 时都 exit 2，再自建全新库 + fake Gokapi(:53898) +
-app(:8100)，按给定顺序跑套件、输出一张退出码表、结束后自动停服务并 DROP 库。不要另写驱动脚本。
+app(:8100)，按给定顺序跑套件、输出各套件退出码/耗时/检查摘要（启动与套件耗时分列；应用 60s 内不健康
+即失败），结束后自动停服务并 DROP 库。不要另写驱动脚本。
 
 ```bash
 PG_ADMIN_URL=postgresql://<user>@127.0.0.1:5432/postgres \
   tools/ci_local.sh tests/canonical/<affected>.py ...     # 受影响套件
 tools/ci_local.sh --browser                               # 不带参数 = tests/ci + tests/canonical 全部 + 两道浏览器门禁
 ```
+
+测试成本规则（长期）：常规开发经 ci_local 跑受影响链；批次交付与最终收口跑必要完整门禁；无新变更
+或失败原因不重复全量。新用例写进所属链的现有文件（16 个 canonical 主链 + `_harness.py`，不另开平行
+套件），并说明保护的行为、样本规模、依赖与耗时，用最小有区分力样本。限流测试用局部小阈值（如
+test_identity 的 F 段 patch 模块常量 + 可控时钟），不循环上万次请求、不等待真实时间窗；并发问题用
+受控交错。重型压测、规模数据、升级演练按需低频单独执行，不进普通回归。删除能力时同批清理实现、
+注册、fixture、测试、runner、CI 安装步骤与文档中失去消费者的内容。
 
 浏览器门禁需 `PLAYWRIGHT_CORE_PATH`（playwright-core 1.55.0）。**推荐与 CI 同源**：安装 Playwright 捆绑
 Chromium 并让 `CHROMIUM_PATH` 指向其可执行文件（`npx playwright-core@1.55.0 install chromium`，可执行文件在
@@ -165,8 +173,8 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 
 1. `git fetch origin`；从 PM 指定的基线（默认 `origin/main`）建分支。
 2. 改动 + diff 自审 + 门禁：compile / node --check / `tools/ci_local.sh` 跑受影响套件
-   （UI 改动加 `--browser`）。全量验证由 GitHub CI 负责，执行 agent 不跑本地全量，
-   不用 sleep 轮询后台任务——套件前台运行，直接读退出码表。
+   （UI 改动加 `--browser`）。常规不跑本地全量（批次交付/最终收口按需跑一次完整门禁），
+   全量验证由 GitHub CI 负责；不用 sleep 轮询后台任务——套件前台运行，直接读退出码表。
 3. push 该 non-main 分支 → 报告 → **STOP**。
 4. PM 按精确 SHA 验收，开 PR，等 GitHub CI（fast-gate / canonical-integration /
    browser-runtime）全绿后合入 `main`；production deploy 需 owner 授权。
