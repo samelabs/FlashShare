@@ -181,7 +181,7 @@
 
 ## i18n 单源
 
-- 唯一数据源 `core/i18n.py` SERVER_I18N（10 语言）；生成 `static/i18n.js`：`venv/bin/python tools/gen_i18n.py`（生成物勿手编）。
+- 唯一数据源 `core/i18n.py` SERVER_I18N（10 语言）；生成 `static/i18n.js`（首屏英文回退包）+ `static/i18n/<lang>.js` 语言分片（按需加载：页面 SSR 注入当前语言分片，切换器动态加载其余；`tools/gen_i18n.py --check` 校验一致性）。生成物勿手编。
 - 死键删除前六引用形态全查（模板 texts / data-i18n / window.t / 裸 t / 动态族）。
 
 ## ⛔ 反越界红线（每条有真实事故背书）

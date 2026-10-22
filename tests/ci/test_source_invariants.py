@@ -20,6 +20,7 @@ Semantic guards that complement — never replace — the behavior suites:
 """
 import os
 import re
+import subprocess
 import sys
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -104,6 +105,13 @@ for d, _dirs, files in os.walk(os.path.join(REPO, "app", "templates")):
                 if _attr.search(line):
                     _bad.append(f"{os.path.relpath(p, REPO)}:{n}")
 check("S6 templates use texts['key'] for dict-method-named keys", not _bad, _bad)
+
+# i18n 按需加载生成物: 首屏包(en) + static/i18n/<lang>.js 分片, 由
+# SERVER_I18N 单源生成; --check 保证提交的生成物与源一致 (10 语言完整)。
+_r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "gen_i18n.py"), "--check"],
+                    capture_output=True, text=True)
+check("S7 i18n artifacts match SERVER_I18N (first-screen pack + 10 shards)",
+      _r.returncode == 0, (_r.stdout + _r.stderr).strip()[:200])
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL or not PASS else 0)

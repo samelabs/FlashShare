@@ -19,6 +19,19 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
     window.__SUPPORTED_LANGS=["en","zh","ja","ko","es","ar","de","ru","pt","fr"];
     window.__LOCALE_MAP={en:"en",zh:"zh-CN",ja:"ja-JP",ko:"ko-KR",es:"es-ES",ar:"ar",de:"de-DE",ru:"ru-RU",pt:"pt-BR",fr:"fr-FR"};
     window.__LANG_LABELS={"en":"English","zh":"简体中文","ja":"日本語","ko":"한국어","es":"Español","ar":"العربية","de":"Deutsch","ru":"Русский","pt":"Português","fr":"Français"};
+    // 语言资源按需加载: 目标语言分片未载时动态注入, onload 后才切换重绘;
+    // 连续切换只有最后意图生效 (序号守卫); 失败保持当前可用语言。
+    var _langSeq=0;
+    window.loadLangPack=function(l,cb){
+      var I=window.__I18N__||{};
+      if(I[l]&&Object.keys(I[l]).length){cb(true);return}
+      var seq=++_langSeq;
+      var sc=document.createElement("script");
+      sc.src="/static/i18n/"+l+".js?v="+(window.__I18N_V||"");
+      sc.onload=function(){if(seq===_langSeq)cb(true)};
+      sc.onerror=function(){if(seq===_langSeq)cb(false)};
+      document.head.appendChild(sc);
+    };
         window.__afterI18n=null;
     window.t=function(k,v){var I=window.__I18N__||{};var T=I[window.__LANG]||I.en||{};var E=I.en||{};var s=T[k]||E[k]||k;if(v){for(var p in v)s=s.split("{"+p+"}").join(v[p])}return s};
     window.applyI18n=function(){
@@ -43,7 +56,24 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
         lb.title=window.__LANG_LABELS[window.__LANG]||"English";
         lb.addEventListener("click",function(e){e.stopPropagation();var willOpen=lm.classList.contains("hidden");closeAll();if(willOpen){lm.classList.remove("hidden");lb.setAttribute("aria-expanded","true")}});
         lm.innerHTML=langOptions();
-        lm.addEventListener("click",function(e){var o=e.target.closest("[data-lang]");if(!o)return;var l=window.__SUPPORTED_LANGS.indexOf(o.dataset.lang)>=0?o.dataset.lang:"en";window.__LANG=l;document.cookie="flashshare_lang="+l+";Path=/;Max-Age=31536000;SameSite=Lax";if(typeof window.__afterI18n==="function"){mounts.forEach(function(mm){var bb=mm.querySelector("button[aria-haspopup]"),uu=mm.querySelector(".lang-menu");if(bb)bb.title=window.__LANG_LABELS[l]||"English";if(uu){uu.classList.add("hidden");uu.querySelectorAll(".lang-option").forEach(function(b){b.classList.toggle("active",b.dataset.lang===l);b.setAttribute("aria-selected",b.dataset.lang===l)})}});lb.setAttribute("aria-expanded","false");window.applyI18n()}else{location.reload()}});
+        lm.addEventListener("click",function(e){
+          var o=e.target.closest("[data-lang]");if(!o)return;
+          var l=window.__SUPPORTED_LANGS.indexOf(o.dataset.lang)>=0?o.dataset.lang:"en";
+          window.loadLangPack(l,function(ok){
+            if(!ok){window.globalToast&&window.globalToast(window.t("err_unexpected"));return}
+            window.__LANG=l;
+            document.cookie="flashshare_lang="+l+";Path=/;Max-Age=31536000;SameSite=Lax";
+            if(typeof window.__afterI18n==="function"){
+              mounts.forEach(function(mm){
+                var bb=mm.querySelector("button[aria-haspopup]"),uu=mm.querySelector(".lang-menu");
+                if(bb)bb.title=window.__LANG_LABELS[l]||"English";
+                if(uu){uu.classList.add("hidden");uu.querySelectorAll(".lang-option").forEach(function(b){b.classList.toggle("active",b.dataset.lang===l);b.setAttribute("aria-selected",b.dataset.lang===l)})}
+              });
+              lb.setAttribute("aria-expanded","false");
+              window.applyI18n()
+            }else{location.reload()}
+          });
+        });
       });
       document.addEventListener("click",closeAll);
     })();

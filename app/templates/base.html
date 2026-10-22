@@ -90,6 +90,8 @@ window.__BASE_URL__ = "{{ BASE_URL }}";
 <script src="/static/pages/base-engine.js?v={{ pages_version }}"></script>
 <script src="/static/pages/auth-modal.js?v={{ pages_version }}"></script>
   <script src="/static/i18n.js?v={{ i18n_version }}"></script>
+<script>window.__I18N_V = "{{ i18n_version }}";</script>
+{% if lang != "en" %}<script src="/static/i18n/{{ lang }}.js?v={{ i18n_version }}"></script>{% endif %}
   {% block script_head %}{% endblock %}
   {% block script %}{% endblock %}
   {% block script_tail %}{% endblock %}
