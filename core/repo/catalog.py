@@ -304,10 +304,12 @@ def catalog_contract_rows(con) -> list:
 
 def tool_contract_row(con, tool_key: str):
     """单行输入方式契约列 (update_tool PATCH 终态校验用), 行锁读 —
-    与同一事务内紧随的 UPDATE 之间无并发窗口。"""
+    与同一事务内紧随的 UPDATE 之间无并发窗口。execution/endpoint_json/
+    params_json 供正文工具的查询键撞名终态判定 (供给侧单点)。"""
     return con.execute(
         "SELECT files_max, accept_json, format_family, body_format,"
-        " body_placeholder_json FROM platform_tools"
+        " body_placeholder_json, execution, endpoint_json, params_json"
+        " FROM platform_tools"
         " WHERE tool_key = %s FOR UPDATE", (tool_key,)).fetchone()
 
 

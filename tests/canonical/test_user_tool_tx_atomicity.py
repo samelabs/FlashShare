@@ -170,6 +170,56 @@ check("T4 pricing fail → tool row still exists + pricing original state",
       row_pt[0] == 1 and row_pr[0] == 3 and row_pr[1] is True,
       f"pt={row_pt} pr={row_pr}")
 
+# ── 5. enabled PATCH 拒绝 (bad_enabled) → 零审计、工具不变 ──
+_a0 = db_row("select count(*) from operator_audit where"
+             " action='tool.enabled.update' and target_id=%s", (_tool2_key,))
+st, r = req("PATCH", f"/api/usertools/{_tool2_key}",
+            {"enabled": "false"}, cookie=cookie, host=_HOST2)
+_a1 = db_row("select count(*) from operator_audit where"
+             " action='tool.enabled.update' and target_id=%s", (_tool2_key,))
+row_en = db_row("select enabled from platform_tools where tool_key=%s",
+                (_tool2_key,))
+check("T5 enabled='false' (non-bool) → 422 bad_enabled, zero audit, unchanged",
+      st == 422 and r.get("error") == "bad_enabled"
+      and _a1[0] == _a0[0] and row_en[0] is True,
+      f"{st} {r} audit {_a0[0]}->{_a1[0]} en={row_en}")
+
+# ── 6. 合法 enabled 修改 → 恰一条准确审计 ──
+st, r = req("PATCH", f"/api/usertools/{_tool2_key}",
+            {"enabled": False}, cookie=cookie, host=_HOST2)
+_rows = db_row(
+    "select count(*), count(*) filter"
+    " (where after_json->>'enabled' = 'false')"
+    " from operator_audit where action='tool.enabled.update'"
+    " and target_id=%s", (_tool2_key,))
+row_en = db_row("select enabled from platform_tools where tool_key=%s",
+                (_tool2_key,))
+check("T6 legal enable→disable commits with exactly one accurate audit",
+      st == 200 and r.get("ok") and row_en[0] is False
+      and _rows[0] == _a0[0] + 1 and int(_rows[1]) == 1,
+      f"{st} {r} audit rows={_rows} en={row_en}")
+
+# ── 7. 正文工具 PATCH 撞名 (换 URL 带撞名查询键) → 供给单点 422 零写入 ──
+st, r = req("POST", "/api/usertools", {
+    "label": {"en": "Tx Body"}, "execution": "http",
+    "url": "https://93.184.216.34/bb", "timeout_s": 30,
+    "visibility": "private", "files_min": 0, "files_max": 0,
+    "body_format": "text", "params": [
+        {"key": "q", "type": "text", "label": {"en": "Q"}}]},
+    cookie=cookie, host=_HOST2)
+_bkey = (r or {}).get("tool_key")
+check("T7a body tool created", st == 200 and r.get("ok") and _bkey,
+      f"{st} {str(r)[:90]}")
+st, r = req("PATCH", f"/api/usertools/{_bkey}",
+            {"url": "https://93.184.216.34/bb?q=1"}, cookie=cookie,
+            host=_HOST2)
+_row_b = db_row("select endpoint_json from platform_tools"
+                " where tool_key=%s", (_bkey,))
+check("T7 PATCH url with colliding query key → 422 bad_binding, zero write",
+      st == 422 and r.get("error") == "bad_binding"
+      and _row_b is not None and "q=1" not in (_row_b[0] or ""),
+      f"{st} {r} ep={_row_b}")
+
 _db.close()
 print()
 print("FAIL:", FAIL if FAIL else "无 — 全绿")

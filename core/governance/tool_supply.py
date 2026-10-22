@@ -578,6 +578,26 @@ def update_tool(tool_key: str, patch: dict, con=None) -> None:
                     row["body_placeholder_json"]))
             if code:
                 raise DeclarationError(code)
+            if row["execution"] == "http":
+                # 正文 http 工具: params 编码进查询参数 — 终态 URL 的
+                # 自带查询键不得与终态 params 声明键撞名 (写库前判定,
+                # PATCH 合并态; 供给单点, 路由层不再自查)。
+                _endpoint_json = sets.get("endpoint_json",
+                                          row["endpoint_json"])
+                _params_json = sets.get("params_json", row["params_json"])
+                _body = sets.get("body_format", row["body_format"])
+                try:
+                    _url = (json.loads(_endpoint_json or "{}")
+                            .get("url", "")) \
+                        if _endpoint_json else ""
+                    _params = (json.loads(_params_json)
+                               if _params_json else [])
+                except (TypeError, ValueError):
+                    raise DeclarationError("tool_unavailable") from None
+                if _body and _params:
+                    from remote import endpoint_param_query_conflict
+                    if endpoint_param_query_conflict(_url, _params):
+                        raise DeclarationError("bad_binding")
         update_tool_row(cn, tool_key, sets)
 
     if con is not None:

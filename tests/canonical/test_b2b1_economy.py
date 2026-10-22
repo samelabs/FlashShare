@@ -602,7 +602,9 @@ with db() as con:
         " and note like %s", (uto, f"%{ttx}%")).fetchone()["c"]
 _ok, _objs_after = _list_gokapi()
 check("O1 text-only tool returned a file → call failed typed, refund exact",
-      res is None and err == {"ok": False, "error": "err_output_mismatch"}
+      res is None
+      and err == {"ok": False, "error": "err_output_mismatch",
+                  "call_id": crow["id"]}
       and code == 400 and crow["status"] == "failed"
       and crow["error"] == "err_output_mismatch"
       and spendable_balance(uto) == b_out_pre and n_refund >= 1,

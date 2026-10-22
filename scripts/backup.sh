@@ -83,15 +83,21 @@ done
 # ── Off-host upload ──
 if [ -n "$REMOTE" ]; then
   if command -v rclone >/dev/null 2>&1; then
+    # the checksum manifest travels WITH the artifacts — a remote set
+    # without its SHA256SUMS is unrestorable-by-proof; any miss fails
     rclone copy "$PG_FILE" "$REMOTE/daily/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
       || fail "rclone pg upload failed"
     rclone copy "$GK_FILE" "$REMOTE/daily/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
       || fail "rclone gokapi upload failed"
+    rclone copy "$DAILY_DIR/SHA256SUMS-$STAMP" "$REMOTE/daily/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
+      || fail "rclone daily checksums upload failed"
     if [ "$DOW" = "7" ]; then
       rclone copy "$WEEKLY_DIR/pg-$STAMP.dump" "$REMOTE/weekly/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
         || fail "rclone weekly pg upload failed"
       rclone copy "$WEEKLY_DIR/gokapi-$STAMP.tar.gz" "$REMOTE/weekly/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
         || fail "rclone weekly gokapi upload failed"
+      rclone copy "$WEEKLY_DIR/SHA256SUMS-$STAMP" "$REMOTE/weekly/" --log-file=/tmp/fsb-rclone.log 2>>/tmp/fsb-rclone.log \
+        || fail "rclone weekly checksums upload failed"
     fi
     log "off-host upload OK → $REMOTE"
   else

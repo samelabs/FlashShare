@@ -674,14 +674,11 @@ async def update_user_tool(tool_key: str, request: Request):
             # (bad_enabled), 与 declaration 语义一致。
             sets["enabled"] = raw.get("enabled")
             # developer self-disable/enable writes the SAME audit trail
-            # the operator takedown does (actor = the owner)
-            from repo import operator_audit
-            operator_audit.record(
-                con, int(user["id"]), "tool.enabled.update", "tool",
-                tool_key,
-                {"tool_key": tool_key, "enabled": bool(row["enabled"])},
-                {"tool_key": tool_key, "enabled": bool(raw.get("enabled"))},
-                now())
+            # the operator takedown does (actor = the owner) — recorded
+            # AFTER update_tool succeeds, after value = the validated
+            # enabled (a rejected patch leaves zero audit rows)
+            _audit_enabled = {"tool_key": tool_key,
+                              "enabled": bool(row["enabled"])}
         if "desc" in raw:
             d = raw.get("desc")
             if edit_locale:
@@ -743,32 +740,26 @@ async def update_user_tool(tool_key: str, request: Request):
         if sets or fields:
             if row["execution"] == "http":
                 sets["binding"] = merged_decl
-            # 正文 http 工具: params 编码进查询参数 — 最终 URL 的自带查询
-            # 键不得与最终 params 声明键撞名 (写库前判定, PATCH 合并态,
-            # 含切换输入方式后的最终 body_format)。
-            _final_bf = fields.get("body_format", row.get("body_format"))
-            if row["execution"] == "http" and _final_bf:
-                _final_params = sets.get("params")
-                if _final_params is None:
-                    try:
-                        _final_params = json.loads(row["params_json"] or "[]")
-                    except (TypeError, ValueError):
-                        # 存储契约破损 — 直接报错, 禁止兜底成 []
-                        return JSONResponse(
-                            {"ok": False, "error": "tool_unavailable"}, 503)
-                if _final_params:
-                    from remote import endpoint_param_query_conflict
-                    if endpoint_param_query_conflict(
-                            merged_decl.get("url"), _final_params):
-                        return JSONResponse(
-                            {"ok": False, "error": "bad_binding"}, 422)
+            # 正文工具的查询键撞名终态判定在 tool_supply.update_tool
+            # (供给单点, 与启动不变量同一行锁读) — 路由不再自查。
             from governance.tool_supply import update_tool, DeclarationError
             try:
                 update_tool(tool_key, sets, con=con)
             except DeclarationError as exc:
                 # 与 create 路径同一受控 422 (如 enabled 非 bool →
-                # bad_enabled), 不落全局 500
+                # bad_enabled), 不落全局 500; 存储契约破损是可用性
+                # 事实, 表达为 503
+                if str(exc) == "tool_unavailable":
+                    return JSONResponse(
+                        {"ok": False, "error": "tool_unavailable"}, 503)
                 return JSONResponse({"ok": False, "error": str(exc)}, 422)
+            if "enabled" in raw:
+                from repo import operator_audit
+                operator_audit.record(
+                    con, int(user["id"]), "tool.enabled.update", "tool",
+                    tool_key, _audit_enabled,
+                    {"tool_key": tool_key,
+                     "enabled": bool(raw.get("enabled"))}, now())
 
         if "cost" in fields:
             # 沿用当前商业开关: 作者改价不得推翻 operator 的 pricing 下架

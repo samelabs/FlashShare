@@ -129,6 +129,10 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         "canonical_url": BASE_URL + request.url.path + (
             f"?lang={lang}" if language_from_code(
                 request.query_params.get("lang", "")) else ""),
+        # query-free base for the hreflang set: each alternate appends its
+        # own ?lang=xx, x-default carries none — a page already on ?lang=de
+        # must not double-append its query onto every alternate
+        "canonical_path_url": BASE_URL + request.url.path,
         # Default is NOT indexable; the ten public route families opt in
         # with "index, follow" (hreflang follows that flag, nothing else).
         "seo_robots": "noindex",

@@ -78,7 +78,7 @@ def validate_inline_item(item: dict, inline_budget: int) -> dict:
         import json as _json
         data = item.get("data")
         try:
-            blob = _json.dumps(data, ensure_ascii=False)
+            blob = _json.dumps(data, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError):
             raise ItemsError("err_items_shape") from None
         if len(blob.encode("utf-8")) > MAX_INLINE_RESULT_BYTES \
@@ -113,8 +113,8 @@ def validate_items_declaration(items) -> list[dict]:
             inline_total += len(norm["text"].encode("utf-8"))
         else:
             import json as _json
-            inline_total += len(_json.dumps(norm["data"],
-                                            ensure_ascii=False).encode("utf-8"))
+            inline_total += len(_json.dumps(norm["data"], ensure_ascii=False,
+                                            allow_nan=False).encode("utf-8"))
         out.append(norm)
     return out
 

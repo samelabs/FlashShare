@@ -287,6 +287,197 @@ try:
 finally:
     _restore_real_pool()
 
+# ══════════ D4. 超时回收: 真实 ProcessPool + 卡死 handler ══════════
+# shutdown(wait=False) 清空 _processes 后再读它是 AttributeError (旧
+# worker 全部存活)。reset_pool(terminate_workers=True) 在 shutdown 前快照
+# 进程表并显式 terminate→join→kill: 卡死 worker 必须消失, 并发两个超时
+# 只产生一次 reset, 下一次调用立刻可用, 超时调用退款恰好一次。
+import execution.orchestrator as _orch_mod
+from execution.orchestrator import _run_handler, execute_local
+from execution import ExecutionError
+
+_wtag = _os.urandom(3).hex()
+_wedge_id = f"tmpwedge_{_wtag}"
+_quick_id = f"tmpquick_{_wtag}"
+_wfile = _os.path.join(_REPO, "core", f"tools_tmpwedge_{_wtag}.py")
+with open(_wfile, "w", encoding="utf-8") as _f:
+    _f.write(f'''
+import os
+import time
+from tools import register
+
+_PIDS = os.path.join(os.path.dirname(__file__), "tmpwedge_pids_{_wtag}.txt")
+
+
+def _wedge(tool_input, params):
+    with open(_PIDS, "a") as f:
+        f.write(str(os.getpid()) + "\\n")
+    time.sleep(600)
+    return {{"items": []}}
+
+
+def _quick(tool_input, params):
+    return {{"items": [{{"kind": "text", "text": "quick-ok"}}]}}
+
+
+register(tool_id="{_wedge_id}", label={{"en": "Wedge"}}, handler=_wedge,
+         accept={{".png"}}, tag="image")
+register(tool_id="{_quick_id}", label={{"en": "Quick"}}, handler=_quick,
+         accept={{".png"}}, tag="image", outputs=("text",))
+''')
+_wuser = None
+_d4_pools = []
+try:
+    import multiprocessing as _mp4
+    from concurrent.futures import ProcessPoolExecutor as _PPE4
+    from economy.billing import grant as _grant4, spendable_balance as _sb4
+    from execution.invocation import ToolInvocation, SourceFile
+    from execution import gate as _gate4
+
+    # spawn 上下文的 worker 会把本测试脚本当主模块重跑 (线性脚本副作用
+    # 全量重放); 测试用显式 fork 上下文的真实池。fork 子进程按
+    # worker.process_tool 的 load_all() 重扫注册表发现临时模块 — 把
+    # _loaded 复位让子进程重扫。
+    import tools as _tools4
+    _tools4._loaded = False
+    _fork4 = _mp4.get_context("fork")
+    _orig_new_pool4 = pool_mod._new_pool
+    _d4_pool = _PPE4(max_workers=pool_mod.WORKERS, mp_context=_fork4)
+    _d4_pools.append(_d4_pool)
+    pool_mod._pool = _d4_pool
+    pool_mod._new_pool = lambda: _PPE4(max_workers=pool_mod.WORKERS,
+                                       mp_context=_fork4)
+
+    _wuser = _mkuser(_u + "w")
+    with db() as con:
+        for _tid in (_wedge_id, _quick_id):
+            con.execute(
+                "insert into platform_tools (tool_key, owner_id, tool_id,"
+                " execution, label_json, visibility, enabled, created_at,"
+                " updated_at, accept_json, format_family)"
+                " values (%s, NULL, %s, 'local', %s, 'public', TRUE,"
+                " %s, %s, '[\".png\"]', 'image')",
+                (_tid, _tid, '{"en": "D4"}', ts, ts))
+            con.execute(
+                "insert into pricing (tool_id, cost, enabled, updated_at)"
+                " values (%s, 25, TRUE, %s)", (_tid, ts))
+    _grant4(_wuser, 1000, "manual_topup", note="d4")
+    _bal4 = _sb4(_wuser)
+
+    _cnt4 = pool_mod._reset_count
+    _orig_to4 = _orch_mod.LOCAL_EXEC_TIMEOUT_S
+    _orch_mod.LOCAL_EXEC_TIMEOUT_S = 2
+    _tool_row4 = {"id": _wedge_id, "tool_key": _wedge_id, "owner_id": None,
+                  "execution": "local", "files_min": 1, "files_max": 1,
+                  "outputs_json": '["text"]'}
+
+    async def _gate_wedge(ref):
+        inv = ToolInvocation(_wedge_id, [SourceFile("p", "t")], {},
+                             {"expiry_days": 7, "allowed_downloads": 5},
+                             f"d4:{ref}")
+        return await _gate4.run(
+            {"id": _wuser}, _tool_row4, inv,
+            lambda: execute_local({"ip": "127.0.0.1"}, _tool_row4, [], {},
+                                  {"id": _wuser},
+                                  pool_mod.default_process_tool(),
+                                  pool_mod._pool,
+                                  {"expiry_days": 7, "allowed_downloads": 5}))
+    # 第一波: 单个 gate 调用 — 超时收敛的错误码与退款路径
+    try:
+        _res4, _err4, _st4 = asyncio.run(_gate_wedge("a"))
+    finally:
+        pass
+    check("D4 wedged gate call → 400 err_endpoint_timeout",
+          _err4 is not None and _err4.get("error") == "err_endpoint_timeout"
+          and _st4 == 400, f"{_st4} {_err4}")
+    # 第二波: 并发两个裸超时 — 只产生一次 reset (先到者的 reset 杀掉
+    # worker, 后到者的 future 以 BrokenProcessPool 收敛也是合法终态)
+    async def _bare_wedge():
+        return await _run_handler(pool_mod._pool,
+                                  pool_mod.default_process_tool(),
+                                  _wedge_id, [], {})
+    async def _two_bare():
+        return await asyncio.gather(_bare_wedge(), _bare_wedge(),
+                                    return_exceptions=True)
+    try:
+        _r4a, _r4b = asyncio.run(_two_bare())
+    finally:
+        _orch_mod.LOCAL_EXEC_TIMEOUT_S = _orig_to4
+    check("D4b exactly one reset per wave (single + concurrent pair)",
+          pool_mod._reset_count == _cnt4 + 2
+          and all(isinstance(r, BaseException) or r is None
+                  or isinstance(r, tuple) for r in (_r4a, _r4b)),
+          f"{_cnt4} → {pool_mod._reset_count} r={str((_r4a, _r4b))[:80]}")
+    _wedge_pids = []
+    try:
+        with open(_os.path.join(_REPO, "core",
+                                f"tmpwedge_pids_{_wtag}.txt")) as _f:
+            _wedge_pids = [int(x) for x in _f.read().split() if x.strip()]
+    except OSError:
+        pass
+    def _pid_dead(pid):
+        try:
+            _os.kill(pid, 0)
+            return False
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            return False
+    check("D4c all wedged workers terminated (wave 1 + wave 2)",
+          len(_wedge_pids) == 3 and all(_pid_dead(p) for p in _wedge_pids),
+          _wedge_pids)
+    with db() as con:
+        _n_ref4 = con.execute(
+            "select count(*) c from ledger where user_id=%s"
+            " and kind='refund'", (_wuser,)).fetchone()["c"]
+        _n_con4 = con.execute(
+            "select count(*) c from ledger where user_id=%s"
+            " and kind='consume'", (_wuser,)).fetchone()["c"]
+        _n_run4 = con.execute(
+            "select count(*) c from tool_calls where user_id=%s"
+            " and status='running'", (_wuser,)).fetchone()["c"]
+    check("D4d the timeout refunded exactly once (1 consume / 1 refund)",
+          int(_n_con4) == 1 and int(_n_ref4) == 1 and int(_n_run4) == 0,
+          f"consume={_n_con4} refund={_n_ref4} running={_n_run4}")
+    check("D4e balance restored", _sb4(_wuser) == _bal4,
+          f"{_sb4(_wuser)} vs {_bal4}")
+    _new_pool4 = pool_mod.get_pool()
+    _d4_pools.append(_new_pool4)
+    async def _next_call():
+        return await _run_handler(_new_pool4, pool_mod.default_process_tool(),
+                                  _quick_id, [], {})
+    _out4 = asyncio.run(_next_call())
+    check("D4f next call succeeds on the replacement pool immediately",
+          isinstance(_out4, dict) and _out4.get("items")
+          and _out4["items"][0]["text"] == "quick-ok", str(_out4)[:100])
+finally:
+    _orch_mod.LOCAL_EXEC_TIMEOUT_S = 120
+    pool_mod._new_pool = _orig_new_pool4
+    for _p in _d4_pools:
+        try:
+            _p.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+    _restore_real_pool()
+    try:
+        _os.remove(_wfile)
+    except OSError:
+        pass
+    try:
+        _os.remove(_os.path.join(_REPO, "core", f"tmpwedge_pids_{_wtag}.txt"))
+    except OSError:
+        pass
+    if _wuser is not None:
+        with db() as con:
+            con.execute("delete from tool_calls where user_id=%s", (_wuser,))
+            con.execute("delete from ledger where user_id=%s", (_wuser,))
+            for _tid in (_wedge_id, _quick_id):
+                con.execute("delete from pricing where tool_id=%s", (_tid,))
+                con.execute("delete from platform_tools where tool_key=%s",
+                            (_tid,))
+        with db() as con:
+            purge_users(con, [_wuser])
+
 # ══════════ E. 真实 gate 收敛 (worker_pool_broken → tool_failed/refund) ══════════
 _eb_user_id = None
 _eb_tool = None

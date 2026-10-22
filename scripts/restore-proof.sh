@@ -18,9 +18,12 @@ if [[ "$DB_URL" == postgresql+psycopg://* ]]; then DB_URL="postgresql://${DB_URL
 DB_NAME="${DB_URL##*/}"; DB_BASE="${DB_URL%/*}"   # scheme://user:pw@host:port
 
 LATEST_PG="$(ls -1t "$DAILY_DIR"/pg-*.dump 2>/dev/null | head -1)"
-LATEST_GK="$(ls -1t "$DAILY_DIR"/gokapi-*.tar.gz 2>/dev/null | head -1)"
 [ -n "$LATEST_PG" ] || fail "no pg backup found"
 STAMP="${LATEST_PG##*/pg-}"; STAMP="${STAMP%%.dump}"
+# the gokapi archive is the SAME stamp's — a newest-by-mtime pick could
+# pair artifacts of different runs; a missing pair fails the proof
+LATEST_GK="$DAILY_DIR/gokapi-$STAMP.tar.gz"
+[ -f "$LATEST_GK" ] || fail "no gokapi archive for stamp $STAMP"
 
 # checksum verify
 ( cd "$DAILY_DIR" && sha256sum -c "SHA256SUMS-$STAMP" ) >/dev/null 2>&1 || fail "checksum mismatch"

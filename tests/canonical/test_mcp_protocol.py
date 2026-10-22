@@ -142,7 +142,7 @@ def _calls_n(uid):
 
 
 from identity.apikeys import create_key
-from economy.billing import grant as _grant
+from economy.billing import grant as _grant, spendable_balance as spendable_balance
 
 uid, ck = _register(_u + "a")
 uid2, ck2 = _register(_u + "b")
@@ -483,11 +483,20 @@ async def _fake_dispatch(request, user, raw, *a, **k):
 
 _served = {}
 def _fake_pinned(url, method="GET", body=None, headers=None, timeout_s=60,
-                 has_credential=False, max_bytes=None):
-    return 200, _served[url]
+                 max_bytes=None, deadline=None):
+    return 200, _served[url], None, "image/png", None
 
-_orig_pinned, _orig_dx = _remote.pinned_request, _dispatch_mod.dispatch_execute
-_remote.pinned_request = _fake_pinned
+# Single-hop stub: the REAL redirect loop (pinned_request) runs in the
+# middle — the resolver is stubbed so no real DNS happens (files.example
+# does not resolve).
+_rs = _remote.socket
+_orig_pinned, _orig_dx = _remote._pinned_request, _dispatch_mod.dispatch_execute
+_orig_resolve = _remote._resolve_host
+def _fake_resolve(host, port):
+    return [(_rs.AF_INET, _rs.SOCK_STREAM, _rs.IPPROTO_TCP, "",
+             ("93.184.216.34", port))]
+_remote._pinned_request = _fake_pinned
+_remote._resolve_host = _fake_resolve
 _dispatch_mod.dispatch_execute = _fake_dispatch
 try:
     _user = {"id": uid}
@@ -532,9 +541,10 @@ try:
           _u7.get("isError") is True and "too_large" in _u7t
           and _ingress_n(uid) == i1 and _gk_count() == g1, str(r)[:120])
     del _served[big]
-    def _blocked(url, **k):
+    def _blocked(url, method="GET", body=None, headers=None, timeout_s=60,
+                 max_bytes=None, deadline=None):
         raise _remote.RemoteError("redirect_blocked", "redirect to non-https rejected")
-    _remote.pinned_request = _blocked
+    _remote._pinned_request = _blocked
     r = _ip({"files": [{"url": urlA}], "client_ref": f"rb-{_u}"}, mid=6)
     _u8 = (r.get("result") or {})
     _u8t = ((_u8.get("content") or [{}])[0].get("text") or "")
@@ -543,7 +553,8 @@ try:
           and _ingress_n(uid) == i1,
           str(r)[:120])
 finally:
-    _remote.pinned_request = _orig_pinned
+    _remote._pinned_request = _orig_pinned
+    _remote._resolve_host = _orig_resolve
     _dispatch_mod.dispatch_execute = _orig_dx
 
 # ══════════ 10. reference to an existing upload ══════════
@@ -602,7 +613,79 @@ check("R7 same ref + different reference → conflict sentence, zero new call",
       and "idempotency_conflict" in _r7 and _calls_n(uid) == c0,
       _r7[:120])
 
-# ══════════ 11. F6: body-tool adapter error layering ══════════
+# ══════════ 10b. R6-rework: idempotent replay precedes the balance
+# preflight. MCP-side: both tools/call routes must pass client_ref into
+# check_affordability, and the probe itself must wave a live running|ok
+# (user, tool, client_ref) through even at zero balance while a genuinely
+# new ref still hits the advisory wall. The full 200-replay/409/402 chain
+# runs end-to-end in test_api_surface D8b (real gate). ══════════
+_bt6 = f"mpr6paid{_os.urandom(4).hex()}"
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+        " label_json, visibility, enabled, accept_json, format_family,"
+        " body_format, files_min, files_max, outputs_json, endpoint_json,"
+        " created_at, updated_at)"
+        " values (%s, NULL, %s, 'http', %s, 'public', TRUE, NULL, NULL,"
+        " 'text', 0, 0, '[\"text\"]', %s, %s, %s)",
+        (_bt6, _bt6, json.dumps({"en": "MP Paid Probe"}),
+         json.dumps({"url": "http://127.0.0.1:1/never", "timeout_s": 5}),
+         ts, ts))
+    con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
+                " values (%s, 3, TRUE, %s)", (_bt6, ts))
+_uid6 = _os.urandom(4).hex()
+uid6, _ = _register(_u + "r6")
+TOKEN6 = create_key(uid6, "mpr6")["key"]
+_user6 = {"id": uid6}
+_ref6 = f"r6-{_uid6}"
+
+import execution.affordability as _aff6
+_captured6 = []
+_real_ca6 = _aff6.check_affordability
+def _capturing_ca6(user_id, tool, client_ref=None):
+    _captured6.append((user_id, tool.get("tool_key"), client_ref))
+    return _real_ca6(user_id, tool, client_ref)
+_aff6.check_affordability = _capturing_ca6
+try:
+    # zero balance, genuinely new ref → the advisory wall (isError),
+    # and the route passed client_ref through to the check
+    d = asyncio.run(_M._call_tool(_Req(), _user6, 61,
+        {"name": _bt6, "arguments": {"input": "x", "client_ref": _ref6}}))
+    check("R6b new ref at zero balance → insufficient isError, client_ref reached the preflight",
+          (d.get("result") or {}).get("isError") is True
+          and "insufficient" in _err_sentence(d)
+          and _captured6 and _captured6[-1] == (uid6, _bt6, _ref6)
+          and _calls_n(uid6) == 0, f"{str(d)[:140]} {_captured6}")
+finally:
+    _aff6.check_affordability = _real_ca6
+
+# probe semantics on a REAL live row (no dispatch stub): balance 0 +
+# running|ok (user, tool, client_ref) → None; a different ref → denial.
+import hashlib as _hl6
+with db() as con:
+    con.execute(
+        "insert into tool_calls (user_id, tool_id, client_ref, status,"
+        " cost_snapshot, params_json, started_at, finished_at,"
+        " invocation_hash)"
+        " values (%s, %s, %s, 'ok', 3, '{}', %s, %s, %s)",
+        (uid6, _bt6, _ref6, ts, ts,
+         _hl6.sha256(b"seed").hexdigest()))
+_aff6.check_affordability = _capturing_ca6
+try:
+    d = asyncio.run(_M._call_tool(_Req(), _user6, 62,
+        {"name": _bt6, "arguments": {"input": "x", "client_ref": _ref6}}))
+    check("R6b live ok row at zero balance → preflight waves it through (None), outcome is the gate's (never the 402 wall)",
+          _captured6[-1] == (uid6, _bt6, _ref6)
+          and "insufficient" not in _err_sentence(d),
+          f"{_captured6[-1]} {str(d)[:140]}")
+finally:
+    _aff6.check_affordability = _real_ca6
+_direct = _real_ca6(uid6, {"tool_key": _bt6, "owner_id": None}, f"other-{_uid6}")
+check("R6b different ref at zero balance → still the advisory wall (denial dict)",
+      _direct is not None and _direct.get("error") == "err_insufficient_credits",
+      str(_direct))
+
+# ══════════ 11. F6: body-tool adapter error layering ══════════# ══════════ 11. F6: body-tool adapter error layering ══════════
 # 正文工具的输入方式/口径违规是调用方参数错误: preflight 的 err_input_mode
 # 只有这一个码翻译成 "invalid input mode"; err_body_* 同为 -32602。
 # 工具行 = trusted http 正文工具 (owner NULL, endpoint 不可达也无妨 —

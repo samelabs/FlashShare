@@ -1130,7 +1130,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     if name == "create_upload":
         return _create_upload(user, mid, args, request)
     if name == "list_uploads":
-        return _list_uploads(user, mid, args)
+        return await _list_uploads(user, mid, args)
     if name == "delete_upload":
         return await _delete_upload(user, mid, args)
     if name in ("pin_tool", "unpin_tool"):
@@ -1213,19 +1213,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         # validation stays first so a low balance can never mask it.
         return _rpc_err(mid, -32602, f"invalid arguments: {exc}")
 
-    # Platform files/request boundary (the count part of the single batch
-    # validator; sizes are checked once the bytes are known).
-    from governance.ingress import validate_batch as _vbatch
-    _cdenial = _vbatch([0] * len(items))
-    if _cdenial:
-        return _iserror(mid, _cdenial, client_ref)
-
     # Tool + delivery entitlement + stored contract + params — the SAME
     # pre-gate validators dispatch runs, here BEFORE any fetch, quota
     # claim or Gokapi upload.
     tool_key = name
     from execution.dispatch import (preflight as _preflight,
-                                    source_count_error as _count_err,
                                     source_accept_error as _accept_err)
     tool, _declared, _canon_body, _pbody, _pstatus = _preflight(
         user, tool_key, delivery, tool_params, body_arg)
@@ -1268,17 +1260,13 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         return _rpc_err(mid, -32602,
                         "unknown argument key: input (this tool takes "
                         "files[], not a body input)")
-    _cerr = _count_err(tool, len(items))
-    if _cerr:
-        return _tool_result_error(mid, {"error": _cerr},
-                                   client_ref, tool)
 
     # Advisory credits affordability BEFORE source ingress: a clear
     # insufficiency answers as an application error (isError tool
     # result) without uploading anything. Authoritative consume stays
     # in the gate; this snapshot never reserves credits.
     from execution.affordability import check_affordability
-    _denial = check_affordability(user["id"], tool)
+    _denial = check_affordability(user["id"], tool, client_ref=client_ref)
     if _denial:
         return _iserror(mid, _denial, client_ref)
 
@@ -1329,25 +1317,28 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     payload, error_body, status = await dispatch_execute(request, user, raw)
     if error_body is not None:
         payload = error_body
-    if not payload.get("ok"):
-        return _iserror(mid, payload, client_ref, tool)
-    result = payload.get("result") or {}
-    import hashlib as _hl
-    _input_digests = frozenset(
-        _hl.sha256(_b).hexdigest() for _, _, _b in _canon)
     # OAuth plugin attribution — an MCP-layer post-hook on the settled
     # call (the execution chain stays untouched): stamp the consented
-    # client on the tool_calls row.
+    # client on the tool_calls row. 只要拿到 call_id 就写, 失败结果同样
+    # 归因; SQL 带 AND oauth_client_id IS NULL —— 第一个写入者为准
+    # (同引用重放不覆盖先到归因)。
     _client_id = getattr(getattr(request, "state", None), "oauth_client_id", None)
     if _client_id and payload.get("call_id"):
         try:
             from database import db as _db
             with _db() as _con:
                 _con.execute(
-                    "update tool_calls set oauth_client_id=%s where id=%s",
+                    "update tool_calls set oauth_client_id=%s where id=%s"
+                    " and oauth_client_id IS NULL",
                     (_client_id, payload["call_id"]))
         except Exception:
             pass  # attribution is telemetry, never blocks the result
+    if not payload.get("ok"):
+        return _iserror(mid, payload, client_ref, tool)
+    result = payload.get("result") or {}
+    import hashlib as _hl
+    _input_digests = frozenset(
+        _hl.sha256(_b).hexdigest() for _, _, _b in _canon)
     return _rpc(mid, await _mcp_success(result, payload, _input_digests))
 
 
@@ -1710,7 +1701,7 @@ def _create_upload(user: dict, mid, args: dict, request: Request):
     return _meta_result(mid, _payload, text=text)
 
 
-def _list_uploads(user: dict, mid, args: dict) -> dict:
+async def _list_uploads(user: dict, mid, args: dict) -> dict:
     """list_uploads meta tool: the SAME single point the web GET
     /api/uploads uses (sharing.list_uploads) — projection, live
     download counters and Gokapi mapping stay one implementation."""
@@ -1720,8 +1711,10 @@ def _list_uploads(user: dict, mid, args: dict) -> dict:
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         return _rpc_err(mid, -32602, "invalid params: offset must be an "
                                      "integer >= 0")
-    rows = _web_list(user["id"], offset=min(offset, MAX_LIST_OFFSET),
-                     limit=20)
+    import asyncio
+    rows = await asyncio.to_thread(
+        _web_list, user["id"], offset=min(offset, MAX_LIST_OFFSET),
+        limit=20)
     uploads = [{
         "public_id": r["public_id"],
         "filename": r["file_name"],
@@ -1781,9 +1774,7 @@ async def _delete_upload(user: dict, mid, args: dict) -> dict:
                              "together.")
 
 
-# URL-source helpers live in the staging single point (A4); these names
-# stay as thin aliases for the remaining in-module consumers.
-from sharing.staging import fetch_url_source as _fetch_url_source  # noqa: E402
+# URL-source helper lives in the staging single point (A4).
 from sharing.staging import url_source_upload as _url_upload  # noqa: E402
 
 

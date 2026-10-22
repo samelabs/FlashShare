@@ -258,11 +258,14 @@ def _expire_if_current_period(user_id: int, sub_id: str,
     Current period iff Membership.provider_subscription_id == sub:{id}
     AND last_grant_period_start == txn.period_start. A historical
     period reversal leaves the current Membership untouched.
+    行读带 FOR UPDATE: 判定与随后的 upsert 同快照——并发的新周期
+    paid 事件先提交时, 这里读到新周期按历史周期处理 (会员不动),
+    不会把已推进的周期判成当前周期而错误失效。
     """
     from economy.subscription import _parse_ts as _pts
     from economy.subscription import membership_is_effective
     with db() as con:
-        m = orders_repo.membership_by_sub(con, sub_id)
+        m = orders_repo.membership_by_sub(con, sub_id, lock=True)
         if m is None or int(m["user_id"]) != user_id:
             return
         if int(m["last_grant_period_start"] or 0) != period_start:
@@ -272,7 +275,7 @@ def _expire_if_current_period(user_id: int, sub_id: str,
         # economic validity of the current paid period is gone
         orders_repo.upsert_membership_state(
             con, sub_id, "expired",
-            started_at=m["started_at"], renews_at=now(),
+            renews_at=now(),
             period_start=m["last_grant_period_start"],
             cancel_scheduled_at=m["cancel_scheduled_at"])
     log.info("reverse: current-period payment reversed → membership "

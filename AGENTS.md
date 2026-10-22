@@ -41,9 +41,9 @@
   直接提交到该批次分支，不另开分支。
 - 合入即删除远程分支（仓库已开启合并后自动删除）；不再推进的分支打
   `archive/<原分支名>` 标签后删除，不保留悬空分支。
-- 批次分支推送后必须尽快进入 PR/CI 验证（CI 只在 PR 上运行），不得停留在
-  "已推送但无 CI 证据"的悬空状态；推 tag 与推分支一样，推前先想清楚这次推送
-  是否会成为需要 force 修正的对象。
+- 批次分支推送后必须尽快进入 PR/CI 验证（CI 在 PR 与 main push 上运行；批次
+  分支须开 PR 才有 CI），不得停留在"已推送但无 CI 证据"的悬空状态；推 tag 与
+  推分支一样，推前先想清楚这次推送是否会成为需要 force 修正的对象。
 - 版本 tag 只落在版本线边界：该版本段已在 CHANGELOG 定稿、无同版本批次在飞
   或待合，打在合完该版本全部批次后的 main tip；打完立即三方核验
   （`git rev-parse <tag>^{}` == main tip、VERSION 一致）。需要 force push 修正
@@ -83,8 +83,8 @@
   root/source/delivery 精确键集；params 显式 dict；client_ref 必填 non-empty string（≤128），作为 client-generated stable operation identity；null / missing 均拒绝。
   MCP adapter 只对"缺失"填默认，显式非法值 → -32602。
 - **南向 http 契约（IO-1）**：文件工具请求 `{files:[{filename,content_type,size,url}], params}`；正文工具请求体=取值原样（text→`text/plain; charset=utf-8`，json→`application/json` 规范字节），params 编码进查询参数（端点自带查询保留）。响应按 Content-Type 解释：`application/vnd.518.items+json`→items 信封（file 项 data_b64|url）；`application/json` 及 `application/*+json`→单 json 项；`text/*`（按 charset，缺省 UTF-8）→单 text 项；其余→单文件项（Content-Disposition 文件名>嗅探）。提供者非 2xx→平台 502 + detail（提供者状态+响应体前 4096 字节）。
-- **文件暂存单点**：web 上传 / MCP ticket PUT / MCP 与 /v1 的内联、URL、引用来源统一走 `sharing.staging`（ingest_sources = 引用解析→URL 钉扎拉取→sniff→accept→批量上限→哈希；stage_sources = claim→暂存→finalize 三态核验 resolve_outcome，确认回滚立即清理暂存对象+精确释放配额）。引用已有 public_id 只做权限解析，不暂存不计入站配额。
-- **公开 API 面（/v1）**：fsk_-only（cookie/fsot_ 永不认证；fsk_ 与 cookie 并存以 fsk_ 为准）；GET /v1/tools、/v1/tools/{key}、/v1/balance，POST /v1/tools/{key}；入口限流与 MCP 共用同一按用户计数；平台选项走请求头（Idempotency-Key 同时充当暂存+调用 client_ref；X-518-Expiry-Days / X-518-Allowed-Downloads），查询参数只承载工具参数（重复键 400）；错误统一 JSON、无 CORS 头；正文工具=请求体即输入（Content-Type 须与声明一致，512KB 读取上限），成功把唯一结果项原样作答（file 走站内不计数通道；映射失效→410 result_expired）；文件工具收 multipart 或 JSON `{files:[{url}|{public_id,source_token}],params}`，答 `{ok,call_id,cost,items}`。
+- **文件暂存单点**：web 上传 / MCP ticket PUT / MCP 与 /v1 的内联、URL、引用来源统一走 `sharing.staging`（ingest_sources = 数量窗口→引用解析→URL 钉扎拉取（逐项累计批量上限）→sniff→accept→批量上限→哈希（URL 项身份 = URL）；stage_sources = claim→暂存→finalize 三态核验 resolve_outcome，确认回滚立即清理暂存对象+精确释放配额）。引用已有 public_id 只做权限解析，不暂存不计入站配额。
+- **公开 API 面（/v1）**：fsk_-only（cookie/fsot_ 永不认证；fsk_ 与 cookie 并存以 fsk_ 为准）；GET /v1/tools、/v1/tools/{key}、/v1/balance，POST /v1/tools/{key}；入口限流与 MCP 共用同一按用户计数；平台选项走请求头（Idempotency-Key 同时充当暂存+调用 client_ref；X-518-Expiry-Days / X-518-Allowed-Downloads），查询参数只承载工具参数（重复键 400；查询与 JSON body 的 params 双来源→400 duplicate_param）；错误统一 JSON、无 CORS 头；正文工具=请求体即输入（Content-Type 须与声明一致，512KB 读取上限），成功把唯一结果项原样作答（file 走站内不计数通道；映射失效→410 result_expired，存储暂不可用→503 result_unavailable）；文件工具收 multipart 或 JSON `{files:[{url}|{public_id,source_token}],params}`，答 `{ok,call_id,cost,items}`。
 - **Execution / Settlement**：claim running → consume（idem=`call:{call_id}`）→ execute →
   成功同事务 finalize ok + payout/commission/revenue；失败 refund 先于 finalize failed
   （refund idem=`refund:ledger:{consume ledger id}`）；refund 失败 → call 保持 running + 500

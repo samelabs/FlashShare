@@ -51,7 +51,7 @@ from database import db  # noqa: E402
 # ── local trusted endpoint (trusted rows may be plain http) ──
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
-HITS = {"boom": 0, "slow": 0, "rawfile": 0}
+HITS = {"boom": 0, "slow": 0, "rawfile": 0, "drip": 0, "itemsfile": 0}
 
 class _Endpoint(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -88,6 +88,31 @@ class _Endpoint(BaseHTTPRequestHandler):
             HITS["slow"] += 1
             time.sleep(4)
             self._reply(200, b"slow done", "text/plain; charset=utf-8")
+        elif path == "/drip":
+            # 慢滴流: 每次 recv 都远在 socket 超时内返回 1 字节 — 只有
+            # 调用方的总时限能终止它
+            HITS["drip"] += 1
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", "100000")
+            self.end_headers()
+            try:
+                for _ in range(2000):
+                    self.wfile.write(b"x")
+                    self.wfile.flush()
+                    time.sleep(0.05)
+            except Exception:
+                pass  # client aborted at its deadline
+        elif path == "/itemsfile":
+            # items 信封文件项: 文件名来自请求正文 (JSON 信封承载任意
+            # Unicode 文件名 — 非 ASCII 结果文件名的自然来源)
+            HITS["itemsfile"] += 1
+            _fn = body.decode("utf-8", "replace").strip() or "result.png"
+            self._reply(200, json.dumps({"items": [
+                {"kind": "file", "filename": _fn,
+                 "content_type": "image/png",
+                 "data_b64": base64.b64encode(PNG).decode()}]}).encode(),
+                "application/vnd.518.items+json")
         elif path == "/rawfile":
             HITS["rawfile"] += 1
             self._reply(200, PNG, "image/png",
@@ -199,7 +224,8 @@ def _tool(key, **cols):
             "files_min": cols.get("files_min", 0),
             "files_max": cols.get("files_max", 0),
             "outputs_json": json.dumps(cols.get("outputs", ["text"])),
-            "endpoint_json": json.dumps({"url": cols["url"], "timeout_s": 30}),
+            "endpoint_json": json.dumps({"url": cols["url"],
+                                         "timeout_s": cols.get("timeout_s", 30)}),
             "created_at": ts, "updated_at": ts,
         }
         keys = ", ".join(sets)
@@ -231,10 +257,16 @@ _tool(TOOL_JSON, body_format="json", url=f"{EP}/echo-json", outputs=["json"], co
 _tool(TOOL_FILE, accept='[".png"]', tag="image", files_min=1, files_max=2,
       url=f"{EP}/items", outputs=["text"], cost=0)
 _tool(TOOL_RAWF, body_format="text", url=f"{EP}/rawfile", outputs=["file"], cost=0)
+TOOL_NAMES = f"v1nm{_u2}"
+_tool(TOOL_NAMES, body_format="text", url=f"{EP}/itemsfile", outputs=["file"],
+      cost=2)
 _tool(TOOL_BAD, body_format="text", url=f"{EP}/boom", outputs=["text"], cost=0)
 TOOL_NAN = f"v1nan{_u2}"
 _tool(TOOL_NAN, body_format="json", url=f"{EP}/nanjson", outputs=["json"], cost=2)
 _tool(TOOL_SLOW, body_format="text", url=f"{EP}/slowtext", outputs=["text"], cost=0)
+TOOL_DRIP = f"v1dp{_u2}"
+_tool(TOOL_DRIP, body_format="text", url=f"{EP}/drip", outputs=["text"],
+      cost=2, timeout_s=5)
 
 
 def _cors_free(hdrs):
@@ -411,8 +443,15 @@ def _sreq(path, headers, body_bytes, method="POST"):
                 "more_body": False}
     return _SReq(scope, receive)
 
-_orig_pinned_v1 = _remote_mod.pinned_request
-_remote_mod.pinned_request = lambda url, **k: (200, PNG)
+_orig_pinned_v1 = _remote_mod._pinned_request
+_orig_resolve_v1 = _remote_mod._resolve_host
+_rs_v1 = _remote_mod.socket
+_remote_mod._resolve_host = lambda host, port: [
+    (_rs_v1.AF_INET, _rs_v1.SOCK_STREAM, _rs_v1.IPPROTO_TCP, "",
+     ("93.184.216.34", port))]
+_remote_mod._pinned_request = \
+    lambda url, method="GET", body=None, headers=None, timeout_s=60, \
+           max_bytes=None, deadline=None: (200, PNG, None, "image/png", None)
 try:
     import asyncio as _aio
     _url_body = json.dumps({
@@ -432,12 +471,162 @@ try:
           _r.status_code == 200 and _d3.get("ok")
           and len(_d3.get("items") or []) == 1, str(_d3)[:110])
 finally:
-    _remote_mod.pinned_request = _orig_pinned_v1
+    _remote_mod._pinned_request = _orig_pinned_v1
+    _remote_mod._resolve_host = _orig_resolve_v1
 
 st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_FILE}", "plain text",
                      {**FH, "Content-Type": "text/plain"})
 check("D4 file tool with a non-multipart/json body → 415",
       st == 415 and d.get("error") == "err_content_type", f"{st} {d}")
+
+# D5: 慢滴流端点 (每次 recv 都在 socket 超时内返回 1 字节) — timeout_s
+# 是单次调用总时限: err_endpoint_timeout 收敛、退款恰好一次、远程在途
+# 归零。in-process 调用 (与 D3 同模式) 使执行域计数器与测试同进程。
+import execution.pool as _pool_mod
+with db() as con:
+    _lid0 = con.execute("select coalesce(max(id), 0) as m from ledger"
+                        " where user_id = %s", (uidA,)).fetchone()["m"]
+_b5 = _sb(uidA)
+_t5 = time.monotonic()
+try:
+    _r5 = _aio.run(_v1mod.call_tool(
+        TOOL_DRIP,
+        _sreq(f"/v1/tools/{TOOL_DRIP}",
+              {"Authorization": f"Bearer {KEY_A}",
+               "Content-Type": "text/plain",
+               "Idempotency-Key": f"d5-{_u}"},
+              b"drip-input")))
+    _d5 = json.loads(_r5.body)
+    check("D5 slow-drip → 400 err_endpoint_timeout",
+          _r5.status_code == 400 and _d5.get("error") == "err_endpoint_timeout",
+          f"{_r5.status_code} {_d5}")
+except Exception as _exc:
+    _r5 = None
+    check("D5 slow-drip → 400 err_endpoint_timeout", False, repr(_exc))
+_dt5 = time.monotonic() - _t5
+check("D5b total budget honoured (5s + margin)",
+      4.5 <= _dt5 < 7.0, _dt5)
+with db() as con:
+    _l5 = con.execute(
+        "select kind, delta, ref_type, ref_id from ledger"
+        " where user_id = %s and id > %s order by id",
+        (uidA, _lid0)).fetchall()
+    _c5 = con.execute(
+        "select id from ledger where user_id = %s and id > %s"
+        " and kind = 'consume'", (uidA, _lid0)).fetchone()
+    _r5c = con.execute(
+        "select count(*) as c from ledger where user_id = %s and id > %s"
+        " and kind = 'refund' and ref_type = 'ledger'"
+        " and ref_id = %s",
+        (uidA, _lid0, str(_c5["id"]) if _c5 else "-1")).fetchone()["c"]
+check("D5c refund exactly once (consume −2 then refund +2, linked)",
+      [r["kind"] for r in _l5] == ["consume", "refund"]
+      and [r["delta"] for r in _l5] == [-2, 2]
+      and _c5 is not None and _r5c == 1, str(_l5))
+check("D5d balance unchanged (full refund)",
+      _sb(uidA) == _b5, (_sb(uidA), _b5))
+check("D5e remote in-flight released",
+      _pool_mod.remote_inflight_count() == 0,
+      _pool_mod.remote_inflight_count())
+
+# D6: 数量窗口是 ingest 第 0 步 — 21 个 URL → err_file_count, 零拉取
+# (零拉取由 G3a 在 ingress 套件以计数替身钉死; 这里钉 REST 面错误码)
+st, h, d, raw = _req(
+    "POST", f"/v1/tools/{TOOL_FILE}",
+    json.dumps({"files": [
+        {"url": f"https://d6.example/{_u}/f{i}.png"} for i in range(21)],
+        "params": {}}).encode(),
+    {**FH, "Content-Type": "application/json",
+     "Idempotency-Key": f"d6-{_u}"})
+check("D6 21 URL sources → 400 err_file_count (count gate before any fetch)",
+      st == 400 and d.get("error") == "err_file_count", f"{st} {d}")
+
+# D7: params 双来源 (查询 + JSON body) → 400 duplicate_param
+st, h, d, raw = _req(
+    "POST", f"/v1/tools/{TOOL_FILE}?preset=fast",
+    json.dumps({"files": [{"public_id": "x", "source_token": ""}],
+                "params": {"preset": "fast"}}).encode(),
+    {**FH, "Content-Type": "application/json",
+     "Idempotency-Key": f"d7-{_u}"})
+check("D7 params in query AND JSON body → 400 duplicate_param",
+      st == 400 and d.get("error") == "duplicate_param", f"{st} {d}")
+
+# D8: 余额不足 → 402 (preflight → affordability → ingest 顺序), 零拉取
+# 零暂存零入站回执
+uidH, ckH = _register(_u + "h")
+KEY_H = create_key(uidH, "v1sh")["key"]
+TOOL_COST = f"v1cost{_u2}"
+_tool(TOOL_COST, accept='[".png"]', tag="image", files_min=1, files_max=2,
+      url=f"{EP}/items", outputs=["text"], cost=2)
+_mp8, _ct8 = _multipart_file({"tool": TOOL_COST, "client_ref": f"d8-{_u}"},
+                             [("solo.png", PNG, "image/png")])
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_COST}", _mp8,
+                     {"Content-Type": _ct8,
+                      "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"d8-{_u}"})
+with db() as con:
+    _no_rc = con.execute(
+        "select count(*) c from ingress_requests where user_id=%s",
+        (uidH,)).fetchone()["c"]
+    _no_up = con.execute(
+        "select count(*) c from uploads where user_id=%s",
+        (uidH,)).fetchone()["c"]
+check("D8 insufficient balance → 402 err_insufficient_credits, zero staging",
+      st == 402 and d.get("error") == "err_insufficient_credits"
+      and int(_no_rc) == 0 and int(_no_up) == 0,
+      f"{st} {d} rc={_no_rc} up={_no_up}")
+
+# D8b: 幂等重放先于余额预检 — running|ok 的 (user, tool, client_ref)
+# 在途时, 零余额重试必须到达 gate (200 重放 / 409 冲突), 不能被 402 拦截
+uidR6, ckR6 = _register(_u + "r6")
+KEY_R6 = create_key(uidR6, "v1r6")["key"]
+_grant(uidR6, 3, "manual_topup", idem_key=f"v1r6:{_u}:{uidR6}", note="v1r6")
+_THR6 = {"Authorization": f"Bearer {KEY_R6}", "Content-Type": "text/plain"}
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 first",
+                     {**_THR6, "Idempotency-Key": f"r6-{_u}"})
+_r6id = h.get("x-518-call-id")
+check("D8b balance 3 cost 3 first call → 200, balance drained to 0",
+      st == 200 and _sb(uidR6) == 0, f"{st} bal={_sb(uidR6)}")
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 first",
+                     {**_THR6, "Idempotency-Key": f"r6-{_u}"})
+check("D8b same-key retry at zero balance → 200 replay, same call id, zero charge",
+      st == 200 and h.get("x-518-call-id") == _r6id and _sb(uidR6) == 0,
+      f"{st} {_r6id} vs {h.get('x-518-call-id')} bal={_sb(uidR6)}")
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 DIFFERENT",
+                     {**_THR6, "Idempotency-Key": f"r6-{_u}"})
+check("D8b same-key different input at zero balance → 409 (not 402)",
+      st == 409 and (d or {}).get("error") == "idempotency_conflict",
+      f"{st} {d}")
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 first",
+                     {**TH, "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"r6b-{_u}"})
+check("D8b genuinely new key at zero balance → 402",
+      st == 402 and (d or {}).get("error") == "err_insufficient_credits",
+      f"{st} {d}")
+
+# D8c: 零文件放行 — files 必须存在且为 list, 允许空列表; 数量窗口
+# (ingest_sources 第 0 步) 是唯一数量权威
+TOOL_ZF = f"v1zf{_u2}"
+_tool(TOOL_ZF, accept='[".png"]', tag="image", files_min=0, files_max=1,
+      url=f"{EP}/items", outputs=["text"], cost=0)
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_ZF}",
+                     json.dumps({"files": []}).encode(),
+                     {"Content-Type": "application/json",
+                      "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"zf1-{_u}"})
+check("D8c files_min=0 tool accepts files: [] → executes",
+      st == 200, f"{st} {str(d)[:140]}")
+TOOL_ZF1 = f"v1zf1{_u2}"
+_tool(TOOL_ZF1, accept='[".png"]', tag="image", files_min=1, files_max=1,
+      url=f"{EP}/items", outputs=["text"], cost=0)
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_ZF1}",
+                     json.dumps({"files": []}).encode(),
+                     {"Content-Type": "application/json",
+                      "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"zf2-{_u}"})
+check("D8c files_min=1 tool rejects files: [] → 400 err_file_count",
+      st == 400 and (d or {}).get("error") == "err_file_count",
+      f"{st} {d}")
 
 # ═══ E. deep idempotency ═══
 IH = {"Authorization": f"Bearer {KEY_I}", "Content-Type": "text/plain"}
@@ -491,6 +680,121 @@ check("E3 replay after the file mapping died → 410 result_expired (no re-run)"
       st == 410 and d.get("error") == "result_expired"
       and h.get("x-518-call-id") == _e2_call and HITS["rawfile"] == 1,
       f"{st} {d} hits={HITS['rawfile']}")
+
+# E4: 非 ASCII 结果文件名 (中文/日文/emoji/空格引号) — Content-Disposition
+# 带 ASCII 回退 + RFC 5987 filename*, 字节正确, 内部通道不计数, 重放不
+# 二次扣费
+import urllib.parse as _up
+from utils import sanitize_filename as _sfn_t
+import os as _osmod
+_GK = _up.urlparse(_osmod.environ["FLASHSHARE_GOKAPI_URL"])
+_GK_KEY = _osmod.environ["FLASHSHARE_GOKAPI_KEY"]
+def _gk_call(method, path, payload=None):
+    c = _hc.HTTPConnection(_GK.hostname, _GK.port, timeout=10)
+    body = json.dumps(payload).encode() if payload is not None else None
+    c.request(method, path, body,
+              {"apikey": _GK_KEY, **({"Content-Type": "application/json"}
+                                     if body else {})})
+    r = c.getresponse()
+    data = json.loads(r.read() or b"{}")
+    c.close()
+    return r.status, data
+def _gk_remaining(gid):
+    _st, _row = _gk_call("GET", f"/api/files/list/{gid}")
+    return (_row or {}).get("DownloadsRemaining")
+
+_E4_NAMES = ["结果文件.png", "結果ファイル.png", "结果😀.png",
+             '带 空格"引号".png']
+_bal_e4 = _sb(uidI)
+for _i, _nm in enumerate(_E4_NAMES):
+    st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                         _nm.encode("utf-8"),
+                         {**IH, "Content-Type": "text/plain",
+                          "Idempotency-Key": f"e4-{_u}-{_i}"})
+    _cd = h.get("content-disposition", "")
+    _exp = _up.quote(_sfn_t(_nm))
+    _call4 = h.get("x-518-call-id")
+    with db() as con:
+        _row4 = con.execute(
+            "select result_json from tool_calls where id=%s",
+            (int(_call4),)).fetchone() if (_call4 or "").isdigit() else None
+    _pid4 = (((json.loads(_row4["result_json"]).get("items") or [{}])[0]
+              ).get("public_id")) if _row4 else ""
+    with db() as con:
+        _up4 = con.execute(
+            "select gokapi_id, allowed_downloads from uploads"
+            " where public_id=%s", (_pid4,)).fetchone()
+    check(f"E4[{_i}] non-ASCII result filename → 200, bytes + RFC5987 name",
+          st == 200 and raw == PNG and _pid4 and _up4 is not None
+          and f"filename*=UTF-8''{_exp}" in _cd
+          and _cd.startswith("attachment; filename=\""),
+          f"{st} {_cd}")
+    check(f"E4[{_i}]b internal channel is non-counting",
+          _up4 and _gk_remaining(_up4["gokapi_id"])
+          == _up4["allowed_downloads"],
+          (_gk_remaining(_up4["gokapi_id"]) if _up4 else None,
+           _up4 and _up4["allowed_downloads"]))
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                     _E4_NAMES[0].encode("utf-8"),
+                     {**IH, "Content-Type": "text/plain",
+                      "Idempotency-Key": f"e4-{_u}-0"})
+check("E4c replay → same bytes, no second charge",
+      st == 200 and raw == PNG and _sb(uidI) == _bal_e4 - 2 * len(_E4_NAMES),
+      (st, _sb(uidI), _bal_e4))
+
+# E5: 存储通道故障语义 — ≥500 → 503 result_unavailable (瞬时故障 ≠ 过期);
+# 404 → 410; 故障清除后重放恢复 200
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                     b"fault-probe.png",
+                     {**IH, "Content-Type": "text/plain",
+                      "Idempotency-Key": f"e5-{_u}"})
+_call5 = h.get("x-518-call-id")
+with db() as con:
+    _row5 = con.execute("select result_json from tool_calls where id=%s",
+                        (int(_call5),)).fetchone()
+_pid5 = (((json.loads(_row5["result_json"]).get("items") or [{}])[0])
+         .get("public_id"))
+with db() as con:
+    _gid5 = con.execute("select gokapi_id from uploads where public_id=%s",
+                        (_pid5,)).fetchone()["gokapi_id"]
+for _mode, _est, _ecode in (("500", 503, "result_unavailable"),
+                            ("404", 410, "result_expired")):
+    _gk_call("POST", "/ci/fail-internal", {"mode": _mode})
+    st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                         b"fault-probe.png",
+                         {**IH, "Content-Type": "text/plain",
+                          "Idempotency-Key": f"e5-{_u}"})
+    check(f"E5 storage {_mode} → {_est} {_ecode}",
+          st == _est and d.get("error") == _ecode
+          and h.get("x-518-call-id") == _call5,
+          f"{st} {d}")
+_gk_call("POST", "/ci/fail-internal", {"mode": None})
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_NAMES}",
+                     b"fault-probe.png",
+                     {**IH, "Content-Type": "text/plain",
+                      "Idempotency-Key": f"e5-{_u}"})
+check("E5b fault cleared → replay serves 200 bytes again",
+      st == 200 and raw == PNG, st)
+
+# E6: 非 /v1 面未处理异常 → 500 + JSON {"ok":false,"error":"internal_error"}
+# (单一全局 Exception handler; /v1 面同体 — A1/B 系已覆盖)
+from app.main import app as _app6
+from fastapi import Request as _Req6
+@_app6.get("/ci-boom-e6")
+async def _boom6(request: _Req6):
+    raise RuntimeError("boom-e6")
+try:
+    from fastapi.testclient import TestClient as _TC6
+    with _TC6(_app6, raise_server_exceptions=False,
+              base_url="https://testserver") as _tc6:
+        _r6 = _tc6.get("/ci-boom-e6")
+    check("E6 non-v1 unhandled exception → 500 JSON internal_error",
+          _r6.status_code == 500
+          and _r6.json() == {"ok": False, "error": "internal_error"},
+          f"{_r6.status_code} {_r6.text[:80]}")
+finally:
+    _app6.router.routes = [r for r in _app6.router.routes
+                           if getattr(r, "path", "") != "/ci-boom-e6"]
 
 # ═══ F. provider failure → 502 with detail ═══
 GH = {"Authorization": f"Bearer {KEY_G}", "Content-Type": "text/plain"}
@@ -579,10 +883,11 @@ _check_rows = __import__("re").findall(r'<tr id="call-(\d+)">', _html)
 st_c, h_c, _p_c, raw_c = _req("GET", "/account/credits",
                                headers={"Cookie": ckT})
 _credits = raw_c.decode(errors="replace") if isinstance(raw_c, bytes) else ""
-_m = __import__("re").search(r'href="(/account/calls#call-(\d+))"', _credits)
-check("L1 credits rows link to the anchored call row",
+_m = __import__("re").search(
+    r'href="(/account/calls\?page=([0-9]+)#call-(\d+))"', _credits)
+check("L1 credits rows link to the paged anchored call row",
       st == 200 and st_c == 200 and _m is not None
-      and _m.group(2) in _check_rows,
+      and _m.group(3) in _check_rows,
       f"calls={st} credits={st_c} link={_m and _m.group(1)}"
       f" rows={_check_rows[:4]}")
 if _m:
@@ -590,7 +895,7 @@ if _m:
                                     headers={"Cookie": ckT})
     _landed = raw_l.decode(errors="replace") if isinstance(raw_l, bytes) else ""
     check("L2 the link target renders the anchored call row",
-          st_l == 200 and f'id="call-{_m.group(2)}"' in _landed,
+          st_l == 200 and f'id="call-{_m.group(3)}"' in _landed,
           f"{st_l}")
 
 # ═══ cleanup ═══

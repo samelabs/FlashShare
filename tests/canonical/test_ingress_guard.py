@@ -356,8 +356,16 @@ try:
             host = "127.0.0.1"
         headers = {}
 
-    _orig_pinned = _remote.pinned_request
-    _remote.pinned_request = lambda url, **k: (200, PDF)
+    _orig_pinned = _remote._pinned_request
+    _orig_resolve = _remote._resolve_host
+    _rs = _remote.socket
+    _remote._resolve_host = lambda host, port: [
+        (_rs.AF_INET, _rs.SOCK_STREAM, _rs.IPPROTO_TCP, "",
+         ("93.184.216.34", port))]
+    _remote._pinned_request = \
+        lambda url, method="GET", body=None, headers=None, timeout_s=60, \
+               max_bytes=None, deadline=None: (200, PDF, None,
+                                               "application/pdf", None)
     try:
         r = asyncio.run(_M._call_tool(_Req(), {"id": uid_a}, 1, {
             "name": "share",
@@ -369,7 +377,8 @@ try:
               and _mismatch_ok(_t, "err_content_mismatch_image", "x.png",
                                ".pdf"), _t)
     finally:
-        _remote.pinned_request = _orig_pinned
+        _remote._pinned_request = _orig_pinned
+        _remote._resolve_host = _orig_resolve
     fn_noext = _M._url_upload("https://files.example/plain", None, PNG)[0]
     check("A8b extension-less URL filename gets the detected ext",
           fn_noext == "plain.png", fn_noext)

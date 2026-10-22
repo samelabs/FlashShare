@@ -1,4 +1,4 @@
-// ── 首页 (v3): composer 默认挂载分享, 底栏工具选择器 (顶部过滤输入) ──
+// ── 首页: composer 默认挂载分享, 底栏工具选择器 (顶部过滤输入) ──
 // 选择器列表 = window.__TOOLS__ (工作集: 官方 + 自己的 + 收藏); 输入查询
 // 时追加公开搜索命中 (/api/tools/search, 与市场/MCP catalog_search 同一
 // 谓词)。选中后 ToolInput.setTool 原地切换 (不跳转); 执行链与 tool 页
@@ -29,6 +29,10 @@
     document.body.dataset.tool = tool.id;
     const res = document.getElementById("result");
     if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }
+    // has-result's mirror write point: hero-share reappears when the
+    // result card is cleared (app.js showItemsResult hides it)
+    const heroShare = document.querySelector(".hero-share");
+    if (heroShare) heroShare.hidden = false;
     window.invalidateToolOperation && window.invalidateToolOperation();
   }
 
@@ -175,7 +179,7 @@
   }
 })();
 
-// ── R2: hero 活终端 — 真实调用序列打字机回放 (纯展示, aria-hidden;
+// ── hero 活终端 — 真实调用序列打字机回放 (纯展示, aria-hidden;
 //   尊重 prefers-reduced-motion: 直接呈现终态) ──
 (function () {
   "use strict";

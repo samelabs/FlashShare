@@ -219,14 +219,30 @@ CIMD_DOC = {
 
 
 def _serve_cimd(doc):
-    return (200, _json.dumps(doc).encode())
+    return 200, _json.dumps(doc).encode(), None, "application/json", None
 
 
-_orig_pinned = _remote.pinned_request
+def _cimd_hop(doc):
+    def _hop(url, method="GET", body=None, headers=None, timeout_s=60,
+             max_bytes=None, deadline=None):
+        return _serve_cimd(doc)
+    return _hop
+
+
+# Single-hop stub: the REAL redirect loop (pinned_request) runs in the
+# middle — the resolver is stubbed so no real DNS happens (.example
+# hosts do not resolve).
+_rs = _remote.socket
+_orig_pinned = _remote._pinned_request
+_orig_resolve = _remote._resolve_host
+def _fake_resolve(host, port):
+    return [(_rs.AF_INET, _rs.SOCK_STREAM, _rs.IPPROTO_TCP, "",
+             ("93.184.216.34", port))]
+_remote._resolve_host = _fake_resolve
 
 _st, _h, _d = None, None, None
 try:
-    _remote.pinned_request = lambda url, **k: _serve_cimd(CIMD_DOC)
+    _remote._pinned_request = _cimd_hop(CIMD_DOC)
     _oa._cimd_cache.clear()
 
     doc = _oa.cimd_fetch(CIMD_URL)
@@ -235,18 +251,18 @@ try:
           and set(doc["redirect_uris"]) == set(CIMD_DOC["redirect_uris"]), doc)
 
     bad = dict(CIMD_DOC, client_id="https://other.example/oauth.json")
-    _remote.pinned_request = lambda url, **k: _serve_cimd(bad)
+    _remote._pinned_request = _cimd_hop(bad)
     _oa._cimd_cache.clear()
     check("A2 non-self-referential document rejected (anti-impersonation)",
           _oa.cimd_fetch(CIMD_URL) is None)
 
-    _remote.pinned_request = lambda url, **k: _serve_cimd(
+    _remote._pinned_request = _cimd_hop(
         dict(CIMD_DOC, redirect_uris=["ftp://x/y"]))
     _oa._cimd_cache.clear()
     check("A3 non-https/loopback redirect entries rejected",
           _oa.cimd_fetch(CIMD_URL) is None)
 
-    _remote.pinned_request = lambda url, **k: _serve_cimd(
+    _remote._pinned_request = _cimd_hop(
         dict(CIMD_DOC, token_endpoint_auth_method="client_secret_basic"))
     _oa._cimd_cache.clear()
     check("A4 confidential-client auth method rejected (public-only MVP)",
@@ -256,7 +272,7 @@ try:
           _oa.cimd_fetch("http://plain.example/oauth.json") is None)
 
     # ═══ F. full flow (identity core; resource-server side over real HTTP) ═══
-    _remote.pinned_request = lambda url, **k: _serve_cimd(CIMD_DOC)
+    _remote._pinned_request = _cimd_hop(CIMD_DOC)
     _oa._cimd_cache.clear()
 
     verifier = secrets.token_urlsafe(48)
@@ -375,6 +391,76 @@ try:
     check("S5 OAuth plugin attribution stamped on tool_calls",
           row and row["oauth_client_id"] == CIMD_URL, row)
 
+    # ═══ S5b. attribution contract (R8 rework) ═══
+    # (1) B (a second OAuth client on a second user) replaying A's
+    #     client_ref must NOT re-attribute the settled call — first
+    #     writer wins (SQL guards oauth_client_id IS NULL).
+    # (2) A's FAILED call (provider unreachable, call row exists with
+    #     status failed) is attributed to A just like a success.
+    # (1) the SAME OAuth client replaying its ref (duplicate delivery)
+    # lands on the settled row — the guarded UPDATE (oauth_client_id IS
+    # NULL) must no-op, attribution stays the first writer's.
+    _ref_a = f"oa-{_u}"
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 21, "method": "tools/call",
+                      "params": {"name": "share",
+                                 "arguments": {
+                                     "files": [{"filename": "a.png", "b64": PNG_B64}],
+                                     "client_ref": _ref_a}}},
+                     token=ACCESS)
+    _sc_r = ((d or {}).get("result") or {}).get("structuredContent") or {}
+    with db() as con:
+        row_a = con.execute(
+            "select oauth_client_id, status from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, _ref_a)).fetchone()
+    # the guard itself, probed directly: a second client's attribution of
+    # the same settled row must not overwrite
+    CIMD_B = f"https://plugin-b-{_u}.example/oauth.json"
+    with db() as con:
+        con.execute(
+            "update tool_calls set oauth_client_id=%s where id=(select id"
+            " from tool_calls where user_id=%s and client_ref=%s)"
+            " and oauth_client_id IS NULL",
+            (CIMD_B, UID, _ref_a))
+        row_guard = con.execute(
+            "select oauth_client_id from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, _ref_a)).fetchone()
+    check("S5b replay of A's ref → replay answered, guarded attribution stays A",
+          row_a and row_a["oauth_client_id"] == CIMD_URL
+          and _sc_r.get("replay") is True
+          and row_guard["oauth_client_id"] == CIMD_URL,
+          f"{_sc_r} {row_a} {row_guard}")
+
+    # failed platform http tool (unreachable endpoint) for A
+    _ftk = f"oaftk{_os.urandom(4).hex()}"
+    with db() as con:
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id,"
+            " execution, label_json, visibility, enabled, accept_json,"
+            " format_family, body_format, files_min, files_max,"
+            " outputs_json, endpoint_json, created_at, updated_at)"
+            " values (%s, NULL, %s, 'http', %s, 'public', TRUE, NULL,"
+            " NULL, 'text', 0, 0, '[\"text\"]', %s, %s, %s)",
+            (_ftk, _ftk, _json.dumps({"en": "OA Fail Probe"}),
+             _json.dumps({"url": "http://127.0.0.1:1/never",
+                          "timeout_s": 3}), ts, ts))
+        con.execute("insert into pricing (tool_id, cost, enabled,"
+                    " updated_at) values (%s, 0, TRUE, %s)", (_ftk, ts))
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 22, "method": "tools/call",
+                      "params": {"name": _ftk,
+                                 "arguments": {"input": "x",
+                                               "client_ref": f"oaF-{_u}"}}},
+                     token=ACCESS)
+    _sc_f = ((d or {}).get("result") or {}).get("structuredContent") or {}
+    with db() as con:
+        row_f = con.execute(
+            "select status, oauth_client_id from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, f"oaF-{_u}")).fetchone()
+    check("S5b A's failed call → call row failed, attribution still A",
+          row_f and row_f["status"] == "failed"
+          and row_f["oauth_client_id"] == CIMD_URL,
+          f"{_sc_f} {row_f}")
+    _oa._cimd_cache.clear()
+
     # refresh rotation
     toks2 = _oa.refresh_access_token(REFRESH, CIMD_URL, RESOURCE)
     check("F7 refresh rotation mints a fresh pair",
@@ -405,12 +491,14 @@ try:
     check("F10 wrong PKCE verifier rejected", ok)
 
 finally:
-    _remote.pinned_request = _orig_pinned
+    _remote._pinned_request = _orig_pinned
+    _remote._resolve_host = _orig_resolve
     _oa._cimd_cache.clear()
 
 # ═══ consent flow (TestClient, in-process server + patched CIMD) ═══
 try:
-    _remote.pinned_request = lambda url, **k: _serve_cimd(CIMD_DOC)
+    _remote._pinned_request = _cimd_hop(CIMD_DOC)
+    _remote._resolve_host = _fake_resolve
     _oa._cimd_cache.clear()
     with db() as con:
         _set_pw = con.execute(
@@ -601,7 +689,8 @@ try:
               st == 200 and not ((d or {}).get("result") or {}).get("isError"),
               st)
 finally:
-    _remote.pinned_request = _orig_pinned
+    _remote._pinned_request = _orig_pinned
+    _remote._resolve_host = _orig_resolve
     _oa._cimd_cache.clear()
 
 # token endpoint over HTTP: unknown client (fetch will fail for real)

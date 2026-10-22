@@ -80,6 +80,14 @@ function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 }
 
+// Site name for dynamic share surfaces (X card text / fallback title):
+// APP_NAME rides the og:site_name meta rendered by base.html on every
+// page — no second injection point for a constant.
+function siteName() {
+  const m = document.querySelector('meta[property="og:site_name"]');
+  return (m && m.content) || "518.PLUS";
+}
+
 let lastErrorKey = null;
 function showResult(html, isError=false) {
   result.className = "result" + (isError ? " error" : "");
@@ -261,16 +269,9 @@ function wireResultItemActions() {
   if (!result) return;
   result.querySelectorAll("[data-copy]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      let text = "";
-      if (btn.dataset.copy === "link") {
-        const bar = btn.closest(".linkbar");
-        const span = bar && bar.querySelector("span");
-        text = span ? span.textContent : "";
-      } else {
-        const item = btn.closest(".rs-item");
-        const pre = item ? item.querySelector(".rs-text, .rs-json") : null;
-        text = pre ? pre.textContent : "";
-      }
+      const item = btn.closest(".rs-item");
+      const pre = item ? item.querySelector(".rs-text, .rs-json") : null;
+      const text = pre ? pre.textContent : "";
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
@@ -319,8 +320,16 @@ function showItemsResult(res) {
   const linkbar = linkUrl
     ? '<div class="linkbar">' + svgIcon("link")
       + "<span>" + escapeHtml(linkUrl) + "</span>"
-      + '<button class="btn btn-secondary btn-sm rs-copy" type="button" data-copy="link">' + svgIcon("copy")
-      + "<span>" + t("copy_link") + "</span></button></div>"
+      + (resultId
+        ? window.shareBarHtml({
+            url: linkUrl,
+            title: (files[0] && files[0].filename) || siteName(),
+            xTitle: siteName(),
+            qrSrc: "/r/" + encodeURIComponent(resultId) + "/qr.svg",
+            compact: true,
+          })
+        : "")
+      + "</div>"
     : "";
   const rows = renderResultItems(res.items, { pwa: pwa, inputSizes: window.__lastInputSizes || null });
   window.__lastInputSizes = null;
@@ -333,6 +342,10 @@ function showItemsResult(res) {
     + (rows || '<p class="empty">' + t("resultEmpty") + "</p>")
     + "</div></div>";
   el.classList.add("has-result");
+  // Home hero share bar steps aside for the result card's own four-piece
+  // share bar (tool page has no .hero-share — the guard keeps it shared)
+  const heroShare = document.querySelector(".hero-share");
+  if (heroShare) heroShare.hidden = true;
   // A result that is one https link from the tool: the tool's link is the
   // primary action; the platform result link stays reachable via the
   // result-page button, not as a competing first-row link.

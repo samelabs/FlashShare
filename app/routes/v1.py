@@ -306,8 +306,9 @@ async def _body_tool_response(user, payload) -> Response:
 
 async def _file_item_bytes(user, item, headers) -> Response:
     """File item → bytes through the internal NON-counting channel (no
-    allowed_downloads consumption). Dead/expired mapping → 410
-    result_expired (never re-executes, never re-charges)."""
+    allowed_downloads consumption). Mapping missing/not-owned and storage
+    404/410 → 410 result_expired (never re-executes, never re-charges);
+    storage faults (exception, ≥500) → 503 result_unavailable."""
     from sharing.uploads import get_live_upload_by_public_id
     from storage import read as storage_read
     up = get_live_upload_by_public_id(item.get("public_id") or "")
@@ -316,20 +317,28 @@ async def _file_item_bytes(user, item, headers) -> Response:
     try:
         status, _rh, stream = await asyncio.to_thread(
             storage_read, up["gokapi_id"])
-    except Exception:
-        return _err(410, "result_expired", headers=headers)
+    except Exception as exc:
+        # The internal non-counting primitive raises typed errors carrying
+        # the Gokapi status (gokapi_api_404 / gokapi_api_410): a gone
+        # object is expiry; anything else is a channel fault.
+        _msg = str(exc)
+        if "gokapi_api_404" in _msg or "gokapi_api_410" in _msg:
+            return _err(410, "result_expired", headers=headers)
+        logger.warning("v1 result file read failed (public_id=%s): %s",
+                       item.get("public_id"), _msg)
+        return _err(503, "result_unavailable", headers=headers)
     if status >= 400:
-        return _err(410, "result_expired", headers=headers)
+        return _err(503, "result_unavailable", headers=headers)
     from config import MAX_UPLOAD_BYTES
     data = stream.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         return _err(500, "internal_error", headers=headers)
-    fn = (item.get("filename") or "result").replace('"', "")
+    from utils import content_disposition
     return Response(data, media_type=item.get("content_type")
                     or "application/octet-stream",
                     headers={**headers,
-                             "Content-Disposition":
-                                 f'attachment; filename="{fn}"'})
+                             "Content-Disposition": content_disposition(
+                                 "attachment", up["file_name"], "result")})
 
 
 # ── file tools: multipart bytes | JSON {files:[url|ref], params} ──
@@ -351,8 +360,8 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
             data = await part.read()
             items.append(("new", (part.filename,
                                   part.content_type or "", data)))
-        if not items:
-            return _err(400, "err_select_file")
+        # 零文件放行: 数量窗口是 ingest_sources 第 0 步的唯一权威
+        # (files_min>0 在那里给 err_file_count), 入口不再自带下限
     elif _is_json_media_type(ctype):
         try:
             body = await request.json()
@@ -361,7 +370,8 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
         if not isinstance(body, dict):
             return _err(400, "invalid_request")
         spec = body.get("files")
-        if not isinstance(spec, list) or not spec:
+        # files 必须存在且为 list, 允许空列表 (数量权威在 ingest_sources)
+        if not isinstance(spec, list):
             return _err(400, "err_select_file")
         for entry in spec:
             if not isinstance(entry, dict):
@@ -384,6 +394,13 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
         if "params" in body:
             if not isinstance(body["params"], dict):
                 return _err(400, "invalid_request")
+            if params:
+                # tool params have exactly one transport per request —
+                # the query string AND a JSON body params object is a
+                # duplicate, same code as a repeated query key
+                return _err(400, "duplicate_param",
+                            message="params appear in both the query "
+                                    "string and the JSON body")
             params = dict(body["params"])
     else:
         return _err(415, "err_content_type",
@@ -398,6 +415,15 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
         return JSONResponse(pbody, pstatus)
     if declared is not None:
         params = declared
+
+    # Advisory credits affordability BEFORE source ingress (same order
+    # as MCP: preflight → affordability → ingest) — a clear insufficiency
+    # answers 402 without fetching or staging anything; the authoritative
+    # consume stays in the gate.
+    from execution.affordability import check_affordability
+    _denial = check_affordability(user["id"], tool, client_ref=idem)
+    if _denial:
+        return JSONResponse(_denial, 402)
 
     # 文件来源准备 + 暂存单点 (A4): 与 MCP 同一实现; idem key 即暂存
     # client_ref。

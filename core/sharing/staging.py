@@ -56,9 +56,9 @@ def fetch_url_source(url: str) -> bytes:
     from config import MAX_UPLOAD_BYTES
     from remote import RemoteError, pinned_request
     URL_FETCH_TIMEOUT_S = 30
-    status, data = pinned_request(url, method="GET",
-                                  timeout_s=URL_FETCH_TIMEOUT_S,
-                                  max_bytes=MAX_UPLOAD_BYTES)
+    status, data, _ctype, _cd = pinned_request(url, method="GET",
+                                               timeout_s=URL_FETCH_TIMEOUT_S,
+                                               max_bytes=MAX_UPLOAD_BYTES)
     if status != 200:
         raise RemoteError("http_status", str(status))
     if len(data) > MAX_UPLOAD_BYTES:
@@ -92,7 +92,8 @@ async def ingest_sources(user: dict, tool: dict, items: list,
     (filename, ctype, body_bytes)) | "ref" (val = (public_id,
     source_token)) | "url" (val = (url, filename|None))。
 
-    链: 引用权限解析 (零暂存零配额) → URL 钉扎拉取 → sniff 收容
+    链: 数量窗口 (声明 + 平台上限 — 唯一数量权威) → 引用权限解析
+    (零暂存零配额) → URL 钉扎拉取 (逐项累计批量上限) → sniff 收容
     (同族收容 final 身份) → accept 闸门 (声明窗口) → 批量上限 →
     ingress 请求哈希 → stage_sources (claim→暂存→finalize 三态)。
 
@@ -105,6 +106,15 @@ async def ingest_sources(user: dict, tool: dict, items: list,
     """
     from config import PUBLIC_ID_RE
     from execution.source import resolve_upload
+    from execution.dispatch import source_count_error
+    from governance.ingress import MAX_FILES_PER_REQUEST
+    cerr = source_count_error(tool, len(items))
+    if cerr:
+        raise SourceError(cerr)
+    if len(items) > MAX_FILES_PER_REQUEST:
+        raise SourceError("err_too_many_files", status=400,
+                          extra={"limit": MAX_FILES_PER_REQUEST,
+                                 "incoming": len(items)})
     ref_names = {}
     for i, (kind, val) in enumerate(items):
         if kind != "ref":
@@ -119,6 +129,12 @@ async def ingest_sources(user: dict, tool: dict, items: list,
         ref_names[i] = upload.get("file_name", "")
 
     staged_specs = {}
+    # 批量上限逐项累计: inline/new 的字节数先行计入, 每拉回一个 URL
+    # 立即累加 — 越界即刻拒绝, 不再拉取后续项 (拉取结束后的
+    # validate_batch 保留为单文件上限与最终兜底)。
+    from config import MAX_BATCH_BYTES
+    batch_bytes = sum(len(val[2]) for kind, val in items
+                      if kind in ("inline", "new"))
     for i, (kind, val) in enumerate(items):
         if kind in ("inline", "new"):
             staged_specs[i] = val
@@ -132,6 +148,11 @@ async def ingest_sources(user: dict, tool: dict, items: list,
                     raise SourceError(exc.code, extra={
                         "message": str(exc.detail)[:200]}) from exc
                 raise
+            batch_bytes += len(data)
+            if batch_bytes > MAX_BATCH_BYTES:
+                raise SourceError("err_batch_too_large", status=413,
+                                  extra={"limit": MAX_BATCH_BYTES,
+                                         "incoming": batch_bytes})
             staged_specs[i] = url_source_upload(url, fname, data)
 
     from security import sniff_allowed, mismatch_detail
@@ -173,10 +194,15 @@ async def ingest_sources(user: dict, tool: dict, items: list,
                 else {"kind": "ref", "public_id": val[0]} if kind == "ref"
                 else {"kind": "inline"}
                 for kind, val in items]
+        # 操作身份只锚定请求自带的内容 (inline/new 字节): URL 拉回的内容
+        # 不进哈希 — 远端内容变化时同一 client_ref 的合法重试仍重放,
+        # URL 列表本身经 ctx["sources"] 参与身份。
         req_hash = ingress_request_hash(
             "tool_source",
             [{"filename": fn, "content_type": ct, "size": len(b),
-              "sha256": _hl.sha256(b).hexdigest()} for fn, ct, b in canon],
+              "sha256": _hl.sha256(b).hexdigest()}
+             for idx, (fn, ct, b) in zip(sorted(staged_specs), canon)
+             if items[idx][0] in ("inline", "new")],
             ctx)
         staged = await stage_sources(int(user["id"]), ip, client_ref,
                                      scope, req_hash, canon)

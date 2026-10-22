@@ -126,7 +126,7 @@ async def tool_detail(tool_key: str, request: Request):
     stats["fail_rate"] = (f"{int(stats['failed']) * 100 // total_calls}%"
                           if total_calls else "—")
     for r in recent:
-        r["cost"] = int(r["cost_snapshot"])
+        r["cost"] = int(r["net_charge"])
     return templates.TemplateResponse(
         request, "samelabs/tool_detail.html",
         ctx(request, user, t=t, pricing=(dict(pricing) if pricing else None),
@@ -242,9 +242,23 @@ async def create_http_tool(request: Request):
             timeout_s = strict_int(raw.get("timeout_s", 60))
         except ValueError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, 422)
-        auth_header = str(raw.get("auth_header", "")).strip()
-        auth_token = str(raw.get("auth_token", "")).strip()
-        accept_raw = str(raw.get("accept", "")).strip()
+
+        def _norm_str(key):
+            v = raw.get(key, "")
+            if v is None:
+                return ""
+            if not isinstance(v, str):
+                return None
+            return v.strip()
+        auth_header = _norm_str("auth_header")
+        if auth_header is None:
+            return JSONResponse({"ok": False, "error": "bad_binding"}, 422)
+        auth_token = _norm_str("auth_token")
+        if auth_token is None:
+            return JSONResponse({"ok": False, "error": "bad_binding"}, 422)
+        accept_raw = _norm_str("accept")
+        if accept_raw is None:
+            return JSONResponse({"ok": False, "error": "bad_accept"}, 422)
         files_min = raw.get("files_min", 1)
         files_max = raw.get("files_max", 1)
         if isinstance(files_min, bool) or not isinstance(files_min, int) \

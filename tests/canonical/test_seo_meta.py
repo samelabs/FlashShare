@@ -241,6 +241,23 @@ def main():
     check("H /pricing?lang=de: canonical keeps ?lang, drops tracking params",
           canon == f"{BASE_URL}/pricing?lang=de" and _meta(html, "og:url") == canon, f"{canon!r}")
 
+    # ── alternates on an explicit ?lang page: each of the 10 carries
+    # exactly ONE lang param; x-default carries none (no double query) ──
+    _alts = _re.findall(
+        r'<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"', html)
+    _xd = [h for t, h in _alts if t == "x-default"]
+    _lang_alts = [(t, h) for t, h in _alts if t != "x-default"]
+    _alt_codes = [h.rsplit("lang=", 1)[-1] for _t, h in _lang_alts]
+    check("H /pricing?lang=de: every alternate carries exactly one ?lang=xx",
+          len(_lang_alts) == 10
+          and all(h.count("lang=") == 1
+                  and h.startswith(f"{BASE_URL}/pricing?lang=")
+                  for _t, h in _lang_alts)
+          and len(set(_alt_codes)) == 10 and all(_alt_codes),
+          str(_lang_alts[:3]))
+    check("H /pricing?lang=de: x-default has no query string",
+          len(_xd) == 1 and _xd[0] == f"{BASE_URL}/pricing", str(_xd))
+
     # ── noindex pages: canonical/og present, hreflang absent ───────────
     for p in ("/auth/login", "/auth/register", "/account/keys",
               "/account/tools/publish", f"/r/{_RESULT_ID}"):

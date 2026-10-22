@@ -10,6 +10,7 @@ a running app and fake Gokapi are required.
 """
 import io
 import json
+import re
 import os
 import sys
 import urllib.request
@@ -151,6 +152,25 @@ try:
 
         st, _h, d, _sc = _req("GET", f"/f/{pid}/zip-list", {"Cookie": ck})
         check("INL-7b channel restored → 200 again", st == 200, st)
+
+        # F13: zip-preview.js rides its own content stamp (never an empty
+        # ?v=); only a non-empty stamp gets the immutable cache header
+        st, _hd, page, _sc = _req("GET", f"/f/{pid}", {"Cookie": ck})
+        _m = re.search(r"zipPreviewVersion:\s*\"([0-9a-f]+)\"", page or "")
+        check("VP-1 detail page carries a non-empty zipPreviewVersion stamp",
+              st == 200 and bool(_m and _m.group(1)),
+              f"{st} {_m and _m.group(1)}")
+        if _m:
+            st_v, h_v, _b, _s = _req(
+                "GET", f"/static/zip-preview.js?v={_m.group(1)}")
+            check("VP-2 real-stamp static URL → immutable cache header",
+                  st_v == 200 and "immutable" in (h_v.get("cache-control") or ""),
+                  (st_v, h_v.get("cache-control")))
+            st_e, h_e, _b2, _s2 = _req("GET", "/static/zip-preview.js?v=")
+            check("VP-3 empty ?v= never pinned immutable",
+                  st_e == 200
+                  and "immutable" not in (h_e.get("cache-control") or ""),
+                  (st_e, h_e.get("cache-control")))
 finally:
     _gk_fail(None)
     if uid is not None:

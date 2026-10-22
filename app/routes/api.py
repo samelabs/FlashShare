@@ -176,8 +176,12 @@ async def get_uploads(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
+    import asyncio
     offset = list_offset(request.query_params.get("offset", "0"))
-    uploads = list_uploads(user["id"], offset=offset, limit=20)
+    # Gokapi 列表是慢速外呼 (HTTP), 不阻塞事件循环 — 并发的健康检查等
+    # 短请求不为其买单
+    uploads = await asyncio.to_thread(
+        list_uploads, user["id"], offset=offset, limit=20)
     return {"ok": True, "uploads": uploads, "has_more": len(uploads) == 20}
 
 

@@ -344,13 +344,16 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         (await page.$(".ti-run")) !== null && (await page.$(".ti-file-input")) !== null);
       // format summary: a single-family tool must NOT read as "All formats"
       // (the union view double-counted the all group and every family hit it)
+      // asserted through the same i18n keys the composer renders with —
+      // locale-independent (CI en-US, any developer machine locale)
       const sumText = await page.evaluate(() => {
         const el = document.querySelector(".ti-drop small");
-        return el ? el.textContent : "";
+        return { text: el ? el.textContent : "",
+          family: window.t("family_image"), all: window.t("ti_accept_all") };
       });
       check("home: compress summary names its family, never 'All formats'",
-        sumText.indexOf("Images") !== -1 && sumText.indexOf("All formats") === -1,
-        sumText);
+        sumText.text.indexOf(sumText.family) !== -1 && sumText.text.indexOf(sumText.all) === -1,
+        JSON.stringify(sumText));
 
       // track network legs for retry assertions
       const legs = { uploads: [], executes: [] };
@@ -563,6 +566,52 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check("keys: key appears in list", (await page.$$(".key-item")).length >= 1);
       await visualAudit("desktop", page, "account-keys-created", true);
 
+      // ── 12f. F14: preflight rejection voids the operation identity ──
+      // A paid foreign tool cannot be minted through the public API
+      // (publishing needs a successful run), so the 402 is injected at
+      // the network layer on a real free tool and the REAL composer flow
+      // runs: no retry operation survives, zero uploads fire.
+      await gotoReady(page, "/tool/compress", ".composer");
+      await page.route("**/api/tools/preflight", (route) =>
+        route.fulfill({ status: 402,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false,
+            error: "err_insufficient_credits", balance: 0, cost: 7 }) }));
+      let uploads14 = 0;
+      const onReq14 = (r) => { if (r.url().includes("/api/uploads")) uploads14 += 1; };
+      page.on("request", onReq14);
+      await setInputFiles(page, ".ti-file-input",
+        [{ name: "gate-14.png", mimeType: "image/png", buffer: IMG }]);
+      await page.click(".ti-run");
+      // deterministic readiness: the typed error card (not the processing
+      // card) is the signal — a fixed timeout lost this race on cold runs
+      await page.waitForSelector(".result.error .error-note", { timeout: 10000 });
+      const st14 = await page.evaluate(() => ({
+        canRetry: window.canRetryToolOperation ? window.canRetryToolOperation() : null,
+        err: (document.querySelector(".result .result-card .error-note") || {}).textContent || "",
+      }));
+      page.removeListener("request", onReq14);
+      await page.unroute("**/api/tools/preflight");
+      check("preflight-402: rejection voids the operation (no retry op)",
+        st14.canRetry === false, JSON.stringify(st14));
+      check("preflight-402: zero upload requests fired",
+        uploads14 === 0, uploads14);
+      check("preflight-402: typed error surfaced to the user",
+        st14.err.length > 0, st14.err.slice(0, 80));
+
+      // ── 12g. F15: earnings pagination params ride the API request ──
+      await gotoReady(page, "/account/earnings?rev_page=2&wd_page=2", "#eTotal");
+      const earnCalls = [];
+      const onEarn = (r) => { if (r.url().includes("/api/earnings")) earnCalls.push(r.url()); };
+      page.on("request", onEarn);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1500);
+      page.removeListener("request", onEarn);
+      check("earnings-page: rev_page/wd_page from the URL reach the API",
+        earnCalls.length > 0
+        && earnCalls.every(u => u.includes("rev_page=2") && u.includes("wd_page=2")),
+        earnCalls[0] || "no api call");
+
       // ── 13. publish edit refill escapes stored declaration data ──
       // A malicious enum option value stored in a declaration must
       // refill as TEXT on the author's edit page, never execute.
@@ -590,14 +639,119 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       const xssState = await page.evaluate(() => ({
         fired: window.__xssAudit === 1,
         optVal: (document.querySelector(".pr-opt-val") || {}).value,
-        optText: (document.querySelector(".pr-default option") || {}).textContent,
+        optTexts: [...document.querySelectorAll(".pr-default option")]
+          .map(o => o.textContent),
       }));
       check("publish-xss: malicious option value did NOT execute", xssState.fired === false);
       check("publish-xss: option value refilled as editable text",
         xssState.optVal === xssPayload, xssState.optVal);
       check("publish-xss: default <option> text escaped",
-        xssState.optText === xssPayload, xssState.optText);
+        xssState.optTexts.includes(xssPayload), xssState.optTexts.join("|"));
       await visualAudit("desktop", page, "publish-edit-xss-refill", true);
+
+      // ── 13b. enum default select: unset leading option + live tracking ──
+      await gotoReady(page, "/account/tools/publish", "#pubForm");
+      await page.evaluate(() => {
+        document.getElementById("addParam").click();
+      });
+      await page.waitForSelector(".param-row", { timeout: 10000 });
+      const enumDefault = await page.evaluate(() => {
+        const row = document.querySelector(".param-row");
+        const sel = row.querySelector(".pr-default");
+        const first = sel.options[0];
+        return { firstValue: first.value, firstText: first.textContent,
+                 count: sel.options.length };
+      });
+      check("publish-enum: default select leads with the unset option",
+        enumDefault.firstValue === "" && enumDefault.firstText === "—"
+        && enumDefault.count === 1, JSON.stringify(enumDefault));
+      // type an option value → it appears in the default select
+      await page.evaluate(() => {
+        const row = document.querySelector(".param-row");
+        row.querySelector(".pr-key").value = "style";
+        // a fresh enum row has NO option inputs — create the first one
+        row.querySelector(".pr-opt-add").click();
+        const v = row.querySelector(".pr-opt-val");
+        v.value = "warm";
+        v.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      let selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return [...sel.options].map(o => o.value);
+      });
+      check("publish-enum: typed option becomes selectable default",
+        selState.join(",") === ",warm", selState.join(","));
+      await page.evaluate(() => {
+        document.querySelector(".param-row .pr-default").value = "warm";
+        const add = document.querySelector(".param-row .pr-opt-add");
+        add.click();
+        const rows = document.querySelectorAll(".param-row .pr-opt");
+        const v2 = rows[rows.length - 1].querySelector(".pr-opt-val");
+        v2.value = "cool";
+        v2.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: adding options keeps the chosen default",
+        selState.value === "warm" && selState.opts === ",warm,cool",
+        JSON.stringify(selState));
+      // renaming the selected option's value → default falls back to unset
+      await page.evaluate(() => {
+        const v = document.querySelector(".param-row .pr-opt-val");
+        v.value = "hot";
+        v.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: renaming the selected option resets default to unset",
+        selState.value === "" && selState.opts === ",hot,cool",
+        JSON.stringify(selState));
+      // deleting the selected option → default falls back to unset
+      await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        sel.value = "hot";
+        document.querySelector(".param-row .pr-opt-del").click();
+      });
+      selState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: deleting the selected option resets default to unset",
+        selState.value === "" && selState.opts === ",cool",
+        JSON.stringify(selState));
+      // editing a tool that has NO default → stays unset
+      const noDef = await page.evaluate(async () => {
+        const r = await fetch("/api/usertools", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: "Gate NoDef", url: "https://93.184.216.34/x",
+            timeout_s: 30, files_min: 0, files_max: 1,
+            format_families: "image", accept: [".png"],
+            outputs: ["text"], cost: 0,
+            params: [{ key: "style", type: "enum", required: false,
+                       default: null,
+                       options: [{ value: "warm", label: "warm" }] }],
+          }),
+        });
+        try { return (await r.json()).tool_key; } catch (e) { return ""; }
+      });
+      await gotoReady(page, `/account/tools/publish?id=${noDef}`, "#pubForm");
+      const noDefState = await page.evaluate(() => {
+        const sel = document.querySelector(".param-row .pr-default");
+        return { value: sel.value,
+                 opts: [...sel.options].map(o => o.value).join(",") };
+      });
+      check("publish-enum: edit of a no-default tool keeps default unset",
+        noDefState.value === "" && noDefState.opts === ",warm",
+        JSON.stringify(noDefState));
 
       // ── 13b. bad_cost maps onto the cost field slot ──
       await gotoReady(page, "/account/tools/publish", "#pubForm");
@@ -741,6 +895,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await page.click("#pubSubmit");
       await patchSettled;
       await page.waitForURL(/\/account\/tools/, { timeout: 20000 }).catch(() => {});
+      // the swallowed wait resolves on navigation COMMIT — the next
+      // gotoReady would interrupt the still-loading /account/tools
+      // document ("execution context destroyed"). Wait for the target
+      // page's own readiness signal before navigating on.
+      await page.waitForSelector("#openPublish", { timeout: 20000 });
       page.off("request", reqSink);
       check("publish-locale: X-518-Edit-Locale equals the main language (ja)",
         editLocaleHeader === "ja", editLocaleHeader);
@@ -1282,6 +1441,79 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await ctx.close();
     }
 
+    // (b2) auth modal panel stays inside the viewport at SHORT viewports:
+    //      panel top >= 0 and bottom <= innerHeight; when the content is
+    //      taller than the panel the submit button and the terms link are
+    //      reachable by scrolling INSIDE the panel, and the focused input
+    //      stays inside the visible band. Both tabs, with and without the
+    //      X login entry (__X_LOGIN__ changes the rendered height).
+    for (const [w, h] of [[1024, 450], [375, 560]]) {
+      for (const xLogin of [false, true]) {
+        const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+        const page = await ctx.newPage();
+        await gotoReady(page, "/", "body");
+        for (const mode of ["register", "login"]) {
+          const probe = await page.evaluate(({ mode, xLogin }) => {
+            window.__X_LOGIN__ = xLogin;
+            window.openAuthModal({ mode });
+            const panel = document.querySelector(".auth-modal");
+            if (!panel) return { ok: false, why: "no panel" };
+            const first = panel.querySelector("form input");
+            if (first) first.focus();
+            const pr = panel.getBoundingClientRect();
+            const fr = document.activeElement && document.activeElement.getBoundingClientRect
+              ? document.activeElement.getBoundingClientRect() : null;
+            const inBand = (r) => !!r && r.top >= pr.top - 1 && r.bottom <= pr.bottom + 1;
+            panel.scrollTop = panel.scrollHeight;
+            const submit = panel.querySelector('button[type=submit]');
+            const terms = panel.querySelector(".auth-terms a");
+            const sr = submit && submit.getBoundingClientRect();
+            const tr2 = terms && terms.getBoundingClientRect();
+            return {
+              ok: true,
+              top: Math.round(pr.top), bottom: Math.round(pr.bottom), ih: innerHeight,
+              focusedInBand: inBand(fr),
+              submitReachable: inBand(sr) && sr.bottom <= innerHeight + 1,
+              termsReachable: inBand(tr2) && tr2.bottom <= innerHeight + 1,
+            };
+          }, { mode, xLogin });
+          const label = `auth panel ${w}x${h} ${mode}${xLogin ? " +X" : ""}`;
+          check(`${label}: top >= 0 and bottom <= innerHeight`,
+            probe.ok && probe.top >= 0 && probe.bottom <= probe.ih, JSON.stringify(probe));
+          check(`${label}: submit + terms reachable inside the panel, focused input in band`,
+            probe.ok && probe.submitReachable && probe.termsReachable && probe.focusedInBand,
+            JSON.stringify(probe));
+          await page.keyboard.press("Escape");
+          await page.waitForTimeout(50);
+        }
+        await ctx.close();
+      }
+    }
+
+    // (b3) modal-family interaction contract: the auth modal's title is a
+    //      function of the CURRENT tab — heading and aria-label follow it.
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1024, height: 450 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/", "body");
+      const titles = await page.evaluate(() => {
+        window.openAuthModal({ mode: "register" });
+        const panel = document.querySelector(".auth-modal");
+        const overlay = panel.parentElement;
+        const before = { h2: panel.querySelector("h2").textContent, aria: overlay.getAttribute("aria-label") };
+        panel.querySelector('.seg [data-mode="login"]').click();
+        return { before,
+          after: { h2: panel.querySelector("h2").textContent, aria: overlay.getAttribute("aria-label") },
+          want: { register: window.t("registerTitle"), login: window.t("loginTitle") } };
+      });
+      check("auth modal: heading + aria-label follow the active tab",
+        titles.before.h2 === titles.want.register && titles.before.aria === titles.want.register
+          && titles.after.h2 === titles.want.login && titles.after.aria === titles.want.login,
+        JSON.stringify(titles));
+      await page.keyboard.press("Escape");
+      await ctx.close();
+    }
+
     // (c) PWA: SW registers + offline navigation. The offline half uses a
     // REAL dead origin: page-level offline emulation does not cover the
     // service worker's own network-first fetch (verified: playwright 1.55
@@ -1553,7 +1785,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         }
       }
 
-      // chat form (files_max=0): synthetic mount of the real component
+      // body tools (files_max=0): the standard input card — the body box
+      // (text and json alike) sits inside the card at 16px side margins;
+      // text starts at 3 lines and grows to 8, then scrolls internally;
+      // the run button is the bottom-bar wide button; Enter is a newline,
+      // Ctrl+Enter runs (exactly once).
       {
         const page = await ctx.newPage();
         await gotoReady(page, "/", ".composer");
@@ -1569,52 +1805,87 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             body_placeholder: { en: "Ask anything" },
             params: [],
           } });
+          const jhost = document.createElement("div");
+          jhost.id = "jsonProbe";
+          document.getElementById("toolInput").after(jhost);
+          window.ToolInput.mount(jhost, { tool: {
+            id: "probe/json", label: "JsonProbe", files_min: 0, files_max: 0,
+            body_format: "json", params: [],
+          } });
         });
         const shape = await page.evaluate(() => {
-          const ta = document.querySelector("#chatProbe .ti-chat-text");
-          const btn = document.querySelector("#chatProbe .ti-run");
-          const wideRun = document.querySelector("#chatProbe .c-bar .ti-run");
-          if (!ta || !btn) return { ok: false };
-          const tr = ta.getBoundingClientRect();
-          const br = btn.getBoundingClientRect();
-          const wr = ta.closest(".ti-chat-wrap").getBoundingClientRect();
+          const ta = document.querySelector("#chatProbe .ti-body-text");
+          const jt = document.querySelector("#jsonProbe .ti-body-json");
+          const card = ta && ta.closest(".composer");
+          if (!ta || !jt || !card) return { ok: false };
+          const inset = (el) => {
+            const r = el.getBoundingClientRect();
+            const card = el.closest(".composer");
+            const c = card.getBoundingClientRect();
+            const cs = getComputedStyle(card);
+            // the 16px side margins start at the card's content edge —
+            // discount the card's own border (border-box rect includes it)
+            const bl = parseFloat(cs.borderLeftWidth) || 0;
+            const br = parseFloat(cs.borderRightWidth) || 0;
+            return { left: Math.round(r.left - c.left - bl), right: Math.round(c.right - br - r.right),
+              inside: r.left >= c.left + bl - 0.5 && r.right <= c.right - br + 0.5 };
+          };
           return {
             ok: true,
-            sendInsideCorner: br.right <= wr.right + 1 && br.bottom <= wr.bottom + 1
-              && br.top >= tr.top && br.left >= tr.right - 120,
-            singleLineHeight: tr.height < 72,
-            noBarRun: !wideRun,
+            taInset: inset(ta), jsonInset: inset(jt),
+            textH: Math.round(ta.getBoundingClientRect().height),
+            barRun: !!document.querySelector("#chatProbe .c-bar .ti-run"),
+            barRunWide: !!document.querySelector("#chatProbe .c-bar .send.wide.ti-run"),
+            noChatWrap: !document.querySelector("#chatProbe .ti-chat-wrap"),
             placeholder: ta.getAttribute("placeholder"),
-            ph: ta.getAttribute("placeholder") === "Ask anything",
           };
         });
-        check("chat form: one auto-grow input, send button inside its corner, no bar run",
-          shape.ok && shape.sendInsideCorner && shape.singleLineHeight && shape.noBarRun,
+        check("body tool: box inside the card at 16px sides (text and json)",
+          shape.ok && shape.taInset.inside && shape.taInset.left === 16 && shape.taInset.right === 16
+            && shape.jsonInset.inside && shape.jsonInset.left === 16 && shape.jsonInset.right === 16,
           JSON.stringify(shape));
-        check("chat form: placeholder from the declared body placeholder", shape.ok && shape.ph,
+        check("body tool: run button is the bottom-bar wide button, chat wrap gone",
+          shape.ok && shape.barRun && shape.barRunWide && shape.noChatWrap,
           JSON.stringify(shape));
-        await page.focus("#chatProbe .ti-chat-text");
+        check("body tool: text box starts at the 3-line height",
+          shape.ok && shape.textH >= 90, JSON.stringify(shape));
+        check("body tool: placeholder from the declared body placeholder",
+          shape.ok && shape.placeholder === "Ask anything", JSON.stringify(shape));
+        await page.focus("#chatProbe .ti-body-text");
         await page.keyboard.type("line 1");
-        for (let i = 2; i <= 10; i++) {
+        for (let i = 2; i <= 8; i++) {
           await page.keyboard.press("Enter");
           await page.keyboard.type("line " + i);
         }
         await page.waitForTimeout(150);
-        const grown = await page.evaluate(() => {
-          const ta = document.querySelector("#chatProbe .ti-chat-text");
-          const cap = parseFloat(getComputedStyle(ta).maxHeight);
-          return { h: Math.round(ta.getBoundingClientRect().height), cap: Math.round(cap),
+        const at8 = await page.evaluate(() => {
+          const ta = document.querySelector("#chatProbe .ti-body-text");
+          return { h: Math.round(ta.getBoundingClientRect().height),
+            cap: Math.round(parseFloat(getComputedStyle(ta).maxHeight)),
             scroll: ta.scrollHeight, client: ta.clientHeight };
         });
-        check("chat form: 10 lines cap at the 8-row height and scroll internally",
-          grown.h <= grown.cap + 1 && grown.scroll > grown.client, JSON.stringify(grown));
+        check("body tool: 8 lines grow without an internal scrollbar",
+          at8.scroll <= at8.client + 1 && at8.h <= at8.cap + 1, JSON.stringify(at8));
+        for (const extra of ["line 9 with a bit more text", "line 10 wraps it up"]) {
+          await page.keyboard.press("Enter");
+          await page.keyboard.type(extra);
+        }
+        await page.waitForTimeout(150);
+        const at10 = await page.evaluate(() => {
+          const ta = document.querySelector("#chatProbe .ti-body-text");
+          return { h: Math.round(ta.getBoundingClientRect().height),
+            cap: Math.round(parseFloat(getComputedStyle(ta).maxHeight)),
+            scroll: ta.scrollHeight, client: ta.clientHeight };
+        });
+        check("body tool: 10 lines cap at the 8-row height and scroll internally",
+          at10.h <= at10.cap + 1 && at10.scroll > at10.client, JSON.stringify(at10));
         await page.keyboard.press("Control+Enter");
         await page.waitForTimeout(250);
         const keys = await page.evaluate(() => ({
           runs: window.__chatRuns,
-          newline: document.querySelector("#chatProbe .ti-chat-text").value.includes("\n"),
+          newline: document.querySelector("#chatProbe .ti-body-text").value.includes("\n"),
         }));
-        check("chat form: Enter inserts a newline, Ctrl+Enter runs",
+        check("body tool: Enter inserts a newline, Ctrl+Enter runs exactly once",
           keys.runs === 1 && keys.newline, JSON.stringify(keys));
         await page.close();
       }
@@ -1643,7 +1914,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             files_max: 0, body_format: "text", params: [],
           } });
         });
-        await page.fill("#errProbe .ti-chat-text", "trigger failure");
+        await page.fill("#errProbe .ti-body-text", "trigger failure");
         await page.click("#errProbe .ti-run");
         await page.waitForTimeout(400);
         const err = await page.evaluate(() => {
@@ -1659,6 +1930,27 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
           JSON.stringify(err));
         check("error detail markup stays inert (no img element, no script run)",
           err.pwn === undefined && err.hasImg === false, JSON.stringify(err));
+        await page.close();
+      }
+
+      // history modal closes on Escape under the same guard policy as its
+      // backdrop click (logged in — #historyBtn lives in the authed header)
+      {
+        const page = await ctx.newPage();
+        await gotoReady(page, "/", ".composer");
+        await page.click("#historyBtn");
+        await page.waitForSelector("#historyModal:not(.hidden)", { timeout: 5000 });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(100);
+        check("history modal: Escape closes it",
+          await page.evaluate(() => document.getElementById("historyModal").classList.contains("hidden")));
+        await page.click("#historyBtn");
+        await page.waitForSelector("#historyModal:not(.hidden)", { timeout: 5000 });
+        await page.evaluate(() => { document.getElementById("historyModal").dataset.locked = "1"; });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(100);
+        check("history modal: Escape respects the download lock (stays open)",
+          await page.evaluate(() => !document.getElementById("historyModal").classList.contains("hidden")));
         await page.close();
       }
       await ctx.close();
@@ -1862,6 +2154,14 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         const ctx = await browser.newContext({ viewport: { width: w, height: h } });
         const page = await ctx.newPage();
         await gotoReady(page, "/", "#toolInput");
+        // the site-wide compact share bar look (hero bar = the SSR partial's
+        // twin) — the result-card bar must render identically, never restyled
+        // by its container
+        const heroX = await page.evaluate(() => {
+          const { fontFamily, color, fontSize } =
+            getComputedStyle(document.querySelector(".hero-share .x-glyph"));
+          return { fontFamily, color, fontSize };
+        });
         for (const [name, items] of CASES) {
           const probe = await page.evaluate((items) => {
             showItemsResult({ result_id: "rprobe", items });
@@ -1871,7 +2171,8 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             const stem = nameEl && nameEl.querySelector(".if-stem");
             const ext = nameEl && nameEl.querySelector(".if-ext");
             const bar = r.querySelector(".linkbar");
-            const barBtn = bar && bar.querySelector(".btn");
+            const sb = bar && bar.querySelector(".share-bar");
+            const heroShare = document.querySelector(".hero-share");
             return {
               sw: document.documentElement.scrollWidth,
               vw: document.documentElement.clientWidth,
@@ -1883,16 +2184,28 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
               extKept: !ext || ext.textContent,
               titleFull: !nameEl || nameEl.getAttribute("title"),
               barH: bar ? Math.round(bar.getBoundingClientRect().height) : 0,
-              barBtnCls: barBtn ? barBtn.className : "",
+              sbCount: sb ? sb.querySelectorAll(".sb-btn").length : 0,
+              sbActs: sb ? [...sb.querySelectorAll("[data-sb]")].map((b) => b.getAttribute("data-sb")).sort().join(",") : "",
+              sbUrl: sb ? sb.getAttribute("data-share-url") : "",
+              sbQr: sb ? ((sb.querySelector('[data-sb="qr"]') || {}).getAttribute("data-qr-src")) : "",
+              heroShareHidden: heroShare ? heroShare.hidden : null,
+              xStyle: (() => { const xg = sb && sb.querySelector(".x-glyph");
+                if (!xg) return null;
+                const { fontFamily, color, fontSize } = getComputedStyle(xg);
+                return { fontFamily, color, fontSize }; })(),
             };
           }, items);
           check(`probe ${w} ${name}: no overflow, no filename captions on images`,
             probe.sw <= probe.vw + 1 && probe.metaB === 0 && probe.capB === 0,
             JSON.stringify(probe));
-          check(`probe ${w} ${name}: linkbar is one light line, secondary copy`,
+          check(`probe ${w} ${name}: share four-piece renders with the site-wide look (container never restyles it)`,
+            JSON.stringify(probe.xStyle) === JSON.stringify(heroX),
+            JSON.stringify({ x: probe.xStyle, hero: heroX }));
+          check(`probe ${w} ${name}: linkbar one light line carrying the share four-piece`,
             probe.barH > 0 && probe.barH <= 44
-              && /\bbtn-secondary\b/.test(probe.barBtnCls)
-              && !/\bbtn-p\b/.test(probe.barBtnCls),
+              && probe.sbCount === 4 && probe.sbActs === "copy,qr,share"
+              && /\/r\/rprobe$/.test(probe.sbUrl) && probe.sbQr === "/r/rprobe/qr.svg"
+              && probe.heroShareHidden === true,
             JSON.stringify(probe));
           if (name === "file-row") {
             check(`probe ${w} file-row: single-line name, middle ellipsis keeps ".pdf", title carries the full name`,
@@ -1900,6 +2213,21 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
                 && probe.extKept === ".pdf" && probe.titleFull === items[0].filename,
               JSON.stringify(probe));
           }
+        }
+        if (w === 1280) {
+          // hero-share reappears once the result is cleared (picker
+          // re-select = home.js mountInput, the has-result mirror point)
+          await page.click(".ti-picker");
+          await page.click(".tsel-item");
+          await page.waitForTimeout(200);
+          const restored = await page.evaluate(() => {
+            const hs = document.querySelector(".hero-share");
+            return { hidden: hs ? hs.hidden : null,
+              hasResult: document.getElementById("result").classList.contains("has-result") };
+          });
+          check("probe home: hero-share restored after clearing the result",
+            restored.hidden === false && restored.hasResult === false,
+            JSON.stringify(restored));
         }
         await ctx.close();
       }

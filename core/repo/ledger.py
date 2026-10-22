@@ -6,6 +6,23 @@
 
 from typing import Optional, Sequence
 
+# 单次调用的净扣费 SQL 表达式 (关联别名 tc): −(consume 计费 + 其退款合计)。
+# consume: kind='consume', ref_type='tool_call', ref_id=tc.id::text;
+# refund: kind='refund', ref_type='ledger', ref_id=consume 行 id。
+# 余额不足 (无 consume 行) 与扣款前失败 = 0; 成功/running = 价格;
+# 失败已退款 = 0。五个调用记录投影 (账户调用页 + 后台三面) 共用此单点。
+CALL_NET_CHARGE_SQL = """-(COALESCE((
+        SELECT c.delta FROM ledger c
+        WHERE c.kind = 'consume' AND c.ref_type = 'tool_call'
+          AND c.ref_id = tc.id::text), 0)
+    + COALESCE((
+        SELECT SUM(r.delta) FROM ledger r
+        WHERE r.kind = 'refund' AND r.ref_type = 'ledger'
+          AND r.ref_id = (SELECT c2.id::text FROM ledger c2
+                          WHERE c2.kind = 'consume'
+                            AND c2.ref_type = 'tool_call'
+                            AND c2.ref_id = tc.id::text)), 0))"""
+
 
 def insert_row(con, user_id: int, delta: int, balance_after: int, kind: str,
                ref_type: Optional[str], ref_id: Optional[str],
@@ -398,3 +415,18 @@ def owner_successful_call_exists(con, tool_key: str, owner_id: int) -> bool:
         LIMIT 1
         """,
         (tool_key, owner_id)).fetchone() is not None
+
+
+def live_call_exists(con, user_id: int, tool_key: str, client_ref: str) -> bool:
+    """幂等重放探针 (advisory preflight 用, 只读): (user, tool, client_ref)
+    是否已有 running|ok 的 tool_calls 行 —— 与 claim_call 收敛所用的
+    部分唯一索引同口径。True 时预检直接放行, 重放收敛/409 判定仍归
+    gate 的 claim 权威。"""
+    return con.execute(
+        """
+        SELECT 1 FROM tool_calls
+        WHERE user_id = %s AND tool_id = %s AND client_ref = %s
+          AND status IN ('running','ok')
+        LIMIT 1
+        """,
+        (user_id, tool_key, client_ref)).fetchone() is not None

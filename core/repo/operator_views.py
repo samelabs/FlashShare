@@ -12,6 +12,8 @@ plane. Ledger rows are NEVER summed across kinds into one number.
 
 from typing import Sequence
 
+from repo.ledger import CALL_NET_CHARGE_SQL
+
 
 # Effective membership predicate — isomorphic to
 # economy.subscription.membership_is_effective and
@@ -243,9 +245,10 @@ def user_recent_orders(con, user_id: int, limit: int) -> list:
 
 def user_recent_tool_calls(con, user_id: int, limit: int) -> list:
     return con.execute(
-        """
-        SELECT tc.id, tc.tool_id, tc.status, tc.cost_snapshot, tc.error,
-               tc.started_at, tc.finished_at
+        f"""
+        SELECT tc.id, tc.tool_id, tc.status, tc.error,
+               tc.started_at, tc.finished_at,
+               ({CALL_NET_CHARGE_SQL}) AS net_charge
         FROM tool_calls tc WHERE tc.user_id = %s
         ORDER BY tc.id DESC LIMIT %s
         """,
@@ -414,9 +417,10 @@ def tool_earn_window(con, tool_key: str, since_ts: int) -> int:
 
 def tool_recent_calls(con, tool_key: str, limit: int) -> list:
     return con.execute(
-        """
-        SELECT tc.id, tc.user_id, u.username, tc.status, tc.cost_snapshot,
-               tc.error, tc.result_public_id, tc.started_at, tc.finished_at
+        f"""
+        SELECT tc.id, tc.user_id, u.username, tc.status,
+               tc.error, tc.result_public_id, tc.started_at, tc.finished_at,
+               ({CALL_NET_CHARGE_SQL}) AS net_charge
         FROM tool_calls tc LEFT JOIN users u ON u.id = tc.user_id
         WHERE tc.tool_id = %s
         ORDER BY tc.id DESC LIMIT %s
@@ -609,8 +613,9 @@ def content_uploads(con, q_share: str | None, user_q: str | None,
     wsql = " AND ".join(where)
     rows = con.execute(
         """
-        SELECT up.id, up.public_id, up.file_name, up.content_type,
-               up.size_bytes, up.user_id, u.username AS owner_name,
+        SELECT up.id, up.public_id, up.gokapi_id, up.file_name,
+               up.content_type, up.size_bytes, up.user_id,
+               u.username AS owner_name,
                up.allowed_downloads, up.expire_at, up.created_at
         FROM uploads up LEFT JOIN users u ON u.id = up.user_id
         WHERE """ + wsql + """
@@ -644,10 +649,11 @@ def content_results(con, q_result: str | None, user_q: str | None,
         params.append(tool_key)
     wsql = " AND ".join(where)
     rows = con.execute(
-        """
+        f"""
         SELECT tc.id, tc.result_public_id, tc.tool_id, tc.user_id,
-               u.username AS owner_name, tc.status, tc.cost_snapshot,
-               tc.started_at, tc.finished_at
+               u.username AS owner_name, tc.status,
+               tc.started_at, tc.finished_at,
+               ({CALL_NET_CHARGE_SQL}) AS net_charge
         FROM tool_calls tc LEFT JOIN users u ON u.id = tc.user_id
         WHERE """ + wsql + """
         ORDER BY tc.id DESC LIMIT %s OFFSET %s
@@ -694,10 +700,11 @@ def calls_page(con, tool_q: str | None, user_q: str | None,
         params.append(ts_to)
     wsql = " AND ".join(where)
     rows = con.execute(
-        """
+        f"""
         SELECT tc.id, tc.tool_id, tc.user_id, u.username, tc.status,
-               tc.error, tc.cost_snapshot, tc.started_at, tc.finished_at,
+               tc.error, tc.started_at, tc.finished_at,
                tc.result_public_id,
+               ({CALL_NET_CHARGE_SQL}) AS net_charge,
                ch.delta AS charge_delta,
                rf.delta AS refund_delta,
                pe.delta AS payout_millis,

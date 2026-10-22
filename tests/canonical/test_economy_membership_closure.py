@@ -256,6 +256,7 @@ try:
                 "insert into pending_downgrades (user_id, target_plan_id,"
                 " effective_at) values (%s, %s, %s)", (ua, plus_id, PE1))
         if variant == "expired":
+            # 同一周期内 end 更早 (当前周期被提前终止) → 照常生效
             sc, d = _hook("subscription.expired",
                           _sub(sa, PS1, ts - 60, P_PLUS, status="expired"))
             ok_lapse = sc == 200 and _membership(ua)["status"] == "expired"
@@ -698,6 +699,43 @@ try:
     check("M8.new a NEW period's paid still recovers past_due → active",
           m["status"] == "active" and int(m["renews_at"]) == PEb, str(m))
 
+    # M8.race: an expired commit landing BETWEEN apply_paid_period's
+    # snapshot read and its final write must win — the monotonic branch
+    # is computed from the FOR UPDATE re-read inside the write
+    # transaction, so the expired state survives (renews_at and
+    # period_start never regress to the stale snapshot's values).
+    s8x = f"sub_{_u}_snaprace"
+    u8x = _seed_member("snaprace8", plus_id, P_PLUS, s8x, f"txn_{_u}_snaprace1")
+    b8x = spendable_balance(u8x)
+    from database import db as _db
+    from repo import orders as _orders_repo
+    _real_pbp = _orders_repo.period_base_payment
+    _race = {"fired": False}
+    def _pbp_then_expire(con, sub_id, period_start):
+        row = _real_pbp(con, sub_id, period_start)
+        if not _race["fired"]:
+            _race["fired"] = True
+            # 独立事务提交 expired —— 恰落在快照读之后、加锁重读之前
+            # (快照读无行锁, 此处提交畅通; 复刻 expired 事件的行效果)
+            with _db() as excon:
+                excon.execute(
+                    "update memberships set status='expired', renews_at=%s,"
+                    " updated_at=%s where provider_subscription_id=%s",
+                    (ts, ts, "sub:" + s8x))
+        return row
+    _orders_repo.period_base_payment = _pbp_then_expire
+    try:
+        r8x = _hev("subscription.paid",
+                   _sub(s8x, PS1, PE1, P_PLUS, f"txn_{_u}_snaprace1"))
+    finally:
+        _orders_repo.period_base_payment = _real_pbp
+    m = _membership(u8x)
+    check("M8.race expired committed mid-apply wins (status expired, no regress)",
+          _race["fired"] and m["status"] == "expired"
+          and spendable_balance(u8x) == b8x
+          and int(m["last_grant_period_start"]) == PS1,
+          f"{r8x} {m}")
+
     # ══════════ M9. access-triggered reconcile (throttled) ══════════
     _fetched = []
     _SUBS = {}
@@ -748,8 +786,122 @@ try:
     _time.sleep(1.0)
     check("M9.3 live (not lapsed) membership → no provider fetch",
           s9b not in _fetched, str(_fetched))
+
+    # ══════════ M10. 迟到的旧周期 lifecycle 事件不回退已付费新周期 ══════════
+    for st_evt, st_name in (("subscription.canceled", "canceled"),
+                            ("subscription.expired", "expired"),
+                            ("subscription.scheduled_cancel",
+                             "scheduled_cancel"),
+                            ("subscription.past_due", "past_due")):
+        s10 = f"sub_{_u}_st{st_name[:3]}"
+        u10 = _seed_member("st" + st_name[:3], plus_id, P_PLUS, s10,
+                           f"txn_{_u}_st{st_name}1")
+        _hev("subscription.paid", _sub(s10, PE1, PE1 + 30 * 86400, P_PLUS,
+                                       f"txn_{_u}_st{st_name}2"))
+        # 迟到的旧周期事件 (payload period end = 旧周期 PE1)
+        r10 = _hev(st_evt, _sub(s10, PS1, PE1, P_PLUS))
+        m = _membership(u10)
+        check(f"M10 stale {st_name} (old period) → ignored, paid period kept",
+              m["status"] == "active"
+              and int(m["renews_at"]) == PE1 + 30 * 86400,
+              f"{r10} {m}")
+
+    # 当前周期事件照常生效
+    s10c = f"sub_{_u}_curc"
+    u10c = _seed_member("curc", plus_id, P_PLUS, s10c, f"txn_{_u}_curc1")
+    _hev("subscription.canceled", _sub(s10c, PS1, PE1, P_PLUS,
+                                       status="canceled"))
+    m = _membership(u10c)
+    check("M10b current-period canceled → rights kept till period end",
+          m["status"] == "canceled" and int(m["renews_at"]) == PE1, str(m))
+    s10e = f"sub_{_u}_cure"
+    u10e = _seed_member("cure", plus_id, P_PLUS, s10e, f"txn_{_u}_cure1")
+    _hev("subscription.expired", _sub(s10e, PS1, PE1, P_PLUS,
+                                      status="expired"))
+    m = _membership(u10e)
+    check("M10c current-period expired → status expired",
+          m["status"] == "expired", str(m))
+
+    # paid 与迟到的旧 canceled 并发 → 最终仍为新周期
+    import threading as _th10
+    s10r = f"sub_{_u}_race"
+    u10r = _seed_member("rac", plus_id, P_PLUS, s10r, f"txn_{_u}_race1")
+    def _fire_paid():
+        _hev("subscription.paid", _sub(s10r, PE1, PE1 + 30 * 86400, P_PLUS,
+                                       f"txn_{_u}_race2"))
+    def _fire_old_cancel():
+        _hev("subscription.canceled", _sub(s10r, PS1, PE1, P_PLUS))
+    t1 = _th10.Thread(target=_fire_paid)
+    t2 = _th10.Thread(target=_fire_old_cancel)
+    t1.start(); t2.start(); t1.join(30); t2.join(30)
+    m = _membership(u10r)
+    check("M10d concurrent new paid + stale canceled → new period wins",
+          int(m["renews_at"]) == PE1 + 30 * 86400, str(m))
+
+    # updated_at = 写入时刻 (不再是 started_at)
+    s10u = f"sub_{_u}_upd"
+    u10u = _seed_member("upd", plus_id, P_PLUS, s10u, f"txn_{_u}_upd1")
+    with db() as con:
+        con.execute("update memberships set started_at=%s, updated_at=%s"
+                    " where user_id=%s", (ts - 3600, ts - 3600, u10u))
+    _t10a = int(_time.time())
+    _hev("subscription.past_due", _sub(s10u, PS1, PE1, P_PLUS,
+                                       status="past_due"))
+    m = _membership(u10u)
+    check("M10e updated_at = write time (not started_at)",
+          _t10a - 2 <= int(m["updated_at"]) <= _t10a + 5
+          and int(m["updated_at"]) != ts - 3600, str(m))
+    # M10f: 同一周期、payload end 早于 renews_at 的 expired → 照常立即生效
+    s10f = f"sub_{_u}_curf"
+    u10f = _seed_member("curf", plus_id, P_PLUS, s10f, f"txn_{_u}_curf1")
+    _hev("subscription.paid", _sub(s10f, PE1, PE1 + 30 * 86400, P_PLUS,
+                                   f"txn_{_u}_curf2"))
+    r10f = _hev("subscription.expired",
+                _sub(s10f, PE1, PE1 - 5 * 86400, P_PLUS, status="expired"))
+    m = _membership(u10f)
+    check("M10f same-period early-end expired → applies immediately",
+          m["status"] == "expired"
+          and int(m["renews_at"]) == PE1 - 5 * 86400
+          and str(r10f.get("status")) == "expired", f"{r10f} {m}")
+
+    # M10g: plans 行锁 (后台 FOR UPDATE) 不阻塞 lifecycle 事件
+    # (membership_by_sub 只锁 memberships 行)
+    s10g = f"sub_{_u}_ga"
+    u10g = _seed_member("g10a", plus_id, P_PLUS, s10g, f"txn_{_u}_ga1")
+    s10h = f"sub_{_u}_gb"
+    u10h = _seed_member("g10b", pro_id, P_PRO, s10h, f"txn_{_u}_gb1")
+    _lock_err = []
+
+    def _hold_plans_lock():
+        try:
+            with db() as con:
+                con.execute("SELECT id FROM plans WHERE id = %s FOR UPDATE",
+                            (plus_id,))
+                _time.sleep(3)
+        except Exception as exc:  # rollback on close is expected
+            if "rollback" not in str(exc).lower():
+                _lock_err.append(str(exc))
+
+    _t_lock = _th10.Thread(target=_hold_plans_lock)
+    _t_lock.start()
+    _time.sleep(0.3)  # lock acquired
+    _tg0 = _time.time()
+    _hev("subscription.canceled", _sub(s10g, PS1, PE1, P_PLUS,
+                                       status="canceled"))
+    _hev("subscription.canceled", _sub(s10h, PS1, PE1, P_PRO,
+                                       status="canceled"))
+    _tg_dt = _time.time() - _tg0
+    _t_lock.join(10)
+    check("M10g plans row lock never blocks lifecycle events (<1s while held 3s)",
+          _tg_dt < 1.0 and not _lock_err
+          and _membership(u10g)["status"] == "canceled"
+          and _membership(u10h)["status"] == "canceled",
+          f"{_tg_dt:.2f}s err={_lock_err}")
+
+
 finally:
     _cleanup()
+
 
 with db() as con:
     left = con.execute(
@@ -760,7 +912,3 @@ with db() as con:
 check("CLEANUP all suite rows removed",
       int(left["u"]) == 0 and int(left["p"]) == 0 and int(left["t"]) == 0,
       str(dict(left)))
-
-print()
-print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")
-_sys.exit(1 if FAIL else 0)

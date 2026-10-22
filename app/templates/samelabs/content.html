@@ -56,7 +56,7 @@
         <td class="sl-mono"><a href="/samelabs/tools/{{ r.tool_id|urlencode }}">{{ r.tool_id }}</a></td>
         <td><a href="/samelabs/users/{{ r.user_id }}">{{ r.owner_name or r.user_id }}</a></td>
         <td><span class="tag {{ 'tag-success' if r.status == 'ok' else 'tag-danger' }}">{{ r.status }}</span></td>
-        <td class="sl-num">{{ fmt_num(r.cost_snapshot) }}</td>
+        <td class="sl-num">{{ fmt_num(r.net_charge) }}</td>
         <td>{{ fmt_ts(r.started_at) }}</td>
         <td>{{ fmt_ts(r.finished_at) if r.finished_at else '—' }}</td>
         <td><a class="sl-mono" href="/r/{{ r.result_public_id }}">/r/{{ r.result_public_id }}</a></td>

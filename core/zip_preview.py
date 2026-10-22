@@ -66,11 +66,13 @@ def parse_zip_central_directory(data: bytes, cd_size: int, cd_offset: int) -> li
 
 
 def find_eocd(tail: bytes, tail_start: int) -> tuple:
-    """Locate EOCD in a tail buffer; return (cd_size, cd_offset_in_tail, eocd_pos).
+    """Locate EOCD in a tail buffer; return (cd_size, cd_offset, eocd_pos).
 
-    cd_offset from the EOCD is archive-absolute; subtracting tail_start
-    converts it to tail-buffer coordinates. Raises ValueError on absence,
-    truncation, or ZIP64 markers (unsupported).
+    cd_offset is the CENTRAL DIRECTORY's archive-absolute offset straight
+    from the EOCD field — the caller fetches exactly
+    [cd_offset, cd_offset + cd_size). eocd_pos stays tail-relative.
+    Raises ValueError on absence, truncation, or ZIP64 markers
+    (unsupported).
     """
     idx = tail.rfind(EOCD_SIG)
     if idx < 0:
@@ -83,18 +85,19 @@ def find_eocd(tail: bytes, tail_start: int) -> tuple:
         raise ValueError("zip64_unsupported")
     if cd_size == 0 or total_entries == 0:
         raise ValueError("empty_archive")  #  合法空档, 调用方(proxy)转空列表
-    cd_in_tail = cd_offset - tail_start
-    if cd_in_tail < 0:
-        raise ValueError("cd_before_tail")
-    return cd_size, cd_in_tail, idx
+    return cd_size, cd_offset, idx
 
 
 def list_zip_remote(fetch_range, total_size: int) -> list:
     """List a remote zip via Range fetches.
 
     fetch_range(start, length) -> bytes (must honor exact ranges).
-    Fetch the last MAX_CD_BYTES (or the whole file if smaller), locate the
-    EOCD, and refetch an earlier window if the CD is not fully inside.
+    Fetch the last MAX_CD_BYTES (or the whole file if smaller) and locate
+    the EOCD; when the central directory isn't fully inside that tail
+    window, pull EXACTLY [cd_offset, cd_offset + cd_size) — no heuristic
+    slack window (a big archive comment or a far-out CD used to force
+    cd_before_tail / an oversized refetch). cd_offset + cd_size must not
+    overrun the EOCD's absolute position — anything else is corruption.
     """
     if total_size <= 0:
         raise ValueError("empty_file")
@@ -103,12 +106,14 @@ def list_zip_remote(fetch_range, total_size: int) -> list:
     tail = fetch_range(tail_start, tail_len)
     if len(tail) != tail_len:
         raise ValueError("range_short_read")
-    cd_size, cd_in_tail, _ = find_eocd(tail, tail_start)
-    if cd_in_tail + cd_size > tail_len:
-        if cd_size > MAX_CD_BYTES:
-            raise ValueError("cd_too_large")
-        new_start = max(0, total_size - cd_size - 1024)  # small slack before CD
-        tail = fetch_range(new_start, total_size - new_start)
-        tail_start = new_start
-        cd_size, cd_in_tail, _ = find_eocd(tail, tail_start)
-    return parse_zip_central_directory(tail, cd_size, cd_in_tail)
+    cd_size, cd_offset, eocd_in_tail = find_eocd(tail, tail_start)
+    if cd_offset + cd_size > tail_start + eocd_in_tail:
+        raise ValueError("cd_overruns_eocd")
+    if cd_offset >= tail_start:
+        return parse_zip_central_directory(tail, cd_size, cd_offset - tail_start)
+    if cd_size > MAX_CD_BYTES:
+        raise ValueError("cd_too_large")
+    cd = fetch_range(cd_offset, cd_size)
+    if len(cd) != cd_size:
+        raise ValueError("range_short_read")
+    return parse_zip_central_directory(cd, cd_size, 0)

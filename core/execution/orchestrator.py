@@ -117,15 +117,13 @@ async def _run_handler(pool, process_tool, tool_id, sources, params,
         pool_mod.reset_pool(pool, "broken_process_pool")
         raise RuntimeError("worker_pool_broken") from exc
     except asyncio.TimeoutError:
-        # worker 卡死: 先 CAS 重建 (并发观察者只采纳一个 replacement),
-        # 再对旧池仍存活的进程 terminate, 让新调用立刻有干净 worker 可用。
-        pool_mod.reset_pool(pool, "timeout")
-        for _proc in list(getattr(pool, "_processes", {}).values()):
-            try:
-                if _proc.is_alive():
-                    _proc.terminate()
-            except Exception:
-                pass
+        # worker 卡死: CAS 重建 + 显式回收旧池仍存活的 worker
+        # (shutdown(wait=False) 不杀在跑进程; reset_pool 的
+        # terminate_workers 在重建后 terminate→join→kill), 让新调用立刻
+        # 有干净 worker 可用。重抛 err_endpoint_timeout → 既有超时码的
+        # 退款收敛路径。
+        await asyncio.to_thread(pool_mod.reset_pool, pool, "timeout",
+                                terminate_workers=True)
         raise ExecutionError("err_endpoint_timeout") from None
 
 

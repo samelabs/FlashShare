@@ -192,7 +192,7 @@ from repo.orders import MembershipBindingError as _MBE
 try:
     with db() as con:
         orders_repo.upsert_membership_state(con, "mgsub2", "active",
-                                            started_at=_ts, renews_at=PE)
+                                            renews_at=PE)
     check("G3 不同 live sub state update → 拒绝换绑 (原行不变)", False, "no raise")
 except _MBE:
     m = _m_row(uidP)
@@ -273,6 +273,7 @@ check("G7 scheduled_cancel: 当期 member 有效 + marker 非空",
       and pp["entitlements"]["plan_code"] == "plus", str(m))
 
 # ═══ 链8: period end → Free ═══
+# 同一周期内 end 更早的 expired (当前周期被提前终止) → 照常生效
 _sub.handle_event("subscription.expired", _sub_snap("expired", _iso(PS2), _iso(_ts - 10)))
 pp = project(uidP)
 check("G8 period end → Free (membership fact 保留, entitlements free)",

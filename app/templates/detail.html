@@ -64,7 +64,7 @@
 {% endblock %}
 
 {% block script %}
-<script>window.__PAGE__ = { publicId: {{ public_id|tojson }}, dlUrl: {{ dl_url|tojson }}, fileName: {{ file_name|tojson }}, pagesVersion: {{ pages_version|tojson }}, icons: { check: {{ icon_svg("check")|tojson }} } };</script>
+<script>window.__PAGE__ = { publicId: {{ public_id|tojson }}, dlUrl: {{ dl_url|tojson }}, fileName: {{ file_name|tojson }}, pagesVersion: {{ pages_version|tojson }}, zipPreviewVersion: {{ zip_preview_version|tojson }}, icons: { check: {{ icon_svg("check")|tojson }} } };</script>
 <script src="/static/pages/common.js?v={{ pages_version }}"></script>
 <script src="/static/pages/detail.js?v={{ pages_version }}"></script>
 {% endblock %}

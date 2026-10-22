@@ -507,6 +507,65 @@ with db() as con:
 check("S6 current-period dispute → Membership expired",
       sc == 200 and m6["status"] == "expired", f"{sc} {dict(m6)}")
 
+# S5r: the refund's period check re-reads the membership row FOR UPDATE —
+# a concurrent transaction holding the row lock and committing a NEW
+# period must be seen by the refund (historical period → membership
+# untouched), never the stale pre-commit snapshot.
+u5r = _seed_sub_user(_u + "s5r", plus_id, "prod_rv_plus", f"sub_{_u}s5r")
+_hev("subscription.paid", _sub_snap("active", PS, PE, "prod_rv_plus",
+                                    f"sub_{_u}s5r", txn=f"txn_{_u}s5r"))
+_TXNS[f"txn_{_u}s5r"] = {"object": "transaction", "id": f"txn_{_u}s5r",
+                         "status": "refunded", "type": "invoice",
+                         "subscription": f"sub_{_u}s5r",
+                         "period_start": _iso(PS), "period_end": _iso(PE)}
+PS5r, PE5r = PE, PE + 30 * 86400
+from database import _database_dsn_kwargs as _dsn_kwargs
+import psycopg2 as _psycopg
+import threading as _threading
+import time as _t5r
+_conn_a = _psycopg.connect(**_dsn_kwargs())
+_conn_a.autocommit = False
+_cur_a = _conn_a.cursor()
+# 事务 A: 持会员行锁并推进新周期 (未提交 —— 其他事务快照仍是旧周期)
+_cur_a.execute(
+    "update memberships set last_grant_period_start=%s, renews_at=%s,"
+    " status='active', updated_at=%s where provider_subscription_id=%s",
+    (PS5r, PE5r, ts, "sub:" + f"sub_{_u}s5r"))
+_bal5r = spendable_balance(u5r)
+_r5res = {}
+def _r5fire():
+    _r5res["fire"] = _fire("refund.created", f"txn_{_u}s5r")
+_th5r = _threading.Thread(target=_r5fire)
+_th5r.start()
+# 等 FOR UPDATE 真正阻塞在 memberships 行上 (锁定读先于 A 提交, 窗口确定)
+_blocked5r = False
+for _ in range(100):
+    with db() as con:
+        _w = con.execute(
+            "select 1 from pg_stat_activity where wait_event_type='Lock'"
+            " and position('for update' in lower(query)) > 0"
+            " and pid <> pg_backend_pid()"
+        ).fetchone()
+    if _w:
+        _blocked5r = True
+        break
+    _t5r.sleep(0.05)
+_conn_a.commit()
+_th5r.join(30)
+_conn_a.close()
+with db() as con:
+    m5r = con.execute(
+        "select status, renews_at, last_grant_period_start from memberships"
+        " where user_id=%s", (u5r,)).fetchone()
+check("S5r lock-race: refund blocked on the row lock, sees the committed new"
+      " period (historical → membership untouched)",
+      _blocked5r and _r5res["fire"][0] == 200 and m5r["status"] == "active"
+      and int(m5r["last_grant_period_start"]) == PS5r
+      and int(m5r["renews_at"]) == PE5r
+      and spendable_balance(u5r) == _bal5r - 100,
+      f"blocked={_blocked5r} {_r5res['fire']} {dict(m5r)}"
+      f" bal={spendable_balance(u5r)}")
+
 # S7: HISTORICAL period refund → current paid Membership untouched
 u7 = _seed_sub_user(_u + "s7", plus_id, "prod_rv_plus", f"sub_{_u}s7")
 OLD_PS, OLD_PE = ts - 40 * 86400, ts - 10 * 86400   # january

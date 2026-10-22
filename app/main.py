@@ -10,6 +10,7 @@ Architecture:
 """
 
 import sys
+import urllib.parse
 from pathlib import Path
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
@@ -132,8 +133,11 @@ class _VersionedStaticFiles(StaticFiles):
 
     def file_response(self, full_path, stat_result, scope, status_code=200):
         resp = super().file_response(full_path, stat_result, scope, status_code)
-        qs = (scope.get("query_string") or b"").decode("latin-1", "ignore")
-        if "v=" in qs:
+        qs = urllib.parse.parse_qs(
+            (scope.get("query_string") or b"").decode("latin-1", "ignore"))
+        # only a NON-EMPTY stamp is content-addressed; a bare "?v=" (a
+        # caller missing its stamp) must never pin the file for a year
+        if qs.get("v", [""])[0].strip():
             resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return resp
 
@@ -291,9 +295,9 @@ async def auth_middleware(request: Request, call_next):
     if path.startswith("/f/") or path == "/mcp" or path.startswith("/mcp/"):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
-    # change_password/set_password delete every old browser session AND
-    # revoke every OAuth grant (API keys are independent program
-    # credentials and survive). A successful browser password POST gets
+    # change_password/set_password delete every old browser session;
+    # API keys and OAuth grants are independent program credentials and
+    # survive. A successful browser password POST gets
     # exactly one fresh current session.
     if (request.method == "POST" and path == "/account/password"
             and user_id and getattr(request.state, "auth_via", "") == "session"
@@ -389,15 +393,6 @@ async def http_exception_handler(request: Request,
     from fastapi.responses import JSONResponse as _JR
     return _JR({"detail": exc.detail}, status_code=exc.status_code,
                headers=getattr(exc, "headers", None))
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    if _is_v1(request.url.path):
-        logger.exception("v1 unhandled error: %s", exc)
-        return JSONResponse({"ok": False, "error": "internal_error"},
-                            status_code=500)
-    raise exc
 
 
 _housekeeping_task = None

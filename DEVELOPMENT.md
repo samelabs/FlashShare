@@ -381,12 +381,12 @@ curl -s https://518.plus/healthz
 > 直到 owner 单独选择 off-host 目的地（Oracle Object Storage / R2 / S3 兼容
 > remote）。不要把同服务器目录当作 remote。
 
-- `backup.sh`：daily 04:30 UTC（systemd timer）pg_dump custom 格式 + Gokapi sqlite（`.backup` 一致性快照）与 data 目录 tar.gz；SHA256SUMS；本地 `/var/backups/flashshare/`（daily×7 + 周日 weekly×4 轮换）。
+- `backup.sh`：daily 04:30 UTC（systemd timer）pg_dump custom 格式 + Gokapi sqlite（`.backup` 一致性快照）与 data 目录 tar.gz；SHA256SUMS；本地 `/var/backups/flashshare/`（daily×7 + 周日 weekly×4 轮换）。off-host 上传把 `SHA256SUMS-$STAMP` 与产物一并上传（daily 与 weekly 三件套），任一件上传失败即非零退出。
 - 配置单源 `/etc/flashshare.env`：unit 通过 `EnvironmentFile=-/etc/flashshare.env` 加载，脚本对
   `DATABASE_URL` 与 `FLASHSHARE_BACKUP_REMOTE` 用同一解析（读同一 env 文件），不存在第二套变量来源。
 - 备份文件权限 0600：脚本 `umask 077` + unit `UMask=0077`，不依赖宿主 umask。
 - off-host 上传：`FLASHSHARE_BACKUP_REMOTE`（rclone remote:path）配置后自动启用；未配置时显式 WARNING（仅 on-host）。rclone 未装而 remote 已配 → 非零退出（timer failed 可见）。
-- `restore-proof.sh`：monthly timer — 最新备份恢复到 scratch DB + 解档校验行数/校验和后清理。
+- `restore-proof.sh`：monthly timer — 最新备份恢复到 scratch DB + 解档校验行数/校验和后清理；Gokapi 归档由同一 STAMP 推出（`gokapi-$STAMP.tar.gz`），配对缺失即失败（不按 mtime 另选最新归档）。
 - failure 可观测：journalctl -u flashshare-backup（非零退出 = unit failed）；每日与周日的 rclone 上传失败同样以非零退出可见。
 
 ## Gokapi 集成约束（已验证事实）

@@ -677,9 +677,79 @@ _orch2 = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
 check("S1 orchestrator 暂存清理走 storage 适配器 (全量回收)",
       "storage_delete" in _orch2 and "delete_gokapi_file" not in _orch2)
 
+# ══════════ O. 1e400 数值溢出 → typed 失败 + 退款 (真实 remote dispatch) ══════════
+# json.loads 的 parse_constant 只拦 NaN/Infinity 字面量; 1e400 解析为
+# inf。溢出值必须在响应解释层被拒 (invalid_response): call failed、
+# consume 退款、零 payout/commission/revenue、result_json NULL — 绝不
+# 把 Infinity 写进成功结果。
+userOW = _mkuser(_u + "uow")
+userO = _mkuser(_u + "uo")
+toolO = f"rstoolo_{_u}"
+with db() as con:
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id,"
+        " execution, label_json, endpoint_json, accept_json, format_family,"
+        " files_min, files_max, visibility, enabled, created_at, updated_at)"
+        " values (%s, %s, %s, 'http', %s, %s, '[\".png\"]', 'image',"
+        " 1, 2, 'public', TRUE, %s, %s)",
+        (toolO, userOW, toolO, _json.dumps({"en": "RS-O"}),
+         _json.dumps({"url": "https://ovf.example/api", "timeout_s": 30}),
+         ts, ts))
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 25, TRUE, %s)", (toolO, ts))
+_grant(userO, 1000, "manual_topup", note="rs")
+balO = spendable_balance(userO)
+
+import remote as _rm
+_orig_pinO, _orig_resO = _rm._pinned_request, _rm._resolve_host
+_rm._resolve_host = lambda h, p: [
+    (_rm.socket.AF_INET, _rm.socket.SOCK_STREAM,
+     _rm.socket.IPPROTO_TCP, "", ("93.184.216.34", p))]
+def _ovf_hop(url, method="GET", body=None, headers=None, timeout_s=60,
+             max_bytes=None, deadline=None):
+    return 200, b'{"x": 1e400}', None, "application/json", None
+_rm._pinned_request = _ovf_hop
+async def _remote_ovf():
+    from execution.orchestrator import execute_remote
+    return await execute_remote(
+        {"ip": "127.0.0.1"},
+        {"id": toolO, "tool_key": toolO, "owner_id": userOW,
+         "endpoint_json": _json.dumps(
+             {"url": "https://ovf.example/api", "timeout_s": 30})},
+        [], {}, {"id": userO},
+        {"expiry_days": 7, "allowed_downloads": 5})
+try:
+    resO, errO, _ = _run_gate(userO, toolO, None, _remote_ovf,
+                              tool_owner=userOW)
+except Exception:
+    resO, errO = None, None
+finally:
+    _rm._pinned_request = _orig_pinO
+    _rm._resolve_host = _orig_resO
+with db() as con:
+    tO = con.execute(
+        "select id, status, result_json from tool_calls"
+        " where user_id=%s and tool_id=%s order by id desc limit 1",
+        (userO, toolO)).fetchone()
+    _earnO = con.execute(
+        "select count(*) c from ledger where kind in"
+        " ('provider_earn','platform_commission','platform_revenue')"
+        " and ref_id=%s", (str(tO["id"]),)).fetchone()["c"]
+check("O1 1e400 overflow → typed failure (err_endpoint_failed)",
+      errO is not None and errO.get("error") == "err_endpoint_failed"
+      and resO is None, str(errO))
+check("O2 call failed + result_json NULL",
+      tO["status"] == "failed" and tO["result_json"] is None,
+      dict(tO) if tO else None)
+check("O3 consume refunded (balance restored)",
+      spendable_balance(userO) == balO,
+      f"{spendable_balance(userO)} vs {balO}")
+check("O4 zero payout/commission/revenue rows", int(_earnO) == 0, _earnO)
+
 # ══════════ cleanup (FK-safe, prefix-scoped) ══════════
 _uids = [user1, owner, user2, user3, user4, user5, user6, user7, user8, user9,
-          userM, userM4, userN, userN3]
+          userM, userM4, userN, userN3, userO, userOW]
 with db() as con:
     for uid in _uids:
         con.execute("delete from operator_audit where actor_user_id=%s", (uid,))

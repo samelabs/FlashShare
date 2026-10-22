@@ -1391,6 +1391,207 @@ r = _get("/samelabs/audit")
 check("X1d audit JSON with hostile plan name is escaped",
       "plan.create" in r.text and f"&lt;script&gt;{_X}" in r.text, None)
 
+# ═══ NC1: 调用净扣费投影 (CALL_NET_CHARGE_SQL) — 五态语义 + 投影一致 ═══
+# 余额不足=0 / 扣款前失败=0 / 成功=价格 / 失败已退款=0 / running=价格;
+# 四个后台投影 + 账户调用页同一数值。
+import io as _io_nc
+import uuid as _uuid_nc
+from repo.ledger import CALL_NET_CHARGE_SQL as _NC_SQL
+_nc_tag = _uuid_nc.uuid4().hex[:6]
+_nc_tool = f"nc{_RUN}{_nc_tag}"
+_nc_user = None
+with db() as con:
+    _nc_user = con.execute(
+        "insert into users (username, email, password_hash, display_name,"
+        " status, created_at, last_login_at) values (%s,%s,'x','NC',"
+        "'active',%s,%s) returning id",
+        (f"ncu{_nc_tag}", f"ncu{_nc_tag}@t.co", ts, ts)).fetchone()["id"]
+    con.execute(
+        "insert into platform_tools (tool_key, tool_id, execution,"
+        " visibility, label_json, accept_json, format_family, enabled,"
+        " created_at, updated_at) values (%s, %s, 'local', 'public',"
+        " %s, '[\".png\"]', 'image', TRUE, %s, %s)",
+        (_nc_tool, _nc_tool, '{"en": "NC"}', ts, ts))
+
+def _nc_call(status):
+    with db() as con:
+        if status == "running":
+            return con.execute(
+                "insert into tool_calls (tool_id, user_id, status,"
+                " client_ref, invocation_hash, cost_snapshot,"
+                " commission_rate_snapshot, started_at)"
+                " values (%s, %s, 'running', %s, %s, 40, 30, %s)"
+                " returning id",
+                (_nc_tool, _nc_user, f"nc-{status}-{_nc_tag}",
+                 "e" * 64, ts)).fetchone()["id"]
+        return con.execute(
+            "insert into tool_calls (tool_id, user_id, status, client_ref,"
+            " invocation_hash, cost_snapshot, started_at, finished_at)"
+            " values (%s, %s, %s, %s, %s, 40, %s, %s) returning id",
+            (_nc_tool, _nc_user, status, f"nc-{status}-{_nc_tag}",
+             "e" * 64, ts, ts)).fetchone()["id"]
+
+def _nc_ledger(kind, delta, ref_type, ref_id):
+    with db() as con:
+        con.execute(
+            "insert into ledger (user_id, delta, balance_after, kind,"
+            " ref_type, ref_id, created_at) values (%s, %s, 0, %s, %s, %s,"
+            " %s)", (_nc_user, delta, kind, ref_type, ref_id, ts))
+
+_c_ins = _nc_call("insufficient")            # 余额不足: 无 consume
+_c_pre = _nc_call("failed")                  # 扣款前失败: 无 consume
+_c_ok = _nc_call("ok")
+_nc_ledger("consume", -40, "tool_call", str(_c_ok))
+_c_ref = _nc_call("failed")
+with db() as con:
+    _chg = con.execute(
+        "insert into ledger (user_id, delta, balance_after, kind, ref_type,"
+        " ref_id, created_at) values (%s, -40, 0, 'consume', 'tool_call',"
+        " %s, %s) returning id", (_nc_user, str(_c_ref), ts)).fetchone()["id"]
+    con.execute(
+        "insert into ledger (user_id, delta, balance_after, kind, ref_type,"
+        " ref_id, created_at) values (%s, 40, 0, 'refund', 'ledger', %s, %s)",
+        (_nc_user, str(_chg), ts))
+_c_run = _nc_call("running")
+with db() as con:
+    con.execute(
+        "insert into ledger (user_id, delta, balance_after, kind, ref_type,"
+        " ref_id, created_at) values (%s, -40, 0, 'consume', 'tool_call',"
+        " %s, %s)", (_nc_user, str(_c_run), ts))
+
+_expect = {str(_c_ins): 0, str(_c_pre): 0, str(_c_ok): 40,
+           str(_c_ref): 0, str(_c_run): 40}
+_ok_direct = True
+with db() as con:
+    for _cid, _want in _expect.items():
+        _got = con.execute(
+            "select ({_NC_SQL}) as n from tool_calls tc where tc.id = %s"
+            .replace("{_NC_SQL}", _NC_SQL), (_cid,)).fetchone()["n"]
+        _ok_direct = _ok_direct and int(_got) == _want
+check("NC1 net-charge SQL semantics (insufficient/pre-fail/ok/refunded/running)",
+      _ok_direct, str(_expect))
+
+_proj_vals = {}
+with db() as con:
+    for r_ in operator_views.user_recent_tool_calls(con, _nc_user, 20):
+        _proj_vals[str(r_["id"])] = int(r_["net_charge"])
+    _trows = operator_views.tool_recent_calls(con, _nc_tool, 20)
+    for r_ in _trows:
+        _proj_vals.setdefault(str(r_["id"]), int(r_["net_charge"]))
+    _cprows, _cptot = operator_views.calls_page(
+        con, _nc_tool, None, None, None, None, None, 50, 0)
+    for r_ in _cprows:
+        if r_["user_id"] == _nc_user:
+            _proj_vals.setdefault(str(r_["id"]), int(r_["net_charge"]))
+    _crrows, _crtot = operator_views.content_results(
+        con, None, f"ncu{_nc_tag}", _nc_tool, 50, 0)
+    for r_ in _crrows:
+        _proj_vals.setdefault(str(r_["id"]), int(r_["net_charge"]))
+check("NC2 four operator projections agree on net_charge",
+      all(_proj_vals.get(k) == v for k, v in _expect.items())
+      and len(_proj_vals) == 5, str(_proj_vals))
+
+_nc_sess = create_browser_session(_nc_user)
+_nc_page = client.get("/account/calls", cookies={COOKIE_NAME: _nc_sess})
+import re as _re_nc
+_nc_cells = [int(x.replace(",", ""))
+             for x in _re_nc.findall(r'ta-r mono">([\d,]+)',
+                                     _nc_page.text or "")]
+check("NC3 account calls page renders the same net values (desc order)",
+      _nc_page.status_code == 200
+      and _nc_cells[:5] == [40, 0, 40, 0, 0],
+      f"{_nc_page.status_code} cells={_nc_cells[:6]}")
+
+# ═══ NC4 (F17): 后台内容页 downloads-remaining 与 fake Gokapi 同步 ═══
+from storage import write as _nc_write
+_gk_nc = _nc_write(_io_nc.BytesIO(b"nc-live"), "nc.txt", "text/plain",
+                   7, 50, 7)
+_gid_nc = (_gk_nc.get("FileInfo", {}) or {}).get("Id")
+with db() as con:
+    from utils import generate_public_id as _gpid
+    _pid_nc = _gpid(con)
+    _udl_nc = (_gk_nc.get("FileInfo", {}) or {}).get("UrlDownload") or ""
+    con.execute(
+        "insert into uploads (user_id, ip, public_id, gokapi_id, file_name,"
+        " content_type, size_bytes, expiry_days, allowed_downloads,"
+        " expire_at, url_download, created_at) values"
+        " (%s, '127.0.0.1', %s, %s, 'nc.txt', 'text/plain', 7, 7, 50, %s,"
+        " %s, %s)",
+        (_nc_user, _pid_nc, _gid_nc, ts + 7 * 86400, _udl_nc, ts))
+import sharing.uploads as _su_nc
+from sharing.uploads import live_status_map as _lsm_nc
+def _lsm_fresh_nc():
+    _su_nc._gokapi_cache["ts"] = 0  # bypass the 60s presentation cache
+    return _lsm_nc()
+_pre_rem = _lsm_fresh_nc().get(_gid_nc)
+# the counted channel is the storage's own /downloadFile (production
+# Nginx fronts it; the test stack hits the fake directly)
+import urllib.request as _ur_nc
+import os as _os_nc
+try:
+    _ur_nc.urlopen(
+        _os_nc.environ["FLASHSHARE_GOKAPI_URL"].rstrip("/")
+        + f"/downloadFile?id={_ur_nc.quote(_gid_nc)}", timeout=10).read()
+except Exception:
+    pass
+_post_rem = _lsm_fresh_nc().get(_gid_nc)
+_cp = client.get(f"/samelabs/content?q_share={_pid_nc}",
+                 cookies={COOKIE_NAME: sess})
+def _rem_nc(m):
+    return int(m["DownloadsRemaining"]) if m else None
+check("NC4 content page remaining syncs with the live storage counter",
+      _rem_nc(_pre_rem) == 50 and _rem_nc(_post_rem) == 49
+      and "49" in (_cp.text or ""),
+      f"pre={_rem_nc(_pre_rem)} post={_rem_nc(_post_rem)}"
+      f" status={_cp.status_code}")
+
+# ═══ NC5 (S7): operator 工具创建的可选绑定字段类型口径 ═══
+def _op_tool_create(payload):
+    return _post_json("/samelabs/tools/create", payload)
+
+_s7 = f"s7tool{_RUN}{_nc_tag}"
+r = _op_tool_create({
+    "tool_id": _s7, "label": "S7", "format_families": "image",
+    "accept": ".png", "url": "https://93.184.216.34/s7",
+    "timeout_s": 30, "files_min": 1, "files_max": 2,
+    "outputs": ["text"], "cost": 0,
+    "auth_header": None, "auth_token": None})
+check("NC5 null auth binding → accepted as empty",
+      getattr(r, "status_code", 500) == 200, getattr(r, "status_code", 0))
+r = _op_tool_create({
+    "tool_id": _s7 + "b", "label": "S7", "format_families": "image",
+    "accept": ".png", "url": "https://93.184.216.34/s7",
+    "timeout_s": 30, "files_min": 1, "files_max": 2,
+    "outputs": ["text"], "cost": 0,
+    "auth_header": 123})
+check("NC5b non-string auth_header → 422 bad_binding",
+      getattr(r, "status_code", 500) == 422
+      and r.json().get("error") == "bad_binding",
+      getattr(r, "status_code", 0))
+r = _op_tool_create({
+    "tool_id": _s7 + "c", "label": "S7", "format_families": "image",
+    "accept": 123, "url": "https://93.184.216.34/s7",
+    "timeout_s": 30, "files_min": 1, "files_max": 2,
+    "outputs": ["text"], "cost": 0})
+check("NC5c non-string accept → 422 bad_accept",
+      getattr(r, "status_code", 500) == 422
+      and r.json().get("error") == "bad_accept",
+      getattr(r, "status_code", 0))
+
+# NC cleanup (own fixtures, before H1)
+with db() as con:
+    con.execute("delete from tool_calls where user_id=%s", (_nc_user,))
+    con.execute("delete from ledger where user_id=%s", (_nc_user,))
+    con.execute("delete from uploads where user_id=%s", (_nc_user,))
+    con.execute("delete from pricing where tool_id=%s", (_nc_tool,))
+    con.execute("delete from platform_tools where tool_key=%s", (_nc_tool,))
+    con.execute("delete from platform_tools where tool_key like %s",
+                (_s7 + "%",))
+    con.execute("delete from pricing where tool_id like %s", (_s7 + "%",))
+    con.execute("delete from operator_audit where actor_user_id=%s"
+                " and target_id like %s", (op, _s7 + "%"))
+    purge_users(con, [_nc_user])
+
 # ═══ H1: hygiene — every row this suite created is removed ═══
 _cleanup_own_rows()
 with db() as con:
@@ -1419,6 +1620,8 @@ with db() as con:
             "SELECT COUNT(*) n FROM withdrawals WHERE user_id = ANY(%s)",
             ([provider, p2, p3, _xu, caller],)).fetchone()["n"]),
     }
+
+
 check("H1 cleanup leaves zero own rows", not any(_left.values()), _left)
 
 print()

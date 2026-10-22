@@ -62,7 +62,7 @@ async def calls(request: Request, tool: str = "", user: str = "",
     items = []
     for r in rows:
         d = dict(r)
-        d["cost"] = int(d["cost_snapshot"])
+        d["cost"] = int(d["net_charge"])
         settlement = []
         if d["refund_delta"] is not None:
             settlement.append("已退款")

@@ -667,6 +667,7 @@ with db() as con:
 from repo.orders import insert_plan as _ins_plan
 with db() as con:
     _rb = _ins_plan(con, f"plus_{_u}rb", "Plus RB", 500, 1499, ts,
+                    active=True,
                     sort_order=int(_so2), creem_product_id=f"prod_pcA_{_u}",
                     ingress_files_24h=500, ingress_bytes_24h=524288000,
                     expiry_days=(7,), download_limits=(50,))

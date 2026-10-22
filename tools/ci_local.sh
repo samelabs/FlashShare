@@ -12,6 +12,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 PY=${PYTHON:-venv/bin/python}
+# Browser suites spawn python3 subprocesses (PWA offline probe) — pin
+# them to the SAME interpreter instead of whatever `python3` is on PATH.
+export PYTHON="$PY"
 ADMIN=${PG_ADMIN_URL:-postgresql://127.0.0.1:5432/postgres}
 APP_PORT=${APP_PORT:-8100}
 GOKAPI_PORT=${GOKAPI_PORT:-53898}
