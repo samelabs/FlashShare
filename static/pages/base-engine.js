@@ -184,6 +184,44 @@ window.shareLink = function (url, title, btn) {
     navigator.clipboard.writeText(url).then(function () { _sbConfirm(btn); }).catch(function () {});
   }
 };
+// Share bar markup — the JS twin of partials/share_bar.html, isomorphic
+// down to class names, data-sb actions, data-i18n text keys and the X
+// intent format. The /r page renders the partial server-side; dynamic
+// surfaces (home result card) build the same bar here. Click behavior is
+// the delegated handler below — no separate wiring exists.
+window.shareBarHtml = function (o) {
+  o = o || {};
+  var url = String(o.url || "");
+  var title = String(o.title || "");
+  var xTitle = o.xTitle != null ? String(o.xTitle) : title;
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  };
+  var ic = function (n) { return window.iconSvg ? window.iconSvg(n) : ""; };
+  var tx = function (k) { return window.t ? window.t(k) : k; };
+  return '<div class="share-bar' + (o.compact ? " sb-compact" : "") + '"'
+    + ' data-share-url="' + esc(url) + '" data-share-title="' + esc(title) + '">'
+    + '<button type="button" class="sb-btn" data-sb="copy" aria-label="' + esc(tx("copy_link")) + '" title="' + esc(tx("copy_link")) + '">'
+    + ic("copy") + '<span data-i18n="copy_link">' + esc(tx("copy_link")) + "</span></button>"
+    + '<button type="button" class="sb-btn" data-sb="share" aria-label="' + esc(tx("share_via_system")) + '" title="' + esc(tx("share_via_system")) + '">'
+    + ic("share") + '<span data-i18n="share_via_system">' + esc(tx("share_via_system")) + "</span></button>"
+    + '<a class="sb-btn" href="https://x.com/intent/tweet?text=' + encodeURIComponent(xTitle)
+    + "&amp;url=" + encodeURIComponent(url) + '" target="_blank" rel="noreferrer" aria-label="X" title="X">'
+    + '<span class="x-glyph" aria-hidden="true">𝕏</span><span>X</span></a>'
+    + (o.qrSrc
+      ? '<button type="button" class="sb-btn" data-sb="qr" data-qr-src="' + esc(o.qrSrc)
+      + '" aria-label="' + esc(tx("qrCode")) + '" title="' + esc(tx("qrCode")) + '">'
+      + ic("qr") + '<span data-i18n="qrCode">' + esc(tx("qrCode")) + "</span></button>"
+      : "")
+    + "</div>";
+};
+
+// THE site-wide QR modal (single surface: share-bar entries and the
+// history list both open it). Loading/error states ride the .qr-code
+// classes (VIS-007: spinner until the SVG loads, error surface on a
+// failed load — never a blank panel).
 function _sbQr(src) {
   var m = document.getElementById("sbQrModal");
   if (!m) {
@@ -193,7 +231,7 @@ function _sbQr(src) {
     m.setAttribute("role", "dialog");
     m.setAttribute("aria-modal", "true");
     m.innerHTML = '<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">'
-      + (window.iconSvg ? window.iconSvg("close") : "×") + '</button><img alt="QR" width="200" height="200"></div>';
+      + (window.iconSvg ? window.iconSvg("close") : "×") + '</button><img alt="QR" width="200" height="200" class="qr-code"></div>';
     document.body.appendChild(m);
     m.addEventListener("click", function (e) {
       if (e.target === m || (e.target.closest && e.target.closest(".modal-close"))) m.classList.add("hidden");
@@ -202,7 +240,11 @@ function _sbQr(src) {
       if (e.key === "Escape") m.classList.add("hidden");
     });
   }
-  m.querySelector("img").src = src;
+  var im = m.querySelector("img");
+  im.classList.add("qr-loading");
+  im.onload = function () { im.classList.remove("qr-loading", "qr-error"); };
+  im.onerror = function () { im.classList.remove("qr-loading"); im.classList.add("qr-error"); };
+  im.src = src;
   m.classList.remove("hidden");
 }
 // Share bar (partials/share_bar.html): copy / system share / QR; the X

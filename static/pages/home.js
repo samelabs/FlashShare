@@ -29,6 +29,10 @@
     document.body.dataset.tool = tool.id;
     const res = document.getElementById("result");
     if (res) { res.classList.add("hidden"); res.innerHTML = ""; res.classList.remove("has-result"); }
+    // has-result's mirror write point: hero-share reappears when the
+    // result card is cleared (app.js showItemsResult hides it)
+    const heroShare = document.querySelector(".hero-share");
+    if (heroShare) heroShare.hidden = false;
     window.invalidateToolOperation && window.invalidateToolOperation();
   }
 

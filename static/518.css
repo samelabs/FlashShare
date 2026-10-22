@@ -799,9 +799,12 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .mcpline { margin-block-start: 20px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); font-size: 13px; color: var(--ink-2); }
 .mcpline .mcp-badge { flex: none; height: 22px; padding: 0 9px; border-radius: var(--r-full); background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 750; letter-spacing: .04em; display: inline-flex; align-items: center; }
 .mcpline .mcp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.mcpline .mcp-row { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
-.mcpline .mcp-k { font-weight: 650; font-size: 12px; flex: none; }
-.mcpline code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 2px 8px; border-radius: 6px; color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 行样式属 .tp-access 作用域: MCP 卡与 API 卡共用同一行/键/URL 胶囊
+   (API 卡的行原本吃不到 .mcpline 作用域, 标签与 URL 无间隔且 URL 无
+   胶囊样式) */
+.tp-access .mcp-row { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.tp-access .mcp-k { font-weight: 650; font-size: 12px; flex: none; }
+.tp-access code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 2px 8px; border-radius: 6px; color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mcpline #toolMcpCopy { flex: none; }
 @media (max-width: 767px) {
   .toolpage { padding-top: 24px; padding-bottom: 48px; }
@@ -814,7 +817,9 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 /* 工具页接入区 (P6): MCP 卡 + API 卡 (示例按声明生成) */
 .tp-access { display: flex; flex-direction: column; gap: var(--s3); margin-block-start: var(--s4); }
 .tp-api-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
-.tp-api-card .mcp-url { overflow-wrap: anywhere; }
+/* API 卡 URL 可换行 (375 宽不溢出): 覆盖胶囊基样的 nowrap, 配合
+   overflow-wrap 在任意字符处断行 */
+.tp-api-card .mcp-url { overflow-wrap: anywhere; white-space: normal; }
 .tp-api-example { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; font-family: var(--font-mono); }
 .tp-api-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); color: var(--ink-2); font-size: 12px; }
 .credit-note-link { color: var(--brand); font-weight: 600; text-decoration: none; }
@@ -865,8 +870,10 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .home .hero > .wrap { position: relative; z-index: 1; }
 .home .hero-sub { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-/* hero 与输入框之间的四件套分享条 (居中) */
+/* hero 与输入框之间的四件套分享条 (居中); 出结果卡后让位 (JS 写
+   hidden 属性 — flex 基样会盖过 UA 的 hidden, 需显式规则) */
 .hero-share { display: flex; justify-content: center; margin-block-start: 18px; }
+.hero-share[hidden] { display: none; }
 /* 区块标题下的四件套分享条 (agents / market / pricing) */
 .sec-h .share-bar.sb-compact { margin-block-start: 14px; }
 .home .hero-sep { color: var(--line-2); }

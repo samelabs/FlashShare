@@ -468,6 +468,10 @@ pre.rs-text, pre.rs-json {
   width: min(420px, 100%); background: var(--bg);
   border: var(--border-w) solid var(--line); border-radius: var(--r-lg);
   padding: var(--s5) var(--s4) var(--s4); position: relative; box-shadow: var(--sh-4);
+  /* 矮视口 (横屏手机/小窗) 底座保证: 面板永不越过 .modal 的 s4 内边距,
+     超高内容转内部滚动 (所有 .modal-panel 弹窗共享, 不逐弹窗另写) */
+  max-height: calc(100dvh - 2 * var(--s4));
+  overflow-y: auto; overscroll-behavior: contain;
 }
 /* 图标关闭钮 (5 个弹窗面共用): 32×32 正方形热区 + grid 居中;
    min-height:0 抵消全局 button 基样的 40px 高 (不抵消则钮被拉高、
@@ -632,15 +636,16 @@ pre.rs-text, pre.rs-json {
   border: var(--border-w) solid var(--line); border-radius: 12px;
   background: var(--sunk); font-size: 13px; min-width: 0;
 }
-.chipf > span { min-width: 0; display: flex; flex-direction: column; }
-.chipf > span b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chipf > span { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .chipf .th { width: 36px; height: 36px; border-radius: 8px; flex: none; object-fit: cover; background: var(--brand-100); }
 .chipf .th.d { background: var(--card); border: var(--border-w) solid var(--line); display: grid; place-items: center; }
 .chipf .th.d svg { width: 17px; height: 17px; stroke: var(--ink-2); stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.chipf b { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
-.chipf small { color: var(--ink-3); font-size: var(--fs-xs); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+/* 名字/元信息行吃满剩余宽度 (省略号跟随可用宽度, 不再 160px 截断) */
+.chipf b { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chipf small { color: var(--ink-3); font-size: var(--fs-xs); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chipf .x {
-  color: var(--ink-3); margin-left: 2px; background: none; border: 0;
+  color: var(--ink-3); margin-inline-start: auto; flex: none; min-height: 0;
+  background: none; border: 0;
   cursor: pointer; display: grid; place-items: center; padding: var(--s1);
   border-radius: var(--r-xs);
 }
@@ -655,33 +660,30 @@ pre.rs-text, pre.rs-json {
 .c-text::placeholder { color: var(--ink-3); }
 .c-text-hint { padding: 16px 20px 8px; min-height: 60px; font-size: 16px; color: var(--ink-3); }
 
-/* 纯文本工具 (files_max=0) 的对话框形态: 单个自动增高输入框
-   (1..8 行, 封顶内部滚动), 发送按钮在输入框右下角内侧。 */
-.ti-chat-wrap { position: relative; margin: 14px 16px 0; }
-.ti-chat-wrap .c-text {
-  padding: 12px 60px 12px 16px; min-height: 48px;
-  max-height: calc(8 * 1.55em + 24px);
+/* 正文工具 (files_max=0) 的正文编辑框: text/json 共用一条底座规则 —
+   沉底槽面、透明边框、聚焦环、左右 16px 出血。text 在此之上 3..8 行
+   自动增高 (封顶内部滚动, JS 即时贴合 scrollHeight); json 只加等宽
+   字体与 min-height 132px。运行按钮一律在底栏 (.c-bar .ti-run)。 */
+.composer .c-text.ti-body {
+  margin: 14px 16px 0; width: calc(100% - 32px); box-sizing: border-box;
+  padding: 12px 16px;
   resize: none; overflow-y: auto;
   background: var(--sunk); border: 1px solid transparent; border-radius: var(--r-lg);
   transition: box-shadow var(--ease), border-color var(--ease), background var(--ease);
 }
-.ti-chat-wrap .c-text:focus { background: var(--card); border-color: var(--brand-deep); box-shadow: 0 0 0 3px var(--brand-100); }
-.ti-chat-wrap .send {
-  position: absolute; inset-block-end: 8px; inset-inline-end: 8px;
-  width: 36px; height: 36px;
-}
-.ti-chat-wrap .send svg { width: 16px; height: 16px; }
-
-/* 正文 json 工具的编辑框: 等宽字体 + 语法校验前的可编辑原文 */
-.composer .c-text.ti-body-json {
-  margin: 14px 16px 0; padding: 14px 16px;
-  font-family: var(--font-mono);
-  font-size: 14px; min-height: 132px;
-  background: var(--sunk); border: 1px solid transparent; border-radius: var(--r-lg);
-}
-.composer .c-text.ti-body-json:focus {
+.composer .c-text.ti-body:focus {
   background: var(--card); border-color: var(--brand-deep);
   box-shadow: 0 0 0 3px var(--brand-100);
+}
+.composer .c-text.ti-body-text {
+  min-height: calc(3 * var(--lh-base) * 1em + 24px);
+  /* 封顶高度同样要让出上下边框: 只给到内容高度时第 8 行恰好触顶,
+     clientHeight 恒比 scrollHeight 少 2px, 第 8 行就挂出滚动条 */
+  max-height: calc(8 * var(--lh-base) * 1em + 24px + 2px);
+}
+.composer .c-text.ti-body-json {
+  font-family: var(--font-mono);
+  font-size: 14px; min-height: 132px;
 }
 
 .params { display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 6px; }
@@ -859,12 +861,14 @@ pre.rs-text, pre.rs-json {
   /* 添加文件: 移动端图标按钮; .ib 统一伪元素扩点击区到 ≥44 (视觉不变) */
   .tp-seg .tp-option { min-height: 44px; }
 }
-/* 输入区挂载预留高度 (CLS)。224 = 首页/纯文件工具的挂载高度;
-   工具页多出参数卡行 (实测 compress 381 / ico 433 @390), 按页加高
-   预留把挂载增长压到 ≈0, 挂载后回落只影响卡下方内容。 */
-.ti-mount { min-height: 224px; }
-@media (max-width: 767px) { .toolpage .ti-mount { min-height: 384px; } }
-@media (min-width: 768px) { .toolpage .ti-mount { min-height: 328px; } }
+/* 输入区挂载预留高度 (CLS) — 只作用于挂载前 (:empty; 挂载节点在模板里
+   不得有空白字符, 否则 :empty 不成立)。224 = 首页/纯文件工具的挂载
+   高度; 工具页多出参数卡行 (实测 compress 381 / ico 433 @390), 按页
+   加高预留把挂载增长压到 ≈0, 挂载后回落只影响卡下方内容 — 且挂载后
+   预留完全退场, 卡后间距回到常规值。 */
+.ti-mount:empty { min-height: 224px; }
+@media (max-width: 767px) { .toolpage .ti-mount:empty { min-height: 384px; } }
+@media (min-width: 768px) { .toolpage .ti-mount:empty { min-height: 328px; } }
 
 /* Phone: file rows wrap — name keeps its line, meta + actions flow */
 @media (max-width: 599px) {

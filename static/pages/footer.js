@@ -21,8 +21,6 @@ function _dl(x){var t=x.allowed_downloads;if(Number.isFinite(x.download_count))r
 var _uploads=[];var _histOffset=0;var _histLoading=false;var _histGen=0;
 async function _del(pid,btn){var ok=await(window.confirmAction?window.confirmAction({title:_tx("delete"),message:_tx("confirmDelete"),confirmLabel:_tx("delete"),cancelLabel:_tx("cancel")}):Promise.resolve(window.confirm(_tx("confirmDelete"))));if(!ok)return;btn.disabled=true;fetch("/api/uploads/"+pid,{method:"DELETE"}).then(function(r){return r.json()}).then(function(d){if(d.ok){var it=btn.closest(".item");if(it)it.remove();var l=document.getElementById("historyList");var hc=document.getElementById("historyCount");var n=l?l.querySelectorAll(".item").length:0;if(hc)hc.textContent=n?String(n):"";if(l&&!n)l.setAttribute("data-empty",_tx("noHistory"))}else{btn.disabled=false}}).catch(function(){btn.disabled=false})}
 
-function _qr(url){var m=document.getElementById("homeQrModal");if(!m){m=document.createElement("div");m.id="homeQrModal";m.className="modal hidden";m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");m.innerHTML='<div class="modal-panel qr-modal-panel"><button class="modal-close" type="button" aria-label="Close">'+_si("close")+'</button><img alt="QR" width="200" height="200" class="qr-code"></div>';document.body.appendChild(m);var cb=m.querySelector(".modal-close");cb.addEventListener("click",function(){m.classList.add("hidden")});m.addEventListener("click",function(e){if(e.target===m)m.classList.add("hidden")})}var im=m.querySelector("img");im.classList.add("qr-loading");im.onload=function(){im.classList.remove("qr-loading","qr-error")};im.onerror=function(){im.classList.remove("qr-loading");im.classList.add("qr-error")};im.src=url;m.classList.remove("hidden")}
-
 function _pwa(){return window.isStandalonePWA?window.isStandalonePWA():(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true)}
 
 function _renderItem(x,i){
@@ -33,7 +31,7 @@ function _bindActions(l){
 l.querySelectorAll("[data-dl]").forEach(function(b){b.addEventListener("click",async function(e){e.preventDefault();e.stopPropagation();if(window._dlLock)return;window._dlLock=true;var u=_uploads[+b.dataset.dl];var dl=u.url_download+"?download=1";var hm=document.getElementById("historyModal");if(_pwa()){if(hm)hm.dataset.locked="1";await(window.pwaDownload?pwaDownload(dl):Promise.resolve());if(hm)delete hm.dataset.locked}else window.location.href=dl;setTimeout(function(){window._dlLock=false},1000)})});
 l.querySelectorAll("[data-cp]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.cp];b.style.color="var(--accent)";setTimeout(function(){b.style.color=""},1400);window.copyFeedback(b);navigator.clipboard.writeText(u.url_download).catch(function(){})})});
 l.querySelectorAll("[data-sh]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.sh];window.shareLink&&window.shareLink(u.url_download,u.file_name,b)})});
-l.querySelectorAll("[data-qr]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.qr];_qr(u.url_download+"/qr.svg")})});
+l.querySelectorAll("[data-qr]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.qr];_sbQr(u.url_download+"/qr.svg")})});
 l.querySelectorAll("[data-rm]").forEach(function(b){b.addEventListener("click",function(){var u=_uploads[+b.dataset.rm];_del(u.public_id,b)})})
 }
 window._loadHistory=function(){

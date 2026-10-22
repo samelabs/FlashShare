@@ -1431,6 +1431,55 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await ctx.close();
     }
 
+    // (b2) auth modal panel stays inside the viewport at SHORT viewports:
+    //      panel top >= 0 and bottom <= innerHeight; when the content is
+    //      taller than the panel the submit button and the terms link are
+    //      reachable by scrolling INSIDE the panel, and the focused input
+    //      stays inside the visible band. Both tabs, with and without the
+    //      X login entry (__X_LOGIN__ changes the rendered height).
+    for (const [w, h] of [[1024, 450], [375, 560]]) {
+      for (const xLogin of [false, true]) {
+        const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+        const page = await ctx.newPage();
+        await gotoReady(page, "/", "body");
+        for (const mode of ["register", "login"]) {
+          const probe = await page.evaluate(({ mode, xLogin }) => {
+            window.__X_LOGIN__ = xLogin;
+            window.openAuthModal({ mode });
+            const panel = document.querySelector(".auth-modal");
+            if (!panel) return { ok: false, why: "no panel" };
+            const first = panel.querySelector("form input");
+            if (first) first.focus();
+            const pr = panel.getBoundingClientRect();
+            const fr = document.activeElement && document.activeElement.getBoundingClientRect
+              ? document.activeElement.getBoundingClientRect() : null;
+            const inBand = (r) => !!r && r.top >= pr.top - 1 && r.bottom <= pr.bottom + 1;
+            panel.scrollTop = panel.scrollHeight;
+            const submit = panel.querySelector('button[type=submit]');
+            const terms = panel.querySelector(".auth-terms a");
+            const sr = submit && submit.getBoundingClientRect();
+            const tr2 = terms && terms.getBoundingClientRect();
+            return {
+              ok: true,
+              top: Math.round(pr.top), bottom: Math.round(pr.bottom), ih: innerHeight,
+              focusedInBand: inBand(fr),
+              submitReachable: inBand(sr) && sr.bottom <= innerHeight + 1,
+              termsReachable: inBand(tr2) && tr2.bottom <= innerHeight + 1,
+            };
+          }, { mode, xLogin });
+          const label = `auth panel ${w}x${h} ${mode}${xLogin ? " +X" : ""}`;
+          check(`${label}: top >= 0 and bottom <= innerHeight`,
+            probe.ok && probe.top >= 0 && probe.bottom <= probe.ih, JSON.stringify(probe));
+          check(`${label}: submit + terms reachable inside the panel, focused input in band`,
+            probe.ok && probe.submitReachable && probe.termsReachable && probe.focusedInBand,
+            JSON.stringify(probe));
+          await page.keyboard.press("Escape");
+          await page.waitForTimeout(50);
+        }
+        await ctx.close();
+      }
+    }
+
     // (c) PWA: SW registers + offline navigation. The offline half uses a
     // REAL dead origin: page-level offline emulation does not cover the
     // service worker's own network-first fetch (verified: playwright 1.55
@@ -1702,7 +1751,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         }
       }
 
-      // chat form (files_max=0): synthetic mount of the real component
+      // body tools (files_max=0): the standard input card — the body box
+      // (text and json alike) sits inside the card at 16px side margins;
+      // text starts at 3 lines and grows to 8, then scrolls internally;
+      // the run button is the bottom-bar wide button; Enter is a newline,
+      // Ctrl+Enter runs (exactly once).
       {
         const page = await ctx.newPage();
         await gotoReady(page, "/", ".composer");
@@ -1718,52 +1771,87 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             body_placeholder: { en: "Ask anything" },
             params: [],
           } });
+          const jhost = document.createElement("div");
+          jhost.id = "jsonProbe";
+          document.getElementById("toolInput").after(jhost);
+          window.ToolInput.mount(jhost, { tool: {
+            id: "probe/json", label: "JsonProbe", files_min: 0, files_max: 0,
+            body_format: "json", params: [],
+          } });
         });
         const shape = await page.evaluate(() => {
-          const ta = document.querySelector("#chatProbe .ti-chat-text");
-          const btn = document.querySelector("#chatProbe .ti-run");
-          const wideRun = document.querySelector("#chatProbe .c-bar .ti-run");
-          if (!ta || !btn) return { ok: false };
-          const tr = ta.getBoundingClientRect();
-          const br = btn.getBoundingClientRect();
-          const wr = ta.closest(".ti-chat-wrap").getBoundingClientRect();
+          const ta = document.querySelector("#chatProbe .ti-body-text");
+          const jt = document.querySelector("#jsonProbe .ti-body-json");
+          const card = ta && ta.closest(".composer");
+          if (!ta || !jt || !card) return { ok: false };
+          const inset = (el) => {
+            const r = el.getBoundingClientRect();
+            const card = el.closest(".composer");
+            const c = card.getBoundingClientRect();
+            const cs = getComputedStyle(card);
+            // the 16px side margins start at the card's content edge —
+            // discount the card's own border (border-box rect includes it)
+            const bl = parseFloat(cs.borderLeftWidth) || 0;
+            const br = parseFloat(cs.borderRightWidth) || 0;
+            return { left: Math.round(r.left - c.left - bl), right: Math.round(c.right - br - r.right),
+              inside: r.left >= c.left + bl - 0.5 && r.right <= c.right - br + 0.5 };
+          };
           return {
             ok: true,
-            sendInsideCorner: br.right <= wr.right + 1 && br.bottom <= wr.bottom + 1
-              && br.top >= tr.top && br.left >= tr.right - 120,
-            singleLineHeight: tr.height < 72,
-            noBarRun: !wideRun,
+            taInset: inset(ta), jsonInset: inset(jt),
+            textH: Math.round(ta.getBoundingClientRect().height),
+            barRun: !!document.querySelector("#chatProbe .c-bar .ti-run"),
+            barRunWide: !!document.querySelector("#chatProbe .c-bar .send.wide.ti-run"),
+            noChatWrap: !document.querySelector("#chatProbe .ti-chat-wrap"),
             placeholder: ta.getAttribute("placeholder"),
-            ph: ta.getAttribute("placeholder") === "Ask anything",
           };
         });
-        check("chat form: one auto-grow input, send button inside its corner, no bar run",
-          shape.ok && shape.sendInsideCorner && shape.singleLineHeight && shape.noBarRun,
+        check("body tool: box inside the card at 16px sides (text and json)",
+          shape.ok && shape.taInset.inside && shape.taInset.left === 16 && shape.taInset.right === 16
+            && shape.jsonInset.inside && shape.jsonInset.left === 16 && shape.jsonInset.right === 16,
           JSON.stringify(shape));
-        check("chat form: placeholder from the declared body placeholder", shape.ok && shape.ph,
+        check("body tool: run button is the bottom-bar wide button, chat wrap gone",
+          shape.ok && shape.barRun && shape.barRunWide && shape.noChatWrap,
           JSON.stringify(shape));
-        await page.focus("#chatProbe .ti-chat-text");
+        check("body tool: text box starts at the 3-line height",
+          shape.ok && shape.textH >= 90, JSON.stringify(shape));
+        check("body tool: placeholder from the declared body placeholder",
+          shape.ok && shape.placeholder === "Ask anything", JSON.stringify(shape));
+        await page.focus("#chatProbe .ti-body-text");
         await page.keyboard.type("line 1");
-        for (let i = 2; i <= 10; i++) {
+        for (let i = 2; i <= 8; i++) {
           await page.keyboard.press("Enter");
           await page.keyboard.type("line " + i);
         }
         await page.waitForTimeout(150);
-        const grown = await page.evaluate(() => {
-          const ta = document.querySelector("#chatProbe .ti-chat-text");
-          const cap = parseFloat(getComputedStyle(ta).maxHeight);
-          return { h: Math.round(ta.getBoundingClientRect().height), cap: Math.round(cap),
+        const at8 = await page.evaluate(() => {
+          const ta = document.querySelector("#chatProbe .ti-body-text");
+          return { h: Math.round(ta.getBoundingClientRect().height),
+            cap: Math.round(parseFloat(getComputedStyle(ta).maxHeight)),
             scroll: ta.scrollHeight, client: ta.clientHeight };
         });
-        check("chat form: 10 lines cap at the 8-row height and scroll internally",
-          grown.h <= grown.cap + 1 && grown.scroll > grown.client, JSON.stringify(grown));
+        check("body tool: 8 lines grow without an internal scrollbar",
+          at8.scroll <= at8.client + 1 && at8.h <= at8.cap + 1, JSON.stringify(at8));
+        for (const extra of ["line 9 with a bit more text", "line 10 wraps it up"]) {
+          await page.keyboard.press("Enter");
+          await page.keyboard.type(extra);
+        }
+        await page.waitForTimeout(150);
+        const at10 = await page.evaluate(() => {
+          const ta = document.querySelector("#chatProbe .ti-body-text");
+          return { h: Math.round(ta.getBoundingClientRect().height),
+            cap: Math.round(parseFloat(getComputedStyle(ta).maxHeight)),
+            scroll: ta.scrollHeight, client: ta.clientHeight };
+        });
+        check("body tool: 10 lines cap at the 8-row height and scroll internally",
+          at10.h <= at10.cap + 1 && at10.scroll > at10.client, JSON.stringify(at10));
         await page.keyboard.press("Control+Enter");
         await page.waitForTimeout(250);
         const keys = await page.evaluate(() => ({
           runs: window.__chatRuns,
-          newline: document.querySelector("#chatProbe .ti-chat-text").value.includes("\n"),
+          newline: document.querySelector("#chatProbe .ti-body-text").value.includes("\n"),
         }));
-        check("chat form: Enter inserts a newline, Ctrl+Enter runs",
+        check("body tool: Enter inserts a newline, Ctrl+Enter runs exactly once",
           keys.runs === 1 && keys.newline, JSON.stringify(keys));
         await page.close();
       }
@@ -1792,7 +1880,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             files_max: 0, body_format: "text", params: [],
           } });
         });
-        await page.fill("#errProbe .ti-chat-text", "trigger failure");
+        await page.fill("#errProbe .ti-body-text", "trigger failure");
         await page.click("#errProbe .ti-run");
         await page.waitForTimeout(400);
         const err = await page.evaluate(() => {
@@ -2020,7 +2108,8 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             const stem = nameEl && nameEl.querySelector(".if-stem");
             const ext = nameEl && nameEl.querySelector(".if-ext");
             const bar = r.querySelector(".linkbar");
-            const barBtn = bar && bar.querySelector(".btn");
+            const sb = bar && bar.querySelector(".share-bar");
+            const heroShare = document.querySelector(".hero-share");
             return {
               sw: document.documentElement.scrollWidth,
               vw: document.documentElement.clientWidth,
@@ -2032,16 +2121,21 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
               extKept: !ext || ext.textContent,
               titleFull: !nameEl || nameEl.getAttribute("title"),
               barH: bar ? Math.round(bar.getBoundingClientRect().height) : 0,
-              barBtnCls: barBtn ? barBtn.className : "",
+              sbCount: sb ? sb.querySelectorAll(".sb-btn").length : 0,
+              sbActs: sb ? [...sb.querySelectorAll("[data-sb]")].map((b) => b.getAttribute("data-sb")).sort().join(",") : "",
+              sbUrl: sb ? sb.getAttribute("data-share-url") : "",
+              sbQr: sb ? ((sb.querySelector('[data-sb="qr"]') || {}).getAttribute("data-qr-src")) : "",
+              heroShareHidden: heroShare ? heroShare.hidden : null,
             };
           }, items);
           check(`probe ${w} ${name}: no overflow, no filename captions on images`,
             probe.sw <= probe.vw + 1 && probe.metaB === 0 && probe.capB === 0,
             JSON.stringify(probe));
-          check(`probe ${w} ${name}: linkbar is one light line, secondary copy`,
+          check(`probe ${w} ${name}: linkbar one light line carrying the share four-piece`,
             probe.barH > 0 && probe.barH <= 44
-              && /\bbtn-secondary\b/.test(probe.barBtnCls)
-              && !/\bbtn-p\b/.test(probe.barBtnCls),
+              && probe.sbCount === 4 && probe.sbActs === "copy,qr,share"
+              && /\/r\/rprobe$/.test(probe.sbUrl) && probe.sbQr === "/r/rprobe/qr.svg"
+              && probe.heroShareHidden === true,
             JSON.stringify(probe));
           if (name === "file-row") {
             check(`probe ${w} file-row: single-line name, middle ellipsis keeps ".pdf", title carries the full name`,
@@ -2049,6 +2143,21 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
                 && probe.extKept === ".pdf" && probe.titleFull === items[0].filename,
               JSON.stringify(probe));
           }
+        }
+        if (w === 1280) {
+          // hero-share reappears once the result is cleared (picker
+          // re-select = home.js mountInput, the has-result mirror point)
+          await page.click(".ti-picker");
+          await page.click(".tsel-item");
+          await page.waitForTimeout(200);
+          const restored = await page.evaluate(() => {
+            const hs = document.querySelector(".hero-share");
+            return { hidden: hs ? hs.hidden : null,
+              hasResult: document.getElementById("result").classList.contains("has-result") };
+          });
+          check("probe home: hero-share restored after clearing the result",
+            restored.hidden === false && restored.hasResult === false,
+            JSON.stringify(restored));
         }
         await ctx.close();
       }

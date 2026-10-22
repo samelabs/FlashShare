@@ -1,8 +1,9 @@
 // ── tool-input: the composer (首页 / 工具页同一组件, v2 视觉) ────
 // 按所选工具的声明呈现: 输入方式 = 声明字段 — 文件工具 (files_max>0)
 // 空态整块上传区 + 参数区; 正文工具 (files_max=0 + body_format) 按声明
-// 呈输入框: text = 对话框形态 (1..8 行自动增高, 发送按钮右下角内侧),
-// json = 带校验的编辑框 (运行前 JSON.parse, 失败内联报错)。参数
+// 呈输入卡正文框: text = 正文字体自动增高 (3..8 行封顶后内部滚动),
+// json = 带校验的等宽编辑框 (运行前 JSON.parse, 失败内联报错); 运行
+// 按钮一律在底栏。参数
 // (enum→分段按钮 / number→数字输入 / boolean→开关 / text→文本域)
 // 全部进参数区 — 不再有"第一个 text 参数 = 输入框"的位置约定。
 // (files_max>0): 有文件时行尾"+ 添加"小块 (达上限即隐), 拖放 / 粘贴
@@ -172,14 +173,15 @@
         + (val !== undefined && val !== null ? esc(String(val)) : "") + "</textarea></div>";
     }
 
-    // 聊天输入框自动增高: 1..8 行, 封顶后内部滚动 (高度封顶由 CSS
-    // max-height 兜底, JS 只做即时贴合 scrollHeight)
-    function autoGrowChat(ta) {
+    // 正文 text 框自动增高: 3..8 行, 封顶后内部滚动 (高度封顶由 CSS
+    // max-height 兜底)。高度 = scrollHeight + 上下边框 — 不补边框则
+    // 内容盒恒比滚动高度少 2px, 空框也会挂出滚动条。
+    function autoGrowBody(ta) {
       if (!ta) return;
       ta.style.height = "auto";
       const cs = getComputedStyle(ta);
-      const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-      ta.style.height = Math.min(ta.scrollHeight, 8 * (parseFloat(cs.lineHeight) || 24) + pad) + "px";
+      const bw = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      ta.style.height = ta.scrollHeight + bw + "px";
     }
 
     function showError(msg) {
@@ -201,7 +203,6 @@
       const accept = acceptTokens();
       const saved = savedParams(tool ? tool.id : "");
       const cost = tool ? Math.max(0, parseInt(tool.cost || 0, 10) || 0) : 0;
-      const chatForm = bf === "text";
       const paramRow = (prm) => paramRowHtml(prm, saved);
 
       let html = '<div class="composer ti-card" data-tool="' + esc(tool ? tool.id : "") + '">';
@@ -226,24 +227,18 @@
           + "</button>";
       }
 
-      // 正文输入: 按声明渲染 — text = 对话框形态 (自动增高 1..8 行 +
-      // 右下角内侧发送); json = 带校验的编辑框 (等宽字体, 运行前解析)
+      // 正文输入: 按声明渲染 — 同一标准正文框底座 (text/json 公共样式
+      // 在 components.css .composer .c-text.ti-body), 运行按钮一律在底栏
       if (bf) {
         const phSrc = tool.body_placeholder
           ? esc(resolveLabel(tool.body_placeholder)) : "";
         const ph = phSrc || esc(t(bf === "text" ? "ti_text_ph" : "ti_json_ph"));
         const val = saved.__body !== undefined ? saved.__body : "";
-        if (chatForm) {
-          html += '<div class="ti-chat-wrap">'
-            + '<textarea class="c-text ti-body ti-chat-text" data-body="1"'
-            + ' rows="1" placeholder="' + ph + '">' + esc(val) + "</textarea>"
-            + '<button type="button" class="send ti-run" aria-label="' + esc(t("ti_run"))
-            + '" title="' + esc(t("ti_run")) + '">' + icon("send") + "</button></div>";
-        } else {
-          html += '<textarea class="c-text ti-body ti-body-json" data-body="1"'
-            + ' rows="6" spellcheck="false" placeholder="' + ph + '">'
-            + esc(val) + "</textarea>";
-        }
+        html += '<textarea class="c-text ti-body ti-body-' + bf + '" data-body="1"'
+          + ' rows="' + (bf === "text" ? 3 : 6) + '"'
+          + (bf === "json" ? ' spellcheck="false"' : "")
+          + ' placeholder="' + ph + '">'
+          + esc(val) + "</textarea>";
       }
 
       // 参数区: 其余参数 (enum→seg / number / boolean / text)。
@@ -263,7 +258,7 @@
         html += "</div>";
       }
 
-      // 底栏: delivery 胶囊 + 发送 (聊天形态的发送在输入框内侧, 此处无)
+      // 底栏: delivery 胶囊 + 运行 (正文工具的运行钮同在此处)
       const del = window.__DELIVERY__ || { days: [1], downloads: [50], defaultDays: 1, defaultDownloads: 50 };
       const dLabel = "<b>" + del.defaultDays + " " + t(del.defaultDays === 1 ? "day_unit" : "days_unit")
         + "</b> · " + del.defaultDownloads + " " + t("times_unit");
@@ -294,7 +289,7 @@
         + "</span>"
         + '<span class="ti-progress" aria-live="polite"></span>'
         + '<span class="sp"></span>'
-        + (chatForm ? "" : '<button type="button" class="send wide ti-run">' + runLabel + "</button>")
+        + '<button type="button" class="send wide ti-run">' + runLabel + "</button>"
         + "</span>"
         + "</div>";
 
@@ -315,7 +310,7 @@
       bindDelivery();
       bindRun();
       bindMoreParams();
-      bindChatGrow();
+      bindBodyGrow();
       renderRows();
     }
 
@@ -371,12 +366,12 @@
       });
     }
 
-    // ── 聊天输入框: 输入即自动增高 (1..8 行), 初始值也贴合一次 ──
-    function bindChatGrow() {
-      const ta = container.querySelector(".ti-chat-text");
+    // ── 正文 text 框: 输入即自动增高 (3..8 行), 初始值也贴合一次 ──
+    function bindBodyGrow() {
+      const ta = container.querySelector(".ti-body-text");
       if (!ta) return;
-      autoGrowChat(ta);
-      ta.addEventListener("input", () => autoGrowChat(ta));
+      autoGrowBody(ta);
+      ta.addEventListener("input", () => autoGrowBody(ta));
     }
 
     // ── 参数控件 ──

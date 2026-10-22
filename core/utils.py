@@ -214,27 +214,33 @@ def file_format_icon(name: str) -> str:
 
 # ── QR code generation (pure Python, no dependencies) ──
 
-def qr_svg(value: str) -> str:
-    codewords = _qr_codewords(value.encode("utf-8"))
-    size = 33
+
+def _qr_function_modules(size: int) -> tuple:
+    """Phase-1 pass of qr_svg: draws every function pattern (three
+    finders + separators, timing lines, alignment pattern, dark module)
+    and returns (modules, reserved). `reserved` marks each module a data
+    bit must never occupy — for V4 (33×33) the complement is exactly the
+    807-module data region (100 codewords × 8 bits + the 7 trailing
+    remainder bits). The second copy of the format strips spans 8 modules
+    each (row 8 cols size-8..size-1, col 8 rows size-8..size-1); the 9th
+    cell next to the top-left finder belongs to copy 1 only — reserving
+    it for copy 2 (the historical range(9)) shrank the data region to 805
+    and desynchronized the whole data placement."""
     modules = [[False] * size for _ in range(size)]
     reserved = [[False] * size for _ in range(size)]
 
-    def set_module(x, y, dark, reserve=True):
+    def set_module(x, y, dark):
         if 0 <= x < size and 0 <= y < size:
             modules[y][x] = bool(dark)
-            if reserve:
-                reserved[y][x] = True
+            reserved[y][x] = True
 
     def finder(x, y):
         for dy in range(-1, 8):
             for dx in range(-1, 8):
-                xx, yy = x + dx, y + dy
-                if 0 <= xx < size and 0 <= yy < size:
-                    dark = 0 <= dx <= 6 and 0 <= dy <= 6 and (
-                        dx in {0, 6} or dy in {0, 6} or (2 <= dx <= 4 and 2 <= dy <= 4)
-                    )
-                    set_module(xx, yy, dark)
+                dark = 0 <= dx <= 6 and 0 <= dy <= 6 and (
+                    dx in {0, 6} or dy in {0, 6} or (2 <= dx <= 4 and 2 <= dy <= 4)
+                )
+                set_module(x + dx, y + dy, dark)
 
     finder(0, 0)
     finder(size - 7, 0)
@@ -242,20 +248,27 @@ def qr_svg(value: str) -> str:
     for i in range(8, size - 8):
         set_module(i, 6, i % 2 == 0)
         set_module(6, i, i % 2 == 0)
-    for cy in [26]:
-        for cx in [26]:
-            for dy in range(-2, 3):
-                for dx in range(-2, 3):
-                    set_module(cx + dx, cy + dy, max(abs(dx), abs(dy)) != 1)
-    set_module(8, 25, True)
-    for i in range(9):
+    # V4 single alignment pattern, centre (26, 26)
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            set_module(26 + dx, 26 + dy, max(abs(dx), abs(dy)) != 1)
+    set_module(8, size - 8, True)  # dark module
+    for i in range(9):  # format copy 1: row 8 / col 8 beside the top-left finder
         reserved[8][i] = True
         reserved[i][8] = True
+    for i in range(8):  # format copy 2: 8 modules beside each far finder
         reserved[8][size - 1 - i] = True
         reserved[size - 1 - i][8] = True
-    for i in range(8):
-        reserved[8][size - 8 + i] = True
-        reserved[size - 8 + i][8] = True
+    return modules, reserved
+
+
+def qr_svg(value: str) -> str:
+    codewords = _qr_codewords(value.encode("utf-8"))
+    size = 33
+    modules, reserved = _qr_function_modules(size)
+
+    def place(x, y, dark):
+        modules[y][x] = bool(dark)
 
     bits = []
     for b in codewords:
@@ -274,7 +287,7 @@ def qr_svg(value: str) -> str:
                     dark = bits[bit_index] if bit_index < len(bits) else False
                     if (xx + y) % 2 == 0:
                         dark = not dark
-                    set_module(xx, y, dark, reserve=False)
+                    place(xx, y, dark)
                     bit_index += 1
             y += direction
         direction = -direction
@@ -285,17 +298,17 @@ def qr_svg(value: str) -> str:
     def bit(i):
         return ((format_bits >> i) & 1) == 1
     for i in range(6):
-        set_module(8, i, bit(i))
-    set_module(8, 7, bit(6))
-    set_module(8, 8, bit(7))
-    set_module(7, 8, bit(8))
+        place(8, i, bit(i))
+    place(8, 7, bit(6))
+    place(8, 8, bit(7))
+    place(7, 8, bit(8))
     for i in range(9, 15):
-        set_module(14 - i, 8, bit(i))
+        place(14 - i, 8, bit(i))
     for i in range(8):
-        set_module(size - 1 - i, 8, bit(i))
+        place(size - 1 - i, 8, bit(i))
     for i in range(8, 15):
-        set_module(8, size - 15 + i, bit(i))
-    set_module(8, size - 8, True)
+        place(8, size - 15 + i, bit(i))
+    place(8, size - 8, True)
 
     scale = 8
     pad = 4
