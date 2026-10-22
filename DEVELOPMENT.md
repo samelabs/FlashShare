@@ -204,7 +204,7 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
 - 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
-- 生产数据库由生产侧自行管理：部署只同步代码并重启，不创建、迁移或替换数据库。
+- 生产数据库由生产侧自行管理：部署流程不创建或替换数据库；**retired-schema 迁移在发布窗口按 `docs/plan/` 资产显式执行**（上一行第 2 步），startup/常规同步从不隐式迁移旧 schema——两条各管其事：前者管库的生死，后者管 schema 演进时机。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
 
@@ -369,7 +369,7 @@ WantedBy=multi-user.target
 1. `/etc/flashshare.env` 按上文「Environment variables」补齐必填项；`TOOL_VAULT_KEY` 必配
    （生成：`venv/bin/python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`）；
    `FLASHSHARE_SESSION_SECRET` 用新的随机长串。
-2. `DATABASE_URL` 指向生产侧管理的库（`postgresql+psycopg://…`）；部署不创建、迁移或替换数据库，两套代码不连同一个库。
+2. `DATABASE_URL` 指向生产侧管理的库（`postgresql+psycopg://…`）；部署不创建或替换数据库（retired-schema 迁移仅在发布窗口显式执行），两套代码不连同一个库。
 3. 暂不开放充值时，不配置任何 `CREEM_*`；X 登录按「Environment variables」一节配置或整组不配。
 
 ### 6. 上线
