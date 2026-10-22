@@ -147,6 +147,27 @@ permission 的 API key（无固定默认 key），注入 `FLASHSHARE_GOKAPI_URL`
 
 **禁止**对 production DB 跑分支代码的 `init_db`；禁止测试读写 production Gokapi。
 
+## 开发环境与验看数据（8123 / fs_ui）
+
+- **固定开发环境** = `127.0.0.1:8123`（主检出直跑 venv uvicorn，env 在仓库
+  `.tmp/dev-8123.env`，日志 `.tmp/518-dev/`，跟随主检出当前分支）+ **fs_ui 开发库**
+  （env 中 `DATABASE_URL` 指向）。开发账号与既有数据长期保留；不得通过清空 fs_ui
+  或重建存储来"解决"问题。
+- **自动回归与开发数据严格分离**：`tools/ci_local.sh` 每轮自建临时库
+  （`ci_local_*`）并在结束 DROP，从不读写 fs_ui。
+- **配套存储生命周期**：8123 的 Gokapi 是 `tests/support/fake_gokapi.py`
+  （`:53898`，内存态）——它与应用进程**分离**，重载应用不连带清空开发存储；
+  但它自身重启会丢已上传文件（内存态，不是持久存储——别当持久层用）。
+- **静态文件或分支变更后重载 8123**（版本戳启动时计算）：先核对 8123/53898 进程
+  归属与配套存储，再**只重载应用进程**（kill uvicorn 后按 `.tmp/dev-8123.env`
+  重起；不动 53898），验证 `/healthz` 的 `source_sha`/`source_dirty` 与页面资源
+  `?v=` 戳已更新。不得换端口。
+- **正文工具验看**：用真实发布流（/account/tools/publish）走当前供给契约发布一个
+  指向本地 echo 端点的 text/JSON 工具——`.tmp/dev-echo.py`（127.0.0.1:8139，仅开发
+  本机，gitignore 内，不进生产 seed）。不放宽任何发布/SSRF 校验，不用测试夹具充当
+  验看，不重新启用已移除实现的 demo_shout（fs_ui 中的僵尸行已清理）。
+- 环境值与 secrets 不进仓库、不进报告。
+
 ## Run / test commands
 
 ```bash
