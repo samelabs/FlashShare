@@ -893,6 +893,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await page.click("#pubSubmit");
       await patchSettled;
       await page.waitForURL(/\/account\/tools/, { timeout: 20000 }).catch(() => {});
+      // the swallowed wait resolves on navigation COMMIT — the next
+      // gotoReady would interrupt the still-loading /account/tools
+      // document ("execution context destroyed"). Wait for the target
+      // page's own readiness signal before navigating on.
+      await page.waitForSelector("#openPublish", { timeout: 20000 });
       page.off("request", reqSink);
       check("publish-locale: X-518-Edit-Locale equals the main language (ja)",
         editLocaleHeader === "ja", editLocaleHeader);
