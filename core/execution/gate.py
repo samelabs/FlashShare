@@ -454,16 +454,19 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
             # (err_metering_failed / 500) outranks the original error status
             # (e.g. a provider 502) — the economy fact wins.
             if _settle_failure(user, tool_id, call_id, charge, exc.code):
-                body = {"ok": False, "error": exc.code}
+                body = {"ok": False, "error": exc.code, "call_id": call_id}
                 if exc.detail:
                     body["detail"] = exc.detail[:4096]
                 return None, body, exc.http_status
-            return None, {"ok": False, "error": "err_metering_failed"}, 500
+            return None, {"ok": False, "error": "err_metering_failed",
+                          "call_id": call_id}, 500
         except Exception:
             logger.exception("tool execution failed call_id=%s", call_id)
             if _settle_failure(user, tool_id, call_id, charge, "tool_failed"):
-                return None, {"ok": False, "error": "tool_failed"}, 500
-            return None, {"ok": False, "error": "err_metering_failed"}, 500
+                return None, {"ok": False, "error": "tool_failed",
+                              "call_id": call_id}, 500
+            return None, {"ok": False, "error": "err_metering_failed",
+                          "call_id": call_id}, 500
 
         try:
             return _finish(user, tool, call_id, cost, result,

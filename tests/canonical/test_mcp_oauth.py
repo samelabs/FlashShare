@@ -391,6 +391,76 @@ try:
     check("S5 OAuth plugin attribution stamped on tool_calls",
           row and row["oauth_client_id"] == CIMD_URL, row)
 
+    # ═══ S5b. attribution contract (R8 rework) ═══
+    # (1) B (a second OAuth client on a second user) replaying A's
+    #     client_ref must NOT re-attribute the settled call — first
+    #     writer wins (SQL guards oauth_client_id IS NULL).
+    # (2) A's FAILED call (provider unreachable, call row exists with
+    #     status failed) is attributed to A just like a success.
+    # (1) the SAME OAuth client replaying its ref (duplicate delivery)
+    # lands on the settled row — the guarded UPDATE (oauth_client_id IS
+    # NULL) must no-op, attribution stays the first writer's.
+    _ref_a = f"oa-{_u}"
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 21, "method": "tools/call",
+                      "params": {"name": "share",
+                                 "arguments": {
+                                     "files": [{"filename": "a.png", "b64": PNG_B64}],
+                                     "client_ref": _ref_a}}},
+                     token=ACCESS)
+    _sc_r = ((d or {}).get("result") or {}).get("structuredContent") or {}
+    with db() as con:
+        row_a = con.execute(
+            "select oauth_client_id, status from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, _ref_a)).fetchone()
+    # the guard itself, probed directly: a second client's attribution of
+    # the same settled row must not overwrite
+    CIMD_B = f"https://plugin-b-{_u}.example/oauth.json"
+    with db() as con:
+        con.execute(
+            "update tool_calls set oauth_client_id=%s where id=(select id"
+            " from tool_calls where user_id=%s and client_ref=%s)"
+            " and oauth_client_id IS NULL",
+            (CIMD_B, UID, _ref_a))
+        row_guard = con.execute(
+            "select oauth_client_id from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, _ref_a)).fetchone()
+    check("S5b replay of A's ref → replay answered, guarded attribution stays A",
+          row_a and row_a["oauth_client_id"] == CIMD_URL
+          and _sc_r.get("replay") is True
+          and row_guard["oauth_client_id"] == CIMD_URL,
+          f"{_sc_r} {row_a} {row_guard}")
+
+    # failed platform http tool (unreachable endpoint) for A
+    _ftk = f"oaftk{_os.urandom(4).hex()}"
+    with db() as con:
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id,"
+            " execution, label_json, visibility, enabled, accept_json,"
+            " format_family, body_format, files_min, files_max,"
+            " outputs_json, endpoint_json, created_at, updated_at)"
+            " values (%s, NULL, %s, 'http', %s, 'public', TRUE, NULL,"
+            " NULL, 'text', 0, 0, '[\"text\"]', %s, %s, %s)",
+            (_ftk, _ftk, _json.dumps({"en": "OA Fail Probe"}),
+             _json.dumps({"url": "http://127.0.0.1:1/never",
+                          "timeout_s": 3}), ts, ts))
+        con.execute("insert into pricing (tool_id, cost, enabled,"
+                    " updated_at) values (%s, 0, TRUE, %s)", (_ftk, ts))
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 22, "method": "tools/call",
+                      "params": {"name": _ftk,
+                                 "arguments": {"input": "x",
+                                               "client_ref": f"oaF-{_u}"}}},
+                     token=ACCESS)
+    _sc_f = ((d or {}).get("result") or {}).get("structuredContent") or {}
+    with db() as con:
+        row_f = con.execute(
+            "select status, oauth_client_id from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, f"oaF-{_u}")).fetchone()
+    check("S5b A's failed call → call row failed, attribution still A",
+          row_f and row_f["status"] == "failed"
+          and row_f["oauth_client_id"] == CIMD_URL,
+          f"{_sc_f} {row_f}")
+    _oa._cimd_cache.clear()
+
     # refresh rotation
     toks2 = _oa.refresh_access_token(REFRESH, CIMD_URL, RESOURCE)
     check("F7 refresh rotation mints a fresh pair",
