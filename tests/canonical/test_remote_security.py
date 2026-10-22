@@ -23,34 +23,11 @@ Covers:
   DISP   unseal failure → zero remote network calls
 fail-closed canonical rules.
 """
+from _harness import PG, PORT, REPO, check, finish, purge_users  # fail-closed gate runs on import
+
+
 import os as _os, sys as _sys, sys, json, time, types
 
-_REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
-
-_TEST_PORT = _os.environ.get("FLASHSHARE_TEST_PORT")
-if not _TEST_PORT:
-    _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT is required.\n"); _sys.exit(2)
-try:
-    _TEST_PORT_INT = int(_TEST_PORT, 10)
-except ValueError:
-    _sys.stderr.write("ERROR: FLASHSHARE_TEST_PORT must be an integer.\n"); _sys.exit(2)
-if _TEST_PORT_INT == 8000:
-    _sys.stderr.write("ERROR: production port not allowed.\n"); _sys.exit(2)
-TEST_DB = _os.environ.get("TEST_DB_URL")
-if not TEST_DB:
-    _sys.stderr.write("ERROR: TEST_DB_URL is required.\n"); _sys.exit(2)
-
-sys.path.insert(0, _REPO)
-_os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
-_os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
-from tests.support.cleanup import purge_users  # noqa: E402
-sys.path.insert(0, _os.path.join(_REPO, "core"))
-
-FAIL = []
-def check(name, ok, detail=""):
-    print(("✓ " if ok else "✗ ") + name + (f" — {str(detail)[:140]}" if not ok else ""))
-    if not ok:
-        FAIL.append(name)
 
 import socket as _socket
 import ssl as _ssl
@@ -353,7 +330,7 @@ try:
 except RemoteError as e:
     check("PIN-P5 connect timeout → RemoteError('timeout')", e.code == "timeout", e)
 # outward mapping (orchestrator table)
-_src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"), encoding="utf-8").read()
+_src = open(_os.path.join(REPO, "core", "execution", "orchestrator.py"), encoding="utf-8").read()
 check("PIN-P5 orchestrator maps timeout → err_endpoint_timeout",
       'raise ExecutionError("err_endpoint_timeout")' in _src, "mapping missing")
 _restore_stack()
@@ -506,7 +483,7 @@ _restore_stack()
 # ═══ VAULT matrix (subprocess — fresh module state per scenario) ═══
 import subprocess
 def _run_vault(env_key, code):
-    full = ("import sys; sys.path.insert(0, %r)\n" % _os.path.join(_REPO, "core")
+    full = ("import sys; sys.path.insert(0, %r)\n" % _os.path.join(REPO, "core")
             + ("import os\nos.environ['TOOL_VAULT_KEY'] = %r\n" % env_key if env_key is not None
                else "import os\nos.environ.pop('TOOL_VAULT_KEY', None)\n")
             + "from secrets_vault import seal, unseal, vault_enabled, VaultUnavailable, VaultDecryptError\n"
@@ -542,7 +519,6 @@ check("VAULT malformed key → disabled", rc == 0 and "MF" in out, f"rc={rc} {er
 
 # ═══ ROUTE: ASGI 503 + zero persistence ═══
 import psycopg2
-PG = TEST_DB.replace("postgresql+psycopg://", "postgresql://")
 _con = psycopg2.connect(PG); _con.autocommit = True
 _cur = _con.cursor()
 ts = int(time.time())
@@ -797,7 +773,6 @@ check("ROUTE operator create + auth_token + no key → 503 (非409)",
       f"{r.status_code} {r.text[:80]}")
 
 
-
 # ═══ OUTPUT-DECL RETIREMENT: runtime behavior (no tool declaration) ═══
 # Landing identity is endpoint-product-owned. _wrap_raw takes the
 # PRODUCT (bytes + optional endpoint filename/content_type) — never a
@@ -1038,7 +1013,7 @@ except remote.RemoteError as exc:
           and "overloaded" in str(exc), str(exc))
 finally:
     remote.urllib.request.urlopen = _saved_open
-_orch_src = open(_os.path.join(_REPO, "core", "execution", "orchestrator.py"),
+_orch_src = open(_os.path.join(REPO, "core", "execution", "orchestrator.py"),
                  encoding="utf-8").read()
 check("CT-5b orchestrator maps http_status → 502 + detail",
       'http_status=502' in _orch_src and "exc.detail" in _orch_src,
@@ -1610,7 +1585,5 @@ _cur.execute(
 purge_users(_cur, [r[0] for r in _cur.fetchall()])
 _con.close()
 
-print()
-if FAIL:
-    print(f"FAIL: {len(FAIL)} — " + "; ".join(FAIL)); _sys.exit(1)
-print("FAIL: 无 — 全绿")
+
+finish()

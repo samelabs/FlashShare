@@ -7,33 +7,12 @@ injection run in-process against the route function (the URL-source leg
 with the pinned transport replaced — the same pattern the MCP suite
 uses).
 """
+from _harness import REPO, TEST_PORT, check, finish, purge_users  # fail-closed gate runs on import
+
+
 import os as _os
 import sys as _sys
 
-_TEST_PORT = _os.environ.get("FLASHSHARE_TEST_PORT")
-if not _TEST_PORT or _TEST_PORT == "8000":
-    _sys.stderr.write("ERROR: isolated FLASHSHARE_TEST_PORT required.\n"); _sys.exit(2)
-TEST_DB = _os.environ.get("TEST_DB_URL")
-if not TEST_DB:
-    _sys.stderr.write("ERROR: TEST_DB_URL is required.\n"); _sys.exit(2)
-
-_REPO = _os.path.abspath(_os.path.join(
-    _os.path.dirname(_os.path.abspath(__file__)), "..", ".."))
-_sys.path.insert(0, _REPO)
-_sys.path.insert(0, _os.path.join(_REPO, "core"))
-_sys.path.insert(0, _os.path.join(_REPO, "app"))
-_os.environ.setdefault("DATABASE_URL", TEST_DB.replace("postgresql://", "postgresql+psycopg://"))
-_os.environ.setdefault("FLASHSHARE_SESSION_SECRET", "canonical-test")
-from tests.support.cleanup import purge_users  # noqa: E402
-
-FAIL = []
-COUNT = 0
-def check(name, ok, detail=""):
-    global COUNT
-    COUNT += 1
-    print(("✓" if ok else "✗"), name, ("— " + str(detail)[:120]) if (detail and not ok) else "")
-    if not ok:
-        FAIL.append(name)
 
 import base64
 import http.client as _hc
@@ -44,7 +23,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ts = int(time.time())
 _u = "v1s" + _os.urandom(3).hex()
-_HOST = ("127.0.0.1", int(_TEST_PORT))
+_HOST = ("127.0.0.1", int(TEST_PORT))
 
 from database import db  # noqa: E402
 
@@ -867,7 +846,7 @@ check("A2b private tool POST → 404 tool_not_found",
       st == 404 and d.get("error") == "tool_not_found", f"{st} {d}")
 
 # ═══ A4. v1 never imports from the MCP route module ═══
-_v1_src = open(_os.path.join(_REPO, "app", "routes", "v1.py"),
+_v1_src = open(_os.path.join(REPO, "app", "routes", "v1.py"),
                encoding="utf-8").read()
 check("A4 v1.py imports nothing from app.routes.mcp",
       "app.routes.mcp" not in _v1_src, "grep app.routes.mcp")
@@ -916,6 +895,5 @@ with db() as con:
         purge_users(con, [uid])
 print("cleanup: api-surface fixtures removed")
 
-print()
-print(f"FAIL: {' — '.join(FAIL) if FAIL else '无'} — ({COUNT} checks)")
-_sys.exit(1 if FAIL else 0)
+
+finish()

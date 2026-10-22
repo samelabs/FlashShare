@@ -26,9 +26,12 @@
 - `core/` 业务域（execution / governance / economy / identity / sharing / repo）
 - `static/` 前端（app.js + pages/*.js + css）
 - `tools/` 代码生成（gen_i18n.py）
-- `tests/canonical/` 正式回归测试（可移植，见下）
-- `tests/ci/` CI 边界契约测试
-- `tests/support/` CI test service；不得复制 518 业务逻辑
+- `tests/canonical/` 正式回归测试（可移植，见下）：按主链分文件（tool_supply / invocation / execution / mcp /
+  identity / sharing / economy / payment / orders / tiers / membership / operator / platform / web_surface，
+  另有 remote_security / api_surface），每个文件 `from _harness import ...`（`_harness.py` = 唯一
+  fail-closed 门禁 + check/section/finish/purge_users）。新用例写进所属链的文件，不按批次另开文件
+- `tests/ci/` 无需应用栈的边界契约测试（含源码级架构不变量 `test_source_invariants.py`）
+- `tests/support/` CI test service（fake Gokapi）与测试样本；不得复制 518 业务逻辑
 - `docs/plan/` 尚未执行的 release migration 资产（执行后移除）
 - `scripts/` production backup / restore-proof 运维脚本 + systemd units/timers
 
@@ -80,14 +83,23 @@ TEST_DB_URL 时直接退出（不发任何请求）。两种合法方式：
 
 **A. local isolated stack（与 CI 同构，日常开发/验收用）**
 
-唯一本地入口是 `tools/ci_local.sh`：自建全新库 + fake Gokapi(:53898) + app(:8100)，
-按给定顺序跑套件、输出一张退出码表、结束后自动停服务并 DROP 库。不要另写驱动脚本。
+唯一测试入口是 `tools/ci_local.sh`（本地与 CI canonical-integration job 同一脚本）：先验证每个 canonical
+套件在缺端口 / 端口 8000 / 非整数端口 / 缺 TEST_DB_URL 时都 exit 2，再自建全新库 + fake Gokapi(:53898) +
+app(:8100)，按给定顺序跑套件、输出各套件退出码/耗时/检查摘要（启动与套件耗时分列；启动探测按 60s
+墙钟预算执行，单探针自带连接/总超时，超预算即 exit 2），结束后自动停服务并 DROP 库。不要另写驱动脚本。
 
 ```bash
 PG_ADMIN_URL=postgresql://<user>@127.0.0.1:5432/postgres \
   tools/ci_local.sh tests/canonical/<affected>.py ...     # 受影响套件
-tools/ci_local.sh --browser                               # 不带参数 = ci.yml 全部 + 两道浏览器门禁
+tools/ci_local.sh --browser                               # 不带参数 = tests/ci + tests/canonical 全部 + 两道浏览器门禁
 ```
+
+测试成本规则（长期）：常规开发经 ci_local 跑受影响链；批次交付与最终收口跑必要完整门禁；无新变更
+或失败原因不重复全量。新用例写进所属链的现有文件（16 个 canonical 主链 + `_harness.py`，不另开平行
+套件），并说明保护的行为、样本规模、依赖与耗时，用最小有区分力样本。限流测试用局部小阈值（如
+test_identity 的 F 段 patch 模块常量 + 可控时钟），不循环上万次请求、不等待真实时间窗；并发问题用
+受控交错。重型压测、规模数据、升级演练按需低频单独执行，不进普通回归。删除能力时同批清理实现、
+注册、fixture、测试、runner、CI 安装步骤与文档中失去消费者的内容。
 
 浏览器门禁需 `PLAYWRIGHT_CORE_PATH`（playwright-core 1.55.0）。**推荐与 CI 同源**：安装 Playwright 捆绑
 Chromium 并让 `CHROMIUM_PATH` 指向其可执行文件（`npx playwright-core@1.55.0 install chromium`，可执行文件在
@@ -115,9 +127,9 @@ venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port <app-port> --wor
 - 本地运行前清掉 `__pycache__`：部分 semantic guard 用 grep 扫源码，`.pyc` 会造成误报（CI 为干净 checkout，无此问题）。
 - 本地 DNS 若为代理 fake-ip（198.18.0.0/15），依赖公网解析的 SSRF 正向用例会被守卫拒绝；这是环境噪音，不是代码回归。
 
-**B. GitHub Actions CI v1**：真实 PostgreSQL 16 + 真实 FlashShare app +
-`tests/support/fake_gokapi.py` 提供 Gokapi HTTP boundary test service，然后运行
-`tests/canonical/`。workflow 在 `.github/workflows/ci.yml`。
+**B. GitHub Actions CI v1**：canonical-integration job 在真实 PostgreSQL 16 service 上直接运行
+`tools/ci_local.sh`（真实 FlashShare app + `tests/support/fake_gokapi.py`），与本地同一套件集合与顺序；
+新增套件文件无需改 workflow。workflow 在 `.github/workflows/ci.yml`。
 
 CI v1 测的是 518.PLUS 自己的 invariant，不是 Gokapi compatibility。fake Gokapi
 只实现 `core/gokapi.py` 当前消费的外部 HTTP contract（add/list/get/download/delete），
@@ -141,8 +153,8 @@ permission 的 API key（无固定默认 key），注入 `FLASHSHARE_GOKAPI_URL`
 git diff --check
 python -m compileall -q app core                     # 语法
 git ls-files '*.js' | xargs -n1 node --check         # JS 语法
-# canonical 套件：按 .github/workflows/ci.yml 中的顺序逐个运行（环境变量见上，无默认值）
-python tests/canonical/<suite>.py
+tools/ci_local.sh tests/canonical/<chain>.py ...          # 常规：经 ci_local 跑受影响链
+python tests/canonical/<chain>.py                          # 手工：需上面的显式环境，无默认值
 python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ```
 
@@ -161,8 +173,8 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 
 1. `git fetch origin`；从 PM 指定的基线（默认 `origin/main`）建分支。
 2. 改动 + diff 自审 + 门禁：compile / node --check / `tools/ci_local.sh` 跑受影响套件
-   （UI 改动加 `--browser`）。全量验证由 GitHub CI 负责，执行 agent 不跑本地全量，
-   不用 sleep 轮询后台任务——套件前台运行，直接读退出码表。
+   （UI 改动加 `--browser`）。常规不跑本地全量（批次交付/最终收口按需跑一次完整门禁），
+   全量验证由 GitHub CI 负责；不用 sleep 轮询后台任务——套件前台运行，直接读退出码表。
 3. push 该 non-main 分支 → 报告 → **STOP**。
 4. PM 按精确 SHA 验收，开 PR，等 GitHub CI（fast-gate / canonical-integration /
    browser-runtime）全绿后合入 `main`；production deploy 需 owner 授权。

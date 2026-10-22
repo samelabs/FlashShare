@@ -52,7 +52,7 @@ _zip_digest.update(_zip_src.read_bytes())
 ZIP_PREVIEW_VERSION = _zip_digest.hexdigest()[:8]
 sys.path.insert(0, str(_CORE))
 
-from config import (APP_NAME, BASE_URL, SOCIAL_IMAGE_URL,
+from config import (APP_NAME, BASE_URL, PRODUCT_VERSION, SOCIAL_IMAGE_URL,
                     SUPPORT_EMAIL, X_CLIENT_ID, X_CLIENT_SECRET)
 from i18n import LOCALE_TAGS, language_from_code, server_text
 from icons import icon_svg, icon_path, tool_icon_svg as _tool_icon_svg
@@ -158,6 +158,7 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         "i18n_version": _I18N_VERSION,
         "fmt_ts": fmt_ts,
         "year": datetime.datetime.now().year,
+        "product_version": PRODUCT_VERSION,
         # icon helpers
         "icon_svg": icon_svg,
         "icon_path": icon_path,

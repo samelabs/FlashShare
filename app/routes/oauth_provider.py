@@ -145,6 +145,9 @@ async def authorization_server_metadata():
         "response_types_supported": ["code"],
         "code_challenge_methods_supported": ["S256"],
         "scopes_supported": list(SCOPES),
+        # clients are identified by their metadata-document URL (CIMD);
+        # there is no registration endpoint, so clients must see this flag
+        "client_id_metadata_document_supported": True,
     }
 
 
