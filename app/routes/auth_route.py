@@ -125,7 +125,7 @@ def _login_maintenance(uid: int) -> None:
 # ── X OAuth ──
 
 @router.get("/x/login")
-async def x_login(request: Request):
+def x_login(request: Request):
     if not X_CLIENT_ID or not X_CLIENT_SECRET:
         # X login unavailable on this deployment: the entry points are
         # hidden, and a direct hit goes back to the regular login page.
@@ -497,7 +497,7 @@ async def mcp_register(request: Request):
 
 
 @router.post("/logout")
-async def logout_post(request: Request):
+def logout_post(request: Request):
     token = request.cookies.get(COOKIE_NAME)
     if token:
         try:

@@ -22,7 +22,7 @@ _PAGE = 50
 
 
 @router.get("/samelabs/economy/credits")
-async def credits(request: Request, user_id: int | None = None,
+def credits(request: Request, user_id: int | None = None,
                   kind: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
@@ -42,7 +42,7 @@ async def credits(request: Request, user_id: int | None = None,
 
 
 @router.get("/samelabs/economy/earnings")
-async def provider_earnings(request: Request, page: int = 1):
+def provider_earnings(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -66,7 +66,7 @@ async def provider_earnings(request: Request, page: int = 1):
 
 
 @router.get("/samelabs/economy/platform")
-async def platform_income(request: Request, page: int = 1):
+def platform_income(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -173,7 +173,7 @@ _WD_STATUSES = ("pending", "approved", "rejected", "paid",
 
 
 @router.get("/samelabs/economy/withdrawals")
-async def withdrawals(request: Request, status: str = "", page: int = 1):
+def withdrawals(request: Request, status: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -204,7 +204,7 @@ async def withdrawals(request: Request, status: str = "", page: int = 1):
 # ── Payment review queue (partial refunds) ──
 
 @router.get("/samelabs/economy/reviews")
-async def payment_reviews(request: Request, status: str = "", page: int = 1):
+def payment_reviews(request: Request, status: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -224,7 +224,7 @@ async def payment_reviews(request: Request, status: str = "", page: int = 1):
 
 
 @router.post("/samelabs/economy/reviews/{rid}/resolve")
-async def resolve_payment_review(rid: int, request: Request):
+def resolve_payment_review(rid: int, request: Request):
     """Operator marks one review RESOLVED. Status flip only — this queue
     NEVER moves balances (economic rules for partial refunds stay
     zero-mutation); the decision evidence lives in operator_audit."""

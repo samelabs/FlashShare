@@ -14,7 +14,7 @@ _PAGE = 50
 
 
 @router.get("/samelabs/audit")
-async def audit(request: Request, page: int = 1):
+def audit(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp

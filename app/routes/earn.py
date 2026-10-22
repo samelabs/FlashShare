@@ -29,7 +29,7 @@ from app.web_auth import require_session_auth as _require_auth  # 批3a: 应用�
 
 
 @router.get("/api/earnings")
-async def my_earnings(request: Request):
+def my_earnings(request: Request):
     """Earnings panel data: summary + per-tool breakdown + withdrawal list.
 
     S3 provider-facing money contract — USD strings only, exact values

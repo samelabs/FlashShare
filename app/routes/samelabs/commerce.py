@@ -21,7 +21,7 @@ _PAGE = 30
 # ── Orders: read-only real facts ──
 
 @router.get("/samelabs/commerce/orders")
-async def orders(request: Request, page: int = 1):
+def orders(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -40,7 +40,7 @@ async def orders(request: Request, page: int = 1):
 # ── Memberships: single-row authority ──
 
 @router.get("/samelabs/commerce/memberships")
-async def memberships(request: Request, page: int = 1):
+def memberships(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -59,7 +59,7 @@ async def memberships(request: Request, page: int = 1):
 # ── Products: plans + packages merged ──
 
 @router.get("/samelabs/commerce/products")
-async def products(request: Request):
+def products(request: Request):
     user, resp = gate(request)
     if resp:
         return resp

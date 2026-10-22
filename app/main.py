@@ -237,7 +237,9 @@ _HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp", "/v1")
 # session at their routes.
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    request.state.user = get_user_from_request(request)
+    # identity resolution is a sync DB read (session/key/OAuth lookup) —
+    # offload it so it never blocks the event loop
+    request.state.user = await asyncio.to_thread(get_user_from_request, request)
     request.state.lang = detect_lang(request)
     path = request.url.path
     if request.state.user and getattr(request.state, "auth_via", "") in (

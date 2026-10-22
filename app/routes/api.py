@@ -139,7 +139,7 @@ async def fetch_source(request: Request, gokapi_id: str):
 # ── Uploads ──
 
 @router.get("/results/{result_id}/files")
-async def result_files(result_id: str, request: Request):
+def result_files(result_id: str, request: Request):
     """The live file items of one of MY results — the source list the
     composer takes over ("continue processing"). Owner only; anyone
     else (and dead / unknown results) reads as not_found."""

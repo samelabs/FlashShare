@@ -426,7 +426,7 @@ async def create_user_tool(request: Request):
 
 
 @router.get("/api/usertools/{tool_key}/calls")
-async def tool_call_log(tool_key: str, request: Request):
+def tool_call_log(tool_key: str, request: Request):
     """B3: provider-visible call log for THEIR tool (last 20).
     Owner-scoped; no caller identity beyond status/latency — privacy."""
     user, err = _require_auth(request)
@@ -773,7 +773,7 @@ async def update_user_tool(tool_key: str, request: Request):
 
 
 @router.delete("/api/usertools/{tool_key}")
-async def delete_user_tool(tool_key: str, request: Request):
+def delete_user_tool(tool_key: str, request: Request):
     """Remove a tool row. pricing flips disabled (history interpretable)."""
     user, err = _require_auth(request)
     if err:

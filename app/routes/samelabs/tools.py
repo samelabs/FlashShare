@@ -26,7 +26,7 @@ _PAGE = 50
 
 
 @router.get("/samelabs/tools")
-async def tools(request: Request, q: str = "", cls: str = "",
+def tools(request: Request, q: str = "", cls: str = "",
                 delisted: str = "", featured: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
@@ -69,7 +69,7 @@ def _parse_json(raw, default):
 
 
 @router.get("/samelabs/tools/{tool_key:path}")
-async def tool_detail(tool_key: str, request: Request):
+def tool_detail(tool_key: str, request: Request):
     """Read-only operator view of one tool: declaration (labels/desc per
     language, endpoint without secrets, input window, formats, outputs,
     params, pricing) + 30-day usage/earnings + recent calls + this

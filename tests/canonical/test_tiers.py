@@ -642,7 +642,7 @@ check("AP-M4 旧硬编码 enum 不在 _tool_specs",
 _call_blk = _mcp_src.split("async def _call_tool")[1].split("\n@router")[0] if "\n@router" in _mcp_src.split("async def _call_tool")[1] else _mcp_src.split("async def _call_tool")[1]
 check("AP-M5 _call_tool 零 projection/schema 依赖新增 (无 project/)",
       "project(" not in _call_blk and "_tool_specs" not in _call_blk)
-_acct_blk = _pages_src.split("async def account_credits")[1].split("async def ")[0]
+_acct_blk = _pages_src.split("def account_credits")[1].split("\ndef ")[0]
 _acct_code = "\n".join(l for l in _acct_blk.split("\n") if not l.strip().startswith("#"))
 check("AP-C1 account_credits 不 import economy.subscription / 不调 plan_of",
       "economy.subscription" not in _acct_blk and "plan_of" not in _acct_code)

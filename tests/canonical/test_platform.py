@@ -2317,10 +2317,10 @@ _sl36 = open(_os2.path.join(REPO, "app", "routes", "samelabs",
                             "commerce.py"),
              encoding="utf-8").read()
 _plans36 = _re33.search(
-    r"async def products.*?(?=\n@router|\nasync def )", _sl36,
+    r"(?:async )?def products.*?(?=\n@router|\n(?:async )?def )", _sl36,
     _re33.DOTALL)
 if _plans36 is None:  # last-function fallback
-    _plans36 = _re33.search(r"async def products.*", _sl36, _re33.DOTALL)
+    _plans36 = _re33.search(r"(?:async )?def products.*", _sl36, _re33.DOTALL)
 check("C36 samelabs_plans 无 route-layer memberships/pending_downgrades SQL",
       _plans36 is not None
       and "FROM memberships" not in _plans36.group(0)

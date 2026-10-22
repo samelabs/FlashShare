@@ -22,7 +22,7 @@ _RECENT = 20
 
 
 @router.get("/samelabs/users")
-async def users(request: Request, q: str = "", page: int = 1):
+def users(request: Request, q: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp

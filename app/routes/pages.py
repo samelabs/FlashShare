@@ -116,7 +116,7 @@ async def robots():
     return Response(content=body, media_type="text/plain")
 
 @router.get("/sitemap.xml")
-async def sitemap():
+def sitemap():
     """Every indexable page (the same set the routes mark
     seo_robots='index, follow'): the static surfaces, every public tool
     page + its MCP page, and the author pages behind public supply.
@@ -330,7 +330,7 @@ async def tools_market(request: Request):
 
 
 @router.get("/u/{handle}", response_class=HTMLResponse)
-async def user_page(request: Request, handle: str):
+def user_page(request: Request, handle: str):
     """用户页 (开发者公开面): 作者身份 + 公开工具罗列。并列于工具页
     (App Store 开发者页参照), 只透公开字段白名单, 404 不泄露存在性。"""
     from app.main import templates
@@ -755,7 +755,7 @@ def _shop_offers(user: dict | None, membership: dict | None) -> dict:
 
 
 @router.get("/pricing", response_class=HTMLResponse)
-async def pricing_page(request: Request):
+def pricing_page(request: Request):
     """Public shop: credit packs, membership plans, refund policy.
     Visible signed out; buying opens the login modal first."""
     from app.main import templates
@@ -777,7 +777,7 @@ async def pricing_page(request: Request):
 
 
 @router.get("/account/credits", response_class=HTMLResponse)
-async def account_credits(request: Request):
+def account_credits(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
@@ -876,7 +876,7 @@ async def account_credits(request: Request):
 
 
 @router.post("/account/credits/claim")
-async def account_credits_claim(request: Request):
+def account_credits_claim(request: Request):
     """Explicit daily-bonus claim button.
 
     Closes the gap where a long-lived session crossing UTC midnight
@@ -901,7 +901,7 @@ async def account_credits_claim(request: Request):
 
 
 @router.get("/account/calls", response_class=HTMLResponse)
-async def account_calls(request: Request):
+def account_calls(request: Request):
     """调用记录页 — 当前用户自己的全部 tool_calls (ok / failed /
     insufficient / running); gate 之前被拒绝的请求不产生 tool_call,
     天然不在列。
@@ -976,7 +976,7 @@ async def account_calls(request: Request):
 
 
 @router.get("/account/earnings", response_class=HTMLResponse)
-async def account_earnings(request: Request):
+def account_earnings(request: Request):
     """Earnings & withdrawals (money view — its own module since 08-26)."""
     from app.main import templates
     user = request.state.user
@@ -1007,7 +1007,7 @@ async def account_tools(request: Request):
 
 
 @router.get("/account/tools/publish", response_class=HTMLResponse)
-async def account_tools_publish(request: Request):
+def account_tools_publish(request: Request):
     """Standalone publish page (create + edit via ?id={tool_id})."""
     from app.main import templates
     user = request.state.user
@@ -1239,7 +1239,7 @@ async def site_qr(p: str = "/"):
 
 
 @router.get("/r/{result_id}/qr.svg")
-async def result_qr(result_id: str):
+def result_qr(result_id: str):
     """结果页 QR — 与结果页同一可见性: 未知/过期 → 404 (无存在性预言),
     存活则编码结果页公开 URL。"""
     from repo.ledger import call_by_result_public_id
