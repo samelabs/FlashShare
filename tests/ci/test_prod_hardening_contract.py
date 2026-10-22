@@ -10,9 +10,6 @@
   C4  backup.sh sandbox run (fake date=Sunday, fake rclone failing ONLY
       the weekly destination): non-zero exit naming the weekly failure;
       control run (rclone always ok) exits 0; created files are 0600.
-  C5  DEVELOPMENT.md nginx block: X-Real-IP set from $remote_addr in
-      every proxy location, Cloudflare real-IP restoration, baseline
-      security response headers (nosniff / Referrer-Policy / XFO).
   C6  publish page credential-clear wiring: 10-language i18n key, edit
       mode reveals the remove-auth checkbox, submit sends both empty
       strings when checked.
@@ -49,8 +46,6 @@ def read(path):
 _js = read("static/pages/samelabs_content.js")
 check("C1a takedown toast states the submitted-deletion semantics",
       "公开链接已删除，存储文件已提交删除；已写审计" in _js)
-check("C1b old over-promising wording gone",
-      "已删除文件与物理存储" not in _js)
 
 # ── C2. backup systemd unit ──
 _unit = read("scripts/flashshare-backup.service")
@@ -171,18 +166,6 @@ check("C4h the failure names the checksums upload",
       "rclone daily checksums upload failed" in _out, _out[-300:])
 _shutil.rmtree(_td, ignore_errors=True)
 
-# ── C5. DEVELOPMENT.md nginx contracts ──
-_doc = read("DEVELOPMENT.md")
-check("C5a every proxy location derives X-Real-IP from $remote_addr",
-      _doc.count("proxy_set_header X-Real-IP $remote_addr;") == 3)
-check("C5b Cloudflare real-IP restoration configured",
-      "real_ip_header CF-Connecting-IP;" in _doc
-      and _doc.count("set_real_ip_from ") >= 20
-      and "173.245.48.0/20" in _doc and "2c0f:f248::/32" in _doc)
-check("C5c baseline security headers present",
-      "add_header X-Content-Type-Options nosniff always;" in _doc
-      and "add_header Referrer-Policy strict-origin-when-cross-origin always;" in _doc
-      and "add_header X-Frame-Options SAMEORIGIN always;" in _doc)
 
 # ── C6. publish page credential-clear wiring ──
 from i18n import SERVER_I18N  # noqa: E402

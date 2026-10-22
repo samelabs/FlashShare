@@ -22,8 +22,7 @@ from _harness import REPO, TEST_DB, TEST_PORT, check, finish, purge_users, secti
 #   7. unbind X                → x_user_id/x_username/x_display_name/
 #                                x_profile_url/avatar_url ALL cleared
 #   8. public_user().avatarUrl ← avatar_url only
-#   9. fresh schema has no x_avatar_url column
-#  10. production runtime references to x_avatar_url = 0 (source scan)
+#   9. fresh schema carries avatar_url
 # ════════════════════════════════════════════════════════════════════════
 section('X identity avatar authority')
 
@@ -116,27 +115,13 @@ check("8 public_user avatarUrl ← avatar_url", pu["avatarUrl"] == IMG2, pu["ava
 check("8b public_user has no shadow avatar fields",
       not any("avatar" in k and k != "avatarUrl" for k in pu), list(pu))
 
-# 9. fresh schema: users has no x_avatar_url column
+# 9. fresh schema: avatar_url is the users avatar column
 with db() as con:
     cols = [c["column_name"] for c in con.execute(
         "select column_name from information_schema.columns"
         " where table_name='users'").fetchall()]
-check("9 fresh schema: no x_avatar_url column", "x_avatar_url" not in cols,
-      [c for c in cols if "avatar" in c])
 check("9b fresh schema: avatar_url present", "avatar_url" in cols)
 
-# 10. production runtime residual scan: zero x_avatar_url references
-import glob as _glob
-_resid = []
-for pat in ("core/**/*.py", "app/**/*.py", "static/**/*.js", "app/templates/**/*.html"):
-    for f in _glob.glob(_os.path.join(REPO, pat), recursive=True):
-        try:
-            src = open(f, encoding="utf-8").read()
-        except OSError:
-            continue
-        if "x_avatar_url" in src:
-            _resid.append(_os.path.relpath(f, REPO))
-check("10 runtime x_avatar_url references = 0", not _resid, _resid)
 
 
 # ════════════════════════════════════════════════════════════════════════

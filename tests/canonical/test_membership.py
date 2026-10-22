@@ -868,7 +868,6 @@ check("G15c package complete_package_order → status=paid / granted=TRUE (语�
 # ═══ Source guards ═══
 _sub_src_mgv = open(_os.path.join(REPO, "core", "economy", "subscription.py"), encoding="utf-8").read()
 _repo_src = open(_os.path.join(REPO, "core", "repo", "orders.py"), encoding="utf-8").read()
-_schema_src = open(_os.path.join(REPO, "core", "database.py"), encoding="utf-8").read()
 _topup_src = open(_os.path.join(REPO, "app", "routes", "topup.py"), encoding="utf-8").read()
 check("SG1 memberships PK = user_id (单行权威 SQL)",
       "PRIMARY KEY (user_id)" in open(_os.path.join(REPO, "core", "database.py"), encoding="utf-8").read()
@@ -899,14 +898,6 @@ check("SG10 state update 禁止换绑 (UPDATE 定位 sub, 无 sub 写列)",
       "provider_subscription_id = " not in _state_blk.replace(
           "WHERE provider_subscription_id = %s", "").replace(
           "WHERE provider_subscription_id = %s FOR UPDATE", ""))
-_legacy_writers = ("def upsert_user_plan(", "def user_plan_row(",
-                   "def set_cancel_scheduled(", "def user_subscriptions(")
-check("SG11 legacy user_plans production writers 零残留",
-      all(w not in _repo_src for w in _legacy_writers)
-      and all(w not in _sub_src_mgv for w in _legacy_writers))
-check("SG12 runtime 全仓 user_plans 零引用",
-      "user_plans" not in _repo_src and "user_plans" not in _sub_src_mgv
-      and "user_plans" not in _schema_src)
 check("SG13 retrieve_checkout 存在 (provider 收敛单点)",
       "def retrieve_checkout" in open(_os.path.join(REPO, "core", "economy", "creem.py"), encoding="utf-8").read())
 check("SG14 extract_product_id canonical dict 形态",

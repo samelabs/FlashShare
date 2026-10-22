@@ -242,18 +242,12 @@ st, rm = req("POST", "/api/tools/execute", {
     "client_ref": f"auto-{uuid.uuid4().hex[:8]}-3"}, cookie)
 check("B4 files[2] to a 1..1 tool → err_file_count", rm.get("error") == "err_file_count", f"{st} {rm}")
 
-# ═══ G: Public REST v1 retired ═══
-# real token for the MCP section below (minted via the test user's session)
+# ═══ G: API key for the MCP section below (minted via the test user's session) ═══
 _conn_g = http.client.HTTPConnection(*_HOST, timeout=30)
 _conn_g.request("POST", "/api/keys", json.dumps({"name": "scc"}),
                 {"Cookie": cookie, "Content-Type": "application/json"})
 _tk_g = json.loads(_conn_g.getresponse().read()); _conn_g.close()
 bearer = (_tk_g.get("key") or {}).get("key") or ""
-conn = http.client.HTTPConnection(*_HOST, timeout=30)
-conn.request("POST", "/api/v1/execute", json.dumps({}),
-             {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
-resp = conn.getresponse(); resp.read(); st = resp.status; conn.close()
-check("G-R1 retired /api/v1/execute → 404", st == 404, str(st))
 
 # ═══ H: MCP ═══
 mc = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})

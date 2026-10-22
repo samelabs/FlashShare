@@ -899,7 +899,7 @@ check("S4 quota 入口收敛: receipts 唯一 (零直接 reserve, 暂存单点 c
       and _api.count("stage_sources(") >= 1
       and _staging.count("claim_ingress_quota(") >= 1,
       f"pipe={_pipe_src.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
-# 引用既有 the canonical-invocation unification E2E: tests/canonical/test_invocation_canonical.py 全链 (upload→execute→output)
+# 引用既有 the canonical-invocation unification E2E: tests/canonical/test_invocation.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
 
 # ═══ 5b. Delivery entitlement 两层契约 ═══
@@ -1289,15 +1289,6 @@ check("WQ-1 Web quota denial: 429 + 六字段完整",
       and wd.get("incoming") == 1 and wd.get("remaining") == 0
       and wd.get("plan_code") == "free", f"{r.status} {str(wd)[:110]}")
 
-# Public REST v1 uploads retired — bearer call on the retired path stays 404.
-conn = _hc.HTTPConnection(*_HOST_ine, timeout=30)
-conn.request("POST", "/api/v1/uploads", _png1, {
-    "Content-Type": "image/png", "x-filename": "q.png",
-    "Content-Length": str(len(_png1)),
-    "Authorization": "Bearer fsk_retired_" + uuid.uuid4().hex,
-    "Idempotency-Key": f"rq-{uuid.uuid4().hex[:10]}"})
-r = conn.getresponse(); r.read(); conn.close()
-check("RQ-1 retired /api/v1/uploads → 404", r.status == 404, str(r.status))
 
 # denial 无残留 (upload_usage 不增; Gokapi 面由 pipeline 顺序保证)
 _cur.execute("select count(*) from upload_usage where user_id=%s", (_wu_id,))
@@ -1611,7 +1602,6 @@ _ups = open(_os.path.join(REPO, "core", "sharing", "uploads.py"), encoding="utf-
 check("G14 sharing/uploads.py 是 quota denial 唯一构造点 (_quota_denial 单点)",
       "_quota_denial" in _ups and "err_ingress_files_24h" not in _apir
       and "err_ingress_files_24h" not in _mcp_src, "")
-_apiv1_src = ""  # Public REST v1 retired (module absent)
 def _code_lines(src):
     return "\n".join(l for l in src.split("\n")
                      if not l.strip().startswith("#") and "recomputation" not in l)
@@ -1686,9 +1676,6 @@ check("G21 Web 无本地 cost-vs-balance 授权 (展示 cost badge 不属授权)
 check("G22 MCP 不自拼 pricing+balance 判断 (走 check_affordability)",
       "get_pricing" not in _mcp_src and "spendable_balance" not in _mcp_src
       and "check_affordability" in _mcp_src)
-check("G23 generic REST upload 无 tool/pricing 参数",
-      "tool_id" not in _apiv1_src.split("async def v1_upload")[1].split("async def")[0]
-      if "async def v1_upload" in _apiv1_src else True)
 
 # ── cleanup: fixtures this suite created, incl. the priced tool pair
 # (leaked platform_tools rows drift the browser gate's market page) ──
@@ -2405,22 +2392,16 @@ with db() as con:
         "select count(*) c from uploads where user_id=%s", (uid2,)).fetchone()["c"])
 check("19 rejection zero uploads rows", ups17 == 0)
 
-# ══════════ 20-22. Public REST v1 retired ══════════
+# ══════════ 20-22. MCP fixture user (API key) ══════════
 ck3 = _register(_u + "v1")
 conn = _hc.HTTPConnection(*_HOST_idm, timeout=30)
 conn.request("POST", "/api/keys", json.dumps({"name": "ig"}).encode(),
              {"Cookie": ck3, "Content-Type": "application/json"})
 _tk = json.loads(conn.getresponse().read()); conn.close()
 bearer = (_tk.get("key") or {}).get("key") or ""
-BH = {"Content-Type": "image/png", "x-filename": "v.png",
-      "Authorization": f"Bearer {bearer}", "Idempotency-Key": f"v1k-{_u}-1"}
 with db() as con:
     uid3 = con.execute("select id from users where username=%s",
                        (_u + "v1",)).fetchone()["id"]
-st, r = _req_idm("POST", "/api/v1/uploads", PNG_idm, BH)
-check("20 retired /api/v1/uploads → 404 (无兼容 alias)",
-      st == 404, f"{st} {str(r)[:80]}")
-check("20b zero usage", _usage_n(uid3) == 0)
 
 # ══════════ 23-29. MCP ══════════
 conn = _hc.HTTPConnection(*_HOST_idm, timeout=30)

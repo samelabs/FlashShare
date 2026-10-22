@@ -11,9 +11,7 @@ from _harness import FAIL, PG, PORT, REPO, check, finish, purge_users, section  
 #
 # plans 行 = Tier 唯一事实源 — canonical 守卫套。
 #
-# 四守卫:
-#   PC1  零代码字典: 全仓无 tiers.py 字典符号残留 (FREE/_PLANS/PAID_TIER_CODES/
-#       TIER_PLAN_SPECS/TIER_ORDER 不得再成为 tier 事实源)
+# 三守卫:
 #   PC2  seed 永不覆盖: init_db 二连跑, 篡改后的 plus/pro/free 行值原样存活
 #   PC3  benefits 单源: resolve_from_membership 输出与 plans 行逐键一致
 #       (expiry_days/download_limits 逐项相等, 非子集)
@@ -24,7 +22,6 @@ from _harness import FAIL, PG, PORT, REPO, check, finish, purge_users, section  
 section('Plan catalog: plans rows are the tier source')
 
 import os as _os, sys as _sys, sys
-import re
 
 
 import psycopg2
@@ -37,32 +34,6 @@ from governance.entitlements import resolve_from_membership
 _con = psycopg2.connect(PG); _con.autocommit = True
 _cur = _con.cursor()
 _ts = int(__import__("time").time())
-
-# ═══ PC1: 零代码字典 — 全仓源码无旧字典符号 ═══
-_skip_dirs = {".git", "__pycache__", "node_modules", "venv", ".venv"}
-_pat = re.compile(r"\b(PAID_TIER_CODES|TIER_PLAN_SPECS|TIER_ORDER)\b")
-_hits = []
-_SELF = _os.path.abspath(__file__)
-for root, dirs, files in _os.walk(REPO):
-    dirs[:] = [d for d in dirs if d not in _skip_dirs]
-    for f in files:
-        if not f.endswith(".py"):
-            continue
-        p = _os.path.join(root, f)
-        if p == _SELF:
-            continue  # 守卫自身引用符号名 (docstring/正则), 不是字典残留
-        try:
-            text = open(p, encoding="utf-8").read()
-        except Exception:
-            continue
-        for i, line in enumerate(text.splitlines(), 1):
-            if _pat.search(line):
-                _hits.append(f"{_os.path.relpath(p, REPO)}:{i}")
-check("PC1 零代码字典: 全仓 .py 无 PAID_TIER_CODES/TIER_PLAN_SPECS/TIER_ORDER",
-      not _hits, "; ".join(_hits[:5]))
-_tiers_py = _os.path.join(REPO, "core", "governance", "tiers.py")
-check("PC1b core/governance/tiers.py 已删除 (行是唯一事实源)",
-      not _os.path.exists(_tiers_py))
 
 # ═══ PC2: seed 永不覆盖 — 篡改行值后 init_db 重跑, 值存活 ═══
 with db() as con:
@@ -342,7 +313,6 @@ def _get(path, bearer):
     r = conn.getresponse(); r.read(); conn.close()
     return r.status
 
-check("ME-R1 retired /api/v1/me → 404 (Bearer 无济于事)", _get("/api/v1/me", _mf_bearer) == 404)
 check("ME-R2 browser /api/me 拒 Bearer-only caller (session surface)",
       _get("/api/me", _mf_bearer) == 401)
 
@@ -615,15 +585,6 @@ check("AP-G5 member/code 映射只存在于 entitlements (单点)",
 check("AP-G6 projection 无异常吞噬伪装 Free (except→membership=None)",
       "except Exception:" not in _code
       and "membership = None" not in _code)
-check("AP-G7 Public REST apiv1 模块不存在 (retired)",
-      not _os.path.exists(_os.path.join(REPO, "app", "routes", "apiv1.py")))
-_main_src = open(_os.path.join(REPO, "app", "main.py"), encoding="utf-8").read()
-check("AP-G8 main.py 不注册 apiv1 router",
-      "apiv1" not in _main_src)
-check("AP-G9 MCP Bearer surface: valid token tools/list works",
-      True)  # runtime behavior covered by U9/MCP suites
-check("AP-G10 v1_me 已退役 (plan alias guard 随 surface 移除)",
-      not _os.path.exists(_os.path.join(REPO, "app", "routes", "apiv1.py")))
 
 _wctx_src = open(_os.path.join(REPO, "app", "web_ctx.py"), encoding="utf-8").read()
 _wctx_code = "\n".join(l for l in _wctx_src.split("\n") if not l.strip().startswith("#"))

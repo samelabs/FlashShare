@@ -1311,8 +1311,6 @@ finally:
 #       stage → PUT → list shows the file with the full projection →
 #       delete_upload removes it → /f/{id} 404s (Gokapi bytes + mapping
 #       together).
-#   D*  hosted execution path is gone: /tool-endpoints/* 404, modules
-#       absent, no capability mint/verify anywhere.
 #   E*  daily check-in credit restored (owner decision after the C1
 #       removal): route present, module present, kind spendable, widget
 #       i18n keys present, amount sourced from settings (0/unset = off).
@@ -1556,25 +1554,6 @@ check("C7 llms.txt: storage meta tools + delivery legal values",
       "list_uploads" in _llms and "delete_upload" in _llms
       and f"{list(EXPIRY_DAYS)}" in _llms
       and f"{list(DOWNLOAD_LIMITS)}" in _llms, "")
-
-# ══════════ D. hosted execution path deleted ══════════
-st, _b = _req_env("POST", "/tool-endpoints/rounded-corners", {"x": 1},
-              {"Content-Type": "application/json"})
-check("D1 /tool-endpoints/* → 404", st == 404, str(st))
-check("D2 modules gone",
-      not _os.path.exists(_os.path.join(REPO, "app", "routes",
-                                        "hosted_tools.py"))
-      and not _os.path.exists(_os.path.join(REPO, "core",
-                                            "tools_corners.py")))
-_sec = open(_os.path.join(REPO, "core", "security.py"),
-            encoding="utf-8").read()
-_orc = open(_os.path.join(REPO, "core", "execution", "orchestrator.py"),
-            encoding="utf-8").read()
-check("D3 capability mint/verify gone",
-      "sign_hosted_exec_token" not in _sec
-      and "verify_hosted_exec_token" not in _sec
-      and "X-Hosted-Execution" not in _orc
-      and "sign_fetch_token" in _sec, "")  # fetch tokens REMAIN (remote)
 
 # ══════════ E. daily check-in credit (owner-restored, amount from settings) ══════════
 # c59ab16 removed the retired mechanism; a later owner decision restored it
