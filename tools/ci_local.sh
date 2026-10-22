@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Local CI mirror — the single local test entry point.
+# The single test runner — local and the canonical-integration CI job.
 #   tools/ci_local.sh [--browser] [suite ...]
-# Starts an isolated stack (fresh DB, fake Gokapi :53898, app :8100), runs
-# the given suites (default: every tests/ci + tests/canonical step of
-# .github/workflows/ci.yml, in order), prints one exit-code table, stops.
-# Full-suite verification is GitHub CI; locally run only affected suites.
+# Proves every canonical suite fails closed (exit 2 without an isolated
+# port / TEST_DB_URL), starts an isolated stack (fresh DB, fake Gokapi
+# :53898, app :8100), runs the given suites (default: every tests/ci and
+# tests/canonical suite), prints one exit-code table, stops.
 # Env: PG_ADMIN_URL (default postgresql://127.0.0.1:5432/postgres),
 #      PYTHON (default venv/bin/python), PLAYWRIGHT_CORE_PATH / CHROMIUM_PATH,
 #      APP_PORT (default 8100) / GOKAPI_PORT (default 53898) — parallel
@@ -29,6 +29,25 @@ export FLASHSHARE_GOKAPI_KEY=ci-local-gk FLASHSHARE_BASE_URL=http://127.0.0.1:$A
 export FLASHSHARE_TEST_PORT=$APP_PORT FLASHSHARE_LOG_DIR=$OUT/log GATE_ARTIFACTS=$OUT/gate
 export TOOL_VAULT_KEY=bmHRR7eJv3wjTX590_wESE9SqO7DtyJTU2hObyZF7s0=  # test-only (same as ci.yml)
 export FLASHSHARE_REGISTER_LIMIT_PER_HOUR=10000 FLASHSHARE_LOGIN_LIMIT_PER_15MIN=10000
+export FLASHSHARE_MCP_REGISTER_LIMIT_PER_HOUR=10000
+
+if [ $# -eq 0 ]; then
+  set -- tests/ci/test_*.py tests/ci/test_*.js tests/canonical/test_*.py
+fi
+[ $BROWSER -eq 1 ] && set -- "$@" tests/browser/test_runtime_gate.js tests/browser/test_s4_chromium.js
+
+# fail-closed gate: no isolated port / production port / non-integer port /
+# no TEST_DB_URL → exit 2 before any request or DB write
+GUARD=0
+for s in "$@"; do
+  case $s in tests/canonical/*.py) ;; *) continue ;; esac
+  for bad in "-u FLASHSHARE_TEST_PORT" "FLASHSHARE_TEST_PORT=8000" \
+             "FLASHSHARE_TEST_PORT=8x" "-u TEST_DB_URL"; do
+    env $bad "$PY" "$s" >/dev/null 2>&1; rc=$?
+    [ $rc -ne 2 ] && { echo "fail-closed: $s with $bad exited $rc (want 2)"; GUARD=1; }
+  done
+done
+[ $GUARD -eq 0 ] || exit 1
 
 PIDS=()
 cleanup() {
@@ -52,12 +71,6 @@ for _ in $(seq 60); do
   kill -0 "${PIDS[1]}" 2>/dev/null || { tail -30 "$OUT/app.log"; exit 2; }
   sleep 1
 done
-
-if [ $# -eq 0 ]; then
-  set -- $(grep -oE "run: (python|node) tests/(ci|canonical)/[a-z0-9_]+\.(py|js)" \
-    .github/workflows/ci.yml | awk '{print $3}' | awk '!s[$0]++')
-fi
-[ $BROWSER -eq 1 ] && set -- "$@" tests/browser/test_runtime_gate.js tests/browser/test_s4_chromium.js
 
 FAIL=0
 printf '%-4s %s\n' EXIT SUITE

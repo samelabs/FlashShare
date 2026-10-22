@@ -26,9 +26,12 @@
 - `core/` 业务域（execution / governance / economy / identity / sharing / repo）
 - `static/` 前端（app.js + pages/*.js + css）
 - `tools/` 代码生成（gen_i18n.py）
-- `tests/canonical/` 正式回归测试（可移植，见下）
-- `tests/ci/` CI 边界契约测试
-- `tests/support/` CI test service；不得复制 518 业务逻辑
+- `tests/canonical/` 正式回归测试（可移植，见下）：按主链分文件（tool_supply / invocation / execution / mcp /
+  identity / sharing / economy / payment / orders / tiers / membership / operator / platform / web_surface，
+  另有 remote_security / api_surface），每个文件 `from _harness import ...`（`_harness.py` = 唯一
+  fail-closed 门禁 + check/section/finish/purge_users）。新用例写进所属链的文件，不按批次另开文件
+- `tests/ci/` 无需应用栈的边界契约测试（含源码级架构不变量 `test_source_invariants.py`）
+- `tests/support/` CI test service（fake Gokapi）与测试样本；不得复制 518 业务逻辑
 - `docs/plan/` 尚未执行的 release migration 资产（执行后移除）
 - `scripts/` production backup / restore-proof 运维脚本 + systemd units/timers
 
@@ -80,13 +83,14 @@ TEST_DB_URL 时直接退出（不发任何请求）。两种合法方式：
 
 **A. local isolated stack（与 CI 同构，日常开发/验收用）**
 
-唯一本地入口是 `tools/ci_local.sh`：自建全新库 + fake Gokapi(:53898) + app(:8100)，
-按给定顺序跑套件、输出一张退出码表、结束后自动停服务并 DROP 库。不要另写驱动脚本。
+唯一测试入口是 `tools/ci_local.sh`（本地与 CI canonical-integration job 同一脚本）：先验证每个 canonical
+套件在缺端口 / 端口 8000 / 非整数端口 / 缺 TEST_DB_URL 时都 exit 2，再自建全新库 + fake Gokapi(:53898) +
+app(:8100)，按给定顺序跑套件、输出一张退出码表、结束后自动停服务并 DROP 库。不要另写驱动脚本。
 
 ```bash
 PG_ADMIN_URL=postgresql://<user>@127.0.0.1:5432/postgres \
   tools/ci_local.sh tests/canonical/<affected>.py ...     # 受影响套件
-tools/ci_local.sh --browser                               # 不带参数 = ci.yml 全部 + 两道浏览器门禁
+tools/ci_local.sh --browser                               # 不带参数 = tests/ci + tests/canonical 全部 + 两道浏览器门禁
 ```
 
 浏览器门禁需 `PLAYWRIGHT_CORE_PATH`（playwright-core 1.55.0）。**推荐与 CI 同源**：安装 Playwright 捆绑
@@ -115,9 +119,9 @@ venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port <app-port> --wor
 - 本地运行前清掉 `__pycache__`：部分 semantic guard 用 grep 扫源码，`.pyc` 会造成误报（CI 为干净 checkout，无此问题）。
 - 本地 DNS 若为代理 fake-ip（198.18.0.0/15），依赖公网解析的 SSRF 正向用例会被守卫拒绝；这是环境噪音，不是代码回归。
 
-**B. GitHub Actions CI v1**：真实 PostgreSQL 16 + 真实 FlashShare app +
-`tests/support/fake_gokapi.py` 提供 Gokapi HTTP boundary test service，然后运行
-`tests/canonical/`。workflow 在 `.github/workflows/ci.yml`。
+**B. GitHub Actions CI v1**：canonical-integration job 在真实 PostgreSQL 16 service 上直接运行
+`tools/ci_local.sh`（真实 FlashShare app + `tests/support/fake_gokapi.py`），与本地同一套件集合与顺序；
+新增套件文件无需改 workflow。workflow 在 `.github/workflows/ci.yml`。
 
 CI v1 测的是 518.PLUS 自己的 invariant，不是 Gokapi compatibility。fake Gokapi
 只实现 `core/gokapi.py` 当前消费的外部 HTTP contract（add/list/get/download/delete），
@@ -141,8 +145,8 @@ permission 的 API key（无固定默认 key），注入 `FLASHSHARE_GOKAPI_URL`
 git diff --check
 python -m compileall -q app core                     # 语法
 git ls-files '*.js' | xargs -n1 node --check         # JS 语法
-# canonical 套件：按 .github/workflows/ci.yml 中的顺序逐个运行（环境变量见上，无默认值）
-python tests/canonical/<suite>.py
+tools/ci_local.sh tests/canonical/<chain>.py ...          # 常规：经 ci_local 跑受影响链
+python tests/canonical/<chain>.py                          # 手工：需上面的显式环境，无默认值
 python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ```
 
