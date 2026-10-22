@@ -3,6 +3,9 @@
 "use strict";
 
 const _editId = new URLSearchParams(location.search).get("id") || "";
+// edit-save URL field is the tool_key (route contract); ?id= stays
+// tool_id for the SSR lookup that fills __PUB_TOOL__
+const _editKey = (window.__PUB_TOOL__ && window.__PUB_TOOL__.tool_key) || "";
 const _pubTool = window.__PUB_TOOL__ || null;
 
 // ── helpers (single source: common.js _msg/_errm) ──
@@ -486,7 +489,7 @@ async function submit() {
   const editing = !!_editId;
   _submitBusy = true;
   try {
-    const r = await fetch("/api/usertools" + (editing ? "/" + _editId : ""), {
+    const r = await fetch("/api/usertools" + (editing ? "/" + _editKey : ""), {
       method: editing ? "PATCH" : "POST",
       headers: Object.assign({ "Content-Type": "application/json" },
         editing ? { "X-518-Edit-Locale": _mainLang } : null),

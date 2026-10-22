@@ -1123,8 +1123,20 @@ body { overflow-x: clip; }
 }
 @media (max-width: 767px) {
   .acct-card { min-width: 0; }
+  /* 账户表格窄屏: 文本列允许换行收缩, 整表不再强制 nowrap —— 强制
+     nowrap 会把"净支出/结果"等右列推进横滚区, 按钮在首屏不可见
+     (scrollWidth 检查仍通过, 缺陷被掩盖)。数字/时间列保持 nowrap。 */
   .acct-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .acct-tablewrap .acct-table { white-space: nowrap; }
+  .acct-tablewrap .acct-table { white-space: normal; table-layout: fixed; }
+  .acct-table td.mono, .acct-table td.ta-r { white-space: nowrap; }
+  /* 时间戳在自身列内换行 (放开全局 mono nowrap); 结果/净支出列取固定宽,
+     "查看结果"按钮完整落在自己的格子内可点 */
+  .acct-table td.mono { white-space: normal; overflow-wrap: anywhere; }
+  .calls-table th:last-child, .calls-table td:last-child { width: 92px; }
+  .calls-table th:nth-last-child(2), .calls-table td:nth-last-child(2) { width: 56px; }
+  /* 行操作栏窄屏换行: 五个文字钮一行放不下时被两端裁出视口
+     (flex-end 无 wrap), 换行后全部可见可点, 不隐藏任何动作。 */
+  .acct-page .tool-panel-actions { flex-wrap: wrap; justify-content: flex-start; }
 }
 
 /* ── 我的收藏 ── */
