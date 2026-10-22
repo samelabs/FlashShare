@@ -2,7 +2,10 @@
 
 本文件记录面向用户的显著变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本以功能批次划分。
 
-## [Unreleased]
+## [1.6]
+
+### Added
+- **页脚显示版本号**：全站页脚版权行后显示当前产品版本（与 MCP serverInfo、llms.txt 同源于 VERSION）。
 
 ### Added（工具 API 批）
 - **公开 REST API（/v1）**：API 密钥（fsk_）可直接调用全部公开工具——`POST /v1/tools/{key}`，`Idempotency-Key` 请求头做幂等（同键同输入重放、同键不同输入 409）；正文工具的请求体就是输入（text/json 按声明），成功把唯一结果项原样返回（文件直接返回，不消耗下载次数；响应头带调用号与花费）；文件工具收 multipart 或 JSON（文件三来源：上传 / https URL / 引用既有文件）。另有 `GET /v1/tools`、`/v1/tools/{key}`、`/v1/balance`。全链与 MCP 同构（同一幂等、计费、退款机制），限流与 MCP 共享。
