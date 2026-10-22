@@ -583,7 +583,9 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await setInputFiles(page, ".ti-file-input",
         [{ name: "gate-14.png", mimeType: "image/png", buffer: IMG }]);
       await page.click(".ti-run");
-      await page.waitForTimeout(2000);
+      // deterministic readiness: the typed error card (not the processing
+      // card) is the signal — a fixed timeout lost this race on cold runs
+      await page.waitForSelector(".result.error .error-note", { timeout: 10000 });
       const st14 = await page.evaluate(() => ({
         canRetry: window.canRetryToolOperation ? window.canRetryToolOperation() : null,
         err: (document.querySelector(".result .result-card .error-note") || {}).textContent || "",
