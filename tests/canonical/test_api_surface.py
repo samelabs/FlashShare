@@ -576,6 +576,34 @@ check("D8 insufficient balance → 402 err_insufficient_credits, zero staging",
       and int(_no_rc) == 0 and int(_no_up) == 0,
       f"{st} {d} rc={_no_rc} up={_no_up}")
 
+# D8b: 幂等重放先于余额预检 — running|ok 的 (user, tool, client_ref)
+# 在途时, 零余额重试必须到达 gate (200 重放 / 409 冲突), 不能被 402 拦截
+uidR6, ckR6 = _register(_u + "r6")
+KEY_R6 = create_key(uidR6, "v1r6")["key"]
+_grant(uidR6, 3, "manual_topup", idem_key=f"v1r6:{_u}:{uidR6}", note="v1r6")
+_THR6 = {"Authorization": f"Bearer {KEY_R6}", "Content-Type": "text/plain"}
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 first",
+                     {**_THR6, "Idempotency-Key": f"r6-{_u}"})
+_r6id = h.get("x-518-call-id")
+check("D8b balance 3 cost 3 first call → 200, balance drained to 0",
+      st == 200 and _sb(uidR6) == 0, f"{st} bal={_sb(uidR6)}")
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 first",
+                     {**_THR6, "Idempotency-Key": f"r6-{_u}"})
+check("D8b same-key retry at zero balance → 200 replay, same call id, zero charge",
+      st == 200 and h.get("x-518-call-id") == _r6id and _sb(uidR6) == 0,
+      f"{st} {_r6id} vs {h.get('x-518-call-id')} bal={_sb(uidR6)}")
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 DIFFERENT",
+                     {**_THR6, "Idempotency-Key": f"r6-{_u}"})
+check("D8b same-key different input at zero balance → 409 (not 402)",
+      st == 409 and (d or {}).get("error") == "idempotency_conflict",
+      f"{st} {d}")
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_TEXT}", "r6 first",
+                     {**TH, "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"r6b-{_u}"})
+check("D8b genuinely new key at zero balance → 402",
+      st == 402 and (d or {}).get("error") == "err_insufficient_credits",
+      f"{st} {d}")
+
 # ═══ E. deep idempotency ═══
 IH = {"Authorization": f"Bearer {KEY_I}", "Content-Type": "text/plain"}
 _result_box = {}

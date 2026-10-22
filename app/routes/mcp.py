@@ -1266,7 +1266,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # result) without uploading anything. Authoritative consume stays
     # in the gate; this snapshot never reserves credits.
     from execution.affordability import check_affordability
-    _denial = check_affordability(user["id"], tool)
+    _denial = check_affordability(user["id"], tool, client_ref=client_ref)
     if _denial:
         return _iserror(mid, _denial, client_ref)
 

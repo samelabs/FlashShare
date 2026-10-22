@@ -30,14 +30,26 @@ def effective_quote(user_id: int, tool: dict) -> dict:
     return {"enabled": bool(price["enabled"]), "cost": cost}
 
 
-def check_affordability(user_id: int, tool: dict) -> dict | None:
+def check_affordability(user_id: int, tool: dict,
+                        client_ref: str | None = None) -> dict | None:
     """Advisory read-only affordability check. Never a reservation.
 
     None → affordable, free, self-owned, or pricing-disabled (availability
     is deferred to the gate's authoritative tool_disabled). Denial reuses
     the existing err_insufficient_credits contract verbatim — no parallel
     error key.
+
+    client_ref 非空且 (user, tool, client_ref) 已有 running|ok 的
+    tool_calls 行 → 幂等重放在途/已成: 直接放行 (None), 把重放收敛与
+    409 判定交还 gate 的 claim 权威 —— 余额预检不得抢在重放之前用
+    402 拦下一次本该 200/409 的重试。
     """
+    if client_ref:
+        from database import db
+        from repo.ledger import live_call_exists
+        with db() as con:
+            if live_call_exists(con, user_id, tool["tool_key"], client_ref):
+                return None
     quote = effective_quote(user_id, tool)
     if not quote["enabled"]:
         # Tool availability is the gate's authority (tool_disabled 403);

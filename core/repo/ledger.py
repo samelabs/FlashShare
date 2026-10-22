@@ -415,3 +415,18 @@ def owner_successful_call_exists(con, tool_key: str, owner_id: int) -> bool:
         LIMIT 1
         """,
         (tool_key, owner_id)).fetchone() is not None
+
+
+def live_call_exists(con, user_id: int, tool_key: str, client_ref: str) -> bool:
+    """幂等重放探针 (advisory preflight 用, 只读): (user, tool, client_ref)
+    是否已有 running|ok 的 tool_calls 行 —— 与 claim_call 收敛所用的
+    部分唯一索引同口径。True 时预检直接放行, 重放收敛/409 判定仍归
+    gate 的 claim 权威。"""
+    return con.execute(
+        """
+        SELECT 1 FROM tool_calls
+        WHERE user_id = %s AND tool_id = %s AND client_ref = %s
+          AND status IN ('running','ok')
+        LIMIT 1
+        """,
+        (user_id, tool_key, client_ref)).fetchone() is not None

@@ -420,7 +420,7 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
     # answers 402 without fetching or staging anything; the authoritative
     # consume stays in the gate.
     from execution.affordability import check_affordability
-    _denial = check_affordability(user["id"], tool)
+    _denial = check_affordability(user["id"], tool, client_ref=idem)
     if _denial:
         return JSONResponse(_denial, 402)
 
