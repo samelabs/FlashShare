@@ -72,7 +72,12 @@ async def manifest():
 @router.get("/sw.js")
 async def service_worker():
     with open(_STATIC / "sw.js") as f:
-        return Response(content=f.read(), media_type="application/javascript")
+        # the service worker script must never be cached by any layer:
+        # a stale SW pins the old precache until it falls out of every
+        # cache (same semantics the production Nginx already sets — the
+        # app itself stays the consistent origin)
+        return Response(content=f.read(), media_type="application/javascript",
+                        headers={"Cache-Control": "no-store"})
 
 @router.get("/offline", response_class=HTMLResponse)
 async def offline_page(request: Request):
