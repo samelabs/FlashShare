@@ -241,9 +241,10 @@ async def auth_middleware(request: Request, call_next):
     request.state.lang = detect_lang(request)
     path = request.url.path
     if request.state.user and getattr(request.state, "auth_via", "") in (
-            "session", "token"):
+            "session", "token", "oauth"):
         # lapsed-renewal compensation on authenticated access (web
-        # session / MCP token): throttled per user, background thread
+        # session / MCP token / OAuth access token): throttled per user,
+        # background thread
         try:
             from economy.reconcile import reconcile_on_access
             reconcile_on_access(int(request.state.user["id"]))

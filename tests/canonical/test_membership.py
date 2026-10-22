@@ -1717,6 +1717,41 @@ try:
           and int(m["last_grant_period_start"]) == PS1,
           f"{r8x} {m}")
 
+    # ════════ M8b. 旧 paid 重放不得覆盖交错期间接受的新套餐/取消标记 ════════
+    # 确定性交错 (A01): 旧 paid 的快照读完成后 (period_base_payment 钩子),
+    # 真实 subscription.update (plus→pro) 与 scheduled_cancel 在独立事务提交,
+    # 再继续旧 paid 的最终持锁写 — 新套餐与取消标记必须保留, 重放零新 grant。
+    s8b = f"sub_{_u}_snaprace2"
+    u8b = _seed_member("snap2", plus_id, P_PLUS, s8b, f"txn_{_u}_sr2_1")
+    _real_pbp8b = _orders_repo.period_base_payment
+    _race8b = {"fired": False}
+    def _pbp8b(con, sub_id, period_start):
+        row = _real_pbp8b(con, sub_id, period_start)
+        if not _race8b["fired"]:
+            _race8b["fired"] = True
+            with _db() as excon:
+                _hev("subscription.update", _sub_emc(s8b, PS1, PE1, P_PRO))
+                _hev("subscription.scheduled_cancel",
+                     _sub_emc(s8b, PS1, PE1, P_PLUS))
+        return row
+    _orders_repo.period_base_payment = _pbp8b
+    _b8b = spendable_balance(u8b)
+    try:
+        # 同周期旧 paid 重放 (同 txn → replay 分支, 零新 grant)
+        _hev("subscription.paid",
+             _sub_emc(s8b, PS1, PE1, P_PLUS, txn=f"txn_{_u}_sr2_1"))
+    finally:
+        _orders_repo.period_base_payment = _real_pbp8b
+    m8b = _membership(u8b)
+    check("M8b.1 旧 paid 重放交错 update(pro)+scheduled_cancel → 新套餐保留",
+          _race8b["fired"] and m8b["code"] == f"pro_{_u}",
+          f"race={_race8b['fired']} {m8b}")
+    check("M8b.2 取消标记不被旧 paid 清空",
+          m8b["cancel_scheduled_at"] is not None, str(m8b))
+    check("M8b.3 重放零新 grant / 状态仍 active / 周期不回退",
+          spendable_balance(u8b) == _b8b and m8b["status"] == "active"
+          and int(m8b["last_grant_period_start"]) == PS1, str(m8b))
+
     # ══════════ M9. access-triggered reconcile (throttled) ══════════
     _fetched = []
     _SUBS = {}
@@ -1767,6 +1802,103 @@ try:
     _time.sleep(1.0)
     check("M9.3 live (not lapsed) membership → no provider fetch",
           s9b not in _fetched, str(_fetched))
+
+    # ════════ M9b. OAuth (fsot_) 与 fsk_ 访问同样触发补偿 (A03) ════════
+    # 中间件 auth_via ∈ (session, token, oauth): 触发面 + 无效令牌不触发
+    # + 端到端愈合 (provider 已续费但 webhook 丢失 → 相同周期/积分事实)。
+    import base64 as _b64_9b, hashlib as _hashlib_9b, secrets as _secrets_9b
+    from identity import oauth_provider as _oa
+    from identity.apikeys import create_key
+    from identity.oauth_provider import MCP_RESOURCE as _RES9b
+    _ver9b = _secrets_9b.token_urlsafe(48)
+    _ch9b = _b64_9b.urlsafe_b64encode(
+        _hashlib_9b.sha256(_ver9b.encode()).digest()).rstrip(b"=").decode()
+    _CID9B = f"https://plugin-{_u}-acc.example/oauth.json"
+    _RED9B = f"https://plugin-{_u}-acc.example/cb"
+
+    def _mint_fsot(uid_9b):
+        _c = _oa.create_authorization_code(
+            uid_9b, _CID9B, _RED9B, _ch9b, "tools:call", _RES9b)
+        _t = _oa.exchange_authorization_code(
+            _c, _CID9B, _RED9B, _ver9b, _RES9b)
+        return _t["access_token"]
+
+    _PING = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+    _orig_roa = _rec.reconcile_on_access
+    _trig9b = []
+    _rec.reconcile_on_access = lambda uid: _trig9b.append(int(uid)) or True
+    u9t = _mkuser(f"{_u}acctrig")
+    _fsk9t = create_key(u9t, "m9b-trig")["key"]
+    _fsot9t = _mint_fsot(u9t)
+    try:
+        client.post("/mcp", json=_PING,
+                    headers={"Authorization": "Bearer fsot_invalid_9b"})
+        check("M9b.0 无效 fsot_ → 认证失败且不触发补偿", _trig9b == [],
+              str(_trig9b))
+        client.post("/mcp", json=_PING,
+                    headers={"Authorization": f"Bearer {_fsot9t}"})
+        check("M9b.1 oauth (fsot_) 访问触发 reconcile",
+              _trig9b == [u9t], str(_trig9b))
+        client.post("/mcp", json=_PING,
+                    headers={"Authorization": f"Bearer {_fsk9t}"})
+        check("M9b.2 fsk_ (token) 访问触发 reconcile",
+              _trig9b == [u9t, u9t], str(_trig9b))
+        client.get("/healthz")
+        check("M9b.3 匿名访问不触发", len(_trig9b) == 2, str(_trig9b))
+    finally:
+        _rec.reconcile_on_access = _orig_roa
+
+    # 端到端: OAuth 用户续费丢失 → 一次访问后台愈合 (+100, renews 推进)
+    def _lapsed_healed(tag, sub_id, txn_new, ps_new, pe_new):
+        uid_ = _seed_member(tag, plus_id, P_PLUS, sub_id, txn_new + "a",
+                            ps=ts - 40 * 86400, pe=ts - 10 * 86400)
+        with db() as con:
+            con.execute("update memberships set status='active' where"
+                        " user_id=%s", (uid_,))
+        _SUBS[sub_id] = _sub_emc(sub_id, ps_new, pe_new, P_PLUS, txn_new)
+        _TXNS[txn_new] = {"object": "transaction", "id": txn_new,
+                          "status": "paid", "type": "invoice",
+                          "subscription": sub_id,
+                          "period_start": _iso_emc(ps_new),
+                          "period_end": _iso_emc(pe_new)}
+        return uid_
+
+    s9c = f"sub_{_u}_acco"
+    _txn9c = f"txn_{_u}_acco2"
+    PS9c, PE9c = ts - 10 * 86400, ts + 20 * 86400
+    u9c = _lapsed_healed("acco", s9c, _txn9c, PS9c, PE9c)
+    _b9c = spendable_balance(u9c)
+    client.post("/mcp", json=_PING,
+                headers={"Authorization": f"Bearer {_mint_fsot(u9c)}"})
+    _ok9c = _wait(lambda: (_membership(u9c) or {}).get("renews_at") == PE9c
+                  and spendable_balance(u9c) == _b9c + 100)
+    m9c = _membership(u9c)
+    check("M9b.4 oauth 访问 + 丢失的续费 paid → 后台补偿愈合 (+100 / renews 推进)",
+          _ok9c and m9c["status"] == "active"
+          and _fetched.count(s9c) == 1,
+          f"{m9c} fetched={_fetched.count(s9c)} bal={spendable_balance(u9c)}")
+    # 节流窗口内重复访问不二次拉取/赠送
+    client.post("/mcp", json=_PING,
+                headers={"Authorization": f"Bearer {_mint_fsot(u9c)}"})
+    _time.sleep(1.0)
+    check("M9b.5 oauth 窗口内重复访问 → 无第二次 provider 拉取",
+          _fetched.count(s9c) == 1, str(_fetched.count(s9c)))
+
+    s9d = f"sub_{_u}_acck"
+    _txn9d = f"txn_{_u}_acck2"
+    u9d = _lapsed_healed("acck", s9d, _txn9d, PS9c, PE9c)
+    _b9d = spendable_balance(u9d)
+    client.post("/mcp", json=_PING,
+                headers={"Authorization":
+                         f"Bearer {create_key(u9d, 'm9b-e2e')['key']}"})
+    _ok9d = _wait(lambda: (_membership(u9d) or {}).get("renews_at") == PE9c
+                  and spendable_balance(u9d) == _b9d + 100)
+    m9d = _membership(u9d)
+    check("M9b.6 fsk_ 访问同样愈合相同周期/积分事实 (+100 / renews 推进)",
+          _ok9d and m9d["status"] == "active"
+          and _fetched.count(s9d) == 1
+          and int(m9d["last_grant_period_start"]) == PS9c,
+          f"{m9d} bal={spendable_balance(u9d)}")
 
     # ══════════ M10. 迟到的旧周期 lifecycle 事件不回退已付费新周期 ══════════
     for st_evt, st_name in (("subscription.canceled", "canceled"),
