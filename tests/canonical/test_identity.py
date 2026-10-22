@@ -1761,6 +1761,7 @@ check("W3 AS metadata: PKCE S256, public clients, NO registration endpoint (CIMD
       st == 200 and d.get("code_challenge_methods_supported") == ["S256"]
       and d.get("token_endpoint_auth_methods_supported") == ["none"]
       and "registration_endpoint" not in d
+      and d.get("client_id_metadata_document_supported") is True
       and d.get("scopes_supported") == ["tools:call", "files:read", "files:delete"], d)
 
 # ═══ C. challenge contract ═══
