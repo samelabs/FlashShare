@@ -360,8 +360,8 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
             data = await part.read()
             items.append(("new", (part.filename,
                                   part.content_type or "", data)))
-        if not items:
-            return _err(400, "err_select_file")
+        # 零文件放行: 数量窗口是 ingest_sources 第 0 步的唯一权威
+        # (files_min>0 在那里给 err_file_count), 入口不再自带下限
     elif _is_json_media_type(ctype):
         try:
             body = await request.json()
@@ -370,7 +370,8 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
         if not isinstance(body, dict):
             return _err(400, "invalid_request")
         spec = body.get("files")
-        if not isinstance(spec, list) or not spec:
+        # files 必须存在且为 list, 允许空列表 (数量权威在 ingest_sources)
+        if not isinstance(spec, list):
             return _err(400, "err_select_file")
         for entry in spec:
             if not isinstance(entry, dict):

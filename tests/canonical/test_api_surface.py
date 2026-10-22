@@ -604,6 +604,30 @@ check("D8b genuinely new key at zero balance → 402",
       st == 402 and (d or {}).get("error") == "err_insufficient_credits",
       f"{st} {d}")
 
+# D8c: 零文件放行 — files 必须存在且为 list, 允许空列表; 数量窗口
+# (ingest_sources 第 0 步) 是唯一数量权威
+TOOL_ZF = f"v1zf{_u2}"
+_tool(TOOL_ZF, accept='[".png"]', tag="image", files_min=0, files_max=1,
+      url=f"{EP}/items", outputs=["text"], cost=0)
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_ZF}",
+                     json.dumps({"files": []}).encode(),
+                     {"Content-Type": "application/json",
+                      "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"zf1-{_u}"})
+check("D8c files_min=0 tool accepts files: [] → executes",
+      st == 200, f"{st} {str(d)[:140]}")
+TOOL_ZF1 = f"v1zf1{_u2}"
+_tool(TOOL_ZF1, accept='[".png"]', tag="image", files_min=1, files_max=1,
+      url=f"{EP}/items", outputs=["text"], cost=0)
+st, h, d, raw = _req("POST", f"/v1/tools/{TOOL_ZF1}",
+                     json.dumps({"files": []}).encode(),
+                     {"Content-Type": "application/json",
+                      "Authorization": f"Bearer {KEY_H}",
+                      "Idempotency-Key": f"zf2-{_u}"})
+check("D8c files_min=1 tool rejects files: [] → 400 err_file_count",
+      st == 400 and (d or {}).get("error") == "err_file_count",
+      f"{st} {d}")
+
 # ═══ E. deep idempotency ═══
 IH = {"Authorization": f"Bearer {KEY_I}", "Content-Type": "text/plain"}
 _result_box = {}
