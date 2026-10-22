@@ -49,7 +49,7 @@
   .drop { padding: 28px 16px 22px; }
 }
 
-/* ── Header (v2 .hd) ─────────────────────────────────────── */
+/* ── Header (.hd) ────────────────────────────────────────── */
 .hd { position: sticky; top: 0; z-index: var(--z-dropdown); backdrop-filter: saturate(1.4) blur(14px); background: rgba(251, 251, 252, 0.72); border-bottom: 1px solid var(--line); }
 .hd .hd-in { height: 60px; display: flex; align-items: center; gap: 24px; }
 .logo { display: flex; align-items: center; flex-shrink: 0; white-space: nowrap; }
@@ -275,7 +275,7 @@
 
 /* ── Tool Overlay (shared by all tools) ───────────────────── */
 /* 模式选择 = 纯文字 pill (radio 圆点视觉废弃: 非激活态常驻灰点突兀, 选中态以边框+文字色区分) */
-/* 模式控件区 (tool modes v3) */
+/* 模式控件区 */
 
 /* 会员订阅区 (credits 页并列卡区) + PLUS 徽标 */
 .sub-status { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s3); flex-wrap: wrap; }
@@ -575,7 +575,7 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .acct-daily-info .acct-daily-sub { display: block; }
 .credit-note-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ── /account/tools v2: modal submit + icon grid + card list ── */
+/* ── /account/tools: modal submit + icon grid + card list ── */
 .acct-page .usertools-item { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
 .acct-page .usertools-item:last-child { border-bottom: none; }
 .acct-page .usertools-head { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; min-width: 0; }
@@ -775,7 +775,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .status-page h1 { font-size: var(--fs-xl); }
 .status-page p { color: var(--ink-2); max-width: 44ch; }
 
-/* ═══ 工具页 (v2): tp-h 头部 / tp-main 主栏 780 / mcpline ═══ */
+/* ═══ 工具页: tp-h 头部 / tp-main 主栏 / mcpline ═══ */
 /* 参数区 CSS 在 components.css (.prow/.tp-seg) — 首页与工具页同一套 */
 .toolpage { padding-top: 40px; padding-bottom: 64px; min-width: 0; }
 .tp-main { max-width: var(--container-read); margin: 0 auto; min-width: 0; width: 100%; }
@@ -827,7 +827,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .calls-deleted { color: var(--ink-2); }
 .calls-refunded { color: var(--ok, var(--ink-3)); font-size: 11px; }
 
-/* ── Footer (v2 .ft) ─────────────────────────────────────── */
+/* ── Footer (.ft) ────────────────────────────────────────── */
 .ft { padding: 32px 0 40px; color: var(--ink-3); font-size: 13px; border-top: 1px solid var(--line); margin-top: auto; }
 .ft .ft-in { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .ft .ft-in > span:first-child { margin-inline-end: auto; }
@@ -840,7 +840,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .hd-r .btn { display: none; }
 }
 
-/* ═══ 首页 (v2): hero / bento / dark / feat ═══ */
+/* ═══ 首页: hero / bento / dark / feat ═══ */
 .home { position: relative; }
 /* hero 背景: 单一极淡品牌色晕 (Stripe 式"一处光", 不做双色晕+网格
    的模板堆叠)。网格退场。 */
@@ -985,7 +985,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
   .dark h3 { font-size: 24px; }
 }
 
-/* ═══ /r 结果页 (v2 .rp/.rc) — /f 共用卡片族 ═══ */
+/* ═══ /r 结果页 (.rp/.rc) — /f 共用卡片族 ═══ */
 .rp { max-width: 640px; margin: 0 auto; padding: 56px 0 72px; }
 .rc { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); overflow: hidden; }
 .rc-top { padding: 28px; text-align: center; }
@@ -1046,7 +1046,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .glow, .grid-bg { left: 50%; right: auto; width: 100vw; transform: translateX(-50%); }
 body { overflow-x: clip; }
 
-/* ═══ 工具市场 (v2) ═══ */
+/* ═══ 工具市场 ═══ */
 .market-v2 { padding: 40px 0 72px; min-width: 0; }
 .market-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
 .market-search { margin: 0 0 20px; max-width: 460px; }
@@ -1082,7 +1082,7 @@ body { overflow-x: clip; }
 .pricing-page .pr-refund > p:first-of-type { margin: 12px 0 0; }
 @media (max-width: 767px) { .pricing-page { padding: 24px 0 48px; } .pricing-page .pr-plans { grid-template-columns: 1fr; } }
 
-/* ═══ /agents (v2) ═══ */
+/* ═══ /agents ═══ */
 .agents-v2 { padding: 40px 0 72px; min-width: 0; }
 .agents-v2 .sec-sub { color: var(--ink-3); font-size: 14px; margin: 4px 0 0; }
 .agents-topbar { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: 20px; max-width: 560px; }

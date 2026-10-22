@@ -191,7 +191,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 .file-remove svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
 @media (hover:hover) and (pointer:fine) { .file-remove:hover { color: var(--danger); background: var(--danger-50); } }
 
-/* ── Result card (v2 "out") + items — the tool-page result area AND
+/* ── Result card ("out") + items — the tool-page result area AND
    the /r result page share this structure: .out > .out-h + .out-b >
    .linkbar + items. Structure classes rs-* stay stable (/r page
    server-side markup + browser suites ride on them). ── */
@@ -220,7 +220,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   border: 0; border-bottom: var(--border-w) solid var(--line);
 }
 .linkbar > svg { width: 15px; height: 15px; color: var(--ink-3); stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.linkbar span {
+.linkbar > span {
   flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-sm);
   color: var(--ink-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -590,7 +590,7 @@ pre.rs-text, pre.rs-json {
 }
 
 /* ── Tool input — the composer (shared component: home + tool page).
-   Structure lives in pages/tool-input.js; DOM per the v2 prototype:
+   Structure lives in pages/tool-input.js; DOM:
    .composer > .c-files + .ti-drop/.c-text/.params + .c-bar + .ti-error/.ti-quota (bottom):
    .prow (label + .seg/.input/.switch) + .c-bar (.ib clip + .opt
    delivery pill + .sp + .send). Legacy hooks kept for tests/JS:
@@ -887,8 +887,8 @@ pre.rs-text, pre.rs-json {
 }
 
 /* ── Auth modal (login/register overlay, site-wide) ────────────
-   Rides the .modal/.modal-panel primitives; panel takes the v2
-   radius/shadow, forms reuse .field/.input/.btn. ── */
+   Rides the .modal/.modal-panel primitives; forms reuse
+   .field/.input/.btn. ── */
 .auth-modal { width: min(400px, 100%); border-radius: var(--r-xl); box-shadow: var(--sh-3); padding: var(--s5) var(--s4) var(--s4); }
 .auth-modal h2 { font-size: var(--fs-lg); font-weight: 750; text-align: center; margin: 0 0 var(--s3); }
 .auth-modal .auth-x-wrap .x-login { width: 100%; }
@@ -900,7 +900,7 @@ pre.rs-text, pre.rs-json {
 .auth-modal .auth-terms a { color: var(--ink-2); text-decoration: underline; }
 @media (max-width: 767px) { .auth-modal { padding: var(--s4) var(--s3); } }
 
-/* ── Auth full pages (v2 narrow centered card) ──────────────── */
+/* ── Auth full pages (narrow centered card) ──────────────── */
 .auth-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); padding: var(--s6) var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
 .auth-card h1 { font-size: var(--fs-xl); text-align: center; margin: 0; }
 .auth-card .auth-sub { text-align: center; font-size: var(--fs-sm); color: var(--ink-3); margin: -10px 0 0; }

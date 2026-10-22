@@ -2147,6 +2147,14 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         const ctx = await browser.newContext({ viewport: { width: w, height: h } });
         const page = await ctx.newPage();
         await gotoReady(page, "/", "#toolInput");
+        // the site-wide compact share bar look (hero bar = the SSR partial's
+        // twin) — the result-card bar must render identically, never restyled
+        // by its container
+        const heroX = await page.evaluate(() => {
+          const { fontFamily, color, fontSize } =
+            getComputedStyle(document.querySelector(".hero-share .x-glyph"));
+          return { fontFamily, color, fontSize };
+        });
         for (const [name, items] of CASES) {
           const probe = await page.evaluate((items) => {
             showItemsResult({ result_id: "rprobe", items });
@@ -2174,11 +2182,18 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
               sbUrl: sb ? sb.getAttribute("data-share-url") : "",
               sbQr: sb ? ((sb.querySelector('[data-sb="qr"]') || {}).getAttribute("data-qr-src")) : "",
               heroShareHidden: heroShare ? heroShare.hidden : null,
+              xStyle: (() => { const xg = sb && sb.querySelector(".x-glyph");
+                if (!xg) return null;
+                const { fontFamily, color, fontSize } = getComputedStyle(xg);
+                return { fontFamily, color, fontSize }; })(),
             };
           }, items);
           check(`probe ${w} ${name}: no overflow, no filename captions on images`,
             probe.sw <= probe.vw + 1 && probe.metaB === 0 && probe.capB === 0,
             JSON.stringify(probe));
+          check(`probe ${w} ${name}: share four-piece renders with the site-wide look (container never restyles it)`,
+            JSON.stringify(probe.xStyle) === JSON.stringify(heroX),
+            JSON.stringify({ x: probe.xStyle, hero: heroX }));
           check(`probe ${w} ${name}: linkbar one light line carrying the share four-piece`,
             probe.barH > 0 && probe.barH <= 44
               && probe.sbCount === 4 && probe.sbActs === "copy,qr,share"
