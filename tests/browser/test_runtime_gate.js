@@ -344,13 +344,16 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         (await page.$(".ti-run")) !== null && (await page.$(".ti-file-input")) !== null);
       // format summary: a single-family tool must NOT read as "All formats"
       // (the union view double-counted the all group and every family hit it)
+      // asserted through the same i18n keys the composer renders with —
+      // locale-independent (CI en-US, any developer machine locale)
       const sumText = await page.evaluate(() => {
         const el = document.querySelector(".ti-drop small");
-        return el ? el.textContent : "";
+        return { text: el ? el.textContent : "",
+          family: window.t("family_image"), all: window.t("ti_accept_all") };
       });
       check("home: compress summary names its family, never 'All formats'",
-        sumText.indexOf("Images") !== -1 && sumText.indexOf("All formats") === -1,
-        sumText);
+        sumText.text.indexOf(sumText.family) !== -1 && sumText.text.indexOf(sumText.all) === -1,
+        JSON.stringify(sumText));
 
       // track network legs for retry assertions
       const legs = { uploads: [], executes: [] };
@@ -1480,6 +1483,30 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       }
     }
 
+    // (b3) modal-family interaction contract: the auth modal's title is a
+    //      function of the CURRENT tab — heading and aria-label follow it.
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1024, height: 450 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/", "body");
+      const titles = await page.evaluate(() => {
+        window.openAuthModal({ mode: "register" });
+        const panel = document.querySelector(".auth-modal");
+        const overlay = panel.parentElement;
+        const before = { h2: panel.querySelector("h2").textContent, aria: overlay.getAttribute("aria-label") };
+        panel.querySelector('.seg [data-mode="login"]').click();
+        return { before,
+          after: { h2: panel.querySelector("h2").textContent, aria: overlay.getAttribute("aria-label") },
+          want: { register: window.t("registerTitle"), login: window.t("loginTitle") } };
+      });
+      check("auth modal: heading + aria-label follow the active tab",
+        titles.before.h2 === titles.want.register && titles.before.aria === titles.want.register
+          && titles.after.h2 === titles.want.login && titles.after.aria === titles.want.login,
+        JSON.stringify(titles));
+      await page.keyboard.press("Escape");
+      await ctx.close();
+    }
+
     // (c) PWA: SW registers + offline navigation. The offline half uses a
     // REAL dead origin: page-level offline emulation does not cover the
     // service worker's own network-first fetch (verified: playwright 1.55
@@ -1896,6 +1923,27 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
           JSON.stringify(err));
         check("error detail markup stays inert (no img element, no script run)",
           err.pwn === undefined && err.hasImg === false, JSON.stringify(err));
+        await page.close();
+      }
+
+      // history modal closes on Escape under the same guard policy as its
+      // backdrop click (logged in — #historyBtn lives in the authed header)
+      {
+        const page = await ctx.newPage();
+        await gotoReady(page, "/", ".composer");
+        await page.click("#historyBtn");
+        await page.waitForSelector("#historyModal:not(.hidden)", { timeout: 5000 });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(100);
+        check("history modal: Escape closes it",
+          await page.evaluate(() => document.getElementById("historyModal").classList.contains("hidden")));
+        await page.click("#historyBtn");
+        await page.waitForSelector("#historyModal:not(.hidden)", { timeout: 5000 });
+        await page.evaluate(() => { document.getElementById("historyModal").dataset.locked = "1"; });
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(100);
+        check("history modal: Escape respects the download lock (stays open)",
+          await page.evaluate(() => !document.getElementById("historyModal").classList.contains("hidden")));
         await page.close();
       }
       await ctx.close();

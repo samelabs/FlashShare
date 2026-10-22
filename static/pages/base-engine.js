@@ -85,10 +85,13 @@ document.addEventListener("DOMContentLoaded", () => window.wireMobileNav());
 // User dropdown menu (site-wide)
 (function(){var b=document.getElementById("userMenuBtn"),d=document.getElementById("userDropdown");if(b&&d){b.addEventListener("click",function(e){e.stopPropagation();var h=d.classList.toggle("hidden");b.setAttribute("aria-expanded",h?"false":"true")});document.addEventListener("click",function(e){if(e.target===b||d.contains(e.target))return;d.classList.add("hidden");b.setAttribute("aria-expanded","false")})}})();
 
-// History modal open/close (data loading = footer.js _loadHistory)
+// History modal open/close (data loading = footer.js _loadHistory).
+// Every close path — close button, backdrop, Escape — shares one guard
+// policy: during a PWA handoff (dataset.locked) or a plain download lock
+// the modal stays put.
 (function(){
 var hb=document.getElementById("historyBtn"),hm=document.getElementById("historyModal"),hc2=document.getElementById("historyModalClose");
-if(hb&&hm){hb.addEventListener("click",function(){hm.classList.remove("hidden");var h2=hm.querySelector("h2");if(h2)h2.textContent=window.t("recent");window._loadHistory&&window._loadHistory()});if(hc2)hc2.addEventListener("click",function(){hm.classList.add("hidden")});hm.addEventListener("click",function(e){if(e.target===hm&&!hm.dataset.locked&&!window._dlLock)hm.classList.add("hidden")})}
+if(hb&&hm){hb.addEventListener("click",function(){hm.classList.remove("hidden");var h2=hm.querySelector("h2");if(h2)h2.textContent=window.t("recent");window._loadHistory&&window._loadHistory()});if(hc2)hc2.addEventListener("click",function(){hm.classList.add("hidden")});hm.addEventListener("click",function(e){if(e.target===hm&&!hm.dataset.locked&&!window._dlLock)hm.classList.add("hidden")});document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!hm.classList.contains("hidden")&&!hm.dataset.locked&&!window._dlLock)hm.classList.add("hidden")})}
 })();
 
 /*

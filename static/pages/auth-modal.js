@@ -113,6 +113,11 @@
       b.addEventListener("click", () => {
         const m = b.dataset.mode;
         overlay.querySelector("form").innerHTML = formHtml(m);
+        // the title is a function of the CURRENT mode — heading and the
+        // overlay's aria-label follow the tab exactly like the form does
+        const title = t(m === "register" ? "registerTitle" : "loginTitle");
+        overlay.querySelector("h2").textContent = title;
+        overlay.setAttribute("aria-label", title);
         overlay.querySelectorAll(".seg [data-mode]").forEach((x2) => {
           x2.classList.toggle("on", x2 === b);
         });
