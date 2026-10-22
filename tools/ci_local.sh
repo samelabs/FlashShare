@@ -55,6 +55,7 @@ cleanup() {
   psql "$ADMIN" -qc "DROP DATABASE IF EXISTS $DB" >/dev/null 2>&1
 }
 trap cleanup EXIT
+trap 'exit 2' INT TERM
 
 for port in "$APP_PORT" "$GOKAPI_PORT"; do
   if lsof -tiTCP:$port -sTCP:LISTEN >/dev/null 2>&1; then echo "port $port busy"; exit 2; fi
@@ -66,9 +67,13 @@ psql "$ADMIN" -qc "CREATE DATABASE $DB" >/dev/null || { echo "cannot create $DB"
   --key "$FLASHSHARE_GOKAPI_KEY" >"$OUT/gokapi.log" 2>&1 & PIDS+=($!)
 "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT" --workers 1 \
   >"$OUT/app.log" 2>&1 & PIDS+=($!)
+# startup budget is wall-clock (60s); each probe carries its own connect and
+# total timeouts, so a port that accepts connections but never answers — or
+# never appears — cannot stretch the budget past one probe + one sleep
 T0=$SECONDS; HEALTHY=0
-for _ in $(seq 60); do
-  curl -fsS "http://127.0.0.1:$APP_PORT/healthz" >/dev/null 2>&1 && { HEALTHY=1; break; }
+while [ $((SECONDS - T0)) -lt 60 ]; do
+  if curl -fsS --connect-timeout 2 --max-time 3 \
+      "http://127.0.0.1:$APP_PORT/healthz" >/dev/null 2>&1; then HEALTHY=1; break; fi
   kill -0 "${PIDS[1]}" 2>/dev/null || { tail -30 "$OUT/app.log"; exit 2; }
   sleep 1
 done

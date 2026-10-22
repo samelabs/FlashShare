@@ -85,8 +85,8 @@ TEST_DB_URL 时直接退出（不发任何请求）。两种合法方式：
 
 唯一测试入口是 `tools/ci_local.sh`（本地与 CI canonical-integration job 同一脚本）：先验证每个 canonical
 套件在缺端口 / 端口 8000 / 非整数端口 / 缺 TEST_DB_URL 时都 exit 2，再自建全新库 + fake Gokapi(:53898) +
-app(:8100)，按给定顺序跑套件、输出各套件退出码/耗时/检查摘要（启动与套件耗时分列；应用 60s 内不健康
-即失败），结束后自动停服务并 DROP 库。不要另写驱动脚本。
+app(:8100)，按给定顺序跑套件、输出各套件退出码/耗时/检查摘要（启动与套件耗时分列；启动探测按 60s
+墙钟预算执行，单探针自带连接/总超时，超预算即 exit 2），结束后自动停服务并 DROP 库。不要另写驱动脚本。
 
 ```bash
 PG_ADMIN_URL=postgresql://<user>@127.0.0.1:5432/postgres \

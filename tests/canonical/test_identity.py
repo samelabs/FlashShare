@@ -1599,21 +1599,28 @@ try:
         check("F1c register window slid (controlled clock) → passes again",
               r.status_code == 200, r.status_code)
 
-        for i in range(auth_route._LOGIN_IP_FAIL_LIMIT):
-            _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
-                 data={"login": f"{_u}nouser{i}", "password": "whatever-1"})
+        # every in-budget failure must still answer as a normal failed
+        # login — a limiter that engages before the threshold (the exact
+        # regression this catches) would 429 one of these
+        within = [_req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
+                           data={"login": f"{_u}nouser{i}", "password": "whatever-1"})
+                  for i in range(auth_route._LOGIN_IP_FAIL_LIMIT)]
+        check("F2a in-budget failures all answer 200 err_login_failed (no premature 429)",
+              all(r_.status_code == 200
+                  and _form_error(r_.text) == EN["err_login_failed"] for r_ in within),
+              [r_.status_code for r_ in within])
         r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
                  data={"login": _u + "b1", "password": "pw-b1-12345"})
-        check("F2 login per-IP aggregate limiter (distinct logins) → 429 even with valid creds",
+        check("F2b login per-IP aggregate limiter (distinct logins) → 429 even with valid creds",
               r.status_code == 429 and _form_error(r.text) == EN["err_too_many_attempts"],
               r.status_code)
         r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_d},
                  data={"login": _u + "b1", "password": "pw-b1-12345"})
-        check("F2b other IP logs in normally", r.status_code == 302, r.status_code)
+        check("F2c other IP logs in normally", r.status_code == 302, r.status_code)
         _clock[0] += auth_route._LOGIN_IP_FAIL_WINDOW + 1
         r = _req_idc("POST", "/auth/login", headers={"X-Real-IP": ip_c},
                  data={"login": _u + "b1", "password": "pw-b1-12345"})
-        check("F2c login aggregate window slid (controlled clock) → 302 again",
+        check("F2d login aggregate window slid (controlled clock) → 302 again",
               r.status_code == 302, r.status_code)
 
         for i in range(auth_route._LOGIN_FAIL_LIMIT):
