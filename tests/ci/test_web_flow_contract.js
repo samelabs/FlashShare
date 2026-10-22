@@ -19,6 +19,36 @@ const vm = require("vm");
 const assert = require("assert");
 
 const REPO = path.resolve(__dirname, "..", "..");
+// A cached-language selection must also supersede an in-flight load.
+{
+  const scripts = [];
+  const noop = () => {};
+  const context = vm.createContext({
+    console,
+    __I18N__: { en: { greeting: "Hello" } },
+    addEventListener: noop,
+    document: {
+      querySelectorAll: () => [], getElementById: () => null,
+      querySelector: () => null, addEventListener: noop,
+      createElement: () => ({}),
+      head: { appendChild: (script) => scripts.push(script) },
+    },
+  });
+  context.window = context;
+  vm.runInContext(fs.readFileSync(path.join(REPO, "static/pages/base-engine.js"), "utf8"), context);
+  let chosen = "en";
+  context.loadLangPack("fr", (ok) => { if (ok) chosen = "fr"; });
+  context.loadLangPack("en", (ok) => { if (ok) chosen = "en"; });
+  scripts[0].onload();
+  assert.strictEqual(chosen, "en", "late uncached load cannot override a cached selection");
+  context.loadLangPack("fr", (ok) => { if (ok) chosen = "fr"; });
+  context.loadLangPack("de", (ok) => { if (ok) chosen = "de"; });
+  scripts[1].onload();
+  assert.strictEqual(chosen, "en", "superseded uncached selection stays inactive");
+  scripts[2].onerror();
+  assert.strictEqual(chosen, "en", "failed last load preserves the available language");
+  console.log("PASS: language load ordering includes cached selections and failure");
+}
 const sandboxBase = {
   console,
   setTimeout: (fn) => fn(),

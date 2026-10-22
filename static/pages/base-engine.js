@@ -23,9 +23,10 @@ window.addEventListener("unhandledrejection", function(e) { window.__errTap(e.re
     // 连续切换只有最后意图生效 (序号守卫); 失败保持当前可用语言。
     var _langSeq=0;
     window.loadLangPack=function(l,cb){
+      // Every intent invalidates older loads, including cached languages.
+      var seq=++_langSeq;
       var I=window.__I18N__||{};
       if(I[l]&&Object.keys(I[l]).length){cb(true);return}
-      var seq=++_langSeq;
       var sc=document.createElement("script");
       sc.src="/static/i18n/"+l+".js?v="+(window.__I18N_V||"");
       sc.onload=function(){if(seq===_langSeq)cb(true)};
