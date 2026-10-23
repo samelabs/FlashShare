@@ -503,6 +503,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
 
         # the success settlement transaction is durable work: converge it
         # across a cancel — its durable outcome stands either way
+        finish_cancelled = False
         try:
             finish_task = spawn(
                 _finish, user, tool, call_id, cost, result,
@@ -510,6 +511,11 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
             try:
                 out = await asyncio.shield(finish_task)
             except asyncio.CancelledError:
+                # record the intent BEFORE converging: converge may raise
+                # the finish task's own exception straight into the
+                # reconciliation below — the pending cancel must survive
+                # that handoff and propagate once obligations are settled
+                finish_cancelled = True
                 await converge(finish_task)
                 raise
             if exec_cancelled:
@@ -524,15 +530,17 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
             # rules — and only then may a pending cancellation propagate.
             outcome, rcancel = await await_durable(spawn(
                 resolve_success_outcome, call_id))
-            cancel_now = rcancel or exec_cancelled
+            cancel_now = rcancel or exec_cancelled or finish_cancelled
             if outcome["outcome"] == OUTCOME_DURABLE_SUCCESS:
                 out = {"ok": True, "result": outcome["result"],
                        "call_id": call_id, "replay": True,
                        "cost": cost}
                 if cost > 0:
                     try:
-                        out["balance"] = await converge(spawn(
+                        balance, bcancel = await await_durable(spawn(
                             spendable_balance, user["id"]))
+                        out["balance"] = balance
+                        cancel_now = cancel_now or bcancel
                     except asyncio.CancelledError:
                         raise
                     except Exception:
@@ -544,7 +552,9 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
                 from storage import delete as storage_delete
                 for f in result.files:
                     try:
-                        await converge(spawn(storage_delete, f.gokapi_id))
+                        _, dcancel = await await_durable(spawn(
+                            storage_delete, f.gokapi_id))
+                        cancel_now = cancel_now or dcancel
                     except Exception:
                         logger.warning("staged result cleanup failed call_id=%s"
                                        " gokapi=%s", call_id, f.gokapi_id)

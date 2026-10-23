@@ -3053,6 +3053,94 @@ print("LOOP_CLOSED_CLEANLY", flush=True)
 
 _cx7()
 
+
+# ── CX8/CX9: 取消意图不得丢失 — finish 等待期间取消后, converge 抛出
+#    finish 自身异常进入核验: 已记录的取消必须贯穿核验/清理/结算, 持久
+#    义务处理完毕后向调用方传播 CancelledError (而不是吞成正常返回)。
+def _cx_finish_cancel(committed: bool):
+    """Shared driver: cancel while _finish is parked; on release the
+    wrapper raises (pre-commit, or AFTER a real committed _finish =
+    ACK loss). Returns (cancelled, slot_after, ref)."""
+    ref = f"cx{'9' if committed else '8'}-{_u_cx}"
+    entered, release = _thr_c.Event(), _thr_c.Event()
+    _orig_finish = _gate_c._finish
+
+    def _finish_then_raise(*a, **kw):
+        if committed:
+            _orig_finish(*a, **kw)      # the settlement COMMITS
+        entered.set()
+        if not release.wait(5):
+            raise RuntimeError("cx8/9 release timeout")
+        raise RuntimeError("ack loss after commit" if committed
+                           else "proven rollback before commit")
+
+    async def _orch():
+        from execution.results import StagedItems
+        return StagedItems(order=["text"],
+                           inline=[{"kind": "text", "text": "cancel intent"}])
+
+    async def _scenario():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}), \
+             _patch_c.object(_gate_c, "_finish", _finish_then_raise):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch))
+            if not await asyncio.to_thread(entered.wait, 3):
+                raise RuntimeError("cx8/9: finish never parked")
+            task.cancel()
+            await asyncio.sleep(0)      # cancellation delivered at the shield
+            release.set()               # finish commits/raises, convergence ends
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, _infl_c()
+
+    return ref, asyncio.run(_scenario())
+
+
+# CX8: 提交前异常 → 核验判 proven rollback → 清理+精确退款+failed,
+# 完成后取消传播。
+_bal8 = _bal_c(uid_cx)
+_ref8, (_cancelled8, _slot8) = _cx_finish_cancel(committed=False)
+_row8 = _call_row(_ref8)
+check("CX8a cancel during finish + pre-commit exception → refund, failed",
+      _row8 is not None and _row8["status"] == "failed"
+      and _bal_c(uid_cx) == _bal8, dict(_row8) if _row8 else None)
+check("CX8b the pending cancel finally propagates (intent not swallowed)",
+      _cancelled8 is True, _cancelled8)
+check("CX8c slot returned after the settlement", _slot8 == 0, _slot8)
+
+# CX9: 已提交 + ACK 丢失 → 核验判 durable success → 结果保留、单次
+# 扣费、可重放, 完成后取消传播。
+_bal9 = _bal_c(uid_cx)
+_ref9, (_cancelled9, _slot9) = _cx_finish_cancel(committed=True)
+_row9 = _call_row(_ref9)
+check("CX9a cancel during finish + committed ACK loss → durable ok, "
+      "single charge, result kept",
+      _row9 is not None and _row9["status"] == "ok"
+      and _bal_c(uid_cx) == _bal9 - 5, dict(_row9) if _row9 else None)
+check("CX9b the pending cancel finally propagates (intent not swallowed)",
+      _cancelled9 is True, _cancelled9)
+check("CX9c slot returned after the settlement", _slot9 == 0, _slot9)
+# replay of the ACK-lost durable result: same ref, no re-execution, no
+# second charge
+async def _never9():
+    raise RuntimeError("cx9 replay must not re-execute")
+
+
+async def _replay9():
+    with _patch_c("execution.affordability.effective_quote",
+                  return_value={"enabled": True, "cost": 5}):
+        return await _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(_ref9),
+                                 _never9)
+_payload9, _err9, _s9 = asyncio.run(_replay9())
+check("CX9d same-ref retry → replay, still single charge",
+      _err9 is None and (_payload9 or {}).get("replay") is True
+      and _bal_c(uid_cx) == _bal9 - 5,
+      (_err9, (_payload9 or {}).get("replay")))
+
 with db() as con:
     con.execute("delete from tool_calls where user_id=%s", (uid_cx,))
     con.execute("delete from uploads where user_id=%s", (uid_cx,))
