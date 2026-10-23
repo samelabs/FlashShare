@@ -3499,6 +3499,120 @@ check("P5d same-ref retry after cancelled-durable-ok → replay (no new object/u
       and _usage_n(uidP5) == 1 and _gk_count() == _gk_after_c,
       f"usage={_usage_n(uidP5)} gk={_gk_count()}/{_gk_after_c}")
 
+
+# ════════ RN: 文件重命名接口行为（真实 PATCH 路由）════════
+# 先红后绿: 旧代码 rename_upload_route 的函数体局部 import asyncio
+# 位于其首次使用之后, 使 asyncio 成为未赋值局部名 — 全部 PATCH 500。
+# 覆盖: 未登录 401 / 所有者改名+扩展名保留+分享页反映 / 非所有者 403。
+section('rename route: auth, ownership, extension, page reflection')
+
+import base64 as _b64_rn
+import http.client as _hc_rn
+import json as _json_rn
+
+_RN_HOST = ("127.0.0.1", int(TEST_PORT))
+
+
+def _rn_http(method, path, body=None, headers=None, cookie=None):
+    conn = _hc_rn.HTTPConnection(*_RN_HOST, timeout=30)
+    h = dict(headers or {})
+    if cookie:
+        h["Cookie"] = cookie
+    payload = None
+    if body is not None:
+        payload = body if isinstance(body, bytes) else _json_rn.dumps(body).encode()
+    conn.request(method, path, payload, h)
+    r = conn.getresponse()
+    raw = r.read()
+    conn.close()
+    try:
+        return r.status, _json_rn.loads(raw)
+    except Exception:
+        return r.status, raw.decode(errors="replace")
+
+
+def _rn_form(fields):
+    out = b""
+    for k, v in fields.items():
+        out += (f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n'
+                f'\r\n{v}\r\n').encode()
+    return out + b"--B--\r\n", "multipart/form-data; boundary=B"
+
+
+def _rn_register(name):
+    b, ct = _rn_form({"username": name, "password": "Test12345",
+                      "password_confirm": "Test12345",
+                      "email": f"{name}@t.co"})
+    _rn_http("POST", "/auth/register", b, {"Content-Type": ct})
+    b, ct = _rn_form({"login": name, "password": "Test12345"})
+    conn = _hc_rn.HTTPConnection(*_RN_HOST, timeout=30)
+    conn.request("POST", "/auth/login", b, {"Content-Type": ct})
+    r = conn.getresponse()
+    r.read()
+    ck = (r.getheader("Set-Cookie") or "").split(";")[0]
+    conn.close()
+    return ck
+
+
+def _rn_share_png(token, ref):
+    """One durable shared PNG via the share tool (inline source)."""
+    _st, d = _rn_http("POST", "/mcp", {
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "share", "arguments": {
+            "client_ref": ref, "files": [
+                {"filename": "rn-pic.png",
+                 "b64": _b64_rn.b64encode(_png()).decode()}]}}},
+        {"Content-Type": "application/json",
+         "Accept": "application/json, text/event-stream",
+         "Authorization": f"Bearer {token}"})
+    sc = (((d or {}).get("result") or {}).get("structuredContent") or {})
+    return next((i["public_id"] for i in sc.get("items", [])
+                 if i.get("kind") == "file"), "")
+
+
+# owner gets a session cookie AND an API key (the share call needs the key)
+_rn_owner = _u + "rnow"
+_rn_ck = _rn_register(_rn_owner)
+_rn_ck2 = _rn_register(_u + "rnno")
+_st, _d = _rn_http("POST", "/api/keys", {"name": "rn"},
+                   {"Content-Type": "application/json", "Cookie": _rn_ck})
+_rn_tok = (_d or {}).get("key", {}).get("key", "")
+_rn_pid = _rn_share_png(_rn_tok, f"rnshare-{_u}")
+check("RN0 fixture: one durable shared png", bool(_rn_pid), _rn_pid)
+
+# anonymous: 401 auth_required (never a silent redirect, never a 500)
+_st, _d = _rn_http("PATCH", f"/api/uploads/{_rn_pid}",
+                   {"name": "anon"},
+                   {"Content-Type": "application/json"})
+check("RN1 anonymous rename → 401 auth_required",
+      _st == 401 and (_d or {}).get("error") == "auth_required", (_st, _d))
+
+# owner: stem renamed, original extension preserved
+_st, _d = _rn_http("PATCH", f"/api/uploads/{_rn_pid}",
+                   {"name": "renamed stem"},
+                   {"Content-Type": "application/json"}, cookie=_rn_ck)
+check("RN2 owner rename → ok, extension preserved",
+      _st == 200 and (_d or {}).get("ok") is True
+      and (_d or {}).get("name") == "renamed stem.png", (_st, _d))
+
+# the share page reflects the new name
+_st, _d = _rn_http("GET", f"/f/{_rn_pid}", None,
+                   {"Accept": "application/json"})
+check("RN3 share page reflects the new name",
+      _st == 200 and (_d or {}).get("filename") == "renamed stem.png",
+      (_st, _d))
+
+# non-owner: 403 forbidden, the name stays the owner's
+_st, _d = _rn_http("PATCH", f"/api/uploads/{_rn_pid}",
+                   {"name": "hijack"},
+                   {"Content-Type": "application/json"}, cookie=_rn_ck2)
+_st2, _d2 = _rn_http("GET", f"/f/{_rn_pid}", None,
+                     {"Accept": "application/json"})
+check("RN4 non-owner rename → 403, name unchanged",
+      _st == 403 and (_d or {}).get("error") == "forbidden"
+      and (_d2 or {}).get("filename") == "renamed stem.png", (_st, _d, _d2))
+
+
 # ══════════ cleanup ══════════
 with db() as con:
     _http_uids = [r["id"] for r in con.execute(

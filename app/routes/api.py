@@ -376,7 +376,6 @@ async def rename_upload_route(public_id: str, request: Request):
     user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
-    import asyncio
     try:
         raw = await request.json()
     except Exception:
