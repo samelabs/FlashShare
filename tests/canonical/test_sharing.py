@@ -681,7 +681,10 @@ from governance.delivery import (validate_delivery, EXPIRY_DAYS,
                                  DOWNLOAD_LIMITS, INTERMEDIATE_TTL_DAYS,
                                  INTERMEDIATE_DOWNLOAD_LIMIT)
 from economy.subscription import plan_of
-from sharing.uploads import reserve_ingress, release_ingress, check_quota
+from sharing.uploads import check_quota
+from sharing.ingress_receipt import (claim_ingress_quota,
+                                     settle_failure,
+                                     IngressQuotaDenied)
 from repo import upload_usage as usage_repo
 from database import db
 
@@ -770,6 +773,21 @@ check("R5 resolver 不 import creem/orders/payment 内部",
 check("R6 resolver 只经 economy.subscription.plan_of 取会员事实",
       "plan_of" in src and "user_plans" not in src)
 
+_claim_seq = [0]
+
+
+def _claim(uid, sizes, ip="203.0.113.9"):
+    """Drive the production claim path (claim_ingress_quota): returns
+    (granted, denial, receipt_tuple)."""
+    _claim_seq[0] += 1
+    try:
+        receipt, usage_ids, _replay = claim_ingress_quota(
+            uid, ip, f"qt-{uid}-{_claim_seq[0]}", "a" * 64, sizes)
+        return True, None, (receipt, usage_ids)
+    except IngressQuotaDenied as exc:
+        return False, exc.denial, None
+
+
 # ═══ 2. Free quota 边界 + 结构化 denial contract ═══
 ip = "203.0.113.9"
 FLIM = FREE["ingress_files_24h"]; BLIM = FREE["ingress_bytes_24h"]
@@ -778,7 +796,7 @@ FLIM = FREE["ingress_files_24h"]; BLIM = FREE["ingress_bytes_24h"]
 _clear_usage(id_f)
 with db() as c:
     usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 2), int(time.time()))
-ok, r, _ = reserve_ingress(id_f, ip, [1] * 3)
+ok, r, _c3 = _claim(id_f, [1] * 3)
 check("F3 Free files denial 精确结构 {error,limit,used,incoming,remaining,plan_code}",
       (not ok) and r == {"error": "err_ingress_files_24h", "limit": FLIM,
                          "used": FLIM - 2, "incoming": 3, "remaining": 2,
@@ -790,7 +808,7 @@ check("F3b incoming 不截断为 remaining (3 > 2 仍报 3)",
 _clear_usage(id_f)
 with db() as c:
     usage_repo.insert_many(c, id_f, ip, [BLIM - 100], int(time.time()))
-ok, r, _ = reserve_ingress(id_f, ip, [101])
+ok, r, _ = _claim(id_f, [101])
 check("F5 Free bytes denial 精确结构",
       (not ok) and r == {"error": "err_ingress_bytes_24h", "limit": BLIM,
                          "used": BLIM - 100, "incoming": 101,
@@ -798,12 +816,12 @@ check("F5 Free bytes denial 精确结构",
 
 # 边界通过性 (既有行为不回归)
 _clear_usage(id_f)
-ok, r, _ = reserve_ingress(id_f, ip, [1] * (FLIM - 1))
+ok, r, _ = _claim(id_f, [1] * (FLIM - 1))
 check("F1 Free limit-1 files 通过", ok)
-ok, r, _ = reserve_ingress(id_f, ip, [1])
+ok, r, _ = _claim(id_f, [1])
 check("F2 Free 第 limit 个通过", ok)
 _clear_usage(id_f)
-ok, r, _ = reserve_ingress(id_f, ip, [BLIM])
+ok, r, _ = _claim(id_f, [BLIM])
 check("F4 Free 恰 bytes-limit 通过", ok)
 
 # ═══ 3. PLUS quota 边界 (结构值来自 effective entitlement, 非 Free 常量) ═══
@@ -811,7 +829,7 @@ PLIM = _PLANS["plus"]["ingress_files_24h"]; PBLIM = _PLANS["plus"]["ingress_byte
 _clear_usage(id_p)
 with db() as c:
     usage_repo.insert_many(c, id_p, ip, [1] * (PLIM - 2), int(time.time()))
-ok, r, _ = reserve_ingress(id_p, ip, [1] * 3)
+ok, r, _ = _claim(id_p, [1] * 3)
 check("P3 PLUS files denial: plan_code=plus, limit=500 (effective entitlement)",
       (not ok) and r["error"] == "err_ingress_files_24h" and r["plan_code"] == "plus"
       and r["limit"] == 500 and r["used"] == 498 and r["incoming"] == 3
@@ -819,18 +837,18 @@ check("P3 PLUS files denial: plan_code=plus, limit=500 (effective entitlement)",
 _clear_usage(id_p)
 with db() as c:
     usage_repo.insert_many(c, id_p, ip, [PBLIM - 50], int(time.time()))
-ok, r, _ = reserve_ingress(id_p, ip, [51])
+ok, r, _ = _claim(id_p, [51])
 check("P5 PLUS bytes denial: limit=5GiB, plan_code=plus",
       (not ok) and r["error"] == "err_ingress_bytes_24h"
       and r["limit"] == PLUS_BYTES and r["plan_code"] == "plus"
       and r["remaining"] == 50, str(r))
 _clear_usage(id_p)
-ok, r, _ = reserve_ingress(id_p, ip, [1] * (PLIM - 1))
+ok, r, _ = _claim(id_p, [1] * (PLIM - 1))
 check("P1 PLUS limit-1 files 通过", ok)
-ok, r, _ = reserve_ingress(id_p, ip, [1])
+ok, r, _ = _claim(id_p, [1])
 check("P2 PLUS 第 500 个通过", ok)
 _clear_usage(id_p)
-ok, r, _ = reserve_ingress(id_p, ip, [PLUS_BYTES])
+ok, r, _ = _claim(id_p, [PLUS_BYTES])
 check("P4 PLUS 恰 5 GiB 通过", ok)
 
 # check/reserve 同义: 同 snapshot + incoming → denial 字段完全一致
@@ -838,15 +856,15 @@ _clear_usage(id_f)
 with db() as c:
     usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 2), int(time.time()))
 ok1, d1 = check_quota(id_f, ip, 1, incoming_count=3)
-ok2, d2, _ = reserve_ingress(id_f, ip, [1] * 3)
-check("Q1 check_quota denial == reserve_ingress denial (逐字段)",
+ok2, d2, _ = _claim(id_f, [1] * 3)
+check("Q1 check_quota denial == claim_ingress_quota denial (逐字段)",
       (not ok1) and (not ok2) and d1 == d2, f"check={d1} reserve={d2}")
 
 # ═══ 4. IP 不参与 quota ═══
 u_i2, id_i2 = _new_user("enti")
 _clear_usage(id_f); _clear_usage(id_i2)
-ok1, _, _ = reserve_ingress(id_f, "198.51.100.7", [1] * FLIM)
-ok2, _, _ = reserve_ingress(id_i2, "198.51.100.7", [1])
+ok1, _, _ = _claim(id_f, [1] * FLIM, ip="198.51.100.7")
+ok2, _, _ = _claim(id_i2, [1], ip="198.51.100.7")
 check("I1 同 IP 两用户 usage 相互独立 (Free 满, 另一用户第1个仍过)", ok1 and ok2)
 
 # 测试自身不把 ip_usage_count 当 quota 依据 (静态守卫: 本文件零调用)
@@ -861,7 +879,7 @@ with db() as c:
     usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 1), int(time.time()))
 results = []
 def _race():
-    okx, rx, _ = reserve_ingress(id_f, ip, [1])
+    okx, rx, _ = _claim(id_f, [1])
     results.append((okx, rx))
 t1 = threading.Thread(target=_race); t2 = threading.Thread(target=_race)
 t1.start(); t2.start(); t1.join(); t2.join()
@@ -873,13 +891,14 @@ check("S1b 失败线程收到 structured quota denial",
       and "limit" in _s1_denials[0] and "remaining" in _s1_denials[0], str(_s1_denials))
 
 _clear_usage(id_f)
-ok, r, res = reserve_ingress(id_f, ip, [1] * 10)
-release_ingress(id_f, res)
-ok2, r2, _ = reserve_ingress(id_f, ip, [1] * FLIM)
-check("S2 release_ingress 恢复失败 reservation", ok and ok2 and r2 is None)
+ok, r, _res10 = _claim(id_f, [1] * 10)
+_receipt10, _usage10 = _res10
+settle_failure(int(_receipt10["id"]), _usage10, id_f)   # failure settlement
+ok2, r2, _ = _claim(id_f, [1] * FLIM)
+check("S2 failure settlement 恢复失败的 claim 配额", ok and ok2 and r2 is None)
 
 _clear_usage(id_f)
-ok, r, res = reserve_ingress(id_f, ip, [1] * 5)
+ok, r, _res5 = _claim(id_f, [1] * 5)
 _cur.execute("delete from uploads where user_id=%s", (id_f,))  # 普通 upload 删除
 _cur.execute("select count(*) from upload_usage where user_id=%s", (id_f,))
 left = _cur.fetchone()[0]
@@ -891,14 +910,16 @@ _pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
 _api = open(_os.path.join(REPO, "app", "routes", "api.py"), encoding="utf-8").read()
 _staging = open(_os.path.join(REPO, "core", "sharing", "staging.py"),
                 encoding="utf-8").read()
-# the coherence pass: the dead upload_sources pipeline (the sole reserve_ingress
-# caller) is deleted — quota accounting rides ingress receipts only, claimed
-# in ONE place: the P4 staging single point (api/mcp/ticket routes delegate).
-check("S4 quota 入口收敛: receipts 唯一 (零直接 reserve, 暂存单点 claim)",
-      _pipe_src.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
+_ups_src = open(_os.path.join(REPO, "core", "sharing", "uploads.py"),
+                encoding="utf-8").read()
+# the coherence pass: the historical direct-reserve helper is gone —
+# quota accounting rides ingress receipts only, claimed in ONE place:
+# the P4 staging single point (api/mcp/ticket routes delegate).
+check("S4 quota 入口收敛: receipts 唯一 (共享层零直接 claim helper, 暂存单点 claim)",
+      _ups_src.count("def reserve_" + "ingress") == 0
       and _api.count("stage_sources(") >= 1
       and _staging.count("claim_ingress_quota") >= 1,
-      f"pipe={_pipe_src.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
+      f"ups={_ups_src.count('def reserve_' + 'ingress')}")
 # 引用既有 the canonical-invocation unification E2E: tests/canonical/test_invocation.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
 

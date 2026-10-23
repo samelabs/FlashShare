@@ -2162,7 +2162,7 @@ try:
           and row_c["status"] == "ok",
           f"ok={_ok_c} replay={_replay_c} row={row_c}")
 
-    
+
     # failed platform http tool (unreachable endpoint) for A
     _ftk = f"oaftk{_os.urandom(4).hex()}"
     with db() as con:

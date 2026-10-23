@@ -24,7 +24,7 @@
   <table class="sl-tbl">
     <thead><tr>
       <th>工具键</th><th>所有者</th><th>类别</th><th>执行方式</th>
-      <th>可见性</th><th>开发者启用</th><th>运营上架</th><th>受信</th>
+      <th>可见性</th><th>开发者启用</th><th>运营上架</th>
       <th>价格（积分/次）</th><th>成功调用</th><th>开发者收益（美元）</th><th></th>
     </tr></thead>
     <tbody>
@@ -39,8 +39,7 @@
         <td><label class="switch"><input type="checkbox"
               data-toggle-delisted="{{ t.tool_key }}"
               {{ '' if t.delisted else 'checked' }}><span class="switch-track"></span></label></td>
-        <td>{{ '✔' if t.trusted else '✕' }}</td>
-        <td class="sl-num">
+                <td class="sl-num">
           {% if t.cost is not none %}
           <form class="sl-inline-form" data-pricing="{{ t.tool_key }}">
             <input class="sl-input" type="number" name="cost" value="{{ t.cost }}" min="0" max="1000000" step="1">

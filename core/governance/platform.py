@@ -59,7 +59,7 @@ def _ensure(con) -> int:
     created = users_repo.insert_local(con, PLATFORM_USERNAME, None, None,
                                       "518.PLUS Platform", ts)
     # 不可登录: 冻结状态 + 无 password_hash (authenticate_local 双重拒绝)
-    users_repo.update_status(con, created["id"], "suspended")
+    users_repo.set_status(con, created["id"], "suspended", ts)
     _platform_id = created["id"]
     logger.info("platform account ensured: id=%s", _platform_id)
     return _platform_id

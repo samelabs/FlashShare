@@ -1611,8 +1611,8 @@ _mkey = "rsmime" + _uuidm.uuid4().hex[:6]
 _cur.execute(
     "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
     " label_json, visibility, enabled, params_json, endpoint_json,"
-    " trusted, created_at, updated_at, accept_json, format_family)"
-    " values (%s, NULL, %s, 'http', %s, 'public', true, '[]', %s, TRUE,"
+    " created_at, updated_at, accept_json, format_family)"
+    " values (%s, NULL, %s, 'http', %s, 'public', true, '[]', %s,"
     " %s, %s, '[\".png\"]', 'image')",
     (_mkey, _mkey, json.dumps({"en": "MimeCT"}),
      json.dumps({"url": f"http://127.0.0.1:{_mime_port}/t", "timeout_s": 10}),

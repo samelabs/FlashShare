@@ -638,10 +638,6 @@ _SCHEMA_SQL = (
     # format, DB = runtime truth). Remote (http) execution and namespaced
     # user tools (key = username_toolid) are current data rows —
     # resolve() is execution-class-agnostic and origin-agnostic.
-    # trusted: operator-adoption flag. User rows default FALSE (SSRF guard
-    # enforces https + public IPs); TRUE only via /samelabs (institutional
-    # supply the operator vouches for). First-party rows are trusted by
-    # definition (owner IS NULL → resolve treats them as trusted).
     """
     CREATE TABLE IF NOT EXISTS platform_tools (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -682,7 +678,6 @@ _SCHEMA_SQL = (
       CONSTRAINT platform_tools_body_format_ck
         CHECK (body_format IS NULL OR body_format IN ('text','json')),
       enabled        BOOLEAN NOT NULL DEFAULT TRUE,
-      trusted        BOOLEAN NOT NULL DEFAULT FALSE,
       created_at     BIGINT NOT NULL,
       updated_at     BIGINT NOT NULL
     )
@@ -891,10 +886,11 @@ _SCHEMA_SQL = (
       WHERE used_at IS NULL
     """,
     # ── tool_favorites: 我的收藏 ──
-    # A user's pinned tools. Drives the web favorites list and the MCP
-    # tools/list selection (meta + first-party + favorites). Rows for a
-    # tool that later stops being visible simply drop out of every
-    # projection (the catalog visibility predicate filters them).
+    # A user's pinned tools. Drives the web picker's working set
+    # (official + own + favorites) and the favorites list; MCP
+    # tools/list = every public tool + own, favorites only flagged.
+    # Rows for a tool that later stops being visible simply drop out of
+    # every projection (the catalog visibility predicate filters them).
     """
     CREATE TABLE IF NOT EXISTS tool_favorites (
       user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

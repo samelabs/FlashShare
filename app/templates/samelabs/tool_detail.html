@@ -28,7 +28,6 @@
       <div class="fact"><span class="sl-dim">超时（秒）</span><b>{{ t.endpoint_timeout or '—' }}</b></div>
       <div class="fact"><span class="sl-dim">端点鉴权</span><b>{{ '已配置（凭据加密存储，不显示）' if t.endpoint_has_auth else '无' }}</b></div>
       {% endif %}
-      <div class="fact"><span class="sl-dim">受信</span><b>{{ '✔' if t.trusted else '✕' }}</b></div>
       <div class="fact"><span class="sl-dim">创建时间</span><b>{{ fmt_ts(t.created_at) }}</b></div>
     </div>
   </div>

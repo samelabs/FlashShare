@@ -160,12 +160,3 @@ def revoke_client(con, user_id: int, client_id: str, now_ts: int) -> int:
         (now_ts, user_id, client_id),
     )
     return int(cur.rowcount)
-
-
-def revoke_all_for_user(con, user_id: int, now_ts: int) -> None:
-    """Revoke every live token row of the user (credential rotation)."""
-    con.execute(
-        "UPDATE oauth_mcp_tokens SET revoked_at = %s "
-        "WHERE user_id = %s AND revoked_at IS NULL",
-        (now_ts, user_id),
-    )

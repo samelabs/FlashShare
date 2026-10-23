@@ -350,7 +350,7 @@ def resolve(tool_key: str, viewer_id: int | None = None) -> tuple:
     Returns (tool, error) — exactly one is non-None.
       tool: dict with row fields + `handler` attached when execution='local'
             (the callable from tools._registry; worker dispatch needs it).
-      error: 'not_found' | 'disabled' | 'forbidden'
+      error: 'not_found' | 'forbidden'
 
     Key grammar: 'username_toolid' (社区, owner 非空) | 裸词 (系统工具,
     owner 为空)。key 是唯一身份, 不解析不拆分 — owner 关系走 owner_id 列.

@@ -229,7 +229,7 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery,
     decl = json.loads(tool["endpoint_json"]) if tool.get("endpoint_json") else {}
     if not decl.get("url"):
         raise ExecutionError("err_tool_not_configured")
-    trusted = (tool.get("owner_id") is None) or bool(tool.get("trusted"))
+    trusted = tool.get("owner_id") is None
     sources = []
     total = 0
     for upload in uploads:

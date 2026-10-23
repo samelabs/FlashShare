@@ -38,12 +38,6 @@ def delete_key(con, user_id: int, key_id: int) -> int:
     return cur.rowcount
 
 
-def delete_all_keys(con, user_id: int) -> int:
-    cur = con.execute(
-        "DELETE FROM api_keys WHERE user_id = %s", (user_id,))
-    return cur.rowcount
-
-
 def list_keys(con, user_id: int) -> list:
     return con.execute(
         """

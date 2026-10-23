@@ -1,10 +1,12 @@
 """governance/favorites — 我的收藏 (a user's pinned tools), single point.
 
-One rule decides a user's working set — MCP tools/list (besides the
-meta tools) and the web composer's tool picker: first-party tools, the
-user's own tools, and the user's favorites. Every other visible tool
-stays reachable through search (catalog_search / the picker's query)
-and by name — the list is a working set, not an access boundary.
+One rule decides a user's working set — the web composer's tool
+picker: first-party tools, the user's own tools, and the user's
+favorites. MCP tools/list is NOT this working set: it carries every
+public tool plus the user's own, with favorites merely flagged. Every
+other visible tool stays reachable through search (catalog_search /
+the picker's query) and by name — the list is a working set, not an
+access boundary.
 """
 
 from database import db
@@ -42,10 +44,11 @@ def set_favorite(user_id: int, tool_key: str, on: bool) -> str | None:
 
 
 def working_set(user: dict | None, catalog: list) -> list:
-    """A user's working set — what MCP tools/list and the web composer's
-    tool picker carry: first-party tools, the user's own tools, then
-    their favorites (pin order). Anonymous = first-party tools. Any
-    other public tool is found through search."""
+    """A user's working set — the web composer's tool picker: official
+    tools, the user's own tools, then their favorites (pin order).
+    Anonymous = official tools. MCP tools/list is a different surface
+    (every public tool + own, favorites flagged). Any other public tool
+    is found through search."""
     if not user:
         return [t for t in catalog if t.get("origin") == "official"]
     favs = favorite_keys(user["id"], catalog)

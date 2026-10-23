@@ -64,13 +64,6 @@ def idem_key_exists(con, user_id: int, idem_key: str) -> bool:
         (user_id, idem_key)).fetchone() is not None
 
 
-def total_balance(con, user_id: int) -> int:
-    row = con.execute(
-        "SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger WHERE user_id = %s",
-        (user_id,)).fetchone()
-    return int(row["bal"])
-
-
 def pool_running_balance(con, user_id: int, kinds: Sequence[str]) -> int:
     """A pool's running balance = balance_after of its latest ledger row
     (0 when the pool has no rows yet). Writers MUST call this while

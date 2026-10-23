@@ -29,12 +29,6 @@ class InsufficientCredits(Exception):
         self.cost = cost
 
 
-def get_balance(user_id: int) -> int:
-    """Current balance = sum of all ledger deltas. 0 for fresh users."""
-    with db() as con:
-        return ledger_repo.total_balance(con, user_id)
-
-
 # Ledger kinds that make up the SPENDABLE pool. provider_earn is NOT here:
 # earnings accumulate in their own pool, withdrawable only. This is the
 # dual-pool invariant (2026-08-26 global audit): consumption must never

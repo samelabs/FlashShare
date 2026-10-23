@@ -324,15 +324,29 @@ st, d, _sc = _patch({"timeout_s": 61})
 check("H3d credential keys absent from PATCH → stored pair preserved",
       st == 200 and "auth_token" in _decl(), f"{st} {d} decl={_decl()}")
 
-# point the (still credentialed) tool at the local hook; user rows are
-# untrusted for https — flipping trusted makes the fixture reachable
+# runtime legs ride an OPERATOR twin (owner NULL) pointing at the local
+# hook: ownership — not a row flag — is the SSRF exemption; community
+# rows are never trusted. The twin mirrors the user tool's stored
+# credential pair (sealed like the operator create path).
+from secrets_vault import seal as _seal_h3
+_twin_h3 = f"ph3op{_u}"
 with db() as con:
-    _decl2 = _decl()
-    _decl2["url"] = f"http://127.0.0.1:{_hook_port}/t"
-    con.execute("update platform_tools set trusted=TRUE, endpoint_json=%s"
-                " where tool_key=%s", (_json.dumps(_decl2), _tkey))
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id,"
+        " execution, label_json, visibility, enabled, files_min,"
+        " files_max, outputs_json, params_json, endpoint_json,"
+        " created_at, updated_at, accept_json, format_family)"
+        " values (%s, NULL, %s, 'http', %s, 'public', true, 0, 1,"
+        " '[\"text\"]', '[]', %s, %s, %s, '[\".png\"]', 'image')",
+        (_twin_h3, _twin_h3, _json.dumps({"en": "PH3 Twin"}),
+         _json.dumps({"url": f"http://127.0.0.1:{_hook_port}/t",
+                      "timeout_s": 30, "auth_header": "X-Api-Key",
+                      "auth_token": _seal_h3(_secret)}), ts, ts))
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 0, true, %s)", (_twin_h3, ts))
 
-_mcp_name = _tkey  # 名 = key 原文
+_mcp_name = _twin_h3  # 名 = key 原文
 
 
 def _call_hook(ref):
@@ -364,6 +378,13 @@ with db() as con:
 check("H3g owner projection reports has_auth=false after the clear",
       _public_item(dict(_row3))["has_auth"] is False if _row3 else False)
 
+# the twin mirrors the cleared binding (no credential keys in the
+# declaration) — the runtime leg then sends NO credential header
+with db() as con:
+    con.execute(
+        "update platform_tools set endpoint_json=%s where tool_key=%s",
+        (_json.dumps({"url": f"http://127.0.0.1:{_hook_port}/t",
+                      "timeout_s": 30}), _twin_h3))
 st, d = _call_hook(f"ph3b-{_u}")
 _ok = ((d or {}).get("result") or {}).get("isError") is False
 _h = _HookHandler.seen[0] if _HookHandler.seen else {}
@@ -2127,18 +2148,18 @@ _cur.execute("delete from pricing where tool_id='badaccept'")
 _cur.execute("delete from platform_tools where tool_key='badaccept'")
 _cur.execute(
     "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-    " label_json, accept_json, format_family, visibility, enabled, trusted,"
+    " label_json, accept_json, format_family, visibility, enabled,"
     " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-    " '[\"application/pdf\"]', 'image', 'public', true, false, %s, %s)",
+    " '[\"application/pdf\"]', 'image', 'public', true, %s, %s)",
     ("badaccept", "badaccept", ts_au, ts_au))
 for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
     _cur.execute("delete from pricing where tool_id=%s", (_bk,))
     _cur.execute("delete from platform_tools where tool_key=%s", (_bk,))
     _cur.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, accept_json, format_family, visibility, enabled, trusted,"
+        " label_json, accept_json, format_family, visibility, enabled,"
         " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-        " %s, 'image', 'public', true, false, %s, %s)",
+        " %s, 'image', 'public', true, %s, %s)",
         (_bk, _bk, _bj, ts_au, ts_au))
 _cur.execute(
     "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",
@@ -2471,8 +2492,11 @@ for _nm45, _b45, _d45 in (
 
 # C46: generic Gokapi concrete operations are only used by the storage
 # adapter (and its gokapi implementation); production callers go through
-# storage.write/read/delete/info
-_gen46 = ("upload_to_gokapi", "get_gokapi_file", "delete_gokapi_file")
+# storage.write/read/delete/info. The live-status read is the ONE
+# sanctioned exception: sharing.uploads.live_status_for calls the
+# adapter's single-file tuple primitive directly (per-page queries) —
+# uploads/deletes stay adapter-only.
+_gen46 = ("upload_to_gokapi", "delete_gokapi_file")
 _PROD_TREES = ("app", "core", "scripts", "tools")
 for _root46, _dirs46, _fs46 in (w for d in _PROD_TREES for w in _os2.walk(_os2.path.join(REPO, d))):
     for _f46 in _fs46:
@@ -2554,6 +2578,8 @@ check("U11 commission_rate.con 为必填参数 (无 standalone read)",
 
 
 _cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u_au}_%",))
+_cur.execute("delete from pricing where tool_id like 'ph3op%%'")
+_cur.execute("delete from platform_tools where tool_key like 'ph3op%%'")
 _cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u_au}_%",))
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u_au}_%",))
 _cur.execute("delete from api_keys where user_id=%s", (_uid,))

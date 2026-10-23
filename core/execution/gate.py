@@ -585,4 +585,3 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
             _pool_release()
         if remote_slot:
             _remote_release(user["id"])
-

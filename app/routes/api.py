@@ -27,8 +27,8 @@ sys.path.insert(0, str(_CORE))
 
 from config import PUBLIC_ID_RE, BASE_URL
 from database import db
-from sharing.uploads import (reserve_ingress, release_ingress,
-                             get_upload_by_public_id, list_uploads, delete_upload)
+from sharing.uploads import (get_upload_by_public_id, list_uploads,
+                             delete_upload)
 from sharing.ingress_receipt import (
     IngressConflict, IngressInProgress, IngressQuotaDenied, IngressUnresolved)
 from sharing.ingress_identity import ingress_request_hash

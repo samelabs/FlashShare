@@ -196,11 +196,6 @@ def payout_channel_of(con, user_id: int) -> Optional[dict]:
         "SELECT payout_channel FROM users WHERE id = %s", (user_id,)).fetchone()
 
 
-def update_status(con, user_id: int, status: str) -> None:
-    con.execute("UPDATE users SET status = %s WHERE id = %s",
-                (status, user_id))
-
-
 def username_of(con, user_id: int) -> Optional[dict]:
     return con.execute(
         "SELECT username FROM users WHERE id = %s", (user_id,)).fetchone()

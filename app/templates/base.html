@@ -79,7 +79,7 @@
 
   <!-- Structure contract (2026-08-27 治理): 这两个inline块是全站唯一允许的数据注入;
      一切逻辑在 /static/pages/*.js (node --check 进回归)。ctx保留键: user_json/lang/
-     icons_json(已退役→icons.js)。改动模板脚本区前必读 docs/FE-STRUCTURE.md -->
+     icons_json(已退役→icons.js)。改动模板脚本区前必读 AGENTS.md「前端分层契约」-->
 <script>
 window.__USER__ = {{ user_json|tojson }};
 window.__LANG = "{{ lang }}";

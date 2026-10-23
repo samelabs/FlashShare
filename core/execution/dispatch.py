@@ -70,8 +70,6 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict,
 
     tool, terr = resolve_tool(tool_id, user["id"])
     if terr:
-        if terr == "disabled":
-            return None, None, None, {"ok": False, "error": "tool_disabled"}, 403
         return None, None, None, {"ok": False, "error": "tool_not_found"}, 404
     tool["id"] = tool["tool_key"]
 

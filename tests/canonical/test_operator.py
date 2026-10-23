@@ -260,7 +260,7 @@ with db() as con:
         (_draft_id,)).fetchone()
 from governance import plan_catalog as _pc
 _pc.catalog(refresh=True)
-_sellable = [t_.code for t_ in _pc.sellable_catalog()]
+_sellable = [t_.code for t_ in _pc.catalog() if t_.sellable]
 _dr_log = list(_PATCH_LOG)
 check("C-draft active:false create → stored false, NULL binding, not sellable",
       r.status_code == 200 and _draft_row is not None
@@ -275,7 +275,7 @@ r = _patch(f"/samelabs/commerce/products/plans/{_draft_id}",
            json={"active": True, "creem_product_id": f"prod_oad_{_u}"},
            cookies={COOKIE_NAME: op_sess})
 _pc.catalog(refresh=True)
-_sellable = [t_.code for t_ in _pc.sellable_catalog()]
+_sellable = [t_.code for t_ in _pc.catalog() if t_.sellable]
 check("C-draft switch (active+binding) → sellable",
       r.status_code == 200 and f"oadraft_{_u}" in _sellable,
       f"{r.status_code} {_sellable[:3]}")
@@ -2221,8 +2221,8 @@ _pt = tkey("strict")
 with db() as con:
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
-        " visibility, label_json, enabled, trusted, created_at, updated_at, accept_json, format_family)"
-        " VALUES (%s, %s, 'local', 'public', %s, TRUE, FALSE, %s, %s, '[\".png\"]', 'image')",
+        " visibility, label_json, enabled, created_at, updated_at, accept_json, format_family)"
+        " VALUES (%s, %s, 'local', 'public', %s, TRUE, %s, %s, '[\".png\"]', 'image')",
         (_pt, _pt, _json.dumps({"en": "PM"}), now(), now()))
 for _bad in (True, 100.9, "100"):
     _r = _post_json(f"/samelabs/tools/{_pt}/pricing", {"cost": _bad})
@@ -2281,41 +2281,6 @@ check("PM-C1 successful counts retired-tool ok (no catalog join)",
 check("PM-C2 failed = status='failed' only (running/insufficient excluded)",
       int(_prod["calls_failed"]) - int(_BASE_FAILED) == 1,
       f"{_BASE_FAILED}→{_prod['calls_failed']}")
-
-# trust projection: NULL owner ⇒ trusted regardless of flag; provider row ⇒ flag
-with db() as con:
-    _rows = {r_["tool_key"]: r_["trusted"]
-             for r_ in _ovm.tools_page(con)[0]}
-_PU = f"{uname('prov')}/untrusted"   # provider keys: owner/tool
-_PT = f"{uname('prov')}/trusted"
-check("PM-C3 first-party (owner NULL) effective trusted",
-      _rows.get(_pt) is True, str(_rows.get(_pt)))
-with db() as con:
-    con.execute(
-        "INSERT INTO platform_tools (tool_key, tool_id, execution,"
-        " visibility, label_json, enabled, trusted, owner_id, created_at,"
-        " updated_at, accept_json, format_family) VALUES (%s, 'untrusted',"
-        " 'http', 'public', %s, TRUE, FALSE, %s, %s, %s, '[\".png\"]', 'image')",
-        (_PU, _json.dumps({"en": "P1"}), provider, now(), now()))
-    con.execute(
-        "INSERT INTO platform_tools (tool_key, tool_id, execution,"
-        " visibility, label_json, accept_json, format_family, enabled, trusted, owner_id, created_at,"
-        " updated_at) VALUES (%s, 'trusted',"
-        " 'http', 'public', %s, '[\".png\"]', 'image', TRUE, TRUE, %s, %s, %s)",
-        (_PT, _json.dumps({"en": "P2"}), provider, now(), now()))
-with db() as con:
-    _rows = {r_["tool_key"]: r_["trusted"]
-             for r_ in _ovm.tools_page(con)[0]}
-check("PM-C3b provider trusted=false → false",
-      _rows.get(_PU) is False, str(_rows.get(_PU)))
-check("PM-C3c provider trusted=true → true",
-      _rows.get(_PT) is True, str(_rows.get(_PT)))
-r = client_cp.get("/samelabs/tools", cookies={COOKIE_NAME: sess})
-_t = r.text
-_ri = _t.find(_PU)
-_seg = _t[_ri:_ri+1200] if _ri >= 0 else ""
-check("PM-C4 template consumes projected trust (untrusted row shows ✕)",
-      "✕" in _seg, None)
 
 # ═════════════ B1: back-office closure ═════════════
 from urllib.parse import quote as _q  # noqa: E402
@@ -2805,8 +2770,8 @@ with db() as con:
         (_xu, pid, _IMG, ts_cp, ts_cp + 86400))
     con.execute(
         "INSERT INTO platform_tools (tool_key, tool_id, execution,"
-        " visibility, label_json, accept_json, format_family, enabled, trusted, owner_id, created_at,"
-        " updated_at) VALUES (%s, 'xt', 'http', 'public', %s, '[\".png\"]', 'image', TRUE, FALSE,"
+        " visibility, label_json, accept_json, format_family, enabled, owner_id, created_at,"
+        " updated_at) VALUES (%s, 'xt', 'http', 'public', %s, '[\".png\"]', 'image', TRUE,"
         " %s, %s, %s)",
         (f'{_X}/"><b>{_X}', _json.dumps({"en": "X"}), _xu, ts_cp, ts_cp))
     con.execute(

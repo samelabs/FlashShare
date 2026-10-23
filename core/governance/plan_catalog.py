@@ -157,10 +157,6 @@ def by_id(plan_id: int) -> Tier | None:
     return None
 
 
-def sellable_catalog() -> list:
-    return [t for t in catalog() if t.sellable]
-
-
 def free_tier() -> Tier:
     t = by_code("free")
     if t is None:

@@ -62,43 +62,13 @@ def check_quota(user_id: int, ip: str, incoming_bytes: int,
     Limits come from the user's effective entitlement (governance.
     entitlements.resolve). ip is accepted for the audit-fact record but
     takes no part in quota decisions. Denials carry the full structured
-    contract from _quota_denial — the same shape reserve_ingress emits.
+    contract from _quota_denial — the same shape claim_ingress_quota
+    (sharing.ingress_receipt) rejects with.
     """
     ent = _resolve_entitlement(user_id)
     row = _usage_24h_row(user_id)
     denial = _quota_denial(row, ent, int(incoming_bytes), int(incoming_count))
     return (denial is None, denial)
-
-
-def reserve_ingress(user_id: int, ip: str, sizes: list[int]) -> tuple:
-    """Atomically reserve the rolling-24h source-file ingress budget.
-
-    Same resolver, same limit semantics and same denial contract as
-    check_quota (single _quota_denial); the decision and the insert both
-    happen under the user row lock so same-user concurrency cannot
-    exceed the entitlement.
-    """
-    clean = [int(s) for s in sizes]
-    if not clean or any(s <= 0 for s in clean):
-        return False, {"error": "err_empty_file"}, []
-    start = now() - 24 * 3600
-    ts = now()
-    ent = _resolve_entitlement(user_id)
-    with db() as con:
-        usage_repo.lock_user(con, user_id)
-        row = usage_repo.user_usage(con, user_id, start)
-        denial = _quota_denial(row, ent, sum(clean), len(clean))
-        if denial:
-            return False, denial, []
-        ids = usage_repo.insert_many(con, user_id, ip, clean, ts)
-    return True, None, ids
-
-
-def release_ingress(user_id: int, usage_ids: list[int]) -> None:
-    if not usage_ids:
-        return
-    with db() as con:
-        usage_repo.delete_ids(con, user_id, usage_ids)
 
 
 def get_upload_by_public_id(public_id: str):

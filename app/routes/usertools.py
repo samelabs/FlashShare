@@ -46,7 +46,7 @@ router = APIRouter()
 MAX_PRICE = 100000
 
 
-def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False,
+def _validate_submission(raw: dict, partial: bool = False,
                          edit_locale: str = "", row: dict | None = None) -> tuple:
     """Shared validation for create (full) and patch (partial).
     Returns (fields, error_code). fields keys only for provided values.
@@ -88,9 +88,9 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
 
     if "url" in raw or not partial:
         url = str(raw.get("url") or "").strip()
-        # https+public-IP is the user-row contract; trusted (operator-adopted)
-        # rows are exempt at runtime and on edit — flag set by the caller.
-        if not trusted_ok and not url.startswith("https://"):
+        # https+public-IP is the user-row contract (operator/first-party
+        # rows are exempt at runtime by ownership, never by a row flag)
+        if not url.startswith("https://"):
             return None, "https_required"
         if not url.startswith(("http://", "https://")):
             return None, "bad_url"
@@ -475,7 +475,6 @@ def _update_user_tool_impl(tool_key: str, user: dict, raw: dict, edit_locale: st
             return JSONResponse({"ok": False, "error": "not_found"}, 404)
 
         fields, ferr = _validate_submission(raw, partial=True,
-                                        trusted_ok=bool(row["trusted"]),
                                         edit_locale=edit_locale, row=row)
         if ferr:
             # tool_unavailable = 存储契约破损 (503), 其余为声明校验 422
@@ -504,7 +503,7 @@ def _update_user_tool_impl(tool_key: str, user: dict, raw: dict, edit_locale: st
             {k: fields[k] for k in
              ("url", "timeout_s", "auth_header", "auth_token") if k in fields},
             existing_decl)
-        if "url" in fields and not row["trusted"]:
+        if "url" in fields:
             from remote import guard_endpoint, RemoteError
             try:
                 guard_endpoint(merged_decl["url"], trusted=False)

@@ -338,8 +338,6 @@ def tools_page(con, q: str | None = None, f_class: str | None = None,
                pt.featured, pt.sort_order, pt.owner_id,
                u.username AS owner_name,
                -- runtime-effective trust exactly as resolve computes it
-               -- (first-party ⇒ trusted; provider rows ⇒ stored flag)
-               (pt.owner_id IS NULL OR pt.trusted) AS trusted,
                p.cost, p.enabled AS priced,
                (SELECT COUNT(*) FROM tool_calls tc
                   WHERE tc.tool_id = pt.tool_key AND tc.status = 'ok')
