@@ -16,6 +16,7 @@ import base64
 import hashlib
 import re
 import secrets
+import threading
 import urllib.parse
 
 from config import BASE_URL
@@ -51,19 +52,27 @@ CIMD_NEGATIVE_TTL = 60
 CIMD_CACHE_MAX = 10000
 
 _cimd_cache: dict = {}
+# Cleanup, capacity check and write share one short critical section:
+# authorize/token flows run their business legs in threads, and two
+# concurrent stores racing the prune iteration raise "dictionary
+# changed size during iteration" (or slip past the cap). The network
+# fetch itself stays OUTSIDE the lock. Cache reads are single dict
+# gets — atomic under the GIL, no lock needed.
+_cimd_cache_lock = threading.Lock()
 
 
 def _cimd_cache_store(client_id: str, expires: int, payload) -> None:
     """Bounded store: past the entry cap, expired entries are pruned;
     still past it, the new entry is dropped (the fetch result is still
     returned — only the caching is skipped)."""
-    if len(_cimd_cache) >= CIMD_CACHE_MAX:
-        _ts = now()
-        for k in [k for k, v in _cimd_cache.items() if v[0] <= _ts]:
-            del _cimd_cache[k]
+    with _cimd_cache_lock:
         if len(_cimd_cache) >= CIMD_CACHE_MAX:
-            return
-    _cimd_cache[client_id] = (expires, payload)
+            _ts = now()
+            for k in [k for k, v in _cimd_cache.items() if v[0] <= _ts]:
+                del _cimd_cache[k]
+            if len(_cimd_cache) >= CIMD_CACHE_MAX:
+                return
+        _cimd_cache[client_id] = (expires, payload)
 
 
 def _cimd_negative(client_id: str) -> None:

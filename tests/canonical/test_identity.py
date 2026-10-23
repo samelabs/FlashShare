@@ -1957,6 +1957,91 @@ try:
     check("A5 http:// client_id rejected before any fetch",
           _oa.cimd_fetch("http://plain.example/oauth.json") is None)
 
+    # ═══ A6. cache store under a locally small capacity: concurrent
+    # cleanup must not raise, the cap must hold, and the success /
+    # negative / expiry semantics stay as they were ═══
+    import sys as _sys_a6
+    import threading as _th_a6
+
+    _cap_saved_a6 = _oa.CIMD_CACHE_MAX
+    _switch_saved_a6 = _sys_a6.getswitchinterval()
+    _oa.CIMD_CACHE_MAX = 4
+    _errs_a6 = []
+    _cap_ok_a6 = True
+    try:
+        # aggressive GIL switching + barrier arrival turns the unlocked
+        # check-then-insert / prune-iteration windows into real
+        # interleavings instead of accidental serialization
+        _sys_a6.setswitchinterval(1e-6)
+        for _round in range(300):
+            _oa._cimd_cache.clear()
+            # fill cycles 0..cap: at cap the store takes the prune path
+            # (mixed fresh + expired entries), at cap-1 the two
+            # check-then-inserts race the cap check
+            _fill = _round % (_oa.CIMD_CACHE_MAX + 1)
+            for _i in range(_fill):
+                _exp = _oa.now() - 1 if _i % 2 else _oa.now() + 3600
+                _oa._cimd_cache[f"k{_round}-{_i}"] = (_exp, None)
+            _bar_a6 = _th_a6.Barrier(2)
+
+            def _store_one(_tag):
+                try:
+                    _bar_a6.wait(timeout=5)
+                    _oa._cimd_cache_store(
+                        f"new-{_round}-{_tag}", _oa.now() + 3600, {"n": _tag})
+                except Exception as _exc:   # noqa: BLE001
+                    _errs_a6.append(repr(_exc))
+
+            _ta = _th_a6.Thread(target=_store_one, args=("a",))
+            _tb = _th_a6.Thread(target=_store_one, args=("b",))
+            _ta.start(); _tb.start(); _ta.join(10); _tb.join(10)
+            if len(_oa._cimd_cache) > _oa.CIMD_CACHE_MAX:
+                _cap_ok_a6 = False
+    finally:
+        _sys_a6.setswitchinterval(_switch_saved_a6)
+        _oa.CIMD_CACHE_MAX = _cap_saved_a6
+        _oa._cimd_cache.clear()
+    check("A6a barrier-synced concurrent stores never raise",
+          not _errs_a6, _errs_a6[:2])
+    check("A6b capacity invariant holds under concurrent stores",
+          _cap_ok_a6, len(_oa._cimd_cache))
+
+    _fetches_a6 = {"n": 0}
+
+    def _counting_hop(doc):
+        def _hop(url, method="GET", body=None, headers=None, timeout_s=60,
+                 max_bytes=None, deadline=None):
+            _fetches_a6["n"] += 1
+            return _serve_cimd(doc)
+        return _hop
+
+    _remote._pinned_request = _counting_hop(CIMD_DOC)
+    _oa._cimd_cache.clear()
+    _d1 = _oa.cimd_fetch(CIMD_URL)
+    _d2 = _oa.cimd_fetch(CIMD_URL)
+    check("A6c success entry cached: in-window hit makes no new fetch",
+          bool(_d1) and _d2 == _d1 and _fetches_a6["n"] == 1,
+          _fetches_a6["n"])
+    _oa._cimd_cache[CIMD_URL] = (_oa.now() - 1, _d1)   # expire by clock
+    _oa.cimd_fetch(CIMD_URL)
+    check("A6d expired entry re-fetches", _fetches_a6["n"] == 2,
+          _fetches_a6["n"])
+
+    _remote._pinned_request = _counting_hop(
+        dict(CIMD_DOC, client_id="https://other.example/oauth.json"))
+    _oa._cimd_cache.clear()
+    _oa.cimd_fetch(CIMD_URL)                 # rejected → negative-cached
+    _n3 = _fetches_a6["n"]
+    _oa.cimd_fetch(CIMD_URL)                 # in-window retry
+    check("A6e negative entry cached: in-window retry makes no new fetch",
+          _fetches_a6["n"] == _n3 and _oa.cimd_fetch(CIMD_URL) is None,
+          _fetches_a6["n"])
+    _oa._cimd_cache[CIMD_URL] = (_oa.now() - 1, None)
+    _oa.cimd_fetch(CIMD_URL)
+    check("A6f expired negative entry re-fetches",
+          _fetches_a6["n"] == _n3 + 1, _fetches_a6["n"])
+    _oa._cimd_cache.clear()
+
     # ═══ F. full flow (identity core; resource-server side over real HTTP) ═══
     _remote._pinned_request = _cimd_hop(CIMD_DOC)
     _oa._cimd_cache.clear()
