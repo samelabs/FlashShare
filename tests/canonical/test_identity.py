@@ -613,29 +613,71 @@ try:
           and "key" not in d["keys"][0], blob[:120])
 
     # ═══ C4b. last_used telemetry is throttled (≤1 write / 60s) ═══
-    # Protects: hot key use writes last_used_at at most once per
-    # LAST_USED_TOUCH_INTERVAL_S. Sample: 2 MCP calls with the same key
-    # inside the window; runtime <1s.
-    def _key_last_used():
-        st_l, _h, d_l, _sc = _req_key("GET", "/api/keys", None,
-                                      {"Cookie": ck_key})
-        return next((k["last_used_at"] for k in (d_l or {}).get("keys", [])
-                     if k["prefix"] == plaintext[4:12]), "missing")
+    # The touch writers take the timestamp as their clock, so t / t+10 /
+    # t+61 decide first-write, in-window no-rewrite and post-window
+    # rewrite deterministically — same-second timestamp equality can
+    # never prove a 60 s throttle. Covers both credential families
+    # (API key + OAuth access token); no waiting on wall time.
+    from repo import keys as _keys_repo_c4b
+    from repo import oauth_provider as _oa_repo_c4b
+    from security import token_hash as _token_hash_c4b
 
-    def _mcp_list(ref):
-        return _req_key("POST", "/mcp",
-                        {"jsonrpc": "2.0", "id": ref, "method": "tools/list",
-                         "params": {}},
-                        {"Content-Type": "application/json",
-                         "Accept": "application/json, text/event-stream",
-                         "Authorization": f"Bearer {plaintext}"})
+    _t0_c4b = 1_800_000_000
+    with db() as con:
+        _kid_c4b = con.execute(
+            "select id from api_keys where user_id=%s order by id limit 1",
+            (uid,)).fetchone()["id"]
+    with db() as con:
+        _keys_repo_c4b.touch_key(con, _kid_c4b, _t0_c4b)
+        _k_first = con.execute(
+            "select last_used_at from api_keys where id=%s",
+            (_kid_c4b,)).fetchone()["last_used_at"]
+        _keys_repo_c4b.touch_key(con, _kid_c4b, _t0_c4b + 10)
+        _k_inwin = con.execute(
+            "select last_used_at from api_keys where id=%s",
+            (_kid_c4b,)).fetchone()["last_used_at"]
+        _keys_repo_c4b.touch_key(con, _kid_c4b, _t0_c4b + 61)
+        _k_post = con.execute(
+            "select last_used_at from api_keys where id=%s",
+            (_kid_c4b,)).fetchone()["last_used_at"]
+    check("C4b key first use at t writes the stamp",
+          _k_first == _t0_c4b, (_k_first, _t0_c4b))
+    check("C4b key in-window use (t+10) does NOT rewrite",
+          _k_inwin == _t0_c4b and _k_inwin != _t0_c4b + 10,
+          (_k_inwin, _t0_c4b + 10))
+    check("C4b key past-window use (t+61) rewrites",
+          _k_post == _t0_c4b + 61, (_k_post,))
 
-    _mcp_list(31)                       # first use writes the stamp
-    _mid_lu = _key_last_used()
-    _mcp_list(32)                       # in-window use must NOT rewrite
-    check("C4b in-window reuse → last_used_at unchanged",
-          _mid_lu not in (None, "missing") and _key_last_used() == _mid_lu,
-          (_mid_lu, _key_last_used()))
+    _c4b_hash = _token_hash_c4b("fsot_c4b_" + _os.urandom(8).hex())
+    with db() as con:
+        _oa_repo_c4b.insert_token(
+            con, _c4b_hash, _token_hash_c4b("fsor_c4b_" + _os.urandom(8).hex()),
+            uid, f"https://c4b{_u}.example/o", "tools:call",
+            "https://c4b.example/mcp", _t0_c4b + 3600, _t0_c4b + 86400,
+            _t0_c4b)
+    with db() as con:
+        _oa_repo_c4b.touch_access_token(con, _c4b_hash, _t0_c4b)
+        _o_first = con.execute(
+            "select last_used_at from oauth_mcp_tokens"
+            " where access_token_hash=%s", (_c4b_hash,)
+        ).fetchone()["last_used_at"]
+        _oa_repo_c4b.touch_access_token(con, _c4b_hash, _t0_c4b + 10)
+        _o_inwin = con.execute(
+            "select last_used_at from oauth_mcp_tokens"
+            " where access_token_hash=%s", (_c4b_hash,)
+        ).fetchone()["last_used_at"]
+        _oa_repo_c4b.touch_access_token(con, _c4b_hash, _t0_c4b + 61)
+        _o_post = con.execute(
+            "select last_used_at from oauth_mcp_tokens"
+            " where access_token_hash=%s", (_c4b_hash,)
+        ).fetchone()["last_used_at"]
+    check("C4b token first use at t writes the stamp",
+          _o_first == _t0_c4b, (_o_first, _t0_c4b))
+    check("C4b token in-window use (t+10) does NOT rewrite",
+          _o_inwin == _t0_c4b and _o_inwin != _t0_c4b + 10,
+          (_o_inwin, _t0_c4b + 10))
+    check("C4b token past-window use (t+61) rewrites",
+          _o_post == _t0_c4b + 61, (_o_post,))
 
     # ═══ V. viewable-any-time + session-only ═══
     kid = d["keys"][0]["id"]

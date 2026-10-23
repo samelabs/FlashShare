@@ -2779,10 +2779,9 @@ with db() as con:
         "select coalesce(sum(delta), 0) s from ledger where user_id=%s"
         " and kind = any(%s)",
         (rb_prov, list(_EPK_RB))).fetchone()["s"]
+    _pool_rb3 = ledger_repo.pool_running_balance(con, rb_prov, _EPK_RB)
 check("RB3 provider earn pool == 21000 after withdraw + payout_failed legs",
-      int(_ep) == 21000
-      and ledger_repo.pool_running_balance(
-          con, rb_prov, _EPK_RB) == 21000, _ep)
+      int(_ep) == 21000 and _pool_rb3 == 21000, _ep)
 
 with db() as con:
     purge_users(con, [rb_payer, rb_prov])
