@@ -1591,12 +1591,17 @@ _mcp_up = _mcp_src.split("_ingest_sources(")[1].split("raw = {")[0] if "_ingest_
 check("G12 MCP upload 区保留 boundary/quota 专门分支 + 回滚分支",
       "IngressQuotaDenied" in _mcp_src and "_iserror(" in _mcp_up
       and "_StagingError" in _mcp_up, "")
-# G13: Web transport early-reject 与 authoritative validate_batch 输出同构
-# (ok/error/limit/incoming 四键; incoming=declared transport bytes)
-_er = _apir.split("Transport safety only")[1].split("pending = []")[0] if "Transport safety only" in _apir else ""
-check("G13 Web early-reject 结构完整 {ok,error,limit,incoming} 且不早于 validate_batch 定义第二算法",
-      '"error": "err_batch_too_large"' in _er and '"limit": MAX_BATCH_BYTES' in _er
-      and '"incoming": declared' in _er and "MAX_BATCH_BYTES +" in _er
+# G13: the over-cap upload answer lives ONCE in the middleware body
+# table (same {ok,error,limit,incoming} shape; incoming=declared
+# transport bytes); the route keeps only the authoritative
+# validate_batch algorithm — no second transport gate there.
+_mainr = open(_os.path.join(REPO, "app", "main.py"), encoding="utf-8").read()
+check("G13 over-cap upload answer 单点于中间件表 {ok,error,limit,incoming}; 路由只留 validate_batch",
+      '"error": "err_batch_too_large"' in _mainr
+      and '"limit": MAX_BATCH_BYTES' in _mainr
+      and '"incoming": incoming' in _mainr
+      and "MAX_BATCH_BYTES + _MiB" in _mainr
+      and "err_batch_too_large" not in _apir
       and "validate_batch" in _apir)
 _ups = open(_os.path.join(REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G14 sharing/uploads.py 是 quota denial 唯一构造点 (_quota_denial 单点)",
