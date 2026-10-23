@@ -1,11 +1,17 @@
 # Release migration: DROP platform_tools.icon
 
-**执行顺序（强制）：先部署并重启新代码，确认服务健康后再执行本迁移。**
-不可先删列——v1.5 代码的 seed upsert 与建工具 insert 仍写 `icon`
-（`EXCLUDED.icon` / NOT NULL DEFAULT），列先消失会让 seeding 与工具创建
-直接报 UndefinedColumn。新代码对列零引用，列先在 posterior 无害。
+**执行归属：1.6 发布窗口主顺序 `release_1_6_audit_closure.md` 的阶段 ⑤
+（切换候选首次启动并确认健康之后）**。不可先删列——v1.5 代码的 seed
+upsert 与建工具 insert 仍写 `icon`（`EXCLUDED.icon` / NOT NULL
+DEFAULT），列先消失会让 seeding 与工具创建直接报 UndefinedColumn。
+新代码对列零引用，列先在 posterior 无害。
 
-存量 production 库在 1.6 图标机制剥离批部署时执行**一次**；执行后删除本资产
+**回滚边界（与主顺序阶段 ⑤ 一致）**：本 DROP 执行后，`checkout 旧
+SHA + restart` 不再可用（旧代码写 `icon`、读 `trusted`，两列已删必然
+UndefinedColumn）；此后唯一回滚手段是从阶段 ① 已验证可恢复的备份恢复
+数据库，是否走由 owner 裁定。
+
+生产执行完成并通过阶段 ⑥ 部署后检查后，随主顺序资产一并删除
 （仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。
 
 - 背景：工具图标 = 声明 tag 的查表（`icons.tool_glyph` 单点，S3 起）；

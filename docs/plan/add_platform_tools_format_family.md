@@ -1,19 +1,20 @@
 # Release migration: platform_tools.format_family（tag 列）
 
-**执行顺序（强制，一条线）：**
-**预检 → ① 加列 → 停写窗口 → ② 全量回填（内置 + 社区 + 运营，含 accept
-物化）→ tag 预检 → 部署首启 → ③ 加 FK → 首启后复查。**
+**执行归属（1.6 发布窗口主顺序 `release_1_6_audit_closure.md` 的阶段）**：
+预检属阶段 ①（旧服务运行中）；**① 加列 + ② 全量回填（内置 + 社区 + 运营，
+含 accept 物化）+ tag 预检属阶段 ③（停写后、新代码首启前）**；部署首启属
+阶段 ④；**步骤 ③ 补 FK 属阶段 ⑤**（tags 表由新代码首启创建，FK 只能在
+那之后补）；首启后复查属阶段 ⑥。
 
-先迁移后部署（与 icon 列 DROP 资产方向相反）：新代码的 seed 启动即写
+先迁移后部署（与 icon 列 DROP 的方向相反）：新代码的 seed 启动即写
 `format_family`，列不存在则 `UndefinedColumn` 起不来（PM 升级探针已
 复现）。旧代码（v1.5）不读此列，列先加上对运行中的旧服务零影响。
 
-**停写窗口（强制）**：② 同时写 `format_family` **和** `accept_json`
-（accept=NULL 的行物化全边界清单）——不是"只写新列"。因此 ② 执行前
-必须停掉旧服务对 `platform_tools` 的写入（社区发布/编辑、运营建改），
-否则：预检之后旧服务新建的无 tag 行不会进 ② 的回填集，新代码启动
-校验将拒绝它们。窗口从 ② 开始到新代码首启为止；窗口内若确需运维写
-入，写入后必须重跑 ②（幂等）与下述终检。
+**停写窗口（= 主顺序阶段 ② 至 ④ 首启完成）**：② 同时写 `format_family`
+**和** `accept_json`（accept=NULL 的行物化全边界清单）——不是"只写新列"。
+旧服务停止后若确需运维写入 `platform_tools`（社区发布/编辑、运营建改），
+预检之后写入的无 tag 行不会进 ② 的回填集，新代码启动校验将拒绝它们；
+窗口内确需写入，写入后必须重跑 ②（幂等）与下述终检。
 
 **切换前终检（部署首启前，须为空）**：
 ```sql
@@ -21,7 +22,7 @@ SELECT tool_key FROM platform_tools
  WHERE files_max > 0 AND (format_family IS NULL OR accept_json IS NULL);
 ```
 
-生产库在 1.6 工具链批部署**前**执行**一次**；执行后删除本资产
+生产执行完成并通过阶段 ⑥ 部署后检查后，随主顺序资产一并删除
 （仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。
 
 所有脚本在**仓库主检出根目录**执行，`PYTHONPATH=core`（脚本内已自带

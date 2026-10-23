@@ -1,10 +1,10 @@
 # Release migration: platform_tools 正文输入两列（body_format / body_placeholder_json）
 
-**前置依赖**：`add_platform_tools_format_family.md`（tag 列资产）须先行执行。
-本资产在其之后、同一部署窗口内执行。
-
-**执行顺序（强制，一条线）：**
-**只读预检 → ① 加两列 → ② 回填 → 切换前终检 → 部署首启。**
+**执行归属（1.6 发布窗口主顺序 `release_1_6_audit_closure.md` 的阶段）**：
+预检属阶段 ①（旧服务运行中，可提前检查；停写后复查）；**① 加两列 +
+② 回填 + 切换前终检属阶段 ③（停写后、新代码首启前）**，与
+`add_platform_tools_format_family.md` 的加列回填同一停写窗口执行；
+部署首启属阶段 ④。
 
 先迁移后部署：新代码的 startup `validate_catalog_rows` 即校验
 `body_format` 互斥不变量，列不存在或未回填则服务起不来。旧代码
@@ -84,5 +84,5 @@ SELECT tool_key FROM platform_tools
    AND (body_format IS NOT NULL OR body_placeholder_json IS NOT NULL);
 ```
 
-生产库在本批部署**前**执行**一次**；执行后删除本资产（仓库规则：
-docs/plan/ 仅存放尚未执行的 release migration 资产）。
+生产执行完成并通过主顺序阶段 ⑥ 部署后检查后，随主顺序资产一并删除
+（仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。

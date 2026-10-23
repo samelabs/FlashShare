@@ -212,7 +212,7 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ## Production deploy 概要
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
-- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`；1.6 审计收口资产 `release_1_6_audit_closure.md` 在既有三份 `platform_tools` 资产之后执行）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
+- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。**1.6 发布窗口**（含 `platform_tools` 三份资产 + 审计收口资产）按 `docs/plan/release_1_6_audit_closure.md` 的统一分阶段顺序执行：预检与备份恢复验证 → 停止旧服务写入 → 首启前预建索引/加列回填/终检 → 候选首启 → 补 FK、删 icon/trusted → 二次启动与部署后检查；删除 icon/trusted 后 checkout 旧 SHA 回滚不再可用（唯一回滚 = 恢复备份，owner 裁定）。
 - PostgreSQL 重启后必须重启 flashshare-api：连接池不做存活探测，重启属于维护事件。
 - 生产数据库由生产侧自行管理：部署流程不创建或替换数据库；**retired-schema 迁移在发布窗口按 `docs/plan/` 资产显式执行**（上一行第 2 步），startup/常规同步从不隐式迁移旧 schema——两条各管其事：前者管库的生死，后者管 schema 演进时机。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
@@ -418,6 +418,8 @@ curl -s https://518.plus/healthz
 ### 8. 回滚
 
 第 6–7 步任一失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → `systemctl start flashshare-api` → 报告现象与日志。不做临时修补。
+
+**边界**：`docs/plan/` 的 release migration 一旦删除了旧代码仍读/写的列（1.6 窗口的 `platform_tools.icon`/`trusted`，见该窗口主顺序资产阶段 ⑤），`checkout 旧 SHA + restart` 不再可用——旧代码必然 UndefinedColumn；此后唯一回滚手段是从发布窗口开始前已验证可恢复的备份恢复数据库，是否执行由 owner 裁定。仅加列/建索引的迁移不关闭旧 SHA 回滚路径。
 
 ## Production backup（scripts/）
 
