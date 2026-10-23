@@ -1608,7 +1608,7 @@ check("F1 tool page: unified count + localized outputs + one MCP entry",
       and "files_window_short" in _tpl and "n_files_one" in _tpl
       and "out_kind_" in _tpl and "{{ o }}" not in _tpl
       and _tpl.count("toolMcpName") == 1
-      and 'class="mcpline"' in _tpl,
+      and 'class="tp-access-title"' in _tpl,
       "")
 _res = open(_os.path.join(REPO, "app", "templates", "result.html"),
             encoding="utf-8").read()

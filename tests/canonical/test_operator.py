@@ -2921,7 +2921,7 @@ _nc_sess = create_browser_session(_nc_user)
 _nc_page = client_cp.get("/account/calls", cookies={COOKIE_NAME: _nc_sess})
 import re as _re_nc
 _nc_cells = [int(x.replace(",", ""))
-             for x in _re_nc.findall(r'ta-r mono">([\d,]+)',
+             for x in _re_nc.findall(r'ta-r mono"[^>]*>([\d,]+)',
                                      _nc_page.text or "")]
 check("NC3 account calls page renders the same net values (desc order)",
       _nc_page.status_code == 200

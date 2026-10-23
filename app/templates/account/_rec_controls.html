@@ -1,0 +1,32 @@
+{# ── 账户记录页共用控件 (credits / calls) ─────────────────────
+   时间范围筛选 (链接式, 无 JS 可用; 切换回第一页) + 概览 chips +
+   日趋势条 (服务端稠密 UTC 日序列, ≤90 桶, 纯 CSS 条形, 数值经
+   title/峰值可读)。概览/趋势窗口 = 所选范围; 列表为“全部”时固定最近
+   30 天并在标题旁明示, 不冒充全历史统计。#}
+<div class="rec-toolbar">
+  <div class="seg rec-seg" role="group" aria-label="{{ texts['rec_range_label'] }}">
+    <a href="{{ rec_base }}?range=all"{% if rng == 'all' %} class="on" aria-current="true"{% endif %}><span data-i18n="rec_range_all">{{ texts['rec_range_all'] }}</span></a>
+    <a href="{{ rec_base }}?range=7"{% if rng == '7' %} class="on" aria-current="true"{% endif %}><span data-i18n="rec_range_7">{{ texts['rec_range_7'] }}</span></a>
+    <a href="{{ rec_base }}?range=30"{% if rng == '30' %} class="on" aria-current="true"{% endif %}><span data-i18n="rec_range_30">{{ texts['rec_range_30'] }}</span></a>
+    <a href="{{ rec_base }}?range=90"{% if rng == '90' %} class="on" aria-current="true"{% endif %}><span data-i18n="rec_range_90">{{ texts['rec_range_90'] }}</span></a>
+  </div>
+  <div class="rec-ov">
+    {% for key, val, cls in rec_chips %}
+    <span class="rec-chip"><span class="rec-chip-k" data-i18n="{{ key }}">{{ texts[key] if texts.get(key) else key }}</span><strong class="rec-chip-v mono {{ cls }}">{{ val|num(lang) }}</strong></span>
+    {% endfor %}
+  </div>
+  <div class="rec-trend">
+    <div class="rec-trend-head">
+      <span class="rec-trend-title" data-i18n="{{ rec_trend_key }}">{{ texts[rec_trend_key] }}</span>
+      <span class="rec-trend-note">{{ texts.rec_win_days|replace('{d}', stat_days|num(lang)) }}{% if trend_max > 0 %} · {{ texts.rec_trend_peak }} {{ trend_peak.v|num(lang) }} ({{ trend_peak.label }}){% endif %}</span>
+    </div>
+    {% if trend_max > 0 %}
+    <div class="rec-trend-bars" role="img" aria-label="{{ texts[rec_trend_key] }} · {{ texts.rec_win_days|replace('{d}', stat_days|num(lang)) }}">
+      {% for b in trend %}<span class="rec-bar{% if b.value <= 0 %} zero{% endif %}" style="height: {{ (b.value * 100 / trend_max)|round(1) }}%" title="{{ b.label }}: {{ b.value|num(lang) }}"></span>{% endfor %}
+    </div>
+    <div class="rec-trend-axis"><span>{{ trend[0].label }}</span><span>{{ trend[-1].label }}</span></div>
+    {% else %}
+    <p class="rec-trend-empty" data-i18n="rec_trend_empty">{{ texts['rec_trend_empty'] }}</p>
+    {% endif %}
+  </div>
+</div>

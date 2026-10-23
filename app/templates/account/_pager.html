@@ -1,0 +1,13 @@
+{# ── 账户记录页共用分页 (credits / calls) ─────────────────────
+   首页 / 上一页 / 当前页与总页 / 下一页 / 末页; 链接保留时间范围筛选,
+   换筛选自然回第一页 (筛选链接不带 page)。服务端已把页码钳制到真实
+   页数, 不会出现“有记录却显示暂无”。 #}
+{% if pages > 1 %}
+<nav class="acct-pager" aria-label="{{ texts['pagination'] }}">
+  {% if pg > 1 %}<a href="{{ rec_base }}?page=1&amp;range={{ rng }}" aria-label="{{ texts.pager_first }}">«</a>{% else %}<span class="off" aria-hidden="true">«</span>{% endif %}
+  {% if pg > 1 %}<a href="{{ rec_base }}?page={{ pg - 1 }}&amp;range={{ rng }}">← {{ texts.prev_page }}</a>{% else %}<span class="off">← {{ texts.prev_page }}</span>{% endif %}
+  <span class="grow">{{ texts.page_of|replace('{p}', pg|num(lang))|replace('{n}', pages|num(lang)) }} · {{ texts.credit_detail_count|replace('{n}', total|num(lang)) }}</span>
+  {% if pg < pages %}<a href="{{ rec_base }}?page={{ pg + 1 }}&amp;range={{ rng }}">{{ texts.next_page }} →</a>{% else %}<span class="off">{{ texts.next_page }} →</span>{% endif %}
+  {% if pg < pages %}<a href="{{ rec_base }}?page={{ pages }}&amp;range={{ rng }}" aria-label="{{ texts.pager_last }}">»</a>{% else %}<span class="off" aria-hidden="true">»</span>{% endif %}
+</nav>
+{% endif %}

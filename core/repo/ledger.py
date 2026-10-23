@@ -94,18 +94,81 @@ def lock_user(con, user_id: int) -> None:
     con.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
 
 
-def history_paged(con, user_id: int, kinds: Sequence[str],
-                  size: int, offset: int) -> tuple:
-    total = con.execute(
-        "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = ANY(%s)",
-        (user_id, list(kinds))).fetchone()["n"]
+def history_count(con, user_id: int, kinds: Sequence[str],
+                  since_ts: Optional[int] = None) -> int:
+    """Row count for the credits history, optionally time-boxed
+    (created_at >= since_ts, epoch seconds). The count is the REAL
+    filtered total — the account page bounds its page number against
+    it, so history past the global MAX_LIST_PAGE stays reachable while
+    offsets stay bounded by the true total."""
+    sql = ("SELECT COUNT(*) AS n FROM ledger"
+           " WHERE user_id = %s AND kind = ANY(%s)")
+    params: list = [user_id, list(kinds)]
+    if since_ts is not None:
+        sql += " AND created_at >= %s"
+        params.append(since_ts)
+    return int(con.execute(sql, params).fetchone()["n"])
+
+
+def history_page(con, user_id: int, kinds: Sequence[str],
+                 size: int, offset: int,
+                 since_ts: Optional[int] = None) -> list:
+    """One page of the user's spendable-pool flow, newest first."""
+    sql = ("SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)")
+    params: list = [user_id, list(kinds)]
+    if since_ts is not None:
+        sql += " AND created_at >= %s"
+        params.append(since_ts)
+    sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
+    params += [size, offset]
+    return [dict(r) for r in con.execute(sql, params).fetchall()]
+
+
+SPEND_SUMMARY_KINDS = ("consume", "refund")
+
+
+def spend_summary(con, user_id: int,
+                  since_ts: Optional[int] = None) -> dict:
+    """Consumption overview for the credits page, DB-aggregated.
+
+    consume = the magnitude of consume deltas (they are negative on the
+    ledger), refund = refund deltas; net = consumption − refunds. Grants,
+    top-ups and adjustments are neither consumption nor refunds; the
+    earn pool never mixes in. Same time box as the page's range filter
+    when since_ts is given."""
+    sql = ("SELECT kind, SUM(delta) AS s FROM ledger"
+           " WHERE user_id = %s AND kind = ANY(%s)")
+    params: list = [user_id, list(SPEND_SUMMARY_KINDS)]
+    if since_ts is not None:
+        sql += " AND created_at >= %s"
+        params.append(since_ts)
+    out = {"consume": 0, "refund": 0, "net": 0}
+    for r in con.execute(sql + " GROUP BY kind", params).fetchall():
+        if r["kind"] == "consume":
+            out["consume"] = -int(r["s"])
+        else:
+            out["refund"] = int(r["s"])
+    out["net"] = out["consume"] - out["refund"]
+    return out
+
+
+def spend_daily(con, user_id: int, since_ts: int) -> dict:
+    """Daily consume/refund buckets for the trend strip. Day = the UTC
+    day (epoch // 86400); returns {day: {"consume": n, "refund": n}}
+    sparse, DB-aggregated."""
     rows = con.execute(
-        """
-        SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)
-        ORDER BY id DESC LIMIT %s OFFSET %s
-        """,
-        (user_id, list(kinds), size, offset)).fetchall()
-    return [dict(r) for r in rows], total
+        "SELECT (created_at / 86400) AS d, kind, SUM(delta) AS s"
+        " FROM ledger WHERE user_id = %s AND kind = ANY(%s)"
+        " AND created_at >= %s GROUP BY 1, 2",
+        (user_id, list(SPEND_SUMMARY_KINDS), since_ts)).fetchall()
+    out: dict = {}
+    for r in rows:
+        bucket = out.setdefault(int(r["d"]), {"consume": 0, "refund": 0})
+        if r["kind"] == "consume":
+            bucket["consume"] += -int(r["s"])
+        else:
+            bucket["refund"] += int(r["s"])
+    return out
 
 
 def history_tool_refs(con, ledger_ids: list) -> dict:

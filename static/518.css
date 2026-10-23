@@ -529,11 +529,54 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .ledger-kind.ledger-consume { background: rgba(220,38,38,.10); color: var(--danger); }
 .ledger-kind.ledger-refund { background: var(--info-50); color: var(--info); }
 .ledger-kind.ledger-adjust { background: rgba(107,114,128,.15); color: var(--ink); }
-.acct-pager { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: var(--fs-sm); }
+.acct-pager { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: var(--fs-sm); flex-wrap: wrap; }
 .acct-pager a { color: var(--brand); text-decoration: none; }
 .acct-pager .off { color: var(--ink-2); opacity: .5; }
-.acct-pager .grow { flex: 1; text-align: center; color: var(--ink-2); font-size: var(--fs-xs); }
+.acct-pager .grow { flex: 1; min-width: 120px; text-align: center; color: var(--ink-2); font-size: var(--fs-xs); }
 .acct-empty { text-align: center; color: var(--ink-2); padding: var(--s4) 0; }
+
+/* ── 账户记录页共用控件 (credits / calls, _rec_controls.html) ──
+   时间范围筛选 (链接式 seg) + 概览 chips + 日趋势条 (服务端稠密 UTC
+   日序列, ≤90 桶, 纯 CSS 条形; 数值在 title 与峰值行可读)。 */
+.rec-toolbar { display: flex; flex-direction: column; gap: var(--s3); margin-block-end: var(--s3); min-width: 0; }
+.rec-seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+.rec-ov { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.rec-chip { display: inline-flex; align-items: baseline; gap: var(--s2); background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-full); padding: 4px 12px; min-width: 0; }
+.rec-chip-k { font-size: var(--fs-xs); color: var(--ink-2); white-space: nowrap; }
+.rec-chip-v { font-size: var(--fs-sm); color: var(--ink); white-space: nowrap; }
+.rec-chip-v.pos { color: var(--ok); }
+.rec-chip-v.neg { color: var(--danger); }
+.rec-trend { min-width: 0; }
+.rec-trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; margin-block-end: var(--s1); }
+.rec-trend-title { font-size: var(--fs-xs); font-weight: 650; color: var(--ink-2); }
+.rec-trend-note { font-size: var(--fs-xs); color: var(--ink-2); }
+.rec-trend-bars { display: flex; align-items: flex-end; gap: 1px; height: 44px; background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 4px; }
+.rec-bar { flex: 1 1 0; min-width: 2px; max-width: 14px; background: var(--brand); border-radius: 1px; }
+.rec-bar.zero { background: color-mix(in srgb, var(--line) 70%, transparent); }
+.rec-trend-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-2); margin-block-start: 2px; }
+.rec-trend-empty { font-size: var(--fs-xs); color: var(--ink-2); margin: 0; padding: var(--s2) 0; }
+/* 时间列: 桌面日期/时刻同行带间隔; 手机 (下方媒体查询) 两行堆叠 */
+.rec-list .rec-ts { display: inline-flex; align-items: baseline; gap: 6px; }
+
+/* 手机 (≤767px): 记录列表从表格转为堆叠记录卡 — 表头隐藏, 每格
+   label::before 出列名 (data-th), 时间拆日期/时刻两行, 金额/状态/结果
+   动作直接可见, 数字不逐字竖排; 页面本身不横向滚动。 */
+@media (max-width: 767px) {
+  .rec-list { overflow-x: visible; border: 0; border-radius: 0; }
+  .rec-list table.acct-table { display: block; }
+  .rec-list .acct-table thead { display: none; }
+  .rec-list .acct-table tbody { display: block; }
+  .rec-list .acct-table tr { display: block; padding: var(--s2) 0; border-block-end: 1px solid var(--line); }
+  .rec-list .acct-table tbody tr:last-child { border-block-end: 0; }
+  .rec-list .acct-table tbody tr:nth-child(even) { background: transparent; }
+  .rec-list .acct-table td { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); border: 0; padding: 3px 0; text-align: end; white-space: normal; }
+  .rec-list .acct-table td::before { content: attr(data-th); font-size: var(--fs-xs); font-weight: 650; color: var(--ink-2); text-align: start; flex: none; }
+  .rec-list .acct-table td.mono, .rec-list .acct-table td.ta-r { white-space: normal; }
+  .rec-list .rec-ts { flex-direction: column; align-items: flex-end; gap: 0; }
+  .rec-list .rec-ts::before { margin-block-end: 2px; }
+  .rec-list .rec-ts-d { color: var(--ink-2); }
+  .rec-list .credit-note-cell { max-width: 60%; }
+}
 
 @media (max-width: 640px) {
 

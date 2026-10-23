@@ -92,7 +92,7 @@ const PAGES = [
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#cfgClaudeCode", "#cfgCurl"], copy: ["#copyMcp", '[data-copy-target="cfgClaudeCode"]'] },
   { path: "/pricing", name: "pricing", anonOk: true, need: [".pr-plans .pr-card", "#refund"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
-  { path: "/auth/register", name: "auth-register", anonOk: true, need: ["#regUsername"] },
+  { path: "/auth/register", name: "auth-register", anonOk: true, need: ["form[action='/auth/register'] input[name=password_confirm]"] },
   { path: "/account/credits", name: "account-credits", need: [] },
   { path: "/account/tools", name: "account-tools", need: ["#openPublish"] },
   { path: "/account/tools/publish", name: "account-publish", need: ["#pubForm"] },
@@ -286,14 +286,16 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
     if (ctxName === "desktop") {
       // REGISTER (console stream is captured for the whole context flow)
+      // selectors ride the shared auth card (auth/_card.html, name-based —
+      // the partial carries no DOM ids)
       const flowConsole = [];
       page.on("console", (m) => { if (m.type() === "error") flowConsole.push(m.text()); });
-      await gotoReady(page, "/auth/register", "#regUsername");
-      await page.fill("#regUsername", username);
-      await page.fill("#regEmail", `${username}@t.co`);
-      await page.fill("#regPassword", password);
-      await page.fill("#regPasswordConfirm", password);
-      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), page.click("button[type=submit]")]);
+      await gotoReady(page, "/auth/register", "form[action='/auth/register'] input[name=username]");
+      await page.fill("form[action='/auth/register'] input[name=username]", username);
+      await page.fill("form[action='/auth/register'] input[name=email]", `${username}@t.co`);
+      await page.fill("form[action='/auth/register'] input[name=password]", password);
+      await page.fill("form[action='/auth/register'] input[name=password_confirm]", password);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), page.click("form[action='/auth/register'] button[type=submit]")]);
       check("web register: redirects to /", new URL(page.url()).pathname === "/", page.url());
       check("web register: logged-in header", (await page.$("#userMenuBtn")) !== null);
       check("web register: zero console.error", flowConsole.filter((e) => !/net::|Failed to load resource|ERR_/i.test(e)).length === 0, flowConsole.join(" | "));
@@ -1435,7 +1437,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await page.click("#mobileNavBtn");
       await page.waitForTimeout(300);
       await page.click(".mobile-nav-login");
-      await page.waitForSelector(".auth-modal input", { timeout: 5000 });
+      await page.waitForSelector(".auth-modal input:not([type=hidden])", { timeout: 5000 });
       const bad = await auditInputs(page);
       check("input-floor 390 login overlay: inputs >= 16px", bad.length === 0, bad.join(", "));
       await ctx.close();
@@ -1458,7 +1460,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             window.openAuthModal({ mode });
             const panel = document.querySelector(".auth-modal");
             if (!panel) return { ok: false, why: "no panel" };
-            const first = panel.querySelector("form input");
+            const first = panel.querySelector("form input:not([type=hidden])");
             if (first) first.focus();
             const pr = panel.getBoundingClientRect();
             const fr = document.activeElement && document.activeElement.getBoundingClientRect
@@ -2274,6 +2276,324 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check(`drawer ${p}: backdrop closes`, backdropShown && backdropClosed === true);
     }
     await dctx.close();
+  }
+
+  // ── auth unification + tool access cards + account records (browser
+  // legs; structural facts live in canonical test_web_surface A*/RC*) ──
+  {
+    const { execFileSync } = require("child_process");
+    const py = process.env.PYTHON || "python3";
+    const arUser = "gateb" + Math.random().toString(36).slice(2, 8);
+    const arPass = "Test12345";
+    const nojsUser = "gatec" + Math.random().toString(36).slice(2, 8);
+    const bodyToolKey = "gatebody" + Math.random().toString(36).slice(2, 8);
+    let arCookie = "";
+
+    // (1) modal lifecycle on an anonymous context: failure, mismatch,
+    // mode switch clears errors, focus trap + Esc restores focus
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/tools", "body");
+      const trigger = await page.$('header a[href="/auth/login"].js-auth');
+      check("ar: header login trigger present (anon)", trigger !== null);
+      await trigger.click();
+      await page.waitForSelector(".auth-modal input:not([type=hidden])", { timeout: 5000 });
+      // wrong credentials → typed error line, still open
+      await page.fill(".auth-modal input[name=login]", "nosuch_user_x");
+      await page.fill(".auth-modal input[name=password]", "wrong-pass-1");
+      await page.click(".auth-modal button[type=submit]");
+      await page.waitForSelector(".auth-modal .am-err:not([hidden])", { timeout: 10000 });
+      check("ar: modal wrong login shows the typed error",
+        (await page.textContent(".auth-modal .am-err")) !== "");
+      // switch to register: the error from the previous mode is gone
+      await page.click('.auth-modal .seg [data-mode="register"]');
+      await page.waitForSelector(".auth-modal input[name=password_confirm]", { timeout: 5000 });
+      check("ar: switching modes clears the previous mode's error",
+        await page.$eval(".auth-modal .am-err", (el) => el.hidden));
+      // password mismatch hint (shared binder) shows and clears
+      await page.fill(".auth-modal input[name=password]", "Password1");
+      await page.fill(".auth-modal input[name=password_confirm]", "Password2");
+      await page.fill(".auth-modal input[name=username]", "x");
+      check("ar: mismatched confirm shows the shared hint",
+        !(await page.$eval(".auth-modal .pw-mismatch", (el) => el.hidden)));
+      await page.fill(".auth-modal input[name=password_confirm]", "Password1");
+      check("ar: matching confirm hides the hint",
+        await page.$eval(".auth-modal .pw-mismatch", (el) => el.hidden));
+      // focus trap: 8 tabs stay inside the overlay (trace as evidence)
+      const trapSeq = [];
+      for (let i = 0; i < 8; i++) {
+        await page.keyboard.press("Tab");
+        trapSeq.push(await page.evaluate(() => {
+          const el = document.activeElement;
+          const ov = document.querySelector(".auth-modal");
+          return el ? `${el.tagName}:${(el.name || el.className || el.textContent || "").toString().slice(0, 20)}:in=${ov && ov.contains(el)}` : "none";
+        }));
+      }
+      check("ar: tab focus stays trapped in the overlay",
+        trapSeq.every((s) => s.endsWith("in=true")), trapSeq.join(" | "));
+      // Esc closes and restores focus to the trigger
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".auth-modal", { state: "detached", timeout: 5000 });
+      const restored = await page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        return document.activeElement === el;
+      }, 'header a[href="/auth/login"].js-auth');
+      check("ar: Esc closes and restores focus to the trigger", restored);
+      await ctx.close();
+    }
+
+    // (2) register through the modal (success path) → seeded records user
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/tools", "body");
+      await page.click('header a[href="/auth/register"].js-auth');
+      await page.waitForSelector(".auth-modal input[name=username]", { timeout: 5000 });
+      await page.fill(".auth-modal input[name=username]", arUser);
+      await page.fill(".auth-modal input[name=email]", `${arUser}@t.co`);
+      await page.fill(".auth-modal input[name=password]", arPass);
+      await page.fill(".auth-modal input[name=password_confirm]", arPass);
+      await page.click(".auth-modal button[type=submit]");
+      await page.waitForSelector(".auth-modal", { state: "detached", timeout: 15000 });
+      check("ar: modal register succeeds and closes the overlay",
+        (await page.$("header .av, header #userMenuBtn")) !== null);
+      const cookie = (await ctx.cookies()).find((c) => c.name.includes("session"));
+      check("ar: modal register leaves a session cookie", !!cookie);
+      arCookie = cookie ? cookie.value : "";
+      await ctx.close();
+    }
+
+    // (3) no-JS registration on the standalone page (real POST form)
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, javaScriptEnabled: false });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/auth/register", "form[action='/auth/register']");
+      await page.fill("form[action='/auth/register'] input[name=username]", nojsUser);
+      await page.fill("form[action='/auth/register'] input[name=email]", `${nojsUser}@t.co`);
+      await page.fill("form[action='/auth/register'] input[name=password]", arPass);
+      await page.fill("form[action='/auth/register'] input[name=password_confirm]", arPass);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click("form[action='/auth/register'] button[type=submit]")]);
+      check("ar: no-JS register submits the real form and lands logged in",
+        new URL(page.url()).pathname === "/", page.url());
+      await ctx.close();
+    }
+
+    // (4) seed deterministic records for arUser + the body tool
+    execFileSync(py, ["-c", `
+import os, sys, json, secrets
+sys.path.insert(0, "core")
+os.environ["DATABASE_URL"] = os.environ["TEST_DB_URL"].replace("postgresql://", "postgresql+psycopg://")
+from database import db
+from utils import now
+u, key = sys.argv[1], sys.argv[2]
+ts = now()
+with db() as con:
+    uid = int(con.execute("select id from users where username=%s", (u,)).fetchone()["id"])
+    bal = 0
+    for i in range(20):
+        bal -= 5
+        con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                    " created_at) values (%s, -5, %s, 'consume', %s)",
+                    (uid, bal, ts - i * 60))
+    bal += 2
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " created_at) values (%s, 2, %s, 'refund', %s)", (uid, bal, ts - 60))
+    bal += 50
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " created_at) values (%s, 50, %s, 'grant_signup', %s)", (uid, bal, ts))
+    bal -= 5
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " created_at) values (%s, -5, %s, 'consume', %s)", (uid, bal, ts - 40 * 86400))
+    c = con.execute("insert into tool_calls (client_ref, user_id, tool_id,"
+                    " status, cost_snapshot, commission_rate_snapshot,"
+                    " invocation_hash, started_at, finished_at,"
+                    " result_public_id, result_json) values"
+                    " (%s, %s, 'share', 'ok', 5, 30, %s, %s, %s, %s, %s)"
+                    " returning id",
+                    ("gateb_call", uid, secrets.token_hex(32), ts, ts,
+                     "gateb_res_pub", json.dumps({"expires_at": ts + 86400}))).fetchone()
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " ref_type, ref_id, idem_key, created_at) values"
+                " (%s, -5, -5, 'consume', 'tool_call', %s, %s, %s)",
+                (uid, str(c["id"]), "gateb_c", ts))
+    con.execute("insert into platform_tools (tool_key, owner_id, tool_id,"
+                " execution, label_json, visibility, enabled, files_min,"
+                " files_max, outputs_json, created_at, updated_at,"
+                " format_family, body_format, body_placeholder_json,"
+                " params_json, accept_json) values"
+                " (%s, NULL, %s, 'local', %s, 'public', TRUE, 0, 0,"
+                " '[\\"text\\"]', %s, %s, NULL, 'text', %s, '[]', NULL)",
+                (key, key, json.dumps({"en": "Gate Body"}), ts, ts,
+                 json.dumps({"en": "Paste text"})))
+    con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
+                " values (%s, 0, TRUE, %s)", (key, ts))
+print("seeded")
+`, arUser, bodyToolKey], { env: Object.assign({}, process.env, { TEST_DB_URL: TEST_DB }), encoding: "utf8" });
+
+    // (5) records pages as arUser: paging, clamping, filter, summary, links
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      const go = (p) => page.goto(BASE + p, { waitUntil: "load", timeout: 20000 });
+      // real form login on the standalone page (same no-JS surface)
+      await go("/auth/login?lang=en");
+      await page.fill("form[action='/auth/login'] input[name=login]", arUser);
+      await page.fill("form[action='/auth/login'] input[name=password]", arPass);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click("form[action='/auth/login'] button[type=submit]")]);
+      arCookie = ((await ctx.cookies()).find((c) => c.name.includes("session")) || {}).value || "";
+      await go("/account/credits?lang=en");
+      const p1 = await page.evaluate(() => ({
+        url: location.pathname,
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        pager: (document.querySelector(".acct-pager") || {}).textContent || "",
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+        bars: document.querySelectorAll(".rec-bar").length,
+        statsNote: (document.querySelector(".rec-trend-note") || {}).textContent || "",
+        sw: document.documentElement.scrollWidth, vw: innerWidth,
+      }));
+      check("ar records: credits page 1 = 20 rows of 24, pager 1/2 with total",
+        p1.url === "/account/credits" && p1.rows === 20
+        && p1.pager.indexOf("1 / 2") !== -1 && p1.pager.indexOf("24 records") !== -1,
+        JSON.stringify(p1));
+      check("ar records: overview chips = Spent 105 / Refunded 2 / Net 103 (30d window, grants excluded)",
+        p1.chips[0] === "Spent105" && p1.chips[1] === "Refunded2" && p1.chips[2] === "Net spend103",
+        JSON.stringify(p1.chips));
+      check("ar records: trend bars + labeled 30d UTC stats window on range=all",
+        p1.bars === 30 && /last 30 days \(UTC\)/.test(p1.statsNote), JSON.stringify(p1));
+      await go("/account/credits?page=999&lang=en");
+      const p2 = await page.evaluate(() => ({
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        empty: !!document.querySelector(".acct-empty"),
+        lastRow: document.querySelector(".rec-list tbody tr:last-child").textContent.slice(0, 60),
+      }));
+      check("ar records: page 999 clamps to the real last page (no fake empty state)",
+        p2.rows === 4 && !p2.empty, JSON.stringify(p2));
+      await go("/account/credits?range=7&lang=en");
+      const p3 = await page.evaluate(() => ({
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        count: (document.querySelector(".acct-card-sub") || {}).textContent || "",
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+      }));
+      check("ar records: range=7 filters the list (23 of 24) and stats share the window",
+        p3.rows === 20 && p3.count.indexOf("23 records") !== -1
+        && p3.chips[0] === "Spent105",
+        JSON.stringify(p3));
+      await go("/account/calls?lang=en");
+      const calls1 = await page.evaluate(() => ({
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+        result: !!document.querySelector('.rec-list a[href^="/r/"]'),
+        ledgerAnchor: !!document.querySelector('.rec-list a[href*="#call-"]'),
+      }));
+      check("ar records: calls page shows the ok call with a live result link",
+        calls1.rows === 1 && calls1.result, JSON.stringify(calls1));
+      // result link lands on /r/
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click('.rec-list a[href^="/r/"]')]);
+      check("ar records: result link opens the /r page",
+        new URL(page.url()).pathname.startsWith("/r/"), page.url());
+      await go("/account/credits?lang=en");
+      const anchor = await page.$eval('.rec-list a[href*="#call-"]', (a) => a.getAttribute("href"));
+      check("ar records: credits → calls row anchor link rides the relation",
+        /\/account\/calls\?page=\d+#call-\d+/.test(anchor), anchor);
+      // empty states for the fresh no-JS-registered user
+      const ectx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const epage = await ectx.newPage();
+      await epage.goto(BASE + "/auth/login?lang=en", { waitUntil: "load" });
+      await epage.fill("form[action='/auth/login'] input[name=login]", nojsUser);
+      await epage.fill("form[action='/auth/login'] input[name=password]", arPass);
+      await Promise.all([epage.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        epage.click("form[action='/auth/login'] button[type=submit]")]);
+      await epage.goto(BASE + "/account/credits?lang=en", { waitUntil: "load" });
+      const emptyCredits = await epage.evaluate(() => ({
+        empty: !!document.querySelector(".acct-empty"),
+        trendEmpty: !!document.querySelector(".rec-trend-empty"),
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+      }));
+      check("ar records: fresh account → empty list + trend empty state, zeroed chips",
+        emptyCredits.empty && emptyCredits.trendEmpty
+        && emptyCredits.chips.join("|") === "Spent0|Refunded0|Net spend0",
+        JSON.stringify(emptyCredits));
+      await epage.goto(BASE + "/account/calls?lang=en", { waitUntil: "load" });
+      check("ar records: fresh account calls page empty state",
+        !!(await epage.$(".acct-empty")));
+      await ectx.close();
+
+      // viewports: no horizontal overflow anywhere, stacked rows on phones
+      for (const [w, h] of [[1280, 900], [390, 844], [360, 800], [320, 700]]) {
+        const vctx = await browser.newContext({ viewport: { width: w, height: h } });
+        const vpage = await vctx.newPage();
+        await vpage.addInitScript((c) => { document.cookie = "flashshare_session=" + c + "; path=/"; }, arCookie);
+        for (const p of ["/account/credits?lang=en", "/account/calls?lang=en",
+                         `/tool/${bodyToolKey}?lang=en`, "/tool/compress?lang=en"]) {
+          await vpage.goto(BASE + p, { waitUntil: "load", timeout: 20000 });
+          await vpage.waitForTimeout(150);
+          const probe = await vpage.evaluate((w) => ({
+            url: location.pathname,
+            sw: document.documentElement.scrollWidth, vw: innerWidth,
+            stacked: [...document.querySelectorAll(".rec-list tbody td")].every((td) => getComputedStyle(td).display === "flex" || getComputedStyle(td).display === "block"),
+            hasRows: document.querySelectorAll(".rec-list tbody tr").length > 0,
+            addrWrap: [...document.querySelectorAll(".tp-acc-v")].every((c) => c.scrollWidth <= c.clientWidth + 1),
+          }), w);
+          check(`ar ${w} ${p.split("?")[0]}: no horizontal overflow, values readable`,
+            probe.sw <= probe.vw + 1
+            && (!probe.hasRows || w <= 767 || !probe.stacked)
+            && (!probe.hasRows || w > 767 || probe.stacked)
+            && probe.addrWrap, JSON.stringify(probe));
+          if (w === 390) {
+            await vpage.screenshot({ path: path.join(OUT, "mobile", `ar-${p.replace(/[^a-z]/gi, "")}-${w}.png`), fullPage: true }).catch(() => {});
+          }
+        }
+        await vctx.close();
+      }
+
+      // languages: zh stats label + ar RTL direction on the tool page
+      await go("/account/credits?lang=zh");
+      check("ar records: zh renders the localized stats window note",
+        (await page.content()).indexOf("统计：近 30 天（UTC）") !== -1);
+      await go(`/tool/${bodyToolKey}?lang=ar`);
+      const rtl = await page.evaluate(() => ({
+        dir: document.documentElement.getAttribute("dir"),
+        sw: document.documentElement.scrollWidth, vw: innerWidth,
+      }));
+      check("ar access: RTL language keeps dir=rtl with no overflow",
+        rtl.dir === "rtl" && rtl.sw <= rtl.vw + 1, JSON.stringify(rtl));
+      await ctx.close();
+    }
+
+    // (6) access cards: copy payloads match the display, file + body tools
+    {
+      const ctx = await browser.newContext({
+        viewport: { width: 1280, height: 900 },
+        permissions: ["clipboard-read", "clipboard-write"],
+      });
+      const page = await ctx.newPage();
+      for (const key of ["compress", bodyToolKey]) {
+        await gotoReady(page, `/tool/${key}`, "#toolAccess");
+        const shown = await page.evaluate(() => ({
+          server: (document.querySelector(".tp-acc-v") || {}).textContent.trim(),
+          name: (document.getElementById("toolMcpName") || {}).textContent.trim(),
+          example: (document.getElementById("toolApiExample") || {}).textContent.trim(),
+        }));
+        await page.click("#toolMcpCopy");
+        await page.waitForTimeout(150);
+        const mcpClip = await page.evaluate(() => navigator.clipboard.readText());
+        check(`ar access ${key}: MCP copy carries the server URL + call name`,
+          mcpClip.indexOf(shown.server) !== -1 && mcpClip.indexOf(shown.name) !== -1,
+          mcpClip.slice(0, 80));
+        await page.click("#toolApiCopy");
+        await page.waitForTimeout(150);
+        const apiClip = await page.evaluate(() => navigator.clipboard.readText());
+        check(`ar access ${key}: API copy is the shown example, verbatim`,
+          apiClip.trim() === shown.example.trim(), apiClip.slice(0, 80));
+        check(`ar access ${key}: key-creation entry is a live link`,
+          !!(await page.$('a.tp-acc-key[href="/account/keys"]')));
+      }
+      await ctx.close();
+    }
   }
 
   await browser.close();

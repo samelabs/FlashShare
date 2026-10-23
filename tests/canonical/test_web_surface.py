@@ -841,4 +841,285 @@ finally:
     _cleanup()
 
 
+# ════════════════════════════════════════════════════════════════════════
+# Auth form single source + account records (filter / paging / overview)
+#
+#   A*   auth unification: /auth/login + /auth/register render the ONE
+#        shared card (auth/_card.html) — same field specs, seg mode
+#        switch, recovery + terms on both; base.html embeds the two
+#        server-rendered <template>s the modal clones; the partial
+#        carries no DOM ids; the modal JS holds no hand-written field
+#        markup; the standalone pages keep real POST forms (no-JS).
+#   RC*  account records: 20-per-page with real-total page bounds
+#        (past the global 10k ceiling via the bound function), range
+#        filter (all/7/30/90) with stats window semantics (range=all →
+#        overview/trend fixed to last 30 days and labeled), consume /
+#        refund / net from ledger kinds only, per-status call counts
+#        via the net-charge relation projection, per-user isolation.
+#        Fixed timestamps (no sleeps); 21-row samples for 20/1 paging;
+#        the 10001st-page reachability uses the bound function with a
+#        controlled total, not 200k fixture rows.
+# ════════════════════════════════════════╤═══════════════════════════════
+section('Auth form single source + account records')
+
+import time as _time_rc
+
+_ts_rc = int(_time_rc.time())
+_u_rc = "rc" + _uuid.uuid4().hex[:6]
+_RC_USERS = []
+
+
+def _mkuser_rc(name):
+    with db() as con:
+        row = con.execute(
+            "insert into users (username, email, password_hash, display_name,"
+            " status, created_at, last_login_at) values (%s, %s, 'x', 'T',"
+            " 'active', %s, %s) returning id",
+            (name, f"{name}@t.co", _ts_rc, _ts_rc)).fetchone()
+    _RC_USERS.append(int(row["id"]))
+    return int(row["id"])
+
+
+def _led_rc(con, uid, kind, delta, bal, at, n, ref_type=None, ref_id=None):
+    con.execute(
+        "insert into ledger (user_id, delta, balance_after, kind, ref_type,"
+        " ref_id, idem_key, note, created_at) values (%s, %s, %s, %s, %s,"
+        " %s, %s, NULL, %s)",
+        (uid, delta, bal, kind, ref_type, ref_id, f"rc_{_u_rc}_{n}", at))
+
+
+try:
+    from fastapi.testclient import TestClient as _TC_rc
+    from app.main import app as _app_rc
+    from app.web_auth import create_browser_session as _cbs_rc, COOKIE_NAME as _CK_rc
+    client_rc = _TC_rc(_app_rc)
+
+    def _get_rc(path, cookie=None):
+        r = client_rc.get(path, cookies={_CK_rc: cookie} if cookie else None,
+                          follow_redirects=False)
+        return r.status_code, r.text
+
+    # ═══ A. auth unification (structure — login/register behavior is
+    # locked in test_identity) ═══
+    st, login_html = _get_rc("/auth/login?lang=en")
+    st2, reg_html = _get_rc("/auth/register?lang=en")
+    check("A1 both standalone pages render the shared card",
+          st == 200 and st2 == 200 and 'class="auth-card"' in login_html
+          and 'class="auth-card"' in reg_html, (st, st2))
+    check("A2 same field specs from the single source (register pattern verbatim on page AND template)",
+          login_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"') == 1
+          and reg_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"') == 2,
+          (login_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"'),
+           reg_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"')))
+    check("A3 page seg switch links both modes with next preserved",
+          'href="/auth/register?next=' in login_html
+          and 'href="/auth/login?next=' in reg_html, "")
+    check("A4 recovery + terms present on BOTH modes",
+          "support_recovery_hint" in login_html
+          and "support_recovery_hint" in reg_html
+          and 'href="/terms"' in login_html and 'href="/terms"' in reg_html, "")
+    check("A5 shared partial carries no DOM ids (page + clone cannot collide)",
+          "regUsername" not in reg_html and "registerForm" not in reg_html
+          and "pwMismatch" not in reg_html, "")
+    check("A6 no-JS: standalone forms are real POSTs to their routes",
+          'method="post" action="/auth/login"' in login_html
+          and 'method="post" action="/auth/register"' in reg_html, "")
+    st, home_html = _get_rc("/?lang=en")
+    check("A7 base embeds both server-rendered auth templates site-wide",
+          st == 200 and '<template id="authTplLogin">' in home_html
+          and '<template id="authTplRegister">' in home_html
+          and 'name="password_confirm"' in home_html, st)
+    _amjs = open(f"{REPO}/static/pages/auth-modal.js", encoding="utf-8").read()
+    check("A8 modal JS holds no hand-written field markup (clones the templates)",
+          "<label" not in _amjs and "authTplRegister" in _amjs
+          and "bindPwMismatch" in _amjs, "")
+    _rjs = open(f"{REPO}/static/pages/register.js", encoding="utf-8").read()
+    check("A9 page password-mismatch reuses the shared binder",
+          "bindPwMismatch" in _rjs, "")
+
+    # ═══ RC fixtures ═══
+    DAY = 86400
+    now_rc = int(_time_rc.time())
+    t_today = now_rc
+    t_3d = now_rc - 3 * DAY
+    t_40d = now_rc - 40 * DAY
+    uid_calls = _mkuser_rc(_u_rc + "cl")     # calls page: 21 calls
+    uid_cred = _mkuser_rc(_u_rc + "cr")      # credits page: 21 spendable rows
+    uid_other = _mkuser_rc(_u_rc + "ot")     # permission isolation
+    with db() as con:
+        # tool identity for label resolution (one known, others deleted)
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id,"
+            " execution, label_json, visibility, enabled, files_min,"
+            " files_max, outputs_json, created_at, updated_at, accept_json,"
+            " format_family) values (%s, NULL, %s, 'local', %s, 'public',"
+            " TRUE, 1, 1, '[\"text\"]', %s, %s, '[\".png\"]', 'image')",
+            (f"rctool_{_u_rc}", f"rctool_{_u_rc}",
+             _json.dumps({"en": "RC Tool"}), _ts_rc, _ts_rc))
+        # 21 calls: 18 ok (17 today + 1 at 3d), 2 failed today, 1 insufficient
+        # at 40d; ids ascend with time so newest-first = today first
+        _call_ids = []
+        _specs = ([("failed", t_today, 1), ("failed", t_today, 1),
+                   ("insufficient", t_40d, 0)]
+                  + [("ok", t_3d, 1)]
+                  + [("ok", t_today, 1)] * 17)
+        _bal = 0
+        _n = 0
+        for i, (status, at, charged) in enumerate(_specs):
+            row = con.execute(
+                "insert into tool_calls (client_ref, user_id, tool_id, status,"
+                " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+                " started_at, finished_at, result_public_id, result_json)"
+                " values (%s, %s, %s, %s, 5, 30, %s, %s, %s, %s, %s)"
+                " returning id",
+                (f"rc_{_u_rc}_{i}", uid_calls, f"rctool_{_u_rc}", status,
+                 f"{i:064x}", at, at if status != "running" else None,
+                 f"rcres_{_u_rc}_{i}" if status == "ok" else None,
+                 _json.dumps({"expires_at": now_rc + DAY}) if status == "ok" else None)
+            ).fetchone()
+            _call_ids.append(int(row["id"]))
+            if charged:   # ok/failed consume −5 (insufficient never charges)
+                _bal -= 5
+                _led_rc(con, uid_calls, "consume", -5, _bal, at, _n,
+                        ref_type="tool_call", ref_id=str(row["id"]))
+                _n += 1
+        # refunds +2 on the two most recent ok calls (relation: refund → consume)
+        for cid in _call_ids[-2:]:
+            _bal += 2
+            row = con.execute(
+                "select id from ledger where ref_type='tool_call'"
+                " and ref_id=%s and user_id=%s order by id limit 1",
+                (str(cid), uid_calls)).fetchone()
+            _led_rc(con, uid_calls, "refund", 2, _bal, t_today, _n,
+                    ref_type="ledger", ref_id=str(row["id"]))
+            _n += 1
+        # credits fixture: exactly 21 spendable rows for user B
+        # (17 consume today, 1 refund today, 1 grant today,
+        #  1 refund + 1 topup at 40d)
+        _balb = 0
+        _n = 0
+        for _ in range(17):
+            _balb -= 5
+            _led_rc(con, uid_cred, "consume", -5, _balb, t_today, _n); _n += 1
+        _balb += 2
+        _led_rc(con, uid_cred, "refund", 2, _balb, t_today, _n); _n += 1
+        _balb += 50
+        _led_rc(con, uid_cred, "grant_signup", 50, _balb, t_today, _n); _n += 1
+        _balb += 2
+        _led_rc(con, uid_cred, "refund", 2, _balb, t_40d, _n); _n += 1
+        _balb += 100
+        _led_rc(con, uid_cred, "topup", 100, _balb, t_40d, _n); _n += 1
+        # other user's rows must never leak (their activity sits OUTSIDE
+        # the 7-day window: also the empty-window fixture below)
+        _led_rc(con, uid_other, "consume", -5, -5, t_40d, 0)
+        con.execute(
+            "insert into tool_calls (client_ref, user_id, tool_id, status,"
+            " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+            " started_at, finished_at) values (%s, %s, %s, 'ok', 5, 30, %s,"
+            " %s, %s)",
+            (f"rc_{_u_rc}_other", uid_other, f"rctool_{_u_rc}", "0" * 64,
+             t_today, t_today))
+    ck_cred = _cbs_rc(uid_cred)
+    ck_calls = _cbs_rc(uid_calls)
+
+    # ═══ RC1/2: credits 20-per-page with real-total bounds ═══
+    st, html = _get_rc("/account/credits?lang=en", ck_cred)
+    check("RC1 21 rows → page 1 shows 20 + pager with totals",
+          st == 200 and html.count("<tr>") == 21   # 20 body + 1 header
+          and "21 records" in html and "1 / 2" in html,
+          (st, html.count("<tr>")))
+    st, html = _get_rc("/account/credits?page=2&lang=en", ck_cred)
+    check("RC2 page 2 shows the single oldest row (not the empty state)",
+          st == 200 and html.count("<tr>") == 2
+          and "credits_empty" not in html, html.count("<tr>"))
+    st, html = _get_rc("/account/credits?page=99&lang=en", ck_cred)
+    check("RC2b out-of-range page clamps to the real last page",
+          st == 200 and html.count("<tr>") == 2
+          and "credits_empty" not in html, html.count("<tr>"))
+    st, html = _get_rc("/account/credits?page=abc&lang=en", ck_cred)
+    check("RC2c non-integer page falls back to page 1",
+          st == 200 and html.count("<tr>") == 21, html.count("<tr>"))
+
+    # ═══ RC3: range filter + stats-window semantics ═══
+    st, html = _get_rc("/account/credits?range=7&lang=en", ck_cred)
+    check("RC3 range=7 lists only in-window rows (19 of 21)",
+          st == 200 and html.count("<tr>") == 20   # 19 body + header
+          and "19 records" in html, html.count("<tr>"))
+    check("RC3b stats window equals the selected range (labeled)",
+          "Stats: last 7 days (UTC)" in html, "")
+    st, html = _get_rc("/account/credits?range=30&lang=en", ck_cred)
+    check("RC3c range=30 same window as 7 here, still labeled 30",
+          "Stats: last 30 days (UTC)" in html and "19 records" in html, "")
+    st, html = _get_rc("/account/credits?lang=en", ck_cred)
+    check("RC3d range=all lists all 21 but stats stay a labeled 30-day window",
+          "21 records" in html and "Stats: last 30 days (UTC)" in html, "")
+    st, html = _get_rc("/account/credits?range=bogus&lang=en", ck_cred)
+    check("RC3e invalid range behaves as all",
+          "21 records" in html, "")
+
+    # ═══ RC4: summary math from ledger kinds only ═══
+    # window (30d): consume 17×5=85, refund +2 (today only), net 83;
+    # grant/topup and the 40d refund excluded; other user excluded
+    st, html = _get_rc("/account/credits?range=30&lang=en", ck_cred)
+    check("RC4 overview: Spent 85 / Refunded 2 / Net 83 (grants & topups excluded)",
+          ">Spent</span>" in html and "<strong class=\"rec-chip-v mono \">85</strong>" in html
+          and "rec-chip-v mono pos\">2<" in html
+          and "rec-chip-v mono neg\">83<" in html,
+          [s for s in ("85", ">2<", ">83<") if s not in html])
+    st_o, html_o = _get_rc("/account/credits?range=all&lang=en", _cbs_rc(uid_other))
+    check("RC4b per-user isolation: the other user sees only their own row",
+          st_o == 200 and "1 records" in html_o
+          and "85" not in html_o.split("rec-toolbar")[-1], "")
+
+    # ═══ RC5: trend strip ═══
+    check("RC5 trend present with peak value + UTC window note",
+          "rec-trend-bars" in html and "peak 83 ("
+          in html, "")
+    st, html = _get_rc("/account/credits?range=7&lang=en", _cbs_rc(uid_other))
+    check("RC5b empty window shows the trend empty state",
+          "rec-trend-empty" in html, "")
+
+    # ═══ RC6: calls page — statuses, net projection, paging, links ═══
+    st, html = _get_rc("/account/calls?lang=en", ck_calls)
+    check("RC6 calls 21 rows → 20 on page 1 with pager",
+          st == 200 and html.count('id="call-') == 20 and "1 / 2" in html
+          and "21 records" in html, html.count('id="call-'))
+    check("RC6b per-status chips in the 30d window: Calls 20 / Succeeded 18 / Failed 2",
+          ">Calls</span><strong class=\"rec-chip-v mono \">20<" in html
+          and ">Succeeded</span><strong class=\"rec-chip-v mono \">18<" in html
+          and ">Failed</span><strong class=\"rec-chip-v mono \">2<" in html, "")
+    # net projection over the 30d window: 20 charged calls ×5 − 2×2 refunds = 96
+    # (the insufficient call at 40d and its window exclusion ride the same SQL)
+    _expect_net_calls = 20 * 5 - 2 * 2
+    check("RC6c calls overview net = consume − refunds via the relation projection",
+          f"rec-chip-v mono neg\">{_expect_net_calls}<" in html,
+          _expect_net_calls)
+    st, html = _get_rc("/account/calls?page=2&lang=en", ck_calls)
+    check("RC6d page 2 shows exactly the oldest call (first inserted, failed)",
+          st == 200 and html.count('id="call-') == 1
+          and "calls-st-failed" in html, html.count('id="call-'))
+    st, html = _get_rc("/account/calls?range=7&lang=en", ck_calls)
+    check("RC6e range=7 drops only the 40d call (20 records, no insufficient)",
+          "calls_empty" not in html and "calls-st-insufficient" not in html
+          and "20 records" in html, "")
+    st, html = _get_rc("/account/credits?lang=en", ck_calls)
+    check("RC6f credits → calls row link rides the call relation",
+          'href="/account/calls?page=' in html and "#call-" in html, "")
+
+    # ═══ RC7: page bound function — 10001st page reachable, no wild offsets ═══
+    from app.routes.pages import _effective_page as _ep
+    check("RC7 effective page: 10001st page reachable past the old 10k ceiling",
+          _ep("10001", 200_005, 20) == 10001
+          and _ep("10002", 200_005, 20) == 10001
+          and _ep("x", 200_005, 20) == 1 and _ep("-1", 200_005, 20) == 1
+          and _ep("999999999", 0, 20) == 1,
+          [_ep("10001", 200_005, 20), _ep("10002", 200_005, 20)])
+finally:
+    with db() as con:
+        con.execute("delete from platform_tools where tool_key=%s",
+                    (f"rctool_{_u_rc}",))
+        con.execute("delete from pricing where tool_id=%s", (f"rctool_{_u_rc}",))
+        purge_users(con, _RC_USERS)
+
+
 finish()

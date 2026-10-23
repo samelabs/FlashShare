@@ -265,7 +265,7 @@ try:
     st, html, _sc = _req("GET", "/account/credits?lang=en",
                          headers={"Cookie": ck.split(";")[0]})
     _cells = _re.findall(
-        r'<td class="credit-note-cell">(.*?)</td>', html or "", _re.S)
+        r'<td class="credit-note-cell"[^>]*>(.*?)</td>', html or "", _re.S)
     # P6: tool-bound notes wrap in a link to the anchored call row — the
     # label comparison works on the inner text
     notes = [_re.sub(r"<[^>]+>", "", c).strip() for c in _cells]

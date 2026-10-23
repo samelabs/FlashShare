@@ -28,13 +28,61 @@ from governance.formats import format_manifest
 from governance.tool_params import resolve_label
 
 from database import db
-from repo.ledger import CALL_NET_CHARGE_SQL
 
 
 from app.web_ctx import fmt_ts as _fmt_ts  # 单点 (治理4, UTC)
 
 # 账户调用记录页分页大小 (credits → calls 行锚链接按它计算所在页)
 CALLS_PAGE_SIZE = 20
+
+# 账户记录页 (credits / calls) 的时间范围筛选: 全部 / 近7 / 近30 / 近90 天。
+# 天数 None = 列表不限时; 统计窗口见 _rec_stats_window。
+REC_RANGES: dict = {"all": None, "7": 7, "30": 30, "90": 90}
+
+
+def _rec_range(raw) -> str:
+    return raw if raw in REC_RANGES else "all"
+
+
+def _effective_page(raw, total: int, size: int) -> int:
+    """账户记录页的 1 基页码: 非整数与 <1 → 1; 上界是该用户当前筛选的
+    真实页数 (不再吃全局 MAX_LIST_PAGE=10000 上限 — 超过第 10000 页的
+    有效历史可达), OFFSET 恒被真实总数约束, 任意非法页码造不出巨额
+    OFFSET。"""
+    try:
+        page = int(raw)
+    except (TypeError, ValueError):
+        return 1
+    if page < 1:
+        return 1
+    return min(page, max((total + size - 1) // size, 1))
+
+
+def _rec_stats_window(rng: str) -> int:
+    """概览/趋势窗口 = 所选范围; 列表为“全部”时固定最近 30 天并明示,
+    绝不冒充全历史统计。"""
+    return REC_RANGES[rng] or 30
+
+
+def _rec_since(rng: str, now_ts: int) -> int | None:
+    days = REC_RANGES[rng]
+    return now_ts - days * 86400 if days else None
+
+
+def _day_series(now_ts: int, days: int, daily: dict, value) -> tuple:
+    """趋势的稠密 UTC 日序列 (≤90 桶): daily 为 {day: bucket} 稀疏聚合,
+    value(day_bucket) 取该日数值; 附首末日期标签与峰值。"""
+    today = int(now_ts) // 86400
+    out = []
+    peak = {"v": 0, "label": ""}
+    for d in range(today - days + 1, today + 1):
+        label = datetime.datetime.fromtimestamp(
+            d * 86400, datetime.timezone.utc).strftime("%m-%d")
+        v = value(daily.get(d, {}))
+        out.append({"label": label, "value": v})
+        if v > peak["v"]:
+            peak = {"v": v, "label": label}
+    return out, peak
 
 load_all()  # auto-discover every tools_*.py
 from identity.auth import public_user
@@ -781,10 +829,33 @@ def account_credits(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from economy.billing import spendable_balance as get_balance, history_paged
-    pg = page_number(request.query_params.get("page", "1"))
+    from economy.billing import spendable_balance as get_balance, SPENDABLE_KINDS
+    from economy.daily import daily_amount as _daily_amount, granted_today
+    from repo import ledger as _ledger_repo
+    from utils import now as _now_ts
     size = 20
-    rows, total = history_paged(user["id"], page=pg, size=size)
+    now_ts = _now_ts()
+    rng = _rec_range(request.query_params.get("range", "all"))
+    since = _rec_since(rng, now_ts)
+    with db() as con:
+        total = _ledger_repo.history_count(con, user["id"],
+                                           SPENDABLE_KINDS, since)
+    pg = _effective_page(request.query_params.get("page", "1"), total, size)
+    with db() as con:
+        rows = _ledger_repo.history_page(
+            con, user["id"], SPENDABLE_KINDS, size, (pg - 1) * size, since)
+        # 概览/趋势: 范围窗口 (列表为“全部”时固定最近 30 天并明示);
+        # 消费=consume 幅值, 退款=refund, 净=消费−退款; 赠送/充值不计入,
+        # 收益池不混入 — 聚合由 DB 完成
+        stat_days = _rec_stats_window(rng)
+        stat_since = now_ts - stat_days * 86400
+        spend = _ledger_repo.spend_summary(con, user["id"], stat_since)
+        daily = _ledger_repo.spend_daily(con, user["id"], stat_since)
+        _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
+        daily_amount = _daily_amount(con)
+    trend, peak = _day_series(
+        now_ts, stat_days, daily,
+        lambda b: b.get("consume", 0) - b.get("refund", 0))
     rows = [dict(r) for r in rows]
     # 41-12 note column: machine notes (raw tool ids, plan cycle stamps,
     # refund order refs) never render. Tool identity comes ONLY from the
@@ -793,13 +864,8 @@ def account_credits(request: Request):
     # Tool-bound rows get a localized "Tool: <resolved name>" description;
     # rows without a resolvable relation show no tool description. Human
     # notes (operator/manual) keep rendering verbatim.
-    from repo import ledger as _ledger_repo
     from governance.tool_params import resolve_label as _resolve_label
-    from economy.daily import daily_amount as _daily_amount, granted_today
     _lang = getattr(request.state, "lang", "en")
-    with db() as con:
-        _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
-        daily_amount = _daily_amount(con)
 
     def _ref_label(r: dict) -> str | None:
         ref = _tool_refs.get(int(r["id"]))
@@ -846,6 +912,8 @@ def account_credits(request: Request):
     for r in rows:
         if r.get("call_id"):
             r["call_page"] = _call_pages.get(int(r["call_id"]))
+        _ts = _fmt_ts(r["created_at"])
+        r["ts_date"], r["ts_time"] = _ts[:10], _ts[11:]
     _base = _ctx_base(request)  # access projection 单次读
     _membership = (_base.get("access") or {}).get("membership")
     shop = _shop_offers(user, _membership)
@@ -870,7 +938,16 @@ def account_credits(request: Request):
                        pending_downgrade=shop["pending_downgrade"],
                        plan_facts=plan_facts,
                        rows=rows, total=total, pg=pg,
-                       pages=(total + size - 1) // size)
+                       pages=(total + size - 1) // size,
+                       rng=rng, rec_base="/account/credits",
+                       rec_chips=[
+                           ("ov_spend", spend["consume"], ""),
+                           ("ov_refund", spend["refund"], "pos"),
+                           ("ov_net", spend["net"], "neg" if spend["net"] else ""),
+                       ],
+                       rec_trend_key="rec_trend_spend",
+                       stat_days=stat_days, trend=trend, trend_peak=peak,
+                       trend_max=max((b["value"] for b in trend), default=0))
     return templates.TemplateResponse(request, "account/credits.html", ctx)
 
 
@@ -907,44 +984,30 @@ def account_calls(request: Request):
 
     净扣费 = CALL_NET_CHARGE_SQL 投影 (退款经 refund → 原消费 → 调用 关系聚合,
     不解析 note)。结果链接仅在 ok 且结果未过期时显示; 工具已删除 →
-    统一 "已删除" 标签, 不出机器 id。"""
+    统一 "已删除" 标签, 不出机器 id。查询/聚合走 repo/calls (每页 20,
+    页码上界 = 用户当前筛选的真实页数; 概览 = 实际状态计数, 趋势 = 同一
+    净扣费投影按 UTC 日分桶)。"""
     from app.main import templates
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from repo import calls as _calls_repo
     from utils import now as _now_ts
-    pg = page_number(request.query_params.get("page", "1"))
     size = CALLS_PAGE_SIZE
-    with db() as con:
-        total = int(con.execute(
-            "select count(*) c from tool_calls where user_id=%s",
-            (user["id"],)).fetchone()["c"])
-        pages = (total + size - 1) // size
-        pg = min(pg, max(pages, 1))
-        rows = con.execute(
-            f"""
-            SELECT tc.id, tc.tool_id, tc.status,
-                   tc.started_at, tc.finished_at, tc.result_public_id,
-                   tc.result_json, tc.error,
-                   pt.label_json,
-                   ({CALL_NET_CHARGE_SQL}) AS net_charge,
-                   COALESCE((
-                     SELECT SUM(r.delta) FROM ledger r
-                     JOIN ledger c
-                       ON r.kind = 'refund' AND r.ref_type = 'ledger'
-                      AND r.ref_id = c.id::text
-                     WHERE c.kind = 'consume' AND c.ref_type = 'tool_call'
-                       AND c.ref_id = tc.id::text
-                   ), 0) AS refunded
-            FROM tool_calls tc
-            LEFT JOIN platform_tools pt ON pt.tool_key = tc.tool_id
-            WHERE tc.user_id = %s
-            ORDER BY tc.id DESC
-            LIMIT %s OFFSET %s
-            """,
-            (user["id"], size, (pg - 1) * size)).fetchall()
-    _lang = getattr(request.state, "lang", "en")
     now_ts = _now_ts()
+    rng = _rec_range(request.query_params.get("range", "all"))
+    since = _rec_since(rng, now_ts)
+    with db() as con:
+        total = _calls_repo.count(con, user["id"], since)
+        pg = _effective_page(request.query_params.get("page", "1"), total, size)
+        rows = _calls_repo.paged(con, user["id"], size, (pg - 1) * size, since)
+        # 概览/趋势窗口 = 所选范围 (列表为“全部”时固定最近 30 天并明示)
+        stat_days = _rec_stats_window(rng)
+        stat_since = now_ts - stat_days * 86400
+        summary = _calls_repo.status_summary(con, user["id"], stat_since)
+        daily = _calls_repo.daily_net(con, user["id"], stat_since)
+    trend, peak = _day_series(now_ts, stat_days, daily, lambda v: v or 0)
+    _lang = getattr(request.state, "lang", "en")
     calls = []
     for r in rows:
         r = dict(r)
@@ -968,9 +1031,24 @@ def account_calls(request: Request):
             except (TypeError, ValueError):
                 expires = 0
             r["result_live"] = expires > now_ts
+        _ts = _fmt_ts(r["started_at"])
+        r["ts_date"], r["ts_time"] = _ts[:10], _ts[11:]
         calls.append(r)
+    _n_total = sum(v["n"] for v in summary.values())
+    _net_total = sum(v["net"] for v in summary.values())
     ctx = _account_ctx(request, "calls", calls=calls, total=total,
-                       pg=pg, pages=pages)
+                       pg=pg, pages=(total + size - 1) // size,
+                       rng=rng, rec_base="/account/calls",
+                       rec_chips=[
+                           ("ov_calls_total", _n_total, ""),
+                           ("calls_net", _net_total,
+                            "neg" if _net_total else ""),
+                       ] + [(f"mytools_call_st_{s}", summary[s]["n"], "")
+                            for s in ("ok", "failed", "insufficient", "running")
+                            if s in summary],
+                       rec_trend_key="rec_trend_calls",
+                       stat_days=stat_days, trend=trend, trend_peak=peak,
+                       trend_max=max((b["value"] for b in trend), default=0))
     return templates.TemplateResponse(request, "account/calls.html", ctx)
 
 
