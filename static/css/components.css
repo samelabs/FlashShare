@@ -706,13 +706,14 @@ pre.rs-text, pre.rs-json {
 /* 参数分段选项: 超出一行自动换行; 外框普通圆角 (换行后不再是胶囊形) */
 .seg { display: inline-flex; padding: 3px; background: var(--sunk); border-radius: var(--r-full); gap: 2px; flex-wrap: wrap; }
 .tp-seg { border-radius: var(--r-sm); }
-.seg button {
+.seg button, .seg a {
   height: 30px; padding: 0 13px; border-radius: var(--r-full); border: 0;
   background: none; display: inline-flex; align-items: center;
   font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-2); cursor: pointer;
 }
-.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
-@media (hover:hover) and (pointer:fine) { .seg button:not(.on):hover { color: var(--ink); } }
+.seg a { text-decoration: none; }
+.seg button.on, .seg a.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
+@media (hover:hover) and (pointer:fine) { .seg button:not(.on):hover, .seg a:not(.on):hover { color: var(--ink); } }
 
 /* 参数卡片: 参数区每行 = 标签在上、控件在下 (各宽度一致); 枚举参数的
    每个选项是一张独立卡片, 网格自动换行, 选中 = 品牌色描边。开关行保持
@@ -879,27 +880,22 @@ pre.rs-text, pre.rs-json {
   .r-actions .btn { width: 44px; padding: 0; }
 }
 
-/* ── Auth modal (login/register overlay, site-wide) ────────────
-   Rides the .modal/.modal-panel primitives; forms reuse
-   .field/.input/.btn. ── */
-.auth-modal { width: min(400px, 100%); border-radius: var(--r-xl); box-shadow: var(--sh-3); padding: var(--s5) var(--s4) var(--s4); }
-.auth-modal h2 { font-size: var(--fs-lg); font-weight: 750; text-align: center; margin: 0 0 var(--s3); }
-.auth-modal .auth-x-wrap .x-login { width: 100%; }
-.auth-modal .seg { width: 100%; margin: 0 0 var(--s3); }
-.auth-modal .seg button { flex: 1; }
-.auth-modal .auth-sub { text-align: center; font-size: var(--fs-sm); color: var(--ink-3); margin: -6px 0 var(--s3); }
-.auth-modal form { display: flex; flex-direction: column; gap: var(--form-gap); }
-.auth-modal .auth-terms { text-align: center; font-size: var(--fs-xs); color: var(--ink-3); margin: var(--s3) 0 0; }
-.auth-modal .auth-terms a { color: var(--ink-2); text-decoration: underline; }
-@media (max-width: 767px) { .auth-modal { padding: var(--s4) var(--s3); } }
-
-/* ── Auth full pages (narrow centered card) ──────────────── */
-.auth-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); padding: var(--s6) var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
-.auth-card h1 { font-size: var(--fs-xl); text-align: center; margin: 0; }
-.auth-card .auth-sub { text-align: center; font-size: var(--fs-sm); color: var(--ink-3); margin: -10px 0 0; }
-.auth-card .auth-terms { text-align: center; font-size: var(--fs-xs); color: var(--ink-3); margin: 0; }
-.auth-card .auth-terms a { color: var(--ink-2); text-decoration: underline; }
-@media (max-width: 767px) { .auth-card { padding: var(--s5) var(--s4); } }
+/* ── Auth card — single source (auth/_card.html) ───────────────
+   One look for BOTH mounts: the standalone /auth pages (.auth-card
+   inside .auth-page) and the site-wide login/register overlay
+   (.auth-modal riding the .modal/.modal-panel primitives). Container
+   differences stay with the containers (the modal carries the close
+   button and overlay chrome); fields reuse .field/.input/.btn/.seg
+   and the form layout comes from .auth-form (518.css). */
+.auth-card, .auth-modal { width: min(400px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); padding: var(--s5) var(--s4) var(--s4); display: flex; flex-direction: column; gap: var(--s4); }
+.auth-title { font-size: var(--fs-lg); font-weight: 750; text-align: center; margin: 0; }
+.auth-sub { text-align: center; font-size: var(--fs-sm); color: var(--ink-3); margin: -6px 0 0; }
+.auth-seg { width: 100%; }
+.auth-seg button, .auth-seg a { flex: 1; }
+.auth-card .auth-x-wrap .x-login, .auth-modal .auth-x-wrap .x-login { width: 100%; }
+.auth-terms { text-align: center; font-size: var(--fs-xs); color: var(--ink-3); margin: var(--s3) 0 0; }
+.auth-terms a { color: var(--ink-2); text-decoration: underline; }
+@media (max-width: 767px) { .auth-card, .auth-modal { padding: var(--s4) var(--s3); } }
 
 /* ── Mobile input floor (site-wide, phone widths) ──────────────
    iOS/Android auto-zoom any focused control rendered below 16px.

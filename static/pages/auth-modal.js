@@ -4,6 +4,9 @@
 // 成功后关闭浮层、更新 window.__USER__、页头登录/注册按钮就地换成
 // 头像（/account/credits），再调用 onSuccess。取消（Esc/遮罩/关闭钮）
 // 调用 onClose。X 一键登录是整页跳转（已选文件会丢，报告已注明）。
+// 表单内容与 /auth/login|register 独立页同源：克隆 base.html 服务端
+// 渲染的 <template id="authTpl*">（auth/_card.html 单源），本文件只
+// 负责容器（遮罩/关闭/焦点圈）与提交/切换行为，不再手写字段。
 (function () {
   "use strict";
 
@@ -14,6 +17,28 @@
   let overlay = null;
   let lastFocus = null;
   let current = null; // {onSuccess, onClose, settled}
+
+  // 密码不一致提示（登录页注册页/浮层共用）：限定在传入表单内查询，
+  // 页面表单与浮层克隆同一行为、同一份文案。
+  window.bindPwMismatch = function (form) {
+    if (!form) return;
+    const pw = form.querySelector('input[name="password"]');
+    const pwc = form.querySelector('input[name="password_confirm"]');
+    const hint = form.querySelector(".pw-mismatch");
+    if (!pw || !pwc || !hint) return;
+    const check = () => {
+      const mismatch = pwc.value && pw.value !== pwc.value;
+      hint.hidden = !mismatch;
+      pwc.setCustomValidity(mismatch
+        ? (window._msg ? window._msg("err_password_mismatch") : "x")
+        : "");
+    };
+    pw.addEventListener("input", check);
+    pwc.addEventListener("input", check);
+    form.addEventListener("submit", (e) => {
+      if (pw.value !== pwc.value) { e.preventDefault(); hint.hidden = false; }
+    });
+  };
 
   function close(settled) {
     if (!overlay) return;
@@ -58,73 +83,53 @@
     bar.insertBefore(av, menu || null);
   }
 
-  function formHtml(mode) {
-    if (mode === "register") {
-      return (
-        '<label class="field"><span class="field-label">' + esc(t("usernameHint")) + "</span>"
-        + '<input class="input" type="text" name="username" required autocomplete="username" minlength="5" maxlength="32" pattern="[A-Za-z0-9_\\-]{5,32}"></label>'
-        + '<label class="field"><span class="field-label">' + esc(t("emailLabel")) + "</span>"
-        + '<input class="input" type="email" name="email" required autocomplete="email" maxlength="254"></label>'
-        + '<label class="field"><span class="field-label">' + esc(t("newPassword")) + "</span>"
-        + '<input class="input" type="password" name="password" required autocomplete="new-password" minlength="8" maxlength="128"></label>'
-        + '<label class="field"><span class="field-label">' + esc(t("confirmPasswordLabel")) + "</span>"
-        + '<input class="input" type="password" name="password_confirm" required autocomplete="new-password" minlength="8" maxlength="128"></label>'
-        + '<button type="submit" class="btn btn-p btn-lg">' + esc(t("signUp")) + "</button>");
-    }
-    return (
-      '<label class="field"><span class="field-label">' + esc(t("loginLabel")) + "</span>"
-      + '<input class="input" type="text" name="login" required autocomplete="username" maxlength="254"></label>'
-      + '<label class="field"><span class="field-label">' + esc(t("passwordLabel")) + "</span>"
-      + '<input class="input" type="password" name="password" required autocomplete="current-password" maxlength="128"></label>'
-      + '<button type="submit" class="btn btn-p btn-lg">' + esc(t("signIn")) + "</button>");
+  function fillBody(mode) {
+    const tpl = document.getElementById(
+      mode === "register" ? "authTplRegister" : "authTplLogin");
+    if (!tpl) return null;
+    const body = overlay.querySelector(".am-body");
+    body.innerHTML = "";
+    body.appendChild(tpl.content.cloneNode(true));
+    // X 一键登录是整页跳转：服务端模板不知道运行时所在页，挂载时把
+    // 当前地址写进 next
+    const here = location.pathname + location.search;
+    body.querySelectorAll("a[data-nextfix]").forEach((a) => {
+      a.href = "/auth/x/login?next=" + encodeURIComponent(here);
+    });
+    overlay.setAttribute("aria-label", body.querySelector(".auth-title")
+      ? body.querySelector(".auth-title").textContent : "");
+    const form = body.querySelector("form");
+    window.bindPwMismatch(form);
+    return form;
   }
 
   function render(mode) {
-    const x = !!window.__X_LOGIN__;
-    const next = location.pathname + location.search;
     overlay = document.createElement("div");
     overlay.className = "modal";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-label", mode === "register" ? t("registerTitle") : t("loginTitle"));
     overlay.innerHTML =
       '<div class="modal-panel auth-modal">'
       + '<button class="modal-close" type="button" aria-label="' + esc(t("close") || "Close") + '">'
       + window.iconSvg("close") + "</button>"
-      + "<h2>" + esc(mode === "register" ? t("registerTitle") : t("loginTitle")) + "</h2>"
-      + '<p class="auth-sub">' + esc(t("auth_modal_sub")) + "</p>"
-      + '<div class="seg" role="tablist">'
-      + '<button type="button" role="tab" data-mode="login"' + (mode === "login" ? ' class="on"' : "") + ">" + esc(t("signIn")) + "</button>"
-      + '<button type="button" role="tab" data-mode="register"' + (mode === "register" ? ' class="on"' : "") + ">" + esc(t("signUp")) + "</button>"
-      + "</div>"
-      + (x
-        ? '<div class="auth-x-wrap"><a class="x-login" href="/auth/x/login?next=' + encodeURIComponent(next) + '">'
-          + '<span class="x-glyph" aria-hidden="true">𝕏</span><span>' + esc(t("login")) + "</span></a></div>"
-          + '<div class="auth-divider"><span>' + esc(t("auth_or")) + "</span></div>"
-        : "")
-      + '<p class="error-note am-err" hidden></p>'
-      + '<form novalidate>' + formHtml(mode) + "</form>"
-      + '<p class="auth-terms"><a href="/terms">' + esc(t("footer_terms")) + '</a> · <a href="/privacy">' + esc(t("footer_privacy")) + "</a></p>"
+      + '<div class="am-body"></div>'
       + "</div>";
     document.body.appendChild(overlay);
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close("cancel"); });
     overlay.querySelector(".modal-close").addEventListener("click", () => close("cancel"));
-    overlay.querySelectorAll(".seg [data-mode]").forEach((b) => {
-      b.addEventListener("click", () => {
-        const m = b.dataset.mode;
-        overlay.querySelector("form").innerHTML = formHtml(m);
-        // the title is a function of the CURRENT mode — heading and the
-        // overlay's aria-label follow the tab exactly like the form does
-        const title = t(m === "register" ? "registerTitle" : "loginTitle");
-        overlay.querySelector("h2").textContent = title;
-        overlay.setAttribute("aria-label", title);
-        overlay.querySelectorAll(".seg [data-mode]").forEach((x2) => {
-          x2.classList.toggle("on", x2 === b);
-        });
-        overlay.querySelector("form input") && overlay.querySelector("form input").focus();
-      });
+    const form = fillBody(mode);
+    if (!form) { close("cancel"); return; }
+    // 模式切换：整卡重填（换模板克隆），上一模式的错误/不一致状态随
+    // 旧 DOM 一并清除；查询与事件都限定在浮层自身
+    overlay.querySelector(".am-body").addEventListener("click", (e) => {
+      const seg = e.target.closest(".seg [data-mode]");
+      if (!seg) return;
+      const f = fillBody(seg.dataset.mode);
+      if (f) {
+        const first = f.querySelector("input");
+        if (first) first.focus();
+      }
     });
-    const form = overlay.querySelector("form");
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const errEl = overlay.querySelector(".am-err");

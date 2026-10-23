@@ -5,30 +5,11 @@
 {% block content %}
 <section class="auth-page">
   <div class="auth-card">
-    <h1 data-i18n="loginTitle">{{ texts.loginTitle }}</h1>
-    <p class="auth-sub" data-i18n="auth_modal_sub">{{ texts.auth_modal_sub }}</p>
-    {% if error %}<p class="error-note">{{ error }}</p>{% endif %}
-    {% if x_login_enabled %}
-    <div class="auth-x-wrap"><a class="x-login" href="/auth/x/login?next={{ next|urlencode }}"><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
-    <div class="auth-divider"><span data-i18n="auth_or">{{ texts.auth_or }}</span></div>
-    {% endif %}
-    <form method="post" action="/auth/login" class="auth-form">
-      <input type="hidden" name="next" value="{{ next }}">
-      <label class="field">
-        <span class="field-label" data-i18n="loginLabel">{{ texts.loginLabel }}</span>
-        <input class="input" type="text" name="login" required autocomplete="username" maxlength="254">
-      </label>
-      <label class="field">
-        <span class="field-label" data-i18n="passwordLabel">{{ texts.passwordLabel }}</span>
-        <input class="input" type="password" name="password" required autocomplete="current-password" maxlength="128">
-      </label>
-      <button type="submit" class="btn btn-p btn-lg"><span data-i18n="signIn">{{ texts.signIn }}</span></button>
-    </form>
-    <p class="auth-hint"><span data-i18n="loginHint">{{ texts.loginHint }}</span> <a href="/auth/register?next={{ next|urlencode }}" data-i18n="signUp">{{ texts.signUp }}</a></p>
-    <p class="auth-hint">
-      <a href="mailto:{{ support_email }}" data-i18n="support_recovery_hint">{{ texts.support_recovery_hint }}</a>
-    </p>
-    <p class="auth-terms"><a href="/terms" data-i18n="footer_terms">{{ texts.footer_terms }}</a> · <a href="/privacy" data-i18n="footer_privacy">{{ texts.footer_privacy }}</a></p>
+    {% with mode = "login", embed = "page" %}{% include "auth/_card.html" %}{% endwith %}
   </div>
 </section>
+{% endblock %}
+
+{% block script %}
+<script src="/static/pages/common.js?v={{ pages_version }}"></script>
 {% endblock %}
