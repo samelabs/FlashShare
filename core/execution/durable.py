@@ -24,12 +24,23 @@ async def await_durable(task):
     promptly. On cancellation the backing thread keeps running and its
     result decides the durable settlement, so further cancels are
     absorbed until the work converges; the caller must then settle per
-    the result and re-raise the cancellation."""
+    the result and re-raise the cancellation.
+
+    Terminal state: a task that ended CANCELLED itself (its own
+    cancellation — e.g. loop shutdown cancelling every pending task)
+    has an outcome that is unknowable from here. It is surfaced as a
+    cancellation immediately and NEVER re-shielded: awaiting an
+    already-cancelled task raises without ever yielding back to the
+    loop, so retrying it would busy-loop. The durable state stays
+    exactly what persisted — the existing recovery rules own it; no
+    fake settlement."""
     try:
         return await asyncio.shield(task), False
     except asyncio.CancelledError:
         pass
     while True:
+        if task.cancelled():
+            raise asyncio.CancelledError
         try:
             return await asyncio.shield(task), True
         except asyncio.CancelledError:

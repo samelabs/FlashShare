@@ -2614,24 +2614,82 @@ def _cx1():
 _cx1()
 
 
-# ── CX2: 取消落在 orchestrate 中段 (扣费已提交、执行已开始) → 精确
-#    退款 + failed('cancelled'), 名额不泄漏。
+# ── CX2: 取消落在执行段中位 → 已开始的执行不可丢弃: 整个 orchestrate
+#    被保护并收敛 (受既有执行超时约束), 按实际结果结算后取消才传播。
+#    收敛为成功 → durable ok (扣费保留、可重放); 收敛为失败 → 精确退款。
 def _cx2():
-    ref = f"cx2-{_u_cx}"
+    ref = f"cx2a-{_u_cx}"
     started = asyncio.Event()
+    go = asyncio.Event()
 
-    async def _orch():
+    async def _orch_ok():
+        from execution.results import StagedItems
         started.set()
-        await asyncio.Event().wait()   # parks until cancelled
-        raise RuntimeError("unreachable")
+        await go.wait()          # real work parked; released during convergence
+        return StagedItems(order=["text"],
+                           inline=[{"kind": "text", "text": "ok"}])
 
     async def _scenario():
         with _patch_c("execution.affordability.effective_quote",
                       return_value={"enabled": True, "cost": 5}):
             task = asyncio.create_task(
-                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch))
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch_ok))
             await started.wait()
             task.cancel()
+            await asyncio.sleep(0.1)   # cancellation handler runs; work parked
+            slot_mid = _infl_c()
+            asyncio.get_running_loop().call_later(0.05, go.set)
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, slot_mid, _infl_c()
+
+    bal_before = _bal_c(uid_cx)
+    cancelled, slot_mid, slot_after = asyncio.run(_scenario())
+    row = _call_row(ref)
+    check("CX2a cancel during execution → converged work still settled "
+          "as durable success (charged, replayable)",
+          cancelled is True and slot_mid == 1 and slot_after == 0
+          and _bal_c(uid_cx) == bal_before - 5
+          and row is not None and row["status"] == "ok",
+          (cancelled, slot_mid, slot_after, _bal_c(uid_cx) - bal_before,
+           dict(row) if row else None))
+    # replay of the converged success: no re-execution, no second charge
+    async def _never():
+        raise RuntimeError("cx2a replay must not re-execute")
+
+    async def _replay():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}):
+            return await _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref),
+                                     _never)
+    payload, err, _s = asyncio.run(_replay())
+    check("CX2a2 same-ref retry → replay of the converged result",
+          err is None and (payload or {}).get("replay") is True
+          and _bal_c(uid_cx) == bal_before - 5,
+          (err, (payload or {}).get("replay")))
+
+    # converged FAILURE: the parked work raises after release → exact
+    # refund + failed(the execution's own code), cancel propagates
+    ref = f"cx2b-{_u_cx}"
+    started2 = asyncio.Event()
+    go2 = asyncio.Event()
+
+    async def _orch_fail():
+        started2.set()
+        await go2.wait()
+        raise ExecutionError("err_endpoint_timeout")
+
+    async def _scenario2():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch_fail))
+            await started2.wait()
+            task.cancel()
+            asyncio.get_running_loop().call_later(0.05, go2.set)
             try:
                 await task
                 cancelled = False
@@ -2640,16 +2698,15 @@ def _cx2():
             return cancelled, _infl_c()
 
     bal_before = _bal_c(uid_cx)
-    cancelled, slot_after = asyncio.run(_scenario())
+    cancelled, slot_after = asyncio.run(_scenario2())
     row = _call_row(ref)
-    check("CX2a cancel during orchestration → CancelledError propagates",
-          cancelled is True, cancelled)
-    check("CX2b exact refund for the aborted execution",
-          _bal_c(uid_cx) == bal_before, f"{_bal_c(uid_cx)} vs {bal_before}")
-    check("CX2c call settled failed('cancelled')",
-          row is not None and row["status"] == "failed"
-          and row["error"] == "cancelled", dict(row) if row else None)
-    check("CX2d slot released after settlement", slot_after == 0, slot_after)
+    check("CX2b converged execution failure → exact refund, failed(its code)",
+          cancelled is True and slot_after == 0
+          and _bal_c(uid_cx) == bal_before
+          and row is not None and row["status"] == "failed"
+          and row["error"] == "err_endpoint_timeout",
+          (cancelled, slot_after, _bal_c(uid_cx) - bal_before,
+           dict(row) if row else None))
 
 
 _cx2()
@@ -2732,8 +2789,273 @@ _cx3()
 _rec_cx = _gate_c.recover_abandoned_calls()
 check("CX4a no running calls left behind (recovery has nothing to settle)",
       _rec_cx["scanned"] == 0, _rec_cx)
+
+
+# ── CX5: 结算异常 + 核验阶段取消 — resolve_success_outcome 已读到
+#    proven_rollback 后线程暂停中取消: 取消不得跳过清理/精确退款/failed
+#    收尾 (取消只能在已知持久义务完成后传播)。
+def _cx5():
+    ref = f"cx5-{_u_cx}"
+    entered, release = _thr_c.Event(), _thr_c.Event()
+    _orig_resolve = _gate_c.resolve_success_outcome
+
+    def _paused_resolve(call_id):
+        out = _orig_resolve(call_id)          # real read: running ⇒ rollback
+        entered.set()
+        if not release.wait(5):
+            raise RuntimeError("cx5 release timeout")
+        return out
+
+    async def _orch():
+        from execution.results import StagedItems
+        return StagedItems(order=["text"],
+                           inline=[{"kind": "text", "text": "ok"}])
+
+    async def _scenario():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}), \
+             _patch_c.object(_gate_c, "_finish",
+                             side_effect=RuntimeError("settle failed")), \
+             _patch_c.object(_gate_c, "resolve_success_outcome",
+                             _paused_resolve):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch))
+            if not await asyncio.to_thread(entered.wait, 3):
+                raise RuntimeError("cx5: resolve never ran")
+            task.cancel()
+            _thr_c.Timer(0.05, release.set).start()
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, _infl_c()
+
+    bal_before = _bal_c(uid_cx)
+    cancelled, slot_after = asyncio.run(_scenario())
+    row = _call_row(ref)
+    check("CX5a cancel during rollback verification → exact refund completes",
+          cancelled is True and _bal_c(uid_cx) == bal_before,
+          (cancelled, _bal_c(uid_cx) - bal_before))
+    check("CX5b call settled failed (never left running)",
+          row is not None and row["status"] == "failed", dict(row) if row else None)
+    check("CX5c slot released only after the settlement", slot_after == 0,
+          slot_after)
+    _rec5 = _gate_c.recover_abandoned_calls()
+    check("CX5d nothing left for restart recovery", _rec5["scanned"] == 0,
+          _rec5)
+
+
+_cx5()
+
+
+# ── CX6: 真实执行 + 输出暂存取消窗口 — 真 orchestrator (execute_local)
+#    + 受控 executor; 输出写经隔离 storage adapter (真 write 打进 fake
+#    gokapi 后暂停, 结果未交回)。取消时: 名额仍持有; 收敛后: 对象被接住
+#    成为 durable 结果 (非孤儿), 账本扣费一次, 状态 ok, 重放可用。
+def _cx6():
+    import concurrent.futures as _cf_c
+    from execution import orchestrator as _orch_mod_c
+    import storage as _storage_c
+    ref = f"cx6-{_u_cx}"
+    entered, release = _thr_c.Event(), _thr_c.Event()
+    _orig_write = _orch_mod_c.storage_write
+    _gids6 = []
+
+    def _paused_write(stream, filename, ct, ed, ad, size):
+        out = _orig_write(stream, filename, ct, ed, ad, size)  # REAL write
+        _gids6.append(out["FileInfo"]["Id"])
+        entered.set()
+        if not release.wait(5):
+            raise RuntimeError("cx6 release timeout")
+        return out
+
+    _tool6 = {"id": "share", "tool_key": "share", "execution": "local",
+              "owner_id": None, "outputs_json": '["file"]'}
+    _expl6 = _cf_c.ThreadPoolExecutor(max_workers=1)
+
+    def _pt6(tool_id, sources, params, body):
+        return {"items": [{"kind": "file", "filename": "out6.bin",
+                           "content_type": "application/octet-stream",
+                           "data": b"cx6 payload"}]}
+
+    async def _orch_real():
+        return await _orch_mod_c.execute_local(
+            {"ip": "127.0.0.1"}, _tool6, [], {}, {"id": uid_cx},
+            _pt6, _expl6, {"expiry_days": 1, "allowed_downloads": 5})
+
+    async def _scenario():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}), \
+             _patch_c.object(_orch_mod_c, "storage_write", _paused_write):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool6, _inv_c(ref), _orch_real))
+            if not await asyncio.to_thread(entered.wait, 3):
+                raise RuntimeError("cx6: write never landed")
+            task.cancel()
+            await asyncio.sleep(0.1)     # write thread still parked here
+            slot_mid = _infl_c()
+            _thr_c.Timer(0.05, release.set).start()
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, slot_mid, _infl_c()
+
+    bal_before = _bal_c(uid_cx)
+    cancelled, slot_mid, slot_after = asyncio.run(_scenario())
+    row = _call_row(ref)
+    _obj_live = bool(_gids6) and _storage_c.info(_gids6[0]) is not None
+    check("CX6a slot held while the output write thread is still parked",
+          slot_mid == 1 and slot_after == 0, (slot_mid, slot_after))
+    check("CX6b converged write → object caught as the durable result "
+          "(not an orphan), call ok, charged once",
+          cancelled is True and row is not None and row["status"] == "ok"
+          and _obj_live and _bal_c(uid_cx) == bal_before - 5,
+          (cancelled, dict(row) if row else None, _obj_live,
+           _bal_c(uid_cx) - bal_before))
+    # replay: same result, object still the result, no second charge
+    async def _never6():
+        raise RuntimeError("cx6 replay must not re-execute")
+
+    async def _replay6():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}):
+            return await _gate_c.run({"id": uid_cx}, _tool6, _inv_c(ref),
+                                     _never6)
+    payload, err, _s = asyncio.run(_replay6())
+    check("CX6c same-ref retry → replay, object intact, single charge",
+          err is None and (payload or {}).get("replay") is True
+          and _storage_c.info(_gids6[0]) is not None
+          and _bal_c(uid_cx) == bal_before - 5,
+          (err, (payload or {}).get("replay")))
+    # fixture cleanup: the staged result object + local executor
+    for _gid6 in _gids6:
+        try:
+            _storage_c.delete(_gid6)
+        except Exception:
+            pass
+    _expl6.shutdown(wait=False)
+
+
+_cx6()
+
+
+# ── CX7: durable helper 终态 — 外层重复取消/底层异常/底层取消/带待完成
+#    工作的事件循环关闭。底层取消与关闭场景在子进程里跑: 外部超时即
+#    判红, 绝不挂住 CI。
+def _cx7():
+    import subprocess as _sp_c
+    import sys as _sys_c
+    from execution.durable import spawn as _spawn_c, await_durable as _ad_c
+
+    import time as _time_c
+    # (a) repeated outer cancels are absorbed; the result still lands
+    async def _a():
+        t = _spawn_c(lambda: (_time_c.sleep(0.3), "done")[1])
+        outer = asyncio.ensure_future(_ad_c(t))
+        for _ in range(3):
+            await asyncio.sleep(0.06)
+            outer.cancel()
+        try:
+            res, cancelled = await asyncio.wait_for(outer, 5)
+            return res, cancelled
+        except asyncio.TimeoutError:
+            return "timeout", None
+    res_a, cancelled_a = asyncio.run(_a())
+    check("CX7a repeated outer cancels absorbed — result still returns",
+          res_a == "done" and cancelled_a is True, (res_a, cancelled_a))
+
+    # (b) the underlying task's own exception propagates (not a cancel)
+    async def _b():
+        def _boom():
+            raise RuntimeError("boom")
+        try:
+            await _ad_c(_spawn_c(_boom))
+            return "no-raise"
+        except RuntimeError:
+            return "runtimeerror"
+        except asyncio.CancelledError:
+            return "cancelled"
+    check("CX7b underlying exception propagates as itself",
+          asyncio.run(_b()) == "runtimeerror", "")
+
+    # (c)+(d) run in a subprocess: the pre-fix helper busy-loops on a
+    # cancelled underlying task (never yields to the loop), so only an
+    # external timeout can bound the broken behavior.
+    _script_c = '''
+import asyncio, sys, time
+sys.path.insert(0, "core")
+from execution.durable import spawn, await_durable
+
+async def main():
+    inner = asyncio.ensure_future(asyncio.sleep(30))
+    async def absorb():
+        return await await_durable(inner)
+    a = asyncio.ensure_future(absorb())
+    await asyncio.sleep(0.05)
+    a.cancel()               # outer cancel → absorb enters phase 2
+    await asyncio.sleep(0.05)
+    inner.cancel()           # the underlying task itself is cancelled
+    t0 = time.monotonic()
+    try:
+        await asyncio.wait_for(asyncio.shield(a), 5)
+        print("UNEXPECTED_RESULT")
+    except asyncio.CancelledError:
+        print("UNDERLYING_CANCEL_PROPAGATED", time.monotonic() - t0 < 3)
+    except asyncio.TimeoutError:
+        print("ABSORB_HUNG")
+asyncio.run(main())
+print("UNDERLYING_CANCEL_DONE")
+'''
+    try:
+        _r = _sp_c.run([_sys_c.executable, "-c", _script_c],
+                       cwd=REPO, capture_output=True, text=True, timeout=15)
+        _ok_c = ("UNDERLYING_CANCEL_PROPAGATED True" in _r.stdout
+                 and "UNDERLYING_CANCEL_DONE" in _r.stdout)
+    except _sp_c.TimeoutExpired:
+        _ok_c = False
+    check("CX7c cancelled underlying task → prompt CancelledError, no hang",
+          _ok_c, "")
+
+    _script_d = '''
+import asyncio, sys, time
+sys.path.insert(0, "core")
+from execution.durable import spawn, await_durable
+
+async def main():
+    task = spawn(lambda: time.sleep(0.05))
+    async def absorber():
+        return await await_durable(task)
+    a = asyncio.ensure_future(absorber())
+    await asyncio.sleep(0.02)                 # absorber parked in phase 1
+    a.cancel()                                # phase 2 begins
+    await asyncio.sleep(0.02)                 # absorber parked in phase 2
+    task.cancel()                             # underlying cancelled too
+    print("MAIN_RETURN_SHUTDOWN", flush=True)
+    # main returns with the absorber mid-convergence — asyncio.run's
+    # shutdown gather must complete: a busy-looping absorber hangs here
+
+asyncio.run(main())
+print("LOOP_CLOSED_CLEANLY", flush=True)
+'''
+    try:
+        _r = _sp_c.run([_sys_c.executable, "-c", _script_d],
+                       cwd=REPO, capture_output=True, text=True, timeout=15)
+        _ok_d = ("LOOP_CLOSED_CLEANLY" in _r.stdout
+                 and "MAIN_RETURN_SHUTDOWN" in _r.stdout)
+    except _sp_c.TimeoutExpired:
+        _ok_d = False
+    check("CX7d loop shutdown with pending durable work closes cleanly",
+          _ok_d, "")
+
+
+_cx7()
+
 with db() as con:
     con.execute("delete from tool_calls where user_id=%s", (uid_cx,))
+    con.execute("delete from uploads where user_id=%s", (uid_cx,))
     con.execute("delete from ledger where user_id=%s", (uid_cx,))
     purge_users(con, [uid_cx])
 

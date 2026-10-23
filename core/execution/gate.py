@@ -450,37 +450,54 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
         _, call_id, charge, rate_snapshot, cost = enter
         tool_id = invocation.tool_id
 
+        # The WHOLE execution (worker process / remote HTTP + every
+        # output staging write) runs as one tracked task. Started real
+        # work cannot be dropped: on cancellation the task is converged —
+        # bounded by the existing local-execution/remote timeouts, which
+        # stay in force inside it — and only then is the settlement
+        # derived from the work's actual outcome (success → durable ok;
+        # failure → exact refund). This also carries an output write
+        # that already landed but has not returned: its object identity
+        # stays inside the converged task, never an orphan.
+        orch = asyncio.ensure_future(orchestrate())
+        exec_cancelled = False
+        result = None
+        failure = None          # ExecutionError, or the string "tool_failed"
         try:
-            result = await orchestrate()
+            result = await asyncio.shield(orch)
         except asyncio.CancelledError:
-            # execution aborted by the caller: exact refund → failed
-            # before the cancellation propagates
-            await converge(spawn(
-                _settle_failure, user, tool_id, call_id, charge,
-                "cancelled"))
-            raise
+            exec_cancelled = True
+            try:
+                result = await converge(orch)
+            except ExecutionError as exc:
+                failure = exc
+            except Exception:
+                logger.exception("tool execution failed call_id=%s", call_id)
+                failure = "tool_failed"
         except ExecutionError as exc:
-            settled, cancelled = await await_durable(spawn(
-                _settle_failure, user, tool_id, call_id, charge, exc.code))
-            if cancelled:
-                raise asyncio.CancelledError
-            if settled:
-                body = {"ok": False, "error": exc.code, "call_id": call_id}
-                if exc.detail:
-                    body["detail"] = exc.detail[:4096]
-                return None, body, exc.http_status
-            return None, {"ok": False, "error": "err_metering_failed",
-                          "call_id": call_id}, 500
+            failure = exc
         except Exception:
             logger.exception("tool execution failed call_id=%s", call_id)
-            settled, cancelled = await await_durable(spawn(
-                _settle_failure, user, tool_id, call_id, charge,
-                "tool_failed"))
-            if cancelled:
+            failure = "tool_failed"
+
+        if failure is not None:
+            if isinstance(failure, str):
+                code = "tool_failed"
+                body = {"ok": False, "error": code, "call_id": call_id}
+                status = 500
+            else:
+                code = failure.code
+                body = {"ok": False, "error": failure.code,
+                        "call_id": call_id}
+                if failure.detail:
+                    body["detail"] = failure.detail[:4096]
+                status = failure.http_status
+            settled, scancel = await await_durable(spawn(
+                _settle_failure, user, tool_id, call_id, charge, code))
+            if scancel or exec_cancelled:
                 raise asyncio.CancelledError
             if settled:
-                return None, {"ok": False, "error": "tool_failed",
-                              "call_id": call_id}, 500
+                return None, body, status
             return None, {"ok": False, "error": "err_metering_failed",
                           "call_id": call_id}, 500
 
@@ -495,28 +512,33 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
             except asyncio.CancelledError:
                 await converge(finish_task)
                 raise
+            if exec_cancelled:
+                raise asyncio.CancelledError
             return out, None, None
         except Exception:
             logger.exception("metering finalize failed call_id=%s", call_id)
-            outcome, cancelled = await await_durable(spawn(
+            # Reconciliation is itself a durable obligation: the verified
+            # outcome is processed IN FULL — durable success kept (never
+            # refunded, never deleted), proven rollback cleaned + exactly
+            # refunded + failed, unresolved left to the existing recovery
+            # rules — and only then may a pending cancellation propagate.
+            outcome, rcancel = await await_durable(spawn(
                 resolve_success_outcome, call_id))
-            if cancelled:
-                raise asyncio.CancelledError
+            cancel_now = rcancel or exec_cancelled
             if outcome["outcome"] == OUTCOME_DURABLE_SUCCESS:
                 out = {"ok": True, "result": outcome["result"],
                        "call_id": call_id, "replay": True,
                        "cost": cost}
                 if cost > 0:
                     try:
-                        balance, bc = await await_durable(spawn(
+                        out["balance"] = await converge(spawn(
                             spendable_balance, user["id"]))
-                        if bc:
-                            raise asyncio.CancelledError
-                        out["balance"] = balance
                     except asyncio.CancelledError:
                         raise
                     except Exception:
                         logger.exception("balance fetch failed for UI chip")
+                if cancel_now:
+                    raise asyncio.CancelledError
                 return out, None, None
             if outcome["outcome"] == OUTCOME_PROVEN_ROLLBACK:
                 from storage import delete as storage_delete
@@ -526,12 +548,16 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
                     except Exception:
                         logger.warning("staged result cleanup failed call_id=%s"
                                        " gokapi=%s", call_id, f.gokapi_id)
-                settled, cancelled = await await_durable(spawn(
+                settled, scancel = await await_durable(spawn(
                     _settle_failure, user, tool_id, call_id, charge,
                     "metering_failed"))
-                if cancelled:
+                if scancel or cancel_now:
                     raise asyncio.CancelledError
                 return None, {"ok": False, "error": "err_metering_failed"}, 500
+            # UNRESOLVED: the row keeps its durable state; the existing
+            # recovery rules own it — a pending cancel may propagate now
+            if cancel_now:
+                raise asyncio.CancelledError
             return None, {"ok": False, "error": "err_metering_failed"}, 500
     finally:
         if local_slot:

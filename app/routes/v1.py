@@ -170,7 +170,8 @@ async def tool_detail(key: str, request: Request):
     tool, terr = await asyncio.to_thread(_resolve, key, int(user["id"]))
     if terr == "forbidden":
         return _err(404, "tool_not_found")
-    item = catalog_item(tool) if tool is not None else None
+    item = (await asyncio.to_thread(catalog_item, tool)) \
+        if tool is not None else None
     if item is None:
         return _err(404, "tool_not_found")
     return {"ok": True, "tool": item}

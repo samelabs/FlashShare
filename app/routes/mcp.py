@@ -307,6 +307,7 @@ async def _dispatch(request: Request, user: dict, msg):
                    and requested in SUPPORTED_VERSIONS else LATEST)
         from governance.catalog import catalog_version
         from config import BASE_URL as _base
+        cat_version = await asyncio.to_thread(catalog_version)
         # The caller's real account limits, from the same entitlement
         # projection the delivery schemas advertise (one read); an
         # anonymous caller sees the Free plan it would register into.
@@ -373,7 +374,7 @@ async def _dispatch(request: Request, user: dict, msg):
                 f"tops up at {_base}/pricing (log in with the account), "
                 "then retry with the same client_ref. "
                 f"{limits_txt} Catalog version: "
-                f"{catalog_version()}."
+                f"{cat_version}."
             ),
         })
     # notifications are NEVER answered — the early-out precedes every
@@ -1539,12 +1540,21 @@ async def _mcp_success(result: dict, payload: dict,
                     with _db() as _c:
                         _u = _up_by_pid(_c, pid)
                         return _u["gokapi_id"] if _u else pid
+
+                def _read_preview(gid: str):
+                    """Open + bounded-read + close, ALL in the worker
+                    thread — the body read is blocking I/O, never loop
+                    work. Bounded read (cap+1), stream always closed,
+                    same optional-preview / non-counting channel."""
+                    status, _h, stream = _storage_read(gid)
+                    try:
+                        return status, stream.read(1_048_577)
+                    finally:
+                        stream.close()
                 try:
                     _gid = await asyncio.to_thread(_gid_of, pid)
-                    status, _h, stream = await asyncio.to_thread(
-                        _storage_read, _gid)
-                    body = stream.read(1_048_577)
-                    stream.close()
+                    status, body = await asyncio.to_thread(
+                        _read_preview, _gid)
                     if status == 200 and len(body) <= 1_048_576 \
                             and _hl.sha256(body).hexdigest() not in input_digests:
                         content.append({

@@ -233,7 +233,7 @@ async def x_callback(request: Request):
         session_user["id"] if session_user else None)
     if err:
         logger.warning("x callback rejected: %s (state_found=%s)", err, bool(row))
-        return _x_error(request, err)
+        return await asyncio.to_thread(_x_error, request, err)
 
     try:
         token = await asyncio.to_thread(exchange_x_token, code,
@@ -242,18 +242,20 @@ async def x_callback(request: Request):
                                          token["access_token"])
     except Exception:
         logger.exception("x callback: token exchange / user lookup failed")
-        return _x_error(request, "err_x_login_incomplete")
+        return await asyncio.to_thread(_x_error, request,
+                                        "err_x_login_incomplete")
 
     bind_user_id = row.get("bind_user_id")
     user_id, upsert_err = await asyncio.to_thread(
         _x_callback_stage2, x_user, bind_user_id)
     if upsert_err:
-        return _x_error(request, upsert_err)
+        return await asyncio.to_thread(_x_error, request, upsert_err)
 
     if bind_user_id:
         resp = RedirectResponse("/account/profile", 302)
     else:
-        resp = redirect_with_session(
+        resp = await asyncio.to_thread(
+            redirect_with_session,
             _safe_next(request.cookies.get(_X_NEXT_COOKIE)), user_id)
     resp.delete_cookie(_OAUTH_COOKIE, path="/auth/x")
     resp.delete_cookie(_X_NEXT_COOKIE, path="/auth/x")
@@ -378,7 +380,7 @@ async def login_submit(request: Request):
     _login_failures.pop(throttle_key, None)
     await asyncio.to_thread(_login_maintenance, user_id)
     if wants_json:
-        return _auth_json_ok(user_id)
+        return await asyncio.to_thread(_auth_json_ok, user_id)
     # redirect_with_session mints + persists a session row (sync DB)
     return await asyncio.to_thread(redirect_with_session, next_url, user_id)
 
@@ -444,7 +446,7 @@ async def register_submit(request: Request):
 
     await asyncio.to_thread(_login_maintenance, user_id)
     if wants_json:
-        return _auth_json_ok(user_id)
+        return await asyncio.to_thread(_auth_json_ok, user_id)
     return await asyncio.to_thread(redirect_with_session, next_url, user_id)
 
 
