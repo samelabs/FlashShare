@@ -1783,7 +1783,9 @@ try:
                 return True
             _time.sleep(0.1)
         return pred()
-    client.get("/healthz", cookies={COOKIE_NAME: ck9})
+    # an authenticated page triggers the access reconcile (/healthz is a
+    # static-asset-class probe: no identity resolution, no reconcile)
+    client.get("/account", cookies={COOKIE_NAME: ck9})
     ok9 = _wait(lambda: (_membership(u9) or {}).get("renews_at") == PE9
                 and spendable_balance(u9) == b9 + 100)
     m = _membership(u9)
@@ -1794,13 +1796,13 @@ try:
     with db() as con:
         con.execute("update memberships set renews_at=%s where user_id=%s",
                     (ts - 5, u9))
-    client.get("/healthz", cookies={COOKIE_NAME: ck9})
+    client.get("/account", cookies={COOKIE_NAME: ck9})
     _time.sleep(1.0)
     check("M9.2 second access within the throttle window → no second attempt",
           _fetched.count(s9) == 1, str(_fetched))
     s9b = f"sub_{_u}_accb"
     u9b = _seed_member("acb9", plus_id, P_PLUS, s9b, f"txn_{_u}_accb1")
-    client.get("/healthz", cookies={COOKIE_NAME: create_browser_session(u9b)})
+    client.get("/account", cookies={COOKIE_NAME: create_browser_session(u9b)})
     _time.sleep(1.0)
     check("M9.3 live (not lapsed) membership → no provider fetch",
           s9b not in _fetched, str(_fetched))

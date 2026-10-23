@@ -2431,7 +2431,7 @@ check("S6 copy feedback: agents.js delegates to the one authority; no hardcoded 
 # ══════════ cleanup ══════════
 _uids = [uid_prt, uid2, _ownA, _ownB]
 with db() as con:
-    for k in (keyA, keyB):
+    for k in (keyA, keyB, key_call):
         con.execute("delete from pricing where tool_id=%s", (k,))
         con.execute("delete from platform_tools where tool_key=%s", (k,))
 for u in _uids:
