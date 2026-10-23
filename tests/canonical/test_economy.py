@@ -39,6 +39,8 @@ _u = "s2p" + _os.urandom(4).hex()
 from database import db
 from repo import ledger as ledger_repo
 from economy import earnings
+from economy.billing import (EARN_POOL_KINDS, PLATFORM_POOL_KINDS,
+                             SPENDABLE_KINDS)
 
 
 def _user(name):
@@ -62,7 +64,7 @@ def _tool_call(con, uid, tool_id):
 
 
 def _earn(con, uid, delta, ref_type, ref_id, note):
-    bal = ledger_repo.earn_pool_balance(con, uid) + delta
+    bal = ledger_repo.pool_running_balance(con, uid, EARN_POOL_KINDS) + delta
     con.execute(
         "insert into ledger (user_id, delta, balance_after, kind, ref_type,"
         " ref_id, idem_key, note, created_at) values (%s, %s, %s,"
@@ -459,7 +461,8 @@ def _mktool(tk, own, cost):
 _mktool(T3, owner, 500)
 _mktool(T1P, None, 500)
 
-from repo.ledger import claim_call, insert_provider_earn_if_absent, earn_pool_balance
+from repo.ledger import (claim_call, insert_provider_earn_if_absent,
+                         pool_running_balance)
 
 def _mkstaged(tag):
     return StagedItems(order=["file"], inline=[], files=[StagedFileItem(
@@ -587,7 +590,7 @@ with db() as con:
                        "{}", ts_ecd, commission_rate_snapshot=30,
                        invocation_hash="f" * 64)
 with db() as con:
-    base = earn_pool_balance(con, owner)
+    base = pool_running_balance(con, owner, EARN_POOL_KINDS)
     insert_provider_earn_if_absent(con, owner, 20000, base + 20000,
                                    int(a["id"]), f"payout:{a['id']}",
                                    "s3 payout", ts_ecd)
@@ -2206,7 +2209,8 @@ from repo import ledger as ledger_repo
 def _seed_earn(uid, amount):
     with db() as con:
         ledger_repo.lock_user(con, uid)
-        base = ledger_repo.earn_pool_balance(con, uid)
+        base = ledger_repo.pool_running_balance(
+            con, uid, EARN_POOL_KINDS)
         ledger_repo.insert_row(con, uid, amount, base + amount,
                                "provider_earn", "test", f"seed-{uid}",
                                f"b2-seed-earn:{uid}:{amount}",
@@ -2219,7 +2223,8 @@ wid = int(wd["id"])
 approve_withdrawal(wid, admin_user_id=op)
 pool_after_approve = None
 with db() as con:
-    pool_after_approve = ledger_repo.earn_pool_balance(con, prov)
+    pool_after_approve = ledger_repo.pool_running_balance(
+        con, prov, EARN_POOL_KINDS)
 sums_after_approve = earnings_summary(prov)
 
 row = mark_withdrawal_payout_failed(wid, "bank rejected the transfer",
@@ -2230,7 +2235,8 @@ with db() as con:
     refund_rows = con.execute(
         "select id, delta, balance_after from ledger where user_id=%s and"
         " idem_key=%s", (prov, f"payout-failed:{wid}")).fetchall()
-    pool_after_fail = ledger_repo.earn_pool_balance(con, prov)
+    pool_after_fail = ledger_repo.pool_running_balance(
+        con, prov, EARN_POOL_KINDS)
     aud = con.execute(
         "select after_json from operator_audit where"
         " action='withdrawal.payout_failed' and target_id=%s"
@@ -2643,6 +2649,143 @@ _remote_mod.drive_http = _orig_drive
 check("O4 remote path: undeclared json item → typed failure before staging",
       isinstance(got, Exception) and str(got) == "err_output_mismatch",
       str(got)[:100])
+
+
+# ══════════ RB. running-balance basis: every pool writer chains on the
+# pool's last row (pool_running_balance), not a SUM recompute ══════════
+# Protects: grant / consume / refund / third-party settle (provider_earn
+# + platform_commission) / first-party settle (platform_revenue) /
+# withdrawal approve + payout_failed all write balance_after as
+# last-row + delta; afterwards last balance_after == SUM(delta) per
+# (user, pool) and spendable_balance == SUM over spendable kinds.
+# Sample: 3 users, 2 tools, 3 calls (2 ok + 1 failed), 1 withdrawal
+# cycle; fresh users, platform pool invariant-only (shared account).
+# Deps: live app DB; runtime ~2s.
+_u_rb = "rb" + _os.urandom(4).hex()
+import asyncio as _aio_rb
+from execution import gate as _gate_rb
+from economy.billing import grant as _grant_rb, spendable_balance as _sb_rb
+from economy.billing import EARN_POOL_KINDS as _EPK_RB
+from economy.earnings import (request_withdrawal as _rw_rb,
+                              approve_withdrawal as _aw_rb,
+                              mark_withdrawal_payout_failed as _pwf_rb)
+from governance.platform import ensure_platform_account as _pid_rb
+
+
+def _mkuser_rb(name, channel=None):
+    with db() as con:
+        row = con.execute(
+            "insert into users (username, email, password_hash, display_name,"
+            " status, created_at, last_login_at, payout_channel) values"
+            " (%s, %s, 'x', 'T', 'active', %s, %s, %s) returning id",
+            (name, f"{name}@t.co", ts, ts, channel)).fetchone()
+    return int(row["id"])
+
+
+def _mktool_rb(tk, own, cost):
+    with db() as con:
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id,"
+            " execution, label_json, visibility, enabled, params_json,"
+            " endpoint_json, created_at, updated_at, accept_json,"
+            " format_family) values (%s, %s, %s, 'http', %s, 'public',"
+            " true, '[]', %s, %s, %s, '[\".png\"]', 'image')",
+            (tk, own, tk.split("/")[-1],
+             _json.dumps({"en": "RB"}),
+             _json.dumps({"url": "https://example.org/x", "timeout_s": 30}),
+             ts, ts))
+        con.execute(
+            "insert into pricing (tool_id, cost, enabled, updated_at)"
+            " values (%s, %s, true, %s)", (tk, cost, ts))
+
+
+def _staged_rb(tag):
+    return StagedItems(order=["file"], inline=[], files=[StagedFileItem(
+        gokapi_id=f"gk_{_u_rb}_{tag}", filename="o.bin",
+        content_type="application/octet-stream", size=10, expiry_days=7,
+        allowed_downloads=5, expire_at=ts + 86400, url_hotlink="")])
+
+
+def _run_rb(uid, tool_id, own, ref, ok, tag="x"):
+    inv = ToolInvocation(tool_id=tool_id, files=[SourceFile("p", "t")],
+                         params={},
+                         delivery={"expiry_days": 7, "allowed_downloads": 5},
+                         client_ref=ref)
+
+    async def _orch():
+        if ok:
+            return _staged_rb(tag)
+        raise RuntimeError("rb failure leg")
+
+    return _aio_rb.run(_gate_rb.run(
+        {"id": uid}, {"id": tool_id, "tool_key": tool_id, "owner_id": own},
+        inv, _orch))
+
+
+with db() as con:
+    con.execute(
+        "insert into settings (key, value, updated_at) values"
+        " ('commission_rate', '30', %s) on conflict (key) do update set"
+        " value = excluded.value, updated_at = excluded.updated_at", (ts,))
+
+rb_payer = _mkuser_rb(_u_rb + "payer")
+rb_prov = _mkuser_rb(_u_rb + "prov", channel="USDT-TRC20:rb")
+rb_t3, rb_t1, rb_tf = (f"{_u_rb}o3", f"rb1{_u_rb}", f"rbf{_u_rb}")
+_mktool_rb(rb_t3, rb_prov, 30000)   # third-party: payout 21000 + commission 9000
+_mktool_rb(rb_t1, None, 20000)      # first-party: platform_revenue 20000
+_mktool_rb(rb_tf, rb_prov, 5000)    # fails → refund 5000
+
+_grant_rb(rb_payer, 100000, "grant_package", note="rb fixture")
+r3 = _run_rb(rb_payer, rb_t3, rb_prov, f"{_u_rb}-c3", True, "c3")
+r1 = _run_rb(rb_payer, rb_t1, None, f"{_u_rb}-c1", True, "c1")
+rf = _run_rb(rb_payer, rb_tf, rb_prov, f"{_u_rb}-cf", False)
+check("RB0 both paid calls settled ok; failure leg refunded (tool_failed)",
+      (r3[0] or {}).get("ok") is True and (r1[0] or {}).get("ok") is True
+      and rf[0] is None and (rf[1] or {}).get("error") == "tool_failed",
+      (str(r3)[:80], str(r1)[:80], str(rf)[:80]))
+_rb_w = _rw_rb(rb_prov, 10250, note="rb")
+_aw_rb(int(_rb_w["id"]), admin_user_id=1)
+_pwf_rb(int(_rb_w["id"]), "rb payout failed", admin_user_id=1)
+
+_rb_pid = int(_pid_rb())
+with db() as con:
+    _bad = con.execute(
+        """
+        WITH p AS (
+          SELECT user_id, id, delta, balance_after,
+                 CASE WHEN kind = ANY(%s) THEN 'earn'
+                      WHEN kind = ANY(%s) THEN 'platform'
+                      ELSE 'spendable' END AS pool
+          FROM ledger WHERE user_id = ANY(%s))
+        SELECT user_id, pool, SUM(delta) AS s,
+               (array_agg(balance_after ORDER BY id DESC))[1] AS last_after
+        FROM p GROUP BY user_id, pool
+        HAVING SUM(delta) <> (array_agg(balance_after ORDER BY id DESC))[1]
+        """,
+        (list(_EPK_RB), list(PLATFORM_POOL_KINDS),
+         [rb_payer, rb_prov, _rb_pid])).fetchall()
+check("RB1 every touched (user, pool): last balance_after == SUM(delta)",
+      not _bad, [dict(r) for r in _bad])
+with db() as con:
+    _sp = con.execute(
+        "select coalesce(sum(delta), 0) s from ledger where user_id=%s"
+        " and kind = any(%s)",
+        (rb_payer, list(SPENDABLE_KINDS))).fetchone()["s"]
+check("RB2 payer spendable == SUM(delta) == 50000 (two paid calls; failed call net 0)",
+      _sb_rb(rb_payer) == int(_sp) == 50000,
+      (_sb_rb(rb_payer), _sp))
+with db() as con:
+    _ep = con.execute(
+        "select coalesce(sum(delta), 0) s from ledger where user_id=%s"
+        " and kind = any(%s)",
+        (rb_prov, list(_EPK_RB))).fetchone()["s"]
+check("RB3 provider earn pool == 21000 after withdraw + payout_failed legs",
+      int(_ep) == 21000
+      and ledger_repo.pool_running_balance(
+          con, rb_prov, _EPK_RB) == 21000, _ep)
+
+with db() as con:
+    purge_users(con, [rb_payer, rb_prov])
 
 
 finish()

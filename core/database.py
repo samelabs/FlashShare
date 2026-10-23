@@ -903,6 +903,31 @@ _SCHEMA_SQL = (
       PRIMARY KEY (user_id, tool_key)
     )
     """,
+    # ── 查询索引 (大数据量分页/关联): 生产库由 docs/plan 迁移资产用
+    # CONCURRENTLY 预建, 这里的 IF NOT EXISTS 在启动时为空操作 ──
+    # CALL_NET_CHARGE_SQL 的 consume/refund 子查询 + Creem 授信按
+    # (ref_type, ref_id) 定位
+    "CREATE INDEX IF NOT EXISTS ledger_ref_idx ON ledger (ref_type, ref_id)",
+    # refund→consume 关联 (ref_id = ledger.id::text) 的右侧探测
+    "CREATE INDEX IF NOT EXISTS ledger_id_text_idx ON ledger ((id::text))",
+    # 积分/收益流水分页 (user 内 ORDER BY id DESC)
+    "CREATE INDEX IF NOT EXISTS ledger_user_id_idx ON ledger (user_id, id DESC)",
+    # ledger.ref_id = tool_calls.id::text 关联 (流水→调用) 的右侧探测
+    "CREATE INDEX IF NOT EXISTS tool_calls_id_text_idx ON tool_calls ((id::text))",
+    # 市场卡片按工具的成功调用计数 (market_rows 的 ok_calls 子查询)
+    "CREATE INDEX IF NOT EXISTS tool_calls_tool_ok_idx"
+    " ON tool_calls (tool_id) WHERE status = 'ok'",
+    # 调用记录分页 (/account/calls, /samelabs/calls: user 内 ORDER BY id DESC)
+    "CREATE INDEX IF NOT EXISTS tool_calls_user_id_idx"
+    " ON tool_calls (user_id, id DESC)",
+    # 入场幂等回执按 (user, scope, request_ref) 的最早/最新行定位
+    "CREATE INDEX IF NOT EXISTS ingress_requests_ref_idx"
+    " ON ingress_requests (user_id, scope, request_ref, id)",
+    # 启动/整点恢复对 running 回执的扫描
+    "CREATE INDEX IF NOT EXISTS ingress_requests_running_idx"
+    " ON ingress_requests (started_at) WHERE status = 'running'",
+    # housekeeping 到期映射清扫 (expire_at 窗口)
+    "CREATE INDEX IF NOT EXISTS uploads_expire_idx ON uploads (expire_at)",
 )
 
 

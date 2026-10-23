@@ -71,14 +71,21 @@ def total_balance(con, user_id: int) -> int:
     return int(row["bal"])
 
 
-def pool_balance(con, user_id: int, kinds: Sequence[str]) -> int:
+def pool_running_balance(con, user_id: int, kinds: Sequence[str]) -> int:
+    """A pool's running balance = balance_after of its latest ledger row
+    (0 when the pool has no rows yet). Writers MUST call this while
+    holding the user's row lock (lock_user) so consecutive writers chain
+    balance_after into a running total; read-only display (e.g.
+    spendable_balance) may read without the lock. Equal to SUM(delta)
+    over the pool by the running-total invariant."""
     row = con.execute(
         """
-        SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger
+        SELECT balance_after FROM ledger
         WHERE user_id = %s AND kind = ANY(%s)
+        ORDER BY id DESC LIMIT 1
         """,
         (user_id, list(kinds))).fetchone()
-    return int(row["bal"])
+    return int(row["balance_after"]) if row else 0
 
 
 def sum_kind(con, user_id: int, kind: str) -> int:
@@ -86,19 +93,6 @@ def sum_kind(con, user_id: int, kind: str) -> int:
         "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
         "WHERE user_id = %s AND kind = %s",
         (user_id, kind)).fetchone()
-    return int(row["s"])
-
-
-def earn_pool_balance(con, user_id: int) -> int:
-    """Earn-pool balance in USD-millis = provider_earn − withdraw
-    movements. This is the ONLY basis a provider_earning writer may use
-    for balance_after — the old total_balance() basis mixed spendable
-    kinds into an earning row's after-balance (wrong semantics on the
-    same column)."""
-    row = con.execute(
-        "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
-        "WHERE user_id = %s AND kind IN ('provider_earn', 'withdraw')",
-        (user_id,)).fetchone()
     return int(row["s"])
 
 

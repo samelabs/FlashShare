@@ -1848,6 +1848,7 @@ check("W14d exactly ONE audit fact (no duplicate on replay)",
 import inspect  # noqa: E402
 from execution import gate as _gate_mod  # noqa: E402
 from repo import ledger as _ledger  # noqa: E402
+from economy.billing import EARN_POOL_KINDS as _EPK  # noqa: E402
 _gate_src = inspect.getsource(_gate_mod)
 _earn_src = inspect.getsource(earnings)
 _w15_sorted = 'for uid in sorted((int(user["id"]), int(owner_id))):' in _gate_src
@@ -1880,7 +1881,7 @@ def _settle():
     try:
         with db() as con:
             _ledger.lock_user(con, p3)
-            base = _ledger.earn_pool_balance(con, p3)
+            base = _ledger.pool_running_balance(con, p3, _EPK)
             _ledger.insert_row(con, p3, 5000, base + 5000,
                                "provider_earn", "tool_call", "888888",
                                f"s4race:{p3}", "race earn", ts_cp)
@@ -1899,7 +1900,7 @@ t1 = threading.Thread(target=_settle)
 t2 = threading.Thread(target=_approve3)
 t1.start(); t2.start(); t1.join(); t2.join()
 with db() as con:
-    bal = _ledger.earn_pool_balance(con, p3)
+    bal = _ledger.pool_running_balance(con, p3, _EPK)
     n3 = int(con.execute(
         "SELECT COUNT(*) n FROM ledger WHERE kind='withdraw' AND"
         " ref_id=%s", (str(wid3_cp),)).fetchone()["n"])

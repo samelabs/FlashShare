@@ -10,7 +10,8 @@ import json
 import logging
 
 from database import db
-from economy.billing import InsufficientCredits, consume, refund, spendable_balance
+from economy.billing import (EARN_POOL_KINDS, InsufficientCredits, consume,
+                             refund, spendable_balance)
 from repo import ledger as ledger_repo
 from repo.ledger import (claim_call, finalize_call_failed, finalize_call_ok,
                          insert_provider_earn_if_absent)
@@ -217,7 +218,8 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
                 # payer) — the SAME cash-pool anchor withdrawal
                 # request/approve use, so a concurrent withdrawal cannot
                 # interleave between the pool read and the earning write.
-                base = ledger_repo.earn_pool_balance(con, owner_id)
+                base = ledger_repo.pool_running_balance(
+                    con, owner_id, EARN_POOL_KINDS)
                 insert_provider_earn_if_absent(
                     con, owner_id, payout_millis, base + payout_millis, call_id,
                     f"payout:{call_id}", f"{tool['id']} payout", now())

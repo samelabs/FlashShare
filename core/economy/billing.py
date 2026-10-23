@@ -46,18 +46,25 @@ SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
                    "revoke", "manual_topup", "grant_plan", "grant_package",
                    "grant_plan_upgrade")
 
+# The other two pools' kind vocabularies live beside SPENDABLE_KINDS —
+# the ONE place the pool split is defined. Earn pool: withdrawable only
+# (provider_earn positive, withdraw negative). Platform pool: the
+# platform account's own income legs.
+EARN_POOL_KINDS = ("provider_earn", "withdraw")
+PLATFORM_POOL_KINDS = ("platform_commission", "platform_revenue")
+
 
 def spendable_balance(user_id: int) -> int:
     """Credits the user may spend (excludes provider_earn & withdraw rows)."""
     with db() as con:
-        return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
+        return ledger_repo.pool_running_balance(con, user_id, SPENDABLE_KINDS)
 
 
 def _balance_for_update(con, user_id: int) -> int:
     """Serialize on the users row; returns the SPENDABLE balance
     (dual-pool: consume/refund/adjust only ever touch the spendable pool)."""
     ledger_repo.lock_user(con, user_id)
-    return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
+    return ledger_repo.pool_running_balance(con, user_id, SPENDABLE_KINDS)
 
 
 def grant(user_id: int, amount: int, kind: str, *,
