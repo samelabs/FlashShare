@@ -209,7 +209,8 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ## Production deploy 概要
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
-- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
+- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`；1.6 审计收口资产 `release_1_6_audit_closure.md` 在既有三份 `platform_tools` 资产之后执行）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
+- PostgreSQL 重启后必须重启 flashshare-api：连接池不做存活探测，重启属于维护事件。
 - 生产数据库由生产侧自行管理：部署流程不创建或替换数据库；**retired-schema 迁移在发布窗口按 `docs/plan/` 资产显式执行**（上一行第 2 步），startup/常规同步从不隐式迁移旧 schema——两条各管其事：前者管库的生死，后者管 schema 演进时机。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
 - 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
@@ -340,7 +341,9 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;        # 工具执行与大文件上传
-        proxy_request_buffering off;
+        # 请求体由 Nginx 完整缓冲后才交给应用：慢速客户端无法占住应用的
+        # 并发名额（应用侧另有请求体预读闸门兜底，见 app/main.py）
+        proxy_request_buffering on;
     }
 }
 ```
