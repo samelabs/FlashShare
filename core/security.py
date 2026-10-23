@@ -123,8 +123,11 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
         if detected == (".jpg" if ext == ".jpeg" else ext):
             pass  # content matches its own extension: name kept as is
         elif detected in FAMILIES["image"].exts and detected in ALLOWED_EXT:
+            from utils import canonical_mime
             stem = os.path.splitext(filename)[0]
-            return True, _image_ext_mime(detected), stem + detected
+            admitted = (canonical_mime(_image_ext_mime(detected))
+                        or "application/octet-stream")
+            return True, admitted, stem + detected
         else:
             return False, "err_content_mismatch_image", filename
     if ext == ".pdf" and not sample.startswith(b"%PDF"):
@@ -146,7 +149,11 @@ def sniff_allowed(filename: str, content_type: str, sample: bytes) -> tuple:
                ".sh", ".tsx", ".jsx", ".go", ".rs", ".java", ".ipynb"} and b"\x00" in sample:
         return False, "err_content_mismatch_text", filename
     import mimetypes
-    return True, content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream", filename
+    from utils import canonical_mime
+    final_type = (canonical_mime(content_type)
+                  or canonical_mime(mimetypes.guess_type(filename)[0])
+                  or "application/octet-stream")
+    return True, final_type, filename
 
 
 def hash_password(password: str) -> str:

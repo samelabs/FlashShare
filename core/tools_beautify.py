@@ -28,7 +28,7 @@ import random
 
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps
 
-from tools import out_filename, register, ToolError
+from tools import open_image, out_filename, register, ToolError
 
 MAX_DIM = 1400
 SHADOW_ALPHA = 120
@@ -304,7 +304,7 @@ def beautify_handler(tool_input, params):
     aspect = params["aspect"]
 
     # ── 3. Decode + orient + downscale ──
-    img = Image.open(tool_input["stream"])
+    img = open_image(tool_input["stream"])
     img = ImageOps.exif_transpose(img).convert("RGB")
     if max(img.size) > MAX_DIM:
         img.thumbnail((MAX_DIM, MAX_DIM), Image.LANCZOS)

@@ -940,7 +940,8 @@ def _wrap_raw(body: bytes, filename: str | None = None,
     # cleansing as every other surface — one sanitize_filename authority
     from utils import sanitize_filename as _sfn
     name = _sfn(filename)
-    given_ctype = (content_type or "").strip().lower()
+    from utils import canonical_mime
+    given_ctype = canonical_mime(content_type) or ""
     if given_ctype in ("", "application/octet-stream", "application/json"):
         # placeholder — do NOT let it mask the real MIME. application/json
         # in raw mode is a mislabeled envelope (a parseable-JSON body never

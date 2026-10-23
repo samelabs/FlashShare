@@ -1569,6 +1569,100 @@ finally:
     _restore_stack()
 
 
+# ═══ MIME-CT: envelope file content_type is canonicalized before landing ═══
+# Protects: a poisoned endpoint-declared content_type (CR/LF header
+# injection, non-Latin-1 bytes) never reaches uploads.content_type or a
+# response header — the stored value is the extension-inferred
+# canonical MIME and the /f page renders 200. Sample: 2 end-to-end MCP
+# calls (one per poison) against an operator http tool + local hook;
+# Deps: live app + Postgres + fake Gokapi; runtime ~2s.
+import base64 as _b64m
+import http.server as _hsm
+import threading as _thm
+import uuid as _uuidm
+
+
+class _MimeHook(_hsm.BaseHTTPRequestHandler):
+    poison = "text/plain"
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(n)
+        out = json.dumps({"items": [{
+            "kind": "file", "filename": "result.png",
+            "content_type": type(self).poison,
+            "data_b64": _b64m.b64encode(_png_bytes()).decode()}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.518.items+json")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def log_message(self, *a):
+        pass
+
+
+_mime_srv = _hsm.ThreadingHTTPServer(("127.0.0.1", 0), _MimeHook)
+_mime_port = _mime_srv.server_address[1]
+_thm.Thread(target=_mime_srv.serve_forever, daemon=True).start()
+
+_ts_m = int(time.time())
+_mkey = "rsmime" + _uuidm.uuid4().hex[:6]
+_cur.execute(
+    "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
+    " label_json, visibility, enabled, params_json, endpoint_json,"
+    " trusted, created_at, updated_at, accept_json, format_family)"
+    " values (%s, NULL, %s, 'http', %s, 'public', true, '[]', %s, TRUE,"
+    " %s, %s, '[\".png\"]', 'image')",
+    (_mkey, _mkey, json.dumps({"en": "MimeCT"}),
+     json.dumps({"url": f"http://127.0.0.1:{_mime_port}/t", "timeout_s": 10}),
+     _ts_m, _ts_m))
+_cur.execute(
+    "insert into pricing (tool_id, cost, enabled, updated_at)"
+    " values (%s, 0, true, %s)", (_mkey, _ts_m))
+
+_mu, _muid = _new_user("ra9")
+_msess = create_browser_session(_muid)
+secrets_vault._f = Fernet(_VAULT_KEY)   # key creation seals (vault ON)
+r = client.post("/api/keys", json={"name": "mime"},
+                cookies={COOKIE_NAME: _msess})
+secrets_vault._f = None
+_mtok = ((r.json() or {}).get("key") or {}).get("key")
+
+
+def _mime_call(ref):
+    r = client.post("/mcp", json={
+        "jsonrpc": "2.0", "id": 77, "method": "tools/call",
+        "params": {"name": _mkey, "arguments": {
+            "files": [{"filename": "a.png",
+                       "b64": _b64m.b64encode(_png_bytes()).decode()}],
+            "client_ref": ref}}},
+        headers={"Authorization": f"Bearer {_mtok}"})
+    try:
+        return r.status_code, r.json()
+    except Exception:
+        return r.status_code, None
+
+
+for _i, _poison in enumerate(("text/plain\r\nX: y", "图片/png")):
+    _MimeHook.poison = _poison
+    _st_m, _d_m = _mime_call(f"mimect{_i}-{_uuidm.uuid4().hex[:8]}")
+    _res_m = (_d_m or {}).get("result") or {}
+    _items_m = (_res_m.get("structuredContent") or {}).get("items") or []
+    _pid_m = _items_m[0].get("public_id") if _items_m else None
+    _cur.execute("select content_type from uploads where public_id=%s",
+                 (_pid_m,))
+    _row_m = _cur.fetchone()
+    _rf_m = client.get(f"/f/{_pid_m}") if _pid_m else None
+    check(f"MIME-CT{_i + 1} poisoned envelope content_type lands canonical, /f 200",
+          _st_m == 200 and _res_m.get("isError") is False
+          and _items_m and _items_m[0].get("content_type") == "image/png"
+          and _row_m is not None and _row_m[0] == "image/png"
+          and _rf_m is not None and _rf_m.status_code == 200,
+          (_st_m, str(_d_m)[:120], _row_m,
+           _rf_m.status_code if _rf_m is not None else None))
+_mime_srv.shutdown()
+
 # 清场
 # uid2 被升为 samelabs operator 并驱动过 /samelabs/tools/create → 留下
 # operator_audit 行; actor FK 不带 CASCADE, 测试清理先删 audit 引用再删

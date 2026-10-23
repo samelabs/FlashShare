@@ -1359,6 +1359,7 @@ def _error_message(code, tool: dict | None = None) -> str:
         "err_call_in_progress": "This operation is already running; retry the same client_ref for its result.",
         "idempotency_conflict": "This client_ref was used for different input; use a new client_ref.",
         "err_file_too_large": "A file exceeds the size limit.",
+        "err_image_too_large": "The image dimensions exceed the limit.",
         "err_endpoint_failed": "The tool's service failed.",
         "err_endpoint_timeout": "The tool's service timed out.",
         "err_endpoint_blocked": "The tool's service endpoint is not allowed.",

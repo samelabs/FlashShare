@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import secrets
 import time
 import urllib.parse
@@ -121,6 +122,20 @@ def mime_base(content_type: str) -> str:
     the same upload is classified differently at upload vs preview.
     Every admission/classification comparison uses this base form."""
     return (content_type or "").split(";", 1)[0].strip().lower()
+
+
+_CANONICAL_MIME_RE = re.compile(
+    r"^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$")
+
+
+def canonical_mime(value) -> str | None:
+    """A header-safe canonical MIME type, or None. mime_base() strips
+    parameters; this additionally requires the bare type to match the
+    RFC token shape (no CR/LF, spaces or non-Latin-1 bytes), so a
+    client/endpoint-declared type can never inject header syntax when it
+    flows into storage metadata or transport headers."""
+    base = mime_base(value or "")
+    return base if _CANONICAL_MIME_RE.match(base) else None
 
 
 def file_glyph(content_type: str, filename: str) -> str:

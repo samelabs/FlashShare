@@ -18,7 +18,7 @@ import os
 
 from PIL import Image, ImageOps
 
-from tools import out_filename, register, ToolError
+from tools import open_image, out_filename, register, ToolError
 
 ACCEPTED = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -67,13 +67,7 @@ def crop_white_handler(tool_input, params):
         raise ToolError("err_format_not_supported")
 
     stream = tool_input["stream"]
-    stream.seek(0)
-    try:
-        img = Image.open(stream)
-        img.load()
-    except Exception:
-        raise ToolError("err_format_not_supported")
-
+    img = open_image(stream)
     img = ImageOps.exif_transpose(img)
 
     # Flatten alpha onto white BEFORE detection so transparent areas do not

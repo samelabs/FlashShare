@@ -3613,6 +3613,56 @@ check("RN4 non-owner rename → 403, name unchanged",
       and (_d2 or {}).get("filename") == "renamed stem.png", (_st, _d, _d2))
 
 
+# ══════════ MCT: web upload part content_type canonicalized on landing ══════════
+# Protects: a multipart part declaring `image/png; x="1"` (parameter
+# suffix; any header-unsafe syntax likewise) stores as the bare
+# canonical image/png — uploads.content_type never carries parameter
+# junk downstream into response headers. Sample: 1 upload via the real
+# /api/uploads route; runtime <1s.
+_mct_u = _u + "mct"
+_mct_ck = _rn_register(_mct_u)
+_body_m = b""
+for _k, _v in {"tool": "share", "client_ref": f"mct-{_u}"}.items():
+    _body_m += (f'--B\r\nContent-Disposition: form-data; name="{_k}"\r\n'
+                f'\r\n{_v}\r\n').encode()
+_body_m += (b'--B\r\nContent-Disposition: form-data; name="file";'
+            b' filename="mct.png"\r\nContent-Type: image/png; x="1"\r\n'
+            b'\r\n' + _png() + b'\r\n--B--\r\n')
+_st_m, _d_m = _rn_http("POST", "/api/uploads", _body_m, {
+    "Content-Type": "multipart/form-data; boundary=B",
+    "Cookie": _mct_ck})
+_staged_m = (_d_m or {}).get("file") or {}
+check("MCT1 upload with parameter-suffixed part type → staged canonical type",
+      _st_m == 200 and (_d_m or {}).get("ok") is True
+      and _staged_m.get("contentType") == "image/png",
+      (_st_m, _staged_m.get("contentType")))
+_st_e, _d_e = _rn_http("POST", "/api/tools/execute", {
+    "tool_id": "share",
+    "source": {"files": [{
+        "public_id": _staged_m.get("stagingId"),
+        "source_token": _staged_m.get("sourceToken")}]},
+    "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 10},
+    "client_ref": f"mcte-{_u}"},
+    {"Content-Type": "application/json", "Cookie": _mct_ck})
+_items_e = (((_d_e or {}).get("result") or {}).get("items")
+            if isinstance(_d_e, dict) else None) or []
+_pid_e = next((i.get("public_id") for i in _items_e
+               if i.get("kind") == "file"), "")
+with db() as con:
+    _row_m = con.execute(
+        "select content_type from uploads where public_id=%s",
+        (_pid_e,)).fetchone() if _pid_e else None
+check("MCT2 poisoned part type lands canonical in uploads",
+      _st_e == 200 and (_d_e or {}).get("ok") is True and _pid_e
+      and _row_m is not None and _row_m["content_type"] == "image/png"
+      and any(i.get("content_type") == "image/png" for i in _items_e),
+      (_st_e, str(_d_e)[:120],
+       dict(_row_m) if _row_m else None))
+if _pid_e:
+    _st_f, _d_f = _rn_http("GET", f"/f/{_pid_e}", None,
+                           {"Accept": "application/json"})
+    check("MCT3 /f page renders the canonical upload", _st_f == 200, _st_f)
+
 # ══════════ cleanup ══════════
 with db() as con:
     _http_uids = [r["id"] for r in con.execute(

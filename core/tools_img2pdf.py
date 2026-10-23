@@ -18,7 +18,7 @@ import os
 
 from PIL import Image, ImageOps
 
-from tools import out_filename, register, ToolError
+from tools import open_image, out_filename, register, ToolError
 
 MAX_SOURCES = 20
 DPI = 150
@@ -58,14 +58,7 @@ def img2pdf_handler(tool_input, params):
             if ext not in ACCEPTED or not ct.startswith("image/"):
                 raise ToolError("err_format_not_supported")
 
-            stream = src["stream"]
-            stream.seek(0)
-            try:
-                img = Image.open(stream)
-                img.load()
-            except Exception:
-                raise ToolError("err_format_not_supported")
-
+            img = open_image(src["stream"])
             # EXIF orientation → upright page (compress-tool convention)
             img = ImageOps.exif_transpose(img)
 

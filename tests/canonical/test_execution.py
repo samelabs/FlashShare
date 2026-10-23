@@ -955,6 +955,68 @@ try:
           st_hz == 200 and _st_up == 200 and _hz_ms < 200,
           f"healthz={st_hz} uploads={_st_up} { _hz_ms }ms")
     check("H8 delay reset to zero", _goki_delay(0) == 200)
+
+    # ═══ I1. image pixel ceiling (64 MP): oversized → typed failure,
+    # exact refund, call failed; a normal image executes through the
+    # same path. Protects tools.open_image's pre-decode pixel check and
+    # the worker RLIMIT_AS pairing. Sample: one 9000×9000 mode-"1" PNG
+    # (~10 KB file, 81 MP) + one opaque PNG; compress priced at 50
+    # credits for this section, restored after. Deps: live app + worker
+    # pool + Postgres; runtime ~4s.
+    from database import db as _db_i1
+    from governance.pricing import set_pricing as _set_cost_i1
+    from economy.billing import grant as _grant_i1
+    from economy.billing import spendable_balance as _sb_i1
+    _set_cost_i1("compress", 50, True)
+    _iu1, _ick1, _ikey1 = _register(f"{_u}i1")
+    _grant_i1(_iu1, 5000, "manual_topup", note="i1")
+    _bal_i1 = _sb_i1(_iu1)
+    import io as _io_i1
+    from PIL import Image as _Image_i1
+    _buf_i1 = _io_i1.BytesIO()
+    _Image_i1.new("1", (9000, 9000), 0).save(_buf_i1, "PNG")
+    _OVER_PNG = _buf_i1.getvalue()
+
+    def _compress_i1(payload, fname, ref):
+        return _mcp_raw(_json.dumps({
+            "jsonrpc": "2.0", "id": 421, "method": "tools/call",
+            "params": {"name": "compress", "arguments": {
+                "files": [{"filename": fname, "b64": payload}],
+                "params": {"preset": "auto"}, "client_ref": ref}}}).encode(),
+            _ikey1)
+
+    st, d = _compress_i1(base64.b64encode(_OVER_PNG).decode(),
+                         "huge.png", f"i1over-{_u}")
+    _sc_i1 = (((d or {}).get("result") or {}).get("structuredContent")
+              or {}).get("error")
+    with _db_i1() as con:
+        _row_i1 = con.execute(
+            "select status, error from tool_calls where user_id=%s"
+            " and tool_id='compress' order by id desc limit 1",
+            (_iu1,)).fetchone()
+        _n_ref_i1 = int(con.execute(
+            "select count(*) c from ledger where user_id=%s"
+            " and kind='refund'", (_iu1,)).fetchone()["c"])
+    check("I1a 81 MP image → err_image_too_large, refund exact, call failed",
+          st == 200
+          and ((d or {}).get("result") or {}).get("isError") is True
+          and _sc_i1 == "err_image_too_large"
+          and _row_i1 is not None and _row_i1["status"] == "failed"
+          and _row_i1["error"] == "err_image_too_large"
+          and _n_ref_i1 >= 1 and _sb_i1(_iu1) == _bal_i1,
+          (st, _sc_i1, dict(_row_i1) if _row_i1 else None,
+           _n_ref_i1, _sb_i1(_iu1), _bal_i1))
+
+    st, d = _compress_i1(base64.b64encode(opaque_png()).decode(),
+                         "flat.png", f"i1ok-{_u}")
+    _items_i1 = (((d or {}).get("result") or {}).get("structuredContent")
+                 or {}).get("items")
+    check("I1b normal image executes under the ceiling (charged 50)",
+          st == 200 and _items_i1 and _sb_i1(_iu1) == _bal_i1 - 50,
+          (st, str(d)[:120], _sb_i1(_iu1)))
+    _set_cost_i1("compress", 0, True)
+    with _db_i1() as con:
+        purge_users(con, [_iu1])
 finally:
     if uid:
         from database import db
@@ -994,8 +1056,7 @@ ts = int(time.time())
 
 from config import MAX_UPLOAD_BYTES
 from database import db
-from execution.orchestrator import (_read_source_bounded, _SourceTooLarge,
-                                    MAX_MULTI_BYTES)
+from execution.orchestrator import _read_source_bounded, _SourceTooLarge
 from execution import pool as pool_mod
 
 def _mkuser(name):

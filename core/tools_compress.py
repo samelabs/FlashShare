@@ -22,7 +22,7 @@ import io
 
 from PIL import Image, ImageOps
 
-from tools import out_filename, register, ToolError
+from tools import open_image, out_filename, register, ToolError
 
 MAX_DIM = 4096  # don't upscale, but allow large scans
 
@@ -70,13 +70,7 @@ def _decode(stream):
     """Open + orient. Returns the working image (RGBA when the source
     carries transparency, RGB otherwise) and its alpha flag. A stream
     Pillow cannot decode is a format error (typed err_*), never a 500."""
-    try:
-        img = Image.open(stream)
-        img.load()
-    except ToolError:
-        raise
-    except Exception as exc:
-        raise ToolError("err_format_not_supported") from exc
+    img = open_image(stream)
     img = ImageOps.exif_transpose(img)
     if _has_alpha(img):
         return img.convert("RGBA"), True

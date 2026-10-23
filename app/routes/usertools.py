@@ -24,7 +24,6 @@ Ownership boundaries:
 """
 
 import json
-import re
 
 from fastapi import APIRouter, Request
 import asyncio
@@ -45,7 +44,6 @@ from utils import now
 router = APIRouter()
 
 MAX_PRICE = 100000
-ACCEPT_MIME_RE = re.compile(r"^[\w.+-]+/[\w.+-]+$")
 
 
 def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = False,
