@@ -71,12 +71,14 @@ async def delete_upload(upload_id: int, request: Request):
     """File takedown = delete the mapping row + the physical Gokapi
     object (sharing single point) + one operator_audit fact. Two-step
     confirmation happens in the page JS before this endpoint is hit."""
+    import asyncio
     user, resp = gate(request)
     if resp:
         return resp
     from backoffice import content as content_cmd
     try:
-        out = content_cmd.delete_upload(int(user["id"]), upload_id)
+        out = await asyncio.to_thread(
+            content_cmd.delete_upload, int(user["id"]), upload_id)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "id": out["id"]}

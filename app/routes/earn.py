@@ -120,7 +120,8 @@ async def request_withdraw(request: Request):
     (economy.money.parse_usd_decimal). No float ever enters the money
     path; sub-cent precision is rejected, never rounded.
     """
-    user, err = _require_auth(request)
+    import asyncio
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     try:
@@ -140,7 +141,8 @@ async def request_withdraw(request: Request):
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     try:
-        w = earnings.request_withdrawal(user["id"], amount_millis, note)
+        w = await asyncio.to_thread(
+            earnings.request_withdrawal, user["id"], amount_millis, note)
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, 422)
     return {"ok": True, "id": w["id"], "status": w["status"]}

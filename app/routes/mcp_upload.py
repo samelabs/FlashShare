@@ -35,37 +35,46 @@ def _err(status: int, code: str, **extra) -> JSONResponse:
     return JSONResponse(body, status_code=status)
 
 
-@router.put("/mcp/upload/{ticket}")
-async def mcp_upload_put(ticket: str, request: Request):
-    from utils import now
-    ts = now()
+def _claim_ticket(ticket: str, ts, bearer_token: str | None):
+    """Sync ticket segment (thread): optional bearer identity check +
+    the atomic single-use claim. Returns (row, None) or (None, error)."""
     from repo import upload_tickets as tickets
 
     # A ticket is credential-by-possession, but an EXPLICIT identity that
     # belongs to someone else is a hard reject BEFORE the ticket is
     # consumed (a mismatched attempt must never burn it).
-    auth = request.headers.get("authorization", "")
-    bearer_uid = None
-    if auth.lower().startswith("bearer "):
+    if bearer_token is not None:
         from identity.apikeys import authenticate_key
-        other = authenticate_key(auth[7:].strip())
+        other = authenticate_key(bearer_token)
         if other is not None:
             bearer_uid = int(other["id"])
-    if bearer_uid is not None:
-        owner = tickets.owner_of(ticket)
-        if owner is None:
-            return _err(404, "ticket_not_found")
-        if owner != bearer_uid:
-            return _err(403, "ticket_owner_mismatch")
+            owner = tickets.owner_of(ticket)
+            if owner is None:
+                return None, _err(404, "ticket_not_found")
+            if owner != bearer_uid:
+                return None, _err(403, "ticket_owner_mismatch")
 
     claimed = tickets.claim(ticket, ts)
     if claimed == "not_found":
-        return _err(404, "ticket_not_found")
+        return None, _err(404, "ticket_not_found")
     if claimed == "used":
-        return _err(409, "ticket_used")
+        return None, _err(409, "ticket_used")
     if claimed == "expired":
-        return _err(410, "ticket_expired")
-    row = claimed
+        return None, _err(410, "ticket_expired")
+    return claimed, None
+
+
+@router.put("/mcp/upload/{ticket}")
+async def mcp_upload_put(ticket: str, request: Request):
+    import asyncio
+    from utils import now
+    ts = now()
+
+    auth = request.headers.get("authorization", "")
+    bearer_token = auth[7:].strip() if auth.lower().startswith("bearer ") else None
+    row, terr = await asyncio.to_thread(_claim_ticket, ticket, ts, bearer_token)
+    if terr is not None:
+        return terr
     user_id = int(row["user_id"])
 
     # ── stream the body under the declared cap ──

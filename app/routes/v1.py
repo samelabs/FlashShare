@@ -137,7 +137,7 @@ def _resolve(key: str, user_id: int):
 
 @router.get("/tools")
 async def list_tools(request: Request):
-    user, err = _auth(request)
+    user, err = await asyncio.to_thread(_auth, request)
     if err:
         return err
     denial = _entry_gates(request, user, need=None)
@@ -150,14 +150,14 @@ async def list_tools(request: Request):
     if page < 1:
         page = 1
     from governance.catalog import market_page
-    data = market_page(None, page, curated=False)
+    data = await asyncio.to_thread(market_page, None, page, curated=False)
     return {"ok": True, "tools": data["items"], "total": data["total"],
             "page": data["page"], "total_pages": data["total_pages"]}
 
 
 @router.get("/tools/{key}")
 async def tool_detail(key: str, request: Request):
-    user, err = _auth(request)
+    user, err = await asyncio.to_thread(_auth, request)
     if err:
         return err
     denial = _entry_gates(request, user, need=None)
@@ -167,7 +167,7 @@ async def tool_detail(key: str, request: Request):
     # 与工具页一致 — 无存在性预言); 条目投影与 /v1/tools 列表同一
     # canonical 投影 (governance.catalog.catalog_item)。
     from governance.catalog import catalog_item
-    tool, terr = _resolve(key, int(user["id"]))
+    tool, terr = await asyncio.to_thread(_resolve, key, int(user["id"]))
     if terr == "forbidden":
         return _err(404, "tool_not_found")
     item = catalog_item(tool) if tool is not None else None
@@ -178,21 +178,22 @@ async def tool_detail(key: str, request: Request):
 
 @router.get("/balance")
 async def balance(request: Request):
-    user, err = _auth(request)
+    user, err = await asyncio.to_thread(_auth, request)
     if err:
         return err
     denial = _entry_gates(request, user, need=None)
     if denial:
         return denial
     from economy.billing import spendable_balance
-    return {"ok": True, "balance": spendable_balance(int(user["id"]))}
+    return {"ok": True,
+            "balance": await asyncio.to_thread(spendable_balance, int(user["id"]))}
 
 
 # ── POST /v1/tools/{key} — the execution surface ──
 
 @router.post("/tools/{key}")
 async def call_tool(key: str, request: Request):
-    user, err = _auth(request)
+    user, err = await asyncio.to_thread(_auth, request)
     if err:
         return err
     denial = _entry_gates(request, user)
@@ -210,7 +211,7 @@ async def call_tool(key: str, request: Request):
 
     # tool resolve BEFORE any body read / fetch / staging (forbidden
     # answers 404 tool_not_found — same as the tool page)
-    tool, terr = _resolve(key, int(user["id"]))
+    tool, terr = await asyncio.to_thread(_resolve, key, int(user["id"]))
     if tool is None:
         return _err(404, "tool_not_found")
 
@@ -249,10 +250,11 @@ async def _call_body_tool(request, user, tool, idem, delivery, params):
             return _err(400, "err_body_invalid",
                         message="request body is not valid UTF-8")
 
-    # pre-gate preflight (entitlement + params + body 口径) — pure, typed
+    # pre-gate preflight (entitlement + params + body 口径) — pure, typed;
+    # its DB reads run in the worker pool
     from execution.dispatch import preflight
-    _t, declared, _cb, pbody, pstatus = preflight(
-        user, tool["tool_key"], delivery, params, body=body_value)
+    _t, declared, _cb, pbody, pstatus = await asyncio.to_thread(
+        preflight, user, tool["tool_key"], delivery, params, body_value)
     if pbody is not None:
         return JSONResponse(pbody, pstatus)
     if declared is not None:
@@ -311,7 +313,8 @@ async def _file_item_bytes(user, item, headers) -> Response:
     storage faults (exception, ≥500) → 503 result_unavailable."""
     from sharing.uploads import get_live_upload_by_public_id
     from storage import read as storage_read
-    up = get_live_upload_by_public_id(item.get("public_id") or "")
+    up = await asyncio.to_thread(
+        get_live_upload_by_public_id, item.get("public_id") or "")
     if up is None or int(up["user_id"]) != int(user["id"]):
         return _err(410, "result_expired", headers=headers)
     try:
@@ -409,8 +412,8 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
     # pre-gate preflight (entitlement + params) BEFORE any fetch/staging
     from execution.invocation import BODY_ABSENT
     from execution.dispatch import preflight
-    _t, declared, _cb, pbody, pstatus = preflight(
-        user, tool["tool_key"], delivery, params, body=BODY_ABSENT)
+    _t, declared, _cb, pbody, pstatus = await asyncio.to_thread(
+        preflight, user, tool["tool_key"], delivery, params, BODY_ABSENT)
     if pbody is not None:
         return JSONResponse(pbody, pstatus)
     if declared is not None:
@@ -421,7 +424,8 @@ async def _call_file_tool(request, user, tool, idem, delivery, params):
     # answers 402 without fetching or staging anything; the authoritative
     # consume stays in the gate.
     from execution.affordability import check_affordability
-    _denial = check_affordability(user["id"], tool, client_ref=idem)
+    _denial = await asyncio.to_thread(
+        check_affordability, user["id"], tool, idem)
     if _denial:
         return JSONResponse(_denial, 402)
 

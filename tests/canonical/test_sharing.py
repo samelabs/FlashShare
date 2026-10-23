@@ -3355,6 +3355,150 @@ finally:
     _rm_g3._resolve_host = _orig_res_g3
     _dx_mod.dispatch_execute = _orig_dx_g3
 
+
+# ══════════ P5: 取消窗口 — claim / 暂存写 / finalize 线程提交后取消,
+# 不得丢 receipt、配额或暂存对象的收尾义务。受控交错 (Events 锚定
+# 线程内时刻), 断言持久事实 (receipt 状态 / usage / gokapi 对象数)。
+# ══════════
+import threading as _thr_p5
+import sharing.ingress_receipt as _irmod_p5
+
+section('staging cancellation: receipt/quota/object obligations survive')
+
+uidP5 = _mkuser(_u + "p5cx")
+
+
+def _p5_hash(tag):
+    return ingress_request_hash(
+        "mcp_upload_ticket",
+        [{"filename": f"{tag}.png", "content_type": "image/png",
+          "size": len(PNG_idm), "sha256": hashlib.sha256(PNG_idm).hexdigest()}], {})
+
+
+def _receipt_row(ref):
+    with db() as con:
+        return con.execute(
+            "select status from ingress_requests where user_id=%s and"
+            " request_ref=%s", (uidP5, ref)).fetchone()
+
+
+async def _cancel_after_entered(make_task, entered, release):
+    """Shared driver: run make_task(), wait until the worker is parked
+    inside the patched durable step, cancel, release concurrently, await."""
+    task = _aio.ensure_future(make_task())
+    if not await _aio.to_thread(entered.wait, 3):
+        raise RuntimeError("p5: injected step never ran")
+    task.cancel()
+    _thr_p5.Timer(0.05, release.set).start()
+    try:
+        await task
+        return False
+    except _aio.CancelledError:
+        return True
+
+
+_gk0_p5 = _gk_count()
+
+# (a) 取消落在 claim 线程暂停中 (claim 已提交, 零暂存对象) → 精确配额
+#     释放 + receipt 落 failed, 取消随后传播。
+_entered_a, _release_a = _thr_p5.Event(), _thr_p5.Event()
+_orig_claim_p5 = _irmod_p5.claim_ingress_quota
+
+
+def _paused_claim_p5(*a, **k):
+    out = _orig_claim_p5(*a, **k)
+    _entered_a.set()
+    if not _release_a.wait(5):
+        raise RuntimeError("p5a release timeout")
+    return out
+
+
+_irmod_p5.claim_ingress_quota = _paused_claim_p5
+try:
+    _cancel_a = _aio.run(_cancel_after_entered(
+        lambda: _staging_mod.stage_sources(
+            uidP5, "127.0.0.1", f"p5claim-{_u}", "", _p5_hash("claim"),
+            [("claim.png", "image/png", PNG_idm)]),
+        _entered_a, _release_a))
+finally:
+    _irmod_p5.claim_ingress_quota = _orig_claim_p5
+_row_a = _receipt_row(f"p5claim-{_u}")
+check("P5a cancel in claim window → receipt failed, quota exactly released, nothing staged",
+      _cancel_a is True and _row_a is not None and _row_a["status"] == "failed"
+      and _usage_n(uidP5) == 0 and _gk_count() == _gk0_p5,
+      f"{_cancel_a} {_row_a and _row_a['status']} usage={_usage_n(uidP5)}"
+      f" gk={_gk_count()}/{_gk0_p5}")
+
+# (b) 取消落在暂存写线程暂停中 (对象已落 fake gokapi) → 回滚删除该
+#     对象 + 配额释放 + receipt 落 failed。
+_entered_b, _release_b = _thr_p5.Event(), _thr_p5.Event()
+_orig_write_p5 = _storage_mod.write
+
+
+def _paused_write_p5(stream, filename, ct, ed, ad, size):
+    out = _orig_write_p5(stream, filename, ct, ed, ad, size)
+    _entered_b.set()
+    if not _release_b.wait(5):
+        raise RuntimeError("p5b release timeout")
+    return out
+
+
+_storage_mod.write = _paused_write_p5
+try:
+    _cancel_b = _aio.run(_cancel_after_entered(
+        lambda: _staging_mod.stage_sources(
+            uidP5, "127.0.0.1", f"p5write-{_u}", "", _p5_hash("write"),
+            [("write.png", "image/png", PNG_idm)]),
+        _entered_b, _release_b))
+finally:
+    _storage_mod.write = _orig_write_p5
+_row_b = _receipt_row(f"p5write-{_u}")
+check("P5b cancel in staging-write window → staged object rolled back, receipt failed",
+      _cancel_b is True and _row_b is not None and _row_b["status"] == "failed"
+      and _usage_n(uidP5) == 0 and _gk_count() == _gk0_p5,
+      f"{_cancel_b} {_row_b and _row_b['status']} usage={_usage_n(uidP5)}"
+      f" gk={_gk_count()}/{_gk0_p5}")
+
+# (c) 取消落在 finalize 线程暂停中, 成功提交已在独立事务落地 →
+#     durable ok 站住 (对象保留、配额计入), 同 client_ref 重试重放。
+_entered_c, _release_c = _thr_p5.Event(), _thr_p5.Event()
+_orig_fin_p5 = _irmod_p5.finalize_ok
+
+
+def _paused_fin_p5(con, ingress_id, result):
+    with db() as own:
+        _orig_fin_p5(own, ingress_id, result)
+    _entered_c.set()
+    if not _release_c.wait(5):
+        raise RuntimeError("p5c release timeout")
+
+
+_irmod_p5.finalize_ok = _paused_fin_p5
+try:
+    _cancel_c = _aio.run(_cancel_after_entered(
+        lambda: _staging_mod.stage_sources(
+            uidP5, "127.0.0.1", f"p5fin-{_u}", "", _p5_hash("fin"),
+            [("fin.png", "image/png", PNG_idm)]),
+        _entered_c, _release_c))
+finally:
+    _irmod_p5.finalize_ok = _orig_fin_p5
+_row_c = _receipt_row(f"p5fin-{_u}")
+_gk_after_c = _gk_count()
+check("P5c cancel after durable finalize → receipt ok, object kept, quota counted",
+      _cancel_c is True and _row_c is not None and _row_c["status"] == "ok"
+      and _usage_n(uidP5) == 1 and _gk_after_c == _gk0_p5 + 1,
+      f"{_cancel_c} {_row_c and _row_c['status']} usage={_usage_n(uidP5)}"
+      f" gk={_gk_after_c}/{_gk0_p5}")
+# same client_ref retry → replay of the stored handles: no new object,
+# no second usage, same staging id
+_r_replay = _aio.run(_staging_mod.stage_sources(
+    uidP5, "127.0.0.1", f"p5fin-{_u}", "", _p5_hash("fin"),
+    [("fin.png", "image/png", PNG_idm)]))
+check("P5d same-ref retry after cancelled-durable-ok → replay (no new object/usage)",
+      isinstance(_r_replay, list) and bool(_r_replay[0].get("stagingId"))
+      and _usage_n(uidP5) == 1 and _gk_count() == _gk_after_c,
+      f"usage={_usage_n(uidP5)} gk={_gk_count()}/{_gk_after_c}")
+
 # ══════════ cleanup ══════════
 with db() as con:
     _http_uids = [r["id"] for r in con.execute(

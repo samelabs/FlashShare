@@ -118,7 +118,7 @@ def _topup_checkout_impl(user: dict, raw: dict):
 
 @router.post("/api/topup/checkout")
 async def topup_checkout(request: Request):
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     from economy import creem
@@ -236,7 +236,7 @@ def _subscribe_checkout_impl(user: dict, raw: dict):
 @router.post("/api/topup/subscribe")
 async def subscribe_checkout(request: Request):
     """订阅 checkout (v3 spec): plan 必须绑 creem_product_id 才可售。"""
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     from economy import creem
@@ -312,7 +312,7 @@ async def plan_upgrade(request: Request):
     → product.id → pro 收敛 (仅同步 plan, 零 credits); 升级补差 credits
     只由该 proration charge 的 subscription.paid (paid transaction 证明)
     经 apply_paid_period 以 grant_plan_upgrade 补授。"""
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     from economy import creem
@@ -383,7 +383,7 @@ async def plan_downgrade(request: Request):
     (application expectation / local continuity fact, 非 Payment
     authority)。Creem 失败 → ZERO pending。当前周期 Membership/entitlements
     保持 Pro; 周期边界 provider product 必须实际为 Plus 才切换。"""
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     from economy import creem
@@ -400,24 +400,11 @@ async def plan_downgrade(request: Request):
 MAX_WEBHOOK_BODY = 262144  # 256KB — Creem 事件远小于此; 挡匿名内存放大 (审计🟡9)
 
 
-@router.post("/webhooks/creem")
-async def creem_webhook(request: Request):
+def _creem_webhook_impl(event_type: str, event: dict, obj: dict):
+    """Sync domain dispatch (thread): every branch below is a blocking
+    DB/domain call (subscription state machine, reversal, fulfillment)."""
     from economy import creem
-    cl = request.headers.get("content-length", "")
-    if cl.isdigit() and int(cl) > MAX_WEBHOOK_BODY:
-        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
-    raw = await request.body()
-    if len(raw) > MAX_WEBHOOK_BODY:
-        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
-    sig = request.headers.get("creem-signature", "")
-    if not creem.verify_signature(raw, sig):
-        return JSONResponse({"ok": False, "error": "bad_signature"}, 401)
-    try:
-        event = json.loads(raw)
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_json"}, 400)
-    event_type = str(event.get("eventType") or "")
-    obj = event.get("object") or {}
+    import logging
 
     # ── subscription family → economy.subscription state machine ──
     if event_type.startswith("subscription."):
@@ -524,3 +511,24 @@ async def creem_webhook(request: Request):
                         order.get("id"), obj.get("id"))
         return JSONResponse({"ok": False, "error": str(exc.args[0])}, 500)
     return {"ok": True, **res}
+
+
+@router.post("/webhooks/creem")
+async def creem_webhook(request: Request):
+    from economy import creem
+    cl = request.headers.get("content-length", "")
+    if cl.isdigit() and int(cl) > MAX_WEBHOOK_BODY:
+        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
+    raw = await request.body()
+    if len(raw) > MAX_WEBHOOK_BODY:
+        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
+    sig = request.headers.get("creem-signature", "")
+    if not creem.verify_signature(raw, sig):
+        return JSONResponse({"ok": False, "error": "bad_signature"}, 401)
+    try:
+        event = json.loads(raw)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_json"}, 400)
+    event_type = str(event.get("eventType") or "")
+    obj = event.get("object") or {}
+    return await asyncio.to_thread(_creem_webhook_impl, event_type, event, obj)

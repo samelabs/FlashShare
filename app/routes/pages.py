@@ -80,13 +80,13 @@ async def service_worker():
                         headers={"Cache-Control": "no-store"})
 
 @router.get("/offline", response_class=HTMLResponse)
-async def offline_page(request: Request):
+def offline_page(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     return templates.TemplateResponse(request, "offline.html", ctx)
 
 @router.get("/llms.txt")
-async def llms_txt():
+def llms_txt():
     """Plain-text agent guide, generated from the live code authorities
     (protocol versions, endpoint, public catalog). Language-independent
     English by design."""
@@ -164,7 +164,7 @@ def _support_note() -> str:
 
 
 @router.get("/terms", response_class=HTMLResponse)
-async def terms(request: Request):
+def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
@@ -176,7 +176,7 @@ async def terms(request: Request):
 
 
 @router.get("/privacy", response_class=HTMLResponse)
-async def privacy(request: Request):
+def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
@@ -220,7 +220,7 @@ def _developer_facts() -> dict:
 
 
 @router.get("/developers", response_class=HTMLResponse)
-async def developers(request: Request):
+def developers(request: Request):
     """Public developer guide: the southbound HTTP contract, request/
     response shapes, declarations, limits and economics. Same policy-doc
     mechanism as /terms (per-locale file, en fallback) plus one render
@@ -252,7 +252,7 @@ async def developers(request: Request):
 
 
 @router.get("/agents", response_class=HTMLResponse)
-async def agents_page(request: Request):
+def agents_page(request: Request):
     """Agent support surface: the MCP server."""
     from app.main import templates
     ctx = _ctx_base_impl(request, "agents")
@@ -301,7 +301,7 @@ def _market_page_window(current: int, total_pages: int,
 
 
 @router.get("/tools", response_class=HTMLResponse)
-async def tools_market(request: Request):
+def tools_market(request: Request):
     """Open-platform market: server-side search + paginated public list.
     Search and pagination live in the URL (?q= / ?page=); pricing
     visibility, ordering and paging all happen in SQL."""
@@ -534,14 +534,14 @@ def _tool_qr_response(key: str):
 # 无两段式 owner/tool 解析, 无 'mcp'-slug 兜底 (那个场景随形状消亡)。
 
 @router.get("/tool/{key}/qr.svg")
-async def tool_qr(key: str):
+def tool_qr(key: str):
     """工具页 QR (/tool/compress/qr.svg) — 与工具页同一 resolve 权限
     (public/unlisted 对所有人)。"""
     return _tool_qr_response(key)
 
 
 @router.get("/tool/{key}", response_class=HTMLResponse)
-async def tool_page(request: Request, key: str):
+def tool_page(request: Request, key: str):
     from app.main import templates
     from fastapi.responses import HTMLResponse as _H
     ctx = _tool_page_ctx(request, key)
@@ -566,7 +566,7 @@ def _load_doc(name: str, lang: str = "en") -> str:
 HOME_GRID_SIZE = 8
 
 @router.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+def home(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
@@ -618,7 +618,7 @@ async def home(request: Request):
 # ── Auth pages ──
 
 @router.get("/auth/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = "", next: str = "/"):
+def login_page(request: Request, error: str = "", next: str = "/"):
     from app.main import templates
     from app.routes.auth_route import _safe_next
     ctx = _ctx_base(request)
@@ -628,7 +628,7 @@ async def login_page(request: Request, error: str = "", next: str = "/"):
 
 
 @router.get("/auth/register", response_class=HTMLResponse)
-async def register_page(request: Request, error: str = "", next: str = "/"):
+def register_page(request: Request, error: str = "", next: str = "/"):
     from app.main import templates
     from app.routes.auth_route import _safe_next
     ctx = _ctx_base(request)
@@ -654,7 +654,7 @@ def _account_ctx(request: Request, page: str, **extra) -> dict:
 
 
 @router.get("/account/profile", response_class=HTMLResponse)
-async def account_profile(request: Request):
+def account_profile(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
@@ -668,7 +668,7 @@ async def account_profile(request: Request):
 
 
 @router.get("/account/security", response_class=HTMLResponse)
-async def account_security(request: Request):
+def account_security(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
@@ -991,7 +991,7 @@ def account_earnings(request: Request):
 
 
 @router.get("/account/tools", response_class=HTMLResponse)
-async def account_tools(request: Request):
+def account_tools(request: Request):
     """User-published tools (C2C supply side)."""
     from app.main import templates
     user = request.state.user
@@ -1265,7 +1265,7 @@ def result_qr(result_id: str):
 
 
 @router.get("/account/favorites", response_class=HTMLResponse)
-async def account_favorites(request: Request):
+def account_favorites(request: Request):
     """我的收藏: the user's pinned tools (same set MCP tools/list carries
     besides first-party and own tools)."""
     from app.main import templates
@@ -1286,7 +1286,7 @@ async def account_favorites(request: Request):
 
 
 @router.get("/account/keys", response_class=HTMLResponse)
-async def account_keys(request: Request):
+def account_keys(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
@@ -1298,21 +1298,12 @@ async def account_keys(request: Request):
 # /auth/profile does not exist (single-page account model).
 # Profile/password POST handlers moved here from auth_route (account forms).
 
-@router.post("/account/profile")
-async def account_profile_save(request: Request):
+def _profile_save_impl(request: Request, user: dict, display_name: str,
+                       email: str, bio: str, payout_channel: str,
+                       current_password: str):
+    """Sync business block (thread): profile write + failure re-render."""
     from app.main import templates
     from identity.auth import update_profile, public_user
-    user = request.state.user
-    if not user:
-        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-
-    form = await request.form()
-    display_name = (form.get("display_name") or "").strip()
-    email = (form.get("email") or "").strip()
-    bio = (form.get("bio") or "").strip()
-    payout_channel = (form.get("payout_channel") or "").strip()
-    current_password = form.get("current_password") or ""
-
     try:
         # bio / payout_channel: the field is ALWAYS submitted on this
         # form — "" is an explicit clear, not "leave unchanged"
@@ -1336,20 +1327,41 @@ async def account_profile_save(request: Request):
     return RedirectResponse("/account/profile", 302)
 
 
-@router.post("/account/password")
-async def account_password_save(request: Request):
-    from app.main import templates
-    from identity.auth import public_user, has_password, change_password, set_password
-    from i18n import server_text
+@router.post("/account/profile")
+async def account_profile_save(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    lang = getattr(request.state, "lang", "en")
 
     form = await request.form()
-    new_password = form.get("new_password") or ""
-    new_password_confirm = form.get("new_password_confirm") or ""
-    old_password = form.get("old_password") or ""
+    display_name = (form.get("display_name") or "").strip()
+    email = (form.get("email") or "").strip()
+    bio = (form.get("bio") or "").strip()
+    payout_channel = (form.get("payout_channel") or "").strip()
+    current_password = form.get("current_password") or ""
+    return await asyncio.to_thread(
+        _profile_save_impl, request, user, display_name, email, bio,
+        payout_channel, current_password)
+
+
+def _password_form_error(request: Request, user: dict, msg: str):
+    """Sync re-render (thread) for the two pre-write form validations."""
+    from app.main import templates
+    from identity.auth import public_user
+    u = public_user(user)
+    ctx = _account_ctx(request, "security", u=u,
+                       user_has_password=u.get("hasPassword", False),
+                       x_bound=bool(u.get("xUsername")), error=msg)
+    return templates.TemplateResponse(request, "account/security.html", ctx)
+
+
+def _password_save_impl(request: Request, user: dict, old_password: str,
+                        new_password: str):
+    """Sync business block (thread): credential write + failure re-render."""
+    from app.main import templates
+    from identity.auth import public_user, has_password, change_password, set_password
+    from i18n import server_text
+    lang = getattr(request.state, "lang", "en")
 
     def _err(msg):
         u = public_user(user)
@@ -1357,11 +1369,6 @@ async def account_password_save(request: Request):
                            user_has_password=u.get("hasPassword", False),
                            x_bound=bool(u.get("xUsername")), error=msg)
         return templates.TemplateResponse(request, "account/security.html", ctx)
-
-    if new_password != new_password_confirm:
-        return _err(server_text(lang).get("passwordMismatch", ""))
-    if not new_password:
-        return _err(error_text(request, "err_password_empty"))
 
     try:
         if has_password(user["id"]):
@@ -1377,3 +1384,28 @@ async def account_password_save(request: Request):
         return _err(error_text(request, ""))
 
     return RedirectResponse("/account/security", 302)
+
+
+@router.post("/account/password")
+async def account_password_save(request: Request):
+    from i18n import server_text
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    lang = getattr(request.state, "lang", "en")
+
+    form = await request.form()
+    new_password = form.get("new_password") or ""
+    new_password_confirm = form.get("new_password_confirm") or ""
+    old_password = form.get("old_password") or ""
+
+    if new_password != new_password_confirm:
+        return await asyncio.to_thread(
+            _password_form_error, request, user,
+            server_text(lang).get("passwordMismatch", ""))
+    if not new_password:
+        return await asyncio.to_thread(
+            _password_form_error, request, user,
+            error_text(request, "err_password_empty"))
+    return await asyncio.to_thread(
+        _password_save_impl, request, user, old_password, new_password)

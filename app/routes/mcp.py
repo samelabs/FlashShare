@@ -310,7 +310,7 @@ async def _dispatch(request: Request, user: dict, msg):
         # The caller's real account limits, from the same entitlement
         # projection the delivery schemas advertise (one read); an
         # anonymous caller sees the Free plan it would register into.
-        ent = _entitlements(user)
+        ent = await asyncio.to_thread(_entitlements, user)
         account_txt = "" if user else (
             "You are connected without an API key: tools/list shows "
             "the first-party tools and every other call needs an "
@@ -384,7 +384,8 @@ async def _dispatch(request: Request, user: dict, msg):
         return _rpc(mid, {})
     if method == "tools/list":
         page_size = 50
-        specs = _tool_specs(user) if user else _anon_tool_specs()
+        specs = (await asyncio.to_thread(_tool_specs, user)) if user \
+            else await asyncio.to_thread(_anon_tool_specs)
         cur = params.get("cursor")
         try:
             start = int(cur) if cur else 0
@@ -1114,7 +1115,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         if isinstance(page, bool) or not isinstance(page, int) or page < 1:
             return _rpc_err(mid, -32602, "invalid params: page must be an "
                                          "integer >= 1")
-        sc = _catalog_search_result(user, q, page)
+        sc = await asyncio.to_thread(_catalog_search_result, user, q, page)
         lines = []
         if q:
             lines.append(f"{sc['total']} tool(s) match \"{q}\""
@@ -1128,15 +1129,16 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         return _meta_result(mid, sc, text="\n".join(lines))
 
     if name == "create_upload":
-        return _create_upload(user, mid, args, request)
+        return await asyncio.to_thread(_create_upload, user, mid, args, request)
     if name == "list_uploads":
         return await _list_uploads(user, mid, args)
     if name == "delete_upload":
         return await _delete_upload(user, mid, args)
     if name in ("pin_tool", "unpin_tool"):
-        return _pin_tool(user, mid, args, on=(name == "pin_tool"))
+        return await asyncio.to_thread(
+            _pin_tool, user, mid, args, name == "pin_tool")
     if name == "list_favorites":
-        return _list_favorites(user, mid)
+        return await asyncio.to_thread(_list_favorites, user, mid)
 
     # client_ref is REQUIRED and validated BEFORE any base64 decode,
     # quota check, or Gokapi upload — a missing/invalid ref must never
@@ -1219,8 +1221,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     tool_key = name
     from execution.dispatch import (preflight as _preflight,
                                     source_accept_error as _accept_err)
-    tool, _declared, _canon_body, _pbody, _pstatus = _preflight(
-        user, tool_key, delivery, tool_params, body_arg)
+    tool, _declared, _canon_body, _pbody, _pstatus = await asyncio.to_thread(
+        _preflight, user, tool_key, delivery, tool_params, body_arg)
     if _pbody is not None:
         if _pbody.get("error") == "tool_not_found":
             return _rpc_err(mid, -32602, f"unknown tool: {name}")
@@ -1266,7 +1268,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # result) without uploading anything. Authoritative consume stays
     # in the gate; this snapshot never reserves credits.
     from execution.affordability import check_affordability
-    _denial = check_affordability(user["id"], tool, client_ref=client_ref)
+    _denial = await asyncio.to_thread(
+        check_affordability, user["id"], tool, client_ref)
     if _denial:
         return _iserror(mid, _denial, client_ref)
 
@@ -1531,10 +1534,13 @@ async def _mcp_success(result: dict, payload: dict,
                 from storage import read as _storage_read
                 from repo.uploads import by_public_id as _up_by_pid
                 from database import db as _db
-                try:
+
+                def _gid_of(pid: str) -> str:
                     with _db() as _c:
                         _u = _up_by_pid(_c, pid)
-                        _gid = _u["gokapi_id"] if _u else pid
+                        return _u["gokapi_id"] if _u else pid
+                try:
+                    _gid = await asyncio.to_thread(_gid_of, pid)
                     status, _h, stream = await asyncio.to_thread(
                         _storage_read, _gid)
                     body = stream.read(1_048_577)
@@ -1745,7 +1751,7 @@ async def _delete_upload(user: dict, mid, args: dict) -> dict:
         return _iserror(mid, {
             "deleted": False, "public_id": public_id,
             "error": "invalid_id"})
-    upload = get_upload_by_public_id(public_id)
+    upload = await asyncio.to_thread(get_upload_by_public_id, public_id)
     if not upload or upload["user_id"] != user["id"]:
         # unknown OR someone else's: one shape, no existence oracle
         return _iserror(mid, {

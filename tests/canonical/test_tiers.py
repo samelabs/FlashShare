@@ -604,7 +604,7 @@ check("AP-W7 header.html 不自行推导 membership (只读 access.membership)",
       "plan_of" not in _hdr and "project" not in _hdr
       and "access.membership" in _hdr)
 _pages_src = open(_os.path.join(REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
-_home_blk = _pages_src.split("async def home")[1].split("async def ")[0]
+_home_blk = _pages_src.split("def home(")[1].split("\ndef ")[0]
 _home_code = "\n".join(l for l in _home_blk.split("\n") if not l.strip().startswith("#"))
 _proj_blk = _pages_src.split("def _limits_projection")[1].split("def ")[0]
 check("AP-H1 home 不第二次 project() (消费单一投影)",

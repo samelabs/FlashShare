@@ -309,7 +309,7 @@ async def auth_middleware(request: Request, call_next):
             and 300 <= response.status_code < 400):
         try:
             from app.web_auth import create_browser_session
-            fresh = create_browser_session(user_id)
+            fresh = await asyncio.to_thread(create_browser_session, user_id)
             response.set_cookie(COOKIE_NAME, fresh, max_age=SESSION_TTL,
                                 httponly=True, secure=True, samesite="lax")
         except Exception:
@@ -357,7 +357,7 @@ app.include_router(proxy.router)
 
 
 @app.exception_handler(404)
-async def not_found_handler(request: Request, exc: Exception):
+def not_found_handler(request: Request, exc: Exception):
     path = request.url.path
     if path == "/v1" or path.startswith("/v1/"):
         return JSONResponse({"ok": False, "error": "not_found"},

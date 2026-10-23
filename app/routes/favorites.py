@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.get("/api/favorites")
-async def list_favorites(request: Request):
+def list_favorites(request: Request):
     user, err = require_session_auth(request)
     if err:
         return err
@@ -24,7 +24,8 @@ async def list_favorites(request: Request):
 @router.post("/api/favorites")
 async def set_favorite_route(request: Request):
     """Body {"tool_key": "...", "on": true|false}."""
-    user, err = require_session_auth(request)
+    import asyncio
+    user, err = await asyncio.to_thread(require_session_auth, request)
     if err:
         return err
     try:
@@ -34,7 +35,8 @@ async def set_favorite_route(request: Request):
     if not isinstance(raw, dict) or not isinstance(raw.get("on"), bool):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from governance.favorites import set_favorite
-    code = set_favorite(user["id"], str(raw.get("tool_key") or ""), raw["on"])
+    code = await asyncio.to_thread(
+        set_favorite, user["id"], str(raw.get("tool_key") or ""), raw["on"])
     if code:
         return JSONResponse({"ok": False, "error": code}, 404)
     return {"ok": True, "tool_key": raw.get("tool_key"), "on": raw["on"]}

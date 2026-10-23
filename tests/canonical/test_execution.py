@@ -2498,6 +2498,246 @@ check("O3 consume refunded (balance restored)",
       f"{spendable_balance(userO)} vs {balO}")
 check("O4 zero payout/commission/revenue rows", int(_earnO) == 0, _earnO)
 
+
+# ══════════ CX: 取消收敛 — gate task 取消不得孤儿化已提交的扣费、
+# 不得提前归还背压名额、不得退款已持久化的成功。受控交错 (Events
+# 精确锚定线程内时刻), 断言的是持久事实 (ledger / tool_calls / 名额)。
+# ══════════
+import threading as _thr_c
+from unittest.mock import patch as _patch_c
+from execution import gate as _gate_c
+from execution.invocation import ToolInvocation as _InvC
+from execution.pool import inflight_count as _infl_c
+from economy.billing import grant as _grant_c, spendable_balance as _bal_c
+from governance.catalog import resolve as _resolve_c
+
+section('Cancellation convergence: obligations survive gate cancel')
+
+_u_cx = "cx" + _uuid.uuid4().hex[:6]
+with db() as con:
+    _row_cx = con.execute(
+        "insert into users (username, email, password_hash, display_name,"
+        " status, created_at, last_login_at) values (%s, %s, 'x', 'CX',"
+        " 'active', %s, %s) returning id",
+        (_u_cx, f"{_u_cx}@t.co", 1730000000, 1730000000)).fetchone()
+    uid_cx = int(_row_cx["id"])
+_grant_c(uid_cx, 500, "grant", idem_key=f"cx-grant-{_u_cx}")
+_tool_c, _terr_c = _resolve_c("share", uid_cx)
+_tool_c["id"] = _tool_c["tool_key"]
+check("CX0 fixture: share resolved as a local tool",
+      _terr_c is None and _tool_c.get("execution") == "local", _terr_c)
+
+
+def _inv_c(ref):
+    return _InvC("share", [], {}, {"expiry_days": 1,
+                                   "allowed_downloads": 50}, ref)
+
+
+def _call_row(ref):
+    with db() as con:
+        return con.execute(
+            "select id, status, error from tool_calls where user_id=%s"
+            " and client_ref=%s", (uid_cx, ref)).fetchone()
+
+
+# ── CX1: consume 已提交后取消 (工作线程暂停中) → 收敛线程、精确退款、
+#    failed 收尾、名额在结算后才归还; 同 ref 重试不再 409。
+def _cx1():
+    ref = f"cx1-{_u_cx}"
+    entered, release = _thr_c.Event(), _thr_c.Event()
+    _orig_consume = _gate_c.consume
+    orch_n = {"n": 0}
+
+    def _paused_consume(*a, **k):
+        charge = _orig_consume(*a, **k)
+        entered.set()
+        if not release.wait(5):
+            raise RuntimeError("cx1 release timeout")
+        return charge
+
+    async def _orch():
+        orch_n["n"] += 1
+        raise RuntimeError("cx1 must not execute")
+
+    async def _scenario():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}), \
+             _patch_c.object(_gate_c, "consume", _paused_consume):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch))
+            if not await asyncio.to_thread(entered.wait, 3):
+                raise RuntimeError("cx1: consume never committed")
+            slot_before = _infl_c()
+            task.cancel()
+            await asyncio.sleep(0.1)   # cancellation handler runs; the
+            slot_mid = _infl_c()       # worker is STILL parked (no release yet)
+            _thr_c.Timer(0.05, release.set).start()
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, slot_before, slot_mid, _infl_c()
+
+    bal_before = _bal_c(uid_cx)
+    cancelled, slot_before, slot_mid, slot_after = asyncio.run(_scenario())
+    row = _call_row(ref)
+    check("CX1a cancel after committed consume → CancelledError propagates "
+          "after convergence", cancelled is True, cancelled)
+    check("CX1b slot held across the cancel (released only after settlement)",
+          slot_before == 1 and slot_mid == 1 and slot_after == 0,
+          (slot_before, slot_mid, slot_after))
+    check("CX1c exact refund — balance restored",
+          _bal_c(uid_cx) == bal_before,
+          f"{_bal_c(uid_cx)} vs {bal_before}")
+    check("CX1d call settled failed('cancelled') — not left running",
+          row is not None and row["status"] == "failed"
+          and row["error"] == "cancelled", dict(row) if row else None)
+    check("CX1e orchestrate never ran for the cancelled attempt",
+          orch_n["n"] == 0, orch_n["n"])
+    # same client_ref retry: a NEW claim proceeds (never 409 in-progress)
+    async def _orch_ok():
+        orch_n["n"] += 1
+        from execution.results import StagedItems
+        return StagedItems(order=["text"],
+                           inline=[{"kind": "text", "text": "ok"}])
+    with _patch_c("execution.affordability.effective_quote",
+                  return_value={"enabled": True, "cost": 5}):
+        payload, err, status = asyncio.run(
+            _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch_ok))
+    check("CX1f same-ref retry after cancelled settle → executes (no 409)",
+          err is None and payload.get("ok") is True and status is None,
+          (status, err))
+    return payload
+
+
+_cx1()
+
+
+# ── CX2: 取消落在 orchestrate 中段 (扣费已提交、执行已开始) → 精确
+#    退款 + failed('cancelled'), 名额不泄漏。
+def _cx2():
+    ref = f"cx2-{_u_cx}"
+    started = asyncio.Event()
+
+    async def _orch():
+        started.set()
+        await asyncio.Event().wait()   # parks until cancelled
+        raise RuntimeError("unreachable")
+
+    async def _scenario():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch))
+            await started.wait()
+            task.cancel()
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, _infl_c()
+
+    bal_before = _bal_c(uid_cx)
+    cancelled, slot_after = asyncio.run(_scenario())
+    row = _call_row(ref)
+    check("CX2a cancel during orchestration → CancelledError propagates",
+          cancelled is True, cancelled)
+    check("CX2b exact refund for the aborted execution",
+          _bal_c(uid_cx) == bal_before, f"{_bal_c(uid_cx)} vs {bal_before}")
+    check("CX2c call settled failed('cancelled')",
+          row is not None and row["status"] == "failed"
+          and row["error"] == "cancelled", dict(row) if row else None)
+    check("CX2d slot released after settlement", slot_after == 0, slot_after)
+
+
+_cx2()
+
+
+# ── CX3: 取消落在 _finish 线程暂停中, 成功结算随后落地 → durable ok
+#    站住 (不退款不删结果), 同 ref 重试重放, 不二次扣费。
+def _cx3():
+    ref = f"cx3-{_u_cx}"
+    entered, release = _thr_c.Event(), _thr_c.Event()
+    _orig_finish = _gate_c._finish
+
+    def _paused_finish(*a, **k):
+        entered.set()
+        if not release.wait(5):
+            raise RuntimeError("cx3 release timeout")
+        return _orig_finish(*a, **k)
+
+    async def _orch():
+        from execution.results import StagedItems
+        return StagedItems(order=["text"],
+                           inline=[{"kind": "text", "text": "ok"}])
+
+    async def _scenario():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}), \
+             _patch_c.object(_gate_c, "_finish", _paused_finish):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch))
+            if not await asyncio.to_thread(entered.wait, 3):
+                raise RuntimeError("cx3: finish never started")
+            task.cancel()
+            await asyncio.sleep(0.1)   # finish thread is STILL parked here
+            slot_mid = _infl_c()
+            _thr_c.Timer(0.05, release.set).start()
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, slot_mid, _infl_c()
+
+    bal_before = _bal_c(uid_cx)
+    cancelled, slot_mid, slot_after = asyncio.run(_scenario())
+    row = _call_row(ref)
+    check("CX3a cancel during finalize thread → converged, then cancelled",
+          cancelled is True, cancelled)
+    check("CX3a2 slot held while the finalize thread is still parked",
+          slot_mid == 1, slot_mid)
+    check("CX3b durable success is NOT refunded (stays charged)",
+          _bal_c(uid_cx) == bal_before - 5,
+          f"{_bal_c(uid_cx)} vs {bal_before - 5}")
+    check("CX3c call status ok with a persisted result",
+          row is not None and row["status"] == "ok"
+          and row["error"] is None, dict(row) if row else None)
+    check("CX3d slot released", slot_after == 0, slot_after)
+    # same client_ref retry: replay of the durable result, no re-execution,
+    # no second charge
+    async def _orch_never():
+        raise RuntimeError("cx3 replay must not re-execute")
+
+    async def _retry():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}):
+            return await _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref),
+                                     _orch_never)
+
+    payload, err, status = asyncio.run(_retry())
+    check("CX3e same-ref retry → replay (durable result, single charge)",
+          err is None and payload.get("ok") is True
+          and payload.get("replay") is True
+          and _bal_c(uid_cx) == bal_before - 5,
+          (status, err, _bal_c(uid_cx)))
+
+
+_cx3()
+
+# ── CX4: 三个取消场景后零 running 残留 — 恢复器无事可做 (取消路径不
+#    依赖重启收尾)。
+_rec_cx = _gate_c.recover_abandoned_calls()
+check("CX4a no running calls left behind (recovery has nothing to settle)",
+      _rec_cx["scanned"] == 0, _rec_cx)
+with db() as con:
+    con.execute("delete from tool_calls where user_id=%s", (uid_cx,))
+    con.execute("delete from ledger where user_id=%s", (uid_cx,))
+    purge_users(con, [uid_cx])
+
+
 # ══════════ cleanup (FK-safe, prefix-scoped) ══════════
 _uids = [user1, owner, user2, user3, user4, user5, user6, user7, user8, user9,
           userM, userM4, userN, userN3, userO, userOW]

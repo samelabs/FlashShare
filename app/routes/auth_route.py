@@ -262,11 +262,11 @@ async def x_callback(request: Request):
 
 @router.post("/x/unbind")
 async def x_unbind(request: Request):
-    user, err = require_session_auth(request)
+    user, err = await asyncio.to_thread(require_session_auth, request)
     if err:
         return err
     try:
-        unbind_x(user["id"])
+        await asyncio.to_thread(unbind_x, user["id"])
     except ValueError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, 400)
     return {"ok": True}
@@ -334,7 +334,7 @@ async def login_submit(request: Request):
     if not login or not password:
         if wants_json:
             return _auth_json_err("err_fill_login")
-        ctx = _ctx_base(request)
+        ctx = await asyncio.to_thread(_ctx_base, request)
         ctx.update({"shell_class": "", "share_url": "",
                     "error": texts.get("err_fill_login", "Please fill in all fields"),
                     "next": next_url})
@@ -345,7 +345,7 @@ async def login_submit(request: Request):
     if _throttled(_login_ip_failures, (ip,), _LOGIN_IP_FAIL_LIMIT, _LOGIN_FAIL_WINDOW):
         if wants_json:
             return _auth_json_err("err_too_many_attempts", 429)
-        ctx = _ctx_base(request)
+        ctx = await asyncio.to_thread(_ctx_base, request)
         ctx.update({"shell_class": "", "share_url": "",
                     "error": error_text(request, "err_too_many_attempts"),
                     "next": next_url})
@@ -357,7 +357,7 @@ async def login_submit(request: Request):
             # JSON callers get the throttle status explicitly (429); the
             # code matches the message the form flow shows here
             return _auth_json_err("err_login_failed", 429)
-        ctx = _ctx_base(request)
+        ctx = await asyncio.to_thread(_ctx_base, request)
         ctx.update({"shell_class": "", "share_url": "",
                     "error": texts.get("err_login_failed", "Invalid credentials"),
                     "next": next_url})
@@ -369,7 +369,7 @@ async def login_submit(request: Request):
         _record_hit(_login_ip_failures, (ip,), _LOGIN_FAIL_WINDOW)
         if wants_json:
             return _auth_json_err("err_login_failed")
-        ctx = _ctx_base(request)
+        ctx = await asyncio.to_thread(_ctx_base, request)
         ctx.update({"shell_class": "", "share_url": "",
                     "error": texts.get("err_login_failed", "Invalid credentials"),
                     "next": next_url})
@@ -379,7 +379,8 @@ async def login_submit(request: Request):
     await asyncio.to_thread(_login_maintenance, user_id)
     if wants_json:
         return _auth_json_ok(user_id)
-    return redirect_with_session(next_url, user_id)
+    # redirect_with_session mints + persists a session row (sync DB)
+    return await asyncio.to_thread(redirect_with_session, next_url, user_id)
 
 
 @router.post("/register")
@@ -395,12 +396,12 @@ async def register_submit(request: Request):
     password_confirm = form.get("password_confirm") or ""
     next_url = _safe_next(form.get("next"))
 
-    def _err(msg, status=200, code=None):
+    async def _err(msg, status=200, code=None):
         if wants_json:
             # JSON callers get the RAW code (client-side i18n boundary);
             # msg here is already the translated text for the form path.
             return _auth_json_err(code or "err_invalid_request", status)
-        ctx = _ctx_base(request)
+        ctx = await asyncio.to_thread(_ctx_base, request)
         ctx.update({"shell_class": "", "share_url": "", "error": msg,
                     "next": next_url})
         resp = templates.TemplateResponse(request, "auth/register.html", ctx)
@@ -409,42 +410,42 @@ async def register_submit(request: Request):
 
     ip_key = (client_ip(request),)
     if _throttled(_register_attempts, ip_key, _REGISTER_IP_LIMIT, _REGISTER_IP_WINDOW):
-        return _err(error_text(request, "err_too_many_attempts"), 429,
+        return await _err(error_text(request, "err_too_many_attempts"), 429,
                     "err_too_many_attempts")
     _record_hit(_register_attempts, ip_key, _REGISTER_IP_WINDOW)
 
     err = validate_username(username)
     if err:
-        return _err(texts.get(err, err), code=err)
+        return await _err(texts.get(err, err), code=err)
     err = validate_email(email)
     if err:
-        return _err(texts.get(err, err), code=err)
+        return await _err(texts.get(err, err), code=err)
     err = validate_password(password)
     if err:
-        return _err(texts.get(err, err), code=err)
+        return await _err(texts.get(err, err), code=err)
     if password != password_confirm:
-        return _err(texts.get("passwordMismatch", "Passwords do not match"),
+        return await _err(texts.get("passwordMismatch", "Passwords do not match"),
                     code="passwordMismatch")
 
     try:
         user_id = await asyncio.to_thread(register_user, username, email, password)
     except ValueError as exc:
-        return _err(error_text(request, str(exc)), code=str(exc))
+        return await _err(error_text(request, str(exc)), code=str(exc))
     except psycopg2.IntegrityError:
-        if username_taken(username):
-            return _err(texts.get("err_username_taken", "err_username_taken"),
+        if await asyncio.to_thread(username_taken, username):
+            return await _err(texts.get("err_username_taken", "err_username_taken"),
                         code="err_username_taken")
-        return _err(texts.get("err_email_taken", "err_email_taken"),
+        return await _err(texts.get("err_email_taken", "err_email_taken"),
                     code="err_email_taken")
     except Exception:
         logger.exception("register failed for username=%s", username)
-        return _err(texts.get("err_invalid_request", "err_invalid_request"),
+        return await _err(texts.get("err_invalid_request", "err_invalid_request"),
                     code="err_invalid_request")
 
     await asyncio.to_thread(_login_maintenance, user_id)
     if wants_json:
         return _auth_json_ok(user_id)
-    return redirect_with_session(next_url, user_id)
+    return await asyncio.to_thread(redirect_with_session, next_url, user_id)
 
 
 async def headless_register(request: Request, raw) -> tuple[int, dict]:
@@ -479,7 +480,7 @@ async def headless_register(request: Request, raw) -> tuple[int, dict]:
             else 400
         return status, {"ok": False, "error": token}
     except psycopg2.IntegrityError:
-        if username_taken(username):
+        if await asyncio.to_thread(username_taken, username):
             return 409, {"ok": False, "error": "err_username_taken"}
         return 409, {"ok": False, "error": "err_email_taken"}
     except Exception:

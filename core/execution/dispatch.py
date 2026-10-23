@@ -216,8 +216,11 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         return None, {"ok": False, "error": "invalid_request"}, 422
 
     body = inv.body if inv.has_body() else BODY_ABSENT
-    tool, declared, canonical_body, err_body, err_status = preflight(
-        user, inv.tool_id, inv.delivery, inv.params, body)
+    # preflight 的 entitlement/resolve/params 读全是同步 DB — 整块下线程,
+    # 事件循环只保留请求解析与 gate 调度。
+    import asyncio
+    tool, declared, canonical_body, err_body, err_status = await asyncio.to_thread(
+        preflight, user, inv.tool_id, inv.delivery, inv.params, body)
     if err_body is not None:
         return None, err_body, err_status
 

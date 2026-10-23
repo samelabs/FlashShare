@@ -11,6 +11,7 @@ from repo import operator_views
 from utils import now, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
+import asyncio
 
 router = APIRouter()
 
@@ -135,8 +136,8 @@ async def reset_password(user_id: int, request: Request):
     from fastapi.responses import JSONResponse
     from backoffice import users as users_cmd
     try:
-        uid, temp = users_cmd.reset_user_password(
-            int(user["id"]), user_id)
+        uid, temp = await asyncio.to_thread(
+            users_cmd.reset_user_password, int(user["id"]), user_id)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:
@@ -152,8 +153,9 @@ async def suspend_user(user_id: int, request: Request):
     from fastapi.responses import JSONResponse
     from backoffice import users as users_cmd
     try:
-        row = users_cmd.set_user_suspended(
-            int(user["id"]), user_id, suspended=True)
+        row = await asyncio.to_thread(
+            users_cmd.set_user_suspended,
+            int(user["id"]), user_id, True)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:
@@ -169,8 +171,9 @@ async def unsuspend_user(user_id: int, request: Request):
     from fastapi.responses import JSONResponse
     from backoffice import users as users_cmd
     try:
-        row = users_cmd.set_user_suspended(
-            int(user["id"]), user_id, suspended=False)
+        row = await asyncio.to_thread(
+            users_cmd.set_user_suspended,
+            int(user["id"]), user_id, False)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:
@@ -201,8 +204,9 @@ async def adjust_credits(user_id: int, request: Request):
     if not (1 <= user_id <= _MAX_ID):
         return JSONResponse({"ok": False, "error": "user_not_found"}, 404)
     try:
-        out = credits_cmd.adjust_credits(int(user["id"]), user_id, amount,
-                                         action_id, note)
+        out = await asyncio.to_thread(
+            credits_cmd.adjust_credits,
+            int(user["id"]), user_id, amount, action_id, note)
     except KeyError:
         return JSONResponse({"ok": False, "error": "user_not_found"}, 404)
     except ValueError as exc:
@@ -225,7 +229,8 @@ async def delete_api_key(user_id: int, key_id: int, request: Request):
         return resp
     from backoffice import users as users_cmd
     try:
-        users_cmd.delete_api_key(int(user["id"]), user_id, key_id)
+        await asyncio.to_thread(
+            users_cmd.delete_api_key, int(user["id"]), user_id, key_id)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "key_id": key_id}

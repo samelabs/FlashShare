@@ -19,6 +19,7 @@ from repo import operator_views
 from utils import now, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num, tool_class
+import asyncio
 
 router = APIRouter()
 
@@ -161,8 +162,9 @@ async def set_pricing(tool_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from backoffice import tools as tools_cmd
     try:
-        row = tools_cmd.set_tool_pricing(int(user["id"]), tool_id, cost,
-                                         enabled)
+        row = await asyncio.to_thread(
+            tools_cmd.set_tool_pricing, int(user["id"]), tool_id, cost,
+            enabled)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True,
@@ -187,8 +189,9 @@ async def set_presentation(tool_key: str, request: Request):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from backoffice import tools as tools_cmd
     try:
-        tools_cmd.set_tool_presentation(int(user["id"]), tool_key,
-                                        featured, sort_order)
+        await asyncio.to_thread(
+            tools_cmd.set_tool_presentation, int(user["id"]), tool_key,
+            featured, sort_order)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True}
@@ -217,8 +220,9 @@ async def set_delisted(tool_key: str, request: Request):
         return JSONResponse({"ok": False, "error": str(exc)}, 422)
     from backoffice import tools as tools_cmd
     try:
-        row = tools_cmd.set_tool_delisted(int(user["id"]), tool_key,
-                                          delisted)
+        row = await asyncio.to_thread(
+            tools_cmd.set_tool_delisted, int(user["id"]), tool_key,
+            delisted)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "tool_key": row["tool_key"],
@@ -333,7 +337,8 @@ async def create_http_tool(request: Request):
     from backoffice import tools as tools_cmd
     from governance.tool_supply import DeclarationError
     try:
-        tool_key = tools_cmd.create_http_tool(
+        tool_key = await asyncio.to_thread(
+            tools_cmd.create_http_tool,
             int(user["id"]),
             {"tool_id": tool_id, "label": label, "url": url,
              "timeout_s": timeout_s, "auth_header": auth_header,
@@ -366,7 +371,8 @@ async def delete_http_tool(tool_key: str, request: Request):
         return resp
     from backoffice import tools as tools_cmd
     try:
-        tools_cmd.delete_http_tool(int(user["id"]), tool_key)
+        await asyncio.to_thread(
+            tools_cmd.delete_http_tool, int(user["id"]), tool_key)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True}

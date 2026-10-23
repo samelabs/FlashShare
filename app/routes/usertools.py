@@ -291,7 +291,7 @@ def _validate_submission(raw: dict, partial: bool = False, trusted_ok: bool = Fa
 
 
 @router.get("/api/tools/search")
-async def search_tools(request: Request, q: str = ""):
+def search_tools(request: Request, q: str = ""):
     """Public tool search (home selector surface) — the same predicate,
     ordering and projection as the /tools market and MCP catalog_search
     (single point: governance.search_catalog). Empty query lists the
@@ -302,7 +302,7 @@ async def search_tools(request: Request, q: str = ""):
 
 
 @router.get("/api/usertools")
-async def list_user_tools(request: Request):
+def list_user_tools(request: Request):
     """Owner's own tools with live stats."""
     user, err = _require_auth(request)
     if err:
@@ -419,7 +419,7 @@ async def create_user_tool(request: Request):
     has successfully run the tool at least once (the only gate — the
     platform still does no review). The owner flips it public via PATCH
     after a successful self-run; unlisted/private anytime."""
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     try:
@@ -762,7 +762,7 @@ async def update_user_tool(tool_key: str, request: Request):
         parameter 按 key 对齐, option 按 value 对齐, 禁止 index。
       API / manifest (无头): 显式全集替换, 不启用 locale merge。
     """
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     try:

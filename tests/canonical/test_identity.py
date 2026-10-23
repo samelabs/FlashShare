@@ -2413,19 +2413,25 @@ print("cleanup: oauth fixtures removed")
 
 
 # ════════════════════════════════════════════════════════════════════════
-# Pool saturation under the SAME process/pool (identity semantics)
+# Pool saturation under the SAME process/pool/event loop (identity)
 #
 # I2 audit item: with every pool slot held, a request carrying a VALID
 # session must fail as a service error — never silently degrade to
-# anonymous (login redirect / auth_required). Evidence level: HTTP
-# semantics through the full middleware via an in-process TestClient —
-# the ASGI app and the slot holders below share the VERY SAME
-# database._pool (an out-of-process holder pool proves nothing here).
-# Release must fully drain (no leak).
+# anonymous (login redirect / auth_required). Evidence level: full
+# middleware, in-process, with the saturation request and the healthz
+# probe CONCURRENT on ONE event loop (httpx ASGITransport drives the
+# ASGI app directly — no per-request portal, no cross-process shortcut;
+# a sequential pair proves nothing about loop progress). A LOCAL small
+# pool (2 conns) with a SHORT wait budget keeps the scenario cheap —
+# production capacity/timeouts are untouched. Holder readiness is an
+# explicit semaphore handshake, never a fixed sleep.
 # ════════════════════════════════════════════════════════════════════════
 section('Pool saturation: identity never silently degrades')
 
+import asyncio as _aio_ps
 import threading as _thr
+import httpx as _httpx_ps
+from psycopg2.pool import ThreadedConnectionPool as _TCP_ps
 _ps_u = "ps" + _uuid.uuid4().hex[:8]
 
 
@@ -2450,57 +2456,105 @@ _valid_cookie = _mk_sess_ps(_ps_uid)
 check("PS0 seeded a real session", bool(_valid_cookie), "")
 
 import database as _dbmod
-from database import db as _dbhold
-from fastapi.testclient import TestClient as _TC_ps
-import warnings as _w_ps
-with _w_ps.catch_warnings():
-    _w_ps.simplefilter("ignore", DeprecationWarning)
-    _client_ps = _TC_ps(_app, raise_server_exceptions=False)
+# local small pool + short bounded wait — the test's own budget, restored
+# in the finally below; production capacity and timeouts are untouched
+_ps_saved_pool = _dbmod._pool
+_ps_saved_wait = _dbmod._POOL_WAIT_S
+_ps_small = _TCP_ps(1, 2, **_dbmod._database_dsn_kwargs())
+_dbmod._pool = _ps_small
+_dbmod._POOL_WAIT_S = 0.5
 
 _holders = []
 _release = _thr.Event()
+_ps_ready = _thr.Semaphore(0)
 
 
-def _hold_slot():
-    with _dbhold() as con:
-        con.execute("select 1")
+def _hold_slot(pool):
+    con = pool.getconn()
+    try:
+        con.cursor().execute("select 1")
+        _ps_ready.release()          # holding: the connection is OUT of the pool
         _release.wait(10)
+    finally:
+        pool.putconn(con)
 
 
-for _ in range(16):        # every slot the pool has
-    _t = _thr.Thread(target=_hold_slot, daemon=True)
-    _t.start(); _holders.append(_t)
-import time as _t_ps; _t_ps.sleep(0.8)  # let them all land in the pool
+def _ps_request_pair():
+    """Saturation request + healthz probe CONCURRENTLY on this one loop.
 
-# HTTP semantics (full middleware, in-process): valid session +
-# saturated pool -> service error, NOT a silent anonymous downgrade
-# (no 302 to login, no auth_required body)
-_r = _client_ps.get("/account/profile",
+    Returns (sat_response, health_response, health_latency_s, overlapped):
+    overlapped=True means healthz completed while the saturation request
+    was still in flight — only possible if the blocked DB wait runs in a
+    worker thread, not on the event loop."""
+
+    async def _run():
+        transport = _httpx_ps.ASGITransport(app=_app,
+                                            raise_app_exceptions=False)
+        async with _httpx_ps.AsyncClient(transport=transport,
+                                         base_url="http://ps.local") as client:
+            sat = _aio_ps.create_task(client.get(
+                "/account/profile",
+                cookies={"flashshare_session": _valid_cookie},
+                headers={"Accept": "text/html"}, follow_redirects=False))
+            await _aio_ps.sleep(0)   # let the saturation request park on the pool
+            loop = _aio_ps.get_event_loop()
+            t0 = loop.time()
+            health = _aio_ps.create_task(client.get("/healthz"))
+            r_health = await _aio_ps.wait_for(health, 5)
+            dt = loop.time() - t0
+            overlapped = not sat.done()
+            r_sat = await _aio_ps.wait_for(sat, 30)
+            return r_sat, r_health, dt, overlapped
+
+    return _aio_ps.run(_run())
+
+
+def _ps_single(path, **kw):
+    async def _run():
+        transport = _httpx_ps.ASGITransport(app=_app,
+                                            raise_app_exceptions=False)
+        async with _httpx_ps.AsyncClient(transport=transport,
+                                         base_url="http://ps.local") as client:
+            return await client.get(path, **kw)
+    return _aio_ps.run(_run())
+
+
+try:
+    for _ in range(2):           # every slot the LOCAL pool has
+        _t = _thr.Thread(target=_hold_slot, args=(_ps_small,), daemon=True)
+        _t.start(); _holders.append(_t)
+    check("PS0b both holders hold their connection (semaphore handshake)",
+          _ps_ready.acquire(timeout=5) and _ps_ready.acquire(timeout=5), "")
+
+    _r_sat, _r_health, _health_dt, _overlapped = _ps_request_pair()
+    check("PS1 saturated pool + valid session → 5xx service failure (never anonymous)",
+          _r_sat.status_code >= 500, _r_sat.status_code)
+    check("PS2 event loop still serves during saturation (concurrent healthz)",
+          _r_health.status_code == 200 and _overlapped and _health_dt < 0.4,
+          ( _r_health.status_code, _overlapped, round(_health_dt, 3)))
+
+    _release.set()
+    for _t in _holders:
+        _t.join(timeout=6)
+    check("PS3 all slots returned after release (no leak)",
+          len(_ps_small._used) == 0, len(_ps_small._used))
+
+    # after the drain the same session is fully functional again
+    _r = _ps_single("/account/profile",
                     cookies={"flashshare_session": _valid_cookie},
-                    headers={"Accept": "text/html"},
-                    follow_redirects=False)
-check("PS1 saturated pool + valid session → 5xx service failure (never anonymous)",
-      _r.status_code >= 500, _r.status_code)
-
-# light request keeps being served (healthz touches no DB)
-_r = _client_ps.get("/healthz")
-check("PS2 event loop still serves during saturation", _r.status_code == 200,
-      _r.status_code)
-
-_release.set()
-for _t in _holders:
-    _t.join(timeout=6)
-_pool = _dbmod._get_pool()
-check("PS3 all slots returned after release (no leak)",
-      len(_pool._used) == 0, len(_pool._used))
-
-# after the drain the same session is fully functional again
-_r = _client_ps.get("/account/profile",
-                    cookies={"flashshare_session": _valid_cookie},
-                    headers={"Accept": "text/html"},
-                    follow_redirects=False)
-check("PS4 session fully functional after drain", _r.status_code == 200,
-      _r.status_code)
+                    headers={"Accept": "text/html"}, follow_redirects=False)
+    check("PS4 session fully functional after drain", _r.status_code == 200,
+          _r.status_code)
+finally:
+    _release.set()
+    for _t in _holders:
+        _t.join(timeout=6)
+    _dbmod._pool = _ps_saved_pool
+    _dbmod._POOL_WAIT_S = _ps_saved_wait
+    try:
+        _ps_small.closeall()
+    except Exception:
+        pass
 with _db_ps() as con:
     con.execute("delete from sessions where user_id=%s", (_ps_uid,))
     purge_users(con, [_ps_uid])
