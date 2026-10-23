@@ -3141,6 +3141,105 @@ check("CX9d same-ref retry → replay, still single charge",
       and _bal_c(uid_cx) == _bal9 - 5,
       (_err9, (_payload9 or {}).get("replay")))
 
+
+# ── CX10: 取消意图 × 底层结果 对照矩阵 — 取消落在余额读取或暂存清理
+#    等待期间, 底层随后成功返回或抛普通异常: 四种组合下持久义务按实际
+#    结果结算, 已观察到的取消最终都必须传播 (不得依赖成功解包元组)。
+import storage as _storage_m_c
+from execution.results import StagedItems as _StagedItems_c, \
+    StagedFileItem as _StagedFileItem_c
+
+
+def _cx10(stage: str, throws: bool):
+    """stage 'balance' (committed ACK loss → durable-success path, pause
+    the reconciliation balance read) or 'delete' (pre-commit failure →
+    proven-rollback path, pause the staged cleanup). Returns
+    (cancelled, slot_after, ref)."""
+    ref = f"cx10{stage[0]}{'t' if throws else 's'}-{_u_cx}"
+    entered, release = _thr_c.Event(), _thr_c.Event()
+    _orig_finish = _gate_c._finish
+    _orig_balance = _gate_c.spendable_balance
+    _orig_delete = _storage_m_c.delete
+    _calls = {"balance": 0}
+
+    def _finish_patched(*a, **kw):
+        if stage == "balance":
+            _orig_finish(*a, **kw)          # commits → durable success
+        raise RuntimeError("ack loss" if stage == "balance"
+                           else "pre-commit failure")
+
+    def _balance_patched(user_id):
+        _calls["balance"] += 1
+        out = _orig_balance(user_id)
+        if _calls["balance"] == 2:          # the RECONCILIATION read
+            entered.set()                   # (call 1 ran inside _finish)
+            if not release.wait(5):
+                raise RuntimeError("cx10 balance release timeout")
+            if throws:
+                raise RuntimeError("balance projection unavailable")
+        return out
+
+    def _delete_patched(gid):
+        entered.set()
+        if not release.wait(5):
+            raise RuntimeError("cx10 delete release timeout")
+        if throws:
+            raise RuntimeError("delete acknowledgement lost")
+        return _orig_delete(gid)
+
+    if stage == "balance":
+        async def _orch():
+            return _StagedItems_c(order=["text"],
+                                  inline=[{"kind": "text", "text": "m"}])
+    else:
+        async def _orch():
+            return _StagedItems_c(
+                order=["file"], files=[_StagedFileItem_c(
+                    gokapi_id=f"cx10-{ref}", filename="cx10.bin",
+                    content_type="application/octet-stream", size=8,
+                    expiry_days=1, allowed_downloads=5, expire_at=1,
+                    url_hotlink="")])
+
+    async def _scenario():
+        with _patch_c("execution.affordability.effective_quote",
+                      return_value={"enabled": True, "cost": 5}), \
+             _patch_c.object(_gate_c, "_finish", _finish_patched), \
+             _patch_c.object(_gate_c, "spendable_balance",
+                             _balance_patched), \
+             _patch_c.object(_storage_m_c, "delete", _delete_patched):
+            task = asyncio.create_task(
+                _gate_c.run({"id": uid_cx}, _tool_c, _inv_c(ref), _orch))
+            if not await asyncio.to_thread(entered.wait, 3):
+                raise RuntimeError("cx10: pause point never reached")
+            task.cancel()
+            await asyncio.sleep(0)          # delivered at the durable await
+            release.set()
+            try:
+                await task
+                cancelled = False
+            except asyncio.CancelledError:
+                cancelled = True
+            return cancelled, _infl_c()
+
+    return ref, asyncio.run(_scenario())
+
+
+for _stage10, _want_status, _want_delta in (("balance", "ok", -5),
+                                            ("delete", "failed", 0)):
+    for _throws10 in (False, True):
+        _bal10 = _bal_c(uid_cx)
+        _ref10, (_cancelled10, _slot10) = _cx10(_stage10, _throws10)
+        _row10 = _call_row(_ref10)
+        _tag10 = f"CX10-{_stage10}-{'throws' if _throws10 else 'returns'}"
+        check(f"{_tag10} durable facts per outcome "
+              f"(status={_want_status}, balance {_want_delta}, slot back)",
+              _row10 is not None and _row10["status"] == _want_status
+              and _bal_c(uid_cx) == _bal10 + _want_delta and _slot10 == 0,
+              (dict(_row10) if _row10 else None,
+               _bal_c(uid_cx) - _bal10, _slot10))
+        check(f"{_tag10} observed cancel finally propagates",
+              _cancelled10 is True, _cancelled10)
+
 with db() as con:
     con.execute("delete from tool_calls where user_id=%s", (uid_cx,))
     con.execute("delete from uploads where user_id=%s", (uid_cx,))

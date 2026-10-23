@@ -531,6 +531,15 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
             outcome, rcancel = await await_durable(spawn(
                 resolve_success_outcome, call_id))
             cancel_now = rcancel or exec_cancelled or finish_cancelled
+
+            def _cancel_pending() -> bool:
+                # Intent decoupled from HOW each durable await resolved:
+                # every cancel observed at any await of THIS task stays
+                # counted on the task until the error actually
+                # propagates (nothing here calls uncancel), so the flag
+                # survives even when an underlying task raises and the
+                # await_durable result tuple never comes back.
+                return asyncio.current_task().cancelling() > 0
             if outcome["outcome"] == OUTCOME_DURABLE_SUCCESS:
                 out = {"ok": True, "result": outcome["result"],
                        "call_id": call_id, "replay": True,
@@ -545,7 +554,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
                         raise
                     except Exception:
                         logger.exception("balance fetch failed for UI chip")
-                if cancel_now:
+                if cancel_now or _cancel_pending():
                     raise asyncio.CancelledError
                 return out, None, None
             if outcome["outcome"] == OUTCOME_PROVEN_ROLLBACK:
@@ -561,12 +570,12 @@ async def run(user: dict, tool: dict, invocation, orchestrate,
                 settled, scancel = await await_durable(spawn(
                     _settle_failure, user, tool_id, call_id, charge,
                     "metering_failed"))
-                if scancel or cancel_now:
+                if scancel or cancel_now or _cancel_pending():
                     raise asyncio.CancelledError
                 return None, {"ok": False, "error": "err_metering_failed"}, 500
             # UNRESOLVED: the row keeps its durable state; the existing
             # recovery rules own it — a pending cancel may propagate now
-            if cancel_now:
+            if cancel_now or _cancel_pending():
                 raise asyncio.CancelledError
             return None, {"ok": False, "error": "err_metering_failed"}, 500
     finally:
