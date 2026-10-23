@@ -50,22 +50,34 @@
 
   <div id="result" class="result hidden" aria-live="polite"></div>
 
-  {# 接入区: MCP 卡 (服务端地址 + 调用名, 一键复制) + API 卡 (按声明生成的示例) #}
-  <div class="tp-access">
-    <div class="mcpline">
-      <span class="mcp-badge" aria-hidden="true">MCP</span>
-      <div class="mcp-body">
-        <div class="mcp-row"><span class="mcp-k">MCP server</span><code class="mcp-url" dir="ltr">{{ BASE_URL }}/mcp</code></div>
-        <code id="toolMcpName">{{ mcp_name }}</code>
+  {# 接入方式: MCP 卡 (服务器地址 + 工具调用名 → 复制接入信息) + API 卡
+     (方法/端点/按声明生成的示例 → 复制示例) — 两卡同一卡框/标题栏/
+     字段行/动作位; 示例与执行契约不变, 不注入真实凭证 #}
+  <div class="tp-access" id="toolAccess">
+    <h2 class="tp-access-title" data-i18n="tp_access_title">{{ texts['tp_access_title'] }}</h2>
+    <div class="tp-access-grid">
+      <div class="tp-acc-card">
+        <div class="tp-acc-head">
+          <span class="tp-acc-badge" aria-hidden="true">MCP</span>
+          <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['tp_copy_access'] }}" title="{{ texts['tp_copy_access'] }}">{{ icon_svg("copy") }}<span data-i18n="tp_copy_access">{{ texts['tp_copy_access'] }}</span></button>
+        </div>
+        <div class="tp-acc-body">
+          <div class="mcp-row"><span class="mcp-k" data-i18n="tp_f_server">{{ texts['tp_f_server'] }}</span><code class="tp-acc-v" dir="ltr">{{ BASE_URL }}/mcp</code></div>
+          <div class="mcp-row"><span class="mcp-k" data-i18n="tp_f_tool_name">{{ texts['tp_f_tool_name'] }}</span><code class="tp-acc-v" id="toolMcpName" dir="ltr">{{ mcp_name }}</code></div>
+        </div>
       </div>
-      <button class="btn btn-ghost btn-sm" id="toolMcpCopy" type="button" aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
-    </div>
-    <div class="tp-api-card" id="toolApiCard">
-      <div class="mcp-row"><span class="mcp-k">API</span><code class="mcp-url" dir="ltr">{{ BASE_URL }}/v1/tools/{{ tool_key }}</code></div>
-      <pre class="tp-api-example" id="toolApiExample" dir="ltr">{{ api_call_example }}</pre>
-      <div class="tp-api-foot">
-        <span data-i18n="tool_api_note">{{ texts['tool_api_note'] }}</span>
-        <button class="btn btn-ghost btn-sm" id="toolApiCopy" type="button" aria-label="{{ texts['copy'] }}" title="{{ texts['copy'] }}">{{ icon_svg("copy") }}<span data-i18n="copy">{{ texts['copy'] }}</span></button>
+      <div class="tp-acc-card" id="toolApiCard">
+        <div class="tp-acc-head">
+          <span class="tp-acc-badge" aria-hidden="true">API</span>
+          <button class="btn btn-ghost btn-sm" id="toolApiCopy" type="button" aria-label="{{ texts['tp_copy_example'] }}" title="{{ texts['tp_copy_example'] }}">{{ icon_svg("copy") }}<span data-i18n="tp_copy_example">{{ texts['tp_copy_example'] }}</span></button>
+        </div>
+        <div class="tp-acc-body">
+          <div class="mcp-row"><span class="mcp-k" data-i18n="tp_f_method">{{ texts['tp_f_method'] }}</span><code class="tp-acc-v" dir="ltr">POST</code></div>
+          <div class="mcp-row"><span class="mcp-k" data-i18n="tp_f_endpoint">{{ texts['tp_f_endpoint'] }}</span><code class="tp-acc-v" dir="ltr">{{ BASE_URL }}/v1/tools/{{ tool_key }}</code></div>
+          <div class="tp-acc-ex-label" data-i18n="tp_f_example">{{ texts['tp_f_example'] }}</div>
+          <pre class="tp-acc-example" id="toolApiExample" dir="ltr">{{ api_call_example }}</pre>
+        </div>
+        <a class="tp-acc-key" href="/account/keys" data-i18n="tool_api_note">{{ texts['tool_api_note'] }}</a>
       </div>
     </div>
   </div>

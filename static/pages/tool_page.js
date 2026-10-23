@@ -18,11 +18,12 @@
   window.__TOOLPAGE__ = true;
 })();
 
-// MCP card copy: one click copies a ready-to-paste sentence carrying the
-// MCP server URL and this tool's call name (prompt words + URL)
+// MCP card copy ("复制接入信息"): one click copies a ready-to-paste
+// sentence carrying the MCP server URL and this tool's call name
 (function () {
   const btn = document.getElementById("toolMcpCopy");
-  const url = document.querySelector(".mcpline .mcp-url");
+  const card = document.getElementById("toolAccess");
+  const url = card && card.querySelector(".tp-acc-v");     // server URL row
   const name = document.getElementById("toolMcpName");
   if (btn && url && name) {
     btn.addEventListener("click", async () => {

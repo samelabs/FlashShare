@@ -774,7 +774,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .status-page h1 { font-size: var(--fs-xl); }
 .status-page p { color: var(--ink-2); max-width: 44ch; }
 
-/* ═══ 工具页: tp-h 头部 / tp-main 主栏 / mcpline ═══ */
+/* ═══ 工具页: tp-h 头部 / tp-main 主栏 / 接入区 ═══ */
 /* 参数区 CSS 在 components.css (.prow/.tp-seg) — 首页与工具页同一套 */
 .toolpage { padding-top: 40px; padding-bottom: 64px; min-width: 0; }
 .tp-main { max-width: var(--container-read); margin: 0 auto; min-width: 0; width: 100%; }
@@ -794,33 +794,31 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tp-url code { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; max-width: 420px; }
 .tp-url .btn-icon { flex: none; color: var(--ink-2); }
 @media (hover:hover) and (pointer:fine) { .tp-url .btn-icon:hover { color: var(--ink); } }
-/* MCP 名片: 两行 (服务端地址 + 调用名), 右侧一键复制 */
-.mcpline { margin-block-start: 20px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); font-size: 13px; color: var(--ink-2); }
-.mcpline .mcp-badge { flex: none; height: 22px; padding: 0 9px; border-radius: var(--r-full); background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 750; letter-spacing: .04em; display: inline-flex; align-items: center; }
-.mcpline .mcp-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-/* 行样式属 .tp-access 作用域: MCP 卡与 API 卡共用同一行/键/URL 胶囊
-   (API 卡的行原本吃不到 .mcpline 作用域, 标签与 URL 无间隔且 URL 无
-   胶囊样式) */
+/* 工具页接入区: "接入方式"一区两卡 (MCP / API) — 同一卡框、标题栏、
+   字段行与动作位 (复制钮在标题栏右)。地址完整可读可选择: 任意字符处
+   换行, 不截断、不缩字号; 示例代码块内部横滚, 页面本身不横向溢出。 */
+.tp-access { margin-block-start: var(--s5); display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.tp-access-title { font-size: var(--fs-md); font-weight: 700; color: var(--ink); margin: 0; }
+.tp-access-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); align-items: start; }
+.tp-acc-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.tp-acc-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.tp-acc-badge { flex: none; height: 22px; padding: 0 9px; border-radius: var(--r-full); background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 750; letter-spacing: .04em; display: inline-flex; align-items: center; }
+.tp-acc-body { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); min-width: 0; width: 100%; }
 .tp-access .mcp-row { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .tp-access .mcp-k { font-weight: 650; font-size: 12px; flex: none; }
-.tp-access code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 2px 8px; border-radius: 6px; color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mcpline #toolMcpCopy { flex: none; }
+.tp-acc-v { font-family: var(--font-mono); font-size: 12.5px; background: var(--sunk); padding: 2px 8px; border-radius: 6px; color: var(--ink); min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.tp-acc-ex-label { font-weight: 650; font-size: 12px; color: var(--ink-2); }
+.tp-acc-example { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; font-family: var(--font-mono); width: 100%; max-width: 100%; }
+.tp-acc-key { color: var(--ink-2); font-size: 12px; text-decoration: underline; }
+@media (hover:hover) and (pointer:fine) { .tp-acc-key:hover { color: var(--ink); } }
+@media (max-width: 767px) { .tp-access-grid { grid-template-columns: 1fr; } }
 @media (max-width: 767px) {
   .toolpage { padding-top: 24px; padding-bottom: 48px; }
   .tp-h { align-items: flex-start; }
   .tp-h .ic { width: 48px; height: 48px; border-radius: 14px; }
   .tp-h h1 { font-size: 24px; }
-  .mcpline { flex-wrap: wrap; }
 }
 
-/* 工具页接入区 (P6): MCP 卡 + API 卡 (示例按声明生成) */
-.tp-access { display: flex; flex-direction: column; gap: var(--s3); margin-block-start: var(--s4); }
-.tp-api-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
-/* API 卡 URL 可换行 (375 宽不溢出): 覆盖胶囊基样的 nowrap, 配合
-   overflow-wrap 在任意字符处断行 */
-.tp-api-card .mcp-url { overflow-wrap: anywhere; white-space: normal; }
-.tp-api-example { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; font-family: var(--font-mono); }
-.tp-api-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); color: var(--ink-2); font-size: 12px; }
 .credit-note-link { color: var(--brand); font-weight: 600; text-decoration: none; }
 .credit-note-link:hover { text-decoration: underline; }
 .calls-deleted { color: var(--ink-2); }
