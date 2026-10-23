@@ -290,9 +290,20 @@ async def auth_middleware(request: Request, call_next):
     # slot is taken; an over-cap body answers 413 here (rows that keep
     # their over-cap contract in the route pass through — see
     # _BODY_RULES). Everything else — including all GET/HEAD/OPTIONS —
-    # passes through untouched: no pre-read, no slot.
+    # passes through untouched: no pre-read, no slot. The concurrency-
+    # budget half of this hardening lives in _BodyAdmissionMiddleware
+    # (bottom of this module): a body row must hold a gate reservation
+    # for the WHOLE ASGI request, taken before any byte is read.
     rule = _body_rule_for(path, request.method)
     if rule is not None:
+        if rule.session_gate and not request.state.user:
+            # Session-gated browser rows (uploads / tool execution): with
+            # no session identity the route's own auth answer is already
+            # decided — return it BEFORE reading or caching any body
+            # byte. Same body/status require_session_auth answers; MCP
+            # anonymous-capable rows and ticket paths are not in this
+            # table field and never hit this branch.
+            return JSONResponse({"ok": False, "error": "auth_required"}, 401)
         over = await _preread_body(request, rule)
         if over is not None:
             return JSONResponse(over, status_code=413)
@@ -379,7 +390,10 @@ app.include_router(proxy.router)
 # slot after the pre-read. route_mode rows keep their over-cap contract
 # in the route itself (/mcp: JSON-RPC 413 on header or streamed count;
 # the Creem webhook: its own signed-body check). Caps come from the
-# modules that own them.
+# modules that own them. session_gate rows (browser upload / tool
+# execution) additionally answer the route's auth_required 401 in the
+# middleware when identity resolution found no session — before any
+# body byte is read.
 from collections import namedtuple as _namedtuple
 
 from config import MAX_BATCH_BYTES, MAX_UPLOAD_BYTES
@@ -395,7 +409,8 @@ def _payload_too_large(cap, incoming):
 
 
 _BodyRule = _namedtuple(
-    "_BodyRule", "path prefix method cap route_mode heavy over")
+    "_BodyRule", "path prefix method cap route_mode heavy over session_gate",
+    defaults=(False,))
 
 _BODY_RULES = (
     _BodyRule("/mcp", False, "POST", MCP_MAX_BODY_BYTES, True, True, None),
@@ -406,12 +421,13 @@ _BODY_RULES = (
               False, True,
               lambda cap, incoming: {"error": "err_batch_too_large",
                                      "limit": MAX_BATCH_BYTES,
-                                     "incoming": incoming}),
+                                     "incoming": incoming},
+              True),
     _BodyRule("/v1/", True, "POST", MAX_BATCH_BYTES + _MiB, False, True,
               lambda cap, incoming: {"error": "err_request_too_large",
                                      "limit": cap}),
     _BodyRule("/api/tools/", True, "POST", _MiB, False, True,
-              _payload_too_large),
+              _payload_too_large, True),
     _BodyRule("/auth/login", False, "POST", 64 * _KiB, False, False,
               _payload_too_large),
     _BodyRule("/auth/register", False, "POST", 64 * _KiB, False, False,
@@ -439,36 +455,134 @@ async def _preread_body(request: Request, rule) -> dict | None:
     middleware-enforced row, None otherwise; route_mode rows always
     return None — their over-cap answer stays with the route's own
     contract (header check, or streamed count over the cached bytes).
-    No total read deadline: a slow client holds only its connection."""
+    Every body — declared Content-Length or chunked — is counted chunk
+    by chunk: nothing is ever buffered past the cap plus one chunk. No
+    total read deadline: a slow client holds only its connection (and
+    its admission reservation — see _BodyAdmissionMiddleware)."""
     declared = request.headers.get("content-length")
-    declared_len = None
     if declared is not None:
         try:
             declared_len = int(declared)
         except ValueError:
             declared_len = None  # malformed length: the stream count decides
-    cap = rule.cap
+        else:
+            if declared_len > rule.cap:
+                if rule.route_mode:
+                    return None      # the route rejects on the header itself
+                return {"ok": False, **rule.over(rule.cap, declared_len)}
     try:
-        if declared_len is not None and declared_len > cap:
-            if rule.route_mode:
-                return None          # the route rejects on the header itself
-            return {"ok": False, **rule.over(cap, declared_len)}
-        if declared_len is not None:
-            await request.body()     # ≤ cap: cache the full body
-            return None
         buf = bytearray()
         async for chunk in request.stream():
             buf.extend(chunk)
-            if len(buf) > cap:
+            if len(buf) > rule.cap:
                 break
-        if len(buf) > cap and not rule.route_mode:
-            return {"ok": False, **rule.over(cap, len(buf))}
+        if len(buf) > rule.cap and not rule.route_mode:
+            return {"ok": False, **rule.over(rule.cap, len(buf))}
         request._body = bytes(buf)  # replay cache for the route
         return None
     except Exception:
         # client vanished mid-body: nothing cached; the route answers the
         # empty/disconnected body with its own error
         return None
+
+
+# ── Body admission gate ──
+# The cap table bounds ONE request's retained body; it says nothing
+# about how many bodies may sit cached at once. The gate is the second
+# axis: a table-matched request must reserve (1 request, cap+1 logical
+# bytes) from a fixed budget BEFORE any body byte is read. The
+# reservation is the row's cap+1 worst case, so one full-size legal
+# request of every row always fits a healthy budget and covers
+# pre-read, slot wait and downstream processing; it is released only
+# when the whole ASGI request completes. Insufficient budget answers
+# immediately with the same 503 err_busy the slot gate uses — no queue
+# forms behind the gate.
+_BODY_GATE_REQUESTS = int(
+    _os.environ.get("FLASHSHARE_BODY_GATE_REQUESTS", "32"))
+_BODY_GATE_MB = int(_os.environ.get("FLASHSHARE_BODY_GATE_MB", "256"))
+
+
+class _BodyGate:
+    """Event-loop-confined counters: every caller runs on the loop with
+    no await between the check and the update, so plain attributes are
+    race-free and need no lock."""
+
+    def __init__(self, max_requests: int, max_bytes: int):
+        self.max_requests = max_requests
+        self.max_bytes = max_bytes
+        self.requests = 0
+        self.bytes = 0
+
+    def reserve(self, n_bytes: int):
+        if (self.requests + 1 > self.max_requests
+                or self.bytes + n_bytes > self.max_bytes):
+            return None
+        self.requests += 1
+        self.bytes += n_bytes
+        return n_bytes
+
+    def release(self, lease) -> None:
+        if lease is None:
+            return
+        self.requests -= 1
+        self.bytes -= lease
+
+
+_body_gate = _BodyGate(_BODY_GATE_REQUESTS, _BODY_GATE_MB * _MiB)
+
+
+class _BodyAdmissionMiddleware:
+    """Pure-ASGI bookend for the body gate: reserve the row budget
+    before the inner stack runs and release it only after the WHOLE
+    ASGI request completes — response body drained, route raised,
+    client disconnected or the task cancelled. A BaseHTTPMiddleware
+    finally fires when its response object is handed back, before a
+    streaming body drains; this wrapper sees the true end of the
+    exchange, which is the lifecycle the reservation must cover."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        rule = _body_rule_for(scope.get("path", ""), scope.get("method", ""))
+        if rule is None:
+            await self.app(scope, receive, send)
+            return
+        lease = _body_gate.reserve(rule.cap + 1)
+        if lease is None:
+            busy = JSONResponse({"ok": False, "error": "err_busy"},
+                                status_code=503,
+                                headers={"Retry-After": "5"})
+            await busy(scope, receive, send)
+            return
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _body_gate.release(lease)
+
+
+# registered after auth_middleware's decorator → outermost user
+# middleware: the reservation wraps identity resolution, the pre-read,
+# the slot wait and the full response
+app.add_middleware(_BodyAdmissionMiddleware)
+
+
+def _validate_body_gate_budget() -> None:
+    """Fail-closed config consistency: the budget must be able to hold
+    ONE maximal legal request of the current table (its cap+1
+    reservation). A conflict is reported and aborts startup — the caps
+    and the budget are never resized implicitly to hide it."""
+    widest = max(_BODY_RULES, key=lambda r: r.cap)
+    if _body_gate.max_bytes < widest.cap + 1 or _body_gate.max_requests < 1:
+        raise RuntimeError(
+            f"body admission budget ({_body_gate.max_requests} requests,"
+            f" {_body_gate.max_bytes} bytes) cannot hold one maximal legal"
+            f" request of {widest.method} {widest.path}"
+            f" (cap+1 = {widest.cap + 1} bytes); fix the configuration"
+            " explicitly (row caps or FLASHSHARE_BODY_GATE_*)")
 
 
 @app.exception_handler(404)
@@ -558,6 +672,10 @@ async def startup():
     # abort 启动 — 不留"流量已就绪但目录非法"的窗口。
     from governance.plan_catalog import validate_config
     validate_config()
+    # Body admission budget must hold one maximal legal request of the
+    # table (config consistency, fail-closed — see the gate at the bottom
+    # of this module).
+    _validate_body_gate_budget()
     # Durable settlement for invocation facts left running by a dead process
     # (single-worker deployment). Runs after schema init, before traffic.
     from execution.gate import recover_abandoned_calls

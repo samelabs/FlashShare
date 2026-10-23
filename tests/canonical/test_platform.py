@@ -24,6 +24,13 @@ from _harness import PG, REPO, TEST_PORT, check, finish, purge_users, section  #
 #       concurrency slot: 8 slow-dripping bodies hold no slot, and a
 #       chunked over-cap body on a middleware-enforced row answers the
 #       table's own 413.
+#   H5  body admission gate: a table-matched body reserves (1 request,
+#       cap+1 logical bytes) of a fixed budget BEFORE the first body
+#       byte is read; exhausted budget answers the slot gate's own
+#       503 err_busy immediately (no queue), sessionless browser rows
+#       answer the route's 401 before any body byte is cached, and the
+#       reservation is held to the very end of the ASGI exchange
+#       (streamed body, exception, disconnect, cancellation).
 #   H3  stored HTTP-tool credential clear: PATCH {auth_header:"",auth_token:""}
 #       removes the pair from the binding (remote calls stop sending the
 #       header); one-sided credential PATCH → 422 bad_auth_header; absent
@@ -264,6 +271,311 @@ except Exception as exc:   # noqa: BLE001
 check("H2i chunked client-error over 64 KiB → 413 err_payload_too_large",
       _ce_over == (413, {"ok": False, "error": "err_payload_too_large"}),
       _ce_over)
+
+# ════════ H5. body admission gate ════════
+# The pre-read table bounds ONE request; the gate bounds HOW MANY
+# table-matched bodies may be in flight at once. Live legs use the real
+# server's default budget with header-only stalled sockets (no payload
+# ever sent); in-process legs patch the module gate to a small budget.
+# Sample: ~16 sockets + probes; no large bodies, no long sleeps.
+import app.main as _mm
+
+_mcp_rule_h5 = _mm._body_rule_for("/mcp", "POST")
+_nfit_h5 = _mm._body_gate.max_bytes // (_mcp_rule_h5.cap + 1)
+_stalled_h5 = []
+for _ in range(_nfit_h5):
+    c = _hc.HTTPConnection(*_HOST, timeout=30)
+    c.putrequest("POST", "/mcp")
+    c.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+    c.putheader("Content-Type", "application/json")
+    c.putheader("Content-Length", "1000")
+    c.endheaders()          # admitted, parked in the pre-read; NO body bytes
+    _stalled_h5.append(c)
+st, d, _sc = _req("POST", "/api/client-error", {"msg": "probe"},
+                  {"Content-Type": "application/json"})
+check("H5a small row still admitted while big reservations are held",
+      st == 200 and (d or {}).get("ok") is True, f"{st} {str(d)[:120]}")
+try:
+    conn = _hc.HTTPConnection(*_HOST, timeout=5)
+    conn.putrequest("POST", "/mcp")
+    conn.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+    conn.putheader("Content-Type", "application/json")
+    conn.putheader("Content-Length", "1000")
+    conn.endheaders()       # no body sent: a body-reading answer would hang
+    r = conn.getresponse()
+    _gate_over = (r.status, _json.loads(r.read() or b"null"),
+                  r.getheader("Retry-After"))
+    conn.close()
+except Exception as exc:   # noqa: BLE001 — a hang surfaces as a failure
+    _gate_over = (None, repr(exc)[:120], None)
+check("H5b exhausted budget → immediate 503 err_busy + Retry-After before any body byte",
+      _gate_over[0] == 503
+      and _gate_over[1] == {"ok": False, "error": "err_busy"}
+      and _gate_over[2] == "5", _gate_over)
+for c in _stalled_h5:
+    c.close()               # disconnect: parked pre-reads unwind and release
+_probe_h5 = (None, None)
+for _ in range(10):
+    try:
+        _probe_h5 = _mcp({"jsonrpc": "2.0", "id": 13, "method": "tools/list",
+                          "params": {}}, TOK)
+    except Exception as exc:   # noqa: BLE001
+        _probe_h5 = (None, repr(exc)[:120])
+    if _probe_h5[0] == 200:
+        break
+    _time.sleep(0.2)
+check("H5c disconnect releases the reservations (probe served after close)",
+      _probe_h5[0] == 200
+      and isinstance((_probe_h5[1] or {}).get("result"), dict), _probe_h5)
+
+# session-gated browser rows: the route's own 401 BEFORE any body byte is
+# cached — an anonymous headers-only request gets an immediate answer (a
+# body-reading implementation would hang against the socket timeout).
+def _hdr_only_h5(path):
+    try:
+        c = _hc.HTTPConnection(*_HOST, timeout=5)
+        c.putrequest("POST", path)
+        c.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+        c.putheader("Content-Type", "application/json")
+        c.putheader("Content-Length", "1000")
+        c.endheaders()
+        r = c.getresponse()
+        out = (r.status, _json.loads(r.read() or b"null"))
+        c.close()
+        return out
+    except Exception as exc:   # noqa: BLE001
+        return (None, repr(exc)[:120])
+
+
+_anon_up = _hdr_only_h5("/api/uploads")
+check("H5d anonymous upload → immediate 401 auth_required (no body cached)",
+      _anon_up == (401, {"ok": False, "error": "auth_required"}), _anon_up)
+_anon_exec = _hdr_only_h5("/api/tools/execute")
+check("H5e anonymous tool execution → same immediate 401",
+      _anon_exec == (401, {"ok": False, "error": "auth_required"}), _anon_exec)
+_b, _ct = _form({"tool": "share"})
+st, d, _sc = _req("POST", "/api/uploads", _b,
+                  {"Content-Type": _ct, "Cookie": CK})
+check("H5f sessioned upload proceeds past auth to the route's own answer",
+      st == 400 and (d or {}).get("error") == "err_select_file",
+      f"{st} {str(d)[:120]}")
+
+# in-process: patched small budget — the count axis rejects at admission,
+# and the reservation spans downstream processing to ASGI completion.
+from fastapi.testclient import TestClient as _TC_h5  # noqa: E402
+
+_client_h5 = _TC_h5(_mm.app)
+_saved_h5 = (_mm._body_gate.max_requests, _mm._body_gate.max_bytes)
+_mm._body_gate.max_requests = 1
+_mm._body_gate.max_bytes = 256 * 1024
+_orig_gufr = _mm.get_user_from_request
+_parked_h5 = _th.Event()
+_release_h5 = _th.Event()
+
+
+def _stalling_user(request):
+    if not _parked_h5.is_set():
+        _parked_h5.set()
+        _release_h5.wait(timeout=10)
+    return _orig_gufr(request)
+
+
+_mm.get_user_from_request = _stalling_user
+
+
+_resp_h5 = {}
+
+
+def _post_ce_h5(tag):
+    r = _client_h5.post("/api/client-error", json={"msg": tag})
+    _resp_h5[tag] = (r.status_code, r.json(), r.headers.get("retry-after"))
+
+
+def _gate_zero_h5(timeout=2.0):
+    _t0 = _time.time()
+    while _time.time() - _t0 < timeout:
+        if _mm._body_gate.requests == 0 and _mm._body_gate.bytes == 0:
+            return True
+        _time.sleep(0.02)
+    return False
+
+
+try:
+    _t1 = _th.Thread(target=_post_ce_h5, args=("held",))
+    _t1.start()
+    _parked_h5.wait(timeout=5)   # parked INSIDE identity ⇒ already admitted
+    _t2 = _th.Thread(target=_post_ce_h5, args=("second",))
+    _t2.start()
+    _t2.join(timeout=10)
+    check("H5g count-axis exhaustion → 503 err_busy + Retry-After 5",
+          _resp_h5.get("second") == (503, {"ok": False, "error": "err_busy"}, "5"),
+          _resp_h5.get("second"))
+    check("H5h reservation still held while the request processes",
+          _mm._body_gate.requests == 1
+          and _mm._body_gate.bytes == 64 * 1024 + 1,
+          (_mm._body_gate.requests, _mm._body_gate.bytes))
+    _release_h5.set()
+    _t1.join(timeout=10)
+    check("H5i completion releases the reservation (counters back to zero)",
+          _gate_zero_h5(), (_mm._body_gate.requests, _mm._body_gate.bytes))
+    check("H5j the held request itself completed 200",
+          _resp_h5.get("held", (None,))[0] == 200, _resp_h5.get("held"))
+    _post_ce_h5("after")
+    check("H5k next request admitted after the release",
+          _resp_h5["after"][0] == 200, _resp_h5["after"])
+finally:
+    _mm.get_user_from_request = _orig_gufr
+    _mm._body_gate.max_requests, _mm._body_gate.max_bytes = _saved_h5
+
+# direct-ASGI lifecycle: the reservation survives a mid-stream response
+# body and is released on completion, exception and cancellation.
+import asyncio as _aio_h5  # noqa: E402
+
+
+def _scope_h5(path="/api/client-error"):
+    return {"type": "http", "asgi": {"version": "3.0"},
+            "http_version": "1.1", "scheme": "http", "method": "POST",
+            "path": path, "raw_path": path.encode(), "query_string": b"",
+            "headers": [(b"content-length", b"2")],
+            "client": ("127.0.0.1", 9), "server": ("127.0.0.1", 80)}
+
+
+def _recv_h5():
+    async def _r():
+        return {"type": "http.disconnect"}
+    return _r
+
+
+def _send_h5():
+    msgs = []
+
+    async def _s(message):
+        msgs.append(message)
+    return msgs, _s
+
+
+async def _h5_lifecycle():
+    gate = _mm._body_gate
+    saved = (gate.max_requests, gate.max_bytes)
+    gate.max_requests, gate.max_bytes = 1, 1024 * 1024
+    out = {}
+    try:
+        async def _park_until_reserved():
+            for _ in range(1000):
+                if gate.requests:
+                    return True
+                await _aio_h5.sleep(0)
+            return False
+
+        # (1) mid-stream hold: the budget stays occupied until the LAST
+        # body chunk; a second reservation is refused meanwhile
+        mid_done = _aio_h5.Event()
+
+        async def inner_stream(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200,
+                        "headers": [(b"content-type", b"text/plain")]})
+            await send({"type": "http.response.body", "body": b"part",
+                        "more_body": True})
+            await mid_done.wait()
+            await send({"type": "http.response.body", "body": b""})
+
+        mw = _mm._BodyAdmissionMiddleware(inner_stream)
+        _m, _s = _send_h5()
+        task = _aio_h5.create_task(mw(_scope_h5(), _recv_h5(), _s))
+        out["parked_stream"] = await _park_until_reserved()
+        out["held_mid_stream"] = ((gate.requests, gate.bytes)
+                                  == (1, 64 * 1024 + 1))
+        out["refused_while_held"] = gate.reserve(1) is None
+        mid_done.set()
+        await _aio_h5.wait_for(task, 5)
+        out["released_after_body"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # (2) an exception inside the stack propagates AND releases
+        async def inner_raise(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200,
+                        "headers": []})
+            raise RuntimeError("boom")
+
+        _m2, _s2 = _send_h5()
+        try:
+            await _mm._BodyAdmissionMiddleware(inner_raise)(
+                _scope_h5(), _recv_h5(), _s2)
+            out["exception_propagated"] = False
+        except RuntimeError:
+            out["exception_propagated"] = True
+        out["released_after_exception"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # (3) cancellation releases
+        async def inner_forever(scope, receive, send):
+            await _aio_h5.Event().wait()
+
+        _m3, _s3 = _send_h5()
+        t3 = _aio_h5.create_task(
+            _mm._BodyAdmissionMiddleware(inner_forever)(
+                _scope_h5(), _recv_h5(), _s3))
+        out["parked_cancel"] = await _park_until_reserved()
+        t3.cancel()
+        try:
+            await _aio_h5.wait_for(t3, 5)
+            out["cancel_propagated"] = False
+        except _aio_h5.CancelledError:
+            out["cancel_propagated"] = True
+        out["released_after_cancel"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # (4) rejection shape: status / Retry-After / body the slot gate
+        # already uses, sent without ever touching the inner stack
+        async def inner_unreached(scope, receive, send):
+            raise AssertionError("must not run")   # noqa: B017
+
+        lease = gate.reserve(1)
+        _m4, _s4 = _send_h5()
+        await _mm._BodyAdmissionMiddleware(inner_unreached)(
+            _scope_h5(), _recv_h5(), _s4)
+        gate.release(lease)
+        start = next(x for x in _m4 if x["type"] == "http.response.start")
+        _body4 = b"".join(x.get("body", b"") for x in _m4
+                          if x["type"] == "http.response.body")
+        out["reject_shape"] = (
+            start["status"] == 503
+            and dict(start["headers"]).get(b"retry-after") == b"5"
+            and _json.loads(_body4) == {"ok": False, "error": "err_busy"})
+    finally:
+        gate.max_requests, gate.max_bytes = saved
+        gate.requests, gate.bytes = 0, 0
+    return out
+
+
+_h5lc = _aio_h5.run(_h5_lifecycle())
+check("H5l reservation held while a streamed response is mid-body",
+      _h5lc.get("parked_stream") and _h5lc.get("held_mid_stream")
+      and _h5lc.get("refused_while_held"),
+      {k: v for k, v in _h5lc.items() if "stream" in k or "held" in k})
+check("H5m released only after the last body chunk",
+      _h5lc.get("released_after_body"), "")
+check("H5n an in-stack exception propagates and releases",
+      _h5lc.get("exception_propagated") and _h5lc.get("released_after_exception"),
+      "")
+check("H5o cancellation propagates and releases",
+      _h5lc.get("parked_cancel") and _h5lc.get("cancel_propagated")
+      and _h5lc.get("released_after_cancel"), "")
+check("H5p rejection answers 503 err_busy + Retry-After without reaching the app",
+      _h5lc.get("reject_shape"), "")
+
+# config consistency: a budget that cannot hold ONE maximal legal request
+# of the table is a startup error — never an implicit resize of either side
+_saved_mb = _mm._body_gate.max_bytes
+_mm._body_gate.max_bytes = 1024
+try:
+    _mm._validate_body_gate_budget()
+    _fit_bad_h5 = False
+except RuntimeError as _e:
+    _fit_bad_h5 = "body admission budget" in str(_e)
+finally:
+    _mm._body_gate.max_bytes = _saved_mb
+check("H5q budget below one maximal row → fail-closed RuntimeError",
+      _fit_bad_h5, "")
+_mm._validate_body_gate_budget()
+check("H5r the default config holds one maximal legal request", True, "")
 
 # ══════════ H3. stored HTTP-tool credential clear ══════════
 class _HookHandler(_hs.BaseHTTPRequestHandler):

@@ -56,6 +56,9 @@
 - 限额：`FLASHSHARE_MAX_UPLOAD_MB`（单文件，默认 50）、`FLASHSHARE_MAX_BATCH_MB`（单次合计，默认 100）；
   `FLASHSHARE_DAILY_UPLOADS` / `FLASHSHARE_DAILY_MB`（仅用于**首次**创建 free 档的 24h 配额，默认 100 / 1024；
   free 行建成后以 plans 表为准，改 env 不覆盖）
+- 正文准入预算：`FLASHSHARE_BODY_GATE_REQUESTS`（默认 32）、`FLASHSHARE_BODY_GATE_MB`（默认 256）——
+  请求体预读前的总量准入（并发缓存请求数 × 每行 cap+1 逻辑字节预留），超预算立即 503 err_busy。
+  预算必须容纳当前表里一条最大合法请求（启动 fail-closed 校验）；调大上传/批量上限时须同步核对
 - 风控：`FLASHSHARE_REGISTER_LIMIT_PER_HOUR`（注册每 IP 每小时，默认 30）、
   `FLASHSHARE_LOGIN_LIMIT_PER_15MIN`（登录失败每 IP 每 15 分钟，默认 50）；CI 等隔离栈调高
 - `TOOL_VAULT_KEY` — secrets_vault 加密密钥（Fernet）：工具鉴权凭据与 API key 加密副本共用；
