@@ -9,7 +9,8 @@ DEFAULT），列先消失会让 seeding 与工具创建直接报 UndefinedColumn
 **回滚边界（与主顺序阶段 ⑤ 一致）**：本 DROP 执行后，`checkout 旧
 SHA + restart` 不再可用（旧代码写 `icon`、读 `trusted`，两列已删必然
 UndefinedColumn）；此后唯一回滚手段是从阶段 ① 已验证可恢复的备份恢复
-数据库，是否走由 owner 裁定。
+数据库，损失范围 = 该备份快照之后所有未被其覆盖的变更（含停写窗口
+之前的线上变更与停写/删列之间的写入），是否走由 owner 裁定。
 
 生产执行完成并通过阶段 ⑥ 部署后检查后，随主顺序资产一并删除
 （仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。
