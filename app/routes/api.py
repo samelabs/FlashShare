@@ -25,7 +25,7 @@ from app.web_auth import require_session_auth as _require_auth
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
 sys.path.insert(0, str(_CORE))
 
-from config import MAX_BATCH_BYTES, PUBLIC_ID_RE, BASE_URL
+from config import PUBLIC_ID_RE, BASE_URL
 from database import db
 from sharing.uploads import (reserve_ingress, release_ingress,
                              get_upload_by_public_id, list_uploads, delete_upload)
@@ -236,20 +236,6 @@ async def create_upload(request: Request):
         return JSONResponse({"ok": False, "error": "err_tool_required"}, 422)
 
     pending = []
-    # Transport safety only: a declared Content-Length far beyond the batch
-    # cap never needs reading. This is NOT a second batch algorithm — the
-    # authoritative source-byte contract stays in governance.ingress
-    # validate_batch() below. `incoming` on this early-reject path means the
-    # transport-declared request bytes (headers included), never the
-    # authoritative source batch total.
-    try:
-        declared = int(request.headers.get("content-length", "0"))
-    except ValueError:
-        declared = 0
-    if declared > MAX_BATCH_BYTES + 1024 * 1024:
-        return JSONResponse({"ok": False, "error": "err_batch_too_large",
-                             "limit": MAX_BATCH_BYTES,
-                             "incoming": declared}, 413)
 
     for file in uploads:
         if not file.filename:

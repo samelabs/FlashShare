@@ -227,12 +227,16 @@ def detect_lang(request: Request) -> str:
 import asyncio
 
 _concurrency = asyncio.Semaphore(8)
-# Heavy surface gate. /auth/login and /auth/register stay OUT: they are
-# small-form (64KB) + rate-limited + bcrypt-in-thread surfaces and must
-# never queue behind slow tool calls; remote (http) executions carry
-# their own in-flight cap sized below this gate (execution/pool
-# REMOTE_MAX_INFLIGHT), so a slow user tool can never occupy every slot.
-_HEAVY_PATHS = ("/api/uploads", "/api/tools/", "/mcp", "/v1")
+# Heavy surface gate: every table-matched request (see _BODY_RULES at
+# the bottom of this module — built after the route imports that own the
+# caps) first reads its body under the row cap, and only THEN tries to
+# acquire one of the 8 slots, so a slow-dripping client holds only its
+# connection, never a concurrency slot. /auth/login and /auth/register
+# are table rows with cap 64KB and NO slot: they are small-form +
+# rate-limited + bcrypt-in-thread surfaces and must never queue behind
+# slow tool calls; remote (http) executions carry their own in-flight
+# cap sized below this gate (execution/pool REMOTE_MAX_INFLIGHT), so a
+# slow user tool can never occupy every slot.
 # Mutating account identity/credentials is a browser-session surface. Capability
 # tokens may run the machine surface (MCP), but cannot use themselves to
 # mint/alter account credentials. Token CRUD and X bind/unbind also enforce
@@ -273,23 +277,28 @@ async def auth_middleware(request: Request, call_next):
                                 status_code=401)
 
     user_id = request.state.user.get("id") if request.state.user else None
-    # Small-form surface cap: these endpoints carry tiny credentials /
-    # diagnostic payloads; a body over 64KB is abuse, not input. Checked
-    # BEFORE the heavy-path semaphore so bulk cannot occupy concurrency
-    # slots (and cannot be slow-dripped through them).
-    if path in ("/api/client-error", "/auth/login", "/auth/register"):
-        _declared_len = request.headers.get("content-length")
-        if _declared_len:
-            try:
-                if int(_declared_len) > 65536:
-                    return JSONResponse(
-                        {"ok": False, "error": "err_payload_too_large"},
-                        status_code=413)
-            except ValueError:
-                pass  # malformed length: the transport still bounds it
-    if any(path.startswith(p) for p in _HEAVY_PATHS):
-        async with _concurrency:
+    # Bounded body pre-read (request-boundary hardening): table-matched
+    # requests read their body up to the row cap BEFORE any concurrency
+    # slot is taken; an over-cap body answers 413 here (rows that keep
+    # their over-cap contract in the route pass through — see
+    # _BODY_RULES). Everything else — including all GET/HEAD/OPTIONS —
+    # passes through untouched: no pre-read, no slot.
+    rule = _body_rule_for(path, request.method)
+    if rule is not None:
+        over = await _preread_body(request, rule)
+        if over is not None:
+            return JSONResponse(over, status_code=413)
+    if rule is not None and rule.heavy:
+        try:
+            await asyncio.wait_for(_concurrency.acquire(), 30)
+        except asyncio.TimeoutError:
+            return JSONResponse(
+                {"ok": False, "error": "err_busy"},
+                status_code=503, headers={"Retry-After": "5"})
+        try:
             response = await call_next(request)
+        finally:
+            _concurrency.release()
     else:
         response = await call_next(request)
 
@@ -354,6 +363,104 @@ app.include_router(favorites.router)
 from app.routes import earn
 app.include_router(earn.router)
 app.include_router(proxy.router)
+
+# ── Bounded request-body pre-read table ──
+# THE single path table behind the middleware gate above: which
+# (method, path) rows get their body pre-read under a cap, what an
+# over-cap body answers, and whether the row occupies a concurrency
+# slot after the pre-read. route_mode rows keep their over-cap contract
+# in the route itself (/mcp: JSON-RPC 413 on header or streamed count;
+# the Creem webhook: its own signed-body check). Caps come from the
+# modules that own them.
+from collections import namedtuple as _namedtuple
+
+from config import MAX_BATCH_BYTES, MAX_UPLOAD_BYTES
+from app.routes.mcp import MCP_MAX_BODY_BYTES
+from app.routes.topup import MAX_WEBHOOK_BODY
+
+_MiB = 1024 * 1024
+_KiB = 1024
+
+
+def _payload_too_large(cap, incoming):
+    return {"error": "err_payload_too_large"}
+
+
+_BodyRule = _namedtuple(
+    "_BodyRule", "path prefix method cap route_mode heavy over")
+
+_BODY_RULES = (
+    _BodyRule("/mcp", False, "POST", MCP_MAX_BODY_BYTES, True, True, None),
+    _BodyRule("/mcp/upload/", True, "PUT", MAX_UPLOAD_BYTES, False, True,
+              lambda cap, incoming: {"error": "err_file_too_large",
+                                     "limit": cap}),
+    _BodyRule("/api/uploads", False, "POST", MAX_BATCH_BYTES + _MiB,
+              False, True,
+              lambda cap, incoming: {"error": "err_batch_too_large",
+                                     "limit": MAX_BATCH_BYTES,
+                                     "incoming": incoming}),
+    _BodyRule("/v1/", True, "POST", MAX_BATCH_BYTES + _MiB, False, True,
+              lambda cap, incoming: {"error": "err_request_too_large",
+                                     "limit": cap}),
+    _BodyRule("/api/tools/", True, "POST", _MiB, False, True,
+              _payload_too_large),
+    _BodyRule("/auth/login", False, "POST", 64 * _KiB, False, False,
+              _payload_too_large),
+    _BodyRule("/auth/register", False, "POST", 64 * _KiB, False, False,
+              _payload_too_large),
+    _BodyRule("/api/client-error", False, "POST", 64 * _KiB, False, False,
+              _payload_too_large),
+    _BodyRule("/webhooks/creem", False, "POST", MAX_WEBHOOK_BODY,
+              True, False, None),
+)
+
+
+def _body_rule_for(path: str, method: str):
+    for rule in _BODY_RULES:
+        if rule.method != method:
+            continue
+        if path.startswith(rule.path) if rule.prefix else path == rule.path:
+            return rule
+    return None
+
+
+async def _preread_body(request: Request, rule) -> dict | None:
+    """Read the request body under the row cap and cache it for the
+    route (request._body, replayed to the route by Starlette's
+    _CachedRequest). Returns the 413 body dict on an over-cap
+    middleware-enforced row, None otherwise; route_mode rows always
+    return None — their over-cap answer stays with the route's own
+    contract (header check, or streamed count over the cached bytes).
+    No total read deadline: a slow client holds only its connection."""
+    declared = request.headers.get("content-length")
+    declared_len = None
+    if declared is not None:
+        try:
+            declared_len = int(declared)
+        except ValueError:
+            declared_len = None  # malformed length: the stream count decides
+    cap = rule.cap
+    try:
+        if declared_len is not None and declared_len > cap:
+            if rule.route_mode:
+                return None          # the route rejects on the header itself
+            return {"ok": False, **rule.over(cap, declared_len)}
+        if declared_len is not None:
+            await request.body()     # ≤ cap: cache the full body
+            return None
+        buf = bytearray()
+        async for chunk in request.stream():
+            buf.extend(chunk)
+            if len(buf) > cap:
+                break
+        if len(buf) > cap and not rule.route_mode:
+            return {"ok": False, **rule.over(cap, len(buf))}
+        request._body = bytes(buf)  # replay cache for the route
+        return None
+    except Exception:
+        # client vanished mid-body: nothing cached; the route answers the
+        # empty/disconnected body with its own error
+        return None
 
 
 @app.exception_handler(404)

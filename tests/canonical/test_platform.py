@@ -19,7 +19,11 @@ from _harness import PG, REPO, TEST_PORT, check, finish, purge_users, section  #
 #       rejected on the header alone (413 + JSON-RPC -32600 with the
 #       create_upload guidance); a chunked request WITHOUT Content-Length
 #       is stopped by the streaming count; an inline-file call inside the
-#       cap executes normally; initialize + llms.txt state the cap.
+#       cap executes normally; initialize + llms.txt state the cap. The
+#       middleware pre-read table reads matched bodies BEFORE any
+#       concurrency slot: 8 slow-dripping bodies hold no slot, and a
+#       chunked over-cap body on a middleware-enforced row answers the
+#       table's own 413.
 #   H3  stored HTTP-tool credential clear: PATCH {auth_header:"",auth_token:""}
 #       removes the pair from the binding (remote calls stop sending the
 #       header); one-sided credential PATCH → 422 bad_auth_header; absent
@@ -208,6 +212,58 @@ st, d, _sc = _req("GET", "/llms.txt")
 check("H2f llms.txt states the inline/body cap",
       st == 200 and "capped at 16 MB" in str(d)
       and "request body cap is 16 MB" in str(d), str(d)[:80] if st != 200 else "")
+
+# (h) slow-dripped bodies hold NO concurrency slot: 8 anonymous sockets
+# declare Content-Length:1000, send one byte and stall; a normal
+# anonymous tools/list must still answer 200 within 5 seconds.
+# Protects: the middleware reads matched bodies to their cap BEFORE
+# acquiring the 8-slot semaphore. Sample: 8 stalled sockets + 1 probe.
+# Deps: live app + Postgres; runtime ~1s.
+_stalled = []
+for _ in range(8):
+    c = _hc.HTTPConnection(*_HOST, timeout=30)
+    c.putrequest("POST", "/mcp")
+    c.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+    c.putheader("Content-Type", "application/json")
+    c.putheader("Content-Length", "1000")
+    c.endheaders()
+    c.send(b"{")          # one byte of the declared 1000, then stall
+    _stalled.append(c)
+try:
+    probe = _hc.HTTPConnection(*_HOST, timeout=5)
+    probe.request("POST", "/mcp", _json.dumps(
+        {"jsonrpc": "2.0", "id": 12, "method": "tools/list",
+         "params": {}}).encode(),
+        {"Content-Type": "application/json",
+         "Accept": "application/json, text/event-stream"})
+    r = probe.getresponse()
+    _probe = (r.status, _json.loads(r.read() or b"null"))
+    probe.close()
+except Exception as exc:   # noqa: BLE001 — a hang surfaces as a failure
+    _probe = (None, repr(exc)[:120])
+check("H2h 8 stalled bodies hold no slot; tools/list answers in 5s",
+      _probe[0] == 200
+      and isinstance((_probe[1] or {}).get("result"), dict)
+      and "tools" in _probe[1]["result"], _probe)
+for c in _stalled:
+    c.close()
+
+# (i) chunked body over the row cap on a middleware-enforced row:
+# /api/client-error answers the table's own 413 (not the route's).
+try:
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    _chunks = [b"c" * 8192] * 9          # 72 KiB chunked > the 64 KiB cap
+    conn.request("POST", "/api/client-error", body=iter(_chunks),
+                 headers={"Content-Type": "application/json",
+                          "Transfer-Encoding": "chunked"}, encode_chunked=True)
+    r = conn.getresponse()
+    _ce_over = (r.status, _json.loads(r.read() or b"null"))
+    conn.close()
+except Exception as exc:   # noqa: BLE001
+    _ce_over = (None, repr(exc)[:120])
+check("H2i chunked client-error over 64 KiB → 413 err_payload_too_large",
+      _ce_over == (413, {"ok": False, "error": "err_payload_too_large"}),
+      _ce_over)
 
 # ══════════ H3. stored HTTP-tool credential clear ══════════
 class _HookHandler(_hs.BaseHTTPRequestHandler):
