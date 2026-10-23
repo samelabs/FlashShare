@@ -4,7 +4,6 @@ from database import db
 from governance.entitlements import resolve as _resolve_entitlement
 from repo import uploads as uploads_repo
 from repo import upload_usage as usage_repo
-from gokapi import list_gokapi_files
 from storage import delete as storage_delete
 from utils import now, public_file_url
 
@@ -118,43 +117,30 @@ def get_live_upload_by_public_id(public_id: str):
     return row
 
 
-_gokapi_cache = {}
-_GOKAPI_CACHE_TTL = 60
-_GOKAPI_STALE_TTL = 300
-
-def _get_all_gokapi_status():
-    """Live file statuses for the account list overlay.
-
-    Sharing layer owns ONLY the presentation cache policy (fresh 60s /
-    stale-on-unavailable 300s); the Gokapi transport itself is the
-    canonical adapter primitive. An unavailable snapshot is never forged
-    into an authoritative empty list.
-    """
-    import time
-    now_ts = time.time()
-    age = now_ts - _gokapi_cache.get("ts", 0)
-    if age < _GOKAPI_CACHE_TTL:
-        return _gokapi_cache.get("data", {})
-    has_stale = age < _GOKAPI_STALE_TTL and _gokapi_cache.get("data")
-    ok, files = list_gokapi_files(timeout=2)
-    if ok:
-        result = {f["Id"]: f for f in files}
-        _gokapi_cache["data"] = result
-        _gokapi_cache["ts"] = now_ts
-        return result
-    return _gokapi_cache.get("data", {}) if has_stale else {}
-
-
-def live_status_map() -> dict:
-    """Read-only live Gokapi snapshot for operator surfaces (the same
-    cache/policy single point list_uploads reads — no second fetcher)."""
-    return _get_all_gokapi_status()
+def live_status_for(gokapi_ids) -> dict:
+    """Live Gokapi statuses for exactly these storage ids — one
+    single-file query per id (bounded by the page size), stopping at
+    the first unavailable hop: ids after it are simply absent from the
+    map. Unavailability is never forged into an authoritative 'gone'
+    (absent-from-map and confirmed-deleted stay distinguishable at the
+    caller via the adapter's tuple contract)."""
+    from gokapi import get_gokapi_file
+    out = {}
+    for gid in gokapi_ids:
+        if not gid:
+            continue
+        ok, info = get_gokapi_file(gid, timeout=2)
+        if not ok:
+            break
+        if info is not None:
+            out[gid] = info
+    return out
 
 
 def list_uploads(user_id: int, offset: int = 0, limit: int = 20) -> list:
     with db() as con:
         rows = uploads_repo.by_owner(con, user_id, int(time.time()), limit, offset)
-    gokapi_map = _get_all_gokapi_status()
+    gokapi_map = live_status_for([r["gokapi_id"] for r in rows])
     uploads = []
     for row in rows:
         item = dict(row)

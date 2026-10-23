@@ -72,5 +72,8 @@ def user_by_api_key(con, key_hash: str) -> Optional[dict]:
 
 
 def touch_key(con, key_id: int, ts: int) -> None:
+    from identity.capabilities import LAST_USED_TOUCH_INTERVAL_S
     con.execute(
-        "UPDATE api_keys SET last_used_at = %s WHERE id = %s", (ts, key_id))
+        "UPDATE api_keys SET last_used_at = %s WHERE id = %s"
+        " AND (last_used_at IS NULL OR last_used_at < %s)",
+        (ts, key_id, ts - LAST_USED_TOUCH_INTERVAL_S))

@@ -77,9 +77,9 @@ def _user_detail_impl(user: dict, user_id: int, request: Request):
     from identity.apikeys import list_keys
     keys = [dict(r) for r in list_keys(user_id)]
     import asyncio
-    from sharing.uploads import live_status_map
+    from sharing.uploads import live_status_for
     from utils import format_bytes, remaining_downloads
-    live = live_status_map()
+    live = live_status_for([f["gokapi_id"] for f in files])
     for f in files:
         gid = f.pop("gokapi_id", None)
         f["size_h"] = format_bytes(int(f["size_bytes"]))

@@ -82,20 +82,36 @@ def upload_to_gokapi(file_obj, filename: str, content_type: str, expiry_days: in
     return payload
 
 
-def get_gokapi_file(file_id: str):
+def get_gokapi_file(file_id: str, timeout: int = 5) -> tuple[bool, dict | None]:
+    """Single-file metadata query — same convention as
+    list_gokapi_files: `(True, info)` found; `(True, None)` confirmed
+    absent (404); `(False, None)` unavailable (transport error, non-200
+    non-404, or malformed JSON). Never raises; the connection always
+    closes."""
     if not GOKAPI_KEY or not file_id:
-        return None
-    conn, _parsed = _gokapi_connection(timeout=5)
-    conn.request("GET", _gokapi_path(f"/api/files/list/{urllib.parse.quote(file_id)}"), headers={"apikey": GOKAPI_KEY})
-    resp = conn.getresponse()
-    data = resp.read()
-    conn.close()
-    if resp.status != 200:
-        return None
+        return False, None
+    conn = None
     try:
-        return json.loads(data.decode("utf-8"))
+        conn, _parsed = _gokapi_connection(timeout=timeout)
+        conn.request("GET", _gokapi_path(f"/api/files/list/{urllib.parse.quote(file_id)}"), headers={"apikey": GOKAPI_KEY})
+        resp = conn.getresponse()
+        data = resp.read()
+        if resp.status == 404:
+            return True, None
+        if resp.status != 200:
+            return False, None
+        info = json.loads(data.decode("utf-8"))
+        if not isinstance(info, dict):
+            return False, None
+        return True, info
     except Exception:
-        return None
+        return False, None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def list_gokapi_files(timeout: int = 5) -> tuple[bool, list]:

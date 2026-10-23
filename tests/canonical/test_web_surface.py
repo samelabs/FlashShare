@@ -216,6 +216,14 @@ def main():
           and html.count('rel="alternate" hreflang=') == 11,
           f"{st} robots={_meta(html, 'robots')}")
 
+    # username identity is lower-folded (the same rule as login): an
+    # uppercased URL resolves the same author and the page displays the
+    # STORED handle, never the URL casing. Sample: 1 page fetch.
+    st, html = _page(f"/u/{_u.upper()}")
+    check("H /u/<UPPER>: folds to the author, shows the stored handle",
+          st == 200 and f"@{_u}" in html and f"@{_u.upper()}" not in html,
+          f"{st}")
+
     # ── explicit ?lang page is its own canonical (hreflang alternates) ──
     st, html = _page("/pricing?lang=de&utm_source=x")
     canon = _tag(html, r'<link rel="canonical" href="([^"]*)"')
@@ -643,7 +651,7 @@ try:
         with db() as con:
             gid = con.execute("select gokapi_id from uploads where"
                               " public_id=%s", (share_pid,)).fetchone()["gokapi_id"]
-        return int((get_gokapi_file(gid) or {}).get("DownloadCount", -1))
+        return int((get_gokapi_file(gid)[1] or {}).get("DownloadCount", -1))
 
     c0 = _dl_count()
     st, h, body_raw, _sc = _req_agw("HEAD", f"/f/{share_pid}", raw=True)

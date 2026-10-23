@@ -41,9 +41,10 @@ def _err(status: int, code: str, headers: dict | None = None,
 
 def _auth(request: Request):
     """fsk_-only authentication for /v1 (cookies/fsot_ already refused at
-    the boundary). Returns (user, None) or (None, 401 response)."""
-    from app.main import get_user_from_request
-    user = get_user_from_request(request)
+    the boundary). Returns (user, None) or (None, 401 response). The
+    middleware already resolved the Bearer identity — no second DB
+    lookup here."""
+    user = getattr(request.state, "user", None)
     if user is None:
         return None, _err(401, "unauthorized")
     return user, None

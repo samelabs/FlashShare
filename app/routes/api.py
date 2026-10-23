@@ -190,11 +190,20 @@ async def client_error(request: Request):
     import logging
     try:
         body = await request.json()
-        logging.getLogger("flashshare.client").error(
-            "CLIENT-CRASH %s %s | %s", body.get("lang"), body.get("url"), body.get("msg"))
-        stack = (body.get("stack") or "").replace("\n", " | ")[:1500]
-        if stack:
-            logging.getLogger("flashshare.client").error("CLIENT-STACK %s", stack)
+
+        def _clean(value) -> str:
+            return (str(value or "")[:300]
+                    .replace("\r", " ").replace("\n", " "))
+
+        if isinstance(body, dict):
+            logging.getLogger("flashshare.client").error(
+                "CLIENT-CRASH %s %s | %s", _clean(body.get("lang")),
+                _clean(body.get("url")), _clean(body.get("msg")))
+            stack = (str(body.get("stack") or "")
+                     .replace("\r", " ").replace("\n", " | "))[:1500]
+            if stack:
+                logging.getLogger("flashshare.client").error(
+                    "CLIENT-STACK %s", stack)
     except Exception:
         pass
     return {"ok": True}

@@ -337,10 +337,9 @@ def user_page(request: Request, handle: str):
     from governance.catalog import owner_public_tools
     from database import db
 
+    from repo.users import id_by_username
     with db() as con:
-        urow = con.execute(
-            "SELECT id, status FROM users WHERE username = %s",
-            (handle,)).fetchone()
+        urow = id_by_username(con, handle)
     if urow is None or urow["status"] == "suspended":
         # suspended provider: the author page does not exist
         return templates.TemplateResponse(request, "missing.html",
@@ -356,7 +355,7 @@ def user_page(request: Request, handle: str):
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",
-        "owner_handle": handle,
+        "owner_handle": urow["username"],
         "owner_verified": owner_id in effective_member_ids([owner_id]),
         "owner_tools": tools,
         "is_self": bool(user and user.get("id") == owner_id),

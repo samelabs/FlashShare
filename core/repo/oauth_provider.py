@@ -69,10 +69,12 @@ def user_by_access_token(con, access_hash: str, resource: str, now_ts: int):
 
 
 def touch_access_token(con, access_hash: str, now_ts: int) -> None:
+    from identity.capabilities import LAST_USED_TOUCH_INTERVAL_S
     con.execute(
         "UPDATE oauth_mcp_tokens SET last_used_at = %s "
-        "WHERE access_token_hash = %s",
-        (now_ts, access_hash),
+        "WHERE access_token_hash = %s"
+        " AND (last_used_at IS NULL OR last_used_at < %s)",
+        (now_ts, access_hash, now_ts - LAST_USED_TOUCH_INTERVAL_S),
     )
 
 

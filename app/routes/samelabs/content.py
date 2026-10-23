@@ -36,8 +36,8 @@ def _content_impl(user_op: dict, request: Request, share: str, result: str,
             con, result or None, user or None, tool or None,
             _PAGE, (page - 1) * _PAGE)
     import asyncio
-    from sharing.uploads import live_status_map
-    live = live_status_map()
+    from sharing.uploads import live_status_for
+    live = live_status_for([r["gokapi_id"] for r in uploads])
     files = []
     for r in uploads:
         d = dict(r)

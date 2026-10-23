@@ -612,6 +612,31 @@ try:
           and d["keys"][0]["prefix"]
           and "key" not in d["keys"][0], blob[:120])
 
+    # ═══ C4b. last_used telemetry is throttled (≤1 write / 60s) ═══
+    # Protects: hot key use writes last_used_at at most once per
+    # LAST_USED_TOUCH_INTERVAL_S. Sample: 2 MCP calls with the same key
+    # inside the window; runtime <1s.
+    def _key_last_used():
+        st_l, _h, d_l, _sc = _req_key("GET", "/api/keys", None,
+                                      {"Cookie": ck_key})
+        return next((k["last_used_at"] for k in (d_l or {}).get("keys", [])
+                     if k["prefix"] == plaintext[4:12]), "missing")
+
+    def _mcp_list(ref):
+        return _req_key("POST", "/mcp",
+                        {"jsonrpc": "2.0", "id": ref, "method": "tools/list",
+                         "params": {}},
+                        {"Content-Type": "application/json",
+                         "Accept": "application/json, text/event-stream",
+                         "Authorization": f"Bearer {plaintext}"})
+
+    _mcp_list(31)                       # first use writes the stamp
+    _mid_lu = _key_last_used()
+    _mcp_list(32)                       # in-window use must NOT rewrite
+    check("C4b in-window reuse → last_used_at unchanged",
+          _mid_lu not in (None, "missing") and _key_last_used() == _mid_lu,
+          (_mid_lu, _key_last_used()))
+
     # ═══ V. viewable-any-time + session-only ═══
     kid = d["keys"][0]["id"]
     for i in range(2):
@@ -1981,6 +2006,27 @@ try:
     except ValueError as e:
         ok = str(e) == "invalid_grant"
     check("F6 authorization code is single-use", ok)
+
+    # a WRONG-verifier probe burns the code too: single-use binds to the
+    # exchange attempt, so the correct verifier afterwards is rejected
+    # (protects: exchange_authorization_code deletes the code in the
+    # transaction on every attempt). Sample: 2 exchanges on one code.
+    code_w = _oa.create_authorization_code(
+        UID, CIMD_URL, REDIRECT, challenge, scope, RESOURCE)
+    try:
+        _oa.exchange_authorization_code(
+            code_w, CIMD_URL, REDIRECT, "wrong-verifier", RESOURCE)
+        ok = False
+    except ValueError as e:
+        ok = str(e) == "invalid_grant"
+    check("F6b wrong verifier → invalid_grant", ok)
+    try:
+        _oa.exchange_authorization_code(
+            code_w, CIMD_URL, REDIRECT, verifier, RESOURCE)
+        ok = False
+    except ValueError as e:
+        ok = str(e) == "invalid_grant"
+    check("F6c correct verifier after a failed probe → invalid_grant", ok)
 
     # ── the resource-server side over real HTTP ──
     st, _h, d = _mcp({"jsonrpc": "2.0", "id": 10, "method": "tools/call",

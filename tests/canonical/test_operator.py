@@ -2979,11 +2979,9 @@ with db() as con:
         " (%s, '127.0.0.1', %s, %s, 'nc.txt', 'text/plain', 7, 7, 50, %s,"
         " %s, %s)",
         (_nc_user, _pid_nc, _gid_nc, ts_cp + 7 * 86400, _udl_nc, ts_cp))
-import sharing.uploads as _su_nc
-from sharing.uploads import live_status_map as _lsm_nc
+from sharing.uploads import live_status_for as _lsf_nc
 def _lsm_fresh_nc():
-    _su_nc._gokapi_cache["ts"] = 0  # bypass the 60s presentation cache
-    return _lsm_nc()
+    return _lsf_nc([_gid_nc])
 _pre_rem = _lsm_fresh_nc().get(_gid_nc)
 # the counted channel is the storage's own /downloadFile (production
 # Nginx fronts it; the test stack hits the fake directly)

@@ -243,11 +243,19 @@ _concurrency = asyncio.Semaphore(8)
 # session at their routes.
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    # Static assets and the health probe carry no identity surface: no
+    # session lookup, no reconcile — a cookie'd browser hit on /static/*
+    # or /brand/* must not cost a DB round-trip.
+    if (path == "/healthz" or path.startswith("/static/")
+            or path.startswith("/brand/")):
+        request.state.user = None
+        request.state.lang = detect_lang(request)
+        return await call_next(request)
     # identity resolution is a sync DB read (session/key/OAuth lookup) —
     # offload it so it never blocks the event loop
     request.state.user = await asyncio.to_thread(get_user_from_request, request)
     request.state.lang = detect_lang(request)
-    path = request.url.path
     if request.state.user and getattr(request.state, "auth_via", "") in (
             "session", "token", "oauth"):
         # lapsed-renewal compensation on authenticated access (web

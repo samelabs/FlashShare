@@ -1210,7 +1210,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             files_arg = []          # text-only tools: 0 files is legal
         if not isinstance(files_arg, list):
             raise ValueError("files[] must be an array")
-        items = [_parse_file_item(f) for f in files_arg]
+
+        def _parse_all():
+            return [_parse_file_item(f) for f in files_arg]
+
+        items = await asyncio.to_thread(_parse_all)
     except (ValueError, binascii.Error) as exc:
         # Malformed input outranks business affordability — protocol
         # validation stays first so a low balance can never mask it.
