@@ -886,8 +886,8 @@ check("SG6 /subscribe 有 plan_change_required 拦截",
 check("SG7 entitlement profile 单点 (_require_profile + 未知 raise)",
       "_require_profile" in open(_os.path.join(REPO, "core", "governance", "entitlements.py"), encoding="utf-8").read())
 _tmpl = open(_os.path.join(REPO, "app", "templates", "account", "credits.html"), encoding="utf-8").read()
-check("SG8 Account badge 展示 access.membership.name (当前 tier; Free 回退)",
-      "{{ m.name if m and m.member else texts.pricing_free_name }}" in _tmpl)
+check("SG8 Account badge 展示 access.membership.name (当前 tier; Free 回退 = free 行品牌名, 语言无关)",
+      "{{ m.name if m and m.member else free_plan_name }}" in _tmpl)
 check("SG9 旧 upsert_membership 单体 writer 已拆 (bind/state 语义分离)",
       "def upsert_membership(" not in _repo_src
       and "def bind_membership(" in _repo_src
@@ -922,8 +922,10 @@ check("SG18 retrieve query-encoded 合同 (无 path 形式)",
       and "urlencode" in _checkouts_url
       and "/v1/checkouts/" not in _checkouts_url.split("def retrieve_checkout")[1].split("\ndef ")[0])
 import ast as _ast
+# the sync business block lives in _subscribe_checkout_impl (the async
+# shell offloads it to the default executor — same code, new home)
 _sub_fn = [n for n in _ast.parse(_topup_g).body
-           if isinstance(n, _ast.AsyncFunctionDef) and n.name == "subscribe_checkout"][0]
+           if isinstance(n, _ast.FunctionDef) and n.name == "_subscribe_checkout_impl"][0]
 _all_withs = [n for n in _ast.walk(_sub_fn) if isinstance(n, _ast.With)]
 _locked_bodies = [_ast.dump(n) for n in _all_withs
                   if "lock_user_for_checkout" in _ast.dump(n)]
@@ -1781,7 +1783,9 @@ try:
                 return True
             _time.sleep(0.1)
         return pred()
-    client.get("/healthz", cookies={COOKIE_NAME: ck9})
+    # an authenticated page triggers the access reconcile (/healthz is a
+    # static-asset-class probe: no identity resolution, no reconcile)
+    client.get("/account", cookies={COOKIE_NAME: ck9})
     ok9 = _wait(lambda: (_membership(u9) or {}).get("renews_at") == PE9
                 and spendable_balance(u9) == b9 + 100)
     m = _membership(u9)
@@ -1792,13 +1796,13 @@ try:
     with db() as con:
         con.execute("update memberships set renews_at=%s where user_id=%s",
                     (ts - 5, u9))
-    client.get("/healthz", cookies={COOKIE_NAME: ck9})
+    client.get("/account", cookies={COOKIE_NAME: ck9})
     _time.sleep(1.0)
     check("M9.2 second access within the throttle window → no second attempt",
           _fetched.count(s9) == 1, str(_fetched))
     s9b = f"sub_{_u}_accb"
     u9b = _seed_member("acb9", plus_id, P_PLUS, s9b, f"txn_{_u}_accb1")
-    client.get("/healthz", cookies={COOKIE_NAME: create_browser_session(u9b)})
+    client.get("/account", cookies={COOKIE_NAME: create_browser_session(u9b)})
     _time.sleep(1.0)
     check("M9.3 live (not lapsed) membership → no provider fetch",
           s9b not in _fetched, str(_fetched))

@@ -24,7 +24,7 @@ function _showCalls(btn, t) {
   let drawer = btn.closest('.usertools-item').querySelector('.calls-drawer');
   if (drawer) { drawer.remove(); return; }  // toggle
   btn.disabled = true;
-  fetch('/api/usertools/' + t.tool_id + '/calls').then(r => r.json()).then(d => {
+  fetch('/api/usertools/' + t.tool_key + '/calls').then(r => r.json()).then(d => {
     btn.disabled = false;
     if (!d.ok) { alert(_errm(d.error)); return; }
     drawer = document.createElement('div');
@@ -46,7 +46,7 @@ function _showCalls(btn, t) {
   }).catch(() => { btn.disabled = false; });
 }
 
-function _delBtn(toolId, toolKey) {
+function _delBtn(toolKey) {
   // two-state confirm (site pattern, no window.confirm)
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'btn btn-secondary';
@@ -60,7 +60,7 @@ function _delBtn(toolId, toolKey) {
     }
     clearTimeout(timer); b.disabled = true;
     try {
-      const r = await fetch('/api/usertools/' + toolId, { method: 'DELETE' });
+      const r = await fetch('/api/usertools/' + toolKey, { method: 'DELETE' });
       const d = await r.json();
       if (d.ok) loadTools(); else { b.disabled = false; alert(_errm(d.error)); }
     } catch (e) {
@@ -110,7 +110,7 @@ async function loadTools() {
       visBtn.disabled = true;
       try {
         const next = t.visibility === 'public' ? 'unlisted' : 'public';
-        const r2 = await fetch('/api/usertools/' + t.tool_id, {
+        const r2 = await fetch('/api/usertools/' + t.tool_key, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ visibility: next }),
         });
@@ -151,7 +151,7 @@ async function loadTools() {
     enBtn.addEventListener('click', async () => {
       enBtn.disabled = true;
       try {
-        const r3 = await fetch('/api/usertools/' + t.tool_id, {
+        const r3 = await fetch('/api/usertools/' + t.tool_key, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: !t.enabled }),
         });
@@ -163,7 +163,7 @@ async function loadTools() {
         enBtn.disabled = false;
       }
     });
-    actions.append(stBtn, logBtn, edBtn, enBtn, visBtn, _delBtn(t.tool_id, t.tool_key));
+    actions.append(stBtn, logBtn, edBtn, enBtn, visBtn, _delBtn(t.tool_key));
 
     card.append(head, meta, actions);
     _toolList.appendChild(card);

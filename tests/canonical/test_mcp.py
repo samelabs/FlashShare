@@ -699,25 +699,39 @@ try:
           f"{mcp_browse[:5]} vs {browse[:5]}")
 
     # ══════════ M: catalog_search returns callable specs ══════════
-    st, _h, d_call, _sc = _publish(a_ck, "callme", {
-        "label": "Callable Now",
-        "params": [{"key": "mode", "type": "enum",
-                    "label": "Mode", "required": False,
-                    "options": [{"value": "fast"}, {"value": "slow"}],
-                    "default": "fast"}]})
-    key_call = (d_call or {}).get("tool_key")
-    check("M0 setup: callable tool created", st == 200 and key_call,
-          f"{st} {d_call}")
-    # test plumbing: trusted row so the driver may reach 127.0.0.1
+    # Community rows are never SSRF-exempt, so the callable fixture is
+    # an OPERATOR row (owner NULL — the ownership exemption) pointing
+    # at the in-suite listener; discovery/pin/call all run on it.
+    import json as _json_m0
+    key_call = f"mccall{_u}"
     with db() as con:
-        con.execute("update platform_tools set trusted = TRUE"
-                    " where tool_key=%s", (key_call,))
-    st, _h, d, _sc = _req_flc("PATCH", f"/api/usertools/{key_call}",
-                          {"url": LOCAL_URL, "timeout_s": 30},
-                          {"Content-Type": "application/json", "Cookie": a_ck})
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id,"
+            " execution, label_json, visibility, enabled, files_min,"
+            " files_max, outputs_json, params_json, endpoint_json,"
+            " created_at, updated_at, accept_json, format_family)"
+            " values (%s, NULL, %s, 'http', %s, 'public', true, 0, 1,"
+            " '[\"text\"]', %s, %s, %s, %s, '[\".png\"]', 'image')",
+            (key_call, key_call,
+             _json_m0.dumps({"en": "Callable Now"}),
+             _json_m0.dumps([{"key": "mode", "type": "enum",
+                              "label": "Mode", "required": False,
+                              "options": [{"value": "fast"},
+                                          {"value": "slow"}],
+                              "default": "fast"}]),
+             _json_m0.dumps({"url": LOCAL_URL, "timeout_s": 30}),
+             ts, ts))
+        con.execute(
+            "insert into pricing (tool_id, cost, enabled, updated_at)"
+            " values (%s, 0, true, %s)", (key_call, ts))
+    check("M0 setup: operator tool row created", bool(key_call), key_call)
+    with db() as con:
+        decl_m0 = con.execute(
+            "select endpoint_json from platform_tools where tool_key=%s",
+            (key_call,)).fetchone()
     check("M0b endpoint pointed at the local listener",
-          st == 200 and (d or {}).get("ok"), f"{st} {d}")
-    _go_public(key_call)
+          _json_m0.loads(decl_m0["endpoint_json"])["url"] == LOCAL_URL,
+          decl_m0["endpoint_json"])
     mname = key_call
 
     st, d = _call("catalog_search", {"q": "Callable"}, R_TOK)
@@ -1594,7 +1608,7 @@ check("F1 tool page: unified count + localized outputs + one MCP entry",
       and "files_window_short" in _tpl and "n_files_one" in _tpl
       and "out_kind_" in _tpl and "{{ o }}" not in _tpl
       and _tpl.count("toolMcpName") == 1
-      and 'class="mcpline"' in _tpl,
+      and 'class="tp-access-title"' in _tpl,
       "")
 _res = open(_os.path.join(REPO, "app", "templates", "result.html"),
             encoding="utf-8").read()
@@ -2289,7 +2303,7 @@ check("R6b different ref at zero balance → still the advisory wall (denial dic
 # ══════════ 11. F6: body-tool adapter error layering ══════════# ══════════ 11. F6: body-tool adapter error layering ══════════
 # 正文工具的输入方式/口径违规是调用方参数错误: preflight 的 err_input_mode
 # 只有这一个码翻译成 "invalid input mode"; err_body_* 同为 -32602。
-# 工具行 = trusted http 正文工具 (owner NULL, endpoint 不可达也无妨 —
+# 工具行 = operator (owner NULL) http 正文工具 (endpoint 不可达也无妨 —
 # 全部用例在 preflight 期拒绝, 零网络零扣费)。
 _btkey = f"mpbody{_os.urandom(4).hex()}"
 with db() as con:
@@ -2417,7 +2431,7 @@ check("S6 copy feedback: agents.js delegates to the one authority; no hardcoded 
 # ══════════ cleanup ══════════
 _uids = [uid_prt, uid2, _ownA, _ownB]
 with db() as con:
-    for k in (keyA, keyB):
+    for k in (keyA, keyB, key_call):
         con.execute("delete from pricing where tool_id=%s", (k,))
         con.execute("delete from platform_tools where tool_key=%s", (k,))
 for u in _uids:

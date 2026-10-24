@@ -29,12 +29,6 @@ class InsufficientCredits(Exception):
         self.cost = cost
 
 
-def get_balance(user_id: int) -> int:
-    """Current balance = sum of all ledger deltas. 0 for fresh users."""
-    with db() as con:
-        return ledger_repo.total_balance(con, user_id)
-
-
 # Ledger kinds that make up the SPENDABLE pool. provider_earn is NOT here:
 # earnings accumulate in their own pool, withdrawable only. This is the
 # dual-pool invariant (2026-08-26 global audit): consumption must never
@@ -46,18 +40,25 @@ SPENDABLE_KINDS = ("grant_signup", "grant_daily", "signup_bonus", "daily",
                    "revoke", "manual_topup", "grant_plan", "grant_package",
                    "grant_plan_upgrade")
 
+# The other two pools' kind vocabularies live beside SPENDABLE_KINDS —
+# the ONE place the pool split is defined. Earn pool: withdrawable only
+# (provider_earn positive, withdraw negative). Platform pool: the
+# platform account's own income legs.
+EARN_POOL_KINDS = ("provider_earn", "withdraw")
+PLATFORM_POOL_KINDS = ("platform_commission", "platform_revenue")
+
 
 def spendable_balance(user_id: int) -> int:
     """Credits the user may spend (excludes provider_earn & withdraw rows)."""
     with db() as con:
-        return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
+        return ledger_repo.pool_running_balance(con, user_id, SPENDABLE_KINDS)
 
 
 def _balance_for_update(con, user_id: int) -> int:
     """Serialize on the users row; returns the SPENDABLE balance
     (dual-pool: consume/refund/adjust only ever touch the spendable pool)."""
     ledger_repo.lock_user(con, user_id)
-    return ledger_repo.pool_balance(con, user_id, SPENDABLE_KINDS)
+    return ledger_repo.pool_running_balance(con, user_id, SPENDABLE_KINDS)
 
 
 def grant(user_id: int, amount: int, kind: str, *,
@@ -180,14 +181,20 @@ def revoke(user_id: int, amount: int, *, ref_type: str | None = None,
     return dict(row)
 
 
-def history_paged(user_id: int, page: int = 1, size: int = 20) -> tuple[list, int]:
+def history_page(user_id: int, page: int = 1, size: int = 20,
+                 since_ts: int | None = None) -> tuple[list, int]:
     """(rows_newest_first, total_count) for the account credits page.
 
     Dual-pool (2026-08-26): spendable-side flow only — grants/topups/
     consumes/refunds/adjusts. provider_earn & withdraw live on the
-    earnings page. One pool, two honest views.
+    earnings page. One pool, two honest views. since_ts time-boxes both
+    the count and the page (epoch seconds); the count is the caller's
+    page-bounding fact and comes back even when the offset page is empty.
     """
     with db() as con:
-        rows, total = ledger_repo.history_paged(con, user_id, SPENDABLE_KINDS,
-                                                size, max(0, (page - 1) * size))
+        total = ledger_repo.history_count(con, user_id, SPENDABLE_KINDS,
+                                          since_ts)
+        rows = ledger_repo.history_page(
+            con, user_id, SPENDABLE_KINDS, size,
+            max(0, (page - 1) * size), since_ts)
     return rows, total

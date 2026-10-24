@@ -18,11 +18,12 @@
   window.__TOOLPAGE__ = true;
 })();
 
-// MCP card copy: one click copies a ready-to-paste sentence carrying the
-// MCP server URL and this tool's call name (prompt words + URL)
+// MCP card copy ("复制接入信息"): one click copies a ready-to-paste
+// sentence carrying the MCP server URL and this tool's call name
 (function () {
   const btn = document.getElementById("toolMcpCopy");
-  const url = document.querySelector(".mcpline .mcp-url");
+  const card = document.getElementById("toolAccess");
+  const url = card && card.querySelector(".tp-acc-v");     // server URL row
   const name = document.getElementById("toolMcpName");
   if (btn && url && name) {
     btn.addEventListener("click", async () => {
@@ -32,20 +33,6 @@
         window.copyFeedback(btn);
         await navigator.clipboard.writeText(payload);
       } catch (e) { /* clipboard blocked — the card text stays selectable */ }
-    });
-  }
-})();
-
-// Page URL copy (the visible address row under the header)
-(function () {
-  const btn = document.getElementById("tpUrlCopy");
-  const code = document.querySelector(".tp-url code");
-  if (btn && code) {
-    btn.addEventListener("click", async () => {
-      try {
-        window.copyFeedback(btn);
-        await navigator.clipboard.writeText(code.textContent);
-      } catch (e) { /* clipboard blocked — the URL stays selectable */ }
     });
   }
 })();

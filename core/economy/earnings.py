@@ -35,6 +35,7 @@ Red lines honored:
 """
 
 from database import db
+from economy.billing import EARN_POOL_KINDS
 from economy.money import CENT_MILLIS
 from repo import economy as economy_repo
 from repo import ledger as ledger_repo
@@ -180,8 +181,8 @@ def approve_withdrawal(withdrawal_id: int,
             con.rollback()
             raise ValueError("withdrawal_insufficient")
         # 6. exactly one withdraw ledger row (unique idem backs this)
-        earn_pool_after = ledger_repo.earn_pool_balance(
-            con, row["user_id"]) - int(row["amount"])
+        earn_pool_after = ledger_repo.pool_running_balance(
+            con, row["user_id"], EARN_POOL_KINDS) - int(row["amount"])
         ledger_repo.insert_row(con, row["user_id"], -int(row["amount"]),
                                earn_pool_after, "withdraw",
                                "withdrawal", str(row["id"]),
@@ -302,8 +303,8 @@ def mark_withdrawal_payout_failed(withdrawal_id: int, reason: str,
         # cash-pool serialization anchor — same lock the approval took
         ledger_repo.lock_user(con, int(row["user_id"]))
         idem = f"payout-failed:{withdrawal_id}"
-        pool_after = ledger_repo.earn_pool_balance(
-            con, row["user_id"]) + int(row["amount"])
+        pool_after = ledger_repo.pool_running_balance(
+            con, row["user_id"], EARN_POOL_KINDS) + int(row["amount"])
         # the return leg reverses the withdrawal's own negative movement
         # (same 'withdraw' kind, positive delta): the pool arithmetic
         # (provider_earn − withdraw) restores exactly, and the lifetime

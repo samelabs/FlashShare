@@ -19,7 +19,18 @@ from _harness import PG, REPO, TEST_PORT, check, finish, purge_users, section  #
 #       rejected on the header alone (413 + JSON-RPC -32600 with the
 #       create_upload guidance); a chunked request WITHOUT Content-Length
 #       is stopped by the streaming count; an inline-file call inside the
-#       cap executes normally; initialize + llms.txt state the cap.
+#       cap executes normally; initialize + llms.txt state the cap. The
+#       middleware pre-read table reads matched bodies BEFORE any
+#       concurrency slot: 8 slow-dripping bodies hold no slot, and a
+#       chunked over-cap body on a middleware-enforced row answers the
+#       table's own 413.
+#   H5  body admission gate: a table-matched body reserves (1 request,
+#       cap+1 logical bytes) of a fixed budget BEFORE the first body
+#       byte is read; exhausted budget answers the slot gate's own
+#       503 err_busy immediately (no queue), sessionless browser rows
+#       answer the route's 401 before any body byte is cached, and the
+#       reservation is held to the very end of the ASGI exchange
+#       (streamed body, exception, disconnect, cancellation).
 #   H3  stored HTTP-tool credential clear: PATCH {auth_header:"",auth_token:""}
 #       removes the pair from the binding (remote calls stop sending the
 #       header); one-sided credential PATCH → 422 bad_auth_header; absent
@@ -209,6 +220,511 @@ check("H2f llms.txt states the inline/body cap",
       st == 200 and "capped at 16 MB" in str(d)
       and "request body cap is 16 MB" in str(d), str(d)[:80] if st != 200 else "")
 
+# (h) slow-dripped bodies hold NO concurrency slot: 8 anonymous sockets
+# declare Content-Length:1000, send one byte and stall; a normal
+# anonymous tools/list must still answer 200 within 5 seconds.
+# Protects: the middleware reads matched bodies to their cap BEFORE
+# acquiring the 8-slot semaphore. Sample: 8 stalled sockets + 1 probe.
+# Deps: live app + Postgres; runtime ~1s.
+_stalled = []
+for _ in range(8):
+    c = _hc.HTTPConnection(*_HOST, timeout=30)
+    c.putrequest("POST", "/mcp")
+    c.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+    c.putheader("Content-Type", "application/json")
+    c.putheader("Content-Length", "1000")
+    c.endheaders()
+    c.send(b"{")          # one byte of the declared 1000, then stall
+    _stalled.append(c)
+try:
+    probe = _hc.HTTPConnection(*_HOST, timeout=5)
+    probe.request("POST", "/mcp", _json.dumps(
+        {"jsonrpc": "2.0", "id": 12, "method": "tools/list",
+         "params": {}}).encode(),
+        {"Content-Type": "application/json",
+         "Accept": "application/json, text/event-stream"})
+    r = probe.getresponse()
+    _probe = (r.status, _json.loads(r.read() or b"null"))
+    probe.close()
+except Exception as exc:   # noqa: BLE001 — a hang surfaces as a failure
+    _probe = (None, repr(exc)[:120])
+check("H2h 8 stalled bodies hold no slot; tools/list answers in 5s",
+      _probe[0] == 200
+      and isinstance((_probe[1] or {}).get("result"), dict)
+      and "tools" in _probe[1]["result"], _probe)
+for c in _stalled:
+    c.close()
+
+# (i) chunked body over the row cap on a middleware-enforced row:
+# /api/client-error answers the table's own 413 (not the route's).
+try:
+    conn = _hc.HTTPConnection(*_HOST, timeout=30)
+    _chunks = [b"c" * 8192] * 9          # 72 KiB chunked > the 64 KiB cap
+    conn.request("POST", "/api/client-error", body=iter(_chunks),
+                 headers={"Content-Type": "application/json",
+                          "Transfer-Encoding": "chunked"}, encode_chunked=True)
+    r = conn.getresponse()
+    _ce_over = (r.status, _json.loads(r.read() or b"null"))
+    conn.close()
+except Exception as exc:   # noqa: BLE001
+    _ce_over = (None, repr(exc)[:120])
+check("H2i chunked client-error over 64 KiB → 413 err_payload_too_large",
+      _ce_over == (413, {"ok": False, "error": "err_payload_too_large"}),
+      _ce_over)
+
+# ════════ H5. body admission gate ════════
+# The pre-read table bounds ONE request; the gate bounds HOW MANY
+# table-matched bodies may be in flight at once. A reliable declared
+# Content-Length reserves min(declared, cap)+1; unreliable framing
+# (missing/duplicate/malformed/chunked) reserves the cap+1 worst case.
+# Live legs hold big worst-case reservations with header-only stalled
+# chunked sockets (no payload ever sent); in-process legs patch the
+# module gate to a small budget.
+# Sample: ~16 sockets + probes; no large bodies, no long sleeps.
+import app.main as _mm
+
+_mcp_rule_h5 = _mm._body_rule_for("/mcp", "POST")
+_nfit_h5 = _mm._body_gate.max_bytes // (_mcp_rule_h5.cap + 1)
+_stalled_h5 = []
+for _ in range(_nfit_h5):
+    c = _hc.HTTPConnection(*_HOST, timeout=30)
+    c.putrequest("POST", "/mcp")
+    c.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+    c.putheader("Content-Type", "application/json")
+    # chunked framing, zero chunks: unreliable declaration → cap+1
+    # worst-case reservation (a declared length would reserve
+    # min(declared, cap)+1 and never fill the budget); the pre-read
+    # parks awaiting the first chunk
+    c.putheader("Transfer-Encoding", "chunked")
+    c.endheaders()
+    _stalled_h5.append(c)
+st, d, _sc = _req("POST", "/api/client-error", {"msg": "probe"},
+                  {"Content-Type": "application/json"})
+check("H5a small row still admitted while big reservations are held",
+      st == 200 and (d or {}).get("ok") is True, f"{st} {str(d)[:120]}")
+try:
+    conn = _hc.HTTPConnection(*_HOST, timeout=5)
+    conn.putrequest("POST", "/mcp")
+    conn.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+    conn.putheader("Content-Type", "application/json")
+    conn.putheader("Transfer-Encoding", "chunked")  # worst-case reservation
+    conn.endheaders()       # no body sent: a body-reading answer would hang
+    r = conn.getresponse()
+    _gate_over = (r.status, _json.loads(r.read() or b"null"),
+                  r.getheader("Retry-After"))
+    conn.close()
+except Exception as exc:   # noqa: BLE001 — a hang surfaces as a failure
+    _gate_over = (None, repr(exc)[:120], None)
+check("H5b exhausted budget → immediate 503 err_busy + Retry-After before any body byte",
+      _gate_over[0] == 503
+      and _gate_over[1] == {"ok": False, "error": "err_busy"}
+      and _gate_over[2] == "5", _gate_over)
+for c in _stalled_h5:
+    c.close()               # disconnect: parked pre-reads unwind and release
+_probe_h5 = (None, None)
+for _ in range(10):
+    try:
+        _probe_h5 = _mcp({"jsonrpc": "2.0", "id": 13, "method": "tools/list",
+                          "params": {}}, TOK)
+    except Exception as exc:   # noqa: BLE001
+        _probe_h5 = (None, repr(exc)[:120])
+    if _probe_h5[0] == 200:
+        break
+    _time.sleep(0.2)
+check("H5c disconnect releases the reservations (probe served after close)",
+      _probe_h5[0] == 200
+      and isinstance((_probe_h5[1] or {}).get("result"), dict), _probe_h5)
+
+# session-gated browser rows: the route's own 401 BEFORE any body byte is
+# cached — an anonymous headers-only request gets an immediate answer (a
+# body-reading implementation would hang against the socket timeout).
+def _hdr_only_h5(path):
+    try:
+        c = _hc.HTTPConnection(*_HOST, timeout=5)
+        c.putrequest("POST", path)
+        c.putheader("Host", f"127.0.0.1:{TEST_PORT}")
+        c.putheader("Content-Type", "application/json")
+        c.putheader("Content-Length", "1000")
+        c.endheaders()
+        r = c.getresponse()
+        out = (r.status, _json.loads(r.read() or b"null"))
+        c.close()
+        return out
+    except Exception as exc:   # noqa: BLE001
+        return (None, repr(exc)[:120])
+
+
+_anon_up = _hdr_only_h5("/api/uploads")
+check("H5d anonymous upload → immediate 401 auth_required (no body cached)",
+      _anon_up == (401, {"ok": False, "error": "auth_required"}), _anon_up)
+_anon_exec = _hdr_only_h5("/api/tools/execute")
+check("H5e anonymous tool execution → same immediate 401",
+      _anon_exec == (401, {"ok": False, "error": "auth_required"}), _anon_exec)
+_b, _ct = _form({"tool": "share"})
+st, d, _sc = _req("POST", "/api/uploads", _b,
+                  {"Content-Type": _ct, "Cookie": CK})
+check("H5f sessioned upload proceeds past auth to the route's own answer",
+      st == 400 and (d or {}).get("error") == "err_select_file",
+      f"{st} {str(d)[:120]}")
+
+# in-process: patched small budget — the count axis rejects at admission,
+# and the reservation spans downstream processing to ASGI completion.
+from fastapi.testclient import TestClient as _TC_h5  # noqa: E402
+
+_client_h5 = _TC_h5(_mm.app)
+_saved_h5 = (_mm._body_gate.max_requests, _mm._body_gate.max_bytes)
+_mm._body_gate.max_requests = 1
+_mm._body_gate.max_bytes = 256 * 1024
+_orig_gufr = _mm.get_user_from_request
+_parked_h5 = _th.Event()
+_release_h5 = _th.Event()
+
+
+def _stalling_user(request):
+    if not _parked_h5.is_set():
+        _parked_h5.set()
+        _release_h5.wait(timeout=10)
+    return _orig_gufr(request)
+
+
+_mm.get_user_from_request = _stalling_user
+
+
+_resp_h5 = {}
+
+
+def _post_ce_h5(tag):
+    r = _client_h5.post("/api/client-error", json={"msg": tag})
+    _resp_h5[tag] = (r.status_code, r.json(), r.headers.get("retry-after"))
+
+
+def _gate_zero_h5(timeout=2.0):
+    _t0 = _time.time()
+    while _time.time() - _t0 < timeout:
+        if _mm._body_gate.requests == 0 and _mm._body_gate.bytes == 0:
+            return True
+        _time.sleep(0.02)
+    return False
+
+
+try:
+    _t1 = _th.Thread(target=_post_ce_h5, args=("held",))
+    _t1.start()
+    _parked_h5.wait(timeout=5)   # parked INSIDE identity ⇒ already admitted
+    _t2 = _th.Thread(target=_post_ce_h5, args=("second",))
+    _t2.start()
+    _t2.join(timeout=10)
+    check("H5g count-axis exhaustion → 503 err_busy + Retry-After 5",
+          _resp_h5.get("second") == (503, {"ok": False, "error": "err_busy"}, "5"),
+          _resp_h5.get("second"))
+    # TestClient sends a reliable Content-Length with the compact json
+    # body, so the held reservation is min(body, cap)+1 = len(body)+1
+    check("H5h reservation still held while the request processes",
+          _mm._body_gate.requests == 1
+          and _mm._body_gate.bytes == len(
+              _json.dumps({"msg": "held"}, separators=(",", ":"))) + 1,
+          (_mm._body_gate.requests, _mm._body_gate.bytes))
+    _release_h5.set()
+    _t1.join(timeout=10)
+    check("H5i completion releases the reservation (counters back to zero)",
+          _gate_zero_h5(), (_mm._body_gate.requests, _mm._body_gate.bytes))
+    check("H5j the held request itself completed 200",
+          _resp_h5.get("held", (None,))[0] == 200, _resp_h5.get("held"))
+    _post_ce_h5("after")
+    check("H5k next request admitted after the release",
+          _resp_h5["after"][0] == 200, _resp_h5["after"])
+finally:
+    _mm.get_user_from_request = _orig_gufr
+    _mm._body_gate.max_requests, _mm._body_gate.max_bytes = _saved_h5
+
+# direct-ASGI lifecycle: the reservation survives a mid-stream response
+# body and is released on completion, exception and cancellation.
+import asyncio as _aio_h5  # noqa: E402
+
+
+def _scope_h5(path="/api/client-error"):
+    return {"type": "http", "asgi": {"version": "3.0"},
+            "http_version": "1.1", "scheme": "http", "method": "POST",
+            "path": path, "raw_path": path.encode(), "query_string": b"",
+            "headers": [(b"content-length", b"2")],
+            "client": ("127.0.0.1", 9), "server": ("127.0.0.1", 80)}
+
+
+def _recv_h5():
+    async def _r():
+        return {"type": "http.disconnect"}
+    return _r
+
+
+def _send_h5():
+    msgs = []
+
+    async def _s(message):
+        msgs.append(message)
+    return msgs, _s
+
+
+async def _h5_lifecycle():
+    gate = _mm._body_gate
+    saved = (gate.max_requests, gate.max_bytes)
+    gate.max_requests, gate.max_bytes = 1, 1024 * 1024
+    out = {}
+    try:
+        async def _park_until_reserved():
+            for _ in range(1000):
+                if gate.requests:
+                    return True
+                await _aio_h5.sleep(0)
+            return False
+
+        # (1) mid-stream hold: the budget stays occupied until the LAST
+        # body chunk; a second reservation is refused meanwhile. The
+        # scope declares content-length 2 → the reservation is 2+1.
+        mid_done = _aio_h5.Event()
+
+        async def inner_stream(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200,
+                        "headers": [(b"content-type", b"text/plain")]})
+            await send({"type": "http.response.body", "body": b"part",
+                        "more_body": True})
+            await mid_done.wait()
+            await send({"type": "http.response.body", "body": b""})
+
+        mw = _mm._BodyAdmissionMiddleware(inner_stream)
+        _m, _s = _send_h5()
+        task = _aio_h5.create_task(mw(_scope_h5(), _recv_h5(), _s))
+        out["parked_stream"] = await _park_until_reserved()
+        out["held_mid_stream"] = ((gate.requests, gate.bytes)
+                                  == (1, 2 + 1))
+        out["refused_while_held"] = gate.reserve(1) is None
+        mid_done.set()
+        await _aio_h5.wait_for(task, 5)
+        out["released_after_body"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # (2) an exception inside the stack propagates AND releases
+        async def inner_raise(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200,
+                        "headers": []})
+            raise RuntimeError("boom")
+
+        _m2, _s2 = _send_h5()
+        try:
+            await _mm._BodyAdmissionMiddleware(inner_raise)(
+                _scope_h5(), _recv_h5(), _s2)
+            out["exception_propagated"] = False
+        except RuntimeError:
+            out["exception_propagated"] = True
+        out["released_after_exception"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # (3) cancellation releases
+        async def inner_forever(scope, receive, send):
+            await _aio_h5.Event().wait()
+
+        _m3, _s3 = _send_h5()
+        t3 = _aio_h5.create_task(
+            _mm._BodyAdmissionMiddleware(inner_forever)(
+                _scope_h5(), _recv_h5(), _s3))
+        out["parked_cancel"] = await _park_until_reserved()
+        t3.cancel()
+        try:
+            await _aio_h5.wait_for(t3, 5)
+            out["cancel_propagated"] = False
+        except _aio_h5.CancelledError:
+            out["cancel_propagated"] = True
+        out["released_after_cancel"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # (4) rejection shape: status / Retry-After / body the slot gate
+        # already uses, sent without ever touching the inner stack
+        async def inner_unreached(scope, receive, send):
+            raise AssertionError("must not run")   # noqa: B017
+
+        lease = gate.reserve(1)
+        _m4, _s4 = _send_h5()
+        await _mm._BodyAdmissionMiddleware(inner_unreached)(
+            _scope_h5(), _recv_h5(), _s4)
+        gate.release(lease)
+        start = next(x for x in _m4 if x["type"] == "http.response.start")
+        _body4 = b"".join(x.get("body", b"") for x in _m4
+                          if x["type"] == "http.response.body")
+        out["reject_shape"] = (
+            start["status"] == 503
+            and dict(start["headers"]).get(b"retry-after") == b"5"
+            and _json.loads(_body4) == {"ok": False, "error": "err_busy"})
+    finally:
+        gate.max_requests, gate.max_bytes = saved
+        gate.requests, gate.bytes = 0, 0
+    return out
+
+
+_h5lc = _aio_h5.run(_h5_lifecycle())
+check("H5l reservation held while a streamed response is mid-body",
+      _h5lc.get("parked_stream") and _h5lc.get("held_mid_stream")
+      and _h5lc.get("refused_while_held"),
+      {k: v for k, v in _h5lc.items() if "stream" in k or "held" in k})
+check("H5m released only after the last body chunk",
+      _h5lc.get("released_after_body"), "")
+check("H5n an in-stack exception propagates and releases",
+      _h5lc.get("exception_propagated") and _h5lc.get("released_after_exception"),
+      "")
+check("H5o cancellation propagates and releases",
+      _h5lc.get("parked_cancel") and _h5lc.get("cancel_propagated")
+      and _h5lc.get("released_after_cancel"), "")
+check("H5p rejection answers 503 err_busy + Retry-After without reaching the app",
+      _h5lc.get("reject_shape"), "")
+
+# config consistency: a budget that cannot hold ONE maximal legal request
+# of the table is a startup error — never an implicit resize of either side
+_saved_mb = _mm._body_gate.max_bytes
+_mm._body_gate.max_bytes = 1024
+try:
+    _mm._validate_body_gate_budget()
+    _fit_bad_h5 = False
+except RuntimeError as _e:
+    _fit_bad_h5 = "body admission budget" in str(_e)
+finally:
+    _mm._body_gate.max_bytes = _saved_mb
+check("H5q budget below one maximal row → fail-closed RuntimeError",
+      _fit_bad_h5, "")
+_mm._validate_body_gate_budget()
+check("H5r the default config holds one maximal legal request", True, "")
+
+# ── declared-length reservation (table + deterministic red/green) ──
+_dbl_h5 = _mm._declared_body_length
+check("H5s _declared_body_length table: legal/0/missing/duplicate/malformed/TE → int|None, never raises",
+      _dbl_h5([(b"content-length", b"123")]) == 123
+      and _dbl_h5([(b"content-length", b"0")]) == 0
+      and _dbl_h5([]) is None
+      and _dbl_h5([(b"content-length", b"5"), (b"content-length", b"5")]) is None
+      and _dbl_h5([(b"content-length", b"+5")]) is None
+      and _dbl_h5([(b"content-length", b" 5")]) is None
+      and _dbl_h5([(b"content-length", b"1a")]) is None
+      and _dbl_h5([(b"content-length", b"")]) is None
+      and _dbl_h5([(b"content-length", b"\xff5")]) is None
+      and _dbl_h5([(b"transfer-encoding", b"chunked"),
+                   (b"content-length", b"5")]) is None
+      and _dbl_h5([(b"transfer-encoding", b"identity"),
+                   (b"content-length", b"7")]) is None, "")
+
+
+async def _h5_declared_reserve():
+    """Deterministic proof of the declared-length reservation: a tiny
+    byte budget (10) that cannot hold the row's cap+1 (64KiB+1) but can
+    hold a small declared body (3+1). Old always-cap+1 code refused the
+    admission (503, nothing held); the declared code holds exactly
+    min(3, cap)+1. No concurrency: the inner parks until polled."""
+    gate = _mm._body_gate
+    saved = (gate.max_requests, gate.max_bytes)
+    gate.max_requests, gate.max_bytes = 8, 10
+    out = {}
+    try:
+        parked = _aio_h5.Event()
+        release = _aio_h5.Event()
+
+        async def inner_park(scope, receive, send):
+            parked.set()
+            await release.wait()
+
+        scope = dict(_scope_h5(), headers=[(b"content-length", b"3")])
+        _m, _s = _send_h5()
+        task = _aio_h5.create_task(
+            _mm._BodyAdmissionMiddleware(inner_park)(scope, _recv_h5(), _s))
+        for _ in range(1000):
+            if gate.requests:
+                break
+            await _aio_h5.sleep(0)
+        out["declared_admitted_and_held"] = (
+            gate.requests == 1 and gate.bytes == 3 + 1)
+        release.set()
+        await _aio_h5.wait_for(task, 5)
+        out["declared_released"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # unreliable framing (no Content-Length at all) still budgets the
+        # cap+1 worst case → the 10-byte budget refuses before the
+        # inner stack is ever reached
+        async def inner_unreached(scope, receive, send):
+            raise AssertionError("must not run")   # noqa: B017
+
+        _m2, _s2 = _send_h5()
+        await _mm._BodyAdmissionMiddleware(inner_unreached)(
+            dict(_scope_h5(), headers=[]), _recv_h5(), _s2)
+        start2 = next(x for x in _m2 if x["type"] == "http.response.start")
+        out["unreliable_rejected_worst_case"] = start2["status"] == 503
+    finally:
+        gate.max_requests, gate.max_bytes = saved
+        gate.requests, gate.bytes = 0, 0
+    return out
+
+
+_h5dr = _aio_h5.run(_h5_declared_reserve())
+check("H5t reliable declaration reserves min(len, cap)+1 (admitted+held+released; old cap+1 code was refused here)",
+      _h5dr.get("declared_admitted_and_held")
+      and _h5dr.get("declared_released"), _h5dr)
+check("H5t-b unreliable framing still reserves cap+1 (tiny budget → 503)",
+      _h5dr.get("unreliable_rejected_worst_case"), _h5dr)
+
+# ── framing violation: before the cache write, never masked ──
+from starlette.requests import Request as _Req_h5  # noqa: E402
+
+
+def _body_recv_h5(chunks):
+    state = {"i": 0}
+
+    async def _r():
+        if state["i"] < len(chunks):
+            c = chunks[state["i"]]
+            state["i"] += 1
+            return {"type": "http.request", "body": c,
+                    "more_body": state["i"] < len(chunks)}
+        return {"type": "http.disconnect"}
+    return _r
+
+
+async def _h5_framing():
+    rule = _mm._body_rule_for("/api/client-error", "POST")
+    out = {}
+    # (a) direct: declared 2, delivered 5 → violation raised, no cache
+    req = _Req_h5(dict(_scope_h5()), _body_recv_h5([b"ab", b"cde"]))
+    try:
+        await _mm._preread_body(req, rule)
+        out["direct_raised"] = False
+    except _mm._BodyFramingViolation:
+        out["direct_raised"] = True
+    out["nothing_cached"] = getattr(req, "_body", None) is None
+    # (b) through the admission middleware: the violation propagates out
+    # of the whole stack AND the reservation returns to zero
+    gate = _mm._body_gate
+    saved = (gate.max_requests, gate.max_bytes)
+    gate.max_requests, gate.max_bytes = 4, 1024 * 1024
+
+    async def inner_preread(scope, receive, send):
+        await _mm._preread_body(_Req_h5(scope, receive), rule)
+
+    try:
+        await _mm._BodyAdmissionMiddleware(inner_preread)(
+            dict(_scope_h5()), _body_recv_h5([b"ab", b"cde"]), _send_h5()[1])
+        out["propagated_through_middleware"] = False
+    except _mm._BodyFramingViolation:
+        out["propagated_through_middleware"] = True
+    out["reservation_zeroed"] = (gate.requests, gate.bytes) == (0, 0)
+    gate.max_requests, gate.max_bytes = saved
+    # (c) a disconnect (no body bytes) is still the disconnect path: no
+    # violation, no cache, None answer
+    req2 = _Req_h5(dict(_scope_h5()), _recv_h5())
+    out["disconnect_still_swallowed"] = (
+        await _mm._preread_body(req2, rule) is None
+        and getattr(req2, "_body", None) is None)
+    return out
+
+
+_h5fr = _aio_h5.run(_h5_framing())
+check("H5u over-delivery vs declared length raises before the cache write",
+      _h5fr.get("direct_raised") and _h5fr.get("nothing_cached"), _h5fr)
+check("H5u-b violation propagates through the admission middleware and zeroes the reservation",
+      _h5fr.get("propagated_through_middleware")
+      and _h5fr.get("reservation_zeroed"), _h5fr)
+check("H5u-c a disconnect stays the disconnect path (no violation, no cache)",
+      _h5fr.get("disconnect_still_swallowed"), _h5fr)
+
 # ══════════ H3. stored HTTP-tool credential clear ══════════
 class _HookHandler(_hs.BaseHTTPRequestHandler):
     seen = []          # lower-cased header dicts of every request
@@ -268,15 +784,29 @@ st, d, _sc = _patch({"timeout_s": 61})
 check("H3d credential keys absent from PATCH → stored pair preserved",
       st == 200 and "auth_token" in _decl(), f"{st} {d} decl={_decl()}")
 
-# point the (still credentialed) tool at the local hook; user rows are
-# untrusted for https — flipping trusted makes the fixture reachable
+# runtime legs ride an OPERATOR twin (owner NULL) pointing at the local
+# hook: ownership — not a row flag — is the SSRF exemption; community
+# rows are never trusted. The twin mirrors the user tool's stored
+# credential pair (sealed like the operator create path).
+from secrets_vault import seal as _seal_h3
+_twin_h3 = f"ph3op{_u}"
 with db() as con:
-    _decl2 = _decl()
-    _decl2["url"] = f"http://127.0.0.1:{_hook_port}/t"
-    con.execute("update platform_tools set trusted=TRUE, endpoint_json=%s"
-                " where tool_key=%s", (_json.dumps(_decl2), _tkey))
+    con.execute(
+        "insert into platform_tools (tool_key, owner_id, tool_id,"
+        " execution, label_json, visibility, enabled, files_min,"
+        " files_max, outputs_json, params_json, endpoint_json,"
+        " created_at, updated_at, accept_json, format_family)"
+        " values (%s, NULL, %s, 'http', %s, 'public', true, 0, 1,"
+        " '[\"text\"]', '[]', %s, %s, %s, '[\".png\"]', 'image')",
+        (_twin_h3, _twin_h3, _json.dumps({"en": "PH3 Twin"}),
+         _json.dumps({"url": f"http://127.0.0.1:{_hook_port}/t",
+                      "timeout_s": 30, "auth_header": "X-Api-Key",
+                      "auth_token": _seal_h3(_secret)}), ts, ts))
+    con.execute(
+        "insert into pricing (tool_id, cost, enabled, updated_at)"
+        " values (%s, 0, true, %s)", (_twin_h3, ts))
 
-_mcp_name = _tkey  # 名 = key 原文
+_mcp_name = _twin_h3  # 名 = key 原文
 
 
 def _call_hook(ref):
@@ -308,6 +838,13 @@ with db() as con:
 check("H3g owner projection reports has_auth=false after the clear",
       _public_item(dict(_row3))["has_auth"] is False if _row3 else False)
 
+# the twin mirrors the cleared binding (no credential keys in the
+# declaration) — the runtime leg then sends NO credential header
+with db() as con:
+    con.execute(
+        "update platform_tools set endpoint_json=%s where tool_key=%s",
+        (_json.dumps({"url": f"http://127.0.0.1:{_hook_port}/t",
+                      "timeout_s": 30}), _twin_h3))
 st, d = _call_hook(f"ph3b-{_u}")
 _ok = ((d or {}).get("result") or {}).get("isError") is False
 _h = _HookHandler.seen[0] if _HookHandler.seen else {}
@@ -2071,18 +2608,18 @@ _cur.execute("delete from pricing where tool_id='badaccept'")
 _cur.execute("delete from platform_tools where tool_key='badaccept'")
 _cur.execute(
     "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-    " label_json, accept_json, format_family, visibility, enabled, trusted,"
+    " label_json, accept_json, format_family, visibility, enabled,"
     " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-    " '[\"application/pdf\"]', 'image', 'public', true, false, %s, %s)",
+    " '[\"application/pdf\"]', 'image', 'public', true, %s, %s)",
     ("badaccept", "badaccept", ts_au, ts_au))
 for _bk, _bj in (("badaccept2", "''"), ("badaccept3", "'null'")):
     _cur.execute("delete from pricing where tool_id=%s", (_bk,))
     _cur.execute("delete from platform_tools where tool_key=%s", (_bk,))
     _cur.execute(
         "insert into platform_tools (tool_key, owner_id, tool_id, execution,"
-        " label_json, accept_json, format_family, visibility, enabled, trusted,"
+        " label_json, accept_json, format_family, visibility, enabled,"
         " created_at, updated_at) values (%s, NULL, %s, 'local', '{}',"
-        " %s, 'image', 'public', true, false, %s, %s)",
+        " %s, 'image', 'public', true, %s, %s)",
         (_bk, _bk, _bj, ts_au, ts_au))
 _cur.execute(
     "insert into pricing (tool_id, cost, enabled, updated_at) values (%s, 5, true, %s)",
@@ -2317,10 +2854,10 @@ _sl36 = open(_os2.path.join(REPO, "app", "routes", "samelabs",
                             "commerce.py"),
              encoding="utf-8").read()
 _plans36 = _re33.search(
-    r"async def products.*?(?=\n@router|\nasync def )", _sl36,
+    r"(?:async )?def products.*?(?=\n@router|\n(?:async )?def )", _sl36,
     _re33.DOTALL)
 if _plans36 is None:  # last-function fallback
-    _plans36 = _re33.search(r"async def products.*", _sl36, _re33.DOTALL)
+    _plans36 = _re33.search(r"(?:async )?def products.*", _sl36, _re33.DOTALL)
 check("C36 samelabs_plans 无 route-layer memberships/pending_downgrades SQL",
       _plans36 is not None
       and "FROM memberships" not in _plans36.group(0)
@@ -2415,8 +2952,11 @@ for _nm45, _b45, _d45 in (
 
 # C46: generic Gokapi concrete operations are only used by the storage
 # adapter (and its gokapi implementation); production callers go through
-# storage.write/read/delete/info
-_gen46 = ("upload_to_gokapi", "get_gokapi_file", "delete_gokapi_file")
+# storage.write/read/delete/info. The live-status read is the ONE
+# sanctioned exception: sharing.uploads.live_status_for calls the
+# adapter's single-file tuple primitive directly (per-page queries) —
+# uploads/deletes stay adapter-only.
+_gen46 = ("upload_to_gokapi", "delete_gokapi_file")
 _PROD_TREES = ("app", "core", "scripts", "tools")
 for _root46, _dirs46, _fs46 in (w for d in _PROD_TREES for w in _os2.walk(_os2.path.join(REPO, d))):
     for _f46 in _fs46:
@@ -2498,6 +3038,8 @@ check("U11 commission_rate.con 为必填参数 (无 standalone read)",
 
 
 _cur.execute("delete from pricing where tool_id like %s or tool_id like 'badaccept%%'", (f"{_u_au}_%",))
+_cur.execute("delete from pricing where tool_id like 'ph3op%%'")
+_cur.execute("delete from platform_tools where tool_key like 'ph3op%%'")
 _cur.execute("delete from platform_tools where tool_key like %s or tool_key like 'badaccept%%'", (f"{_u_au}_%",))
 _cur.execute("delete from platform_tools where tool_key like %s", (f"{_u_au}_%",))
 _cur.execute("delete from api_keys where user_id=%s", (_uid,))

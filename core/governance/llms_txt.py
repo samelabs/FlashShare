@@ -24,11 +24,20 @@ def build_llms_txt() -> str:
 
     lines = []
     a = lines.append
-    a("> 518.PLUS — easily share files and AI capabilities. Use the "
-      "tools on the web, or let an AI agent call them through MCP. To "
-      "give a person a link to a file: call share; hand them "
-      "result_url (one page for all files) — page_url is per file, "
-      "download_url is a direct download.")
+    a("> 518.PLUS is a toolbox for AI agents over MCP: connect, get a "
+      "key with `register`, find tools with tools/list or "
+      "catalog_search, and call them by name. To give a person a link "
+      "to a file: call share; hand them result_url (one page for all "
+      "files) — page_url is per file, download_url is a direct "
+      "download.")
+    a("")
+    a("## Quick start")
+    a(f"1. Connect your MCP client to {mcp_url} — no key needed to "
+      "initialize or list tools.")
+    a("2. Call the free tool `register` once; send the key it returns as "
+      "Authorization: Bearer <key> on every request.")
+    a("3. tools/list (or catalog_search) shows each tool's inputs and "
+      "price; call it with tools/call and a client_ref.")
     a("")
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
@@ -104,7 +113,8 @@ def build_llms_txt() -> str:
     a("")
     a("## Inputs (tools/call)")
     a("files[] items — 0..20 files per the tool's declared window "
-      "(text-only tools take no files); each item is exactly one form:")
+      "(body tools take no files — see below); each item is exactly "
+      "one form:")
     try:
         from app.routes.mcp import MCP_MAX_BODY_BYTES
         body_cap = f"{MCP_MAX_BODY_BYTES // (1024 * 1024)} MB"
@@ -238,16 +248,7 @@ def build_llms_txt() -> str:
       "the delivery options — see /pricing.")
     a("")
     a("## Publish your own tool")
-    a(f"Full guide — request/response examples, declarations, limits, "
-      f"pricing and commission: {BASE_URL}/developers")
-    a("Wrap any public HTTPS endpoint as a 518 tool: implement one JSON "
-      "contract — source files arrive as one-time signed fetch URLs, "
-      f"you answer with ordered text/json/file items — and submit it at "
-      f"{BASE_URL}/account/tools/publish.")
-    a("A new tool starts unlisted; after one successful run from its "
-      "page it can go public, and then the web interface and every MCP "
-      "agent can call it, earning you USD on each paid call "
-      "(1000 credits = 1 USD at settlement).")
+    a(f"Wrap your HTTPS endpoint as a 518 tool: {BASE_URL}/developers")
     a("")
     a("## Recommended tools (generated live; catalog_search finds every "
       "other public tool)")

@@ -16,6 +16,7 @@ import base64
 import hashlib
 import re
 import secrets
+import threading
 import urllib.parse
 
 from config import BASE_URL
@@ -48,13 +49,35 @@ CIMD_MAX_BYTES = 64 * 1024
 CIMD_TIMEOUT_S = 8
 CIMD_CACHE_TTL = 300
 CIMD_NEGATIVE_TTL = 60
+CIMD_CACHE_MAX = 10000
 
 _cimd_cache: dict = {}
+# Cleanup, capacity check and write share one short critical section:
+# authorize/token flows run their business legs in threads, and two
+# concurrent stores racing the prune iteration raise "dictionary
+# changed size during iteration" (or slip past the cap). The network
+# fetch itself stays OUTSIDE the lock. Cache reads are single dict
+# gets — atomic under the GIL, no lock needed.
+_cimd_cache_lock = threading.Lock()
+
+
+def _cimd_cache_store(client_id: str, expires: int, payload) -> None:
+    """Bounded store: past the entry cap, expired entries are pruned;
+    still past it, the new entry is dropped (the fetch result is still
+    returned — only the caching is skipped)."""
+    with _cimd_cache_lock:
+        if len(_cimd_cache) >= CIMD_CACHE_MAX:
+            _ts = now()
+            for k in [k for k, v in _cimd_cache.items() if v[0] <= _ts]:
+                del _cimd_cache[k]
+            if len(_cimd_cache) >= CIMD_CACHE_MAX:
+                return
+        _cimd_cache[client_id] = (expires, payload)
 
 
 def _cimd_negative(client_id: str) -> None:
     """Cache a failed fetch/validation briefly and report absence."""
-    _cimd_cache[client_id] = (now() + CIMD_NEGATIVE_TTL, None)
+    _cimd_cache_store(client_id, now() + CIMD_NEGATIVE_TTL, None)
     return None
 
 
@@ -138,7 +161,7 @@ def cimd_fetch(client_id: str) -> dict | None:
     }
     if isinstance(logo, str) and logo.startswith("https://"):
         out["logo_uri"] = logo[:2048]
-    _cimd_cache[client_id] = (now() + CIMD_CACHE_TTL, out)
+    _cimd_cache_store(client_id, now() + CIMD_CACHE_TTL, out)
     return out
 
 
@@ -199,20 +222,26 @@ def exchange_authorization_code(code: str, client_id: str, redirect_uri: str,
     refresh = _opaque(_REFRESH_PREFIX)
     ts = now()
     code_hash = token_hash(str(code or ""))
+    mismatch = False
     with db() as con:
         row = repo.code_for_update(con, code_hash, ts)
         if not row:
             raise ValueError("invalid_grant")
+        # single-use: the code burns on THIS exchange attempt, even a
+        # mismatched one — a probed code must not survive for replay
         repo.delete_code(con, code_hash)
         if (row["client_id"] != client_id
                 or row["redirect_uri"] != redirect_uri
                 or row["resource"] != resource
                 or not _pkce_ok(verifier, row["code_challenge"])):
-            raise ValueError("invalid_grant")
-        repo.insert_token(
-            con, token_hash(access), token_hash(refresh), row["user_id"],
-            client_id, row["scope"], resource, ts + ACCESS_TTL,
-            ts + REFRESH_TTL, ts)
+            mismatch = True
+        else:
+            repo.insert_token(
+                con, token_hash(access), token_hash(refresh), row["user_id"],
+                client_id, row["scope"], resource, ts + ACCESS_TTL,
+                ts + REFRESH_TTL, ts)
+    if mismatch:
+        raise ValueError("invalid_grant")
     return _token_payload(access, refresh, row["scope"])
 
 

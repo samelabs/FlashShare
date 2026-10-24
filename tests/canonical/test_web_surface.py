@@ -216,6 +216,14 @@ def main():
           and html.count('rel="alternate" hreflang=') == 11,
           f"{st} robots={_meta(html, 'robots')}")
 
+    # username identity is lower-folded (the same rule as login): an
+    # uppercased URL resolves the same author and the page displays the
+    # STORED handle, never the URL casing. Sample: 1 page fetch.
+    st, html = _page(f"/u/{_u.upper()}")
+    check("H /u/<UPPER>: folds to the author, shows the stored handle",
+          st == 200 and f"@{_u}" in html and f"@{_u.upper()}" not in html,
+          f"{st}")
+
     # ── explicit ?lang page is its own canonical (hreflang alternates) ──
     st, html = _page("/pricing?lang=de&utm_source=x")
     canon = _tag(html, r'<link rel="canonical" href="([^"]*)"')
@@ -336,8 +344,12 @@ def main():
           mf.get("description") == SERVER_I18N["en"]["seo_desc"], mf.get("description"))
     check("P manifest: start_url /?source=pwa + no orientation lock",
           mf.get("start_url") == "/?source=pwa" and "orientation" not in mf)
-    check("P manifest: theme/background from design tokens",
-          mf.get("theme_color") == "#fbfbfc" and mf.get("background_color") == "#fbfbfc")
+    # the site is light-only: browser/OS chrome = the page surface token
+    _bg = _re.search(r"--bg:\s*(#[0-9a-fA-F]{6})", open(_os.path.join(
+        REPO, "static", "css", "tokens.css"), encoding="utf-8").read()).group(1).lower()
+    check("P manifest: theme/background = page surface token --bg",
+          mf.get("theme_color") == _bg and mf.get("background_color") == _bg,
+          (mf.get("theme_color"), mf.get("background_color"), _bg))
     icons = mf.get("icons") or []
     mask512 = [i for i in icons if i.get("purpose") == "maskable" and i["sizes"] == "512x512"]
     check("P manifest: any + maskable split, one maskable 512", bool(mask512)
@@ -380,13 +392,20 @@ def main():
 
     # base.html chrome parity
     st, html = _page("/")
-    check("P base: theme-color light/dark match the manifest",
-          '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfc">' in html
-          and '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1419">' in html)
+    check("P base: one theme-color = the manifest theme_color (light-only site)",
+          html.count('name="theme-color"') == 1
+          and f'<meta name="theme-color" content="{_bg}">' in html)
     check("P base: apple web-app metas",
           'name="apple-mobile-web-app-capable"' in html
           and 'name="apple-mobile-web-app-title" content="518.PLUS"' in html
           and 'name="apple-mobile-web-app-status-bar-style"' in html)
+
+    # offline fallback: renders with no network (nothing external to load)
+    st, off = _page("/offline")
+    check("P offline: self-contained page — no stylesheet, script or image link",
+          st == 200 and 'rel="stylesheet"' not in off and "<script" not in off
+          and "<img" not in off and 'class="status-glyph"' in off
+          and "<svg" in off, st)
 
     # cleanup
     try:
@@ -643,7 +662,7 @@ try:
         with db() as con:
             gid = con.execute("select gokapi_id from uploads where"
                               " public_id=%s", (share_pid,)).fetchone()["gokapi_id"]
-        return int((get_gokapi_file(gid) or {}).get("DownloadCount", -1))
+        return int((get_gokapi_file(gid)[1] or {}).get("DownloadCount", -1))
 
     c0 = _dl_count()
     st, h, body_raw, _sc = _req_agw("HEAD", f"/f/{share_pid}", raw=True)
@@ -818,7 +837,9 @@ try:
     check("P5 /account/credits → 200 with link to /pricing, no buy buttons",
           st == 200 and 'href="/pricing"' in html
           and "sub-buy" not in html and "topup-buy" not in html
-          and "sub-badge on" in html, st)
+          # member chip (fixture plan carries no badge_key → base tier,
+          # never the free variant)
+          and 'class="tier' in html and 'tier_free' not in html, st)
 
     # ═══ P6: refund policy in the terms, every language ═══
     for lang in ("en", "zh", "ja", "ko", "fr", "de", "es", "pt", "ru", "ar"):
@@ -831,6 +852,461 @@ try:
               and "ad@live.it" in html, st)
 finally:
     _cleanup()
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Auth form single source + account records (filter / paging / overview)
+#
+#   A*   auth unification: /auth/login + /auth/register render the ONE
+#        shared card (auth/_card.html) — same field specs, seg mode
+#        switch, recovery + terms on both; base.html embeds the two
+#        server-rendered <template>s the modal clones; the partial
+#        carries no DOM ids; the modal JS holds no hand-written field
+#        markup; the standalone pages keep real POST forms (no-JS).
+#   RC*  account records: 20-per-page with real-total page bounds
+#        (past the global 10k ceiling via the bound function), range
+#        filter (all/7/30/90) with stats window semantics (range=all →
+#        overview/trend fixed to last 30 days and labeled), consume /
+#        refund / net from ledger kinds only, per-status call counts
+#        via the net-charge relation projection, per-user isolation.
+#        Fixed timestamps (no sleeps); 21-row samples for 20/1 paging;
+#        the 10001st-page reachability uses the bound function with a
+#        controlled total, not 200k fixture rows.
+# ════════════════════════════════════════╤═══════════════════════════════
+section('Auth form single source + account records')
+
+import time as _time_rc
+
+_ts_rc = int(_time_rc.time())
+_u_rc = "rc" + _uuid.uuid4().hex[:6]
+_RC_USERS = []
+
+
+def _mkuser_rc(name):
+    with db() as con:
+        row = con.execute(
+            "insert into users (username, email, password_hash, display_name,"
+            " status, created_at, last_login_at) values (%s, %s, 'x', 'T',"
+            " 'active', %s, %s) returning id",
+            (name, f"{name}@t.co", _ts_rc, _ts_rc)).fetchone()
+    _RC_USERS.append(int(row["id"]))
+    return int(row["id"])
+
+
+def _led_rc(con, uid, kind, delta, bal, at, n, ref_type=None, ref_id=None):
+    con.execute(
+        "insert into ledger (user_id, delta, balance_after, kind, ref_type,"
+        " ref_id, idem_key, note, created_at) values (%s, %s, %s, %s, %s,"
+        " %s, %s, NULL, %s)",
+        (uid, delta, bal, kind, ref_type, ref_id, f"rc_{_u_rc}_{n}", at))
+
+
+try:
+    from fastapi.testclient import TestClient as _TC_rc
+    from app.main import app as _app_rc
+    from app.web_auth import create_browser_session as _cbs_rc, COOKIE_NAME as _CK_rc
+    client_rc = _TC_rc(_app_rc)
+
+    def _get_rc(path, cookie=None):
+        r = client_rc.get(path, cookies={_CK_rc: cookie} if cookie else None,
+                          follow_redirects=False)
+        return r.status_code, r.text
+
+    # ═══ A. auth unification (structure — login/register behavior is
+    # locked in test_identity) ═══
+    st, login_html = _get_rc("/auth/login?lang=en")
+    st2, reg_html = _get_rc("/auth/register?lang=en")
+    check("A1 both standalone pages render the shared card",
+          st == 200 and st2 == 200 and 'class="auth-card"' in login_html
+          and 'class="auth-card"' in reg_html, (st, st2))
+    check("A2 same field specs from the single source (register pattern verbatim on page AND template)",
+          login_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"') == 1
+          and reg_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"') == 2,
+          (login_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"'),
+           reg_html.count('pattern="[A-Za-z0-9_\\-]{5,32}"')))
+    check("A3 page seg switch links both modes with next preserved",
+          'href="/auth/register?next=' in login_html
+          and 'href="/auth/login?next=' in reg_html, "")
+    check("A4 recovery + terms present on BOTH modes",
+          "support_recovery_hint" in login_html
+          and "support_recovery_hint" in reg_html
+          and 'href="/terms"' in login_html and 'href="/terms"' in reg_html, "")
+    check("A5 shared partial carries no DOM ids (page + clone cannot collide)",
+          "regUsername" not in reg_html and "registerForm" not in reg_html
+          and "pwMismatch" not in reg_html, "")
+    check("A6 no-JS: standalone forms are real POSTs to their routes",
+          'method="post" action="/auth/login"' in login_html
+          and 'method="post" action="/auth/register"' in reg_html, "")
+    st, home_html = _get_rc("/?lang=en")
+    check("A7 base embeds both server-rendered auth templates site-wide",
+          st == 200 and '<template id="authTplLogin">' in home_html
+          and '<template id="authTplRegister">' in home_html
+          and 'name="password_confirm"' in home_html, st)
+    _amjs = open(f"{REPO}/static/pages/auth-modal.js", encoding="utf-8").read()
+    check("A8 modal JS holds no hand-written field markup (clones the templates)",
+          "<label" not in _amjs and "authTplRegister" in _amjs
+          and "bindPwMismatch" in _amjs, "")
+    _rjs = open(f"{REPO}/static/pages/register.js", encoding="utf-8").read()
+    check("A9 page password-mismatch reuses the shared binder",
+          "bindPwMismatch" in _rjs, "")
+    # 模板克隆表单也带真实 POST method/action — 无 JS/意外默认提交
+    # 永远是 POST 到正确端点, 不会把密码带进 URL 查询串
+    check("A10 modal template forms declare the same real POST action",
+          'method="post" action="/auth/login"' in home_html
+          and 'method="post" action="/auth/register"' in home_html, "")
+    # 提交监听挂在稳定容器 (.am-body) 委托到当前表单 — 模式切换换克隆
+    # 后提交仍被处理 (旧实现只绑首个克隆, 切换后提交失效)
+    check("A11 modal submit is delegated on the stable container",
+          'body.addEventListener("submit"' in _amjs, "")
+    # 初始/切换后聚焦排除 hidden 字段 (克隆的 next 隐藏域是 DOM 首个 input)
+    check("A12 modal first-control focus skips hidden inputs",
+          "input:not([type=hidden])" in _amjs, "")
+    # 克隆子树按当前语言重写 (站内就地切换语言后浮层不再停留在 SSR 语言)
+    check("A13 modal clone re-applies the current language in place",
+          "applyLang" in _amjs and "data-i18n-placeholder" in _amjs, "")
+
+    # ═══ RC fixtures ═══
+    DAY = 86400
+    now_rc = int(_time_rc.time())
+    t_today = now_rc
+    t_3d = now_rc - 3 * DAY
+    t_40d = now_rc - 40 * DAY
+    uid_calls = _mkuser_rc(_u_rc + "cl")     # calls page: 21 calls
+    uid_cred = _mkuser_rc(_u_rc + "cr")      # credits page: 21 spendable rows
+    uid_other = _mkuser_rc(_u_rc + "ot")     # permission isolation
+    with db() as con:
+        # tool identity for label resolution (one known, others deleted)
+        con.execute(
+            "insert into platform_tools (tool_key, owner_id, tool_id,"
+            " execution, label_json, visibility, enabled, files_min,"
+            " files_max, outputs_json, created_at, updated_at, accept_json,"
+            " format_family) values (%s, NULL, %s, 'local', %s, 'public',"
+            " TRUE, 1, 1, '[\"text\"]', %s, %s, '[\".png\"]', 'image')",
+            (f"rctool_{_u_rc}", f"rctool_{_u_rc}",
+             _json.dumps({"en": "RC Tool"}), _ts_rc, _ts_rc))
+        # 21 calls: 18 ok (17 today + 1 at 3d), 2 failed today, 1 insufficient
+        # at 40d; ids ascend with time so newest-first = today first
+        _call_ids = []
+        _specs = ([("failed", t_today, 1), ("failed", t_today, 1),
+                   ("insufficient", t_40d, 0)]
+                  + [("ok", t_3d, 1)]
+                  + [("ok", t_today, 1)] * 17)
+        _bal = 0
+        _n = 0
+        for i, (status, at, charged) in enumerate(_specs):
+            row = con.execute(
+                "insert into tool_calls (client_ref, user_id, tool_id, status,"
+                " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+                " started_at, finished_at, result_public_id, result_json)"
+                " values (%s, %s, %s, %s, 5, 30, %s, %s, %s, %s, %s)"
+                " returning id",
+                (f"rc_{_u_rc}_{i}", uid_calls, f"rctool_{_u_rc}", status,
+                 f"{i:064x}", at, at if status != "running" else None,
+                 f"rcres_{_u_rc}_{i}" if status == "ok" else None,
+                 _json.dumps({"expires_at": now_rc + DAY}) if status == "ok" else None)
+            ).fetchone()
+            _call_ids.append(int(row["id"]))
+            if charged:   # ok/failed consume −5 (insufficient never charges)
+                _bal -= 5
+                _led_rc(con, uid_calls, "consume", -5, _bal, at, _n,
+                        ref_type="tool_call", ref_id=str(row["id"]))
+                _n += 1
+        # refunds +2 on the two most recent ok calls (relation: refund → consume)
+        for cid in _call_ids[-2:]:
+            _bal += 2
+            row = con.execute(
+                "select id from ledger where ref_type='tool_call'"
+                " and ref_id=%s and user_id=%s order by id limit 1",
+                (str(cid), uid_calls)).fetchone()
+            _led_rc(con, uid_calls, "refund", 2, _bal, t_today, _n,
+                    ref_type="ledger", ref_id=str(row["id"]))
+            _n += 1
+        # credits fixture: exactly 21 spendable rows for user B
+        # (17 consume today, 1 refund today, 1 grant today,
+        #  1 refund + 1 topup at 40d)
+        _balb = 0
+        _n = 0
+        for _ in range(17):
+            _balb -= 5
+            _led_rc(con, uid_cred, "consume", -5, _balb, t_today, _n); _n += 1
+        _balb += 2
+        _led_rc(con, uid_cred, "refund", 2, _balb, t_today, _n); _n += 1
+        _balb += 50
+        _led_rc(con, uid_cred, "grant_signup", 50, _balb, t_today, _n); _n += 1
+        _balb += 2
+        _led_rc(con, uid_cred, "refund", 2, _balb, t_40d, _n); _n += 1
+        _balb += 100
+        _led_rc(con, uid_cred, "topup", 100, _balb, t_40d, _n); _n += 1
+        # other user's rows must never leak (their activity sits OUTSIDE
+        # the 7-day window: also the empty-window fixture below)
+        _led_rc(con, uid_other, "consume", -5, -5, t_40d, 0)
+        con.execute(
+            "insert into tool_calls (client_ref, user_id, tool_id, status,"
+            " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+            " started_at, finished_at) values (%s, %s, %s, 'ok', 5, 30, %s,"
+            " %s, %s)",
+            (f"rc_{_u_rc}_other", uid_other, f"rctool_{_u_rc}", "0" * 64,
+             t_today, t_today))
+    ck_cred = _cbs_rc(uid_cred)
+    ck_calls = _cbs_rc(uid_calls)
+
+    # ═══ RC1/2: credits 20-per-page with real-total bounds ═══
+    st, html = _get_rc("/account/credits?lang=en", ck_cred)
+    check("RC1 21 rows → page 1 shows 20 + pager with totals",
+          st == 200 and html.count("<tr>") == 21   # 20 body + 1 header
+          and "21 records" in html and "1 / 2" in html,
+          (st, html.count("<tr>")))
+    st, html = _get_rc("/account/credits?page=2&lang=en", ck_cred)
+    check("RC2 page 2 shows the single oldest row (not the empty state)",
+          st == 200 and html.count("<tr>") == 2
+          and "credits_empty" not in html, html.count("<tr>"))
+    st, html = _get_rc("/account/credits?page=99&lang=en", ck_cred)
+    check("RC2b out-of-range page clamps to the real last page",
+          st == 200 and html.count("<tr>") == 2
+          and "credits_empty" not in html, html.count("<tr>"))
+    st, html = _get_rc("/account/credits?page=abc&lang=en", ck_cred)
+    check("RC2c non-integer page falls back to page 1",
+          st == 200 and html.count("<tr>") == 21, html.count("<tr>"))
+
+    # ═══ RC3: range filter + stats-window semantics ═══
+    st, html = _get_rc("/account/credits?range=7&lang=en", ck_cred)
+    check("RC3 range=7 lists only in-window rows (19 of 21)",
+          st == 200 and html.count("<tr>") == 20   # 19 body + header
+          and "19 records" in html, html.count("<tr>"))
+    check("RC3b stats window equals the selected range (labeled)",
+          "Stats: last 7 days (UTC)" in html, "")
+    st, html = _get_rc("/account/credits?range=30&lang=en", ck_cred)
+    check("RC3c range=30 same window as 7 here, still labeled 30",
+          "Stats: last 30 days (UTC)" in html and "19 records" in html, "")
+    st, html = _get_rc("/account/credits?lang=en", ck_cred)
+    check("RC3d range=all lists all 21 but stats stay a labeled 30-day window",
+          "21 records" in html and "Stats: last 30 days (UTC)" in html, "")
+    st, html = _get_rc("/account/credits?range=bogus&lang=en", ck_cred)
+    check("RC3e invalid range behaves as all",
+          "21 records" in html, "")
+
+    # ═══ RC4: summary math from ledger kinds only ═══
+    # window (30d): consume 17×5=85, refund +2 (today only), net 83;
+    # grant/topup and the 40d refund excluded; other user excluded
+    st, html = _get_rc("/account/credits?range=30&lang=en", ck_cred)
+    check("RC4 overview: Spent 85 / Refunded 2 / Net 83 (grants & topups excluded)",
+          ">Spent</span>" in html and "<strong class=\"rec-chip-v mono \">85</strong>" in html
+          and "rec-chip-v mono pos\">2<" in html
+          and "rec-chip-v mono neg\">83<" in html,
+          [s for s in ("85", ">2<", ">83<") if s not in html])
+    st_o, html_o = _get_rc("/account/credits?range=all&lang=en", _cbs_rc(uid_other))
+    check("RC4b per-user isolation: the other user sees only their own row",
+          st_o == 200 and "1 records" in html_o
+          and "85" not in html_o.split("rec-toolbar")[-1], "")
+
+    # ═══ RC5: trend strip ═══
+    check("RC5 trend present with peak value + UTC window note",
+          "rec-trend-bars" in html and "peak 83 ("
+          in html, "")
+    st, html = _get_rc("/account/credits?range=7&lang=en", _cbs_rc(uid_other))
+    check("RC5b empty window shows the trend empty state",
+          "rec-trend-empty" in html, "")
+
+    # ═══ RC6: calls page — statuses, net projection, paging, links ═══
+    st, html = _get_rc("/account/calls?lang=en", ck_calls)
+    check("RC6 calls 21 rows → 20 on page 1 with pager",
+          st == 200 and html.count('id="call-') == 20 and "1 / 2" in html
+          and "21 records" in html, html.count('id="call-'))
+    check("RC6b per-status chips in the 30d window: Calls 20 / Succeeded 18 / Failed 2",
+          ">Calls</span><strong class=\"rec-chip-v mono \">20<" in html
+          and ">Succeeded</span><strong class=\"rec-chip-v mono \">18<" in html
+          and ">Failed</span><strong class=\"rec-chip-v mono \">2<" in html, "")
+    # net projection over the 30d window: 20 charged calls ×5 − 2×2 refunds = 96
+    # (the insufficient call at 40d and its window exclusion ride the same SQL)
+    _expect_net_calls = 20 * 5 - 2 * 2
+    check("RC6c calls overview net = consume − refunds via the relation projection",
+          f"rec-chip-v mono neg\">{_expect_net_calls}<" in html,
+          _expect_net_calls)
+    st, html = _get_rc("/account/calls?page=2&lang=en", ck_calls)
+    check("RC6d page 2 shows exactly the oldest call (first inserted, failed)",
+          st == 200 and html.count('id="call-') == 1
+          and "calls-st-failed" in html, html.count('id="call-'))
+    st, html = _get_rc("/account/calls?range=7&lang=en", ck_calls)
+    check("RC6e range=7 drops only the 40d call (20 records, no insufficient)",
+          "calls_empty" not in html and "calls-st-insufficient" not in html
+          and "20 records" in html, "")
+    st, html = _get_rc("/account/credits?lang=en", ck_calls)
+    check("RC6f credits → calls row link rides the call relation",
+          'href="/account/calls?page=' in html and "#call-" in html, "")
+
+    # ═══ RC7: page bound function — 10001st page reachable, no wild offsets ═══
+    from app.routes.pages import _effective_page as _ep
+    check("RC7 effective page: 10001st page reachable past the old 10k ceiling",
+          _ep("10001", 200_005, 20) == 10001
+          and _ep("10002", 200_005, 20) == 10001
+          and _ep("x", 200_005, 20) == 1 and _ep("-1", 200_005, 20) == 1
+          and _ep("999999999", 0, 20) == 1,
+          [_ep("10001", 200_005, 20), _ep("10002", 200_005, 20)])
+
+    # ═══ RC8: window = 包含今天的最近 N 个 UTC 自然日 (固定请求时钟) ═══
+    # 可控时钟: 页面路由在请求时 from utils import now — 打补丁后经
+    # TestClient 的请求全部落在同一截点, 覆盖窗口首日/边界前后/UTC 午夜。
+    import utils as _utils_mod
+    from contextlib import contextmanager as _ctxmanager
+
+    @_ctxmanager
+    def _fixed_clock(ts):
+        _orig_now = _utils_mod.now
+        _utils_mod.now = lambda: ts
+        try:
+            yield
+        finally:
+            _utils_mod.now = _orig_now
+
+    _FIXED_NOW = (int(_time_rc.time()) // 86400) * 86400 + 12 * 3600  # UTC 今日正午
+    _today_rc = _FIXED_NOW // 86400
+    _S7 = (_today_rc - 6) * 86400        # range=7 窗口首日零点 (UTC)
+    uid_win = _mkuser_rc(_u_rc + "wn")       # 窗口边界 fixture
+    uid_refund = _mkuser_rc(_u_rc + "rf")    # 仅退款窗口 (净额为负)
+    uid_free = _mkuser_rc(_u_rc + "fr")      # 免费调用 (净扣费 0)
+    uid_cut = _mkuser_rc(_u_rc + "ct")       # 统一查询截止点 fixture
+    with db() as con:
+        # 窗口首日: 消费 10 + 退款 10 → 有记录净额 0; 首日前 1 秒的消费;
+        # UTC 午夜(今日零点)的消费 3; 窗口内 grant (列表可见, 统计排除)
+        _balw = 0
+        for _i, (_k, _d, _at) in enumerate((
+                ("consume", -10, _S7), ("refund", 10, _S7 + 3600),
+                ("consume", -5, _S7 - 1),
+                ("consume", -3, _today_rc * 86400),
+                ("grant_signup", 50, _S7 + 10))):
+            _balw += _d
+            _led_rc(con, uid_win, _k, _d, _balw, _at, 900 + _i)
+        # 仅退款: 窗口内唯一记录 = 退款 +10 → 净额 −10, 有活动
+        _led_rc(con, uid_refund, "refund", 10, 10, _FIXED_NOW - 3600, 910)
+        # 免费调用: ok 调用, cost 0, 无消费行 → 净扣费 0, 有活动
+        con.execute(
+            "insert into tool_calls (client_ref, user_id, tool_id, status,"
+            " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+            " started_at, finished_at) values (%s, %s, %s, 'ok', 0, 30, %s,"
+            " %s, %s)",
+            (f"rc_{_u_rc}_free", uid_free, f"rctool_{_u_rc}", "1" * 64,
+             _FIXED_NOW - 60, _FIXED_NOW - 59))
+        # 截止点样本 (uid_cut): 起点前 1 秒 / 起点 / 截止点(含) / 截止点后
+        # 1 秒 / 下一 UTC 日 — 统一 since <= ts <= now_ts 的两侧边界
+        _balc = 0
+        for _i, (_k, _d, _at) in enumerate((
+                ("consume", -3, _S7 - 1),
+                ("consume", -7, _S7),
+                ("refund", 4, _FIXED_NOW - 60),
+                ("consume", -9, _FIXED_NOW),
+                ("consume", -11, _FIXED_NOW + 1),
+                ("refund", 6, _FIXED_NOW + 2),
+                ("consume", -13, (_today_rc + 1) * 86400))):
+            _balc += _d
+            _led_rc(con, uid_cut, _k, _d, _balc, _at, 950 + _i)
+        # 调用侧截止点样本: 恰在截止点(含) 与 下一 UTC 日(排)
+        for _i, (_cr, _at) in enumerate((
+                (f"rc_{_u_rc}_cut", _FIXED_NOW),
+                (f"rc_{_u_rc}_nx", (_today_rc + 1) * 86400))):
+            con.execute(
+                "insert into tool_calls (client_ref, user_id, tool_id,"
+                " status, cost_snapshot, commission_rate_snapshot,"
+                " invocation_hash, started_at, finished_at) values"
+                " (%s, %s, %s, 'ok', 0, 30, %s, %s, %s)",
+                (_cr, uid_cut, f"rctool_{_u_rc}", f"{_i + 2}" * 64,
+                 _at, _at + 1))
+    ck_win = _cbs_rc(uid_win)
+    ck_refund = _cbs_rc(uid_refund)
+    ck_free = _cbs_rc(uid_free)
+    ck_cut = _cbs_rc(uid_cut)
+
+    with _fixed_clock(_FIXED_NOW):
+        # 列表边界: 首日零点行在窗内, 首日前 1 秒行在窗外 (滚动 7×86400
+        # 窗自正午起算, 会把首日凌晨的两行错杀 — 自然日窗必须全含首日)
+        st, html = _get_rc("/account/credits?range=7&lang=en", ck_win)
+        check("RC8 range=7 lists the whole first calendar day + midnight rows",
+              st == 200 and "4 records" in html, (st, "4 records" in html))
+        st, html = _get_rc("/account/credits?lang=en", ck_win)
+        check("RC8b range=all still lists every row (5) regardless of the window",
+              "5 records" in html, "")
+        # 汇总与列表/图表同一自然日边界: Spent 13 / Refunded 10 / Net 3
+        st, html = _get_rc("/account/credits?range=7&lang=en", ck_win)
+        check("RC8c overview uses the same calendar-day window (13/10/3)",
+              'rec-chip-v mono ">13<' in html and 'rec-chip-v mono pos">10<' in html
+              and 'rec-chip-v mono neg">3<' in html,
+              [s for s in ('">13<', 'pos">10<', 'neg">3<') if s not in html])
+        # 趋势: 零净额日 (消费10退款10) 与正净额日并存 → 有图表, 有零刻度
+        # 与向上条, 不出现空态; 日桶合计 == 汇总净额
+        _days = _re.findall(r'rec-day-v mono">(-?\d+)<', html)
+        check("RC8d zero-net day with real records renders a chart, not 'no activity'",
+              "rec-trend-empty" not in html and "rec-trend-bars" in html
+              and "rec-bar zero" in html and "rec-bar up" in html
+              and "rec-bar down" not in html,
+              html.count("rec-bar"))
+        check("RC8e day buckets sum to the overview net (detail list, 7 days)",
+              len(_days) == 7 and sum(int(v) for v in _days) == 3, _days)
+        check("RC8f bar heights: today's +3 at full half-scale, non-negative",
+              'class="rec-bar up" style="height: 50.0%"' in html
+              and not _re.search(r'height: -', html), "")
+
+        # 仅退款窗口: 净额 −10 → 有活动, 负值表达为向下条, 无空态
+        st, html = _get_rc("/account/credits?lang=en", ck_refund)
+        check("RC8g refund-only window is activity, not 'no activity'",
+              st == 200 and "rec-trend-empty" not in html
+              and "rec-bar down" in html and "rec-bar up" not in html
+              and 'rec-chip-v mono neg">-10<' in html,
+              [s for s in ("rec-bar down", "neg\">-10<") if s not in html])
+        check("RC8h negative day renders a downward bar at half-scale",
+              'class="rec-bar down" style="height: 50.0%"' in html, "")
+
+        # 免费调用: 记录存在, 净扣费 0 → 调用页有图表 (零刻度), 无空态
+        st, html = _get_rc("/account/calls?lang=en", ck_free)
+        check("RC8i free call (net 0) counts as activity on the calls page",
+              st == 200 and "rec-trend-empty" not in html
+              and "rec-bar zero" in html and "rec-bar up" not in html
+              and "rec-bar down" not in html
+              and '>Calls</span><strong class="rec-chip-v mono ">1<' in html,
+              "")
+
+        # ═══ RC9: 统一查询截止点 — 有限范围与全部统计查询都用
+        # since <= 记录时间 <= 本次请求截点; 晚于截点的数据全部排除 ═══
+        # 列表/计数: 起点前 1 秒排除, 起点与截止点(含)计入, 截止点后 1 秒
+        # 与下一 UTC 日排除
+        st, html = _get_rc("/account/credits?range=7&lang=en", ck_cut)
+        check("RC9 finite-range list/count bound by [window start, cutoff]",
+              st == 200 and "3 records" in html and html.count("<tr>") == 4,
+              (st, html.count("<tr>")))
+        # 汇总与日桶同界: Spent 16 / Refunded 4 / Net 12; 日桶合计 = 净额
+        check("RC9b overview/daily share the same cutoff (16/4/12)",
+              'rec-chip-v mono ">16<' in html
+              and 'rec-chip-v mono pos">4<' in html
+              and 'rec-chip-v mono neg">12<' in html,
+              [s for s in ('">16<', 'pos">4<', 'neg">12<') if s not in html])
+        _days = _re.findall(r'rec-day-v mono">(-?\d+)<', html)
+        check("RC9c day buckets sum to the same net, cutoff row counted",
+              len(_days) == 7 and sum(int(v) for v in _days) == 12, _days)
+        # 截止点恰在 now_ts 的行被计入 (<= 而非 <): 日桶今日 = 9 − 4 = 5
+        check("RC9d the row exactly AT the cutoff is included (today net 5)",
+              _days[-1] == "5", _days[-1] if _days else None)
+        # 调用侧: 截止点调用计入, 下一 UTC 日调用排除 (基线无截止时 2 条)
+        st, html = _get_rc("/account/calls?range=7&lang=en", ck_cut)
+        check("RC9e calls count/paged/status/daily bound by the same cutoff",
+              st == 200 and "1 records" in html
+              and '>Calls</span><strong class="rec-chip-v mono ">1<' in html
+              and html.count('id="call-') == 1,
+              (st, html.count('id="call-')))
+        # range=all 列表保留全历史 (含下一 UTC 日的未来行), 概览/趋势仍为
+        # 标注的最近 30 个 UTC 日期且带同一截点: 30 天窗比 7 天窗宽, 把
+        # 7 天窗前 1 秒的行 (30 天内、截点前) 重新计入 → Spent 19 =
+        # 3+7+9; 截点后的行 (11/13) 仍被排除 (否则 43)
+        st, html = _get_rc("/account/credits?lang=en", ck_cut)
+        check("RC9f range=all keeps the full-history list (7 records)",
+              st == 200 and "7 records" in html, "")
+        check("RC9g range=all stats stay on the labeled 30d window with the cutoff",
+              "Stats: last 30 days (UTC)" in html
+              and 'rec-chip-v mono ">19<' in html,
+              "")
+finally:
+    with db() as con:
+        con.execute("delete from platform_tools where tool_key=%s",
+                    (f"rctool_{_u_rc}",))
+        con.execute("delete from pricing where tool_id=%s", (f"rctool_{_u_rc}",))
+        purge_users(con, _RC_USERS)
 
 
 finish()

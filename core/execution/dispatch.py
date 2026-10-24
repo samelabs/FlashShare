@@ -70,8 +70,6 @@ def preflight(user: dict, tool_id: str, delivery: dict, params: dict,
 
     tool, terr = resolve_tool(tool_id, user["id"])
     if terr:
-        if terr == "disabled":
-            return None, None, None, {"ok": False, "error": "tool_disabled"}, 403
         return None, None, None, {"ok": False, "error": "tool_not_found"}, 404
     tool["id"] = tool["tool_key"]
 
@@ -216,8 +214,11 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         return None, {"ok": False, "error": "invalid_request"}, 422
 
     body = inv.body if inv.has_body() else BODY_ABSENT
-    tool, declared, canonical_body, err_body, err_status = preflight(
-        user, inv.tool_id, inv.delivery, inv.params, body)
+    # preflight 的 entitlement/resolve/params 读全是同步 DB — 整块下线程,
+    # 事件循环只保留请求解析与 gate 调度。
+    import asyncio
+    tool, declared, canonical_body, err_body, err_status = await asyncio.to_thread(
+        preflight, user, inv.tool_id, inv.delivery, inv.params, body)
     if err_body is not None:
         return None, err_body, err_status
 
@@ -229,6 +230,11 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
     inv.body_format = tool.get("body_format")
 
     request_ctx = {"ip": client_ip(request)}
+    # call-creation source: the authenticated OAuth client behind
+    # THIS request, or None for every other credential — read on the
+    # event loop, passed by value into the claim transaction
+    _oauth_client = getattr(getattr(request, "state", None),
+                            "oauth_client_id", None)
 
     async def orchestrate():
         # ── source resolve: 只认 source.files[] / source.body ──
@@ -300,4 +306,5 @@ async def dispatch_execute(request, user: dict, raw: dict, process_tool=None, po
         except _TE as exc:
             raise ExecutionError(str(exc)) from exc
 
-    return await gate_run(user, tool, inv, orchestrate)
+    return await gate_run(user, tool, inv, orchestrate,
+                         oauth_client_id=_oauth_client)

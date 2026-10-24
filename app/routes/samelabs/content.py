@@ -20,12 +20,8 @@ router = APIRouter()
 _PAGE = 30
 
 
-@router.get("/samelabs/content")
-async def content(request: Request, share: str = "", result: str = "",
-                  user: str = "", tool: str = "", page: int = 1):
-    user_op, resp = gate(request)
-    if resp:
-        return resp
+def _content_impl(user_op: dict, request: Request, share: str, result: str,
+                  user: str, tool: str, page: int):
     from app.main import templates
     page = page_number(page)
     share = share.strip()[:64]
@@ -40,8 +36,8 @@ async def content(request: Request, share: str = "", result: str = "",
             con, result or None, user or None, tool or None,
             _PAGE, (page - 1) * _PAGE)
     import asyncio
-    from sharing.uploads import live_status_map
-    live = await asyncio.to_thread(live_status_map)
+    from sharing.uploads import live_status_for
+    live = live_status_for([r["gokapi_id"] for r in uploads])
     files = []
     for r in uploads:
         d = dict(r)
@@ -60,18 +56,29 @@ async def content(request: Request, share: str = "", result: str = "",
             pages=max(1, -(-max(up_total, res_total) // _PAGE)),
             fmt_num=fmt_num, page_id="content"))
 
+@router.get("/samelabs/content")
+async def content(request: Request, share: str = "", result: str = "",
+                  user: str = "", tool: str = "", page: int = 1):
+    user_op, resp = gate(request)
+    if resp:
+        return resp
+    import asyncio
+    return await asyncio.to_thread(_content_impl, user_op, request, share, result, user, tool, page)
+
 
 @router.post("/samelabs/content/uploads/{upload_id}/delete")
 async def delete_upload(upload_id: int, request: Request):
     """File takedown = delete the mapping row + the physical Gokapi
     object (sharing single point) + one operator_audit fact. Two-step
     confirmation happens in the page JS before this endpoint is hit."""
+    import asyncio
     user, resp = gate(request)
     if resp:
         return resp
     from backoffice import content as content_cmd
     try:
-        out = content_cmd.delete_upload(int(user["id"]), upload_id)
+        out = await asyncio.to_thread(
+            content_cmd.delete_upload, int(user["id"]), upload_id)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "id": out["id"]}

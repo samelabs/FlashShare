@@ -20,14 +20,18 @@ _STATIC = _BASE / "static"
 # (tokens + components + the 518.css page file): any file change bumps
 # every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v90"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+_CSS_VERSION = "v101"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
 for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
 # Separate cache-bust version for i18n.js — it changes independently of 518.css
 with open(_STATIC / "i18n.js", encoding="utf-8") as f:
     _I18N_JS = f.read()
-_I18N_VERSION = hashlib.md5((_I18N_JS + str(int(_os.path.getmtime(_STATIC / "i18n.js")))).encode()).hexdigest()[:8]
+# i18n 戳: 首屏包 + 全部语言分片联合内容摘要 (任一分片变更即失效)
+_I18N_JS = _I18N_JS + "".join(
+    sorted(p_.name + p_.read_text(encoding="utf-8")
+           for p_ in (_STATIC / "i18n").glob("*.js")))
+_I18N_VERSION = hashlib.md5(_I18N_JS.encode()).hexdigest()[:8]
 
 # pages/*.js 独立戳: 目录聚合 md5 (任一文件改动即变)。此前全部借用 js_version
 # (app.js 的 hash) — pages 文件改动戳不变, 边缘永发旧文件 (skill 记录过的同款缺陷)。
@@ -112,6 +116,9 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
     # Projection fact-read failures propagate (never masked as Free).
     # Credits stay an independent balance, outside the projection.
     access = project(user["id"]) if user else None
+    # Tier chip canonical name for non-members: the free plan's own row
+    # name (Free) — tier chips are brand names, never localized copy.
+    from governance import plan_catalog as _pc
     return {
         "request": request,
         "lang": lang,
@@ -144,6 +151,8 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         # Header credit chip (None for anonymous)
         "credits": get_balance(user["id"]) if user else None,
         "access": access,
+        # Canonical (untranslated) tier chip label for non-members
+        "free_plan_name": _pc.free_tier().name,
         "APP_NAME": APP_NAME,
         "support_email": SUPPORT_EMAIL,
         "page_id": page_id,

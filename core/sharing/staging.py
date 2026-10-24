@@ -236,17 +236,32 @@ async def stage_sources(user_id: int, ip: str, client_ref: str,
     IngressInProgress / IngressQuotaDenied / IngressUnresolved);
     已知回滚抛 StagingError。
 
+    取消语义: claim/暂存写/finalize 都是不可停的线程 — 已提交即
+    收敛结果; 取消在 claim 后到达 → 精确释放配额 + receipt 落
+    failed (写已发生 → 连同暂存对象一起回滚); 取消在 finalize 提交
+    后到达 → durable ok 站住 (同 client_ref 重试重放), 绝不删结果。
+
     receipt 原语 (claim/finalize/settle/resolve) 一律调用期导入 —
     测试注入按模块属性生效, 本模块不做 import 期快照。
     """
+    from execution.durable import spawn, await_durable, converge
     from sharing.ingress_receipt import (
         claim_ingress_quota, finalize_ok, resolve_outcome,
         IngressUnresolved, OUTCOME_DURABLE_OK, OUTCOME_PROVEN_ROLLBACK)
-    receipt, usage_ids, replay = claim_ingress_quota(
+    claimed, cancelled = await await_durable(spawn(
+        claim_ingress_quota,
         user_id, ip, client_ref, req_hash,
-        [len(body) for _, _, body in files], scope=scope)
+        [len(body) for _, _, body in files], scope=scope))
+    receipt, usage_ids, replay = claimed
     if replay is not None:
+        if cancelled:
+            raise asyncio.CancelledError
         return replay
+    if cancelled:
+        # claim 已提交、零暂存对象: 精确配额释放 + receipt 落 failed,
+        # 取消随后传播 — 不依赖重启恢复
+        await _rollback([], receipt, usage_ids, user_id)
+        raise asyncio.CancelledError
 
     from governance.delivery import (INTERMEDIATE_TTL_DAYS,
                                      INTERMEDIATE_DOWNLOAD_LIMIT)
@@ -256,19 +271,24 @@ async def stage_sources(user_id: int, ip: str, client_ref: str,
     gids = []
     for filename, ctype, body in files:
         try:
-            gokapi = await asyncio.to_thread(
+            gokapi, wcancel = await await_durable(spawn(
                 storage_write, io.BytesIO(body), filename, ctype,
                 INTERMEDIATE_TTL_DAYS, INTERMEDIATE_DOWNLOAD_LIMIT,
-                len(body))
+                len(body)))
         except Exception:
             logger.exception("staging write failed (%s)", filename)
             await _rollback(gids, receipt, usage_ids, user_id)
             raise StagingError("staging_write_failed") from None
         gid = (gokapi.get("FileInfo", {}) or {}).get("Id", "")
+        if gid:
+            # the converged write's object is tracked before any exit
+            gids.append(gid)
+        if wcancel:
+            await _rollback(gids, receipt, usage_ids, user_id)
+            raise asyncio.CancelledError
         if not gid:
             await _rollback(gids, receipt, usage_ids, user_id)
             raise StagingError("gokapi_missing_id")
-        gids.append(gid)
         infos.append({
             "name": filename, "filename": filename,
             "contentType": ctype, "size": len(body),
@@ -285,35 +305,47 @@ async def stage_sources(user_id: int, ip: str, client_ref: str,
     #                     暂存对象 + 精确释放 + 落 failed, 抛 StagingError;
     #   UNRESOLVED      → 零清理零释放零改写, 抛 IngressUnresolved。
     from database import db
-    try:
+
+    def _finalize_txn():
         with db() as con:
             finalize_ok(con, int(receipt["id"]), infos)
+    try:
+        _, fcancel = await await_durable(spawn(_finalize_txn))
     except Exception:
         logger.exception("ingress finalize failed id=%s — reconciling",
                          receipt["id"])
-        out = resolve_outcome(int(receipt["id"]))
+        out = await converge(spawn(resolve_outcome, int(receipt["id"])))
         if out["outcome"] == OUTCOME_DURABLE_OK:
             return out["result"]
         if out["outcome"] == OUTCOME_PROVEN_ROLLBACK:
             await _rollback(gids, receipt, usage_ids, user_id)
             raise StagingError("finalize_proven_rollback")
         raise IngressUnresolved("err_ingress_unresolved") from None
+    if fcancel:
+        # finalize 线程已收敛: 提交落地 → durable ok 站住 (同 client_ref
+        # 重试重放), 取消传播; 异常形态已在上面的 reconcile 分支结算
+        raise asyncio.CancelledError
     return infos
 
 
 async def _rollback(gids, receipt, usage_ids, user_id):
     """已知回滚结算: 尽力删除暂存对象, 然后同一事务内精确配额释放 +
     receipt 落 failed。DB 结算本身失败则 receipt 留 running — 启动
-    recovery 接管; 配额永不投机释放。"""
+    recovery 接管; 配额永不投机释放。
+
+    从取消处理路径调用: 每一步都收敛 — 重复取消不得遗留 receipt
+    义务或泄漏配额。"""
+    from execution.durable import spawn, converge
     from sharing.ingress_receipt import settle_failure
     from storage import delete as storage_delete
     for gid in gids:
         try:
-            await asyncio.to_thread(storage_delete, gid)
+            await converge(spawn(storage_delete, gid))
         except Exception:
             logger.warning("rollback: gokapi cleanup failed for %s", gid)
     try:
-        settle_failure(int(receipt["id"]), usage_ids, user_id)
+        await converge(spawn(
+            settle_failure, int(receipt["id"]), usage_ids, user_id))
     except Exception:
         logger.exception("ingress failure settlement failed id=%s "
                          "(receipt stays running for recovery)",

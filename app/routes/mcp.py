@@ -307,10 +307,11 @@ async def _dispatch(request: Request, user: dict, msg):
                    and requested in SUPPORTED_VERSIONS else LATEST)
         from governance.catalog import catalog_version
         from config import BASE_URL as _base
+        cat_version = await asyncio.to_thread(catalog_version)
         # The caller's real account limits, from the same entitlement
         # projection the delivery schemas advertise (one read); an
         # anonymous caller sees the Free plan it would register into.
-        ent = _entitlements(user)
+        ent = await asyncio.to_thread(_entitlements, user)
         account_txt = "" if user else (
             "You are connected without an API key: tools/list shows "
             "the first-party tools and every other call needs an "
@@ -332,14 +333,15 @@ async def _dispatch(request: Request, user: dict, msg):
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "518plus", "version": PRODUCT_VERSION},
             "instructions": (
-                "518.PLUS makes it easy to share files and AI "
-                f"capabilities. {account_txt}"
+                "518.PLUS is a toolbox for AI agents: find tools "
+                "with tools/list or catalog_search and call them by "
+                f"name. {account_txt}"
                 "To give a person a link to a file: call "
                 "share; hand them result_url (one page for all files) "
                 "— page_url is per file, download_url is a direct "
                 "download. tools/list is the master list: every "
-                "public tool plus your own, favorites flagged "
-                "(我的收藏); list_favorites lists just your pins. "
+                "public tool plus your own, favorites flagged; "
+                "list_favorites lists just your pins. "
                 "catalog_search filters by keyword (empty query = "
                 "full catalog, paged); call any tool by name. "
                 "Pass "
@@ -352,8 +354,9 @@ async def _dispatch(request: Request, user: dict, msg):
                 "then use the returned {public_id, source_token} as "
                 "the files[] reference form (staged files are "
                 "intermediates: PUT within 10 minutes, kept at most "
-                "1 day, not listed by list_uploads). Text-only tools "
-                "take no files — just params. Every tools/call needs "
+                "1 day, not listed by list_uploads). Body tools take "
+                "no files: pass their text or JSON input as the `input` "
+                "argument. Every tools/call needs "
                 "a client_ref: reuse the same value to retry safely "
                 "(replays return the original result without "
                 "re-charging). Results come back directly: "
@@ -373,7 +376,7 @@ async def _dispatch(request: Request, user: dict, msg):
                 f"tops up at {_base}/pricing (log in with the account), "
                 "then retry with the same client_ref. "
                 f"{limits_txt} Catalog version: "
-                f"{catalog_version()}."
+                f"{cat_version}."
             ),
         })
     # notifications are NEVER answered — the early-out precedes every
@@ -384,7 +387,8 @@ async def _dispatch(request: Request, user: dict, msg):
         return _rpc(mid, {})
     if method == "tools/list":
         page_size = 50
-        specs = _tool_specs(user) if user else _anon_tool_specs()
+        specs = (await asyncio.to_thread(_tool_specs, user)) if user \
+            else await asyncio.to_thread(_anon_tool_specs)
         cur = params.get("cursor")
         try:
             start = int(cur) if cur else 0
@@ -610,7 +614,7 @@ def _pin_spec(name: str, title: str, description: str) -> dict:
 
 _PIN_TOOL_SPEC = _pin_spec(
     "pin_tool", "Add to My Favorites",
-    "Add a tool to your favorites (我的收藏) — your shortlist for "
+    "Add a tool to your favorites — your shortlist for "
     "reuse. tools/list marks favorites with a flag; list_favorites "
     "lists just the pins. Free.")
 _UNPIN_TOOL_SPEC = _pin_spec(
@@ -696,9 +700,9 @@ def _spec_summary(t: dict) -> dict:
     mx = int(t["files_max"])
     accept = t.get("accept")
     if mx == 0:
-        files_txt = ("text body input (source.body)"
+        files_txt = ("text input (`input` argument)"
                      if t.get("body_format") == "text"
-                     else "json body input (source.body)")
+                     else "JSON input (`input` argument)")
     else:
         files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
         if accept:
@@ -1114,7 +1118,7 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         if isinstance(page, bool) or not isinstance(page, int) or page < 1:
             return _rpc_err(mid, -32602, "invalid params: page must be an "
                                          "integer >= 1")
-        sc = _catalog_search_result(user, q, page)
+        sc = await asyncio.to_thread(_catalog_search_result, user, q, page)
         lines = []
         if q:
             lines.append(f"{sc['total']} tool(s) match \"{q}\""
@@ -1128,15 +1132,16 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
         return _meta_result(mid, sc, text="\n".join(lines))
 
     if name == "create_upload":
-        return _create_upload(user, mid, args, request)
+        return await asyncio.to_thread(_create_upload, user, mid, args, request)
     if name == "list_uploads":
         return await _list_uploads(user, mid, args)
     if name == "delete_upload":
         return await _delete_upload(user, mid, args)
     if name in ("pin_tool", "unpin_tool"):
-        return _pin_tool(user, mid, args, on=(name == "pin_tool"))
+        return await asyncio.to_thread(
+            _pin_tool, user, mid, args, name == "pin_tool")
     if name == "list_favorites":
-        return _list_favorites(user, mid)
+        return await asyncio.to_thread(_list_favorites, user, mid)
 
     # client_ref is REQUIRED and validated BEFORE any base64 decode,
     # quota check, or Gokapi upload — a missing/invalid ref must never
@@ -1207,7 +1212,11 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
             files_arg = []          # text-only tools: 0 files is legal
         if not isinstance(files_arg, list):
             raise ValueError("files[] must be an array")
-        items = [_parse_file_item(f) for f in files_arg]
+
+        def _parse_all():
+            return [_parse_file_item(f) for f in files_arg]
+
+        items = await asyncio.to_thread(_parse_all)
     except (ValueError, binascii.Error) as exc:
         # Malformed input outranks business affordability — protocol
         # validation stays first so a low balance can never mask it.
@@ -1219,8 +1228,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     tool_key = name
     from execution.dispatch import (preflight as _preflight,
                                     source_accept_error as _accept_err)
-    tool, _declared, _canon_body, _pbody, _pstatus = _preflight(
-        user, tool_key, delivery, tool_params, body_arg)
+    tool, _declared, _canon_body, _pbody, _pstatus = await asyncio.to_thread(
+        _preflight, user, tool_key, delivery, tool_params, body_arg)
     if _pbody is not None:
         if _pbody.get("error") == "tool_not_found":
             return _rpc_err(mid, -32602, f"unknown tool: {name}")
@@ -1266,7 +1275,8 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     # result) without uploading anything. Authoritative consume stays
     # in the gate; this snapshot never reserves credits.
     from execution.affordability import check_affordability
-    _denial = check_affordability(user["id"], tool, client_ref=client_ref)
+    _denial = await asyncio.to_thread(
+        check_affordability, user["id"], tool, client_ref)
     if _denial:
         return _iserror(mid, _denial, client_ref)
 
@@ -1317,22 +1327,6 @@ async def _call_tool(request: Request, user: dict, mid, params: dict):
     payload, error_body, status = await dispatch_execute(request, user, raw)
     if error_body is not None:
         payload = error_body
-    # OAuth plugin attribution — an MCP-layer post-hook on the settled
-    # call (the execution chain stays untouched): stamp the consented
-    # client on the tool_calls row. 只要拿到 call_id 就写, 失败结果同样
-    # 归因; SQL 带 AND oauth_client_id IS NULL —— 第一个写入者为准
-    # (同引用重放不覆盖先到归因)。
-    _client_id = getattr(getattr(request, "state", None), "oauth_client_id", None)
-    if _client_id and payload.get("call_id"):
-        try:
-            from database import db as _db
-            with _db() as _con:
-                _con.execute(
-                    "update tool_calls set oauth_client_id=%s where id=%s"
-                    " and oauth_client_id IS NULL",
-                    (_client_id, payload["call_id"]))
-        except Exception:
-            pass  # attribution is telemetry, never blocks the result
     if not payload.get("ok"):
         return _iserror(mid, payload, client_ref, tool)
     result = payload.get("result") or {}
@@ -1371,6 +1365,7 @@ def _error_message(code, tool: dict | None = None) -> str:
         "err_call_in_progress": "This operation is already running; retry the same client_ref for its result.",
         "idempotency_conflict": "This client_ref was used for different input; use a new client_ref.",
         "err_file_too_large": "A file exceeds the size limit.",
+        "err_image_too_large": "The image dimensions exceed the limit.",
         "err_endpoint_failed": "The tool's service failed.",
         "err_endpoint_timeout": "The tool's service timed out.",
         "err_endpoint_blocked": "The tool's service endpoint is not allowed.",
@@ -1547,14 +1542,26 @@ async def _mcp_success(result: dict, payload: dict,
                 from storage import read as _storage_read
                 from repo.uploads import by_public_id as _up_by_pid
                 from database import db as _db
-                try:
+
+                def _gid_of(pid: str) -> str:
                     with _db() as _c:
                         _u = _up_by_pid(_c, pid)
-                        _gid = _u["gokapi_id"] if _u else pid
-                    status, _h, stream = await asyncio.to_thread(
-                        _storage_read, _gid)
-                    body = stream.read(1_048_577)
-                    stream.close()
+                        return _u["gokapi_id"] if _u else pid
+
+                def _read_preview(gid: str):
+                    """Open + bounded-read + close, ALL in the worker
+                    thread — the body read is blocking I/O, never loop
+                    work. Bounded read (cap+1), stream always closed,
+                    same optional-preview / non-counting channel."""
+                    status, _h, stream = _storage_read(gid)
+                    try:
+                        return status, stream.read(1_048_577)
+                    finally:
+                        stream.close()
+                try:
+                    _gid = await asyncio.to_thread(_gid_of, pid)
+                    status, body = await asyncio.to_thread(
+                        _read_preview, _gid)
                     if status == 200 and len(body) <= 1_048_576 \
                             and _hl.sha256(body).hexdigest() not in input_digests:
                         content.append({
@@ -1761,7 +1768,7 @@ async def _delete_upload(user: dict, mid, args: dict) -> dict:
         return _iserror(mid, {
             "deleted": False, "public_id": public_id,
             "error": "invalid_id"})
-    upload = get_upload_by_public_id(public_id)
+    upload = await asyncio.to_thread(get_upload_by_public_id, public_id)
     if not upload or upload["user_id"] != user["id"]:
         # unknown OR someone else's: one shape, no existence oracle
         return _iserror(mid, {

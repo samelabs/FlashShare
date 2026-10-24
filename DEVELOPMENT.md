@@ -56,6 +56,9 @@
 - 限额：`FLASHSHARE_MAX_UPLOAD_MB`（单文件，默认 50）、`FLASHSHARE_MAX_BATCH_MB`（单次合计，默认 100）；
   `FLASHSHARE_DAILY_UPLOADS` / `FLASHSHARE_DAILY_MB`（仅用于**首次**创建 free 档的 24h 配额，默认 100 / 1024；
   free 行建成后以 plans 表为准，改 env 不覆盖）
+- 正文准入预算：`FLASHSHARE_BODY_GATE_REQUESTS`（默认 32）、`FLASHSHARE_BODY_GATE_MB`（默认 256）——
+  请求体预读前的总量准入（并发缓存请求数 × 每行 cap+1 逻辑字节预留），超预算立即 503 err_busy。
+  预算必须容纳当前表里一条最大合法请求（启动 fail-closed 校验）；调大上传/批量上限时须同步核对
 - 风控：`FLASHSHARE_REGISTER_LIMIT_PER_HOUR`（注册每 IP 每小时，默认 30）、
   `FLASHSHARE_LOGIN_LIMIT_PER_15MIN`（登录失败每 IP 每 15 分钟，默认 50）；CI 等隔离栈调高
 - `TOOL_VAULT_KEY` — secrets_vault 加密密钥（Fernet）：工具鉴权凭据与 API key 加密副本共用；
@@ -147,6 +150,33 @@ permission 的 API key（无固定默认 key），注入 `FLASHSHARE_GOKAPI_URL`
 
 **禁止**对 production DB 跑分支代码的 `init_db`；禁止测试读写 production Gokapi。
 
+## 开发环境与验看数据（8123 / fs_ui）
+
+- **固定开发环境** = `127.0.0.1:8123`（主检出直跑 venv uvicorn，env 在仓库
+  `.tmp/dev-8123.env`，日志 `.tmp/518-dev/`，跟随主检出当前分支）+ **fs_ui 开发库**
+  （env 中 `DATABASE_URL` 指向）。开发账号与既有数据长期保留；不得通过清空 fs_ui
+  或重建存储来"解决"问题。
+- **自动回归与开发数据严格分离**：`tools/ci_local.sh` 每轮自建临时库
+  （`ci_local_*`）并在结束 DROP，从不读写 fs_ui。
+- **配套存储生命周期**：8123 的 Gokapi 是 `tests/support/fake_gokapi.py`
+  （`:53898`，内存态）——它与应用进程**分离**，重载应用不连带清空开发存储；
+  但它自身重启会丢已上传文件（内存态，不是持久存储——别当持久层用）。
+- **静态文件或分支变更后重载 8123**（版本戳启动时计算）：先核对 8123/53898 进程
+  归属与配套存储，再**只重载应用进程**（kill uvicorn 后按 `.tmp/dev-8123.env`
+  重起；不动 53898），验证 `/healthz` 的 `source_sha`/`source_dirty` 与页面资源
+  `?v=` 戳已更新。不得换端口。
+- **正文工具验看（可运行）**：fs_ui 已通过运营真实发布流（POST /samelabs/tools/create）
+  提供两个 DEV 正文工具：`dev_text_echo`（text 正文 → http://127.0.0.1:8139/echo/text，
+  回 text/plain）与 `dev_json_echo`（JSON 正文 → /echo，回 application/json）——标签带
+  「DEV (8123 only)」，仅存在于 fs_ui，不进生产 seed。本地端点 `.tmp/dev-echo.py`
+  （gitignore 内；`venv/bin/python .tmp/dev-echo.py` 启动 127.0.0.1:8139）。
+  验看路径：登录 8123 → /tools 搜 "DEV echo" 或直达 /tool/dev_text_echo →
+  正文输入框输入 → Run → 结果区按 text/json 契约回显（/api/tools/execute ok）。
+  契约自证：端点若回错 Content-Type，执行链按 IO-1 返回 err_output_mismatch
+  （已实测）。不放宽任何发布/SSRF 校验（trusted 运营行本就允许 http+loopback），
+  不用测试夹具充当验看，不重新启用已移除实现的 demo_shout（僵尸行已清）。
+- 环境值与 secrets 不进仓库、不进报告。
+
 ## Run / test commands
 
 ```bash
@@ -182,10 +212,11 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ## Production deploy 概要
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
-- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。
-- 生产数据库由生产侧自行管理：部署只同步代码并重启，不创建、迁移或替换数据库。
+- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → `pip install -r requirements.txt` → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。**1.6 发布窗口**（含 `platform_tools` 三份资产 + 审计收口资产）按 `docs/plan/release_1_6_audit_closure.md` 的统一分阶段顺序执行：预检与备份恢复验证 → 停止旧服务写入 → 首启前预建索引/加列回填/终检 → 候选首启 → 补 FK、删 icon/trusted → 二次启动与部署后检查；删除 icon/trusted 后 checkout 旧 SHA 回滚不再可用（唯一回滚 = 恢复备份，owner 裁定）。
+- PostgreSQL 重启后必须重启 flashshare-api：连接池不做存活探测，重启属于维护事件。
+- 生产数据库由生产侧自行管理：部署流程不创建或替换数据库；**retired-schema 迁移在发布窗口按 `docs/plan/` 资产显式执行**（上一行第 2 步），startup/常规同步从不隐式迁移旧 schema——两条各管其事：前者管库的生死，后者管 schema 演进时机。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
-- 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
+- 回滚 = checkout 旧 SHA → 重装依赖 → restart（见第 8 步）。
 
 ## 生产部署指南
 
@@ -313,12 +344,14 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;        # 工具执行与大文件上传
-        proxy_request_buffering off;
+        # 请求体由 Nginx 完整缓冲后才交给应用：慢速客户端无法占住应用的
+        # 并发名额（应用侧另有请求体预读与准入闸门，见 app/main.py）
+        proxy_request_buffering on;
     }
 }
 ```
 
-**通过标准**：`nginx -t` 通过；上线后分享一个文件，点「下载」能拿到文件（`/f/{id}?download=1` → 302 → `/downloadFile?id=…` → 200）。
+**通过标准**：`nginx -t` 通过；`nginx -T` 中该 location 的 `proxy_request_buffering` 为 `on`；上线后分享一个文件，点「下载」能拿到文件（`/f/{id}?download=1` → 302 → `/downloadFile?id=…` → 200）。
 下载 404 = `/downloadFile` 这条 location 没配或端口不对。
 
 ### 4. systemd 单元 `flashshare-api`
@@ -348,10 +381,12 @@ WantedBy=multi-user.target
 1. `/etc/flashshare.env` 按上文「Environment variables」补齐必填项；`TOOL_VAULT_KEY` 必配
    （生成：`venv/bin/python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`）；
    `FLASHSHARE_SESSION_SECRET` 用新的随机长串。
-2. `DATABASE_URL` 指向生产侧管理的库（`postgresql+psycopg://…`）；部署不创建、迁移或替换数据库，两套代码不连同一个库。
+2. `DATABASE_URL` 指向生产侧管理的库（`postgresql+psycopg://…`）；部署不创建或替换数据库（retired-schema 迁移仅在发布窗口显式执行），两套代码不连同一个库。
 3. 暂不开放充值时，不配置任何 `CREEM_*`；X 登录按「Environment variables」一节配置或整组不配。
 
 ### 6. 上线
+
+任一步失败**即停**（不 start、不 smoke，按第 8 步处理）；依赖安装或 `pip check` 失败时不得启动服务。
 
 ```bash
 cd /opt/flashshare
@@ -359,6 +394,9 @@ git fetch origin && git status --short          # 必须无未提交改动
 git rev-parse HEAD > /root/flashshare.prev_sha  # 记录回滚点
 systemctl stop flashshare-api
 git merge --ff-only origin/main
+/opt/flashshare/venv/bin/pip install -r requirements.txt \
+  && /opt/flashshare/venv/bin/pip check \
+  || { echo 'DEPENDENCY SYNC FAILED — not starting'; exit 1; }
 systemctl start flashshare-api
 journalctl -u flashshare-api -n 50 --no-pager
 curl -s https://518.plus/healthz
@@ -384,7 +422,17 @@ curl -s https://518.plus/healthz
 
 ### 8. 回滚
 
-第 6–7 步任一失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → `systemctl start flashshare-api` → 报告现象与日志。不做临时修补。
+第 6–7 步任一步失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → 重装旧版依赖 → 启动，然后报告现象与日志。不做临时修补。
+
+```bash
+/opt/flashshare/venv/bin/pip install -r requirements.txt \
+  && /opt/flashshare/venv/bin/pip check \
+  || { echo 'ROLLBACK DEPENDENCY RESTORE FAILED'; exit 1; }
+systemctl start flashshare-api
+```
+
+
+**边界**：`docs/plan/` 的 release migration 一旦删除了旧代码仍读/写的列（1.6 窗口的 `platform_tools.icon`/`trusted`，见该窗口主顺序资产阶段 ⑤），`checkout 旧 SHA + restart` 不再可用——旧代码必然 UndefinedColumn；此后唯一回滚手段是从发布窗口开始前已验证可恢复的备份恢复数据库，是否执行由 owner 裁定。仅加列/建索引的迁移不关闭旧 SHA 回滚路径。
 
 ## Production backup（scripts/）
 

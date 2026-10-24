@@ -110,7 +110,17 @@ def parse_invocation(raw):
     p, E = _PARSER
     try:
         inv = p(raw)
-        return 'OK:' + json.dumps(inv.to_json()), ''
+        canonical = {
+            "tool_id": inv.tool_id,
+            "source": ({"body": inv.body} if inv.has_body()
+                       else {"files": [{"public_id": f.public_id,
+                                        "source_token": f.source_token}
+                                       for f in inv.files]}),
+            "params": dict(inv.params),
+            "delivery": dict(inv.delivery),
+            "client_ref": inv.client_ref,
+        }
+        return 'OK:' + json.dumps(canonical), ''
     except E as e:
         return 'BAD:' + str(e), ''
 
@@ -133,7 +143,7 @@ inv = parse_ok(GOOD)
 check("A0 canonical PASS", inv and inv["tool_id"] == "compress" and len(inv["source"]["files"]) == 1
       and inv["params"] == {"preset": "2mb"} and inv["delivery"] == {"expiry_days": 7, "allowed_downloads": 200}
       and inv["client_ref"] == "my-job-123")
-check("A0b to_json round-trip", parse_ok(inv) == inv)
+check("A0b canonical re-parse round-trip", parse_ok(inv) == inv)
 
 bad_cases = [
     ("raw=[]", []),

@@ -10,7 +10,8 @@ import json
 import logging
 
 from database import db
-from economy.billing import InsufficientCredits, consume, refund, spendable_balance
+from economy.billing import (EARN_POOL_KINDS, InsufficientCredits, consume,
+                             refund, spendable_balance)
 from repo import ledger as ledger_repo
 from repo.ledger import (claim_call, finalize_call_failed, finalize_call_ok,
                          insert_provider_earn_if_absent)
@@ -217,7 +218,8 @@ def _finish(user: dict, tool: dict, call_id: int, cost: int,
                 # payer) — the SAME cash-pool anchor withdrawal
                 # request/approve use, so a concurrent withdrawal cannot
                 # interleave between the pool read and the earning write.
-                base = ledger_repo.earn_pool_balance(con, owner_id)
+                base = ledger_repo.pool_running_balance(
+                    con, owner_id, EARN_POOL_KINDS)
                 insert_provider_earn_if_absent(
                     con, owner_id, payout_millis, base + payout_millis, call_id,
                     f"payout:{call_id}", f"{tool['id']} payout", now())
@@ -306,35 +308,105 @@ def resolve_success_outcome(call_id: int) -> dict:
     return {"outcome": OUTCOME_DURABLE_SUCCESS, "result": durable_result}
 
 
-async def run(user: dict, tool: dict, invocation, orchestrate):
-    """Claim → charge → execute → finalize; failures finalize + refund."""
-    from . import ExecutionError
-
+def _run_enter(user, tool, invocation, oauth_client_id):
+    """Sync enter block (runs on the default executor): quote → antibuse →
+    claim transaction → replay/conflict branches → consume. Early exits
+    return (payload, err_body, status); reaching the end returns
+    ("GO", call_id, charge, rate_snapshot, cost). The backpressure slots
+    are acquired by the async caller BEFORE this runs and released in its
+    finally — an early exit here can never leak them."""
     tool_id = invocation.tool_id
     params = invocation.params
-
-    # Single effective-quote snapshot: enabled + cost both come from one
-    # effective_quote() read (listed price × self-owned free, the shared
-    # combination point with the advisory preflight). A gate invocation
-    # reads the pricing table exactly once.
+    client_ref = invocation.client_ref
     from execution.affordability import effective_quote
     quote = effective_quote(user["id"], tool)
     if not quote["enabled"]:
         return None, {"ok": False, "error": "tool_disabled"}, 403
     cost = quote["cost"]
 
-    client_ref = invocation.client_ref
-
     from economy.antibuse import gate_ref_throttled
     if gate_ref_throttled(user["id"]):
         return None, {"ok": False, "error": "err_rate_limited"}, 429
     started = now()
 
-    # Execution backpressure BEFORE the claim (no tool_call row, no
-    # charge). Local: worker-pool in-flight cap. Remote (http): global +
-    # per-user in-flight caps — a slow third-party endpoint must never
-    # eat the whole request budget (the remote global cap sits below the
-    # app-level heavy-path gate, so other surfaces always retain slots).
+    from execution.invocation import invocation_fingerprint
+    invocation_hash = invocation_fingerprint(invocation)
+
+    third_party_metered = (cost > 0
+                           and tool.get("owner_id") is not None
+                           and tool["owner_id"] != user["id"])
+    with db() as con:
+        rate_snapshot = commission_rate(con=con)
+        if rate_snapshot is None:
+            if third_party_metered:
+                return None, \
+                    {"ok": False, "error": "err_commission_unconfigured"}, 503
+            rate_snapshot = 0
+        anchor, claimed = claim_call(
+            con, client_ref, user["id"], tool["id"], cost,
+            json.dumps(params, ensure_ascii=False), started,
+            commission_rate_snapshot=rate_snapshot,
+            invocation_hash=invocation_hash,
+            oauth_client_id=oauth_client_id)
+
+    if not claimed:
+        anchor_hash = anchor.get("invocation_hash")
+        if anchor_hash != invocation_hash:
+            return None, {"ok": False, "error": "idempotency_conflict"}, 409
+        if anchor.get("status") == "ok" and anchor.get("result_json"):
+            try:
+                replay_result = json.loads(anchor["result_json"])
+            except Exception:
+                logger.exception("stored replay payload invalid call_id=%s",
+                                 anchor.get("id"))
+                return None, {"ok": False, "error": "err_metering_failed"}, 500
+            return ({"ok": True,
+                     "result": replay_result, "replay": True,
+                     "call_id": anchor["id"],
+                     "cost": anchor.get("cost_snapshot", 0)}, None, None)
+        return None, {"ok": False, "error": "err_call_in_progress"}, 409
+
+    call_id = int(anchor["id"])
+    rate_snapshot = anchor["commission_rate_snapshot"]
+    charge = None
+    if cost > 0:
+        try:
+            charge = consume(
+                user["id"], cost, "consume",
+                ref_type="tool_call", ref_id=str(call_id),
+                idem_key=f"call:{call_id}", note=tool_id)
+        except InsufficientCredits as exc:
+            _record_failure(call_id, f"balance:{exc.balance}",
+                            status="insufficient")
+            return (None,
+                    {"ok": False, "error": "err_insufficient_credits",
+                     "balance": exc.balance, "cost": exc.cost}, 402)
+        except Exception:
+            logger.exception("consume failed call_id=%s", call_id)
+            _resolve_consume_failure(user, tool_id, call_id)
+            return None, {"ok": False, "error": "err_metering_failed"}, 500
+    return ("GO", call_id, charge, rate_snapshot, cost)
+
+
+async def run(user: dict, tool: dict, invocation, orchestrate,
+              oauth_client_id: str | None = None):
+    """Claim → charge → execute → finalize; failures finalize + refund.
+    The synchronous enter and settle blocks run on the default executor —
+    no DB call blocks the event loop. The sequence (claim → consume →
+    execute → settle/refund, the recovery semantics, the single-effective-
+    quote read, idempotency and the backpressure finally) is unchanged.
+
+    Cancellation (caller disconnect): a submitted thread cannot be
+    stopped, so every durable stage is awaited to convergence —
+    await_durable/converge keep the settlement alive across the cancel.
+    A claimed+charged call is settled exactly (refund → failed) before
+    the cancel propagates; an already-durable success stands (replay
+    returns it later, never refunded, never deleted). The backpressure
+    slots are released only after the real work and its settlement have
+    ended."""
+    from . import ExecutionError
+    import asyncio
+    from .durable import spawn, await_durable, converge
     from .pool import (try_acquire as _pool_acquire,
                        release as _pool_release,
                        inflight_count as _pool_inflight,
@@ -343,6 +415,7 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
                        remote_release as _remote_release,
                        remote_inflight_count as _remote_inflight,
                        REMOTE_MAX_INFLIGHT as _REMOTE_CAP)
+
     local_slot = False
     remote_slot = False
     if tool.get("execution") == "local":
@@ -362,152 +435,150 @@ async def run(user: dict, tool: dict, invocation, orchestrate):
         remote_slot = True
 
     try:
+        enter, cancelled = await await_durable(spawn(
+            _run_enter, user, tool, invocation, oauth_client_id))
+        if cancelled:
+            # the enter thread converged durably; a claimed+charged call
+            # must be settled now (exact refund → failed) — recovery by
+            # restart is not the settlement path for a live cancel
+            if enter[0] == "GO":
+                _, call_id, charge, _rate, _cost = enter
+                await converge(spawn(
+                    _settle_failure, user, invocation.tool_id, call_id,
+                    charge, "cancelled"))
+            raise asyncio.CancelledError
+        if enter[0] != "GO":
+            return enter[0], enter[1], enter[2]
+        _, call_id, charge, rate_snapshot, cost = enter
+        tool_id = invocation.tool_id
 
-        # Claim before charging/executing. The DB partial unique index makes this
-        # race-safe for the same user + tool + client_ref. The commission config
-        # read and the claim INSERT share ONE transaction: the resolved rate is
-        # frozen on the row at claim time; later settings changes only affect
-        # FUTURE claims, never this attempt's settlement.
-        #
-        # commission fail-closed: a missing/illegal rate refuses the call
-        # BEFORE the claim (zero charge, zero attempt) for third-party metered
-        # tools — a payout split must never be settled on a guessed rate. System
-        # tools (platform direct sales) and free/self-owned calls never read the
-        # rate for settlement and run normally; their snapshot column is still
-        # NOT NULL for running rows, so 0 (no commission) is frozen.
-        from execution.invocation import invocation_fingerprint
-        invocation_hash = invocation_fingerprint(invocation)
-
-        third_party_metered = (cost > 0
-                               and tool.get("owner_id") is not None
-                               and tool["owner_id"] != user["id"])
-        with db() as con:
-            rate_snapshot = commission_rate(con=con)
-            if rate_snapshot is None:
-                if third_party_metered:
-                    return None, \
-                        {"ok": False, "error": "err_commission_unconfigured"}, 503
-                rate_snapshot = 0
-            anchor, claimed = claim_call(
-                con, client_ref, user["id"], tool["id"], cost,
-                json.dumps(params, ensure_ascii=False), started,
-                commission_rate_snapshot=rate_snapshot,
-                invocation_hash=invocation_hash)
-
-        if not claimed:
-            # The ref is bound to ONE canonical operation. A different
-            # fingerprint (or a NULL-hash historical row that cannot prove
-            # anything) is a conflict — ZERO charge, ZERO execution; the
-            # caller must use a new client_ref for different content.
-            anchor_hash = anchor.get("invocation_hash")
-            if anchor_hash != invocation_hash:
-                return None, {"ok": False, "error": "idempotency_conflict"}, 409
-            if anchor.get("status") == "ok" and anchor.get("result_json"):
-                try:
-                    replay_result = json.loads(anchor["result_json"])
-                except Exception:
-                    logger.exception("stored replay payload invalid call_id=%s",
-                                     anchor.get("id"))
-                    return None, {"ok": False, "error": "err_metering_failed"}, 500
-                return ({"ok": True,
-                         "result": replay_result, "replay": True,
-                         "call_id": anchor["id"],
-                         "cost": anchor.get("cost_snapshot", 0)}, None, None)
-            # A concurrent request already owns this logical invocation. Do not run
-            # the tool twice; caller can retry the same ref and receive the result.
-            return None, {"ok": False, "error": "err_call_in_progress"}, 409
-
-        call_id = int(anchor["id"])
-        # snapshot authority = the PERSISTED attempt fact, not the stack value
-        # (a claimed=True row always carries its own claim-time snapshot; the
-        # runtime variable above only fed the INSERT)
-        rate_snapshot = anchor["commission_rate_snapshot"]
-        charge = None
-        if cost > 0:
-            try:
-                charge = consume(
-                    user["id"], cost, "consume",
-                    ref_type="tool_call", ref_id=str(call_id),
-                    idem_key=f"call:{call_id}", note=tool_id)
-            except InsufficientCredits as exc:
-                _record_failure(call_id, f"balance:{exc.balance}",
-                                status="insufficient")
-                return (None,
-                        {"ok": False, "error": "err_insufficient_credits",
-                         "balance": exc.balance, "cost": exc.cost}, 402)
-            except Exception:
-                # Any other consume failure: the charge commit outcome is not
-                # known from the exception (it may have landed before an ACK
-                # loss). Resolve the claim from the durable consume fact —
-                # never leave it running for the next retry to hit
-                # err_call_in_progress until a restart.
-                logger.exception("consume failed call_id=%s", call_id)
-                _resolve_consume_failure(user, tool_id, call_id)
-                return None, {"ok": False, "error": "err_metering_failed"}, 500
-
+        # The WHOLE execution (worker process / remote HTTP + every
+        # output staging write) runs as one tracked task. Started real
+        # work cannot be dropped: on cancellation the task is converged —
+        # bounded by the existing local-execution/remote timeouts, which
+        # stay in force inside it — and only then is the settlement
+        # derived from the work's actual outcome (success → durable ok;
+        # failure → exact refund). This also carries an output write
+        # that already landed but has not returned: its object identity
+        # stays inside the converged task, never an orphan.
+        orch = asyncio.ensure_future(orchestrate())
+        exec_cancelled = False
+        result = None
+        failure = None          # ExecutionError, or the string "tool_failed"
         try:
-            result = await orchestrate()
+            result = await asyncio.shield(orch)
+        except asyncio.CancelledError:
+            exec_cancelled = True
+            try:
+                result = await converge(orch)
+            except ExecutionError as exc:
+                failure = exc
+            except Exception:
+                logger.exception("tool execution failed call_id=%s", call_id)
+                failure = "tool_failed"
         except ExecutionError as exc:
-            # Durable settlement: refund the exact charge before finalizing; if
-            # either leg fails the row stays running (recovery settles it) and
-            # the client must not be told the economy is closed. Refund failure
-            # (err_metering_failed / 500) outranks the original error status
-            # (e.g. a provider 502) — the economy fact wins.
-            if _settle_failure(user, tool_id, call_id, charge, exc.code):
-                body = {"ok": False, "error": exc.code, "call_id": call_id}
-                if exc.detail:
-                    body["detail"] = exc.detail[:4096]
-                return None, body, exc.http_status
-            return None, {"ok": False, "error": "err_metering_failed",
-                          "call_id": call_id}, 500
+            failure = exc
         except Exception:
             logger.exception("tool execution failed call_id=%s", call_id)
-            if _settle_failure(user, tool_id, call_id, charge, "tool_failed"):
-                return None, {"ok": False, "error": "tool_failed",
-                              "call_id": call_id}, 500
+            failure = "tool_failed"
+
+        if failure is not None:
+            if isinstance(failure, str):
+                code = "tool_failed"
+                body = {"ok": False, "error": code, "call_id": call_id}
+                status = 500
+            else:
+                code = failure.code
+                body = {"ok": False, "error": failure.code,
+                        "call_id": call_id}
+                if failure.detail:
+                    body["detail"] = failure.detail[:4096]
+                status = failure.http_status
+            settled, scancel = await await_durable(spawn(
+                _settle_failure, user, tool_id, call_id, charge, code))
+            if scancel or exec_cancelled:
+                raise asyncio.CancelledError
+            if settled:
+                return None, body, status
             return None, {"ok": False, "error": "err_metering_failed",
                           "call_id": call_id}, 500
 
+        # the success settlement transaction is durable work: converge it
+        # across a cancel — its durable outcome stands either way
+        finish_cancelled = False
         try:
-            return _finish(user, tool, call_id, cost, result,
-                           rate_snapshot, invocation.delivery), None, None
+            finish_task = spawn(
+                _finish, user, tool, call_id, cost, result,
+                rate_snapshot, invocation.delivery)
+            try:
+                out = await asyncio.shield(finish_task)
+            except asyncio.CancelledError:
+                # record the intent BEFORE converging: converge may raise
+                # the finish task's own exception straight into the
+                # reconciliation below — the pending cancel must survive
+                # that handoff and propagate once obligations are settled
+                finish_cancelled = True
+                await converge(finish_task)
+                raise
+            if exec_cancelled:
+                raise asyncio.CancelledError
+            return out, None, None
         except Exception:
-            # The settlement transaction MAY have committed despite the
-            # exception (lost ACK) — never guess. Reconcile the durable fact
-            # first; only a provably-non-durable outcome may be cleaned up.
             logger.exception("metering finalize failed call_id=%s", call_id)
-            outcome = resolve_success_outcome(call_id)
+            # Reconciliation is itself a durable obligation: the verified
+            # outcome is processed IN FULL — durable success kept (never
+            # refunded, never deleted), proven rollback cleaned + exactly
+            # refunded + failed, unresolved left to the existing recovery
+            # rules — and only then may a pending cancellation propagate.
+            outcome, rcancel = await await_durable(spawn(
+                resolve_success_outcome, call_id))
+            cancel_now = rcancel or exec_cancelled or finish_cancelled
+
+            def _cancel_pending() -> bool:
+                # Intent decoupled from HOW each durable await resolved:
+                # every cancel observed at any await of THIS task stays
+                # counted on the task until the error actually
+                # propagates (nothing here calls uncancel), so the flag
+                # survives even when an underlying task raises and the
+                # await_durable result tuple never comes back.
+                return asyncio.current_task().cancelling() > 0
             if outcome["outcome"] == OUTCOME_DURABLE_SUCCESS:
-                # settlement IS durable: report the stored success, no refund,
-                # no staged delete, no duplicate earning (already committed).
                 out = {"ok": True, "result": outcome["result"],
                        "call_id": call_id, "replay": True,
                        "cost": cost}
                 if cost > 0:
                     try:
-                        out["balance"] = spendable_balance(user["id"])
+                        balance, bcancel = await await_durable(spawn(
+                            spendable_balance, user["id"]))
+                        out["balance"] = balance
+                        cancel_now = cancel_now or bcancel
+                    except asyncio.CancelledError:
+                        raise
                     except Exception:
                         logger.exception("balance fetch failed for UI chip")
+                if cancel_now or _cancel_pending():
+                    raise asyncio.CancelledError
                 return out, None, None
             if outcome["outcome"] == OUTCOME_PROVEN_ROLLBACK:
-                # ONLY a still-running row proves the settlement never became
-                # durable: staged physical cleanup (best effort — the staged
-                # object belongs to THIS attempt), then the existing failure
-                # settlement (exact refund → terminal failed).
                 from storage import delete as storage_delete
                 for f in result.files:
                     try:
-                        storage_delete(f.gokapi_id)
+                        _, dcancel = await await_durable(spawn(
+                            storage_delete, f.gokapi_id))
+                        cancel_now = cancel_now or dcancel
                     except Exception:
                         logger.warning("staged result cleanup failed call_id=%s"
                                        " gokapi=%s", call_id, f.gokapi_id)
-                if _settle_failure(user, tool_id, call_id, charge,
-                                   "metering_failed"):
-                    return None, {"ok": False, "error": "err_metering_failed"}, 500
+                settled, scancel = await await_durable(spawn(
+                    _settle_failure, user, tool_id, call_id, charge,
+                    "metering_failed"))
+                if scancel or cancel_now or _cancel_pending():
+                    raise asyncio.CancelledError
                 return None, {"ok": False, "error": "err_metering_failed"}, 500
-            # UNRESOLVED (missing row / unreadable DB / terminal status /
-            # durable-ok with corrupted payload): no refund, no finalize, no
-            # staged delete — the call keeps its durable state for recovery.
+            # UNRESOLVED: the row keeps its durable state; the existing
+            # recovery rules own it — a pending cancel may propagate now
+            if cancel_now or _cancel_pending():
+                raise asyncio.CancelledError
             return None, {"ok": False, "error": "err_metering_failed"}, 500
     finally:
         if local_slot:

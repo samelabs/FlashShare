@@ -1,18 +1,7 @@
-const _pw = document.getElementById('regPassword');
-const _pwc = document.getElementById('regPasswordConfirm');
-const _hint = document.getElementById('pwMismatch');
-const _form = document.getElementById('registerForm');
-function checkPw() {
-  if (_pwc.value && _pw.value !== _pwc.value) {
-    _hint.hidden = false;
-    _pwc.setCustomValidity(window._msg ? _msg('err_password_mismatch') : 'x');
-  } else {
-    _hint.hidden = true;
-    _pwc.setCustomValidity('');
-  }
-}
-_pw.addEventListener('input', checkPw);
-_pwc.addEventListener('input', checkPw);
-_form.addEventListener('submit', function(e) {
-  if (_pw.value !== _pwc.value) { e.preventDefault(); _hint.hidden = false; }
-});
+// 注册页密码不一致提示：表单内容来自 auth/_card.html 单源（无 id），
+// 行为与浮层共用 window.bindPwMismatch（auth-modal.js 提供，全站加载）。
+(function () {
+  "use strict";
+  const form = document.querySelector("form.auth-form[action='/auth/register']");
+  if (form && window.bindPwMismatch) window.bindPwMismatch(form);
+})();

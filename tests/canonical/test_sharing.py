@@ -681,7 +681,10 @@ from governance.delivery import (validate_delivery, EXPIRY_DAYS,
                                  DOWNLOAD_LIMITS, INTERMEDIATE_TTL_DAYS,
                                  INTERMEDIATE_DOWNLOAD_LIMIT)
 from economy.subscription import plan_of
-from sharing.uploads import reserve_ingress, release_ingress, check_quota
+from sharing.uploads import check_quota
+from sharing.ingress_receipt import (claim_ingress_quota,
+                                     settle_failure,
+                                     IngressQuotaDenied)
 from repo import upload_usage as usage_repo
 from database import db
 
@@ -770,6 +773,21 @@ check("R5 resolver 不 import creem/orders/payment 内部",
 check("R6 resolver 只经 economy.subscription.plan_of 取会员事实",
       "plan_of" in src and "user_plans" not in src)
 
+_claim_seq = [0]
+
+
+def _claim(uid, sizes, ip="203.0.113.9"):
+    """Drive the production claim path (claim_ingress_quota): returns
+    (granted, denial, receipt_tuple)."""
+    _claim_seq[0] += 1
+    try:
+        receipt, usage_ids, _replay = claim_ingress_quota(
+            uid, ip, f"qt-{uid}-{_claim_seq[0]}", "a" * 64, sizes)
+        return True, None, (receipt, usage_ids)
+    except IngressQuotaDenied as exc:
+        return False, exc.denial, None
+
+
 # ═══ 2. Free quota 边界 + 结构化 denial contract ═══
 ip = "203.0.113.9"
 FLIM = FREE["ingress_files_24h"]; BLIM = FREE["ingress_bytes_24h"]
@@ -778,7 +796,7 @@ FLIM = FREE["ingress_files_24h"]; BLIM = FREE["ingress_bytes_24h"]
 _clear_usage(id_f)
 with db() as c:
     usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 2), int(time.time()))
-ok, r, _ = reserve_ingress(id_f, ip, [1] * 3)
+ok, r, _c3 = _claim(id_f, [1] * 3)
 check("F3 Free files denial 精确结构 {error,limit,used,incoming,remaining,plan_code}",
       (not ok) and r == {"error": "err_ingress_files_24h", "limit": FLIM,
                          "used": FLIM - 2, "incoming": 3, "remaining": 2,
@@ -790,7 +808,7 @@ check("F3b incoming 不截断为 remaining (3 > 2 仍报 3)",
 _clear_usage(id_f)
 with db() as c:
     usage_repo.insert_many(c, id_f, ip, [BLIM - 100], int(time.time()))
-ok, r, _ = reserve_ingress(id_f, ip, [101])
+ok, r, _ = _claim(id_f, [101])
 check("F5 Free bytes denial 精确结构",
       (not ok) and r == {"error": "err_ingress_bytes_24h", "limit": BLIM,
                          "used": BLIM - 100, "incoming": 101,
@@ -798,12 +816,12 @@ check("F5 Free bytes denial 精确结构",
 
 # 边界通过性 (既有行为不回归)
 _clear_usage(id_f)
-ok, r, _ = reserve_ingress(id_f, ip, [1] * (FLIM - 1))
+ok, r, _ = _claim(id_f, [1] * (FLIM - 1))
 check("F1 Free limit-1 files 通过", ok)
-ok, r, _ = reserve_ingress(id_f, ip, [1])
+ok, r, _ = _claim(id_f, [1])
 check("F2 Free 第 limit 个通过", ok)
 _clear_usage(id_f)
-ok, r, _ = reserve_ingress(id_f, ip, [BLIM])
+ok, r, _ = _claim(id_f, [BLIM])
 check("F4 Free 恰 bytes-limit 通过", ok)
 
 # ═══ 3. PLUS quota 边界 (结构值来自 effective entitlement, 非 Free 常量) ═══
@@ -811,7 +829,7 @@ PLIM = _PLANS["plus"]["ingress_files_24h"]; PBLIM = _PLANS["plus"]["ingress_byte
 _clear_usage(id_p)
 with db() as c:
     usage_repo.insert_many(c, id_p, ip, [1] * (PLIM - 2), int(time.time()))
-ok, r, _ = reserve_ingress(id_p, ip, [1] * 3)
+ok, r, _ = _claim(id_p, [1] * 3)
 check("P3 PLUS files denial: plan_code=plus, limit=500 (effective entitlement)",
       (not ok) and r["error"] == "err_ingress_files_24h" and r["plan_code"] == "plus"
       and r["limit"] == 500 and r["used"] == 498 and r["incoming"] == 3
@@ -819,18 +837,18 @@ check("P3 PLUS files denial: plan_code=plus, limit=500 (effective entitlement)",
 _clear_usage(id_p)
 with db() as c:
     usage_repo.insert_many(c, id_p, ip, [PBLIM - 50], int(time.time()))
-ok, r, _ = reserve_ingress(id_p, ip, [51])
+ok, r, _ = _claim(id_p, [51])
 check("P5 PLUS bytes denial: limit=5GiB, plan_code=plus",
       (not ok) and r["error"] == "err_ingress_bytes_24h"
       and r["limit"] == PLUS_BYTES and r["plan_code"] == "plus"
       and r["remaining"] == 50, str(r))
 _clear_usage(id_p)
-ok, r, _ = reserve_ingress(id_p, ip, [1] * (PLIM - 1))
+ok, r, _ = _claim(id_p, [1] * (PLIM - 1))
 check("P1 PLUS limit-1 files 通过", ok)
-ok, r, _ = reserve_ingress(id_p, ip, [1])
+ok, r, _ = _claim(id_p, [1])
 check("P2 PLUS 第 500 个通过", ok)
 _clear_usage(id_p)
-ok, r, _ = reserve_ingress(id_p, ip, [PLUS_BYTES])
+ok, r, _ = _claim(id_p, [PLUS_BYTES])
 check("P4 PLUS 恰 5 GiB 通过", ok)
 
 # check/reserve 同义: 同 snapshot + incoming → denial 字段完全一致
@@ -838,15 +856,15 @@ _clear_usage(id_f)
 with db() as c:
     usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 2), int(time.time()))
 ok1, d1 = check_quota(id_f, ip, 1, incoming_count=3)
-ok2, d2, _ = reserve_ingress(id_f, ip, [1] * 3)
-check("Q1 check_quota denial == reserve_ingress denial (逐字段)",
+ok2, d2, _ = _claim(id_f, [1] * 3)
+check("Q1 check_quota denial == claim_ingress_quota denial (逐字段)",
       (not ok1) and (not ok2) and d1 == d2, f"check={d1} reserve={d2}")
 
 # ═══ 4. IP 不参与 quota ═══
 u_i2, id_i2 = _new_user("enti")
 _clear_usage(id_f); _clear_usage(id_i2)
-ok1, _, _ = reserve_ingress(id_f, "198.51.100.7", [1] * FLIM)
-ok2, _, _ = reserve_ingress(id_i2, "198.51.100.7", [1])
+ok1, _, _ = _claim(id_f, [1] * FLIM, ip="198.51.100.7")
+ok2, _, _ = _claim(id_i2, [1], ip="198.51.100.7")
 check("I1 同 IP 两用户 usage 相互独立 (Free 满, 另一用户第1个仍过)", ok1 and ok2)
 
 # 测试自身不把 ip_usage_count 当 quota 依据 (静态守卫: 本文件零调用)
@@ -861,7 +879,7 @@ with db() as c:
     usage_repo.insert_many(c, id_f, ip, [1] * (FLIM - 1), int(time.time()))
 results = []
 def _race():
-    okx, rx, _ = reserve_ingress(id_f, ip, [1])
+    okx, rx, _ = _claim(id_f, [1])
     results.append((okx, rx))
 t1 = threading.Thread(target=_race); t2 = threading.Thread(target=_race)
 t1.start(); t2.start(); t1.join(); t2.join()
@@ -873,13 +891,14 @@ check("S1b 失败线程收到 structured quota denial",
       and "limit" in _s1_denials[0] and "remaining" in _s1_denials[0], str(_s1_denials))
 
 _clear_usage(id_f)
-ok, r, res = reserve_ingress(id_f, ip, [1] * 10)
-release_ingress(id_f, res)
-ok2, r2, _ = reserve_ingress(id_f, ip, [1] * FLIM)
-check("S2 release_ingress 恢复失败 reservation", ok and ok2 and r2 is None)
+ok, r, _res10 = _claim(id_f, [1] * 10)
+_receipt10, _usage10 = _res10
+settle_failure(int(_receipt10["id"]), _usage10, id_f)   # failure settlement
+ok2, r2, _ = _claim(id_f, [1] * FLIM)
+check("S2 failure settlement 恢复失败的 claim 配额", ok and ok2 and r2 is None)
 
 _clear_usage(id_f)
-ok, r, res = reserve_ingress(id_f, ip, [1] * 5)
+ok, r, _res5 = _claim(id_f, [1] * 5)
 _cur.execute("delete from uploads where user_id=%s", (id_f,))  # 普通 upload 删除
 _cur.execute("select count(*) from upload_usage where user_id=%s", (id_f,))
 left = _cur.fetchone()[0]
@@ -891,14 +910,16 @@ _pipe_src = ""  # execution/pipeline.py deleted (FX-2 dead module)
 _api = open(_os.path.join(REPO, "app", "routes", "api.py"), encoding="utf-8").read()
 _staging = open(_os.path.join(REPO, "core", "sharing", "staging.py"),
                 encoding="utf-8").read()
-# the coherence pass: the dead upload_sources pipeline (the sole reserve_ingress
-# caller) is deleted — quota accounting rides ingress receipts only, claimed
-# in ONE place: the P4 staging single point (api/mcp/ticket routes delegate).
-check("S4 quota 入口收敛: receipts 唯一 (零直接 reserve, 暂存单点 claim)",
-      _pipe_src.count("reserve_ingress(") == 0 and _api.count("reserve_ingress(") == 0
+_ups_src = open(_os.path.join(REPO, "core", "sharing", "uploads.py"),
+                encoding="utf-8").read()
+# the coherence pass: the historical direct-reserve helper is gone —
+# quota accounting rides ingress receipts only, claimed in ONE place:
+# the P4 staging single point (api/mcp/ticket routes delegate).
+check("S4 quota 入口收敛: receipts 唯一 (共享层零直接 claim helper, 暂存单点 claim)",
+      _ups_src.count("def reserve_" + "ingress") == 0
       and _api.count("stage_sources(") >= 1
-      and _staging.count("claim_ingress_quota(") >= 1,
-      f"pipe={_pipe_src.count('reserve_ingress(')} api={_api.count('reserve_ingress(')}")
+      and _staging.count("claim_ingress_quota") >= 1,
+      f"ups={_ups_src.count('def reserve_' + 'ingress')}")
 # 引用既有 the canonical-invocation unification E2E: tests/canonical/test_invocation.py 全链 (upload→execute→output)
 # 已证明一次调用 usage 不翻倍; 本文件不重复造 E2E。
 
@@ -1591,12 +1612,17 @@ _mcp_up = _mcp_src.split("_ingest_sources(")[1].split("raw = {")[0] if "_ingest_
 check("G12 MCP upload 区保留 boundary/quota 专门分支 + 回滚分支",
       "IngressQuotaDenied" in _mcp_src and "_iserror(" in _mcp_up
       and "_StagingError" in _mcp_up, "")
-# G13: Web transport early-reject 与 authoritative validate_batch 输出同构
-# (ok/error/limit/incoming 四键; incoming=declared transport bytes)
-_er = _apir.split("Transport safety only")[1].split("pending = []")[0] if "Transport safety only" in _apir else ""
-check("G13 Web early-reject 结构完整 {ok,error,limit,incoming} 且不早于 validate_batch 定义第二算法",
-      '"error": "err_batch_too_large"' in _er and '"limit": MAX_BATCH_BYTES' in _er
-      and '"incoming": declared' in _er and "MAX_BATCH_BYTES +" in _er
+# G13: the over-cap upload answer lives ONCE in the middleware body
+# table (same {ok,error,limit,incoming} shape; incoming=declared
+# transport bytes); the route keeps only the authoritative
+# validate_batch algorithm — no second transport gate there.
+_mainr = open(_os.path.join(REPO, "app", "main.py"), encoding="utf-8").read()
+check("G13 over-cap upload answer 单点于中间件表 {ok,error,limit,incoming}; 路由只留 validate_batch",
+      '"error": "err_batch_too_large"' in _mainr
+      and '"limit": MAX_BATCH_BYTES' in _mainr
+      and '"incoming": incoming' in _mainr
+      and "MAX_BATCH_BYTES + _MiB" in _mainr
+      and "err_batch_too_large" not in _apir
       and "validate_batch" in _apir)
 _ups = open(_os.path.join(REPO, "core", "sharing", "uploads.py"), encoding="utf-8").read()
 check("G14 sharing/uploads.py 是 quota denial 唯一构造点 (_quota_denial 单点)",
@@ -3354,6 +3380,314 @@ finally:
     _rm_g3._pinned_request = _orig_pin_g3
     _rm_g3._resolve_host = _orig_res_g3
     _dx_mod.dispatch_execute = _orig_dx_g3
+
+
+# ══════════ P5: 取消窗口 — claim / 暂存写 / finalize 线程提交后取消,
+# 不得丢 receipt、配额或暂存对象的收尾义务。受控交错 (Events 锚定
+# 线程内时刻), 断言持久事实 (receipt 状态 / usage / gokapi 对象数)。
+# ══════════
+import threading as _thr_p5
+import sharing.ingress_receipt as _irmod_p5
+
+section('staging cancellation: receipt/quota/object obligations survive')
+
+uidP5 = _mkuser(_u + "p5cx")
+
+
+def _p5_hash(tag):
+    return ingress_request_hash(
+        "mcp_upload_ticket",
+        [{"filename": f"{tag}.png", "content_type": "image/png",
+          "size": len(PNG_idm), "sha256": hashlib.sha256(PNG_idm).hexdigest()}], {})
+
+
+def _receipt_row(ref):
+    with db() as con:
+        return con.execute(
+            "select status from ingress_requests where user_id=%s and"
+            " request_ref=%s", (uidP5, ref)).fetchone()
+
+
+async def _cancel_after_entered(make_task, entered, release):
+    """Shared driver: run make_task(), wait until the worker is parked
+    inside the patched durable step, cancel, release concurrently, await."""
+    task = _aio.ensure_future(make_task())
+    if not await _aio.to_thread(entered.wait, 3):
+        raise RuntimeError("p5: injected step never ran")
+    task.cancel()
+    _thr_p5.Timer(0.05, release.set).start()
+    try:
+        await task
+        return False
+    except _aio.CancelledError:
+        return True
+
+
+_gk0_p5 = _gk_count()
+
+# (a) 取消落在 claim 线程暂停中 (claim 已提交, 零暂存对象) → 精确配额
+#     释放 + receipt 落 failed, 取消随后传播。
+_entered_a, _release_a = _thr_p5.Event(), _thr_p5.Event()
+_orig_claim_p5 = _irmod_p5.claim_ingress_quota
+
+
+def _paused_claim_p5(*a, **k):
+    out = _orig_claim_p5(*a, **k)
+    _entered_a.set()
+    if not _release_a.wait(5):
+        raise RuntimeError("p5a release timeout")
+    return out
+
+
+_irmod_p5.claim_ingress_quota = _paused_claim_p5
+try:
+    _cancel_a = _aio.run(_cancel_after_entered(
+        lambda: _staging_mod.stage_sources(
+            uidP5, "127.0.0.1", f"p5claim-{_u}", "", _p5_hash("claim"),
+            [("claim.png", "image/png", PNG_idm)]),
+        _entered_a, _release_a))
+finally:
+    _irmod_p5.claim_ingress_quota = _orig_claim_p5
+_row_a = _receipt_row(f"p5claim-{_u}")
+check("P5a cancel in claim window → receipt failed, quota exactly released, nothing staged",
+      _cancel_a is True and _row_a is not None and _row_a["status"] == "failed"
+      and _usage_n(uidP5) == 0 and _gk_count() == _gk0_p5,
+      f"{_cancel_a} {_row_a and _row_a['status']} usage={_usage_n(uidP5)}"
+      f" gk={_gk_count()}/{_gk0_p5}")
+
+# (b) 取消落在暂存写线程暂停中 (对象已落 fake gokapi) → 回滚删除该
+#     对象 + 配额释放 + receipt 落 failed。
+_entered_b, _release_b = _thr_p5.Event(), _thr_p5.Event()
+_orig_write_p5 = _storage_mod.write
+
+
+def _paused_write_p5(stream, filename, ct, ed, ad, size):
+    out = _orig_write_p5(stream, filename, ct, ed, ad, size)
+    _entered_b.set()
+    if not _release_b.wait(5):
+        raise RuntimeError("p5b release timeout")
+    return out
+
+
+_storage_mod.write = _paused_write_p5
+try:
+    _cancel_b = _aio.run(_cancel_after_entered(
+        lambda: _staging_mod.stage_sources(
+            uidP5, "127.0.0.1", f"p5write-{_u}", "", _p5_hash("write"),
+            [("write.png", "image/png", PNG_idm)]),
+        _entered_b, _release_b))
+finally:
+    _storage_mod.write = _orig_write_p5
+_row_b = _receipt_row(f"p5write-{_u}")
+check("P5b cancel in staging-write window → staged object rolled back, receipt failed",
+      _cancel_b is True and _row_b is not None and _row_b["status"] == "failed"
+      and _usage_n(uidP5) == 0 and _gk_count() == _gk0_p5,
+      f"{_cancel_b} {_row_b and _row_b['status']} usage={_usage_n(uidP5)}"
+      f" gk={_gk_count()}/{_gk0_p5}")
+
+# (c) 取消落在 finalize 线程暂停中, 成功提交已在独立事务落地 →
+#     durable ok 站住 (对象保留、配额计入), 同 client_ref 重试重放。
+_entered_c, _release_c = _thr_p5.Event(), _thr_p5.Event()
+_orig_fin_p5 = _irmod_p5.finalize_ok
+
+
+def _paused_fin_p5(con, ingress_id, result):
+    with db() as own:
+        _orig_fin_p5(own, ingress_id, result)
+    _entered_c.set()
+    if not _release_c.wait(5):
+        raise RuntimeError("p5c release timeout")
+
+
+_irmod_p5.finalize_ok = _paused_fin_p5
+try:
+    _cancel_c = _aio.run(_cancel_after_entered(
+        lambda: _staging_mod.stage_sources(
+            uidP5, "127.0.0.1", f"p5fin-{_u}", "", _p5_hash("fin"),
+            [("fin.png", "image/png", PNG_idm)]),
+        _entered_c, _release_c))
+finally:
+    _irmod_p5.finalize_ok = _orig_fin_p5
+_row_c = _receipt_row(f"p5fin-{_u}")
+_gk_after_c = _gk_count()
+check("P5c cancel after durable finalize → receipt ok, object kept, quota counted",
+      _cancel_c is True and _row_c is not None and _row_c["status"] == "ok"
+      and _usage_n(uidP5) == 1 and _gk_after_c == _gk0_p5 + 1,
+      f"{_cancel_c} {_row_c and _row_c['status']} usage={_usage_n(uidP5)}"
+      f" gk={_gk_after_c}/{_gk0_p5}")
+# same client_ref retry → replay of the stored handles: no new object,
+# no second usage, same staging id
+_r_replay = _aio.run(_staging_mod.stage_sources(
+    uidP5, "127.0.0.1", f"p5fin-{_u}", "", _p5_hash("fin"),
+    [("fin.png", "image/png", PNG_idm)]))
+check("P5d same-ref retry after cancelled-durable-ok → replay (no new object/usage)",
+      isinstance(_r_replay, list) and bool(_r_replay[0].get("stagingId"))
+      and _usage_n(uidP5) == 1 and _gk_count() == _gk_after_c,
+      f"usage={_usage_n(uidP5)} gk={_gk_count()}/{_gk_after_c}")
+
+
+# ════════ RN: 文件重命名接口行为（真实 PATCH 路由）════════
+# 先红后绿: 旧代码 rename_upload_route 的函数体局部 import asyncio
+# 位于其首次使用之后, 使 asyncio 成为未赋值局部名 — 全部 PATCH 500。
+# 覆盖: 未登录 401 / 所有者改名+扩展名保留+分享页反映 / 非所有者 403。
+section('rename route: auth, ownership, extension, page reflection')
+
+import base64 as _b64_rn
+import http.client as _hc_rn
+import json as _json_rn
+
+_RN_HOST = ("127.0.0.1", int(TEST_PORT))
+
+
+def _rn_http(method, path, body=None, headers=None, cookie=None):
+    conn = _hc_rn.HTTPConnection(*_RN_HOST, timeout=30)
+    h = dict(headers or {})
+    if cookie:
+        h["Cookie"] = cookie
+    payload = None
+    if body is not None:
+        payload = body if isinstance(body, bytes) else _json_rn.dumps(body).encode()
+    conn.request(method, path, payload, h)
+    r = conn.getresponse()
+    raw = r.read()
+    conn.close()
+    try:
+        return r.status, _json_rn.loads(raw)
+    except Exception:
+        return r.status, raw.decode(errors="replace")
+
+
+def _rn_form(fields):
+    out = b""
+    for k, v in fields.items():
+        out += (f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n'
+                f'\r\n{v}\r\n').encode()
+    return out + b"--B--\r\n", "multipart/form-data; boundary=B"
+
+
+def _rn_register(name):
+    b, ct = _rn_form({"username": name, "password": "Test12345",
+                      "password_confirm": "Test12345",
+                      "email": f"{name}@t.co"})
+    _rn_http("POST", "/auth/register", b, {"Content-Type": ct})
+    b, ct = _rn_form({"login": name, "password": "Test12345"})
+    conn = _hc_rn.HTTPConnection(*_RN_HOST, timeout=30)
+    conn.request("POST", "/auth/login", b, {"Content-Type": ct})
+    r = conn.getresponse()
+    r.read()
+    ck = (r.getheader("Set-Cookie") or "").split(";")[0]
+    conn.close()
+    return ck
+
+
+def _rn_share_png(token, ref):
+    """One durable shared PNG via the share tool (inline source)."""
+    _st, d = _rn_http("POST", "/mcp", {
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "share", "arguments": {
+            "client_ref": ref, "files": [
+                {"filename": "rn-pic.png",
+                 "b64": _b64_rn.b64encode(_png()).decode()}]}}},
+        {"Content-Type": "application/json",
+         "Accept": "application/json, text/event-stream",
+         "Authorization": f"Bearer {token}"})
+    sc = (((d or {}).get("result") or {}).get("structuredContent") or {})
+    return next((i["public_id"] for i in sc.get("items", [])
+                 if i.get("kind") == "file"), "")
+
+
+# owner gets a session cookie AND an API key (the share call needs the key)
+_rn_owner = _u + "rnow"
+_rn_ck = _rn_register(_rn_owner)
+_rn_ck2 = _rn_register(_u + "rnno")
+_st, _d = _rn_http("POST", "/api/keys", {"name": "rn"},
+                   {"Content-Type": "application/json", "Cookie": _rn_ck})
+_rn_tok = (_d or {}).get("key", {}).get("key", "")
+_rn_pid = _rn_share_png(_rn_tok, f"rnshare-{_u}")
+check("RN0 fixture: one durable shared png", bool(_rn_pid), _rn_pid)
+
+# anonymous: 401 auth_required (never a silent redirect, never a 500)
+_st, _d = _rn_http("PATCH", f"/api/uploads/{_rn_pid}",
+                   {"name": "anon"},
+                   {"Content-Type": "application/json"})
+check("RN1 anonymous rename → 401 auth_required",
+      _st == 401 and (_d or {}).get("error") == "auth_required", (_st, _d))
+
+# owner: stem renamed, original extension preserved
+_st, _d = _rn_http("PATCH", f"/api/uploads/{_rn_pid}",
+                   {"name": "renamed stem"},
+                   {"Content-Type": "application/json"}, cookie=_rn_ck)
+check("RN2 owner rename → ok, extension preserved",
+      _st == 200 and (_d or {}).get("ok") is True
+      and (_d or {}).get("name") == "renamed stem.png", (_st, _d))
+
+# the share page reflects the new name
+_st, _d = _rn_http("GET", f"/f/{_rn_pid}", None,
+                   {"Accept": "application/json"})
+check("RN3 share page reflects the new name",
+      _st == 200 and (_d or {}).get("filename") == "renamed stem.png",
+      (_st, _d))
+
+# non-owner: 403 forbidden, the name stays the owner's
+_st, _d = _rn_http("PATCH", f"/api/uploads/{_rn_pid}",
+                   {"name": "hijack"},
+                   {"Content-Type": "application/json"}, cookie=_rn_ck2)
+_st2, _d2 = _rn_http("GET", f"/f/{_rn_pid}", None,
+                     {"Accept": "application/json"})
+check("RN4 non-owner rename → 403, name unchanged",
+      _st == 403 and (_d or {}).get("error") == "forbidden"
+      and (_d2 or {}).get("filename") == "renamed stem.png", (_st, _d, _d2))
+
+
+# ══════════ MCT: web upload part content_type canonicalized on landing ══════════
+# Protects: a multipart part declaring `image/png; x="1"` (parameter
+# suffix; any header-unsafe syntax likewise) stores as the bare
+# canonical image/png — uploads.content_type never carries parameter
+# junk downstream into response headers. Sample: 1 upload via the real
+# /api/uploads route; runtime <1s.
+_mct_u = _u + "mct"
+_mct_ck = _rn_register(_mct_u)
+_body_m = b""
+for _k, _v in {"tool": "share", "client_ref": f"mct-{_u}"}.items():
+    _body_m += (f'--B\r\nContent-Disposition: form-data; name="{_k}"\r\n'
+                f'\r\n{_v}\r\n').encode()
+_body_m += (b'--B\r\nContent-Disposition: form-data; name="file";'
+            b' filename="mct.png"\r\nContent-Type: image/png; x="1"\r\n'
+            b'\r\n' + _png() + b'\r\n--B--\r\n')
+_st_m, _d_m = _rn_http("POST", "/api/uploads", _body_m, {
+    "Content-Type": "multipart/form-data; boundary=B",
+    "Cookie": _mct_ck})
+_staged_m = (_d_m or {}).get("file") or {}
+check("MCT1 upload with parameter-suffixed part type → staged canonical type",
+      _st_m == 200 and (_d_m or {}).get("ok") is True
+      and _staged_m.get("contentType") == "image/png",
+      (_st_m, _staged_m.get("contentType")))
+_st_e, _d_e = _rn_http("POST", "/api/tools/execute", {
+    "tool_id": "share",
+    "source": {"files": [{
+        "public_id": _staged_m.get("stagingId"),
+        "source_token": _staged_m.get("sourceToken")}]},
+    "params": {}, "delivery": {"expiry_days": 1, "allowed_downloads": 10},
+    "client_ref": f"mcte-{_u}"},
+    {"Content-Type": "application/json", "Cookie": _mct_ck})
+_items_e = (((_d_e or {}).get("result") or {}).get("items")
+            if isinstance(_d_e, dict) else None) or []
+_pid_e = next((i.get("public_id") for i in _items_e
+               if i.get("kind") == "file"), "")
+with db() as con:
+    _row_m = con.execute(
+        "select content_type from uploads where public_id=%s",
+        (_pid_e,)).fetchone() if _pid_e else None
+check("MCT2 poisoned part type lands canonical in uploads",
+      _st_e == 200 and (_d_e or {}).get("ok") is True and _pid_e
+      and _row_m is not None and _row_m["content_type"] == "image/png"
+      and any(i.get("content_type") == "image/png" for i in _items_e),
+      (_st_e, str(_d_e)[:120],
+       dict(_row_m) if _row_m else None))
+if _pid_e:
+    _st_f, _d_f = _rn_http("GET", f"/f/{_pid_e}", None,
+                           {"Accept": "application/json"})
+    check("MCT3 /f page renders the canonical upload", _st_f == 200, _st_f)
 
 # ══════════ cleanup ══════════
 with db() as con:

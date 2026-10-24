@@ -412,7 +412,7 @@ from app.routes import v1 as _v1mod
 from starlette.requests import Request as _SReq
 import remote as _remote_mod
 
-def _sreq(path, headers, body_bytes, method="POST"):
+def _sreq(path, headers, body_bytes, method="POST", uid=None):
     raw_headers = [(k.lower().encode(), v.encode()) for k, v in headers.items()]
     scope = {"type": "http", "method": method, "path": path,
              "headers": raw_headers, "query_string": b"",
@@ -420,7 +420,15 @@ def _sreq(path, headers, body_bytes, method="POST"):
     async def receive():
         return {"type": "http.request", "body": body_bytes,
                 "more_body": False}
-    return _SReq(scope, receive)
+    req = _SReq(scope, receive)
+    if uid is not None:
+        # the middleware resolves the Bearer identity before the route;
+        # the in-process invocation attaches the resolved user directly
+        with db() as con:
+            row = con.execute("select * from users where id=%s",
+                              (uid,)).fetchone()
+        req.state.user = dict(row) if row else None
+    return req
 
 _orig_pinned_v1 = _remote_mod._pinned_request
 _orig_resolve_v1 = _remote_mod._resolve_host
@@ -444,7 +452,7 @@ try:
               {"Authorization": f"Bearer {KEY_F}",
                "Content-Type": "application/json",
                "Idempotency-Key": f"d3-{_u}"},
-              _url_body)))
+              _url_body, uid=uidF)))
     _d3 = json.loads(_r.body)
     check("D3 url source + mixed [ref, url] → ok (in-process, pinned transport replaced)",
           _r.status_code == 200 and _d3.get("ok")
@@ -474,7 +482,7 @@ try:
               {"Authorization": f"Bearer {KEY_A}",
                "Content-Type": "text/plain",
                "Idempotency-Key": f"d5-{_u}"},
-              b"drip-input")))
+              b"drip-input", uid=uidA)))
     _d5 = json.loads(_r5.body)
     check("D5 slow-drip → 400 err_endpoint_timeout",
           _r5.status_code == 400 and _d5.get("error") == "err_endpoint_timeout",

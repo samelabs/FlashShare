@@ -37,8 +37,8 @@ def main() -> None:
     file_id = info.get("Id") or ""
     check("upload returns file id", bool(file_id))
 
-    row = get_gokapi_file(file_id)
-    check("metadata round-trip", bool(row) and row.get("Name") == "ci.txt")
+    ok, row = get_gokapi_file(file_id)
+    check("metadata round-trip", ok and bool(row) and row.get("Name") == "ci.txt")
     check("initial download count is zero", int(row.get("DownloadCount", -1)) == 0)
 
     ok, rows = list_gokapi_files()
@@ -49,7 +49,7 @@ def main() -> None:
     body = stream.read()
     stream.close()
     check("internal full read succeeds", status == 200 and body == data)
-    row = get_gokapi_file(file_id)
+    _ok, row = get_gokapi_file(file_id)
     check("internal full read keeps count at 0",
           int(row.get("DownloadCount", -1)) == 0)
 
@@ -58,7 +58,7 @@ def main() -> None:
     body = stream.read()
     stream.close()
     check("internal range read succeeds (206)", status == 206 and body == data)
-    row = get_gokapi_file(file_id)
+    _ok, row = get_gokapi_file(file_id)
     check("internal range read keeps count at 0",
           int(row.get("DownloadCount", -1)) == 0)
 
@@ -75,11 +75,26 @@ def main() -> None:
     stream.close()
     check("counted download succeeds", status == 200 and body == data)
 
-    row = get_gokapi_file(file_id)
+    _ok, row = get_gokapi_file(file_id)
     check("counted download increments counter", int(row.get("DownloadCount", -1)) == 1)
 
     delete_gokapi_file(file_id)
-    check("delete removes metadata", get_gokapi_file(file_id) is None)
+    check("delete removes metadata", get_gokapi_file(file_id) == (True, None))
+
+    # ── single-file contract: confirmed absent vs unavailable ──
+    # (never raises; an unreachable storage answers (False, None) fast)
+    import time as _t
+    _saved = os.environ.get("FLASHSHARE_GOKAPI_URL")
+    os.environ["FLASHSHARE_GOKAPI_URL"] = "http://127.0.0.1:9"
+    import gokapi as _gk
+    _gk.GOKAPI_URL = "http://127.0.0.1:9"
+    _t0 = _t.monotonic()
+    _down = get_gokapi_file(file_id, timeout=2)
+    _dt = _t.monotonic() - _t0
+    os.environ["FLASHSHARE_GOKAPI_URL"] = _saved
+    _gk.GOKAPI_URL = _saved
+    check("unreachable storage → (False, None) within 2s, no raise",
+          _down == (False, None) and _dt < 2.0)
     print("PASS: gokapi adapter contract")
 
 

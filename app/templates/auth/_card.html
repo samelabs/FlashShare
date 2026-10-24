@@ -1,0 +1,63 @@
+{# ── 认证表单单源 ─────────────────────────────────────────────
+   一份卡内容供三处挂载: /auth/login、/auth/register 独立页 (embed="page",
+   真 POST 表单 + 无 JS 可提交) 与 base.html 内嵌的两个 <template>
+   (embed="modal", auth-modal.js 克隆挂载)。字段、规格、提示、条款完全
+   同源; 容器差异保留: 页面 h1/链接式模式切换, 浮层 h2/按钮式模式切换。
+   两种挂载的表单都显式声明 method="post" + action (无 JS 提交与意外
+   GET 导航双保护; 浮层加 novalidate, 校验由 JS 与服务端承载)。
+   partial 内禁 DOM id (页面与克隆不得撞 id)。#}
+{% set other = 'register' if mode == 'login' else 'login' %}
+{% if embed == 'page' %}<h1 class="auth-title" {% else %}<h2 class="auth-title" {% endif %}data-i18n="{{ 'registerTitle' if mode == 'register' else 'loginTitle' }}">{{ texts.registerTitle if mode == 'register' else texts.loginTitle }}{% if embed == 'page' %}</h1>{% else %}</h2>{% endif %}
+<p class="auth-sub" data-i18n="auth_modal_sub">{{ texts.auth_modal_sub }}</p>
+<div class="seg auth-seg">
+  {% if embed == 'page' %}
+  <a href="/auth/login?next={{ next|urlencode }}" {% if mode == 'login' %}class="on" aria-current="page"{% endif %}><span data-i18n="signIn">{{ texts.signIn }}</span></a>
+  <a href="/auth/register?next={{ next|urlencode }}" {% if mode == 'register' %}class="on" aria-current="page"{% endif %}><span data-i18n="signUp">{{ texts.signUp }}</span></a>
+  {% else %}
+  <button type="button" data-mode="login" {% if mode == 'login' %}class="on"{% endif %}><span data-i18n="signIn">{{ texts.signIn }}</span></button>
+  <button type="button" data-mode="register" {% if mode == 'register' %}class="on"{% endif %}><span data-i18n="signUp">{{ texts.signUp }}</span></button>
+  {% endif %}
+</div>
+{% if x_login_enabled %}
+<div class="auth-x-wrap"><a class="x-login" href="/auth/x/login?next={{ next|urlencode }}"{% if embed == 'modal' %} data-nextfix="1"{% endif %}><span class="x-glyph" aria-hidden="true">𝕏</span><span data-i18n="login">{{ texts.login }}</span></a></div>
+<div class="auth-divider"><span data-i18n="auth_or">{{ texts.auth_or }}</span></div>
+{% endif %}
+{% if embed == 'page' %}
+{% if error %}<p class="error-note">{{ error }}</p>{% endif %}
+{% else %}
+<p class="error-note am-err" hidden></p>
+{% endif %}
+<form class="auth-form" method="post" action="/auth/{{ mode }}"{% if embed != 'page' %} novalidate{% endif %}>
+  <input type="hidden" name="next" value="{{ next if embed == 'page' else '' }}">
+  {% if mode == 'login' %}
+  <label class="field">
+    <span class="field-label" data-i18n="loginLabel">{{ texts.loginLabel }}</span>
+    <input class="input" type="text" name="login" required autocomplete="username" maxlength="254">
+  </label>
+  <label class="field">
+    <span class="field-label" data-i18n="passwordLabel">{{ texts.passwordLabel }}</span>
+    <input class="input" type="password" name="password" required autocomplete="current-password" maxlength="128">
+  </label>
+  {% else %}
+  <label class="field">
+    <span class="field-label" data-i18n="usernameHint">{{ texts.usernameHint }}</span>
+    <input class="input" type="text" name="username" required autocomplete="username" minlength="5" maxlength="32" pattern="[A-Za-z0-9_\-]{5,32}">
+  </label>
+  <label class="field">
+    <span class="field-label" data-i18n="emailLabel">{{ texts.emailLabel }}</span>
+    <input class="input" type="email" name="email" required autocomplete="email" maxlength="254">
+  </label>
+  <label class="field">
+    <span class="field-label" data-i18n="newPassword">{{ texts.newPassword }}</span>
+    <input class="input" type="password" name="password" required autocomplete="new-password" minlength="8" maxlength="128">
+  </label>
+  <label class="field">
+    <span class="field-label" data-i18n="confirmPasswordLabel">{{ texts.confirmPasswordLabel }}</span>
+    <input class="input" type="password" name="password_confirm" required autocomplete="new-password" minlength="8" maxlength="128">
+  </label>
+  <p class="form-hint pw-mismatch" hidden data-i18n="passwordMismatch">{{ texts.passwordMismatch }}</p>
+  {% endif %}
+  <button type="submit" class="btn btn-p btn-lg"><span data-i18n="{{ 'signUp' if mode == 'register' else 'signIn' }}">{{ texts.signUp if mode == 'register' else texts.signIn }}</span></button>
+</form>
+<p class="auth-hint auth-recover"><a href="mailto:{{ support_email }}" data-i18n="support_recovery_hint">{{ texts.support_recovery_hint }}</a></p>
+<p class="auth-terms"><a href="/terms" data-i18n="footer_terms">{{ texts.footer_terms }}</a> · <a href="/privacy" data-i18n="footer_privacy">{{ texts.footer_privacy }}</a></p>

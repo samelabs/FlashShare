@@ -179,7 +179,7 @@ async def oauth_authorize(request: Request):
 
     nonce = secrets.token_urlsafe(32)
     from app.main import templates
-    ctx = ctx_base(request)
+    ctx = await asyncio.to_thread(ctx_base, request)
     requested = set(scope.split())
     # Anti-impersonation context: a client may CLAIM any display name —
     # the consent page must also show where the client document lives
@@ -249,7 +249,8 @@ async def oauth_authorize_submit(request: Request):
             state=state,
             iss=ISSUER)
     else:
-        code = create_authorization_code(
+        code = await asyncio.to_thread(
+            create_authorization_code,
             int(user["id"]),
             params["client_id"],
             params["redirect_uri"],
@@ -292,14 +293,16 @@ async def oauth_token(request: Request):
 
     try:
         if grant_type == "authorization_code":
-            output = exchange_authorization_code(
+            output = await asyncio.to_thread(
+                exchange_authorization_code,
                 str(form.get("code") or ""),
                 client_id,
                 str(form.get("redirect_uri") or ""),
                 str(form.get("code_verifier") or ""),
                 resource)
         elif grant_type == "refresh_token":
-            output = refresh_access_token(
+            output = await asyncio.to_thread(
+                refresh_access_token,
                 str(form.get("refresh_token") or ""),
                 client_id,
                 resource)

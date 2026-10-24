@@ -1,14 +1,14 @@
 # Release migration: platform_tools 正文输入两列（body_format / body_placeholder_json）
 
-**前置依赖**：`add_platform_tools_format_family.md`（tag 列资产）须先行执行。
-本资产在其之后、同一部署窗口内执行。
-
-**执行顺序（强制，一条线）：**
-**只读预检 → ① 加两列 → ② 回填 → 切换前终检 → 部署首启。**
+**执行归属（1.6 发布窗口主顺序 `release_1_6_audit_closure.md` 的阶段）**：
+预检属阶段 ①（旧服务运行中，可提前检查；停写后复查）；**① 加两列 +
+② 回填 + 切换前终检属阶段 ③（停写后、新代码首启前）**，与
+`add_platform_tools_format_family.md` 的加列回填同一停写窗口执行；
+部署首启属阶段 ④。
 
 先迁移后部署：新代码的 startup `validate_catalog_rows` 即校验
 `body_format` 互斥不变量，列不存在或未回填则服务起不来。旧代码
-（1.6 工具链批）不读这两列，列先加上对运行中的旧服务零影响。
+（v1.5）不读这两列，列先加上对运行中的旧服务零影响。
 
 ## 语义
 
@@ -24,6 +24,8 @@
 
 ## ⚠ 部署前只读预检（两项均须为空才可部署；非空 → STOP 交 PM 裁定）
 
+下列预检仅使用 v1.5 已有列，可在执行前置 tag 迁移之前提前检查；迁移窗口停写后仍须复查。
+
 本批 P2 更换全部 http 工具的南向响应契约（Content-Type 结果解释取代
 唯一 items 信封），存量 http 工具的行为会改变 —— 下列预检逐项给出裁定
 所需事实，**“已经报告”不等于可以部署**。
@@ -36,7 +38,7 @@ SELECT tool_key, label_json, params_json, endpoint_json
 
 -- (b) 全部 http 工具 — 非空即触发 PM 裁定（南向契约变更影响面）
 SELECT tool_key, owner_id, trusted, files_min, files_max,
-       accept_json, format_family, endpoint_json
+       accept_json, endpoint_json
   FROM platform_tools
  WHERE execution = 'http'
  ORDER BY owner_id NULLS FIRST, tool_key;
@@ -49,7 +51,7 @@ SELECT tool_key, owner_id, trusted, files_min, files_max,
 启动校验将拒绝它们；窗口内确需写入，写入后重跑 ②（幂等）。
 
 ```bash
-cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python - <<'PY'
+cd /opt/flashshare && set -a && . /etc/flashshare.env && set +a && PYTHONPATH=core venv/bin/python - <<'PY'
 from database import db
 with db() as con:
     con.execute("""
@@ -82,5 +84,5 @@ SELECT tool_key FROM platform_tools
    AND (body_format IS NOT NULL OR body_placeholder_json IS NOT NULL);
 ```
 
-生产库在本批部署**前**执行**一次**；执行后删除本资产（仓库规则：
-docs/plan/ 仅存放尚未执行的 release migration 资产）。
+生产执行完成并通过主顺序阶段 ⑥ 部署后检查后，随主顺序资产一并删除
+（仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。

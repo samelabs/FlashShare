@@ -11,6 +11,7 @@ from repo import operator_views
 from utils import now, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
+import asyncio
 
 router = APIRouter()
 
@@ -22,7 +23,7 @@ _RECENT = 20
 
 
 @router.get("/samelabs/users")
-async def users(request: Request, q: str = "", page: int = 1):
+def users(request: Request, q: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -51,14 +52,7 @@ _USD_MILLIS_KINDS = ("provider_earn", "withdraw", "platform_commission",
                      "platform_revenue")
 
 
-@router.get("/samelabs/users/{user_id}")
-async def user_detail(user_id: int, request: Request):
-    """Read-only operator view of one user: profile, separated balances,
-    current membership (effective status), recent orders / tool calls /
-    withdrawals / ledger rows."""
-    user, resp = gate(request)
-    if resp:
-        return resp
+def _user_detail_impl(user: dict, user_id: int, request: Request):
     from app.main import templates
     if not (1 <= user_id <= _MAX_ID):
         return JSONResponse({"ok": False, "error": "user_not_found"}, 404)
@@ -83,9 +77,9 @@ async def user_detail(user_id: int, request: Request):
     from identity.apikeys import list_keys
     keys = [dict(r) for r in list_keys(user_id)]
     import asyncio
-    from sharing.uploads import live_status_map
+    from sharing.uploads import live_status_for
     from utils import format_bytes, remaining_downloads
-    live = await asyncio.to_thread(live_status_map)
+    live = live_status_for([f["gokapi_id"] for f in files])
     for f in files:
         gid = f.pop("gokapi_id", None)
         f["size_h"] = format_bytes(int(f["size_bytes"]))
@@ -118,6 +112,17 @@ async def user_detail(user_id: int, request: Request):
             fmt_num=fmt_num,
             page_title=f"用户 #{user_id}", page_id="users"))
 
+@router.get("/samelabs/users/{user_id}")
+async def user_detail(user_id: int, request: Request):
+    """Read-only operator view of one user: profile, separated balances,
+    current membership (effective status), recent orders / tool calls /
+    withdrawals / ledger rows."""
+    user, resp = gate(request)
+    if resp:
+        return resp
+    import asyncio
+    return await asyncio.to_thread(_user_detail_impl, user, user_id, request)
+
 
 @router.post("/samelabs/users/{user_id}/reset-password")
 async def reset_password(user_id: int, request: Request):
@@ -131,8 +136,8 @@ async def reset_password(user_id: int, request: Request):
     from fastapi.responses import JSONResponse
     from backoffice import users as users_cmd
     try:
-        uid, temp = users_cmd.reset_user_password(
-            int(user["id"]), user_id)
+        uid, temp = await asyncio.to_thread(
+            users_cmd.reset_user_password, int(user["id"]), user_id)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:
@@ -148,8 +153,9 @@ async def suspend_user(user_id: int, request: Request):
     from fastapi.responses import JSONResponse
     from backoffice import users as users_cmd
     try:
-        row = users_cmd.set_user_suspended(
-            int(user["id"]), user_id, suspended=True)
+        row = await asyncio.to_thread(
+            users_cmd.set_user_suspended,
+            int(user["id"]), user_id, True)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:
@@ -165,8 +171,9 @@ async def unsuspend_user(user_id: int, request: Request):
     from fastapi.responses import JSONResponse
     from backoffice import users as users_cmd
     try:
-        row = users_cmd.set_user_suspended(
-            int(user["id"]), user_id, suspended=False)
+        row = await asyncio.to_thread(
+            users_cmd.set_user_suspended,
+            int(user["id"]), user_id, False)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:
@@ -197,8 +204,9 @@ async def adjust_credits(user_id: int, request: Request):
     if not (1 <= user_id <= _MAX_ID):
         return JSONResponse({"ok": False, "error": "user_not_found"}, 404)
     try:
-        out = credits_cmd.adjust_credits(int(user["id"]), user_id, amount,
-                                         action_id, note)
+        out = await asyncio.to_thread(
+            credits_cmd.adjust_credits,
+            int(user["id"]), user_id, amount, action_id, note)
     except KeyError:
         return JSONResponse({"ok": False, "error": "user_not_found"}, 404)
     except ValueError as exc:
@@ -221,7 +229,8 @@ async def delete_api_key(user_id: int, key_id: int, request: Request):
         return resp
     from backoffice import users as users_cmd
     try:
-        users_cmd.delete_api_key(int(user["id"]), user_id, key_id)
+        await asyncio.to_thread(
+            users_cmd.delete_api_key, int(user["id"]), user_id, key_id)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True, "key_id": key_id}

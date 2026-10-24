@@ -70,21 +70,6 @@ class ToolInvocation:
     def has_body(self) -> bool:
         return self.body is not BODY_ABSENT
 
-    def to_json(self) -> dict:
-        """canonical JSON shape (外部/内部一致)。"""
-        source = ({"body": self.body} if self.has_body()
-                  else {"files": [
-                      {"public_id": f.public_id, "source_token": f.source_token}
-                      for f in self.files]})
-        return {
-            "tool_id": self.tool_id,
-            "source": source,
-            "params": dict(self.params),
-            "delivery": dict(self.delivery),
-            "client_ref": self.client_ref,
-        }
-
-
 def parse_tool_invocation(raw) -> ToolInvocation:
     """严格 parser/validator。失败抛 InvocationError("invalid_request")。
 

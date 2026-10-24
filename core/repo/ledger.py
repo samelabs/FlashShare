@@ -64,21 +64,21 @@ def idem_key_exists(con, user_id: int, idem_key: str) -> bool:
         (user_id, idem_key)).fetchone() is not None
 
 
-def total_balance(con, user_id: int) -> int:
-    row = con.execute(
-        "SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger WHERE user_id = %s",
-        (user_id,)).fetchone()
-    return int(row["bal"])
-
-
-def pool_balance(con, user_id: int, kinds: Sequence[str]) -> int:
+def pool_running_balance(con, user_id: int, kinds: Sequence[str]) -> int:
+    """A pool's running balance = balance_after of its latest ledger row
+    (0 when the pool has no rows yet). Writers MUST call this while
+    holding the user's row lock (lock_user) so consecutive writers chain
+    balance_after into a running total; read-only display (e.g.
+    spendable_balance) may read without the lock. Equal to SUM(delta)
+    over the pool by the running-total invariant."""
     row = con.execute(
         """
-        SELECT COALESCE(SUM(delta), 0) AS bal FROM ledger
+        SELECT balance_after FROM ledger
         WHERE user_id = %s AND kind = ANY(%s)
+        ORDER BY id DESC LIMIT 1
         """,
         (user_id, list(kinds))).fetchone()
-    return int(row["bal"])
+    return int(row["balance_after"]) if row else 0
 
 
 def sum_kind(con, user_id: int, kind: str) -> int:
@@ -89,36 +89,108 @@ def sum_kind(con, user_id: int, kind: str) -> int:
     return int(row["s"])
 
 
-def earn_pool_balance(con, user_id: int) -> int:
-    """Earn-pool balance in USD-millis = provider_earn − withdraw
-    movements. This is the ONLY basis a provider_earning writer may use
-    for balance_after — the old total_balance() basis mixed spendable
-    kinds into an earning row's after-balance (wrong semantics on the
-    same column)."""
-    row = con.execute(
-        "SELECT COALESCE(SUM(delta), 0) AS s FROM ledger "
-        "WHERE user_id = %s AND kind IN ('provider_earn', 'withdraw')",
-        (user_id,)).fetchone()
-    return int(row["s"])
-
-
 def lock_user(con, user_id: int) -> None:
     """串行化锚点: 锁用户行, 使同用户并发变更排队 (调用方在事务内先调本函数)。"""
     con.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
 
 
-def history_paged(con, user_id: int, kinds: Sequence[str],
-                  size: int, offset: int) -> tuple:
-    total = con.execute(
-        "SELECT COUNT(*) AS n FROM ledger WHERE user_id = %s AND kind = ANY(%s)",
-        (user_id, list(kinds))).fetchone()["n"]
-    rows = con.execute(
-        """
-        SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)
-        ORDER BY id DESC LIMIT %s OFFSET %s
-        """,
-        (user_id, list(kinds), size, offset)).fetchall()
-    return [dict(r) for r in rows], total
+def history_count(con, user_id: int, kinds: Sequence[str],
+                  since_ts: Optional[int] = None,
+                  until_ts: Optional[int] = None) -> int:
+    """Row count for the credits history, optionally time-boxed
+    (created_at >= since_ts AND created_at <= until_ts, epoch seconds;
+    either bound is open when None). The count is the REAL
+    filtered total — the account page bounds its page number against
+    it, so history past the global MAX_LIST_PAGE stays reachable while
+    offsets stay bounded by the true total."""
+    sql = ("SELECT COUNT(*) AS n FROM ledger"
+           " WHERE user_id = %s AND kind = ANY(%s)")
+    params: list = [user_id, list(kinds)]
+    if since_ts is not None:
+        sql += " AND created_at >= %s"
+        params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
+    return int(con.execute(sql, params).fetchone()["n"])
+
+
+def history_page(con, user_id: int, kinds: Sequence[str],
+                 size: int, offset: int,
+                 since_ts: Optional[int] = None,
+                 until_ts: Optional[int] = None) -> list:
+    """One page of the user's spendable-pool flow, newest first (same
+    [since_ts, until_ts] box as history_count)."""
+    sql = ("SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)")
+    params: list = [user_id, list(kinds)]
+    if since_ts is not None:
+        sql += " AND created_at >= %s"
+        params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
+    sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
+    params += [size, offset]
+    return [dict(r) for r in con.execute(sql, params).fetchall()]
+
+
+SPEND_SUMMARY_KINDS = ("consume", "refund")
+
+
+def spend_summary(con, user_id: int,
+                  since_ts: Optional[int] = None,
+                  until_ts: Optional[int] = None) -> dict:
+    """Consumption overview for the credits page, DB-aggregated.
+
+    consume = the magnitude of consume deltas (they are negative on the
+    ledger), refund = refund deltas; net = consumption − refunds. Grants,
+    top-ups and adjustments are neither consumption nor refunds; the
+    earn pool never mixes in. Same time box as the page's range filter
+    when since_ts is given. n = consume/refund ROW count — the activity
+    fact for the trend strip (zero-amount rows still count; the strip
+    must not read as empty just because the net is zero or negative)."""
+    sql = ("SELECT kind, COUNT(*) AS n, SUM(delta) AS s FROM ledger"
+           " WHERE user_id = %s AND kind = ANY(%s)")
+    params: list = [user_id, list(SPEND_SUMMARY_KINDS)]
+    if since_ts is not None:
+        sql += " AND created_at >= %s"
+        params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
+    out = {"consume": 0, "refund": 0, "net": 0, "n": 0}
+    for r in con.execute(sql + " GROUP BY kind", params).fetchall():
+        out["n"] += int(r["n"])
+        if r["kind"] == "consume":
+            out["consume"] = -int(r["s"])
+        else:
+            out["refund"] = int(r["s"])
+    out["net"] = out["consume"] - out["refund"]
+    return out
+
+
+def spend_daily(con, user_id: int, since_ts: int,
+                until_ts: Optional[int] = None) -> dict:
+    """Daily consume/refund buckets for the trend strip. Day = the UTC
+    day (epoch // 86400); returns {day: {"consume": n, "refund": n}}
+    sparse, DB-aggregated; rows live in [since_ts, until_ts] (until
+    open when None)."""
+    sql = ("SELECT (created_at / 86400) AS d, kind, SUM(delta) AS s"
+           " FROM ledger WHERE user_id = %s AND kind = ANY(%s)"
+           " AND created_at >= %s")
+    params: list = [user_id, list(SPEND_SUMMARY_KINDS), since_ts]
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
+    rows = con.execute(sql + " GROUP BY 1, 2", params).fetchall()
+    out: dict = {}
+    for r in rows:
+        bucket = out.setdefault(int(r["d"]), {"consume": 0, "refund": 0})
+        if r["kind"] == "consume":
+            bucket["consume"] += -int(r["s"])
+        else:
+            bucket["refund"] += int(r["s"])
+    return out
 
 
 def history_tool_refs(con, ledger_ids: list) -> dict:
@@ -275,7 +347,8 @@ def _valid_invocation_hash(value) -> bool:
 def claim_call(con, client_ref: str, user_id: int, tool_id: str,
                cost: int, params_json: str, started_at: int,
                commission_rate_snapshot: int,
-               invocation_hash: str) -> tuple[dict, bool]:
+               invocation_hash: str,
+               oauth_client_id: str | None = None) -> tuple[dict, bool]:
     """Claim one logical invocation attempt before charging/executing.
 
     The partial unique index on (user_id, tool_id, client_ref) for
@@ -288,7 +361,12 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
     that to 409 idempotency_conflict.
 
     commission_rate_snapshot is frozen at claim time and written in the
-    SAME INSERT — the only snapshot writer. Settlement reads it from the
+    SAME INSERT — the only snapshot writer. oauth_client_id likewise:
+    the call-creation source (the server-side authentication context of
+    the request that CREATED the row — a consented OAuth client id, or
+    NULL for every other credential) is stamped here in the claim
+    transaction and has exactly ONE writer: this INSERT. A replay answers
+    the settled row and never re-attributes it. Settlement reads it from the
     persisted row, never from settings. invocation_hash likewise has
     exactly ONE writer: this claim INSERT (64-char lowercase SHA-256
     hex, runtime-validated). Historical pre-hash rows keep NULL.
@@ -328,15 +406,16 @@ def claim_call(con, client_ref: str, user_id: int, tool_id: str,
         """
         INSERT INTO tool_calls (client_ref, user_id, tool_id, status,
            cost_snapshot, commission_rate_snapshot, invocation_hash,
-           params_json, started_at)
-        VALUES (%s, %s, %s, 'running', %s, %s, %s, %s, %s)
+           params_json, started_at, oauth_client_id)
+        VALUES (%s, %s, %s, 'running', %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id, tool_id, client_ref)
           WHERE status IN ('running','ok')
         DO NOTHING
         RETURNING *
         """,
         (client_ref, user_id, tool_id, cost, commission_rate_snapshot,
-         invocation_hash, params_json, started_at)).fetchone()
+         invocation_hash, params_json, started_at,
+         oauth_client_id)).fetchone()
     if row:
         return dict(row), True
     prior = con.execute(

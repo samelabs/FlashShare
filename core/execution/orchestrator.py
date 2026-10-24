@@ -20,7 +20,7 @@ import asyncio
 import io
 import logging
 
-from config import BASE_URL, MAX_UPLOAD_BYTES
+from config import BASE_URL, MAX_BATCH_BYTES, MAX_UPLOAD_BYTES
 from database import db  # noqa: F401 (pipeline 内使用)
 from storage import read as storage_read, write as storage_write, delete as storage_delete
 from tools import ToolError
@@ -31,9 +31,6 @@ from .results import (StagedItems, StagedFileItem, OutputsError,
 from gokapi import InternalDownloadUnavailable
 
 logger = logging.getLogger("flashshare")
-
-MAX_MULTI_BYTES = 100 * 1024 * 1024
-
 
 class _SourceTooLarge(Exception):
     """storage 实际返回体超出平台单文件上限 (fail before worker)。"""
@@ -140,7 +137,7 @@ async def execute_local(request_ctx, tool, uploads, params, user, process_tool, 
     total = 0
     for upload in uploads:
         ud = dict(upload) if not isinstance(upload, dict) else upload
-        budget = min(MAX_UPLOAD_BYTES, MAX_MULTI_BYTES - total)
+        budget = min(MAX_UPLOAD_BYTES, MAX_BATCH_BYTES - total)
         if budget < 0:
             raise ToolError("err_file_too_large")
         try:
@@ -232,13 +229,13 @@ async def execute_remote(request_ctx, tool, uploads, params, user, delivery,
     decl = json.loads(tool["endpoint_json"]) if tool.get("endpoint_json") else {}
     if not decl.get("url"):
         raise ExecutionError("err_tool_not_configured")
-    trusted = (tool.get("owner_id") is None) or bool(tool.get("trusted"))
+    trusted = tool.get("owner_id") is None
     sources = []
     total = 0
     for upload in uploads:
         ud = dict(upload) if not isinstance(upload, dict) else upload
         total += ud["size_bytes"]
-        if total > MAX_MULTI_BYTES:
+        if total > MAX_BATCH_BYTES:
             raise ExecutionError("err_file_too_large")
         token = sign_fetch_token(user["id"], ud["gokapi_id"])
         sources.append({

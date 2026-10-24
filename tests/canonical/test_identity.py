@@ -612,6 +612,73 @@ try:
           and d["keys"][0]["prefix"]
           and "key" not in d["keys"][0], blob[:120])
 
+    # ═══ C4b. last_used telemetry is throttled (≤1 write / 60s) ═══
+    # The touch writers take the timestamp as their clock, so t / t+10 /
+    # t+61 decide first-write, in-window no-rewrite and post-window
+    # rewrite deterministically — same-second timestamp equality can
+    # never prove a 60 s throttle. Covers both credential families
+    # (API key + OAuth access token); no waiting on wall time.
+    from repo import keys as _keys_repo_c4b
+    from repo import oauth_provider as _oa_repo_c4b
+    from security import token_hash as _token_hash_c4b
+
+    _t0_c4b = 1_800_000_000
+    with db() as con:
+        _kid_c4b = con.execute(
+            "select id from api_keys where user_id=%s order by id limit 1",
+            (uid,)).fetchone()["id"]
+    with db() as con:
+        _keys_repo_c4b.touch_key(con, _kid_c4b, _t0_c4b)
+        _k_first = con.execute(
+            "select last_used_at from api_keys where id=%s",
+            (_kid_c4b,)).fetchone()["last_used_at"]
+        _keys_repo_c4b.touch_key(con, _kid_c4b, _t0_c4b + 10)
+        _k_inwin = con.execute(
+            "select last_used_at from api_keys where id=%s",
+            (_kid_c4b,)).fetchone()["last_used_at"]
+        _keys_repo_c4b.touch_key(con, _kid_c4b, _t0_c4b + 61)
+        _k_post = con.execute(
+            "select last_used_at from api_keys where id=%s",
+            (_kid_c4b,)).fetchone()["last_used_at"]
+    check("C4b key first use at t writes the stamp",
+          _k_first == _t0_c4b, (_k_first, _t0_c4b))
+    check("C4b key in-window use (t+10) does NOT rewrite",
+          _k_inwin == _t0_c4b and _k_inwin != _t0_c4b + 10,
+          (_k_inwin, _t0_c4b + 10))
+    check("C4b key past-window use (t+61) rewrites",
+          _k_post == _t0_c4b + 61, (_k_post,))
+
+    _c4b_hash = _token_hash_c4b("fsot_c4b_" + _os.urandom(8).hex())
+    with db() as con:
+        _oa_repo_c4b.insert_token(
+            con, _c4b_hash, _token_hash_c4b("fsor_c4b_" + _os.urandom(8).hex()),
+            uid, f"https://c4b{_u}.example/o", "tools:call",
+            "https://c4b.example/mcp", _t0_c4b + 3600, _t0_c4b + 86400,
+            _t0_c4b)
+    with db() as con:
+        _oa_repo_c4b.touch_access_token(con, _c4b_hash, _t0_c4b)
+        _o_first = con.execute(
+            "select last_used_at from oauth_mcp_tokens"
+            " where access_token_hash=%s", (_c4b_hash,)
+        ).fetchone()["last_used_at"]
+        _oa_repo_c4b.touch_access_token(con, _c4b_hash, _t0_c4b + 10)
+        _o_inwin = con.execute(
+            "select last_used_at from oauth_mcp_tokens"
+            " where access_token_hash=%s", (_c4b_hash,)
+        ).fetchone()["last_used_at"]
+        _oa_repo_c4b.touch_access_token(con, _c4b_hash, _t0_c4b + 61)
+        _o_post = con.execute(
+            "select last_used_at from oauth_mcp_tokens"
+            " where access_token_hash=%s", (_c4b_hash,)
+        ).fetchone()["last_used_at"]
+    check("C4b token first use at t writes the stamp",
+          _o_first == _t0_c4b, (_o_first, _t0_c4b))
+    check("C4b token in-window use (t+10) does NOT rewrite",
+          _o_inwin == _t0_c4b and _o_inwin != _t0_c4b + 10,
+          (_o_inwin, _t0_c4b + 10))
+    check("C4b token past-window use (t+61) rewrites",
+          _o_post == _t0_c4b + 61, (_o_post,))
+
     # ═══ V. viewable-any-time + session-only ═══
     kid = d["keys"][0]["id"]
     for i in range(2):
@@ -1932,6 +1999,91 @@ try:
     check("A5 http:// client_id rejected before any fetch",
           _oa.cimd_fetch("http://plain.example/oauth.json") is None)
 
+    # ═══ A6. cache store under a locally small capacity: concurrent
+    # cleanup must not raise, the cap must hold, and the success /
+    # negative / expiry semantics stay as they were ═══
+    import sys as _sys_a6
+    import threading as _th_a6
+
+    _cap_saved_a6 = _oa.CIMD_CACHE_MAX
+    _switch_saved_a6 = _sys_a6.getswitchinterval()
+    _oa.CIMD_CACHE_MAX = 4
+    _errs_a6 = []
+    _cap_ok_a6 = True
+    try:
+        # aggressive GIL switching + barrier arrival turns the unlocked
+        # check-then-insert / prune-iteration windows into real
+        # interleavings instead of accidental serialization
+        _sys_a6.setswitchinterval(1e-6)
+        for _round in range(300):
+            _oa._cimd_cache.clear()
+            # fill cycles 0..cap: at cap the store takes the prune path
+            # (mixed fresh + expired entries), at cap-1 the two
+            # check-then-inserts race the cap check
+            _fill = _round % (_oa.CIMD_CACHE_MAX + 1)
+            for _i in range(_fill):
+                _exp = _oa.now() - 1 if _i % 2 else _oa.now() + 3600
+                _oa._cimd_cache[f"k{_round}-{_i}"] = (_exp, None)
+            _bar_a6 = _th_a6.Barrier(2)
+
+            def _store_one(_tag):
+                try:
+                    _bar_a6.wait(timeout=5)
+                    _oa._cimd_cache_store(
+                        f"new-{_round}-{_tag}", _oa.now() + 3600, {"n": _tag})
+                except Exception as _exc:   # noqa: BLE001
+                    _errs_a6.append(repr(_exc))
+
+            _ta = _th_a6.Thread(target=_store_one, args=("a",))
+            _tb = _th_a6.Thread(target=_store_one, args=("b",))
+            _ta.start(); _tb.start(); _ta.join(10); _tb.join(10)
+            if len(_oa._cimd_cache) > _oa.CIMD_CACHE_MAX:
+                _cap_ok_a6 = False
+    finally:
+        _sys_a6.setswitchinterval(_switch_saved_a6)
+        _oa.CIMD_CACHE_MAX = _cap_saved_a6
+        _oa._cimd_cache.clear()
+    check("A6a barrier-synced concurrent stores never raise",
+          not _errs_a6, _errs_a6[:2])
+    check("A6b capacity invariant holds under concurrent stores",
+          _cap_ok_a6, len(_oa._cimd_cache))
+
+    _fetches_a6 = {"n": 0}
+
+    def _counting_hop(doc):
+        def _hop(url, method="GET", body=None, headers=None, timeout_s=60,
+                 max_bytes=None, deadline=None):
+            _fetches_a6["n"] += 1
+            return _serve_cimd(doc)
+        return _hop
+
+    _remote._pinned_request = _counting_hop(CIMD_DOC)
+    _oa._cimd_cache.clear()
+    _d1 = _oa.cimd_fetch(CIMD_URL)
+    _d2 = _oa.cimd_fetch(CIMD_URL)
+    check("A6c success entry cached: in-window hit makes no new fetch",
+          bool(_d1) and _d2 == _d1 and _fetches_a6["n"] == 1,
+          _fetches_a6["n"])
+    _oa._cimd_cache[CIMD_URL] = (_oa.now() - 1, _d1)   # expire by clock
+    _oa.cimd_fetch(CIMD_URL)
+    check("A6d expired entry re-fetches", _fetches_a6["n"] == 2,
+          _fetches_a6["n"])
+
+    _remote._pinned_request = _counting_hop(
+        dict(CIMD_DOC, client_id="https://other.example/oauth.json"))
+    _oa._cimd_cache.clear()
+    _oa.cimd_fetch(CIMD_URL)                 # rejected → negative-cached
+    _n3 = _fetches_a6["n"]
+    _oa.cimd_fetch(CIMD_URL)                 # in-window retry
+    check("A6e negative entry cached: in-window retry makes no new fetch",
+          _fetches_a6["n"] == _n3 and _oa.cimd_fetch(CIMD_URL) is None,
+          _fetches_a6["n"])
+    _oa._cimd_cache[CIMD_URL] = (_oa.now() - 1, None)
+    _oa.cimd_fetch(CIMD_URL)
+    check("A6f expired negative entry re-fetches",
+          _fetches_a6["n"] == _n3 + 1, _fetches_a6["n"])
+    _oa._cimd_cache.clear()
+
     # ═══ F. full flow (identity core; resource-server side over real HTTP) ═══
     _remote._pinned_request = _cimd_hop(CIMD_DOC)
     _oa._cimd_cache.clear()
@@ -1981,6 +2133,27 @@ try:
     except ValueError as e:
         ok = str(e) == "invalid_grant"
     check("F6 authorization code is single-use", ok)
+
+    # a WRONG-verifier probe burns the code too: single-use binds to the
+    # exchange attempt, so the correct verifier afterwards is rejected
+    # (protects: exchange_authorization_code deletes the code in the
+    # transaction on every attempt). Sample: 2 exchanges on one code.
+    code_w = _oa.create_authorization_code(
+        UID, CIMD_URL, REDIRECT, challenge, scope, RESOURCE)
+    try:
+        _oa.exchange_authorization_code(
+            code_w, CIMD_URL, REDIRECT, "wrong-verifier", RESOURCE)
+        ok = False
+    except ValueError as e:
+        ok = str(e) == "invalid_grant"
+    check("F6b wrong verifier → invalid_grant", ok)
+    try:
+        _oa.exchange_authorization_code(
+            code_w, CIMD_URL, REDIRECT, verifier, RESOURCE)
+        ok = False
+    except ValueError as e:
+        ok = str(e) == "invalid_grant"
+    check("F6c correct verifier after a failed probe → invalid_grant", ok)
 
     # ── the resource-server side over real HTTP ──
     st, _h, d = _mcp({"jsonrpc": "2.0", "id": 10, "method": "tools/call",
@@ -2052,15 +2225,11 @@ try:
     check("S5 OAuth plugin attribution stamped on tool_calls",
           row and row["oauth_client_id"] == CIMD_URL, row)
 
-    # ═══ S5b. attribution contract (R8 rework) ═══
-    # (1) B (a second OAuth client on a second user) replaying A's
-    #     client_ref must NOT re-attribute the settled call — first
-    #     writer wins (SQL guards oauth_client_id IS NULL).
-    # (2) A's FAILED call (provider unreachable, call row exists with
-    #     status failed) is attributed to A just like a success.
-    # (1) the SAME OAuth client replaying its ref (duplicate delivery)
-    # lands on the settled row — the guarded UPDATE (oauth_client_id IS
-    # NULL) must no-op, attribution stays the first writer's.
+    # ═══ S5b. attribution contract ═══
+    # oauth_client_id = the SERVER AUTHENTICATION CONTEXT that CREATED the
+    # call row (stamped in the claim INSERT's own transaction). Replays —
+    # same client or any other — answer the settled row and never
+    # re-attribute it; there is no post-hoc write path at all.
     _ref_a = f"oa-{_u}"
     st, _h, d = _mcp({"jsonrpc": "2.0", "id": 21, "method": "tools/call",
                       "params": {"name": "share",
@@ -2069,27 +2238,57 @@ try:
                                      "client_ref": _ref_a}}},
                      token=ACCESS)
     _sc_r = ((d or {}).get("result") or {}).get("structuredContent") or {}
+    # client B on the same user: mint + exchange (no CIMD fetch needed)
+    CIMD_B = f"https://plugin-b-{_u}.example/oauth.json"
+    REDIRECT_B = f"https://plugin-b-{_u}.example/cb"
+    _code_b = _oa.create_authorization_code(
+        UID, CIMD_B, REDIRECT_B, challenge, "tools:call", RESOURCE)
+    _toks_b = _oa.exchange_authorization_code(
+        _code_b, CIMD_B, REDIRECT_B, verifier, RESOURCE)
+    st_b, _h, d_b = _mcp({"jsonrpc": "2.0", "id": 24, "method": "tools/call",
+                          "params": {"name": "share",
+                                     "arguments": {
+                                         "files": [{"filename": "a.png", "b64": PNG_B64}],
+                                         "client_ref": _ref_a}}},
+                         token=_toks_b["access_token"])
+    _sc_rb = ((d_b or {}).get("result") or {}).get("structuredContent") or {}
     with db() as con:
         row_a = con.execute(
             "select oauth_client_id, status from tool_calls where user_id=%s"
             " and client_ref=%s", (UID, _ref_a)).fetchone()
-    # the guard itself, probed directly: a second client's attribution of
-    # the same settled row must not overwrite
-    CIMD_B = f"https://plugin-b-{_u}.example/oauth.json"
-    with db() as con:
-        con.execute(
-            "update tool_calls set oauth_client_id=%s where id=(select id"
-            " from tool_calls where user_id=%s and client_ref=%s)"
-            " and oauth_client_id IS NULL",
-            (CIMD_B, UID, _ref_a))
-        row_guard = con.execute(
-            "select oauth_client_id from tool_calls where user_id=%s"
-            " and client_ref=%s", (UID, _ref_a)).fetchone()
-    check("S5b replay of A's ref → replay answered, guarded attribution stays A",
+    check("S5b replay by A then client B → replay answered twice, attribution stays A",
           row_a and row_a["oauth_client_id"] == CIMD_URL
-          and _sc_r.get("replay") is True
-          and row_guard["oauth_client_id"] == CIMD_URL,
-          f"{_sc_r} {row_a} {row_guard}")
+          and _sc_r.get("replay") is True and _sc_rb.get("replay") is True,
+          f"{_sc_r} {_sc_rb} {row_a}")
+
+    # ═══ S5c. creation-source attribution ═══
+    # An fsk_ key CREATES the call row → attribution stays NULL forever;
+    # an OAuth token replaying that ref afterwards must not stamp itself
+    # on a row it did not create (the old post-hook did exactly that).
+    _ref_c = f"attr-fsk-{_u}"
+    st, _h, d = _mcp({"jsonrpc": "2.0", "id": 25, "method": "tools/call",
+                      "params": {"name": "share",
+                                 "arguments": {
+                                     "files": [{"filename": "d.png", "b64": PNG_B64}],
+                                     "client_ref": _ref_c}}}, token=FSK)
+    _ok_c = st == 200 and not ((d or {}).get("result") or {}).get("isError")
+    st2, _h, d2 = _mcp({"jsonrpc": "2.0", "id": 26, "method": "tools/call",
+                        "params": {"name": "share",
+                                   "arguments": {
+                                       "files": [{"filename": "d.png", "b64": PNG_B64}],
+                                       "client_ref": _ref_c}}},
+                       token=ACCESS)
+    _replay_c = (((d2 or {}).get("result") or {})
+                 .get("structuredContent") or {}).get("replay") is True
+    with db() as con:
+        row_c = con.execute(
+            "select oauth_client_id, status from tool_calls where user_id=%s"
+            " and client_ref=%s", (UID, _ref_c)).fetchone()
+    check("S5c fsk_ creation stays NULL; OAuth replay of the ref never re-attributes",
+          _ok_c and _replay_c and row_c and row_c["oauth_client_id"] is None
+          and row_c["status"] == "ok",
+          f"ok={_ok_c} replay={_replay_c} row={row_c}")
+
 
     # failed platform http tool (unreachable endpoint) for A
     _ftk = f"oaftk{_os.urandom(4).hex()}"
@@ -2383,6 +2582,155 @@ with db() as con:
         con.execute("delete from ledger where user_id=%s", (_uid_c,))
     purge_users(con, [u for u in (UID, UID2) if u is not None])
 print("cleanup: oauth fixtures removed")
+
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Pool saturation under the SAME process/pool/event loop (identity)
+#
+# I2 audit item: with every pool slot held, a request carrying a VALID
+# session must fail as a service error — never silently degrade to
+# anonymous (login redirect / auth_required). Evidence level: full
+# middleware, in-process, with the saturation request and the healthz
+# probe CONCURRENT on ONE event loop (httpx ASGITransport drives the
+# ASGI app directly — no per-request portal, no cross-process shortcut;
+# a sequential pair proves nothing about loop progress). A LOCAL small
+# pool (2 conns) with a SHORT wait budget keeps the scenario cheap —
+# production capacity/timeouts are untouched. Holder readiness is an
+# explicit semaphore handshake, never a fixed sleep.
+# ════════════════════════════════════════════════════════════════════════
+section('Pool saturation: identity never silently degrades')
+
+import asyncio as _aio_ps
+import threading as _thr
+import httpx as _httpx_ps
+from psycopg2.pool import ThreadedConnectionPool as _TCP_ps
+_ps_u = "ps" + _uuid.uuid4().hex[:8]
+
+
+def _ps_form(fields):
+    out = b""
+    for k, v in fields.items():
+        out += (f'--B\r\nContent-Disposition: form-data; name="{k}"\r\n'
+                f'\r\n{v}\r\n').encode()
+    return out + b"--B--\r\n", "multipart/form-data; boundary=B"
+
+
+from app.web_auth import create_browser_session as _mk_sess_ps
+from database import db as _db_ps
+with _db_ps() as con:
+    _row_ps = con.execute(
+        "insert into users (username, email, password_hash, display_name,"
+        " status, created_at, last_login_at) values (%s, %s, 'x', 'T',"
+        " 'active', %s, %s) returning id",
+        (_ps_u, f"{_ps_u}@t.co", ts_oau, ts_oau)).fetchone()
+    _ps_uid = int(_row_ps["id"])
+_valid_cookie = _mk_sess_ps(_ps_uid)
+check("PS0 seeded a real session", bool(_valid_cookie), "")
+
+import database as _dbmod
+# local small pool + short bounded wait — the test's own budget, restored
+# in the finally below; production capacity and timeouts are untouched
+_ps_saved_pool = _dbmod._pool
+_ps_saved_wait = _dbmod._POOL_WAIT_S
+_ps_small = _TCP_ps(1, 2, **_dbmod._database_dsn_kwargs())
+_dbmod._pool = _ps_small
+_dbmod._POOL_WAIT_S = 0.5
+
+_holders = []
+_release = _thr.Event()
+_ps_ready = _thr.Semaphore(0)
+
+
+def _hold_slot(pool):
+    con = pool.getconn()
+    try:
+        con.cursor().execute("select 1")
+        _ps_ready.release()          # holding: the connection is OUT of the pool
+        _release.wait(10)
+    finally:
+        pool.putconn(con)
+
+
+def _ps_request_pair():
+    """Saturation request + healthz probe CONCURRENTLY on this one loop.
+
+    Returns (sat_response, health_response, health_latency_s, overlapped):
+    overlapped=True means healthz completed while the saturation request
+    was still in flight — only possible if the blocked DB wait runs in a
+    worker thread, not on the event loop."""
+
+    async def _run():
+        transport = _httpx_ps.ASGITransport(app=_app,
+                                            raise_app_exceptions=False)
+        async with _httpx_ps.AsyncClient(transport=transport,
+                                         base_url="http://ps.local") as client:
+            sat = _aio_ps.create_task(client.get(
+                "/account/profile",
+                cookies={"flashshare_session": _valid_cookie},
+                headers={"Accept": "text/html"}, follow_redirects=False))
+            await _aio_ps.sleep(0)   # let the saturation request park on the pool
+            loop = _aio_ps.get_event_loop()
+            t0 = loop.time()
+            health = _aio_ps.create_task(client.get("/healthz"))
+            r_health = await _aio_ps.wait_for(health, 5)
+            dt = loop.time() - t0
+            overlapped = not sat.done()
+            r_sat = await _aio_ps.wait_for(sat, 30)
+            return r_sat, r_health, dt, overlapped
+
+    return _aio_ps.run(_run())
+
+
+def _ps_single(path, **kw):
+    async def _run():
+        transport = _httpx_ps.ASGITransport(app=_app,
+                                            raise_app_exceptions=False)
+        async with _httpx_ps.AsyncClient(transport=transport,
+                                         base_url="http://ps.local") as client:
+            return await client.get(path, **kw)
+    return _aio_ps.run(_run())
+
+
+try:
+    for _ in range(2):           # every slot the LOCAL pool has
+        _t = _thr.Thread(target=_hold_slot, args=(_ps_small,), daemon=True)
+        _t.start(); _holders.append(_t)
+    check("PS0b both holders hold their connection (semaphore handshake)",
+          _ps_ready.acquire(timeout=5) and _ps_ready.acquire(timeout=5), "")
+
+    _r_sat, _r_health, _health_dt, _overlapped = _ps_request_pair()
+    check("PS1 saturated pool + valid session → 5xx service failure (never anonymous)",
+          _r_sat.status_code >= 500, _r_sat.status_code)
+    check("PS2 event loop still serves during saturation (concurrent healthz)",
+          _r_health.status_code == 200 and _overlapped and _health_dt < 0.4,
+          ( _r_health.status_code, _overlapped, round(_health_dt, 3)))
+
+    _release.set()
+    for _t in _holders:
+        _t.join(timeout=6)
+    check("PS3 all slots returned after release (no leak)",
+          len(_ps_small._used) == 0, len(_ps_small._used))
+
+    # after the drain the same session is fully functional again
+    _r = _ps_single("/account/profile",
+                    cookies={"flashshare_session": _valid_cookie},
+                    headers={"Accept": "text/html"}, follow_redirects=False)
+    check("PS4 session fully functional after drain", _r.status_code == 200,
+          _r.status_code)
+finally:
+    _release.set()
+    for _t in _holders:
+        _t.join(timeout=6)
+    _dbmod._pool = _ps_saved_pool
+    _dbmod._POOL_WAIT_S = _ps_saved_wait
+    try:
+        _ps_small.closeall()
+    except Exception:
+        pass
+with _db_ps() as con:
+    con.execute("delete from sessions where user_id=%s", (_ps_uid,))
+    purge_users(con, [_ps_uid])
 
 
 finish()

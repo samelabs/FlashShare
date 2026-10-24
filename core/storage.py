@@ -79,6 +79,8 @@ def delete(file_id: str) -> None:
 def info(file_id: str):
     """Get file metadata from storage (live status).
 
-    Returns dict or None if not found / not configured.
+    Returns dict or None if not found / not configured. (The adapter's
+    found/absent/unavailable distinction collapses here: both absent
+    and unavailable read as no metadata.)
     """
-    return get_gokapi_file(file_id)
+    return get_gokapi_file(file_id)[1]

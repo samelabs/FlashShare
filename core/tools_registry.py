@@ -20,7 +20,7 @@ import io
 
 from PIL import Image, ImageFilter, ImageChops, ImageOps
 
-from tools import out_filename, register, ToolError
+from tools import open_image, out_filename, register, ToolError
 
 MAX_DIM = 4096  # same ceiling as compress — no extra shrink below it
 
@@ -94,13 +94,7 @@ def privacy_handler(tool_input: dict, params: dict) -> dict:
     p = PRESETS[preset]
 
     # ---- CP6.3: Decode + orient + ICC→sRGB ----
-    try:
-        img = Image.open(tool_input["stream"])
-        img.load()
-    except ToolError:
-        raise
-    except Exception as exc:
-        raise ToolError("err_format_not_supported") from exc
+    img = open_image(tool_input["stream"])
     img = ImageOps.exif_transpose(img)
     img = _to_srgb(img)
 

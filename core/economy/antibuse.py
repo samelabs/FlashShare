@@ -22,6 +22,18 @@ _lock = threading.Lock()
 _hits: dict[int, deque] = defaultdict(deque)
 
 
+def _prune_empty(store: dict, cutoff: int) -> None:
+    # unbounded-user guard (same shape as auth_route._record_hit): past
+    # the entry cap, drop keys whose windows have fully drained
+    if len(store) > 10000:
+        for k in list(store):
+            q = store[k]
+            while q and q[0] < cutoff:
+                q.popleft()
+            if not q:
+                del store[k]
+
+
 def gate_ref_throttled(user_id: int) -> bool:
     """True = 本次提交超限 (调用方返回 429)。滑动窗口, O(1) 均摊。"""
     ts = now()
@@ -33,6 +45,7 @@ def gate_ref_throttled(user_id: int) -> bool:
         if len(q) >= GATE_REF_LIMIT:
             return True
         q.append(ts)
+        _prune_empty(_hits, cutoff)
         return False
 
 
@@ -57,4 +70,5 @@ def mcp_call_throttled(user_id: int) -> bool:
         if len(q) >= MCP_CALL_LIMIT:
             return True
         q.append(ts)
+        _prune_empty(_call_hits, cutoff)
         return False

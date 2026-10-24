@@ -101,12 +101,13 @@ def validate_items_declaration(items) -> list[dict]:
     inline_total = 0
     for it in items:
         if isinstance(it, dict) and it.get("kind") == "file":
+            from utils import canonical_mime
             fn, ct = it.get("filename"), it.get("content_type")
-            if not isinstance(fn, str) or not fn.strip() \
-                    or not isinstance(ct, str) or not ct.strip():
+            canon_ct = canonical_mime(ct) if isinstance(ct, str) else None
+            if not isinstance(fn, str) or not fn.strip() or not canon_ct:
                 raise ItemsError("err_items_shape")
             out.append({"kind": "file", "filename": fn,
-                        "content_type": ct})
+                        "content_type": canon_ct})
             continue
         norm = validate_inline_item(it, MAX_INLINE_RESULT_BYTES - inline_total)
         if norm["kind"] == "text":

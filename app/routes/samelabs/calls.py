@@ -42,7 +42,7 @@ def _date_to_ts(value: str, end_of_day: bool = False):
 
 
 @router.get("/samelabs/calls")
-async def calls(request: Request, tool: str = "", user: str = "",
+def calls(request: Request, tool: str = "", user: str = "",
                 status: str = "", error: str = "",
                 date_from: str = "", date_to: str = "", page: int = 1):
     user_op, resp = gate(request)

@@ -12,6 +12,7 @@ from repo import operator_views, orders as _orders_repo
 from utils import now, page_number
 
 from app.routes.samelabs.common import gate, ctx, fmt_num
+import asyncio
 
 router = APIRouter()
 
@@ -21,7 +22,7 @@ _PAGE = 30
 # ── Orders: read-only real facts ──
 
 @router.get("/samelabs/commerce/orders")
-async def orders(request: Request, page: int = 1):
+def orders(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -40,7 +41,7 @@ async def orders(request: Request, page: int = 1):
 # ── Memberships: single-row authority ──
 
 @router.get("/samelabs/commerce/memberships")
-async def memberships(request: Request, page: int = 1):
+def memberships(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -59,7 +60,7 @@ async def memberships(request: Request, page: int = 1):
 # ── Products: plans + packages merged ──
 
 @router.get("/samelabs/commerce/products")
-async def products(request: Request):
+def products(request: Request):
     user, resp = gate(request)
     if resp:
         return resp
@@ -98,7 +99,8 @@ async def create_plan(request: Request):
     if fields is None:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     try:
-        out = products_cmd.create_plan(int(user["id"]), fields)
+        out = await asyncio.to_thread(
+            products_cmd.create_plan, int(user["id"]), fields)
     except products_cmd.PlanMirrorError:
         return JSONResponse({"ok": False,
                              "error": "price_mirror_update_failed"}, 502)
@@ -132,7 +134,8 @@ async def update_plan(plan_id: int, request: Request):
     if fields is None or not fields:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     try:
-        out = products_cmd.update_plan(int(user["id"]), plan_id, fields)
+        out = await asyncio.to_thread(
+            products_cmd.update_plan, int(user["id"]), plan_id, fields)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except products_cmd.PlanMirrorError as exc:
@@ -168,7 +171,8 @@ async def create_package(request: Request):
     if fields is None:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     try:
-        out = products_cmd.create_package(int(user["id"]), fields)
+        out = await asyncio.to_thread(
+            products_cmd.create_package, int(user["id"]), fields)
     except ValueError as exc:
         token = str(exc)
         return JSONResponse({"ok": False, "error": token},
@@ -190,8 +194,9 @@ async def update_package(package_id: int, request: Request):
     if fields is None:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     try:
-        out = products_cmd.update_package(int(user["id"]), package_id,
-                                          fields)
+        out = await asyncio.to_thread(
+            products_cmd.update_package, int(user["id"]), package_id,
+            fields)
     except KeyError:
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     except ValueError as exc:

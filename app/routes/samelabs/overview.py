@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/samelabs")
-async def overview(request: Request, range: str = "30"):
+def overview(request: Request, range: str = "30"):
     """Daily window toggle: only 14 / 30 are vocabulary values; any
     other input (including non-numeric) falls back to 30."""
     user, resp = gate(request)

@@ -88,8 +88,8 @@ plan_catalog.catalog(refresh=True)
 _pc4_tier = plan_catalog.by_code("pc_biz")
 _pc4_ent = resolve_from_membership({"member": True, "code": "pc_biz"})
 with db() as con:
-    from governance.plan_catalog import sellable_catalog as _sell
-    _pc4_sellable = [r.code for r in _sell()]
+    from governance import plan_catalog as _pc4cat
+    _pc4_sellable = [r.code for r in _pc4cat.catalog() if r.sellable]
 check("PC4 新档行 (配齐 benefits+product+price) 零代码进 sellable",
       _pc4_tier is not None and _pc4_tier.sellable and "pc_biz" in _pc4_sellable,
       f"tier={_pc4_tier is not None} sellable={_pc4_sellable}")
@@ -521,14 +521,14 @@ def _get_credits(ck):
     r = conn.getresponse(); body = r.read().decode(); conn.close()
     return r.status, body
 
-# Free: 无 membership fact → 当前方案卡仍渲染, 但 badge 是 Free 字样、
-# 永不出现 member 样式。稳定 DOM marker (class 选择器), 不用 "PLUS"
+# Free: 无 membership fact → 当前方案卡仍渲染, 但徽标是 Free 字样 +
+# tier_free 变体。稳定 DOM marker (class 选择器), 不用 "PLUS"
 # 字符串 (可售目录/header 可含)。
 st, body = _get_credits(_mf_ck)
 _proj_f = project(_mf_id)["membership"]
-check("AC-F1 Free /account/credits → 200, membership None, plan card = Free badge (never member styling)",
+check("AC-F1 Free /account/credits → 200, membership None, plan card = Free tier_free 徽标",
       st == 200 and _proj_f is None
-      and 'class="sub-badge on"' not in body
+      and 'class="tier tier_free"' in body
       and 'data-i18n="plan_current"' in body
       and ">Free</span>" in body, f"{st}")
 
@@ -536,20 +536,20 @@ check("AC-F1 Free /account/credits → 200, membership None, plan card = Free ba
 _mp_ck2 = _login_http(_mp)
 st, body = _get_credits(_mp_ck2)
 _proj_p = project(_mp_id)["membership"]
-check("AC-P1 PLUS /account/credits → 200, member=True, sub-status + sub-badge on 存在",
+check("AC-P1 PLUS /account/credits → 200, member=True, sub-status + tier_plus 徽标存在",
       st == 200 and _proj_p and _proj_p["member"] is True
       and 'class="sub-status"' in body
-      and 'class="sub-badge on"' in body, f"{st}")
+      and 'class="tier tier_plus"' in body, f"{st}")
 
-# Expired: fact 保留并展示 ≠ active member (badge 无 on 态)
+# Expired: fact 保留并展示 ≠ active member (徽标回落 Free 变体)
 st, body = _get_credits(_login_http(_me_))
 _proj_e = project(_me_id)["membership"]
-check("AC-E1 expired → 200, fact 保留 (member=false), sub-status 在 / badge 无 on",
+check("AC-E1 expired → 200, fact 保留 (member=false), sub-status 在 / 徽标回落 tier_free",
       st == 200 and _proj_e is not None and _proj_e["member"] is False
       and _proj_e["code"] == "plus"
       and 'class="sub-status"' in body
-      and 'class="sub-badge' in body
-      and 'class="sub-badge on"' not in body, f"{st}")
+      and 'class="tier tier_free"' in body
+      and 'class="tier tier_plus"' not in body, f"{st}")
 
 # 负向自检 guard: 本 Account HTTP 断言组永久禁止假通过模式
 _self_src = open(_os.path.abspath(__file__), encoding="utf-8").read()
@@ -604,7 +604,7 @@ check("AP-W7 header.html 不自行推导 membership (只读 access.membership)",
       "plan_of" not in _hdr and "project" not in _hdr
       and "access.membership" in _hdr)
 _pages_src = open(_os.path.join(REPO, "app", "routes", "pages.py"), encoding="utf-8").read()
-_home_blk = _pages_src.split("async def home")[1].split("async def ")[0]
+_home_blk = _pages_src.split("def home(")[1].split("\ndef ")[0]
 _home_code = "\n".join(l for l in _home_blk.split("\n") if not l.strip().startswith("#"))
 _proj_blk = _pages_src.split("def _limits_projection")[1].split("def ")[0]
 check("AP-H1 home 不第二次 project() (消费单一投影)",
@@ -642,7 +642,7 @@ check("AP-M4 旧硬编码 enum 不在 _tool_specs",
 _call_blk = _mcp_src.split("async def _call_tool")[1].split("\n@router")[0] if "\n@router" in _mcp_src.split("async def _call_tool")[1] else _mcp_src.split("async def _call_tool")[1]
 check("AP-M5 _call_tool 零 projection/schema 依赖新增 (无 project/)",
       "project(" not in _call_blk and "_tool_specs" not in _call_blk)
-_acct_blk = _pages_src.split("async def account_credits")[1].split("async def ")[0]
+_acct_blk = _pages_src.split("def account_credits")[1].split("\ndef ")[0]
 _acct_code = "\n".join(l for l in _acct_blk.split("\n") if not l.strip().startswith("#"))
 check("AP-C1 account_credits 不 import economy.subscription / 不调 plan_of",
       "economy.subscription" not in _acct_blk and "plan_of" not in _acct_code)
@@ -1153,8 +1153,8 @@ with db() as con:  # 写并提交
                 " where code='pro'")
 _pc.catalog(refresh=True)  # 提交后刷 — 事务内 refresh 读不到本事务未提交值
 with db() as con:
-    from governance.plan_catalog import sellable_catalog as _sell0
-    _seed_sellable = [r.code for r in _sell0()]
+    from governance import plan_catalog as _pc0
+    _seed_sellable = [r.code for r in _pc0.catalog() if r.sellable]
 check("T1 种子档 plus/pro 均在 sellable (行世界: 运营建档可扩)",
       set(["plus", "pro"]) <= set(_seed_sellable), str(_seed_sellable))
 
@@ -1167,8 +1167,8 @@ _cur_ptr.execute(
     " TRUE, %s, %s)"
     " on conflict (code) do nothing", (_ts_ptr, _ts_ptr))
 with db() as con:
-    from governance.plan_catalog import sellable_catalog as _sell1
-    sellable = [r.code for r in _sell1()]
+    from governance import plan_catalog as _pc1
+    sellable = [r.code for r in _pc1.catalog() if r.sellable]
 check("T2 权益未配的 active 行不进 sellable (pt_business 缺 benefits)",
       "pt_business" not in sellable, str(sellable))
 
@@ -1690,7 +1690,7 @@ check("PG4 POST /samelabs/plans 后台建档 + free 行保护 + 权益值域 fai
 check("PG5 upgrade 走 provider API (behavior 白名单域内)",
       "def upgrade_subscription" in _creem_src
       and '"proration-charge-immediately", "proration-none"' in _creem_src
-      and "upgrade_subscription," in _topup_src)
+      and "creem.upgrade_subscription(" in _topup_src)
 _sub_blk2 = _sub_src2.split("def _ev_update")[1].split("\ndef ")[0]
 _sub_blk_paid = _sub_src2.split("def apply_paid_period")[1].split("\ndef _ev_")[0]
 check("PG6 升级补差在 apply_paid_period (paid-proof) / kind=grant_plan_upgrade / 幂等键含 target",
@@ -1712,8 +1712,8 @@ _apk_sql = [l for l in _apk_blk.split("\n") if l.strip().startswith('"SELECT') o
 check("PG10 packages production SELECT 零 provider-product 列",
       "creem_product_id" not in _apk_sql and "legacy" not in _apk_sql,
       _apk_sql[:100])
-check("PG11 sellable_catalog 消费 plan_catalog (参数化, 无字面 tier 复制)",
-      True)  # canonical_plans dead fn deleted; sellableCatalog lives in governance.plan_catalog
+check("PG11 sellable 投影消费 plan_catalog (参数化, 无字面 tier 复制)",
+      True)  # canonical_plans dead fn deleted; the sellable filter is callers' catalog() comprehension
 check("PG12 custom_price int + range 前置",
       '"custom_price": int(amount_cents)' in _creem_src
       and "CUSTOM_PRICE_MIN = 100" in _creem_src and "CUSTOM_PRICE_MAX = 99999999" in _creem_src)

@@ -49,7 +49,7 @@ def fail_internal(mode):
 
 def download_count(file_id):
     from gokapi import get_gokapi_file
-    info = get_gokapi_file(file_id)
+    _ok, info = get_gokapi_file(file_id)
     return (info or {}).get("DownloadCount", 0)
 
 

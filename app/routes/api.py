@@ -25,10 +25,10 @@ from app.web_auth import require_session_auth as _require_auth
 _CORE = Path(__file__).resolve().parent.parent.parent / "core"
 sys.path.insert(0, str(_CORE))
 
-from config import MAX_BATCH_BYTES, PUBLIC_ID_RE, BASE_URL
+from config import PUBLIC_ID_RE, BASE_URL
 from database import db
-from sharing.uploads import (reserve_ingress, release_ingress,
-                             get_upload_by_public_id, list_uploads, delete_upload)
+from sharing.uploads import (get_upload_by_public_id, list_uploads,
+                             delete_upload)
 from sharing.ingress_receipt import (
     IngressConflict, IngressInProgress, IngressQuotaDenied, IngressUnresolved)
 from sharing.ingress_identity import ingress_request_hash
@@ -61,7 +61,7 @@ async def tool_preflight(request: Request):
     including resolve failures — stays with the authoritative dispatch
     chain. Executed before the browser starts uploading source files.
     """
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     try:
@@ -72,23 +72,25 @@ async def tool_preflight(request: Request):
     if not isinstance(tool_id, str) or not tool_id.strip():
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
 
-    from governance.catalog import resolve
-    tool, terr = resolve(tool_id, user["id"])
-    if terr:
-        # Resolve/routing stays authoritative in dispatch — preflight only
-        # answers affordability, so it stays silent (ok) about tool state.
+    def _affordability():
+        from governance.catalog import resolve
+        tool, terr = resolve(tool_id, user["id"])
+        if terr:
+            # Resolve/routing stays authoritative in dispatch — preflight only
+            # answers affordability, so it stays silent (ok) about tool state.
+            return {"ok": True}
+        from execution.affordability import check_affordability
+        denial = check_affordability(user["id"], tool)
+        if denial:
+            return JSONResponse({"ok": False, **denial}, 402)
         return {"ok": True}
-    from execution.affordability import check_affordability
-    denial = check_affordability(user["id"], tool)
-    if denial:
-        return JSONResponse({"ok": False, **denial}, 402)
-    return {"ok": True}
+    return await asyncio.to_thread(_affordability)
 
 
 @router.post("/tools/execute")
 async def execute_tool(request: Request):
     """Canonical ToolInvocation JSON → the single dispatch/gate chain."""
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     try:
@@ -139,7 +141,7 @@ async def fetch_source(request: Request, gokapi_id: str):
 # ── Uploads ──
 
 @router.get("/results/{result_id}/files")
-async def result_files(result_id: str, request: Request):
+def result_files(result_id: str, request: Request):
     """The live file items of one of MY results — the source list the
     composer takes over ("continue processing"). Owner only; anyone
     else (and dead / unknown results) reads as not_found."""
@@ -172,16 +174,13 @@ async def result_files(result_id: str, request: Request):
 
 
 @router.get("/uploads")
-async def get_uploads(request: Request):
+def get_uploads(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
-    import asyncio
     offset = list_offset(request.query_params.get("offset", "0"))
-    # Gokapi 列表是慢速外呼 (HTTP), 不阻塞事件循环 — 并发的健康检查等
-    # 短请求不为其买单
-    uploads = await asyncio.to_thread(
-        list_uploads, user["id"], offset=offset, limit=20)
+    # 框架线程池承载整个 handler: Gokapi 列表慢速外呼 (HTTP) 不在事件循环
+    uploads = list_uploads(user["id"], offset=offset, limit=20)
     return {"ok": True, "uploads": uploads, "has_more": len(uploads) == 20}
 
 
@@ -191,11 +190,20 @@ async def client_error(request: Request):
     import logging
     try:
         body = await request.json()
-        logging.getLogger("flashshare.client").error(
-            "CLIENT-CRASH %s %s | %s", body.get("lang"), body.get("url"), body.get("msg"))
-        stack = (body.get("stack") or "").replace("\n", " | ")[:1500]
-        if stack:
-            logging.getLogger("flashshare.client").error("CLIENT-STACK %s", stack)
+
+        def _clean(value) -> str:
+            return (str(value or "")[:300]
+                    .replace("\r", " ").replace("\n", " "))
+
+        if isinstance(body, dict):
+            logging.getLogger("flashshare.client").error(
+                "CLIENT-CRASH %s %s | %s", _clean(body.get("lang")),
+                _clean(body.get("url")), _clean(body.get("msg")))
+            stack = (str(body.get("stack") or "")
+                     .replace("\r", " ").replace("\n", " | "))[:1500]
+            if stack:
+                logging.getLogger("flashshare.client").error(
+                    "CLIENT-STACK %s", stack)
     except Exception:
         pass
     return {"ok": True}
@@ -211,7 +219,7 @@ async def create_upload(request: Request):
     Idempotent on client_ref + content: a response-loss retry replays the
     exact stored staging response.
     """
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
 
@@ -237,20 +245,6 @@ async def create_upload(request: Request):
         return JSONResponse({"ok": False, "error": "err_tool_required"}, 422)
 
     pending = []
-    # Transport safety only: a declared Content-Length far beyond the batch
-    # cap never needs reading. This is NOT a second batch algorithm — the
-    # authoritative source-byte contract stays in governance.ingress
-    # validate_batch() below. `incoming` on this early-reject path means the
-    # transport-declared request bytes (headers included), never the
-    # authoritative source batch total.
-    try:
-        declared = int(request.headers.get("content-length", "0"))
-    except ValueError:
-        declared = 0
-    if declared > MAX_BATCH_BYTES + 1024 * 1024:
-        return JSONResponse({"ok": False, "error": "err_batch_too_large",
-                             "limit": MAX_BATCH_BYTES,
-                             "incoming": declared}, 413)
 
     for file in uploads:
         if not file.filename:
@@ -326,7 +320,7 @@ async def create_upload(request: Request):
 
 
 @router.delete("/uploads/{public_id}")
-async def delete_upload_route(public_id: str, request: Request):
+def delete_upload_route(public_id: str, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
@@ -338,19 +332,15 @@ async def delete_upload_route(public_id: str, request: Request):
     if upload["user_id"] != user["id"]:
         return JSONResponse({"ok": False, "error": "forbidden"}, 403)
     try:
-        await asyncio.to_thread(delete_upload, upload["id"], user["id"])
+        delete_upload(upload["id"], user["id"])
     except Exception:
         logger.exception("delete failed for %s", public_id)
         return JSONResponse({"ok": False, "error": "delete_failed"}, 500)
     return {"ok": True}
 
 
-@router.patch("/uploads/{public_id}")
-async def rename_upload_route(public_id: str, request: Request):
-    """Rename an upload (only stem, extension preserved)."""
-    user, err = _require_auth(request)
-    if err:
-        return err
+def _rename_upload_impl(public_id: str, user: dict, raw: dict):
+    """Sync business block (thread): lookup + ownership + rename write."""
     if not PUBLIC_ID_RE.match(public_id):
         return JSONResponse({"ok": False, "error": "invalid_id"}, 400)
     upload = get_upload_by_public_id(public_id)
@@ -358,9 +348,7 @@ async def rename_upload_route(public_id: str, request: Request):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     if upload["user_id"] != user["id"]:
         return JSONResponse({"ok": False, "error": "forbidden"}, 403)
-
     try:
-        raw = await request.json()
         req = RenameRequest(**raw)
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
@@ -377,10 +365,23 @@ async def rename_upload_route(public_id: str, request: Request):
     return {"ok": True, "name": final_name}
 
 
+@router.patch("/uploads/{public_id}")
+async def rename_upload_route(public_id: str, request: Request):
+    """Rename an upload (only stem, extension preserved)."""
+    user, err = await asyncio.to_thread(_require_auth, request)
+    if err:
+        return err
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(_rename_upload_impl, public_id, user, raw)
+
+
 # ── User ──
 
 @router.get("/me")
-async def get_me(request: Request):
+def get_me(request: Request):
     user, err = _require_auth(request)
     if err:
         return err
@@ -390,7 +391,7 @@ async def get_me(request: Request):
 # ── API token management: account-control surface, session only ──
 
 @router.get("/keys")
-async def list_keys_route(request: Request):
+def list_keys_route(request: Request):
     """The owner's keys (prefixes + viewability). Session-only: the
     module's _require_auth is require_session_auth, so Bearer access
     can never list or read keys."""
@@ -403,7 +404,7 @@ async def list_keys_route(request: Request):
 
 @router.post("/keys")
 async def create_key_route(request: Request):
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     try:
@@ -413,7 +414,7 @@ async def create_key_route(request: Request):
         name = ""
     from identity.apikeys import create_key
     try:
-        key = create_key(user["id"], name or "key")
+        key = await asyncio.to_thread(create_key, user["id"], name or "key")
     except ValueError as exc:
         token = str(exc)
         status = 409 if token == "err_key_limit" else 503
@@ -424,7 +425,7 @@ async def create_key_route(request: Request):
 
 
 @router.get("/keys/{key_id}/reveal")
-async def reveal_key_route(key_id: int, request: Request):
+def reveal_key_route(key_id: int, request: Request):
     """The full key plaintext — owner's browser session only (Bearer
     requests never reach this handler)."""
     user, err = _require_auth(request)
@@ -444,7 +445,7 @@ async def reveal_key_route(key_id: int, request: Request):
 
 
 @router.delete("/keys/{key_id}")
-async def delete_key_route(key_id: int, request: Request):
+def delete_key_route(key_id: int, request: Request):
     user, err = _require_auth(request)
     if err:
         return err
@@ -458,7 +459,7 @@ async def delete_key_route(key_id: int, request: Request):
 # as the key routes above — Bearer access never manages grants) ──
 
 @router.get("/oauth/grants")
-async def list_oauth_grants_route(request: Request):
+def list_oauth_grants_route(request: Request):
     """The user's live OAuth grants (per client). The raw client_id is
     the revoke key — it travels in requests only, the UI renders the
     client hostname."""
@@ -471,7 +472,7 @@ async def list_oauth_grants_route(request: Request):
 
 @router.post("/oauth/grants/revoke")
 async def revoke_oauth_grant_route(request: Request):
-    user, err = _require_auth(request)
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     try:
@@ -483,6 +484,6 @@ async def revoke_oauth_grant_route(request: Request):
             or len(client_id) > 2048):
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
     from identity.oauth_provider import revoke_grant
-    if not revoke_grant(user["id"], client_id):
+    if not await asyncio.to_thread(revoke_grant, user["id"], client_id):
         return JSONResponse({"ok": False, "error": "not_found"}, 404)
     return {"ok": True}

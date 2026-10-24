@@ -45,15 +45,15 @@
   {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ canonical_path_url }}">
   {% endif %}
   {% block meta %}{% endblock %}
-  {# ── PWA chrome ── theme_color mirrors the manifest (light = page
-     surface --bg, dark = --gray-900); both values are design tokens #}
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfc">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1419">
+  {# ── PWA chrome ── the site is light-only (color-scheme: light), so
+     the browser/OS chrome takes the page surface --bg in every mode —
+     same value as the manifest theme_color/background_color #}
+  <meta name="theme-color" content="#faf9f7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="{{ APP_NAME }}">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preload" href="/static/fonts/Inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/css/tokens.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/518.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/css/components.css?v={{ css_version }}">
@@ -77,9 +77,16 @@
   </div>
   {% endblock %}
 
+  {# 认证表单单源 (auth/_card.html): 浮层克隆这两个服务端渲染的模板,
+     与 /auth/login|register 独立页同一内容。放在 modals block 之外 —
+     该 block 会被页面覆盖, 认证模板必须全站无条件在场。无 id, 克隆
+     不与页面撞 id。 #}
+  <template id="authTplLogin">{% with mode = "login", embed = "modal", next = "/", error = None %}{% include "auth/_card.html" %}{% endwith %}</template>
+  <template id="authTplRegister">{% with mode = "register", embed = "modal", next = "/", error = None %}{% include "auth/_card.html" %}{% endwith %}</template>
+
   <!-- Structure contract (2026-08-27 治理): 这两个inline块是全站唯一允许的数据注入;
      一切逻辑在 /static/pages/*.js (node --check 进回归)。ctx保留键: user_json/lang/
-     icons_json(已退役→icons.js)。改动模板脚本区前必读 docs/FE-STRUCTURE.md -->
+     icons_json(已退役→icons.js)。改动模板脚本区前必读 AGENTS.md「前端分层契约」-->
 <script>
 window.__USER__ = {{ user_json|tojson }};
 window.__LANG = "{{ lang }}";
@@ -90,11 +97,14 @@ window.__BASE_URL__ = "{{ BASE_URL }}";
 <script src="/static/pages/base-engine.js?v={{ pages_version }}"></script>
 <script src="/static/pages/auth-modal.js?v={{ pages_version }}"></script>
   <script src="/static/i18n.js?v={{ i18n_version }}"></script>
+<script>window.__I18N_V = "{{ i18n_version }}";</script>
+{% if lang != "en" %}<script src="/static/i18n/{{ lang }}.js?v={{ i18n_version }}"></script>{% endif %}
   {% block script_head %}{% endblock %}
   {% block script %}{% endblock %}
   {% block script_tail %}{% endblock %}
   <script src="/static/pages/tool-state.js?v={{ pages_version }}"></script>
   <script src="/static/pages/footer.js?v={{ pages_version }}"></script>
+  <script src="/static/pages/sw-register.js?v={{ pages_version }}"></script>
 
 </body>
 </html>

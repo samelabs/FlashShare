@@ -42,6 +42,40 @@ class ToolError(Exception):
     pass
 
 
+# THE single pixel ceiling for image tools. Also set as Pillow's own
+# DecompressionBomb limit so no code path can bypass it; the explicit
+# width×height check below rejects oversized images BEFORE load() with a
+# typed error instead of relying on Pillow's warning-to-error behavior.
+MAX_IMAGE_PIXELS = 64_000_000
+
+
+def open_image(stream):
+    """Decode an image source with the platform pixel ceiling. seek(0) →
+    Image.open → explicit width×height check → load(). Oversized images
+    raise ToolError("err_image_too_large") — checked before load() so the
+    typed rejection never depends on Pillow's bomb warnings; anything
+    else Pillow cannot decode maps to err_format_not_supported. Returns
+    the decoded Image."""
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+    stream.seek(0)
+    try:
+        img = Image.open(stream)
+    except Image.DecompressionBombError as exc:
+        raise ToolError("err_image_too_large") from exc
+    except Exception as exc:  # noqa: BLE001 — decode errors are typed, not 500s
+        raise ToolError("err_format_not_supported") from exc
+    if img.width * img.height > MAX_IMAGE_PIXELS:
+        raise ToolError("err_image_too_large")
+    try:
+        img.load()
+    except Image.DecompressionBombError as exc:
+        raise ToolError("err_image_too_large") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError("err_format_not_supported") from exc
+    return img
+
+
 _registry = []
 
 

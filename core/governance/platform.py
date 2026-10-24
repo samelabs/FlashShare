@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 
 from database import db
+from economy.billing import PLATFORM_POOL_KINDS
 from repo import ledger as ledger_repo
 from repo import users as users_repo
 from utils import now
@@ -58,7 +59,7 @@ def _ensure(con) -> int:
     created = users_repo.insert_local(con, PLATFORM_USERNAME, None, None,
                                       "518.PLUS Platform", ts)
     # 不可登录: 冻结状态 + 无 password_hash (authenticate_local 双重拒绝)
-    users_repo.update_status(con, created["id"], "suspended")
+    users_repo.set_status(con, created["id"], "suspended", ts)
     _platform_id = created["id"]
     logger.info("platform account ensured: id=%s", _platform_id)
     return _platform_id
@@ -87,7 +88,6 @@ def record_platform_income(con, call_id, kind: str, amount: int, note: str,
         return
     # balance_after = 平台收入池口径 (platform_commission + platform_revenue
     # — 平台账户的全部经济 kind), 与 provider_earn writer 的单池口径同规则
-    base = (ledger_repo.sum_kind(con, pid, "platform_commission")
-            + ledger_repo.sum_kind(con, pid, "platform_revenue"))
+    base = ledger_repo.pool_running_balance(con, pid, PLATFORM_POOL_KINDS)
     ledger_repo.insert_row(con, pid, amount, base + amount, kind,
                            "tool_call", call_id, idem, note, ts)

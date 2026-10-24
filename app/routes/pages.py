@@ -28,13 +28,70 @@ from governance.formats import format_manifest
 from governance.tool_params import resolve_label
 
 from database import db
-from repo.ledger import CALL_NET_CHARGE_SQL
 
 
 from app.web_ctx import fmt_ts as _fmt_ts  # 单点 (治理4, UTC)
 
 # 账户调用记录页分页大小 (credits → calls 行锚链接按它计算所在页)
 CALLS_PAGE_SIZE = 20
+
+# 账户记录页 (credits / calls) 的时间范围筛选: 全部 / 近7 / 近30 / 近90 天。
+# 天数 None = 列表不限时; 统计窗口见 _rec_stats_window。
+REC_RANGES: dict = {"all": None, "7": 7, "30": 30, "90": 90}
+
+
+def _rec_range(raw) -> str:
+    return raw if raw in REC_RANGES else "all"
+
+
+def _effective_page(raw, total: int, size: int) -> int:
+    """账户记录页的 1 基页码: 非整数与 <1 → 1; 上界是该用户当前筛选的
+    真实页数 (不再吃全局 MAX_LIST_PAGE=10000 上限 — 超过第 10000 页的
+    有效历史可达), OFFSET 恒被真实总数约束, 任意非法页码造不出巨额
+    OFFSET。"""
+    try:
+        page = int(raw)
+    except (TypeError, ValueError):
+        return 1
+    if page < 1:
+        return 1
+    return min(page, max((total + size - 1) // size, 1))
+
+
+def _rec_stats_window(rng: str) -> int:
+    """概览/趋势窗口 = 所选范围; 列表为“全部”时固定最近 30 天并明示,
+    绝不冒充全历史统计。"""
+    return REC_RANGES[rng] or 30
+
+
+def _rec_window_start(now_ts: int, days: int) -> int:
+    """统一窗口 = 包含今天的最近 N 个 UTC 自然日。起点 = UTC 今日零点减
+    N−1 天 (与 _day_series 的日桶枚举同一左边界), 终点 = 本次请求的统一
+    时间截点 — 列表 / 汇总 / 日聚合 / 图表共用同一边界, 不再用滚动的
+    N×86400 秒窗 (旧窗在窗口首日只含半天, 与日桶边界错位)。"""
+    return (now_ts // 86400 - days + 1) * 86400
+
+
+def _rec_since(rng: str, now_ts: int) -> int | None:
+    days = REC_RANGES[rng]
+    return _rec_window_start(now_ts, days) if days else None
+
+
+def _day_series(now_ts: int, days: int, daily: dict, value) -> tuple:
+    """趋势的稠密 UTC 日序列 (≤90 桶): daily 为 {day: bucket} 稀疏聚合,
+    value(day_bucket) 取该日数值; 日桶枚举 = _rec_window_start 的同一
+    左边界到今天, 与列表/汇总窗口对齐; 附首末日期标签与峰值。"""
+    today = int(now_ts) // 86400
+    out = []
+    peak = {"v": 0, "label": ""}
+    for d in range(today - days + 1, today + 1):
+        label = datetime.datetime.fromtimestamp(
+            d * 86400, datetime.timezone.utc).strftime("%m-%d")
+        v = value(daily.get(d, {}))
+        out.append({"label": label, "value": v})
+        if v > peak["v"]:
+            peak = {"v": v, "label": label}
+    return out, peak
 
 load_all()  # auto-discover every tools_*.py
 from identity.auth import public_user
@@ -72,16 +129,28 @@ async def manifest():
 @router.get("/sw.js")
 async def service_worker():
     with open(_STATIC / "sw.js") as f:
-        return Response(content=f.read(), media_type="application/javascript")
+        # the service worker script must never be cached by any layer:
+        # a stale SW pins the old precache until it falls out of every
+        # cache (same semantics the production Nginx already sets — the
+        # app itself stays the consistent origin)
+        return Response(content=f.read(), media_type="application/javascript",
+                        headers={"Cache-Control": "no-store"})
 
 @router.get("/offline", response_class=HTMLResponse)
-async def offline_page(request: Request):
+def offline_page(request: Request):
+    """Offline fallback the service worker caches at install. The page is
+    self-contained (renders with no network), so the brand
+    lockup is inlined from its single source rather than linked."""
+    from markupsafe import Markup
     from app.main import templates
     ctx = _ctx_base(request)
+    ctx["brand_lockup"] = Markup(
+        (_BASE / "brand" / "svg" / "518-lockup.svg").read_text(encoding="utf-8"))
+    ctx["offline_icon"] = icon_svg("offline")
     return templates.TemplateResponse(request, "offline.html", ctx)
 
 @router.get("/llms.txt")
-async def llms_txt():
+def llms_txt():
     """Plain-text agent guide, generated from the live code authorities
     (protocol versions, endpoint, public catalog). Language-independent
     English by design."""
@@ -111,7 +180,7 @@ async def robots():
     return Response(content=body, media_type="text/plain")
 
 @router.get("/sitemap.xml")
-async def sitemap():
+def sitemap():
     """Every indexable page (the same set the routes mark
     seo_robots='index, follow'): the static surfaces, every public tool
     page + its MCP page, and the author pages behind public supply.
@@ -159,7 +228,7 @@ def _support_note() -> str:
 
 
 @router.get("/terms", response_class=HTMLResponse)
-async def terms(request: Request):
+def terms(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
@@ -171,7 +240,7 @@ async def terms(request: Request):
 
 
 @router.get("/privacy", response_class=HTMLResponse)
-async def privacy(request: Request):
+def privacy(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
@@ -215,7 +284,7 @@ def _developer_facts() -> dict:
 
 
 @router.get("/developers", response_class=HTMLResponse)
-async def developers(request: Request):
+def developers(request: Request):
     """Public developer guide: the southbound HTTP contract, request/
     response shapes, declarations, limits and economics. Same policy-doc
     mechanism as /terms (per-locale file, en fallback) plus one render
@@ -247,7 +316,7 @@ async def developers(request: Request):
 
 
 @router.get("/agents", response_class=HTMLResponse)
-async def agents_page(request: Request):
+def agents_page(request: Request):
     """Agent support surface: the MCP server."""
     from app.main import templates
     ctx = _ctx_base_impl(request, "agents")
@@ -258,12 +327,15 @@ async def agents_page(request: Request):
 
 # ── Tool market & tool page (open platform supply side) ──
 
-def _owner_handle(owner_id) -> str:
+def _owner_identity(owner_id) -> tuple:
+    """公开作者身份: (handle, display_name) — 显示名优先机制的读侧。"""
     from database import db
     from repo.users import username_of
     with db() as con:
         row = username_of(con, owner_id)
-    return row["username"] if row else "unknown"
+    if row is None:
+        return "unknown", ""
+    return row["username"], (row["display_name"] or "").strip()
 
 
 def _favorite_keys_for(user) -> list:
@@ -296,7 +368,7 @@ def _market_page_window(current: int, total_pages: int,
 
 
 @router.get("/tools", response_class=HTMLResponse)
-async def tools_market(request: Request):
+def tools_market(request: Request):
     """Open-platform market: server-side search + paginated public list.
     Search and pagination live in the URL (?q= / ?page=); pricing
     visibility, ordering and paging all happen in SQL."""
@@ -325,17 +397,16 @@ async def tools_market(request: Request):
 
 
 @router.get("/u/{handle}", response_class=HTMLResponse)
-async def user_page(request: Request, handle: str):
+def user_page(request: Request, handle: str):
     """用户页 (开发者公开面): 作者身份 + 公开工具罗列。并列于工具页
     (App Store 开发者页参照), 只透公开字段白名单, 404 不泄露存在性。"""
     from app.main import templates
     from governance.catalog import owner_public_tools
     from database import db
 
+    from repo.users import id_by_username
     with db() as con:
-        urow = con.execute(
-            "SELECT id, status FROM users WHERE username = %s",
-            (handle,)).fetchone()
+        urow = id_by_username(con, handle)
     if urow is None or urow["status"] == "suspended":
         # suspended provider: the author page does not exist
         return templates.TemplateResponse(request, "missing.html",
@@ -351,7 +422,8 @@ async def user_page(request: Request, handle: str):
     ctx.update({
         "shell_class": "",
         "seo_robots": "index, follow",
-        "owner_handle": handle,
+        "owner_handle": urow["username"],
+        "owner_display": (urow["display_name"] or "").strip(),
         "owner_verified": owner_id in effective_member_ids([owner_id]),
         "owner_tools": tools,
         "is_self": bool(user and user.get("id") == owner_id),
@@ -444,7 +516,8 @@ def _tool_page_ctx(request: Request, key: str):
     from icons import tool_icon_svg
     tool_public["icon_svg"] = tool_icon_svg(tool_public.get("icon"))
     tool_name = resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_key
-    handle = _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None
+    handle, owner_display = (_owner_identity(tool.get("owner_id"))
+                             if tool.get("owner_id") else (None, ""))
     # meta description = 工具说明 (LocalizedText 协议解析);
     # 无说明的工具退回 "工具名 · @作者", 不输出空 description
     tool_desc = resolve_label(tool_public.get("desc") or {}, ctx["lang"]) or (
@@ -457,6 +530,7 @@ def _tool_page_ctx(request: Request, key: str):
         "delivery_json": _delivery_projection(ctx),
         "tool_name": tool_name,
         "handle": handle,
+        "owner_display": owner_display,
         "mcp_name": tool_key,  # MCP 名 = key 原文 (无投影)
         "tool_key": tool_key,
         "is_favorite": bool(user) and tool_key in _favorite_keys_for(user),
@@ -529,14 +603,14 @@ def _tool_qr_response(key: str):
 # 无两段式 owner/tool 解析, 无 'mcp'-slug 兜底 (那个场景随形状消亡)。
 
 @router.get("/tool/{key}/qr.svg")
-async def tool_qr(key: str):
+def tool_qr(key: str):
     """工具页 QR (/tool/compress/qr.svg) — 与工具页同一 resolve 权限
     (public/unlisted 对所有人)。"""
     return _tool_qr_response(key)
 
 
 @router.get("/tool/{key}", response_class=HTMLResponse)
-async def tool_page(request: Request, key: str):
+def tool_page(request: Request, key: str):
     from app.main import templates
     from fastapi.responses import HTMLResponse as _H
     ctx = _tool_page_ctx(request, key)
@@ -561,7 +635,7 @@ def _load_doc(name: str, lang: str = "en") -> str:
 HOME_GRID_SIZE = 8
 
 @router.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+def home(request: Request):
     from app.main import templates
     ctx = _ctx_base(request)
     lang = ctx["lang"]
@@ -613,7 +687,7 @@ async def home(request: Request):
 # ── Auth pages ──
 
 @router.get("/auth/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = "", next: str = "/"):
+def login_page(request: Request, error: str = "", next: str = "/"):
     from app.main import templates
     from app.routes.auth_route import _safe_next
     ctx = _ctx_base(request)
@@ -623,7 +697,7 @@ async def login_page(request: Request, error: str = "", next: str = "/"):
 
 
 @router.get("/auth/register", response_class=HTMLResponse)
-async def register_page(request: Request, error: str = "", next: str = "/"):
+def register_page(request: Request, error: str = "", next: str = "/"):
     from app.main import templates
     from app.routes.auth_route import _safe_next
     ctx = _ctx_base(request)
@@ -649,7 +723,7 @@ def _account_ctx(request: Request, page: str, **extra) -> dict:
 
 
 @router.get("/account/profile", response_class=HTMLResponse)
-async def account_profile(request: Request):
+def account_profile(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
@@ -663,7 +737,7 @@ async def account_profile(request: Request):
 
 
 @router.get("/account/security", response_class=HTMLResponse)
-async def account_security(request: Request):
+def account_security(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
@@ -750,7 +824,7 @@ def _shop_offers(user: dict | None, membership: dict | None) -> dict:
 
 
 @router.get("/pricing", response_class=HTMLResponse)
-async def pricing_page(request: Request):
+def pricing_page(request: Request):
     """Public shop: credit packs, membership plans, refund policy.
     Visible signed out; buying opens the login modal first."""
     from app.main import templates
@@ -772,15 +846,50 @@ async def pricing_page(request: Request):
 
 
 @router.get("/account/credits", response_class=HTMLResponse)
-async def account_credits(request: Request):
+def account_credits(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    from economy.billing import spendable_balance as get_balance, history_paged
-    pg = page_number(request.query_params.get("page", "1"))
+    from economy.billing import spendable_balance as get_balance, SPENDABLE_KINDS
+    from economy.daily import daily_amount as _daily_amount, granted_today
+    from repo import ledger as _ledger_repo
+    from utils import now as _now_ts
     size = 20
-    rows, total = history_paged(user["id"], page=pg, size=size)
+    # 统一查询截点: 每次请求只捕获一次 now_ts; 有限范围的列表/计数与全部
+    # 概览/日聚合都落在 [窗口起点, now_ts]; range=all 的列表保留全历史
+    now_ts = _now_ts()
+    rng = _rec_range(request.query_params.get("range", "all"))
+    since = _rec_since(rng, now_ts)
+    list_until = now_ts if since is not None else None
+    with db() as con:
+        total = _ledger_repo.history_count(con, user["id"],
+                                           SPENDABLE_KINDS, since, list_until)
+    pg = _effective_page(request.query_params.get("page", "1"), total, size)
+    with db() as con:
+        rows = _ledger_repo.history_page(
+            con, user["id"], SPENDABLE_KINDS, size, (pg - 1) * size, since,
+            list_until)
+        # 概览/趋势: 范围窗口 (列表为“全部”时固定最近 30 天并明示);
+        # 消费=consume 幅值, 退款=refund, 净=消费−退款; 赠送/充值不计入,
+        # 收益池不混入 — 聚合由 DB 完成; 窗口 = 包含今天的最近 N 个 UTC
+        # 自然日 (与列表同一边界, 同一截点)
+        stat_days = _rec_stats_window(rng)
+        stat_since = _rec_window_start(now_ts, stat_days)
+        spend = _ledger_repo.spend_summary(con, user["id"], stat_since,
+                                           now_ts)
+        daily = _ledger_repo.spend_daily(con, user["id"], stat_since,
+                                         now_ts)
+        _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
+        daily_amount = _daily_amount(con)
+    trend, peak = _day_series(
+        now_ts, stat_days, daily,
+        lambda b: b.get("consume", 0) - b.get("refund", 0))
+    # 活动存在 = 窗口内有消费/退款记录 (消费10退款10=有记录净0; 仅退款=
+    # 净负; 不按最大正净额判定空态); 比例尺 = 窗口内最大绝对净额
+    trend_has = spend["n"] > 0
+    _trend_vals = [b["value"] for b in trend]
+    trend_scale = max(1, max(_trend_vals), -min(_trend_vals))
     rows = [dict(r) for r in rows]
     # 41-12 note column: machine notes (raw tool ids, plan cycle stamps,
     # refund order refs) never render. Tool identity comes ONLY from the
@@ -789,13 +898,8 @@ async def account_credits(request: Request):
     # Tool-bound rows get a localized "Tool: <resolved name>" description;
     # rows without a resolvable relation show no tool description. Human
     # notes (operator/manual) keep rendering verbatim.
-    from repo import ledger as _ledger_repo
     from governance.tool_params import resolve_label as _resolve_label
-    from economy.daily import daily_amount as _daily_amount, granted_today
     _lang = getattr(request.state, "lang", "en")
-    with db() as con:
-        _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
-        daily_amount = _daily_amount(con)
 
     def _ref_label(r: dict) -> str | None:
         ref = _tool_refs.get(int(r["id"]))
@@ -842,6 +946,8 @@ async def account_credits(request: Request):
     for r in rows:
         if r.get("call_id"):
             r["call_page"] = _call_pages.get(int(r["call_id"]))
+        _ts = _fmt_ts(r["created_at"])
+        r["ts_date"], r["ts_time"] = _ts[:10], _ts[11:]
     _base = _ctx_base(request)  # access projection 单次读
     _membership = (_base.get("access") or {}).get("membership")
     shop = _shop_offers(user, _membership)
@@ -866,12 +972,22 @@ async def account_credits(request: Request):
                        pending_downgrade=shop["pending_downgrade"],
                        plan_facts=plan_facts,
                        rows=rows, total=total, pg=pg,
-                       pages=(total + size - 1) // size)
+                       pages=(total + size - 1) // size,
+                       rng=rng, rec_base="/account/credits",
+                       rec_chips=[
+                           ("ov_spend", spend["consume"], ""),
+                           ("ov_refund", spend["refund"], "pos"),
+                           ("ov_net", spend["net"], "neg" if spend["net"] else ""),
+                       ],
+                       rec_trend_key="rec_trend_spend",
+                       stat_days=stat_days, trend=trend, trend_peak=peak,
+                       trend_max=max((b["value"] for b in trend), default=0),
+                       trend_has=trend_has, trend_scale=trend_scale)
     return templates.TemplateResponse(request, "account/credits.html", ctx)
 
 
 @router.post("/account/credits/claim")
-async def account_credits_claim(request: Request):
+def account_credits_claim(request: Request):
     """Explicit daily-bonus claim button.
 
     Closes the gap where a long-lived session crossing UTC midnight
@@ -896,51 +1012,42 @@ async def account_credits_claim(request: Request):
 
 
 @router.get("/account/calls", response_class=HTMLResponse)
-async def account_calls(request: Request):
+def account_calls(request: Request):
     """调用记录页 — 当前用户自己的全部 tool_calls (ok / failed /
     insufficient / running); gate 之前被拒绝的请求不产生 tool_call,
     天然不在列。
 
     净扣费 = CALL_NET_CHARGE_SQL 投影 (退款经 refund → 原消费 → 调用 关系聚合,
     不解析 note)。结果链接仅在 ok 且结果未过期时显示; 工具已删除 →
-    统一 "已删除" 标签, 不出机器 id。"""
+    统一 "已删除" 标签, 不出机器 id。查询/聚合走 repo/calls (每页 20,
+    页码上界 = 用户当前筛选的真实页数; 概览 = 实际状态计数, 趋势 = 同一
+    净扣费投影按 UTC 日分桶)。"""
     from app.main import templates
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    from repo import calls as _calls_repo
     from utils import now as _now_ts
-    pg = page_number(request.query_params.get("page", "1"))
     size = CALLS_PAGE_SIZE
-    with db() as con:
-        total = int(con.execute(
-            "select count(*) c from tool_calls where user_id=%s",
-            (user["id"],)).fetchone()["c"])
-        pages = (total + size - 1) // size
-        pg = min(pg, max(pages, 1))
-        rows = con.execute(
-            f"""
-            SELECT tc.id, tc.tool_id, tc.status,
-                   tc.started_at, tc.finished_at, tc.result_public_id,
-                   tc.result_json, tc.error,
-                   pt.label_json,
-                   ({CALL_NET_CHARGE_SQL}) AS net_charge,
-                   COALESCE((
-                     SELECT SUM(r.delta) FROM ledger r
-                     JOIN ledger c
-                       ON r.kind = 'refund' AND r.ref_type = 'ledger'
-                      AND r.ref_id = c.id::text
-                     WHERE c.kind = 'consume' AND c.ref_type = 'tool_call'
-                       AND c.ref_id = tc.id::text
-                   ), 0) AS refunded
-            FROM tool_calls tc
-            LEFT JOIN platform_tools pt ON pt.tool_key = tc.tool_id
-            WHERE tc.user_id = %s
-            ORDER BY tc.id DESC
-            LIMIT %s OFFSET %s
-            """,
-            (user["id"], size, (pg - 1) * size)).fetchall()
-    _lang = getattr(request.state, "lang", "en")
+    # 统一查询截点: 单次捕获 now_ts; 有限范围列表/计数与概览/日聚合同界
     now_ts = _now_ts()
+    rng = _rec_range(request.query_params.get("range", "all"))
+    since = _rec_since(rng, now_ts)
+    list_until = now_ts if since is not None else None
+    with db() as con:
+        total = _calls_repo.count(con, user["id"], since, list_until)
+        pg = _effective_page(request.query_params.get("page", "1"), total, size)
+        rows = _calls_repo.paged(con, user["id"], size, (pg - 1) * size,
+                                 since, list_until)
+        # 概览/趋势窗口 = 所选范围 (列表为“全部”时固定最近 30 天并明示);
+        # 窗口 = 包含今天的最近 N 个 UTC 自然日 (与列表同一边界, 同一截点)
+        stat_days = _rec_stats_window(rng)
+        stat_since = _rec_window_start(now_ts, stat_days)
+        summary = _calls_repo.status_summary(con, user["id"], stat_since,
+                                             now_ts)
+        daily = _calls_repo.daily_net(con, user["id"], stat_since, now_ts)
+    trend, peak = _day_series(now_ts, stat_days, daily, lambda v: v or 0)
+    _lang = getattr(request.state, "lang", "en")
     calls = []
     for r in rows:
         r = dict(r)
@@ -964,14 +1071,35 @@ async def account_calls(request: Request):
             except (TypeError, ValueError):
                 expires = 0
             r["result_live"] = expires > now_ts
+        _ts = _fmt_ts(r["started_at"])
+        r["ts_date"], r["ts_time"] = _ts[:10], _ts[11:]
         calls.append(r)
+    _n_total = sum(v["n"] for v in summary.values())
+    _net_total = sum(v["net"] for v in summary.values())
+    # 活动存在 = 窗口内有调用 (免费/已全额退款的调用净扣费为 0, 但记录
+    # 存在); 比例尺 = 窗口内最大绝对净扣费
+    trend_has = _n_total > 0
+    _trend_vals = [b["value"] for b in trend]
+    trend_scale = max(1, max(_trend_vals), -min(_trend_vals))
     ctx = _account_ctx(request, "calls", calls=calls, total=total,
-                       pg=pg, pages=pages)
+                       pg=pg, pages=(total + size - 1) // size,
+                       rng=rng, rec_base="/account/calls",
+                       rec_chips=[
+                           ("ov_calls_total", _n_total, ""),
+                           ("calls_net", _net_total,
+                            "neg" if _net_total else ""),
+                       ] + [(f"mytools_call_st_{s}", summary[s]["n"], "")
+                            for s in ("ok", "failed", "insufficient", "running")
+                            if s in summary],
+                       rec_trend_key="rec_trend_calls",
+                       stat_days=stat_days, trend=trend, trend_peak=peak,
+                       trend_max=max((b["value"] for b in trend), default=0),
+                       trend_has=trend_has, trend_scale=trend_scale)
     return templates.TemplateResponse(request, "account/calls.html", ctx)
 
 
 @router.get("/account/earnings", response_class=HTMLResponse)
-async def account_earnings(request: Request):
+def account_earnings(request: Request):
     """Earnings & withdrawals (money view — its own module since 08-26)."""
     from app.main import templates
     user = request.state.user
@@ -986,7 +1114,7 @@ async def account_earnings(request: Request):
 
 
 @router.get("/account/tools", response_class=HTMLResponse)
-async def account_tools(request: Request):
+def account_tools(request: Request):
     """User-published tools (C2C supply side)."""
     from app.main import templates
     user = request.state.user
@@ -1002,7 +1130,7 @@ async def account_tools(request: Request):
 
 
 @router.get("/account/tools/publish", response_class=HTMLResponse)
-async def account_tools_publish(request: Request):
+def account_tools_publish(request: Request):
     """Standalone publish page (create + edit via ?id={tool_id})."""
     from app.main import templates
     user = request.state.user
@@ -1033,13 +1161,8 @@ async def account_tools_publish(request: Request):
     return templates.TemplateResponse(request, "account/publish.html", ctx)
 
 
-@router.get("/r/{result_id}", response_class=HTMLResponse)
-async def result_page(result_id: str, request: Request):
-    """Result page (IO-2): the /r/{id} authority. Delivery-owned expiry
-    (record expireAt — every result shape carries one) gates access;
-    expired or unknown ids get the 404 page. Server-rendered readable
-    without JS: ordered items (text/json shown, files linked), header
-    facts (tool, generated time, expiry, remaining downloads)."""
+def _result_page_impl(result_id: str, request: Request):
+    """Sync business block (thread): DB read + expiry + render."""
     from app.main import templates
     from repo.ledger import call_by_result_public_id
     from utils import format_bytes, format_ts, now, remaining_downloads
@@ -1100,7 +1223,7 @@ async def result_page(result_id: str, request: Request):
                 # download control (presentation only, no new fields)
                 d["deleted"] = True
             else:
-                live = await asyncio.to_thread(storage_info, u["gokapi_id"]) \
+                live = storage_info(u["gokapi_id"]) \
                     if u["gokapi_id"] else None
                 d["remaining"] = remaining_downloads(
                     int(u["allowed_downloads"] or 0), live)
@@ -1212,6 +1335,16 @@ async def result_page(result_id: str, request: Request):
     resp.headers["Vary"] = "Accept"
     return resp
 
+@router.get("/r/{result_id}", response_class=HTMLResponse)
+async def result_page(result_id: str, request: Request):
+    """Result page (IO-2): the /r/{id} authority. Delivery-owned expiry
+    (record expireAt — every result shape carries one) gates access;
+    expired or unknown ids get the 404 page. Server-rendered readable
+    without JS: ordered items (text/json shown, files linked), header
+    facts (tool, generated time, expiry, remaining downloads)."""
+    import asyncio
+    return await asyncio.to_thread(_result_page_impl, result_id, request)
+
 
 @router.get("/qr.svg")
 async def site_qr(p: str = "/"):
@@ -1234,7 +1367,7 @@ async def site_qr(p: str = "/"):
 
 
 @router.get("/r/{result_id}/qr.svg")
-async def result_qr(result_id: str):
+def result_qr(result_id: str):
     """结果页 QR — 与结果页同一可见性: 未知/过期 → 404 (无存在性预言),
     存活则编码结果页公开 URL。"""
     from repo.ledger import call_by_result_public_id
@@ -1255,7 +1388,7 @@ async def result_qr(result_id: str):
 
 
 @router.get("/account/favorites", response_class=HTMLResponse)
-async def account_favorites(request: Request):
+def account_favorites(request: Request):
     """我的收藏: the user's pinned tools (same set MCP tools/list carries
     besides first-party and own tools)."""
     from app.main import templates
@@ -1276,7 +1409,7 @@ async def account_favorites(request: Request):
 
 
 @router.get("/account/keys", response_class=HTMLResponse)
-async def account_keys(request: Request):
+def account_keys(request: Request):
     from app.main import templates
     user = request.state.user
     if not user:
@@ -1288,21 +1421,12 @@ async def account_keys(request: Request):
 # /auth/profile does not exist (single-page account model).
 # Profile/password POST handlers moved here from auth_route (account forms).
 
-@router.post("/account/profile")
-async def account_profile_save(request: Request):
+def _profile_save_impl(request: Request, user: dict, display_name: str,
+                       email: str, bio: str, payout_channel: str,
+                       current_password: str):
+    """Sync business block (thread): profile write + failure re-render."""
     from app.main import templates
     from identity.auth import update_profile, public_user
-    user = request.state.user
-    if not user:
-        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-
-    form = await request.form()
-    display_name = (form.get("display_name") or "").strip()
-    email = (form.get("email") or "").strip()
-    bio = (form.get("bio") or "").strip()
-    payout_channel = (form.get("payout_channel") or "").strip()
-    current_password = form.get("current_password") or ""
-
     try:
         # bio / payout_channel: the field is ALWAYS submitted on this
         # form — "" is an explicit clear, not "leave unchanged"
@@ -1326,20 +1450,41 @@ async def account_profile_save(request: Request):
     return RedirectResponse("/account/profile", 302)
 
 
-@router.post("/account/password")
-async def account_password_save(request: Request):
-    from app.main import templates
-    from identity.auth import public_user, has_password, change_password, set_password
-    from i18n import server_text
+@router.post("/account/profile")
+async def account_profile_save(request: Request):
     user = request.state.user
     if not user:
         return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
-    lang = getattr(request.state, "lang", "en")
 
     form = await request.form()
-    new_password = form.get("new_password") or ""
-    new_password_confirm = form.get("new_password_confirm") or ""
-    old_password = form.get("old_password") or ""
+    display_name = (form.get("display_name") or "").strip()
+    email = (form.get("email") or "").strip()
+    bio = (form.get("bio") or "").strip()
+    payout_channel = (form.get("payout_channel") or "").strip()
+    current_password = form.get("current_password") or ""
+    return await asyncio.to_thread(
+        _profile_save_impl, request, user, display_name, email, bio,
+        payout_channel, current_password)
+
+
+def _password_form_error(request: Request, user: dict, msg: str):
+    """Sync re-render (thread) for the two pre-write form validations."""
+    from app.main import templates
+    from identity.auth import public_user
+    u = public_user(user)
+    ctx = _account_ctx(request, "security", u=u,
+                       user_has_password=u.get("hasPassword", False),
+                       x_bound=bool(u.get("xUsername")), error=msg)
+    return templates.TemplateResponse(request, "account/security.html", ctx)
+
+
+def _password_save_impl(request: Request, user: dict, old_password: str,
+                        new_password: str):
+    """Sync business block (thread): credential write + failure re-render."""
+    from app.main import templates
+    from identity.auth import public_user, has_password, change_password, set_password
+    from i18n import server_text
+    lang = getattr(request.state, "lang", "en")
 
     def _err(msg):
         u = public_user(user)
@@ -1347,11 +1492,6 @@ async def account_password_save(request: Request):
                            user_has_password=u.get("hasPassword", False),
                            x_bound=bool(u.get("xUsername")), error=msg)
         return templates.TemplateResponse(request, "account/security.html", ctx)
-
-    if new_password != new_password_confirm:
-        return _err(server_text(lang).get("passwordMismatch", ""))
-    if not new_password:
-        return _err(error_text(request, "err_password_empty"))
 
     try:
         if has_password(user["id"]):
@@ -1367,3 +1507,28 @@ async def account_password_save(request: Request):
         return _err(error_text(request, ""))
 
     return RedirectResponse("/account/security", 302)
+
+
+@router.post("/account/password")
+async def account_password_save(request: Request):
+    from i18n import server_text
+    user = request.state.user
+    if not user:
+        return HTMLResponse("", status_code=302, headers={"Location": "/auth/login"})
+    lang = getattr(request.state, "lang", "en")
+
+    form = await request.form()
+    new_password = form.get("new_password") or ""
+    new_password_confirm = form.get("new_password_confirm") or ""
+    old_password = form.get("old_password") or ""
+
+    if new_password != new_password_confirm:
+        return await asyncio.to_thread(
+            _password_form_error, request, user,
+            server_text(lang).get("passwordMismatch", ""))
+    if not new_password:
+        return await asyncio.to_thread(
+            _password_form_error, request, user,
+            error_text(request, "err_password_empty"))
+    return await asyncio.to_thread(
+        _password_save_impl, request, user, old_password, new_password)

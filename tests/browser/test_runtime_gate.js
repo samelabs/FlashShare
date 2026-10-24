@@ -92,7 +92,7 @@ const PAGES = [
   { path: "/agents", name: "agents", anonOk: true, need: ["#mcpUrl", "#cfgClaudeCode", "#cfgCurl"], copy: ["#copyMcp", '[data-copy-target="cfgClaudeCode"]'] },
   { path: "/pricing", name: "pricing", anonOk: true, need: [".pr-plans .pr-card", "#refund"] },
   { path: "/auth/login", name: "auth-login", anonOk: true, need: ["input[name=login]"] },
-  { path: "/auth/register", name: "auth-register", anonOk: true, need: ["#regUsername"] },
+  { path: "/auth/register", name: "auth-register", anonOk: true, need: ["form[action='/auth/register'] input[name=password_confirm]"] },
   { path: "/account/credits", name: "account-credits", need: [] },
   { path: "/account/tools", name: "account-tools", need: ["#openPublish"] },
   { path: "/account/tools/publish", name: "account-publish", need: ["#pubForm"] },
@@ -286,28 +286,167 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
 
     if (ctxName === "desktop") {
       // REGISTER (console stream is captured for the whole context flow)
+      // selectors ride the shared auth card (auth/_card.html, name-based —
+      // the partial carries no DOM ids)
       const flowConsole = [];
       page.on("console", (m) => { if (m.type() === "error") flowConsole.push(m.text()); });
-      await gotoReady(page, "/auth/register", "#regUsername");
-      await page.fill("#regUsername", username);
-      await page.fill("#regEmail", `${username}@t.co`);
-      await page.fill("#regPassword", password);
-      await page.fill("#regPasswordConfirm", password);
-      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), page.click("button[type=submit]")]);
+      await gotoReady(page, "/auth/register", "form[action='/auth/register'] input[name=username]");
+      await page.fill("form[action='/auth/register'] input[name=username]", username);
+      await page.fill("form[action='/auth/register'] input[name=email]", `${username}@t.co`);
+      await page.fill("form[action='/auth/register'] input[name=password]", password);
+      await page.fill("form[action='/auth/register'] input[name=password_confirm]", password);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), page.click("form[action='/auth/register'] button[type=submit]")]);
       check("web register: redirects to /", new URL(page.url()).pathname === "/", page.url());
       check("web register: logged-in header", (await page.$("#userMenuBtn")) !== null);
       check("web register: zero console.error", flowConsole.filter((e) => !/net::|Failed to load resource|ERR_/i.test(e)).length === 0, flowConsole.join(" | "));
       await visualAudit("desktop", page, "after-register-home");
 
       // LOGOUT + LOGIN (logout lives in the profile dropdown — open it first)
-      await gotoReady(page, "/account/profile", "#userMenuBtn");
-      const menuBtn = await page.$("#userMenuBtn");
-      const logout = await page.$(".logout-link");
-      if (menuBtn && logout) {
-        await menuBtn.click();
+      const logoutViaMenu = async () => {
+        await gotoReady(page, "/account/profile", "#userMenuBtn");
+        const menuBtn2 = await page.$("#userMenuBtn");
+        const logout2 = await page.$(".logout-link");
+        if (!(menuBtn2 && logout2)) return false;
+        await menuBtn2.click();
         await page.waitForSelector("#userDropdown:not(.hidden)", { timeout: 5000 });
-        await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), logout.click()]);
-        check("web logout: back to anon", (await page.$('header a[href="/auth/login"]')) !== null);
+        await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), logout2.click()]);
+        return (await page.$('header a[href="/auth/login"]')) !== null;
+      };
+      if (await logoutViaMenu()) check("web logout: back to anon", true);
+
+      // ── auth overlay: real submit after mode switches, initial focus,
+      // POST shape, and content-width parity with the standalone page ──
+      {
+        const modalUser = (username + "m").slice(0, 32);
+        const modalPass = "Test12345";
+        // F3 baseline: standalone card at this viewport (same language, en)
+        await gotoReady(page, "/auth/login", "input[name=login]");
+        const pageCard = await page.evaluate(() => {
+          const card = document.querySelector(".auth-card");
+          const title = card.querySelector(".auth-title");
+          const sub = card.querySelector(".auth-sub");
+          return { w: Math.round(card.getBoundingClientRect().width),
+                   gap: Math.round(sub.getBoundingClientRect().top - title.getBoundingClientRect().bottom) };
+        });
+        await gotoReady(page, "/", "body");
+        const modalNet = [];
+        page.on("request", (r) => {
+          if (r.url().includes("/auth/login") || r.url().includes("/auth/register"))
+            modalNet.push({ m: r.method(), u: r.url() });
+        });
+        await page.click('header a[href="/auth/login"].js-auth');
+        await page.waitForSelector(".auth-modal", { timeout: 5000 });
+        // initial focus BEFORE any fill: first visible control, not the
+        // hidden next input riding the clone
+        const focusOpen = await page.evaluate(() => ({
+          name: document.activeElement ? document.activeElement.name || "" : "",
+          type: document.activeElement ? document.activeElement.type || "" : "",
+        }));
+        check("modal open: focus lands on the first visible control (login input)",
+          focusOpen.name === "login" && focusOpen.type === "text", JSON.stringify(focusOpen));
+        const modalCard = await page.evaluate(() => {
+          const panel = document.querySelector(".auth-modal");
+          const title = panel.querySelector(".auth-title");
+          const sub = panel.querySelector(".auth-sub");
+          return { w: Math.round(panel.getBoundingClientRect().width),
+                   gap: Math.round(sub.getBoundingClientRect().top - title.getBoundingClientRect().bottom) };
+        });
+        check("modal: same 400px card width + content spacing as the page mount",
+          Math.abs(modalCard.w - pageCard.w) <= 1 && Math.abs(modalCard.gap - pageCard.gap) <= 1,
+          JSON.stringify({ pageCard, modalCard }));
+        // repeated mode switches, then focus check (still BEFORE any fill)
+        await page.click('.auth-seg [data-mode="register"]');
+        await page.click('.auth-seg [data-mode="login"]');
+        await page.click('.auth-seg [data-mode="register"]');
+        const focusReg = await page.evaluate(() => ({
+          name: document.activeElement ? document.activeElement.name || "" : "",
+          type: document.activeElement ? document.activeElement.type || "" : "",
+        }));
+        check("modal after repeated switches: focus on register's first visible control",
+          focusReg.name === "username" && focusReg.type === "text", JSON.stringify(focusReg));
+        // real submit from the SECOND-switched clone (F1 regression core)
+        await page.fill('.am-body form input[name="username"]', modalUser);
+        await page.fill('.am-body form input[name="email"]', `${modalUser}@t.co`);
+        await page.fill('.am-body form input[name="password"]', modalPass);
+        await page.fill('.am-body form input[name="password_confirm"]', modalPass);
+        await page.click('.am-body form button[type="submit"]');
+        await page.waitForSelector(".auth-modal", { state: "detached", timeout: 15000 });
+        check("modal register after mode switches: overlay closed, header swapped to avatar",
+          (await page.$(".hd-r .av")) !== null, page.url());
+        check("modal register: real POST to /auth/register, no navigation, no credentials in URLs",
+          modalNet.some((r) => r.m === "POST" && /\/auth\/register$/.test(r.u))
+          && modalNet.every((r) => r.m === "POST" && !/[?&](password|login|username|email)=/.test(r.u))
+          && new URL(page.url()).pathname === "/",
+          JSON.stringify(modalNet));
+        // register → login: modal LOGIN submit also works (same delegation)
+        if (await logoutViaMenu()) {
+          await page.click('header a[href="/auth/login"].js-auth');
+          await page.waitForSelector(".auth-modal", { timeout: 5000 });
+          const focusLogin = await page.evaluate(() =>
+            document.activeElement ? document.activeElement.name || "" : "");
+          check("modal re-open: focus on the login input", focusLogin === "login", focusLogin);
+          await page.fill('.am-body form input[name="login"]', modalUser);
+          await page.fill('.am-body form input[name="password"]', modalPass);
+          await page.click('.am-body form button[type="submit"]');
+          await page.waitForSelector(".auth-modal", { state: "detached", timeout: 15000 });
+          check("modal login after register: overlay closed, header avatar",
+            (await page.$(".hd-r .av")) !== null, page.url());
+          check("modal login: POST to /auth/login, never a GET with credentials",
+            modalNet.some((r) => r.m === "POST" && /\/auth\/login$/.test(r.u))
+            && modalNet.every((r) => r.m === "POST"), JSON.stringify(modalNet.slice(-3)));
+          await logoutViaMenu();
+        }
+      }
+      // ── auth overlay language: in-place switch on a TOOL page, then the
+      // clone + dialog aria-label follow the CURRENT language (F2) ──
+      {
+        const lctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        const lp2 = await lctx.newPage();
+        await gotoReady(lp2, "/tool/compress", "body");
+        await lp2.click("#langButton");
+        await lp2.waitForSelector(".lang-menu:not(.hidden)", { timeout: 5000 });
+        await lp2.click('.lang-option[data-lang="fr"]');
+        await lp2.waitForFunction(() => window.__LANG === "fr", null, { timeout: 10000 });
+        await lp2.click('header a[href="/auth/login"].js-auth');
+        await lp2.waitForSelector(".auth-modal", { timeout: 5000 });
+        const l10n = await lp2.evaluate(() => {
+          const title = document.querySelector(".am-body .auth-title");
+          const dlg = document.querySelector(".modal[role='dialog']");
+          return { lang: window.__LANG,
+                   title: title ? title.textContent : "",
+                   sub: (document.querySelector(".am-body .auth-sub") || {}).textContent || "",
+                   want: window.t("loginTitle"),
+                   wantSub: window.t("auth_modal_sub"),
+                   aria: dlg ? dlg.getAttribute("aria-label") : "" };
+        });
+        check("modal after in-place language switch: clone text + aria-label follow the switched language",
+          l10n.lang === "fr" && l10n.title === l10n.want && l10n.sub === l10n.wantSub
+          && l10n.aria === l10n.want,
+          JSON.stringify(l10n));
+        await lctx.close();
+      }
+
+      // ── overlay at phone width: the card shrinks to the available width
+      // and never overflows the viewport (mobile login entry = nav sheet) ──
+      {
+        const mctx = await browser.newContext({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
+        const mp = await mctx.newPage();
+        await gotoReady(mp, "/", "body");
+        await mp.click("#mobileNavBtn");
+        await mp.waitForSelector("#mobileNavSheet:not(.hidden)", { timeout: 5000 });
+        await mp.click("#mobileNavSheet .mobile-nav-login");
+        await mp.waitForSelector(".auth-modal", { timeout: 5000 });
+        const mfit = await mp.evaluate(() => {
+          const panel = document.querySelector(".auth-modal");
+          const r = panel.getBoundingClientRect();
+          return { vw: document.documentElement.clientWidth,
+                   sw: document.documentElement.scrollWidth,
+                   left: Math.round(r.left), right: Math.round(r.right) };
+        });
+        check("modal at 390px: card fits the viewport (no horizontal overflow)",
+          mfit.left >= 0 && mfit.right <= mfit.vw && mfit.sw <= mfit.vw + 1,
+          JSON.stringify(mfit));
+        await mctx.close();
       }
       await gotoReady(page, "/auth/login", "input[name=login]");
       await page.fill("input[name=login]", username);
@@ -1435,7 +1574,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await page.click("#mobileNavBtn");
       await page.waitForTimeout(300);
       await page.click(".mobile-nav-login");
-      await page.waitForSelector(".auth-modal input", { timeout: 5000 });
+      await page.waitForSelector(".auth-modal input:not([type=hidden])", { timeout: 5000 });
       const bad = await auditInputs(page);
       check("input-floor 390 login overlay: inputs >= 16px", bad.length === 0, bad.join(", "));
       await ctx.close();
@@ -1458,7 +1597,7 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
             window.openAuthModal({ mode });
             const panel = document.querySelector(".auth-modal");
             if (!panel) return { ok: false, why: "no panel" };
-            const first = panel.querySelector("form input");
+            const first = panel.querySelector("form input:not([type=hidden])");
             if (first) first.focus();
             const pr = panel.getBoundingClientRect();
             const fr = document.activeElement && document.activeElement.getBoundingClientRect
@@ -1916,7 +2055,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         });
         await page.fill("#errProbe .ti-body-text", "trigger failure");
         await page.click("#errProbe .ti-run");
-        await page.waitForTimeout(400);
+        // bounded sync: wait until the error note is actually rendered
+        // visible — a fixed 400ms sleep read before the (intercepted)
+        // response settled and read an empty card on a loaded machine
+        await page.waitForSelector("#result .result-card .error-note",
+          { state: "visible", timeout: 5000 });
         const err = await page.evaluate(() => {
           const note = document.querySelector("#result .result-card .error-note");
           return {
@@ -2274,6 +2417,535 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       check(`drawer ${p}: backdrop closes`, backdropShown && backdropClosed === true);
     }
     await dctx.close();
+  }
+
+  // ── auth unification + tool access cards + account records (browser
+  // legs; structural facts live in canonical test_web_surface A*/RC*) ──
+  {
+    const { execFileSync } = require("child_process");
+    const py = process.env.PYTHON || "python3";
+    const arUser = "gateb" + Math.random().toString(36).slice(2, 8);
+    const arPass = "Test12345";
+    const nojsUser = "gatec" + Math.random().toString(36).slice(2, 8);
+    const bodyToolKey = "gatebody" + Math.random().toString(36).slice(2, 8);
+    let arCookie = "";
+
+    // (1) modal lifecycle on an anonymous context: failure, mismatch,
+    // mode switch clears errors, focus trap + Esc restores focus
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/tools", "body");
+      const trigger = await page.$('header a[href="/auth/login"].js-auth');
+      check("ar: header login trigger present (anon)", trigger !== null);
+      await trigger.click();
+      await page.waitForSelector(".auth-modal input:not([type=hidden])", { timeout: 5000 });
+      // wrong credentials → typed error line, still open
+      await page.fill(".auth-modal input[name=login]", "nosuch_user_x");
+      await page.fill(".auth-modal input[name=password]", "wrong-pass-1");
+      await page.click(".auth-modal button[type=submit]");
+      await page.waitForSelector(".auth-modal .am-err:not([hidden])", { timeout: 10000 });
+      check("ar: modal wrong login shows the typed error",
+        (await page.textContent(".auth-modal .am-err")) !== "");
+      // switch to register: the error from the previous mode is gone
+      await page.click('.auth-modal .seg [data-mode="register"]');
+      await page.waitForSelector(".auth-modal input[name=password_confirm]", { timeout: 5000 });
+      check("ar: switching modes clears the previous mode's error",
+        await page.$eval(".auth-modal .am-err", (el) => el.hidden));
+      // password mismatch hint (shared binder) shows and clears
+      await page.fill(".auth-modal input[name=password]", "Password1");
+      await page.fill(".auth-modal input[name=password_confirm]", "Password2");
+      await page.fill(".auth-modal input[name=username]", "x");
+      check("ar: mismatched confirm shows the shared hint",
+        !(await page.$eval(".auth-modal .pw-mismatch", (el) => el.hidden)));
+      await page.fill(".auth-modal input[name=password_confirm]", "Password1");
+      check("ar: matching confirm hides the hint",
+        await page.$eval(".auth-modal .pw-mismatch", (el) => el.hidden));
+      // focus trap: 8 tabs stay inside the overlay (trace as evidence)
+      const trapSeq = [];
+      for (let i = 0; i < 8; i++) {
+        await page.keyboard.press("Tab");
+        trapSeq.push(await page.evaluate(() => {
+          const el = document.activeElement;
+          const ov = document.querySelector(".auth-modal");
+          return el ? `${el.tagName}:${(el.name || el.className || el.textContent || "").toString().slice(0, 20)}:in=${ov && ov.contains(el)}` : "none";
+        }));
+      }
+      check("ar: tab focus stays trapped in the overlay",
+        trapSeq.every((s) => s.endsWith("in=true")), trapSeq.join(" | "));
+      // Esc closes and restores focus to the trigger
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".auth-modal", { state: "detached", timeout: 5000 });
+      const restored = await page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        return document.activeElement === el;
+      }, 'header a[href="/auth/login"].js-auth');
+      check("ar: Esc closes and restores focus to the trigger", restored);
+      await ctx.close();
+    }
+
+    // (2) register through the modal (success path) → seeded records user
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/tools", "body");
+      await page.click('header a[href="/auth/register"].js-auth');
+      await page.waitForSelector(".auth-modal input[name=username]", { timeout: 5000 });
+      await page.fill(".auth-modal input[name=username]", arUser);
+      await page.fill(".auth-modal input[name=email]", `${arUser}@t.co`);
+      await page.fill(".auth-modal input[name=password]", arPass);
+      await page.fill(".auth-modal input[name=password_confirm]", arPass);
+      await page.click(".auth-modal button[type=submit]");
+      await page.waitForSelector(".auth-modal", { state: "detached", timeout: 15000 });
+      check("ar: modal register succeeds and closes the overlay",
+        (await page.$("header .av, header #userMenuBtn")) !== null);
+      const cookie = (await ctx.cookies()).find((c) => c.name.includes("session"));
+      check("ar: modal register leaves a session cookie", !!cookie);
+      arCookie = cookie ? cookie.value : "";
+      await ctx.close();
+    }
+
+    // (3) no-JS registration on the standalone page (real POST form)
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, javaScriptEnabled: false });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/auth/register", "form[action='/auth/register']");
+      await page.fill("form[action='/auth/register'] input[name=username]", nojsUser);
+      await page.fill("form[action='/auth/register'] input[name=email]", `${nojsUser}@t.co`);
+      await page.fill("form[action='/auth/register'] input[name=password]", arPass);
+      await page.fill("form[action='/auth/register'] input[name=password_confirm]", arPass);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click("form[action='/auth/register'] button[type=submit]")]);
+      check("ar: no-JS register submits the real form and lands logged in",
+        new URL(page.url()).pathname === "/", page.url());
+      await ctx.close();
+    }
+
+    // (4) seed deterministic records for arUser + the body tool
+    execFileSync(py, ["-c", `
+import os, sys, json, secrets
+sys.path.insert(0, "core")
+os.environ["DATABASE_URL"] = os.environ["TEST_DB_URL"].replace("postgresql://", "postgresql+psycopg://")
+from database import db
+from utils import now
+u, key = sys.argv[1], sys.argv[2]
+ts = now()
+with db() as con:
+    uid = int(con.execute("select id from users where username=%s", (u,)).fetchone()["id"])
+    bal = 0
+    for i in range(20):
+        bal -= 5
+        con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                    " created_at) values (%s, -5, %s, 'consume', %s)",
+                    (uid, bal, ts - i * 60))
+    bal += 2
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " created_at) values (%s, 2, %s, 'refund', %s)", (uid, bal, ts - 60))
+    bal += 50
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " created_at) values (%s, 50, %s, 'grant_signup', %s)", (uid, bal, ts))
+    bal -= 5
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " created_at) values (%s, -5, %s, 'consume', %s)", (uid, bal, ts - 40 * 86400))
+    c = con.execute("insert into tool_calls (client_ref, user_id, tool_id,"
+                    " status, cost_snapshot, commission_rate_snapshot,"
+                    " invocation_hash, started_at, finished_at,"
+                    " result_public_id, result_json) values"
+                    " (%s, %s, 'share', 'ok', 5, 30, %s, %s, %s, %s, %s)"
+                    " returning id",
+                    ("gateb_call", uid, secrets.token_hex(32), ts, ts,
+                     "gateb_res_pub", json.dumps({"expires_at": ts + 86400}))).fetchone()
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " ref_type, ref_id, idem_key, created_at) values"
+                " (%s, -5, -5, 'consume', 'tool_call', %s, %s, %s)",
+                (uid, str(c["id"]), "gateb_c", ts))
+    con.execute("insert into platform_tools (tool_key, owner_id, tool_id,"
+                " execution, label_json, visibility, enabled, files_min,"
+                " files_max, outputs_json, created_at, updated_at,"
+                " format_family, body_format, body_placeholder_json,"
+                " params_json, accept_json) values"
+                " (%s, NULL, %s, 'local', %s, 'public', TRUE, 0, 0,"
+                " '[\\"text\\"]', %s, %s, NULL, 'text', %s, '[]', NULL)",
+                (key, key, json.dumps({"en": "Gate Body"}), ts, ts,
+                 json.dumps({"en": "Paste text"})))
+    con.execute("insert into pricing (tool_id, cost, enabled, updated_at)"
+                " values (%s, 0, TRUE, %s)", (key, ts))
+print("seeded")
+`, arUser, bodyToolKey], { env: Object.assign({}, process.env, { TEST_DB_URL: TEST_DB }), encoding: "utf8" });
+
+    // (4b) records fixture user: 40-char legal tool label, live result link,
+    // larger amounts (grouped digits), a long human note, and a negative
+    // (refund-heavy) day so the trend carries up + down + zero buckets
+    const recUser = "gated" + Math.random().toString(36).slice(2, 8);
+    const longToolKey = "gatelong" + Math.random().toString(36).slice(2, 8);
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/auth/register?lang=en", "form[action='/auth/register'] input[name=username]");
+      await page.fill("form[action='/auth/register'] input[name=username]", recUser);
+      await page.fill("form[action='/auth/register'] input[name=email]", `${recUser}@t.co`);
+      await page.fill("form[action='/auth/register'] input[name=password]", arPass);
+      await page.fill("form[action='/auth/register'] input[name=password_confirm]", arPass);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click("form[action='/auth/register'] button[type=submit]")]);
+      check("ar records-long: fixture user registered (real form)",
+        new URL(page.url()).pathname === "/", page.url());
+      await ctx.close();
+    }
+    execFileSync(py, ["-c", `
+import os, sys, json, secrets
+sys.path.insert(0, "core")
+os.environ["DATABASE_URL"] = os.environ["TEST_DB_URL"].replace("postgresql://", "postgresql+psycopg://")
+from database import db
+from utils import now
+u, key = sys.argv[1], sys.argv[2]
+ts = now()
+y = (ts // 86400 - 1) * 86400 + 3600  # yesterday 01:00 UTC
+with db() as con:
+    uid = int(con.execute("select id from users where username=%s", (u,)).fetchone()["id"])
+    label = json.dumps({"en": "Extremely Long Legal Tool Name Exactly40"})
+    con.execute("insert into platform_tools (tool_key, owner_id, tool_id,"
+                " execution, label_json, visibility, enabled, files_min,"
+                " files_max, outputs_json, created_at, updated_at,"
+                " format_family, params_json, accept_json) values"
+                " (%s, NULL, %s, 'local', %s, 'unlisted', TRUE, 1, 1,"
+                " '[\\"text\\"]', %s, %s, 'image', '[]', '[\\".png\\"]')",
+                (key, key, label, ts, ts))
+    c = con.execute("insert into tool_calls (client_ref, user_id, tool_id,"
+                    " status, cost_snapshot, commission_rate_snapshot,"
+                    " invocation_hash, started_at, finished_at,"
+                    " result_public_id, result_json) values"
+                    " (%s, %s, %s, 'ok', 1234567, 30, %s, %s, %s, %s, %s)"
+                    " returning id",
+                    ("gatelong_call", uid, key, secrets.token_hex(32), ts, ts,
+                     "gatelong_res_pub", json.dumps({"expires_at": ts + 86400}))).fetchone()
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " ref_type, ref_id, idem_key, created_at) values"
+                " (%s, -1234567, -1234567, 'consume', 'tool_call', %s, %s, %s)",
+                (uid, str(c["id"]), "gatelong_c1", ts))
+    rc = con.execute("select id from ledger where idem_key=%s", ("gatelong_c1",)).fetchone()
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " ref_type, ref_id, idem_key, created_at) values"
+                " (%s, 500000, -734567, 'refund', 'ledger', %s, %s, %s)",
+                (uid, str(rc["id"]), "gatelong_r1", ts))
+    # yesterday: refund-heavy day -> a negative (down) bucket big enough
+    # to verify its geometry (40% of the half-band, not a min-height tick)
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " idem_key, created_at) values"
+                " (%s, -10, -734577, 'consume', %s, %s)", (uid, "gatelong_c2", y))
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " idem_key, created_at) values"
+                " (%s, 600000, -134577, 'refund', %s, %s)", (uid, "gatelong_r2", y))
+    # long human note (adjust) renders verbatim on the credits page
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " note, idem_key, created_at) values"
+                " (%s, 5, -732572, 'adjust', %s, %s, %s)",
+                (uid, "Operator adjustment note describing an unusually long"
+                      " manual correction entry kept for audit purposes",
+                 "gatelong_a1", ts))
+print("seeded-long")
+`, recUser, longToolKey], { env: Object.assign({}, process.env, { TEST_DB_URL: TEST_DB }), encoding: "utf8" });
+
+    // (5) records pages as arUser: paging, clamping, filter, summary, links
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      const go = (p) => page.goto(BASE + p, { waitUntil: "load", timeout: 20000 });
+      // real form login on the standalone page (same no-JS surface)
+      await go("/auth/login?lang=en");
+      await page.fill("form[action='/auth/login'] input[name=login]", arUser);
+      await page.fill("form[action='/auth/login'] input[name=password]", arPass);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click("form[action='/auth/login'] button[type=submit]")]);
+      arCookie = ((await ctx.cookies()).find((c) => c.name.includes("session")) || {}).value || "";
+      await go("/account/credits?lang=en");
+      const p1 = await page.evaluate(() => ({
+        url: location.pathname,
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        pager: (document.querySelector(".acct-pager") || {}).textContent || "",
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+        bars: document.querySelectorAll(".rec-bar").length,
+        statsNote: (document.querySelector(".rec-trend-note") || {}).textContent || "",
+        sw: document.documentElement.scrollWidth, vw: innerWidth,
+      }));
+      check("ar records: credits page 1 = 20 rows of 24, pager 1/2 with total",
+        p1.url === "/account/credits" && p1.rows === 20
+        && p1.pager.indexOf("1 / 2") !== -1 && p1.pager.indexOf("24 records") !== -1,
+        JSON.stringify(p1));
+      check("ar records: overview chips = Spent 105 / Refunded 2 / Net 103 (30d window, grants excluded)",
+        p1.chips[0] === "Spent105" && p1.chips[1] === "Refunded2" && p1.chips[2] === "Net spend103",
+        JSON.stringify(p1.chips));
+      check("ar records: trend bars + labeled 30d UTC stats window on range=all",
+        p1.bars === 30 && /last 30 days \(UTC\)/.test(p1.statsNote), JSON.stringify(p1));
+      await go("/account/credits?page=999&lang=en");
+      const p2 = await page.evaluate(() => ({
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        empty: !!document.querySelector(".acct-empty"),
+        lastRow: document.querySelector(".rec-list tbody tr:last-child").textContent.slice(0, 60),
+      }));
+      check("ar records: page 999 clamps to the real last page (no fake empty state)",
+        p2.rows === 4 && !p2.empty, JSON.stringify(p2));
+      await go("/account/credits?range=7&lang=en");
+      const p3 = await page.evaluate(() => ({
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        count: (document.querySelector(".acct-card-sub") || {}).textContent || "",
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+      }));
+      check("ar records: range=7 filters the list (23 of 24) and stats share the window",
+        p3.rows === 20 && p3.count.indexOf("23 records") !== -1
+        && p3.chips[0] === "Spent105",
+        JSON.stringify(p3));
+      await go("/account/calls?lang=en");
+      const calls1 = await page.evaluate(() => ({
+        rows: document.querySelectorAll(".rec-list tbody tr").length,
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+        result: !!document.querySelector('.rec-list a[href^="/r/"]'),
+        ledgerAnchor: !!document.querySelector('.rec-list a[href*="#call-"]'),
+      }));
+      check("ar records: calls page shows the ok call with a live result link",
+        calls1.rows === 1 && calls1.result, JSON.stringify(calls1));
+      // result link lands on /r/
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click('.rec-list a[href^="/r/"]')]);
+      check("ar records: result link opens the /r page",
+        new URL(page.url()).pathname.startsWith("/r/"), page.url());
+      await go("/account/credits?lang=en");
+      const anchor = await page.$eval('.rec-list a[href*="#call-"]', (a) => a.getAttribute("href"));
+      check("ar records: credits → calls row anchor link rides the relation",
+        /\/account\/calls\?page=\d+#call-\d+/.test(anchor), anchor);
+      // empty states for the fresh no-JS-registered user
+      const ectx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const epage = await ectx.newPage();
+      await epage.goto(BASE + "/auth/login?lang=en", { waitUntil: "load" });
+      await epage.fill("form[action='/auth/login'] input[name=login]", nojsUser);
+      await epage.fill("form[action='/auth/login'] input[name=password]", arPass);
+      await Promise.all([epage.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        epage.click("form[action='/auth/login'] button[type=submit]")]);
+      await epage.goto(BASE + "/account/credits?lang=en", { waitUntil: "load" });
+      const emptyCredits = await epage.evaluate(() => ({
+        empty: !!document.querySelector(".acct-empty"),
+        trendEmpty: !!document.querySelector(".rec-trend-empty"),
+        chips: [...document.querySelectorAll(".rec-chip")].map((c) => c.textContent.trim()),
+      }));
+      check("ar records: fresh account → empty list + trend empty state, zeroed chips",
+        emptyCredits.empty && emptyCredits.trendEmpty
+        && emptyCredits.chips.join("|") === "Spent0|Refunded0|Net spend0",
+        JSON.stringify(emptyCredits));
+      await epage.goto(BASE + "/account/calls?lang=en", { waitUntil: "load" });
+      check("ar records: fresh account calls page empty state",
+        !!(await epage.$(".acct-empty")));
+      await ectx.close();
+
+      // viewports: no horizontal overflow anywhere, stacked rows on phones
+      for (const [w, h] of [[1280, 900], [390, 844], [360, 800], [320, 700]]) {
+        const vctx = await browser.newContext({ viewport: { width: w, height: h } });
+        const vpage = await vctx.newPage();
+        await vpage.addInitScript((c) => { document.cookie = "flashshare_session=" + c + "; path=/"; }, arCookie);
+        for (const p of ["/account/credits?lang=en", "/account/calls?lang=en",
+                         `/tool/${bodyToolKey}?lang=en`, "/tool/compress?lang=en"]) {
+          await vpage.goto(BASE + p, { waitUntil: "load", timeout: 20000 });
+          await vpage.waitForTimeout(150);
+          const probe = await vpage.evaluate((w) => ({
+            url: location.pathname,
+            sw: document.documentElement.scrollWidth, vw: innerWidth,
+            stacked: [...document.querySelectorAll(".rec-list tbody td")].every((td) => getComputedStyle(td).display === "flex" || getComputedStyle(td).display === "block"),
+            hasRows: document.querySelectorAll(".rec-list tbody tr").length > 0,
+            addrWrap: [...document.querySelectorAll(".tp-acc-v")].every((c) => c.scrollWidth <= c.clientWidth + 1),
+          }), w);
+          check(`ar ${w} ${p.split("?")[0]}: no horizontal overflow, values readable`,
+            probe.sw <= probe.vw + 1
+            && (!probe.hasRows || w <= 767 || !probe.stacked)
+            && (!probe.hasRows || w > 767 || probe.stacked)
+            && probe.addrWrap, JSON.stringify(probe));
+          if (w === 390) {
+            await vpage.screenshot({ path: path.join(OUT, "mobile", `ar-${p.replace(/[^a-z]/gi, "")}-${w}.png`), fullPage: true }).catch(() => {});
+          }
+        }
+        await vctx.close();
+      }
+
+      // languages: zh stats label + ar RTL direction on the tool page
+      await go("/account/credits?lang=zh");
+      check("ar records: zh renders the localized stats window note",
+        (await page.content()).indexOf("统计：近 30 天（UTC）") !== -1);
+      await go(`/tool/${bodyToolKey}?lang=ar`);
+      const rtl = await page.evaluate(() => ({
+        dir: document.documentElement.getAttribute("dir"),
+        sw: document.documentElement.scrollWidth, vw: innerWidth,
+      }));
+      check("ar access: RTL language keeps dir=rtl with no overflow",
+        rtl.dir === "rtl" && rtl.sw <= rtl.vw + 1, JSON.stringify(rtl));
+      await ctx.close();
+    }
+
+    // (5b) trend expression + mobile record readability for the long-name
+    // fixture user: signed bars around a visible zero baseline, daily
+    // values reachable by keyboard AND touch, and the long legal tool
+    // name / long note / larger amounts readable in their OWN cells on a
+    // phone (cell-level checks, not just document.scrollWidth)
+    {
+      const login = async (ctx, page) => {
+        await gotoReady(page, "/auth/login?lang=en", "input[name=login]");
+        await page.fill("input[name=login]", recUser);
+        await page.fill("input[name=password]", arPass);
+        await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+          page.click("form[action='/auth/login'] button[type=submit]")]);
+      };
+      // desktop: chart shape + keyboard-openable daily detail
+      {
+        const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        const page = await ctx.newPage();
+        await login(ctx, page);
+        await gotoReady(page, "/account/credits?lang=en", ".rec-trend-bars");
+        // real geometry (getBoundingClientRect), not class names: the zero
+        // line is the strip's vertical center; a positive bar must RISE
+        // above it (bottom edge on the line), a negative bar must HANG
+        // below it (top edge on the line), a zero tick sits ON it
+        const trendPos = await page.evaluate(() => {
+          const cont = document.querySelector(".rec-trend-bars");
+          const cr = cont.getBoundingClientRect();
+          const mid = cr.top + cr.height / 2; // symmetric border/padding
+          const up = document.querySelector(".rec-bar.up");
+          const down = document.querySelector(".rec-bar.down");
+          const zero = document.querySelector(".rec-bar.zero");
+          const u = up ? up.getBoundingClientRect() : null;
+          const d = down ? down.getBoundingClientRect() : null;
+          const z = zero ? zero.getBoundingClientRect() : null;
+          return {
+            counts: {
+              up: document.querySelectorAll(".rec-bar.up").length,
+              down: document.querySelectorAll(".rec-bar.down").length,
+              zero: document.querySelectorAll(".rec-bar.zero").length,
+            },
+            baseline: getComputedStyle(cont, "::before").content !== "none",
+            upH: u ? u.height : 0,
+            upBottomOff: u ? Math.abs(u.bottom - mid) : -1,
+            upBodyAbove: u ? mid - u.top : -1,
+            downH: d ? d.height : 0,
+            downTopOff: d ? Math.abs(d.top - mid) : -1,
+            downBodyBelow: d ? d.bottom - mid : -1,
+            zeroMidOff: z ? Math.abs((z.top + z.bottom) / 2 - mid) : -1,
+          };
+        });
+        check("ar records-long: positive bar rises above the zero line (bottom edge on it), negative hangs below (top edge on it)",
+          trendPos.counts.up > 0 && trendPos.counts.down > 0 && trendPos.counts.zero > 0
+          && trendPos.baseline
+          && trendPos.upH >= 8 && trendPos.upBottomOff <= 1 && trendPos.upBodyAbove >= 8
+          && trendPos.downH >= 8 && trendPos.downTopOff <= 1 && trendPos.downBodyBelow >= 8,
+          JSON.stringify(trendPos));
+        check("ar records-long: zero-day tick sits on the zero line (±1px)",
+          trendPos.zeroMidOff >= 0 && trendPos.zeroMidOff <= 1,
+          JSON.stringify(trendPos));
+        const daySum = await page.$$eval(".rec-trend-days li", (lis) =>
+          lis.reduce((a, li) => a + parseInt(
+            li.querySelector(".rec-day-v").textContent.replace(/[^-\d]/g, ""), 10), 0));
+        const netChipText = await page.$eval(".rec-chip:nth-of-type(3) .rec-chip-v", (el) => el.textContent.trim());
+        const netChipNum = parseInt((netChipText || "").replace(/[^-\d]/g, ""), 10);
+        check("ar records-long: daily detail values sum to the overview net",
+          daySum === netChipNum && daySum !== 0, `${daySum} vs ${netChipNum}`);
+        await page.focus(".rec-trend-detail summary");
+        await page.keyboard.press("Enter");
+        check("ar records-long: daily values open with the keyboard (Enter on summary)",
+          await page.$eval(".rec-trend-detail", (d) => d.open === true
+            && d.querySelectorAll(".rec-trend-days li").length === 30));
+        await ctx.close();
+      }
+      // phone 390: cells wrap in place, values readable, result button
+      // actually clickable, daily detail opens on touch
+      {
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+        const page = await ctx.newPage();
+        await login(ctx, page);
+        await gotoReady(page, "/account/calls?lang=en", ".rec-list");
+        const callsFit = await page.evaluate(() => {
+          const cells = [...document.querySelectorAll(".rec-list tbody td")];
+          const row = document.querySelector(".rec-list tbody tr");
+          const btn = document.querySelector(".rec-list a.btn");
+          return {
+            vw: document.documentElement.clientWidth,
+            sw: document.documentElement.scrollWidth,
+            rows: document.querySelectorAll(".rec-list tbody tr").length,
+            cellOverflow: cells.filter((td) => td.scrollWidth > td.clientWidth + 1).length,
+            nameText: (row.children[1] || {}).textContent || "",
+            netText: (row.children[3] || {}).textContent || "",
+            btnVisible: !!btn && btn.getBoundingClientRect().right <= innerWidth
+              && btn.getBoundingClientRect().width > 0,
+            btnHref: btn ? btn.getAttribute("href") : "",
+          };
+        });
+        check("ar mobile calls: 40-char legal tool name + grouped amount readable inside their own cells",
+          callsFit.rows === 1 && callsFit.nameText.indexOf("Extremely Long Legal Tool Name Exactly40") !== -1
+          && callsFit.netText.replace(/[^0-9]/g, "") === "734567"
+          && callsFit.cellOverflow === 0,
+          JSON.stringify(callsFit));
+        check("ar mobile calls: no page overflow, result button visible in its cell",
+          callsFit.sw <= callsFit.vw + 1 && callsFit.btnVisible, JSON.stringify(callsFit));
+        // real tap: the result button navigates to /r/
+        if (callsFit.btnHref) {
+          await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+            page.tap(".rec-list a.btn")]);
+          check("ar mobile calls: tapping the result button opens the /r page",
+            new URL(page.url()).pathname.startsWith("/r/"), page.url());
+        }
+        await gotoReady(page, "/account/credits?lang=en", ".rec-list");
+        const creditsFit = await page.evaluate(() => {
+          const cells = [...document.querySelectorAll(".rec-list tbody td")];
+          const noteCell = document.querySelector(".credit-note-cell");
+          const deltas = [...document.querySelectorAll(".rec-list tbody td.ta-r.mono")];
+          return {
+            vw: document.documentElement.clientWidth,
+            sw: document.documentElement.scrollWidth,
+            cellOverflow: cells.filter((td) => td.scrollWidth > td.clientWidth + 1).length,
+            noteWrapped: !noteCell || (noteNote => noteNote.scrollWidth <= noteCell.clientWidth + 1)(noteCell),
+            hasLongNote: !!document.body.textContent.match(/unusually long manual correction/i),
+            bigDelta: deltas.some((d) => d.textContent.replace(/[^0-9]/g, "") === "1234567"),
+          };
+        });
+        check("ar mobile credits: long note + 7-digit amount readable in their own cells",
+          creditsFit.cellOverflow === 0 && creditsFit.noteWrapped
+          && creditsFit.hasLongNote && creditsFit.bigDelta
+          && creditsFit.sw <= creditsFit.vw + 1,
+          JSON.stringify(creditsFit));
+        // touch: tapping the summary opens the daily values
+        await page.tap(".rec-trend-detail summary");
+        check("ar mobile credits: daily values open on touch",
+          await page.$eval(".rec-trend-detail", (d) => d.open === true
+            && d.querySelectorAll(".rec-trend-days li").length === 30));
+        await page.screenshot({ path: path.join(OUT, "mobile", "ar-longname-credits-390.png"), fullPage: true }).catch(() => {});
+        await ctx.close();
+      }
+    }
+
+    // (6) access cards: copy payloads match the display, file + body tools
+    {
+      const ctx = await browser.newContext({
+        viewport: { width: 1280, height: 900 },
+        permissions: ["clipboard-read", "clipboard-write"],
+      });
+      const page = await ctx.newPage();
+      for (const key of ["compress", bodyToolKey]) {
+        await gotoReady(page, `/tool/${key}`, "#toolAccess");
+        const shown = await page.evaluate(() => ({
+          server: (document.querySelector(".tp-acc-v") || {}).textContent.trim(),
+          name: (document.getElementById("toolMcpName") || {}).textContent.trim(),
+          example: (document.getElementById("toolApiExample") || {}).textContent.trim(),
+        }));
+        await page.click("#toolMcpCopy");
+        await page.waitForTimeout(150);
+        const mcpClip = await page.evaluate(() => navigator.clipboard.readText());
+        check(`ar access ${key}: MCP copy carries the server URL + call name`,
+          mcpClip.indexOf(shown.server) !== -1 && mcpClip.indexOf(shown.name) !== -1,
+          mcpClip.slice(0, 80));
+        await page.click("#toolApiCopy");
+        await page.waitForTimeout(150);
+        const apiClip = await page.evaluate(() => navigator.clipboard.readText());
+        check(`ar access ${key}: API copy is the shown example, verbatim`,
+          apiClip.trim() === shown.example.trim(), apiClip.slice(0, 80));
+        check(`ar access ${key}: key-creation entry is a live link`,
+          !!(await page.$('a.tp-acc-key[href="/account/keys"]')));
+      }
+      await ctx.close();
+    }
   }
 
   await browser.close();

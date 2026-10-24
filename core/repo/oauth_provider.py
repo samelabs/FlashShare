@@ -69,10 +69,12 @@ def user_by_access_token(con, access_hash: str, resource: str, now_ts: int):
 
 
 def touch_access_token(con, access_hash: str, now_ts: int) -> None:
+    from identity.capabilities import LAST_USED_TOUCH_INTERVAL_S
     con.execute(
         "UPDATE oauth_mcp_tokens SET last_used_at = %s "
-        "WHERE access_token_hash = %s",
-        (now_ts, access_hash),
+        "WHERE access_token_hash = %s"
+        " AND (last_used_at IS NULL OR last_used_at < %s)",
+        (now_ts, access_hash, now_ts - LAST_USED_TOUCH_INTERVAL_S),
     )
 
 
@@ -158,12 +160,3 @@ def revoke_client(con, user_id: int, client_id: str, now_ts: int) -> int:
         (now_ts, user_id, client_id),
     )
     return int(cur.rowcount)
-
-
-def revoke_all_for_user(con, user_id: int, now_ts: int) -> None:
-    """Revoke every live token row of the user (credential rotation)."""
-    con.execute(
-        "UPDATE oauth_mcp_tokens SET revoked_at = %s "
-        "WHERE user_id = %s AND revoked_at IS NULL",
-        (now_ts, user_id),
-    )

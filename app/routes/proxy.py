@@ -1,7 +1,5 @@
 """Proxy routes: file download + file detail page + QR + zip preview."""
 
-import asyncio
-
 import sys
 import urllib.parse
 from pathlib import Path
@@ -38,7 +36,7 @@ def _share_link_headers(public_id: str, content_type: str) -> dict:
 
 
 @router.api_route("/f/{public_id}", methods=["GET", "HEAD"])
-async def file_route(public_id: str, request: Request):
+def file_route(public_id: str, request: Request):
     """Route: /f/{pid} → detail page, /f/{pid}?download=1 → file stream.
     HEAD answers with the same status and headers (including the
     enclosure Link) and an empty body — it never touches a counting
@@ -107,8 +105,7 @@ async def file_route(public_id: str, request: Request):
             upload["public_id"], upload["content_type"] or ""))
 
     # Detail page via Jinja2
-    live = await asyncio.to_thread(storage_info, upload["gokapi_id"]) \
-        if upload["gokapi_id"] else None
+    live = storage_info(upload["gokapi_id"]) if upload["gokapi_id"] else None
     expire_at = (live or {}).get("ExpireAt") or upload["expire_at"]
     total = upload["allowed_downloads"]
     # single calculator: remaining first, used = total - remaining
@@ -198,7 +195,7 @@ async def file_route(public_id: str, request: Request):
 
 
 @router.get("/f/{public_id}/qr.svg")
-async def file_qr(public_id: str):
+def file_qr(public_id: str):
     if not _live_upload(public_id):
         return Response(status_code=404)
     from utils import qr_svg
@@ -209,7 +206,7 @@ async def file_qr(public_id: str):
 
 
 @router.get("/f/{public_id}/zip-list")
-async def file_zip_list(public_id: str, request: Request):
+def file_zip_list(public_id: str, request: Request):
     """List ZIP archive contents without downloading the whole file."""
     upload = _live_upload(public_id)
     if not upload:
@@ -221,8 +218,7 @@ async def file_zip_list(public_id: str, request: Request):
 
     total = int(upload["size_bytes"] or 0)
     if total <= 0:
-        live = await asyncio.to_thread(storage_info, upload["gokapi_id"]) \
-        if upload["gokapi_id"] else None
+        live = storage_info(upload["gokapi_id"]) if upload["gokapi_id"] else None
         total = int((live or {}).get("SizeBytes") or 0)
 
     import urllib.parse
@@ -246,7 +242,7 @@ async def file_zip_list(public_id: str, request: Request):
 
     from zip_preview import list_zip_remote
     try:
-        entries = await asyncio.to_thread(list_zip_remote, fetch_range, total)
+        entries = list_zip_remote(fetch_range, total)
     except InternalDownloadUnavailable:
         # authenticated non-counting channel unavailable → typed 503;
         # NEVER fall back to the counted public download path.
@@ -275,7 +271,7 @@ async def file_zip_list(public_id: str, request: Request):
 
 
 @router.get("/f/{public_id}/inline")
-async def file_inline(public_id: str, request: Request):
+def file_inline(public_id: str, request: Request):
     """Stream trusted embeddable file types inline for result preview."""
     upload = _live_upload(public_id)
     if not upload:
@@ -296,8 +292,8 @@ async def file_inline(public_id: str, request: Request):
     # hung Gokapi must pin one thread-pool slot, never the event loop —
     # other requests keep being served while this preview waits.
     try:
-        status, headers, stream = await asyncio.to_thread(
-            open_gokapi_internal_download, upload["gokapi_id"])
+        status, headers, stream = open_gokapi_internal_download(
+            upload["gokapi_id"])
     except InternalDownloadUnavailable:
         return JSONResponse({"ok": False, "error": "preview_unavailable"}, 503)
     if status >= 400:
@@ -330,9 +326,10 @@ async def file_inline(public_id: str, request: Request):
 
 
 @router.get("/f/{public_id}/print", response_class=HTMLResponse)
-async def file_print(public_id: str, request: Request):
+def file_print(public_id: str, request: Request):
     """Minimal print view for PDF results: embedded PDF + print button."""
     from app.main import templates
+    from app.web_ctx import PAGES_VERSION
 
     upload = _live_upload(public_id)
     if not upload:
@@ -353,5 +350,6 @@ async def file_print(public_id: str, request: Request):
         "inline_url": f"/f/{urllib.parse.quote(public_id)}/inline",
         "download_url": f"/f/{urllib.parse.quote(public_id)}?download=1",
         "t": texts,
+        "pages_version": PAGES_VERSION,
     }
     return templates.TemplateResponse(request, "print.html", ctx)

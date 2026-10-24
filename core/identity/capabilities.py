@@ -13,6 +13,10 @@ account's live files (names are private), deleting files (irreversible).
 
 SCOPES = ("tools:call", "files:read", "files:delete")
 FULL_SCOPES = " ".join(SCOPES)
+# last_used telemetry touch interval: an authenticate_key / access-token
+# call updates last_used_at only when it is NULL or older than this —
+# hot credential use must not write on every request.
+LAST_USED_TOUCH_INTERVAL_S = 60
 _SCOPE_SET = frozenset(SCOPES)
 
 

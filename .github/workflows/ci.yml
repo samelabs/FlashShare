@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -39,6 +41,9 @@ jobs:
           while IFS= read -r file; do
             node --check "$file"
           done < <(git ls-files '*.js')
+      - name: Whitespace diff check (PR only)
+        if: github.event_name == 'pull_request'
+        run: git diff --check ${{ github.event.pull_request.base.sha }} HEAD
       - name: Operator-surface class guard
         run: python tools/guard_samelabs_classes.py
       - name: CSS token guard

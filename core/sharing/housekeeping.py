@@ -51,7 +51,7 @@ def housekeeping_once() -> dict:
     # evidence the physical file is gone.
     with db() as con:
         local = uploads_repo.active_storage_rows(con, ts)
-    storage_ok, files = list_gokapi_files()
+    storage_ok, files = list_gokapi_files(timeout=60)
     if storage_ok:
         live_ids = {
             str(item.get("Id"))

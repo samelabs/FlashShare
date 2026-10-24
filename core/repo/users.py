@@ -196,19 +196,19 @@ def payout_channel_of(con, user_id: int) -> Optional[dict]:
         "SELECT payout_channel FROM users WHERE id = %s", (user_id,)).fetchone()
 
 
-def update_status(con, user_id: int, status: str) -> None:
-    con.execute("UPDATE users SET status = %s WHERE id = %s",
-                (status, user_id))
-
-
 def username_of(con, user_id: int) -> Optional[dict]:
     return con.execute(
-        "SELECT username FROM users WHERE id = %s", (user_id,)).fetchone()
+        "SELECT username, display_name FROM users WHERE id = %s",
+        (user_id,)).fetchone()
 
 
 def id_by_username(con, username: str) -> Optional[dict]:
-    """用户页路由/platform lookup: username → id (只取 id, 不泄露其它列)。
+    """用户页路由/platform lookup: username → {id, status, username,
+    display_name} (canonical stored handle for display; display_name is
+    public-by-design — the same field the header identity shows; no
+    other columns leak).
     username 身份按折叠名匹配 (与注册判重同一语义)。"""
     return con.execute(
-        "SELECT id FROM users WHERE lower(username) = lower(%s)",
+        "SELECT id, status, username, display_name FROM users"
+        " WHERE lower(username) = lower(%s)",
         (username,)).fetchone()

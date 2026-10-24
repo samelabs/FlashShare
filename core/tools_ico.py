@@ -7,7 +7,7 @@ Pure Pillow, zero I/O dependencies.
 import io
 import os
 from PIL import Image
-from tools import out_filename, register, ToolError
+from tools import open_image, out_filename, register, ToolError
 
 ACCEPTED_EXTS = {".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -45,14 +45,7 @@ def ico_handler(tool_input, params):
     if ext not in ACCEPTED_EXTS:
         raise ToolError("err_format_not_supported")
 
-    stream = tool_input["stream"]
-    stream.seek(0)
-
-    try:
-        img = Image.open(stream)
-        img.load()
-    except Exception:
-        raise ToolError("err_format_not_supported")
+    img = open_image(tool_input["stream"])
 
     # Convert to RGBA for proper alpha channel in ICO
     if img.mode != "RGBA":

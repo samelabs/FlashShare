@@ -94,8 +94,9 @@ def reveal_key(user_id: int, key_id: int) -> str | None:
 def authenticate_key(plaintext: str) -> dict | None:
     """Validate a Bearer key. Returns the owner user dict or None.
 
-    Updates last_used_at opportunistically (non-fatal on failure —
-    a throttled update must never block authentication).
+    Updates last_used_at opportunistically at most once per
+    LAST_USED_TOUCH_INTERVAL_S (non-fatal on failure — a throttled
+    update must never block authentication).
     """
     if not plaintext or not plaintext.startswith(KEY_PREFIX):
         return None

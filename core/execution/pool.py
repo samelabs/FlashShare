@@ -9,6 +9,7 @@ reset_pool 在锁内重建 — 并发 reset 只采纳一个 replacement, 旧池 
 """
 
 import logging
+import resource
 import threading
 from concurrent.futures import ProcessPoolExecutor
 
@@ -19,8 +20,34 @@ _pool_lock = threading.Lock()
 # worker 数是 capacity 事实, 初始池与每个 replacement 池一致。
 WORKERS = 2
 
+# 每个 worker 进程的地址空间上限: 图片解码的内存上界随像素上限
+# 走, 一个失控 decode 不能吃光整机内存 (MemoryError 在 worker 内
+# 变成 typed 失败 + 退款, 不是宿主 OOM)。
+WORKER_MEMORY_LIMIT_BYTES = 2 * 1024 ** 3
+
+
+def _limit_worker_memory():
+    """Cap each worker's address space. Linux (production) enforces
+    RLIMIT_AS; on platforms that cannot set it (macOS dev — the kernel
+    exposes no usable RLIMIT_AS) the call raises and the limit is
+    skipped: the pixel ceiling in tools.open_image bounds decode memory
+    independently of this cap."""
+    try:
+        resource.setrlimit(
+            resource.RLIMIT_AS,
+            (WORKER_MEMORY_LIMIT_BYTES, WORKER_MEMORY_LIMIT_BYTES))
+    except (ValueError, OSError):
+        logger.warning("worker RLIMIT_AS not enforceable on this platform; "
+                       "the image pixel ceiling remains the decode bound")
+
+
+def _new_pool() -> ProcessPoolExecutor:
+    return ProcessPoolExecutor(max_workers=WORKERS,
+                               initializer=_limit_worker_memory)
+
+
 # Eager init at import (原语义: 避免首请求延迟)
-_pool = ProcessPoolExecutor(max_workers=WORKERS)
+_pool = _new_pool()
 _reset_count = 0
 
 # 本地执行背压: 进程内在途计数上限。worker 池只限制并行执行数,
@@ -101,10 +128,6 @@ def remote_inflight_count() -> int:
     """当前远程在途数 (观测/日志用)。"""
     with _remote_lock:
         return _remote_inflight
-
-
-def _new_pool() -> ProcessPoolExecutor:
-    return ProcessPoolExecutor(max_workers=WORKERS)
 
 
 def get_pool() -> ProcessPoolExecutor:

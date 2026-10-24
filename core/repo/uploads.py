@@ -67,12 +67,6 @@ def by_owner(con, user_id: int, now_ts: int, limit: int, offset: int) -> list:
         (user_id, now_ts, limit, offset)).fetchall()
 
 
-def owned_row(con, upload_id: int, user_id: int) -> Optional[dict]:
-    return con.execute(
-        "SELECT id, gokapi_id FROM uploads WHERE id = %s AND user_id = %s",
-        (upload_id, user_id)).fetchone()
-
-
 def owned_row_for_update(con, upload_id: int, user_id: int) -> Optional[dict]:
     """Owner-scoped FOR UPDATE read for the single delete point: reading
     and deleting in ONE transaction, concurrent deleters converge (the

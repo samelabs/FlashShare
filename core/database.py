@@ -63,41 +63,86 @@ class _Connection:
 
 # Connection pool: SCRAM handshake costs ~60ms per fresh connection; the
 # upload chain alone opens 3 (auth/quota/save). Pooling removes that fixed
-# cost from every request. Thread-safe; dead connections are retried once.
-from psycopg2.pool import ThreadedConnectionPool
+# cost from every request. Thread-safe.
+#
+# Bounded by design (single worker, sync routes on the framework thread
+# pool): capacity 16 against the PG budget, exhaustion queues for a
+# bounded window and then fails LOUD — it never falls back to unbounded
+# direct connections (the old escape hatch let load multiply past the
+# pool) and never lets a pool shortage masquerade as anonymous /
+# insufficient-balance / not-found. Nested borrows inside one thread are
+# simply two pool slots; pathological depth surfaces as the same loud
+# bounded-wait timeout instead of a deadlock. Cancellation/exceptions
+# roll back and RETURN the connection (closed when the connection itself
+# is broken), so waits always drain.
+import threading as _threading
+import time as _time
+
+from psycopg2.pool import PoolError, ThreadedConnectionPool
+
+_POOL_MIN, _POOL_MAX = 1, 16
+_POOL_WAIT_S = 5.0        # bounded wait for a free connection
+_POOL_POLL_S = 0.02
 
 _pool = None
-_pool_lock = __import__("threading").Lock()
+_pool_lock = _threading.Lock()
 def _get_pool():
     global _pool
     if _pool is None:
         with _pool_lock:
             if _pool is None:
                 _pool = ThreadedConnectionPool(
-                    1, 8, **_database_dsn_kwargs())
+                    _POOL_MIN, _POOL_MAX, **_database_dsn_kwargs())
     return _pool
 
 
 @contextmanager
 def db():
     pool = _get_pool()
-    try:
-        con = pool.getconn()
-    except psycopg2.Error:
-        # pool exhausted or stale — fall back to a direct connection
-        con = psycopg2.connect(**_database_dsn_kwargs())
+    con = None
+    deadline = _time.monotonic() + _POOL_WAIT_S
+    while True:
+        try:
+            con = pool.getconn()
+            break
+        except PoolError:
+            # all 16 slots busy — wait (bounded) for a return, then fail
+            # loud; a pool shortage is a 500, never a silent fallback or
+            # a wrong business answer
+            if _time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"db pool exhausted: no connection within {_POOL_WAIT_S}s")
+            _time.sleep(_POOL_POLL_S)
+        except psycopg2.Error:
+            # stale pooled connection — one immediate retry
+            if con is not None:
+                try:
+                    pool.putconn(con, close=True)
+                except Exception:
+                    pass
+                con = None
+            if _time.monotonic() >= deadline:
+                raise
+            _time.sleep(_POOL_POLL_S)
+    broken = False
     wrap = _Connection(con)
     try:
         yield wrap
         con.commit()
     except BaseException:
-        con.rollback()
+        try:
+            con.rollback()
+        except Exception:
+            broken = True   # connection unusable — return it closed
         raise
     finally:
         try:
-            pool.putconn(con)
+            pool.putconn(con, close=broken)
         except Exception:
-            con.close()
+            try:
+                con.close()
+            except Exception:
+                pass
 
 
 # ── Schema ───────────────────────────────────────────────
@@ -593,10 +638,6 @@ _SCHEMA_SQL = (
     # format, DB = runtime truth). Remote (http) execution and namespaced
     # user tools (key = username_toolid) are current data rows —
     # resolve() is execution-class-agnostic and origin-agnostic.
-    # trusted: operator-adoption flag. User rows default FALSE (SSRF guard
-    # enforces https + public IPs); TRUE only via /samelabs (institutional
-    # supply the operator vouches for). First-party rows are trusted by
-    # definition (owner IS NULL → resolve treats them as trusted).
     """
     CREATE TABLE IF NOT EXISTS platform_tools (
       id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -637,7 +678,6 @@ _SCHEMA_SQL = (
       CONSTRAINT platform_tools_body_format_ck
         CHECK (body_format IS NULL OR body_format IN ('text','json')),
       enabled        BOOLEAN NOT NULL DEFAULT TRUE,
-      trusted        BOOLEAN NOT NULL DEFAULT FALSE,
       created_at     BIGINT NOT NULL,
       updated_at     BIGINT NOT NULL
     )
@@ -846,10 +886,11 @@ _SCHEMA_SQL = (
       WHERE used_at IS NULL
     """,
     # ── tool_favorites: 我的收藏 ──
-    # A user's pinned tools. Drives the web favorites list and the MCP
-    # tools/list selection (meta + first-party + favorites). Rows for a
-    # tool that later stops being visible simply drop out of every
-    # projection (the catalog visibility predicate filters them).
+    # A user's pinned tools. Drives the web picker's working set
+    # (official + own + favorites) and the favorites list; MCP
+    # tools/list = every public tool + own, favorites only flagged.
+    # Rows for a tool that later stops being visible simply drop out of
+    # every projection (the catalog visibility predicate filters them).
     """
     CREATE TABLE IF NOT EXISTS tool_favorites (
       user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -858,6 +899,31 @@ _SCHEMA_SQL = (
       PRIMARY KEY (user_id, tool_key)
     )
     """,
+    # ── 查询索引 (大数据量分页/关联): 生产库由 docs/plan 迁移资产用
+    # CONCURRENTLY 预建, 这里的 IF NOT EXISTS 在启动时为空操作 ──
+    # CALL_NET_CHARGE_SQL 的 consume/refund 子查询 + Creem 授信按
+    # (ref_type, ref_id) 定位
+    "CREATE INDEX IF NOT EXISTS ledger_ref_idx ON ledger (ref_type, ref_id)",
+    # refund→consume 关联 (ref_id = ledger.id::text) 的右侧探测
+    "CREATE INDEX IF NOT EXISTS ledger_id_text_idx ON ledger ((id::text))",
+    # 积分/收益流水分页 (user 内 ORDER BY id DESC)
+    "CREATE INDEX IF NOT EXISTS ledger_user_id_idx ON ledger (user_id, id DESC)",
+    # ledger.ref_id = tool_calls.id::text 关联 (流水→调用) 的右侧探测
+    "CREATE INDEX IF NOT EXISTS tool_calls_id_text_idx ON tool_calls ((id::text))",
+    # 市场卡片按工具的成功调用计数 (market_rows 的 ok_calls 子查询)
+    "CREATE INDEX IF NOT EXISTS tool_calls_tool_ok_idx"
+    " ON tool_calls (tool_id) WHERE status = 'ok'",
+    # 调用记录分页 (/account/calls, /samelabs/calls: user 内 ORDER BY id DESC)
+    "CREATE INDEX IF NOT EXISTS tool_calls_user_id_idx"
+    " ON tool_calls (user_id, id DESC)",
+    # 入场幂等回执按 (user, scope, request_ref) 的最早/最新行定位
+    "CREATE INDEX IF NOT EXISTS ingress_requests_ref_idx"
+    " ON ingress_requests (user_id, scope, request_ref, id)",
+    # 启动/整点恢复对 running 回执的扫描
+    "CREATE INDEX IF NOT EXISTS ingress_requests_running_idx"
+    " ON ingress_requests (started_at) WHERE status = 'running'",
+    # housekeeping 到期映射清扫 (expire_at 窗口)
+    "CREATE INDEX IF NOT EXISTS uploads_expire_idx ON uploads (expire_at)",
 )
 
 

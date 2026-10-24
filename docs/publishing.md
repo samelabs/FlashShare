@@ -232,7 +232,6 @@ items 信封形态：
 - **正文工具必须恰好产出一个结果项**（远程与本地相同），不满足判失败并退款。
 - 端点返回非 2xx 时，平台对调用方表达 `502`，错误详情携带提供者状态码与响应体前 4096 字节。
 - `output_filename` / `output_content_type` 已不可声明：提交会被拒绝（`bad_output_filename` / `bad_output_content_type`），产物名与类型由 items 声明、Content-Disposition 或平台嗅探决定。
-- 端点必须 https 且解析到公网地址（SSRF 守卫；运营方采纳的 trusted 行豁免）。
 
 ## 协议原则
 

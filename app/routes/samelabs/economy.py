@@ -14,7 +14,8 @@ from economy.money import millis_to_usd_str
 from repo import operator_views
 from utils import page_number
 
-from app.routes.samelabs.common import gate, ctx, fmt_num
+from app.routes.samelabs.common import (gate, ctx, fmt_num, _deny,
+                                    is_operator)
 
 router = APIRouter()
 
@@ -22,7 +23,7 @@ _PAGE = 50
 
 
 @router.get("/samelabs/economy/credits")
-async def credits(request: Request, user_id: int | None = None,
+def credits(request: Request, user_id: int | None = None,
                   kind: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
@@ -42,7 +43,7 @@ async def credits(request: Request, user_id: int | None = None,
 
 
 @router.get("/samelabs/economy/earnings")
-async def provider_earnings(request: Request, page: int = 1):
+def provider_earnings(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -66,7 +67,7 @@ async def provider_earnings(request: Request, page: int = 1):
 
 
 @router.get("/samelabs/economy/platform")
-async def platform_income(request: Request, page: int = 1):
+def platform_income(request: Request, page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -92,23 +93,12 @@ async def platform_income(request: Request, page: int = 1):
             page_id="economy_platform"))
 
 
-@router.post("/samelabs/economy/commission")
-async def set_commission(request: Request):
-    """Operator write: platform commission 0..100 integer .
-    Audited old → new inside the settings transaction; anything but a
-    whole 0..100 int is refused with the current value untouched."""
-    user, resp = gate(request)
-    if resp:
-        return resp
+def _set_commission_impl(user: dict, rate):
+    """Sync business block (thread): validation + audited settings write."""
     from fastapi.responses import JSONResponse
     from repo import operator_audit
     from governance.commission import commission_rate, set_commission_rate
     from utils import now
-    try:
-        raw = await request.json()
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    rate = raw.get("rate") if isinstance(raw, dict) else None
     if not isinstance(rate, int) or isinstance(rate, bool) \
             or not 0 <= rate <= 100:
         return JSONResponse(
@@ -128,25 +118,57 @@ async def set_commission(request: Request):
     return {"ok": True, "rate": rate}
 
 
+@router.post("/samelabs/economy/commission")
+async def set_commission(request: Request):
+    """Operator write: platform commission 0..100 integer .
+    Audited old → new inside the settings transaction; anything but a
+    whole 0..100 int is refused with the current value untouched."""
+    if getattr(request.state, "auth_via", "") != "session":
+        return _deny(request)
+    user = request.state.user
+    import asyncio
+    if not user or not await asyncio.to_thread(is_operator, user):
+        return _deny(request)
+    from fastapi.responses import JSONResponse
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    import asyncio
+    return await asyncio.to_thread(
+        _set_commission_impl, user,
+        raw.get("rate") if isinstance(raw, dict) else None)
+
+
 @router.post("/samelabs/economy/daily-amount")
 async def set_daily_amount(request: Request):
     """Operator write: daily login credit amount 0..1000 integer.
     Audited old → new inside the settings transaction; anything but a
     whole 0..1000 int is refused with the current value untouched.
     0 disables the activity (no grant, widget hidden)."""
-    user, resp = gate(request)
-    if resp:
-        return resp
+    if getattr(request.state, "auth_via", "") != "session":
+        return _deny(request)
+    user = request.state.user
+    import asyncio
+    if not user or not await asyncio.to_thread(is_operator, user):
+        return _deny(request)
+    from fastapi.responses import JSONResponse
+    try:
+        raw = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(
+        _set_daily_amount_impl, user,
+        raw.get("amount") if isinstance(raw, dict) else None)
+
+
+def _set_daily_amount_impl(user: dict, amount):
+    """Sync business block (thread): validation + audited settings write."""
     from fastapi.responses import JSONResponse
     from repo import operator_audit
     from economy.daily import (daily_amount as current_amount,
                                set_daily_amount as write_amount)
     from utils import now
-    try:
-        raw = await request.json()
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
-    amount = raw.get("amount") if isinstance(raw, dict) else None
     if not isinstance(amount, int) or isinstance(amount, bool) \
             or not 0 <= amount <= 1000:
         return JSONResponse(
@@ -173,7 +195,7 @@ _WD_STATUSES = ("pending", "approved", "rejected", "paid",
 
 
 @router.get("/samelabs/economy/withdrawals")
-async def withdrawals(request: Request, status: str = "", page: int = 1):
+def withdrawals(request: Request, status: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -204,7 +226,7 @@ async def withdrawals(request: Request, status: str = "", page: int = 1):
 # ── Payment review queue (partial refunds) ──
 
 @router.get("/samelabs/economy/reviews")
-async def payment_reviews(request: Request, status: str = "", page: int = 1):
+def payment_reviews(request: Request, status: str = "", page: int = 1):
     user, resp = gate(request)
     if resp:
         return resp
@@ -224,7 +246,7 @@ async def payment_reviews(request: Request, status: str = "", page: int = 1):
 
 
 @router.post("/samelabs/economy/reviews/{rid}/resolve")
-async def resolve_payment_review(rid: int, request: Request):
+def resolve_payment_review(rid: int, request: Request):
     """Operator marks one review RESOLVED. Status flip only — this queue
     NEVER moves balances (economic rules for partial refunds stay
     zero-mutation); the decision evidence lives in operator_audit."""

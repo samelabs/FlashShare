@@ -14,19 +14,9 @@ from app.web_auth import require_session_auth as _require_auth  # 单点 (治理
 from database import db  # checkout/subscribe 事务 (审计T1: 8处 with db() 此前零导入)
 
 
-@router.post("/api/topup/checkout")
-async def topup_checkout(request: Request):
-    user, err = _require_auth(request)
-    if err:
-        return err
+def _topup_checkout_impl(user: dict, raw: dict):
     from economy import creem
-    if not creem.creem_enabled():
-        return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
-    try:
-        raw = await request.json()
-        package_id = int(raw.get("package_id", 0))
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    package_id = int(raw.get("package_id", 0))
     from repo.orders import package_by_id_active
     from utils import now
     with db() as con:
@@ -71,7 +61,7 @@ async def topup_checkout(request: Request):
     if prov.startswith("ch:"):
         # provider entity exists — retrieve instead of re-create
         try:
-            co = await asyncio.to_thread(creem.retrieve_checkout, prov[3:])
+            co = creem.retrieve_checkout(prov[3:])
         except Exception:
             return JSONResponse(
                 {"ok": False, "error": "checkout_unresolved"}, 502)
@@ -93,9 +83,7 @@ async def topup_checkout(request: Request):
             _prov_currency = str((co.get("order") or {}).get("currency")
                                  or co.get("currency") or "")
             try:
-                res = await asyncio.to_thread(
-                    creem.fulfill_by_request_id,
-                    int(order["id"]), str(_prov_order), prov[3:],
+                res = creem.fulfill_by_request_id(int(order["id"]), str(_prov_order), prov[3:],
                     _prov_amount, product_id=_prov_product,
                     currency=_prov_currency)
                 return {"ok": True, "completed": True, "credits": res.get("credits")}
@@ -117,8 +105,7 @@ async def topup_checkout(request: Request):
     # makes the provider side idempotent (response-loss recovery: the
     # retry returns the SAME checkout entity, never a duplicate).
     try:
-        out = await asyncio.to_thread(
-            creem.create_credits_checkout, order["id"],
+        out = creem.create_credits_checkout(order["id"],
             int(order["amount_cents"]), user)
     except Exception:
         # Unknown provider outcome (timeout / conn reset / 5xx / ACK
@@ -129,11 +116,9 @@ async def topup_checkout(request: Request):
         bind_checkout_id(con, order["id"], out["checkout_id"])
     return out
 
-
-@router.post("/api/topup/subscribe")
-async def subscribe_checkout(request: Request):
-    """订阅 checkout (v3 spec): plan 必须绑 creem_product_id 才可售。"""
-    user, err = _require_auth(request)
+@router.post("/api/topup/checkout")
+async def topup_checkout(request: Request):
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     from economy import creem
@@ -141,9 +126,15 @@ async def subscribe_checkout(request: Request):
         return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
     try:
         raw = await request.json()
-        plan_id = int(raw.get("plan_id", 0))
+        package_id = int(raw.get("package_id", 0))
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(_topup_checkout_impl, user, raw)
+
+
+def _subscribe_checkout_impl(user: dict, raw: dict):
+    from economy import creem
+    plan_id = int(raw.get("plan_id", 0))
     from repo.orders import (plan_by_id_active, insert_order, bind_checkout_id,
                              membership_row, open_plan_order,
                              lock_user_for_checkout, mark_failed)
@@ -204,7 +195,7 @@ async def subscribe_checkout(request: Request):
             # provider id 尚未落地 → in-progress, 不建第二单
             return JSONResponse({"ok": False, "error": "subscription_in_progress"}, 409)
         try:
-            co = await asyncio.to_thread(creem.retrieve_checkout, prov_id[3:])
+            co = creem.retrieve_checkout(prov_id[3:])
         except Exception:
             return JSONResponse({"ok": False, "error": "subscription_in_progress"}, 409)
         st = str(co.get("status") or "")
@@ -233,8 +224,7 @@ async def subscribe_checkout(request: Request):
             order = insert_order(con, user["id"], "plan", plan["id"], "creem",
                                  plan["price_cents"], plan["currency"], _ts)
     try:
-        out = await asyncio.to_thread(
-            creem.create_subscription_checkout, order["id"], dict(plan), user)
+        out = creem.create_subscription_checkout(order["id"], dict(plan), user)
     except Exception:
         # Unknown provider outcome is not a failure proof — order stays
         # pending; the next subscribe call retries the SAME Order.
@@ -243,15 +233,10 @@ async def subscribe_checkout(request: Request):
         bind_checkout_id(con, order["id"], out["checkout_id"])
     return out
 
-
-@router.post("/api/topup/plan-upgrade")
-async def plan_upgrade(request: Request):
-    """Plus → Pro (立即生效): 调 Creem upgrade (proration-charge-
-    immediately)。本地 Membership 不伪造 — subscription.update webhook
-    → product.id → pro 收敛 (仅同步 plan, 零 credits); 升级补差 credits
-    只由该 proration charge 的 subscription.paid (paid transaction 证明)
-    经 apply_paid_period 以 grant_plan_upgrade 补授。"""
-    user, err = _require_auth(request)
+@router.post("/api/topup/subscribe")
+async def subscribe_checkout(request: Request):
+    """订阅 checkout (v3 spec): plan 必须绑 creem_product_id 才可售。"""
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     from economy import creem
@@ -259,9 +244,15 @@ async def plan_upgrade(request: Request):
         return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
     try:
         raw = await request.json()
-        target_code = str(raw.get("plan", "")).strip().lower()
+        plan_id = int(raw.get("plan_id", 0))
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(_subscribe_checkout_impl, user, raw)
+
+
+def _plan_upgrade_impl(user: dict, raw: dict):
+    from economy import creem
+    target_code = str(raw.get("plan", "")).strip().lower()
     from governance import plan_catalog
     _target = plan_catalog.by_code(target_code)
     if _target is None or _target.is_free:
@@ -295,8 +286,7 @@ async def plan_upgrade(request: Request):
     # mirror never reaches the provider (thread boundary, like every
     # provider call here); the local commercial state is untouched.
     try:
-        _mirror_err = await asyncio.to_thread(
-            creem.verify_product_mirror, target["creem_product_id"],
+        _mirror_err = creem.verify_product_mirror(target["creem_product_id"],
             int(target["price_cents"]), str(target["currency"] or "").upper())
     except Exception:
         _mirror_err = "verify_failed"
@@ -308,25 +298,21 @@ async def plan_upgrade(request: Request):
         # prorated difference charged immediately, original billing date
         # remains (本周期 credits 由该 charge 的 subscription.paid 补差
         # 100+400=500; subscription.update 只同步 plan, 不授 credits)
-        await asyncio.to_thread(
-            creem.upgrade_subscription, sub_id, target["creem_product_id"],
+        creem.upgrade_subscription(sub_id, target["creem_product_id"],
             update_behavior="proration-charge-immediately")
     except Exception:
         return JSONResponse({"ok": False, "error": "upgrade_failed"}, 502)
     return {"ok": True, "upgrade": "initiated",
             "from": cur_code, "to": target_code}
 
-
-@router.post("/api/topup/plan-downgrade")
-async def plan_downgrade(request: Request):
-    """Pro → Plus (next renewal): Creem 官方 product-change endpoint 同样
-    承载 downgrade — update_behavior=proration-none (官方语义: no
-    proration, change takes effect next billing cycle, no immediate
-    charge)。先同步 Creem; provider 成功后才写 pending_downgrades
-    (application expectation / local continuity fact, 非 Payment
-    authority)。Creem 失败 → ZERO pending。当前周期 Membership/entitlements
-    保持 Pro; 周期边界 provider product 必须实际为 Plus 才切换。"""
-    user, err = _require_auth(request)
+@router.post("/api/topup/plan-upgrade")
+async def plan_upgrade(request: Request):
+    """Plus → Pro (立即生效): 调 Creem upgrade (proration-charge-
+    immediately)。本地 Membership 不伪造 — subscription.update webhook
+    → product.id → pro 收敛 (仅同步 plan, 零 credits); 升级补差 credits
+    只由该 proration charge 的 subscription.paid (paid transaction 证明)
+    经 apply_paid_period 以 grant_plan_upgrade 补授。"""
+    user, err = await asyncio.to_thread(_require_auth, request)
     if err:
         return err
     from economy import creem
@@ -337,6 +323,12 @@ async def plan_downgrade(request: Request):
         target_code = str(raw.get("plan", "")).strip().lower()
     except Exception:
         return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(_plan_upgrade_impl, user, raw)
+
+
+def _plan_downgrade_impl(user: dict, raw: dict):
+    from economy import creem
+    target_code = str(raw.get("plan", "")).strip().lower()
     from governance import plan_catalog
     _target = plan_catalog.by_code(target_code)
     if _target is None or _target.is_free:
@@ -365,8 +357,7 @@ async def plan_downgrade(request: Request):
     # and the first subscription checkout (see plan_upgrade); a mismatch
     # or an unverifiable mirror never reaches the provider.
     try:
-        _mirror_err = await asyncio.to_thread(
-            creem.verify_product_mirror, target["creem_product_id"],
+        _mirror_err = creem.verify_product_mirror(target["creem_product_id"],
             int(target["price_cents"]), str(target["currency"] or "").upper())
     except Exception:
         _mirror_err = "verify_failed"
@@ -374,8 +365,7 @@ async def plan_downgrade(request: Request):
         return JSONResponse(
             {"ok": False, "error": "price_mirror_mismatch"}, 502)
     try:
-        await asyncio.to_thread(
-            creem.upgrade_subscription, sub_id, target["creem_product_id"],
+        creem.upgrade_subscription(sub_id, target["creem_product_id"],
             update_behavior="proration-none")
     except Exception:
         return JSONResponse({"ok": False, "error": "downgrade_failed"}, 502)
@@ -384,28 +374,37 @@ async def plan_downgrade(request: Request):
             "from": cur_code, "to": target_code,
             "effective_at": current["renews_at"]}
 
+@router.post("/api/topup/plan-downgrade")
+async def plan_downgrade(request: Request):
+    """Pro → Plus (next renewal): Creem 官方 product-change endpoint 同样
+    承载 downgrade — update_behavior=proration-none (官方语义: no
+    proration, change takes effect next billing cycle, no immediate
+    charge)。先同步 Creem; provider 成功后才写 pending_downgrades
+    (application expectation / local continuity fact, 非 Payment
+    authority)。Creem 失败 → ZERO pending。当前周期 Membership/entitlements
+    保持 Pro; 周期边界 provider product 必须实际为 Plus 才切换。"""
+    user, err = await asyncio.to_thread(_require_auth, request)
+    if err:
+        return err
+    from economy import creem
+    if not creem.creem_enabled():
+        return JSONResponse({"ok": False, "error": "topup_unavailable"}, 503)
+    try:
+        raw = await request.json()
+        target_code = str(raw.get("plan", "")).strip().lower()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_request"}, 422)
+    return await asyncio.to_thread(_plan_downgrade_impl, user, raw)
+
 
 MAX_WEBHOOK_BODY = 262144  # 256KB — Creem 事件远小于此; 挡匿名内存放大 (审计🟡9)
 
 
-@router.post("/webhooks/creem")
-async def creem_webhook(request: Request):
+def _creem_webhook_impl(event_type: str, event: dict, obj: dict):
+    """Sync domain dispatch (thread): every branch below is a blocking
+    DB/domain call (subscription state machine, reversal, fulfillment)."""
     from economy import creem
-    cl = request.headers.get("content-length", "")
-    if cl.isdigit() and int(cl) > MAX_WEBHOOK_BODY:
-        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
-    raw = await request.body()
-    if len(raw) > MAX_WEBHOOK_BODY:
-        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
-    sig = request.headers.get("creem-signature", "")
-    if not creem.verify_signature(raw, sig):
-        return JSONResponse({"ok": False, "error": "bad_signature"}, 401)
-    try:
-        event = json.loads(raw)
-    except Exception:
-        return JSONResponse({"ok": False, "error": "invalid_json"}, 400)
-    event_type = str(event.get("eventType") or "")
-    obj = event.get("object") or {}
+    import logging
 
     # ── subscription family → economy.subscription state machine ──
     if event_type.startswith("subscription."):
@@ -425,8 +424,7 @@ async def creem_webhook(request: Request):
         # the route only verifies signature + parses, never adjudicates
         from economy import reverse as _reverse
         try:
-            res = await asyncio.to_thread(
-                _reverse.reverse_payment, event_type, event)
+            res = _reverse.reverse_payment(event_type, event)
         except KeyError as exc:
             # missing proof / provider fetch failure / unknown txn /
             # partial refund unresolved / status mismatch → 500 so
@@ -492,9 +490,7 @@ async def creem_webhook(request: Request):
                 {"ok": False, "error": "checkout_metadata_mismatch"}, 500)
     order = (obj.get("order") or {})
     try:
-        res = await asyncio.to_thread(
-            creem.fulfill_by_request_id,
-            _oid, order.get("id") or "", obj.get("id") or "",
+        res = creem.fulfill_by_request_id(_oid, order.get("id") or "", obj.get("id") or "",
             int(order.get("amount") or 0),
             product_id=str(order.get("product") or ""),
             currency=str(order.get("currency") or ""))
@@ -515,3 +511,24 @@ async def creem_webhook(request: Request):
                         order.get("id"), obj.get("id"))
         return JSONResponse({"ok": False, "error": str(exc.args[0])}, 500)
     return {"ok": True, **res}
+
+
+@router.post("/webhooks/creem")
+async def creem_webhook(request: Request):
+    from economy import creem
+    cl = request.headers.get("content-length", "")
+    if cl.isdigit() and int(cl) > MAX_WEBHOOK_BODY:
+        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
+    raw = await request.body()
+    if len(raw) > MAX_WEBHOOK_BODY:
+        return JSONResponse({"ok": False, "error": "payload_too_large"}, 413)
+    sig = request.headers.get("creem-signature", "")
+    if not creem.verify_signature(raw, sig):
+        return JSONResponse({"ok": False, "error": "bad_signature"}, 401)
+    try:
+        event = json.loads(raw)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_json"}, 400)
+    event_type = str(event.get("eventType") or "")
+    obj = event.get("object") or {}
+    return await asyncio.to_thread(_creem_webhook_impl, event_type, event, obj)

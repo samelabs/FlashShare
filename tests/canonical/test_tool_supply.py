@@ -725,18 +725,17 @@ finally:
 #       tool appears on /tools and in a non-owner's tools/list.
 #   G7* un-publishing (public → unlisted) stays unrestricted.
 #
-# The developer endpoint is an in-suite local http listener (the fx1
-# pattern). The publish POST uses a literal public IP https URL (the
-# existing c2a fixture) — the SSRF guard resolves, nothing is fetched.
-# To point the tool at the local listener the row is flagged trusted
-# (the same exemption operator-created tools get; here it is only test
-# plumbing so the runtime driver may call 127.0.0.1).
+# The publish POST uses a literal public IP https URL (the existing c2a
+# fixture) — the SSRF guard resolves, nothing is fetched. Community
+# rows are never SSRF-exempt, so the gate's call FACTS (ok/failed rows
+# by specific users) are seeded directly: the gate reads exactly those
+# rows; the real execution envelopes are covered by the operator-tool
+# e2e elsewhere (platform H3, remote_security MIME-CT).
 # ════════════════════════════════════════════════════════════════════════
 section('Publish gate')
 
 import base64
 import http.client as _hc
-import http.server
 import json as _json
 import os as _os
 import sys as _sys
@@ -814,35 +813,6 @@ def _register(name):
     return uid, ck, d_k["key"]["key"]
 
 
-# ── in-suite local developer endpoint (fx1 pattern) ──────────────────
-class _DevHandler(http.server.BaseHTTPRequestHandler):
-    def do_POST(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        self.rfile.read(n)
-        if self.path == "/fail":
-            self.send_response(500)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
-        items = [{"kind": "text", "text": "gate ok"}]
-        out = _json.dumps({"items": items}).encode()
-        self.send_response(200)
-        # items 信封走专属 Content-Type (P2 契约: application/json = 单 json 项)
-        self.send_header("Content-Type",
-                         "application/vnd.518.items+json")
-        self.send_header("Content-Length", str(len(out)))
-        self.end_headers()
-        self.wfile.write(out)
-
-    def log_message(self, *a):
-        pass
-
-
-_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _DevHandler)
-LOCAL_URL = f"http://127.0.0.1:{_srv.server_address[1]}/ok"
-LOCAL_FAIL_URL = f"http://127.0.0.1:{_srv.server_address[1]}/fail"
-threading.Thread(target=_srv.serve_forever, daemon=True).start()
-
 from database import db  # noqa: E402
 
 author_uid = None
@@ -900,51 +870,44 @@ try:
           st == 422 and (d or {}).get("error") == "needs_successful_run",
           f"{st} {d}")
 
-    # point the tool at the local listener (trusted = the operator-tool
-    # exemption, test plumbing so the runtime driver may reach 127.0.0.1)
-    with db() as con:
-        con.execute("update platform_tools set trusted = TRUE"
-                    " where tool_key=%s", (tk,))
-
-    def _set_url(url):
-        return _req_pgt("PATCH", f"/api/usertools/{tk}", {"url": url, "timeout_s": 30},
-                    {"Content-Type": "application/json", "Cookie": a_ck_pgt})
-
     # ═══ G4: another user's successful call does not unlock ══════════
-    st, _h, _d, _sc = _set_url(LOCAL_URL)
-    st, d = _call_pgt(tk, {"client_ref": f"b9r-{_u}"}, R_TOK)
+    def _seed_call_fact(uid, status, ref):
+        with db() as con:
+            con.execute(
+                "insert into tool_calls (client_ref, user_id, tool_id,"
+                " status, cost_snapshot, started_at, finished_at,"
+                " invocation_hash) values (%s, %s, %s, %s, 0, %s, %s, %s)",
+                (f"{ref}-{_u}", uid, tk, status, ts_pgt, ts_pgt,
+                 _uuid.uuid4().hex * 2))
+
+    _seed_call_fact(reader_uid, "ok", "b9r")
     with db() as con:
         row = con.execute(
             "select status from tool_calls where tool_id=%s"
             " order by id desc limit 1", (tk,)).fetchone()
-    check("G4a reader's call succeeded", (d.get("result") or {})
-          .get("isError") is False and row["status"] == "ok",
-          f"{str(d)[:80]} {row and dict(row)}")
+    check("G4a reader's ok call fact seeded", row["status"] == "ok",
+          row and dict(row))
     st, _h, d, _sc = _patch_vis(a_ck_pgt, "public")
     check("G4b someone else's ok does not unlock → 422",
           st == 422 and (d or {}).get("error") == "needs_successful_run",
           f"{st} {d}")
 
     # ═══ G5: the author's failed call does not unlock ════════════════
-    _set_url(LOCAL_FAIL_URL)
-    st, d = _call_pgt(tk, {"client_ref": f"b9f-{_u}"}, A_TOK)
+    _seed_call_fact(author_uid, "failed", "b9f")
     with db() as con:
         row = con.execute(
             "select status from tool_calls where tool_id=%s"
             " order by id desc limit 1", (tk,)).fetchone()
-    check("G5a author's call failed", (d.get("result") or {})
-          .get("isError") is True and row["status"] == "failed",
-          f"{str(d)[:80]} {row and dict(row)}")
+    check("G5a author's failed call fact seeded", row["status"] == "failed",
+          row and dict(row))
     st, _h, d, _sc = _patch_vis(a_ck_pgt, "public")
     check("G5b a failed author run does not unlock → 422",
           st == 422 and (d or {}).get("error") == "needs_successful_run",
           f"{st} {d}")
 
     # ═══ G6: the author's successful call unlocks ════════════════════
-    _set_url(LOCAL_URL)
-    st, d = _call_pgt(tk, {"client_ref": f"b9o-{_u}"}, A_TOK)
-    check("G6a author's call succeeded", (d.get("result") or {})
-          .get("isError") is False, str(d)[:100])
+    _seed_call_fact(author_uid, "ok", "b9o")
+    check("G6a author's ok call fact seeded", True)
     st, _h, d, _sc = _patch_vis(a_ck_pgt, "public")
     check("G6b PATCH public after the owner's ok run → 200",
           st == 200 and (d or {}).get("ok"), f"{st} {d}")
@@ -962,10 +925,6 @@ try:
           f"{st} {d}")
 
 finally:
-    try:
-        _srv.shutdown()
-    except Exception:
-        pass
     uids = [u for u in (author_uid, reader_uid) if u]
     with db() as con:
         purge_users(con, uids)

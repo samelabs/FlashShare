@@ -46,7 +46,7 @@
       <a class="btn btn-p btn-sm" href="/pricing"><span data-i18n="plan_manage">{{ texts.plan_manage }}</span></a>
     </div>
     <div class="sub-status">
-      <span class="sub-badge{% if m and m.member %} on{% endif %}">{{ m.name if m and m.member else texts.pricing_free_name }}</span>
+      <span class="{% if m and m.member %}tier {{ m.badge_key }}{% else %}tier tier_free{% endif %}">{{ m.name if m and m.member else free_plan_name }}</span>
       <span class="sub-meta">
         {% if m and m.member %}{{ texts.sub_until }} {{ fmt_ts(m.renews_at) }}
         {% elif m and m.status == 'expired' %}<span data-i18n="sub_status_expired">{{ texts.sub_status_expired }}</span>
@@ -65,13 +65,14 @@
     </ul>
   </div>
 
-  <div class="acct-card">
+  <div class="acct-card rec-card">
     <div class="acct-card-head">
       <h2 data-i18n="credits_history">{{ texts.credits_history }}</h2>
       <span class="acct-card-sub">{{ texts.credit_detail_count|replace('{n}', total|num(lang)) }}</span>
     </div>
+    {% include "account/_rec_controls.html" %}
     {% if rows %}
-    <div class="acct-tablewrap">
+    <div class="acct-tablewrap rec-list">
       <table class="acct-table">
         <thead>
           <tr><th data-i18n="credit_time">{{ texts.credit_time }}</th><th data-i18n="credit_type">{{ texts.credit_type }}</th><th data-i18n="credit_note">{{ texts.credit_note }}</th><th class="ta-r" data-i18n="credit_delta">{{ texts.credit_delta }}</th><th class="ta-r" data-i18n="credit_after">{{ texts.credit_after }}</th></tr>
@@ -79,23 +80,17 @@
         <tbody>
           {% for r in rows %}
           <tr>
-            <td class="mono">{{ fmt_ts(r.created_at) }}</td>
-            <td><span class="ledger-kind ledger-{{ r.kind }}" data-i18n="ledger_{{ r.kind }}">{{ texts['ledger_' ~ r.kind] if texts.get('ledger_' ~ r.kind) else r.kind }}</span></td>
-            <td class="credit-note-cell">{% if r.note_display %}{% if r.call_id %}<a class="credit-note-link" href="/account/calls?page={{ r.call_page }}#call-{{ r.call_id }}">{{ r.note_display }}</a>{% else %}{{ r.note_display }}{% endif %}{% else %}—{% endif %}</td>
-            <td class="ta-r mono {% if r.delta > 0 %}pos{% elif r.delta < 0 %}neg{% endif %}">{% if r.delta > 0 %}+{% endif %}{{ r.delta|num(lang) }}</td>
-            <td class="ta-r mono">{{ r.balance_after|num(lang) }}</td>
+            <td class="mono rec-ts" data-th="{{ texts.credit_time }}"><span class="rec-ts-d">{{ r.ts_date }}</span><span class="rec-ts-t">{{ r.ts_time }}</span></td>
+            <td data-th="{{ texts.credit_type }}"><span class="ledger-kind ledger-{{ r.kind }}" data-i18n="ledger_{{ r.kind }}">{{ texts['ledger_' ~ r.kind] if texts.get('ledger_' ~ r.kind) else r.kind }}</span></td>
+            <td class="credit-note-cell" data-th="{{ texts.credit_note }}">{% if r.note_display %}{% if r.call_id %}<a class="credit-note-link" href="/account/calls?page={{ r.call_page }}#call-{{ r.call_id }}">{{ r.note_display }}</a>{% else %}{{ r.note_display }}{% endif %}{% else %}—{% endif %}</td>
+            <td class="ta-r mono {% if r.delta > 0 %}pos{% elif r.delta < 0 %}neg{% endif %}" data-th="{{ texts.credit_delta }}">{% if r.delta > 0 %}+{% endif %}{{ r.delta|num(lang) }}</td>
+            <td class="ta-r mono" data-th="{{ texts.credit_after }}">{{ r.balance_after|num(lang) }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% if pages > 1 %}
-    <div class="acct-pager">
-      {% if pg > 1 %}<a href="/account/credits?page={{ pg - 1 }}">← {{ texts.prev_page }}</a>{% else %}<span class="off">← {{ texts.prev_page }}</span>{% endif %}
-      <span class="grow">{{ pg }} / {{ pages }}</span>
-      {% if pg < pages %}<a href="/account/credits?page={{ pg + 1 }}">{{ texts.next_page }} →</a>{% else %}<span class="off">{{ texts.next_page }} →</span>{% endif %}
-    </div>
-    {% endif %}
+    {% include "account/_pager.html" %}
     {% else %}
     <div class="acct-empty">
       <p data-i18n="credits_empty">{{ texts.credits_empty }}</p>
