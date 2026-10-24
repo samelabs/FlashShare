@@ -2055,7 +2055,11 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
         });
         await page.fill("#errProbe .ti-body-text", "trigger failure");
         await page.click("#errProbe .ti-run");
-        await page.waitForTimeout(400);
+        // bounded sync: wait until the error note is actually rendered
+        // visible — a fixed 400ms sleep read before the (intercepted)
+        // response settled and read an empty card on a loaded machine
+        await page.waitForSelector("#result .result-card .error-note",
+          { state: "visible", timeout: 5000 });
         const err = await page.evaluate(() => {
           const note = document.querySelector("#result .result-card .error-note");
           return {
