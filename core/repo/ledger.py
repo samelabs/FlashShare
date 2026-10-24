@@ -135,15 +135,18 @@ def spend_summary(con, user_id: int,
     ledger), refund = refund deltas; net = consumption − refunds. Grants,
     top-ups and adjustments are neither consumption nor refunds; the
     earn pool never mixes in. Same time box as the page's range filter
-    when since_ts is given."""
-    sql = ("SELECT kind, SUM(delta) AS s FROM ledger"
+    when since_ts is given. n = consume/refund ROW count — the activity
+    fact for the trend strip (zero-amount rows still count; the strip
+    must not read as empty just because the net is zero or negative)."""
+    sql = ("SELECT kind, COUNT(*) AS n, SUM(delta) AS s FROM ledger"
            " WHERE user_id = %s AND kind = ANY(%s)")
     params: list = [user_id, list(SPEND_SUMMARY_KINDS)]
     if since_ts is not None:
         sql += " AND created_at >= %s"
         params.append(since_ts)
-    out = {"consume": 0, "refund": 0, "net": 0}
+    out = {"consume": 0, "refund": 0, "net": 0, "n": 0}
     for r in con.execute(sql + " GROUP BY kind", params).fetchall():
+        out["n"] += int(r["n"])
         if r["kind"] == "consume":
             out["consume"] = -int(r["s"])
         else:

@@ -1129,6 +1129,100 @@ try:
           and _ep("x", 200_005, 20) == 1 and _ep("-1", 200_005, 20) == 1
           and _ep("999999999", 0, 20) == 1,
           [_ep("10001", 200_005, 20), _ep("10002", 200_005, 20)])
+
+    # ═══ RC8: window = 包含今天的最近 N 个 UTC 自然日 (固定请求时钟) ═══
+    # 可控时钟: 页面路由在请求时 from utils import now — 打补丁后经
+    # TestClient 的请求全部落在同一截点, 覆盖窗口首日/边界前后/UTC 午夜。
+    import utils as _utils_mod
+    from contextlib import contextmanager as _ctxmanager
+
+    @_ctxmanager
+    def _fixed_clock(ts):
+        _orig_now = _utils_mod.now
+        _utils_mod.now = lambda: ts
+        try:
+            yield
+        finally:
+            _utils_mod.now = _orig_now
+
+    _FIXED_NOW = (int(_time_rc.time()) // 86400) * 86400 + 12 * 3600  # UTC 今日正午
+    _today_rc = _FIXED_NOW // 86400
+    _S7 = (_today_rc - 6) * 86400        # range=7 窗口首日零点 (UTC)
+    uid_win = _mkuser_rc(_u_rc + "wn")       # 窗口边界 fixture
+    uid_refund = _mkuser_rc(_u_rc + "rf")    # 仅退款窗口 (净额为负)
+    uid_free = _mkuser_rc(_u_rc + "fr")      # 免费调用 (净扣费 0)
+    with db() as con:
+        # 窗口首日: 消费 10 + 退款 10 → 有记录净额 0; 首日前 1 秒的消费;
+        # UTC 午夜(今日零点)的消费 3; 窗口内 grant (列表可见, 统计排除)
+        _balw = 0
+        for _i, (_k, _d, _at) in enumerate((
+                ("consume", -10, _S7), ("refund", 10, _S7 + 3600),
+                ("consume", -5, _S7 - 1),
+                ("consume", -3, _today_rc * 86400),
+                ("grant_signup", 50, _S7 + 10))):
+            _balw += _d
+            _led_rc(con, uid_win, _k, _d, _balw, _at, 900 + _i)
+        # 仅退款: 窗口内唯一记录 = 退款 +10 → 净额 −10, 有活动
+        _led_rc(con, uid_refund, "refund", 10, 10, _FIXED_NOW - 3600, 910)
+        # 免费调用: ok 调用, cost 0, 无消费行 → 净扣费 0, 有活动
+        con.execute(
+            "insert into tool_calls (client_ref, user_id, tool_id, status,"
+            " cost_snapshot, commission_rate_snapshot, invocation_hash,"
+            " started_at, finished_at) values (%s, %s, %s, 'ok', 0, 30, %s,"
+            " %s, %s)",
+            (f"rc_{_u_rc}_free", uid_free, f"rctool_{_u_rc}", "1" * 64,
+             _FIXED_NOW - 60, _FIXED_NOW - 59))
+    ck_win = _cbs_rc(uid_win)
+    ck_refund = _cbs_rc(uid_refund)
+    ck_free = _cbs_rc(uid_free)
+
+    with _fixed_clock(_FIXED_NOW):
+        # 列表边界: 首日零点行在窗内, 首日前 1 秒行在窗外 (滚动 7×86400
+        # 窗自正午起算, 会把首日凌晨的两行错杀 — 自然日窗必须全含首日)
+        st, html = _get_rc("/account/credits?range=7&lang=en", ck_win)
+        check("RC8 range=7 lists the whole first calendar day + midnight rows",
+              st == 200 and "4 records" in html, (st, "4 records" in html))
+        st, html = _get_rc("/account/credits?lang=en", ck_win)
+        check("RC8b range=all still lists every row (5) regardless of the window",
+              "5 records" in html, "")
+        # 汇总与列表/图表同一自然日边界: Spent 13 / Refunded 10 / Net 3
+        st, html = _get_rc("/account/credits?range=7&lang=en", ck_win)
+        check("RC8c overview uses the same calendar-day window (13/10/3)",
+              'rec-chip-v mono ">13<' in html and 'rec-chip-v mono pos">10<' in html
+              and 'rec-chip-v mono neg">3<' in html,
+              [s for s in ('">13<', 'pos">10<', 'neg">3<') if s not in html])
+        # 趋势: 零净额日 (消费10退款10) 与正净额日并存 → 有图表, 有零刻度
+        # 与向上条, 不出现空态; 日桶合计 == 汇总净额
+        _days = _re.findall(r'rec-day-v mono">(-?\d+)<', html)
+        check("RC8d zero-net day with real records renders a chart, not 'no activity'",
+              "rec-trend-empty" not in html and "rec-trend-bars" in html
+              and "rec-bar zero" in html and "rec-bar up" in html
+              and "rec-bar down" not in html,
+              html.count("rec-bar"))
+        check("RC8e day buckets sum to the overview net (detail list, 7 days)",
+              len(_days) == 7 and sum(int(v) for v in _days) == 3, _days)
+        check("RC8f bar heights: today's +3 at full half-scale, non-negative",
+              'class="rec-bar up" style="height: 50.0%"' in html
+              and not _re.search(r'height: -', html), "")
+
+        # 仅退款窗口: 净额 −10 → 有活动, 负值表达为向下条, 无空态
+        st, html = _get_rc("/account/credits?lang=en", ck_refund)
+        check("RC8g refund-only window is activity, not 'no activity'",
+              st == 200 and "rec-trend-empty" not in html
+              and "rec-bar down" in html and "rec-bar up" not in html
+              and 'rec-chip-v mono neg">-10<' in html,
+              [s for s in ("rec-bar down", "neg\">-10<") if s not in html])
+        check("RC8h negative day renders a downward bar at half-scale",
+              'class="rec-bar down" style="height: 50.0%"' in html, "")
+
+        # 免费调用: 记录存在, 净扣费 0 → 调用页有图表 (零刻度), 无空态
+        st, html = _get_rc("/account/calls?lang=en", ck_free)
+        check("RC8i free call (net 0) counts as activity on the calls page",
+              st == 200 and "rec-trend-empty" not in html
+              and "rec-bar zero" in html and "rec-bar up" not in html
+              and "rec-bar down" not in html
+              and '>Calls</span><strong class="rec-chip-v mono ">1<' in html,
+              "")
 finally:
     with db() as con:
         con.execute("delete from platform_tools where tool_key=%s",

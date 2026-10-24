@@ -2569,6 +2569,78 @@ with db() as con:
 print("seeded")
 `, arUser, bodyToolKey], { env: Object.assign({}, process.env, { TEST_DB_URL: TEST_DB }), encoding: "utf8" });
 
+    // (4b) records fixture user: 40-char legal tool label, live result link,
+    // larger amounts (grouped digits), a long human note, and a negative
+    // (refund-heavy) day so the trend carries up + down + zero buckets
+    const recUser = "gated" + Math.random().toString(36).slice(2, 8);
+    const longToolKey = "gatelong" + Math.random().toString(36).slice(2, 8);
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+      await gotoReady(page, "/auth/register?lang=en", "form[action='/auth/register'] input[name=username]");
+      await page.fill("form[action='/auth/register'] input[name=username]", recUser);
+      await page.fill("form[action='/auth/register'] input[name=email]", `${recUser}@t.co`);
+      await page.fill("form[action='/auth/register'] input[name=password]", arPass);
+      await page.fill("form[action='/auth/register'] input[name=password_confirm]", arPass);
+      await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+        page.click("form[action='/auth/register'] button[type=submit]")]);
+      check("ar records-long: fixture user registered (real form)",
+        new URL(page.url()).pathname === "/", page.url());
+      await ctx.close();
+    }
+    execFileSync(py, ["-c", `
+import os, sys, json, secrets
+sys.path.insert(0, "core")
+os.environ["DATABASE_URL"] = os.environ["TEST_DB_URL"].replace("postgresql://", "postgresql+psycopg://")
+from database import db
+from utils import now
+u, key = sys.argv[1], sys.argv[2]
+ts = now()
+y = (ts // 86400 - 1) * 86400 + 3600  # yesterday 01:00 UTC
+with db() as con:
+    uid = int(con.execute("select id from users where username=%s", (u,)).fetchone()["id"])
+    label = json.dumps({"en": "Extremely Long Legal Tool Name Exactly40"})
+    con.execute("insert into platform_tools (tool_key, owner_id, tool_id,"
+                " execution, label_json, visibility, enabled, files_min,"
+                " files_max, outputs_json, created_at, updated_at,"
+                " format_family, params_json, accept_json) values"
+                " (%s, NULL, %s, 'local', %s, 'unlisted', TRUE, 1, 1,"
+                " '[\\"text\\"]', %s, %s, 'image', '[]', '[\\".png\\"]')",
+                (key, key, label, ts, ts))
+    c = con.execute("insert into tool_calls (client_ref, user_id, tool_id,"
+                    " status, cost_snapshot, commission_rate_snapshot,"
+                    " invocation_hash, started_at, finished_at,"
+                    " result_public_id, result_json) values"
+                    " (%s, %s, %s, 'ok', 1234567, 30, %s, %s, %s, %s, %s)"
+                    " returning id",
+                    ("gatelong_call", uid, key, secrets.token_hex(32), ts, ts,
+                     "gatelong_res_pub", json.dumps({"expires_at": ts + 86400}))).fetchone()
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " ref_type, ref_id, idem_key, created_at) values"
+                " (%s, -1234567, -1234567, 'consume', 'tool_call', %s, %s, %s)",
+                (uid, str(c["id"]), "gatelong_c1", ts))
+    rc = con.execute("select id from ledger where idem_key=%s", ("gatelong_c1",)).fetchone()
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " ref_type, ref_id, idem_key, created_at) values"
+                " (%s, 500000, -734567, 'refund', 'ledger', %s, %s, %s)",
+                (uid, str(rc["id"]), "gatelong_r1", ts))
+    # yesterday: refund-heavy day -> a negative (down) bucket
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " idem_key, created_at) values"
+                " (%s, -10, -734577, 'consume', %s, %s)", (uid, "gatelong_c2", y))
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " idem_key, created_at) values"
+                " (%s, 2000, -732577, 'refund', %s, %s)", (uid, "gatelong_r2", y))
+    # long human note (adjust) renders verbatim on the credits page
+    con.execute("insert into ledger (user_id, delta, balance_after, kind,"
+                " note, idem_key, created_at) values"
+                " (%s, 5, -732572, 'adjust', %s, %s, %s)",
+                (uid, "Operator adjustment note describing an unusually long"
+                      " manual correction entry kept for audit purposes",
+                 "gatelong_a1", ts))
+print("seeded-long")
+`, recUser, longToolKey], { env: Object.assign({}, process.env, { TEST_DB_URL: TEST_DB }), encoding: "utf8" });
+
     // (5) records pages as arUser: paging, clamping, filter, summary, links
     {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -2699,6 +2771,123 @@ print("seeded")
       check("ar access: RTL language keeps dir=rtl with no overflow",
         rtl.dir === "rtl" && rtl.sw <= rtl.vw + 1, JSON.stringify(rtl));
       await ctx.close();
+    }
+
+    // (5b) trend expression + mobile record readability for the long-name
+    // fixture user: signed bars around a visible zero baseline, daily
+    // values reachable by keyboard AND touch, and the long legal tool
+    // name / long note / larger amounts readable in their OWN cells on a
+    // phone (cell-level checks, not just document.scrollWidth)
+    {
+      const login = async (ctx, page) => {
+        await gotoReady(page, "/auth/login?lang=en", "input[name=login]");
+        await page.fill("input[name=login]", recUser);
+        await page.fill("input[name=password]", arPass);
+        await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+          page.click("form[action='/auth/login'] button[type=submit]")]);
+      };
+      // desktop: chart shape + keyboard-openable daily detail
+      {
+        const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        const page = await ctx.newPage();
+        await login(ctx, page);
+        await gotoReady(page, "/account/credits?lang=en", ".rec-trend-bars");
+        const trendShape = await page.evaluate(() => {
+          const bars = [...document.querySelectorAll(".rec-bar")];
+          const cont = document.querySelector(".rec-trend-bars");
+          return {
+            up: bars.filter((b) => b.classList.contains("up")).length,
+            down: bars.filter((b) => b.classList.contains("down")).length,
+            zero: bars.filter((b) => b.classList.contains("zero")).length,
+            negHeight: bars.filter((b) =>
+              parseFloat(b.style.height || "0") < 0
+              || parseFloat(getComputedStyle(b).height) < 0).length,
+            baseline: cont ? getComputedStyle(cont, "::before").content !== "none" : false,
+            days: document.querySelectorAll(".rec-trend-days li").length,
+            netChip: ((document.querySelectorAll(".rec-chip")[2] || {}).textContent || "").trim(),
+          };
+        });
+        check("ar records-long: signed bars (up+down+zero) around a zero baseline, heights never negative",
+          trendShape.up > 0 && trendShape.down > 0 && trendShape.zero > 0
+          && trendShape.negHeight === 0 && trendShape.baseline && trendShape.days === 30,
+          JSON.stringify(trendShape));
+        const daySum = await page.$$eval(".rec-trend-days li", (lis) =>
+          lis.reduce((a, li) => a + parseInt(
+            li.querySelector(".rec-day-v").textContent.replace(/[^-\d]/g, ""), 10), 0));
+        const netChipNum = parseInt((trendShape.netChip || "").replace(/[^-\d]/g, ""), 10);
+        check("ar records-long: daily detail values sum to the overview net",
+          daySum === netChipNum && daySum !== 0, `${daySum} vs ${netChipNum}`);
+        await page.focus(".rec-trend-detail summary");
+        await page.keyboard.press("Enter");
+        check("ar records-long: daily values open with the keyboard (Enter on summary)",
+          await page.$eval(".rec-trend-detail", (d) => d.open === true
+            && d.querySelectorAll(".rec-trend-days li").length === 30));
+        await ctx.close();
+      }
+      // phone 390: cells wrap in place, values readable, result button
+      // actually clickable, daily detail opens on touch
+      {
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+        const page = await ctx.newPage();
+        await login(ctx, page);
+        await gotoReady(page, "/account/calls?lang=en", ".rec-list");
+        const callsFit = await page.evaluate(() => {
+          const cells = [...document.querySelectorAll(".rec-list tbody td")];
+          const row = document.querySelector(".rec-list tbody tr");
+          const btn = document.querySelector(".rec-list a.btn");
+          return {
+            vw: document.documentElement.clientWidth,
+            sw: document.documentElement.scrollWidth,
+            rows: document.querySelectorAll(".rec-list tbody tr").length,
+            cellOverflow: cells.filter((td) => td.scrollWidth > td.clientWidth + 1).length,
+            nameText: (row.children[1] || {}).textContent || "",
+            netText: (row.children[3] || {}).textContent || "",
+            btnVisible: !!btn && btn.getBoundingClientRect().right <= innerWidth
+              && btn.getBoundingClientRect().width > 0,
+            btnHref: btn ? btn.getAttribute("href") : "",
+          };
+        });
+        check("ar mobile calls: 40-char legal tool name + grouped amount readable inside their own cells",
+          callsFit.rows === 1 && callsFit.nameText.indexOf("Extremely Long Legal Tool Name Exactly40") !== -1
+          && callsFit.netText.replace(/[^0-9]/g, "") === "734567"
+          && callsFit.cellOverflow === 0,
+          JSON.stringify(callsFit));
+        check("ar mobile calls: no page overflow, result button visible in its cell",
+          callsFit.sw <= callsFit.vw + 1 && callsFit.btnVisible, JSON.stringify(callsFit));
+        // real tap: the result button navigates to /r/
+        if (callsFit.btnHref) {
+          await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }),
+            page.tap(".rec-list a.btn")]);
+          check("ar mobile calls: tapping the result button opens the /r page",
+            new URL(page.url()).pathname.startsWith("/r/"), page.url());
+        }
+        await gotoReady(page, "/account/credits?lang=en", ".rec-list");
+        const creditsFit = await page.evaluate(() => {
+          const cells = [...document.querySelectorAll(".rec-list tbody td")];
+          const noteCell = document.querySelector(".credit-note-cell");
+          const deltas = [...document.querySelectorAll(".rec-list tbody td.ta-r.mono")];
+          return {
+            vw: document.documentElement.clientWidth,
+            sw: document.documentElement.scrollWidth,
+            cellOverflow: cells.filter((td) => td.scrollWidth > td.clientWidth + 1).length,
+            noteWrapped: !noteCell || (noteNote => noteNote.scrollWidth <= noteCell.clientWidth + 1)(noteCell),
+            hasLongNote: !!document.body.textContent.match(/unusually long manual correction/i),
+            bigDelta: deltas.some((d) => d.textContent.replace(/[^0-9]/g, "") === "1234567"),
+          };
+        });
+        check("ar mobile credits: long note + 7-digit amount readable in their own cells",
+          creditsFit.cellOverflow === 0 && creditsFit.noteWrapped
+          && creditsFit.hasLongNote && creditsFit.bigDelta
+          && creditsFit.sw <= creditsFit.vw + 1,
+          JSON.stringify(creditsFit));
+        // touch: tapping the summary opens the daily values
+        await page.tap(".rec-trend-detail summary");
+        check("ar mobile credits: daily values open on touch",
+          await page.$eval(".rec-trend-detail", (d) => d.open === true
+            && d.querySelectorAll(".rec-trend-days li").length === 30));
+        await page.screenshot({ path: path.join(OUT, "mobile", "ar-longname-credits-390.png"), fullPage: true }).catch(() => {});
+        await ctx.close();
+      }
     }
 
     // (6) access cards: copy payloads match the display, file + body tools

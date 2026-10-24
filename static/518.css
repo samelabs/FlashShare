@@ -540,7 +540,8 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 
 /* ── 账户记录页共用控件 (credits / calls, _rec_controls.html) ──
    时间范围筛选 (链接式 seg) + 概览 chips + 日趋势条 (服务端稠密 UTC
-   日序列, ≤90 桶, 纯 CSS 条形; 数值在 title 与峰值行可读)。 */
+   日序列, ≤90 桶, 零基线双向纯 CSS 条形; 每日数值在 title 与折叠明细
+   可读 — 明细原生 <details>, 键盘/触屏可达, 不依赖 hover)。 */
 .rec-toolbar { display: flex; flex-direction: column; gap: var(--s3); margin-block-end: var(--s3); min-width: 0; }
 .rec-seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
 .rec-ov { display: flex; gap: var(--s2); flex-wrap: wrap; }
@@ -553,11 +554,23 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .rec-trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; margin-block-end: var(--s1); }
 .rec-trend-title { font-size: var(--fs-xs); font-weight: 650; color: var(--ink-2); }
 .rec-trend-note { font-size: var(--fs-xs); color: var(--ink-2); }
-.rec-trend-bars { display: flex; align-items: flex-end; gap: 1px; height: 44px; background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 4px; }
+/* 零基线在容器中线 (::before 虚线): 正值自基线向上、负值向下生长 —
+   translateY(±50%) 把条自身的半高锚到中线; 高度恒为 |值|/比例尺×50%,
+   永不为负; 零值日 = 基线上 2px 刻度 */
+.rec-trend-bars { display: flex; align-items: center; gap: 1px; height: 56px; background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 4px; position: relative; }
+.rec-trend-bars::before { content: ""; position: absolute; inset-inline: 4px; top: 50%; border-top: 1px dashed var(--line-2); pointer-events: none; }
 .rec-bar { flex: 1 1 0; min-width: 2px; max-width: 14px; background: var(--brand); border-radius: 1px; }
-.rec-bar.zero { background: color-mix(in srgb, var(--line) 70%, transparent); }
+.rec-bar.up { align-self: center; transform: translateY(50%); min-height: 2px; }
+.rec-bar.down { align-self: center; transform: translateY(-50%); min-height: 2px; background: var(--ok); }
+.rec-bar.zero { align-self: center; height: 2px; background: color-mix(in srgb, var(--line) 70%, transparent); }
 .rec-trend-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-2); margin-block-start: 2px; }
 .rec-trend-empty { font-size: var(--fs-xs); color: var(--ink-2); margin: 0; padding: var(--s2) 0; }
+.rec-trend-detail { margin-block-start: var(--s1); }
+.rec-trend-detail summary { font-size: var(--fs-xs); color: var(--ink-2); cursor: pointer; user-select: none; }
+.rec-trend-days { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; margin: var(--s1) 0 0; padding: 0; }
+.rec-trend-days li { display: inline-flex; align-items: baseline; gap: 6px; font-size: var(--fs-xs); }
+.rec-day-d { color: var(--ink-3); }
+.rec-day-v { color: var(--ink); }
 /* 时间列: 桌面日期/时刻同行带间隔; 手机 (下方媒体查询) 两行堆叠 */
 .rec-list .rec-ts { display: inline-flex; align-items: baseline; gap: 6px; }
 
@@ -572,7 +585,7 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
   .rec-list .acct-table tr { display: block; padding: var(--s2) 0; border-block-end: 1px solid var(--line); }
   .rec-list .acct-table tbody tr:last-child { border-block-end: 0; }
   .rec-list .acct-table tbody tr:nth-child(even) { background: transparent; }
-  .rec-list .acct-table td { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); border: 0; padding: 3px 0; text-align: end; white-space: normal; }
+  .rec-list .acct-table td { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); border: 0; padding: 3px 0; text-align: end; white-space: normal; min-width: 0; overflow-wrap: anywhere; }
   .rec-list .acct-table td::before { content: attr(data-th); font-size: var(--fs-xs); font-weight: 650; color: var(--ink-2); text-align: start; flex: none; }
   .rec-list .acct-table td.mono, .rec-list .acct-table td.ta-r { white-space: normal; }
   .rec-list .rec-ts { flex-direction: column; align-items: flex-end; gap: 0; }
@@ -1168,18 +1181,13 @@ body { overflow-x: clip; }
 }
 @media (max-width: 767px) {
   .acct-card { min-width: 0; }
-  /* 账户表格窄屏: 文本列允许换行收缩, 整表不再强制 nowrap —— 强制
-     nowrap 会把"净支出/结果"等右列推进横滚区, 按钮在首屏不可见
-     (scrollWidth 检查仍通过, 缺陷被掩盖)。数字/时间列保持 nowrap。 */
-  .acct-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .acct-tablewrap .acct-table { white-space: nowrap; }
-  .acct-page .acct-tablewrap .calls-table { white-space: normal; table-layout: fixed; }
-  .acct-page .calls-table td.mono, .acct-page .calls-table td.ta-r { white-space: nowrap; }
-  /* 时间戳在自身列内换行 (放开全局 mono nowrap); 结果/净支出列取固定宽,
-     "查看结果"按钮完整落在自己的格子内可点 */
-  .acct-page .calls-table td.mono { white-space: normal; overflow-wrap: anywhere; }
-  .acct-page .calls-table th:last-child, .acct-page .calls-table td:last-child { width: 92px; }
-  .acct-page .calls-table th:nth-last-child(2), .acct-page .calls-table td:nth-last-child(2) { width: 56px; }
+  /* 账户表格窄屏: 横滚与整表 nowrap 只保留给非记录卡的账户表 (订单/
+     收益等) — 记录卡 (.rec-list) 上面已转堆叠布局, 不再进横滚区。
+     旧 calls-table 固定列宽 (56/92px) + 强制 nowrap + table-layout 已
+     删除: 它们特异性更高, 压过记录卡规则, 把净支出/结果列挤进固定小
+     格, 按钮/金额在自身区域不可读不可点; 堆叠卡布局取代其职责。 */
+  .acct-tablewrap:not(.rec-list) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .acct-tablewrap:not(.rec-list) .acct-table { white-space: nowrap; }
   /* 行操作栏窄屏换行: 五个文字钮一行放不下时被两端裁出视口
      (flex-end 无 wrap), 换行后全部可见可点, 不隐藏任何动作。 */
   .acct-page .tool-panel-actions { flex-wrap: wrap; justify-content: flex-start; }

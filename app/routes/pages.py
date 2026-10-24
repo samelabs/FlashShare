@@ -64,14 +64,23 @@ def _rec_stats_window(rng: str) -> int:
     return REC_RANGES[rng] or 30
 
 
+def _rec_window_start(now_ts: int, days: int) -> int:
+    """统一窗口 = 包含今天的最近 N 个 UTC 自然日。起点 = UTC 今日零点减
+    N−1 天 (与 _day_series 的日桶枚举同一左边界), 终点 = 本次请求的统一
+    时间截点 — 列表 / 汇总 / 日聚合 / 图表共用同一边界, 不再用滚动的
+    N×86400 秒窗 (旧窗在窗口首日只含半天, 与日桶边界错位)。"""
+    return (now_ts // 86400 - days + 1) * 86400
+
+
 def _rec_since(rng: str, now_ts: int) -> int | None:
     days = REC_RANGES[rng]
-    return now_ts - days * 86400 if days else None
+    return _rec_window_start(now_ts, days) if days else None
 
 
 def _day_series(now_ts: int, days: int, daily: dict, value) -> tuple:
     """趋势的稠密 UTC 日序列 (≤90 桶): daily 为 {day: bucket} 稀疏聚合,
-    value(day_bucket) 取该日数值; 附首末日期标签与峰值。"""
+    value(day_bucket) 取该日数值; 日桶枚举 = _rec_window_start 的同一
+    左边界到今天, 与列表/汇总窗口对齐; 附首末日期标签与峰值。"""
     today = int(now_ts) // 86400
     out = []
     peak = {"v": 0, "label": ""}
@@ -846,9 +855,10 @@ def account_credits(request: Request):
             con, user["id"], SPENDABLE_KINDS, size, (pg - 1) * size, since)
         # 概览/趋势: 范围窗口 (列表为“全部”时固定最近 30 天并明示);
         # 消费=consume 幅值, 退款=refund, 净=消费−退款; 赠送/充值不计入,
-        # 收益池不混入 — 聚合由 DB 完成
+        # 收益池不混入 — 聚合由 DB 完成; 窗口 = 包含今天的最近 N 个 UTC
+        # 自然日 (与列表同一边界)
         stat_days = _rec_stats_window(rng)
-        stat_since = now_ts - stat_days * 86400
+        stat_since = _rec_window_start(now_ts, stat_days)
         spend = _ledger_repo.spend_summary(con, user["id"], stat_since)
         daily = _ledger_repo.spend_daily(con, user["id"], stat_since)
         _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
@@ -856,6 +866,11 @@ def account_credits(request: Request):
     trend, peak = _day_series(
         now_ts, stat_days, daily,
         lambda b: b.get("consume", 0) - b.get("refund", 0))
+    # 活动存在 = 窗口内有消费/退款记录 (消费10退款10=有记录净0; 仅退款=
+    # 净负; 不按最大正净额判定空态); 比例尺 = 窗口内最大绝对净额
+    trend_has = spend["n"] > 0
+    _trend_vals = [b["value"] for b in trend]
+    trend_scale = max(1, max(_trend_vals), -min(_trend_vals))
     rows = [dict(r) for r in rows]
     # 41-12 note column: machine notes (raw tool ids, plan cycle stamps,
     # refund order refs) never render. Tool identity comes ONLY from the
@@ -947,7 +962,8 @@ def account_credits(request: Request):
                        ],
                        rec_trend_key="rec_trend_spend",
                        stat_days=stat_days, trend=trend, trend_peak=peak,
-                       trend_max=max((b["value"] for b in trend), default=0))
+                       trend_max=max((b["value"] for b in trend), default=0),
+                       trend_has=trend_has, trend_scale=trend_scale)
     return templates.TemplateResponse(request, "account/credits.html", ctx)
 
 
@@ -1001,9 +1017,10 @@ def account_calls(request: Request):
         total = _calls_repo.count(con, user["id"], since)
         pg = _effective_page(request.query_params.get("page", "1"), total, size)
         rows = _calls_repo.paged(con, user["id"], size, (pg - 1) * size, since)
-        # 概览/趋势窗口 = 所选范围 (列表为“全部”时固定最近 30 天并明示)
+        # 概览/趋势窗口 = 所选范围 (列表为“全部”时固定最近 30 天并明示);
+        # 窗口 = 包含今天的最近 N 个 UTC 自然日 (与列表同一边界)
         stat_days = _rec_stats_window(rng)
-        stat_since = now_ts - stat_days * 86400
+        stat_since = _rec_window_start(now_ts, stat_days)
         summary = _calls_repo.status_summary(con, user["id"], stat_since)
         daily = _calls_repo.daily_net(con, user["id"], stat_since)
     trend, peak = _day_series(now_ts, stat_days, daily, lambda v: v or 0)
@@ -1036,6 +1053,11 @@ def account_calls(request: Request):
         calls.append(r)
     _n_total = sum(v["n"] for v in summary.values())
     _net_total = sum(v["net"] for v in summary.values())
+    # 活动存在 = 窗口内有调用 (免费/已全额退款的调用净扣费为 0, 但记录
+    # 存在); 比例尺 = 窗口内最大绝对净扣费
+    trend_has = _n_total > 0
+    _trend_vals = [b["value"] for b in trend]
+    trend_scale = max(1, max(_trend_vals), -min(_trend_vals))
     ctx = _account_ctx(request, "calls", calls=calls, total=total,
                        pg=pg, pages=(total + size - 1) // size,
                        rng=rng, rec_base="/account/calls",
@@ -1048,7 +1070,8 @@ def account_calls(request: Request):
                             if s in summary],
                        rec_trend_key="rec_trend_calls",
                        stat_days=stat_days, trend=trend, trend_peak=peak,
-                       trend_max=max((b["value"] for b in trend), default=0))
+                       trend_max=max((b["value"] for b in trend), default=0),
+                       trend_has=trend_has, trend_scale=trend_scale)
     return templates.TemplateResponse(request, "account/calls.html", ctx)
 
 
