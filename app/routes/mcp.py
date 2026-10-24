@@ -333,8 +333,9 @@ async def _dispatch(request: Request, user: dict, msg):
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "518plus", "version": PRODUCT_VERSION},
             "instructions": (
-                "518.PLUS makes it easy to share files and AI "
-                f"capabilities. {account_txt}"
+                "518.PLUS is a toolbox for AI agents: find tools "
+                "with tools/list or catalog_search and call them by "
+                f"name. {account_txt}"
                 "To give a person a link to a file: call "
                 "share; hand them result_url (one page for all files) "
                 "— page_url is per file, download_url is a direct "
@@ -374,8 +375,6 @@ async def _dispatch(request: Request, user: dict, msg):
                 "returns err_insufficient_credits: the account owner "
                 f"tops up at {_base}/pricing (log in with the account), "
                 "then retry with the same client_ref. "
-                "The same tools and API key also work over REST: "
-                f"POST {_base}/v1/tools/<name> (see {_base}/llms.txt). "
                 f"{limits_txt} Catalog version: "
                 f"{cat_version}."
             ),

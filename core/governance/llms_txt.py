@@ -24,12 +24,20 @@ def build_llms_txt() -> str:
 
     lines = []
     a = lines.append
-    a("> 518.PLUS — easily share files and AI capabilities. Use the "
-      "tools on the web, from code over the REST API, or let an AI agent "
-      "call them through MCP. To "
-      "give a person a link to a file: call share; hand them "
-      "result_url (one page for all files) — page_url is per file, "
-      "download_url is a direct download.")
+    a("> 518.PLUS is a toolbox for AI agents over MCP: connect, get a "
+      "key with `register`, find tools with tools/list or "
+      "catalog_search, and call them by name. To give a person a link "
+      "to a file: call share; hand them result_url (one page for all "
+      "files) — page_url is per file, download_url is a direct "
+      "download.")
+    a("")
+    a("## Quick start")
+    a(f"1. Connect your MCP client to {mcp_url} — no key needed to "
+      "initialize or list tools.")
+    a("2. Call the free tool `register` once; send the key it returns as "
+      "Authorization: Bearer <key> on every request.")
+    a("3. tools/list (or catalog_search) shows each tool's inputs and "
+      "price; call it with tools/call and a client_ref.")
     a("")
     a("## MCP endpoint")
     a(f"- URL: {mcp_url} (Streamable HTTP: stateless HTTP POST, JSON-RPC 2.0)")
@@ -239,47 +247,8 @@ def build_llms_txt() -> str:
     a("- Membership plans raise the file count, the 24-hour total and "
       "the delivery options — see /pricing.")
     a("")
-    a("## REST API (/v1)")
-    a("The same tools, billing and limits over plain HTTP. Auth: "
-      "Authorization: Bearer fsk_… (API keys only; OAuth tokens are for "
-      "/mcp). Rate limits are shared with MCP. Errors are JSON "
-      '{"ok": false, "error": "<code>"}.')
-    a(f"- GET {BASE_URL}/v1/tools?page=N — the public catalog; "
-      f"GET /v1/tools/<name> — one tool; GET /v1/balance — your credits.")
-    a(f"- POST {BASE_URL}/v1/tools/<name> — run a tool. Tool params go "
-      "in the query string (or a JSON body's params for file tools — "
-      "not both).")
-    a("  - File tools: multipart/form-data with one `file` part per "
-      'file, or JSON {"files":[{"url":"https://…"} | '
-      '{"public_id":"…","source_token":"…"}], "params":{…}}. Answer: '
-      '{"ok":true,"call_id":…,"cost":…,"items":[…]} (file items carry '
-      "download_url).")
-    a("  - Body tools: the request body IS the input — Content-Type "
-      "text/plain or application/json as the tool declares, up to "
-      "512 KB. Answer: the single result itself (text, JSON or the "
-      "file bytes), with X-518-Call-Id and X-518-Cost headers.")
-    a("- Headers: Idempotency-Key (1-128 chars) makes retries safe — "
-      "same key + same input replays the original result without a new "
-      "charge, same key + different input is 409; X-518-Expiry-Days and "
-      "X-518-Allowed-Downloads set delivery (same legal values as MCP).")
-    a("")
-    a(f"curl -s -X POST {BASE_URL}/v1/tools/compress \\")
-    a('  -H "Authorization: Bearer fsk_YOUR_API_KEY" \\')
-    a('  -H "Idempotency-Key: compress-1" -F "file=@input.png"')
-    a("")
     a("## Publish your own tool")
-    a(f"Full guide — request/response examples, declarations, limits, "
-      f"pricing and commission: {BASE_URL}/developers")
-    a("Wrap any public HTTPS endpoint as a 518 tool: implement one JSON "
-      "contract — source files arrive as one-time signed fetch URLs "
-      "(body tools receive the request body as is), you answer with "
-      "text, JSON or a file (or an items envelope for several "
-      f"results) — and submit it at "
-      f"{BASE_URL}/account/tools/publish.")
-    a("A new tool starts unlisted; after one successful run from its "
-      "page it can go public, and then the web, the REST API and every "
-      "MCP agent can call it, earning you USD on each paid call "
-      "(1000 credits = 1 USD at settlement).")
+    a(f"Wrap your HTTPS endpoint as a 518 tool: {BASE_URL}/developers")
     a("")
     a("## Recommended tools (generated live; catalog_search finds every "
       "other public tool)")
