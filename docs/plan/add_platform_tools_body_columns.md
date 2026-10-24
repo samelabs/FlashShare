@@ -8,7 +8,7 @@
 
 先迁移后部署：新代码的 startup `validate_catalog_rows` 即校验
 `body_format` 互斥不变量，列不存在或未回填则服务起不来。旧代码
-（1.6 工具链批）不读这两列，列先加上对运行中的旧服务零影响。
+（v1.5）不读这两列，列先加上对运行中的旧服务零影响。
 
 ## 语义
 
@@ -51,7 +51,7 @@ SELECT tool_key, owner_id, trusted, files_min, files_max,
 启动校验将拒绝它们；窗口内确需写入，写入后重跑 ②（幂等）。
 
 ```bash
-cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python - <<'PY'
+cd /opt/flashshare && set -a && . /etc/flashshare.env && set +a && PYTHONPATH=core venv/bin/python - <<'PY'
 from database import db
 with db() as con:
     con.execute("""

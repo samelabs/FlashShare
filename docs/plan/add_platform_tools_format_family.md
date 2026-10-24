@@ -25,11 +25,10 @@ SELECT tool_key FROM platform_tools
 生产执行完成并通过阶段 ⑥ 部署后检查后，随主顺序资产一并删除
 （仓库规则：docs/plan/ 仅存放尚未执行的 release migration 资产）。
 
-所有脚本在**仓库主检出根目录**执行，`PYTHONPATH=core`（脚本内已自带
-`sys.path` 处理的除外——统一用下面的调用形态）：
+脚本在生产检出根目录执行，先加载生产环境变量（脚本导入 config，缺必填变量会直接报错）：
 
 ```bash
-cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python <脚本>
+cd /opt/flashshare && set -a && . /etc/flashshare.env && set +a && PYTHONPATH=core venv/bin/python <脚本>
 ```
 
 ## 语义
@@ -69,7 +68,7 @@ ALTER TABLE platform_tools ADD COLUMN IF NOT EXISTS format_family TEXT;
 ```bash
 # ② 全量回填（内置 + 社区 + 运营; 停写窗口内执行 — 同时写 format_family 与 accept_json）
 # 内置 share/zip_pack (accept=NULL → 物化全边界+all) 与社区/运营行一并处理
-cd <仓库检出根目录> && PYTHONPATH=core venv/bin/python - <<'PY'
+cd /opt/flashshare && set -a && . /etc/flashshare.env && set +a && PYTHONPATH=core venv/bin/python - <<'PY'
 import json, sys
 from database import db
 from governance.formats import FAMILIES, VOCAB_EXTS

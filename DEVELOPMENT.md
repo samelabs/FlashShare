@@ -212,11 +212,11 @@ python tests/ci/<contract>.py ; node tests/ci/<contract>.js
 ## Production deploy 概要
 
 - 生产 = 服务器 checkout `main` + systemd `flashshare-api`。
-- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。**1.6 发布窗口**（含 `platform_tools` 三份资产 + 审计收口资产）按 `docs/plan/release_1_6_audit_closure.md` 的统一分阶段顺序执行：预检与备份恢复验证 → 停止旧服务写入 → 首启前预建索引/加列回填/终检 → 候选首启 → 补 FK、删 icon/trusted → 二次启动与部署后检查；删除 icon/trusted 后 checkout 旧 SHA 回滚不再可用（唯一回滚 = 恢复备份，owner 裁定）。
+- 常规部署 = stop unit → 显式执行 release migration SQL（如有，见 `docs/plan/`）→ ff-only 同步 main → `pip install -r requirements.txt` → start unit → healthz → 启动日志（seed/recovery/index）→ DB postflight → smoke。**1.6 发布窗口**（含 `platform_tools` 三份资产 + 审计收口资产）按 `docs/plan/release_1_6_audit_closure.md` 的统一分阶段顺序执行：预检与备份恢复验证 → 停止旧服务写入 → 首启前预建索引/加列回填/终检 → 候选首启 → 补 FK、删 icon/trusted → 二次启动与部署后检查；删除 icon/trusted 后 checkout 旧 SHA 回滚不再可用（唯一回滚 = 恢复备份，owner 裁定）。
 - PostgreSQL 重启后必须重启 flashshare-api：连接池不做存活探测，重启属于维护事件。
 - 生产数据库由生产侧自行管理：部署流程不创建或替换数据库；**retired-schema 迁移在发布窗口按 `docs/plan/` 资产显式执行**（上一行第 2 步），startup/常规同步从不隐式迁移旧 schema——两条各管其事：前者管库的生死，后者管 schema 演进时机。
 - startup `init_db()` 执行 current-schema CREATE … IF NOT EXISTS、current bootstrap 与 routine cleanup；不负责 retired-schema migration / repair / backfill。
-- 回滚 = checkout 旧 SHA + restart（新版本未接流量前）。
+- 回滚 = checkout 旧 SHA → 重装依赖 → restart（见第 8 步）。
 
 ## 生产部署指南
 
@@ -345,16 +345,13 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;        # 工具执行与大文件上传
         # 请求体由 Nginx 完整缓冲后才交给应用：慢速客户端无法占住应用的
-        # 并发名额。缓冲改变请求转发时序与 Nginx 侧缓冲资源占用（大请求
-        # 先在 Nginx 缓冲，应用一次性收到完整请求）；应用侧的预读+准入
-        # 闸门独立成立，不以本开关为前提。它是部署的慢客户端隔离与
-        # 计量效率要求，不是应用预算安全的成立条件（见 app/main.py）。
+        # 并发名额（应用侧另有请求体预读与准入闸门，见 app/main.py）
         proxy_request_buffering on;
     }
 }
 ```
 
-**通过标准**：`nginx -t` 通过；核对**生效配置**（`nginx -T` 输出中该 location 实际生效的 `proxy_request_buffering`，不能只确认配置文件里存在 `on` 字符串——上层 http/server 覆盖或 include 缺失都会让它不生效）；上线后分享一个文件，点「下载」能拿到文件（`/f/{id}?download=1` → 302 → `/downloadFile?id=…` → 200）。
+**通过标准**：`nginx -t` 通过；`nginx -T` 中该 location 的 `proxy_request_buffering` 为 `on`；上线后分享一个文件，点「下载」能拿到文件（`/f/{id}?download=1` → 302 → `/downloadFile?id=…` → 200）。
 下载 404 = `/downloadFile` 这条 location 没配或端口不对。
 
 ### 4. systemd 单元 `flashshare-api`
@@ -425,7 +422,7 @@ curl -s https://518.plus/healthz
 
 ### 8. 回滚
 
-第 6–7 步任一步失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → 恢复旧版锁定依赖并重启（失败即停，依赖恢复失败 = 回滚未完成，如实上报，不得带混合依赖启动）：
+第 6–7 步任一步失败：`systemctl stop flashshare-api` → `git checkout $(cat /root/flashshare.prev_sha)` → 重装旧版依赖 → 启动，然后报告现象与日志。不做临时修补。
 
 ```bash
 /opt/flashshare/venv/bin/pip install -r requirements.txt \
@@ -434,9 +431,8 @@ curl -s https://518.plus/healthz
 systemctl start flashshare-api
 ```
 
-之后报告现象与日志。不做临时修补。`pip install -r requirements.txt` 恢复的是**旧提交锁定的依赖集合**，不承诺重建 venv 的全部历史状态（卸载残留、pip 缓存等不在其内）。
 
-**适用范围**：`git checkout 旧 SHA + 恢复旧依赖 + restart` 仅在 release migration **尚未删除旧代码仍读/写的列**时可用。**边界**：`docs/plan/` 的 release migration 一旦删除了旧代码仍读/写的列（1.6 窗口的 `platform_tools.icon`/`trusted`，见该窗口主顺序资产阶段 ⑤），`checkout 旧 SHA + restart` 不再可用——旧代码必然 UndefinedColumn；此后唯一回滚手段是从发布窗口开始前已验证可恢复的备份恢复数据库，是否执行由 owner 裁定（增加 pip 步骤不改变该边界）。仅加列/建索引的迁移不关闭旧 SHA 回滚路径。
+**边界**：`docs/plan/` 的 release migration 一旦删除了旧代码仍读/写的列（1.6 窗口的 `platform_tools.icon`/`trusted`，见该窗口主顺序资产阶段 ⑤），`checkout 旧 SHA + restart` 不再可用——旧代码必然 UndefinedColumn；此后唯一回滚手段是从发布窗口开始前已验证可恢复的备份恢复数据库，是否执行由 owner 裁定。仅加列/建索引的迁移不关闭旧 SHA 回滚路径。
 
 ## Production backup（scripts/）
 

@@ -16,6 +16,7 @@
 
 执行本资产的「部署前只读预检」与另外两份加列资产的预检；确认当日备份
 存在且 `restore-proof` 通过（备份不可恢复 = 无回滚手段 = 不具备部署条件）。
+同时确认 Nginx 已按部署指南第 3 步设置 `proxy_request_buffering on`（对旧服务无影响，可提前做）。
 
 **任一预检不通过 → STOP 交 PM 裁定**；尤其余额快照一致性（预检 c）、
 未知 ledger kind（预检 b）、trusted 兼容（预检 a）三项：不通过即停止部署，
@@ -34,6 +35,9 @@
 seed 写 `format_family`；列不存在或未回填则新代码起不来。索引在此预建后，
 新启动的 `CREATE INDEX IF NOT EXISTS` 为空操作，不在大表上同步建索引。
 
+本阶段的 Python 脚本先加载生产环境变量再执行（脚本导入 config，缺必填变量会直接报错）：
+`cd /opt/flashshare && set -a && . /etc/flashshare.env && set +a && PYTHONPATH=core venv/bin/python …`
+
 1. **九个查询索引**：逐条独立执行（不在事务中；`CONCURRENTLY` 建立不锁写
    ——本窗口无流量，仍按资产原样执行）。见下方「① 建索引」。
 2. **format_family 加列 + 全量回填 + tag 预检**：按
@@ -45,11 +49,11 @@ seed 写 `format_family`；列不存在或未回填则新代码起不来。索�
 
 ### ④ 切换候选首次启动
 
-`git merge --ff-only` 到目标提交 → `systemctl start flashshare-api` →
+`git merge --ff-only` 到目标提交 → `venv/bin/pip install -r requirements.txt`（1.6 升级了依赖，失败即停）→ `systemctl start flashshare-api` →
 healthz / 启动日志按部署指南第 6 步通过标准（含 seed、recovery、无 ERROR）。
 首启同时创建并播种 tags/formats 参考表——这是 ⑤ 补 FK 的前置。
 
-**回滚边界**：④⑤ 之前失败仍可 `checkout 旧 SHA + restart` 回旧代码
+**回滚边界**：④⑤ 之前失败仍可 `checkout 旧 SHA` → 重装旧版依赖 → restart 回旧代码
 （列已加未删，旧代码不读新列，兼容）。**阶段 ⑤ 执行后此路径关闭**（见
 ⑤ 的回滚条件）。
 

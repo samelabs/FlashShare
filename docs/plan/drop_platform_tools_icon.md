@@ -22,7 +22,7 @@ UndefinedColumn）；此后唯一回滚手段是从阶段 ① 已验证可恢复
 - startup `init_db()` 不执行本迁移（只跑 current-schema CREATE IF NOT EXISTS）。
 
 ```sql
-ALTER TABLE platform_tools DROP COLUMN icon;
+ALTER TABLE platform_tools DROP COLUMN IF EXISTS icon;
 ```
 
 无需其他前置检查：accept 单形状不变量（S4 起）由
