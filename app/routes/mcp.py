@@ -339,8 +339,8 @@ async def _dispatch(request: Request, user: dict, msg):
                 "share; hand them result_url (one page for all files) "
                 "— page_url is per file, download_url is a direct "
                 "download. tools/list is the master list: every "
-                "public tool plus your own, favorites flagged "
-                "(我的收藏); list_favorites lists just your pins. "
+                "public tool plus your own, favorites flagged; "
+                "list_favorites lists just your pins. "
                 "catalog_search filters by keyword (empty query = "
                 "full catalog, paged); call any tool by name. "
                 "Pass "
@@ -353,8 +353,9 @@ async def _dispatch(request: Request, user: dict, msg):
                 "then use the returned {public_id, source_token} as "
                 "the files[] reference form (staged files are "
                 "intermediates: PUT within 10 minutes, kept at most "
-                "1 day, not listed by list_uploads). Text-only tools "
-                "take no files — just params. Every tools/call needs "
+                "1 day, not listed by list_uploads). Body tools take "
+                "no files: pass their text or JSON input as the `input` "
+                "argument. Every tools/call needs "
                 "a client_ref: reuse the same value to retry safely "
                 "(replays return the original result without "
                 "re-charging). Results come back directly: "
@@ -373,6 +374,8 @@ async def _dispatch(request: Request, user: dict, msg):
                 "returns err_insufficient_credits: the account owner "
                 f"tops up at {_base}/pricing (log in with the account), "
                 "then retry with the same client_ref. "
+                "The same tools and API key also work over REST: "
+                f"POST {_base}/v1/tools/<name> (see {_base}/llms.txt). "
                 f"{limits_txt} Catalog version: "
                 f"{cat_version}."
             ),
@@ -612,7 +615,7 @@ def _pin_spec(name: str, title: str, description: str) -> dict:
 
 _PIN_TOOL_SPEC = _pin_spec(
     "pin_tool", "Add to My Favorites",
-    "Add a tool to your favorites (我的收藏) — your shortlist for "
+    "Add a tool to your favorites — your shortlist for "
     "reuse. tools/list marks favorites with a flag; list_favorites "
     "lists just the pins. Free.")
 _UNPIN_TOOL_SPEC = _pin_spec(
@@ -698,9 +701,9 @@ def _spec_summary(t: dict) -> dict:
     mx = int(t["files_max"])
     accept = t.get("accept")
     if mx == 0:
-        files_txt = ("text body input (source.body)"
+        files_txt = ("text input (`input` argument)"
                      if t.get("body_format") == "text"
-                     else "json body input (source.body)")
+                     else "JSON input (`input` argument)")
     else:
         files_txt = (f"{mn}" if mn == mx else f"{mn}-{mx}") + " file(s)"
         if accept:
