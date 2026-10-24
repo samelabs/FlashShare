@@ -35,7 +35,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
    selector, global button palette untouched. */
 .auth-x-wrap .x-login { background: var(--ink); color: var(--brand-ink); }
 @media (hover:hover) and (pointer:fine) { .auth-x-wrap .x-login:hover { background: var(--ink-hover); opacity: 1; } }
-.auth-x-wrap .x-login:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.auth-x-wrap .x-login:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
 
 /* ── Buttons ─────────────────────────────────────────────────
    .btn base; variants primary/secondary/ghost/danger; sizes
@@ -118,7 +118,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 /* ── Cards ─────────────────────────────────────────────────── */
 .card {
   background: var(--card); border: var(--border-w) solid var(--line);
-  border-radius: var(--r-lg); box-shadow: var(--sh-1);
+  border-radius: var(--r-lg);
 }
 .card-pad { padding: var(--s4); }
 @media (min-width: 600px) { .card-pad { padding: var(--s5); } }
@@ -137,7 +137,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
 }
 /* 聚焦表达 (表单控件单源): 仅边框变色 — 无描边叠加、无阴影光环 */
 .input:focus-visible, .textarea:focus-visible, .select:focus-visible {
-  outline: none; border-color: var(--brand-deep);
+  outline: none; border-color: var(--ink-3);
 }
 .input::placeholder, .textarea::placeholder { color: var(--ink-3); }
 .textarea { resize: vertical; min-height: 96px; line-height: var(--lh-loose); }
@@ -196,7 +196,7 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
    the /r result page share this structure: .out > .out-h + .out-b >
    .linkbar + items. Structure classes rs-* stay stable (/r page
    server-side markup + browser suites ride on them). ── */
-.out { overflow: hidden; box-shadow: var(--sh-2); }
+.out { overflow: hidden; }
 .out-h {
   display: flex; align-items: center; gap: 10px; padding: 16px 20px;
   border-block-end: var(--border-w) solid var(--line);
@@ -530,7 +530,7 @@ pre.rs-text, pre.rs-json {
 .tool-search { position: relative; width: 100%; }
 .tool-search > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; stroke: var(--ink-2); fill: none; pointer-events: none; }
 .tool-search input { width: 100%; box-sizing: border-box; padding: 10px 14px 10px 38px; border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--bg); color: var(--ink); }
-.tool-search input:focus { outline: none; border-color: var(--brand-deep); }
+.tool-search input:focus { outline: none; border-color: var(--ink-3); }
 
 /* ── Tool card (.tc — ONE card: home bento + market + author page +
    favorites; interior markup single-sourced in
@@ -540,12 +540,12 @@ pre.rs-text, pre.rs-json {
 .tc {
   position: relative; display: flex; flex-direction: column; min-width: 0;
   background: var(--card); border: var(--border-w) solid var(--line);
-  border-radius: var(--r-lg); padding: var(--s4); box-shadow: var(--sh-1);
+  border-radius: var(--r-lg); padding: var(--s4);
   color: var(--ink); text-decoration: none;
-  transition: box-shadow var(--ease), border-color var(--ease), transform var(--ease-in);
+  transition: border-color var(--ease);
 }
 @media (hover:hover) and (pointer:fine) {
-  .tc:hover { box-shadow: var(--sh-2); transform: translateY(-2px); border-color: var(--line-2); }
+  .tc:hover { border-color: var(--line-2); }
 }
 .tc-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
 /* 图标块: 暖底 + 细线 + 卡 hover 时同拍微升 */
@@ -555,7 +555,6 @@ pre.rs-text, pre.rs-json {
   color: var(--brand);
   transition: transform var(--ease-in);
 }
-@media (hover:hover) and (pointer:fine) { .tc:hover .ic { transform: translateY(-1px); } }
 .tc .ic svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tc-h h4 {
   margin: 0; font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.01em;
@@ -599,11 +598,11 @@ pre.rs-text, pre.rs-json {
    .ti-progress. ──────────────────────────────────────────────── */
 .composer {
   background: var(--card); border: var(--border-w) solid var(--line-2);
-  border-radius: var(--r-xl); box-shadow: var(--sh-3);
+  border-radius: var(--r-xl);
   text-align: start; overflow: visible; position: relative;
   transition: border-color var(--ease), box-shadow var(--ease);
 }
-.composer.focus { border-color: var(--brand-deep); }
+.composer.focus { border-color: var(--ink-3); }
 .composer.dragover { border-color: var(--brand); border-style: dashed; }
 .composer .c-err { margin: var(--s3) var(--s4) 0; }
 /* 文件列表: 等宽网格 — 多文件整齐排列, 长名省略号; 拖放区常驻其下 */
@@ -625,7 +624,8 @@ pre.rs-text, pre.rs-json {
 .ti-drop b { font-size: var(--fs-md); font-weight: 650; color: var(--ink); }
 .ti-drop small { font-size: var(--fs-xs); color: var(--ink-3); }
 @media (hover:hover) and (pointer:fine) { .ti-drop:hover { border-color: var(--brand); background: var(--brand-50); } }
-.ti-drop:focus-visible, .ti-drop.dragover { border-color: var(--brand); background: var(--brand-50); outline: none; }
+.ti-drop:focus-visible { border-color: var(--ink-3); outline: none; }
+.ti-drop.dragover { border-color: var(--brand); background: var(--brand-50); }
 /* 已满态 (files_max 上限): 尺寸不变, 不再是入口 — 降透明度、去手型与悬停反馈 */
 .ti-drop.ti-drop-full { cursor: default; opacity: 0.55; }
 .ti-drop.ti-drop-full .dz-ic svg { stroke: var(--line-2); }
@@ -667,7 +667,7 @@ pre.rs-text, pre.rs-json {
 }
 .composer .c-text.ti-body::placeholder { color: var(--ink-3); }
 .composer .c-text.ti-body:focus {
-  background: var(--card); border-color: var(--brand-deep);
+  background: var(--card); border-color: var(--ink-3);
 }
 .composer .c-text.ti-body-text {
   min-height: calc(3 * var(--lh-base) * 1em + 24px);
@@ -712,7 +712,7 @@ pre.rs-text, pre.rs-json {
   font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-2); cursor: pointer;
 }
 .seg a { text-decoration: none; }
-.seg button.on, .seg a.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); }
+.seg button.on, .seg a.on { background: var(--card); color: var(--ink); }
 @media (hover:hover) and (pointer:fine) { .seg button:not(.on):hover, .seg a:not(.on):hover { color: var(--ink); } }
 
 /* 参数卡片: 参数区每行 = 标签在上、控件在下 (各宽度一致); 枚举参数的
@@ -743,7 +743,7 @@ pre.rs-text, pre.rs-json {
 @media (hover:hover) and (pointer:fine) {
   .tp-seg .tp-option:hover:not(.on) { border-color: var(--ink-4); color: var(--ink); }
 }
-.tp-seg .tp-option:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.tp-seg .tp-option:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
 .tp-seg .tp-ratio {
   display: block; height: 22px; max-width: 36px;
   border: 1.5px solid currentColor; border-radius: 3px; opacity: .8;
@@ -764,7 +764,7 @@ pre.rs-text, pre.rs-json {
   transform: rotate(-45deg); transition: transform var(--ease);
 }
 .ti-more-btn.open .chev { transform: rotate(135deg); }
-.ti-more-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.ti-more-btn:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
 .ti-more-body { display: flex; flex-direction: column; gap: 14px; }
 .ti-more-body[hidden] { display: none; }
 
@@ -897,6 +897,16 @@ a.tier:hover { opacity: .85; }
 .tier_plus { background: var(--brand-soft); color: var(--brand-deep); }
 .tier_pro { background: var(--brand-deep); color: var(--brand-ink); }
 
+/* ── Avatar fallback (.avatar-fallback) — 头像兜底单源 ────────
+   无头像时的首字母兜底: 深色渐变板 + 白字 (与顶栏 .av 同一视觉家族,
+   不再各处散落配色)。表面只定义几何 (尺寸/圆角/字号), 禁另造配色。 */
+.avatar-fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, rgba(43, 47, 54, 1), rgba(11, 13, 16, 1));
+  color: var(--brand-ink); font-weight: 700; letter-spacing: 0;
+  user-select: none; overflow: hidden;
+}
+
 /* ── Auth card — single source (auth/_card.html) ───────────────
    One look for BOTH mounts: the standalone /auth pages (.auth-card
    inside .auth-page) and the site-wide login/register overlay
@@ -945,7 +955,7 @@ a.tier:hover { opacity: .85; }
 @media (hover:hover) and (pointer:fine) { .share-bar .sb-btn:hover { border-color: var(--ink-4); color: var(--ink); } }
 /* X 是四件套里唯一的锚点, 补齐与三个 button 成员的按压反馈 */
 .share-bar a.sb-btn:active { transform: scale(0.96); }
-.share-bar .sb-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.share-bar .sb-btn:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
 .share-bar.sb-compact { display: inline-flex; gap: 6px; vertical-align: middle; }
 .share-bar.sb-compact .sb-btn { flex-direction: row; min-height: 30px; width: 30px; padding: 0; border-radius: var(--r-full); }
 .share-bar.sb-compact .sb-btn svg { width: 15px; height: 15px; }

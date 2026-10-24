@@ -320,12 +320,15 @@ def agents_page(request: Request):
 
 # ── Tool market & tool page (open platform supply side) ──
 
-def _owner_handle(owner_id) -> str:
+def _owner_identity(owner_id) -> tuple:
+    """公开作者身份: (handle, display_name) — 显示名优先机制的读侧。"""
     from database import db
     from repo.users import username_of
     with db() as con:
         row = username_of(con, owner_id)
-    return row["username"] if row else "unknown"
+    if row is None:
+        return "unknown", ""
+    return row["username"], (row["display_name"] or "").strip()
 
 
 def _favorite_keys_for(user) -> list:
@@ -413,6 +416,7 @@ def user_page(request: Request, handle: str):
         "shell_class": "",
         "seo_robots": "index, follow",
         "owner_handle": urow["username"],
+        "owner_display": (urow["display_name"] or "").strip(),
         "owner_verified": owner_id in effective_member_ids([owner_id]),
         "owner_tools": tools,
         "is_self": bool(user and user.get("id") == owner_id),
@@ -505,7 +509,8 @@ def _tool_page_ctx(request: Request, key: str):
     from icons import tool_icon_svg
     tool_public["icon_svg"] = tool_icon_svg(tool_public.get("icon"))
     tool_name = resolve_label(tool_public.get("label") or {}, ctx["lang"]) or tool_key
-    handle = _owner_handle(tool.get("owner_id")) if tool.get("owner_id") else None
+    handle, owner_display = (_owner_identity(tool.get("owner_id"))
+                             if tool.get("owner_id") else (None, ""))
     # meta description = 工具说明 (LocalizedText 协议解析);
     # 无说明的工具退回 "工具名 · @作者", 不输出空 description
     tool_desc = resolve_label(tool_public.get("desc") or {}, ctx["lang"]) or (
@@ -518,6 +523,7 @@ def _tool_page_ctx(request: Request, key: str):
         "delivery_json": _delivery_projection(ctx),
         "tool_name": tool_name,
         "handle": handle,
+        "owner_display": owner_display,
         "mcp_name": tool_key,  # MCP 名 = key 原文 (无投影)
         "tool_key": tool_key,
         "is_favorite": bool(user) and tool_key in _favorite_keys_for(user),

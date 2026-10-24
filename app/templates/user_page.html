@@ -8,9 +8,9 @@
 <section class="acct-page user-page" id="userPage">
   <nav class="crumbs"><a href="/tools" data-i18n="nav_tools">{{ texts.nav_tools }}</a><span class="crumb-sep">/</span><span>@{{ handle }}</span></nav>
   <div class="userpage-hero">
-    <span class="userpage-avatar" aria-hidden="true">{{ owner_handle[:1] | upper }}</span>
+    <span class="avatar-fallback userpage-avatar" aria-hidden="true">{{ (owner_display or owner_handle)[:1] | upper }}</span>
     <div class="page-head userpage-id">
-      <h1 class="userpage-handle">@{{ owner_handle }}{% if owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</h1>
+      <h1 class="userpage-handle">{% if owner_display %}{{ owner_display }} <span class="userpage-at">@{{ owner_handle }}</span>{% else %}@{{ owner_handle }}{% endif %}{% if owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</h1>
       <p class="page-head-sub" data-i18n="owner_page_desc">{{ texts.owner_page_desc }}</p>
       {{ share_bar(canonical_url, "@" ~ owner_handle, qr_src=qr_src, compact=true) }}
     </div>
