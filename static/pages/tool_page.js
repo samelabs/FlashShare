@@ -37,20 +37,6 @@
   }
 })();
 
-// Page URL copy (the visible address row under the header)
-(function () {
-  const btn = document.getElementById("tpUrlCopy");
-  const code = document.querySelector(".tp-url code");
-  if (btn && code) {
-    btn.addEventListener("click", async () => {
-      try {
-        window.copyFeedback(btn);
-        await navigator.clipboard.writeText(code.textContent);
-      } catch (e) { /* clipboard blocked — the URL stays selectable */ }
-    });
-  }
-})();
-
 // API card copy: the declaration-generated curl example, verbatim
 (function () {
   const btn = document.getElementById("toolApiCopy");

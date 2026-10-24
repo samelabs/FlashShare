@@ -135,11 +135,9 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   font: inherit; font-size: var(--fs-base); color: var(--ink);
   background: var(--card); transition: border-color var(--ease);
 }
-/* 聚焦表达 (表单控件单源): border 变色 + 3px 浅 halo, 不用描边叠加出粗线边框
-   (同 .pub-grid input:focus / .ti-body:focus 的软聚焦家族) */
+/* 聚焦表达 (表单控件单源): 仅边框变色 — 无描边叠加、无阴影光环 */
 .input:focus-visible, .textarea:focus-visible, .select:focus-visible {
   outline: none; border-color: var(--brand-deep);
-  box-shadow: 0 0 0 3px var(--brand-100);
 }
 .input::placeholder, .textarea::placeholder { color: var(--ink-3); }
 .textarea { resize: vertical; min-height: 96px; line-height: var(--lh-loose); }
@@ -532,7 +530,7 @@ pre.rs-text, pre.rs-json {
 .tool-search { position: relative; width: 100%; }
 .tool-search > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; stroke: var(--ink-2); fill: none; pointer-events: none; }
 .tool-search input { width: 100%; box-sizing: border-box; padding: 10px 14px 10px 38px; border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--bg); color: var(--ink); }
-.tool-search input:focus { outline: none; border-color: var(--brand-deep); box-shadow: 0 0 0 3px var(--brand-100); }
+.tool-search input:focus { outline: none; border-color: var(--brand-deep); }
 
 /* ── Tool card (.tc — ONE card: home bento + market + author page +
    favorites; interior markup single-sourced in
@@ -605,7 +603,7 @@ pre.rs-text, pre.rs-json {
   text-align: start; overflow: visible; position: relative;
   transition: border-color var(--ease), box-shadow var(--ease);
 }
-.composer.focus { border-color: rgba(255, 77, 77, 0.5); box-shadow: 0 0 0 4px rgba(255, 77, 77, 0.10), var(--sh-3); }
+.composer.focus { border-color: var(--brand-deep); }
 .composer.dragover { border-color: var(--brand); border-style: dashed; }
 .composer .c-err { margin: var(--s3) var(--s4) 0; }
 /* 文件列表: 等宽网格 — 多文件整齐排列, 长名省略号; 拖放区常驻其下 */
@@ -670,7 +668,6 @@ pre.rs-text, pre.rs-json {
 .composer .c-text.ti-body::placeholder { color: var(--ink-3); }
 .composer .c-text.ti-body:focus {
   background: var(--card); border-color: var(--brand-deep);
-  box-shadow: 0 0 0 3px var(--brand-100);
 }
 .composer .c-text.ti-body-text {
   min-height: calc(3 * var(--lh-base) * 1em + 24px);

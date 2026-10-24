@@ -36,12 +36,6 @@
     </div>
   </div>
 
-  {# 本页公开地址: 可见 + 可复制 (传给手机的入口之一) #}
-  <div class="tp-url">
-    <code dir="ltr">{{ canonical_url }}</code>
-    <button class="btn btn-icon btn-sm" id="tpUrlCopy" type="button" aria-label="{{ texts['copy_link'] }}" title="{{ texts['copy_link'] }}">{{ icon_svg("copy") }}</button>
-  </div>
-
   {% if owner_gate_notice %}
   <p class="hint tp-gate-hint">{{ icon_svg("info") }}<span data-i18n="tool_gate_hint">{{ texts.tool_gate_hint }}</span></p>
   {% endif %}

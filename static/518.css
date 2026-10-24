@@ -305,7 +305,7 @@
 .pub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s2) var(--s3); }
 .pub-grid label, .pub-grid .pub-wide { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--ink-3); }
 .pub-grid input, .pub-grid select { padding: 10px 13px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg); color: var(--ink); width: 100%; box-sizing: border-box; font-family: inherit; }
-.pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.pub-grid input:focus, .pub-grid select:focus { outline: none; border-color: var(--brand-deep); }
 .pub-grid .pub-wide { grid-column: 1 / -1; }
 /* 主语言选择器 (主字段文本自己的语言标签): 无可见字段名, 与同排输入框底对齐 */
 .pub-grid .pub-mainlang { display: flex; flex-direction: column; justify-content: flex-end; }
@@ -856,17 +856,14 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .toolpage .ti-mount { margin-block-start: 28px; }
 .toolpage #result { margin-block-start: 20px; }
 .tp-gate-hint { margin-block-start: 14px; }
-/* 本页公开地址行: 头部之下, 可见 + 可复制 */
-.tp-url { margin-block-start: 12px; display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tp-url code { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; max-width: 420px; }
-.tp-url .btn-icon { flex: none; color: var(--ink-2); }
-@media (hover:hover) and (pointer:fine) { .tp-url .btn-icon:hover { color: var(--ink); } }
 /* 工具页接入区: "接入方式"一区两卡 (MCP / API) — 同一卡框、标题栏、
-   字段行与动作位 (复制钮在标题栏右)。地址完整可读可选择: 任意字符处
-   换行, 不截断、不缩字号; 示例代码块内部横滚, 页面本身不横向溢出。 */
+   字段行与动作位 (复制钮在标题栏右)。两卡恒单列竖排: API 卡的示例
+   代码块需要完整宽度, 双列会把两卡各自挤破行。地址完整可读可选择:
+   任意字符处换行, 不截断、不缩字号; 示例代码块内部横滚, 页面本身
+   不横向溢出。 */
 .tp-access { margin-block-start: var(--s5); display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
 .tp-access-title { font-size: var(--fs-md); font-weight: 700; color: var(--ink); margin: 0; }
-.tp-access-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); align-items: start; }
+.tp-access-grid { display: grid; grid-template-columns: 1fr; gap: var(--s3); align-items: start; }
 .tp-acc-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s3) var(--s4); display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
 .tp-acc-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .tp-acc-badge { flex: none; height: 22px; padding: 0 9px; border-radius: var(--r-full); background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 750; letter-spacing: .04em; display: inline-flex; align-items: center; }
@@ -878,7 +875,6 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 .tp-acc-example { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; font-family: var(--font-mono); width: 100%; max-width: 100%; }
 .tp-acc-key { color: var(--ink-2); font-size: 12px; text-decoration: underline; }
 @media (hover:hover) and (pointer:fine) { .tp-acc-key:hover { color: var(--ink); } }
-@media (max-width: 767px) { .tp-access-grid { grid-template-columns: 1fr; } }
 @media (max-width: 767px) {
   .toolpage { padding-top: 24px; padding-bottom: 48px; }
   .tp-h { align-items: flex-start; }
@@ -971,7 +967,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 @starting-style { .tsel-pop { opacity: 0; transform: translate(-50%, -48%) scale(.97); } }
 .tsel-filter { padding: 2px var(--s1) var(--s2); }
 .tsel-filter input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-size: var(--fs-base); color: var(--ink); background: var(--bg); }
-.tsel-filter input:focus { outline: none; border-color: var(--brand-deep); box-shadow: 0 0 0 3px var(--brand-100); }
+.tsel-filter input:focus { outline: none; border-color: var(--brand-deep); }
 .tsel-list { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; padding: 0 2px; }
 .tsel-item { display: flex; align-items: center; justify-content: flex-start; gap: var(--s2); width: 100%; padding: 9px 10px; border: 0; background: transparent; border-radius: var(--r-sm); color: var(--ink); font: inherit; font-size: var(--fs-base); cursor: pointer; text-align: start; }
 .tsel-item svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
