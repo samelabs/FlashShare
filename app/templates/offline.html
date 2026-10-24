@@ -1,13 +1,42 @@
-{% extends "base.html" %}
-{% block title %}{{ texts.seo_title }}{% endblock %}
-{% block desc %}{{ texts.subtitle }}{% endblock %}
-{% block content %}
-<section class="file-page status-page">
-  <div class="empty">
-    <span class="status-glyph" aria-hidden="true">OFF</span>
-    <h1>{{ texts.seo_title }}</h1>
-    <p>{{ texts.subtitle }}</p>
-    <a class="btn btn-primary" href="/" data-i18n="offline_reload">{{ texts.offline_reload }}</a>
-  </div>
-</section>
-{% endblock %}
+<!DOCTYPE html>
+{# Offline fallback served by the service worker from its cache. It must
+   render with no network: no external stylesheet, script or font — every
+   asset base.html references is versioned and not in the SW cache.
+   Values mirror the design tokens (tokens.css). #}
+<html lang="{{ locale }}" dir="{{ direction }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{ texts.seo_title }}</title>
+<style>
+  body {
+    margin: 0; min-height: 100vh; min-height: 100dvh;
+    display: flex; align-items: center; justify-content: center;
+    background: #faf9f7; color: #16130f; text-align: center;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans", "Noto Sans", sans-serif;
+  }
+  .empty { padding: 48px 16px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .status-glyph {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 64px; height: 64px; border-radius: 20px;
+    background: #f4f2ef; color: #6b6660;
+    font-size: 20px; font-weight: 800; letter-spacing: .04em;
+  }
+  h1 { margin: 0; font-size: 20px; }
+  p { margin: 0; color: #4d4a45; max-width: 44ch; }
+  a.btn {
+    display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px;
+    background: linear-gradient(180deg, #e5383b, #d92d3a); color: #ffffff; text-decoration: none; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<main class="empty">
+  <span class="status-glyph" aria-hidden="true">OFF</span>
+  <h1>{{ texts.seo_title }}</h1>
+  <p>{{ texts.subtitle }}</p>
+  <a class="btn" href="/">{{ texts.offline_reload }}</a>
+</main>
+</body>
+</html>
