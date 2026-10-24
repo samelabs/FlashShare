@@ -43,20 +43,33 @@ def set_favorite(user_id: int, tool_key: str, on: bool) -> str | None:
     return None
 
 
+# Web composer picker cap: relevance-ordered head of the working set.
+# Own tools (≤ MAX_TOOLS_PER_USER=20) always fit; the rest of the
+# catalog stays reachable through the picker's search.
+WORKING_SET_LIMIT = 24
+
+
 def working_set(user: dict | None, catalog: list) -> list:
-    """A user's working set — the web composer's tool picker: official
-    tools, the user's own tools, then their favorites (pin order).
-    Anonymous = official tools. MCP tools/list is a different surface
-    (every public tool + own, favorites flagged). Any other public tool
-    is found through search."""
+    """A user's working set — the web composer's tool picker, relevance
+    order: the user's OWN tools first, then their favorites (pin order),
+    then official tools; capped at WORKING_SET_LIMIT (any other public
+    tool is found through the picker's search). Anonymous = official
+    tools (same cap). MCP tools/list is a different surface (every
+    public tool + own, favorites flagged)."""
     if not user:
-        return [t for t in catalog if t.get("origin") == "official"]
+        return [t for t in catalog
+                if t.get("origin") == "official"][:WORKING_SET_LIMIT]
     favs = favorite_keys(user["id"], catalog)
     handle = user.get("username")
-    base = [t for t in catalog
-            if t.get("origin") == "official"
-            or (handle and t.get("owner_handle") == handle)]
-    base_ids = {t["id"] for t in base}
+    own = [t for t in catalog
+           if handle and t.get("owner_handle") == handle]
+    official = [t for t in catalog if t.get("origin") == "official"]
     by_id = {t["id"]: t for t in catalog}
-    return base + [by_id[k] for k in favs
-                   if k not in base_ids and k in by_id]
+    fav_items = [by_id[k] for k in favs if k in by_id]
+    out, seen = [], set()
+    for t in own + fav_items + official:
+        if t["id"] in seen:
+            continue
+        seen.add(t["id"])
+        out.append(t)
+    return out[:WORKING_SET_LIMIT]

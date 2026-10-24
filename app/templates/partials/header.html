@@ -34,7 +34,7 @@
         {% endif %}
         <div class="user-dropdown hidden" id="userDropdown" role="menu">
           <div class="user-info">
-            <span class="user-name">{{ (user.displayName or user.username) }} <span class="user-handle">@{{ user.username }}</span>{% if access and access.membership and access.membership.member %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}<a class="user-plan tier{% if access and access.membership and access.membership.member %} {{ access.membership.badge_key }}{% else %} tier_free{% endif %}" href="/account/credits">{{ access.membership.name if access and access.membership and access.membership.member else texts.pricing_free_name }}</a></span>
+            <span class="user-name">{{ (user.displayName or user.username) }} <span class="user-handle">@{{ user.username }}</span>{% if access and access.membership and access.membership.member %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}<a class="user-plan tier{% if access and access.membership and access.membership.member %} {{ access.membership.badge_key }}{% else %} tier_free{% endif %}" href="/account/credits">{{ access.membership.name if access and access.membership and access.membership.member else free_plan_name }}</a></span>
           </div>
           <div class="menu-sec" role="group" aria-label="{{ texts.acct_credits }}">
             <a href="/account/credits" role="menuitem">

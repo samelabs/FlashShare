@@ -881,10 +881,12 @@ pre.rs-text, pre.rs-json {
 }
 
 /* ── Tier badge (.tier) — 会员等级徽标单源 ────────────────────
-   头像菜单 plan 行与账户积分卡共用。变体类 = plans.badge_key 原样
-   (tier_free / tier_plus / tier_pro); 会员 plan 未设 badge_key
-   (后台自建) 或任何未来新键 → 只落基础态 (深色徽牌), 新增 tier 零
-   样式改动即可用; Free = 无会员行, 模板显式给 tier_free。 */
+   头像菜单 plan 行与账户积分卡共用。徽标文案 = 套餐行 name 原文
+   (品牌名, 语言无关: Free/Plus/Pro/未来新档); 变体类 = plans.badge_key
+   原样 — badge_key 是样式槽位词表 (tier_free/tier_plus/tier_pro,
+   CSS 预置, 新槽位 = 加一条 CSS), 不是档位名本身; 会员 plan 未设
+   badge_key (后台自建) 或任何未知键 → 基础态 (深色徽牌), 新增档零
+   样式改动即可用。Free = 无会员行, 模板显式给 tier_free。 */
 .tier {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 10px; border-radius: var(--r-full);
@@ -892,6 +894,8 @@ pre.rs-text, pre.rs-json {
   font-size: var(--fs-xs); font-weight: 750; letter-spacing: .04em;
   background: var(--ink); color: var(--brand-ink); text-decoration: none;
 }
+/* 辨识点: 随文字色的状态圆点, 语言无关的档位视觉锚 */
+.tier::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }
 a.tier:hover { opacity: .85; }
 .tier_free { background: transparent; border-color: var(--line-2); color: var(--ink-2); font-weight: 650; }
 .tier_plus { background: var(--brand-soft); color: var(--brand-deep); }

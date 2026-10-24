@@ -12,7 +12,7 @@
       <h1>{{ tool_name }}</h1>
       <div class="meta">
         {% if handle %}
-        <a class="auth" href="/u/{{ handle }}">{% if owner_display %}<span class="auth-display">{{ owner_display }}</span>{% endif %}<i aria-hidden="true"></i>@{{ handle }}{% if tool.owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</a>
+        <a class="auth" href="/u/{{ handle }}"><i aria-hidden="true"></i>{% if owner_display %}<span class="auth-display">{{ owner_display }}</span>{% endif %}@{{ handle }}{% if tool.owner_verified %} <span class="verified" role="img" aria-label="{{ texts.verified_label }}" title="{{ texts.verified_label }}">{{ icon_svg("verified") }}</span>{% endif %}</a>
         {% else %}
         <span class="auth"><i class="official" aria-hidden="true"></i>518.PLUS</span>
         {% endif %}

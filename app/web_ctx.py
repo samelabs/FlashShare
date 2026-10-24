@@ -20,7 +20,7 @@ _STATIC = _BASE / "static"
 # (tokens + components + the 518.css page file): any file change bumps
 # every stylesheet URL.
 import os as _os
-_CSS_VERSION = "v98"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
+_CSS_VERSION = "v99"  # 硬版本号: v2被CF以旧体缓存污染, 每次大改递增 (FX-2 戳纳入 518.css)
 for _cssf in ("518.css", "css/tokens.css", "css/components.css"):
     with open(_STATIC / _cssf, encoding="utf-8") as f:
         _CSS_VERSION += hashlib.md5(f.read().encode()).hexdigest()[:4]
@@ -116,6 +116,9 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
     # Projection fact-read failures propagate (never masked as Free).
     # Credits stay an independent balance, outside the projection.
     access = project(user["id"]) if user else None
+    # Tier chip canonical name for non-members: the free plan's own row
+    # name (Free) — tier chips are brand names, never localized copy.
+    from governance import plan_catalog as _pc
     return {
         "request": request,
         "lang": lang,
@@ -148,6 +151,8 @@ def ctx_base(request: Request, page_id: str = "") -> dict:
         # Header credit chip (None for anonymous)
         "credits": get_balance(user["id"]) if user else None,
         "access": access,
+        # Canonical (untranslated) tier chip label for non-members
+        "free_plan_name": _pc.free_tier().name,
         "APP_NAME": APP_NAME,
         "support_email": SUPPORT_EMAIL,
         "page_id": page_id,
