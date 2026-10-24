@@ -548,12 +548,12 @@ pre.rs-text, pre.rs-json {
   .tc:hover { border-color: var(--line-2); }
 }
 .tc-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
-/* 图标块: 暖底 + 细线 + 卡 hover 时同拍微升 */
+/* 图标块: 与工具页头部图标同一表达 — 浅色底 + 细线 + 深灰轮廓 */
 .tc .ic {
   width: 40px; height: 40px; border-radius: 12px; flex: none;
-  display: grid; place-items: center; background: var(--brand-50);
-  color: var(--brand);
-  transition: transform var(--ease-in);
+  display: grid; place-items: center; background: var(--card);
+  border: var(--border-w) solid var(--line);
+  color: var(--ink-2);
 }
 .tc .ic svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tc-h h4 {
@@ -600,9 +600,9 @@ pre.rs-text, pre.rs-json {
   background: var(--card); border: var(--border-w) solid var(--line-2);
   border-radius: var(--r-xl);
   text-align: start; overflow: visible; position: relative;
-  transition: border-color var(--ease), box-shadow var(--ease);
 }
-.composer.focus { border-color: var(--ink-3); }
+/* .focus 类仅是 JS 状态钩子: 最外壳边框恒稳 — 聚焦高亮只发生在
+   内部输入件 (.ti-body / .ti-drop), 外壳不再变色 */
 .composer.dragover { border-color: var(--brand); border-style: dashed; }
 .composer .c-err { margin: var(--s3) var(--s4) 0; }
 /* 文件列表: 等宽网格 — 多文件整齐排列, 长名省略号; 拖放区常驻其下 */
