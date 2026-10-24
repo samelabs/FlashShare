@@ -58,8 +58,13 @@
 .logo .logo-lockup { height: 28px; width: auto; display: block; }
 @media (max-width: 640px) { .logo .logo-lockup { height: 24px; } }
 .nav { display: flex; gap: 2px; }
-.nav a { padding: 7px 12px; border-radius: var(--r-full); color: var(--ink-2); font-size: var(--fs-base); font-weight: 500; }
+.nav a { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: var(--r-full); color: var(--ink-2); font-size: var(--fs-base); font-weight: 500; }
 .nav a:hover, .nav a.on { color: var(--ink); background: rgba(11, 13, 16, 0.05); }
+/* 菜单图标规范 (单源 .mi): 桌面导航与手机抽屉共用同一图标词表
+   (icons.py: bot/wand/upload/card) 与同一结构 (icon_svg(name, "mi") +
+   data-i18n span); 描边几何全部由 .mi 定义, 表面只允许覆盖尺寸/颜色,
+   禁就地手绘菜单图标或另造描边 (抽屉的 18px 覆盖在窄屏段)。 */
+.mi { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .hd-r { margin-inline-start: auto; display: flex; align-items: center; gap: 6px; }
 .av { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, rgba(43, 47, 54, 1), rgba(11, 13, 16, 1)); color: var(--brand-ink); display: grid; place-items: center; font-size: 13px; font-weight: 600; margin-inline-start: 4px; overflow: hidden; border: 0; cursor: pointer; padding: 0; }
 .av img { width: 100%; height: 100%; object-fit: cover; }
@@ -404,26 +409,28 @@
 
 /* ── 窄屏菜单抽屉 (<768px) ──────────────────────────────────
    顶栏只留 brand + 菜单按钮 + 语言 (+已登录 history/avatar);
-   Tools/MCP 与未登录 登录/注册 收进抽屉。站名 flex-shrink:0 恒不压缩
-   (红线10), 半透明遮罩点击关闭 (common.js wireMobileNav)。 */
+   MCP/工具市场 与未登录 登录/注册 收进抽屉。站名 flex-shrink:0 恒不压缩
+   (红线10), 半透明遮罩点击关闭 (base-engine.js wireMobileNav)。
+   基础态恒 display:none: ≥768px 时即使 .hidden 缺失 (跨断点 resize 等)
+   抽屉也不得以无样式形态漏出 — 窄屏内显隐由 :not(.hidden) 单点驱动。 */
+.mobile-nav-backdrop, .mobile-nav-sheet { display: none; }
 @media (max-width: 767px) {
-    .nav-menu-btn { display: inline-flex; }
-  .mobile-nav-backdrop {
-    position: fixed; inset: 45px 0 0 0; z-index: calc(var(--z-dropdown) - 1);
-    background: var(--overlay);
+  .mobile-nav-backdrop:not(.hidden) {
+    position: absolute; top: 100%; inset-inline: 0; height: 100vh;
+    z-index: 0; background: var(--overlay); display: block;
   }
-  .mobile-nav-sheet {
-    position: fixed; top: 52px; inset-inline: var(--s2); z-index: var(--z-dropdown);
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: var(--r); box-shadow: var(--sh-3); padding: var(--s1);
+  .mobile-nav-sheet:not(.hidden) {
+    position: absolute; top: 100%; inset-inline: 0; z-index: 1;
+    background: var(--card); border-block-end: 1px solid var(--line);
+    box-shadow: var(--sh-2); padding: var(--s2) var(--s3) var(--s3);
     display: flex; flex-direction: column;
   }
   .mobile-nav-sheet a {
     display: flex; align-items: center; gap: var(--s2);
     padding: var(--s2) var(--s3); border-radius: var(--r-sm);
-    color: var(--ink); text-decoration: none; font-weight: 650; font-size: var(--fs-md);
+    color: var(--ink); text-decoration: none; font-weight: 600; font-size: var(--fs-md);
   }
-  .mobile-nav-sheet a svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-2); }
+  .mobile-nav-sheet .mi { width: 18px; height: 18px; color: var(--ink-2); }
   @media (hover:hover) and (pointer:fine) {
     .mobile-nav-sheet a:hover { background: var(--gray-100); }
   }
@@ -964,7 +971,7 @@ a.mkt-tag:hover { border-color: var(--brand); color: var(--brand); }
 @starting-style { .tsel-pop { opacity: 0; transform: translate(-50%, -48%) scale(.97); } }
 .tsel-filter { padding: 2px var(--s1) var(--s2); }
 .tsel-filter input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font: inherit; font-size: var(--fs-base); color: var(--ink); background: var(--bg); }
-.tsel-filter input:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: var(--brand); }
+.tsel-filter input:focus { outline: none; border-color: var(--brand-deep); box-shadow: 0 0 0 3px var(--brand-100); }
 .tsel-list { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; padding: 0 2px; }
 .tsel-item { display: flex; align-items: center; justify-content: flex-start; gap: var(--s2); width: 100%; padding: 9px 10px; border: 0; background: transparent; border-radius: var(--r-sm); color: var(--ink); font: inherit; font-size: var(--fs-base); cursor: pointer; text-align: start; }
 .tsel-item svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }

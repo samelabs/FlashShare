@@ -110,6 +110,14 @@ window.wireMobileNav = function () {
     if (e.key === "Escape") setOpen(false);
   });
   sheet.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => setOpen(false)));
+  // Leaving the mobile breakpoint force-closes the drawer: an open sheet must
+  // never survive a resize into the desktop layout (CSS also fails it closed).
+  if (window.matchMedia) {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const onBp = (e) => { if (!e.matches) setOpen(false); };
+    if (mq.addEventListener) mq.addEventListener("change", onBp);
+    else if (mq.addListener) mq.addListener(onBp);
+  }
 };
 document.addEventListener("DOMContentLoaded", () => window.wireMobileNav());
 

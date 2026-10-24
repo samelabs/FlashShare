@@ -172,8 +172,10 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; overscroll-behavior: none; scrollbar-gutter: stable; }
 
-/* Any unsized inline svg must not blow up to the 300×150 default */
-svg:not([width]):not([height]) { width: 20px; height: 20px; }
+/* Any unsized inline svg must not blow up to the 300×150 default.
+   Carve-out: a geometry class (e.g. the menu-icon single source .mi in
+   518.css) defines its own size and must not be forced back to 20px. */
+svg:not([width]):not([height]):not(.mi) { width: 20px; height: 20px; }
 
 body {
   margin: 0;

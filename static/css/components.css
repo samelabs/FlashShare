@@ -135,8 +135,11 @@ button svg { width: 18px; height: 18px; display: block; stroke: currentColor; st
   font: inherit; font-size: var(--fs-base); color: var(--ink);
   background: var(--card); transition: border-color var(--ease);
 }
+/* 聚焦表达 (表单控件单源): border 变色 + 3px 浅 halo, 不用描边叠加出粗线边框
+   (同 .pub-grid input:focus / .ti-body:focus 的软聚焦家族) */
 .input:focus-visible, .textarea:focus-visible, .select:focus-visible {
-  outline: 2px solid var(--brand); outline-offset: 0; border-color: var(--brand);
+  outline: none; border-color: var(--brand-deep);
+  box-shadow: 0 0 0 3px var(--brand-100);
 }
 .input::placeholder, .textarea::placeholder { color: var(--ink-3); }
 .textarea { resize: vertical; min-height: 96px; line-height: var(--lh-loose); }
@@ -529,7 +532,7 @@ pre.rs-text, pre.rs-json {
 .tool-search { position: relative; width: 100%; }
 .tool-search > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; stroke: var(--ink-2); fill: none; pointer-events: none; }
 .tool-search input { width: 100%; box-sizing: border-box; padding: 10px 14px 10px 38px; border: 1px solid var(--line-2); border-radius: var(--r-full); background: var(--bg); color: var(--ink); }
-.tool-search input:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+.tool-search input:focus { outline: none; border-color: var(--brand-deep); box-shadow: 0 0 0 3px var(--brand-100); }
 
 /* ── Tool card (.tc — ONE card: home bento + market + author page +
    favorites; interior markup single-sourced in
