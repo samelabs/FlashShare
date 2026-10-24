@@ -45,14 +45,14 @@
   {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ canonical_path_url }}">
   {% endif %}
   {% block meta %}{% endblock %}
-  {# ── PWA chrome ── theme_color mirrors the manifest (light = page
-     surface --bg, dark = --gray-900); both values are design tokens #}
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfc">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1419">
+  {# ── PWA chrome ── the site is light-only (color-scheme: light), so
+     the browser/OS chrome takes the page surface --bg in every mode —
+     same value as the manifest theme_color/background_color #}
+  <meta name="theme-color" content="#faf9f7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="{{ APP_NAME }}">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="preload" href="/static/fonts/Inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/css/tokens.css?v={{ css_version }}">
   <link rel="stylesheet" href="/static/518.css?v={{ css_version }}">

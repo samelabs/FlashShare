@@ -50,7 +50,7 @@
 }
 
 /* ── Header (.hd) ────────────────────────────────────────── */
-.hd { position: sticky; top: 0; z-index: var(--z-dropdown); backdrop-filter: saturate(1.4) blur(14px); background: rgba(251, 251, 252, 0.72); border-bottom: 1px solid var(--line); }
+.hd { position: sticky; top: 0; z-index: var(--z-dropdown); backdrop-filter: saturate(1.4) blur(14px); background: rgba(250, 249, 247, 0.72); border-bottom: 1px solid var(--line); }
 .hd .hd-in { height: 60px; display: flex; align-items: center; gap: 24px; }
 .logo { display: flex; align-items: center; flex-shrink: 0; white-space: nowrap; }
 /* 横版组合 (brand/svg/518-lockup.svg): 顶栏高 28, ≤640 高 24 — 尺寸由

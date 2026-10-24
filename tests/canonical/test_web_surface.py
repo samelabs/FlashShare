@@ -344,8 +344,12 @@ def main():
           mf.get("description") == SERVER_I18N["en"]["seo_desc"], mf.get("description"))
     check("P manifest: start_url /?source=pwa + no orientation lock",
           mf.get("start_url") == "/?source=pwa" and "orientation" not in mf)
-    check("P manifest: theme/background from design tokens",
-          mf.get("theme_color") == "#fbfbfc" and mf.get("background_color") == "#fbfbfc")
+    # the site is light-only: browser/OS chrome = the page surface token
+    _bg = _re.search(r"--bg:\s*(#[0-9a-fA-F]{6})", open(_os.path.join(
+        REPO, "static", "css", "tokens.css"), encoding="utf-8").read()).group(1).lower()
+    check("P manifest: theme/background = page surface token --bg",
+          mf.get("theme_color") == _bg and mf.get("background_color") == _bg,
+          (mf.get("theme_color"), mf.get("background_color"), _bg))
     icons = mf.get("icons") or []
     mask512 = [i for i in icons if i.get("purpose") == "maskable" and i["sizes"] == "512x512"]
     check("P manifest: any + maskable split, one maskable 512", bool(mask512)
@@ -388,13 +392,20 @@ def main():
 
     # base.html chrome parity
     st, html = _page("/")
-    check("P base: theme-color light/dark match the manifest",
-          '<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfc">' in html
-          and '<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1419">' in html)
+    check("P base: one theme-color = the manifest theme_color (light-only site)",
+          html.count('name="theme-color"') == 1
+          and f'<meta name="theme-color" content="{_bg}">' in html)
     check("P base: apple web-app metas",
           'name="apple-mobile-web-app-capable"' in html
           and 'name="apple-mobile-web-app-title" content="518.PLUS"' in html
           and 'name="apple-mobile-web-app-status-bar-style"' in html)
+
+    # offline fallback: renders with no network (nothing external to load)
+    st, off = _page("/offline")
+    check("P offline: self-contained page — no stylesheet, script or image link",
+          st == 200 and 'rel="stylesheet"' not in off and "<script" not in off
+          and "<img" not in off and 'class="status-glyph"' in off
+          and "<svg" in off, st)
 
     # cleanup
     try:

@@ -557,6 +557,8 @@ SERVER_I18N = {
         "stale_banner": "Les ressources de la page sont obsolètes — forcez le rechargement (Ctrl/Cmd+Shift+R)",
         "auth_or": "ou",
         "offline_reload": "Recharger",
+        "offline_title": "Vous êtes hors ligne",
+        "offline_desc": "Vérifiez votre connexion, puis rechargez la page.",
 # B7 agent web
         "not_found_title": "Page introuvable",
         "not_found_desc": "La page que vous cherchez n'existe pas ou a été déplacée.",
@@ -1184,6 +1186,8 @@ SERVER_I18N = {
         "stale_banner": "페이지 리소스가 오래되었습니다 — 강력 새로고침해 주세요 (Ctrl/Cmd+Shift+R)",
         "auth_or": "또는",
         "offline_reload": "다시 불러오기",
+        "offline_title": "오프라인 상태입니다",
+        "offline_desc": "네트워크 연결을 확인한 뒤 페이지를 다시 불러오세요.",
 # B7 agent web
         "not_found_title": "페이지를 찾을 수 없음",
         "not_found_desc": "찾고 있는 페이지가 없거나 이동되었습니다.",
@@ -1811,6 +1815,8 @@ SERVER_I18N = {
         "stale_banner": "Ресурсы страницы устарели — сделайте жёсткое обновление (Ctrl/Cmd+Shift+R)",
         "auth_or": "или",
         "offline_reload": "Обновить",
+        "offline_title": "Нет подключения к сети",
+        "offline_desc": "Проверьте подключение и обновите страницу.",
 # B7 agent web
         "not_found_title": "Страница не найдена",
         "not_found_desc": "Запрашиваемая страница не существует или была перемещена.",
@@ -2438,6 +2444,8 @@ SERVER_I18N = {
         "stale_banner": "موارد الصفحة قديمة — يرجى إعادة تحديث قسري (Ctrl/Cmd+Shift+R)",
         "auth_or": "أو",
         "offline_reload": "إعادة تحميل",
+        "offline_title": "أنت غير متصل بالإنترنت",
+        "offline_desc": "تحقق من اتصالك بالشبكة، ثم أعد تحميل الصفحة.",
 # B7 agent web
         "not_found_title": "الصفحة غير موجودة",
         "not_found_desc": "الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
@@ -3065,6 +3073,8 @@ SERVER_I18N = {
         "stale_banner": "Seitenressourcen sind veraltet — bitte hart neu laden (Ctrl/Cmd+Shift+R)",
         "auth_or": "oder",
         "offline_reload": "Neu laden",
+        "offline_title": "Du bist offline",
+        "offline_desc": "Prüfe deine Verbindung und lade die Seite neu.",
 # B7 agent web
         "not_found_title": "Seite nicht gefunden",
         "not_found_desc": "Die gesuchte Seite existiert nicht oder wurde verschoben.",
@@ -3692,6 +3702,8 @@ SERVER_I18N = {
         "stale_banner": "Os recursos da página estão desatualizados — recarregue forçadamente (Ctrl/Cmd+Shift+R)",
         "auth_or": "ou",
         "offline_reload": "Recarregar",
+        "offline_title": "Você está offline",
+        "offline_desc": "Verifique sua conexão e recarregue a página.",
 # B7 agent web
         "not_found_title": "Página não encontrada",
         "not_found_desc": "A página que você procura não existe ou foi movida.",
@@ -4319,6 +4331,8 @@ SERVER_I18N = {
         "stale_banner": "ページのリソースが古くなっています — 強制リロードしてください (Ctrl/Cmd+Shift+R)",
         "auth_or": "または",
         "offline_reload": "再読み込み",
+        "offline_title": "オフラインです",
+        "offline_desc": "ネットワーク接続を確認してから、ページを再読み込みしてください。",
 # B7 agent web
         "not_found_title": "ページが見つかりません",
         "not_found_desc": "お探しのページは存在しないか、移動しました。",
@@ -4946,6 +4960,8 @@ SERVER_I18N = {
         "stale_banner": "页面资源版本不一致 — 请强制刷新 (Ctrl/Cmd+Shift+R)",
         "auth_or": "或",
         "offline_reload": "重新加载",
+        "offline_title": "当前处于离线状态",
+        "offline_desc": "请检查网络连接，然后重新加载页面。",
 # B7 agent web
         "not_found_title": "页面不存在",
         "not_found_desc": "你要访问的页面不存在或已移动。",
@@ -5573,6 +5589,8 @@ SERVER_I18N = {
         "stale_banner": "Los recursos de la página están desactualizados — recarga forzada (Ctrl/Cmd+Shift+R)",
         "auth_or": "o",
         "offline_reload": "Recargar",
+        "offline_title": "Estás sin conexión",
+        "offline_desc": "Comprueba tu conexión y vuelve a cargar la página.",
 # B7 agent web
         "not_found_title": "Página no encontrada",
         "not_found_desc": "La página que buscas no existe o se ha movido.",
@@ -6200,6 +6218,8 @@ SERVER_I18N = {
         "stale_banner": "Page resources are out of date — please hard-refresh (Ctrl/Cmd+Shift+R)",
         "auth_or": "or",
         "offline_reload": "Reload",
+        "offline_title": "You're offline",
+        "offline_desc": "Check your connection, then reload the page.",
 # B7 agent web
         "not_found_title": "Page not found",
         "not_found_desc": "The page you are looking for does not exist or has moved.",

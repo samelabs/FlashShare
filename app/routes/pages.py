@@ -138,8 +138,15 @@ async def service_worker():
 
 @router.get("/offline", response_class=HTMLResponse)
 def offline_page(request: Request):
+    """Offline fallback the service worker caches at install. The page is
+    self-contained (renders with no network), so the brand
+    lockup is inlined from its single source rather than linked."""
+    from markupsafe import Markup
     from app.main import templates
     ctx = _ctx_base(request)
+    ctx["brand_lockup"] = Markup(
+        (_BASE / "brand" / "svg" / "518-lockup.svg").read_text(encoding="utf-8"))
+    ctx["offline_icon"] = icon_svg("offline")
     return templates.TemplateResponse(request, "offline.html", ctx)
 
 @router.get("/llms.txt")

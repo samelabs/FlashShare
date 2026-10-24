@@ -88,6 +88,7 @@ _ICONS = {
     "translate": '<path d="M4 5h9"></path><path d="M8.5 3v2"></path><path d="M11 5c-.6 3.8-3 6.9-6.5 8.6"></path><path d="M6.5 8.5c1 1.9 2.7 3.5 4.8 4.5"></path><path d="M13 21l4-9 4 9"></path><path d="M14.4 18h5.2"></path>',
     "history": '<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path>',
     "hash": '<path d="M4 9h16"></path><path d="M4 15h16"></path><path d="M10 3L8 21"></path><path d="M16 3l-2 18"></path>',
+    "offline": '<path d="M12 20h.01"></path><path d="M8.5 16.43a5 5 0 0 1 7 0"></path><path d="M5 12.86a10 10 0 0 1 5.17-2.69"></path><path d="M19 12.86a10 10 0 0 0-2-1.52"></path><path d="M2 8.82a15 15 0 0 1 4.18-2.64"></path><path d="M22 8.82a15 15 0 0 0-11.29-3.76"></path><path d="M2 2l20 20"></path>',
 
     # ── Brand ──
 }
