@@ -880,6 +880,23 @@ pre.rs-text, pre.rs-json {
   .r-actions .btn { width: 44px; padding: 0; }
 }
 
+/* ── Tier badge (.tier) — 会员等级徽标单源 ────────────────────
+   头像菜单 plan 行与账户积分卡共用。变体类 = plans.badge_key 原样
+   (tier_free / tier_plus / tier_pro); 会员 plan 未设 badge_key
+   (后台自建) 或任何未来新键 → 只落基础态 (深色徽牌), 新增 tier 零
+   样式改动即可用; Free = 无会员行, 模板显式给 tier_free。 */
+.tier {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: var(--r-full);
+  border: 1px solid transparent;
+  font-size: var(--fs-xs); font-weight: 750; letter-spacing: .04em;
+  background: var(--ink); color: var(--brand-ink); text-decoration: none;
+}
+a.tier:hover { opacity: .85; }
+.tier_free { background: transparent; border-color: var(--line-2); color: var(--ink-2); font-weight: 650; }
+.tier_plus { background: var(--brand-soft); color: var(--brand-deep); }
+.tier_pro { background: var(--brand-deep); color: var(--brand-ink); }
+
 /* ── Auth card — single source (auth/_card.html) ───────────────
    One look for BOTH mounts: the standalone /auth pages (.auth-card
    inside .auth-page) and the site-wide login/register overlay

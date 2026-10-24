@@ -718,6 +718,7 @@ def plan_of(user_id: int) -> dict | None:
     return {
         "code": d["code"], "name": d["name"],
         "badge": d["name"].upper(),  # header 徽标文案 (行 name 派生, 数据驱动)
+        "badge_key": d["badge_key"] or "",  # plans.badge_key 徽标样式键 (后台可设)
         "status": d["status"],
         "renews_at": d["renews_at"],
         "cancel_scheduled_at": d["cancel_scheduled_at"],

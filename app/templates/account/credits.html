@@ -46,7 +46,7 @@
       <a class="btn btn-p btn-sm" href="/pricing"><span data-i18n="plan_manage">{{ texts.plan_manage }}</span></a>
     </div>
     <div class="sub-status">
-      <span class="sub-badge{% if m and m.member %} on{% endif %}">{{ m.name if m and m.member else texts.pricing_free_name }}</span>
+      <span class="{% if m and m.member %}tier {{ m.badge_key }}{% else %}tier tier_free{% endif %}">{{ m.name if m and m.member else texts.pricing_free_name }}</span>
       <span class="sub-meta">
         {% if m and m.member %}{{ texts.sub_until }} {{ fmt_ts(m.renews_at) }}
         {% elif m and m.status == 'expired' %}<span data-i18n="sub_status_expired">{{ texts.sub_status_expired }}</span>

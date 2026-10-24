@@ -156,6 +156,7 @@ SERVER_I18N = {
 
     "acct_nav": "Compte",
     "acct_profile": "Profil",
+    "acct_my_page": "Ma page",
     "acct_security": "Sécurité",
     "acct_credits": "Crédits",
     "acct_calls": "Historique des appels",
@@ -781,6 +782,7 @@ SERVER_I18N = {
 
     "acct_nav": "계정",
     "acct_profile": "프로필",
+    "acct_my_page": "내 페이지",
     "acct_security": "보안",
     "acct_credits": "크레딧",
     "acct_calls": "호출 기록",
@@ -1408,6 +1410,7 @@ SERVER_I18N = {
 
     "acct_nav": "Аккаунт",
     "acct_profile": "Профиль",
+    "acct_my_page": "Моя страница",
     "acct_security": "Безопасность",
     "acct_credits": "Кредиты",
     "acct_calls": "История вызовов",
@@ -2034,6 +2037,7 @@ SERVER_I18N = {
 
     "acct_nav": "الحساب",
     "acct_profile": "الملف الشخصي",
+    "acct_my_page": "صفحتي",
     "acct_security": "الأمان",
     "acct_credits": "الرصيد",
     "acct_calls": "سجل الاستدعاءات",
@@ -2659,6 +2663,7 @@ SERVER_I18N = {
 
     "acct_nav": "Konto",
     "acct_profile": "Profil",
+    "acct_my_page": "Meine Seite",
     "acct_security": "Sicherheit",
     "acct_credits": "Guthaben",
     "acct_calls": "Aufrufliste",
@@ -3286,6 +3291,7 @@ SERVER_I18N = {
 
     "acct_nav": "Conta",
     "acct_profile": "Perfil",
+    "acct_my_page": "Minha página",
     "acct_security": "Segurança",
     "acct_credits": "Créditos",
     "acct_calls": "Histórico de chamadas",
@@ -3912,6 +3918,7 @@ SERVER_I18N = {
 
     "acct_nav": "アカウント",
     "acct_profile": "プロフィール",
+    "acct_my_page": "マイページ",
     "acct_security": "セキュリティ",
     "acct_credits": "クレジット",
     "acct_calls": "呼び出し履歴",
@@ -4537,6 +4544,7 @@ SERVER_I18N = {
 
     "acct_nav": "账户",
     "acct_profile": "个人资料",
+    "acct_my_page": "我的主页",
     "acct_security": "安全",
     "acct_credits": "积分",
     "acct_calls": "调用记录",
@@ -5164,6 +5172,7 @@ SERVER_I18N = {
 
     "acct_nav": "Cuenta",
     "acct_profile": "Perfil",
+    "acct_my_page": "Mi página",
     "acct_security": "Seguridad",
     "acct_credits": "Créditos",
     "acct_calls": "Historial de llamadas",
@@ -5789,6 +5798,7 @@ SERVER_I18N = {
 
     "acct_nav": "Account",
     "acct_profile": "Profile",
+    "acct_my_page": "My page",
     "acct_security": "Security",
     "acct_credits": "Credits",
     "acct_calls": "Call history",

@@ -826,7 +826,9 @@ try:
     check("P5 /account/credits → 200 with link to /pricing, no buy buttons",
           st == 200 and 'href="/pricing"' in html
           and "sub-buy" not in html and "topup-buy" not in html
-          and "sub-badge on" in html, st)
+          # member chip (fixture plan carries no badge_key → base tier,
+          # never the free variant)
+          and 'class="tier' in html and 'tier_free' not in html, st)
 
     # ═══ P6: refund policy in the terms, every language ═══
     for lang in ("en", "zh", "ja", "ko", "fr", "de", "es", "pt", "ru", "ar"):

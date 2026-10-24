@@ -521,14 +521,14 @@ def _get_credits(ck):
     r = conn.getresponse(); body = r.read().decode(); conn.close()
     return r.status, body
 
-# Free: 无 membership fact → 当前方案卡仍渲染, 但 badge 是 Free 字样、
-# 永不出现 member 样式。稳定 DOM marker (class 选择器), 不用 "PLUS"
+# Free: 无 membership fact → 当前方案卡仍渲染, 但徽标是 Free 字样 +
+# tier_free 变体。稳定 DOM marker (class 选择器), 不用 "PLUS"
 # 字符串 (可售目录/header 可含)。
 st, body = _get_credits(_mf_ck)
 _proj_f = project(_mf_id)["membership"]
-check("AC-F1 Free /account/credits → 200, membership None, plan card = Free badge (never member styling)",
+check("AC-F1 Free /account/credits → 200, membership None, plan card = Free tier_free 徽标",
       st == 200 and _proj_f is None
-      and 'class="sub-badge on"' not in body
+      and 'class="tier tier_free"' in body
       and 'data-i18n="plan_current"' in body
       and ">Free</span>" in body, f"{st}")
 
@@ -536,20 +536,20 @@ check("AC-F1 Free /account/credits → 200, membership None, plan card = Free ba
 _mp_ck2 = _login_http(_mp)
 st, body = _get_credits(_mp_ck2)
 _proj_p = project(_mp_id)["membership"]
-check("AC-P1 PLUS /account/credits → 200, member=True, sub-status + sub-badge on 存在",
+check("AC-P1 PLUS /account/credits → 200, member=True, sub-status + tier_plus 徽标存在",
       st == 200 and _proj_p and _proj_p["member"] is True
       and 'class="sub-status"' in body
-      and 'class="sub-badge on"' in body, f"{st}")
+      and 'class="tier tier_plus"' in body, f"{st}")
 
-# Expired: fact 保留并展示 ≠ active member (badge 无 on 态)
+# Expired: fact 保留并展示 ≠ active member (徽标回落 Free 变体)
 st, body = _get_credits(_login_http(_me_))
 _proj_e = project(_me_id)["membership"]
-check("AC-E1 expired → 200, fact 保留 (member=false), sub-status 在 / badge 无 on",
+check("AC-E1 expired → 200, fact 保留 (member=false), sub-status 在 / 徽标回落 tier_free",
       st == 200 and _proj_e is not None and _proj_e["member"] is False
       and _proj_e["code"] == "plus"
       and 'class="sub-status"' in body
-      and 'class="sub-badge' in body
-      and 'class="sub-badge on"' not in body, f"{st}")
+      and 'class="tier tier_free"' in body
+      and 'class="tier tier_plus"' not in body, f"{st}")
 
 # 负向自检 guard: 本 Account HTTP 断言组永久禁止假通过模式
 _self_src = open(_os.path.abspath(__file__), encoding="utf-8").read()

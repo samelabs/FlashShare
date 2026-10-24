@@ -336,7 +336,7 @@ def membership_row(con, user_id: int) -> Optional[dict]:
         """
         SELECT m.plan_id, m.provider_subscription_id, m.status, m.started_at,
                m.renews_at, m.cancel_scheduled_at, m.last_grant_period_start,
-               p.code, p.name
+               p.code, p.name, p.badge_key
         FROM memberships m JOIN plans p ON p.id = m.plan_id
         WHERE m.user_id = %s
         """, (user_id,)).fetchone()
