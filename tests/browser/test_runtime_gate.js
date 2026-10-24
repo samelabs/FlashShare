@@ -302,14 +302,151 @@ async function checkPageContract(ctx, page, spec, sessionCookie) {
       await visualAudit("desktop", page, "after-register-home");
 
       // LOGOUT + LOGIN (logout lives in the profile dropdown — open it first)
-      await gotoReady(page, "/account/profile", "#userMenuBtn");
-      const menuBtn = await page.$("#userMenuBtn");
-      const logout = await page.$(".logout-link");
-      if (menuBtn && logout) {
-        await menuBtn.click();
+      const logoutViaMenu = async () => {
+        await gotoReady(page, "/account/profile", "#userMenuBtn");
+        const menuBtn2 = await page.$("#userMenuBtn");
+        const logout2 = await page.$(".logout-link");
+        if (!(menuBtn2 && logout2)) return false;
+        await menuBtn2.click();
         await page.waitForSelector("#userDropdown:not(.hidden)", { timeout: 5000 });
-        await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), logout.click()]);
-        check("web logout: back to anon", (await page.$('header a[href="/auth/login"]')) !== null);
+        await Promise.all([page.waitForNavigation({ timeout: 20000, waitUntil: "load" }), logout2.click()]);
+        return (await page.$('header a[href="/auth/login"]')) !== null;
+      };
+      if (await logoutViaMenu()) check("web logout: back to anon", true);
+
+      // ── auth overlay: real submit after mode switches, initial focus,
+      // POST shape, and content-width parity with the standalone page ──
+      {
+        const modalUser = (username + "m").slice(0, 32);
+        const modalPass = "Test12345";
+        // F3 baseline: standalone card at this viewport (same language, en)
+        await gotoReady(page, "/auth/login", "input[name=login]");
+        const pageCard = await page.evaluate(() => {
+          const card = document.querySelector(".auth-card");
+          const title = card.querySelector(".auth-title");
+          const sub = card.querySelector(".auth-sub");
+          return { w: Math.round(card.getBoundingClientRect().width),
+                   gap: Math.round(sub.getBoundingClientRect().top - title.getBoundingClientRect().bottom) };
+        });
+        await gotoReady(page, "/", "body");
+        const modalNet = [];
+        page.on("request", (r) => {
+          if (r.url().includes("/auth/login") || r.url().includes("/auth/register"))
+            modalNet.push({ m: r.method(), u: r.url() });
+        });
+        await page.click('header a[href="/auth/login"].js-auth');
+        await page.waitForSelector(".auth-modal", { timeout: 5000 });
+        // initial focus BEFORE any fill: first visible control, not the
+        // hidden next input riding the clone
+        const focusOpen = await page.evaluate(() => ({
+          name: document.activeElement ? document.activeElement.name || "" : "",
+          type: document.activeElement ? document.activeElement.type || "" : "",
+        }));
+        check("modal open: focus lands on the first visible control (login input)",
+          focusOpen.name === "login" && focusOpen.type === "text", JSON.stringify(focusOpen));
+        const modalCard = await page.evaluate(() => {
+          const panel = document.querySelector(".auth-modal");
+          const title = panel.querySelector(".auth-title");
+          const sub = panel.querySelector(".auth-sub");
+          return { w: Math.round(panel.getBoundingClientRect().width),
+                   gap: Math.round(sub.getBoundingClientRect().top - title.getBoundingClientRect().bottom) };
+        });
+        check("modal: same 400px card width + content spacing as the page mount",
+          Math.abs(modalCard.w - pageCard.w) <= 1 && Math.abs(modalCard.gap - pageCard.gap) <= 1,
+          JSON.stringify({ pageCard, modalCard }));
+        // repeated mode switches, then focus check (still BEFORE any fill)
+        await page.click('.auth-seg [data-mode="register"]');
+        await page.click('.auth-seg [data-mode="login"]');
+        await page.click('.auth-seg [data-mode="register"]');
+        const focusReg = await page.evaluate(() => ({
+          name: document.activeElement ? document.activeElement.name || "" : "",
+          type: document.activeElement ? document.activeElement.type || "" : "",
+        }));
+        check("modal after repeated switches: focus on register's first visible control",
+          focusReg.name === "username" && focusReg.type === "text", JSON.stringify(focusReg));
+        // real submit from the SECOND-switched clone (F1 regression core)
+        await page.fill('.am-body form input[name="username"]', modalUser);
+        await page.fill('.am-body form input[name="email"]', `${modalUser}@t.co`);
+        await page.fill('.am-body form input[name="password"]', modalPass);
+        await page.fill('.am-body form input[name="password_confirm"]', modalPass);
+        await page.click('.am-body form button[type="submit"]');
+        await page.waitForSelector(".auth-modal", { state: "detached", timeout: 15000 });
+        check("modal register after mode switches: overlay closed, header swapped to avatar",
+          (await page.$(".hd-r .av")) !== null, page.url());
+        check("modal register: real POST to /auth/register, no navigation, no credentials in URLs",
+          modalNet.some((r) => r.m === "POST" && /\/auth\/register$/.test(r.u))
+          && modalNet.every((r) => r.m === "POST" && !/[?&](password|login|username|email)=/.test(r.u))
+          && new URL(page.url()).pathname === "/",
+          JSON.stringify(modalNet));
+        // register → login: modal LOGIN submit also works (same delegation)
+        if (await logoutViaMenu()) {
+          await page.click('header a[href="/auth/login"].js-auth');
+          await page.waitForSelector(".auth-modal", { timeout: 5000 });
+          const focusLogin = await page.evaluate(() =>
+            document.activeElement ? document.activeElement.name || "" : "");
+          check("modal re-open: focus on the login input", focusLogin === "login", focusLogin);
+          await page.fill('.am-body form input[name="login"]', modalUser);
+          await page.fill('.am-body form input[name="password"]', modalPass);
+          await page.click('.am-body form button[type="submit"]');
+          await page.waitForSelector(".auth-modal", { state: "detached", timeout: 15000 });
+          check("modal login after register: overlay closed, header avatar",
+            (await page.$(".hd-r .av")) !== null, page.url());
+          check("modal login: POST to /auth/login, never a GET with credentials",
+            modalNet.some((r) => r.m === "POST" && /\/auth\/login$/.test(r.u))
+            && modalNet.every((r) => r.m === "POST"), JSON.stringify(modalNet.slice(-3)));
+          await logoutViaMenu();
+        }
+      }
+      // ── auth overlay language: in-place switch on a TOOL page, then the
+      // clone + dialog aria-label follow the CURRENT language (F2) ──
+      {
+        const lctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        const lp2 = await lctx.newPage();
+        await gotoReady(lp2, "/tool/compress", "body");
+        await lp2.click("#langButton");
+        await lp2.waitForSelector(".lang-menu:not(.hidden)", { timeout: 5000 });
+        await lp2.click('.lang-option[data-lang="fr"]');
+        await lp2.waitForFunction(() => window.__LANG === "fr", null, { timeout: 10000 });
+        await lp2.click('header a[href="/auth/login"].js-auth');
+        await lp2.waitForSelector(".auth-modal", { timeout: 5000 });
+        const l10n = await lp2.evaluate(() => {
+          const title = document.querySelector(".am-body .auth-title");
+          const dlg = document.querySelector(".modal[role='dialog']");
+          return { lang: window.__LANG,
+                   title: title ? title.textContent : "",
+                   sub: (document.querySelector(".am-body .auth-sub") || {}).textContent || "",
+                   want: window.t("loginTitle"),
+                   wantSub: window.t("auth_modal_sub"),
+                   aria: dlg ? dlg.getAttribute("aria-label") : "" };
+        });
+        check("modal after in-place language switch: clone text + aria-label follow the switched language",
+          l10n.lang === "fr" && l10n.title === l10n.want && l10n.sub === l10n.wantSub
+          && l10n.aria === l10n.want,
+          JSON.stringify(l10n));
+        await lctx.close();
+      }
+
+      // ── overlay at phone width: the card shrinks to the available width
+      // and never overflows the viewport (mobile login entry = nav sheet) ──
+      {
+        const mctx = await browser.newContext({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
+        const mp = await mctx.newPage();
+        await gotoReady(mp, "/", "body");
+        await mp.click("#mobileNavBtn");
+        await mp.waitForSelector("#mobileNavSheet:not(.hidden)", { timeout: 5000 });
+        await mp.click("#mobileNavSheet .mobile-nav-login");
+        await mp.waitForSelector(".auth-modal", { timeout: 5000 });
+        const mfit = await mp.evaluate(() => {
+          const panel = document.querySelector(".auth-modal");
+          const r = panel.getBoundingClientRect();
+          return { vw: document.documentElement.clientWidth,
+                   sw: document.documentElement.scrollWidth,
+                   left: Math.round(r.left), right: Math.round(r.right) };
+        });
+        check("modal at 390px: card fits the viewport (no horizontal overflow)",
+          mfit.left >= 0 && mfit.right <= mfit.vw && mfit.sw <= mfit.vw + 1,
+          JSON.stringify(mfit));
+        await mctx.close();
       }
       await gotoReady(page, "/auth/login", "input[name=login]");
       await page.fill("input[name=login]", username);

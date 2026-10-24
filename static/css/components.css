@@ -888,6 +888,9 @@ pre.rs-text, pre.rs-json {
    button and overlay chrome); fields reuse .field/.input/.btn/.seg
    and the form layout comes from .auth-form (518.css). */
 .auth-card, .auth-modal { width: min(400px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--sh-3); padding: var(--s5) var(--s4) var(--s4); display: flex; flex-direction: column; gap: var(--s4); }
+/* 浮层克隆挂载点与卡同构: 同一套 flex 列 + 同 gap — 克隆内容不再丢
+   卡片间距 (此前 .am-body 是普通块, 卡 gap 全部失效) */
+.am-body { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
 .auth-title { font-size: var(--fs-lg); font-weight: 750; text-align: center; margin: 0; }
 .auth-sub { text-align: center; font-size: var(--fs-sm); color: var(--ink-3); margin: -6px 0 0; }
 .auth-seg { width: 100%; }

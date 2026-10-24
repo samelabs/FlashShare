@@ -179,8 +179,11 @@
 
 /* ── Auth Pages ─────────────────────────────────────────────
    卡片视觉单源在 components.css (.auth-card/.auth-modal 共用一套);
-   这里只保留独立页容器与两处挂载共用的文字件。 */
-.auth-page { max-width: 400px; margin: auto; padding: var(--s5) var(--s4) var(--s6); display: flex; flex-direction: column; gap: var(--s4); justify-content: center; }
+   这里只保留独立页容器与两处挂载共用的文字件。容器用确定宽
+   min(400px,100%): 作为 .shell 列 flex 的 item, 旧 max-width + 双侧
+   auto margin 走收缩适应, 页面卡宽随文案浮动; 确定宽后与浮层卡在
+   桌面同为 400px, 手机随可用宽度收缩。 */
+.auth-page { width: min(400px, 100%); margin: auto; padding: var(--s5) 0 var(--s6); display: flex; flex-direction: column; gap: var(--s4); justify-content: center; }
 .auth-form { display: flex; flex-direction: column; gap: var(--form-gap); }
 .auth-x-wrap { display: flex; justify-content: center; }
 .auth-divider { text-align: center; position: relative; }
@@ -395,7 +398,7 @@
   .item-link { min-height: 44px; padding: 0; }
   .item-actions { justify-content: flex-end; }
   .file-page h1 { font-size: var(--fs-lg); }
-  .auth-page { padding: var(--s4) var(--s2) var(--s6); }
+  .auth-page { padding: var(--s4) 0 var(--s6); }
 
 }
 

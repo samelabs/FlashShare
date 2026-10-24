@@ -936,6 +936,21 @@ try:
     _rjs = open(f"{REPO}/static/pages/register.js", encoding="utf-8").read()
     check("A9 page password-mismatch reuses the shared binder",
           "bindPwMismatch" in _rjs, "")
+    # 模板克隆表单也带真实 POST method/action — 无 JS/意外默认提交
+    # 永远是 POST 到正确端点, 不会把密码带进 URL 查询串
+    check("A10 modal template forms declare the same real POST action",
+          'method="post" action="/auth/login"' in home_html
+          and 'method="post" action="/auth/register"' in home_html, "")
+    # 提交监听挂在稳定容器 (.am-body) 委托到当前表单 — 模式切换换克隆
+    # 后提交仍被处理 (旧实现只绑首个克隆, 切换后提交失效)
+    check("A11 modal submit is delegated on the stable container",
+          'body.addEventListener("submit"' in _amjs, "")
+    # 初始/切换后聚焦排除 hidden 字段 (克隆的 next 隐藏域是 DOM 首个 input)
+    check("A12 modal first-control focus skips hidden inputs",
+          "input:not([type=hidden])" in _amjs, "")
+    # 克隆子树按当前语言重写 (站内就地切换语言后浮层不再停留在 SSR 语言)
+    check("A13 modal clone re-applies the current language in place",
+          "applyLang" in _amjs and "data-i18n-placeholder" in _amjs, "")
 
     # ═══ RC fixtures ═══
     DAY = 86400

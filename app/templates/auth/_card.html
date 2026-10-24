@@ -2,8 +2,10 @@
    一份卡内容供三处挂载: /auth/login、/auth/register 独立页 (embed="page",
    真 POST 表单 + 无 JS 可提交) 与 base.html 内嵌的两个 <template>
    (embed="modal", auth-modal.js 克隆挂载)。字段、规格、提示、条款完全
-   同源; 容器差异保留: 页面 h1/真表单/链接式模式切换, 浮层 h2/novalidate
-   表单/按钮式模式切换。partial 内禁 DOM id (页面与克隆不得撞 id)。#}
+   同源; 容器差异保留: 页面 h1/链接式模式切换, 浮层 h2/按钮式模式切换。
+   两种挂载的表单都显式声明 method="post" + action (无 JS 提交与意外
+   GET 导航双保护; 浮层加 novalidate, 校验由 JS 与服务端承载)。
+   partial 内禁 DOM id (页面与克隆不得撞 id)。#}
 {% set other = 'register' if mode == 'login' else 'login' %}
 {% if embed == 'page' %}<h1 class="auth-title" {% else %}<h2 class="auth-title" {% endif %}data-i18n="{{ 'registerTitle' if mode == 'register' else 'loginTitle' }}">{{ texts.registerTitle if mode == 'register' else texts.loginTitle }}{% if embed == 'page' %}</h1>{% else %}</h2>{% endif %}
 <p class="auth-sub" data-i18n="auth_modal_sub">{{ texts.auth_modal_sub }}</p>
@@ -25,7 +27,7 @@
 {% else %}
 <p class="error-note am-err" hidden></p>
 {% endif %}
-<form class="auth-form"{% if embed == 'page' %} method="post" action="/auth/{{ mode }}"{% else %} novalidate{% endif %}>
+<form class="auth-form" method="post" action="/auth/{{ mode }}"{% if embed != 'page' %} novalidate{% endif %}>
   <input type="hidden" name="next" value="{{ next if embed == 'page' else '' }}">
   {% if mode == 'login' %}
   <label class="field">
