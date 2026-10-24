@@ -9,9 +9,11 @@ from repo.ledger import CALL_NET_CHARGE_SQL
 
 
 def paged(con, user_id: int, size: int, offset: int,
-          since_ts: int | None = None) -> list:
+          since_ts: int | None = None,
+          until_ts: int | None = None) -> list:
     """One page of the user's calls, newest first, optionally
-    time-boxed (started_at >= since_ts, epoch seconds)."""
+    time-boxed (started_at >= since_ts AND started_at <= until_ts;
+    either bound is open when None)."""
     sql = ("SELECT tc.id, tc.tool_id, tc.status, tc.started_at,"
            " tc.finished_at, tc.result_public_id, tc.result_json,"
            " tc.error, pt.label_json,"
@@ -29,12 +31,16 @@ def paged(con, user_id: int, size: int, offset: int,
     if since_ts is not None:
         sql += " AND tc.started_at >= %s"
         params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND tc.started_at <= %s"
+        params.append(until_ts)
     sql += " ORDER BY tc.id DESC LIMIT %s OFFSET %s"
     params += [size, offset]
     return [dict(r) for r in con.execute(sql, params).fetchall()]
 
 
-def count(con, user_id: int, since_ts: int | None = None) -> int:
+def count(con, user_id: int, since_ts: int | None = None,
+          until_ts: int | None = None) -> int:
     """The user's REAL filtered call count — the page-bounding fact (no
     global page ceiling: history past page 10,000 stays reachable while
     offsets stay bounded by the true total)."""
@@ -43,10 +49,14 @@ def count(con, user_id: int, since_ts: int | None = None) -> int:
     if since_ts is not None:
         sql += " AND tc.started_at >= %s"
         params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND tc.started_at <= %s"
+        params.append(until_ts)
     return int(con.execute(sql, params).fetchone()["n"])
 
 
-def status_summary(con, user_id: int, since_ts: int | None = None) -> dict:
+def status_summary(con, user_id: int, since_ts: int | None = None,
+                   until_ts: int | None = None) -> dict:
     """Per-status call counts + the same net-charge projection, summed
     by the database. Statuses are the stored call states — no success
     rate is redefined here."""
@@ -57,18 +67,25 @@ def status_summary(con, user_id: int, since_ts: int | None = None) -> dict:
     if since_ts is not None:
         sql += " AND tc.started_at >= %s"
         params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND tc.started_at <= %s"
+        params.append(until_ts)
     sql += " GROUP BY tc.status"
     return {r["status"]: {"n": int(r["n"]), "net": int(r["net"] or 0)}
             for r in con.execute(sql, params).fetchall()}
 
 
-def daily_net(con, user_id: int, since_ts: int) -> dict:
+def daily_net(con, user_id: int, since_ts: int,
+              until_ts: int | None = None) -> dict:
     """Daily net-charge buckets (UTC day = epoch // 86400), sparse and
-    DB-aggregated: {day: net}."""
-    rows = con.execute(
-        f"SELECT (tc.started_at / 86400) AS d,"
-        f" SUM({CALL_NET_CHARGE_SQL}) AS net"
-        " FROM tool_calls tc WHERE tc.user_id = %s AND tc.started_at >= %s"
-        " GROUP BY 1",
-        (user_id, since_ts)).fetchall()
+    DB-aggregated: {day: net}; rows live in [since_ts, until_ts]
+    (until open when None)."""
+    sql = (f"SELECT (tc.started_at / 86400) AS d,"
+           f" SUM({CALL_NET_CHARGE_SQL}) AS net"
+           " FROM tool_calls tc WHERE tc.user_id = %s AND tc.started_at >= %s")
+    params: list = [user_id, since_ts]
+    if until_ts is not None:
+        sql += " AND tc.started_at <= %s"
+        params.append(until_ts)
+    rows = con.execute(sql + " GROUP BY 1", params).fetchall()
     return {int(r["d"]): int(r["net"] or 0) for r in rows}

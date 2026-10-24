@@ -554,14 +554,15 @@ html[dir="rtl"] .tool-panel-actions { justify-content: flex-start; }
 .rec-trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; margin-block-end: var(--s1); }
 .rec-trend-title { font-size: var(--fs-xs); font-weight: 650; color: var(--ink-2); }
 .rec-trend-note { font-size: var(--fs-xs); color: var(--ink-2); }
-/* 零基线在容器中线 (::before 虚线): 正值自基线向上、负值向下生长 —
-   translateY(±50%) 把条自身的半高锚到中线; 高度恒为 |值|/比例尺×50%,
-   永不为负; 零值日 = 基线上 2px 刻度 */
+/* 零基线在容器中线 (::before 虚线): flex 居中把条中心摆到基线上, 再以
+   translateY(∓50%) 把条自身的半高锚回基线 — translateY 向下为正: 正值条
+   上移半高 (底边贴基线、主体在上), 负值条下移半高 (顶边贴基线、主体在
+   下); 高度恒为 |值|/比例尺×50%, 永不为负; 零值日 = 基线上 2px 刻度 */
 .rec-trend-bars { display: flex; align-items: center; gap: 1px; height: 56px; background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 4px; position: relative; }
 .rec-trend-bars::before { content: ""; position: absolute; inset-inline: 4px; top: 50%; border-top: 1px dashed var(--line-2); pointer-events: none; }
 .rec-bar { flex: 1 1 0; min-width: 2px; max-width: 14px; background: var(--brand); border-radius: 1px; }
-.rec-bar.up { align-self: center; transform: translateY(50%); min-height: 2px; }
-.rec-bar.down { align-self: center; transform: translateY(-50%); min-height: 2px; background: var(--ok); }
+.rec-bar.up { align-self: center; transform: translateY(-50%); min-height: 2px; }
+.rec-bar.down { align-self: center; transform: translateY(50%); min-height: 2px; background: var(--ok); }
 .rec-bar.zero { align-self: center; height: 2px; background: color-mix(in srgb, var(--line) 70%, transparent); }
 .rec-trend-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-2); margin-block-start: 2px; }
 .rec-trend-empty { font-size: var(--fs-xs); color: var(--ink-2); margin: 0; padding: var(--s2) 0; }

@@ -1151,6 +1151,7 @@ try:
     uid_win = _mkuser_rc(_u_rc + "wn")       # 窗口边界 fixture
     uid_refund = _mkuser_rc(_u_rc + "rf")    # 仅退款窗口 (净额为负)
     uid_free = _mkuser_rc(_u_rc + "fr")      # 免费调用 (净扣费 0)
+    uid_cut = _mkuser_rc(_u_rc + "ct")       # 统一查询截止点 fixture
     with db() as con:
         # 窗口首日: 消费 10 + 退款 10 → 有记录净额 0; 首日前 1 秒的消费;
         # UTC 午夜(今日零点)的消费 3; 窗口内 grant (列表可见, 统计排除)
@@ -1172,9 +1173,34 @@ try:
             " %s, %s)",
             (f"rc_{_u_rc}_free", uid_free, f"rctool_{_u_rc}", "1" * 64,
              _FIXED_NOW - 60, _FIXED_NOW - 59))
+        # 截止点样本 (uid_cut): 起点前 1 秒 / 起点 / 截止点(含) / 截止点后
+        # 1 秒 / 下一 UTC 日 — 统一 since <= ts <= now_ts 的两侧边界
+        _balc = 0
+        for _i, (_k, _d, _at) in enumerate((
+                ("consume", -3, _S7 - 1),
+                ("consume", -7, _S7),
+                ("refund", 4, _FIXED_NOW - 60),
+                ("consume", -9, _FIXED_NOW),
+                ("consume", -11, _FIXED_NOW + 1),
+                ("refund", 6, _FIXED_NOW + 2),
+                ("consume", -13, (_today_rc + 1) * 86400))):
+            _balc += _d
+            _led_rc(con, uid_cut, _k, _d, _balc, _at, 950 + _i)
+        # 调用侧截止点样本: 恰在截止点(含) 与 下一 UTC 日(排)
+        for _i, (_cr, _at) in enumerate((
+                (f"rc_{_u_rc}_cut", _FIXED_NOW),
+                (f"rc_{_u_rc}_nx", (_today_rc + 1) * 86400))):
+            con.execute(
+                "insert into tool_calls (client_ref, user_id, tool_id,"
+                " status, cost_snapshot, commission_rate_snapshot,"
+                " invocation_hash, started_at, finished_at) values"
+                " (%s, %s, %s, 'ok', 0, 30, %s, %s, %s)",
+                (_cr, uid_cut, f"rctool_{_u_rc}", f"{_i + 2}" * 64,
+                 _at, _at + 1))
     ck_win = _cbs_rc(uid_win)
     ck_refund = _cbs_rc(uid_refund)
     ck_free = _cbs_rc(uid_free)
+    ck_cut = _cbs_rc(uid_cut)
 
     with _fixed_clock(_FIXED_NOW):
         # 列表边界: 首日零点行在窗内, 首日前 1 秒行在窗外 (滚动 7×86400
@@ -1222,6 +1248,45 @@ try:
               and "rec-bar zero" in html and "rec-bar up" not in html
               and "rec-bar down" not in html
               and '>Calls</span><strong class="rec-chip-v mono ">1<' in html,
+              "")
+
+        # ═══ RC9: 统一查询截止点 — 有限范围与全部统计查询都用
+        # since <= 记录时间 <= 本次请求截点; 晚于截点的数据全部排除 ═══
+        # 列表/计数: 起点前 1 秒排除, 起点与截止点(含)计入, 截止点后 1 秒
+        # 与下一 UTC 日排除
+        st, html = _get_rc("/account/credits?range=7&lang=en", ck_cut)
+        check("RC9 finite-range list/count bound by [window start, cutoff]",
+              st == 200 and "3 records" in html and html.count("<tr>") == 4,
+              (st, html.count("<tr>")))
+        # 汇总与日桶同界: Spent 16 / Refunded 4 / Net 12; 日桶合计 = 净额
+        check("RC9b overview/daily share the same cutoff (16/4/12)",
+              'rec-chip-v mono ">16<' in html
+              and 'rec-chip-v mono pos">4<' in html
+              and 'rec-chip-v mono neg">12<' in html,
+              [s for s in ('">16<', 'pos">4<', 'neg">12<') if s not in html])
+        _days = _re.findall(r'rec-day-v mono">(-?\d+)<', html)
+        check("RC9c day buckets sum to the same net, cutoff row counted",
+              len(_days) == 7 and sum(int(v) for v in _days) == 12, _days)
+        # 截止点恰在 now_ts 的行被计入 (<= 而非 <): 日桶今日 = 9 − 4 = 5
+        check("RC9d the row exactly AT the cutoff is included (today net 5)",
+              _days[-1] == "5", _days[-1] if _days else None)
+        # 调用侧: 截止点调用计入, 下一 UTC 日调用排除 (基线无截止时 2 条)
+        st, html = _get_rc("/account/calls?range=7&lang=en", ck_cut)
+        check("RC9e calls count/paged/status/daily bound by the same cutoff",
+              st == 200 and "1 records" in html
+              and '>Calls</span><strong class="rec-chip-v mono ">1<' in html
+              and html.count('id="call-') == 1,
+              (st, html.count('id="call-')))
+        # range=all 列表保留全历史 (含下一 UTC 日的未来行), 概览/趋势仍为
+        # 标注的最近 30 个 UTC 日期且带同一截点: 30 天窗比 7 天窗宽, 把
+        # 7 天窗前 1 秒的行 (30 天内、截点前) 重新计入 → Spent 19 =
+        # 3+7+9; 截点后的行 (11/13) 仍被排除 (否则 43)
+        st, html = _get_rc("/account/credits?lang=en", ck_cut)
+        check("RC9f range=all keeps the full-history list (7 records)",
+              st == 200 and "7 records" in html, "")
+        check("RC9g range=all stats stay on the labeled 30d window with the cutoff",
+              "Stats: last 30 days (UTC)" in html
+              and 'rec-chip-v mono ">19<' in html,
               "")
 finally:
     with db() as con:

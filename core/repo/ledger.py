@@ -95,9 +95,11 @@ def lock_user(con, user_id: int) -> None:
 
 
 def history_count(con, user_id: int, kinds: Sequence[str],
-                  since_ts: Optional[int] = None) -> int:
+                  since_ts: Optional[int] = None,
+                  until_ts: Optional[int] = None) -> int:
     """Row count for the credits history, optionally time-boxed
-    (created_at >= since_ts, epoch seconds). The count is the REAL
+    (created_at >= since_ts AND created_at <= until_ts, epoch seconds;
+    either bound is open when None). The count is the REAL
     filtered total — the account page bounds its page number against
     it, so history past the global MAX_LIST_PAGE stays reachable while
     offsets stay bounded by the true total."""
@@ -107,18 +109,26 @@ def history_count(con, user_id: int, kinds: Sequence[str],
     if since_ts is not None:
         sql += " AND created_at >= %s"
         params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
     return int(con.execute(sql, params).fetchone()["n"])
 
 
 def history_page(con, user_id: int, kinds: Sequence[str],
                  size: int, offset: int,
-                 since_ts: Optional[int] = None) -> list:
-    """One page of the user's spendable-pool flow, newest first."""
+                 since_ts: Optional[int] = None,
+                 until_ts: Optional[int] = None) -> list:
+    """One page of the user's spendable-pool flow, newest first (same
+    [since_ts, until_ts] box as history_count)."""
     sql = ("SELECT * FROM ledger WHERE user_id = %s AND kind = ANY(%s)")
     params: list = [user_id, list(kinds)]
     if since_ts is not None:
         sql += " AND created_at >= %s"
         params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
     sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
     params += [size, offset]
     return [dict(r) for r in con.execute(sql, params).fetchall()]
@@ -128,7 +138,8 @@ SPEND_SUMMARY_KINDS = ("consume", "refund")
 
 
 def spend_summary(con, user_id: int,
-                  since_ts: Optional[int] = None) -> dict:
+                  since_ts: Optional[int] = None,
+                  until_ts: Optional[int] = None) -> dict:
     """Consumption overview for the credits page, DB-aggregated.
 
     consume = the magnitude of consume deltas (they are negative on the
@@ -144,6 +155,9 @@ def spend_summary(con, user_id: int,
     if since_ts is not None:
         sql += " AND created_at >= %s"
         params.append(since_ts)
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
     out = {"consume": 0, "refund": 0, "net": 0, "n": 0}
     for r in con.execute(sql + " GROUP BY kind", params).fetchall():
         out["n"] += int(r["n"])
@@ -155,15 +169,20 @@ def spend_summary(con, user_id: int,
     return out
 
 
-def spend_daily(con, user_id: int, since_ts: int) -> dict:
+def spend_daily(con, user_id: int, since_ts: int,
+                until_ts: Optional[int] = None) -> dict:
     """Daily consume/refund buckets for the trend strip. Day = the UTC
     day (epoch // 86400); returns {day: {"consume": n, "refund": n}}
-    sparse, DB-aggregated."""
-    rows = con.execute(
-        "SELECT (created_at / 86400) AS d, kind, SUM(delta) AS s"
-        " FROM ledger WHERE user_id = %s AND kind = ANY(%s)"
-        " AND created_at >= %s GROUP BY 1, 2",
-        (user_id, list(SPEND_SUMMARY_KINDS), since_ts)).fetchall()
+    sparse, DB-aggregated; rows live in [since_ts, until_ts] (until
+    open when None)."""
+    sql = ("SELECT (created_at / 86400) AS d, kind, SUM(delta) AS s"
+           " FROM ledger WHERE user_id = %s AND kind = ANY(%s)"
+           " AND created_at >= %s")
+    params: list = [user_id, list(SPEND_SUMMARY_KINDS), since_ts]
+    if until_ts is not None:
+        sql += " AND created_at <= %s"
+        params.append(until_ts)
+    rows = con.execute(sql + " GROUP BY 1, 2", params).fetchall()
     out: dict = {}
     for r in rows:
         bucket = out.setdefault(int(r["d"]), {"consume": 0, "refund": 0})

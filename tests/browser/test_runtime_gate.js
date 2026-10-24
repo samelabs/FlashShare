@@ -2624,13 +2624,14 @@ with db() as con:
                 " ref_type, ref_id, idem_key, created_at) values"
                 " (%s, 500000, -734567, 'refund', 'ledger', %s, %s, %s)",
                 (uid, str(rc["id"]), "gatelong_r1", ts))
-    # yesterday: refund-heavy day -> a negative (down) bucket
+    # yesterday: refund-heavy day -> a negative (down) bucket big enough
+    # to verify its geometry (40% of the half-band, not a min-height tick)
     con.execute("insert into ledger (user_id, delta, balance_after, kind,"
                 " idem_key, created_at) values"
                 " (%s, -10, -734577, 'consume', %s, %s)", (uid, "gatelong_c2", y))
     con.execute("insert into ledger (user_id, delta, balance_after, kind,"
                 " idem_key, created_at) values"
-                " (%s, 2000, -732577, 'refund', %s, %s)", (uid, "gatelong_r2", y))
+                " (%s, 600000, -134577, 'refund', %s, %s)", (uid, "gatelong_r2", y))
     # long human note (adjust) renders verbatim on the credits page
     con.execute("insert into ledger (user_id, delta, balance_after, kind,"
                 " note, idem_key, created_at) values"
@@ -2792,29 +2793,50 @@ print("seeded-long")
         const page = await ctx.newPage();
         await login(ctx, page);
         await gotoReady(page, "/account/credits?lang=en", ".rec-trend-bars");
-        const trendShape = await page.evaluate(() => {
-          const bars = [...document.querySelectorAll(".rec-bar")];
+        // real geometry (getBoundingClientRect), not class names: the zero
+        // line is the strip's vertical center; a positive bar must RISE
+        // above it (bottom edge on the line), a negative bar must HANG
+        // below it (top edge on the line), a zero tick sits ON it
+        const trendPos = await page.evaluate(() => {
           const cont = document.querySelector(".rec-trend-bars");
+          const cr = cont.getBoundingClientRect();
+          const mid = cr.top + cr.height / 2; // symmetric border/padding
+          const up = document.querySelector(".rec-bar.up");
+          const down = document.querySelector(".rec-bar.down");
+          const zero = document.querySelector(".rec-bar.zero");
+          const u = up ? up.getBoundingClientRect() : null;
+          const d = down ? down.getBoundingClientRect() : null;
+          const z = zero ? zero.getBoundingClientRect() : null;
           return {
-            up: bars.filter((b) => b.classList.contains("up")).length,
-            down: bars.filter((b) => b.classList.contains("down")).length,
-            zero: bars.filter((b) => b.classList.contains("zero")).length,
-            negHeight: bars.filter((b) =>
-              parseFloat(b.style.height || "0") < 0
-              || parseFloat(getComputedStyle(b).height) < 0).length,
-            baseline: cont ? getComputedStyle(cont, "::before").content !== "none" : false,
-            days: document.querySelectorAll(".rec-trend-days li").length,
-            netChip: ((document.querySelectorAll(".rec-chip")[2] || {}).textContent || "").trim(),
+            counts: {
+              up: document.querySelectorAll(".rec-bar.up").length,
+              down: document.querySelectorAll(".rec-bar.down").length,
+              zero: document.querySelectorAll(".rec-bar.zero").length,
+            },
+            baseline: getComputedStyle(cont, "::before").content !== "none",
+            upH: u ? u.height : 0,
+            upBottomOff: u ? Math.abs(u.bottom - mid) : -1,
+            upBodyAbove: u ? mid - u.top : -1,
+            downH: d ? d.height : 0,
+            downTopOff: d ? Math.abs(d.top - mid) : -1,
+            downBodyBelow: d ? d.bottom - mid : -1,
+            zeroMidOff: z ? Math.abs((z.top + z.bottom) / 2 - mid) : -1,
           };
         });
-        check("ar records-long: signed bars (up+down+zero) around a zero baseline, heights never negative",
-          trendShape.up > 0 && trendShape.down > 0 && trendShape.zero > 0
-          && trendShape.negHeight === 0 && trendShape.baseline && trendShape.days === 30,
-          JSON.stringify(trendShape));
+        check("ar records-long: positive bar rises above the zero line (bottom edge on it), negative hangs below (top edge on it)",
+          trendPos.counts.up > 0 && trendPos.counts.down > 0 && trendPos.counts.zero > 0
+          && trendPos.baseline
+          && trendPos.upH >= 8 && trendPos.upBottomOff <= 1 && trendPos.upBodyAbove >= 8
+          && trendPos.downH >= 8 && trendPos.downTopOff <= 1 && trendPos.downBodyBelow >= 8,
+          JSON.stringify(trendPos));
+        check("ar records-long: zero-day tick sits on the zero line (±1px)",
+          trendPos.zeroMidOff >= 0 && trendPos.zeroMidOff <= 1,
+          JSON.stringify(trendPos));
         const daySum = await page.$$eval(".rec-trend-days li", (lis) =>
           lis.reduce((a, li) => a + parseInt(
             li.querySelector(".rec-day-v").textContent.replace(/[^-\d]/g, ""), 10), 0));
-        const netChipNum = parseInt((trendShape.netChip || "").replace(/[^-\d]/g, ""), 10);
+        const netChipText = await page.$eval(".rec-chip:nth-of-type(3) .rec-chip-v", (el) => el.textContent.trim());
+        const netChipNum = parseInt((netChipText || "").replace(/[^-\d]/g, ""), 10);
         check("ar records-long: daily detail values sum to the overview net",
           daySum === netChipNum && daySum !== 0, `${daySum} vs ${netChipNum}`);
         await page.focus(".rec-trend-detail summary");

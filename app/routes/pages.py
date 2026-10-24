@@ -843,24 +843,30 @@ def account_credits(request: Request):
     from repo import ledger as _ledger_repo
     from utils import now as _now_ts
     size = 20
+    # 统一查询截点: 每次请求只捕获一次 now_ts; 有限范围的列表/计数与全部
+    # 概览/日聚合都落在 [窗口起点, now_ts]; range=all 的列表保留全历史
     now_ts = _now_ts()
     rng = _rec_range(request.query_params.get("range", "all"))
     since = _rec_since(rng, now_ts)
+    list_until = now_ts if since is not None else None
     with db() as con:
         total = _ledger_repo.history_count(con, user["id"],
-                                           SPENDABLE_KINDS, since)
+                                           SPENDABLE_KINDS, since, list_until)
     pg = _effective_page(request.query_params.get("page", "1"), total, size)
     with db() as con:
         rows = _ledger_repo.history_page(
-            con, user["id"], SPENDABLE_KINDS, size, (pg - 1) * size, since)
+            con, user["id"], SPENDABLE_KINDS, size, (pg - 1) * size, since,
+            list_until)
         # 概览/趋势: 范围窗口 (列表为“全部”时固定最近 30 天并明示);
         # 消费=consume 幅值, 退款=refund, 净=消费−退款; 赠送/充值不计入,
         # 收益池不混入 — 聚合由 DB 完成; 窗口 = 包含今天的最近 N 个 UTC
-        # 自然日 (与列表同一边界)
+        # 自然日 (与列表同一边界, 同一截点)
         stat_days = _rec_stats_window(rng)
         stat_since = _rec_window_start(now_ts, stat_days)
-        spend = _ledger_repo.spend_summary(con, user["id"], stat_since)
-        daily = _ledger_repo.spend_daily(con, user["id"], stat_since)
+        spend = _ledger_repo.spend_summary(con, user["id"], stat_since,
+                                           now_ts)
+        daily = _ledger_repo.spend_daily(con, user["id"], stat_since,
+                                         now_ts)
         _tool_refs = _ledger_repo.history_tool_refs(con, [r["id"] for r in rows])
         daily_amount = _daily_amount(con)
     trend, peak = _day_series(
@@ -1010,19 +1016,23 @@ def account_calls(request: Request):
     from repo import calls as _calls_repo
     from utils import now as _now_ts
     size = CALLS_PAGE_SIZE
+    # 统一查询截点: 单次捕获 now_ts; 有限范围列表/计数与概览/日聚合同界
     now_ts = _now_ts()
     rng = _rec_range(request.query_params.get("range", "all"))
     since = _rec_since(rng, now_ts)
+    list_until = now_ts if since is not None else None
     with db() as con:
-        total = _calls_repo.count(con, user["id"], since)
+        total = _calls_repo.count(con, user["id"], since, list_until)
         pg = _effective_page(request.query_params.get("page", "1"), total, size)
-        rows = _calls_repo.paged(con, user["id"], size, (pg - 1) * size, since)
+        rows = _calls_repo.paged(con, user["id"], size, (pg - 1) * size,
+                                 since, list_until)
         # 概览/趋势窗口 = 所选范围 (列表为“全部”时固定最近 30 天并明示);
-        # 窗口 = 包含今天的最近 N 个 UTC 自然日 (与列表同一边界)
+        # 窗口 = 包含今天的最近 N 个 UTC 自然日 (与列表同一边界, 同一截点)
         stat_days = _rec_stats_window(rng)
         stat_since = _rec_window_start(now_ts, stat_days)
-        summary = _calls_repo.status_summary(con, user["id"], stat_since)
-        daily = _calls_repo.daily_net(con, user["id"], stat_since)
+        summary = _calls_repo.status_summary(con, user["id"], stat_since,
+                                             now_ts)
+        daily = _calls_repo.daily_net(con, user["id"], stat_since, now_ts)
     trend, peak = _day_series(now_ts, stat_days, daily, lambda v: v or 0)
     _lang = getattr(request.state, "lang", "en")
     calls = []
