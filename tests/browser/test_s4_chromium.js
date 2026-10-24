@@ -30,6 +30,8 @@ if (PORT === 8000) { console.error("ERROR: FLASHSHARE_TEST_PORT=8000 is the prod
 const TEST_DB = process.env.TEST_DB_URL;
 if (!TEST_DB) { console.error("ERROR: TEST_DB_URL required"); process.exit(2); }
 const BASE = `http://127.0.0.1:${PORT}`;
+// contexts block the service worker: the S4 controlled-interception proof
+// (A2) needs page-level fetches that page.route can actually hold
 const REPO = path.resolve(__dirname, "..", "..");
 
 const FAIL = [];
@@ -92,7 +94,7 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
     ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
     headless: true,
   });
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+  const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" })).newPage();
 
   // ════ Operator session: cookie + 11 pages ════
   await page.goto(BASE + "/");
@@ -121,10 +123,13 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
     check(n, c.includes(needle), page.url());
   }
 
-  // 9 Withdrawals queue — snapshot + actions
+  // 9 Withdrawals queue — row-scoped snapshot assertion
   await page.goto(BASE + "/samelabs/economy/withdrawals");
-  let c = await page.content();
-  check("9 Withdrawals snapshot + pending", c.includes("USDT-TRC20:old") && c.includes("pending"));
+  await page.waitForSelector(`tr[data-wid="${WID}"]`, { timeout: 10000 });
+  const rowTxt9 = await page.locator(`tr[data-wid="${WID}"]`).textContent();
+  check("9 Withdrawals snapshot + pending (row-scoped)",
+        (rowTxt9 || "").includes("USDT-TRC20:old")
+        && (rowTxt9 || "").includes("pending"), rowTxt9);
 
   // A1 credits adjustment via the real form/endpoint
   const adj = await page.evaluate(async (uid) => {
@@ -135,40 +140,74 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
   }, PROV);
   check("A1 credits adjustment ok", adj.st === 200 && adj.body.ok, JSON.stringify(adj));
 
-  // A2 approve via the two-state confirm button → approved state in DOM
+  // A2 approve — controlled proof + row-scoped bounded wait:
+  // (a) the action response is HELD → the wait target must not appear
+  //     early (row still pending after a settle beat);
+  // (b) released → waitForSelector on THIS row's status cell; a timeout
+  //     fails the suite (no retry, no skip).
   await page.goto(BASE + "/samelabs/economy/withdrawals");
+  let releaseApprove;
+  const gateApprove = new Promise(r => { releaseApprove = r; });
+  await page.route("**/samelabs/economy/withdrawals/*/approve", async route => {
+    await gateApprove;
+    await route.fallback();               // pass through to the real server
+  });
   const btnA = page.locator(`tr[data-wid="${WID}"] .js-approve`);
-  await btnA.click();                       // arm
+  await btnA.click();                     // arm
   await page.waitForTimeout(100);
-  await btnA.click();                       // confirm
-  await page.waitForTimeout(1200);          // action + reload
-  c = await page.content();
-  check("A2 approve → approved in DOM", c.includes("approved"), "no approved badge");
+  await btnA.click();                     // confirm → request in flight, held
+  await page.waitForTimeout(600);         // settle: reload would have landed by now
+  const stillPending = await page.locator(
+    `tr[data-wid="${WID}"] td:nth-child(5)`).textContent();
+  check("A2a approve response held → row still pending (no early pass)",
+        (stillPending || "").trim() === "pending", stillPending);
+  releaseApprove();
+  await page.unroute("**/samelabs/economy/withdrawals/*/approve");
+  await page.waitForSelector(
+    `tr[data-wid="${WID}"] td:nth-child(5):has-text("approved")`,
+    { timeout: 10000 });
+  const stA2 = ((await page.locator(
+    `tr[data-wid="${WID}"] td:nth-child(5)`).textContent()) || "").trim();
+  check("A2b approve → row status cell equals approved", stA2 === "approved", stA2);
 
-  // A3 paid: arm → fill dynamic ref input → confirm
+  // A3 paid: row-scoped ref input + row-scoped assertions (status cell
+  // and the rendered evidence cell — never the unsubmitted input)
   await page.goto(BASE + "/samelabs/economy/withdrawals");
   const btnP = page.locator(`tr[data-wid="${WID}"] .js-paid`);
-  await btnP.click();                       // arm → ref input appears
-  await page.waitForTimeout(200);
-  await page.fill(".js-payout-ref-input", "RTX-CHROME-1");
-  await btnP.click();                       // confirm
-  await page.waitForTimeout(1200);
-  c = await page.content();
-  check("A3 paid + evidence ref", c.includes("paid") && c.includes("RTX-CHROME-1"));
+  await btnP.click();                     // arm → ref input appears in row
+  await page.waitForSelector(`tr[data-wid="${WID}"] .js-payout-ref-input`,
+    { timeout: 10000 });
+  await page.fill(`tr[data-wid="${WID}"] .js-payout-ref-input`, "RTX-CHROME-1");
+  await btnP.click();                     // confirm
+  await page.waitForSelector(
+    `tr[data-wid="${WID}"] td:nth-child(5):has-text("paid")`, { timeout: 10000 });
+  const stA3 = ((await page.locator(
+    `tr[data-wid="${WID}"] td:nth-child(5)`).textContent()) || "").trim();
+  const evA3 = ((await page.locator(
+    `tr[data-wid="${WID}"] td:nth-child(8)`).textContent()) || "").trim();
+  check("A3 paid: row status cell equals paid", stA3 === "paid", stA3);
+  check("A3b evidence cell equals RTX-CHROME-1", evA3 === "RTX-CHROME-1", evA3);
 
-  // A4 Credits vs USD separation in queue row
-  check("A4 amount in USD ($25)", c.includes("$25"), "no $25");
+  // A4 Credits vs USD separation in THIS queue row
+  const amtA4 = await page.locator(`tr[data-wid="${WID}"] td:nth-child(3)`).textContent();
+  check("A4 amount in USD ($25) in the queue row",
+        (amtA4 || "").includes("$25"), amtA4);
 
   // ════ Provider session: user S4 face ════
-  const provCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const provCtx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
   const pp = await provCtx.newPage();
   await pp.goto(BASE + "/");
   await pp.evaluate(([t]) => { document.cookie = "flashshare_session=" + t + "; path=/"; }, [PROV_TOK]);
   await pp.goto(BASE + "/account/earnings");
-  await pp.waitForTimeout(600);
+  // U1/U2: bounded wait INSIDE the withdrawal-history container (never a
+  // whole-body poll); a timeout fails the suite
+  await pp.waitForSelector('#earnHist .wd-row .wd-ch:has-text("USDT-TRC20:old")',
+    { timeout: 10000 });
   let pc = await pp.content();
   check("U1 current payout channel shown", pc.includes("USDT-TRC20:rt"));
-  check("U2 history shows request snapshot (old), not live", pc.includes("USDT-TRC20:old"));
+  const snapU2 = await pp.locator('#earnHist .wd-row .wd-ch').first().textContent();
+  check("U2 history shows request snapshot (old), not live (row-scoped)",
+        (snapU2 || "").includes("USDT-TRC20:old"), snapU2);
 
   // U3 profile edit does not rewrite history snapshot (real form endpoint)
   await pp.evaluate(async () => {
@@ -178,10 +217,11 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
       body: body.toString(), redirect: "manual" });
   });
   await pp.goto(BASE + "/account/earnings");
-  await pp.waitForTimeout(600);
-  pc = await pp.content();
-  check("U3 history snapshot unchanged after profile edit",
-    pc.includes("USDT-TRC20:old"));
+  await pp.waitForSelector('#earnHist .wd-row .wd-ch:has-text("USDT-TRC20:old")',
+    { timeout: 10000 });
+  const snapU3 = await pp.locator('#earnHist .wd-row .wd-ch').first().textContent();
+  check("U3 history snapshot unchanged after profile edit (row-scoped)",
+        (snapU3 || "").includes("USDT-TRC20:old"), snapU3);
   check("U3b modal now offers the NEW channel",
     (await pp.click("#openWithdraw").then(() => pp.textContent("#wChannel")) || "").includes("USDT-TRC20:CHANGED"));
 
@@ -197,16 +237,17 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
         (chanTxt || "").includes("USDT-TRC20:CHANGED"), chanTxt);
   check("U4b submit enabled with channel set", btnDisabled === null);
 
-  // U5 successful request → explicit feedback (modal still open from U3b;
-  // the submit button is INSIDE the modal)
+  // U5 successful request → explicit feedback: bounded wait for the
+  // feedback element to be VISIBLE and non-empty (success semantics
+  // kept; a timeout fails the suite)
   await pp.fill("#wAmount", "15.00");
   await pp.click("#submitWithdraw");
-  await pp.waitForTimeout(800);
-  const fb = await pp.textContent("#wdFeedback").catch(() => "");
-  check("U5 success feedback visible", (fb || "").length > 0, "no #wdFeedback text");
+  await pp.waitForSelector("#wdFeedback:not(.hidden)", { timeout: 10000 });
+  const fb = ((await pp.textContent("#wdFeedback")) || "").trim();
+  check("U5 success feedback visible and non-empty", fb.length > 0, fb || "empty");
 
   // ════ No-channel session: gating ════
-  const ncCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const ncCtx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" });
   const np = await ncCtx.newPage();
   await np.goto(BASE + "/");
   await np.evaluate(([t]) => { document.cookie = "flashshare_session=" + t + "; path=/"; }, [NOCH_TOK]);
@@ -228,7 +269,7 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
   // auto-zoom); .sl-input rides the same components.css floor as the
   // public surfaces. ──
   {
-    const mctx = await browser.newContext({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true } });
+    const mctx = await browser.newContext({ viewport: { width: 390, height: 844, isMobile: true, hasTouch: true }, serviceWorkers: "block" });
     const mp = await mctx.newPage();
     await mp.goto(BASE + "/");
     await mp.evaluate(([t]) => {
@@ -257,5 +298,5 @@ const [OP, PROV, NOCH, WID, OP_TOK, PROV_TOK, NOCH_TOK] = seed.split(" ");
   await browser.close();
   console.log();
   if (FAIL.length) { console.log(`FAILED ${FAIL.length}`); process.exit(1); }
-  console.log(`OK — S4 Chromium runtime (${21 - FAIL.length}/21 core checks)`);
+  console.log(`OK — S4 Chromium runtime (${28 - FAIL.length}/28 core checks)`);
 })().catch(e => { console.error(e); process.exit(1); });

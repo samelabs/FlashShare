@@ -448,6 +448,41 @@ def _body_rule_for(path: str, method: str):
     return None
 
 
+def _declared_body_length(raw_headers) -> int | None:
+    """Reliable Content-Length from raw ASGI headers: exactly ONE
+    content-length header, ASCII digits only, and no transfer-encoding
+    anywhere → its int value. Anything else — missing, duplicate (even
+    identical), malformed ("+5", " 5", "1a", non-ASCII bytes, empty),
+    or any transfer-encoding — → None, meaning the framing is
+    unreliable and the caller must budget the row's cap+1 worst case.
+    Parsing never raises."""
+    cl = _absent = object()
+    for name, value in raw_headers:
+        n = name.lower()
+        if n == b"transfer-encoding":
+            return None
+        if n == b"content-length":
+            if cl is not _absent:
+                return None            # duplicate: not a single value
+            cl = value
+    if cl is _absent:
+        return None
+    try:
+        s = cl.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    if not s or not s.isdigit():
+        return None                    # 1*DIGIT only; int() extras rejected
+    return int(s)
+
+
+class _BodyFramingViolation(Exception):
+    """A reliable Content-Length declared fewer bytes than the stream
+    delivered — an HTTP framing violation. Raised by _preread_body
+    BEFORE any body byte is cached and OUTSIDE the disconnect fallback,
+    so it always propagates (never masked as a vanished client)."""
+
+
 async def _preread_body(request: Request, rule) -> dict | None:
     """Read the request body under the row cap and cache it for the
     route (request._body, replayed to the route by Starlette's
@@ -456,47 +491,53 @@ async def _preread_body(request: Request, rule) -> dict | None:
     return None — their over-cap answer stays with the route's own
     contract (header check, or streamed count over the cached bytes).
     Every body — declared Content-Length or chunked — is counted chunk
-    by chunk: nothing is ever buffered past the cap plus one chunk. No
-    total read deadline: a slow client holds only its connection (and
-    its admission reservation — see _BodyAdmissionMiddleware)."""
-    declared = request.headers.get("content-length")
-    if declared is not None:
-        try:
-            declared_len = int(declared)
-        except ValueError:
-            declared_len = None  # malformed length: the stream count decides
-        else:
-            if declared_len > rule.cap:
-                if rule.route_mode:
-                    return None      # the route rejects on the header itself
-                return {"ok": False, **rule.over(rule.cap, declared_len)}
+    by chunk: nothing is ever buffered past the cap plus one chunk.
+    A reliable declaration that the stream over-delivers raises
+    _BodyFramingViolation before the cache write (under-delivery on
+    disconnect keeps the empty/disconnect answer path). No total read
+    deadline: a slow client holds only its connection (and its
+    admission reservation — see _BodyAdmissionMiddleware)."""
+    declared_len = _declared_body_length(request.headers.raw)
+    if declared_len is not None and declared_len > rule.cap:
+        if rule.route_mode:
+            return None      # the route rejects on the header itself
+        return {"ok": False, **rule.over(rule.cap, declared_len)}
     try:
         buf = bytearray()
         async for chunk in request.stream():
             buf.extend(chunk)
             if len(buf) > rule.cap:
                 break
-        if len(buf) > rule.cap and not rule.route_mode:
-            return {"ok": False, **rule.over(rule.cap, len(buf))}
-        request._body = bytes(buf)  # replay cache for the route
-        return None
     except Exception:
         # client vanished mid-body: nothing cached; the route answers the
-        # empty/disconnected body with its own error
+        # empty/disconnected body with its own error. The framing check
+        # below lives outside this fallback on purpose — a lying
+        # Content-Length must never be swallowed as a disconnect.
         return None
+    if len(buf) > rule.cap and not rule.route_mode:
+        return {"ok": False, **rule.over(rule.cap, len(buf))}
+    if declared_len is not None and len(buf) > declared_len:
+        raise _BodyFramingViolation(
+            f"stream delivered {len(buf)} bytes over the declared"
+            f" {declared_len}")
+    request._body = bytes(buf)  # replay cache for the route
+    return None
 
 
 # ── Body admission gate ──
 # The cap table bounds ONE request's retained body; it says nothing
 # about how many bodies may sit cached at once. The gate is the second
-# axis: a table-matched request must reserve (1 request, cap+1 logical
-# bytes) from a fixed budget BEFORE any body byte is read. The
-# reservation is the row's cap+1 worst case, so one full-size legal
-# request of every row always fits a healthy budget and covers
-# pre-read, slot wait and downstream processing; it is released only
-# when the whole ASGI request completes. Insufficient budget answers
-# immediately with the same 503 err_busy the slot gate uses — no queue
-# forms behind the gate.
+# axis: a table-matched request must reserve (1 request, N logical
+# bytes) from a fixed budget BEFORE any body byte is read, where N is
+# min(reliable declared Content-Length, row cap) + 1 when the framing
+# is reliable and the row's cap + 1 worst case otherwise (missing,
+# duplicate, malformed or chunked framing — see _declared_body_length).
+# One full-size legal request of every row still always fits a healthy
+# budget (the worst-case reservation), covering pre-read, slot wait and
+# downstream processing; the reservation is released only when the
+# whole ASGI request completes. Insufficient budget answers immediately
+# with the same 503 err_busy the slot gate uses — no queue forms behind
+# the gate.
 _BODY_GATE_REQUESTS = int(
     _os.environ.get("FLASHSHARE_BODY_GATE_REQUESTS", "32"))
 _BODY_GATE_MB = int(_os.environ.get("FLASHSHARE_BODY_GATE_MB", "256"))
@@ -551,7 +592,10 @@ class _BodyAdmissionMiddleware:
         if rule is None:
             await self.app(scope, receive, send)
             return
-        lease = _body_gate.reserve(rule.cap + 1)
+        declared = _declared_body_length(scope.get("headers") or [])
+        lease = _body_gate.reserve(
+            min(declared, rule.cap) + 1 if declared is not None
+            else rule.cap + 1)
         if lease is None:
             busy = JSONResponse({"ok": False, "error": "err_busy"},
                                 status_code=503,

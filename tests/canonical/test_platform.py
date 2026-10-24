@@ -274,9 +274,12 @@ check("H2i chunked client-error over 64 KiB → 413 err_payload_too_large",
 
 # ════════ H5. body admission gate ════════
 # The pre-read table bounds ONE request; the gate bounds HOW MANY
-# table-matched bodies may be in flight at once. Live legs use the real
-# server's default budget with header-only stalled sockets (no payload
-# ever sent); in-process legs patch the module gate to a small budget.
+# table-matched bodies may be in flight at once. A reliable declared
+# Content-Length reserves min(declared, cap)+1; unreliable framing
+# (missing/duplicate/malformed/chunked) reserves the cap+1 worst case.
+# Live legs hold big worst-case reservations with header-only stalled
+# chunked sockets (no payload ever sent); in-process legs patch the
+# module gate to a small budget.
 # Sample: ~16 sockets + probes; no large bodies, no long sleeps.
 import app.main as _mm
 
@@ -288,8 +291,12 @@ for _ in range(_nfit_h5):
     c.putrequest("POST", "/mcp")
     c.putheader("Host", f"127.0.0.1:{TEST_PORT}")
     c.putheader("Content-Type", "application/json")
-    c.putheader("Content-Length", "1000")
-    c.endheaders()          # admitted, parked in the pre-read; NO body bytes
+    # chunked framing, zero chunks: unreliable declaration → cap+1
+    # worst-case reservation (a declared length would reserve
+    # min(declared, cap)+1 and never fill the budget); the pre-read
+    # parks awaiting the first chunk
+    c.putheader("Transfer-Encoding", "chunked")
+    c.endheaders()
     _stalled_h5.append(c)
 st, d, _sc = _req("POST", "/api/client-error", {"msg": "probe"},
                   {"Content-Type": "application/json"})
@@ -300,7 +307,7 @@ try:
     conn.putrequest("POST", "/mcp")
     conn.putheader("Host", f"127.0.0.1:{TEST_PORT}")
     conn.putheader("Content-Type", "application/json")
-    conn.putheader("Content-Length", "1000")
+    conn.putheader("Transfer-Encoding", "chunked")  # worst-case reservation
     conn.endheaders()       # no body sent: a body-reading answer would hang
     r = conn.getresponse()
     _gate_over = (r.status, _json.loads(r.read() or b"null"),
@@ -410,9 +417,12 @@ try:
     check("H5g count-axis exhaustion → 503 err_busy + Retry-After 5",
           _resp_h5.get("second") == (503, {"ok": False, "error": "err_busy"}, "5"),
           _resp_h5.get("second"))
+    # TestClient sends a reliable Content-Length with the compact json
+    # body, so the held reservation is min(body, cap)+1 = len(body)+1
     check("H5h reservation still held while the request processes",
           _mm._body_gate.requests == 1
-          and _mm._body_gate.bytes == 64 * 1024 + 1,
+          and _mm._body_gate.bytes == len(
+              _json.dumps({"msg": "held"}, separators=(",", ":"))) + 1,
           (_mm._body_gate.requests, _mm._body_gate.bytes))
     _release_h5.set()
     _t1.join(timeout=10)
@@ -468,7 +478,8 @@ async def _h5_lifecycle():
             return False
 
         # (1) mid-stream hold: the budget stays occupied until the LAST
-        # body chunk; a second reservation is refused meanwhile
+        # body chunk; a second reservation is refused meanwhile. The
+        # scope declares content-length 2 → the reservation is 2+1.
         mid_done = _aio_h5.Event()
 
         async def inner_stream(scope, receive, send):
@@ -484,7 +495,7 @@ async def _h5_lifecycle():
         task = _aio_h5.create_task(mw(_scope_h5(), _recv_h5(), _s))
         out["parked_stream"] = await _park_until_reserved()
         out["held_mid_stream"] = ((gate.requests, gate.bytes)
-                                  == (1, 64 * 1024 + 1))
+                                  == (1, 2 + 1))
         out["refused_while_held"] = gate.reserve(1) is None
         mid_done.set()
         await _aio_h5.wait_for(task, 5)
@@ -576,6 +587,143 @@ check("H5q budget below one maximal row → fail-closed RuntimeError",
       _fit_bad_h5, "")
 _mm._validate_body_gate_budget()
 check("H5r the default config holds one maximal legal request", True, "")
+
+# ── declared-length reservation (table + deterministic red/green) ──
+_dbl_h5 = _mm._declared_body_length
+check("H5s _declared_body_length table: legal/0/missing/duplicate/malformed/TE → int|None, never raises",
+      _dbl_h5([(b"content-length", b"123")]) == 123
+      and _dbl_h5([(b"content-length", b"0")]) == 0
+      and _dbl_h5([]) is None
+      and _dbl_h5([(b"content-length", b"5"), (b"content-length", b"5")]) is None
+      and _dbl_h5([(b"content-length", b"+5")]) is None
+      and _dbl_h5([(b"content-length", b" 5")]) is None
+      and _dbl_h5([(b"content-length", b"1a")]) is None
+      and _dbl_h5([(b"content-length", b"")]) is None
+      and _dbl_h5([(b"content-length", b"\xff5")]) is None
+      and _dbl_h5([(b"transfer-encoding", b"chunked"),
+                   (b"content-length", b"5")]) is None
+      and _dbl_h5([(b"transfer-encoding", b"identity"),
+                   (b"content-length", b"7")]) is None, "")
+
+
+async def _h5_declared_reserve():
+    """Deterministic proof of the declared-length reservation: a tiny
+    byte budget (10) that cannot hold the row's cap+1 (64KiB+1) but can
+    hold a small declared body (3+1). Old always-cap+1 code refused the
+    admission (503, nothing held); the declared code holds exactly
+    min(3, cap)+1. No concurrency: the inner parks until polled."""
+    gate = _mm._body_gate
+    saved = (gate.max_requests, gate.max_bytes)
+    gate.max_requests, gate.max_bytes = 8, 10
+    out = {}
+    try:
+        parked = _aio_h5.Event()
+        release = _aio_h5.Event()
+
+        async def inner_park(scope, receive, send):
+            parked.set()
+            await release.wait()
+
+        scope = dict(_scope_h5(), headers=[(b"content-length", b"3")])
+        _m, _s = _send_h5()
+        task = _aio_h5.create_task(
+            _mm._BodyAdmissionMiddleware(inner_park)(scope, _recv_h5(), _s))
+        for _ in range(1000):
+            if gate.requests:
+                break
+            await _aio_h5.sleep(0)
+        out["declared_admitted_and_held"] = (
+            gate.requests == 1 and gate.bytes == 3 + 1)
+        release.set()
+        await _aio_h5.wait_for(task, 5)
+        out["declared_released"] = (gate.requests, gate.bytes) == (0, 0)
+
+        # unreliable framing (no Content-Length at all) still budgets the
+        # cap+1 worst case → the 10-byte budget refuses before the
+        # inner stack is ever reached
+        async def inner_unreached(scope, receive, send):
+            raise AssertionError("must not run")   # noqa: B017
+
+        _m2, _s2 = _send_h5()
+        await _mm._BodyAdmissionMiddleware(inner_unreached)(
+            dict(_scope_h5(), headers=[]), _recv_h5(), _s2)
+        start2 = next(x for x in _m2 if x["type"] == "http.response.start")
+        out["unreliable_rejected_worst_case"] = start2["status"] == 503
+    finally:
+        gate.max_requests, gate.max_bytes = saved
+        gate.requests, gate.bytes = 0, 0
+    return out
+
+
+_h5dr = _aio_h5.run(_h5_declared_reserve())
+check("H5t reliable declaration reserves min(len, cap)+1 (admitted+held+released; old cap+1 code was refused here)",
+      _h5dr.get("declared_admitted_and_held")
+      and _h5dr.get("declared_released"), _h5dr)
+check("H5t-b unreliable framing still reserves cap+1 (tiny budget → 503)",
+      _h5dr.get("unreliable_rejected_worst_case"), _h5dr)
+
+# ── framing violation: before the cache write, never masked ──
+from starlette.requests import Request as _Req_h5  # noqa: E402
+
+
+def _body_recv_h5(chunks):
+    state = {"i": 0}
+
+    async def _r():
+        if state["i"] < len(chunks):
+            c = chunks[state["i"]]
+            state["i"] += 1
+            return {"type": "http.request", "body": c,
+                    "more_body": state["i"] < len(chunks)}
+        return {"type": "http.disconnect"}
+    return _r
+
+
+async def _h5_framing():
+    rule = _mm._body_rule_for("/api/client-error", "POST")
+    out = {}
+    # (a) direct: declared 2, delivered 5 → violation raised, no cache
+    req = _Req_h5(dict(_scope_h5()), _body_recv_h5([b"ab", b"cde"]))
+    try:
+        await _mm._preread_body(req, rule)
+        out["direct_raised"] = False
+    except _mm._BodyFramingViolation:
+        out["direct_raised"] = True
+    out["nothing_cached"] = getattr(req, "_body", None) is None
+    # (b) through the admission middleware: the violation propagates out
+    # of the whole stack AND the reservation returns to zero
+    gate = _mm._body_gate
+    saved = (gate.max_requests, gate.max_bytes)
+    gate.max_requests, gate.max_bytes = 4, 1024 * 1024
+
+    async def inner_preread(scope, receive, send):
+        await _mm._preread_body(_Req_h5(scope, receive), rule)
+
+    try:
+        await _mm._BodyAdmissionMiddleware(inner_preread)(
+            dict(_scope_h5()), _body_recv_h5([b"ab", b"cde"]), _send_h5()[1])
+        out["propagated_through_middleware"] = False
+    except _mm._BodyFramingViolation:
+        out["propagated_through_middleware"] = True
+    out["reservation_zeroed"] = (gate.requests, gate.bytes) == (0, 0)
+    gate.max_requests, gate.max_bytes = saved
+    # (c) a disconnect (no body bytes) is still the disconnect path: no
+    # violation, no cache, None answer
+    req2 = _Req_h5(dict(_scope_h5()), _recv_h5())
+    out["disconnect_still_swallowed"] = (
+        await _mm._preread_body(req2, rule) is None
+        and getattr(req2, "_body", None) is None)
+    return out
+
+
+_h5fr = _aio_h5.run(_h5_framing())
+check("H5u over-delivery vs declared length raises before the cache write",
+      _h5fr.get("direct_raised") and _h5fr.get("nothing_cached"), _h5fr)
+check("H5u-b violation propagates through the admission middleware and zeroes the reservation",
+      _h5fr.get("propagated_through_middleware")
+      and _h5fr.get("reservation_zeroed"), _h5fr)
+check("H5u-c a disconnect stays the disconnect path (no violation, no cache)",
+      _h5fr.get("disconnect_still_swallowed"), _h5fr)
 
 # ══════════ H3. stored HTTP-tool credential clear ══════════
 class _HookHandler(_hs.BaseHTTPRequestHandler):
