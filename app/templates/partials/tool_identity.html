@@ -14,7 +14,7 @@ icon/fallback/label/desc/author/cost 全部经此表达 — surface 模板禁止
   <a> 嵌套; 作者页经工具页到达。-#}
 
 {% macro tool_icon(icon, cls="tool-ident-icon") -%}
-<span class="{{ cls }}">{{ icon_tool_svg(icon) | safe }}</span>
+<span class="{{ cls }}">{{ icon_tool_svg(icon) }}</span>
 {%- endmacro %}
 
 {% macro tool_card(t, lang, texts) -%}

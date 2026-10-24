@@ -329,6 +329,7 @@ def file_inline(public_id: str, request: Request):
 def file_print(public_id: str, request: Request):
     """Minimal print view for PDF results: embedded PDF + print button."""
     from app.main import templates
+    from app.web_ctx import PAGES_VERSION
 
     upload = _live_upload(public_id)
     if not upload:
@@ -349,5 +350,6 @@ def file_print(public_id: str, request: Request):
         "inline_url": f"/f/{urllib.parse.quote(public_id)}/inline",
         "download_url": f"/f/{urllib.parse.quote(public_id)}?download=1",
         "t": texts,
+        "pages_version": PAGES_VERSION,
     }
     return templates.TemplateResponse(request, "print.html", ctx)
